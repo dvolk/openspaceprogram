@@ -34,10 +34,16 @@ static void surfaceMapSize(ImGuiSizeCallbackData *d) {
    the screen keeps its lower rows off the viewport for good: imgui never draws
    them, the window has no scroll range to bring them back, and --ui-click
    faithfully answers "not found" for a widget no player can see either. Measured
-   at 1920x1080, ui_scale 1.0: the Controls window loses its Camera and EVA
-   groups, most of its RCS rows and its Save/Back buttons. At the ui_scale 2.0 a
-   saved settings.json can carry, the Settings window loses the very DPI slider
-   that would undo it. Cap the window to the work area and its content scrolls. */
+   at 1920x1080, ui_scale 1.0: the Controls window (63 rebind rows) registers only
+   41 of them, losing its Camera and EVA groups and its Save/Back buttons; at the
+   ui_scale 1.4 a saved settings.json can carry, the Settings window clips four
+   rows including its own Save/Back -- and at 2.0 it loses the very DPI slider
+   that would undo it.
+   This callback is a MAXIMUM, so it only bites on a window that has a height of
+   its own: imgui never runs the size-constraint pass for an AlwaysAutoResize
+   window, which is what a window without opts.initial_size gets for its first
+   frame (src/ui.h:263-269). The entries below pair a bounded initial_size with
+   this cap, which is what turns the overflow into a scrollbar. */
 static void capToWorkArea(ImGuiSizeCallbackData *d) {
     const ImGuiViewport *vp = ImGui::GetMainViewport();
     const float margin = ui::Manager::Get().margin.y;
@@ -56,21 +62,25 @@ const WinDef kWins[W_Count] = {
        become a second menu. */
     [W_Settings] = {
         .name = "Settings", .label = "Settings",
-        // Capped to the work area (capToWorkArea): its rows are longer than a
-        // 1080p screen even at ui_scale 1.0, and content-fit would push the
-        // bottom of the list -- including the DPI slider -- off the viewport.
+        /* A bounded height, not content-fit: the Settings list is ~955px tall at
+           ui_scale 1.0 and ~1330px at 1.4, so content-fit makes the window taller
+           than the viewport, which leaves imgui no scroll range -- the DPI slider
+           and Save/Back stop being drawn and stop being scrollable (#116's
+           one-way door). 1000px fits the 1.0 content outright, and capToWorkArea
+           keeps it inside the work area at any DPI. */
         .opts = { .slot = ui::Slot::BottomCenter,
-                  .initial_size = ImVec2(600.0f, 700.0f),
+                  .initial_size = ImVec2(600.0f, 1000.0f),
                   .size_cb = &capToWorkArea, .closable = true,
                   .default_open = false },
         .role = WinRole::Persistent, .inList = false,
     },
     [W_Controls] = {
         .name = "Controls", .label = "Controls",
-        // 41 rebind rows: content-fit puts the Camera/EVA groups and the Save
-        // button off a 1080p screen, unreachable and unscrollable.
+        // 63 rebind rows (~1600px of content): content-fit would push the
+        // Camera/EVA groups and the Save button below the viewport, unreachable
+        // and unscrollable. Bounded + capped, so they scroll into view.
         .opts = { .slot = ui::Slot::BottomCenter,
-                  .initial_size = ImVec2(600.0f, 700.0f),
+                  .initial_size = ImVec2(600.0f, 1000.0f),
                   .size_cb = &capToWorkArea, .closable = true,
                   .default_open = false },
         .role = WinRole::Persistent, .inList = false,
