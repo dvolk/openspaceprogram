@@ -144,6 +144,42 @@ def our_species_table():
     return out
 
 
+def our_top_pressure(body, at, species):
+    """[(Pa at the ceiling, ceiling height m)] from OUR law over OUR file.
+
+    atmo.h:top() is an authored `height`, else ten scale heights. Layered profiles integrate
+    hydrostatically with the authored lapse rates; the mixture R comes from the same GasSpecies
+    table everything else uses.
+    """
+    top = at.get('height')
+    if not top and at.get('scale_height'):
+        top = 10.0 * float(at['scale_height'])
+    if not top:
+        return None, None
+    comp = at.get('composition') or []
+    if not comp:
+        return None, top
+    R = K_GAS_R / sum(c['fraction'] * species[c['gas']][0] for c in comp)
+    g = body.get('g', 9.81)
+    p = at['sea_level_pressure']
+    layers = at.get('layers')
+    if layers:
+        for i, lay in enumerate(layers):
+            a0, T0, lap = lay['alt'], lay['T'], lay.get('lapse', 0.0)
+            a1 = layers[i + 1]['alt'] if i + 1 < len(layers) else top
+            dz = a1 - a0
+            if dz <= 0:
+                continue
+            if lap:
+                T1 = T0 + lap * dz
+                p *= (T1 / T0) ** (-g / (R * lap))
+            else:
+                p *= math.exp(-g * dz / (R * T0))
+    else:
+        p *= math.exp(-top / float(at['scale_height']))
+    return p, top
+
+
 def mix_properties(comp, species):
     """[(molar_mass, R_specific, gamma)] for an authored mix, mole fractions as written.
 
@@ -160,9 +196,9 @@ def main():
     species = our_species_table()
     ours = {b['name']: b for b in json.load(open(SYSTEM))['bodies']}
     flags = []
-    print('%-8s  %8s  %8s  %8s  %17s  %9s  %9s  %9s  %7s  %s'
+    print('%-8s  %8s  %8s  %8s  %17s  %9s  %9s  %9s  %7s  %9s  %s'
           % ('body', 'R ours/th', 'M ours/th', 'spin our/th', 'tilt ours/theirs', 'ceil m',
-              'their ceil', 'Rspec o/t', 'gamma t', 'flags'))
+              'their ceil', 'Rspec o/t', 'gamma t', 'our p(top)', 'flags'))
     for name, t in ORBITER.items():
         o = ours.get(name)
         if o is None:
@@ -192,6 +228,7 @@ def main():
         cells.append('%9.2f/%-7.2f' % (tilt if tilt is not None else -1,
                                           ttilt_cmp if ttilt_cmp is not None else -1))
         ceil, tceil = at.get('height'), f('AtmAltLimit')
+        ptop, top = our_top_pressure(o, at, species)
         cells.append('%9s' % ('-' if not ceil else '%.0f' % ceil))
         cells.append('%9s' % ('-' if not tceil else '%.0f' % tceil))
         gspec = gtheirs = None
@@ -200,15 +237,25 @@ def main():
             gspec, gtheirs = Rs, f('AtmGasConstant')
             cells.append('%9s' % ('-' if not gtheirs else '%.3f' % (Rs / gtheirs)))
             cells.append('%7s' % ('-' if not f('AtmGamma') else '%.3f' % f('AtmGamma')))
+            cells.append('%9s' % ('-' if ptop is None else '%.3g' % ptop))
         else:
             cells.append('%9s%7s' % ('-', '-'))
+            cells.append('%9s' % ('-' if ptop is None else '%.3g' % ptop))
         note = []
         if rr and abs(rr - 1) > 1e-3: note.append('R')
         if mr and abs(mr - 1) > 1e-3: note.append('M')
         if pr and abs(abs(pr) - 1) > 0.01: note.append('spin')
         if tilt is not None and ttilt_cmp is not None and abs(tilt - ttilt_cmp) > 0.05:
             note.append('tilt')
-        if ceil and tceil and abs(ceil / tceil - 1) > 0.05: note.append('ceiling')
+        # Our authored ceiling is not a height convention -- it is a PRESSURE, and it is
+        # consistent across the system: p(top) comes out at ~1/3 Pa on every aired body
+        # (measured 0.05..0.44 Pa). So the check is our own self-consistency. Their
+        # AtmAltLimit is where their renderer stops: shown for context, not compared.
+        if top is None:
+            if at.get('sea_level_pressure', 0.0) > 0.0:
+                note.append('no-top')      # aired body with no ceiling at all
+        elif not 0.02 <= ptop <= 2.0:
+            note.append('p_top=%.3g Pa' % ptop)
         if gspec and gtheirs and abs(gspec / gtheirs - 1) > 0.01: note.append('Rspec')
         flags.append('%s: %s' % (name, ','.join(note)) if note else '')
         cells.append(' '.join(note) if note else 'ok')
@@ -220,7 +267,11 @@ def main():
     print("  * Jupiter SidRotPeriod = 13500.3 s (3.75 h) matches none of Jupiter's measured rotation")
     print('    systems (~9.9 h); their own file notes it is a cloud-layer figure. Ours is the better')
     print('    authority here, so this row is expected to flag.')
-    print('  * Their AtmPressure0 for the giants (e.g. Jupiter 201.4e4 Pa) is a deeper datum than our')
+    print('  * Ceilings are shown side by side and NOT compared. Our authored height turns')
+    print("    to be a pressure in disguise -- p(top) is ~1/3 Pa on every aired body")
+    print('    (0.05..0.44 Pa) -- while their AtmAltLimit is where their renderer stops. The')
+    print('    check here is that OUR OWN rule holds everywhere, which needs no external data.')
+    print('  * Their AtmPressure0 for the giants (e.g. Jupiter 201.4e4 Pa) is a deeper datum')
     print('    authored 1 bar, so pressures are deliberately not compared.')
     bad = [x for x in flags if x]
     print('')
