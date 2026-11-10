@@ -469,6 +469,13 @@ $(TESTDIR)/test_suitdef: $(TESTDIR)/obj/test_suitdef.o $(TBASE)
 $(TESTDIR)/test_rotation: $(TESTDIR)/obj/test_rotation.o $(TBASE)
 	$(CXX) -O2 -Wl,--gc-sections -o $@ $^ $(TSYS)
 
+# THE AERO BENCH (#655): one authored hull flown over a grid of alpha / beta / Mach,
+# printing AND pinning the whole-surface law's answers. Constructs Parts and calls
+# btBoxShape -- the compound hull is real -- so it links the shared tier. Needs no
+# res/: the fixture is hand-authored here.
+$(TESTDIR)/test_aerosweep: $(TESTDIR)/obj/test_aerosweep.o $(TBASE)
+	$(CXX) -O2 -Wl,--gc-sections -o $@ $^ $(TSYS)
+
 # Needs res/ (run from the repo root).
 $(TESTDIR)/test_shipload: $(TESTDIR)/obj/test_shipload.o $(TESTDIR)/obj/shipdef.o
 	$(CXX) -o $@ $^
@@ -585,7 +592,7 @@ $(TESTDIR)/test_orient: $(TESTDIR)/obj/test_orient.o $(BULLET3_OBJS)
 	$(CXX) -o $@ $^ $(TLIBS)
 
 TESTS = test_frames test_spawn test_attitude test_slew3d test_gimbal test_actuators test_angmath test_inlinevec test_rcs test_thrust test_guidance test_fuel \
-        test_power test_staging test_staging_dv test_dock test_authority test_contain test_inertia test_inventory \
+        test_power test_staging test_staging_dv test_dock test_authority test_aerosweep test_contain test_inertia test_inventory \
         test_suitdef \
         test_rotation test_shipload test_stability test_save test_crew test_roster test_calendar \
         test_flightlog test_science test_bodylimits \
