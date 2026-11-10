@@ -266,6 +266,17 @@ void tick(Game &g) {
                 RailEnd end = RailEndNone;
                 Vehicle *ended = nullptr;
                 for(auto *s : vehicles) {
+                    /* This branch steps CONICS only: railAdvance() answers
+                       RailEndNone for an off-rails hull, so such a hull gets no
+                       gravity, no forces and no integration here at all -- it
+                       stands still while g.time runs on. Loud beats silent: every
+                       leaveRails() caller bounds the warp as it leaves (control
+                       wake above, select_vehicle, stage, undock), and
+                       Game::updateProximity() now clamps its cap below
+                       kRailsWarp, because it is the one caller that takes hulls
+                       off the rails without the player asking. */
+                    assert(s->onRails
+                           && "off-rails hull at rails warp: it will not integrate");
                     const RailEnd e = s->railsTick(g.time, step);
                     if(e != RailEndNone && ended == nullptr) { end = e; ended = s; }
                 }

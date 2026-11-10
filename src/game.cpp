@@ -2011,11 +2011,24 @@ void Game::updateProximity() {
         if(args.prox_log) { printf("[prox] t=%.3f active %s WOKEN from rails\n",
                                    time, a->displayName().c_str()); }
     }
-    if(any_engaged && time_accel > args.prox_warp) {
-        time_accel = args.prox_warp;
-        toast("Close approach: time accel limited to %dx", (int)args.prox_warp);
-        if(args.prox_log) { printf("[prox] t=%.3f warp CAPPED to %d\n",
-                                   time, (int)args.prox_warp); }
+    /* The cap must land BELOW kRailsWarp. This pass has just taken the engaged
+       hulls OFF the rails, and tick.cpp's rails-warp branch steps conics only
+       (railAdvance() answers RailEndNone for an off-rails hull), so an off-rails
+       hull at rails warp gets no gravity, no forces and no integration at all:
+       it freezes wherever it stands while the clock keeps running. Measured on
+       two pad ships with --prox-warp 20 --time-accel 20: 40 s of sim, [surfinfo]
+       lat/lon unchanged to the last digit. Every other leaveRails() caller drops
+       the warp past the rails boundary itself (select_vehicle, stage, undock);
+       this one owns the boundary. --prox-warp has no validator, so a negative
+       value would also reverse the sim clock; clamp that to a pause. */
+    double cap = args.prox_warp;
+    if(cap >= (double)kRailsWarp) { cap = (double)(kRailsWarp - 1); }
+    if(cap < 0.0) { cap = 0.0; }
+    if(any_engaged && time_accel > cap) {
+        time_accel = cap;
+        toast("Close approach: time accel limited to %dx", (int)cap);
+        if(args.prox_log) { printf("[prox] t=%.3f warp CAPPED to %g\n",
+                                   time, cap); }
     }
 
     if(args.prox_log) {
