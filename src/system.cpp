@@ -1344,11 +1344,26 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                                          + parent_name + "'");
             }
             // A self-orbit makes the body its own child frame and recurses any
-            // tree walk. (A mutual A<->B cycle is still possible; see the
-            // follow-up issue on full acyclicity.)
+            // tree walk; the ring case (A<->B and longer) is refused just below,
+            // where the whole chain can be walked.
             if(parent == body) {
                 throw std::runtime_error("system: '" + body->name
                                          + "' cannot orbit itself");
+            }
+            /* A cycle has to die HERE. Self-orbit was refused and the ring one was not,
+               so Mun<->Minmus loaded and the first walk up a parent chain after that
+               (measureSolarDay's) never came back: measured on the load, the game printed
+               nothing past the shaders, held one core at 100 %, ignored --timeout and
+               SIGTERM, and needed SIGKILL. Walking the new parent's own chain to the root
+               and refusing if it passes through this body catches a ring of any length,
+               for one short walk per link. */
+            for(Frame *up = parent->frame; up != nullptr; up = up->parent) {
+                if(up == body->frame) {
+                    throw std::runtime_error("system: '" + body->name + "' orbits '"
+                                             + parent->name + "', which already orbits"
+                                               " back to it -- the \"orbits\" chain has"
+                                               " to end at the root");
+                }
             }
             body->frame->parent = parent->frame;
             parent->frame->children.push_back(body->frame);

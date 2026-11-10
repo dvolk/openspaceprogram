@@ -1354,6 +1354,28 @@ static void check_body_claims() {
                        bv["type"] = "gas giant";
                    }), "unknown \"type\"");
 
+    /* The frame tree. Names are looked up, so a mistyped "orbits" value and a ring of
+       two both arrive from an edited file. The ring is the one that costs a player
+       nothing but patience: #129 asked for it and only the self-orbit half landed, so
+       Mun<->Minmus LOADED and the first walk up a parent chain (measureSolarDay's)
+       never came back -- measured, the game printed nothing past the shaders, held one
+       core at 100 %, ignored --timeout and SIGTERM, and needed SIGKILL. */
+    expect_refuses("orbit_unknown_parent", bpatched("Mun", [](nlohmann::json &bv) {
+                       bv["orbits"] = "Kerbbin";
+                   }), "orbits unknown body");
+    expect_refuses("orbit_self", bpatched("Mun", [](nlohmann::json &bv) {
+                       bv["orbits"] = "Mun";
+                   }), "cannot orbit itself");
+    {
+        nlohmann::json j = base;
+        for(auto &bv : j["bodies"]) {
+            const std::string n = bv.value("name", std::string());
+            if(n == "Mun") { bv["orbits"] = "Minmus"; }
+            if(n == "Minmus") { bv["orbits"] = "Mun"; }
+        }
+        expect_refuses("orbit_cycle", j.dump(), "already orbits back to it");
+    }
+
     // The height model's octave COUNT (terragen.h kMaxTerrainOctaves).
     expect_refuses("octaves_huge", bpatched("Mun", [](nlohmann::json &bv) {
                        bv["surface"]["octaves"] = 100;
