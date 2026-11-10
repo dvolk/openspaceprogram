@@ -16,6 +16,7 @@
 #include <utility>   // std::pair
 
 #include "body.h"      // Body
+#include "datadir.h"   // writeJson (the atomic JSON write, #304)
 #include "eva.h"       // Kerbal
 #include "game.h"      // Game, Scene
 #include "physics.h"   // RemoveBody, AddPhysicsBody, SetAngVelocity, GetAngVelocity
@@ -48,45 +49,6 @@ std::string nowString() {
     char buf[64];
     strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%SZ", gmtime(&t));
     return std::string(buf);
-}
-
-/* Write-then-rename (#304). An ofstream truncates its target the moment it
-   opens, so a crash or a full disk partway through the write used to leave the
-   slot holding a half-written file that the PREVIOUS save.json still pointed
-   at. Writing to <path>.tmp and renaming means a reader sees either the whole
-   old file or the whole new one: rename within one filesystem is atomic. Every
-   failure path unlinks the temp; save_game's orphan sweep collects a leftover
-   .tmp as well, since a process killed between the write and the rename leaves
-   one no reader would ever open. */
-void writeJson(const std::string &path, const nlohmann::json &j) {
-    /* Serialize BEFORE opening anything. dump() throws on invalid UTF-8 in any
-       string it walks -- and names arrive from UI text or a hand-edited file --
-       so a throw with the temp already open would leave it behind: the orphan
-       sweep filters by extension and never collects a .tmp. */
-    const std::string text = j.dump(2) + "\n";
-    const std::string tmp = path + ".tmp";
-    {
-        std::ofstream f(tmp.c_str());
-        if(!f.is_open()) { throw std::runtime_error("save: cannot write " + path); }
-        f << text;
-        /* close() is where a full disk or an NFS error actually surfaces, and
-           the destructor closes after this scope -- i.e. after the rename. An
-           unchecked close failure would install a truncated temp, which is the
-           exact outcome this function exists to prevent. */
-        f.close();
-        if(!f.good()) {
-            std::error_code ec;
-            std::filesystem::remove(tmp, ec);   // best effort: the throw is the answer
-            throw std::runtime_error("save: error writing " + path);
-        }
-    }
-    std::error_code ec;
-    std::filesystem::rename(tmp, path, ec);
-    if(ec) {
-        std::error_code rm;
-        std::filesystem::remove(tmp, rm);
-        throw std::runtime_error("save: cannot install " + path + ": " + ec.message());
-    }
 }
 
 /* One roster id, one lookup, one sentence. The builders throw with these words
@@ -1385,9 +1347,9 @@ void save_game(Game &g, const std::string &dir) {
     for(size_t i = 0; i < vehicles.size(); i++) {
         SaveShip s = saveShipFromVehicle(vehicles[i], slugs);
         meta.ships.push_back(slug(i));
-        writeJson(dir + "/ships/" + slug(i) + ".json", saveShipToJson(s));
+        datadir::writeJson(dir + "/ships/" + slug(i) + ".json", saveShipToJson(s));
     }
-    writeJson(dir + "/save.json", saveMetaToJson(meta));
+    datadir::writeJson(dir + "/save.json", saveMetaToJson(meta));
     /* Drop ship files this game no longer has. A save directory is REUSED
        (quicksave rotation, Save-As), so a shrunk ship list leaves orphan
        ships/vN.json that nothing reads but that make the tree lie about its

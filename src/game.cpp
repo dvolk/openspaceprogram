@@ -229,11 +229,17 @@ bool Game::save_settings() {
     nlohmann::json j;
     settings_write(collect_settings(*this), j);
     datadir::make_dir(datadir::dir());   // a --data-dir whose parents are missing
-    std::ofstream f(datadir::settings_file());
-    if(!f) { return false; }
-    f << j.dump(2) << "\n";
-    f.flush();
-    return (bool)f;
+    /* Atomic, like every save file (#304). This used to be its own truncating
+       ofstream, so a crash or a full disk here left settings.json half-written --
+       and settings_read ignores a file it cannot parse, so the player woke up to
+       DEFAULT keybinds and display settings with no save involved. The callers
+       already say "Could not write settings.json" when this returns false. */
+    try {
+        datadir::writeJson(datadir::settings_file(), j);
+    } catch(const std::exception &) {
+        return false;
+    }
+    return true;
 }
 
 /* Startup phase 2 (main, once the Game exists): the Game + PostFX fields. */
