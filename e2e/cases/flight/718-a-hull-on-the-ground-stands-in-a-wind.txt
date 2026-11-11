@@ -1,0 +1,63 @@
+# A hull standing on the ground now stands in a moving sky, and this is the case that asks
+# what that does (#718). #688 made the air move; #717 made it readable. Neither said anything
+# about the regime underneath 3 m/s, where a hull is not flying at all -- and applyAeroForce
+# has no grounded gate, so a parked hull has been reading a non-zero airspeed ever since the
+# first body authored a wind row.
+#
+# The answer, measured on Earth's pad bed (the only launch site on a windy body in the shipped
+# system -- Venus has no pad, which is why nothing caught this):
+#
+#   wind at the datum   hs after 12 s      sit
+#   none                8e-9 m/s           landed
+#   5.45 m/s (shipped)  0.0025 m/s         landed
+#   12 m/s              0.0012 m/s         landed
+#   20 m/s              0.013 m/s          landed
+#   30 m/s              3.09 m/s           FLYING LOW -- it is being dragged
+#   60 m/s              0.37 m/s, at 1.93 m AGL instead of 5.70  (pushed over and along)
+#
+# So: the wind DOES push a grounded hull -- the residual ground speed goes up by three orders
+# of magnitude between the windless control and the shipped row -- and the ground holds it. The
+# threshold on this hull, in sea-level air, is between 20 and 30 m/s, and past it the hull
+# stops being landed at all: at 30 m/s its ground speed crosses kShipGroundSpeed (3 m/s) and
+# the situation flips to "flying low" while it is still sat on the plain.
+#
+# Why that matters for Venus. The tallest Venus ground reads ~4 m/s of air in a ~57 kg/m3
+# column: q ~460 Pa, against Earth sea level's 0.5 x 1.225 x 30^2 = 551 Pa. The Venus highland
+# regime is therefore on the DRAGGED side of that line, not the parked side. The shipped
+# surface row (1 m/s in 65 kg/m3, q = 32 Pa) is harmless; it is the interpolated line between
+# the two authored rows that is not. Nothing in the shipped game can show it yet, because there
+# is no launch site on Venus to put a hull on -- which is its own finding, and the follow-up.
+#
+# What is pinned here is the shipped half: at the wind the files actually author, a landed hull
+# stays landed and stays where it was put, while reading the air's speed as its own airspeed.
+# That last part is by design and is the point of #712's drifting platform -- a parked hull in
+# moving air HAS a non-zero airspeed -- so the assertion is not "tas is zero", it is "tas is the
+# wind and hs is not".
+NAME a-hull-on-the-ground-stands-in-a-wind
+CLAIM A hull landed at an Earth pad stands in 5.4 m/s of moving air without leaving its place: tas reads the wind, hs stays under 0.01 m/s, and it stays landed for the whole run.
+KIND golden
+ARGS --timeout 12 --system res/systems/solar_system.json --info-log --startship v,res/ships/skiff_trim.json,Earth,pad
+FORBID error:
+FORBID place_vehicle
+# The pad bed needs a launch site, and Earth is the only windy body with one. If that ever
+# stops being true this case should say so rather than spawn somewhere else.
+CHECK "sit=\"landed\"" in out
+# The air is moving over a hull that is not: tas= is |airRelativeVel|, the speed the aero law
+# bills, and it sits on the datum row interpolated at this pad's 143 m ASL -- 5 + (143/11000)
+# x 35 = 5.46 m/s, not zero and not the hull's own speed. wind_east= is the table's answer for
+# the same place, so the two agree by construction.
+CHECK all(s["tas"] is not None and 5.3 < s["tas"] < 5.6 for s in surf if s["t"] > 6.0)
+CHECK all(abs(s["wind_east"] - 5.46) < 0.05 and s["wind_north"] == 0.0 for s in surf if s["t"] > 6.0)
+# And the hull does not go with it. Measured 0.0025 m/s at t=11.9s against 8e-9 with the wind
+# rows dropped from the file (tmp/earth_nowind.json, not shipped): the push is real and the
+# ground holds it. 0.01 m/s is far above the residual and far below anything that reads as
+# creep, so a hull that started sliding breaks this rather than tuning it.
+CHECK all(s["hs"] < 0.01 for s in surf if s["t"] > 6.0)
+# Still on the ground, in the sim's own words, at the end of the run. This is the assertion the
+# 30 m/s experiment breaks: at that speed the same hull reads 3.09 m/s of ground speed and
+# sit="flying low" while still sat on the plain.
+CHECK all(s["sit"] == "landed" for s in surf if s["t"] > 6.0)
+# It settled rather than oscillating: alt_agl converges to 5.70 m and holds. The pad spawn tips
+# the hull over in the first ~4 s (pitch 86 deg -> 2.9 deg), which is the spawn settling and
+# not the wind -- the windless control tips the same way -- so the pin starts at 6 s.
+CHECK all(abs(s["alt_agl"] - 5.70) < 0.2 for s in surf if s["t"] > 8.0)

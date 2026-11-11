@@ -7,10 +7,10 @@ kind says how much weight the assertions carry.
 | kind | meaning | cases |
 |---|---|---|
 | `invariant` | a behaviour or a player route the game must keep | 321 |
-| `golden` | tuned numbers or a content table -- update deliberately when tuning | 46 |
+| `golden` | tuned numbers or a content table -- update deliberately when tuning | 47 |
 | `harness` | CLI/test-engine plumbing, not game spec | 15 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **386** |
+| | **total** | **387** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -18,7 +18,7 @@ paces a run: how much e2e a change deserves is the caller's
 judgement. Select by number, name or path, e.g.
 `python3 e2e/run.py save/172 262`.
 
-## flight (101)
+## flight (102)
 
 | case | kind | pins |
 |---|---|---|
@@ -122,6 +122,7 @@ judgement. Select by number, name or path, e.g.
 | `flight/688-wind-bends-airspeed.txt` | invariant | With atmosphere.wind authored, a hull's airspeed is its speed through moving air rather than its speed over the ground -- a tailwind along its track makes it smaller -- and the wind a hull reads is the authored profile interpolated at its own altitude (10 m/s at 8.5 km) and HELD past the last row (20 m/s at 42.5 km); a bed that authors an airspeed adds the air's motion instead of being moved by it (53.9 m/s over the ground for the 44 it asked for). |
 | `flight/693-trim-bed-speeds-follow-the-air.txt` | golden | A load-keyed spawn bed's speed comes from the body's air and gravity rather than from its circular speed: one authored 50.9 kg/m^2 lift-area load gives 44 m/s in Kerbin's 8.5 km air, 34 in Eve's 3.1 km air and 162 in Duna's 5 km at the same 0.1-of-air-top band -- within a few percent of the same hull's lift balance on the two subsonic worlds -- where the gravity-keyed cruise bed gives 33 m/s on Duna, a fifth of the speed that hull needs to make lift there. |
 | `flight/709-a-start-ship-spawns-over-a-map-point.txt` | invariant | A start ship given lat/lon starts flying over that map point -- the surface readout reports the requested coordinate -- while keeping the bed's altitude, its air-relative speed and its science band. |
+| `flight/718-a-hull-on-the-ground-stands-in-a-wind.txt` | golden | A hull landed at an Earth pad stands in 5.4 m/s of moving air without leaving its place: tas reads the wind, hs stays under 0.01 m/s, and it stays landed for the whole run. |
 | `flight/730-the-air-bills-each-surface-in-watts.txt` | invariant | Each [surface] row's watts= is that surface's share of the air's bill -- its q x its CdA x the flow speed standing AT it, for both what the pass charges a surface (its form drag and the induced price of its lift) -- so taking each part's CdA back out of its own watts adds the row back up to the [drag] line's Profile= PLUS its Induced= exactly: no part counted twice, none invented, none of the bill unassigned. It is never a rounded-to-zero placeholder while the hull is in the air, and the mirrored wing pair's watts differ wherever their q does, which is what one ship-wide figure would hide. |
 
 ## crew (26)
