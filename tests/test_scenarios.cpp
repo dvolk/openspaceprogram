@@ -1678,6 +1678,7 @@ static void check_body_claims() {
         { "legal_no_atmo", "Kerbin" },      // an absent atmosphere block
         { "legal_no_rings", "Jool" },       // an absent rings array
         { "legal_no_inertial", "Mun" },     // an absent inertial block
+        { "legal_no_surface", "Mun" },      // an absent surface block, the airless case
     };
     for(const MustLoad &m : legal) {
         const std::string path = std::string("tmp/test_scenarios_body_")
@@ -1707,6 +1708,8 @@ static void check_body_claims() {
                 bv["surface"].erase("rings");
             } else if(what == "legal_no_inertial") {
                 bv.erase("inertial");
+            } else if(what == "legal_no_surface") {
+                bv.erase("surface");
             } else {
                 bv["surface"]["clouds"]["coverage"] = 0.25;
                 bv["surface"]["clouds"]["freq"] = 8.5;
@@ -1758,6 +1761,13 @@ static void check_body_claims() {
                && !(b->rot_frame && b->rot_frame->rot_ang_speed == 0.0)) { bad++; }
             if(std::string(m.label) == "legal_no_atmo"
                && b->surface.atmosphere.enabled) { bad++; }
+            /* The biggest block of all. old_system.json's Moon ships no surface at all,
+               so this is not a hypothetical shape -- and #762's guard runs on
+               contains("surface"), which must not turn into "surface is required". */
+            if(std::string(m.label) == "legal_no_surface"
+               && !(b->surface.atmosphere.enabled == false
+                    && b->surface.clouds.enabled == false
+                    && b->surface.rings.empty())) { bad++; }
             if(std::string(m.label) == "legal_no_rings"
                && !b->surface.rings.empty()) { bad++; }
             /* An absent inertial block is the star's shape. On a moon it is legal but
