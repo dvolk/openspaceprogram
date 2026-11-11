@@ -697,7 +697,9 @@ static void drawGuidanceWindow(Game &g) {
    the reader to do a sign flip in their head, and the whole point of #717 is that a
    pilot should not have to. */
 static const char *windToward(double east, double north) {
-    if(east == 0.0 && north == 0.0) { return "calm"; }
+    /* Calm, in the same decimal place every caller prints to: a wind of 0.04 m/s prints
+       "0.0 m/s east", which is a zero wearing a direction the file never gave (#727). */
+    if(std::hypot(east, north) < 0.05) { return "calm"; }
     static const char *const kNames[] = {"east", "north-east", "north", "north-west",
                                          "west", "south-west", "south", "south-east"};
     int oct = (int)std::llround(glm::degrees(std::atan2(north, east)) / 45.0);
@@ -1658,21 +1660,24 @@ void drawUIReadouts(Game &g) {
         // Overlay-only: no re-bake, so no need to disable it mid-sweep.
         bool sml = g.surfmap.site_labels;
         if(ImGui::Checkbox("Site labels", &sml)) { g.surfmap.site_labels = sml; }
+        /* The map is a SNAPSHOT (#746): it is taken at the instant of the last Refresh, body
+           pick or map-type change, and nothing redraws it while the sim runs. That was
+           harmless while the only picture was an albedo, which does not change. It draws a
+           temperature field now, and a frozen hot spot reads like weather that has stopped --
+           the subsolar point does not walk across Duna while the clock in the corner does, and
+           the terminator overlay is frozen from the same instant. Say which instant, in the
+           space "mapping ..." already owns, and say it WHILE a fresh bake is in flight too:
+           those on-screen pixels are the oldest they ever get, so the moment their age matters
+           most is exactly the moment the replacement has not landed. Same number
+           --surfmap-log prints as t=. */
+        if(g.surfmap.valid) {
+            ImGui::SameLine();
+            uiTextDisabled("   baked t=%.1fs", g.surfmap.baked_t);
+        }
         if(sm_busy) {
             ImGui::SameLine();
             ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.4f, 1.0f),
                                "   mapping ...");
-        } else if(g.surfmap.valid) {
-            /* The map is a SNAPSHOT (#746): it is taken at the instant of the last Refresh,
-               body pick or map-type change, and nothing redraws it while the sim runs. That
-               was harmless while the only picture was an albedo, which does not change. It
-               draws a temperature field now, and a frozen hot spot reads like weather that
-               has stopped -- the subsolar point does not walk across Duna while the clock in
-               the corner does, and the terminator overlay is frozen from the same instant.
-               Say which instant, in the space "mapping ..." already owns, so the age is at
-               least visible next to the picture. Same number --surfmap-log prints as t=. */
-            ImGui::SameLine();
-            uiTextDisabled("   baked t=%.1fs", g.surfmap.baked_t);
         }
 
         if(!g.surfmap.valid || g.surfmap.px.empty()) {
@@ -2074,17 +2079,21 @@ void drawUIReadouts(Game &g) {
                "air the file states no wind for" are different news (#726). */
             char wind_s[48] = "";
             if(g.surfmap.baked_type == kMapWind) {
+                int wn;
                 if(!sm_bake_here) {
-                    snprintf(wind_s, sizeof wind_s, "  wind - (rebaking)");
+                    wn = snprintf(wind_s, sizeof wind_s, "  wind - (rebaking)");
                 } else if(g.surfmap.wind_ok) {
                     const glm::dvec2 wv = windAt(g.surfmap.wind_rows, sm_elev);
-                    snprintf(wind_s, sizeof wind_s, "  wind %.1f m/s %s",
-                             glm::length(wv), windToward(wv.x, wv.y));
+                    wn = snprintf(wind_s, sizeof wind_s, "  wind %.1f m/s %s",
+                                  glm::length(wv), windToward(wv.x, wv.y));
                 } else {
-                    snprintf(wind_s, sizeof wind_s, "  wind - (%s)",
-                             g.surfmap.wind_block.empty() ? "unavailable"
-                                                          : g.surfmap.wind_block.c_str());
+                    wn = snprintf(wind_s, sizeof wind_s, "  wind - (%s)",
+                                  g.surfmap.wind_block.empty() ? "unavailable"
+                                                               : g.surfmap.wind_block.c_str());
                 }
+                // Truncated here means a truncated reason on the line, which is the one place
+                // #726's kept-apart absences could silently merge again.
+                assert(wn > 0 && wn < (int)sizeof wind_s);
             }
             uiTextDisabled("cursor: lat %+.1f  lon %.1f  elev %s%s%s%s",
                            glm::degrees(lat), glm::degrees(lon),

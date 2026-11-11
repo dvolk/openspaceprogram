@@ -187,11 +187,15 @@ SURFMAP_RE = re.compile(
     r"temp_mean4=([-\d.]+)\s+anchor=([-\d.]+))?"
     r"(?:\s+temp=-\s+note=\"([^\"]*)\")?"
     # #769: the wind map's tail. wind= is what the sweep painted over this body's GROUND,
-    # wind_ends= what its file states at its two rows, wind_rows= how many rows that is, and
-    # wind_cells= how many arrow cells the vector half drew -- the only observable the arrows
-    # have. Same dash law as temp=: a body with no wind prints wind=- plus a note saying which
-    # absence ("no air" and "air the file states no wind for" are different news).
+    # wind_ends= what its file states at its rows, wind_ramp= the span the picture's colours
+    # and arrow lengths actually run over (priced from the ground's floor and ceiling, NOT the
+    # file's rows -- otherwise Venus paints its whole world in the bottom 3% of the palette),
+    # wind_rows= how many rows that is, and wind_cells= how many arrow cells the vector half
+    # drew -- the only observable the arrows have. Same dash law as temp=: a body with no wind
+    # prints wind=- plus a note saying which absence ("no air" and "air the file states no wind
+    # for" are different news, and a render rim is not air).
     r"(?:\s+wind=\[([-\d.]+) ([-\d.]+) ([-\d.]+)\]\s+wind_ends=\[([-\d.]+) ([-\d.]+)\]\s+"
+    r"wind_ramp=\[([-\d.]+) ([-\d.]+)\]\s+"
     r"wind_rows=(\d+)\s+wind_cells=(\d+))?"
     r"(?:\s+wind=-\s+note=\"([^\"]*)\")?"
 )
@@ -955,7 +959,7 @@ def parse_surfmap(out):
     for m in SURFMAP_RE.finditer(out):
         (t, body, w, h, mtype, level, ar, ag, ab, sr, sg, sb, shade, ocean,
          sites, tmin, tmean, tmax, elo, ehi, mean4, anchor, note,
-         wmin, wmean, wmax, welo, wehi, wrows, wcells, wnote) = m.groups()
+         wmin, wmean, wmax, welo, wehi, wrlo, wrhi, wrows, wcells, wnote) = m.groups()
         trip = lambda a, b, c: None if a is None else (float(a), float(b), float(c))
         rows.append({
             "t": float(t), "body": body,
@@ -976,10 +980,12 @@ def parse_surfmap(out):
             "note": note,
             # #769: the wind map. "wind" is what the sweep painted over the ground (min, the
             # cos-lat weighted mean, max); "wind_ends" is what the body's file states at its
-            # rows. The gap between them is information, not a bug: Earth's deck row sits at
-            # 11 km while its ground tops out near 6.
+            # rows; "wind_ramp" is the span the PICTURE runs over, priced from the ground's own
+            # floor and ceiling. The gap between ends and ramp is the information: Earth's deck
+            # row sits at 11 km and Venus' 100 m/s row at 65 km, and no ground stands in either.
             "wind": trip(wmin, wmean, wmax),
             "wind_ends": (float(welo), float(wehi)) if welo is not None else None,
+            "wind_ramp": (float(wrlo), float(wrhi)) if wrlo is not None else None,
             "wind_rows": None if wrows is None else int(wrows),
             "wind_cells": None if wcells is None else int(wcells),
             "wind_note": wnote,

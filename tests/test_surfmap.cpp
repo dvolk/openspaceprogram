@@ -298,7 +298,12 @@ static void windLayers() {
     check(surfMapTypeFromName("Wind") == kMapWind, "and matches whatever its case");
     check(surfMapTypeFromName("winds") == -1, "a near-miss word is refused, not guessed");
 
-    // ---- the three states a body can be in ------------------------------------
+    // ---- the states a body can be in ------------------------------------------
+    /* "Is there air?" is AtmosphereParams::physical() (a profile), NOT enabled (a render rim).
+       Io and Triton ship an atmosphere object with rim fields and no profile at all, so the
+       rim-only fixture below is a shipped shape and not a hypothetical: asking the rim would
+       let those two say "its air is authored still", which is #726 merging the two absences
+       back into one. */
     // 1. No air at all (the Moon).
     Surface moon;
     WindLayer wm = windLayerFor(moon);
@@ -307,10 +312,19 @@ static void windLayers() {
     check(wm.block == "no air", "naming which absence: no air");
     check(!wm.legend.empty(), "with a sentence for the log");
 
+    // 1b. A render rim and no profile (Io, Triton): the same NEWS, a different sentence.
+    Surface io;
+    io.atmosphere.enabled = true;
+    WindLayer wio = windLayerFor(io);
+    check(!wio.ok, "a rim is not air");
+    check(wio.block == "no air", "and the cursor still says no air, not no wind");
+    check(wio.legend != wm.legend, "while the log can tell a rim world from a bare one");
+
     // 2. Air the file states no wind for (every body but Venus, Earth, Mars).
     Surface kerbin;
     kerbin.atmosphere.enabled = true;
-    kerbin.atmosphere.layers.push_back(AtmoLayer{});
+    kerbin.atmosphere.sea_level_density = 1.225;
+    kerbin.atmosphere.scale_height = 8000.0;
     WindLayer wk = windLayerFor(kerbin);
     check(!wk.ok, "a body with air and no wind rows paints no wind");
     check(wk.block == "no wind", "and says so differently from a body with no air");
@@ -319,37 +333,83 @@ static void windLayers() {
     // 3. Authored wind (Earth's two rows).
     Surface earth;
     earth.atmosphere.enabled = true;
-    earth.atmosphere.layers.push_back(AtmoLayer{});
+    earth.atmosphere.sea_level_density = 1.225;
+    earth.atmosphere.scale_height = 8000.0;
     earth.atmosphere.wind = { {0.0, 5.0, 0.0}, {11000.0, 40.0, 0.0} };
     WindLayer we = windLayerFor(earth);
     check(we.ok, "a body that authors wind paints it");
     check(we.rows.size() == 2, "carrying the profile for the sweep and the cursor alike");
-    check(near_d(we.lo_ms, 5.0, 1e-12) && near_d(we.hi_ms, 40.0, 1e-12),
-          "the ramp spans the body's OWN rows, not a global constant");
+    check(near_d(we.auth_lo_ms, 5.0, 1e-12) && near_d(we.auth_hi_ms, 40.0, 1e-12),
+          "the FILE's ends travel with it, for --surfmap-log's wind_ends=");
 
     /* Ends from the MAGNITUDE, not from one component: a row blowing hard north-west is the
        fastest row on this world, and a ramp that read only `east` would paint it cold. */
     Surface skew;
     skew.atmosphere.enabled = true;
+    skew.atmosphere.sea_level_density = 0.02;
+    skew.atmosphere.scale_height = 11000.0;
     skew.atmosphere.wind = { {0.0, 3.0, 0.0}, {20000.0, -30.0, -40.0} };
     WindLayer ws = windLayerFor(skew);
-    check(near_d(ws.lo_ms, 3.0, 1e-12), "the slow row still sets the cold end");
-    check(near_d(ws.hi_ms, 50.0, 1e-12), "and the fast one its hot end, whichever way it blows");
+    check(near_d(ws.auth_lo_ms, 3.0, 1e-12), "the slow row still sets the cold end");
+    check(near_d(ws.auth_hi_ms, 50.0, 1e-12), "and the fast one its hot end, whichever way it blows");
 
     // A one-row body (Mars): the span collapses, and the ramp must not invent a gradient.
     Surface mars;
     mars.atmosphere.enabled = true;
+    mars.atmosphere.sea_level_density = 0.02;
+    mars.atmosphere.scale_height = 11000.0;
     mars.atmosphere.wind = { {0.0, 10.0, 0.0} };
     WindLayer wa = windLayerFor(mars);
-    check(wa.ok && near_d(wa.lo_ms, wa.hi_ms, 1e-12), "one row spans nothing");
-    check(near_d(surfmapWindT01(10.0, wa.lo_ms, wa.hi_ms), 0.5, 1e-12),
+    check(wa.ok && near_d(wa.auth_lo_ms, wa.auth_hi_ms, 1e-12), "one row spans nothing");
+    check(near_d(surfmapWindT01(10.0, wa.auth_lo_ms, wa.auth_hi_ms), 0.5, 1e-12),
           "so every pixel takes the midpoint: one honest flat colour");
-    check(near_d(surfmapWindT01(40.0, we.lo_ms, we.hi_ms), 1.0, 1e-12)
-          && near_d(surfmapWindT01(5.0, we.lo_ms, we.hi_ms), 0.0, 1e-12),
+    check(near_d(surfmapWindT01(40.0, we.auth_lo_ms, we.auth_hi_ms), 1.0, 1e-12)
+          && near_d(surfmapWindT01(5.0, we.auth_lo_ms, we.auth_hi_ms), 0.0, 1e-12),
           "the ends of an Earth profile map to the ends of the ramp");
-    check(surfmapWindT01(20.0, we.lo_ms, we.hi_ms)
-          > surfmapWindT01(10.0, we.lo_ms, we.hi_ms),
+    check(surfmapWindT01(20.0, we.auth_lo_ms, we.auth_hi_ms)
+          > surfmapWindT01(10.0, we.auth_lo_ms, we.auth_hi_ms),
           "and the ramp does not stall between them");
+
+    /* ---- the ramp spans the GROUND, not the file (#769) ------------------------
+       This is the difference between a picture and a swatch. Venus states 1 m/s at the datum
+       and 100 m/s at 65 km; the highest Venus ground is ~2.7 km. Colouring against the rows
+       puts every pixel of that world inside the bottom 3% of the palette -- one colour, and a
+       grid of arrows all the same length -- so the sweep prices its own span from the floor and
+       ceiling it is about to colour instead. */
+    {
+        const std::vector<WindLevel> venus = { {0.0, 1.0, 0.0}, {65000.0, 100.0, 0.0} };
+        double lo, hi;
+        windRampEnds(venus, -100.0, 2700.0, lo, hi);
+        check(near_d(lo, 1.0, 1e-12), "the datum row still sets the floor");
+        check(near_d(hi, 1.0 + (2700.0 / 65000.0) * 99.0, 1e-9),
+              "and the highest GROUND its hot end, not the 65 km row the ground never reaches");
+        check(hi < 6.0, "which is to say: this world's picture spans 5% of its own file");
+    }
+    /* A ROW the ground never stands at must not set the ramp. Earth's deck row lives at 11 km,
+       so on a body whose ground stays below 50 m the picture is one speed, and the ramp spans
+       5..5.2 -- the slice of the segment the ground actually enters -- not 5..40. */
+    {
+        const std::vector<WindLevel> earth = { {0.0, 5.0, 0.0}, {11000.0, 40.0, 0.0} };
+        double lo, hi;
+        windRampEnds(earth, -80.0, 50.0, lo, hi);
+        check(near_d(lo, 5.0, 1e-12) && near_d(hi, 5.0 + (50.0 / 11000.0) * 35.0, 1e-9),
+              "a row the ground never stands in does not stretch the ramp to 40 m/s");
+        check(hi - lo < 0.2, "so a flat-shore world paints one speed and a ramp that agrees");
+        windRampEnds(earth, -8000.0, 8848.0, lo, hi);
+        check(near_d(lo, 5.0, 1e-12), "a sea floor below the datum row holds, it does not extrapolate");
+        check(near_d(hi, 5.0 + (8848.0 / 11000.0) * 35.0, 1e-9),
+              "and Everest pokes into the faster air the ramp then shows");
+    }
+    /* |v| can dip BELOW both rows between them -- (5,0) to (0,5) passes through 3.54 m/s at
+       the midpoint -- and a ramp taken from the rows would paint that calm off its cold end,
+       which is a reading the file never gave (#727). */
+    {
+        const std::vector<WindLevel> veer = { {0.0, 5.0, 0.0}, {1000.0, 0.0, 5.0} };
+        double lo, hi;
+        windRampEnds(veer, 0.0, 1000.0, lo, hi);
+        check(near_d(lo, std::sqrt(12.5), 1e-9), "the closest approach to calm sets the floor");
+        check(near_d(hi, 5.0, 1e-12), "and the rows themselves its ceiling");
+    }
 
     // ---- what a wind LOOKS like on the map ------------------------------------
     /* The corner #769 is really about. An equirectangular map spends the same pixels on a

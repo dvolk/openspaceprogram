@@ -156,9 +156,9 @@ struct AtmosphereParams {
     /* How the air MOVES (#688): atmo.h:WindLevel rows of {alt, east, north} [m/s]
        RELATIVE TO THE GROUND, in the local horizontal basis (equirect.h). Absent =
        the air sits still on its body, which is still true of Kerbin, Eve, Duna and
-       the rest -- Venus is the one body that authors rows, and test_scenarios'
-       kWindsAuthored list is what keeps every other body's flight goldens recorded
-       in still air until someone re-baselines them.
+       the rest -- Venus, Earth and Mars author rows (#688's data half), and
+       test_scenarios' kWindsAuthored list is what keeps every other body's flight
+       goldens recorded in still air until someone re-baselines them.
        It enters the flow at ONE call, Vehicle::airRelativeVel, and nowhere else.
        The near-miss next door: CloudParams::drift below is a cloud-deck creep in
        PATTERN units, never sampled from this table, so a deck can visibly slide over

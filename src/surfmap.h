@@ -57,15 +57,20 @@ struct SurfMapTypeSpec {
     const char *name;             // what the combo offers
     SurfLevel levels[4];          // the levels this type can draw, in menu order
     int n_levels;
+    /* Is this picture a SCALAR FIELD coloured by surfmapRamp, rather than the ground's own
+       colours? The sweep and the log both have to know, and neither should ask by listing the
+       types that happen to be fields today: a new picture is one row here (#745's promise), so
+       "paint grey when the field is absent" and "the albedo columns dash" both read this. */
+    bool scalar_field;
 };
 
 /* A type with ONE level renders that level as a label rather than as a menu offering a
    single choice: a dropdown that cannot be taken up is a widget lying about a choice. */
 inline constexpr SurfMapTypeSpec kSurfMapTypes[kMapTypeCount] = {
-    { "ground",         { kLevelGround },          1 },
-    { "ground+ocean",   { kLevelGround },          1 },
-    { "temperature",    { kLevelGround },          1 },
-    { "wind",           { kLevelGround },          1 },
+    { "ground",         { kLevelGround }, 1, false },
+    { "ground+ocean",   { kLevelGround }, 1, false },
+    { "temperature",    { kLevelGround }, 1, true  },
+    { "wind",           { kLevelGround }, 1, true  },
 };
 inline constexpr const char *kSurfLevelNames[kLevelCount] = { "ground" };
 
@@ -210,18 +215,22 @@ inline double surfmapGroundT(double anchor_K, double even_share, const glm::dvec
 /* What the WIND layer can do for a body (#769), decided once per bake on the main thread for
    the same reason TempLayer is: the worker gets numbers and a table, never body pointers.
 
-   The ramp's ends are the body's OWN rows, not a global constant. Earth spans 5..40 m/s and
-   Venus 1..100, and a shared span would paint Mars' whole world at the bottom of a scale it
-   cannot reach while flattening Venus into two colours -- the same argument that makes the
-   temperature ramp span the model's own night/day ends rather than 0..infinity. What the sweep
-   actually painted goes to --surfmap-log, where the gap between the table's ends and the
-   ground's reach is visible instead of assumed. */
+   The ramp's ends are NOT here, and that is the one thing this struct is careful about. The
+   authored rows say how fast the air blows at the altitudes the FILE names; the picture is
+   coloured over the altitudes the GROUND reaches, and those are not the same span. Venus
+   states 1 m/s at the datum and 100 m/s at 65 km, and its highest ground is 2.7 km, so a ramp
+   spanning the rows paints its whole world in the bottom 3% of the palette -- one colour and a
+   grid of identical arrows, which is the picture failing at exactly the place it is most
+   interesting. So the rows travel here and windRampEnds() below prices the span once the sweep
+   knows the ground's own floor and ceiling. Both spans go to --surfmap-log: wind_ends= is the
+   file's, wind_ramp= is the picture's, and the gap between them is news rather than an
+   assumption. */
 struct WindLayer {
     bool ok = false;
     // The authored profile, copied for the worker. windAt() asserts non-empty, so this is
     // only ever read when ok is true.
     std::vector<WindLevel> rows;
-    double lo_ms = 0.0, hi_ms = 0.0;    // slowest / fastest ROW (|east, north|)
+    double auth_lo_ms = 0.0, auth_hi_ms = 0.0;   // slowest / fastest ROW (|east, north|)
     std::string legend;                 // the sentence for --surfmap-log's note=
     /* The same refusal in three words for the cursor row (`wind - (no air)`), because the two
        absences are different news: a world with no sky and a world whose file states a still
@@ -231,8 +240,15 @@ struct WindLayer {
 
 inline WindLayer windLayerFor(const Surface &s) {
     WindLayer wl;
-    if(!s.atmosphere.enabled) {
-        wl.legend = "no air on this world: there is nothing to blow";
+    /* "Is there air?" is AtmosphereParams::physical(), NOT enabled: enabled means "draw a limb
+       glow", and Io and Triton ship an atmosphere object with render fields and no profile at
+       all. Asking the rim would let those two print "its air is authored still" -- the #726
+       merge, a world with nothing to blow and a world whose air stands still wearing the same
+       words. The dossier already asks the right question ("none (rim only)", gameui.cpp). */
+    if(!s.atmosphere.physical()) {
+        wl.legend = s.atmosphere.enabled
+            ? "no air on this world: the file gives it a render rim and nothing to blow"
+            : "no air on this world: there is nothing to blow";
         wl.block = "no air";
     } else if(!s.atmosphere.has_wind()) {
         // Reachable and common: every body but Venus, Earth and Mars (#688's data half), and
@@ -242,14 +258,53 @@ inline WindLayer windLayerFor(const Surface &s) {
     } else {
         wl.ok = true;
         wl.rows = s.atmosphere.wind;
-        wl.lo_ms = wl.hi_ms = std::hypot(wl.rows.front().east, wl.rows.front().north);
+        wl.auth_lo_ms = wl.auth_hi_ms = std::hypot(wl.rows.front().east,
+                                                   wl.rows.front().north);
         for(const WindLevel &r : wl.rows) {
             const double sp = std::hypot(r.east, r.north);
-            if(sp < wl.lo_ms) { wl.lo_ms = sp; }
-            if(sp > wl.hi_ms) { wl.hi_ms = sp; }
+            if(sp < wl.auth_lo_ms) { wl.auth_lo_ms = sp; }
+            if(sp > wl.auth_hi_ms) { wl.auth_hi_ms = sp; }
         }
     }
+    /* A refusal with an empty reason is the silent half of #726: the log would print note=""
+       and the cursor "(unavailable)", a dash wearing the shape of an explanation. Authoring
+       bug, so it crashes rather than paints. */
+    assert(wl.ok || (!wl.legend.empty() && !wl.block.empty()));
     return wl;
+}
+
+/* The speed ramp's ends for one body's GROUND (#769): the slowest and fastest windAt() can
+   answer anywhere between the lowest and highest ground the sweep will colour, in metres above
+   the sea-level datum. Exact for the profile windAt() is -- between two rows the vector is
+   linear in altitude, so |v| can only turn inside a segment where v . dv/de = 0, which is the
+   closest approach to calm and is evaluated too (rows of (5,0) -> (0,5) dip to 3.5 m/s between
+   their two ends, and a ramp spanning the rows would paint that dip off the cold end).
+   Consequence worth stating: every pixel the sweep colours lies inside [lo_ms, hi_ms] by
+   construction, so surfmapWindT01() below never extrapolates. */
+inline void windRampEnds(const std::vector<WindLevel> &rows, double elev_lo, double elev_hi,
+                         double &lo_ms, double &hi_ms) {
+    assert(!rows.empty() && elev_lo <= elev_hi);
+    lo_ms = 1e300; hi_ms = -1e300;
+    auto consider = [&](double e) {
+        const double sp = glm::length(windAt(rows, e));
+        if(sp < lo_ms) { lo_ms = sp; }
+        if(sp > hi_ms) { hi_ms = sp; }
+    };
+    consider(elev_lo);
+    consider(elev_hi);
+    for(size_t i = 0; i + 1 < rows.size(); i++) {
+        const double a0 = rows[i].alt, a1 = rows[i + 1].alt;
+        if(a1 <= elev_lo || a0 >= elev_hi) { continue; }   // this segment is out of reach
+        if(a0 > elev_lo) { consider(a0); }
+        const glm::dvec2 v0(rows[i].east, rows[i].north);
+        const glm::dvec2 v1(rows[i + 1].east, rows[i + 1].north);
+        const glm::dvec2 dv = v1 - v0;
+        const double dd = glm::dot(dv, dv);
+        if(dd > 0.0) {
+            const double t = -glm::dot(v0, dv) / dd;
+            if(t > 0.0 && t < 1.0) { consider(a0 + (a1 - a0) * t); }
+        }
+    }
 }
 
 /* A wind (east, north) [m/s] as a pixel delta on the equirect map (#769). Row 0 is the north
@@ -258,11 +313,12 @@ inline WindLayer windLayerFor(const Surface &s) {
    The east component carries a 1/cos(lat): the projection spends the same pixels on a degree
    of longitude wherever it is, while the ground gets cos(lat) as much of it. A hull drifting
    10 m/s east at 60 deg N covers TWICE the map distance of one drifting 10 m/s north, so an
-   arrow drawn from the raw components tilts that wind toward the pole -- the same projection
-   argument that makes the temperature means area-weighted rather than pixel-counted
-   (surfmap.cpp). The divide is floored at kMapPoleCos because inside ~85 deg the map is
-   degenerate anyway (every direction from there is south) and an unbounded divide would put
-   an arrow's head off the picture at the exact place a reader is most likely to look. */
+   arrow built from the raw components tilts that wind toward the pole. This is the ANGLE the
+   divide fixes; an arrow's LENGTH comes from the speed through surfmapWindT01, not from this
+   vector's magnitude, because the ramp is a scale over speeds and not over map distance. The
+   divide is floored at kMapPoleCos because inside ~85 deg the map is degenerate anyway (every
+   direction from there is south) and an unbounded divide would put an arrow's head off the
+   picture at the exact place a reader is most likely to look. */
 inline constexpr double kMapPoleCos = 0.08;
 inline glm::dvec2 surfmapWindPixelVec(double east, double north, double cos_lat) {
     const double cl = cos_lat < kMapPoleCos ? kMapPoleCos : cos_lat;

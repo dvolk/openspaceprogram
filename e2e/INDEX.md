@@ -6,8 +6,8 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 321 |
-| `golden` | tuned numbers or a content table -- update deliberately when tuning | 48 |
+| `invariant` | a behaviour or a player route the game must keep | 322 |
+| `golden` | tuned numbers or a content table -- update deliberately when tuning | 47 |
 | `harness` | CLI/test-engine plumbing, not game spec | 15 |
 | `canary` | only proves the thing boots | 4 |
 | | **total** | **388** |
@@ -421,7 +421,7 @@ judgement. Select by number, name or path, e.g.
 | `render/745-asked-for-a-temperature-a-world-without-one-says-why.txt` | invariant | Ask the Surface Map for a temperature this world cannot support and it dashes the temperature columns and names the reason -- a flat grey field and a sentence, not a colour nobody priced. |
 | `render/745-the-surface-map-prices-every-pixel-it-draws.txt` | invariant | The Surface Map can be drawn as the ground's temperature instead of its albedo, and the picture closes on the numbers the model claims: its coldest pixel IS the night end the atlas prints, and the area-weighted mean taken in T^4 comes back to the anchor. |
 | `render/745-the-surface-maps-chooser-actually-changes-the-picture.txt` | invariant | The Surface Map's Map combo switches what the sweep paints -- ground, ground+ocean, temperature -- each row says which picture it is, and switching re-bakes without a second keypress. |
-| `render/746-the-surface-map-says-when-it-was-taken.txt` | golden | The Surface Map prints the sim instant its pixels were baked at: the stamp is unchanged across 5 s of flying, matches a --surfmap-log t= value, and moves when Refresh re-takes the picture. |
+| `render/746-the-surface-map-says-when-it-was-taken.txt` | invariant | The Surface Map prints the sim instant its pixels were baked at: the stamp is unchanged across 5 s of flying, matches a --surfmap-log t= value, and moves when Refresh re-takes the picture. |
 | `render/760-perf-gpu-waits-for-the-gpu.txt` | invariant | --perf-gpu implies --perf, says what it is doing, and puts the GPU's wait inside the paint half. |
 | `render/769-the-surface-map-draws-the-wind.txt` | invariant | --surfmap-map wind paints the air's speed and direction over the ground: Earth prints the speeds it actually drew between the ends its file states, the Moon refuses for want of air, Jupiter refuses for want of an authored wind, and the cursor reads the number under it. |
 

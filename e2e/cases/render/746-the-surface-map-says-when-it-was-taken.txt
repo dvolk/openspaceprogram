@@ -21,7 +21,7 @@
 # about: a readout and a measurement that have drifted apart.
 NAME the-surface-map-says-when-it-was-taken
 CLAIM The Surface Map prints the sim instant its pixels were baked at: the stamp is unchanged across 5 s of flying, matches a --surfmap-log t= value, and moves when Refresh re-takes the picture.
-KIND golden
+KIND invariant
 ARGS --width 1600 --height 900 --timeout 13 --system res/systems/ksp_system.json
 ARGS --startship racer,res/ships/racer.json,Kerbin,pad
 ARGS --surfmap-log --surfmap-n 128 --surfmap-body Duna --surfmap-map temperature

@@ -4,15 +4,20 @@
 # number off them (#717). What was missing is the picture: which way the air moves, and where
 # on this world it moves harder.
 #
-# Two halves, and the case pins both. The BASE is the speed, ramp-coloured between the ends
-# that body's own rows state -- not a global 0..500 scale, because Earth spans 5..40 m/s and
-# Venus 1..100 and one shared span would flatten Venus to two colours while parking Mars at the
-# bottom of a range it cannot reach. Under each pixel the altitude is that pixel's GROUND
-# elevation above the sea-level datum, which is the same coordinate windAt() keys on and the
-# same one the Surface window's Wind: row asks with, so a mountain pokes into faster air and
-# shows up brighter. The ARROWS are the vector half: a speed field alone says where the air
-# moves harder and nothing about which way. They are counted in the log as wind_cells= because
-# a picture that paints its colours and forgets its ink looks exactly like one that did not.
+# Two halves, and the case pins both. The BASE is the speed, ramp-coloured over the span the
+# GROUND can reach -- not the span the file happens to state, and not a global 0..500 either.
+# Those are three different spans and the difference is the picture: Venus states 1 m/s at the
+# datum and 100 m/s at 65 km, and its highest ground is 2.7 km, so a ramp taken from the rows
+# paints that whole world inside the bottom 3% of the palette -- one colour, and a grid of
+# arrows all the same length. So the sweep prices its own scale from the floor and ceiling it is
+# about to colour, and the log prints both spans side by side (wind_ends= the file's, wind_ramp=
+# the picture's) so the gap is visible instead of assumed. Under each pixel the altitude is that
+# pixel's GROUND elevation above the sea-level datum, which is the same coordinate windAt() keys
+# on and the same one the Surface window's Wind: row asks with, so a mountain pokes into faster
+# air and shows up brighter. The ARROWS are the vector half: a speed field alone says where the
+# air moves harder and nothing about which way. They are counted in the log as wind_cells=
+# because a picture that paints its colours and forgets its ink looks exactly like one that did
+# not.
 #
 # The refusals are the other half of the design, and they are the reason this is a case and not
 # just a shader. A body with no air and a body whose file states a still sky are different news
@@ -32,7 +37,7 @@ ARGS --width 1600 --height 900 --timeout 13 --system res/systems/solar_system.js
 ARGS --startship v,res/ships/skiff_trim.json,Earth,pad
 ARGS --surfmap-log --surfmap-n 128 --surfmap-map wind --surfmap-body Earth
 ARGS --ui-click 2000,"Windows/Surface Map"
-ARGS --sim-mouse 2600,0,900,560,0
+ARGS --sim-mouse 2600,0,700,420,0
 ARGS --ui-list 3200
 ARGS --ui-click 4000,"Surface Map/Body"
 ARGS --ui-scroll 4400,"##Combo_00",-2
@@ -52,11 +57,12 @@ CHECK all(r["map"] == "wind" for r in surfmap)
 # painted verbatim everywhere either.
 CHECK [r for r in surfmap if r["body"] == "Earth"][-1]["wind_ends"] == (5.0, 40.0)
 CHECK [r for r in surfmap if r["body"] == "Earth"][-1]["wind_rows"] == 2
-# What the sweep actually drew, against what the file states. The ground never reaches the deck
-# row, so the max sits between the two ends: the ramp spans a range the picture only partly
-# reaches, and the log says so instead of hiding it.
+# What the sweep painted, and the span its colours run over. Both sit inside the file's ends,
+# and they agree with EACH OTHER: the ground never stands at the 11 km deck row, so the picture
+# scales itself to the ground instead. A ramp taken back from the rows moves wind_ramp= to
+# (5.00, 40.00) and breaks this, which is the difference between a map and a swatch.
 CHECK [r for r in surfmap if r["body"] == "Earth"][-1]["wind"][0] == 5.0
-CHECK (lambda w: 15.0 < w[2] < 40.0 and w[1] > w[0])([r for r in surfmap if r["body"] == "Earth"][-1]["wind"])
+CHECK (lambda w, rp: 15.0 < w[2] < 40.0 and w[1] > w[0] and abs(rp[0] - w[0]) < 0.02 and abs(rp[1] - w[2]) < 0.02 and rp[1] < 30.0)([r for r in surfmap if r["body"] == "Earth"][-1]["wind"], [r for r in surfmap if r["body"] == "Earth"][-1]["wind_ramp"])
 # The vector half. At --surfmap-n 128 the grid stride is 8, so 16 columns x 8 rows: every part
 # of the map is sampled. A count of 0 is the bug this column exists for -- colours with no ink.
 CHECK [r for r in surfmap if r["body"] == "Earth"][-1]["wind_cells"] == 128
@@ -67,14 +73,18 @@ CHECK (lambda r: r["albedo"] is None and r["shaded"] is None)([r for r in surfma
 # reason, and neither falls back to a ground picture.
 CHECK (lambda m: m["wind"] is None and m["wind_ends"] is None and m["wind_cells"] is None and "no air" in m["wind_note"])([r for r in surfmap if r["body"] == "Moon"][-1])
 CHECK (lambda j, m: j["wind"] is None and "no wind" in j["wind_note"] and j["wind_note"] != m["wind_note"])([r for r in surfmap if r["body"] == "Jupiter"][-1], [r for r in surfmap if r["body"] == "Moon"][-1])
-# THE NUMBER UNDER THE CURSOR is the picture's number: it must sit inside the range that same
-# sweep painted, so a readout wired to the live body rather than the baked profile, or to the
-# hull's altitude rather than the ground's, eventually breaks out of it -- and one printing a
-# blank or a zero breaks at once. The cursor sits over the ocean at elev 0, where the profile's
-# datum row answers 5 m/s, and the direction is NAMED in the same eight-word vocabulary the
-# Surface window's Wind: row uses -- not an angle, so the two windows describe one wind.
-CHECK (lambda c: " wind " in c["label"] and re.search(r"wind [0-9.]+ m/s (east|north-east|north|north-west|west|south-west|south|south-east|calm)$", c["label"]) is not None)([r for r in uilist if r["window"] == "Surface Map" and r["label"].startswith("cursor:")][0])
-CHECK (lambda c, w: w[0] - 0.05 <= float(re.search(r"wind ([-+]?[0-9.]+) m/s", c["label"]).group(1)) <= w[2] + 0.05)([r for r in uilist if r["window"] == "Surface Map" and r["label"].startswith("cursor:")][0], [r for r in surfmap if r["body"] == "Earth"][-1]["wind"])
+# THE NUMBER UNDER THE CURSOR is that pixel's number. The mouse parks over 1.4 km of ground at
+# lat +46 rather than over the sea, deliberately: over the ocean the datum row answers exactly
+# 5.0 m/s, which is the bottom of the painted range, so a readout wired to the hull's altitude
+# or one printing the datum row verbatim would pass there forever. On a mountain the profile
+# answers ~9.6 m/s, strictly INSIDE the range the same sweep painted, and that is what catches
+# the wrong-altitude wiring. The direction is NAMED in the same eight-word vocabulary the
+# Surface window's Wind: row uses -- not an angle, so the two windows describe one wind. The
+# label may also carry a trailing ` site: ...`, so the wind segment is searched for rather than
+# anchored to the end of the line: a launch marker drifting under the cursor must not break what
+# this pins.
+CHECK (lambda c: " wind " in c["label"] and re.search(r"wind [0-9.]+ m/s (east|north-east|north|north-west|west|south-west|south|south-east|calm)", c["label"]) is not None)([r for r in uilist if r["window"] == "Surface Map" and r["label"].startswith("cursor:")][0])
+CHECK (lambda c, w: w[0] < float(re.search(r"wind ([-+]?[0-9.]+) m/s", c["label"]).group(1)) < w[2])([r for r in uilist if r["window"] == "Surface Map" and r["label"].startswith("cursor:")][0], [r for r in surfmap if r["body"] == "Earth"][-1]["wind"])
 # And the cursor leaves the map when the mouse does (here: over the Body popup). Dashed, not a
 # stale reading of the last map pixel.
 CHECK [r for r in uilist if r["window"] == "Surface Map" and r["label"].startswith("cursor:")][1]["label"] == "cursor: lat --  lon --  elev --"
