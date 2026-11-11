@@ -1,0 +1,40 @@
+# Earth is the second body in the catalogue to author atmosphere.wind (#688), and the
+# first whose rows are a PROFILE rather than one level. Two rows: 5 m/s at the datum and
+# 40 m/s at 11 km -- a mid-latitude jet core, deliberately NOT earthfact.html's own
+# "Wind speeds: 0 to 100 m/s" top, which is the extreme end of a weather range rather
+# than a steady flow. See utils/make_solar_system.py beside the rows for what each one
+# is sourced to and for the sign; check_fact_wind refuses any row above that page.
+# flying-trim spawns at 0.1 x Earth's authored 85 km air top = 8.5 km, where the table
+# interpolates:
+#   v(8.5 km) = 5 + (8500/11000) x (40 - 5) = 32.0 m/s of air
+# The hull (skiff_trim, 50.9 kg/m^2 of lift-area load) trims at 44.9 m/s of AIRSPEED in
+# this column, so it spawns at 76.9 m/s OVER THE GROUND and its track runs east off
+# lon 0 -- 32 m/s of that is the air's, not the engine's.
+# The windless control (same ship and bed, this file with the two rows dropped -- tmp,
+# not shipped) prints |v| = 44.9 |v_air| = 44.9: the trim speed does not move at all,
+# because a wind is an air velocity and not a force (#688). A sign flip in the rows
+# reads 12.9 m/s and a WESTBOUND track; sampling the datum row instead of the
+# interpolated value reads 49.9; taking the 40 m/s row whole reads 84.9.
+NAME earth-jet-bends-ground-speed
+CLAIM Earth's wind profile is read at the hull, not at the ground: at the 8.5 km spawn the two rows interpolate to 32.0 m/s of air, so a hull trimmed at 44.9 m/s of airspeed spawns at 76.9 m/s over the ground and tracks east off lon 0.
+KIND golden
+ARGS --timeout 2 --info-log --system res/systems/solar_system.json --startship v,res/ships/skiff_trim.json,Earth,flying-trim,lat=0,lon=0
+FORBID error:
+FORBID atmosphere.wind
+# The launch state: 44.9 m/s through the air against 76.9 over the ground. The gap is
+# the interpolated row value, so it is the pin that a broken interpolation would move:
+# 49.9 if the table were read at the datum, 84.9 if it were read at the 40 m/s row.
+CHECK re.search(r"Spawn 'flying-trim' around Earth.*\|v\| = 7[5-8]\.[0-9] m/s \|v_air\| = 4[4-5]\.[0-9] m/s", out)
+# Downwind: the ground track runs east off lon 0 (a westbound track would unwrap to
+# ~359.99). This is the sign pin -- the rows are ground-relative and +east is the sense
+# a mid-latitude jet runs.
+CHECK all(s["lon"] > 0.0 and s["lon"] < 1.0 for s in surf if s["t"] > 0.5)
+# Still on the axis the table keys on -- alt_asl off the sea-level datum, not alt_agl --
+# so the 32.0 m/s above is the value where the hull actually is rather than one that
+# drifted with it.
+CHECK all(abs(s["alt_asl"] - 8500.0) < 400.0 for s in surf if s["t"] > 0.5)
+# Carried, not launched: ground speed stays between the hull's own 44.9 m/s of airspeed
+# and that plus the whole 40 m/s top row all run (measured 75.9 at 0.7 s and 74.8 at
+# 1.7 s). A wind that entered the readout but not the forces would let the hull climb
+# away from the air's speed instead, and a windless Earth reads 44.9 here.
+CHECK all(s["hs"] > 45.0 and s["hs"] < 84.9 for s in surf if s["t"] > 0.5)

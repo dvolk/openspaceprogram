@@ -1,0 +1,37 @@
+# Mars authors atmosphere.wind (#688) off the only fact sheet in this corpus that states
+# a wind AT A LEVEL: marsfact.html's "Wind speeds: 2-7 m/s (summer), 5-10 m/s (fall),
+# 17-30 m/s (dust storm) (Viking Lander sites)". Those are lander readings, so this is a
+# datum row, and 10 m/s is the top of the two non-storm ranges -- the sheet's 30 is a
+# dust storm, which is weather rather than a steady profile. See
+# utils/make_solar_system.py beside the row; check_fact_wind refuses anything above 30.
+# One row, so windAt() holds 10 m/s all the way up to the 60 km ceiling; flying-trim
+# spawns at 0.1 x that ceiling = 6 km, reading the datum row's 10 m/s.
+# What that does NOT do is push. Mars resolves 0.0155 kg/m3 at its own 636 Pa, so 10 m/s
+# of air is 0.8 Pa of dynamic pressure -- a fortieth of what this hull pays at its own
+# trim speed. The row still earns its place, because a wind is a VELOCITY and not a
+# force (#688): the hull trims at 196.3 m/s of AIRSPEED and tracks 205.7 m/s over the
+# ground, and it is the ground number that an approach, a landing march and a surface map
+# are reading. The 9.4 m/s gap is the 10 m/s row projected onto the track (heading
+# 110.6 deg, so 10 x cos 20.6 deg).
+# The windless control (same ship and bed, this file with the row dropped -- tmp, not
+# shipped) prints |v| = 196.3 |v_air| = 196.3. A flipped sign reads 186.9 with a
+# westbound track; a table that refused to hold the datum row upward would read
+# |v_air| = |v| here at 6 km.
+NAME mars-wind-shows-on-the-tape
+CLAIM Mars's datum wind row is carried all the way to the bed at 6 km: a hull trimmed at 196.3 m/s of airspeed in 0.8 Pa of moving air tracks 205.7 m/s over the ground and runs east off lon 0, even though the wind barely pushes.
+KIND golden
+ARGS --timeout 2 --info-log --system res/systems/solar_system.json --startship v,res/ships/skiff_trim.json,Mars,flying-trim,lat=0,lon=0
+FORBID error:
+FORBID atmosphere.wind
+# The launch state: 196.3 m/s through the air against 205.7 over the ground. A windless
+# Mars reads 196.3 twice; a flipped sign reads 186.9.
+CHECK re.search(r"Spawn 'flying-trim' around Mars.*\|v\| = 20[4-6]\.[0-9] m/s \|v_air\| = 19[5-7]\.[0-9] m/s", out)
+# Downwind, east off lon 0 (westbound would unwrap to ~359.99). The sign pin.
+CHECK all(s["lon"] > 0.0 and s["lon"] < 1.0 for s in surf if s["t"] > 0.5)
+# On the axis the table keys on (alt_asl, not alt_agl), and inside the band where the
+# single datum row is what windAt() holds -- so 6 km reading 10 m/s is the row's
+# documented reach, not a coincidence of the spawn height.
+CHECK all(abs(s["alt_asl"] - 6000.0) < 400.0 for s in surf if s["t"] > 0.5)
+# Ground speed stays between the hull's own airspeed and that plus the whole 10 m/s row
+# (measured 205.0 at 0.8 s, 204.3 at 1.8 s).
+CHECK all(s["hs"] > 196.0 and s["hs"] < 206.3 for s in surf if s["t"] > 0.5)

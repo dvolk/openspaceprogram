@@ -920,12 +920,15 @@ static void check_wind() {
        regression in the wind path could not hide behind a re-baselined flight. Data
        comes one body at a time after that, and a body earns its row by pinning what the
        row DOES -- wind that no case pins is a number nothing verifies. So the list is
-       small and explicit: Venus, whose wind is pinned by
-       e2e flight/688-venus-wind-outruns-the-hull.
+       small and explicit: Venus, pinned by e2e flight/688-venus-wind-outruns-the-hull;
+       Earth and Mars, pinned by e2e flight/688-earth-jet-bends-ground-speed and
+       flight/688-mars-wind-shows-on-the-tape. Each row's source -- the fact sheet's own
+       "Wind speeds:" line, and what is NOT in it -- is argued in utils/make_solar_system.py
+       beside the rows, and check_fact_wind refuses any row above what that sheet states.
        Adding a body here owes three things in the same commit: an e2e case that pins
        the rows' effect on that body, a re-run of every flight case on it that quotes an
        airspeed or a drag figure, and a commit message naming which numbers moved. */
-    static const char *const kWindsAuthored[] = {"Venus"};
+    static const char *const kWindsAuthored[] = {"Venus", "Earth", "Mars"};
     constexpr size_t kNumWinds = sizeof(kWindsAuthored) / sizeof(kWindsAuthored[0]);
     for(const auto &de : std::filesystem::directory_iterator("res/systems")) {
         if(de.path().extension() != ".json") { continue; }

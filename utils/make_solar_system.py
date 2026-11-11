@@ -724,6 +724,136 @@ def check_fact_air(planets, parsed, verbose=True):
     return bad
 
 
+# WIND: the prose row #685 left unparsed, which is the half #688 names as its own
+# prerequisite ("Wind has no published source in utils/rss/ at all... Fix that first").
+# Six of the sheets that carry air state a wind, right beside the density and
+# scale-height rows fact_air() already reads. None of them reached the generator, so
+# every authored wind row was a number nothing could argue with.
+#
+# What the pages state is not one shape, and the guard has to know that:
+#   Venus   "Wind speeds: 0.3 to 1.0 m/s (surface)"                a level, a range
+#   Mars    "Wind speeds: 2-7 m/s (summer), 5-10 m/s (fall),
+#            17-30 m/s (dust storm) (Viking Lander sites)"         three ranges, one level
+#   Earth   "Wind speeds: 0 to 100 m/s"                            a range, no level
+#   Uranus  "Wind speeds: 0-250 m/s"                               a range, no level
+#   Neptune "Wind speeds: 0-580 m/s"                               a range above the
+#                                                                  loader's own net
+#   Jupiter "Wind speeds" then "Up to 150 m/s (<30 degrees latitude)"
+#   Saturn  "Wind speeds" then "Up to 400 m/s (>30 degrees latitude)"
+#           a LATITUDE split, and WindLevel has no latitude axis
+# So the one comparison that is honest across all six is a CEILING: no component this
+# file authors anywhere may exceed the fastest speed that body's own sheet states. That
+# is the same class of slip as #684 typing a surface pressure in bar into a density
+# field, and unlike the loader's flat 500 m/s net it is per body -- Earth's column would
+# happily carry 500 m/s, which is 5x what Earth's sheet states.
+#
+# What is deliberately NOT checked, with the reason:
+#   authored vs published MINIMUM -- a wind row is a steady profile, not a weather
+#     forecast, and a body whose sheet states "0 to 100" is not claiming the air stops;
+#   a body that states wind and authors none -- that is the gap the printed table keeps
+#     visible rather than a refusal, because authoring a row owes an e2e case that pins
+#     what it does (tests/test_scenarios.cpp's kWindsAuthored) and half these worlds have
+#     no flight case to re-run yet.
+FACT_WIND_KNOWN = {
+    # (body, row altitude) -> (the component this waiver was written against, why).
+    # Same staleness rule as FACT_AIR_KNOWN: move the row past WAIVER_TOL and the
+    # waiver stops covering it.
+    ('Venus', 65000.0): (100.0, "cloud-top superrotation. venusfact.html's wind row "
+                                "stops at its surface, so this figure is cited from "
+                                "published Venus climatology -- see the block that "
+                                "authors it, and note the deck this file renders is "
+                                "at 55 km, not 65 km (#714)"),
+}
+
+# 'Wind speeds' is the label; the speeds are the numbers that end a 'm/s' phrase.
+# A range ("0 to 100 m/s", "2-7 m/s") and a ceiling ("Up to 150 m/s") all end the same
+# way, so one pattern reads the top of each, which is all a ceiling guard needs.
+FACT_WIND_LABEL = 'wind speeds'
+WIND_MPS = re.compile(r'(\d+(?:\.\d+)?)\s*m/s')
+
+
+def fact_wind(page):
+    """What a fact sheet states about wind: {'max': m/s, 'text': the page's own words},
+    or {} when it states none. Jupiter and Saturn put the label on a line of its own and
+    the two latitude bands under it, so lines keep being pulled in while they state a
+    speed and are not a new labelled row. The raw text comes back because the printed
+    row should quote the page, not a parsed guess."""
+    h = read(page)
+    lines = h.split('\n')
+    for i, raw in enumerate(lines):
+        s = sheet_text(raw)
+        if not s.lower().startswith(FACT_WIND_LABEL):
+            continue
+        text = s[len(FACT_WIND_LABEL):].strip().lstrip(':').strip()
+        j = i + 1
+        while j < len(lines):
+            t = sheet_text(lines[j])
+            if 'm/s' not in t or ':' in t:
+                break
+            text = (text + ' ' + t).strip()
+            j += 1
+        vals = [float(v) for v in WIND_MPS.findall(text)]
+        if not vals:
+            # The label exists and no number follows it: the page declines to state a
+            # speed. Not the same as stating zero.
+            return {}
+        return {'max': max(vals), 'text': text}
+    return {}
+
+
+def check_fact_wind(planets, verbose=True):
+    """Compare every authored wind row against the wind that body's fact sheet states.
+    Returns the disagreements. Prints one line per body with air, including the bodies
+    whose sheet states a wind and which author none -- a guard that prints only the
+    failures is indistinguishable from one that found none."""
+    rows, bad, waived = [], [], []
+    for page, name, _seed, surface, _sea in planets:
+        atmo = (surface or {}).get('atmosphere')
+        if not atmo:
+            continue
+        sheet = fact_wind(page)
+        wind = atmo.get('wind') or []
+        comps = [(float(w['alt']), max(abs(w.get('east', 0.0)), abs(w.get('north', 0.0))))
+                 for w in wind]
+        top = max((c for _alt, c in comps), default=None)
+        quote = sheet.get('text', '')
+        if len(quote) > 58:
+            quote = quote[:55] + '...'
+        rows.append('%-9s sheet %-22s authors %s'
+                    % (name,
+                       ('%g m/s  %s' % (sheet['max'], quote)) if sheet else 'none',
+                       ('%g m/s, %d rows' % (top, len(comps))) if comps else 'none'))
+        if not comps:
+            continue
+        if not sheet:
+            m = ('%s authors wind rows and %s states no wind at all' % (name, page))
+            known = FACT_WIND_KNOWN.get((name, comps[0][0]))
+            if known is not None and abs(comps[0][1] - known[0]) <= WAIVER_TOL * known[0]:
+                waived.append('%s: %s' % (m, known[1]))
+                continue
+            bad.append(m)
+            continue
+        for alt, comp in comps:
+            if comp <= sheet['max']:
+                continue
+            known = FACT_WIND_KNOWN.get((name, alt))
+            if known is not None and abs(comp - known[0]) <= WAIVER_TOL * known[0]:
+                waived.append('%s wind at %g m: %s' % (name, alt, known[1]))
+                continue
+            stale = ('' if known is None else
+                     ' -- the waiver on this row pins %g m/s, so it predates this value'
+                     % known[0])
+            bad.append('%s: authors %g m/s of wind at alt %g m; %s states at most '
+                       '%g m/s (%s)%s'
+                       % (name, comp, alt, page, sheet['max'], sheet['text'], stale))
+    if verbose:
+        for r in rows:
+            print('  fact wind %s' % r)
+        for why in waived:
+            print('  waived    %s' % why)
+    return bad
+
+
 # #625 (roadmap rung A, the catalogue half): seven of this file's airs stated a SCALE
 # HEIGHT, and the trio lock (#686) had already spent it -- T0 = g H M / R, so Jupiter's
 # H 27 km read 186.73 K beside its sheet's own 165 K, Saturn's 60 km read 173.51 K
@@ -1593,7 +1723,36 @@ def build_base(verbose_air=False):
                              {'alt': 32000, 'T': 228.65, 'lapse': 0.0028},
                              {'alt': 47000, 'T': 270.65, 'lapse': 0.0},
                              {'alt': 51000, 'T': 270.65, 'lapse': -0.0028},
-                             {'alt': 71000, 'T': 214.65, 'lapse': -0.002}]},
+                             {'alt': 71000, 'T': 214.65, 'lapse': -0.002}],
+                         # Wind (#688). earthfact.html states "Wind speeds: 0 to 100
+                         # m/s" -- a range with NO level attached to it, which is why
+                         # the profile below is ours and every row says what it is
+                         # standing on:
+                         #  * 5 m/s at the datum is the everyday surface flow over
+                         #    ocean, where friction is what holds a wind down. A fifth
+                         #    of the sheet's top, and the sheet's top is not a surface
+                         #    figure.
+                         #  * 40 m/s at 11 km is a mid-latitude jet core, NOT the sheet's
+                         #    100 m/s. That 100 is the extreme end of a weather range --
+                         #    an upper-level current in a storm -- and authoring it as a
+                         #    permanent global flow would put 1.8 kPa of dynamic pressure
+                         #    on every hull at this body's own 10.5 km cloud deck
+                         #    (0.36 kg/m3 there), six times what a hull at 40 m/s through
+                         #    the same air is already fighting. The jet is the number
+                         #    worth having; check_fact_wind keeps either row from ever
+                         #    exceeding the page.
+                         # Signs: +east, the sense a mid-latitude jet runs. WindLevel has
+                         # an altitude axis and no latitude axis, so this row is eastward
+                         # over the equator too, where the trade winds blow the other way.
+                         # That is a stub, not a claim -- the same missing axis is why
+                         # Jupiter's and Saturn's per-latitude sheets cannot be authored
+                         # at all, and what a lat/lon wind field would fix.
+                         # Above 11 km the table holds 40 m/s to the 85 km top, which is
+                         # windAt()'s documented rule (the air thins out, it does not calm
+                         # down) and is under 0.05 Pa of dynamic pressure by the
+                         # stratopause.
+                         'wind': [{'alt': 0, 'east': 5.0, 'north': 0.0},
+                                  {'alt': 11000, 'east': 40.0, 'north': 0.0}]},
           # 10.5 km ASL: reality's tropopause deck, and the same height the old
           # peaks-relative number produced off 8 km of relief (#719).
           'clouds': {'color': [1.0, 1.0, 1.0], 'height': 10500,
@@ -1622,7 +1781,27 @@ def build_base(verbose_air=False):
                          # published statements, all three saying the same thing.
                          # Thin CO2 with a 0.13% oxygen trace -- enough to measure,
                          # not enough to run a turbine on.
-                         'composition': CO2_HEAVY}},
+                         'composition': CO2_HEAVY,
+                         # Wind (#688). marsfact.html is the only sheet in this corpus
+                         # that states a wind AT A LEVEL: "2-7 m/s (summer), 5-10 m/s
+                         # (fall), 17-30 m/s (dust storm) (Viking Lander sites)". Those
+                         # are lander-site readings, so this row is the datum row, and
+                         # 10 m/s is the top of the two non-storm ranges -- the sheet's
+                         # 30 m/s is a dust storm, which is weather rather than the
+                         # steady profile a wind table states, and is available to author
+                         # later if the game ever grows seasons.
+                         # What it does NOT do is push: 0.0155 kg/m3 at 10 m/s is 0.8 Pa
+                         # of dynamic pressure, a twentieth of what a hull at 20 m/s
+                         # through this air already pays. The row is still worth authoring
+                         # because a wind is a velocity, not a force (#688) -- a hull
+                         # trimmed at 20 m/s of AIRSPEED here tracks 30 m/s over the
+                         # ground, and that is what the surface map, the airspeed tape and
+                         # a landing approach all read.
+                         # One row, so windAt() holds 10 m/s all the way to the 60 km
+                         # ceiling. Reality's Mars has faster air aloft (and westward
+                         # trades near the ground); the sheet says nothing above the
+                         # landers, so neither do we.
+                         'wind': [{'alt': 0, 'east': 10.0, 'north': 0.0}]}},
          False),
         # gas giants: band ramp dark (pole/edge) -> light (equator/centre)
         # Their air is authored by what it is made of: H2/He for the giants, and the
@@ -1840,6 +2019,13 @@ def build_base(verbose_air=False):
             print('DRIFT   fact air: ' + m)
         raise SystemExit('%d authored air datum(s) disagree with the fact sheet '
                          'that states them (bands: FACT_AIR_BANDS)' % len(bad))
+    # ... and the air's own motion (#688), which the guard above never looked at.
+    bad = check_fact_wind(planets, verbose=verbose_air)
+    if bad:
+        for m in bad:
+            print('DRIFT   fact wind: ' + m)
+        raise SystemExit('%d authored wind row(s) exceed what the fact sheet that '
+                         'states them allows (waivers: FACT_WIND_KNOWN)' % len(bad))
     # ... and the light that air sits under (#687): the star's one authored
     # temperature against every body's published irradiance and black-body rows.
     bad = check_fact_surface(bodies, sheets, sun, verbose=verbose_air)
