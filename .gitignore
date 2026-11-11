@@ -79,3 +79,6 @@ compile_commands.json
 
 # clangd index cache (bear)
 .cache/
+
+# docs
+DESIGN.md
