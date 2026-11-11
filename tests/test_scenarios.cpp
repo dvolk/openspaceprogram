@@ -1639,6 +1639,28 @@ static void check_body_claims() {
     expect_refuses("pos_not_array", bpatched("Mun", [](nlohmann::json &bv) {
                        bv["inertial"]["pos"] = 1.0e9;
                    }), "\"inertial.pos\" must be 3 numbers, got number");
+    /* The frame blocks' numeric LEAFS (#515). Each used to die inside nlohmann with
+       "type must be number, but is string" -- no body, no key, no way to find the line.
+       numLeaf() names all three. The clouds and rings lambdas (cnum/rnum) already did
+       this; these blocks predate them. */
+    expect_refuses("soi_string", bpatched("Mun", [](nlohmann::json &bv) {
+                       bv["inertial"]["soi"] = "2.4e6";
+                   }), "\"inertial.soi\" is string, not a number");
+    expect_refuses("orb_rate_bool", bpatched("Mun", [](nlohmann::json &bv) {
+                       bv["inertial"]["orb_ang_speed"] = true;
+                   }), "\"inertial.orb_ang_speed\" is boolean, not a number");
+    expect_refuses("incl_array", bpatched("Mun", [](nlohmann::json &bv) {
+                       bv["inertial"]["orb_incl"] = nlohmann::json::array();
+                   }), "\"inertial.orb_incl\" is array, not a number");
+    expect_refuses("spin_rate_string", bpatched("Kerbin", [](nlohmann::json &bv) {
+                       bv["rotating"]["rot_ang_speed"] = "0.001";
+                   }), "\"rotating.rot_ang_speed\" is string, not a number");
+    expect_refuses("tilt_null", bpatched("Kerbin", [](nlohmann::json &bv) {
+                       bv["rotating"]["axial_tilt"] = nullptr;
+                   }), "\"rotating.axial_tilt\" is null, not a number");
+    expect_refuses("ecc_string", bpatched("Mun", [](nlohmann::json &bv) {
+                       bv["inertial"]["ecc"] = "0.1";
+                   }), "\"inertial.ecc\" is string, not a number");
 
     /* THE POSITIVE CONTROLS. Each of these is legal data, and must LOAD with the claim
        still attached -- a guard that quietly eats the legal half of its range is the

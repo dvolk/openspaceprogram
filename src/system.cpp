@@ -190,6 +190,23 @@ static void expectArrayBlock(const nlohmann::json &v, const std::string &body,
     refuseBlockShape(v, body, key, "array");
 }
 
+/* A numeric LEAF inside one of those blocks. Absent stays the default; present-but-not-a-
+   number used to die inside nlohmann with "type must be number, but is string", which
+   names no body and no key -- the #515 complaint. The clouds and rings lambdas below
+   (cnum/rnum) already do this; the frame blocks predate them. */
+static double numLeaf(const nlohmann::json &o, const char *key,
+                      const std::string &body, const std::string &path,
+                      double dflt) {
+    if(!o.contains(key)) { return dflt; }
+    const nlohmann::json &v = o[key];
+    if(!v.is_number()) {
+        throw std::runtime_error("system: '" + body + "': \"" + path + "." + key
+                                 + "\" is " + std::string(v.type_name())
+                                 + ", not a number (#515)");
+    }
+    return v.get<double>();
+}
+
 System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                    std::function<void(size_t i, size_t total,
                                       const std::string &name)> progress) {
@@ -1325,7 +1342,7 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
         if(bv.contains("inertial")) {
             expectObjectBlock(bv["inertial"], body->name, "inertial");
             const nlohmann::json &in = bv["inertial"];
-            f->soi = in.value("soi", 1e6);
+            f->soi = numLeaf(in, "soi", body->name, "inertial", 1e6);
             /* A pos that is present but not exactly 3 numbers used to be SKIPPED: the
                body sat at its parent's origin and nothing said so, which is the same
                silent-deletion class as #762's wrong-typed block. Refuse it instead. */
@@ -1347,7 +1364,7 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                                     pos[1].get<double>(),
                                     pos[2].get<double>());
             }
-            f->orb_ang_speed = in.value("orb_ang_speed", 0.0);
+            f->orb_ang_speed = numLeaf(in, "orb_ang_speed", body->name, "inertial", 0.0);
             // Rates are magnitudes; the ORBITAL sense lives in orb_incl
             // (> 90 deg flips the plane normal). A negative rate would
             // double-encode and silently load prograde (a = cbrt(mu/w^2) drops
@@ -1360,8 +1377,9 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
             // Optional orbital plane orientation (radians): orient =
             // R_Y(+raan) * R_X(i) maps the local orbital plane into the
             // parent frame.
-            const double orb_incl = in.value("orb_incl", 0.0);
-            const double lon_asc_node = in.value("lon_asc_node", 0.0);
+            const double orb_incl = numLeaf(in, "orb_incl", body->name, "inertial", 0.0);
+            const double lon_asc_node = numLeaf(in, "lon_asc_node", body->name,
+                                      "inertial", 0.0);
             // #147: what orb_incl/lon_asc_node are REFERRED to. "orbit"
             // (default): the parent's orbital plane, composed here. "equator":
             // the parent's equator (the sheets' convention for regular moons);
@@ -1412,7 +1430,8 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
         if(bv.contains("rotating")) {
             expectObjectBlock(bv["rotating"], body->name, "rotating");
             const nlohmann::json &rot = bv["rotating"];
-            rf->rot_ang_speed = rot.value("rot_ang_speed", 0.0);
+            rf->rot_ang_speed = numLeaf(rot, "rot_ang_speed", body->name,
+                                  "rotating", 0.0);
             // Same policy as orb_ang_speed: the SPIN sense lives in axial_tilt
             // (> 90 deg). A negative rate double-flips and breaks the calendar
             // (D -> 0 gate), so reject it (#139).
@@ -1426,7 +1445,7 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
             // about +Y (the figure axis), so the pole IS the spin axis --
             // tilting spin_axis makes the pole/bands/rings precess once per
             // rotation.
-            const double axial_tilt = rot.value("axial_tilt", 0.0);
+            const double axial_tilt = numLeaf(rot, "axial_tilt", body->name, "rotating", 0.0);
             // #141: rail-longitude angles (see railAz for the convention).
             // tilt_azimuth = the direction the pole leans (default 0 = +X, the
             // ascending node). spin_phase0 = the epoch spin angle about the
@@ -1434,8 +1453,8 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
             // of surface lon 0, but that reading degrades past 90 deg of tilt
             // -- the figure-axis angle is the sound meaning. Omitting them
             // loads as pre-#141.
-            const double tilt_az = rot.value("tilt_azimuth", 0.0);
-            const double phase0 = rot.value("spin_phase0", 0.0);
+            const double tilt_az = numLeaf(rot, "tilt_azimuth", body->name, "rotating", 0.0);
+            const double phase0 = numLeaf(rot, "spin_phase0", body->name, "rotating", 0.0);
             if(axial_tilt != 0.0 || tilt_az != 0.0 || phase0 != 0.0) {
                 const double ct = std::cos(axial_tilt), st = std::sin(axial_tilt);
                 glm::dmat3 m(glm::dvec3(ct, -st, 0.0),
@@ -1574,10 +1593,11 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
             if(w != 0.0) {
                 const nlohmann::json &in =
                     bv.value("inertial", nlohmann::json::object());
-                const double e = in.value("ecc", 0.0);
-                const double arg_peri = in.value("arg_peri", 0.0);
+                const double e = numLeaf(in, "ecc", body->name, "inertial", 0.0);
+                const double arg_peri = numLeaf(in, "arg_peri", body->name,
+                                            "inertial", 0.0);
                 const double nu0 = in.contains("true_anomaly0")
-                    ? in["true_anomaly0"].get<double>()
+                    ? numLeaf(in, "true_anomaly0", body->name, "inertial", 0.0)
                     : atan2(-f->pos.z, f->pos.x) - arg_peri;
                 // The pos fallback keeps only the DIRECTION: the rail puts the
                 // body at the conic's own radius, so an eccentric orbit written
