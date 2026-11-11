@@ -5,9 +5,11 @@
 #include "surfmap.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cstdio>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "game.h"
@@ -131,6 +133,11 @@ void surfmapCompute(Game &g) {
         //         over px with normal alpha blend it multiplies px by shade.
         //         Always the true terminator (has_sun), independent of the
         //         "Sun shading" box, so toggling the box is a free show/hide.
+        /* What the sweep costs, printed as sweep_ms=. The bake size is a user-facing knob
+           (--surfmap-n) and the only honest way to choose its default is to measure it: the
+           picture is w*h/2 pixels of terrain sample plus a windAt each, so the cost scales
+           with n^2 and a default picked by feel will age badly. */
+        const auto t_sweep0 = std::chrono::steady_clock::now();
         const size_t npx = (size_t)w * (size_t)h;
         std::vector<unsigned char> px(npx * 4);
         std::vector<unsigned char> shpx(npx * 4);
@@ -156,6 +163,11 @@ void surfmapCompute(Game &g) {
            grid silently draws nothing (a stride bug, a refusal that painted anyway) is otherwise
            invisible to every reader but one standing in front of the screen. */
         int wind_cells = 0;
+        /* How many distinct LATITUDE bands the table has, and how many rows of arrows the pass
+           below drew. Kept apart because they are meant to differ: banded rows draw one ring per
+           band, and a table whose bands are too many or too close for that falls back to the
+           uniform grid, so wind_arrow_rows= says which picture the player is looking at (#775). */
+        int wind_bands = 0, wind_arrow_rows = 0;
         /* The wind ramp's ends, and the ground's floor and ceiling they are priced from
            (#769). The file's rows are not the picture's scale: Venus states 1 m/s at the datum
            and 100 m/s at 65 km, and its highest ground is 2.7 km, so colouring against the rows
@@ -280,11 +292,23 @@ void surfmapCompute(Game &g) {
         if(want_wind && wl.ok) {
             const int stride = std::max(8, w / 32);   // ~32 cells across, whatever the bake size
             const double half = stride * 0.42;        // arrow half-length, kept inside one cell
-            /* The ink is chosen PER CELL, not once for the picture. The ramp runs from a
-               near-black blue (Rec.601 luma ~51) to a bright yellow (~192), and one near-white
-               stroke disappears on the yellow stop -- which is exactly where the fastest air
-               is, so the fixed-ink version hides the part of the field a player looks for. */
-            unsigned char kr = 245, kg = 248, kb = 255;
+            /* The HEAD is a fixed fraction of the CELL, not of the shaft. Scaling it with the
+               shaft (this used to be L * 0.45) puts it under a pixel at the default bake: at
+               --surfmap-n 256 the stride is 8, so the head was 0.53..1.51 px and the two 150-deg
+               strokes landed ON the shaft or one pixel beside it -- a crossbar at the tip rather
+               than a head, missing altogether on the slowest air. A constant head costs some of
+               the length cue, and buys the direction cue that the arrows exist for (#780). */
+            const double head = stride * 0.30;
+            /* ONE ink for the whole picture, decided here rather than per cell. The per-cell
+               version sampled the ramp under the cell and switched to near-black ink where the
+               field was bright, because a white stroke on the yellow stop is weak -- and the
+               yellow stop is where the fastest air is. It cost more than it bought: the ink then
+               varied TWICE across the ramp (luma crosses the switch at t01 0.468 and back at
+               0.884, since the hot end is a dark red), so a black arrow read as a different KIND
+               of arrow rather than as the same arrow over a bright patch. If the yellow stop ever
+               does swallow an arrow, darken the STOP -- the ramp is ours -- rather than switch
+               ink mid-map. */
+            const unsigned char kr = 245, kg = 248, kb = 255;
             auto put = [&](int xi, int yj, unsigned char r, unsigned char g, unsigned char b) {
                 if(xi < 0 || yj < 0 || xi >= w || yj >= h) { return; }
                 unsigned char *q = &px[((size_t)yj * w + xi) * 4];
@@ -298,7 +322,59 @@ void surfmapCompute(Game &g) {
                         (int)std::llround(y0 + (y1 - y0) * f), kr, kg, kb);
                 }
             };
-            for(int j = stride / 2; j < h; j += stride) {
+            /* WHICH latitudes get a row of arrows. A uniform grid is right for a table that is
+               one column, which is every table shipped so far: a whole-sphere row answers for the
+               body and has no centre worth ringing. A table with real LATITUDE structure -- a
+               generated belt layout (#775) or an authored jet band (#767) -- reads better as
+               bands: one row at each band's own centre latitude, so the alternation and the BELT
+               COUNT come out as rings rather than as a grid someone has to scan and count by eye.
+               Two bounds, pulling opposite ways, and the log says which one drew:
+                 too FEW bands -- a 3-band table (a column plus one authored jet) would draw 3
+                   rows where the grid drew 16, and the map loses the coverage the wind_cells=
+                   count exists to guard. So ringing needs at least kMinArrowRings bands.
+                 too MANY -- 31 bands at --surfmap-n 256 is 31 rows in 128 pixels, rings closer
+                   than an arrow is tall, fusing into one smear.
+               The grid is the honest fallback for both. */
+            static constexpr size_t kMinArrowRings = 10;
+            std::vector<int> grid_j;
+            for(int j = stride / 2; j < h; j += stride) { grid_j.push_back(j); }
+            std::vector<int> band_j;
+            {
+                std::vector<std::pair<double, double>> bands;
+                for(const WindLevel &r : wl.rows) bands.push_back({r.lat0, r.lat1});
+                std::sort(bands.begin(), bands.end());
+                bands.erase(std::unique(bands.begin(), bands.end()), bands.end());
+                wind_bands = (int)bands.size();
+                if(bands.size() >= kMinArrowRings) {
+                    for(const auto &b : bands) {
+                        // equirectDirAt inverts to j = (90 - lat) / 180 * (h - 1).
+                        const int j = (int)std::llround((90.0 - 0.5 * (b.first + b.second))
+                                                        / 180.0 * (double)(h - 1));
+                        if(j < 0 || j >= h) { continue; }
+                        band_j.push_back(j);
+                    }
+                    /* Sorted into pixel order, which runs the OTHER way from latitude: the
+                       sorted band list starts at the south pole and row 0 is the north. Two
+                       bands whose centres round to the same row are one ring, so unique here
+                       rather than spacing checks that a duplicate would fail. */
+                    std::sort(band_j.begin(), band_j.end());
+                    band_j.erase(std::unique(band_j.begin(), band_j.end()), band_j.end());
+                    /* A ring needs the arrow's VERTICAL footprint, which for the zonal air these
+                       bands are made of is the head's spread, not its length. A meridional field
+                       is taller and would fuse at a coarse bake; that is what the fallback is for. */
+                    const int need = (int)std::ceil(head + 1.0);
+                    bool room = band_j.size() >= 2;
+                    for(size_t k = 1; k < band_j.size() && room; k++) {
+                        if(band_j[k] - band_j[k - 1] < need) { room = false; }
+                    }
+                    if(!room) { band_j.clear(); }
+                }
+            }
+            const std::vector<int> &use_j = band_j.empty() ? grid_j : band_j;
+            wind_arrow_rows = (int)use_j.size();
+            const double ha = 5.0 * std::numbers::pi / 6.0;   // 150 deg back from the tip
+            const double ca = std::cos(ha), sa = std::sin(ha);
+            for(int j : use_j) {
                 for(int i = stride / 2; i < w; i += stride) {
                     const glm::dvec3 d = equirectDirAt(i, j, w, h);
                     const double elev = (double)elevs[(size_t)j * w + i];   // sampled once, above
@@ -310,13 +386,6 @@ void surfmapCompute(Game &g) {
                     const glm::dvec2 pv = surfmapWindPixelVec(wv.x, wv.y, cl);
                     const double pvl = glm::length(pv);
                     const double t01 = surfmapWindT01(spd, rlo, rhi);
-                    unsigned char cr = 0, cg = 0, cb = 0;
-                    surfmapRamp(t01, cr, cg, cb);
-                    if(0.299 * cr + 0.587 * cg + 0.114 * cb > 140.0) {
-                        kr = 18; kg = 22; kb = 34;
-                    } else {
-                        kr = 245; kg = 248; kb = 255;
-                    }
                     wind_cells++;   // every cell draws something: an arrow, or a dot for calm air
                     if(spd <= 0.0 || pvl <= 0.0) {
                         /* Calm air gets a dot, not an arrow. A direction drawn for a wind of
@@ -326,19 +395,27 @@ void surfmapCompute(Game &g) {
                         continue;
                     }
                     const glm::dvec2 u = pv * (1.0 / pvl);
-                    const double L = half * (0.35 + 0.65 * t01);
+                    /* The SHAFT still scales with speed -- that is the field's magnitude cue --
+                       but never below the head's back-reach, or the barbs would run past the tail
+                       and the arrow would point away from itself. */
+                    const double L = std::max(half * (0.35 + 0.65 * t01), head * 0.8);
                     const double x1 = i + u.x * L, y1 = j + u.y * L;
                     stroke(i - u.x * L, j - u.y * L, x1, y1);
                     /* A head at the tip: two strokes back at 150 deg, so the arrow reads as
                        pointing somewhere rather than as a dash lying across the cell. */
-                    const double ha = 5.0 * std::numbers::pi / 6.0;
-                    const double ca = std::cos(ha), sa = std::sin(ha), hl = L * 0.45;
-                    stroke(x1, y1, x1 + (u.x * ca - u.y * sa) * hl, y1 + (u.x * sa + u.y * ca) * hl);
-                    stroke(x1, y1, x1 + (u.x * ca + u.y * sa) * hl, y1 + (-u.x * sa + u.y * ca) * hl);
+                    stroke(x1, y1, x1 + (u.x * ca - u.y * sa) * head,
+                               y1 + (u.x * sa + u.y * ca) * head);
+                    stroke(x1, y1, x1 + (u.x * ca + u.y * sa) * head,
+                               y1 + (-u.x * sa + u.y * ca) * head);
                 }
             }
         }
         if(log) {
+            /* What the sweep cost, printed LAST on the line. The log parser in e2e/run.py reads
+               the optional temp= and wind= tails by position, so anything appended in the middle
+               of the line hides them; sweep_ms= therefore goes after every tail. */
+            const double sweep_ms = std::chrono::duration<double, std::milli>(
+                std::chrono::steady_clock::now() - t_sweep0).count();
             // Base colour means before/after the terminator, then the map's identity and,
             // for a temperature map, what the sweep actually priced. A dash is an absent
             // reading, never a zero (#727): a ground map has no temperatures to report and
@@ -393,17 +470,21 @@ void surfmapCompute(Game &g) {
                        two-row datum and a layered claim (#767 is what would add the other
                        axis). wind_cells= is how many grid cells the arrow pass drew: the
                        vector half has no other readout, and a field that paints its colours
-                       but forgets its arrows looks fine. */
+                       but forgets its arrows looks fine. wind_bands= and wind_arrow_rows= come
+                       in as a pair: the first is how many latitude bands the table actually has,
+                       the second how many rows of arrows were drawn. Equal means the rings landed
+                       one per band; equal to the grid's h/stride means the bands were too many or
+                       too close to ring and the uniform grid drew instead. */
                     assert(wwt > 0.0);   // every pixel is weighted, and h >= 8 by construction
                     printf(" wind=[%.2f %.2f %.2f] wind_ends=[%.2f %.2f] wind_ramp=[%.2f %.2f]"
-                           " wind_rows=%d wind_cells=%d",
+                           " wind_rows=%d wind_cells=%d wind_bands=%d wind_arrow_rows=%d",
                            wmin, wsum / wwt, wmax, wl.auth_lo_ms, wl.auth_hi_ms, rlo, rhi,
-                           (int)wl.rows.size(), wind_cells);
+                           (int)wl.rows.size(), wind_cells, wind_bands, wind_arrow_rows);
                 } else {
                     printf(" wind=- note=\"%s\"", wl.legend.c_str());
                 }
             }
-            printf("\n");
+            printf(" sweep_ms=%.1f\n", sweep_ms);
             fflush(stdout);
         }
         // Main-thread continuation (JobRunner::poll): publish the cache (the
