@@ -1,0 +1,27 @@
+Description of the Asteroid Lightcurve Database (LCDB) bundle 4.0
+==================================================================
+
+Bundle Generation Date: 2021-09-02
+Peer Review: 2021 Asteroid Review
+Discipline node: Small Bodies Node
+
+
+Content description for the Asteroid Lightcurve Database (LCDB) bundle
+======================================================================
+
+The asteroid lightcurve database (LCDB) consists of 11 tables. 
+
+The primary is the lc_summary table, which contains the adopted physical characteristics for 34967 objects. These include size, albedo, taxonomic class, rotation period, and lightcurve peak-to-peak amplitude range, among others. 
+
+The lc_details tables gives all the results for each object that were taken from the literature. In most cases, one of the results is the one adopted for the summary record.  
+
+The remaining 9 tables provide information specific to spin axis orientation, non-principal axis rotation, color index, and binary status, family/group assignments, as well as a list of ambiguous results for asteroids with non-unique rotation periods and a listing of the adopted and all other reported diameters for each of the 34967 objects.
+
+The archive includes a pds_readme.pdf file that provides extensive details about the contents of each table and background on primary considerations made during database entry and compilation. The file includes bookmarks for easy navigation to specific sections.
+
+
+Caveats to the data user
+========================
+
+None at this time.
+

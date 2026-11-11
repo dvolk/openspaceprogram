@@ -1,0 +1,836 @@
+#!/usr/bin/env python3
+"""Derive utils/rss/asteroids/asteroids.json from the cached raw sources; no network.
+
+raw/exceptional_asteroids.html (Wikipedia "List of exceptional asteroids") carries the
+PHYSICAL character -- diameter, triaxial dimensions, mass with its stated precision,
+rotation period, spectral type, discovery -- raw/sbdb/<slug>.json (JPL Small-Body
+Database) carries the RAIL -- osculating elements at an epoch, spkid, orbit class --
+and raw/lc_*.csv (the Asteroid Lightcurve Database, see lcdb.py) carries the best
+adopted PHYSICS: period with a reliability code, effective diameter with its source,
+albedo, taxonomic class, H and G, binary status, family. Nothing has all three, and
+SBDB has no physical parameters at all, so the merge is the point of this script.
+
+Every field records where it came from ("src" per field), because the sources disagree
+at the level the page does not warn about: the wiki's "Mean distance from Sun" is a
+rounded semi-major axis, its "Diameter" column mixes geometric means with single
+chords (see --check's DIAMETER notes), and its "Class" column is a Tholen SPECTRAL
+class, not an orbit class. --check re-derives and compares, and cross-checks the wiki's
+orbit rows against SBDB's.
+
+Fields the sources disagree about are RESOLVED into one value the generator can read,
+with the winner's provenance in "src" and the losers still sitting next to it:
+  rotation_period_h  LCDB adopted period (reliability code U) else the wiki's
+  albedo_pV          LCDB adopted albedo unless AlbSource is 'A' (assumed from class)
+  density_kg_m3      mass over the best shape candidate
+and one more is DERIVED, because the game wants a sphere and the best shape is an
+ellipsoid:
+  diam_eff_km        geometric mean of the wiki's three axes (equal-volume diameter)
+"""
+import argparse
+import glob
+import json
+import math
+import os
+import re
+import sys
+import unicodedata
+import warnings
+
+import pandas as pd
+
+import lcdb
+
+warnings.filterwarnings("ignore")
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+RAW = os.path.join(HERE, "raw")
+WIKI_HTML = os.path.join(RAW, "exceptional_asteroids.html")
+SBDB_DIR = os.path.join(RAW, "sbdb")
+OUT = os.path.join(HERE, "asteroids.json")
+
+# h2/h3 heading text -> short section key. Only these sections are read; the rest of
+# the page (Timeline, Landmark names, References...) is prose or nav tables.
+# 'Minor planets that were misnamed and renamed' is deliberately NOT here: its two
+# columns are 'Minor planet name' and a paragraph of prose, and a row names two bodies
+# ("525 Adelaide and 1171 Rusthawelia"), so it contributes stories, not bodies.
+SECTIONS = {
+    "Largest by diameter": "largest",
+    "Most massive": "massive",
+    "Brightest from Earth": "brightest",
+    "Slowest rotators": "slow_rot",
+    "Fastest rotators": "fast_rot",
+    "Retrograde": "retrograde",
+    "Highly inclined": "inclined",
+    "Spacecraft targets": "visited",
+    "Landmark asteroids": "landmark",
+    "Numbered minor planets that are also comets": "comets",
+}
+
+# Rows that look like bodies but are not: the Kirkwood-gap rows in 'Largest by
+# diameter' and the 'Total' row in 'Most massive'.
+NOT_A_BODY = re.compile(r"resonance|^\s*Total\s*$|^\s*—\s*$")
+
+# "(65803) Didymos" / "1 Ceres" / "2024 TF3". A leading 4-digit year followed by a
+# provisional suffix is NOT a number: 2014 RC is unnumbered, 846 Lipperta is numbered.
+# The provisional suffix is [A-Z]{1,2} plus AT MOST two digits, and it has to be
+# excluded before the number rule, not after: the page's "2010 EQ169" has three digits,
+# which is not a valid suffix either, so treating its year as a permanent number is how
+# it ends up matching asteroid 2010 Chebyshev.
+PAREN_DES = re.compile(r"^\(\s*(\d+)\s*\)\s*(.*)$")
+PLAIN_DES = re.compile(r"^(\d+)\s+(\S.*)$")
+PROVISIONAL = re.compile(r"^\d{4}\s+[A-Z]{1,2}\d*$")
+
+
+def clean(s):
+    """Normalise a raw wiki cell: unicode dashes/nbsp, footnote refs, whitespace."""
+    if s is None:
+        return None
+    if isinstance(s, float) and pd.isna(s):
+        return None
+    s = str(s)
+    s = s.replace("\u00a0", " ").replace("\u2009", " ").replace("\u2212", "-")
+    s = s.replace("\u00b1", " +- ").replace("\u2248", "~").replace("\u00b0", " deg ")
+    s = re.sub(r"\[\d+\]", "", s)
+    s = re.sub(r"\[citation needed\]", "", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    return s or None
+
+
+def num(s):
+    """(value, uncertainty, approx, note) from a cell like '939.4 +- 0.2 (if bilobe)'.
+
+    Takes the FIRST number in the cell and an immediately following '+- x'; anything
+    else in the cell survives as `note`, so a qualifier is never silently dropped.
+    """
+    s = clean(s)
+    if s is None or s in ("n.a.", "n/a", "--", "-"):
+        return None, None, False, None
+    approx = s.startswith("~")
+    m = re.search(r"([-+]?\d[\d, ]*(?:\.\d+)?(?:[eE][-+]?\d+)?)", s)
+    if not m:
+        return None, None, approx, s
+    value = float(m.group(1).replace(",", "").replace(" ", ""))
+    unc = None
+    um = re.search(r"\+-\s*(\d[\d, .]*(?:[eE][-+]?\d+)?)", s[m.end():])
+    if um:
+        unc = float(um.group(1).replace(",", "").replace(" ", ""))
+    note = s[m.end():].strip() or None
+    return value, unc, approx, note
+
+
+def dims(s):
+    """'572.6 x 557.2 x 446.4 +- 0.2' -> ([572.6, 557.2, 446.4], 0.2, None).
+
+    Three things the first version got wrong. It threw away the uncertainty the last
+    axis carries (these numbers feed diam_eff_km and the derived density); one
+    unreadable part ('225x173x?') lost all three axes; and it read 87 Sylvia's cell
+    '363x249x191 or 374x248x194' as five axes of one body, when it is two alternative
+    shape fits for the same body. Now: first alternative kept, everything else survives
+    as a note."""
+    s = clean(s)
+    if s is None:
+        return None, None, None
+    alts = re.split(r"\s+\bor\b\s+", s)
+    parts = re.split(r"[x\u00d7]", alts[0])
+    vals, unc, dropped = [], None, 0
+    for p in parts:
+        n, u, _approx, _note = num(p)
+        if n is None:
+            dropped += 1
+            continue
+        vals.append(n)
+        if u is not None:
+            unc = u
+    if len(vals) < 2:
+        return None, None, None
+    notes = []
+    if dropped:
+        notes.append("%d of %d axes unreadable" % (dropped, len(parts)))
+    if len(vals) > 3:
+        notes.append("cell lists %d axes, kept the first three" % len(vals))
+        vals = vals[:3]
+    if len(alts) > 1:
+        notes.append("cell also offers %s" % "; ".join(a.strip() for a in alts[1:]))
+    return vals, unc, " -- ".join(notes) if notes else None
+
+
+def pct(s):
+    """'39.2%' -> (0.392, False); '~ 1%' -> (0.01, True). The '~' survives because the
+    column is 'Approx. proportion of all asteroids' -- a share of an estimate."""
+    s = clean(s)
+    if s is None or "%" not in s:
+        return None, False
+    v, _u, approx, _n = num(s)
+    return (None, approx) if v is None else (v / 100.0, approx)
+
+
+# A satellite label: '243 Ida I Dactyl', '152830 Dinkinesh I Selam'. The MPC numbers a
+# moon's PRIMARY, so taking the leading number here files the primary's orbit and
+# diameter under the moon's name -- and gives the dataset two records with one spkid.
+SATELLITE = re.compile(r"\s+[IVX]+\s+\S+$|\s+[IVX]+$")
+
+
+def desig(s):
+    """(number or None, name) from a wiki designation cell."""
+    s = clean(s)
+    if s is None:
+        return None, None
+    if SATELLITE.search(s):
+        return None, s
+    m = PAREN_DES.match(s)
+    if m:
+        return int(m.group(1)), (m.group(2).strip() or None)
+    m = PLAIN_DES.match(s)
+    if m and not PROVISIONAL.match(s):
+        return int(m.group(1)), m.group(2).strip()
+    return None, s
+
+
+def slug(query):
+    """Cache filename stem for a query string: '1 Ceres' -> '1_ceres'.
+
+    Transliterated first: '2867 Šteins' otherwise slugs to '2867_teins' with the
+    vowel simply gone, which reads like a typo and could collide with a real name.
+    """
+    s = unicodedata.normalize("NFKD", query or "?")
+    s = "".join(c for c in s if not unicodedata.combining(c))
+    s = s.replace("(", "").replace(")", "")
+    s = re.sub(r"[^A-Za-z0-9]+", "_", s).strip("_").lower()
+    return s
+
+
+def flatten(df):
+    """One-level column names; for a split header keep the informative part."""
+    cols = []
+    for c in df.columns:
+        if isinstance(c, tuple):
+            a, b = (str(x) for x in c)
+            cols.append(b if a == b or a in ("", "nan") else "%s %s" % (a, b))
+        else:
+            cols.append(str(c))
+    df = df.copy()
+    df.columns = cols
+    return df
+
+
+def wiki_sections(html):
+    """[(heading, slice-of-html)] split on h2/h3, so each table is read under the
+    heading that names it instead of by table index (which shifts when the page does)."""
+    marks = [(m.start(), re.sub(r"<[^>]+>", "", m.group(0)).strip())
+             for m in re.finditer(r"<h[23][^>]*>.*?</h[23]>", html)]
+    out = []
+    for i, (pos, title) in enumerate(marks):
+        end = marks[i + 1][0] if i + 1 < len(marks) else len(html)
+        out.append((title, html[pos:end]))
+    return out
+
+
+def cell(row, *names):
+    """First present column among `names` (prefix match, so 'Semi- major axis (AU)'
+    survives the page's own hyphenation)."""
+    for want in names:
+        for c in row.index:
+            if re.sub(r"\s+", " ", str(c)).strip().lower().startswith(want.lower()):
+                v = row[c]
+                if isinstance(v, float) and pd.isna(v):
+                    continue
+                return v
+    return None
+
+
+def wiki_rows(html):
+    """{slug: record} merged over every section, each field tagged with its section."""
+    bodies = {}
+    for title, chunk in wiki_sections(html):
+        key = SECTIONS.get(title)
+        if key is None:
+            continue
+        for df in pd.read_html(chunk if "<table" in chunk else "<table>" + chunk):
+            for _, raw in flatten(df).iterrows():
+                label = cell(raw, "Name", "Asteroid", "Minor planet designation")
+                label = clean(label)
+                if label is None or NOT_A_BODY.search(label):
+                    continue
+                number, name = desig(label)
+                q = label
+                s = slug(q)
+                rec = bodies.setdefault(s, {
+                    "query": q, "name": name or label, "number": number,
+                    "sections": [], "fields": {},
+                })
+                if key not in rec["sections"]:
+                    rec["sections"].append(key)
+                put = rec["fields"].setdefault   # first section to state a field wins
+
+                dcell = cell(raw, "Diameter (km) (geometric mean)")
+                if clean(dcell) is None:
+                    dcell = cell(raw, "Diameter (km)", "Diameter")
+                v, unc, approx, note = num(dcell)
+                if v is not None:
+                    put("diameter_km", {"value": v, "unc": unc, "approx": approx,
+                                        "note": note, "src": key})
+                d, dunc, dnote = dims(cell(raw, "Dimensions (km)"))
+                src = key
+                if not d:
+                    # The 'Spacecraft targets' table has no Dimensions column and writes
+                    # the ellipsoid straight into the Diameter cell ("56 ×24×21" for Ida).
+                    # Reading only the first number there is what makes the page look like
+                    # it quotes a longest axis -- it quotes the same axes as everywhere.
+                    d, dunc, dnote = dims(clean(dcell))
+                    src = key + " (diameter cell)"
+                if d:
+                    put("dimensions_km", {"value": d, "unc": dunc, "note": dnote,
+                                          "src": src})
+                m, munc, mapp, mnote = num(cell(raw, "Mass"))
+                if m is not None:
+                    # 'Most massive' states its own Precision column -- '0.0004%
+                    # (259.075-259.077)', '27% (19-34)', and literally '?' for 532
+                    # Herculina. That column is the only thing saying how much a mass is
+                    # worth, so it has to travel with the number.
+                    prec = clean(cell(raw, "Precision"))
+                    put("mass_1e18_kg", {"value": m, "unc": munc, "approx": mapp,
+                                         "note": mnote, "precision": prec, "src": key})
+                p, papp = pct(cell(raw, "Approx. proportion of all asteroids"))
+                if p is not None:
+                    put("mass_share", {"value": p, "approx": papp, "src": key})
+                rot = num(cell(raw, "Rotation period (hours)", "Rotation period hours"))
+                if rot[0] is None:
+                    rot = num(cell(raw, "Rotation period"))
+                if rot[0] is not None:
+                    put("wiki_rotation_h", {"value": rot[0], "unc": rot[1],
+                                           "note": rot[3], "src": key})
+                spec = clean(cell(raw, "Spectral type", "Class"))
+                if spec:
+                    put("spectral_type", {"value": spec, "src": key})
+                h = num(cell(raw, "Abs. mag (H)", "Absolute magnitude"))
+                if h[0] is not None:
+                    put("h_mag", {"value": h[0], "note": h[3], "src": key})
+                inc = num(cell(raw, "Inclination"))
+                if inc[0] is not None:
+                    put("wiki_inclination_deg", {"value": inc[0], "src": key})
+                sma = num(cell(raw, "Semi- major axis (AU)", "Semi-major axis",
+                               "Mean distance from Sun"))
+                if sma[0] is not None:
+                    put("wiki_sma_au", {"value": sma[0], "src": key})
+                ecc = num(cell(raw, "Eccentricity"))
+                if ecc[0] is not None:
+                    put("wiki_ecc", {"value": ecc[0], "src": key})
+                mag = num(cell(raw, "Magnitude when brightest"))
+                if mag[0] is not None:
+                    put("best_mag", {"value": mag[0], "note": mag[3], "src": key})
+                craft = clean(cell(raw, "Spacecraft"))
+                if craft:
+                    put("spacecraft", {"value": craft,
+                                       "years": clean(cell(raw, "Year(s)")),
+                                       "closest_km": num(cell(raw, "Closest approach (km)"))[0],
+                                       "closest_radii": num(cell(raw, "Closest approach (asteroid radii)"))[0],
+                                       "notes": clean(cell(raw, "Notes")),
+                                       "landmarks": clean(cell(raw, "Landmark")),
+                                       "src": key})
+                cmt = clean(cell(raw, "Comment"))
+                if cmt and cmt != "\u2014":
+                    rec.setdefault("comments", []).append("%s: %s" % (key, cmt))
+    # A configured section that yields nothing means the page renamed a heading or
+    # changed a label column, and the corpus would quietly shrink. Same rule as the
+    # planet generator: structure is an assertion, a data conflict is a note.
+    seen = {k for r in bodies.values() for k in r["sections"]}
+    assert seen == set(SECTIONS.values()), \
+        "wiki: sections produced no bodies: %s" % sorted(set(SECTIONS.values()) - seen)
+    return bodies
+
+
+def wiki_objects(html):
+    """The bodies the page names, as SBDB query strings (fetch.py's work list)."""
+    rows = wiki_rows(html)
+    return [{"query": r["query"], "name": r["name"], "number": r["number"],
+             "sections": r["sections"]}
+            for _, r in sorted(rows.items())]
+
+
+def sbdb_records():
+    """{slug: parsed SBDB orbit/object/discovery} from raw/sbdb/*.json."""
+    out = {}
+    for path in sorted(glob.glob(os.path.join(SBDB_DIR, "*.json"))):
+        stem = os.path.basename(path)[:-5]
+        with open(path, encoding="utf-8") as f:
+            d = json.load(f)
+        orb = d.get("orbit", {})
+        el = {e["name"]: e for e in orb.get("elements", [])}
+
+        def ev(name):
+            e = el.get(name)
+            return float(e["value"]) if e and e.get("value") not in (None, "") else None
+
+        obj = d.get("object", {})
+        disc = d.get("discovery", {})
+        out[stem] = {
+            "shortname": obj.get("shortname"), "fullname": obj.get("fullname"),
+            "spkid": obj.get("spkid"), "des": obj.get("des"),
+            "kind": obj.get("kind"), "neo": obj.get("neo"), "pha": obj.get("pha"),
+            "orbit_class": (obj.get("orbit_class") or {}).get("name"),
+            "orbit_class_code": (obj.get("orbit_class") or {}).get("code"),
+            "a_au": ev("a"), "e": ev("e"), "q_au": ev("q"), "Q_au": ev("ad"),
+            "i_deg": ev("i"), "node_deg": ev("om"), "argperi_deg": ev("w"),
+            "mean_anom_deg": ev("ma"), "tp_jd_tdb": ev("tp"),
+            "period_d": ev("per"), "mean_motion_deg_d": ev("n"),
+            "epoch_jd": float(orb["epoch"]) if orb.get("epoch") else None,
+            "equinox": orb.get("equinox"), "orbit_id": orb.get("orbit_id"),
+            "soln_date": orb.get("soln_date"), "first_obs": orb.get("first_obs"),
+            "last_obs": orb.get("last_obs"),
+            "data_arc_d": float(orb["data_arc"]) if orb.get("data_arc") else None,
+            "condition_code": orb.get("condition_code"),
+            "moid_au": float(orb["moid"]) if orb.get("moid") else None,
+            "moid_jup_au": float(orb["moid_jup"]) if orb.get("moid_jup") else None,
+            "discovery": {k: disc.get(k) for k in ("who", "location", "date", "citation")}
+                         if disc else None,
+        }
+    return out
+
+
+def albedo_from(h_mag, d_km):
+    """Geometric albedo p_V from absolute magnitude and diameter (the standard
+    relation, inverted): D = 1329 km / sqrt(p) * 10^(-H/5)."""
+    if h_mag is None or not d_km:
+        return None
+    p = (1329.0 / (d_km * 10.0 ** (h_mag / 5.0))) ** 2
+    return p if 0.0 < p <= 1.0 else None
+
+
+# Nothing in this corpus has a believable bulk density outside this band: ice-rich
+# bodies sit near 1000 kg/m3, iron near 5000. Outside it, the mass or the shape is
+# wrong rather than the body exotic -- 532 Herculina's '?'-precision mass over the
+# wiki's 168 km cell gives 9264, denser than osmium.
+DENSITY_BAND = (900.0, 5500.0)
+
+
+def density_from(mass_1e18, diam_km):
+    """Bulk density [kg/m3] from mass and an effective diameter.
+
+    Takes a diameter rather than a shape because shape_candidates() has already turned
+    every shape on offer into its equal-volume diameter -- an ellipsoid's volume is
+    (4/3)pi(a/2)(b/2)(c/2), which is exactly what the geometric mean gives."""
+    if mass_1e18 is None or not diam_km:
+        return None
+    vol = 4.0 / 3.0 * math.pi * (diam_km * 1000.0 / 2.0) ** 3
+    return mass_1e18 * 1e18 / vol if vol > 0 else None
+
+
+def triaxial_eff(r):
+    """Effective diameter of a triaxial row: the geometric mean of the three axes is
+    the diameter of the equal-volume sphere. None when the row has fewer than 3 axes
+    (Hektor's 403x201 bilobe, Castalia's 1.8x0.8), which is itself a gap worth seeing."""
+    tri = (r.get("dimensions_km") or {}).get("value")
+    return (math.prod(tri[:3]) ** (1.0 / 3.0)) if tri and len(tri) >= 3 else None
+
+
+def shape_candidates(f, lc):
+    """[(label, effective diameter km)] for every shape the sources give, best first.
+
+    Order is not a tie-break, it is physics: a triaxial row comes from a shape model,
+    radar or an occultation chord set, and its geometric mean IS the equal-volume
+    diameter. The wiki's single 'Diameter' cell is often the LONGEST axis of that same
+    ellipsoid (Ida: 56 in the cell, 56x24x21 in Dimensions), which overstates the volume
+    by up to 8x. LCDB's adopted value is only as good as its DiamSource flag, so it
+    comes last unless nothing better exists.
+    """
+    out = []
+    eff = triaxial_eff(f)
+    if eff is not None:
+        out.append(("DERIVED geometric mean of triaxial %s"
+                    % "x".join("%g" % x for x in f["dimensions_km"]["value"][:3]), eff))
+    d = (f.get("diameter_km") or {}).get("value")
+    if d:
+        out.append(("wiki Diameter cell (%s)" % (f["diameter_km"].get("src") or "?"), d))
+    if lc.get("diam_eff_km"):
+        out.append(("LCDB adopted, DiamSource %s" % lc.get("diam_src", "?"),
+                    lc["diam_eff_km"]))
+    return out
+
+
+def rotation_resolved(f, lc):
+    """Rotation period [h], preferring LCDB: it covers 144 of these 259 bodies where the
+    page covers fewer than a third, and unlike the page it says how much to trust the
+    number -- U is the reliability code (3 = one unambiguous lightcurve, 2+ and below =
+    slipping or merged solutions) and PFlag qualifies it ('S' sidereal, default synodic,
+    '<'/'>' a bound).
+
+    Sidereal is what a spin rate wants and LCDB flags which one it is; for these bodies
+    the synodic/sidereal difference is far below the rounding, so it is carried as a
+    note rather than corrected."""
+    p = lc.get("period_h")
+    if p:
+        src = "LCDB adopted (U %s" % lc.get("period_quality", "?")
+        if lc.get("period_flag"):
+            src += ", flag %s" % lc["period_flag"]
+        return {"value": p, "src": src + ")"}
+    w = f.get("wiki_rotation_h") or {}
+    if w.get("value"):
+        return {"value": w["value"], "src": "wiki %s table" % w.get("src", "?")}
+    return None
+
+
+def sbdb_identity_ok(rec, obj):
+    """Does the cached SBDB object actually answer the query we asked?
+
+    SBDB parses a malformed designation by falling back to its leading number: the page's
+    '2010 EQ169' -- a provisional suffix never has three digits, and the row is flagged
+    citation needed -- came back as 2010 Chebyshev (1969 TL4), a main-belter with i=2.4
+    filed under a retrograde row. The cache file is named for the WIKI row, so without
+    this check a wrong orbit sits under the right name forever. fullname carries both the
+    permanent number and the designation (612078 (1998 UQ1)), which is what makes it the
+    thing to test rather than des."""
+    fullname = (obj.get("fullname") or "").strip()
+    des = (obj.get("des") or "").strip()
+    n = rec.get("number")
+    if n is not None:
+        # Compare NUMBERS, not substrings: a substring test clears the wrong object,
+        # because 253 is "found" inside "(2015 TG253)" and 7 inside "(1999 RQ7)".
+        for s in (fullname, des):
+            m = re.match(r"^\(?\s*(\d+)", s)
+            if m and int(m.group(1)) == n:
+                return True
+    blob = (fullname + " " + des).lower()
+    for s in (rec.get("query"), rec.get("name")):
+        s = (s or "").strip().lower()
+        if s and s in blob:
+            return True
+    return False
+
+
+def merge():
+    """asteroids.json: one record per body, wiki fields + SBDB rail + LCDB physics."""
+    bodies = wiki_rows(open(WIKI_HTML, encoding="utf-8").read())
+    sbdb = sbdb_records()
+    if lcdb.have_tables():
+        lidx, lbidx = lcdb.load()
+    else:
+        lidx, lbidx = None, None
+        print("note    no LCDB tables in %s -- physical fields fall back to the wiki"
+              " (see urls.txt: the archive has to be fetched by hand)" % RAW)
+    records = []
+    join_notes = []
+    reject_notes = []
+    for s, rec in sorted(bodies.items(), key=lambda kv: (-1 if kv[1]["number"] is None
+                                                         else kv[1]["number"], kv[0])):
+        out = {"name": rec["name"], "number": rec["number"], "query": rec["query"],
+               "sections": rec["sections"]}
+        if rec.get("comments"):
+            out["comments"] = rec["comments"]
+        f = rec["fields"]
+        out.update(f)          # every wiki field, verbatim with its own "src"
+        if "mass_1e18_kg" in f:
+            out["mass_kg"] = {"value": f["mass_1e18_kg"]["value"] * 1e18,
+                              "src": f["mass_1e18_kg"]["src"]}
+        lc = {}
+        if lidx is not None:
+            row, note = lcdb.lookup(lidx, rec)
+            if note:
+                join_notes.append("%s: %s" % (rec["name"], note))
+            if row:
+                lc = lcdb.adopted(row)
+                out["lcdb"] = lc
+                poles = lcdb.poles_for(lbidx["lc_spinaxis.csv"], rec)
+                if poles:
+                    out["lcdb_poles"] = poles
+                moons = lcdb.binaries_for(lbidx["lc_binary.csv"], rec)
+                if moons:
+                    out["lcdb_binaries"] = moons
+                npa = lcdb.npa_for(lbidx["lc_npa.csv"], rec)
+                if npa:
+                    out["lcdb_tumbling"] = npa
+        shapes = shape_candidates(f, lc)
+        if shapes and shapes[0][0].startswith("DERIVED"):
+            out["diam_eff_km"] = {"value": shapes[0][1], "src": shapes[0][0]}
+        rot = rotation_resolved(f, lc)
+        if rot:
+            out["rotation_period_h"] = rot
+
+        # Albedo: LCDB has one for nearly everything, but AlbSource 'A' means the class
+        # was assumed, so it cannot beat the two-step H + D arithmetic -- UNLESS the
+        # diameter we would divide by is LCDB's own back-computation of that assumed
+        # albedo (DiamSource C/D), in which case the round trip just relabels the guess
+        # as "DERIVED". Those rows keep the ASSUMED provenance instead.
+        h = lc.get("h_mag")
+        if h is None:
+            h = (f.get("h_mag") or {}).get("value")
+        p = lc.get("albedo_pV")
+        circular = bool(shapes) and shapes[0][0].startswith("LCDB adopted") \
+            and lc.get("diam_src") in ("C", "D")
+        if p is not None and lc.get("alb_src") != "A":
+            out["albedo_pV"] = {"value": p, "src": "LCDB adopted (AlbSource %s)"
+                                % lc.get("alb_src", "?")}
+        elif h is not None and shapes and not circular:
+            p = albedo_from(h, shapes[0][1])
+            if p is not None:
+                out["albedo_pV"] = {"value": p,
+                                    "src": "DERIVED from H + %s" % shapes[0][0]}
+        elif p is not None:
+            out["albedo_pV"] = {"value": p, "src": "LCDB adopted (AlbSource A: ASSUMED"
+                                " from class %s -- treat as a placeholder)"
+                                % lc.get("class", "?")}
+        rho = density_from((f.get("mass_1e18_kg") or {}).get("value"),
+                           shapes[0][1] if shapes else None)
+        if rho is not None:
+            if DENSITY_BAND[0] <= rho <= DENSITY_BAND[1]:
+                out["density_kg_m3"] = {"value": rho,
+                                        "src": "DERIVED from mass + %s"
+                                               % (shapes[0][0] if shapes else "?")}
+            else:
+                reject_notes.append(
+                    "%s: density %.0f kg/m3 is outside the believable band %g-%g, so the"
+                    " mass or the shape is wrong -- no density authored (see SANITY)"
+                    % (rec["name"], rho, DENSITY_BAND[0], DENSITY_BAND[1]))
+        if s in sbdb:
+            if sbdb_identity_ok(out, sbdb[s]):
+                out["sbdb"] = sbdb[s]
+            else:
+                print("  IDENTITY %s: SBDB answered %r (%s) for this query -- no rail"
+                      % (out["name"], sbdb[s].get("fullname"), sbdb[s].get("spkid")))
+        records.append(out)
+    for n in join_notes:
+        print("  JOIN  %s" % n)
+    for n in reject_notes:
+        print("  REFUSE %s" % n)
+    return records
+
+
+def check_crosscheck(records):
+    """The wiki's rounded orbit rows against SBDB's elements -- the disagreement a
+    reader would otherwise inherit silently."""
+    bad = 0
+    for r in records:
+        sb = r.get("sbdb")
+        if not sb:
+            continue
+        # The absolute tolerance goes first: a near-zero eccentricity or inclination is
+        # not "infinitely off" merely because the relative gap is large.
+        for wk, jpl, rel_tol, abs_tol in (("wiki_sma_au", "a_au", 0.02, 0.02),
+                                          ("wiki_ecc", "e", 0.05, 0.005),
+                                          ("wiki_inclination_deg", "i_deg", 0.05, 0.05)):
+            if wk not in r:
+                continue
+            wv = r[wk]["value"]
+            jv = sb.get(jpl)
+            if jv is None or abs(wv - jv) <= abs_tol:
+                continue
+            rel = abs(wv - jv) / max(abs(jv), abs_tol)
+            if rel > rel_tol:
+                print("  CROSS %s: wiki %s = %g, SBDB %s = %g (%.1f%% off)"
+                      % (r["name"], wk, wv, jpl, jv, 100 * rel))
+                bad += 1
+    return bad
+
+
+def check_diameters(records):
+    """Wiki 'Diameter' against LCDB's EFFECTIVE diameter.
+
+    They disagree a lot for elongated bodies, and the disagreement is not noise: the
+    page quotes the LONGEST axis (or a single chord) where LCDB quotes the diameter of
+    the equal-volume sphere. The triaxial row decides which is which -- the geometric
+    mean of three axes IS the effective diameter, so when it agrees with LCDB and the
+    page's number agrees with the longest axis, the page is quoting an axis. Authoring
+    a sphere from the page's number then inflates the body by up to 2x in radius.
+    """
+    bad = 0
+    for r in records:
+        wk = r.get("diameter_km")
+        lc = r.get("lcdb", {}).get("diam_eff_km")
+        if not wk or lc is None:
+            continue
+        wv = wk["value"]
+        if abs(wv - lc) <= 0.10 * lc:
+            continue
+        tri = r.get("dimensions_km", {}).get("value")
+        geo = triaxial_eff(r)
+        print("  DIAMETER %s: wiki %g%s vs LCDB eff %g (%s); triaxial %s -> eff mean %s"
+              % (r["name"], wv, "" if wk.get("note") is None else " (%s)" % wk["note"],
+                 lc, r["lcdb"].get("diam_src", "?"),
+                 "x".join("%g" % x for x in tri) if tri else "-",
+                 ("%g" % geo) if geo else "-"))
+        bad += 1
+    return bad
+
+
+def check_axes(records):
+    """Where the wiki's 'Diameter' number is not this body's size.
+
+    The cell is read as its FIRST number and the page does not order the axes -- Eros is
+    "34 x 11 x 11" in the brightness table and "13 x 13 x 33" in the visited table -- so
+    the leading number can be the shortest axis. Flag a body whose diameter number is
+    neither one of the axes nor the equal-volume mean of them.
+
+    Which row wins is document order (fields are written with setdefault), so this
+    corpus is only as stable as the page's heading order; an explicit section priority
+    is the fix if Wikipedia ever reshuffles."""
+    bad = 0
+    for r in records:
+        wk = r.get("diameter_km")
+        tri = (r.get("dimensions_km") or {}).get("value")
+        if not wk or not tri:
+            continue
+        wv = wk["value"]
+        geo = triaxial_eff(r)
+        if any(abs(wv - x) <= 0.1 * x for x in tri + ([geo] if geo else [])):
+            continue
+        print("  AXES %s: wiki Diameter %g is neither an axis (%s) nor the equal-volume"
+              " mean (%s)" % (r["name"], wv, "x".join("%g" % x for x in tri),
+                              ("%g" % geo) if geo else "-"))
+        bad += 1
+    return bad
+
+
+def sanity(records):
+    """Numbers that are arithmetically fine and physically silly.
+
+    merge() already refuses to author a density outside DENSITY_BAND; this says WHY, by
+    checking every shape candidate rather than only the one we would use. The wiki's
+    'Most massive' table carries a row whose stated precision is literally '?' (532
+    Herculina: '~ 23' x10^18 kg), and its diameter rows disagree with LCDB's by enough
+    that the density swings over 2x depending on which you divide by -- so one number
+    passing the band would be luck, not knowledge.
+    """
+    bad = 0
+    for r in records:
+        m = r.get("mass_1e18_kg")
+        if not m:
+            continue
+        rhos = [density_from(m["value"], d)
+                for _, d in shape_candidates(r, r.get("lcdb", {}))]
+        rhos = [x for x in rhos if x is not None]
+        if not rhos:
+            continue
+        lo, hi = min(rhos), max(rhos)
+        if DENSITY_BAND[0] <= lo and hi <= DENSITY_BAND[1]:
+            continue
+        print("  SANITY %s: density %.0f-%.0f kg/m3 across %d shape candidates from"
+              " mass %s e18 kg (stated precision %r, unc %s, note %r) -- do not author"
+              " this body's mass"
+              % (r["name"], lo, hi, len(rhos), m.get("value"), m.get("precision"),
+                 m.get("unc"), m.get("note")))
+        bad += 1
+    return bad
+
+
+def report(records):
+    have = lambda k: sum(1 for r in records if k in r)
+    print("%d bodies from the wiki page; %d with an SBDB record; %d with an LCDB record"
+          % (len(records), sum(1 for r in records if "sbdb" in r),
+             sum(1 for r in records if "lcdb" in r)))
+    for k, label in (("diameter_km", "diameter (wiki cell)"),
+                     ("dimensions_km", "triaxial shape"),
+                     ("diam_eff_km", "effective diameter (DERIVED)"),
+                     ("mass_kg", "mass"), ("wiki_rotation_h", "rotation (wiki)"),
+                     ("rotation_period_h", "rotation (resolved)"),
+                     ("spectral_type", "spectral type"), ("h_mag", "abs. magnitude H"),
+                     ("albedo_pV", "albedo"), ("density_kg_m3", "density (DERIVED)"),
+                     ("spacecraft", "spacecraft visited"), ("best_mag", "brightest from Earth")):
+        print("  %-26s %3d" % (label, have(k)))
+    for k, label in (("period_h", "rotation period"), ("diam_eff_km", "effective diameter"),
+                     ("albedo_pV", "geometric albedo"), ("class", "taxonomic class"),
+                     ("h_mag", "abs. magnitude H"), ("binary", "binary flag"),
+                     ("family", "orbital family")):
+        print("  %-26s %3d" % ("LCDB " + label,
+                               sum(1 for r in records if k in r.get("lcdb", {}))))
+    print("  %-26s %3d" % ("spin-axis solutions", sum(1 for r in records if "lcdb_poles" in r)))
+    print("  %-26s %3d" % ("binary records", sum(1 for r in records if "lcdb_binaries" in r)))
+    print("  %-26s %3d" % ("tumbling (NPA) records",
+                           sum(1 for r in records if "lcdb_tumbling" in r)))
+    # What the LCDB values are actually worth: 'A' albedo is assumed from the class and
+    # 'C'/'D' diameter is arithmetic on H, not a measurement.
+    for key, label in (("diam_src", "LCDB diameter by DiamSource"),
+                       ("alb_src", "LCDB albedo by AlbSource"),
+                       ("class_src", "LCDB class by CSource")):
+        tally = {}
+        for r in records:
+            v = r.get("lcdb", {}).get(key)
+            if v:
+                tally[v] = tally.get(v, 0) + 1
+        print("  %-26s %s" % (label, " ".join("%s:%d" % kv for kv in
+                                              sorted(tally.items(), key=lambda kv: -kv[1]))))
+    print("-" * 100)
+
+    def val(d, key):
+        """A number or None -- never `a or b`, which turns a real 0.0 into a fallback."""
+        v = (d or {}).get(key)
+        return v
+
+    def diam(r):
+        """(effective diameter, source tag). 'wiki' means the cell may be an axis rather
+        than a size, which is exactly why it is tagged and not silently used."""
+        for v, tag in (((r.get("diam_eff_km") or {}).get("value"), "tri"),
+                       ((r.get("lcdb") or {}).get("diam_eff_km"), "lcdb"),
+                       ((r.get("diameter_km") or {}).get("value"), "wiki")):
+            if v is not None:
+                return v, tag
+        return None, None
+
+    def orbit(r, jpl, wk):
+        v = val(r.get("sbdb"), jpl)
+        return v if v is not None else val(r.get(wk), "value")
+
+    print("%-22s %9s %10s %7s %6s %8s %8s %s" %
+          ("name", "diam km", "mass kg", "a AU", "ecc", "inc", "rot h", "spec"))
+    sized = [(diam(r), r) for r in records]
+    sized = [(d, r) for d, r in sized if d[0] is not None]
+    sized.sort(key=lambda x: -x[0][0])
+    for (d, tag), r in sized[:25]:
+        mass = val(r.get("mass_kg"), "value")
+        p = val(r.get("rotation_period_h"), "value")
+        print("%-22s %6.1f %-3s %10s %7.3f %6.3f %8.2f %8s %s"
+              % (r["name"], d, tag, ("%.2e" % mass) if mass else "-",
+                 orbit(r, "a_au", "wiki_sma_au") or 0.0,
+                 orbit(r, "e", "wiki_ecc") or 0.0,
+                 orbit(r, "i_deg", "wiki_inclination_deg") or 0.0,
+                 ("%.1f" % p) if p else "-",
+                 val(r.get("spectral_type"), "value") or "-"))
+    return 0
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--report", action="store_true", help="print the coverage + big-body table")
+    ap.add_argument("--check", action="store_true",
+                    help="re-derive and compare against asteroids.json on disk")
+    ap.add_argument("--no-write", action="store_true", help="derive without writing")
+    args = ap.parse_args()
+
+    if not os.path.exists(WIKI_HTML):
+        raise SystemExit("parse: %s missing -- run fetch.py first" % WIKI_HTML)
+    records = merge()
+    drift = check_crosscheck(records)
+    diam = check_diameters(records)
+    axes = check_axes(records)
+    dodgy = sanity(records)
+
+    blob = json.dumps({"bodies": records}, indent=1, sort_keys=True)
+    if args.no_write:
+        print("derived %d records (%d wiki/SBDB cross-check gaps, %d wiki/LCDB diameter"
+              " gaps, %d diameter cells that are an axis, %d implausible derived densities)"
+              % (len(records), drift, diam, axes, dodgy))
+        if args.report:
+            report(records)
+        return 0
+    if args.check:
+        if not os.path.exists(OUT):
+            raise SystemExit("check: %s missing -- run without --check once" % OUT)
+        with open(OUT, encoding="utf-8") as f:
+            if f.read().strip() != blob.strip():
+                raise SystemExit("check: %s is stale -- re-run parse.py" % OUT)
+        print("OK      %s (%d bodies, %d cross-check notes, %d diameter notes, %d axis"
+              " notes, %d implausible masses)"
+              % (OUT, len(records), drift, diam, axes, dodgy))
+        if args.report:
+            report(records)
+        return 0
+    with open(OUT, "w", encoding="utf-8") as f:
+        f.write(blob + "\n")
+    print("wrote   %s (%d bodies, %d cross-check notes, %d diameter notes, %d axis notes,"
+          " %d implausible masses)" % (OUT, len(records), drift, diam, axes, dodgy))
+    if args.report:
+        report(records)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

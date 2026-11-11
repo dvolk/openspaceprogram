@@ -1,0 +1,61 @@
+Physical character (diameter, triaxial dimensions, mass + stated precision, rotation,
+spectral type, discovery, spacecraft visits, landmark firsts):
+
+https://en.wikipedia.org/wiki/List_of_exceptional_asteroids
+  -> raw/exceptional_asteroids.html
+  Read section by section (parse.SECTIONS), not by table index: the page reorders.
+  Caveats the page does not warn about, all handled in parse.py:
+    - 'Largest by diameter' ends with five Kirkwood-resonance rows that are not bodies
+    - 'Most massive' has a 'Total' row, and one row whose precision is literally '?'
+      (532 Herculina) -- parse.py's sanity() refuses to let that become a density
+    - the 'Class' column there is a Tholen SPECTRAL class, not an orbit class
+    - 'Mean distance from Sun' and 'Semi- major axis' are rounded; SBDB's elements win
+      (check_crosscheck reports the gaps rather than inheriting them)
+    - the 'Spacecraft targets' table has no Dimensions column and writes the ellipsoid
+      straight into the Diameter cell ("56 ×24×21" for Ida). Reading only the first
+      number there makes the page look like it quotes a longest axis; parse.py reads
+      all three, which is why its effective diameters then land near LCDB's (Ida 30.4 vs
+      28.0, Gaspra 11.9 vs 12.2, Itokawa 0.31 vs 0.38) instead of 2x above them
+
+Rail data (osculating elements at an epoch, spkid, orbit class, discovery block):
+
+https://ssd-api.jpl.nasa.gov/sbdb.api?sstr=<obj>&discovery=1
+  -> raw/sbdb/<slug>.json   (one file per body named by the wiki tables, 259 of them)
+  Query forms: "1 Ceres" works; "(127546) 2002 XU93" is REJECTED with a 400, so
+  fetch.py falls back to the bare designation and then the bare number.
+  SBDB has NO physical parameters: ?phys_par=1 returns {"message":...,"code":...}.
+  Element values are ROUNDED (~3 significant figures: Ceres a = 2.77 au, per = 1680 d),
+  so the period is the better-authored quantity if the loader derives a by Kepler III.
+  SBDB also answers a MALFORMED designation with a DIFFERENT object: the page's
+  "2010 EQ169" (a provisional suffix never has three digits, and the row is flagged
+  citation needed) resolved to 2010 Chebyshev (1969 TL4). parse.sbdb_identity_ok()
+  refuses such an answer -- in fetch.py before caching, in parse.py before merging --
+  so raw/sbdb/2010_eq169.json stays cached but is never used, and 2010 EQ169 has no rail.
+
+Adopted physical parameters -- rotation period + reliability code U, effective diameter +
+DiamSource, geometric albedo + AlbSource, taxonomic class, H and G, binary flag, spin
+poles, orbital family -- for 34,967 objects rather than 259:
+
+https://sbnarchive.psi.edu/pds4/non_mission/ast-lightcurve-database_V4_0.zip
+  -> ast-lightcurve-database_V4_0.zip, five tables extracted into raw/:
+     lc_summary.csv (one adopted record per object), lc_spinaxis.csv (pole solutions),
+     lc_binary.csv, lc_npa.csv (non-principal-axis rotation), lc_familylookup.csv.
+     The 117 MB of per-observation detail rows are deliberately NOT extracted.
+  THIS ONE HAS TO BE FETCHED BY HAND: SBN Archive sits behind a Cloudflare JS
+  challenge, so a scripted download returns an HTML "Just a moment..." page.
+  raw/lcdb_pds_readme.txt (the bundle's own column reference) IS kept in-repo: it is the
+  authority for the source-flag codes below, so nobody needs the archive to read them.
+  The .zip and raw/lc_*.csv are gitignored; parse.py prints a note and falls back to
+  wiki + SBDB when they are missing.
+  What the flags mean (pds_readme tables 4.1.4.4/4.1.4.6/4.1.4.7) -- an adopted value is
+  not necessarily a measured one:
+    DiamSource C calculated from albedo and H | D derived from albedo and H | L from a
+               details-table entry | S SIMPS | T thermal | W WISE | K AKARI
+    AlbSource  A ASSUMED from the orbital group or taxonomic type | D derived from H and
+               diameter | L/S/T/W/K as above
+  Across the 144 bodies this corpus joins: diameter C:55 D:44 L:43 S:2, albedo A:82 D:42
+  L:18 S:2, class A:79 S:52 T:12 L:1. So most LCDB diameters are arithmetic on H and most
+  albedos are class guesses. LCDB is the best source for a PERIOD (and it says how
+  reliable it is), not for a size. Bennu is the cautionary row: Diam 0.213 km and albedo
+  0.20 (assumed, class S*) against a radar mean diameter of ~0.49 km and albedo 0.049.
+  LCDB has no mass and no orbit.

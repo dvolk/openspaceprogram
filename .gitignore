@@ -58,6 +58,15 @@ ksp_system.csv
 # KSP parts wiki scrape (utils/gen_parts_wiki.py output; re-run to refresh)
 utils/parts_wiki/
 
+# Asteroid Lightcurve Database V4.0 (utils/rss/asteroids): 23 MB of upstream bytes that
+# SBN Archive refuses to serve to a script (Cloudflare JS challenge), so they are fetched
+# by hand and unzipped into raw/. parse.py prints a note and falls back to the wiki +
+# SBDB when they are absent. The column/flag reference they define is extracted to
+# raw/lcdb_pds_readme.txt, which stays tracked -- keep the reasoning, drop the bytes.
+utils/rss/asteroids/*.zip
+utils/rss/asteroids/raw/lc_*.csv
+utils/rss/asteroids/raw/lcdb_pds_readme.pdf
+
 # bear -- make
 compile_commands.json
 
