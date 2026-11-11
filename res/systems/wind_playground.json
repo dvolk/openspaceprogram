@@ -1,0 +1,216 @@
+{
+  "home": "Belts",
+  "soi_law": "hill",
+  "epoch_year": 2026,
+  "skybox": "res/skybox/v1",
+  "world_buildings": [
+    {
+      "id": "playground_pad",
+      "type": "space_port",
+      "display_name": "Playground pad",
+      "body": "Belts",
+      "lat_deg": 0.0,
+      "lon_deg": 0.0,
+      "height_m": 5.0,
+      "heading_deg": 0.0,
+      "flags": [
+        "VAB_LAUNCH_PAD"
+      ]
+    }
+  ],
+  "bodies": [
+    {
+      "name": "Sun",
+      "type": "star",
+      "radius": 261600000,
+      "mass": 1.757e+28,
+      "seed": 0,
+      "has_sea": false,
+      "inertial": {
+        "soi": 1e+18,
+        "pos": [0, 0, 0],
+        "orb_ang_speed": 0.0
+      },
+      "transfer_dv": 0.0,
+      "science_mult": 2.0,
+      "surface": {
+        "temperature": 2838.1
+      }
+    },
+    {
+      "name": "Belts",
+      "type": "planet",
+      "orbits": "Sun",
+      "radius": 600000,
+      "mass": 5.2915793e+22,
+      "seed": 11,
+      "has_sea": true,
+      "inertial": {
+        "pos": [0, 0, -20000000000],
+        "orb_ang_speed": 3.828e-07
+      },
+      "rotating": {
+        "rot_ang_speed": 0.0002915709030370688,
+        "axial_tilt": 0.05
+      },
+      "transfer_dv": 0.0,
+      "science_mult": 1.0,
+      "surface": {
+        "atmosphere": {
+          "color": [0.85, 0.78, 0.65],
+          "thickness": 20000,
+          "power": 4.0,
+          "intensity": 0.7,
+          "sea_level_pressure": 101325.0,
+          "height": 60000.0,
+          "composition": [
+            {"gas": "N2", "fraction": 0.78},
+            {"gas": "O2", "fraction": 0.21}
+          ],
+          "layers": [
+            {"alt": 0.0, "T": 288.0, "lapse": -0.0036},
+            {"alt": 20000.0, "T": 216.0, "lapse": 0.0}
+          ],
+          "wind": [
+            {"alt": 0.0, "east": 40.0, "north": 0.0, "lat": [-90.0, -30.0]},
+            {"alt": 0.0, "east": 150.0, "north": 0.0, "lat": [-30.0, 30.0]},
+            {"alt": 0.0, "east": 40.0, "north": 0.0, "lat": [30.0, 90.0]}
+          ]
+        }
+      }
+    },
+    {
+      "name": "Sheared",
+      "type": "planet",
+      "orbits": "Sun",
+      "radius": 600000,
+      "mass": 5.2915793e+22,
+      "seed": 12,
+      "has_sea": true,
+      "inertial": {
+        "pos": [30000000000, 0, 0],
+        "orb_ang_speed": 2.084e-07
+      },
+      "rotating": {
+        "rot_ang_speed": 0.0002915709030370688,
+        "axial_tilt": 0.05
+      },
+      "transfer_dv": 0.0,
+      "science_mult": 1.0,
+      "surface": {
+        "atmosphere": {
+          "color": [0.85, 0.78, 0.65],
+          "thickness": 20000,
+          "power": 4.0,
+          "intensity": 0.7,
+          "sea_level_pressure": 101325.0,
+          "height": 60000.0,
+          "composition": [
+            {"gas": "N2", "fraction": 0.78},
+            {"gas": "O2", "fraction": 0.21}
+          ],
+          "layers": [
+            {"alt": 0.0, "T": 288.0, "lapse": -0.0036},
+            {"alt": 20000.0, "T": 216.0, "lapse": 0.0}
+          ],
+          "wind": [
+            {"alt": 0.0, "east": 40.0, "north": 0.0, "lat": [-90.0, -34.0]},
+            {"alt": 0.0, "east": 75.0, "north": 0.0, "lat": [-34.0, -30.0]},
+            {"alt": 0.0, "east": 115.0, "north": 0.0, "lat": [-30.0, -26.0]},
+            {"alt": 0.0, "east": 150.0, "north": 0.0, "lat": [-26.0, 26.0]},
+            {"alt": 0.0, "east": 115.0, "north": 0.0, "lat": [26.0, 30.0]},
+            {"alt": 0.0, "east": 75.0, "north": 0.0, "lat": [30.0, 34.0]},
+            {"alt": 0.0, "east": 40.0, "north": 0.0, "lat": [34.0, 90.0]}
+          ]
+        }
+      }
+    },
+    {
+      "name": "Spot",
+      "type": "planet",
+      "orbits": "Sun",
+      "radius": 600000,
+      "mass": 5.2915793e+22,
+      "seed": 13,
+      "has_sea": true,
+      "inertial": {
+        "pos": [0, 0, 40000000000],
+        "orb_ang_speed": 1.3535e-07
+      },
+      "rotating": {
+        "rot_ang_speed": 0.0002915709030370688,
+        "axial_tilt": 0.05
+      },
+      "transfer_dv": 0.0,
+      "science_mult": 1.0,
+      "surface": {
+        "atmosphere": {
+          "color": [0.80, 0.62, 0.55],
+          "thickness": 20000,
+          "power": 4.0,
+          "intensity": 0.7,
+          "sea_level_pressure": 101325.0,
+          "height": 60000.0,
+          "composition": [
+            {"gas": "N2", "fraction": 0.78},
+            {"gas": "O2", "fraction": 0.21}
+          ],
+          "layers": [
+            {"alt": 0.0, "T": 288.0, "lapse": -0.0036},
+            {"alt": 20000.0, "T": 216.0, "lapse": 0.0}
+          ],
+          "wind": [
+            {"alt": 0.0, "east": 40.0, "north": 0.0, "lat": [-90.0, 90.0], "lon": [0.0, 300.0]},
+            {"alt": 0.0, "east": 40.0, "north": 0.0, "lat": [-90.0, -25.0], "lon": [300.0, 360.0]},
+            {"alt": 0.0, "east": 40.0, "north": 0.0, "lat": [-5.0, 90.0], "lon": [300.0, 360.0]},
+            {"alt": 0.0, "east": 150.0, "north": 0.0, "lat": [-25.0, -5.0], "lon": [300.0, 360.0]}
+          ]
+        }
+      }
+    },
+    {
+      "name": "Hadley",
+      "type": "planet",
+      "orbits": "Sun",
+      "radius": 600000,
+      "mass": 5.2915793e+22,
+      "seed": 14,
+      "has_sea": true,
+      "inertial": {
+        "pos": [-50000000000, 0, 0],
+        "orb_ang_speed": 9.685e-08
+      },
+      "rotating": {
+        "rot_ang_speed": 0.0002915709030370688,
+        "axial_tilt": 0.05
+      },
+      "transfer_dv": 0.0,
+      "science_mult": 1.0,
+      "surface": {
+        "atmosphere": {
+          "color": [0.45, 0.65, 0.90],
+          "thickness": 20000,
+          "power": 4.0,
+          "intensity": 0.7,
+          "sea_level_pressure": 101325.0,
+          "height": 60000.0,
+          "composition": [
+            {"gas": "N2", "fraction": 0.78},
+            {"gas": "O2", "fraction": 0.21}
+          ],
+          "layers": [
+            {"alt": 0.0, "T": 288.0, "lapse": -0.0036},
+            {"alt": 20000.0, "T": 216.0, "lapse": 0.0}
+          ],
+          "wind": [
+            {"alt": 0.0, "east": 20.0, "north": 0.0, "up": 0.0, "lat": [-90.0, -35.0]},
+            {"alt": 0.0, "east": -12.0, "north": 0.0, "up": -0.015, "lat": [-35.0, -10.0]},
+            {"alt": 0.0, "east": 0.0, "north": 0.0, "up": 0.02, "lat": [-10.0, 10.0]},
+            {"alt": 0.0, "east": -12.0, "north": 0.0, "up": -0.015, "lat": [10.0, 35.0]},
+            {"alt": 0.0, "east": 20.0, "north": 0.0, "up": 0.0, "lat": [35.0, 90.0]}
+          ]
+        }
+      }
+    }
+  ]
+}
