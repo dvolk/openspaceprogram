@@ -37,12 +37,16 @@ CHECK re.search(r"air wind 0\.0 m, lat -30/\+30\s+150 m/s east\s*\n\s*\[atlas\] 
 # and the belt count it asked for. Then it lists the equatorial belt -- the anchors' own values,
 # which is what the belt at lat 0 is -- and declines to print the other 24 rows, sending the
 # reader to the wind map instead. 26 rows in a dossier would bury the two the file authored.
+# The two figures here are derived, not typed: Ro 0.0487 is Uranus' 250 m/s over its own radius
+# and spin, and 6 belts per hemisphere is what that Ro asks the Rhines scale for, which is also
+# what sizes the +/-6 deg band below (13 bands over the globe). Change the column in
+# utils/make_solar_system.py and this row moves with it -- that is the coupling, not drift.
 CHECK re.search(r"air wind \(generated\)\s+rhines: Ro 0\.0487, 6 belts per hemisphere, Rhines scale 13\.6 deg", re.search(r"\[atlas\] Uranus weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
 CHECK re.search(r"air wind 0\.0 m, lat -6/\+6\s+100 m/s east\s*\n\s*\[atlas\]   air wind 30\.0 km, lat -6/\+6\s+250 m/s east\s*\n\s*\[atlas\]   air wind\s+24 more rows \(one per anchor per belt\) not listed", re.search(r"\[atlas\] Uranus weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
 # Titan's three levels, on a body no page states a wind for: the rows are published climatology,
 # and the FACT_WIND_KNOWN waiver in utils/make_solar_system.py is on record saying so. 1 m/s at
-# the datum is worth printing anyway -- it is the calmest deck in the catalogue and the densest
-# air (5.3 kg/m3) at the same time.
+# the datum is worth printing anyway: tied with Venus's datum row for the calmest deck in the
+# catalogue, on the densest air any moon here carries (5.3 kg/m3).
 CHECK re.search(r"air wind 0\.0 m\s+1 m/s east\s*\n\s*\[atlas\]   air wind 20\.0 km\s+30 m/s east\s*\n\s*\[atlas\]   air wind 60\.0 km\s+100 m/s east", re.search(r"\[atlas\] Titan weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
 # And the negative: bodies whose sheet states no wind and whose file authors none print no such
 # row -- not "0 m/s calm", which would be a claim the file never made. Pluto is the half of the

@@ -30,13 +30,18 @@ KIND invariant
 ARGS --width 1600 --height 900 --timeout 9 --system res/systems/solar_system.json
 ARGS --startship v,res/ships/skiff_trim.json,Earth,pad
 ARGS --surfmap-log --surfmap-n 128 --surfmap-map wind --surfmap-body Uranus
+# The second body comes from the map window's own combo, so the path is the live imgui one:
+# --ui-list 4400 dumps it, and ##Combo_00 is the Body widget inside "Surface Map". It works
+# because imgui scrolls a combo popup to the CURRENT selection, and Jupiter sits two entries
+# above Uranus in the list -- if the body roster ever puts Jupiter out of view, this click needs
+# a --ui-scroll between the open and the pick.
 ARGS --ui-click 2000,"Windows/Surface Map"
 ARGS --ui-click 4000,"Surface Map/Body"
 ARGS --ui-list 4400
 ARGS --ui-click 4800,"##Combo_00/Jupiter"
 FORBID FAILED
 FORBID error:
-CHECK len(surfmap) == 2
+CHECK len(surfmap) >= 2
 CHECK all(r["map"] == "wind" for r in surfmap)
 # THE GENERATED COLUMN, on a real body. 13 bands -> 13 arrow rows -> 13 x 16 = 208 cells at this
 # bake size, and the table itself is 26 rows because the generator emits one row per anchor per

@@ -20,12 +20,14 @@
 # restated on five more worlds -- a wind is an air velocity, not a force, so the hull's airspeed
 # does not move and its ground speed does.
 #
-# The gap is a VECTOR difference, not a sum: at Jupiter and Saturn and Neptune the bed's track is
-# near-east and the gap is 150.0, 389.9 and 257.5 of a 150 / 400 / 264 m/s wind. On Uranus the
-# bed launches the hull heading 224 deg (southwest through the air -- the same heading the
-# windless run prints, so it is the bed, not the wind), so 72 m/s of airspeed plus 225 m/s of
-# easterly wind comes out as 181.9 m/s over the ground. Pinning both numbers per body is what
-# catches a sign flip or a row read at the wrong altitude, which neither sum alone can.
+# The gap is a VECTOR difference, not a sum. Only Jupiter's track is due east, where the gap is
+# the whole 150 m/s. The other three beds throw their hulls tens of degrees off the wind: Saturn
+# 27.5 deg (gap 389.9 of a 400 m/s wind), Neptune 26.3 (257.5 of 264), Titan 24.7 (29.4 of 30).
+# On Uranus the bed launches the hull heading 224 deg -- 134.5 deg away from an easterly wind,
+# so southwest through the air, and the same heading the windless run prints, which is the bed
+# and not the wind -- so 72 m/s of airspeed plus 225 m/s of easterly wind comes out as 181.9 m/s
+# over the ground. Pinning both numbers per body is what catches a sign flip or a row read at
+# the wrong altitude, which neither sum alone can.
 NAME the-giants-and-titan-move-their-air
 CLAIM A hull spawned on each of the five bodies #772 winds reads its authored wind at the spawn altitude: the airspeed stays the bed's own value while the ground speed takes the wind, at Jupiter by exactly the 150 m/s its sheet states.
 KIND golden
@@ -53,7 +55,8 @@ CHECK re.search(r"around Saturn:.*?\|v\| = 50[0-5]\.[0-9] m/s \|v_air\| = 11[0-9
 # from its control value.
 CHECK re.search(r"around Uranus:.*?\|v\| = 18[0-2]\.[0-9] m/s \|v_air\| = 7[1-3]\.[0-9]", out)
 CHECK re.search(r"around Neptune:.*?\|v\| = 33[5-9]\.[0-9] m/s \|v_air\| = 8[0-3]\.[0-9]", out)
-# Titan: the densest air in the catalogue (5.3 kg/m3 at its datum, 1.95 up here) with the calmest
-# table. The hull's own 8.3 m/s is 67 Pa of dynamic pressure; the 30 m/s of air passing over the
-# ground is 878 Pa, which is the number a hull parking in it would have to survive.
+# Titan: the densest air of this catalogue's MOONS (5.3 kg/m3 at its datum, 1.96 at this 20 km
+# spawn), with the calmest table. The hull's own 8.3 m/s is 67 Pa of dynamic pressure; the
+# 30 m/s of air passing over the ground is 884 Pa, which is the number a hull parking in it
+# would have to survive.
 CHECK re.search(r"around Titan:.*?\|v\| = 3[6-9]\.[0-9] m/s \|v_air\| = [78]\.[0-9]", out)

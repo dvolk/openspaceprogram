@@ -320,7 +320,8 @@ static void windLayers() {
     check(wio.block == "no air", "and the cursor still says no air, not no wind");
     check(wio.legend != wm.legend, "while the log can tell a rim world from a bare one");
 
-    // 2. Air the file states no wind for (every body but Venus, Earth, Mars).
+    // 2. Air the file states no wind for. In the shipped solar system that is Pluto alone
+    // since #772; ksp_system.json's six Kerbin-side airs all take this path too.
     Surface kerbin;
     kerbin.atmosphere.enabled = true;
     kerbin.atmosphere.sea_level_density = 1.225;
@@ -474,8 +475,8 @@ static void windLayers() {
        table reads as rings of arrows, or whether the uniform lattice draws because ringing would
        be worse. h = 256, stride = 16, half = 6.72, head = 4.8 is the shipped --surfmap-n 512. */
     {
-        // A one-column table -- every body shipped so far: Venus, Earth, Mars are whole-sphere
-        // rows -- has no band centre worth ringing.
+        // A one-column table -- a whole-sphere column, which is what Venus, Earth, Mars and
+        // Titan still author -- has no band centre worth ringing.
         const std::vector<WindLevel> one = { {0.0, 5.0, 0.0}, {11000.0, 40.0, 0.0} };
         const ArrowRowPlan g = surfmapArrowRows(one, 256, 16, 16 * 0.42, 16 * 0.30);
         check(g.bands == 1 && !g.from_bands && g.rings.empty(),

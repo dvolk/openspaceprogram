@@ -766,13 +766,19 @@ FACT_WIND_KNOWN = {
                                 "published Venus climatology -- see the block that "
                                 "authors it, and note the deck this file renders is "
                                 "at 55 km, not 65 km (#714)"),
-    # Titan is the other side of the same coin: not a row above a ceiling, but a whole
-    # table under a page that states nothing. It stays a waiver rather than a rule change
-    # because the next body to do this should have to say why too.
-    ('Titan', 0.0): (1.0, "no page in this corpus states a wind for Titan -- it has no "
-                          "fact page of its own, and the satellite sheet its air comes "
-                          "from has no wind line. All three rows are published "
-                          "climatology, cited where they are authored (#772)"),
+    # Titan is the other side of the same coin: not one row above a ceiling, but a whole
+    # table under a page that states nothing. altitude None means "this body's whole
+    # table", and the pinned figure is then its FASTEST row -- there is no sheet to weigh
+    # a row against, so a waiver keyed on one row would cover the others by accident. The
+    # first version of that branch asked about the first row written, and a probe showed
+    # what that meant: reorder the table, or add a 900 m/s row, and it rode through on a
+    # waiver written for the deck (the loader's only net is atmo.h:kWindMaxSpeed, a flat
+    # 1000 m/s). It stays a waiver rather than a rule change because the next body to do
+    # this should have to say why too.
+    ('Titan', None): (100.0, "no page in this corpus states a wind for Titan -- it has no "
+                             "fact page of its own, and the satellite sheet its air comes "
+                             "from has no wind line. All three rows are published "
+                             "climatology, cited where they are authored (#772)"),
 }
 
 # 'Wind speeds' is the label; the speeds are the numbers that end a 'm/s' phrase.
@@ -889,13 +895,49 @@ def check_fact_wind(planets, verbose=True, parsed=None):
         if not comps:
             continue
         if not sheet:
+            # Nothing published to weigh a row against, so this waiver is per BODY and covers
+            # the whole table: its pinned figure is the fastest row it was written for, and a
+            # row past that reddens the check. Keying it on one row's altitude -- which is
+            # what the first version did -- let a reordered table, or a 900 m/s row nobody
+            # argued for, ride through on a waiver written for the deck.
             m = ('%s authors wind rows and %s states no wind at all' % (name, page))
-            known = FACT_WIND_KNOWN.get((name, comps[0][0]))
-            if known is not None and abs(comps[0][1] - known[0]) <= WAIVER_TOL * known[0]:
-                waived.append('%s: %s' % (m, known[1]))
+            known = FACT_WIND_KNOWN.get((name, None))
+            if known is None:
+                bad.append(m)
                 continue
-            bad.append(m)
+            if top > known[0] * (1.0 + WAIVER_TOL):
+                bad.append('%s: its fastest row is %g m/s, past the %g m/s this body\'s '
+                           'waiver was written against -- a table under a page that states '
+                           'nothing still owes a ceiling argument' % (m, top, known[0]))
+                continue
+            waived.append('%s (%d rows, at most %g m/s): %s'
+                          % (m, len(comps), top, known[1]))
             continue
+        # A sheet that bounds wind BY LATITUDE says more than how fast: it says WHERE, and the
+        # ceiling loop below cannot see that. Moving Jupiter's or Saturn's +/-30 deg split out
+        # to +/-45 keeps every row under the published top and loads fine -- the split is what
+        # the page found, so weigh the band EDGES against it too (#772). Two refusals:
+        #   structure erased -- the table answers for the whole sphere where the page did not;
+        #   structure moved -- a band edge sitting nowhere the page puts one.
+        # A whole-sphere row sharing a table with banded rows is legal: banding the deck and
+        # leaving a high level global is authoring, not erasing.
+        if sheet.get('latbands'):
+            pub = sorted(set(abs(b[2]) for b in sheet['latbands']))
+            banded = [w for w in wind if w.get('lat') is not None]
+            if not banded:
+                bad.append('%s: the sheet bounds wind BY LATITUDE (%s) while this file answers'
+                           ' for the whole sphere -- author the published split (#767/#772)'
+                           % (name, '; '.join('%g m/s %s%g deg lat' % b
+                                              for b in sheet['latbands'])))
+            for w in banded:
+                for edge in (float(w['lat'][0]), float(w['lat'][1])):
+                    if abs(abs(edge) - 90.0) < 1e-9:
+                        continue          # a pole half is the tiling, not a published bound
+                    if not any(abs(abs(edge) - p) <= 2.0 for p in pub):
+                        bad.append('%s: a wind band edge at %+g deg matches no latitude bound'
+                                   ' %s states (%s)'
+                                   % (name, edge, page,
+                                      ', '.join('%+g deg' % p for p in pub)))
         for alt, comp in comps:
             if comp <= sheet['max']:
                 continue
@@ -923,8 +965,9 @@ def self_test_fact_wind():
     """Prove the wind guard can fail, which is the only way to know it is a gate and not
     decoration. This file has no test harness of its own, so the mutation runs here against
     the sheets cached in the repo (utils/rss/html, tracked): Jupiter's page states wind per
-    latitude band, Neptune's states a bare range. Returns the ways the guard has stopped
-    behaving -- empty means all three mutations landed."""
+    latitude band, Neptune's states a bare range, the satellite page Titan comes from states
+    none. Returns the ways the guard has stopped behaving -- empty means every mutation
+    landed."""
     fails = []
     jup = fact_wind('jupiterfact.html')
     nep = fact_wind('neptunefact.html')
@@ -933,7 +976,10 @@ def self_test_fact_wind():
     if nep.get('latbands'):
         fails.append('neptunefact.html\'s bare range now parses as latitude bands: %r'
                      % (nep,))
-    rows = [{'alt': 0.0, 'east': 10.0}, {'alt': 60000.0, 'east': 90.0}]
+    # Banded rows, so the probes below say something about GENERATION and the latitude split
+    # rather than about row speeds. They are inside Jupiter's own +/-30 deg bound.
+    rows = [{'alt': 0.0, 'east': 10.0, 'lat': [-30.0, 30.0]},
+            {'alt': 60000.0, 'east': 90.0, 'lat': [-30.0, 30.0]}]
     # A generated table under a sheet that bounds wind BY LATITUDE must be refused...
     got = check_fact_wind([('jupiterfact.html', 'Jupiter', 1.0,
                             {'atmosphere': {'wind': rows, 'wind_gen': 'rhines'}}, 0.0)],
@@ -941,7 +987,8 @@ def self_test_fact_wind():
     if not any('per latitude band' in m for m in got):
         fails.append('a generated table under Jupiter\'s banded sheet was not refused: %r'
                      % (got,))
-    # ... the same rows authored by hand must not be (both sit under the sheet's 150 m/s),
+    # ... the same rows authored by hand must not be (both under the sheet's 150 m/s and
+    # inside the latitude band it states),
     got = check_fact_wind([('jupiterfact.html', 'Jupiter', 1.0,
                             {'atmosphere': {'wind': rows}}, 0.0)], verbose=False)
     if got:
@@ -953,6 +1000,40 @@ def self_test_fact_wind():
                           verbose=False)
     if any('latitude band' in m for m in got):
         fails.append('a bare-range sheet refused a generated table: %r' % (got,))
+    # The other kind of waiver: a body under a page that states NOTHING is covered up to the
+    # speed its waiver names and no further. This probes with the fastest row NOT first,
+    # because the first version of that branch looked only at the first row written and so
+    # covered every other row by accident -- a 900 m/s row nothing argued for, straight past
+    # the loader's flat kWindMaxSpeed net and into the game.
+    got = check_fact_wind([('saturniansatfact.html', 'Titan', 1.0,
+                            {'atmosphere': {'wind': [{'alt': 60000.0, 'east': 900.0},
+                                                     {'alt': 0.0, 'east': 1.0}]}}, 0.0)],
+                          verbose=False)
+    if not any('waiver was written against' in m for m in got):
+        fails.append('a 900 m/s row under a no-sheet waiver was not refused: %r' % (got,))
+    # And the same shape inside the waiver must pass, or the guard is just refusing moons.
+    got = check_fact_wind([('saturniansatfact.html', 'Titan', 1.0,
+                            {'atmosphere': {'wind': [{'alt': 20000.0, 'east': 30.0},
+                                                     {'alt': 0.0, 'east': 1.0}]}}, 0.0)],
+                          verbose=False)
+    if got:
+        fails.append('a no-sheet table inside its waiver was refused: %r' % (got,))
+    # The banded sheet says WHERE as well as how fast, and the ceiling loop cannot see that.
+    # Widening Jupiter's own +/-30 deg split to +/-45 keeps every row AT the published top,
+    # so nothing else objects -- and the game ships an equatorial jet 15 deg too wide.
+    got = check_fact_wind([('jupiterfact.html', 'Jupiter', 1.0, {'atmosphere': {'wind': [
+        {'alt': 0.0, 'east': 150.0, 'lat': [-45.0, 45.0]},
+        {'alt': 0.0, 'east': 40.0, 'lat': [-90.0, -45.0]},
+        {'alt': 0.0, 'east': 40.0, 'lat': [45.0, 90.0]}]}}, 0.0)], verbose=False)
+    if not any('matches no latitude bound' in m for m in got):
+        fails.append('a wind band edge the sheet never put there was not refused: %r' % (got,))
+    # And a table that drops the split entirely, answering for the whole sphere where the
+    # page bounded it by latitude. Under the sheet's top, loads fine, flattens the finding.
+    got = check_fact_wind([('jupiterfact.html', 'Jupiter', 1.0,
+                            {'atmosphere': {'wind': [{'alt': 0.0, 'east': 40.0}]}}, 0.0)],
+                          verbose=False)
+    if not any('bounds wind BY LATITUDE' in m for m in got):
+        fails.append('a whole-sphere table under a banded sheet was not refused: %r' % (got,))
     return fails
 
 
@@ -1639,8 +1720,9 @@ MOON_ATMOS = {
     'Titan':  {'color': [0.85, 0.60, 0.25], 'thickness': 40000,
                'power': 3.0, 'intensity': 0.8,
                'sea_level_density': 5.3, 'scale_height': 20000,
-               # Titan's air is the densest in the catalogue and still cannot burn:
-               # nitrogen, methane, a trace of hydrogen, no free oxygen at all.
+               # Titan's air is the densest of this catalogue's moons -- and it still cannot
+               # burn: nitrogen, methane, a trace of hydrogen, no free oxygen at all. Venus
+               # carries twelve times more air at its own datum; this is not the heavy sky.
                'composition': N2_METHANE,
                # Wind (#772). No page in this corpus states a wind for Titan -- it has no
                # fact page of its own and its data comes from the giant-planet satellite
@@ -1650,17 +1732,19 @@ MOON_ATMOS = {
                # stratospheric flow an order of magnitude faster.
                # Weighing it matters more here than on the giants because of the density:
                # 5.3 kg/m3 at the datum is 4x Earth's sea level, so 100 m/s of deck wind
-               # would be 26.5 kPa. A m/s there is 3 Pa; 30 m/s at 20 km is 0.88 kPa; the
-               # 100 m/s at 60 km sits in 0.264 kg/m3 for 1.3 kPa, Mach 0.51 on the 195 m/s
-               # sound speed this column implies (its derived 90.5 K datum temperature,
-               # the one SOLAR_AIR_EXPONENTIAL above exists to allow).
+               # would be 26.5 kPa. A m/s there is 3 Pa; 30 m/s at 20 km is 0.88 kPa in
+               # 1.96 kg/m3; the 100 m/s at 60 km sits in 0.28 kg/m3 for 1.4 kPa, Mach 0.51
+               # on the 195 m/s sound speed this column implies (its derived 90.5 K datum
+               # temperature, the one SOLAR_AIR_EXPONENTIAL above exists to allow).
+               # Those aloft figures come out of drag.h's GEOPOTENTIAL depth, R h/(R+h) --
+               # 58.6 km of it at 60 km on this body -- rather than alt/H, which would say
+               # 0.264 kg/m3 and 1.3 kPa and be 7% away from what the game computes.
                # NO wind_gen, and this is the case the rotation scaling was never for:
                # Titan is tidally locked, so at this column's own U = 100 m/s its Rossby
                # number is 4.26 and its Rhines scale is 127 deg of latitude -- wider than
                # the hemisphere, and past the Ro ~2.14 at which atmo.h says the ask is
-               # simply zero belts. windGenerate would run its jittered edge math, ask for
-               # none, and return these three rows unchanged (bands 1) -- so author the
-               # column plainly instead.
+               # simply zero belts, which is where windGenerate returns the anchors
+               # unchanged (bands 1). Author the column plainly instead.
                'wind': [{'alt': 0, 'east': 1.0, 'north': 0.0},
                         {'alt': 20000, 'east': 30.0, 'north': 0.0},
                         {'alt': 60000, 'east': 100.0, 'north': 0.0}]},
@@ -1983,7 +2067,8 @@ def build_base(verbose_air=False):
                          # 165 K give (sqrt(gamma Rs T), drag.h). Both are inside the band
                          # the aero law is pinned in -- a hull at Kerbin cruise already
                          # pays 1.6 kPa -- so a Jupiter wind moves the flow without
-                         # reaching the transonic blend at Mach 0.75.
+                         # reaching the transonic blend at Mach 0.75. The two outer rows
+                         # cost a fourteenth of that: 40 m/s in 0.162 kg/m3 is 130 Pa.
                          # NO wind_gen here, and check_fact_wind refuses it by name: the
                          # page says WHERE the speed lives, and a Rhines-scale field would
                          # put derived numbers inside a latitude bound the sheet set.
@@ -2042,9 +2127,11 @@ def build_base(verbose_air=False):
                          # so the lift law stays on its subsonic branch and
                          # under the transonic blend at Mach 0.75; a hull
                          # that adds its own 150 m/s to a 400 m/s headwind
-                         # is at 24 kPa and Mach 0.64 before any gust, which
+                         # is at 29 kPa and Mach 0.64 before any gust, which
                          # is why #716 (nothing caps an aero impulse) wants
                          # settling before anyone flies fast in this air.
+                         # The two outer rows cost an order of magnitude
+                         # less: 150 m/s in the same air is 2.2 kPa.
                          # No wind_gen: the sheet bounds wind by latitude,
                          # and check_fact_wind refuses a generated field
                          # under such a sheet.

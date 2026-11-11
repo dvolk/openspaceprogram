@@ -253,8 +253,11 @@ inline WindLayer windLayerFor(const Surface &s) {
             : "no air on this world: there is nothing to blow";
         wl.block = "no air";
     } else if(!s.atmosphere.has_wind()) {
-        // Reachable and common: every body but Venus, Earth and Mars (#688's data half), and
-        // the gas giants are waiting on #767 rather than being unauthored by accident.
+        // Reachable, and since #772 narrow: of the nine airs the shipped solar system files
+        // write, only Pluto's states no wind (1.3 Pa of N2, and no fact page gives it one).
+        // Kerbin-side airs and the playground files still take this path, so it has to stay
+        // honest -- "no wind authored" is different news from the no-air branch above. The
+        // roster of bodies that DO author rows is tests/test_scenarios.cpp:kWindsAuthored.
         wl.legend = "this world's file states no wind: its air is authored still";
         wl.block = "no wind";
     } else {
@@ -389,11 +392,12 @@ inline double surfmapWindT01(double speed_ms, double lo_ms, double hi_ms) {
 }
 
 /* WHICH pixel rows get a row of wind arrows (#780). A uniform grid is right for a table that
-   is one column, which is every table shipped so far: a whole-sphere row answers for the body
-   and has no centre worth ringing. A table with real LATITUDE structure -- a generated belt
-   layout (#775) or an authored jet band (#767) -- reads better as bands: one row at each band's
-   own centre latitude, so the alternation and the BELT COUNT come out as rings rather than as a
-   grid someone has to scan and count by eye.
+   is one column: a whole-sphere row -- what Venus, Earth, Mars and Titan still author -- answers
+   for the body and has no centre worth ringing. A table with real LATITUDE structure reads
+   better as bands -- a generated belt layout (#775) or an authored jet band (#767), which is
+   what #772 put on Jupiter and Saturn -- one row at each band's own centre latitude, so the
+   alternation and the BELT COUNT come out as rings rather than as a grid someone has to scan
+   and count by eye.
 
    Two bounds pull opposite ways, and the grid is the honest fallback for both:
 

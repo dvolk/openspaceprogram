@@ -194,16 +194,19 @@ SURFMAP_RE = re.compile(
     # drew -- the only observable the arrows have. Same dash law as temp=: a body with no wind
     # prints wind=- plus a note saying which absence ("no air" and "air the file states no wind
     # for" are different news, and a render rim is not air).
-    r"(?:\s+wind=\[([-\d.]+) ([-\d.]+) ([-\d.]+)\]\s+wind_ends=\[([-\d.]+) ([-\d.]+)\]\s+"
-    r"wind_ramp=\[([-\d.]+) ([-\d.]+)\]\s+"
-    r"wind_rows=(\d+)\s+wind_cells=(\d+))?"
     # #772/#777: WHICH rows drew those arrows. A table's bands cover the globe (the loader
     # insists) without landing neatly on the sweep's grid, so surfmapArrowRows() draws one row
     # per band when the bands are many enough and spaced enough and falls back to the uniform
     # grid otherwise. wind_cells= counts arrows either way, so without these three columns no
     # case can tell the two paths apart -- and a body like Uranus, whose belts come from the
-    # #775 generator, has 13 of them.
-    r"(?:\s+wind_bands=(\d+)\s+wind_arrow_rows=(\d+)\s+wind_rows_from=(grid|bands))?"
+    # #775 generator, has 13 of them. They are in the SAME group as wind=, not their own:
+    # src/surfmap.cpp prints all eight columns in one row, so a tail that stops halfway is a
+    # broken row, not a wind row from an older build. Splitting them let a half-parsed row
+    # read as a plan-less wind row, which is how a case would silently lose its pins.
+    r"(?:\s+wind=\[([-\d.]+) ([-\d.]+) ([-\d.]+)\]\s+wind_ends=\[([-\d.]+) ([-\d.]+)\]\s+"
+    r"wind_ramp=\[([-\d.]+) ([-\d.]+)\]\s+"
+    r"wind_rows=(\d+)\s+wind_cells=(\d+)"
+    r"\s+wind_bands=(\d+)\s+wind_arrow_rows=(\d+)\s+wind_rows_from=(grid|bands))?"
     r"(?:\s+wind=-\s+note=\"([^\"]*)\")?"
 )
 # --solar-log (src/cli.cpp's flag, printed by the kGateSolar block in tick.cpp): the

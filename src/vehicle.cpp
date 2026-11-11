@@ -677,7 +677,8 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
        lift-area load (q/g, kg/m^2) into the field THIS body pulls with at THIS height --
        instead of a fraction of what gravity would need for an orbit here. Authored as an
        AIR-relative speed, so the frame velocity is that plus the air's own motion: with
-       no authored wind (every shipped body but Venus) the second term is zero and this
+       no authored wind (Kerbin, Eve, Duna and every other unwinded body -- the
+       roster is tests/test_scenarios.cpp:kWindsAuthored) the second term is zero and this
        is just the frame speed; on a windy body the hull still starts at its authored
        airspeed rather
        than at that number plus or minus the wind.
@@ -718,7 +719,8 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
        turned to north: Beta reads -2.7 deg at t=0.9 s and +8.5 at t=1.9, with 1.3 kN m of
        fin torque, while the launch AoA canary still prints +0.0 -- an authored wind is
        horizontal (atmo.h:WindLevel is east/north only), so it moves Beta and can never
-       move AoA. With no authored wind -- every shipped body but Venus -- flow IS vel, so
+       move AoA. With no authored wind -- Kerbin, Eve, Duna and the rest of the unwinded
+       bodies -- flow IS vel, so
        those beds aim exactly as they always did. Venus inverts what "the track" means:
        a prograde orbit over a body with 177 deg of obliquity moves WESTWARD over its
        ground, so the bed aims and flies west through the air while the authored air runs
