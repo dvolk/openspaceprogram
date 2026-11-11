@@ -570,6 +570,35 @@
               "fraction": 0.102
             }
           ],
+          "wind": [
+            {
+              "alt": 0,
+              "east": 150.0,
+              "north": 0.0,
+              "lat": [
+                -30.0,
+                30.0
+              ]
+            },
+            {
+              "alt": 0,
+              "east": 40.0,
+              "north": 0.0,
+              "lat": [
+                -90.0,
+                -30.0
+              ]
+            },
+            {
+              "alt": 0,
+              "east": 40.0,
+              "north": 0.0,
+              "lat": [
+                30.0,
+                90.0
+              ]
+            }
+          ],
           "sea_level_pressure": 100000.0,
           "layers": [
             {
@@ -691,6 +720,35 @@
               "fraction": 0.005
             }
           ],
+          "wind": [
+            {
+              "alt": 0,
+              "east": 400.0,
+              "north": 0.0,
+              "lat": [
+                -30.0,
+                30.0
+              ]
+            },
+            {
+              "alt": 0,
+              "east": 150.0,
+              "north": 0.0,
+              "lat": [
+                -90.0,
+                -30.0
+              ]
+            },
+            {
+              "alt": 0,
+              "east": 150.0,
+              "north": 0.0,
+              "lat": [
+                30.0,
+                90.0
+              ]
+            }
+          ],
           "sea_level_pressure": 100000.0,
           "layers": [
             {
@@ -804,6 +862,19 @@
               "fraction": 0.023
             }
           ],
+          "wind": [
+            {
+              "alt": 0,
+              "east": 100.0,
+              "north": 0.0
+            },
+            {
+              "alt": 30000,
+              "east": 250.0,
+              "north": 0.0
+            }
+          ],
+          "wind_gen": "rhines",
           "sea_level_pressure": 100000.0,
           "layers": [
             {
@@ -891,6 +962,19 @@
               "fraction": 0.015
             }
           ],
+          "wind": [
+            {
+              "alt": 0,
+              "east": 120.0,
+              "north": 0.0
+            },
+            {
+              "alt": 25000,
+              "east": 300.0,
+              "north": 0.0
+            }
+          ],
+          "wind_gen": "rhines",
           "sea_level_pressure": 100000.0,
           "layers": [
             {
@@ -3820,6 +3904,23 @@
             {
               "gas": "H2",
               "fraction": 0.002
+            }
+          ],
+          "wind": [
+            {
+              "alt": 0,
+              "east": 1.0,
+              "north": 0.0
+            },
+            {
+              "alt": 20000,
+              "east": 30.0,
+              "north": 0.0
+            },
+            {
+              "alt": 60000,
+              "east": 100.0,
+              "north": 0.0
             }
           ]
         },

@@ -1,0 +1,56 @@
+# #772 put wind rows on every catalogue body that has an atmosphere: Jupiter 150 m/s over its
+# equator and 40 outside it (jupiterfact.html's own latitude pair), Saturn 400/150 the same way,
+# Uranus and Neptune a two-row column each, expanded into belts by the #775 generator, and Titan
+# 1 m/s at the deck under 30 and 100 m/s aloft. render/769 pins the map mechanism on Earth, where
+# one whole-sphere row means the question never comes up. Here it does, twice, in the shipped
+# catalogue rather than in res/systems/wind_playground.json.
+#
+# The question: a wind table's latitude bands COVER the globe -- the loader insists -- without
+# landing anywhere near the sweep's arrow grid. Two bodies, two answers, and the log says which
+# drew (wind_rows_from=):
+#   Uranus  26 rows in 13 bands (the generator's: Ro 0.049 asks for 6 belts per hemisphere,
+#           2 anchors x (2*6+1) bands). 13 >= the minimum, and at 128 px wide the rows are far
+#           enough apart, so ONE ARROW ROW PER BAND: 13 rows x 16 columns = 208 cells, and the
+#           belts land where the world's belts are rather than where a grid happens to fall.
+#   Jupiter three authored bands, which is fewer than kMinArrowRings, so the bands are not drawn
+#           -- the uniform grid is, 8 rows x 16 columns = 128 cells. Painting three arrow rows on
+#           a 64-row map would leave the picture emptier than the grid it replaces.
+# Both counts are cells, which is the only observable the arrows have; the columns pin which
+# plan produced them.
+#
+# The spans pin the same rows from the other side. Uranus' file states 100 m/s at the datum and
+# 250 m/s at 30 km, and its ground is at the datum, so wind_ends=[10 250] (the table's own span,
+# including the outermost generated belt at a tenth of its anchor) while wind_ramp=[10 100] --
+# what the picture can actually colour, because no ground on Uranus stands at 30 km. Jupiter's
+# rows all sit at alt 0, so its ends and its ramp agree at [40 150]: the latitude split, not an
+# altitude split, is what varies across that map.
+NAME a-real-world-winds-its-bands
+CLAIM A shipped body whose wind table has many latitude bands draws one arrow row per band, one whose table has too few draws the uniform grid instead, and each prints which plan drew it and how many rows and cells that produced.
+KIND invariant
+ARGS --width 1600 --height 900 --timeout 9 --system res/systems/solar_system.json
+ARGS --startship v,res/ships/skiff_trim.json,Earth,pad
+ARGS --surfmap-log --surfmap-n 128 --surfmap-map wind --surfmap-body Uranus
+ARGS --ui-click 2000,"Windows/Surface Map"
+ARGS --ui-click 4000,"Surface Map/Body"
+ARGS --ui-list 4400
+ARGS --ui-click 4800,"##Combo_00/Jupiter"
+FORBID FAILED
+FORBID error:
+CHECK len(surfmap) == 2
+CHECK all(r["map"] == "wind" for r in surfmap)
+# THE GENERATED COLUMN, on a real body. 13 bands -> 13 arrow rows -> 13 x 16 = 208 cells at this
+# bake size, and the table itself is 26 rows because the generator emits one row per anchor per
+# band (2 anchors, 2*6+1 belts).
+CHECK (lambda u: u["wind_rows"] == 26 and u["wind_bands"] == 13 and u["wind_arrow_rows"] == 13 and u["wind_rows_from"] == "bands" and u["wind_cells"] == 13 * (128 // 8))([r for r in surfmap if r["body"] == "Uranus"][-1])
+# Its two spans: what the file states over the whole table (250 m/s lives at 30 km) against what
+# the picture can paint over its own ground (the deck row's belts, from a tenth of the anchor at
+# the poles to the anchor at the equator).
+CHECK (lambda u: u["wind_ends"] == (10.0, 250.0) and u["wind_ramp"] == (10.0, 100.0) and u["wind"][0] >= 10.0 and u["wind"][2] <= 100.0)([r for r in surfmap if r["body"] == "Uranus"][-1])
+# JUPITER: three authored latitude bands, so the ring plan is refused (kMinArrowRings) and the
+# grid draws -- same map, different plan, and the row says so. Its ends and ramp agree because
+# every row sits at the datum: on this world only latitude changes the wind, not height.
+CHECK (lambda j: j["wind_rows"] == 3 and j["wind_bands"] == 3 and j["wind_arrow_rows"] == 8 and j["wind_rows_from"] == "grid" and j["wind_cells"] == 8 * (128 // 8))([r for r in surfmap if r["body"] == "Jupiter"][-1])
+CHECK (lambda j: j["wind_ends"] == (40.0, 150.0) and j["wind_ramp"] == (40.0, 150.0))([r for r in surfmap if r["body"] == "Jupiter"][-1])
+# The speeds are the sheet's, not a global constant and not one row painted verbatim: Jupiter's
+# painted mean sits strictly between its two latitude figures.
+CHECK (lambda j: 40.0 < j["wind"][1] < 150.0)([r for r in surfmap if r["body"] == "Jupiter"][-1])

@@ -197,6 +197,13 @@ SURFMAP_RE = re.compile(
     r"(?:\s+wind=\[([-\d.]+) ([-\d.]+) ([-\d.]+)\]\s+wind_ends=\[([-\d.]+) ([-\d.]+)\]\s+"
     r"wind_ramp=\[([-\d.]+) ([-\d.]+)\]\s+"
     r"wind_rows=(\d+)\s+wind_cells=(\d+))?"
+    # #772/#777: WHICH rows drew those arrows. A table's bands cover the globe (the loader
+    # insists) without landing neatly on the sweep's grid, so surfmapArrowRows() draws one row
+    # per band when the bands are many enough and spaced enough and falls back to the uniform
+    # grid otherwise. wind_cells= counts arrows either way, so without these three columns no
+    # case can tell the two paths apart -- and a body like Uranus, whose belts come from the
+    # #775 generator, has 13 of them.
+    r"(?:\s+wind_bands=(\d+)\s+wind_arrow_rows=(\d+)\s+wind_rows_from=(grid|bands))?"
     r"(?:\s+wind=-\s+note=\"([^\"]*)\")?"
 )
 # --solar-log (src/cli.cpp's flag, printed by the kGateSolar block in tick.cpp): the
@@ -963,7 +970,8 @@ def parse_surfmap(out):
     for m in SURFMAP_RE.finditer(out):
         (t, body, w, h, mtype, level, ar, ag, ab, sr, sg, sb, shade, ocean,
          sites, tmin, tmean, tmax, elo, ehi, mean4, anchor, note,
-         wmin, wmean, wmax, welo, wehi, wrlo, wrhi, wrows, wcells, wnote) = m.groups()
+         wmin, wmean, wmax, welo, wehi, wrlo, wrhi, wrows, wcells,
+         wbands, warrowrows, wrowsfrom, wnote) = m.groups()
         trip = lambda a, b, c: None if a is None else (float(a), float(b), float(c))
         rows.append({
             "t": float(t), "body": body,
@@ -992,6 +1000,12 @@ def parse_surfmap(out):
             "wind_ramp": (float(wrlo), float(wrhi)) if wrlo is not None else None,
             "wind_rows": None if wrows is None else int(wrows),
             "wind_cells": None if wcells is None else int(wcells),
+            # How many (lat,lon) bands the table holds, how many rows the plan actually drew,
+            # and which plan drew them: 'bands' == one arrow row per band, 'grid' == the uniform
+            # fallback. None on a refusal, which prints no numbers at all.
+            "wind_bands": None if wbands is None else int(wbands),
+            "wind_arrow_rows": None if warrowrows is None else int(warrowrows),
+            "wind_rows_from": wrowsfrom,
             "wind_note": wnote,
         })
         # A temperature row that carries neither its numbers nor a reason is a MALFORMED row,

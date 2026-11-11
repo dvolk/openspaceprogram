@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 324 |
-| `golden` | tuned numbers or a content table -- update deliberately when tuning | 47 |
+| `invariant` | a behaviour or a player route the game must keep | 325 |
+| `golden` | tuned numbers or a content table -- update deliberately when tuning | 48 |
 | `harness` | CLI/test-engine plumbing, not game spec | 15 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **390** |
+| | **total** | **392** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -18,7 +18,7 @@ paces a run: how much e2e a change deserves is the caller's
 judgement. Select by number, name or path, e.g.
 `python3 e2e/run.py save/172 262`.
 
-## flight (102)
+## flight (103)
 
 | case | kind | pins |
 |---|---|---|
@@ -124,6 +124,7 @@ judgement. Select by number, name or path, e.g.
 | `flight/709-a-start-ship-spawns-over-a-map-point.txt` | invariant | A start ship given lat/lon starts flying over that map point -- the surface readout reports the requested coordinate -- while keeping the bed's altitude, its air-relative speed and its science band. |
 | `flight/718-a-hull-on-the-ground-stands-in-a-wind.txt` | golden | A hull landed at an Earth pad stands in 5.4 m/s of moving air without leaving its place: tas reads the wind, hs stays under 0.01 m/s, and it stays landed for the whole run. |
 | `flight/730-the-air-bills-each-surface-in-watts.txt` | invariant | Each [surface] row's watts= is that surface's share of the air's bill -- its q x its CdA x the flow speed standing AT it, for both what the pass charges a surface (its form drag and the induced price of its lift) -- so taking each part's CdA back out of its own watts adds the row back up to the [drag] line's Profile= PLUS its Induced= exactly: no part counted twice, none invented, none of the bill unassigned. It is never a rounded-to-zero placeholder while the hull is in the air, and the mirrored wing pair's watts differ wherever their q does, which is what one ship-wide figure would hide. |
+| `flight/772-the-giants-and-titan-move-their-air.txt` | golden | A hull spawned on each of the five bodies #772 winds reads its authored wind at the spawn altitude: the airspeed stays the bed's own value while the ground speed takes the wind, at Jupiter by exactly the 150 m/s its sheet states. |
 
 ## crew (26)
 
@@ -354,7 +355,7 @@ judgement. Select by number, name or path, e.g.
 | `ui/748-hold-the-job-runner-and-read-a-window-mid-bake.txt` | invariant | --hold-jobs keeps a posted surface-map bake unpublished, so a --ui-list inside the span reads the window mid-sweep: the cursor line dashes its ground number as (rebaking) instead of quoting a number for the body it just switched to, and the number lands after the release. |
 | `ui/768-systems-window-shuts-the-nozzles.txt` | golden | The Systems window's Thrust vectoring checkbox drops the live gimballed rating in --steering-log from 129710 N m to 0 while the window keeps printing 129710 N m beside the now-off switch, and says nothing about the engines being gone. |
 
-## render (68)
+## render (69)
 
 | case | kind | pins |
 |---|---|---|
@@ -418,14 +419,15 @@ judgement. Select by number, name or path, e.g.
 | `render/630-air-says-what-it-is-made-of.txt` | invariant | A body's dossier names the gases its air is made of, biggest first, and prints the share of that air a turbine can burn. |
 | `render/676-perf-rows-add-up.txt` | invariant | --perf prints one [perf] row per window, each row's phases add up to the frame it measured, and it names WHICH draw. |
 | `render/676-perf-rows-no-paint.txt` | invariant | A --no-paint run says so in its [perf] rows: the 3D pass reads 0 while the passes that still ran do not. |
-| `render/717-dossier-says-the-air-moves.txt` | invariant | A body's dossier prints a row per authored wind level, with the altitude, the speed and the compass direction the air moves, and a body with no authored wind prints none. |
+| `render/717-dossier-says-the-air-moves.txt` | invariant | A body's dossier prints a row per authored wind level, with the altitude, the speed and the compass direction the air moves -- and the latitude band when its table has one -- while a body with no authored wind prints none. |
 | `render/736-the-atlas-prices-the-sunshine.txt` | invariant | Every dossier in this file answers the sun -- the light at that body's orbit, the albedo the body authors, the temperature those two imply, the surface temperature the file authors, and the gap between them -- and the rows are ONE arithmetic rather than five independent printings: the black-body follows from the sunlight and albedo rows beside it, the gap follows from the black-body and the surface row, each body's sunlight follows from the star's own luminosity row and that body's semi-major axis, and a satellite whose page states the WRONG KIND of albedo says so beside the converted number. |
 | `render/745-asked-for-a-temperature-a-world-without-one-says-why.txt` | invariant | Ask the Surface Map for a temperature this world cannot support and it dashes the temperature columns and names the reason -- a flat grey field and a sentence, not a colour nobody priced. |
 | `render/745-the-surface-map-prices-every-pixel-it-draws.txt` | invariant | The Surface Map can be drawn as the ground's temperature instead of its albedo, and the picture closes on the numbers the model claims: its coldest pixel IS the night end the atlas prints, and the area-weighted mean taken in T^4 comes back to the anchor. |
 | `render/745-the-surface-maps-chooser-actually-changes-the-picture.txt` | invariant | The Surface Map's Map combo switches what the sweep paints -- ground, ground+ocean, temperature -- each row says which picture it is, and switching re-bakes without a second keypress. |
 | `render/746-the-surface-map-says-when-it-was-taken.txt` | invariant | The Surface Map prints the sim instant its pixels were baked at: the stamp is unchanged across 5 s of flying, matches a --surfmap-log t= value, and moves when Refresh re-takes the picture. |
 | `render/760-perf-gpu-waits-for-the-gpu.txt` | invariant | --perf-gpu implies --perf, says what it is doing, and puts the GPU's wait inside the paint half. |
-| `render/769-the-surface-map-draws-the-wind.txt` | invariant | --surfmap-map wind paints the air's speed and direction over the ground: Earth prints the speeds it actually drew between the ends its file states, the Moon refuses for want of air, Jupiter refuses for want of an authored wind, and the cursor reads the number under it. |
+| `render/769-the-surface-map-draws-the-wind.txt` | invariant | --surfmap-map wind paints the air's speed and direction over the ground: Earth prints the speeds it actually drew between the ends its file states, the Moon refuses for want of air, Pluto refuses because its authored air has no wind rows, and the cursor reads the number under it. |
+| `render/772-a-real-world-winds-its-bands.txt` | invariant | A shipped body whose wind table has many latitude bands draws one arrow row per band, one whose table has too few draws the uniform grid instead, and each prints which plan drew it and how many rows and cells that produced. |
 
 ## harness (16)
 

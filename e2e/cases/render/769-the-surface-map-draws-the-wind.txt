@@ -23,15 +23,20 @@
 # just a shader. A body with no air and a body whose file states a still sky are different news
 # (#726), so each prints wind=- with a note naming which one, and neither falls back to the
 # albedo -- that would put a ground picture under a "wind" label, which is the map lying about
-# what it is (#727). Earth, the Moon and Jupiter come from ONE run: the Body combo picks them,
-# and a body pick re-bakes by itself, which is also what pins the pick reaching the sweep
-# rather than only the label.
+# what it is (#727). Earth, the Moon and Pluto come from ONE run: the Body combo picks them, and
+# a body pick re-bakes by itself, which is also what pins the pick reaching the sweep rather
+# than only the label.
+#
+# Pluto is the second refusal because it is the last air in the shipped catalogue with no wind
+# authored: #772 put rows on Jupiter, Saturn, Uranus, Neptune and Titan, and their maps -- bands,
+# belts, the row plan that drew them -- are pinned by render/772-a-real-world-winds-its-bands.
+# Pluto's 1.3 Pa of nitrogen is air the map can ask about and a table it cannot answer.
 #
 # Why the Moon needs --ui-scroll: the Body popup shows nine rows and the Moon is the eleventh
 # body in the file. NOTCHES is negative to go down, and two is enough -- four scrolls past it
 # and the click reports a miss, which is the failure mode worth knowing about here.
 NAME the-surface-map-draws-the-wind
-CLAIM --surfmap-map wind paints the air's speed and direction over the ground: Earth prints the speeds it actually drew between the ends its file states, the Moon refuses for want of air, Jupiter refuses for want of an authored wind, and the cursor reads the number under it.
+CLAIM --surfmap-map wind paints the air's speed and direction over the ground: Earth prints the speeds it actually drew between the ends its file states, the Moon refuses for want of air, Pluto refuses because its authored air has no wind rows, and the cursor reads the number under it.
 KIND invariant
 ARGS --width 1600 --height 900 --timeout 13 --system res/systems/solar_system.json
 ARGS --startship v,res/ships/skiff_trim.json,Earth,pad
@@ -45,7 +50,7 @@ ARGS --ui-click 5000,"##Combo_00/Moon"
 ARGS --ui-click 6200,"Surface Map/Body"
 ARGS --ui-scroll 6600,"##Combo_00",1
 ARGS --ui-list 7000
-ARGS --ui-click 7400,"##Combo_00/Jupiter"
+ARGS --ui-click 7400,"##Combo_00/Pluto"
 FORBID FAILED
 FORBID error:
 # Three bodies, one run, every row naming its own picture -- a stale buffer under a new label
@@ -73,9 +78,11 @@ CHECK [r for r in surfmap if r["body"] == "Earth"][-1]["wind_cells"] == 128
 # meaningless mean of the palette (#727).
 CHECK (lambda r: r["albedo"] is None and r["shaded"] is None)([r for r in surfmap if r["body"] == "Earth"][-1])
 # The two refusals, kept apart (#726): neither prints numbers, neither prints the other's
-# reason, and neither falls back to a ground picture.
-CHECK (lambda m: m["wind"] is None and m["wind_ends"] is None and m["wind_cells"] is None and "no air" in m["wind_note"])([r for r in surfmap if r["body"] == "Moon"][-1])
-CHECK (lambda j, m: j["wind"] is None and "no wind" in j["wind_note"] and j["wind_note"] != m["wind_note"])([r for r in surfmap if r["body"] == "Jupiter"][-1], [r for r in surfmap if r["body"] == "Moon"][-1])
+# reason, and neither falls back to a ground picture. The row-plan columns dash with the rest --
+# a refusal has no arrow rows, so reporting a plan for it would be a number for a picture that
+# was never drawn.
+CHECK (lambda m: m["wind"] is None and m["wind_ends"] is None and m["wind_cells"] is None and m["wind_bands"] is None and m["wind_arrow_rows"] is None and m["wind_rows_from"] is None and "no air" in m["wind_note"])([r for r in surfmap if r["body"] == "Moon"][-1])
+CHECK (lambda p, m: p["wind"] is None and "no wind" in p["wind_note"] and p["wind_note"] != m["wind_note"])([r for r in surfmap if r["body"] == "Pluto"][-1], [r for r in surfmap if r["body"] == "Moon"][-1])
 # THE NUMBER UNDER THE CURSOR is that pixel's number. The mouse parks over 1.4 km of ground at
 # lat +46 rather than over the sea, deliberately: over the ocean the datum row answers exactly
 # 5.0 m/s, which is the bottom of the painted range, so a readout wired to the hull's altitude

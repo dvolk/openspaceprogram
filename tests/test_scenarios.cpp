@@ -1107,8 +1107,21 @@ static void check_wind() {
        beside the rows, and check_fact_wind refuses any row above what that sheet states.
        Adding a body here owes three things in the same commit: an e2e case that pins
        the rows' effect on that body, a re-run of every flight case on it that quotes an
-       airspeed or a drag figure, and a commit message naming which numbers moved. */
-    static const char *const kWindsAuthored[] = {"Venus", "Earth", "Mars"};
+       airspeed or a drag figure, and a commit message naming which numbers moved.
+       #772 paid that for the five bodies that had air and no wind left: Jupiter, Saturn,
+       Uranus, Neptune, Titan. Their hull-facing pin is e2e flight/772-the-giants-and-titan-
+       move-their-air (one spawn per body, airspeed pinned at the windless control's value
+       and ground speed pinned carrying the authored wind), their map pin is e2e
+       render/772-a-real-world-winds-its-bands (Uranus' 13 generated belts ring one arrow row
+       each, Jupiter's three authored bands fall back to the grid), and their dossier rows
+       are pinned by e2e render/717. The re-run half came up empty: no shipped flight golden
+       on any of these five quotes an airspeed or a drag figure -- render/145 (Uranus, an
+       orbit bed) and flight/255 (a Jupiter transfer) are the only flight cases that touch
+       them at all, and both were re-run and print what they printed before. Pluto keeps the
+       "air, but no wind authored" hole that render/769 and render/717 need an example of. */
+    static const char *const kWindsAuthored[] = {"Venus", "Earth", "Mars",
+                                                 "Jupiter", "Saturn", "Uranus",
+                                                 "Neptune", "Titan"};
     constexpr size_t kNumWinds = sizeof(kWindsAuthored) / sizeof(kWindsAuthored[0]);
     /* The CATALOGUE, named rather than enumerated. res/systems is also what the in-game
        system picker lists, so it can hold a demo file whose bodies are invented to show a

@@ -739,8 +739,11 @@ def check_fact_air(planets, parsed, verbose=True):
 #   Neptune "Wind speeds: 0-580 m/s"                               a range above the
 #                                                                  loader's own net
 #   Jupiter "Wind speeds" then "Up to 150 m/s (<30 degrees latitude)"
-#   Saturn  "Wind speeds" then "Up to 400 m/s (>30 degrees latitude)"
-#           a LATITUDE split, and WindLevel has no latitude axis
+#           "Up to 40 m/s (>30 degrees latitude)"
+#   Saturn  "Wind speeds" then "Up to 400 m/s (<30 degrees latitude)"
+#           "Up to 150 m/s (>30 degrees latitude)"
+#           a LATITUDE split, which #767's lat bands can hold -- and the reason a
+#           GENERATED belt field is refused outright under these two sheets
 # So the one comparison that is honest across all six is a CEILING: no component this
 # file authors anywhere may exceed the fastest speed that body's own sheet states. That
 # is the same class of slip as #684 typing a surface pressure in bar into a density
@@ -763,6 +766,13 @@ FACT_WIND_KNOWN = {
                                 "published Venus climatology -- see the block that "
                                 "authors it, and note the deck this file renders is "
                                 "at 55 km, not 65 km (#714)"),
+    # Titan is the other side of the same coin: not a row above a ceiling, but a whole
+    # table under a page that states nothing. It stays a waiver rather than a rule change
+    # because the next body to do this should have to say why too.
+    ('Titan', 0.0): (1.0, "no page in this corpus states a wind for Titan -- it has no "
+                          "fact page of its own, and the satellite sheet its air comes "
+                          "from has no wind line. All three rows are published "
+                          "climatology, cited where they are authored (#772)"),
 }
 
 # 'Wind speeds' is the label; the speeds are the numbers that end a 'm/s' phrase.
@@ -1619,13 +1629,41 @@ N2_METHANE = [{'gas': 'N2', 'fraction': 0.984},
               {'gas': 'CH4', 'fraction': 0.014},
               {'gas': 'H2', 'fraction': 0.002}]
 
+# Which page states a moon's air. MOON_ATMOS is outside the `planets` list every fact
+# guard walks, so this is how check_fact_wind reaches a mooned wind table at all (#772).
+# Listed rather than scraped: a mooned wind row with no entry here is a refusal below,
+# not a silent pass.
+MOON_AIR_PAGES = {'Titan': 'saturniansatfact.html'}
+
 MOON_ATMOS = {
     'Titan':  {'color': [0.85, 0.60, 0.25], 'thickness': 40000,
                'power': 3.0, 'intensity': 0.8,
                'sea_level_density': 5.3, 'scale_height': 20000,
                # Titan's air is the densest in the catalogue and still cannot burn:
                # nitrogen, methane, a trace of hydrogen, no free oxygen at all.
-               'composition': N2_METHANE},
+               'composition': N2_METHANE,
+               # Wind (#772). No page in this corpus states a wind for Titan -- it has no
+               # fact page of its own and its data comes from the giant-planet satellite
+               # sheet, which has no wind line -- so all three figures are climatology and
+               # FACT_WIND_KNOWN carries the waiver that says so. The shape is the one
+               # Titan's published climatology agrees on: a near-calm boundary layer under
+               # stratospheric flow an order of magnitude faster.
+               # Weighing it matters more here than on the giants because of the density:
+               # 5.3 kg/m3 at the datum is 4x Earth's sea level, so 100 m/s of deck wind
+               # would be 26.5 kPa. A m/s there is 3 Pa; 30 m/s at 20 km is 0.88 kPa; the
+               # 100 m/s at 60 km sits in 0.264 kg/m3 for 1.3 kPa, Mach 0.51 on the 195 m/s
+               # sound speed this column implies (its derived 90.5 K datum temperature,
+               # the one SOLAR_AIR_EXPONENTIAL above exists to allow).
+               # NO wind_gen, and this is the case the rotation scaling was never for:
+               # Titan is tidally locked, so at this column's own U = 100 m/s its Rossby
+               # number is 4.26 and its Rhines scale is 127 deg of latitude -- wider than
+               # the hemisphere, and past the Ro ~2.14 at which atmo.h says the ask is
+               # simply zero belts. windGenerate would run its jittered edge math, ask for
+               # none, and return these three rows unchanged (bands 1) -- so author the
+               # column plainly instead.
+               'wind': [{'alt': 0, 'east': 1.0, 'north': 0.0},
+                        {'alt': 20000, 'east': 30.0, 'north': 0.0},
+                        {'alt': 60000, 'east': 100.0, 'north': 0.0}]},
     'Triton': {'color': [0.60, 0.70, 0.85], 'thickness': 5000,
                'power': 5.0, 'intensity': 0.3},
     'Io':     {'color': [0.85, 0.75, 0.40], 'thickness': 4000,
@@ -1833,12 +1871,13 @@ def build_base(verbose_air=False):
                          #    the same air is already fighting. The jet is the number
                          #    worth having; check_fact_wind keeps either row from ever
                          #    exceeding the page.
-                         # Signs: +east, the sense a mid-latitude jet runs. WindLevel has
-                         # an altitude axis and no latitude axis, so this row is eastward
-                         # over the equator too, where the trade winds blow the other way.
-                         # That is a stub, not a claim -- the same missing axis is why
-                         # Jupiter's and Saturn's per-latitude sheets cannot be authored
-                         # at all, and what a lat/lon wind field would fix.
+                         # Signs: +east, the sense a mid-latitude jet runs. Earth's table
+                         # carries no latitude bands -- #767 gave WindLevel that axis and
+                         # nobody has used it on this body -- so this row is eastward over
+                         # the equator too, where the trade winds blow the other way.
+                         # That is a stub, not a claim. Jupiter and Saturn are what
+                         # authoring the split looks like when the source states one, and
+                         # Earth's own split is the row-set still missing here.
                          # Above 11 km the table holds 40 m/s to the 85 km top, which is
                          # windAt()'s documented rule (the air thins out, it does not calm
                          # down) and is under 0.05 Pa of dynamic pressure by the
@@ -1930,7 +1969,30 @@ def build_base(verbose_air=False):
                          # miss where Saturn's sheet disagreed with itself by 28% and
                          # we chose the column there: inside the guard's 30% band, so
                          # source fidelity wins and --check prints the difference.
-                         'composition': H2_HE}},
+                         'composition': H2_HE,
+                         # Wind (#772). jupiterfact.html is one of the two sheets in this
+                         # corpus that states wind PER LATITUDE BAND: "Up to 150 m/s (<30
+                         # degrees latitude) Up to 40 m/s (>30 degrees latitude)". That
+                         # pair is exactly what #767's lat bands were cut for -- both halves
+                         # are half-open upward, so [-90,-30), [-30,30), [30,90] tile the
+                         # globe with no gap and no overlap, and the loader's coverage error
+                         # spells out that very tiling (system.cpp).
+                         # These rows carry the page's numbers at THIS body's datum, the
+                         # 1-bar level: 150 m/s over 0.162 kg/m3 is 1.8 kPa of dynamic
+                         # pressure, and Mach 0.16 on the 936 m/s sound speed this mix and
+                         # 165 K give (sqrt(gamma Rs T), drag.h). Both are inside the band
+                         # the aero law is pinned in -- a hull at Kerbin cruise already
+                         # pays 1.6 kPa -- so a Jupiter wind moves the flow without
+                         # reaching the transonic blend at Mach 0.75.
+                         # NO wind_gen here, and check_fact_wind refuses it by name: the
+                         # page says WHERE the speed lives, and a Rhines-scale field would
+                         # put derived numbers inside a latitude bound the sheet set.
+                         'wind': [{'alt': 0, 'east': 150.0, 'north': 0.0,
+                                   'lat': [-30.0, 30.0]},
+                                  {'alt': 0, 'east': 40.0, 'north': 0.0,
+                                   'lat': [-90.0, -30.0]},
+                                  {'alt': 0, 'east': 40.0, 'north': 0.0,
+                                   'lat': [30.0, 90.0]}]}},
          False),
         ('saturnfact.html', 'Saturn', 6.0,
          {'bands': True, 'band_count': 9,
@@ -1965,7 +2027,33 @@ def build_base(verbose_air=False):
                          # (inside its 30% band) rather than hiding it. (#700)
                          'composition': [{'gas': 'H2', 'fraction': 0.963},
                                          {'gas': 'He', 'fraction': 0.032},
-                                         {'gas': 'CH4', 'fraction': 0.005}]}},
+                                         {'gas': 'CH4', 'fraction': 0.005}],
+                         # Wind (#772). saturnfact.html states the same latitude
+                         # split Jupiter's page does, with faster numbers:
+                         # "Up to 400 m/s (<30 degrees latitude) Up to 150
+                         # m/s (>30 degrees latitude)". Both halves at the
+                         # 1-bar datum, tiled the way #767 tiles them.
+                         # This is the most energetic wind in the
+                         # catalogue: 400 m/s over 0.193 kg/m3 is 15.4 kPa
+                         # of dynamic pressure at the deck -- about four
+                         # times what a hull at Kerbin cruise already pays
+                         # (1.6-3.8 kPa) and eight times Jupiter's row.
+                         # Mach 0.47 on the 853 m/s this mix gives at 134 K,
+                         # so the lift law stays on its subsonic branch and
+                         # under the transonic blend at Mach 0.75; a hull
+                         # that adds its own 150 m/s to a 400 m/s headwind
+                         # is at 24 kPa and Mach 0.64 before any gust, which
+                         # is why #716 (nothing caps an aero impulse) wants
+                         # settling before anyone flies fast in this air.
+                         # No wind_gen: the sheet bounds wind by latitude,
+                         # and check_fact_wind refuses a generated field
+                         # under such a sheet.
+                         'wind': [{'alt': 0, 'east': 400.0, 'north': 0.0,
+                                   'lat': [-30.0, 30.0]},
+                                  {'alt': 0, 'east': 150.0, 'north': 0.0,
+                                   'lat': [-90.0, -30.0]},
+                                  {'alt': 0, 'east': 150.0, 'north': 0.0,
+                                   'lat': [30.0, 90.0]}]}},
          False),
         ('uranusfact.html', 'Uranus', 7.0,
          {'bands': True, 'band_count': 7,
@@ -1992,7 +2080,32 @@ def build_base(verbose_air=False):
                          # faster aloft; shellEdge 444 -> 300 km (#701's caveat again).
                          # Uranus's own H2/He/CH4 proportions, not gen_systems' Jool
                          # (#636: same three gases, a different sky).
-                         'composition': H2_HE_CH4_SOLAR}},
+                         'composition': H2_HE_CH4_SOLAR,
+                         # Wind (#772). uranusfact.html states one bare range -- "0-250
+                         # m/s" -- with no latitude structure and no level, so the two
+                         # ends of that range become this column's two rows and the
+                         # latitude structure is the generator's (#775).
+                         # The page's 250 m/s is not put at the deck: the two air tables
+                         # this file already has (Earth's jet at 11 km, Venus's
+                         # superrotation at 65 km) both put their fast flow above the
+                         # surface, and a steady profile is not a forecast (#688), so the
+                         # deck takes the low end and the ceiling goes to 30 km. What
+                         # that costs the aero law: 100 m/s over 0.418 kg/m3 is 2.1 kPa
+                         # at the datum (Mach 0.17 on the 584 m/s this mix gives at 76 K),
+                         # 250 m/s over 0.146 kg/m3 is 4.6 kPa at 30 km (Mach 0.47) --
+                         # the same order as a Kerbin cruise, so no transonic blend.
+                         # THE GENERATOR, allowed here because the sheet says nothing
+                         # about latitude: with this body's 17.24 h day and 25,362 km
+                         # radius, U = 250 m/s gives Ro 0.049 and a Rhines scale of 13.6
+                         # deg at 30 deg latitude, so 6 belts per hemisphere -> 13 bands x
+                         # 2 anchors = 26 rows, inside the loader's 64. --check prints
+                         # that row. #775's own table says this scaling overpredicts the
+                         # ice giants (and Uranus rolls at 98 deg obliquity, which the
+                         # generator cannot represent), so the belts are layout, not
+                         # another fact the page states.
+                         'wind': [{'alt': 0, 'east': 100.0, 'north': 0.0},
+                                  {'alt': 30000, 'east': 250.0, 'north': 0.0}],
+                         'wind_gen': 'rhines'}},
          False),
         ('neptunefact.html', 'Neptune', 8.0,
          {'bands': True, 'band_count': 7,
@@ -2013,7 +2126,32 @@ def build_base(verbose_air=False):
                          # barometer says 1.015 bar.
                          'composition': [{'gas': 'H2', 'fraction': 0.80},
                                          {'gas': 'He', 'fraction': 0.19},
-                                         {'gas': 'CH4', 'fraction': 0.015}]}},
+                                         {'gas': 'CH4', 'fraction': 0.015}],
+                         # Wind (#772). neptunefact.html gives a bare range like Uranus's:
+                         # "0-580 m/s" -- no latitude structure, so the column is authored
+                         # and the belts come from the generator (#775).
+                         # 580 m/s is NOT authored anywhere, and that is a deliberate cap
+                         # under the sheet's ceiling -- which the guard allows (it only
+                         # refuses exceeding it; Earth's row does the same, 40 m/s at 11 km
+                         # rather than its sheet's 100). The reason is what the number costs
+                         # at this body's 1-bar datum: 580 m/s over 0.434 kg/m3 is 73 kPa of
+                         # dynamic pressure and Mach 1.01 on the 574 m/s sound speed this
+                         # mix gives at 72 K, i.e. the lift law sits in the middle of its
+                         # transonic blend (kTransonicMach 0.75 to kSupersonicMach 1.25),
+                         # and #716 has nothing capping an aero impulse -- the blow-up it
+                         # documents happened at 810 kPa. A row that starts a hull off at
+                         # Mach 1 in dense air is a physics statement the aero law has not
+                         # earned yet, so the fast row goes 300 m/s at 25 km: 6.1 kPa and
+                         # Mach 0.57, twice a Kerbin cruise and still subsonic. The deck
+                         # takes the range's low end, 120 m/s = 3.1 kPa, Mach 0.21.
+                         # The generator over this column asks for 6 belts per hemisphere
+                         # (Ro 0.056, Rhines scale 14.6 deg at 30 deg latitude on a 16.11 h
+                         # day), so 13 bands x 2 anchors = 26 rows -- under the loader's 64,
+                         # and the widest wind in that table is still the 300 m/s authored
+                         # here, because windGenerate scales belts by amp <= 1.
+                         'wind': [{'alt': 0, 'east': 120.0, 'north': 0.0},
+                                  {'alt': 25000, 'east': 300.0, 'north': 0.0}],
+                         'wind_gen': 'rhines'}},
          False),
         ('plutofact.html', 'Pluto', 9.0,
          {'amplitude': 2000, 'palette': [[0.0, [0.55, 0.45, 0.38]],
@@ -2112,7 +2250,20 @@ def build_base(verbose_air=False):
         raise SystemExit('%d authored air datum(s) disagree with the fact sheet '
                          'that states them (bands: FACT_AIR_BANDS)' % len(bad))
     # ... and the air's own motion (#688), which the guard above never looked at.
-    bad = check_fact_wind(planets, verbose=verbose_air, parsed=parsed)
+    # Moons author their air in MOON_ATMOS, outside the `planets` list this guard walks,
+    # so a mooned wind table would reach the game unweighed -- which is not how Titan's
+    # rows should pass, since their page states no wind at all and that is precisely the
+    # case FACT_WIND_KNOWN exists to make someone argue for (#772).
+    winded = list(planets)
+    for mname, matm in MOON_ATMOS.items():
+        if not matm.get('wind'):
+            continue
+        mpage = MOON_AIR_PAGES.get(mname)
+        if mpage is None:
+            raise SystemExit('%s authors wind rows in MOON_ATMOS with no page in '
+                             'MOON_AIR_PAGES to weigh them against' % mname)
+        winded.append((mpage, mname, 0.0, {'atmosphere': matm}, False))
+    bad = check_fact_wind(winded, verbose=verbose_air, parsed=parsed)
     if bad:
         for m in bad:
             print('DRIFT   fact wind: ' + m)

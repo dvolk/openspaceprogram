@@ -11,8 +11,11 @@
 #
 # The rows come from utils/make_solar_system.py, where each one cites the fact sheet it
 # stands on (or says plainly that the sheet stops short and the figure is climatology).
+# Since #767 the label can also carry a LATITUDE band, and since #772 five shipped bodies use
+# it; a table the generator expands (#775) gets a row naming the law and the belt count it
+# derived instead of 26 rows the player cannot read.
 NAME dossier-says-the-air-moves
-CLAIM A body's dossier prints a row per authored wind level, with the altitude, the speed and the compass direction the air moves, and a body with no authored wind prints none.
+CLAIM A body's dossier prints a row per authored wind level, with the altitude, the speed and the compass direction the air moves -- and the latitude band when its table has one -- while a body with no authored wind prints none.
 KIND invariant
 ARGS --system res/systems/solar_system.json --timeout 6 --atlas-dump 4000
 FORBID error:
@@ -25,7 +28,25 @@ CHECK re.search(r"air wind 0\.0 m\s+1 m/s east\s*\n\s*\[atlas\]   air wind 65\.0
 CHECK re.search(r"air wind 0\.0 m\s+5 m/s east\s*\n\s*\[atlas\]   air wind 11\.0 km\s+40 m/s east", re.search(r"\[atlas\] Earth weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
 # Mars: one row, the lander-site figure held up to the ceiling by windAt()'s rule.
 CHECK re.search(r"air wind 0\.0 m\s+10 m/s east", re.search(r"\[atlas\] Mars weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
-# And the negative: bodies whose sheet states no wind and whose file authors none print
-# no such row -- not "0 m/s calm", which would be a claim the file never made.
+# #772: a table with LATITUDE bands prints the band beside the altitude, which is the only way
+# this readout can tell "150 m/s inside 30 degrees and 40 outside it" -- jupiterfact.html's own
+# pair -- from one number for the whole world. Both rows sit at the datum, so the order a reader
+# sees is the order the file authored them: equator first, then the two outer halves.
+CHECK re.search(r"air wind 0\.0 m, lat -30/\+30\s+150 m/s east\s*\n\s*\[atlas\]   air wind 0\.0 m, lat -90/-30\s+40 m/s east\s*\n\s*\[atlas\]   air wind 0\.0 m, lat \+30/\+90\s+40 m/s east", re.search(r"\[atlas\] Jupiter weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+# A column the GENERATOR expanded says so, and says what it derived: the law, the Rossby number
+# and the belt count it asked for. Then it lists the equatorial belt -- the anchors' own values,
+# which is what the belt at lat 0 is -- and declines to print the other 24 rows, sending the
+# reader to the wind map instead. 26 rows in a dossier would bury the two the file authored.
+CHECK re.search(r"air wind \(generated\)\s+rhines: Ro 0\.0487, 6 belts per hemisphere, Rhines scale 13\.6 deg", re.search(r"\[atlas\] Uranus weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+CHECK re.search(r"air wind 0\.0 m, lat -6/\+6\s+100 m/s east\s*\n\s*\[atlas\]   air wind 30\.0 km, lat -6/\+6\s+250 m/s east\s*\n\s*\[atlas\]   air wind\s+24 more rows \(one per anchor per belt\) not listed", re.search(r"\[atlas\] Uranus weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+# Titan's three levels, on a body no page states a wind for: the rows are published climatology,
+# and the FACT_WIND_KNOWN waiver in utils/make_solar_system.py is on record saying so. 1 m/s at
+# the datum is worth printing anyway -- it is the calmest deck in the catalogue and the densest
+# air (5.3 kg/m3) at the same time.
+CHECK re.search(r"air wind 0\.0 m\s+1 m/s east\s*\n\s*\[atlas\]   air wind 20\.0 km\s+30 m/s east\s*\n\s*\[atlas\]   air wind 60\.0 km\s+100 m/s east", re.search(r"\[atlas\] Titan weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+# And the negative: bodies whose sheet states no wind and whose file authors none print no such
+# row -- not "0 m/s calm", which would be a claim the file never made. Pluto is the half of the
+# pair that bites since #772: it has AUTHORED air (13 microbar of N2, #700) and no wind rows, so
+# this is a world whose sky the dossier can describe and declines to say is moving.
 CHECK not re.search(r"air wind", re.search(r"\[atlas\] Moon weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
-CHECK not re.search(r"air wind", re.search(r"\[atlas\] Jupiter weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+CHECK not re.search(r"air wind", re.search(r"\[atlas\] Pluto weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))

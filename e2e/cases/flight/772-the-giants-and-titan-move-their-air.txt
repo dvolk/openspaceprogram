@@ -1,0 +1,59 @@
+# #772 authored wind on the last five bodies in the catalogue that have an atmosphere and had
+# none: Jupiter, Saturn, Uranus, Neptune, Titan. utils/make_solar_system.py argues each row
+# against its fact sheet (and check_fact_wind refuses a row above what that sheet states, with
+# FACT_WIND_KNOWN carrying Titan, whose page states no wind at all), and tests/test_scenarios.cpp's
+# kWindsAuthored lets a body author rows only if a case like this one pins what they DO.
+#
+# One run, five hulls, all on the same --startship shape: skiff_trim on the flying-trim bed at
+# lat 0 lon 0, which spawns at a tenth of each body's air top and gives an airspeed keyed to
+# that body's own air and gravity. The wind rows read at that altitude, at the equator, are:
+#   Jupiter  24.5 km  150 m/s east   the authored <30 deg band, held up above it by windAt()
+#   Saturn   40.0 km  400 m/s east   the authored <30 deg band (saturnfact.html's own figure)
+#   Uranus   25.0 km  225 m/s east   interpolated between the column's 100 at alt 0 and its 250
+#                                    at 30 km -- and the #775 generator leaves its equatorial
+#                                    belt at the anchors' own values, which is what makes that
+#                                    number reachable at lat 0 at all
+#   Neptune  20.0 km  264 m/s east   the same, between 120 and 300
+#   Titan    20.0 km   30 m/s east   the 20 km row verbatim
+# The windless control (this catalogue with those five tables deleted -- tmp, not shipped) prints
+# |v| = |v_air| for every one of them: 205.1, 113.4, 72.0, 81.2, 8.3 m/s. That is #688's law
+# restated on five more worlds -- a wind is an air velocity, not a force, so the hull's airspeed
+# does not move and its ground speed does.
+#
+# The gap is a VECTOR difference, not a sum: at Jupiter and Saturn and Neptune the bed's track is
+# near-east and the gap is 150.0, 389.9 and 257.5 of a 150 / 400 / 264 m/s wind. On Uranus the
+# bed launches the hull heading 224 deg (southwest through the air -- the same heading the
+# windless run prints, so it is the bed, not the wind), so 72 m/s of airspeed plus 225 m/s of
+# easterly wind comes out as 181.9 m/s over the ground. Pinning both numbers per body is what
+# catches a sign flip or a row read at the wrong altitude, which neither sum alone can.
+NAME the-giants-and-titan-move-their-air
+CLAIM A hull spawned on each of the five bodies #772 winds reads its authored wind at the spawn altitude: the airspeed stays the bed's own value while the ground speed takes the wind, at Jupiter by exactly the 150 m/s its sheet states.
+KIND golden
+ARGS --system res/systems/solar_system.json --timeout 2 --info-log
+ARGS --startship j,res/ships/skiff_trim.json,Jupiter,flying-trim,lat=0,lon=0
+ARGS --startship s,res/ships/skiff_trim.json,Saturn,flying-trim,lat=0,lon=0
+ARGS --startship u,res/ships/skiff_trim.json,Uranus,flying-trim,lat=0,lon=0
+ARGS --startship n,res/ships/skiff_trim.json,Neptune,flying-trim,lat=0,lon=0
+ARGS --startship t,res/ships/skiff_trim.json,Titan,flying-trim,lat=0,lon=0
+FORBID error:
+FORBID atmosphere.wind
+# Every one of the five carries air: ground speed strictly above airspeed, on all five lines.
+# A wind that stopped reaching the aero readout (a row dropped at load, a table past the 64-row
+# budget) prints |v| = |v_air| here instead, which is what the windless control does.
+CHECK (lambda p: len(p) == 5 and all(float(g) > float(a) + 1.0 for g, a in p))(re.findall(r"around (?:Jupiter|Saturn|Uranus|Neptune|Titan):.*?\|v\| = ([0-9.]+) m/s \|v_air\| = ([0-9.]+)", out))
+# Jupiter: the exact case. Its track is east, its band is one row held up above the datum, so the
+# gap is the authored figure to within rounding -- 355.1 over the ground, 205.1 through the air.
+CHECK (lambda m: abs(float(m.group(1)) - float(m.group(2)) - 150.0) < 0.3)(re.search(r"around Jupiter:.*?\|v\| = ([0-9.]+) m/s \|v_air\| = ([0-9.]+)", out))
+# Saturn's 400 m/s band is the fastest wind in the catalogue and the only one that makes #716
+# (nothing caps an aero impulse) matter on a shipped body: 15.4 kPa of dynamic pressure at the
+# deck on 0.193 kg/m3. Its airspeed pin is the control's 113.4, unmoved.
+CHECK re.search(r"around Saturn:.*?\|v\| = 50[0-5]\.[0-9] m/s \|v_air\| = 11[0-9]\.[0-9]", out)
+# The generated columns: the equatorial belt answers with the anchors, so these are the
+# interpolated 225 and 264 rather than either row verbatim, and neither body's airspeed budged
+# from its control value.
+CHECK re.search(r"around Uranus:.*?\|v\| = 18[0-2]\.[0-9] m/s \|v_air\| = 7[1-3]\.[0-9]", out)
+CHECK re.search(r"around Neptune:.*?\|v\| = 33[5-9]\.[0-9] m/s \|v_air\| = 8[0-3]\.[0-9]", out)
+# Titan: the densest air in the catalogue (5.3 kg/m3 at its datum, 1.95 up here) with the calmest
+# table. The hull's own 8.3 m/s is 67 Pa of dynamic pressure; the 30 m/s of air passing over the
+# ground is 878 Pa, which is the number a hull parking in it would have to survive.
+CHECK re.search(r"around Titan:.*?\|v\| = 3[6-9]\.[0-9] m/s \|v_air\| = [78]\.[0-9]", out)
