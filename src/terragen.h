@@ -167,6 +167,20 @@ struct AtmosphereParams {
     std::vector<WindLevel> wind;
     bool has_wind() const { return !wind.empty(); }
 
+    /* WHERE those rows came from (#775). Empty = authored, which is what every shipped
+       body is. "rhines" = the author gave a vertical COLUMN and the loader expanded it
+       into latitude bands from the body's spin (atmo.h:windGenerate), so the bands are a
+       consequence of two published numbers rather than published numbers themselves.
+       That distinction has to ride next to the table, because the dossier quotes fact
+       sheets: echoing a generated belt as if a spacecraft measured it is the one way this
+       model could make the game lie to its own source. wind_gen_bands / _ro / _jet are
+       what the generator decided, for the dossier and --check to print rather than
+       re-derive. */
+    std::string wind_gen_law;
+    int wind_gen_bands = 0;
+    double wind_gen_ro = 0.0;
+    double wind_gen_jet_deg = 0.0;
+
     /* "Is there a PHYSICAL atmosphere here at all?" -- the question the aero pass,
        the rails gate and the readout all ask, in ONE place so they cannot answer it
        differently. A render rim alone does not count; either profile half does. */

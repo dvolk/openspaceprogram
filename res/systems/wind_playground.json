@@ -13,9 +13,7 @@
       "lon_deg": 0.0,
       "height_m": 5.0,
       "heading_deg": 0.0,
-      "flags": [
-        "VAB_LAUNCH_PAD"
-      ]
+      "flags": ["VAB_LAUNCH_PAD"]
     }
   ],
   "bodies": [
@@ -26,16 +24,10 @@
       "mass": 1.757e+28,
       "seed": 0,
       "has_sea": false,
-      "inertial": {
-        "soi": 1e+18,
-        "pos": [0, 0, 0],
-        "orb_ang_speed": 0.0
-      },
+      "inertial": {"soi": 1e+18, "pos": [0, 0, 0], "orb_ang_speed": 0.0},
       "transfer_dv": 0.0,
       "science_mult": 2.0,
-      "surface": {
-        "temperature": 2838.1
-      }
+      "surface": {"temperature": 2838.1}
     },
     {
       "name": "Belts",
@@ -45,14 +37,8 @@
       "mass": 5.2915793e+22,
       "seed": 11,
       "has_sea": true,
-      "inertial": {
-        "pos": [0, 0, -20000000000],
-        "orb_ang_speed": 3.828e-07
-      },
-      "rotating": {
-        "rot_ang_speed": 0.0002915709030370688,
-        "axial_tilt": 0.05
-      },
+      "inertial": {"pos": [0, 0, -20000000000], "orb_ang_speed": 3.828e-07},
+      "rotating": {"rot_ang_speed": 0.0002915709030370688, "axial_tilt": 0.05},
       "transfer_dv": 0.0,
       "science_mult": 1.0,
       "surface": {
@@ -62,7 +48,7 @@
           "power": 4.0,
           "intensity": 0.7,
           "sea_level_pressure": 101325.0,
-          "height": 60000.0,
+          "height": 80000.0,
           "composition": [
             {"gas": "N2", "fraction": 0.78},
             {"gas": "O2", "fraction": 0.21}
@@ -87,16 +73,10 @@
       "mass": 5.2915793e+22,
       "seed": 12,
       "has_sea": true,
-      "inertial": {
-        "pos": [30000000000, 0, 0],
-        "orb_ang_speed": 2.084e-07
-      },
-      "rotating": {
-        "rot_ang_speed": 0.0002915709030370688,
-        "axial_tilt": 0.05
-      },
-      "transfer_dv": 0.0,
-      "science_mult": 1.0,
+      "inertial": {"pos": [30000000000, 0, 0], "orb_ang_speed": 2.084e-07},
+      "rotating": {"rot_ang_speed": 0.0002915709030370688, "axial_tilt": 0.05},
+      "transfer_dv": 1390.5,
+      "science_mult": 1.7,
       "surface": {
         "atmosphere": {
           "color": [0.85, 0.78, 0.65],
@@ -104,7 +84,7 @@
           "power": 4.0,
           "intensity": 0.7,
           "sea_level_pressure": 101325.0,
-          "height": 60000.0,
+          "height": 80000.0,
           "composition": [
             {"gas": "N2", "fraction": 0.78},
             {"gas": "O2", "fraction": 0.21}
@@ -133,24 +113,18 @@
       "mass": 5.2915793e+22,
       "seed": 13,
       "has_sea": true,
-      "inertial": {
-        "pos": [0, 0, 40000000000],
-        "orb_ang_speed": 1.3535e-07
-      },
-      "rotating": {
-        "rot_ang_speed": 0.0002915709030370688,
-        "axial_tilt": 0.05
-      },
-      "transfer_dv": 0.0,
-      "science_mult": 1.0,
+      "inertial": {"pos": [0, 0, 40000000000], "orb_ang_speed": 1.3535e-07},
+      "rotating": {"rot_ang_speed": 0.0002915709030370688, "axial_tilt": 0.05},
+      "transfer_dv": 2177.9,
+      "science_mult": 2.1,
       "surface": {
         "atmosphere": {
-          "color": [0.80, 0.62, 0.55],
+          "color": [0.8, 0.62, 0.55],
           "thickness": 20000,
           "power": 4.0,
           "intensity": 0.7,
           "sea_level_pressure": 101325.0,
-          "height": 60000.0,
+          "height": 80000.0,
           "composition": [
             {"gas": "N2", "fraction": 0.78},
             {"gas": "O2", "fraction": 0.21}
@@ -176,24 +150,18 @@
       "mass": 5.2915793e+22,
       "seed": 14,
       "has_sea": true,
-      "inertial": {
-        "pos": [-50000000000, 0, 0],
-        "orb_ang_speed": 9.685e-08
-      },
-      "rotating": {
-        "rot_ang_speed": 0.0002915709030370688,
-        "axial_tilt": 0.05
-      },
-      "transfer_dv": 0.0,
-      "science_mult": 1.0,
+      "inertial": {"pos": [-50000000000, 0, 0], "orb_ang_speed": 9.685e-08},
+      "rotating": {"rot_ang_speed": 0.0002915709030370688, "axial_tilt": 0.05},
+      "transfer_dv": 2676.6,
+      "science_mult": 2.4,
       "surface": {
         "atmosphere": {
-          "color": [0.45, 0.65, 0.90],
+          "color": [0.45, 0.65, 0.9],
           "thickness": 20000,
           "power": 4.0,
           "intensity": 0.7,
           "sea_level_pressure": 101325.0,
-          "height": 60000.0,
+          "height": 80000.0,
           "composition": [
             {"gas": "N2", "fraction": 0.78},
             {"gas": "O2", "fraction": 0.21}
@@ -209,6 +177,113 @@
             {"alt": 0.0, "east": -12.0, "north": 0.0, "up": -0.015, "lat": [10.0, 35.0]},
             {"alt": 0.0, "east": 20.0, "north": 0.0, "up": 0.0, "lat": [35.0, 90.0]}
           ]
+        }
+      }
+    },
+    {
+      "name": "Slowpoke",
+      "type": "planet",
+      "orbits": "Sun",
+      "radius": 6000000,
+      "mass": 5.29e+24,
+      "seed": 21,
+      "has_sea": true,
+      "inertial": {"pos": [70000000000, 0, 0], "orb_ang_speed": 5.85e-08},
+      "rotating": {"rot_ang_speed": 3e-07, "axial_tilt": 0.05},
+      "transfer_dv": 3256.5,
+      "science_mult": 2.7,
+      "surface": {
+        "atmosphere": {
+          "color": [0.9, 0.85, 0.7],
+          "thickness": 30000,
+          "power": 4.0,
+          "intensity": 0.8,
+          "sea_level_pressure": 900000.0,
+          "height": 107000.0,
+          "composition": [
+            {"gas": "CO2", "fraction": 0.96}
+          ],
+          "layers": [
+            {"alt": 0.0, "T": 737.0, "lapse": -0.0078333},
+            {"alt": 60000.0, "T": 267.0, "lapse": 0.0}
+          ],
+          "wind": [
+            {"alt": 0.0, "east": 1.0, "north": 0.0},
+            {"alt": 60000.0, "east": 100.0, "north": 0.0}
+          ],
+          "wind_gen": "rhines"
+        }
+      }
+    },
+    {
+      "name": "Earthlike",
+      "type": "planet",
+      "orbits": "Sun",
+      "radius": 6000000,
+      "mass": 5.29e+24,
+      "seed": 22,
+      "has_sea": true,
+      "inertial": {"pos": [0, 0, 90000000000], "orb_ang_speed": 4.01e-08},
+      "rotating": {"rot_ang_speed": 7.3e-05, "axial_tilt": 0.05},
+      "transfer_dv": 3570.7,
+      "science_mult": 2.9,
+      "surface": {
+        "atmosphere": {
+          "color": [0.45, 0.65, 0.9],
+          "thickness": 20000,
+          "power": 4.0,
+          "intensity": 0.7,
+          "sea_level_pressure": 101325.0,
+          "height": 87000.0,
+          "composition": [
+            {"gas": "N2", "fraction": 0.78},
+            {"gas": "O2", "fraction": 0.21}
+          ],
+          "layers": [
+            {"alt": 0.0, "T": 288.0, "lapse": -0.0036},
+            {"alt": 20000.0, "T": 216.0, "lapse": 0.0}
+          ],
+          "wind": [
+            {"alt": 0.0, "east": 5.0, "north": 0.0},
+            {"alt": 11000.0, "east": 40.0, "north": 0.0}
+          ],
+          "wind_gen": "rhines"
+        }
+      }
+    },
+    {
+      "name": "Belted",
+      "type": "planet",
+      "orbits": "Sun",
+      "radius": 70000000,
+      "mass": 7.19e+26,
+      "seed": 23,
+      "has_sea": false,
+      "inertial": {"pos": [0, 0, -120000000000], "orb_ang_speed": 2.6e-08},
+      "rotating": {"rot_ang_speed": 0.000176, "axial_tilt": 0.05},
+      "transfer_dv": 3824.1,
+      "science_mult": 3.0,
+      "surface": {
+        "atmosphere": {
+          "color": [0.85, 0.78, 0.65],
+          "thickness": 90000,
+          "power": 3.0,
+          "intensity": 0.6,
+          "sea_level_pressure": 100000.0,
+          "height": 600000.0,
+          "composition": [
+            {"gas": "H2", "fraction": 0.898},
+            {"gas": "He", "fraction": 0.102}
+          ],
+          "layers": [
+            {"alt": 0.0, "T": 165.0, "lapse": -0.00102829},
+            {"alt": 51541.9, "T": 112.0, "lapse": 0.0}
+          ],
+          "wind": [
+            {"alt": 0.0, "east": 40.0, "north": 0.0},
+            {"alt": 20000.0, "east": 150.0, "north": 0.0}
+          ],
+          "wind_gen": "rhines"
         }
       }
     }

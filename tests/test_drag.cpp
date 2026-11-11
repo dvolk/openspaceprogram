@@ -4015,6 +4015,78 @@ static void test_wind_profile() {
     CHECK_NEAR(glm::length(nPole), 1.0, 0.0, "a pole's north is still unit");
 }
 
+/* THE GENERATOR (#775): a column of anchors plus the body's spin becomes latitude
+   bands, and the bands have to be a table the loader's own laws accept. */
+static void test_wind_generate() {
+    const std::vector<WindLevel> col = { {0.0, 5.0, 0.0}, {11000.0, 40.0, 0.0} };
+
+    /* A Venus-slow rotator gets NOTHING. Ro ~ 11 for this 40 m/s column (~28 at the 90 m/s
+       the sheet reports) says rotation never constrains the flow, so the authored column
+       IS the published picture -- which is what Venus's sheet is: one broad superrotating
+       profile and no belts. A generator that banded Venus anyway would be inventing
+       structure the source denies. */
+    WindGenInfo slow;
+    const auto venus = windGenerate(col, 2.992e-7, 6.052e6, 7ull, slow);
+    CHECK_NEAR(slow.ro, 11.0, 0.02, "Venus's Rossby number");
+    CHECK_TRUE(slow.bands == 1, "a rotator that slow gets one band");
+    CHECK_TRUE(venus.size() == col.size(), "and the column comes back unchanged");
+
+    /* A Jupiter-fast rotator gets belts. Ro ~ 0.0016 for this column, Rhines scale ~2.5 deg;
+       the row cap and the decay floor then hold it at 7 belts per hemisphere. */
+    WindGenInfo fast;
+    const auto jup = windGenerate(col, 1.759e-4, 6.991e7, 7ull, fast);
+    CHECK_NEAR(fast.ro, 0.00163, 0.02, "Jupiter's Rossby number");
+    CHECK_TRUE(fast.bands > 6, "a fast spinner bands");
+    CHECK_TRUE(jup.size() == (size_t)fast.bands * col.size(),
+               "one row per anchor per band");
+    CHECK_TRUE(jup.size() <= 64, "and never past the loader's row cap, which is the"
+                                 " aero path's linear-scan budget");
+
+    /* Coverage and alternation, asked the way the game asks: through windAt. The loader
+       runs its own checks on the generator's OUTPUT, so a table that left a latitude
+       unanswered would refuse the file rather than paint a hole. */
+    int flips = 0;
+    double prev = 0.0;
+    for(int i = 0; i <= 360; i++) {
+        const double lat = -90.0 + i * 0.5;
+        const double e = windAt(jup, 6000.0, lat, 0.0).x;
+        CHECK_TRUE(std::isfinite(e), "every latitude gets an answer");
+        if(i > 0 && e * prev < 0.0) { ++flips; }
+        prev = e;
+    }
+    CHECK_TRUE(flips >= 5, "the belts alternate against their neighbours");
+    CHECK_NEAR(windAt(jup, 11000.0, 0.0, 0.0).x, 40.0, 0.0,
+               "the equatorial band carries the anchor's own value");
+
+    /* Mirror-symmetric: zonal winds are, and hemispheres that disagreed would be a bug
+       nobody asked for. */
+    bool mirror = true;
+    for(int i = 0; i <= 60; i++) {
+        const double lat = i * 1.5;
+        if(std::abs(windAt(jup, 6000.0, lat, 0.0).x
+                  - windAt(jup, 6000.0, -lat, 0.0).x) > 1e-9) { mirror = false; }
+    }
+    CHECK_TRUE(mirror, "north and south mirror each other");
+
+    /* Deterministic: one seed, one belt layout, on every run and every platform -- the
+       same reason the terrain generator is seeded (and why e2e can pin a world). */
+    WindGenInfo again;
+    const auto dup = windGenerate(col, 1.759e-4, 6.991e7, 7ull, again);
+    bool same = dup.size() == jup.size();
+    for(size_t r = 0; r < jup.size() && r < dup.size(); r++) {
+        if(dup[r].lat0 != jup[r].lat0 || dup[r].east != jup[r].east) { same = false; }
+    }
+    CHECK_TRUE(same, "the same seed generates the same belts");
+    WindGenInfo other;
+    const auto diff = windGenerate(col, 1.759e-4, 6.991e7, 8ull, other);
+    bool moved = false;
+    for(size_t r = 0; r < jup.size() && r < diff.size(); r++) {
+        if(diff[r].lat0 != jup[r].lat0) { moved = true; }
+    }
+    CHECK_TRUE(moved, "a different seed moves the belts, so two bodies sharing a spin"
+                      " do not get the same planet");
+}
+
 int main() {
     test_density();
     printf("\n");
@@ -4087,6 +4159,8 @@ int main() {
     test_control_trim();
     printf("\n");
     test_wind_profile();
+    printf("\n");
+    test_wind_generate();
 
     printf("\n%d checks, %d failures\n", g_checks, g_failures);
     if(g_failures == 0) {

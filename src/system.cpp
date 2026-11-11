@@ -1037,6 +1037,27 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                             "system: " + body->name + ": atmosphere.wind is empty"
                             " -- omit the key for air that stands still");
                     }
+                    /* THE GENERATOR (#775): "wind_gen": "rhines" means the rows below are
+                       a vertical COLUMN and the loader expands them into latitude bands
+                       from the body's own spin. It is read here and APPLIED after the
+                       rotating block, because the spin is what the scaling needs and
+                       "rotating" is parsed later in this same body. The bands that come
+                       out are ordinary WindLevel rows and pass every check below -- the
+                       generator is a row factory, not a second law of wind. */
+                    if(av.contains("wind_gen")) {
+                        if(!av["wind_gen"].is_string()) {
+                            throw std::runtime_error(
+                                "system: " + body->name + ": atmosphere.wind_gen must be"
+                                " the name of a generator -- \"rhines\"");
+                        }
+                        s.atmosphere.wind_gen_law = av["wind_gen"].get<std::string>();
+                        if(s.atmosphere.wind_gen_law != "rhines") {
+                            throw std::runtime_error(
+                                "system: " + body->name + ": atmosphere.wind_gen \""
+                                + s.atmosphere.wind_gen_law + "\" is not a generator"
+                                " -- the only one is \"rhines\" (atmo.h:windGenerate, #775)");
+                        }
+                    }
                     /* windAt() scans the rows linearly once per air-relative read per
                        hull, so an unbounded table is a loop on the aero path -- same
                        reason (and same cap) as atmosphere.layers above. */
@@ -1239,6 +1260,20 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                         }
                         s.atmosphere.wind.push_back(W);
                     }
+                    /* A generator row is a COLUMN. A body that hands wind_gen a row with
+                       its own lat/lon is asking for two laws over the same ground, so
+                       refuse rather than decide which one wins. */
+                    if(!s.atmosphere.wind_gen_law.empty()) {
+                        for(const WindLevel &W : s.atmosphere.wind) {
+                            if(W.lat0 != -90.0 || W.lat1 != 90.0 || windRowSpanDeg(W) < 360.0) {
+                                throw std::runtime_error(
+                                    "system: " + body->name + ": atmosphere.wind_gen"
+                                    " generates the lat/lon bands, so its rows must not"
+                                    " carry their own \"lat\"/\"lon\" -- drop them and"
+                                    " let the generator place them (#775)");
+                            }
+                        }
+                    }
                     /* Every place on the body needs an answer, and atmo.h's lookup
                        asserts it. A table of bands alone leaves the gaps -- the poles, the
                        space between two belts -- undefined. So the rows must COVER the
@@ -1254,6 +1289,15 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                             " [30,90] tiles it; a row with no lat/lon covers it by"
                             " itself) (#767)");
                     }
+                }
+                /* wind_gen without a column to expand is a key doing nothing, which is
+                   the silent outcome this loader refuses everywhere (#688). */
+                if(av.contains("wind_gen") && !av.contains("wind")) {
+                    throw std::runtime_error(
+                        "system: " + body->name + ": atmosphere.wind_gen needs"
+                        " atmosphere.wind -- the generator expands a column of"
+                        " {alt, east, north} rows into latitude bands, and there is"
+                        " nothing here to expand (#775)");
                 }
                 /* THE ANCHOR (#739). p0 is authored; rho0 -- the number airDensity,
                    airPressure's equation of state and the dossier all read -- is what
@@ -1680,6 +1724,35 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
         }
         f->rot_frame = rf;
         f->children.push_back(rf);
+
+        /* APPLY THE WIND GENERATOR (#775), here and not in the atmosphere block, because
+           the scaling is Ro = U / (2 Omega R) and this is the first point in the body's
+           parse where Omega is known. What comes back is ordinary WindLevel rows, so the
+           one place wind is read (atmo.h:windAt) never learns a generator exists. The
+           coverage law runs on the OUTPUT: if the generator ever emits a table with a gap,
+           this refuses the file instead of painting a hole in the map. */
+        if(!body->surface.atmosphere.wind_gen_law.empty()) {
+            WindGenInfo gi;
+            uint64_t gseed = 1469598103934665603ull;   // FNV-1a over the name, so two
+            for(const char c : body->name) {           // bodies sharing a seed do not get
+                gseed ^= (uint64_t)(unsigned char)c;   // the same belt layout
+                gseed *= 1099511628211ull;
+            }
+            gseed = windGenHash(gseed, (int)std::llround(body->seed));
+            body->surface.atmosphere.wind = windGenerate(
+                body->surface.atmosphere.wind, rf->rot_ang_speed,
+                body->seaLevelRadius(), gseed, gi);
+            body->surface.atmosphere.wind_gen_bands = gi.bands;
+            body->surface.atmosphere.wind_gen_ro = gi.ro;
+            body->surface.atmosphere.wind_gen_jet_deg = gi.jet_deg;
+            if(!windBandsCoverSphere(body->surface.atmosphere.wind)) {
+                throw std::runtime_error(
+                    "system: '" + body->name + "': wind_gen \""
+                    + body->surface.atmosphere.wind_gen_law + "\" produced bands that"
+                    " leave part of the body uncovered -- that is a generator bug, not"
+                    " an authoring one (#775)");
+            }
+        }
 
         body->refreshParamsCache();   // surface/radius/colour_func are final
 

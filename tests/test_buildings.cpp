@@ -437,13 +437,21 @@ int main() {
             CHECK(!dflt->hasFlag("POLAR_PAD"));
             if(logical.find("solar_system") != std::string::npos) {
                 CHECK(dflt->id == "baikonur");
-            } else {
+            } else if(logical == "res/systems/ksp_system.json"
+                      || logical == "res/systems/old_system.json") {
                 CHECK(dflt->id == "main_space_port");
                 // The fictional systems' tables are hand-authored data no
                 // generator writes, so nothing else watches their numbers:
                 // pin the home pad's spot, as alcantara does for Earth's.
                 CHECK(dflt->lat_deg == 0.286473 && dflt->lon_deg == 270.286477);
             }
+            /* A demo file names its own pad. res/systems is also what the in-game
+               picker lists, so it can hold a world invented to show a mechanism off
+               (wind_playground.json, #767/#775); pinning a catalogue pad's id and
+               degrees there would be a rule about data nobody ships. What still
+               holds for ANY listable system is above: it loads, the default site is
+               on home, is a VAB pad, is not the pole, and projects back to the
+               degrees it was authored with. */
         }
         // Two pads on one body must not overlap: a deck is 26 x 56 m and pad
         // ships stand 20 m apart, so this floor catches a copy-paste

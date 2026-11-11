@@ -801,12 +801,13 @@ def fact_wind(page):
     return {}
 
 
-def check_fact_wind(planets, verbose=True):
+def check_fact_wind(planets, verbose=True, parsed=None):
     """Compare every authored wind row against the wind that body's fact sheet states.
     Returns the disagreements. Prints one line per body with air, including the bodies
     whose sheet states a wind and which author none -- a guard that prints only the
     failures is indistinguishable from one that found none."""
     rows, bad, waived = [], [], []
+    scaling = []
     for page, name, _seed, surface, _sea in planets:
         atmo = (surface or {}).get('atmosphere')
         if not atmo:
@@ -823,6 +824,21 @@ def check_fact_wind(planets, verbose=True):
                     % (name,
                        ('%g m/s  %s' % (sheet['max'], quote)) if sheet else 'none',
                        ('%g m/s, %d rows' % (top, len(comps))) if comps else 'none'))
+        # #775's diagnostic, printed and never enforced: what the rotation-based scaling
+        # says about the latitudinal structure this body's air can hold. The table on #775
+        # shows it tracks Venus (no belts at all), Jupiter and Saturn and overpredicts Mars
+        # and the ice giants, so it is a hint for whoever authors a wind -- not a law the
+        # loader may act on.
+        if comps and top and parsed is not None:
+            d = parsed.get(name) or {}
+            R, per = d.get('radius_m'), d.get('rot_s')
+            if R and per:
+                om = 2.0 * math.pi / per
+                ro = top / (2.0 * om * R)
+                beta = 2.0 * om * math.cos(math.radians(30.0)) / R
+                jet = math.degrees(math.sqrt(top / beta) / R)
+                scaling.append('%-9s Ro %-9.4g Rhines scale %-8.4g deg -> %d belts/hemi'
+                               % (name, ro, jet, max(1, int(round(90.0 / jet)))))
         if not comps:
             continue
         if not sheet:
@@ -849,6 +865,8 @@ def check_fact_wind(planets, verbose=True):
     if verbose:
         for r in rows:
             print('  fact wind %s' % r)
+        for s in scaling:
+            print('  wind scaling %s' % s)
         for why in waived:
             print('  waived    %s' % why)
     return bad
@@ -2020,7 +2038,7 @@ def build_base(verbose_air=False):
         raise SystemExit('%d authored air datum(s) disagree with the fact sheet '
                          'that states them (bands: FACT_AIR_BANDS)' % len(bad))
     # ... and the air's own motion (#688), which the guard above never looked at.
-    bad = check_fact_wind(planets, verbose=verbose_air)
+    bad = check_fact_wind(planets, verbose=verbose_air, parsed=parsed)
     if bad:
         for m in bad:
             print('DRIFT   fact wind: ' + m)

@@ -1043,6 +1043,36 @@ static void check_wind() {
                                        band(30000.0, 150.0, 0.0, -30.0, 30.0)});
                  }).dump(), "Kerbin", 3);
 
+    /* THE GENERATOR (#775): a column plus the body's spin becomes latitude bands, and
+       what loads is ordinary rows -- the count is the pin, because a loader that read
+       wind_gen and then threw it away would still load. Kerbin spins in 6 h at 600 km, so
+       this 40 m/s column gives Ro ~ 0.11 and a Rhines scale of ~21 deg: 4 belts per
+       hemisphere, hence 9 bands x 2 anchors = 18 rows. That number is TUNING, not a law --
+       if kWindGenDecay, kWindGenFloor or kWindGenRoBanded moves, this moves with it, and
+       that is the point of pinning it. */
+    expect_loads("wind_gen_column", patched("Kerbin", [&](nlohmann::json &a) {
+                     a["wind"] = rows({row(0.0, 5.0, 0.0), row(11000.0, 40.0, 0.0)});
+                     a["wind_gen"] = "rhines";
+                 }).dump(), "Kerbin", 18);
+    expect_refuses("wind_gen_unknown_law", patched("Kerbin", [&](nlohmann::json &a) {
+                       a["wind"] = rows({row(0.0, 5.0, 0.0)});
+                       a["wind_gen"] = "hadley";
+                   }).dump(), "not a generator");
+    expect_refuses("wind_gen_not_a_string", patched("Kerbin", [&](nlohmann::json &a) {
+                       a["wind"] = rows({row(0.0, 5.0, 0.0)});
+                       a["wind_gen"] = true;
+                   }).dump(), "must be the name of a generator");
+    /* A row that already knows where it lives and a generator that places rows are two
+       laws over the same ground. Refuse rather than decide which one wins. */
+    expect_refuses("wind_gen_banded_row", patched("Kerbin", [&](nlohmann::json &a) {
+                       a["wind"] = rows({band(0.0, 5.0, 0.0, -30.0, 30.0)});
+                       a["wind_gen"] = "rhines";
+                   }).dump(), "must not carry their own");
+    expect_refuses("wind_gen_no_column", patched("Kerbin", [&](nlohmann::json &a) {
+                       a.erase("wind");
+                       a["wind_gen"] = "rhines";
+                   }).dump(), "needs atmosphere.wind");
+
     /* Which shipped bodies are allowed to author wind (#688). The mechanism landed
        before the data on purpose: with no row authored, every shipped flight number,
        every e2e flight golden and every drag figure in the corpus was unchanged, so a
@@ -1059,9 +1089,23 @@ static void check_wind() {
        airspeed or a drag figure, and a commit message naming which numbers moved. */
     static const char *const kWindsAuthored[] = {"Venus", "Earth", "Mars"};
     constexpr size_t kNumWinds = sizeof(kWindsAuthored) / sizeof(kWindsAuthored[0]);
-    for(const auto &de : std::filesystem::directory_iterator("res/systems")) {
-        if(de.path().extension() != ".json") { continue; }
-        std::ifstream sf(de.path());
+    /* The CATALOGUE, named rather than enumerated. res/systems is also what the in-game
+       system picker lists, so it can hold a demo file whose bodies are invented to show a
+       mechanism off -- wind_playground.json (#767, #775). Holding those to this rule would
+       demand a flight golden per demo world, and the price of that is the demo living
+       somewhere a player cannot load it. The catalogue is where a wind can move a shipped
+       flight number, so that is where the rule bites. */
+    for(const char *path : { "res/systems/ksp_system.json",
+                             "res/systems/solar_system.json",
+                             "res/systems/solar_system_full.json",
+                             "res/systems/solar_system_measured.json",
+                             "res/systems/solar_system_named.json" }) {
+        std::ifstream sf(path);
+        if(!sf.is_open()) {
+            printf("  cannot open %s (run from the repo root)\n", path);
+            failures++;
+            continue;
+        }
         const nlohmann::json j = nlohmann::json::parse(sf);
         for(const auto &bv : j["bodies"]) {
             const std::string bname = bv.value("name", "?");
@@ -1083,7 +1127,7 @@ static void check_wind() {
                     printf("  %s: %s has an atmosphere.wind key that is not a"
                            " non-empty array -- the loader refuses that at load, so the"
                            " shipped game will not start\n",
-                           de.path().string().c_str(), bname.c_str());
+                           path, bname.c_str());
                     failures++;
                 } else if(authored) {
                     printf("  %s: %s authors atmosphere.wind while every shipped flight"
@@ -1091,7 +1135,7 @@ static void check_wind() {
                            " what the rows do, re-run the flight cases that quote an"
                            " airspeed or a drag figure, and name it in kWindsAuthored,"
                            " all in the same commit\n",
-                           de.path().string().c_str(), bname.c_str());
+                           path, bname.c_str());
                     failures++;
                 }
                 continue;
@@ -1104,7 +1148,7 @@ static void check_wind() {
                 printf("  %s: %s is listed in kWindsAuthored but this file gives it no"
                        " wind rows -- the generated variants have to agree, since an"
                        " e2e case pins only one of them\n",
-                       de.path().string().c_str(), bname.c_str());
+                       path, bname.c_str());
                 failures++;
             }
         }

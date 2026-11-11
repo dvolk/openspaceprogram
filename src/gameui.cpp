@@ -6873,7 +6873,31 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
                A row that answers for only part of the body (#767) says which part in its
                label: a 150 m/s belt and a polar row printed at the same altitude, with
                nothing to tell them apart, would read as one wind over the whole world. */
+            /* Provenance first (#775). A generated field is a consequence of two published
+               numbers plus the body's spin, not a published number, and this window is the
+               one that quotes fact sheets -- so it has to say which is which. The scaling
+               goes out with it because the reader's next question is "does that belt count
+               look right?", and the answer needs Ro and the Rhines scale in hand. */
+            const bool gen_wind = !at.wind_gen_law.empty();
+            if(gen_wind) {
+                char gv[128];
+                if(std::isfinite(at.wind_gen_ro)) {
+                    snprintf(gv, sizeof gv, "%s: Ro %.3g, %d belts, Rhines scale %.3g deg",
+                             at.wind_gen_law.c_str(), at.wind_gen_ro, at.wind_gen_bands,
+                             at.wind_gen_jet_deg);
+                } else {
+                    snprintf(gv, sizeof gv, "%s: no spin, %d belts",
+                             at.wind_gen_law.c_str(), at.wind_gen_bands);
+                }
+                line("air wind (generated)", gv);
+            }
+            /* A generated table is one row per anchor per belt, which is dozens of rows --
+               more dossier than anyone reads. Print the equatorial belt's profile, which is
+               the strongest one by construction, and count the rest. An AUTHORED table
+               prints every row, because an authored table is what the author claims. */
+            int hidden_rows = 0;
             for(const WindLevel &wl : at.wind) {
+                if(gen_wind && !(wl.lat0 <= 0.0 && wl.lat1 > 0.0)) { ++hidden_rows; continue; }
                 char lab[96];
                 const bool all_lat = (wl.lat0 == -90.0 && wl.lat1 == 90.0);
                 const bool all_lon = (windRowSpanDeg(wl) >= 360.0);
@@ -6908,6 +6932,12 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
                            windToward(wl.east, wl.north));
                 }
                 line(lab, v);
+            }
+            if(gen_wind && hidden_rows > 0) {
+                char hv[96];
+                snprintf(hv, sizeof hv, "%d more belts' rows not listed -- the wind map"
+                                        " shows them all", hidden_rows);
+                line("air wind", hv);
             }
         } else {
             line("air density", "none (rim only)");
