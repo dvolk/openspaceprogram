@@ -1819,11 +1819,12 @@ static void check_flying_beds() {
     }
     /* flying-trim (#693) is flying-cruise with the speed keyed to the airframe instead
        of to gravity, so the two must agree on everything but the speed law -- that is
-       what makes an A/B between them mean something. And its load must be a WING's
-       number: 50.9 kg/m^2 is q/g for skiff_trim, whose lift area and mass are both of
-       order 10 m^2 and 10^2 kg. Under 1 or over 10^4 is a value that arrived in the
-       wrong slot, not a hull anyone ships. */
-    if(trim->speed_frac != 0.0 || !(trim->speed_load > 1.0 && trim->speed_load < 1e4)) {
+       what makes an A/B between them mean something. The law here is WHICH key the bed
+       carries, not how big the number is: since #715 the table names its members, so a
+       load can no longer land in speed_frac's slot at compile time, and the old
+       1..1e4 range was only ever a detector for that shift. A load outside it is a bed
+       someone could author tomorrow. */
+    if(trim->speed_frac != 0.0 || !(trim->speed_load > 0.0)) {
         printf("  flying-trim is not load-keyed (speed_frac %g, speed_load %g): the "
                "point of this bed is that gravity does not set its speed\n",
                trim->speed_frac, trim->speed_load);
@@ -1838,11 +1839,11 @@ static void check_flying_beds() {
     }
     /* A bed carries at most ONE speed key, and whichever it is needs a circular speed in
        air to describe it: speed_frac is a fraction of a circular speed, and speed_load
-       turns a lift-area load into an airspeed through rho and g at the bed. The table is
-       positional and 14 fields wide, so a row can hand a value to the wrong slot and
-       still compile -- this refuses that SHAPE rather than bounding any one number, since
-       a fraction over 1 or a load under 1 Pa could both be a bed someone wants tomorrow
-       (the bounds this used to carry are what they would refuse). */
+       turns a lift-area load into an airspeed through rho and g at the bed. That is a law
+       about the bed, not a shape check: #715 put names on the table's 14 members, so a
+       value in the wrong slot is a compile error now and this loop is no longer standing
+       in for one. A fraction over 1 or a load under 1 Pa could both be a bed someone
+       wants tomorrow, so neither is bounded here. */
     for(size_t i = 0; i < scenario_count(); i++) {
         const std::string sname = scenario_name_at(i);
         const ScenarioDef *d = scenario_by_name(sname);

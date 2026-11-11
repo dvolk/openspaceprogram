@@ -219,22 +219,32 @@ static Frame *resolve_frame_by_soi(Frame *root, glm::dvec3 worldPos) {
     }
 }
 
-// Starting scenarios (see ScenarioDef in vehicle.h). Column 2 is dev_only:
-// only "pad" shows in the VAB dropdown unless --dev-scenarios.
+/* Starting scenarios (see ScenarioDef in vehicle.h). Named members (#715): a
+   misspelled one is a compile error, where a positional row handed a value to the wrong
+   slot and still built -- and every flight golden in e2e/cases/flight/ was tuned off one
+   of these rows, so a silent slot shift is expensive to notice. Members left out are zero
+   (static storage), which is why ell_phase is ALWAYS written: its zero means periapsis,
+   not circular. Only "pad" -- dev_only left false -- shows in the VAB dropdown without
+   --dev-scenarios. */
 static const ScenarioDef kScenarios[] = {
-    {"pad",            false, true,  0.0,  false, -1, 0.0,     0.0, 0.0, 0.0},
-    {"rot-orbit",      true,  false, 0.85, false, -1, 0.0,     0.0, 0.0, 0.0},
+    {.name = "pad", .on_pad = true, .ell_phase = -1},
+    {.name = "rot-orbit", .dev_only = true, .alt_frac = 0.85, .ell_phase = -1},
     /* Same bed about the EQUATOR rather than the rail plane (#182): they differ by
        exactly the axial tilt. */
-    {"rot-orbit-eq",   true,  false, 0.85, false, -1, 0.0,     0.0, 0.0, 0.0, false, true},
-    {"inertial-orbit", true,  false, kInertialOrbitFrac, false, -1, 0.0, 0.0, 0.0, 0.0},
-    {"high-orbit",     true,  false, 5.0,  false, -1, 0.0,     0.0, 0.0, 0.0},
-    {"high-polar",     true,  false, 5.0,  true,  -1, 0.0,     0.0, 0.0, 0.0},
+    {.name = "rot-orbit-eq", .dev_only = true, .alt_frac = 0.85, .ell_phase = -1,
+     .eq_plane = true},
+    {.name = "inertial-orbit", .dev_only = true, .alt_frac = kInertialOrbitFrac,
+     .ell_phase = -1},
+    {.name = "high-orbit", .dev_only = true, .alt_frac = 5.0, .ell_phase = -1},
+    {.name = "high-polar", .dev_only = true, .alt_frac = 5.0, .polar = true,
+     .ell_phase = -1},
     /* In-atmosphere "flying" beds (science.h). atmo_frac is a fraction of the
        atmosphere top, matching the science bands, so a bed lands in its band on
        every body (#99). */
-    {"flying-low",     true,  false, 0.1,  false, -1, 0.0,     0.0, 0.0, 0.0, true},
-    {"flying-high",    true,  false, 0.5,  false, -1, 0.0,     0.0, 0.0, 0.0, true},
+    {.name = "flying-low", .dev_only = true, .alt_frac = 0.1, .ell_phase = -1,
+     .atmo_frac = true},
+    {.name = "flying-high", .dev_only = true, .alt_frac = 0.5, .ell_phase = -1,
+     .atmo_frac = true},
     /* flying-low's altitude, but SUBORBITAL: its circular speed (2.4 km/s inertial,
        2.2 km/s of AIR on Kerbin) puts ~700 g of drag on the shipped jet at the
        instant it spawns, which is a chute-entry rig, not an airframe test. 0.08 of
@@ -268,7 +278,8 @@ static const ScenarioDef kScenarios[] = {
        torque weathervanes it back to zero AoA, which zeroes its lift (#454/#399;
        those two are pre-#686 measurements in 7 km air, so the denser column should
        shorten both). */
-    {"flying-slow",    true,  false, 0.1,  false, -1, 0.0,     0.0, 0.0, 0.0, true, false, 0.08},
+    {.name = "flying-slow", .dev_only = true, .alt_frac = 0.1, .ell_phase = -1,
+     .atmo_frac = true, .speed_frac = 0.08},
     /* The same altitude band at an airspeed an airframe CRUISES at rather than
        2.5x it. 0.08 of the air-relative circular speed (flying-slow) suits hulls
        that fly at several hundred m/s; a light wing trims near 70-90 m/s, so that
@@ -294,7 +305,8 @@ static const ScenarioDef kScenarios[] = {
        trim point is now ~1.9x it and every flying-cruise run opens with a deeper
        zoom-climb than the one those numbers describe (#693). The factor is gravity-keyed,
        not air-keyed -- which is what #693 is about, and what flying-trim below fixes. */
-    {"flying-cruise",  true,  false, 0.1,  false, -1, 0.0,     0.0, 0.0, 0.0, true, false, 0.0356},
+    {.name = "flying-cruise", .dev_only = true, .alt_frac = 0.1, .ell_phase = -1,
+     .atmo_frac = true, .speed_frac = 0.0356},
     /* The same height band keyed to the AIRFRAME instead of to gravity (#693). The
        authored number is a LOAD, q/g = 50.9 kg/m^2, so the bed bills that load in whatever
        field the body actually pulls with at the bed: dynamic pressure = load x g(alt),
@@ -311,25 +323,31 @@ static const ScenarioDef kScenarios[] = {
        skiff's is 2.1x that, so skiff, racer and jet all start off-trim here by
        construction -- exactly as flying-cruise is off-trim for the skiff. Deriving the
        load from the hull needs a trim AoA, and no code has one yet (#569). */
-    {"flying-trim",    true,  false, 0.1,  false, -1, 0.0,     0.0, 0.0, 0.0, true, false, 0.0, 50.9},
-    {"ellipse-peri",   true,  false, 0.0,  false,  0, 10e3, 1000e3, 0.0, 0.0},
-    {"ellipse-apo",    true,  false, 0.0,  false,  1, 10e3, 1000e3, 0.0, 0.0},
-    {"ellipse-mid",    true,  false, 0.0,  false,  2, 10e3, 1000e3, 0.0, 0.0},
+    {.name = "flying-trim", .dev_only = true, .alt_frac = 0.1, .ell_phase = -1,
+     .atmo_frac = true, .speed_load = 50.9},
+    {.name = "ellipse-peri", .dev_only = true, .ell_phase = 0, .peri_alt = 10e3,
+     .apo_alt = 1000e3},
+    {.name = "ellipse-apo", .dev_only = true, .ell_phase = 1, .peri_alt = 10e3,
+     .apo_alt = 1000e3},
+    {.name = "ellipse-mid", .dev_only = true, .ell_phase = 2, .peri_alt = 10e3,
+     .apo_alt = 1000e3},
     /* Periapsis under the surface: the departure shape a burn leaves behind
        (high and receding, conic meets the ground). Rails must accept it. */
-    {"ellipse-low",    true,  false, 0.0,  false,  2, -100e3, 2000e3, 0.0, 0.0},
-    {"escape",         true,  false, 0.85, false, -1, 0.0,     0.0, 2.0, 0.0},
+    {.name = "ellipse-low", .dev_only = true, .ell_phase = 2, .peri_alt = -100e3,
+     .apo_alt = 2000e3},
+    {.name = "escape", .dev_only = true, .alt_frac = 0.85, .ell_phase = -1,
+     .esc_frac = 2.0},
     /* the absolute-radius distance ladder (see ScenarioDef) */
-    {"neptune",        true,  false, 0.0,  false, -1, 0.0,     0.0, 0.0, 4.495e12},
-    {"oort",           true,  false, 0.0,  false, -1, 0.0,     0.0, 0.0, 1.0e15},
-    {"interstellar",   true,  false, 0.0,  false, -1, 0.0,     0.0, 0.0, 1.0e17},
+    {.name = "neptune", .dev_only = true, .ell_phase = -1, .abs_r = 4.495e12},
+    {.name = "oort", .dev_only = true, .ell_phase = -1, .abs_r = 1.0e15},
+    {.name = "interstellar", .dev_only = true, .ell_phase = -1, .abs_r = 1.0e17},
     /* Heliocentric beds at a planet's semi-major axis (abs_r from
        res/systems/solar_system*.json). The transfer planner only lists children of the
        orbited body, so a planet->planet transfer needs a Sun-centred start. */
-    {"heli-mercury",   true,  false, 0.0,  false, -1, 0.0,     0.0, 0.0, 5.7914e10},
-    {"heli-earth",     true,  false, 0.0,  false, -1, 0.0,     0.0, 0.0, 1.4961e11},
-    {"heli-jupiter",   true,  false, 0.0,  false, -1, 0.0,     0.0, 0.0, 7.7815e11},
-    {"heli-uranus",    true,  false, 0.0,  false, -1, 0.0,     0.0, 0.0, 2.8698e12},
+    {.name = "heli-mercury", .dev_only = true, .ell_phase = -1, .abs_r = 5.7914e10},
+    {.name = "heli-earth", .dev_only = true, .ell_phase = -1, .abs_r = 1.4961e11},
+    {.name = "heli-jupiter", .dev_only = true, .ell_phase = -1, .abs_r = 7.7815e11},
+    {.name = "heli-uranus", .dev_only = true, .ell_phase = -1, .abs_r = 2.8698e12},
 };
 
 const ScenarioDef *scenario_by_name(const std::string &name) {
