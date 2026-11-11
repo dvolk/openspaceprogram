@@ -9,6 +9,7 @@
 #include <cctype>
 #include <numbers>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <glm/glm.hpp>
@@ -385,6 +386,95 @@ inline glm::dvec2 surfmapWindPixelVec(double east, double north, double cos_lat)
    colour rather than a gradient the eye invents. Same shape as the temperature ramp above. */
 inline double surfmapWindT01(double speed_ms, double lo_ms, double hi_ms) {
     return (hi_ms > lo_ms) ? (speed_ms - lo_ms) / (hi_ms - lo_ms) : 0.5;
+}
+
+/* WHICH pixel rows get a row of wind arrows (#780). A uniform grid is right for a table that
+   is one column, which is every table shipped so far: a whole-sphere row answers for the body
+   and has no centre worth ringing. A table with real LATITUDE structure -- a generated belt
+   layout (#775) or an authored jet band (#767) -- reads better as bands: one row at each band's
+   own centre latitude, so the alternation and the BELT COUNT come out as rings rather than as a
+   grid someone has to scan and count by eye.
+
+   Two bounds pull opposite ways, and the grid is the honest fallback for both:
+
+     too FEW -- ringing needs at least kMinArrowRings rows, or a 3-band table draws 3 rows where
+       the grid drew 16 and the map loses the coverage wind_cells= exists to guard. The bound is
+       on rows DRAWN, not on bands found: bands whose centres round to the same pixel row are one
+       ring, so 20 bands sitting in two clumps would draw 2 and must take the grid.
+
+     too MANY -- rings must sit `need` px apart, where need is an arrow's VERTICAL footprint:
+       the head's spread for zonal air (the barbs reach +-head/2 above and below the row), and at
+       the other extreme the shaft's whole length for a meridional field. That is decided from
+       the table's most meridional ROW, never from a bake's pixels, so a coarse bake cannot fool
+       it into drawing overlapping rings. surfmapWindPixelVec's 1/cos(lat) east stretch only
+       pushes a vector away from vertical, so the raw component ratio is the conservative one.
+
+   A pole row is never drawn at all, by either set: at j == 0 or h - 1 every direction is south,
+   so the whole row would show one degenerate arrow along the map's edge. The rings drop a band
+   centre that rounds there, and the grid skips it too -- it usually cannot reach h - 1 (a
+   multiple of stride from stride / 2 is even, and h - 1 is odd whenever stride = w / 32), but an
+   odd bake size lets it: --surfmap-n 26 has h = 13 and rows 4 and 12.
+
+   The loader guarantees every place is covered by SOME band; distinct (lat0, lat1)
+   pairs can still overlap across altitudes -- a whole-sphere column and a jet band are two
+   profiles, not a partition -- so `bands` counts distinct pairs, and that is the number the
+   player's belt count is, not the number of rows the table has. */
+inline constexpr size_t kMinArrowRings = 10;
+
+struct ArrowRowPlan {
+    std::vector<int> grid;      // the uniform rows, ascending
+    std::vector<int> rings;     // one row per band centre, ascending; empty if ringing lost
+    bool from_bands = false;    // which of the two the caller must draw
+    int bands = 0;              // distinct (lat0, lat1) pairs in the table
+};
+
+inline ArrowRowPlan surfmapArrowRows(const std::vector<WindLevel> &rows, int h, int stride,
+                                     double half, double head) {
+    assert(!rows.empty() && stride >= 1 && h >= 2);
+    assert(half > 0.0 && head > 0.0);
+    ArrowRowPlan plan;
+    for(int j = stride / 2; j < h; j += stride) {
+        if(j == 0 || j == h - 1) { continue; }   // a pole, reached by an odd bake size
+        plan.grid.push_back(j);
+    }
+
+    std::vector<std::pair<double, double>> bands;
+    bands.reserve(rows.size());
+    for(const WindLevel &r : rows) { bands.push_back({r.lat0, r.lat1}); }
+    std::sort(bands.begin(), bands.end());
+    bands.erase(std::unique(bands.begin(), bands.end()), bands.end());
+    plan.bands = (int)bands.size();
+    if(bands.size() < kMinArrowRings) { return plan; }
+
+    double merid = 0.0;   // most meridional row in the table, as a fraction of itself
+    for(const WindLevel &r : rows) {
+        const double sp = std::hypot(r.east, r.north);
+        if(sp > 0.0) { merid = std::max(merid, std::fabs(r.north) / sp); }
+    }
+    const int need = (int)std::ceil(2.0 * merid * half + head + 1.0);
+
+    for(const auto &b : bands) {
+        // equirectDirAt inverts to j = (90 - lat) / 180 * (h - 1); a band centre is in range.
+        const int j = (int)std::llround((90.0 - 0.5 * (b.first + b.second))
+                                        / 180.0 * (double)(h - 1));
+        assert(j >= 0 && j <= h - 1);
+        if(j == 0 || j == h - 1) { continue; }   // a pole: one degenerate arrow, all the way along
+        plan.rings.push_back(j);
+    }
+    /* Into pixel order, which runs the OTHER way from latitude: the band list above sorts south
+       to north while row 0 is the north pole. Comparing unsorted gaps compares negatives, which
+       is how every body silently fell back to the grid the first time this was written. Two
+       bands whose centres round to the same row are one ring, so unique BEFORE the spacing and
+       the minimum are asked -- a duplicate would fail the spacing check for the wrong reason and
+       a clump would pass the minimum for the wrong one. */
+    std::sort(plan.rings.begin(), plan.rings.end());
+    plan.rings.erase(std::unique(plan.rings.begin(), plan.rings.end()), plan.rings.end());
+    if(plan.rings.size() < kMinArrowRings) { plan.rings.clear(); return plan; }
+    for(size_t k = 1; k < plan.rings.size(); k++) {
+        if(plan.rings[k] - plan.rings[k - 1] < need) { plan.rings.clear(); return plan; }
+    }
+    plan.from_bands = true;
+    return plan;
 }
 
 // Request the surface map: snapshot inputs on the main thread, post the

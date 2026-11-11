@@ -65,6 +65,9 @@ CHECK [r for r in surfmap if r["body"] == "Earth"][-1]["wind"][0] == 5.0
 CHECK (lambda w, rp: 15.0 < w[2] < 40.0 and w[1] > w[0] and abs(rp[0] - w[0]) < 0.02 and abs(rp[1] - w[2]) < 0.02 and rp[1] < 30.0)([r for r in surfmap if r["body"] == "Earth"][-1]["wind"], [r for r in surfmap if r["body"] == "Earth"][-1]["wind_ramp"])
 # The vector half. At --surfmap-n 128 the grid stride is 8, so 16 columns x 8 rows: every part
 # of the map is sampled. A count of 0 is the bug this column exists for -- colours with no ink.
+# (Earth is one whole-sphere band, so this is the GRID path: a table with latitude structure
+# draws one row per band instead, which is band-centred by construction. surfmapArrowRows in
+# src/surfmap.h is where that choice is pinned, and wind_rows_from= in the log says which drew.)
 CHECK [r for r in surfmap if r["body"] == "Earth"][-1]["wind_cells"] == 128
 # A wind map's base colours are RAMP colours, so the albedo columns dash rather than report a
 # meaningless mean of the palette (#727).

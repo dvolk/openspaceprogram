@@ -468,6 +468,93 @@ static void windLayers() {
         check(kMapPoleCos > 0.0 && kMapPoleCos < 0.2,
               "the floor is small (a real latitude) without being negligible");
     }
+    /* ---- which ROWS of the map get arrows (#780) --------------------------------
+       The choice is a pure function of the table and the bake, so it is pinned here rather than
+       only in front of a screen. What it decides is whether the belt structure of a banded
+       table reads as rings of arrows, or whether the uniform lattice draws because ringing would
+       be worse. h = 256, stride = 16, half = 6.72, head = 4.8 is the shipped --surfmap-n 512. */
+    {
+        // A one-column table -- every body shipped so far: Venus, Earth, Mars are whole-sphere
+        // rows -- has no band centre worth ringing.
+        const std::vector<WindLevel> one = { {0.0, 5.0, 0.0}, {11000.0, 40.0, 0.0} };
+        const ArrowRowPlan g = surfmapArrowRows(one, 256, 16, 16 * 0.42, 16 * 0.30);
+        check(g.bands == 1 && !g.from_bands && g.rings.empty(),
+              "a whole-sphere column keeps the uniform grid and says so");
+        check(g.grid.size() == 16 && g.grid.front() == 8 && g.grid.back() == 248,
+              "16 rows, the first at half a stride in and none of them a pole row");
+        /* An ODD bake size lets the lattice reach a map's last row: --surfmap-n 26 has h = 13,
+           so its rows are 4 and 12, and 12 is the south pole. Skipped, not drawn. */
+        const ArrowRowPlan odd = surfmapArrowRows(one, 13, 8, 8 * 0.42, 8 * 0.30);
+        check(odd.grid.size() == 1 && odd.grid[0] == 4,
+              "the grid skips a bake's last row, which is its south pole");
+    }
+    {
+        // 13 even bands: rings, one per band, ASCENDING in pixel order -- which is descending in
+        // latitude, the order the band list arrives sorted in. The first cut compared the unsorted
+        // gaps, found them negative, and every body silently took the grid.
+        std::vector<WindLevel> belts;
+        for(int k = 0; k < 13; k++) {
+            belts.push_back({0.0, 10.0, 0.0, 0.0,
+                             -90.0 + 180.0 * (double)k / 13.0,
+                             -90.0 + 180.0 * (double)(k + 1) / 13.0});
+        }
+        const ArrowRowPlan p = surfmapArrowRows(belts, 256, 16, 16 * 0.42, 16 * 0.30);
+        check(p.bands == 13 && p.from_bands && p.rings.size() == 13,
+              "13 bands ring 13 rows");
+        bool asc = true;
+        for(size_t k = 1; k < p.rings.size(); k++) { asc = asc && p.rings[k] > p.rings[k - 1]; }
+        check(asc, "and the rings come back in pixel order, north pole first");
+        check(p.rings.front() > 0 && p.rings.back() < 255, "with no ring on a pole row");
+    }
+    {
+        // The minimum is asked of rows DRAWN, not of bands found. 20 distinct pairs in two clumps
+        // are 20 belts on paper and a couple of rows of ink: a picture sparser than the grid it
+        // replaced has lost the coverage wind_cells= exists to guard.
+        std::vector<WindLevel> clumps;
+        for(int k = 0; k < 10; k++) {
+            const double a = (double)k * 0.2, b = 60.0 + (double)k * 0.2;
+            clumps.push_back({0.0, 10.0, 0.0, 0.0, a, a + 0.2});
+            clumps.push_back({0.0, 10.0, 0.0, 0.0, b, b + 0.2});
+        }
+        const ArrowRowPlan p = surfmapArrowRows(clumps, 256, 16, 16 * 0.42, 16 * 0.30);
+        check(p.bands == 20, "20 distinct bands on paper");
+        check(!p.from_bands && p.rings.empty(), "and the grid draws, because they ring ~6 rows");
+    }
+    {
+        // The spacing guard reads the TABLE, not the bake. The same 16 even bands ring when the
+        // air blows along the parallels, where an arrow's vertical footprint is the head's spread,
+        // and must not ring meridionally, where it is the shaft's whole length and the rings would
+        // draw on top of each other -- the one smear the guard exists to prevent.
+        std::vector<WindLevel> zon, mer;
+        for(int k = 0; k < 16; k++) {
+            const double lat0 = -90.0 + 180.0 * (double)k / 16.0;
+            const double lat1 = -90.0 + 180.0 * (double)(k + 1) / 16.0;
+            zon.push_back({0.0, 10.0, 0.0, 0.0, lat0, lat1});
+            mer.push_back({0.0, 0.0, 10.0, 0.0, lat0, lat1});
+        }
+        const ArrowRowPlan pz = surfmapArrowRows(zon, 256, 16, 16 * 0.42, 16 * 0.30);
+        const ArrowRowPlan pm = surfmapArrowRows(mer, 256, 16, 16 * 0.42, 16 * 0.30);
+        check(pz.from_bands && pz.rings.size() == 16,
+              "a zonal field of 16 belts rings all 16");
+        check(!pm.from_bands,
+              "a meridional one of the same bands does not: its arrows are taller than the gaps");
+    }
+    {
+        // A thin polar cap centres ON the pole, where every direction is south and the row would
+        // draw one degenerate arrow the whole width of the map. It drops out; the rest ring.
+        std::vector<WindLevel> capped = { {0.0, 10.0, 0.0, 0.0, 89.6, 90.0} };
+        for(int k = 0; k < 11; k++) {
+            capped.push_back({0.0, 10.0, 0.0, 0.0,
+                              -90.0 + 179.0 * (double)k / 11.0,
+                              -90.0 + 179.0 * (double)(k + 1) / 11.0});
+        }
+        const ArrowRowPlan p = surfmapArrowRows(capped, 256, 16, 16 * 0.42, 16 * 0.30);
+        check(p.bands == 12 && p.rings.size() == 11 && p.from_bands,
+              "the cap counts as a band but not as a row");
+        for(int j : p.rings) {
+            check(j != 0 && j != 255, "and no ring ever lands on a pole row");
+        }
+    }
 }
 
 int main() {
