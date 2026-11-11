@@ -180,6 +180,10 @@ struct AtmosphereParams {
     int wind_gen_bands = 0;
     double wind_gen_ro = 0.0;
     double wind_gen_jet_deg = 0.0;
+    /* Belts per hemisphere the Rhines scale ASKED for, before the 64-row budget had a
+       say. When this exceeds what (wind_gen_bands - 1) / 2 delivered, the atlas must not
+       blame the spin for the count the player is looking at (#775). */
+    int wind_gen_asked = 0;
 
     /* "Is there a PHYSICAL atmosphere here at all?" -- the question the aero pass,
        the rails gate and the readout all ask, in ONE place so they cannot answer it

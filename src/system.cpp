@@ -1764,6 +1764,7 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
             body->surface.atmosphere.wind_gen_bands = gi.bands;
             body->surface.atmosphere.wind_gen_ro = gi.ro;
             body->surface.atmosphere.wind_gen_jet_deg = gi.jet_deg;
+            body->surface.atmosphere.wind_gen_asked = gi.asked;
             if(body->surface.atmosphere.wind.size() > kWindMaxRows) {
                 throw std::runtime_error(
                     "system: '" + body->name + "': wind_gen \""
@@ -1779,10 +1780,22 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                     " leave part of the body uncovered -- that is a generator bug, not"
                     " an authoring one (#775)");
             }
+            /* A column this crowded leaves no room for even the three bands a belt needs,
+               so wind_gen would sit there doing nothing while the author asked for belts --
+               same register as the other keys-that-do-nothing refusals in this file. One
+               belt per hemisphere costs 3 rows per anchor. */
+            if(gi.clamped && gi.bands <= 1) {
+                throw std::runtime_error(
+                    "system: '" + body->name + "': wind_gen \""
+                    + body->surface.atmosphere.wind_gen_law + "\" over " + std::to_string(anchors)
+                    + " anchor rows cannot fit a single belt inside the 64-row budget"
+                      " (3 rows per anchor minimum) -- author the belts, or thin the"
+                      " column (#775)");
+            }
             /* The author asked for one thing and the budget granted another; a silent
                reduction reads as "this body has 5 belts" in the dossier. Same register as
                the other load-time warnings in this file. */
-            if(gi.clamped && gi.bands > 1) {
+            if(gi.clamped) {
                 printf("Warning: %s: wind_gen's Rhines scale asked for %d belts per"
                        " hemisphere and the 64-row budget kept %d (%zu anchors)\n",
                        body->name.c_str(), gi.asked, (gi.bands - 1) / 2, anchors);

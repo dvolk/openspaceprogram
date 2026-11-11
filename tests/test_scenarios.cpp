@@ -1047,9 +1047,10 @@ static void check_wind() {
        what loads is ordinary rows -- the count is the pin, because a loader that read
        wind_gen and then threw it away would still load. Kerbin spins in 6 h at 600 km, so
        this 40 m/s column gives Ro ~ 0.11 and a Rhines scale of ~21 deg: 4 belts per
-       hemisphere, hence 9 bands x 2 anchors = 18 rows. That number is TUNING, not a law --
-       if kWindGenDecay, kWindGenFloor or kWindGenRoBanded moves, this moves with it, and
-       that is the point of pinning it. */
+       hemisphere, hence 9 bands x 2 anchors = 18 rows. What this row count depends on is
+       the SPIN, the RADIUS and the column's fastest row -- NOT the amplitude floor, which
+       since the span fix shapes the wind without touching the count. Pinning the count is
+       how a regression that quietly cancels belts shows up here. */
     expect_loads("wind_gen_column", patched("Kerbin", [&](nlohmann::json &a) {
                      a["wind"] = rows({row(0.0, 5.0, 0.0), row(11000.0, 40.0, 0.0)});
                      a["wind_gen"] = "rhines";
@@ -1079,6 +1080,19 @@ static void check_wind() {
                        a["wind"] = rows({row(0.0, 5.0, 0.0)});
                        a["windgen"] = "rhines";
                    }).dump(), "is not a wind key");
+    /* A column so crowded that the 64-row budget cannot hold even one belt (3 bands x 22
+       anchors) leaves wind_gen doing NOTHING while the author asked for belts. Refusing is
+       the same call as refusing any other key that would be silently ignored; a warning
+       here is worthless because the belt count the player would see is zero. */
+    {
+        nlohmann::json crowd = nlohmann::json::array();
+        for(int i = 0; i < 22; i++) { crowd.push_back(row((double)i * 100.0, 5.0, 0.0)); }
+        expect_refuses("wind_gen_no_room_for_a_belt",
+                       patched("Kerbin", [&](nlohmann::json &a) {
+                           a["wind"] = crowd;
+                           a["wind_gen"] = "rhines";
+                       }).dump(), "cannot fit a single belt");
+    }
 
     /* Which shipped bodies are allowed to author wind (#688). The mechanism landed
        before the data on purpose: with no row authored, every shipped flight number,

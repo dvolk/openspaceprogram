@@ -4021,28 +4021,44 @@ static void test_wind_generate() {
     const std::vector<WindLevel> col = { {0.0, 5.0, 0.0}, {11000.0, 40.0, 0.0} };
 
     /* A Venus-slow rotator gets NOTHING. Ro ~ 11 for this 40 m/s column (~28 at the 90 m/s
-       the sheet reports) says rotation never constrains the flow, so the authored column
-       IS the published picture -- which is what Venus's sheet is: one broad superrotating
-       profile and no belts. A generator that banded Venus anyway would be inventing
-       structure the source denies. */
+       the sheet reports) says rotation never constrains the flow, and the Rhines scale says
+       the same thing in metres: ~205 deg, wider than a hemisphere, so the ask is zero belts.
+       The published picture is what it is: one broad superrotating profile and no belts. A
+       generator that banded Venus anyway would be inventing structure the source denies. */
     WindGenInfo slow;
     const auto venus = windGenerate(col, 2.992e-7, 6.052e6, 7ull, slow);
     CHECK_NEAR(slow.ro, 11.0, 0.02, "Venus's Rossby number");
     CHECK_TRUE(slow.bands == 1, "a rotator that slow gets one band");
     CHECK_TRUE(venus.size() == col.size(), "and the column comes back unchanged");
 
-    /* A Jupiter-fast rotator gets belts. Ro ~ 0.0016 for this column, Rhines scale ~2.5 deg;
-       the row cap and the decay floor then hold it at 7 belts per hemisphere. */
+    /* A Jupiter-fast rotator gets belts. Ro ~ 0.0016 for this column, Rhines scale ~2.5 deg,
+       so it asks for 36 belts per hemisphere -- more than the row budget can hold, which is
+       the ONLY thing that trims it now the amplitude is normalized over the count. */
     WindGenInfo fast;
     const auto jup = windGenerate(col, 1.759e-4, 6.991e7, 7ull, fast);
     CHECK_NEAR(fast.ro, 0.00163, 0.02, "Jupiter's Rossby number");
-    CHECK_TRUE(fast.asked > 30 && fast.clamped, "the Rhines scale asks for more belts than"
-                                                " the row budget could ever hold");
-    CHECK_TRUE(fast.bands == 15, "and the decay floor keeps 7 belts per hemisphere: a"
-                                 " faint belt is a WIDE belt, never a hole in the coverage");
-    CHECK_TRUE(jup.size() == 30, "one row per anchor per band");
+    CHECK_TRUE(fast.asked == 36, "the Rhines scale asks for 36 belts per hemisphere");
+    CHECK_TRUE(fast.clamped && fast.bands == 31, "and the 64-row budget keeps 15, because a"
+                                                 " faint belt is a WIDE belt, never a hole"
+                                                 " in the coverage");
+    CHECK_TRUE(jup.size() == 62, "one row per anchor per band");
     CHECK_TRUE(jup.size() <= kWindMaxRows, "and never past the loader's row cap, which is"
                                            " the aero path's linear-scan budget");
+    CHECK_NEAR(std::abs(windAt(jup, 11000.0, 89.5, 0.0).x), 40.0 * kWindGenFloor, 1e-12,
+               "the poleward belt sits exactly on the amplitude floor whatever the count");
+
+    /* The SHAPE of the span, not just its two ends. An Earth-slow body (Rhines ~13 deg,
+       6 belts per hemisphere) puts lat 42 inside its HALFWAY belt, where the amplitude must
+       be floor^(3/6) = sqrt(floor) = 0.316 of the anchor. A linear ramp across the span
+       gives 0.55 there and a squared span 0.56, so this is what pins the decay as geometric
+       rather than pinning only where it starts and where it ends. */
+    WindGenInfo mid;
+    const auto earth = windGenerate(col, 7.3e-5, 6.0e6, 7ull, mid);
+    CHECK_TRUE(mid.asked == 6 && !mid.clamped && mid.bands == 13,
+               "an Earth-slow rotator gets exactly the count the Rhines scale asked for");
+    CHECK_NEAR(std::abs(windAt(earth, 11000.0, 42.0, 0.0).x),
+               40.0 * std::sqrt(kWindGenFloor), 1e-9,
+               "the halfway belt lands on the geometric middle of the span");
 
     /* Coverage and alternation, asked the way the game asks: through windAt. The loader
        runs its own checks on the generator's OUTPUT, so a table that left a latitude
@@ -4056,7 +4072,10 @@ static void test_wind_generate() {
         if(i > 0 && e * prev < 0.0) { ++flips; }
         prev = e;
     }
-    CHECK_TRUE(flips >= 5, "the belts alternate against their neighbours");
+    /* Pinned exactly, because this is the cheapest check that the belt COUNT reached the
+       player: 31 bands along a meridian is 30 boundaries, and every one of them is a flip.
+       A belt cancelled by some cap anywhere upstream shows up here as a missing flip. */
+    CHECK_TRUE(flips == 30, "every band boundary flips the wind, and none of them is missing");
     CHECK_NEAR(windAt(jup, 11000.0, 0.0, 0.0).x, 40.0, 0.0,
                "the equatorial band carries the anchor's own value");
 
@@ -4126,8 +4145,10 @@ static void test_wind_generate() {
                "and still answers for the whole body, unchanged");
 
     /* A Rhines scale wider than a hemisphere is ZERO belts, not one: the count is a floor,
-       so a body just inside kWindGenRoBanded does not get a belt and a half. 100 m/s over a
-       1000 km body at 2e-5 rad/s is Ro 2.5 with a ~97 deg Rhines scale. */
+       so a hemisphere too small to hold one jet gets none rather than a belt and a half.
+       100 m/s over a 1000 km body at 2e-5 rad/s is Ro 2.5 with a ~97 deg Rhines scale --
+       and Ro ~2.14 is where the Rhines formula itself runs out, which is why there is no
+       separate Rossby gate to keep in step with it. */
     const std::vector<WindLevel> gust = { {0.0, 100.0, 0.0} };
     WindGenInfo widegi;
     const auto wide = windGenerate(gust, 2.0e-5, 1.0e6, 7ull, widegi);

@@ -6880,11 +6880,14 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
                look right?", and the answer needs Ro and the Rhines scale in hand. */
             const bool gen_wind = !at.wind_gen_law.empty();
             if(gen_wind) {
-                char gv[128];
+                char gv[176];
                 /* A generated table is 2*belts + 1 bands (one straddles the equator).
                    Report BELTS PER HEMISPHERE, the same unit the --check diagnostic prints,
                    and when the answer is none say that instead of quoting a Rhines scale
-                   that decided nothing. */
+                   that decided nothing. The budget case gets its own branch because the two
+                   numbers travel apart: the Rhines scale asked for one count, the 64-row
+                   cap granted another, and "rotation never constrains this flow" would be
+                   the opposite of the truth (system.cpp warns at load for the same reason). */
                 const int belts = (at.wind_gen_bands - 1) / 2;
                 if(!std::isfinite(at.wind_gen_ro)) {
                     snprintf(gv, sizeof gv, "%s: no spin, so no belts -- the column"
@@ -6893,6 +6896,13 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
                     snprintf(gv, sizeof gv, "%s: Ro %.3g, no belts -- rotation never"
                                             " constrains this flow",
                              at.wind_gen_law.c_str(), at.wind_gen_ro);
+                } else if(at.wind_gen_asked > belts) {
+                    snprintf(gv, sizeof gv, "%s: Ro %.3g, %d %s per hemisphere -- the"
+                                            " 64-row budget kept %d of %d asked (Rhines"
+                                            " scale %.3g deg)",
+                             at.wind_gen_law.c_str(), at.wind_gen_ro, belts,
+                             belts == 1 ? "belt" : "belts", belts, at.wind_gen_asked,
+                             at.wind_gen_jet_deg);
                 } else {
                     snprintf(gv, sizeof gv, "%s: Ro %.3g, %d %s per hemisphere,"
                                             " Rhines scale %.3g deg",

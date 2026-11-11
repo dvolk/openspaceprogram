@@ -292,17 +292,13 @@ struct WindGenInfo {
     bool clamped = false;  // the 64-row budget cut that count
 };
 
-/* A rotator this slow gets no latitudinal structure at all: rotation never constrains
-   the flow, so the honest picture IS the authored column. Venus sits at Ro 27.6, and
-   Earth at 0.043, so the threshold is not close to deciding anything real -- it is there
-   to stop a slow spinner being banded by a Rhines count that means nothing without it. */
-inline constexpr double kWindGenRoBanded = 3.0;
-
-/* Poleward amplitude decay per band, and the floor under it. Away from the strongest jet
-   the real ones fall off roughly this way; the floor is what stops a Rhines count of 19
-   turning into 19 rows of air nobody could feel. Both are tuning, not laws -- the table
-   on #775 is what they are tuned against. */
-inline constexpr double kWindGenDecay = 0.72;
+/* How weak the POLEWARD-most belt may be, as a fraction of the strongest jet. The decay is
+   normalized across whatever belt count the Rhines scale asked for, so the outermost belt
+   lands exactly on this floor at any count. A fixed per-belt decay instead (this used to be
+   0.72^j, with belts dropped once they fell under the floor) capped every body at 7 belts
+   per hemisphere: the playground's Belted asked 18 and rendered 15, so the one number the
+   Rhines scale exists to produce stopped reaching the player. Tuning, not a law -- the
+   table on #775 is what the fraction is tuned against. */
 inline constexpr double kWindGenFloor = 0.10;
 
 /* How far a band edge may wander from an even spacing, as a fraction of the spacing.
@@ -348,8 +344,8 @@ inline uint64_t windGenSeed(const std::string &name, double body_seed) {
               and the hand-authored cell in res/systems/wind_playground.json ("Hadley") is
               the same pattern -- +0.02 over the equator, -0.015 in the flanking belts.
    The one band straddling lat 0 keeps the anchors' own signs: inside a band that wraps the
-   equator there is no antisymmetric answer to give. Amplitudes decay poleward by
-   kWindGenDecay, so every emitted band sits at or above kWindGenFloor.
+   equator there is no antisymmetric answer to give. Amplitudes decay poleward normalized
+   over the belt count, so the outermost belt sits exactly at kWindGenFloor.
 
    system.cpp re-checks the OUTPUT against the coverage law and the 64-row budget, so this
    must satisfy the loader's laws itself: bands tile [-90, 90] with no gap or overlap, one
@@ -373,23 +369,25 @@ inline std::vector<WindLevel> windGenerate(const std::vector<WindLevel> &anchors
     }
 
     /* How many belts per hemisphere the Rhines scale asks for -- FLOOR, because half a
-       Rhines scale across a whole hemisphere is zero belts. Then the row cap answers back:
-       system.cpp refuses a table over 64 rows because windAt scans linearly on the aero
-       path, and this emits one row per anchor per band. */
-    int nb = (int)std::floor(90.0 / info.jet_deg);
+       Rhines scale across a whole hemisphere is zero belts. That floor is also the whole
+       story for slow spinners: the Rhines scale at 30 deg is sqrt(Ro / cos 30) radians, so
+       anything above Ro ~2.14 already asks for none, which is why there is no separate
+       Rossby gate. Pre-cap the ask at one belt per ROW before the cast -- a body whose
+       Rhines scale underflows (a whisper of wind on a huge rotator) would otherwise turn
+       the division into an out-of-range int. Then the row cap answers back: system.cpp
+       refuses a table over 64 rows because windAt scans linearly on the aero path, and this
+       emits one row per anchor per band. */
+    const double want = 90.0 / info.jet_deg;
+    int nb = want > (double)kWindMaxRows ? (int)kWindMaxRows : (int)std::floor(want);
     info.asked = nb;
     const int room = (int)(kWindMaxRows / anchors.size());
     if(2 * nb + 1 > room) { nb = (room - 1) / 2; info.clamped = true; }
-    if(info.ro >= kWindGenRoBanded) { nb = 0; }
 
-    /* And the decay floor answers back too: past jmax the amplitude is under it, so those
-       belts are dropped and the outermost KEPT band owns everything to the pole. Dropping
-       a band and leaving its latitudes out would break the coverage the loader insists on
-       -- a faint belt is a wide belt, never a hole. */
-    int jmax = 0;
-    for(double a = kWindGenDecay; a >= kWindGenFloor; a *= kWindGenDecay) { ++jmax; }
-    if(nb > jmax) { nb = jmax; }
-
+    /* Nothing else answers back. The count is what the scaling asked for, bounded only by
+       the row budget, because the amplitude is normalized OVER that count -- dropping the
+       faint outer belts to save rows would either leave a hole in the coverage the loader
+       insists on or quietly relabel the count. system.cpp warns when the budget bit, and
+       refuses a column so crowded that even one belt will not fit. */
     if(nb <= 0) {
         info.bands = 1;
         return anchors;
@@ -403,20 +401,15 @@ inline std::vector<WindLevel> windGenerate(const std::vector<WindLevel> &anchors
         const double u = (double)(windGenHash(seed, k) >> 11) / 9007199254740992.0;
         edge[(size_t)k] = (k + 0.5) * w + (u * 2.0 - 1.0) * kWindGenJitter * w;
     }
-    for(int k = 0; k < nb; k++) {
-        if(edge[(size_t)k] > 89.0) { edge[(size_t)k] = 89.0; }   // keep the polar cap real
-        if(edge[(size_t)k] < 1.0) { edge[(size_t)k] = 1.0; }
-    }
-    for(int k = 1; k < nb; k++) {
-        if(edge[(size_t)k] <= edge[(size_t)k - 1]) {
-            edge[(size_t)k] = edge[(size_t)k - 1] + 1.0;   // jitter may cross; belts may not
-        }
-    }
-    /* Both guards above hold only while kWindGenJitter < 0.5 (consecutive nominal edges
-       are w apart, jitter spans 2 * 0.15 * w) and the clamp keeps the outermost edge off
-       the pole. Retune jitter past that and this asserts rather than emitting a band with
-       lat0 >= lat1, which the loader would then refuse as its own bug. */
-    assert(edge[(size_t)nb - 1] < 90.0);
+    /* Edges cannot cross and cannot reach a pole, and that is arithmetic rather than
+       something this function has to enforce: consecutive nominal edges are w = 90/nb apart
+       while the jitter spans only 2 * kWindGenJitter * w, so they stay ordered while
+       kWindGenJitter < 0.5; and the row budget bounds nb at 31, so the outermost edge is at
+       most 90 - 31.5/nb = 88.98 and the innermost at least 31.5/nb = 1.02. Asserted, not
+       repaired: a band with lat0 >= lat1 is the generator's bug, and quietly nudging an edge
+       would hide it. Retune jitter past 0.5 and this asserts. */
+    assert(edge[0] > 0.0 && edge[(size_t)nb - 1] < 90.0);
+    for(int k = 1; k < nb; k++) { assert(edge[(size_t)k] > edge[(size_t)k - 1]); }
 
     // -90, -e[nb-1], ... , -e[0], e[0], ... , e[nb-1], 90  ->  2*nb+1 bands, band nb is
     // the equatorial one, so a band's distance from the equator is |band - nb|.
@@ -431,7 +424,9 @@ inline std::vector<WindLevel> windGenerate(const std::vector<WindLevel> &anchors
     out.reserve(anchors.size() * (size_t)(2 * nb + 1));
     for(int b = 0; b <= 2 * nb; b++) {
         const int j = std::abs(b - nb);
-        const double amp = std::pow(kWindGenDecay, (double)j);
+        /* Normalized across the belt count, so the poleward belt sits exactly on the floor
+           whether this body fits 2 belts or 15. */
+        const double amp = std::pow(kWindGenFloor, (double)j / (double)nb);
         const double sign = (j % 2 == 0) ? 1.0 : -1.0;
         const double hemi = (b < nb) ? -1.0 : 1.0;   // the mirror, for the meridional leg
         for(const WindLevel &A : anchors) {

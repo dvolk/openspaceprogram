@@ -770,11 +770,23 @@ FACT_WIND_KNOWN = {
 # way, so one pattern reads the top of each, which is all a ceiling guard needs.
 FACT_WIND_LABEL = 'wind speeds'
 WIND_MPS = re.compile(r'(\d+(?:\.\d+)?)\s*m/s')
+# Jupiter and Saturn do not state ONE wind: they state a ceiling PER LATITUDE BAND
+# ("Up to 150 m/s (<30 degrees latitude) Up to 40 m/s (>30 degrees latitude)"). That is
+# latitude structure -- and the thing a generated belt field (#775) would replace with
+# derived numbers. Named separately so the guard can tell "the page gave us a range" from
+# "the page gave us a map". This is a Jupiter/Saturn-shaped net, not a general one: it
+# matches "<speed> m/s (<op> <lat> degrees latitude)" and would miss "30-60 degrees
+# latitude", "near the equator", or a speed written with a thousands comma. Widening it is
+# worth doing when a sheet that phrased it another way starts mattering; self_test_fact_wind
+# below pins what this one catches, so a rewrite cannot silently lose the two it has.
+WIND_MPS_LAT = re.compile(r"(?i)up to ([\d.]+)\s*m/s\s*\(\s*([<>]=?)\s*([\d.]+)\s*"
+                          r"(?:degrees|deg)?\s*latitude\s*\)")
 
 
 def fact_wind(page):
-    """What a fact sheet states about wind: {'max': m/s, 'text': the page's own words},
-    or {} when it states none. Jupiter and Saturn put the label on a line of its own and
+    """What a fact sheet states about wind: {'max': m/s, 'text': the page's own words,
+    'latbands': [(speed, op, lat_deg), ...] possibly empty}, or {} when it states none.
+    Jupiter and Saturn put the label on a line of its own and
     the two latitude bands under it, so lines keep being pulled in while they state a
     speed and are not a new labelled row. The raw text comes back because the printed
     row should quote the page, not a parsed guess."""
@@ -797,7 +809,9 @@ def fact_wind(page):
             # The label exists and no number follows it: the page declines to state a
             # speed. Not the same as stating zero.
             return {}
-        return {'max': max(vals), 'text': text}
+        lat = [(float(m.group(1)), m.group(2), float(m.group(3)))
+               for m in WIND_MPS_LAT.finditer(text)]
+        return {'max': max(vals), 'text': text, 'latbands': lat}
     return {}
 
 
@@ -814,6 +828,7 @@ def check_fact_wind(planets, verbose=True, parsed=None):
             continue
         sheet = fact_wind(page)
         wind = atmo.get('wind') or []
+        gen = atmo.get('wind_gen')
         comps = [(float(w['alt']), max(abs(w.get('east', 0.0)), abs(w.get('north', 0.0))))
                  for w in wind]
         top = max((c for _alt, c in comps), default=None)
@@ -823,13 +838,28 @@ def check_fact_wind(planets, verbose=True, parsed=None):
         rows.append('%-9s sheet %-22s authors %s'
                     % (name,
                        ('%g m/s  %s' % (sheet['max'], quote)) if sheet else 'none',
-                       ('%g m/s, %d rows' % (top, len(comps))) if comps else 'none'))
+                       ('%g m/s, %d rows%s'
+                        % (top, len(comps), ' [%s]' % gen if gen else ''))
+                       if comps else 'none'))
+        # A GENERATED column is still bounded by this guard, for a reason worth stating:
+        # windGenerate scales every belt by amp <= 1 and the equatorial belt carries the
+        # anchors' own values, so the widest wind in the emitted table IS the column's top
+        # row, weighed here. What the ceiling cannot weigh is WHERE a speed lands, and a
+        # sheet that bounds wind BY LATITUDE says more than a generated field may claim.
+        if gen and sheet.get('latbands'):
+            bad.append('%s: the sheet states wind per latitude band (%s) while the file'
+                       ' generates its own belts -- author the published bands (#767/#772),'
+                       ' because a generated field puts derived numbers inside a latitude'
+                       ' bound the page set'
+                       % (name, '; '.join('%g m/s %s%g deg lat' % b
+                                          for b in sheet['latbands'])))
         # #775's diagnostic, printed and never enforced: what the rotation-based scaling
         # says about the latitudinal structure this body's air can hold. The table on #775
         # shows it tracks Venus (no belts at all), Jupiter and Saturn and overpredicts Mars
         # and the ice giants, so it is a hint for whoever authors a wind -- not a law the
-        # loader may act on. ASKED, not shipped: atmo.h:windGenerate also caps the count at
-        # the 64-row budget and at the decay floor, so this number is the raw Rhines ask.
+        # loader may act on. ASKED, not shipped: atmo.h:windGenerate caps the count at the
+        # 64-row budget and nowhere else now that the amplitude is normalized over whatever
+        # count survives, so this number is the raw Rhines ask.
         if comps and parsed is not None:
             d = parsed.get(name) or {}
             R, per = d.get('radius_m'), d.get('rot_s')
@@ -843,7 +873,7 @@ def check_fact_wind(planets, verbose=True, parsed=None):
                     ro = u / (2.0 * om * R)
                     beta = 2.0 * om * math.cos(math.radians(30.0)) / R
                     jet = math.degrees(math.sqrt(u / beta) / R)
-                    asked = 0 if ro >= 3.0 else int(math.floor(90.0 / jet))  # kWindGenRoBanded
+                    asked = int(math.floor(90.0 / jet))   # windGenerate's count, same floor
                     scaling.append('%-9s Ro %-9.4g Rhines scale %-8.4g deg'
                                    ' -> %d belts/hemi asked' % (name, ro, jet, asked))
         if not comps:
@@ -877,6 +907,43 @@ def check_fact_wind(planets, verbose=True, parsed=None):
         for why in waived:
             print('  waived    %s' % why)
     return bad
+
+
+def self_test_fact_wind():
+    """Prove the wind guard can fail, which is the only way to know it is a gate and not
+    decoration. This file has no test harness of its own, so the mutation runs here against
+    the sheets cached in the repo (utils/rss/html, tracked): Jupiter's page states wind per
+    latitude band, Neptune's states a bare range. Returns the ways the guard has stopped
+    behaving -- empty means all three mutations landed."""
+    fails = []
+    jup = fact_wind('jupiterfact.html')
+    nep = fact_wind('neptunefact.html')
+    if len(jup.get('latbands') or []) != 2:
+        fails.append('jupiterfact.html no longer parses as two latitude bands: %r' % (jup,))
+    if nep.get('latbands'):
+        fails.append('neptunefact.html\'s bare range now parses as latitude bands: %r'
+                     % (nep,))
+    rows = [{'alt': 0.0, 'east': 10.0}, {'alt': 60000.0, 'east': 90.0}]
+    # A generated table under a sheet that bounds wind BY LATITUDE must be refused...
+    got = check_fact_wind([('jupiterfact.html', 'Jupiter', 1.0,
+                            {'atmosphere': {'wind': rows, 'wind_gen': 'rhines'}}, 0.0)],
+                          verbose=False)
+    if not any('per latitude band' in m for m in got):
+        fails.append('a generated table under Jupiter\'s banded sheet was not refused: %r'
+                     % (got,))
+    # ... the same rows authored by hand must not be (both sit under the sheet's 150 m/s),
+    got = check_fact_wind([('jupiterfact.html', 'Jupiter', 1.0,
+                            {'atmosphere': {'wind': rows}}, 0.0)], verbose=False)
+    if got:
+        fails.append('the same rows authored by hand were refused: %r' % (got,))
+    # ... and a generated table under a bare RANGE is legal, since the sheet bounds speed
+    # and says nothing about where it lands.
+    got = check_fact_wind([('neptunefact.html', 'Neptune', 1.0,
+                            {'atmosphere': {'wind': rows, 'wind_gen': 'rhines'}}, 0.0)],
+                          verbose=False)
+    if any('latitude band' in m for m in got):
+        fails.append('a bare-range sheet refused a generated table: %r' % (got,))
+    return fails
 
 
 # #625 (roadmap rung A, the catalogue half): seven of this file's airs stated a SCALE
@@ -2051,6 +2118,14 @@ def build_base(verbose_air=False):
             print('DRIFT   fact wind: ' + m)
         raise SystemExit('%d authored wind row(s) exceed what the fact sheet that '
                          'states them allows (waivers: FACT_WIND_KNOWN)' % len(bad))
+    # And the guard's own red mutation (#775): the generated-vs-published-latitude-band
+    # rule has nothing else in the tree that can turn it off, so prove here that it fires.
+    bad = self_test_fact_wind()
+    if bad:
+        for m in bad:
+            print('SELF-FAIL fact wind: ' + m)
+        raise SystemExit('the fact-wind guard can no longer be made to fail, so it is '
+                         'decoration rather than a gate')
     # ... and the light that air sits under (#687): the star's one authored
     # temperature against every body's published irradiance and black-body rows.
     bad = check_fact_surface(bodies, sheets, sun, verbose=verbose_air)
