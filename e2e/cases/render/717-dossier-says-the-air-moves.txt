@@ -1,0 +1,31 @@
+# A body can author atmosphere.wind (#688) and until #717 no readout said so: the dossier
+# described Venus's air as 9.2 MPa of CO2 and never mentioned that its deck runs at
+# 100 m/s. This pins the player-facing rows -- one per authored LEVEL, altitude in the
+# label because altitude is the axis the table keys on, speed and compass direction in
+# the value.
+#
+# The direction is the way the air crosses the GROUND (WindLevel is ground-relative),
+# which is a different statement from the airspeed the aero law bills -- that pair lives
+# on the Surface window and in [surfinfo]'s tas=/hs= split, pinned by
+# flight/688-earth-jet-bends-ground-speed and flight/688-mars-wind-shows-on-the-tape.
+#
+# The rows come from utils/make_solar_system.py, where each one cites the fact sheet it
+# stands on (or says plainly that the sheet stops short and the figure is climatology).
+NAME dossier-says-the-air-moves
+CLAIM A body's dossier prints a row per authored wind level, with the altitude, the speed and the compass direction the air moves, and a body with no authored wind prints none.
+KIND invariant
+ARGS --system res/systems/solar_system.json --timeout 6 --atlas-dump 4000
+FORBID error:
+# Venus: 1 m/s at the datum (venusfact.html's own surface row) and 100 m/s at 65 km
+# (the cloud-top superrotation, cited where it is authored). Order is the table's, and
+# the table is sorted by altitude at load.
+CHECK re.search(r"air wind 0\.0 m\s+1 m/s east\s*\n\s*\[atlas\]   air wind 65\.0 km\s+100 m/s east", re.search(r"\[atlas\] Venus weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+# Earth: 5 m/s at the datum and 40 m/s at 11 km -- a jet core, deliberately NOT the
+# sheet's 100 m/s top, which check_fact_wind would allow.
+CHECK re.search(r"air wind 0\.0 m\s+5 m/s east\s*\n\s*\[atlas\]   air wind 11\.0 km\s+40 m/s east", re.search(r"\[atlas\] Earth weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+# Mars: one row, the lander-site figure held up to the ceiling by windAt()'s rule.
+CHECK re.search(r"air wind 0\.0 m\s+10 m/s east", re.search(r"\[atlas\] Mars weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+# And the negative: bodies whose sheet states no wind and whose file authors none print
+# no such row -- not "0 m/s calm", which would be a claim the file never made.
+CHECK not re.search(r"air wind", re.search(r"\[atlas\] Moon weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+CHECK not re.search(r"air wind", re.search(r"\[atlas\] Jupiter weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))

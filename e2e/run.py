@@ -456,6 +456,9 @@ SURF_RE = re.compile(
     r"(?:beta=([-\d.e+]+) deg|beta=-)\s+"
     r"(?:cla=([-\d.e+]+) m2/rad|cla=-)\s+"
     r"(?:sm=([-\d.e+]+) m|sm=-)\s+"
+    r"(?:tas=([-\d.e+]+) m/s|tas=-)\s+"
+    r"(?:wind_east=([-\d.e+]+) m/s|wind_east=-)\s+"
+    r"(?:wind_north=([-\d.e+]+) m/s|wind_north=-)\s+"
     r"acc=([-\d.e+]+) m/s2\s+"
     r"body=\"([^\"]*)\"\s+bme=\"([^\"]*)\"\s+sit=\"([^\"]*)\""
 )
@@ -1167,8 +1170,8 @@ def parse_terrain(out):
 def parse_surf(out):
     rows = []
     for m in SURF_RE.finditer(out):
-        (t, agl, asl, vs, hs, lat, lon, pitch, roll, hdg, aprg, aoa, beta, cla, sm, acc,
-         body, bme, sit) = m.groups()
+        (t, agl, asl, vs, hs, lat, lon, pitch, roll, hdg, aprg, aoa, beta, cla, sm,
+         tas, we, wn, acc, body, bme, sit) = m.groups()
         rows.append({
             "t": float(t), "alt_agl": float(agl), "alt_asl": float(asl),
             "vs": float(vs), "hs": float(hs), "lat": float(lat),
@@ -1182,6 +1185,17 @@ def parse_surf(out):
             # #450: beta is the yaw-plane half of the same AeroFrame pair, so it
             # goes None on exactly the same test as aoa.
             "beta": float(beta) if beta is not None else None,
+            # #717: the frame split, as numbers. hs above is speed over the GROUND;
+            # tas is |airRelativeVel|, the speed the aero law bills. They differ by the
+            # wind projected onto the hull's heading, which is how a case pins that a
+            # wind moved the air rather than the hull. None with no air or no flow
+            # above the aero law's own floor, exactly like aoa. wind_east/north are the
+            # body's authored table interpolated at this hull's alt_asl, and None on a
+            # body that authors no wind at all -- a 0 there would claim a calm air the
+            # file never claimed.
+            "tas": float(tas) if tas is not None else None,
+            "wind_east": float(we) if we is not None else None,
+            "wind_north": float(wn) if wn is not None else None,
             # #499: cla is None with no air; sm is None with no air OR with the
             # lifting surfaces disagreeing, which is when the margin is dashed.
             "cla": float(cla) if cla is not None else None,

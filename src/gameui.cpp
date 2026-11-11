@@ -690,6 +690,20 @@ static void drawGuidanceWindow(Game &g) {
     });
 }
 
+/* Which way a wind row points, in eight compass names. The air's velocity is
+   GROUND-relative (WindLevel, #688), so "east" means the way the air crosses the
+   ground -- not the way a hull feels it, which is the airspeed printed beside it.
+   Naming the octant rather than printing a signed pair is deliberate: "east -32" asks
+   the reader to do a sign flip in their head, and the whole point of #717 is that a
+   pilot should not have to. */
+static const char *windToward(double east, double north) {
+    if(east == 0.0 && north == 0.0) { return "calm"; }
+    static const char *const kNames[] = {"east", "north-east", "north", "north-west",
+                                         "west", "south-west", "south", "south-east"};
+    int oct = (int)std::llround(glm::degrees(std::atan2(north, east)) / 45.0);
+    return kNames[((oct % 8) + 8) % 8];
+}
+
 // The flight windows below assume an active vessel: ui_remove_vehicle refuses
 // the last.
 void drawUIReadouts(Game &g) {
@@ -2487,6 +2501,33 @@ void drawUIReadouts(Game &g) {
         ImGui::Text("ASL: %s", fmt_dist(altAsl, dist_s, sizeof dist_s));
         ImGui::Text(" Vs: %.2fm/s", ver_speed);
         ImGui::Text(" Hs: %.2fm/s", hor_speed2);
+        /* #717: the frame split, stated. Hs is speed over the GROUND. Tas is speed
+           through the AIR -- the magnitude of the same vector the drag law, the Mach
+           gate and a jet intake answer to (Vehicle::airRelativeVel, the one behind the
+           air-relative prograde marker, #498). Until now the window printed only the
+           ground number while its AoA and Beta rows two lines down came from the other
+           frame, so on a windy body the readouts disagreed with each other and nothing
+           said which was which. Tas is 3D (it keeps the vertical term), so it is not
+           Hs plus or minus the Wind row below; reconciling those three is what a pilot
+           learns from flying them side by side. Dashed on the aero law's own test
+           (kAoAFlowFloor) rather than printing 0.0001 for a parked hull. */
+        if(view.air_dir_valid) {
+            ImGui::Text("Tas: %.2fm/s", glm::length(view.air_vel));
+        } else {
+            ImGui::Text("Tas: -");
+        }
+        /* The body's own wind at THIS altitude, interpolated from its table the way the
+           aero law interpolates it (#688). Printed only on a body that authors wind:
+           the row is a fact about the world rather than about the hull, and 20 of the
+           shipped bodies would carry a permanent dash. Ground-relative like the rows --
+           this is how fast the air crosses the ground, which is why it is not the
+           difference between Hs and Tas (that difference is the wind projected onto the
+           hull's heading, and heading is Hdg's business). */
+        if(b->surface.atmosphere.has_wind()) {
+            const glm::dvec2 wnd = windAt(b->surface.atmosphere.wind, altAsl);
+            ImGui::Text("Wind: %.1fm/s %s", glm::length(wnd),
+                        windToward(wnd.x, wnd.y));
+        }
         ImGui::Text("Lat: %.4f", glm::degrees(latitude));
         ImGui::Text("Lon: %.4f", glm::degrees(longitude));
         ImGui::Text(" Pt: %.2f", glm::degrees(pitch));
@@ -2614,11 +2655,37 @@ void drawUIReadouts(Game &g) {
                 : snprintf(sm_s, sizeof sm_s, "-");
             assert(cla_n > 0 && cla_n < (int)sizeof cla_s);
             assert(sm_n > 0 && sm_n < (int)sizeof sm_s);
+            /* #717: the same frame split the Surface window now prints, in the log the
+               e2e corpus reads. tas= is |airRelativeVel| -- the speed the aero law
+               bills -- while hs= above stays the GROUND speed, because
+               flight/688-venus-wind-outruns-the-hull pins that distinction and a case
+               that quoted only one of them could not tell a wind from a force.
+               wind_east=/wind_north= are the body's own table interpolated at this
+               hull's alt_asl, in the same local-east/local-north basis WindLevel is
+               authored in, so a case can pin the row value where the hull actually is
+               rather than at some height it assumes. Dashed on a body with no wind --
+               a 0 there would read as "the air is calm", which is a claim the file
+               never made. */
+            char tas_s[32], we_s[32], wn_s[32];
+            const int tas_n = view.air_dir_valid
+                ? snprintf(tas_s, sizeof tas_s, "%.6g m/s", glm::length(view.air_vel))
+                : snprintf(tas_s, sizeof tas_s, "-");
+            assert(tas_n > 0 && tas_n < (int)sizeof tas_s);
+            if(b->surface.atmosphere.has_wind()) {
+                const glm::dvec2 wnd = windAt(b->surface.atmosphere.wind, altAsl);
+                const int we_n = snprintf(we_s, sizeof we_s, "%.6g m/s", wnd.x);
+                const int wn_n = snprintf(wn_s, sizeof wn_s, "%.6g m/s", wnd.y);
+                assert(we_n > 0 && we_n < (int)sizeof we_s);
+                assert(wn_n > 0 && wn_n < (int)sizeof wn_s);
+            } else {
+                snprintf(we_s, sizeof we_s, "-");
+                snprintf(wn_s, sizeof wn_s, "-");
+            }
             printf("[surfinfo] t=%.1fs "
                    "alt_agl=%.6g m alt_asl=%.6g m "
                    "vs=%.6g m/s hs=%.6g m/s lat=%.8g deg lon=%.8g deg "
                    "pitch=%.6g deg roll=%.6g deg hdg=%.6g deg aprg=%s aoa=%s beta=%s "
-                   "cla=%s sm=%s acc=%.6g m/s2 "
+                   "cla=%s sm=%s tas=%s wind_east=%s wind_north=%s acc=%.6g m/s2 "
                    "body=\"%s\" bme=\"%s\" sit=\"%s\"\n",
                    time,
                    view.alt_agl,
@@ -2626,7 +2693,7 @@ void drawUIReadouts(Game &g) {
                    ver_speed, hor_speed2,
                    glm::degrees(latitude), glm::degrees(longitude),
                    glm::degrees(pitch), glm::degrees(roll), glm::degrees(yaw),
-                   aprg_s, aoa_s, beta_s, cla_s, sm_s,
+                   aprg_s, aoa_s, beta_s, cla_s, sm_s, tas_s, we_s, wn_s,
                    ship->feltAccel(), b->name.c_str(), bme,
                    situationName(ps.situation));
             fflush(stdout);
@@ -6700,6 +6767,24 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
                 fmtRow(v, sizeof v, "none");
             }
             line("air oxidizer", v);
+            /* THE AIR'S OWN MOTION (#688), which until now reached no readout at all
+               (#717): a body could author wind and its dossier would still describe the
+               air as pressure, temperature and gas. One row per authored LEVEL, like the
+               gas rows above, because a wind is a profile -- Venus drifts 1 m/s at its
+               ground and 100 m/s at its deck, and the deck is where a hull would be.
+               The altitude is the label because altitude is the axis the table keys on.
+               Ground-relative, like the rows themselves: "100 m/s east" is how fast the
+               air crosses the ground, not how fast it crosses a hull -- that second
+               number is the airspeed, and it lives on the Surface window beside the
+               ground speed so the two can be compared (#717). */
+            for(const WindLevel &wl : at.wind) {
+                char lab[32];
+                snprintf(lab, sizeof lab, "air wind %s",
+                         fmt_dist(wl.alt, w, sizeof w));
+                fmtRow(v, sizeof v, "%.4g m/s %s", std::hypot(wl.east, wl.north),
+                       windToward(wl.east, wl.north));
+                line(lab, v);
+            }
         } else {
             line("air density", "none (rim only)");
         }

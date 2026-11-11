@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 319 |
-| `golden` | tuned numbers or a content table -- update deliberately when tuning | 43 |
+| `invariant` | a behaviour or a player route the game must keep | 320 |
+| `golden` | tuned numbers or a content table -- update deliberately when tuning | 45 |
 | `harness` | CLI/test-engine plumbing, not game spec | 15 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **381** |
+| | **total** | **384** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -18,7 +18,7 @@ paces a run: how much e2e a change deserves is the caller's
 judgement. Select by number, name or path, e.g.
 `python3 e2e/run.py save/172 262`.
 
-## flight (99)
+## flight (101)
 
 | case | kind | pins |
 |---|---|---|
@@ -116,6 +116,8 @@ judgement. Select by number, name or path, e.g.
 | `flight/648-killing-the-spin-stops-costing-power.txt` | invariant | Wheels bill what they deliver: this hull pays its full wheel rating while its drums carry the ask, and stops paying once an autopilot has arrived -- with its key still held down. |
 | `flight/677-kill-rot-stops-a-ring-only-hull.txt` | invariant | Holding kill-rot on a hull whose only steering is its thruster ring asks for torque, spends hydrazine, and puts the spin down. |
 | `flight/678-a-turn-rate-ceiling-coasts-instead-of-snapping.txt` | invariant | A latched 90 degree turn with SAS turn rate 6 deg/s asks for no more than that rate, cruises at it, and still arrives. |
+| `flight/688-earth-jet-bends-ground-speed.txt` | golden | Earth's wind profile is read at the hull, not at the ground: at the 8.5 km spawn the two rows interpolate to 32.0 m/s of air, so a hull trimmed at 44.9 m/s of airspeed spawns at 76.9 m/s over the ground and tracks east off lon 0. |
+| `flight/688-mars-wind-shows-on-the-tape.txt` | golden | Mars's datum wind row is carried all the way to the bed at 6 km: a hull trimmed at 196.3 m/s of airspeed in 0.8 Pa of moving air tracks 205.7 m/s over the ground and runs east off lon 0, even though the wind barely pushes. |
 | `flight/688-venus-wind-outruns-the-hull.txt` | golden | Venus authors a wind, and it moves the air rather than the hull: at 11.6 km the table interpolates to 18.7 m/s of air, so a hull that asked for 5.1 m/s of airspeed spawns at 13.5 m/s over the ground and drifts downwind (east, off lon 0) while pointing into the flow. |
 | `flight/688-wind-bends-airspeed.txt` | invariant | With atmosphere.wind authored, a hull's airspeed is its speed through moving air rather than its speed over the ground -- a tailwind along its track makes it smaller -- and the wind a hull reads is the authored profile interpolated at its own altitude (10 m/s at 8.5 km) and HELD past the last row (20 m/s at 42.5 km); a bed that authors an airspeed adds the air's motion instead of being moved by it (53.9 m/s over the ground for the 44 it asked for). |
 | `flight/693-trim-bed-speeds-follow-the-air.txt` | golden | A load-keyed spawn bed's speed comes from the body's air and gravity rather than from its circular speed: one authored 50.9 kg/m^2 lift-area load gives 44 m/s in Kerbin's 8.5 km air, 34 in Eve's 3.1 km air and 162 in Duna's 5 km at the same 0.1-of-air-top band -- within a few percent of the same hull's lift balance on the two subsonic worlds -- where the gravity-keyed cruise bed gives 33 m/s on Duna, a fifth of the speed that hull needs to make lift there. |
@@ -348,7 +350,7 @@ judgement. Select by number, name or path, e.g.
 | `ui/734-wing-card-holds-its-numbers.txt` | invariant | The part window's flow row and watts row publish on an instrument's 2 Hz cadence rather than every frame, EACH OPEN CARD ON ITS OWN -- eleven reads a tenth of a second apart see a couple of different figures, not eleven -- while the model behind them keeps logging every substep, and each published pair is the worst-loaded FRAME of its window, so q, Mach and the watts the player reads belong to one instant rather than to three different moments. |
 | `ui/741-the-debug-clock-solar-row-is-wired-to-the-sun-the-sim-uses.txt` | invariant | The debug window's solar clock row is readable, its value is the sim clock's own, and the rate at which it walks is the day length the atlas prints for the home world -- so the one UI readout that reads the sun cannot be rewired to a different sun, a different day, or nothing at all without a test noticing. |
 
-## render (65)
+## render (66)
 
 | case | kind | pins |
 |---|---|---|
@@ -412,6 +414,7 @@ judgement. Select by number, name or path, e.g.
 | `render/630-air-says-what-it-is-made-of.txt` | invariant | A body's dossier names the gases its air is made of, biggest first, and prints the share of that air a turbine can burn. |
 | `render/676-perf-rows-add-up.txt` | invariant | --perf prints one [perf] row per window, each row's phases add up to the frame it measured, and it names WHICH draw. |
 | `render/676-perf-rows-no-paint.txt` | invariant | A --no-paint run says so in its [perf] rows: the 3D pass reads 0 while the passes that still ran do not. |
+| `render/717-dossier-says-the-air-moves.txt` | invariant | A body's dossier prints a row per authored wind level, with the altitude, the speed and the compass direction the air moves, and a body with no authored wind prints none. |
 | `render/736-the-atlas-prices-the-sunshine.txt` | invariant | Every dossier in this file answers the sun -- the light at that body's orbit, the albedo the body authors, the temperature those two imply, the surface temperature the file authors, and the gap between them -- and the rows are ONE arithmetic rather than five independent printings: the black-body follows from the sunlight and albedo rows beside it, the gap follows from the black-body and the surface row, each body's sunlight follows from the star's own luminosity row and that body's semi-major axis, and a satellite whose page states the WRONG KIND of albedo says so beside the converted number. |
 | `render/745-asked-for-a-temperature-a-world-without-one-says-why.txt` | invariant | Ask the Surface Map for a temperature this world cannot support and it dashes the temperature columns and names the reason -- a flat grey field and a sentence, not a colour nobody priced. |
 | `render/745-the-surface-map-prices-every-pixel-it-draws.txt` | invariant | The Surface Map can be drawn as the ground's temperature instead of its albedo, and the picture closes on the numbers the model claims: its coldest pixel IS the night end the atlas prints, and the area-weighted mean taken in T^4 comes back to the anchor. |

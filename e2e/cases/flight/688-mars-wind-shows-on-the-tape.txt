@@ -35,3 +35,10 @@ CHECK all(abs(s["alt_asl"] - 6000.0) < 400.0 for s in surf if s["t"] > 0.5)
 # Ground speed stays between the hull's own airspeed and that plus the whole 10 m/s row
 # (measured 205.0 at 0.8 s, 204.3 at 1.8 s).
 CHECK all(s["hs"] > 196.0 and s["hs"] < 206.3 for s in surf if s["t"] > 0.5)
+# #717: the readout states the split rather than leaving the player to infer it.
+# wind_east= is the single datum row held up to 6 km (windAt()'s documented rule), and
+# tas= is the air-relative speed the aero law bills -- 196 m/s, against 205 over the
+# ground. On a body that authors no wind these two fields print "-" and become None
+# here, which is what makes the dash a fact rather than a cosmetic gap.
+CHECK all(abs(s["wind_east"] - 10.0) < 0.01 and s["wind_north"] == 0.0 for s in surf if s["t"] > 0.5)
+CHECK all(s["tas"] is not None and s["tas"] > 194.0 and s["tas"] < 197.0 for s in surf if s["t"] > 0.5)

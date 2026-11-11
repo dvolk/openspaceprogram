@@ -38,3 +38,9 @@ CHECK all(abs(s["alt_asl"] - 8500.0) < 400.0 for s in surf if s["t"] > 0.5)
 # 1.7 s). A wind that entered the readout but not the forces would let the hull climb
 # away from the air's speed instead, and a windless Earth reads 44.9 here.
 CHECK all(s["hs"] > 45.0 and s["hs"] < 84.9 for s in surf if s["t"] > 0.5)
+# #717: the readout says the same thing the physics does. tas= is |airRelativeVel|, the
+# speed the aero law bills, and wind_east= is the table interpolated at the hull's own
+# alt_asl -- 32.04 here, which is 5 + (8500/11000) x 35 rather than either row verbatim.
+# A dossier/log that printed the ground speed alone could not tell a wind from a force.
+CHECK all(abs(s["wind_east"] - 32.04) < 0.5 and s["wind_north"] == 0.0 for s in surf if s["t"] > 0.5)
+CHECK all(s["tas"] is not None and s["tas"] > 42.0 and s["tas"] < 45.5 for s in surf if s["t"] > 0.5)
