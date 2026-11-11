@@ -2597,6 +2597,15 @@ void Vehicle::steering_log(double time) {
        rcs= says what it can lever NOW -- 0 with the switch shut, 0 with the tank dry,
        and reduced while the translation keys are spending the same bells (the priority
        is stored in the row's limit, so it shows here rather than hiding in the mixer).
+       TVC carries it a fourth time since #768, in three spellings because the nozzles
+       have one more state than the other three channels: tvc_rating is what the last
+       ApplyThrust ARMED, tvc_rating_full is what the ignited stage could lever at full
+       throttle with the switch as it stands (so it is the one that drops to 0 when the
+       door shuts -- "_full" means throttle, not hardware), and tvc_hw is the fitting
+       whatever the switch decides, which is the figure the Systems row quotes beside the
+       checkbox. Without tvc_hw the log had no switch-immune TVC column at all: a reader
+       comparing 129710 on the window against 0 in the log could not tell "the player
+       shut the door" from "the stage went out".
        asked/spent_all are the last actuated substep's record (#599). spent_all is
        the VECTOR SUM of the four channels before it is split, so a per-axis zero
        can be two channels cancelling rather than nothing spent -- the windows print
@@ -2622,7 +2631,7 @@ void Vehicle::steering_log(double time) {
            "surfaces=%.0f/%.0f/%.0f surfaces_hw=%.0f/%.0f/%.0f "
            "rcs=%.0f/%.0f/%.0f rcs_hw=%.0f/%.0f/%.0f rcs_on=%d "
            "tvc_on=%d tvc_fitted=%d "
-           "tvc_rating=%.0f tvc_rating_full=%.0f asked=%.0f/%.0f/%.0f "
+           "tvc_rating=%.0f tvc_rating_full=%.0f tvc_hw=%.0f asked=%.0f/%.0f/%.0f "
            "spent_all=%.0f/%.0f/%.0f\n",
            time, displayName().c_str(), (int)powered_, (int)wheels_enabled,
            (int)surfaces_enabled, (int)hw.hasSurfaces,
@@ -2630,7 +2639,7 @@ void Vehicle::steering_log(double time) {
            s[0], s[1], s[2], sh[0], sh[1], sh[2],
            r[0], r[1], r[2], rh[0], rh[1], rh[2], (int)rcs_attitude_enabled,
            (int)tvc_enabled, (int)hw.hasGimbals,
-           live.tvcTorque, live.tvcTorqueAvailable,
+           live.tvcTorque, live.tvcTorqueAvailable, hw.tvcTorqueAvailable,
            asked[0], asked[1], asked[2], spent[0], spent[1], spent[2]);
     fflush(stdout);
 }
@@ -5633,8 +5642,10 @@ Vehicle::AttitudeAuthority Vehicle::attitudeAuthorityHardware() {
    actuateAttitude. The surfaces used to be outside the model: the aero step answered
    the stick directly, so until #568 the shipped skiff had no wheel at all and in air
    its fins were its only authority while the laws saw none of it -- and they out-bill
-   a pod's 100 N m drum by two orders of magnitude in flight. RCS nozzles are still
-   never asked to turn the hull (#595). The Vessel
+   a pod's 100 N m drum by two orders of magnitude in flight. RCS pods joined these rows
+   with #595, so the laws spend hydrazine through the same solve rather than around it --
+   and bill it, which is what the ring's switch (#595) and the slew ceiling (#678) both
+   act on. The Vessel
    window prints THIS answer rather than a parts-list rating, so a dead battery reads
    as 0 in the window and in flight rather than quoting a rating the ship cannot spend
    (#572, #418). The part window prints the part's own per-drum rating and its drum
@@ -5756,29 +5767,35 @@ Vehicle::AttitudeAuthority Vehicle::attitudeAuthorityRows(bool switchesApply) {
         if(p->isRcs()) { rcsPods++; }
         if(p->def->gimbal_max <= 0.0) { continue; }
         a.hasGimbals = true;   // the fitting, whatever the switch and the stage decide
+        /* sin() of the limit is a capability only while the limit is under 90 deg: past
+           that the exhaust points forward of the mount and the lateral-force fraction
+           FALLS as the authored range grows, so a 120 deg nozzle would be credited as
+           weaker than a 60 deg one, and past 180 sin() is negative -- which is how a
+           nonsense part would end up subtracting from the laws' "this ship cannot turn,
+           do not pretend" early-out. The loader refuses such a part (shipdef.cpp), so
+           this is an invariant of the PART and it is asserted here rather than below:
+           the door must not be able to skip the check on a hull whose nozzles are shut. */
+        assert(p->def->gimbal_max <= std::numbers::pi_v<double> * 0.5);
         if(switchesApply && !tvc_enabled) {
             /* #768's door, and the reason it is this short: the TVC half of the mixer
                is sized by the three figures below, so leaving them at 0 is what closes
                it. tvcSplit then takes 0 N m, tvcLat_ comes back zero, and
                applyThrustForce's gimbalStep drives the nozzles to that zero at their
                authored rate -- the plume recenters rather than sticking at whatever the
-               stick last asked for. Nothing else had to know: the laws, the slew budget
-               and every authority readout read this one struct. */
+               stick last asked for. Nothing else in the mixer, the laws, the slew budget
+               or any authority readout had to learn about the switch, because they all
+               read this one struct -- with one exception worth naming: ceilingSum()
+               consults tvc_enabled directly to collapse the AIM CONE (cos(off -
+               gimbal_max) must not be credited for nozzles the player has locked), so
+               the door has two readers, not one. That cone only shows up in
+               availableAccelAlong(), which no shipped law calls yet -- the ascent
+               guidance and getMaxTWR go through the direction-blind ceilingSum(nullptr)
+               -- so today that half is insurance, not behaviour. */
             continue;
         }
         const double armed = p->armedThrust;
         const bool lit = p->isThruster() && p->stage >= as;
         if(armed == 0.0 && !lit) { continue; }
-        /* sin() of the limit is a capability only while the limit is under 90 deg;
-           past that the exhaust points forward of the mount and the lateral-force
-           fraction FALLS as the authored range grows, so a 120 deg nozzle would be
-           credited as weaker than a 60 deg one -- and past 180 sin() is negative,
-           which is how a live-wheeled ship ends up with `authMax <= 0`, the laws'
-           "this ship cannot turn, do not pretend" early-out. The loader refuses such
-           a part, so this is an invariant, and it is asserted rather than clamped:
-           clamping the sum would let one silly def hide in a mixed fleet's budget as
-           a positive-but-wrong number instead of a loud failure. */
-        assert(p->def->gimbal_max <= std::numbers::pi_v<double> * 0.5);
         const double lever = std::fabs(glm::dot(partPos(p) - com, a.stackAxis));
         if(lever < 1e-6) { continue; }
         const double s = std::sin(p->def->gimbal_max);

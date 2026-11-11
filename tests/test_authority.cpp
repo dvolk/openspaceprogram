@@ -515,6 +515,50 @@ static void test_the_tvc_switch_is_a_door() {
     destroyShip(v);
 }
 
+/* THE NOZZLES GO HOME (#768). Everything above is what the authority ANSWERS, and a
+   regression that special-cased the mixer -- leaving tvcLat_ armed while the figures read
+   zero -- would pass every one of those checks. The behaviour the switch actually
+   advertises is physical: shut the door and the plume walks back to neutral at its own
+   gimbal_rate instead of freezing wherever the stick last left it. So this pins the
+   actuator state, with the key still HELD: the law keeps asking for pitch, the door routes
+   it none of the nozzles, and the nozzles walk. */
+static void test_a_shut_door_walks_the_nozzles_home() {
+    printf("== shut nozzles recenter, they do not freeze deflected (#768) ==\n");
+    Stack st = mkStack(0.0, 20000.0, 0.1, /*engRate=*/5.0, /*engVe=*/4000.0);
+    for(PartDef &d : st.s.defs) {
+        if(d.name == std::string("engine")) { d.gimbal_rate = 1.5708; }   // the shipped nozzle speed
+    }
+    Vehicle *v = st.s.v;
+    const double h = 1.0 / 120.0;
+    auto offCentre = [&]() {
+        return std::fabs(st.eng->gimbal[0]) + std::fabs(st.eng->gimbal[1]);
+    };
+    CHECK_NEAR(offCentre(), 0.0, 1e-12, "a hull nobody has flown yet sits centred");
+
+    v->Command(ShipCmd(Pitch, +1.0f), true);
+    for(int i = 0; i < 20; i++) {
+        v->applyRotationForce(h);
+        v->applyThrustForce(h);
+    }
+    CHECK_TRUE(offCentre() > 0.09, "the held key takes the ring to its stop -- 0.1 rad authored");
+    CHECK_TRUE(st.eng->armedThrust > 19000.0f, "and the engine is burning all the way there");
+
+    v->tvc_enabled = false;
+    for(int i = 0; i < 20; i++) {
+        v->applyRotationForce(h);
+        v->applyThrustForce(h);
+    }
+    /* gimbalStep arrives exactly, so this is a hard zero: 20 substeps at 1.5708 rad/s is
+       0.26 rad of travel against a 0.1 rad deflection. The key is still held -- the mixer
+       is asking the same pitch it was, and every N m of it now routes elsewhere. */
+    CHECK_NEAR(offCentre(), 0.0, 1e-12,
+               "with the key still held the plume walks home: the door does not freeze the ring");
+    CHECK_TRUE(st.eng->armedThrust > 19000.0f,
+               "and it is still pushing its full rating on the way -- the door steers, it does not throttle");
+    v->Command(ShipCmd(Pitch, 0.0f), true);
+    destroyShip(v);
+}
+
 /* WHAT THE SUBSTEP ACTUALLY SPENT (#599). Every rating in this model answers "could
    this build turn?". The question a player reads off the same row is "is it turning?",
    and until now that answer was thrown away at the end of the substep that computed it.
@@ -2452,6 +2496,7 @@ int main() {
     test_wheels_and_tvc_together();
     test_the_turn_authority_has_a_throttle_free_twin();
     test_the_tvc_switch_is_a_door();
+    test_a_shut_door_walks_the_nozzles_home();
     test_the_substep_remembers_what_the_actuators_spent();
     test_the_wheels_pay_for_the_share_they_answer();
     test_a_ship_with_nothing_has_nothing();

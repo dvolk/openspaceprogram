@@ -1094,7 +1094,7 @@ public:
         bool hasRcs = false;
         /* Whether the hull CARRIES a gimballed engine at all, whatever the switch and
            the stage say (#768, the same fitting hasSurfaces/hasRcs record): "no
-           gimballed nozzles on this hull" and "no stage lit to vector" are different
+           gimballed nozzles on this hull" and "no thrust to vector with" are different
            sentences to a player, and a zero tvcTorque answers neither. */
         bool hasGimbals = false;
         /* N m the ARMED gimballed engines can lever this substep. */

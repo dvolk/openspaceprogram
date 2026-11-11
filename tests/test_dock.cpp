@@ -272,7 +272,18 @@ static void test_absorb() {
     const glm::dvec3 portBlocal0 = portB->localPos;
     const glm::dvec3 tankBlocal0 = tankB->localPos;
 
+    /* THE ORDERS DO NOT CROSS A DOCK, in the merge direction too (#649's law, and
+       #768's nozzles ride it). The split direction is pinned below -- staging keeps a
+       pilot's switches as left -- and this is the other half: the hull that does the
+       absorbing flies the merge, and the absorbed hull's switches die with it. Without
+       it, docking a drums-off probe to a drums-on station would shut the station's drums
+       on contact. */
+    B.v->wheels_enabled = false;
+    B.v->surfaces_enabled = false;
+    B.v->tvc_enabled = false;
     A.v->absorbShip(B.v, portA);
+    CHECK_TRUE(A.v->wheels_enabled && A.v->surfaces_enabled && A.v->tvc_enabled,
+               "absorb: the survivor keeps its OWN orders, whatever the absorbed hull had");
 
     /* Union of the parts; B is left an empty shell. */
     CHECK_TRUE(A.v->parts.size() == 4, "absorb: survivor holds all four parts");

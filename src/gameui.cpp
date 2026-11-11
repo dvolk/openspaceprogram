@@ -2973,12 +2973,18 @@ void drawUIReadouts(Game &g) {
         bool tvc = ship->tvc_enabled;
         if(ImGui::Checkbox("Thrust vectoring", &tvc)) { ship->tvc_enabled = tvc; }
         if(hw.tvcTorqueAvailable <= 0.0) {
-            /* The same two empties as the fins and the ring: no gimballed nozzle fitted
-               is a build fact (hasGimbals, recorded whatever the switch decided), a
-               stage that is not lit is a flight fact -- and on a coasting rocket that
-               distinction is the whole row. */
+            /* The same shape as the fins and the ring: no gimballed nozzle fitted is a
+               build fact (hasGimbals, recorded whatever the switch decided), and a zero
+               figure with the fitting present is a FLIGHT fact -- and on a coasting rocket
+               that distinction is the whole row. The caption stays neutral about which
+               flight fact, because there are three and this row cannot tell them apart:
+               the stage is not lit (by far the common one), a JET is lit where there is no
+               air to breathe (#630 zeroes its ceiling), or the one gimballed engine levers
+               nothing because it sits at the COM. The RCS row above makes the same
+               compromise for the same reason, and in every case the figure the row would
+               have printed is 0 N m, which is what the caption is standing in for. */
             uiText("  %-3s  %s", ship->tvc_enabled ? "on" : "off",
-                   hw.hasGimbals ? "no stage lit to vector"
+                   hw.hasGimbals ? "no thrust to vector with"
                                  : "no gimballed engines on this hull");
         } else {
             uiText("  %-3s  %.0f N m (pitch/yaw disk)",

@@ -23,13 +23,17 @@
 # sides: the switch hides a capability, it does not unbolt an engine, and the row's 129710 N
 # m is the HARDWARE figure -- what the switch is giving up -- which is why the row reads
 # "off" with the same number it read "on" (#575: quote the hardware, never a third
-# arithmetic).
+# arithmetic). tvc_hw= is that hardware figure in the log, added with this case: without it
+# the log had no switch-immune TVC column at all, so 129710 on the window against 0 in the
+# log could not be told apart from a stage that had gone out. It is the nozzles' share of the
+# wheels_hw / surfaces_hw / rcs_hw pair.
 #
 # power_test is the right fixture and the reason it looks odd: it carries no fins and no
 # pods, so its other two rows say "no aero surfaces on this hull" / "no thruster pods on
 # this hull". Its engine_r2.25h4.5 IS gimballed -- 0.0873 rad at 1.5708 rad/s in
-# res/data/parts.json -- so this is the one hull in the fleet where the nozzles row has a
-# number instead of an excuse, which is what a case about the switch needs.
+# res/data/parts.json -- and so are 23 other shipped hulls; what makes power_test useful
+# here is that it is the one of them where the two neighbouring groups are absent, so the
+# 129710 N m on the row can only be the nozzles' own.
 NAME systems-window-shuts-the-nozzles
 CLAIM The Systems window's Thrust vectoring checkbox drops the live gimballed rating in --steering-log from 129710 N m to 0 while the window keeps printing 129710 N m beside the now-off switch, and says nothing about the engines being gone.
 KIND golden
@@ -48,6 +52,11 @@ FORBID error:
 CHECK re.search(r'\[steerlog\][^\n]*tvc_on=1 tvc_fitted=1 [^\n]*tvc_rating_full=129710', out)
 CHECK re.search(r'\[steerlog\][^\n]*tvc_on=0 tvc_fitted=1 [^\n]*tvc_rating_full=0 ', out)
 CHECK out.index('tvc_rating_full=129710') < out.index('tvc_rating_full=0 ')
+# And the switch-immune column, on the shut side: the window keeps quoting 129710 N m, so
+# the log has to be able to say the fitting is still rated at that. Without tvc_hw= the pair
+# "129710 on the window / 0 in the log" is undiagnosable -- a shut door and a dead stage read
+# the same.
+CHECK re.search(r'\[steerlog\][^\n]*tvc_rating_full=0 tvc_hw=129710', out)
 # One row per switch group, whatever the group's state -- the row that says "off" has to be
 # the SAME row that said "on", not a replacement caption. Counted per dump so a row that
 # vanished with the door closed shows up as [10, 9] instead of looking plausible.
