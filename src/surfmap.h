@@ -3,6 +3,7 @@
 // EQUIRECTANGULAR over the body's ROTATING frame; the direction <-> (lon, lat)
 // <-> pixel math lives in equirect.h.
 
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <cctype>
@@ -280,30 +281,76 @@ inline WindLayer windLayerFor(const Surface &s) {
    closest approach to calm and is evaluated too (rows of (5,0) -> (0,5) dip to 3.5 m/s between
    their two ends, and a ramp spanning the rows would paint that dip off the cold end).
    Consequence worth stating: every pixel the sweep colours lies inside [lo_ms, hi_ms] by
-   construction, so surfmapWindT01() below never extrapolates. */
+   construction, so surfmapWindT01() below never extrapolates.
+
+   Banded rows (#767) interleave in altitude -- a whole-sphere column and a jet band are two
+   profiles, not one stretch of the same one -- so the walk goes per BAND: sort by band and
+   then by alt, price each band's own profile over the ground's reach, take the union. A table
+   with no bands, which is every table authored so far, is one band and exactly the old walk. */
 inline void windRampEnds(const std::vector<WindLevel> &rows, double elev_lo, double elev_hi,
                          double &lo_ms, double &hi_ms) {
     assert(!rows.empty() && elev_lo <= elev_hi);
     lo_ms = 1e300; hi_ms = -1e300;
-    auto consider = [&](double e) {
-        const double sp = glm::length(windAt(rows, e));
+    std::vector<int> idx(rows.size());
+    for(size_t i = 0; i < rows.size(); i++) { idx[i] = (int)i; }
+    auto same_band = [&](int a, int b) {
+        const WindLevel &A = rows[a], &B = rows[b];
+        return A.lat0 == B.lat0 && A.lat1 == B.lat1
+            && A.lon0 == B.lon0 && A.lon1 == B.lon1;
+    };
+    std::sort(idx.begin(), idx.end(), [&](int a, int b) {
+        const WindLevel &A = rows[a], &B = rows[b];
+        if(A.lat0 != B.lat0) { return A.lat0 < B.lat0; }
+        if(A.lat1 != B.lat1) { return A.lat1 < B.lat1; }
+        if(A.lon0 != B.lon0) { return A.lon0 < B.lon0; }
+        if(A.lon1 != B.lon1) { return A.lon1 < B.lon1; }
+        return A.alt < B.alt;
+    });
+    auto consider = [&](const glm::dvec2 &v) {
+        const double sp = glm::length(v);
         if(sp < lo_ms) { lo_ms = sp; }
         if(sp > hi_ms) { hi_ms = sp; }
     };
-    consider(elev_lo);
-    consider(elev_hi);
-    for(size_t i = 0; i + 1 < rows.size(); i++) {
-        const double a0 = rows[i].alt, a1 = rows[i + 1].alt;
-        if(a1 <= elev_lo || a0 >= elev_hi) { continue; }   // this segment is out of reach
-        if(a0 > elev_lo) { consider(a0); }
-        const glm::dvec2 v0(rows[i].east, rows[i].north);
-        const glm::dvec2 v1(rows[i + 1].east, rows[i + 1].north);
-        const glm::dvec2 dv = v1 - v0;
-        const double dd = glm::dot(dv, dv);
-        if(dd > 0.0) {
-            const double t = -glm::dot(v0, dv) / dd;
-            if(t > 0.0 && t < 1.0) { consider(a0 + (a1 - a0) * t); }
+    /* One band's own profile at one altitude: the same hold-outside / lerp-inside law
+       windAt() runs, restricted to the run of rows answering for that band. */
+    auto at_alt = [&](size_t s, size_t e, double alt) {
+        if(alt <= rows[idx[s]].alt) {
+            return glm::dvec2(rows[idx[s]].east, rows[idx[s]].north);
         }
+        if(alt >= rows[idx[e - 1]].alt) {
+            return glm::dvec2(rows[idx[e - 1]].east, rows[idx[e - 1]].north);
+        }
+        for(size_t k = s + 1; k < e; k++) {
+            const double a0 = rows[idx[k - 1]].alt, a1 = rows[idx[k]].alt;
+            if(alt > a0 && alt <= a1) {
+                const double f = (a1 > a0) ? (alt - a0) / (a1 - a0) : 0.0;
+                const glm::dvec2 v0(rows[idx[k - 1]].east, rows[idx[k - 1]].north);
+                const glm::dvec2 v1(rows[idx[k]].east, rows[idx[k]].north);
+                return v0 + f * (v1 - v0);
+            }
+        }
+        assert(false);   // bracketed above, so unreachable
+        return glm::dvec2(0.0);
+    };
+    for(size_t s = 0; s < idx.size(); ) {
+        size_t e = s + 1;
+        while(e < idx.size() && same_band(idx[s], idx[e])) { e++; }
+        consider(at_alt(s, e, elev_lo));
+        consider(at_alt(s, e, elev_hi));
+        for(size_t k = s; k + 1 < e; k++) {
+            const double a0 = rows[idx[k]].alt, a1 = rows[idx[k + 1]].alt;
+            if(a1 <= elev_lo || a0 >= elev_hi) { continue; }   // this segment is out of reach
+            if(a0 > elev_lo) { consider(glm::dvec2(rows[idx[k]].east, rows[idx[k]].north)); }
+            const glm::dvec2 v0(rows[idx[k]].east, rows[idx[k]].north);
+            const glm::dvec2 v1(rows[idx[k + 1]].east, rows[idx[k + 1]].north);
+            const glm::dvec2 dv = v1 - v0;
+            const double dd = glm::dot(dv, dv);
+            if(dd > 0.0) {
+                const double t = -glm::dot(v0, dv) / dd;
+                if(t > 0.0 && t < 1.0) { consider(v0 + t * dv); }
+            }
+        }
+        s = e;
     }
 }
 

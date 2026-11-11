@@ -211,10 +211,17 @@ void surfmapCompute(Game &g) {
                        asks with and the aero law reads -- so a mountain pokes into faster air
                        and shows up brighter, and a basin does not get credited with the wind
                        of the ridge above it. The arrows go on afterwards; a scalar alone is not
-                       a vector field (#769). */
+                       a vector field (#769). And since #767 the pixel's own place matters too:
+                       a row can answer for one band of the body and not this pixel. */
                     const double elev = (double)elevs[(size_t)j * w + i];
-                    const glm::dvec2 wv = windAt(wl.rows, elev);
-                    const double spd = glm::length(wv);
+                    double lon_deg = 0.0, lat_deg = 0.0;
+                    equirectLonLatDeg(d, lon_deg, lat_deg);
+                    const glm::dvec3 wv = windAt(wl.rows, elev, lat_deg, lon_deg);
+                    /* The picture is a HORIZONTAL field: the arrows point along the ground and
+                       the colour says how fast the air crosses it. The rising component (#767)
+                       is deliberately not folded into the speed -- a cm/s downdraft painted as
+                       wind would read as air moving sideways, which is the wrong news. */
+                    const double spd = std::hypot(wv.x, wv.y);
                     unsigned char r = 0, gg = 0, bb = 0;
                     surfmapRamp(surfmapWindT01(spd, rlo, rhi), r, gg, bb);
                     c = glm::vec3(r / 255.0f, gg / 255.0f, bb / 255.0f);
@@ -265,8 +272,9 @@ void surfmapCompute(Game &g) {
            one colour, and an arrow is a stroke across several of them.
            On a coarse grid, because the field is sampled -- not a streamline integration. The
            grid is what makes the flat parts visible: every body authored today has one wind
-           direction and one altitude axis (#767), so the honest picture is a grid of parallel
-           arrows whose length changes where the ground changes height.
+           direction and one altitude axis -- #767 gave the rows a lat/lon band, but no file
+           uses it yet -- so the honest picture is a grid of parallel arrows whose length
+           changes where the ground changes height.
            The base mean (ar/ag/ab) above is taken BEFORE this: those columns describe the
            field, not the ink drawn on it. (They dash for a wind map anyway.) */
         if(want_wind && wl.ok) {
@@ -294,8 +302,10 @@ void surfmapCompute(Game &g) {
                 for(int i = stride / 2; i < w; i += stride) {
                     const glm::dvec3 d = equirectDirAt(i, j, w, h);
                     const double elev = (double)elevs[(size_t)j * w + i];   // sampled once, above
-                    const glm::dvec2 wv = windAt(wl.rows, elev);
-                    const double spd = glm::length(wv);
+                    double lon_deg = 0.0, lat_deg = 0.0;
+                    equirectLonLatDeg(d, lon_deg, lat_deg);
+                    const glm::dvec3 wv = windAt(wl.rows, elev, lat_deg, lon_deg);
+                    const double spd = std::hypot(wv.x, wv.y);   // the arrow is a ground vector
                     const double cl = std::sqrt(d.x * d.x + d.z * d.z);   // cos(latitude)
                     const glm::dvec2 pv = surfmapWindPixelVec(wv.x, wv.y, cl);
                     const double pvl = glm::length(pv);

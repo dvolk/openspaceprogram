@@ -3849,21 +3849,28 @@ static void test_liftingSystems() {
 /* atmo.h:windAt -- the air's OWN motion (#688), and the equirect.h basis it is
    authored in. The wind is a VELOCITY and the flow is `v_ship - v_air`, so these
    numbers are what an anemometer reads: a hull standing still on a windy world must
-   read the wind, not zero. Rows are {alt, east, north} in metres above the datum and
-   m/s in the local horizontal basis, RELATIVE TO THE GROUND -- the co-rotation is a
-   separate term in Vehicle::airRelativeVel and must never be authored into a row. */
+   read the wind, not zero. Rows are {alt, east, north, up, lat0, lat1, lon0, lon1}
+   in metres above the datum and m/s in the local horizontal basis, RELATIVE TO THE
+   GROUND -- the co-rotation is a separate term in Vehicle::airRelativeVel and must
+   never be authored into a row. The last four members default, so the tables below
+   that name three or four values are whole-sphere rows: every table authored so far. */
 static void test_wind_profile() {
     printf("== windAt: the air's own motion, per altitude (#688) ==\n");
+
+    /* A place to ask about. These tables are whole-sphere, so the answer cannot
+       depend on it -- the band checks further down are where the place matters. Named
+       apart from the loop below, which uses lat/lon in RADIANS for the basis checks. */
+    const double here_lat = 0.0, here_lon = 0.0;
 
     // One row: the same wind everywhere. windAt HOLDS the ends rather than
     // calming down, because the air thinning out and the air standing still are
     // different claims (and a body whose only row is a jet aloft has said nothing
     // about its surface).
     const std::vector<WindLevel> one {{ 0.0, 5.0, 0.0 }};
-    CHECK_NEAR(windAt(one, 0.0).x, 5.0, 0.0, "one row at the datum reads its value");
-    CHECK_NEAR(windAt(one, 90000.0).x, 5.0, 0.0, "held above the row");
-    CHECK_NEAR(windAt(one, -2000.0).x, 5.0, 0.0, "held below the row");
-    CHECK_NEAR(windAt(one, 1e12).x, 5.0, 0.0, "held arbitrarily far above");
+    CHECK_NEAR(windAt(one, 0.0, here_lat, here_lon).x, 5.0, 0.0, "one row at the datum reads its value");
+    CHECK_NEAR(windAt(one, 90000.0, here_lat, here_lon).x, 5.0, 0.0, "held above the row");
+    CHECK_NEAR(windAt(one, -2000.0, here_lat, here_lon).x, 5.0, 0.0, "held below the row");
+    CHECK_NEAR(windAt(one, 1e12, here_lat, here_lon).x, 5.0, 0.0, "held arbitrarily far above");
 
     /* The shape the e2e fixture (688-kerbin-wind.json) and a flying bed actually
        use: a 0 m/s row at the datum, 20 m/s at 17 km, and Kerbin's flying beds at
@@ -3871,30 +3878,70 @@ static void test_wind_profile() {
        that a step, a nearest-row read, or reading the table AT the datum would all
        break (0 or 20 instead of 10). */
     const std::vector<WindLevel> prof {{ 0.0, 0.0, 0.0 }, { 17000.0, 20.0, 0.0 }};
-    CHECK_NEAR(windAt(prof, 0.0).x, 0.0, 0.0, "the datum row");
-    CHECK_NEAR(windAt(prof, 8500.0).x, 10.0, 1e-12, "half way up == half the shear");
-    CHECK_NEAR(windAt(prof, 4250.0).x, 5.0, 1e-12, "a quarter up == a quarter");
-    CHECK_NEAR(windAt(prof, 17000.0).x, 20.0, 1e-12, "the top row exactly");
-    CHECK_NEAR(windAt(prof, 17001.0).x, 20.0, 0.0, "held above the top row");
-    CHECK_NEAR(windAt(prof, 42500.0).x, 20.0, 0.0, "held far above (42.5 km)");
-    CHECK_NEAR(windAt(prof, -1.0).x, 0.0, 0.0, "held below the datum row");
+    CHECK_NEAR(windAt(prof, 0.0, here_lat, here_lon).x, 0.0, 0.0, "the datum row");
+    CHECK_NEAR(windAt(prof, 8500.0, here_lat, here_lon).x, 10.0, 1e-12, "half way up == half the shear");
+    CHECK_NEAR(windAt(prof, 4250.0, here_lat, here_lon).x, 5.0, 1e-12, "a quarter up == a quarter");
+    CHECK_NEAR(windAt(prof, 17000.0, here_lat, here_lon).x, 20.0, 1e-12, "the top row exactly");
+    CHECK_NEAR(windAt(prof, 17001.0, here_lat, here_lon).x, 20.0, 0.0, "held above the top row");
+    CHECK_NEAR(windAt(prof, 42500.0, here_lat, here_lon).x, 20.0, 0.0, "held far above (42.5 km)");
+    CHECK_NEAR(windAt(prof, -1.0, here_lat, here_lon).x, 0.0, 0.0, "held below the datum row");
 
     /* east and north interpolate independently: a VECE, not a speed with a
        direction, so a shear that also swings is expressible (#688 asks for a
        vector field even while the field is constant). */
     const std::vector<WindLevel> she {{ 0.0, 3.0, -4.0 }, { 1000.0, -3.0, 4.0 }};
-    const glm::dvec2 mid = windAt(she, 500.0);
+    const glm::dvec3 mid = windAt(she, 500.0, here_lat, here_lon);
     CHECK_NEAR(mid.x, 0.0, 1e-12, "east crosses zero mid-span");
     CHECK_NEAR(mid.y, 0.0, 1e-12, "north crosses zero mid-span");
-    const glm::dvec2 q = windAt(she, 250.0);
+    const glm::dvec3 q = windAt(she, 250.0, here_lat, here_lon);
     CHECK_NEAR(q.x, 1.5, 1e-12, "east at a quarter");
     CHECK_NEAR(q.y, -2.0, 1e-12, "north at a quarter");
     // A three-row table finds its OWN span rather than the first one.
     const std::vector<WindLevel> jet {{ 0.0, 1.0, 0.0 }, { 50000.0, 1.0, 0.0 },
                                       { 65000.0, 100.0, 0.0 }};
-    CHECK_NEAR(windAt(jet, 25000.0).x, 1.0, 0.0, "a calm layer stays calm");
-    CHECK_NEAR(windAt(jet, 57500.0).x, 50.5, 1e-12, "the jet interpolates in its own span");
-    CHECK_NEAR(windAt(jet, 65000.0).x, 100.0, 0.0, "the jet's own row");
+    CHECK_NEAR(windAt(jet, 25000.0, here_lat, here_lon).x, 1.0, 0.0, "a calm layer stays calm");
+    CHECK_NEAR(windAt(jet, 57500.0, here_lat, here_lon).x, 50.5, 1e-12, "the jet interpolates in its own span");
+    CHECK_NEAR(windAt(jet, 65000.0, here_lat, here_lon).x, 100.0, 0.0, "the jet's own row");
+
+    /* WHERE a row answers (#767). Jupiter publishes "up to 150 m/s (<30 deg lat)"
+       beside "up to 40 m/s (>30 deg lat)", so a row that answers for the whole body
+       is not the only shape a table can have. Both bands are half-open UPWARD, which
+       is what makes that published pair tile with no overlap and no gap; +90 is the
+       one included edge, so the row that reaches the pole owns it. */
+    const std::vector<WindLevel> belts {
+        { 0.0, 40.0, 0.0, 0.0, -90.0, -30.0 },
+        { 0.0, 150.0, 0.0, 0.0, -30.0, 30.0 },
+        { 0.0, 40.0, 0.0, 0.0, 30.0, 90.0 },
+    };
+    CHECK_NEAR(windAt(belts, 0.0, 0.0, 0.0).x, 150.0, 0.0, "the equatorial belt");
+    CHECK_NEAR(windAt(belts, 0.0, -60.0, 0.0).x, 40.0, 0.0, "the south belt");
+    CHECK_NEAR(windAt(belts, 0.0, 60.0, 0.0).x, 40.0, 0.0, "the north belt");
+    CHECK_NEAR(windAt(belts, 0.0, -30.0, 0.0).x, 150.0, 0.0, "a band edge belongs to the row above it");
+    CHECK_NEAR(windAt(belts, 0.0, 30.0, 0.0).x, 40.0, 0.0, "and so does the other one");
+    CHECK_NEAR(windAt(belts, 0.0, 90.0, 0.0).x, 40.0, 0.0, "the pole belongs to the row that reaches it");
+    CHECK_NEAR(windAt(belts, 90000.0, 0.0, 0.0).x, 150.0, 0.0, "held above, in its own belt");
+
+    /* A band across the antimeridian is ONE row, not two: lon is stored as a start
+       plus an eastward width, so 350..10 answers for 355 deg and for 5 deg. */
+    const std::vector<WindLevel> wrap {
+        { 0.0, 7.0, 0.0, 0.0, -90.0, 90.0, 350.0, 370.0 },
+        { 0.0, 2.0, 0.0, 0.0, -90.0, 90.0, 10.0, 350.0 },
+    };
+    CHECK_NEAR(windAt(wrap, 0.0, 0.0, 355.0).x, 7.0, 0.0, "inside the crossing band, west of 0");
+    CHECK_NEAR(windAt(wrap, 0.0, 0.0, 5.0).x, 7.0, 0.0, "inside it, east of 0");
+    CHECK_NEAR(windAt(wrap, 0.0, 0.0, 180.0).x, 2.0, 0.0, "outside it");
+    CHECK_NEAR(windAt(wrap, 0.0, 0.0, 10.0).x, 2.0, 0.0, "the far edge is excluded");
+
+    /* The RISING axis (#767 again): the air moving along the local vertical, which
+       is what a Hadley cell's upwelling and a subtropical downdraft actually are.
+       Nothing published authors one yet -- atmo.h:kWindMaxRise says why the axis
+       ships anyway -- so this pins the mechanism: the same interpolation, and the
+       sign that makes a downdraft a downdraft. */
+    const std::vector<WindLevel> rise {{ 0.0, 0.0, 0.0, 0.02 }, { 10000.0, 0.0, 0.0, -0.02 }};
+    CHECK_NEAR(windAt(rise, 0.0, here_lat, here_lon).z, 0.02, 1e-15, "rising at the datum");
+    CHECK_NEAR(windAt(rise, 5000.0, here_lat, here_lon).z, 0.0, 1e-15, "neither way half way up");
+    CHECK_NEAR(windAt(rise, 10000.0, here_lat, here_lon).z, -0.02, 1e-15, "sinking at the top");
+    CHECK_NEAR(windAt(rise, 5000.0, here_lat, here_lon).x, 0.0, 0.0, "and no horizontal wind invented");
 
     /* The basis (equirect.h) the two components are measured in: same axes as
        equirectDir, so lon 0 = +X, lon +pi/2 = -Z, north = +Y. Getting these wrong

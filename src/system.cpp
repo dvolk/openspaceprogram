@@ -207,6 +207,71 @@ static double numLeaf(const nlohmann::json &o, const char *key,
     return v.get<double>();
 }
 
+/* Do two wind rows' bands cover any place in common (#767)? Both axes are half-open
+   upward, so bands that only TOUCH -- Jupiter's published "<30" and ">30" pair -- are
+   disjoint. lon is a start plus an eastward width, so the test turns one band by a full
+   circle and asks twice on each side. */
+static bool windBandsOverlap(const WindLevel &A, const WindLevel &B) {
+    if(A.lat1 <= B.lat0 || B.lat1 <= A.lat0) { return false; }
+    if(windRowSpanDeg(A) >= 360.0 || windRowSpanDeg(B) >= 360.0) { return true; }
+    for(int shift = -1; shift <= 1; shift++) {
+        const double b0 = B.lon0 + 360.0 * (double)shift;
+        const double b1 = B.lon1 + 360.0 * (double)shift;
+        if(A.lon1 > b0 && b1 > A.lon0) { return true; }
+    }
+    return false;
+}
+
+/* Do these rows answer for EVERY place on the body (#767)? atmo.h's lookup asserts an
+   answer exists, so the loader has to promise one -- and a table of bands alone leaves
+   gaps (the poles, the space between two belts) with nothing answering for them. Cut the
+   sphere along every latitude the rows mention; in each slice, the rows that span the
+   whole slice must cover every longitude. Exact for rectangles, and rows are capped at
+   64, so the cubic form costs nothing at load time. */
+static bool windBandsCoverSphere(const std::vector<WindLevel> &rows) {
+    struct Interval { double a, b; };
+    std::vector<double> lats = {-90.0, 90.0};
+    for(const WindLevel &W : rows) {
+        if(W.lat0 > -90.0 && W.lat0 < 90.0) { lats.push_back(W.lat0); }
+        if(W.lat1 > -90.0 && W.lat1 < 90.0) { lats.push_back(W.lat1); }
+    }
+    std::sort(lats.begin(), lats.end());
+    lats.erase(std::unique(lats.begin(), lats.end()), lats.end());
+    for(size_t s = 0; s + 1 < lats.size(); s++) {
+        const double a = lats[s], b = lats[s + 1];
+        std::vector<Interval> lons;
+        for(const WindLevel &W : rows) {
+            // The slice's ends are row boundaries, so "spans the slice" is exact even
+            // though the bands themselves are half-open.
+            if(W.lat0 <= a && W.lat1 >= b) { lons.push_back({W.lon0, W.lon1}); }
+        }
+        if(lons.empty()) { return false; }
+        bool full = false;
+        for(size_t i = 0; i < lons.size() && !full; i++) {
+            /* Walk east from this interval's own start, taking each band's copies one
+               turn either side. A cover of the circle has to cross the start of any
+               interval in it, so trying each start in turn is enough -- and a band of
+               width 360 reaches its own start + 360 by itself. */
+            double reach = lons[i].b;
+            for(int step = 0; step < (int)lons.size() && reach < lons[i].a + 360.0; step++) {
+                double best = reach;
+                for(const Interval &iv : lons) {
+                    for(int k = -1; k <= 1; k++) {
+                        const double s0 = iv.a + 360.0 * (double)k;
+                        const double e0 = iv.b + 360.0 * (double)k;
+                        if(s0 <= reach && e0 > best) { best = e0; }
+                    }
+                }
+                if(best == reach) { break; }   // stuck: this slice has a hole
+                reach = best;
+            }
+            if(reach >= lons[i].a + 360.0) { full = true; }
+        }
+        if(!full) { return false; }
+    }
+    return true;
+}
+
 System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                    std::function<void(size_t i, size_t total,
                                       const std::string &name)> progress) {
@@ -981,9 +1046,7 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                             " many rows (64 max)");
                     }
                     static const char *const kWindKeys[] =
-                        {"alt", "east", "north"};
-                    double prev_alt = 0.0;
-                    bool first_row = true;
+                        {"alt", "east", "north", "up", "lat", "lon"};
                     int row_no = 0;
                     for(const nlohmann::json &wv : av["wind"]) {
                         ++row_no;
@@ -1007,11 +1070,17 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                                 throw std::runtime_error(
                                     "system: " + body->name + ": atmosphere.wind"
                                     + at + "unknown field \"" + kv.key() + "\""
-                                    " (known: alt, east, north)");
+                                    " (known: alt, east, north, up, lat, lon)");
                             }
                         }
                         WindLevel W;
-                        for(const char *k : kWindKeys) {
+                        /* alt/east/north are required. up, lat and lon are optional
+                           (#767): up defaults to 0 because nothing in utils/rss/html
+                           publishes a vertical wind, and lat/lon default to the whole
+                           sphere, which is what every table authored before #767 means. */
+                        static const char *const kWindRequired[] =
+                            {"alt", "east", "north"};
+                        for(const char *k : kWindRequired) {
                             if(!wv.contains(k)) {
                                 throw std::runtime_error(
                                     "system: " + body->name + ": atmosphere.wind"
@@ -1029,20 +1098,76 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                         W.alt = wv["alt"].get<double>();
                         W.east = wv["east"].get<double>();
                         W.north = wv["north"].get<double>();
-                        /* Rows must RISE, strictly. A NaN alt fails this the same way a
-                           backwards table does, which is the NaN-closed shape
-                           src/angmath.h asks for. */
-                        if(!first_row && !(W.alt > prev_alt)) {
-                            throw std::runtime_error(
-                                "system: " + body->name + ": atmosphere.wind"
-                                + at + "\"alt\" does not rise above the row before"
-                                " it (rows must be listed bottom-up)");
+                        if(wv.contains("up")) {
+                            if(!wv["up"].is_number()) {
+                                throw std::runtime_error(
+                                    "system: " + body->name + ": atmosphere.wind"
+                                    + at + "\"up\" must be a number");
+                            }
+                            W.up = wv["up"].get<double>();
                         }
-                        /* A wind feeds a Mach number, a dynamic pressure and every aero
-                           force, so it must be a finite, bounded horizontal speed --
-                           PER COMPONENT (atmo.h:kWindMaxSpeed). The alt is checked here
-                           too because the rise rule only compares rows, so the FIRST
-                           row would otherwise wave a NaN through. */
+                        /* A band is a pair of DEGREES, half-open UPWARD like every other
+                           row edge (atmo.h:WindLevel), so Jupiter's published "<30 deg"
+                           and ">30 deg" pair tiles with no overlap and no gap. lon is
+                           stored as a start plus an EASTWARD width, so a band that crosses
+                           the antimeridian is one row rather than two, and the whole
+                           sphere is width 360. */
+                        if(wv.contains("lat")) {
+                            const nlohmann::json &lb = wv["lat"];
+                            if(!lb.is_array() || lb.size() != 2
+                               || !lb[0].is_number() || !lb[1].is_number()) {
+                                throw std::runtime_error(
+                                    "system: " + body->name + ": atmosphere.wind"
+                                    + at + "\"lat\" must be 2 numbers"
+                                    " [deg, deg] -- e.g. [-30, 30]");
+                            }
+                            W.lat0 = lb[0].get<double>();
+                            W.lat1 = lb[1].get<double>();
+                            if(!(W.lat0 >= -90.0 && W.lat1 <= 90.0 && W.lat0 < W.lat1)) {
+                                throw std::runtime_error(
+                                    "system: " + body->name + ": atmosphere.wind"
+                                    + at + "\"lat\" [" + std::to_string(W.lat0) + ", "
+                                    + std::to_string(W.lat1) + "] needs low < high, both"
+                                    " in [-90, 90]");
+                            }
+                        }
+                        if(wv.contains("lon")) {
+                            const nlohmann::json &ob = wv["lon"];
+                            if(!ob.is_array() || ob.size() != 2
+                               || !ob[0].is_number() || !ob[1].is_number()) {
+                                throw std::runtime_error(
+                                    "system: " + body->name + ": atmosphere.wind"
+                                    + at + "\"lon\" must be 2 numbers"
+                                    " [deg east-start, deg east-end]");
+                            }
+                            const double a = ob[0].get<double>();
+                            const double b = ob[1].get<double>();
+                            if(!std::isfinite(a) || !std::isfinite(b)) {
+                                throw std::runtime_error(
+                                    "system: " + body->name + ": atmosphere.wind"
+                                    + at + "\"lon\" must be finite degrees");
+                            }
+                            W.lon0 = wrapLonDeg(a);   // equirect.h: one wrap, at the parse
+                            double width = std::fmod(b - a, 360.0);
+                            if(width < 0.0) { width += 360.0; }
+                            if(width == 0.0) {
+                                throw std::runtime_error(
+                                    "system: " + body->name + ": atmosphere.wind"
+                                    + at + "\"lon\" spans nothing -- omit the key for"
+                                    " a row that answers for the whole sphere");
+                            }
+                            W.lon1 = W.lon0 + width;
+                        }
+                        /* Bounds BEFORE the table rules: the rise and overlap checks only
+                           compare rows, so a NaN alt would otherwise produce a "does not
+                           rise" message for a row that has no altitude at all. A wind feeds
+                           a Mach number, a dynamic pressure and every aero force, so it
+                           must be a finite, bounded horizontal speed -- PER COMPONENT
+                           (atmo.h:kWindMaxSpeed). The alt has no range here on purpose: a
+                           row below the datum is legal on a raised-sea world (#245), and
+                           above the air the file declares, the top() check further down
+                           refuses the row by name -- a magic 1e7 would be a third bound
+                           nothing derives from. */
                         if(!std::isfinite(W.alt)
                            || !(std::isfinite(W.east) && std::isfinite(W.north))
                            || !(std::fabs(W.east) <= kWindMaxSpeed)
@@ -1054,9 +1179,63 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                                 + std::to_string((int)kWindMaxSpeed)
                                 + " m/s in each of east and north");
                         }
+                        /* The rising component gets its own, much tighter, bound
+                           (#767 again): the horizontal net sits above the fastest wind
+                           anyone has published, so it cannot catch a vertical decimal
+                           point. atmo.h:kWindMaxRise says why 100 and not 1000. */
+                        if(!std::isfinite(W.up) || !(std::fabs(W.up) <= kWindMaxRise)) {
+                            throw std::runtime_error(
+                                "system: " + body->name + ": atmosphere.wind"
+                                + at + "\"up\" must be finite and within +/-"
+                                + std::to_string((int)kWindMaxRise)
+                                + " m/s (a published large-scale updraft is a cm/s;"
+                                " see atmo.h)");
+                        }
+                        /* Rows must RISE, strictly, WITHIN THEIR BAND (#767). Two rows at
+                           one altitude are exactly what a latitude pair is: the same air
+                           at the same height over two places. Across bands the order is
+                           the author's, so a base column and then the bands reads fine. */
+                        for(const WindLevel &P : s.atmosphere.wind) {
+                            if(!(P.lat0 == W.lat0 && P.lat1 == W.lat1
+                               && P.lon0 == W.lon0 && P.lon1 == W.lon1)) { continue; }
+                            if(!(W.alt > P.alt)) {
+                                throw std::runtime_error(
+                                    "system: " + body->name + ": atmosphere.wind"
+                                    + at + "\"alt\" does not rise above the row before"
+                                    " it in the same band (rows must be listed"
+                                    " bottom-up)");
+                            }
+                        }
+                        /* Two rows at the SAME altitude may not answer for the same
+                           place -- which one wins would be a rule, not a fact. Different
+                           altitudes are fine: that is a base profile and an override, and
+                           atmo.h's lookup picks the row nearest below and above, which
+                           are unambiguous once no two rows share a place at one alt. */
+                        for(const WindLevel &P : s.atmosphere.wind) {
+                            if(P.alt == W.alt && windBandsOverlap(P, W)) {
+                                throw std::runtime_error(
+                                    "system: " + body->name + ": atmosphere.wind"
+                                    + at + "answers for the same place at the same alt"
+                                    " as an earlier row (give one of them a different"
+                                    " alt or a disjoint band)");
+                            }
+                        }
                         s.atmosphere.wind.push_back(W);
-                        prev_alt = W.alt;
-                        first_row = false;
+                    }
+                    /* Every place on the body needs an answer, and atmo.h's lookup
+                       asserts it. A table of bands alone leaves the gaps -- the poles, the
+                       space between two belts -- undefined. So the rows must COVER the
+                       sphere, which is what Jupiter's published shape actually is: three
+                       latitude bands at one altitude and no whole-sphere row at all.
+                       Split the sphere along every latitude the rows mention; in each
+                       slice, the rows spanning it must cover every longitude. */
+                    if(!windBandsCoverSphere(s.atmosphere.wind)) {
+                        throw std::runtime_error(
+                            "system: " + body->name + ": atmosphere.wind leaves places"
+                            " on the body with no row -- the lat/lon bands must cover"
+                            " the whole sphere (a band pair like [-90,-30], [-30,30],"
+                            " [30,90] tiles it; a row with no lat/lon covers it by"
+                            " itself) (#767)");
                     }
                 }
                 /* THE ANCHOR (#739). p0 is authored; rho0 -- the number airDensity,
@@ -1133,7 +1312,10 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                    air at all, and a row above top() sits in the vacuum the same file
                    already declared -- drag.h cuts the density there, so such a row is a
                    number nothing can ever reach. windAt() HOLDS the last row above the
-                   table, so the top row itself is fine and worth pinning. */
+                   table, so the top row itself is fine and worth pinning.
+                   "Highest" is a max, not back(): since #767 each band rises on its own,
+                   so a table may list a belt at 30 km after a whole-sphere row at 60 km
+                   and back() would be neither the top nor an error. */
                 if(!s.atmosphere.wind.empty()) {
                     if(!s.atmosphere.physical()) {
                         throw std::runtime_error(
@@ -1141,7 +1323,11 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                             " physical air to move (sea_level_pressure with"
                             " scale_height or layers) -- a render rim has none");
                     }
-                    if(!(s.atmosphere.wind.back().alt <= s.atmosphere.top())) {
+                    double highest_row = s.atmosphere.wind.front().alt;
+                    for(const WindLevel &W : s.atmosphere.wind) {
+                        if(W.alt > highest_row) { highest_row = W.alt; }
+                    }
+                    if(!(highest_row <= s.atmosphere.top())) {
                         throw std::runtime_error(
                             "system: " + body->name + ": atmosphere.wind's highest"
                             " row is above the air's top ("

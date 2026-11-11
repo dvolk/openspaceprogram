@@ -73,6 +73,19 @@ inline void equirectLonLat(const glm::dvec3 &d, double &lon, double &lat) {
     if(lon < 0.0) { lon += 2.0 * std::numbers::pi; }
 }
 
+/* The same inverse in the DEGREES spelling an authored table is keyed by -- a wind row's
+   lat/lon band (#767), a pad's lat_deg/lon_deg. Spelled once here rather than as a
+   rad2deg at each call site, so the number a file is keyed by and the number a direction
+   unwraps to cannot drift apart. wrapLonDeg() runs AFTER the scale: 2*pi rounds to a 360
+   that no half-open band covers, and a place outside every band is not a place. */
+inline void equirectLonLatDeg(const glm::dvec3 &d, double &lon_deg, double &lat_deg) {
+    double lon = 0.0, lat = 0.0;
+    equirectLonLat(d, lon, lat);
+    constexpr double rad2deg = 180.0 / std::numbers::pi;
+    lon_deg = wrapLonDeg(lon * rad2deg);
+    lat_deg = lat * rad2deg;
+}
+
 /* Local horizontal unit vectors at a surface direction, in the same rotating-frame
    axes as equirectDir: east points along INCREASING lon, north along increasing lat.
    Both are perpendicular to `up`, which is what makes them the basis a horizontal

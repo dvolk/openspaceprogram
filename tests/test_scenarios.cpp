@@ -866,11 +866,17 @@ static void check_wind() {
                        a["wind"] = rows({row(0.0, 1.0, 0.0), row(0.0, 2.0, 0.0)});
                    }).dump(), "does not rise");
     expect_refuses("wind_too_fast", patched("Kerbin", [&](nlohmann::json &a) {
-                       a["wind"] = rows({row(0.0, 600.0, 0.0)});
-                   }).dump(), "500");
+                       a["wind"] = rows({row(0.0, 1100.0, 0.0)});
+                   }).dump(), "1000");
     expect_refuses("wind_too_fast_north", patched("Kerbin", [&](nlohmann::json &a) {
-                       a["wind"] = rows({row(0.0, 0.0, -600.0)});
-                   }).dump(), "500");
+                       a["wind"] = rows({row(0.0, 0.0, -1100.0)});
+                   }).dump(), "1000");
+    /* #766: the bound used to be 500, and Neptune's published sheet says 0-580 m/s, so
+       the net refused the fastest wind anyone has measured. A row at 600 now loads --
+       this is the positive control that the raise is real and not a comment. */
+    expect_loads("wind_published_fast", patched("Kerbin", [&](nlohmann::json &a) {
+                     a["wind"] = rows({row(0.0, 580.0, 0.0)});
+                 }).dump(), "Kerbin", 1);
     /* A number that is not a number must name the body, the row and the field. Left to
        nlohmann the author reads "type must be number, but is string" with none of
        those, which is how a 15-row table becomes an afternoon. */
@@ -913,6 +919,95 @@ static void check_wind() {
     expect_refuses("wind_no_air", patched("Moho", [&](nlohmann::json &a) {
                        a["wind"] = rows({row(0.0, 5.0, 0.0)});
                    }).dump(), "physical air");
+
+    /* WHERE a row answers (#767). The published sheets are written this way -- Jupiter
+       states one speed inside 30 deg of its equator and another outside it -- and a
+       table that holds one number over the whole body puts a 150 m/s belt over their
+       poles. up/lat/lon are OPTIONAL, so every table authored before #767 means exactly
+       what it meant; these cases are the new keys' own refusals, and the positive
+       controls that show the capability is real while the data stays unauthored. */
+    auto band = [](double alt, double east, double north, double la0, double la1) {
+        return nlohmann::json{{"alt", alt}, {"east", east}, {"north", north},
+                              {"lat", {la0, la1}}};
+    };
+    // Jupiter's shape exactly: three latitude belts at ONE altitude, no whole-sphere
+    // row anywhere. The bands tile, so every place still has an answer -- which is the
+    // law, not a row count.
+    expect_loads("wind_belts_tile", patched("Kerbin", [&](nlohmann::json &a) {
+                     a["wind"] = rows({band(0.0, 40.0, 0.0, -90.0, -30.0),
+                                       band(0.0, 150.0, 0.0, -30.0, 30.0),
+                                       band(0.0, 40.0, 0.0, 30.0, 90.0)});
+                 }).dump(), "Kerbin", 3);
+    // A band pair that leaves the poles with nothing to answer is the hole the lookup
+    // in atmo.h asserts its way through, so the loader has to refuse it instead.
+    expect_refuses("wind_band_gap", patched("Kerbin", [&](nlohmann::json &a) {
+                       a["wind"] = rows({band(0.0, 1.0, 0.0, -30.0, 30.0),
+                                         band(10000.0, 2.0, 0.0, -30.0, 30.0)});
+                   }).dump(), "with no row");
+    // Two rows at one altitude answering for overlapping ground: which one wins would
+    // be a rule rather than a fact, and the seam would be a discontinuity an author
+    // cannot see. Disjoint bands at one alt are the tiling above, which loads.
+    expect_refuses("wind_band_overlap", patched("Kerbin", [&](nlohmann::json &a) {
+                       a["wind"] = rows({band(0.0, 1.0, 0.0, -90.0, 0.0),
+                                         band(0.0, 2.0, 0.0, -30.0, 30.0)});
+                   }).dump(), "same place at the same alt");
+    /* lon is a start plus an EASTWARD width, so a band across the antimeridian is one
+       row rather than two -- and the pair still tiles the body. */
+    expect_loads("wind_lon_crosses", patched("Kerbin", [&](nlohmann::json &a) {
+                     a["wind"] = rows({nlohmann::json{{"alt", 0.0}, {"east", 7.0},
+                                                      {"north", 0.0},
+                                                      {"lon", {350.0, 10.0}}},
+                                       nlohmann::json{{"alt", 0.0}, {"east", 2.0},
+                                                      {"north", 0.0},
+                                                      {"lon", {10.0, 350.0}}}});
+                 }).dump(), "Kerbin", 2);
+    expect_refuses("wind_lon_no_width", patched("Kerbin", [&](nlohmann::json &a) {
+                       a["wind"] = rows({nlohmann::json{{"alt", 0.0}, {"east", 1.0},
+                                                        {"north", 0.0},
+                                                        {"lon", {20.0, 20.0}}},
+                                         row(0.0, 2.0, 0.0)});
+                   }).dump(), "spans nothing");
+    expect_refuses("wind_lat_three_numbers", patched("Kerbin", [&](nlohmann::json &a) {
+                       a["wind"] = rows({nlohmann::json{{"alt", 0.0}, {"east", 1.0},
+                                                        {"north", 0.0},
+                                                        {"lat", {-30.0, 0.0, 30.0}}},
+                                         row(0.0, 2.0, 0.0)});
+                   }).dump(), "\"lat\" must be 2 numbers");
+    expect_refuses("wind_lat_backwards", patched("Kerbin", [&](nlohmann::json &a) {
+                       a["wind"] = rows({band(0.0, 1.0, 0.0, 30.0, -30.0),
+                                         row(0.0, 2.0, 0.0)});
+                   }).dump(), "low < high");
+    expect_refuses("wind_lat_off_sphere", patched("Kerbin", [&](nlohmann::json &a) {
+                       a["wind"] = rows({band(0.0, 1.0, 0.0, -100.0, 30.0),
+                                         row(0.0, 2.0, 0.0)});
+                   }).dump(), "[-90, 90]");
+    /* The RISING axis (#767 again): large-scale circulation does go up and down -- a
+       Hadley cell's upwelling, a subtropical downdraft -- at centimetres a second. It is
+       optional, so no shipped file carries it, and its bound is far tighter than the
+       horizontal one because nothing publishes an updraft over a cm/s: the horizontal
+       net, which sits above Neptune's 580 m/s, would wave a 1000x decimal error through.
+       See atmo.h:kWindMaxRise. */
+    expect_loads("wind_up", patched("Kerbin", [&](nlohmann::json &a) {
+                     a["wind"] = rows({nlohmann::json{{"alt", 0.0}, {"east", 5.0},
+                                                      {"north", 0.0}, {"up", 0.05}},
+                                       nlohmann::json{{"alt", 10000.0}, {"east", 5.0},
+                                                      {"north", 0.0}, {"up", -0.05}}});
+                 }).dump(), "Kerbin", 2);
+    expect_refuses("wind_up_too_fast", patched("Kerbin", [&](nlohmann::json &a) {
+                       a["wind"] = rows({nlohmann::json{{"alt", 0.0}, {"east", 1.0},
+                                                        {"north", 0.0}, {"up", 500.0}}});
+                   }).dump(), "100 m/s");
+    expect_refuses("wind_up_a_string", patched("Kerbin", [&](nlohmann::json &a) {
+                       a["wind"] = rows({nlohmann::json{{"alt", 0.0}, {"east", 1.0},
+                                                        {"north", 0.0}, {"up", "1"}}});
+                   }).dump(), "\"up\" must be a number");
+    /* A table whose bands each rise on their own need not be sorted GLOBALLY: the
+       whole-sphere column can run past a belt. The loader's own "highest row" check has
+       to take a max for the same reason. */
+    expect_loads("wind_bands_interleave", patched("Kerbin", [&](nlohmann::json &a) {
+                     a["wind"] = rows({row(0.0, 1.0, 0.0), row(60000.0, 9.0, 0.0),
+                                       band(30000.0, 150.0, 0.0, -30.0, 30.0)});
+                 }).dump(), "Kerbin", 3);
 
     /* Which shipped bodies are allowed to author wind (#688). The mechanism landed
        before the data on purpose: with no row authored, every shipped flight number,

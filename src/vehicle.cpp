@@ -482,9 +482,17 @@ static glm::dvec3 windVelRot(const TerrainBody &b, const std::vector<WindLevel> 
     const double r = glm::length(pos_rot);
     if(r <= 1e-9) { return glm::dvec3(0.0); }
     const glm::dvec3 up = pos_rot * (1.0 / r);
-    const glm::dvec2 en = windAt(W, r - b.seaLevelRadius());
+    /* windAt() asks WHERE (#767), so the hull's own direction goes through equirect.h's
+       inverse -- the same law the map and the HUD readout use, which is what makes a row's
+       "lat/lon band" and the hull's position one number rather than two conventions. */
+    double lon_deg = 0.0, lat_deg = 0.0;
+    equirectLonLatDeg(up, lon_deg, lat_deg);
+    const glm::dvec3 enu = windAt(W, r - b.seaLevelRadius(), lat_deg, lon_deg);
     const glm::dvec3 east = equirectEast(up);
-    return east * en.x + equirectNorth(up, east) * en.y;
+    /* enu.z is the RISING component (#767 again): air moving along the local vertical,
+       which a horizontal-only model could not express at all. A downdraft shows up on a
+       hull's apparent wind, and so on its alpha, lift and descent rate. */
+    return east * enu.x + equirectNorth(up, east) * enu.y + up * enu.z;
 }
 
 /* slot_offset (m): lateral separation for ships sharing an orbit scenario, applied

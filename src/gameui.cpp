@@ -2083,9 +2083,14 @@ void drawUIReadouts(Game &g) {
                 if(!sm_bake_here) {
                     wn = snprintf(wind_s, sizeof wind_s, "  wind - (rebaking)");
                 } else if(g.surfmap.wind_ok) {
-                    const glm::dvec2 wv = windAt(g.surfmap.wind_rows, sm_elev);
+                    /* The cursor's own lat/lon, because a row can answer for one band of the
+                       body and not for this pixel (#767). Same degrees as the lat/lon the line
+                       prints beside it, so the place asked about and the place echoed are one
+                       place. The speed is the horizontal one: the picture is a ground field. */
+                    const glm::dvec3 wv = windAt(g.surfmap.wind_rows, sm_elev,
+                                                 glm::degrees(lat), glm::degrees(lon));
                     wn = snprintf(wind_s, sizeof wind_s, "  wind %.1f m/s %s",
-                                  glm::length(wv), windToward(wv.x, wv.y));
+                                  std::hypot(wv.x, wv.y), windToward(wv.x, wv.y));
                 } else {
                     wn = snprintf(wind_s, sizeof wind_s, "  wind - (%s)",
                                   g.surfmap.wind_block.empty() ? "unavailable"
@@ -2560,16 +2565,21 @@ void drawUIReadouts(Game &g) {
         } else {
             ImGui::Text("Tas: -");
         }
-        /* The body's own wind at THIS altitude, interpolated from its table the way the
-           aero law interpolates it (#688). Printed only on a body that authors wind:
-           the row is a fact about the world rather than about the hull, and 20 of the
-           shipped bodies would carry a permanent dash. Ground-relative like the rows --
-           this is how fast the air crosses the ground, which is why it is not the
-           difference between Hs and Tas (that difference is the wind projected onto the
-           hull's heading, and heading is Hdg's business). */
+        /* The body's own wind at THIS altitude and THIS place. Interpolated from the table
+           the way the aero law interpolates it (#688), and since #767 the hull's lat/lon are
+           part of the question: a row can answer for one band of the body and not for the
+           ground under the ship. Printed only on a body that authors wind: the row is a fact
+           about the world rather than about the hull, and 20 of the shipped bodies would
+           carry a permanent dash. Ground-relative like the rows -- this is how fast the air
+           crosses the ground, which is why it is not the difference between Hs and Tas (that
+           difference is the wind projected onto the hull's heading, and heading is Hdg's
+           business). The rising component (#767) has no row of its own here: nothing in
+           utils/rss/html publishes one, so every authored table answers 0, and a permanent
+           "up 0.0" on a ship's instrument is a decoration. [surfinfo] prints it anyway. */
         if(b->surface.atmosphere.has_wind()) {
-            const glm::dvec2 wnd = windAt(b->surface.atmosphere.wind, altAsl);
-            ImGui::Text("Wind: %.1fm/s %s", glm::length(wnd),
+            const glm::dvec3 wnd = windAt(b->surface.atmosphere.wind, altAsl,
+                                          glm::degrees(latitude), glm::degrees(longitude));
+            ImGui::Text("Wind: %.1fm/s %s", std::hypot(wnd.x, wnd.y),
                         windToward(wnd.x, wnd.y));
         }
         ImGui::Text("Lat: %.4f", glm::degrees(latitude));
@@ -2709,27 +2719,35 @@ void drawUIReadouts(Game &g) {
                authored in, so a case can pin the row value where the hull actually is
                rather than at some height it assumes. Dashed on a body with no wind --
                a 0 there would read as "the air is calm", which is a claim the file
-               never made. */
-            char tas_s[32], we_s[32], wn_s[32];
+               never made. wind_up= (#767) is the same lookup's third component, along
+               the local vertical: 0 in every table authored so far, and printed anyway
+               so a case can tell "no such axis" from "an axis that answers 0". */
+            char tas_s[32], we_s[32], wn_s[32], wu_s[32];
             const int tas_n = view.air_dir_valid
                 ? snprintf(tas_s, sizeof tas_s, "%.6g m/s", glm::length(view.air_vel))
                 : snprintf(tas_s, sizeof tas_s, "-");
             assert(tas_n > 0 && tas_n < (int)sizeof tas_s);
             if(b->surface.atmosphere.has_wind()) {
-                const glm::dvec2 wnd = windAt(b->surface.atmosphere.wind, altAsl);
+                const glm::dvec3 wnd = windAt(b->surface.atmosphere.wind, altAsl,
+                                              glm::degrees(latitude),
+                                              glm::degrees(longitude));
                 const int we_n = snprintf(we_s, sizeof we_s, "%.6g m/s", wnd.x);
                 const int wn_n = snprintf(wn_s, sizeof wn_s, "%.6g m/s", wnd.y);
+                const int wu_n = snprintf(wu_s, sizeof wu_s, "%.6g m/s", wnd.z);
                 assert(we_n > 0 && we_n < (int)sizeof we_s);
                 assert(wn_n > 0 && wn_n < (int)sizeof wn_s);
+                assert(wu_n > 0 && wu_n < (int)sizeof wu_s);
             } else {
                 snprintf(we_s, sizeof we_s, "-");
                 snprintf(wn_s, sizeof wn_s, "-");
+                snprintf(wu_s, sizeof wu_s, "-");
             }
             printf("[surfinfo] t=%.1fs "
                    "alt_agl=%.6g m alt_asl=%.6g m "
                    "vs=%.6g m/s hs=%.6g m/s lat=%.8g deg lon=%.8g deg "
                    "pitch=%.6g deg roll=%.6g deg hdg=%.6g deg aprg=%s aoa=%s beta=%s "
-                   "cla=%s sm=%s tas=%s wind_east=%s wind_north=%s acc=%.6g m/s2 "
+                   "cla=%s sm=%s tas=%s wind_east=%s wind_north=%s wind_up=%s "
+                   "acc=%.6g m/s2 "
                    "body=\"%s\" bme=\"%s\" sit=\"%s\"\n",
                    time,
                    view.alt_agl,
@@ -2737,7 +2755,7 @@ void drawUIReadouts(Game &g) {
                    ver_speed, hor_speed2,
                    glm::degrees(latitude), glm::degrees(longitude),
                    glm::degrees(pitch), glm::degrees(roll), glm::degrees(yaw),
-                   aprg_s, aoa_s, beta_s, cla_s, sm_s, tas_s, we_s, wn_s,
+                   aprg_s, aoa_s, beta_s, cla_s, sm_s, tas_s, we_s, wn_s, wu_s,
                    ship->feltAccel(), b->name.c_str(), bme,
                    situationName(ps.situation));
             fflush(stdout);
@@ -6851,13 +6869,40 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
                Ground-relative, like the rows themselves: "100 m/s east" is how fast the
                air crosses the ground, not how fast it crosses a hull -- that second
                number is the airspeed, and it lives on the Surface window beside the
-               ground speed so the two can be compared (#717). */
+               ground speed so the two can be compared (#717).
+               A row that answers for only part of the body (#767) says which part in its
+               label: a 150 m/s belt and a polar row printed at the same altitude, with
+               nothing to tell them apart, would read as one wind over the whole world. */
             for(const WindLevel &wl : at.wind) {
-                char lab[32];
-                snprintf(lab, sizeof lab, "air wind %s",
-                         fmt_dist(wl.alt, w, sizeof w));
-                fmtRow(v, sizeof v, "%.4g m/s %s", std::hypot(wl.east, wl.north),
-                       windToward(wl.east, wl.north));
+                char lab[96];
+                const bool all_lat = (wl.lat0 == -90.0 && wl.lat1 == 90.0);
+                const bool all_lon = (windRowSpanDeg(wl) >= 360.0);
+                if(all_lat && all_lon) {
+                    snprintf(lab, sizeof lab, "air wind %s",
+                             fmt_dist(wl.alt, w, sizeof w));
+                } else if(all_lat) {
+                    snprintf(lab, sizeof lab, "air wind %s, lon %.0f/%.0f",
+                             fmt_dist(wl.alt, w, sizeof w), wl.lon0, wl.lon1);
+                } else if(all_lon) {
+                    snprintf(lab, sizeof lab, "air wind %s, lat %+.0f/%+.0f",
+                             fmt_dist(wl.alt, w, sizeof w), wl.lat0, wl.lat1);
+                } else {
+                    snprintf(lab, sizeof lab,
+                             "air wind %s, lat %+.0f/%+.0f, lon %.0f/%.0f",
+                             fmt_dist(wl.alt, w, sizeof w), wl.lat0, wl.lat1,
+                             wl.lon0, wl.lon1);
+                }
+                /* The rising component (#767) prints only when a row actually has one.
+                   Nothing in utils/rss/html publishes a large-scale updraft, so a permanent
+                   ", up 0" on every wind row would be the axis advertising itself. */
+                if(wl.up != 0.0) {
+                    fmtRow(v, sizeof v, "%.4g m/s %s, up %.3g m/s",
+                           std::hypot(wl.east, wl.north),
+                           windToward(wl.east, wl.north), wl.up);
+                } else {
+                    fmtRow(v, sizeof v, "%.4g m/s %s", std::hypot(wl.east, wl.north),
+                           windToward(wl.east, wl.north));
+                }
                 line(lab, v);
             }
         } else {

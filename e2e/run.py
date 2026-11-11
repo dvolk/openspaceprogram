@@ -457,7 +457,10 @@ TERRAIN_RE = re.compile(
 # orbit.
 # cla/sm (#499) are the SURFACE window's stability pair: cla dashes with aoa (no
 # air), sm dashes alone when the lifting surfaces stop agreeing, so each needs
-# the same two-arm treatment.
+# the same two-arm treatment. wind_up (#767) is the third component of the body's
+# wind table -- the air along the local vertical -- and dashes on exactly the same
+# test as wind_east/wind_north, a body that authors no wind at all. It answers 0
+# for every body that does, because no published sheet states a large-scale updraft.
 SURF_RE = re.compile(
     r"\[surfinfo\]\s+t=([\d.]+)s\s+alt_agl=([-\d.e+]+) m\s+"
     r"alt_asl=([-\d.e+]+) m\s+vs=([-\d.e+]+) m/s\s+hs=([-\d.e+]+) m/s\s+"
@@ -471,6 +474,7 @@ SURF_RE = re.compile(
     r"(?:tas=([-\d.e+]+) m/s|tas=-)\s+"
     r"(?:wind_east=([-\d.e+]+) m/s|wind_east=-)\s+"
     r"(?:wind_north=([-\d.e+]+) m/s|wind_north=-)\s+"
+    r"(?:wind_up=([-\d.e+]+) m/s|wind_up=-)\s+"
     r"acc=([-\d.e+]+) m/s2\s+"
     r"body=\"([^\"]*)\"\s+bme=\"([^\"]*)\"\s+sit=\"([^\"]*)\""
 )
@@ -1202,7 +1206,7 @@ def parse_surf(out):
     rows = []
     for m in SURF_RE.finditer(out):
         (t, agl, asl, vs, hs, lat, lon, pitch, roll, hdg, aprg, aoa, beta, cla, sm,
-         tas, we, wn, acc, body, bme, sit) = m.groups()
+         tas, we, wn, wu, acc, body, bme, sit) = m.groups()
         rows.append({
             "t": float(t), "alt_agl": float(agl), "alt_asl": float(asl),
             "vs": float(vs), "hs": float(hs), "lat": float(lat),
@@ -1227,6 +1231,10 @@ def parse_surf(out):
             "tas": float(tas) if tas is not None else None,
             "wind_east": float(we) if we is not None else None,
             "wind_north": float(wn) if wn is not None else None,
+            # #767: the rising component, along the local vertical. Every authored body
+            # answers 0 -- the axis is the capability, not data -- so a case can tell
+            # "no such axis" (None) from "an axis that answers 0".
+            "wind_up": float(wu) if wu is not None else None,
             # #499: cla is None with no air; sm is None with no air OR with the
             # lifting surfaces disagreeing, which is when the margin is dashed.
             "cla": float(cla) if cla is not None else None,

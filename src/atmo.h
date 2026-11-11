@@ -128,29 +128,115 @@ struct WindLevel {
     double alt = 0.0;    // [m above the sea-level datum], GEOMETRIC
     double east = 0.0;   // [m/s] toward increasing lon, relative to the ground
     double north = 0.0;  // [m/s] toward increasing lat, relative to the ground
+    /* The RISING half (#767 again): [m/s] along the local up, so positive is the air
+       climbing past the ground. The general circulation is a closed cell -- air rises
+       where the Hadley cells converge (Earth's ITCZ, Venus's subsolar point, the gas
+       giants' equatorial upwellings) and sinks in the subtropics and at the poles --
+       and that vertical leg is what a wind table could not say until now. It is also
+       tiny: Earth's synoptic updraft is ~1 cm/s and Juno/Cassini read Jupiter's
+       secondary circulation at mm/s to a cm/s, four orders under the jets it closes.
+       Nothing in utils/rss/html publishes one, so no body authors it yet; the axis is
+       here so that when a source arrives it lands in a row, not in a new law. It is
+       not decorative: a downdraft moves a hull's apparent wind, and with it alpha,
+       lift and the descent rate. */
+    double up = 0.0;
+    /* WHERE the row answers (#767), in DEGREES: lat in [lat0, lat1), lon in [lon0, lon1).
+       The defaults are the whole sphere, which is what a row with no "lat"/"lon" key means
+       and what every table authored before #767 says. Jupiter and Saturn publish their
+       winds PER LATITUDE ("Up to 150 m/s (<30 deg lat)", "Up to 40 m/s (>30 deg lat)"),
+       and holding that globally would put a 150 m/s flow over their poles, so the axis is
+       authored rather than inferred. Both bands are HALF-OPEN UPWARD because that is what
+       makes the published "<30 deg" and ">30 deg" pair tile the planet with no overlap and
+       no gap; +90 is included so the row that reaches the pole owns it. Two rows answering
+       for the same place at the same altitude are a question asked twice, so the loader
+       refuses that rather than picking a winner -- which is what keeps the lookup below
+       unambiguous at every altitude.
+
+       lon is stored as a start plus an EASTWARD width, so a band may cross the
+       antimeridian: [350, 10] is 20 deg wide, and the whole sphere is width 360.
+       wrapLonDeg() puts lon0 in [0, 360) at load. */
+    double lat0 = -90.0;
+    double lat1 = 90.0;
+    double lon0 = 0.0;    // [deg), wrapped at load
+    double lon1 = 360.0;  // lon0 + eastward width, so in (lon0, lon0 + 360]
 };
 
-/* Loosest bound that still catches a mistyped row: the fastest wind on any published
-   target in utils/rss/html is a few tens of m/s, a terrestrial hurricane tops out near
-   113, and every aero law downstream reads it as a Mach number. */
-inline constexpr double kWindMaxSpeed = 500.0;   // m/s, per component
+inline double windRowSpanDeg(const WindLevel &W) {
+    return W.lon1 - W.lon0;   // wrapped at load into (0, 360]
+}
 
-inline glm::dvec2 windAt(const std::vector<WindLevel> &W, double alt) {
+/* Does this row answer for the place (lat, lon), given in DEGREES with lon in [0, 360)?
+   The lon test rotates the point east into the band's own start rather than splitting the
+   band, so a band across the antimeridian is one row, not two. Both axes are HALF-OPEN
+   upward -- [lat0, lat1) and [lon0, lon1) -- because that is what makes Jupiter's
+   published "<30 deg" and ">30 deg" bands tile the sphere with no overlap and no gap;
+   only the +90 edge is included, so the row that reaches the pole owns it. */
+inline bool windRowCovers(const WindLevel &W, double lat_deg, double lon_deg) {
+    if(lat_deg < W.lat0) { return false; }
+    if(lat_deg >= W.lat1 && !(W.lat1 == 90.0 && lat_deg == 90.0)) { return false; }
+    if(windRowSpanDeg(W) >= 360.0) { return true; }
+    const double L = lon_deg < W.lon0 ? lon_deg + 360.0 : lon_deg;
+    return L >= W.lon0 && L < W.lon1;
+}
+
+/* Loosest bound that still catches a mistyped row. Every published sheet in
+   utils/rss/html is weighed against the authored rows by check_fact_wind
+   (utils/make_solar_system.py), so this is only the net under that, and its number is
+   the corpus's own ceiling: Neptune's sheet says 0-580 m/s, which is what the fastest
+   published wind actually is (#766 -- the bound used to be 500, justified by a comment
+   claiming the corpus tops out at "a few tens of m/s", which was simply not true).
+   A row at the cap is not weather: 1000 m/s is Mach ~2.9 in Neptune's 1-bar column
+   (rho ~0.05 kg/m3, so q ~25 kPa) and Mach ~2.9 at Earth's sea level, where the same
+   number is q ~610 kPa on a hull. Nothing downstream caps what that impulse does --
+   that hole is #716 -- so raising this bound is about admitting published data, not
+   about inviting anyone to author 1000 m/s on a body with air thick enough to care. */
+inline constexpr double kWindMaxSpeed = 1000.0;   // m/s, per horizontal component
+
+/* The same kind of net for the RISING component, and it has to be a different number.
+   The horizontal bound sits above the corpus's published ceiling (Neptune's 580 m/s,
+   #766), so it cannot catch a vertical decimal point: nothing publishes an updraft
+   over a cm/s, which means a row authored 0.05 and typed 50 is a 1000x error that the
+   horizontal net would wave through -- and 50 m/s of rising air is not circulation, it
+   is a geyser that also rewrites every descent profile on the body. 100 m/s keeps four
+   orders of headroom over anything a source has ever measured while still refusing the
+   typo. Raise it with a published number, not with a row. */
+inline constexpr double kWindMaxRise = 100.0;     // m/s, up/down
+
+/* The air's velocity at (alt, lat, lon). lat/lon in DEGREES, lon in [0, 360) -- the
+   same convention equirect.h unwraps to, and every caller already has the place in
+   hand: the aero path reads it off the hull's spin-frame direction, the surface sweep
+   off its own pixel. There is no alt-only spelling on purpose: with banded rows,
+   "what is the wind at 11 km" has no answer until someone says where.
+   Returned as (east, north, up) in m/s -- the local horizontal basis of equirect.h
+   plus the radial. Among the rows that cover the place, the profile is interpolated
+   LINEARLY in alt, exactly as it was when every row was whole-sphere. Outside the
+   table the nearest end is held. */
+inline glm::dvec3 windAt(const std::vector<WindLevel> &W, double alt,
+                         double lat_deg, double lon_deg) {
     assert(!W.empty());   // the caller's gate, AtmosphereParams::has_wind(), is the law
-    if(alt <= W.front().alt) { return glm::dvec2(W.front().east, W.front().north); }
-    if(alt >= W.back().alt) { return glm::dvec2(W.back().east, W.back().north); }
-    // Rows are sorted at load, so a linear scan finds the span; a table is a handful
-    // of rows and this runs once per hull per substep, not once per surface.
-    for(size_t i = 1; i < W.size(); ++i) {
-        if(alt <= W[i].alt) {
-            const double span = W[i].alt - W[i - 1].alt;
-            assert(span > 0.0);   // the loader's strictly-increasing rule
-            const double f = (alt - W[i - 1].alt) / span;
-            return glm::dvec2(W[i - 1].east + f * (W[i].east - W[i - 1].east),
-                              W[i - 1].north + f * (W[i].north - W[i - 1].north));
-        }
+    const WindLevel *lo = nullptr, *hi = nullptr;
+    for(const WindLevel &Wl : W) {
+        if(!windRowCovers(Wl, lat_deg, lon_deg)) { continue; }
+        /* One row per altitude covers any place -- the loader refuses two rows at one
+           alt whose bands overlap -- so "nearest below" and "nearest above" are the
+           whole rule and there is no tie to break. */
+        if(Wl.alt <= alt && (lo == nullptr || Wl.alt > lo->alt)) { lo = &Wl; }
+        if(Wl.alt >= alt && (hi == nullptr || Wl.alt < hi->alt)) { hi = &Wl; }
     }
-    return glm::dvec2(W.back().east, W.back().north);   // unreachable; not a silent 0
+    /* Outside the table the nearest end is HELD: the air thinning out and the air
+       standing still are different claims, and a body whose only row is a jet aloft has
+       said nothing about its surface. Either end can be missing -- below every covering
+       row there is no "nearest below" -- so borrow the other one before asserting. */
+    if(lo == nullptr) { lo = hi; }
+    if(hi == nullptr) { hi = lo; }
+    assert(lo && hi);   // the loader requires the bands to cover the whole sphere
+    if(lo == hi || lo->alt == hi->alt) {
+        return glm::dvec3(lo->east, lo->north, lo->up);
+    }
+    const double f = (alt - lo->alt) / (hi->alt - lo->alt);
+    return glm::dvec3(lo->east + f * (hi->east - lo->east),
+                      lo->north + f * (hi->north - lo->north),
+                      lo->up + f * (hi->up - lo->up));
 }
 
 /* The weight of a column in the field the hull actually falls in (#683).
