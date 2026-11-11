@@ -5944,7 +5944,12 @@ void drawVabUI(Game &g) {
     if(!g.vab.bodyName.empty()) {
         if(TerrainBody *b = g.sys.find(g.vab.bodyName)) { lbody = b; }
     }
-    const double gLaunch = (lbody != nullptr) ? lbody->g : 9.81;
+    /* No fallback gravity. The loader refuses a system whose home body is missing
+       (system.cpp), so a null launch body is a bug in this file rather than a world
+       to print a made-up 9.81 for -- the same silent default #708 deleted from the
+       data files, and a TWR computed against it would read as a verdict. */
+    assert(lbody != nullptr);
+    const double gLaunch = lbody != nullptr ? lbody->g : 0.0;
     /* One signature per frame, whichever reader asks first. It costs 2.5 / 5.1 /
        11.4 / 21.3 us at 59 / 120 / 268 / 500 parts, which is the same scale as the
        per-frame lookups it guards: computing it at both readers made the default
@@ -5959,9 +5964,10 @@ void drawVabUI(Game &g) {
         return frameSig;
     };
     drawWin(g, W_Staging, [&] {
-        ImGui::Text("TWR on %s  (g = %.2f m/s^2)",
+        char gbuf[32];
+        ImGui::Text("TWR on %s  (g = %s)",
                     lbody != nullptr ? lbody->name.c_str() : "?",
-                    gLaunch);
+                    fmt_accel(gLaunch, gbuf, sizeof gbuf));
         if(g.vab.build.parts.empty()) {
             ImGui::TextDisabled("empty build -- place a part");
             return;
@@ -6540,8 +6546,7 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
                : (b.type == BodyType::Moon ? "moon" : "planet"));
     line("radius", fmt_dist((double)b.radius, v, sizeof v));
     line("mass", fmt_mass((double)b.mass, v, sizeof v));
-    fmtRow(v, sizeof v, "%.2f m/s2", b.g);
-    line("surface gravity", v);
+    line("surface gravity", fmt_accel(b.g, v, sizeof v));
     // Both at the mean radius under the body's own mu: what a launch must reach, an
     // arrival burn must shed.
     line("escape velocity",

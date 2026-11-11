@@ -272,41 +272,18 @@ inline constexpr double kAtmoSeamTol = 0.5;
    its density against a quadrature number; it refuses |C| = 0.5 K. */
 inline constexpr double kAtmoPoleTol = 1.0;
 
-/* How far a body's TYPED surface gravity may sit from the field its own mass and
-   radius imply [fraction]. Not physics -- a data-acceptance rule (#689). The column
-   is weighed in g radius^2 / (radius + z)^2 (#683) while a hull falls in
-   G mass / (radius + z)^2, so a g that is not that field at the datum leaves air
-   that is NOT in hydrostatic equilibrium with the pull an orbit answers to. The two
-   are pinned equal at the surface by construction, which is what makes this class of
-   typo invisible: the disagreement only shows aloft, where the column MULTIPLIES it
-   (ln p spans 10.7 scale heights across Kerbin's air, so a 5 % g is 41 % off on the
-   density at its 85 km edge). Shipped worlds agree to
-   0.62 % worst -- Pluto, where both figures are three significant digits -- and every
-   air body to 0.06 %, so 2 % refuses a mistake (a g typed for a different world, a
-   mass a digit off) and not a rounding. Only bodies with air are checked: on an
-   airless rock the typed g is a readout, and its small moons publish one significant
-   digit (shipped Daphnis sits 10 % off its own implied field, harmlessly). */
-inline constexpr double kAtmoGravityTol = 0.02;
-
-/* The field a body's air is weighed IN, at the sphere that air STARTS on (#697).
-   A system file types `g` the way an atlas publishes it -- at the body's MEAN
-   radius -- while a profile is stacked on the sea-level DATUM sphere
-   (terrain.h:seaLevelRadius(): radius + sea_level), and levelPressure's falloff
-   g radius^2/(radius+z)^2 counts z from THAT sphere. Hand it the typed number and
-   the file has just claimed its datum sits at the mean radius: every kg of air is
-   then weighed in a field too strong by (sea-level radius / mean radius)^2 -- 4.07 %
-   on a 12 km sea, where the correction is x0.9612, and 0.19 % on the 600 m one the 245
-   fixture ships, which is under notice but is the same error. Every shipped body has
-   sea_level 0, so this returns the typed g unchanged: the rule costs nothing today and
-   it is what makes a raised sea a world rather than a 4 % barometer bug. The
-   kAtmoGravityTol guard above
-   checks the typed g at the MEAN radius, which is where the atlas types it; this is
-   the walk down (or up) to where the air is. */
-inline double datumGravity(double g, double mean_radius, double sea_level_radius) {
-    if(!(mean_radius > 0.0) || !(sea_level_radius > 0.0)) { return g; }
-    const double k = mean_radius / sea_level_radius;
-    return g * k * k;
-}
+/* The field a body's air is weighed IN: mu / seaLevelRadius()^2 (#683, #697, #708).
+   Not a typed number -- the loader derives it from the same mu every arc answers to.
+   The column's falloff is g radius^2/(radius+z)^2 with z counted from the sea-level
+   DATUM sphere (terrain.h:seaLevelRadius()), while a hull falling through that air is
+   pulled by G mass/(radius+z)^2. Those are ONE field only if the air's g is that field
+   at the datum; otherwise the disagreement MULTIPLIES with altitude -- ln p spans 10.7
+   scale heights across Kerbin's air, so a 5 % g is 41 % off on the density at its 85 km
+   edge -- and play becomes a barometer that disagrees with a ballistic arc. Deriving it
+   makes that class unauthorable, and a raised sea stops being a 4 % barometer bug
+   because the datum sphere goes into the division directly. Both readers spell it the
+   same way -- system.cpp (the rho0 anchor and resolveAtmoLevels) and
+   vehicle.cpp:dragAtm -- so a profile cannot step between load and flight. */
 
 /* Fill in each level's base_p [Pa] by integrating the level ABOVE it down to this
    level's base_alt. Level 0's base_p IS the file's authored `sea_level_pressure`

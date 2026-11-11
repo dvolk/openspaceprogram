@@ -48,9 +48,10 @@ def anchor_sea_level_pressure(surface, radius_m, g):
         pins). So the four table bodies drift by ~0.014% in density, on purpose, toward
         the number their source states.
 
-    `g` here is the body's authored g [m/s2] at its MEAN radius; the air sits on the
-    datum sphere, so the same (mean / datum)^2 thinning atmo.h:datumGravity applies to the
-    column and to dragAtm() per hull (#697) is applied here.
+    `g` here is the body's surface gravity [m/s2] at its MEAN radius -- derived from
+    mass and radius, because the loader derives it too (#708). The air sits on the datum
+    sphere, so the same (mean / datum)^2 thinning the game applies to the column and to
+    dragAtm() per hull (#697) is applied here.
     """
     if not surface:
         return surface
@@ -233,14 +234,18 @@ def blackbody_temperature(flux, albedo):
     return (flux * (1.0 - albedo) / (4.0 * SIGMA_SB)) ** 0.25
 
 
-# src/atmo.h:kAtmoGravityTol. Keep the two in step: this is the same rule stated on
-# the authoring side, and a generator that is looser than the loader has already lost.
+# How far a fact sheet's own surface-gravity row may sit from G*mass/radius^2 before
+# the generator refuses the page (#708). This is no longer a copy of a loader constant:
+# the loader DERIVES g, so there is nothing on the game side to keep in step. The band
+# exists because the sheet's gravity row is the one statement on the page that mass and
+# radius do not already imply -- weigh it here or a mis-scraped mass silently sets a
+# body's surface gravity too.
 GRAVITY_TOL = 0.02
 
 
 def check_constants_match_src(verbose=True):
-    """G and SIGMA_SB above are COPIES of what the loader spells (src/system.cpp:165,
-    src/solar.h:kStefanBoltzmann). Comments say so, and a comment is not a link (#707:
+    """G and SIGMA_SB above are COPIES of what the loader spells (src/system.cpp's
+    `G =` literal, src/solar.h:kStefanBoltzmann). Comments say so, and a comment is not a link (#707:
     G is written out five times in utils/ alone, #689 pinned one of those pairs by hand).
     So --check greps the two headers and refuses if they part company: generated data can
     be perfectly self-consistent and still describe a physically different universe from
@@ -275,32 +280,31 @@ def check_constants_match_src(verbose=True):
     return bad
 
 
-def check_body_gravity(bodies, verbose=True):
-    """Refuse a body whose typed `g` is not the field its own mass and radius imply
-    (#689), because a body with air states that field TWICE and the loader then uses
-    both: g weighs the air's column (atmo.h:resolveAtmoLevels, #683) while mass is
-    what every arc about the body answers to. Equal at the surface by construction,
-    they part company aloft, where the column multiplies the gap -- ln p spans 10.7
-    scale heights across Kerbin's air, so a 5 % g is 41 % off on the density at its
-    85 km edge. A barometer and a ballistic arc then disagree about one sky and the
-    file never says which one to believe.
-    Air bodies only, exactly as the loader's check does: on an airless rock the typed
-    g is a readout, and the small moons' published figures carry one significant
-    digit (the shipped catalogue's worst is Daphnis, 10 % off its own implied field,
-    harmlessly). Prints a row per air body whether or not it agrees -- a guard that
-    prints nothing is indistinguishable from one that checked nothing (#685)."""
+def check_scraped_gravity(parsed, verbose=True):
+    """A fact sheet's own surface-gravity row against G*mass/radius^2 from the SAME page
+    (#708). The game DERIVES surface gravity from mass and radius -- a system file states
+    that field once -- so a scrape that mis-reads a mass row sets a body's surface gravity
+    as well, and there is no second typed number left to disagree with it. The sheet's
+    gravity row is the one figure on the page that mass and radius do not already imply,
+    so it is weighed here, before any file is written.
+    Pages that decline to state one (the giants head theirs 'Gravity (mean, 1 bar)', most
+    satellites state nothing) are skipped: inventing a row in order to refuse is worse
+    than saying nothing. Prints a row per compared body -- a guard that prints nothing is
+    indistinguishable from one that checked nothing (#685).
+    `parsed` maps a body name to its scrape dict ('g', 'mass_kg', 'radius_m')."""
     bad = []
-    for b in bodies:
-        atmo = (b.get('surface') or {}).get('atmosphere')
-        g, mass, radius = b.get('g'), b.get('mass'), b.get('radius')
-        if not atmo or not g or not mass or not radius:
+    for name in sorted(parsed):
+        data = parsed[name]
+        g, mass, radius = data.get('g'), data.get('mass_kg'), data.get('radius_m')
+        if not g or not mass or not radius:
             continue
         implied = G * mass / (radius * radius)
         drift = (g - implied) / implied
         if verbose:
-            print('  gravity   %-9s g %10.5f  G*m/r^2 %10.5f  %+.2f%%'
-                  % (b['name'], g, implied, 100.0 * drift))
+            print('  gravity   %-9s sheet g %10.5f  G*m/r^2 %10.5f  %+.2f%%'
+                  % (name, g, implied, 100.0 * drift))
         if abs(drift) > GRAVITY_TOL:
-            bad.append('%s: authored g %.6g, G*mass/radius^2 = %.6g (%+.1f%%, tol %.0f%%)'
-                       % (b['name'], g, implied, 100.0 * drift, 100.0 * GRAVITY_TOL))
+            bad.append('%s: the fact sheet states g %.6g while its own mass and radius'
+                       ' give %.6g (%+.1f%%, tol %.0f%%)'
+                       % (name, g, implied, 100.0 * drift, 100.0 * GRAVITY_TOL))
     return bad

@@ -230,17 +230,19 @@ def self_test():
     # refusal together decide a build. Two SCALES on purpose -- a Kerbin-sized pair and
     # a giant-sized one -- because a filter that quietly started skipping bodies by size
     # would otherwise pass, and the giants are the family this gate exists for.
-    fat = {'name': 'Fatty', 'radius': 600000.0, 'mass': 5.29e22, 'g': 9.81,
+    fat = {'name': 'Fatty', 'radius': 600000.0, 'mass': 5.29e22,
            'surface': {'atmosphere': {
                # 101,325 Pa at 288.15 K is the 1.225 kg/m3 this fixture used to type
                'sea_level_pressure': 101325.0, 'height': 1000.0,
                'layers': [{'alt': 0.0, 'T': 288.15, 'lapse': -0.0065}]}}}
-    thin = {'name': 'Thinny', 'radius': 600000.0, 'mass': 5.29e22, 'g': 9.81,
-            # 0.1962 Pa on a 20 km H at g 9.81 is 1e-6 kg/m3 at the datum
+    thin = {'name': 'Thinny', 'radius': 600000.0, 'mass': 5.29e22,
+            # 0.1962 Pa on a 20 km H at the 9.81 its own mass and radius give is
+            # 1e-6 kg/m3 at the datum
             'surface': {'atmosphere': {'sea_level_pressure': 0.1962,
                                        'scale_height': 20000.0, 'height': 400000.0}}}
-    giant = {'name': 'Biggy', 'radius': 7.0e7, 'mass': 1.9e27, 'g': 24.79,
-             # 107,092.8 Pa on a 27 km H at g 24.79 is 0.16 kg/m3 at the datum
+    giant = {'name': 'Biggy', 'radius': 7.0e7, 'mass': 1.9e27,
+             # 107,092.8 Pa on a 27 km H at the 25.88 its own mass and radius give is
+             # 0.153 kg/m3 at the datum
              'surface': {'atmosphere': {'sea_level_pressure': 107092.8,
                                         'scale_height': 27000.0, 'height': 390000.0}}}
     # The dedupe key is a list of fields, so it gets a list of tests: for each field, a
@@ -249,13 +251,15 @@ def self_test():
     # since shipped system files repeat columns and a real disagreement must get through.
     # `name` is in the key to LABEL a row, not to tell columns apart (same physics under
     # two names is one column), so it deliberately gets no twin.
+    # No `g` twin: a file states gravity once, as mass and radius, and g follows from
+    # them (#708) -- the two columns that move it already have twins of their own.
     def twin(field, value, base=None):
         base = base or thin
-        if field in ('mass', 'g', 'radius'):
+        if field in ('mass', 'radius'):
             return dict(base, **{field: value})
         return dict(base, surface={'atmosphere': dict(
             base['surface']['atmosphere'], **{field: value})})
-    twins = [twin('mass', 1.06e23), twin('g', 4.0), twin('radius', 8.0e5),
+    twins = [twin('mass', 1.06e23), twin('radius', 8.0e5),
              twin('height', 500000.0), twin('scale_height', 30000.0),
              # 0.4 Pa on the same column is 2.039e-6 kg/m3, so the twin is still a twin
              twin('sea_level_pressure', 0.4),

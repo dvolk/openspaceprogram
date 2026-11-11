@@ -20,10 +20,10 @@ closed form is the same integral. It agrees with the loader to the digits the pi
 carry -- `--heights 0,5000,8500,69999 ksp_system.json` against check_air's `aloft`
 table in tests/test_scenarios.cpp, Kerbin:
 
-    p(0)        101324.8548 Pa      pinned 101324.85477637536
-    rho 5 km    0.7386735 kg/m3     pinned 0.7386735114
-    rho 8.5 km  0.5019472 kg/m3     pinned 0.5019472257
-    rho 69999 m 2.027780e-4 kg/m3   pinned 2.0277803e-4
+    p(0)        101325.0000 Pa      pinned 101325.0 Pa (authored outright since #739)
+    rho 5 km    0.7386380 kg/m3     pinned 0.7386379535
+    rho 8.5 km  0.5019040 kg/m3     pinned 0.5019040195
+    rho 69999 m 2.026349e-4 kg/m3   pinned 2.0263494e-4
 
 which is also the answer to "can anyone reproduce the ten-digit air numbers, or only
 whoever happened to have the scratch file open". Where the two disagree by more than a
@@ -36,7 +36,7 @@ Usage:  python3 utils/atmo_profile.py [system.json ...]
 import json, math, sys, os
 
 # The loader's constants, copied deliberately -- this file must not import the loader's
-# arithmetic. kGasR has a home (src/constants.h:73). G does not: src/system.cpp:162 plus
+# arithmetic. kGasR has a home (src/constants.h:kGasR). G does not: src/system.cpp spells it plus
 # three function locals in vehicle.cpp, and five more copies across utils/ (#707). A
 # second spelling that drifts approves a world the loader then builds differently.
 G = 6.674e-11
@@ -95,32 +95,29 @@ class Profile:
         mean_r = float(body.get('radius', 600000.0))
         self.radius = mean_r + float(su.get('sea_level', 0.0))
         # A Profile IS a column, so it needs gravity and a mass (every caller filters
-        # for air before building one). The loader DEFAULTS both silently -- mass 5e22
-        # and g 9.81, system.cpp:276,279 -- which for an air body builds a world nobody
-        # authored; that is #708, not something to paper over here.
-        # Name the body and the default it would have inherited, rather than raising a
-        # bare KeyError that reads as a bug in this file.
-        for key, invented in (('g', '9.81'), ('mass', '5e22')):
-            if key not in body:
-                raise ValueError('%s: no %s row, and the loader would silently use %s'
-                                 % (self.name, key, invented))
-        self.g = float(body['g'])
-        # atmo.h:datumGravity (#697). A file types g the way an atlas publishes it --
-        # at the MEAN radius -- and the column is stacked on the datum sphere, so the
-        # field that weighs it is the typed one walked to that sphere. Every shipped
-        # body has sea_level 0 and this multiplies by 1.
-        if mean_r > 0.0 and self.radius > 0.0:
-            self.g *= (mean_r / self.radius) ** 2
+        # for air before building one). #708: a system file states gravity ONCE -- as
+        # mass and radius -- and the loader derives g from them, so this does the same
+        # rather than reading a g row that no longer exists. A missing mass row still
+        # names the body rather than raising a bare KeyError, because the loader used to
+        # default it silently and that is exactly the hole this tool exists to see.
+        if 'mass' not in body:
+            raise ValueError('%s: no mass row, and the loader would silently use 5e22'
+                             % self.name)
         self.mu = G * float(body['mass'])
+        # #697: the column is stacked on the DATUM sphere, so this is the field AT that
+        # sphere -- mu / datum radius^2. Every shipped body authors sea_level 0, where
+        # that is the same number the dossier prints at the mean radius.
+        self.g = self.mu / (self.radius * self.radius) if self.radius > 0.0 else 0.0
         # #739: the file states the datum PRESSURE, and the density every law reads is
         # the consequence. Resolved here the way system.cpp resolves it: an exponential
         # through the datum temperature its own H already implies (the gas cancels --
         # p0 = rho0 g H exactly), a layer table through the ideal gas at its first
         # level. Both are exact inverses of what the loader does NOW with the same
         # authored pair, which is the whole reason the inversion moved no number.
-        # The level row's T defaults to 0.0 exactly as system.cpp:521-523 defaults it,
-        # so a table that omits the datum temperature divides by zero HERE and refuses
-        # there -- same outcome, and neither is a KeyError in this file's name.
+        # The level row's T defaults to 0.0 exactly as system.cpp's level reader
+        # defaults it, so a table that omits the datum temperature divides by zero
+        # HERE and refuses there -- same outcome, and neither is a KeyError in this
+        # file's name.
         self.M, self.gamma = mix(at.get('composition'))
         self.Rs = K_GAS_R / self.M
         self.p0 = float(at['sea_level_pressure'])
@@ -134,7 +131,7 @@ class Profile:
             raise ValueError('%s: atmosphere.sea_level_pressure with neither layers'
                              ' nor scale_height -- no column to resolve it into'
                              % self.name)
-        # system.cpp:521-523 DEFAULTS a level's alt/T/lapse to 0.0, so a row may write
+        # system.cpp DEFAULTS a level's alt/T/lapse to 0.0, so a row may write
         # only what it cares about. Normalise once, to the loader's defaults, so neither
         # T() nor the gate's dedupe key KeyErrors on a file the loader accepts.
         self.levels = [{'alt': float(l.get('alt', 0.0)), 'T': float(l.get('T', 0.0)),

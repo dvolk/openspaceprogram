@@ -37,6 +37,7 @@
 #include "gldebug.h"
 #include "frame.h"
 #include "shipdef.h"
+#include "fmt.h"        // fmt_accel: --fleet-report's pad g, the dossier's readout
 #include "staging.h"  // --fleet-report: the same staging table the VAB draws
 #include "equirect.h"  // wrapLonDeg: a --startship lon is STORED wrapped
 #include "crew.h"
@@ -336,8 +337,13 @@ static int printFleetReport(const Game &game, const GameArgs &args,
     std::sort(hulls.begin(), hulls.end(),
               [](auto &a, auto &b) { return a.first < b.first; });
 
-    printf("=== fleet report: %zu hulls vs %s (pad g %.2f m/s2, surface orbit %.0f m/s",
-           hulls.size(), home->name.c_str(), home->g, floor);
+    /* fmt_accel, not "%.2f": --transfer-target can point the report at one of the
+       small moons in solar_system_full, where the pad g is under 0.01 and a fixed
+       two decimals prints "0.00 m/s2" about a world a lander still answers to. */
+    char padg[32];
+    printf("=== fleet report: %zu hulls vs %s (pad g %s, surface orbit %.0f m/s",
+           hulls.size(), home->name.c_str(), fmt_accel(home->g, padg, sizeof padg),
+           floor);
     if(args.exhaust_scale != 1.0) { printf(", exhaust scale %.2f", args.exhaust_scale); }
     printf(") ===\n");
     printf("%-24s %5s %9s %8s %7s  %s\n",

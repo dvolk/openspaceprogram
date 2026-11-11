@@ -23,6 +23,8 @@ import math
 import re
 import sys
 
+from atmo_units import G   # one spelling of the loader's G, not a fourth copy (#707)
+
 K_GAS_R = 8.314462618   # [J/(mol K)], the same constant src/constants.h carries
 
 ORBITER = {
@@ -160,7 +162,9 @@ def our_top_pressure(body, at, species):
     if not comp:
         return None, top
     R = K_GAS_R / sum(c['fraction'] * species[c['gas']][0] for c in comp)
-    g = body.get('g', 9.81)
+    # #708: a system file states gravity once, as mass and radius, and the loader
+    # derives g from them -- so this does the same instead of reading a g row.
+    g = G * float(body['mass']) / (float(body['radius']) ** 2)
     p = at['sea_level_pressure']
     layers = at.get('layers')
     if layers:

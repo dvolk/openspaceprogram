@@ -29,7 +29,7 @@ from gas_mixes import DRY_AIR, CO2_HEAVY, H2_HE_CH4_KSP
 # altitude in a system file means). Both generators call the same function, because each
 # --check only compares its own output and would not notice the two drifting.
 from atmo_units import (resolve_layer_heights, anchor_sea_level_pressure,
-                       check_anchor_conversion, check_body_gravity,
+                       check_anchor_conversion, check_scraped_gravity,
                         SIGMA_SB, semimajor_axis, star_temperature_from_flux,
                         blackbody_temperature, check_constants_match_src)
 # #724 rung C: the surface swing's law, shared with make_solar_system.py so the shipped
@@ -191,7 +191,6 @@ eerbon = {
             "type": "star",
             "radius": 261600000,
             "mass": 1.757e28,
-            "g": 17.131,
             "seed": 0,
             "has_sea": False,
             "power_scaler": 1,
@@ -203,7 +202,6 @@ eerbon = {
             "orbits": "Sun",
             "radius": 600000,
             "mass": 5.2915793e22,
-            "g": 9.81,
             "seed": 0,
             "has_sea": True,
             "power_scaler": 3,
@@ -226,7 +224,6 @@ eerbon = {
             "orbits": "Eerbon",
             "radius": 200000,
             "mass": 9.7600236e20,
-            "g": 1.628,
             "seed": 0,
             "has_sea": False,
             "power_scaler": 1,
@@ -249,7 +246,8 @@ eerbon = {
 # (reproduces the wiki values within rounding) and near-body shells from the
 # atmosphere -- see src/bodylimits.h.
 K = [
-    # name,     type,    orbits,  sma_m,        ecc,    mass_kg,  g,      radius_m, inc_deg, orb_s,      rot_s,      tilt_deg, has_sea, seed, ps [, phase_deg]
+    # name,     type,    orbits,  sma_m,        ecc,    mass_kg,  g_wiki, radius_m, inc_deg, orb_s,      rot_s,      tilt_deg, has_sea, seed, ps [, phase_deg]
+    # (g_wiki is a CHECK column, not emitted -- see ksp_body and #708)
     ("Kerbol", "star",   None,    None,         None,   1.757e28, 17.131, 261600000, None,    None,       432000,    7.25,     False, 0.1, 1),
     ("Moho",   "planet", "Kerbol", None,        None,   2.526e21, 2.698,  250000,   None,    None,       1210000,   0.03,     False, 1,   3),
     ("Eve",    "planet", "Kerbol", None,        None,   1.224e23, 16.677, 700000,   None,    None,       80500,     2.64,     False, 2,   3),
@@ -596,7 +594,12 @@ SURFACES = {
 }
 
 
-def ksp_body(name, typ, orbits, sma, ecc, mass, g, radius, inc_deg, orb_s, rot_s, tilt_deg, has_sea, seed, ps, phase_deg=0):
+def ksp_body(name, typ, orbits, sma, ecc, mass, g_wiki, radius, inc_deg, orb_s, rot_s, tilt_deg, has_sea, seed, ps, phase_deg=0):
+    """`g_wiki` is NOT emitted (#708): a system file states gravity once, as mass and
+    radius, and the loader derives g from them. The wiki's gravity column stays in K as
+    the page's independent statement, weighed against that arithmetic in main() -- a
+    mistyped mass would otherwise set a body's surface gravity with nothing left to
+    disagree."""
     b = {
         "name": name,
         "type": typ,
@@ -605,7 +608,6 @@ def ksp_body(name, typ, orbits, sma, ecc, mass, g, radius, inc_deg, orb_s, rot_s
         b["orbits"] = orbits
     b["radius"] = radius
     b["mass"] = mass
-    b["g"] = g
     b["seed"] = seed
     b["has_sea"] = has_sea
     b["power_scaler"] = ps
@@ -614,8 +616,10 @@ def ksp_body(name, typ, orbits, sma, ecc, mass, g, radius, inc_deg, orb_s, rot_s
         # radius this body's altitudes will be measured from.
         b["surface"] = resolve_layer_heights(SURFACES[name], radius)
         # #739: the datum anchor the FILE states is a pressure; the densities authored
-        # in SURFACES below are sheet/wiki rows and are converted here.
-        anchor_sea_level_pressure(b["surface"], radius, g)
+        # in SURFACES below are sheet/wiki rows and are converted here. Weigh them in the
+        # g the LOADER will use -- G*mass/radius^2 (#708) -- not the wiki column, which
+        # is a check figure only.
+        anchor_sea_level_pressure(b["surface"], radius, G * mass / (radius * radius))
 
     if typ == "star":
         b["inertial"] = {"soi": STAR_SOI, "pos": [0, 0, 0], "orb_ang_speed": 0.0}
@@ -1383,12 +1387,13 @@ def main():
         (eerbon, os.path.join(ROOT, "res", "systems", "old_system.json")),
         (ksp, os.path.join(ROOT, "res", "systems", "ksp_system.json")),
     ]
-    # These bodies are hand-typed: radius, mass and g come from three wiki figures on
-    # three different pages. A body with air states its gravity twice (g weighs the
-    # air's own column, mass is what an orbit answers to), and the two only part
-    # company aloft -- so nothing but this check ever sees the disagreement. The loader
-    # refuses the same thing at load (atmo.h:kAtmoGravityTol, #689); refusing here
-    # names the typo at the keyboard instead of at boot.
+    # These bodies are hand-typed: radius, mass and gravity come from three wiki figures
+    # on three different pages. The file states gravity ONCE now -- mass and radius, from
+    # which the loader derives g (#708) -- so the wiki's gravity column stays in K as a
+    # CHECK figure and is weighed here against that arithmetic. It is the one figure on
+    # those pages that mass and radius do not already imply: a mass a digit off would set
+    # a body's surface gravity, its air column and its orbit all the same wrong way,
+    # agreeing with each other.
     bad = []
     # Both generators size a star with sigma and weigh an air column with G, and both
     # spell those constants as COPIES of the loader's. Check that first: a generator
@@ -1410,7 +1415,9 @@ def main():
                          'into the datum pressure the loader inverts')
     for obj, _path in targets:
         author_star_temperature(obj)
-        bad += check_body_gravity(obj["bodies"], verbose=True)
+    bad += check_scraped_gravity({row[0]: {'g': row[6], 'mass_kg': row[5],
+                                          'radius_m': row[7]} for row in K},
+                                 verbose=True)
     # #735, and only for the shipped system: the legacy Eerbon file stays unauthored on
     # purpose. It is a frozen fixture (tests/test_belts.cpp builds on it), not a showcase,
     # and leaving it dashed keeps the absent-reading path loaded by a file the tests use.
@@ -1424,9 +1431,9 @@ def main():
     author_ksp_air_follow(ksp)
     if bad:
         for m in bad:
-            print('DRIFT   body gravity: ' + m)
-        raise SystemExit('%d bodies author a g that their own mass and radius deny'
-                         % len(bad))
+            print('DRIFT   wiki gravity: ' + m)
+        raise SystemExit('%d KSP wiki gravity rows disagree with the same table\'s own'
+                         ' mass and radius' % len(bad))
     if args.check:
         ok = True
         for obj, path in targets:

@@ -14,7 +14,22 @@ sys.path.insert(0, HERE)
 import run as e2e  # noqa: E402
 
 REPO = e2e.REPO_ROOT
-KRB_G = 9.81  # Kerbin surface gravity (m/s^2)
+
+
+def _derived_krb_g():
+    """Kerbin's surface gravity [m/s2], DERIVED from the shipped system file the way
+    the loader derives it (#708): G*mass/radius^2. This used to be a hand-typed 9.81,
+    which fed the predicted gravity loss and both terminal velocities -- a second
+    statement of a field the file states once, and already 0.008 % off the 9.81078 the
+    game weighs its air in."""
+    with open(os.path.join(REPO, 'res', 'systems', 'ksp_system.json')) as f:
+        for b in json.load(f)['bodies']:
+            if b['name'] == 'Kerbin':
+                return 6.674e-11 * float(b['mass']) / float(b['radius']) ** 2
+    raise SystemExit('aero_quant: no Kerbin in res/systems/ksp_system.json')
+
+
+KRB_G = _derived_krb_g()
 
 
 def ship_mass_and_radius(ship_path, parts_path):

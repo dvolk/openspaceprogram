@@ -352,8 +352,26 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                                      + "': unknown \"type\" \"" + type
                                      + "\" (expected \"star\", \"moon\" or \"planet\")");
         }
-        const double radius = bv.value("radius", 600000.0);
-        const double mass   = bv.value("mass", 5e22);
+        /* "radius" and "mass" are REQUIRED, and a missing or non-number row names the
+           body rather than throwing nlohmann's type_error, which names neither (#515).
+           They used to default -- 600000 m and 5e22 kg -- which was merely untidy while
+           a body ALSO typed its gravity, and is the rest of #708 now that it does not:
+           gravity is these two read at r, so a forgotten mass row is a world whose air
+           is weighed in a field no row of the file states. Every shipped body and every
+           e2e fixture already carries both, so this refuses authoring mistakes rather
+           than the catalogue. The SIGN is checked just below. */
+        if(!bv.contains("radius") || !bv["radius"].is_number()) {
+            throw std::runtime_error("system: '" + body->name + "': \"radius\" is"
+                                     " required, a number [m] -- the game derives"
+                                     " surface gravity from it (#708)");
+        }
+        if(!bv.contains("mass") || !bv["mass"].is_number()) {
+            throw std::runtime_error("system: '" + body->name + "': \"mass\" is"
+                                     " required, a number [kg] -- the game derives"
+                                     " surface gravity from it (#708)");
+        }
+        const double radius = bv["radius"].get<double>();
+        const double mass   = bv["mass"].get<double>();
         /* A radius and a mass with a SIGN, checked rather than defaulted: a negative
            radius inverts every datum test above it (a legal positive sea_level suddenly
            reads as "below the centre") and inverts the shells built from it, and a star
@@ -376,8 +394,32 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
         }
         body->radius       = (float)radius;
         body->mass         = (float)mass;
-        body->g            = bv.value("g", 9.81);
+        /* Surface gravity is DERIVED, never authored (#708). The game has one gravity
+           law -- point mass, `mu` two lines below, which is what applyGravity pulls
+           with and what every arc and the dossier's escape velocity answer to -- so g at
+           the mean radius is not a second fact, it is that fact read at r. Authoring it
+           stated one field twice, and the two only part company where it hurts: the air
+           column is weighed in g (#683) while a hull falling through that air is pulled
+           by mu, and the dossier printed the typed number two rows above an escape
+           velocity derived from mu, with nothing to arbitrate. Nothing in the shipped
+           corpus used the freedom -- every authored g was already the derived value or a
+           rounding of it (the catalogue's 56 "2-19% off" bodies all type g < 0.01, where
+           the dossier printed 0.00 either way) -- so the duplication cost a tolerance
+           constant, a loader comparison, a generator guard, and a silent 9.81 for any
+           body that forgot the row. The two rows that ARE gravity now refuse when they
+           are missing (above), which is #708 closed at the source rather than at the
+           readout. Keeping the cross-check: the fact sheets DO publish a
+           gravity row, and utils/atmo_units.py:check_scraped_gravity compares it against
+           G*mass/r^2 before a generated file is written. An authored "g" refuses rather
+           than being ignored, the same policy as an unknown wind key (#688) -- a dead key
+           in a data file is a typo nobody sees. */
+        if(bv.contains("g")) {
+            throw std::runtime_error("system: '" + body->name + "': \"g\" is not a"
+                                     " body key any more -- surface gravity is"
+                                     " G*mass/radius^2 and the loader derives it (#708)");
+        }
         body->mu           = G * mass;
+        body->g            = body->mu / (radius * radius);
         // Required: defaulting it to 1.0 would silently under-value the body.
         if(!bv.contains("science_mult") || !bv["science_mult"].is_number()) {
             throw std::runtime_error("system: '" + body->name
@@ -946,14 +988,14 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                    cancels and rho0 = p0 / (g H) -- which is also why the derived
                    temperature cannot drift into being a third statement of one column.
                    A layer table inverts through its own datum ideal gas.
-                   Both use datumGravity(body->g, radius, seaLevelRadius) -- the SAME
-                   call dragAtm() makes per hull (#697) and the same one the level
-                   integration below uses, so the datum cannot step.
+                   Both use mu / seaLevelRadius()^2 -- the SAME field dragAtm() hands
+                   drag.h per hull (#697) and the same one the level integration below
+                   uses, so the datum cannot step.
                    Garbage is left to refuse below rather than divided through: if the
                    profile is missing, or level 0 sits at 0 K, rho0 stays 0 and the
                    profile guards fire with their own messages. */
-                const double air_g = datumGravity(body->g, body->radius,
-                                                  body->seaLevelRadius());
+                const double r_sea = body->seaLevelRadius();
+                const double air_g = body->mu / (r_sea * r_sea);
                 if(s.atmosphere.sea_level_pressure > 0.0) {
                     if(!s.atmosphere.layers.empty()) {
                         if(s.atmosphere.layers[0].base_T > 0.0) {
@@ -1040,29 +1082,6 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                    leave those bounds. If it ever trips, the fix is in atmo.h:gasSpecies,
                    and naming the body is what points a reader there. */
                 if(s.atmosphere.sea_level_pressure > 0.0) {
-                    if(!(body->g > 0.0)) {
-                        throw std::runtime_error(
-                            "system: " + body->name + ": a body with air needs g > 0");
-                    }
-                    /* #689: g and mass are two published statements of ONE field, and
-                       the air reads both -- g weighs the air's own column (#683), mass is
-                       what every arc about this body answers to. Nothing else compares
-                       them, they are pinned equal at the surface by construction, and the
-                       mismatch then MULTIPLIES with altitude, so it arrives in play as a
-                       barometer that disagrees with a ballistic arc. The tolerance and
-                       why it is 2 %: atmo.h:kAtmoGravityTol. */
-                    const double implied_g = body->mu / (radius * radius);
-                    char gbuf[32], ibuf[32];
-                    std::snprintf(gbuf, sizeof gbuf, "%g", body->g);
-                    std::snprintf(ibuf, sizeof ibuf, "%g", implied_g);
-                    if(!(implied_g > 0.0)
-                       || !(std::fabs(body->g / implied_g - 1.0) <= kAtmoGravityTol)) {
-                        throw std::runtime_error(
-                            "system: " + body->name + ": authored g " + gbuf
-                            + " disagrees with G*mass/radius^2 = " + ibuf
-                            + " by more than 2%: the air's column and the field an orbit"
-                            " feels have to be one field (atmo.h:kAtmoGravityTol)");
-                    }
                     if(!(s.atmosphere.molar_mass > 0.0
                          && s.atmosphere.molar_mass < 1.0)
                        || !(s.atmosphere.gamma >= 1.0 && s.atmosphere.gamma <= 2.0)) {

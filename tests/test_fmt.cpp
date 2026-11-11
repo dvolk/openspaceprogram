@@ -9,6 +9,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <cmath>      // std::nan: a gravity readout must not render it as "0 m/s2"
 #include <numbers>
 
 static int failures = 0;
@@ -93,6 +94,46 @@ int main() {
     // fmt_mass: two decades per body class, so scientific notation.
     CHECK_FMT(fmt_mass, 5.291e22, "5.291e+22 kg");
     CHECK_FMT(fmt_mass, 0.0,      "0.000e+00 kg");
+    // fmt_accel: the surface-gravity row. "%.2f m/s2" alone printed 151 of the
+    // 240 bodies in solar_system_full as "0.00 m/s2", so the ladder drops to
+    // mm/s2 and then to scientific rather than rounding a moon out of the game.
+    // The m->mm cut sits at 1e-1, well above where the digits run out: 0.0999 is
+    // one significant figure in m/s2 and four in mm/s2.
+    CHECK_FMT(fmt_accel, 9.81,       "9.81 m/s2");      // Kerbin
+    CHECK_FMT(fmt_accel, 274.0,      "274.00 m/s2");    // the Sun
+    CHECK_FMT(fmt_accel, 1.63,       "1.63 m/s2");      // a Mun-sized moon
+    CHECK_FMT(fmt_accel, 0.1,        "0.10 m/s2");      // bottom of the m tier
+    CHECK_FMT(fmt_accel, 0.0999,     "99.90 mm/s2");    // top of the mm tier
+    CHECK_FMT(fmt_accel, 0.01,       "10.00 mm/s2");    // where the old ladder read 0
+    CHECK_FMT(fmt_accel, 1.6774e-4,  "0.17 mm/s2");     // S/2009 S1
+    CHECK_FMT(fmt_accel, 1e-5,       "0.01 mm/s2");     // bottom of the mm tier
+    CHECK_FMT(fmt_accel, 9.9e-6,     "9.90e-06 m/s2");  // just below it
+    CHECK_FMT(fmt_accel, 4.2e-7,     "4.20e-07 m/s2");  // a dust-grain world
+    CHECK_FMT(fmt_accel, 1e6,        "1.00e+06 m/s2");  // the top tier goes sci
+    CHECK_FMT(fmt_accel, 0.0,        "0 m/s2");         // a hand-built body
+    CHECK_FMT(fmt_accel, -9.81,      "-9.81 m/s2");     // sign kept
+    CHECK_FMT(fmt_accel, -0.004,     "-4.00 mm/s2");    // sign kept in the mm tier
+    // A NaN must NOT read "0 m/s2": that is the exact misreading this ladder
+    // exists to prevent -- a body with no gravity is a fact, a body whose gravity
+    // could not be computed is a bug, and the dossier prints them the same row.
+    CHECK_FMT(fmt_accel, std::nan(""), "-");
+    // Every call site passes a 32-char buffer (gameui.cpp, main.cpp). Pin that the
+    // widest row each tier can emit fits, so widening a format cannot silently
+    // truncate a readout: compare a roomy buffer against the 32 the game uses.
+    {
+        static const double worst[] = { 999999.99, -999999.99, 1e6, -1e6,
+                                        1e-19, -1e-19, 0.0, std::nan("") };
+        for(double v : worst) {
+            char wide[128], call[32];
+            fmt_accel(v, wide, sizeof wide);
+            fmt_accel(v, call, sizeof call);
+            if(std::strcmp(wide, call) != 0) {
+                printf("FAIL %s:%d: fmt_accel(%g) = \"%s\" does not fit the 32 chars"
+                       " every call site passes\n", __FILE__, __LINE__, v, wide);
+                failures++;
+            }
+        }
+    }
 
     if(failures == 0) {
         printf("test_fmt: all checks passed\n");

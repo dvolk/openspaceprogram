@@ -10,7 +10,7 @@ from sci_dist import stamp_science_mults, stamp_transfer_dv, phase0
 # both system generators import -- each --check only compares a file against its own
 # output, so a second spelling of the law would drift in silence (the #636 lesson).
 from atmo_units import (resolve_layer_heights, anchor_sea_level_pressure,
-                       check_body_gravity,
+                       check_scraped_gravity,
                         SIGMA_SB, semimajor_axis, star_temperature_from_flux,
                         blackbody_temperature, check_constants_match_src)
 # #724 rung C: the surface temperature law and its one knob, in ONE module both system
@@ -609,16 +609,14 @@ def check_fact_air(planets, parsed, verbose=True):
             authored['p0'] = p0_file
         if rho0 is not None and p0_file is None:
             authored['density'] = rho0
-        # The same gravity this generator scraped for the body itself. Four sheets
-        # head their gravity column "Gravity (mean, 1 bar)" instead -- Jupiter,
-        # Saturn, Uranus, Neptune -- and leave that scrape None. Fall back on
-        # the arithmetic the LOADER uses when a body authors no g (G*M/R^2
-        # reproduces the emitted Uranus value, 9.0073) rather than dropping
-        # the comparison: a silent '-' is the kind of hole #684 walked through.
+        # The field this body's air is weighed in: G*M/R^2, which is what the loader
+        # derives now that a file states gravity once (#708). The sheet's OWN gravity row
+        # is not used here -- four sheets head that column "Gravity (mean, 1 bar)" and
+        # leave that scrape None anyway -- it is weighed AGAINST this arithmetic by
+        # check_scraped_gravity instead.
         body = parsed.get(name) or {}
-        g = body.get('g')
-        if g is None and body.get('mass_kg') and body.get('radius_m'):
-            g = G * body['mass_kg'] / (body['radius_m'] * body['radius_m'])
+        g = (G * body['mass_kg'] / (body['radius_m'] * body['radius_m'])
+             if body.get('mass_kg') and body.get('radius_m') else None)
         if H is not None:
             authored['scale_height'] = H
             p0 = p0_file
@@ -627,8 +625,8 @@ def check_fact_air(planets, parsed, verbose=True):
             if p0 is not None and g:
                 # Invert with the SAME g the file's pressure was converted with:
                 # anchor_sea_level_pressure weighs the column on the DATUM sphere
-                # (atmo_units, datumGravity #697), and this guard's g is the sheet's
-                # mean-radius figure. Every catalogue body authors sea_level 0 today so
+                # (#697), and this guard's g is the mean-radius figure. Every catalogue
+                # body authors sea_level 0 today so
                 # the two are one number -- but the moment one does not, an uncorrected
                 # g here misses the density by exactly the (mean/datum)^2 factor, which
                 # is the split #697 exists to prevent.
@@ -1266,16 +1264,18 @@ def make_body(name, type_, parent, data, *, surface=None, seed=0.0,
               has_sea=False, rings=None, parent_body=None, home_body=None):
     radius_m = data['radius_m']
     mass_kg  = data['mass_kg']
-    g = data.get('g')
-    if g is None and mass_kg and radius_m:
-        g = G * mass_kg / (radius_m * radius_m)
+    # #708: the file states gravity ONCE, as mass and radius, and the loader derives g
+    # from them. This g is only ever used to convert a sheet's rounded air density into
+    # the datum pressure the loader inverts, so it has to be the number the loader will
+    # divide by -- not the sheet's separate gravity row, which is checked for
+    # agreement against this one instead (check_scraped_gravity).
+    g = G * mass_kg / (radius_m * radius_m) if mass_kg and radius_m else None
 
     body = {'name': name, 'type': type_}
     if parent:
         body['orbits'] = parent
     body['radius'] = radius_m
     body['mass'] = mass_kg
-    body['g'] = round(g, 4) if g else 9.81
     body['seed'] = seed
     body['has_sea'] = has_sea
     body['power_scaler'] = 1        # unused by the loader; kept for parity
@@ -1283,7 +1283,7 @@ def make_body(name, type_, parent, data, *, surface=None, seed=0.0,
         body['surface'] = resolve_layer_heights(surface, radius_m)
         # #739: a body's JSON states its air's datum PRESSURE; the densities the
         # catalogue below is built from are sheet rows and are converted here.
-        anchor_sea_level_pressure(body['surface'], radius_m, body['g'])
+        anchor_sea_level_pressure(body['surface'], radius_m, g)
 
     # SOIs are derived by the loader (bodylimits.h); only the root authors
     # one (its universe bound).
@@ -1850,15 +1850,17 @@ def build_base(verbose_air=False):
         raise SystemExit('%d insolation figure(s) disagree with the fact sheets '
                          'that state them (band %d%%)'
                          % (len(bad), round(100 * FACT_SURFACE_BANDS)))
-    # ... and the field that air sits in, stated twice in the same file: a typed `g`
-    # beside a mass (#689). The loader refuses the same disagreement
-    # (atmo.h:kAtmoGravityTol); catching it here names the scrape that produced it.
-    bad = check_body_gravity(bodies, verbose=verbose_air)
+    # ... and the one figure about gravity the pages state independently of mass and
+    # radius (#708). A file no longer types `g` -- the loader derives it -- so a
+    # mis-scraped MASS now sets a body's surface gravity too, and the sheet's own gravity
+    # row is the only remaining witness. Weighing it here names the page that produced
+    # the disagreement rather than leaving it in play.
+    bad = check_scraped_gravity(parsed, verbose=verbose_air)
     if bad:
         for m in bad:
-            print('DRIFT   body gravity: ' + m)
-        raise SystemExit('%d bodies author a g that their own mass and radius deny'
-                         % len(bad))
+            print('DRIFT   scraped gravity: ' + m)
+        raise SystemExit('%d fact-sheet gravity rows disagree with the same page\'s own'
+                         ' mass and radius' % len(bad))
     # transfer_dv for a planet needs home (the heliocentric hop); stamp now
     # that every base body exists.
     home = next(b for b in bodies if b['name'] == 'Earth')
@@ -2276,15 +2278,18 @@ def emit(base_bodies, moons, pred, out_path, label, sheets, dry=False):
                                  sat_sheets=sat_sheet))
         by[m['name']] = bodies[-1]
         n += 1
-    # The base planets were checked with their rows printed; the moons get the same
-    # rule quietly (#689), because Titan is the one air in the catalogue with no fact
-    # sheet behind it and its g/mass pair is the only statement it makes.
-    bad = check_body_gravity(bodies, verbose=False)
+    # The moons get the same scrape-side rule quietly (#708) -- and today it compares
+    # NOTHING, because no satellite parser in this file reads a gravity row (they take a
+    # mass and a radius), so check_scraped_gravity skips every moon. It stays wired so
+    # that the day a parser DOES scrape one the rule is already in the path; the trap it
+    # guards against is the one it used to be: comparing the EMITTED g against the mass,
+    # which became a tautology the moment the generator computed g itself.
+    bad = check_scraped_gravity({m['name']: m for m in moons}, verbose=False)
     if bad:
         for m in bad:
-            print('DRIFT   body gravity: ' + m)
-        raise SystemExit('%d emitted bodies author a g that their own mass and radius '
-                         'deny (atmo.h:kAtmoGravityTol)' % len(bad))
+            print('DRIFT   scraped gravity: ' + m)
+        raise SystemExit('%d satellite-page gravity rows disagree with the same page\'s'
+                         ' own mass and radius' % len(bad))
     # ... and the two satellites the corpus states rows for, weighed at their PARENT's rail
     # (#737). This runs in emit() rather than beside the planets because a moon has no rail
     # until the Kepler rows are built, and its sheet lives inside another body's page.

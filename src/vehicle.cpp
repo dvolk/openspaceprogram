@@ -2858,11 +2858,17 @@ void Vehicle::applyThrustForce(double h) {
 DragAtmosphere dragAtm(const AtmosphereParams &a, const TerrainBody &body) {
     DragAtmosphere da { a.sea_level_density, a.scale_height, a.top() };
     da.radius = body.seaLevelRadius();   // #683: the field the hull falls in, not g alone
-    // #697: and it is the field AT THAT SPHERE. body.g is typed at the mean radius,
-    // the way an atlas publishes it; a body with a raised sea sits further out, so
-    // its air is lighter by (mean / datum)^2. Same call the loader used to bake the
-    // level base_p, so the two cannot drift.
-    da.gravity = datumGravity(body.g, body.radius, da.radius);
+    // #697: and it is the field AT THAT SPHERE. A body with a raised sea sits further
+    // out than its mean radius, so its air is lighter by (mean / datum)^2 -- which is
+    // what dividing mu by this radius already says. Same field the loader used to bake
+    // the level base_p and the datum density, so the two cannot drift.
+    da.gravity = body.mu / (da.radius * da.radius);
+    /* Assert rather than default (#708). drag.h bills NOTHING unless gravity > 0, so a
+       body that never got a mu reports VACUUM air to a hull flying through it, which is
+       the invisible half of the old typed-g hole: a loaded body always has one, so this
+       only fires on a hand-built body that forgot the row the air is weighed in. */
+    assert(da.radius > 0.0);
+    assert(body.mu > 0.0 || a.sea_level_pressure <= 0.0);
     da.molar_mass = a.molar_mass;
     da.gamma = a.gamma;
     da.oxidizer_share = a.oxidizer_share;   // #637: the jet gate reads it from HERE

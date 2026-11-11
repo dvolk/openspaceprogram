@@ -23,7 +23,7 @@ static int checks = 0, failures = 0;
     if(!std::isfinite(_a) || !std::isfinite(_e) || std::fabs(_a-_e) > (tol)) { failures++; \
     printf("FAIL: %s (got %.6g, want %.6g, tol %.3g)\n", msg, _a, _e, (double)(tol)); } } while(0)
 
-static const double G_CONST = 6.674e-11;            // system.cpp:161
+static const double G_CONST = 6.674e-11;            // src/system.cpp's G (#707)
 static const double MU_MOHO = G_CONST * 2.526e21;   // ksp_system.json Moho mass
 static const double R_MOHO  = 250000.0;             // Moho radius, no sea level
 static const double THRUST  = 50000.0;              // racer: one engine part

@@ -366,6 +366,9 @@ static TerrainBody *mkPressureBody(double rho_sea) {
     body->name = "thrustball";
     body->radius = 600000.0f;
     body->g = 9.81;
+    /* dragAtm weighs the air in mu at the datum sphere, not in g (#708), so a
+       hand-built body carries the mu the loader would have derived. */
+    body->mu = body->g * (double)body->radius * (double)body->radius;
     body->surface.sea_level = 0.0f;
     // hand-built: a FILE authors sea_level_pressure and the loader resolves this (#739)
     body->surface.atmosphere.sea_level_density = (float)rho_sea;

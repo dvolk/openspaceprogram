@@ -141,18 +141,23 @@ static int check_air(const char *path, const System &sys) {
        same column a second time -- python, by quadrature, sharing no code with atmo.h
        -- and lands on these literals to seven digits; it is also what prints the q at
        the air top that the 85 km decision (#682, #686) was made on: 97.8 Pa on a
-       circular orbit there. */
+       circular orbit there. Every literal below is the loader's own read, so #708
+       moved the whole table -- by nothing where the authored g already was
+       G*mass/radius^2 (Shay, to its 7th digit) and by 0.6 % where an exponent has
+       multiplied a 0.9 % g gap over eight scale heights (Pluto at 18 km). That is
+       the cost of deriving g, and it is also the point: a column cannot be walked
+       in a field the file made up beside the mass that walks it. */
     struct Aloft { const char *name; double alt; double rho; };
     static const Aloft aloft[] = {
-        {"Kerbin", 69999.0, 2.0277803e-4},
+        {"Kerbin", 69999.0, 2.0263494e-4},
         /* The two rows in between are the air the game actually flies in, and until #686
            nothing pinned it: the datum read and the 70 km edge were pinned and the cruise
            regime was left to the golden flight bands (485/490/492), which notice a profile
            change only by going red for reasons a reader cannot see. 8500 m is the
            flying-cruise spawn bed (0.1 x Kerbin's 85 km top, #682) and 5000 m is the
            space-port hillside; both are level 0, weighed in the body's own 1/r^2 field. */
-        {"Kerbin", 5000.0, 0.7386735114},
-        {"Kerbin", 8500.0, 0.5019472257},
+        {"Kerbin", 5000.0, 0.7386379535},
+        {"Kerbin", 8500.0, 0.5019040195},
         /* The two other worlds that wear the table, one row at their spawn bed (0.1 x
            their own air top, so 9.5 km on Shay and 10.5 km on Laythe) and one just
            under the 71 km row. These are the rows that say the column was weighed in
@@ -166,10 +171,10 @@ static int check_air(const char *path, const System &sys) {
            pinned row) and a warmed H 9197 would read 1.43e-3 (3.1x thicker).
            utils/atmo_profile.py integrates this column a second time (python, by
            quadrature, sharing no code with atmo.h) and is what printed them. */
-        {"Shay",   9500.0,  0.4964330},
-        {"Shay",   69999.0, 4.561912e-4},
-        {"Laythe", 10500.0, 0.5259753},
-        {"Laythe", 69999.0, 1.369243e-3},
+        {"Shay",   9500.0,  0.4964373367},
+        {"Shay",   69999.0, 4.562154150e-4},
+        {"Laythe", 10500.0, 0.5259297242},
+        {"Laythe", 69999.0, 1.3684865e-3},
         /* #625's three authored tables, one row each ALONGSIDE the seam (the lid is
            9 km on Eve, 18 on Duna, 60 on Jool), so what these weigh is the INTEGRATED
            column -- the levels rows above only say where a level starts. The spread is
@@ -180,9 +185,9 @@ static int check_air(const char *path, const System &sys) {
            isothermal at its own lid (210.68 K throughout) holds 1.57e-3 kg/m3 at 20 km,
            0.57x this row, with a datum 3.8x denser -- and every number the atlas prints
            about that sky moving with it. */
-        {"Eve",    20000.0, 2.77028315e-3},
-        {"Duna",   40000.0, 7.48950737e-4},
-        {"Jool",   400000.0, 1.69742860e-4},
+        {"Eve",    20000.0, 2.77727895e-3},
+        {"Duna",   40000.0, 7.49215530e-4},
+        {"Jool",   400000.0, 1.69820105e-4},
         /* #625's catalogue half, two rows per body: the spawn bed (0.1 x the body's own
            ceiling, where flying-low/flying-trim actually are -- e2e 688 measures Venus's)
            and the air just under the ceiling (0.9 x it), which is what the band gate's
@@ -193,13 +198,13 @@ static int check_air(const char *path, const System &sys) {
            1.18e-3: 2,200x more, because Jupiter's column stops cooling at its seam and
            Titan's never does. utils/atmo_profile.py integrates these columns a second
            time, in python, and is what printed every literal below. */
-        {"Venus",   11600.0, 34.19536612},     {"Venus",  104400.0, 9.971333998e-05},
-        {"Mars",     6000.0, 0.009812065266},  {"Mars",    54000.0, 2.959820819e-05},
-        {"Jupiter", 24500.0, 0.06265087802},   {"Jupiter", 220500.0, 5.404280185e-07},
-        {"Saturn",  40000.0, 0.08837167675},   {"Saturn",  360000.0, 3.096463273e-06},
-        {"Uranus",  25000.0, 0.1766301185},    {"Uranus",  225000.0, 5.785943626e-06},
-        {"Neptune", 20000.0, 0.1739101832},    {"Neptune", 180000.0, 8.339128787e-06},
-        {"Pluto",    2000.0, 1.030843015e-4},  {"Pluto",   18000.0, 4.348603859e-05},
+        {"Venus",   11600.0, 34.19649385},     {"Venus",  104400.0, 9.97749776e-05},
+        {"Mars",     6000.0, 0.009815580311},  {"Mars",    54000.0, 2.971985218e-05},
+        {"Jupiter", 24500.0, 0.06265095287},   {"Jupiter", 220500.0, 5.404355942e-07},
+        {"Saturn",  40000.0, 0.08837161500},   {"Saturn",  360000.0, 3.096436516e-06},
+        {"Uranus",  25000.0, 0.1766303917},    {"Uranus",  225000.0, 5.786045532e-06},
+        {"Neptune", 20000.0, 0.1739103321},    {"Neptune", 180000.0, 8.339205365e-06},
+        {"Pluto",    2000.0, 1.031541415e-4},  {"Pluto",   18000.0, 4.374837810e-05},
         {"Titan",   20000.0, 1.964846155},     {"Titan",  180000.0, 1.17760637e-3},
     };
     /* Where each body's air STOPS. #682's gate bounds the ceiling to 10..1000 Pa of
@@ -394,11 +399,13 @@ static int check_air(const char *path, const System &sys) {
         {"Pluto",   38.0, 125.770543273, 1.3, 0.0, 0.000115015877534, 1e-9},
         /* Titan is what #625 left standing: the catalogue's one exponential and its one
            air with no fact page. Pinning it is not approval -- it is the record that its
-           datum pressure (143,555.8 Pa, which before #739 was the *consequence* of a typed
-           5.3 kg/m3 over a 20 km H), its 90.54 K and its resolved density are all ONE
-           invented number, which is exactly what SOLAR_AIR_EXPONENTIAL's waiver claims and
-           what a future sheet scrape should have to move. */
-        {"Titan",   90.5438193869, 194.634559774, 143555.8, 0.0, 5.3, 1e-9},
+           datum pressure (143,555.98 Pa, which before #739 was the *consequence* of a typed
+           5.3 kg/m3 over a 20 km H, and since #708 is that density weighed in the
+           1.35430 m/s2 its own mass and radius give), its 90.54 K and its resolved
+           density are all ONE invented number, which is exactly what
+           SOLAR_AIR_EXPONENTIAL's waiver claims and what a future sheet scrape should
+           have to move. */
+        {"Titan",   90.5439359715, 194.63468508, 143555.98484306, 0.0, 5.3, 1e-9},
         /* Earth authors a LAYER TABLE (#552 A4) AND a mix (#630), so these are the
            shipped file's proof all the way through: the JSON parses, resolveAtmoLevels
            integrates the column at the Rs that mix implies, dragAtm carries the
@@ -409,8 +416,8 @@ static int check_air(const char *path, const System &sys) {
            resolves -- 1.2250018, where dry air's four authored fractions sum to
            0.99997 and resolveMix normalizes by their own total, which is worth
            0.04% on the datum density -- rather than what an author typed. The
-           tolerance stays 1e-4 rather than 1e-9 because Earth authors
-           g 9.82 where the standard uses 9.80665 -- a third of a percent aloft. */
+           tolerance stays 1e-4 rather than 1e-9 because Earth's own mass and
+           radius give 9.8199 where the standard uses 9.80665 -- a third of a percent aloft. */
         {"Earth",               288.15,  340.47075676386669, 101325.0, 0.23140616,
                                             1.2250017557285484, 1e-4},
     };
@@ -420,10 +427,11 @@ static int check_air(const char *path, const System &sys) {
         if(!(a.sea_level_density > 0.0)) { continue; }  // no physical air to ask
         n++;
         const DragAtmosphere da = dragAtm(a, *b);
-        // The g a body's air is weighed in is the typed one WALKED to the datum
-        // sphere (#697), not the typed one: identical for every shipped world
+        // The g a body's air is weighed in is mu read AT THE DATUM SPHERE (#697,
+        // #708), not at the mean radius: identical for every shipped world
         // (sea_level 0), 3.9 % apart on a 12 km sea.
-        const double want_g = datumGravity(b->g, b->radius, b->seaLevelRadius());
+        const double r_sea = b->seaLevelRadius();
+        const double want_g = b->mu / (r_sea * r_sea);
         if(!(da.gravity == want_g) || !(da.radius == b->seaLevelRadius())
            || !(da.molar_mass == a.molar_mass)
            || !(da.gamma == a.gamma) || !(da.oxidizer_share == a.oxidizer_share)
@@ -1052,25 +1060,32 @@ static void check_raised_sea() {
     }
     // The air must be weighed in the field AT the sphere it starts on (#697). This
     // datum sits 12 km further out than any shipped world's, so the field its air is
-    // weighed in is (600000/612000)^2 weaker than the typed one -- 4.0 % on g -- and
+    // weighed in is (600000/612000)^2 weaker than the one at the mean radius -- 4.0 %
+    // on g -- and
     // the column MULTIPLIES that: 6.5 % on the density 12 km up, 52 % at the 85 km
     // top (q there 142 Pa rather than 94).
-    // Leaving the typed 9.81 in place is the mutation; the literal below is what
+    // Weighing the column at the mean radius instead is the mutation; the literal below
+    // is what
     // utils/atmo_profile.py integrates by quadrature, sharing no code with atmo.h.
     // It moved in #739 by +1.4e-6 (0.3435505 -> 0.3435510): the file now authors
     // US76's own 101,325 Pa rather than that standard's rounded 1.225 kg/m3. For a
     // LAYER body the datum density contains no g at all (rho0 = p0 M / (R T0)); the
     // datum g only weighs the integration UP to 12 km, which is what this row is about.
+    // It moved again in #708, down 1.2e-5 (0.3435510 -> 0.3435085), because the field
+    // it is weighed in stopped being an authored 9.81 and became the 9.81078 that
+    // Kerbin's own mass and radius give -- the same agreement #689's 2 % guard used to
+    // refuse to break, now stated once in the file instead of twice.
     // utils/atmo_profile.py agrees on the new number, which is the check working.
     const DragAtmosphere wda = dragAtm(b->surface.atmosphere, *b);
     const double rho12 = airDensity(wda, 12000.0);
-    if(!(std::fabs(rho12 / 0.3435510 - 1.0) < 1e-6)) {
+    if(!(std::fabs(rho12 / 0.3435085 - 1.0) < 1e-6)) {
         printf("  Kerbin's air 12 km above a 12 km sea is %.7f kg/m3, expected"
-               " 0.3435510: the column was weighed in the typed g at the MEAN radius"
-               " instead of the field at the datum (atmo.h:datumGravity, #697)\n", rho12);
+               " 0.3435085: the column was weighed at the MEAN radius"
+               " instead of the field at the datum (atmo.h, #697/#708)\n", rho12);
         failures++;
     }
-    printf("  %s: its air is weighed in g %.4f at the datum, not the typed %.4f\n",
+    printf("  %s: its air is weighed in g %.4f at the datum, not the %.4f at the"
+           " mean radius\n",
            tmp.c_str(), wda.gravity, b->g);
     if(check_datum(tmp.c_str(), wet)) { failures++; }
     printf("  %s: a 12 km sea lifts Kerbin's shell with the datum and holds the "
@@ -1080,14 +1095,15 @@ static void check_raised_sea() {
 /* #739 moved which datum figure a file states, and one branch of that inversion has no
    shipped example to prove it: on an EXPONENTIAL column rho0 = p0 / (g H) with the gas
    cancelling out (the datum T the H implies is g H M / R, so M drops of p0 = rho0 (R/M) T0),
-   and that g is the DATUM sphere's (atmo.h:datumGravity, #697) rather than the typed one.
+   and that g is the DATUM sphere's -- mu / seaLevelRadius()^2, #697 -- rather than the
+   one at the mean radius.
    Every shipped air body authors sea_level 0, so there the two g are one number and the
    factor is invisible -- exactly the kind of branch a wrong variable walks through with
    every file still green. So: raise an exponential world's sea. Since #625 made every
    KSP air body a table, the fixture below puts Duna's old H 13.6 km back to have an
    exponential to break. A 12 km sea on Duna is
    7.1 % less g at the datum (its radius is only 320 km), so the same authored 600.372 Pa
-   resolves to air 7.6 % denser there, and the check has teeth (the last lines assert that the typed-g answer really is
+   resolves to air 7.6 % denser there, and the check has teeth (the last lines assert that the mean-radius answer really is
    a different number, so this test cannot rot into a tautology if someone later raises a
    sea to 0). */
 static void check_exponential_anchor() {
@@ -1098,7 +1114,7 @@ static void check_exponential_anchor() {
         return;
     }
     nlohmann::json j = nlohmann::json::parse(f);
-    double p0 = 0.0, H = 0.0, gt = 0.0, r = 0.0;
+    double p0 = 0.0, H = 0.0;
     bool patched = false;
     for(auto &bv : j["bodies"]) {
         if(bv.value("name", std::string()) != "Duna") { continue; }
@@ -1115,8 +1131,6 @@ static void check_exponential_anchor() {
             H = 13600.0;
             at["scale_height"] = H;
         }
-        gt = bv["g"].get<double>();
-        r = bv["radius"].get<double>();
         bv["surface"]["sea_level"] = 12000.0;
         patched = true;
     }
@@ -1146,13 +1160,18 @@ static void check_exponential_anchor() {
         return;
     }
     const AtmosphereParams &a = b->surface.atmosphere;
-    const double g_datum = datumGravity(gt, r, b->seaLevelRadius());
+    // #708: the file states no g, so both figures this check compares come from the
+    // body's own mu -- one read at the mean radius, one at the datum sphere.
+    const double r_mean = b->radius;
+    const double r_sea = b->seaLevelRadius();
+    const double g_mean = b->mu / (r_mean * r_mean);
+    const double g_datum = b->mu / (r_sea * r_sea);
     const double want = p0 / (g_datum * H);
-    const double typed = p0 / (gt * H);
+    const double typed = p0 / (g_mean * H);
     if(!(std::fabs(a.sea_level_density / want - 1.0) < 1e-12)) {
         printf("  Duna's air at a raised datum resolves %.8f kg/m3, expected %.8f from"
                " p0 %.4f / (g %.5f at the datum * H %.0f): the anchor was inverted with"
-               " the TYPED g, or not inverted at all (#739)\n",
+               " the MEAN-RADIUS g, or not inverted at all (#739)\n",
                a.sea_level_density, want, p0, g_datum, H);
         failures++;
     }
@@ -1162,64 +1181,111 @@ static void check_exponential_anchor() {
         failures++;
     }
     printf("  %s: Duna's authored %.3f Pa over a 12 km sea resolves %.6f kg/m3 at its"
-           " datum; the typed g would have read %.6f\n",
+           " datum; weighing it at the mean radius would have read %.6f\n",
            tmp.c_str(), p0, a.sea_level_density, typed);
 }
 
-/* A body's gravity, stated twice (#689). The typed `g` weighs that body's air column
-   (#683); its mass is the pull every arc about it answers to. The loader compares the
-   two for a body with air and refuses past atmo.h:kAtmoGravityTol, because a file
-   the air reads both: g resolves the datum density (rho0 = p0/(g H), #739) and weighs
-   the 1/r^2 shape of the whole column, while the hull falling through that air is
-   pulled by G m / r^2. Equal
-   at the datum by construction, the two only part company aloft, where the column
-   multiplies the gap -- ln p spans 10.7 scale heights across Kerbin's air, so a 5 %
-   typed g is 41 % off on the density at its 85 km edge.
-   Both edges pinned: 5 % refuses and NAMES the constant; 1 % loads. The second half is
-   not padding -- the shipped worlds sit 0.01-0.03 % apart and Pluto 0.62 %, because both
-   of its published figures carry three significant digits. A rule that refused those is
-   a rule the catalogue would work around. */
-static void check_gravity_pair() {
-    std::ifstream f("res/systems/ksp_system.json");
-    if(!f.is_open()) {
-        printf("  cannot open res/systems/ksp_system.json (run from the repo root)\n");
-        failures++;
-        return;
-    }
-    const nlohmann::json base = nlohmann::json::parse(f);
+/* Surface gravity is DERIVED, not authored (#708). Three edges.
+   An authored "g" REFUSES rather than being ignored: a dead key in a data file is a
+   typo nobody sees -- the same policy as an unknown wind key (#688) -- and the number
+   it typed was already the one the loader computes from mass and radius.
+   Every body in BOTH shipped files carries g = G*mass/radius^2, computed here from the
+   file's own rows and a locally spelled G rather than from the loader's fields. The
+   difference matters: `b->g == b->mu / (b->radius * b->radius)` is the loader's own
+   expression read back, so it cannot notice the loader using the FLOAT TerrainBody
+   radius instead of the file's double -- and every radius in ksp_system.json is
+   float-exact, so on that file alone the check would be a tautology. solar_system.json
+   is in the loop because eight of its rows are not (the Sun's 696340000 m is
+   696339968 in a float), which is what gives it teeth.
+   And the two rows gravity is MADE of are required: the loader used to default a
+   missing mass to 5e22 kg and a missing radius to 600 km, which is the rest of #708 --
+   with g derived, a forgotten mass row is a dossier printing a number no row of the
+   file states. Both a missing row and a string where a number goes must name the body.
+   The disagreement used to be pinned equal at the datum and to MULTIPLY aloft -- ln p
+   spans 10.7 scale heights across Kerbin's air, so a 5 % g was 41 % off on the density
+   at its 85 km edge -- which is why comparing them at all was the wrong guard.
+   Kerbin's derived 9.81078 is printed beside the 9.81 its file used to type, because
+   every pinned air figure in this suite moves with that row. */
+static void check_gravity_derived() {
+    const double kG = 6.674e-11;   // spelled here, not read from src: this IS the check
     std::filesystem::create_directories("tmp");
-    auto kerbin_g = [&](double mult) {
-        nlohmann::json j = base;
-        for(auto &bv : j["bodies"]) {
-            if(bv.value("name", std::string()) != "Kerbin") { continue; }
-            bv["g"] = bv["g"].get<double>() * mult;
+    nlohmann::json ksp;
+    const TerrainBody *ker = nullptr;
+    int total = 0;
+    for(const char *path : { "res/systems/ksp_system.json",
+                             "res/systems/solar_system.json" }) {
+        std::ifstream f(path);
+        if(!f.is_open()) {
+            printf("  cannot open %s (run from the repo root)\n", path);
+            failures++;
+            continue;
         }
-        return j.dump();
-    };
-    expect_refuses("gravity_off_5pc", kerbin_g(1.05), "kAtmoGravityTol");
-
-    const std::string path = "tmp/test_scenarios_gravity_1pc.json";
-    {
-        std::ofstream o(path);
-        o << kerbin_g(1.01);
+        const nlohmann::json base = nlohmann::json::parse(f);
+        System sys;
+        try {
+            sys = load_system(path, nullptr, nullptr);
+        } catch(const std::exception &e) {
+            printf("  %s failed to load: %s\n", path, e.what());
+            failures++;
+            continue;
+        }
+        int n = 0;
+        for(const TerrainBody *b : sys.bodies) {
+            for(const auto &bv : base["bodies"]) {
+                if(bv.value("name", std::string()) != b->name) { continue; }
+                const double m = bv["mass"].get<double>();
+                const double r = bv["radius"].get<double>();
+                const double want = kG * m / (r * r);
+                if(!(std::fabs(b->g / want - 1.0) < 1e-12)) {
+                    printf("  %s: %s carries g %.9f, not the %.9f its own mass and"
+                           " radius give -- an authored row is still being read, or"
+                           " the wrong radius is (#708)\n",
+                           path, b->name.c_str(), b->g, want);
+                    failures++;
+                }
+                n++;
+            }
+            if(b->name == "Kerbin") { ker = b; }
+        }
+        total += n;
+        if(std::string(path) == "res/systems/ksp_system.json") { ksp = base; }
+        printf("  %s: %d bodies carry g = G*mass/radius^2 read from their own rows\n",
+               path, n);
     }
-    System sys;
-    try {
-        sys = load_system(path.c_str(), nullptr, nullptr);
-    } catch(const std::exception &e) {
-        printf("  %s: Kerbin typed 1%% off its own implied field failed to load: %s\n",
-               path.c_str(), e.what());
-        failures++;
-        return;
-    }
-    const TerrainBody *ker = find_body(sys, "Kerbin");
     if(ker == nullptr || !(ker->surface.atmosphere.sea_level_density > 0.0)) {
-        printf("  %s: Kerbin loaded without its air\n", path.c_str());
+        printf("  ksp_system.json loaded without Kerbin's air\n");
         failures++;
         return;
     }
-    printf("  %s: a body typed 1%% off G*mass/radius^2 loads with its air; 5%% refuses\n",
-           path.c_str());
+    printf("  %d shipped bodies carry a derived surface gravity (Kerbin %.5f, against"
+           " the 9.81 its file used to type)\n", total, ker->g);
+
+    nlohmann::json typed = ksp;
+    for(auto &bv : typed["bodies"]) {
+        if(bv.value("name", std::string()) != "Kerbin") { continue; }
+        bv["g"] = 9.81;
+    }
+    expect_refuses("gravity_authored", typed.dump(), "loader derives it");
+
+    /* The rows gravity is made of, gone or misshapen. Both used to default silently. */
+    nlohmann::json nomass = ksp;
+    for(auto &bv : nomass["bodies"]) {
+        if(bv.value("name", std::string()) != "Kerbin") { continue; }
+        bv.erase("mass");
+    }
+    expect_refuses("gravity_no_mass", nomass.dump(), "\"mass\" is");
+    nlohmann::json strmass = ksp;
+    for(auto &bv : strmass["bodies"]) {
+        if(bv.value("name", std::string()) != "Kerbin") { continue; }
+        bv["mass"] = "5.292e22";
+    }
+    expect_refuses("gravity_mass_a_string", strmass.dump(), "\"mass\" is");
+    nlohmann::json norad = ksp;
+    for(auto &bv : norad["bodies"]) {
+        if(bv.value("name", std::string()) != "Kerbin") { continue; }
+        bv.erase("radius");
+    }
+    expect_refuses("gravity_no_radius", norad.dump(), "\"radius\" is");
 }
 
 /* A fixture whose note says "the shipped bodies, verbatim, plus ONE field" is a copy, and
@@ -1363,7 +1429,7 @@ static void check_body_claims() {
                        bv["type"] = 2;
                    }), "\"type\" must be");
 
-    /* Radius and mass (src/system.cpp:331). A radius with the wrong SIGN inverts every
+    /* Radius and mass (src/system.cpp). A radius with the wrong SIGN inverts every
        datum test and the shells built from it -- and on a star it dies on solar.h's
        assert, i.e. SIGABRT rather than a sentence naming the body. */
     expect_refuses("radius_negative", bpatched("Mun", [](nlohmann::json &bv) {
@@ -1859,7 +1925,7 @@ int main() {
     check_composition();
     check_wind();
     check_body_claims();
-    check_gravity_pair();
+    check_gravity_derived();
     check_raised_sea();
     check_exponential_anchor();
     check_fixture_air();
