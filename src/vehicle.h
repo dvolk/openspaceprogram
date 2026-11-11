@@ -474,6 +474,18 @@ public:
        promise a turn the player has declined to pay for (#418's lesson, again).
        Saved with the ship, like the other two. */
     bool rcs_attitude_enabled = true;
+    /* The same door on the nozzles (#768): with it shut the gimballed stage emits no
+       TVC authority in attitudeAuthorityRows(), so the mixer aims nothing sideways
+       (gimbal.h tvcSplit sees tvcMax == 0, takes 0 N m and returns a zero lateral
+       vector), the laws size a turn on wheels and fins alone, and the nozzles walk back
+       to neutral at their own gimbal_rate instead of freezing wherever the stick left
+       them -- which is what an actuator does when you stop commanding it.
+       It gates STEERING only, never thrust: the throttle still does what the player
+       asked, and an engine mounted off the COM still torques the hull while it burns.
+       That is rigging, not steering, and switching it off would be switching off the
+       build. A mechanical gimbal needs no EC power, so unlike wheels this door has no
+       second "no power" reason to read empty. Saved with the ship, like the others. */
+    bool tvc_enabled = true;
 
     /* How fast an attitude LAW may swing this hull, rad/s; 0 = no ceiling (#678).
        It clamps what the law WANTS -- slewDemand's w_des -- and never the actuator
@@ -1080,6 +1092,11 @@ public:
            ring is empty" are different sentences to a player, and an empty row set
            answers neither. */
         bool hasRcs = false;
+        /* Whether the hull CARRIES a gimballed engine at all, whatever the switch and
+           the stage say (#768, the same fitting hasSurfaces/hasRcs record): "no
+           gimballed nozzles on this hull" and "no stage lit to vector" are different
+           sentences to a player, and a zero tvcTorque answers neither. */
+        bool hasGimbals = false;
         /* N m the ARMED gimballed engines can lever this substep. */
         double tvcTorque = 0.0;
         /* N m the IGNITED gimballed stage could lever at FULL throttle (#608): the same

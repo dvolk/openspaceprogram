@@ -462,6 +462,59 @@ static void test_the_turn_authority_has_a_throttle_free_twin() {
     }
 }
 
+/* THE FOURTH DOOR (#768). wheels_enabled, surfaces_enabled and rcs_attitude_enabled
+   have had a handle on the Systems window since #649/#595; the gimballed stage has not,
+   so a rocket whose only steering is its nozzles has been pointing itself with its
+   throttle since the first shipped hull and could not be asked to stop. Same pattern as
+   the other three -- a closed door emits no rows, rather than an if bolted onto the
+   mixer -- and the same two views: the live answer goes to zero, the hardware answer
+   keeps the rating, because that is what the switch row quotes before the player flips
+   it. What the door must NOT touch is thrust: it steers, it does not throttle. What it
+   does collapse is the aim CONE, because that reach is the same gimbal. */
+static void test_the_tvc_switch_is_a_door() {
+    printf("== the nozzles have an enable switch too (#768) ==\n");
+    Stack st = mkStack(0.0, 0.0, 0.1, /*engRate=*/5.0, /*engVe=*/4000.0);
+    Vehicle *v = st.s.v;
+    const double tvcFull = 20000.0 * 1.25 * std::sin(0.1);
+    CHECK_TRUE(v->tvc_enabled, "a hull starts with its nozzles free to steer");
+    {
+        const Vehicle::AttitudeAuthority a = v->attitudeAuthority();
+        CHECK_TRUE(a.hasGimbals, "the hull carries gimballed nozzles");
+        CHECK_NEAR(a.tvcTorqueAvailable, tvcFull, 1e-9, "and rates them with the door open");
+    }
+    v->tvc_enabled = false;
+    {
+        const Vehicle::AttitudeAuthority a = v->attitudeAuthority();
+        CHECK_TRUE(a.hasGimbals,
+                   "switched off, the hull still HAS them -- the row says which is which");
+        CHECK_TRUE(a.tvcTorque == 0.0 && a.tvcTorqueAvailable == 0.0 && a.heffMag == 0.0,
+                   "no TVC authority of either kind");
+        CHECK_NEAR(v->attitudeTorqueAbout(a, st.x), 0.0, 0.0, "so it cannot turn the hull");
+        CHECK_NEAR(v->availableTurnTorque(a, st.x), 0.0, 0.0, "and a plan sees the same answer");
+        const Vehicle::AttitudeAuthority hw = v->attitudeAuthorityHardware();
+        CHECK_NEAR(hw.tvcTorqueAvailable, tvcFull, 1e-9,
+                   "the hardware view still rates them (#649's switch row quotes this)");
+    }
+    /* Thrust is not steering: the throttle still delivers its rating straight along the
+       mount... */
+    CHECK_NEAR(v->availableThrust(), 20000.0, 1e-9, "a shut door still pushes 20 kN");
+    /* ...but a burn ASKED off the mount can no longer be aimed onto it. Asked 45 deg off,
+       the open cone credits cos(45deg - gimbal_max) of the rating and a shut door
+       cos(45deg): the 0.1 rad of nozzle is the difference, and it is the same 0.1 rad
+       the steering spends. */
+    {
+        const glm::dvec3 ask = glm::normalize(st.z + st.x);
+        const double m = v->getMass();
+        const double pi4 = std::numbers::pi_v<double> * 0.25;
+        CHECK_NEAR(v->availableAccelAlong(ask) * m, 20000.0 * std::cos(pi4), 1e-9,
+                   "shut: the mount's own aim, no cone");
+        v->tvc_enabled = true;
+        CHECK_NEAR(v->availableAccelAlong(ask) * m, 20000.0 * std::cos(pi4 - 0.1), 1e-9,
+                   "open: the cone adds its reach to the same ask");
+    }
+    destroyShip(v);
+}
+
 /* WHAT THE SUBSTEP ACTUALLY SPENT (#599). Every rating in this model answers "could
    this build turn?". The question a player reads off the same row is "is it turning?",
    and until now that answer was thrown away at the end of the substep that computed it.
@@ -2398,6 +2451,7 @@ int main() {
     test_tvc_is_a_disk_not_a_ball();
     test_wheels_and_tvc_together();
     test_the_turn_authority_has_a_throttle_free_twin();
+    test_the_tvc_switch_is_a_door();
     test_the_substep_remembers_what_the_actuators_spent();
     test_the_wheels_pay_for_the_share_they_answer();
     test_a_ship_with_nothing_has_nothing();

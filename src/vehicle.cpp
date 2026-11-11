@@ -2621,6 +2621,7 @@ void Vehicle::steering_log(double time) {
            "wheels=%.0f/%.0f/%.0f wheels_hw=%.0f/%.0f/%.0f "
            "surfaces=%.0f/%.0f/%.0f surfaces_hw=%.0f/%.0f/%.0f "
            "rcs=%.0f/%.0f/%.0f rcs_hw=%.0f/%.0f/%.0f rcs_on=%d "
+           "tvc_on=%d tvc_fitted=%d "
            "tvc_rating=%.0f tvc_rating_full=%.0f asked=%.0f/%.0f/%.0f "
            "spent_all=%.0f/%.0f/%.0f\n",
            time, displayName().c_str(), (int)powered_, (int)wheels_enabled,
@@ -2628,6 +2629,7 @@ void Vehicle::steering_log(double time) {
            w[0], w[1], w[2], wh[0], wh[1], wh[2],
            s[0], s[1], s[2], sh[0], sh[1], sh[2],
            r[0], r[1], r[2], rh[0], rh[1], rh[2], (int)rcs_attitude_enabled,
+           (int)tvc_enabled, (int)hw.hasGimbals,
            live.tvcTorque, live.tvcTorqueAvailable,
            asked[0], asked[1], asked[2], spent[0], spent[1], spent[2]);
     fflush(stdout);
@@ -5061,6 +5063,7 @@ Vehicle * Vehicle::extractSubtreeAsShip(Part *root, const std::string &name, dou
     nv->wheels_enabled = wheels_enabled;
     nv->surfaces_enabled = surfaces_enabled;
     nv->rcs_attitude_enabled = rcs_attitude_enabled;   // #595's door travels too
+    nv->tvc_enabled = tvc_enabled;                     // #768's door travels too
     nv->sas_turn_rate = sas_turn_rate;                 // #678's dial travels too
 
     /* Keep the original order (parent before child): the save format resolves parents
@@ -5430,7 +5433,12 @@ double Vehicle::ceilingSum(const glm::dvec3 *want) {
                of the deflection -- and pricing the CONE's availability is #419's work
                (circulating the gimbals to roll a cluster), not a sum to bolt on here. */
             const double off = acosUnit(glm::dot(sRot * p->localRot[2], *want));
-            share = std::cos(std::max(0.0, off - p->def->gimbal_max));
+            /* #768: with the TVC door shut the nozzle cannot swing toward the ask, so
+               the cone this credits collapses to the mount's own aim. A plan that sized
+               a burn on a gimballed aim the player has declined over-promises the same
+               way a wheels-off hull would over-promise a turn. */
+            const double cone = tvc_enabled ? p->def->gimbal_max : 0.0;
+            share = std::cos(std::max(0.0, off - cone));
         }
         t += share * partThrustCeiling(p, rho, atm);
     }
@@ -5747,6 +5755,17 @@ Vehicle::AttitudeAuthority Vehicle::attitudeAuthorityRows(bool switchesApply) {
         if(p->def->isControlSurface()) { surfaceParts++; }
         if(p->isRcs()) { rcsPods++; }
         if(p->def->gimbal_max <= 0.0) { continue; }
+        a.hasGimbals = true;   // the fitting, whatever the switch and the stage decide
+        if(switchesApply && !tvc_enabled) {
+            /* #768's door, and the reason it is this short: the TVC half of the mixer
+               is sized by the three figures below, so leaving them at 0 is what closes
+               it. tvcSplit then takes 0 N m, tvcLat_ comes back zero, and
+               applyThrustForce's gimbalStep drives the nozzles to that zero at their
+               authored rate -- the plume recenters rather than sticking at whatever the
+               stick last asked for. Nothing else had to know: the laws, the slew budget
+               and every authority readout read this one struct. */
+            continue;
+        }
         const double armed = p->armedThrust;
         const bool lit = p->isThruster() && p->stage >= as;
         if(armed == 0.0 && !lit) { continue; }

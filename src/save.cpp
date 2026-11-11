@@ -544,6 +544,7 @@ SaveShip saveShipFromVehicle(Vehicle *v,
     s.wheels_enabled = v->wheels_enabled;
     s.surfaces_enabled = v->surfaces_enabled;
     s.rcs_attitude_enabled = v->rcs_attitude_enabled;   // #595
+    s.tvc_enabled = v->tvc_enabled;   // #768
     s.sas_turn_rate = v->sas_turn_rate;                 // #678
 
     for(size_t k = 0; k < v->seams.size(); k++) {
@@ -1100,6 +1101,7 @@ Vehicle *buildShipFromSaveParts(Game &g, const LoadWorld &w, const SaveShip &s,
     v->wheels_enabled = s.wheels_enabled;
     v->surfaces_enabled = s.surfaces_enabled;   // #649's second door
     v->rcs_attitude_enabled = s.rcs_attitude_enabled;   // #595's third
+    v->tvc_enabled = s.tvc_enabled;                     // #768's fourth
     v->sas_turn_rate = s.sas_turn_rate;                 // #678's dial
 
     /* Both parts of a seam must be present: skipping an unresolvable seam

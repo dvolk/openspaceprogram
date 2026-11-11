@@ -580,12 +580,13 @@ static void test_seam_staging() {
        handle on them, which is how this stayed invisible since #425 D-2. */
     A.v->wheels_enabled = false;
     A.v->surfaces_enabled = false;
+    A.v->tvc_enabled = false;   // #768's door rides the same way
     Vehicle *out = A.v->extractSubtreeAsShip(decop, "staged");
     CHECK_TRUE(out != nullptr, "staging: the split succeeded");
     if(out == nullptr) { destroyShip(B.v); destroyShip(A.v); return; }
-    CHECK_TRUE(!out->wheels_enabled && !out->surfaces_enabled,
-               "staging: the split-off ship keeps both switches as the pilot left them");
-    CHECK_TRUE(!A.v->wheels_enabled && !A.v->surfaces_enabled,
+    CHECK_TRUE(!out->wheels_enabled && !out->surfaces_enabled && !out->tvc_enabled,
+               "staging: the split-off ship keeps every switch as the pilot left them");
+    CHECK_TRUE(!A.v->wheels_enabled && !A.v->surfaces_enabled && !A.v->tvc_enabled,
                "and so does the survivor: the cut splits parts, not orders");
 
     /* The fix: both ends of the seam are in the split-off subtree, so the

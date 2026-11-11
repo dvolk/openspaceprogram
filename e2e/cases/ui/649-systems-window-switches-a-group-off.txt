@@ -55,6 +55,15 @@
 # which is hw.hasRcs rather than the empty row the row builder returns for all three
 # reasons. The window's row count moved 8 -> 9 with it, and the count is pinned below
 # because "one row per switch group, whatever the group's state" is the whole design.
+#
+# The fourth door (#768) is the nozzles, and it moved that count 9 -> 10. power_test's
+# engine_r2.25h4.5 IS gimballed (res/data/parts.json, 0.0873 rad at 1.5708 rad/s), so
+# unlike the fins and the ring this hull has something to vector: the row quotes
+# 129710 N m -- rated thrust x the 1.25 m-ish stack lever x sin(gimbal_max), the same
+# product --steering-log prints as tvc_rating_full. What the switch itself does is
+# pinned by ui/768-systems-window-shuts-the-nozzles; here it only has to be PRESENT,
+# because a row that appears and disappears with the group's state is the failure this
+# window was designed against.
 NAME systems-window-switches-a-group-off
 CLAIM The Systems window is listed in the Windows panel and prints the EC balance, and its Reaction wheels checkbox drops the live authority in --steering-log from 4950 N m to 0 while the row still quotes the 4950 N m the switch gives up.
 KIND golden
@@ -71,6 +80,7 @@ EXPECT [uilist] window="Systems" label="  on   4950 / 4950 / 4950 N m (R/P/Y)"
 EXPECT [uilist] window="Systems" label="  off  4950 / 4950 / 4950 N m (R/P/Y)"
 EXPECT [uilist] window="Systems" label="  on   no aero surfaces on this hull"
 EXPECT [uilist] window="Systems" label="  on   no thruster pods on this hull"
+EXPECT [uilist] window="Systems" label="  on   129710 N m (pitch/yaw disk)"
 FORBID FAILED
 FORBID error:
 # The model's own answer, either side of the click, and in that order. Both columns on one
@@ -80,11 +90,11 @@ CHECK re.search(r'\[steerlog\][^\n]*wheels_on=1 [^\n]*wheels=4950/4950/4950 whee
 CHECK re.search(r'\[steerlog\][^\n]*wheels_on=0 [^\n]*wheels=0/0/0 wheels_hw=4950/4950/4950', out)
 CHECK out.index('wheels=4950/4950/4950') < out.index('wheels=0/0/0')
 # Per dump, not per run: two --ui-list times means two dumps, and each has to carry the
-# whole window -- Status, five power rows and one row per switch group (three of them since
-# #595's ring). A row that vanished with the door closed, which is the mistake this
-# window's design is about, shows up here as 9 then 8 rather than as a 16 that still looks
+# whole window -- Status, five power rows and one row per switch group (four of them since
+# #768's nozzles). A row that vanished with the door closed, which is the mistake this
+# window's design is about, shows up here as 10 then 9 rather than as a 19 that still looks
 # plausible.
-CHECK [len([l for l in d.split("\n") if l.rstrip().endswith(" text") and 'window="Systems"' in l]) for d in out.split("[uilist] loop=")[1:]] == [9, 9]
+CHECK [len([l for l in d.split("\n") if l.rstrip().endswith(" text") and 'window="Systems"' in l]) for d in out.split("[uilist] loop=")[1:]] == [10, 10]
 # Vessel Info is down to one row -- the Angular rate that says whether the hull is
 # turning. The per-axis actuator rows it used to carry (drums, gimbals, fins) all moved to
 # Game Debug in the 2026_11_05 pass, so this count no longer depends on the part list; the
@@ -92,7 +102,7 @@ CHECK [len([l for l in d.split("\n") if l.rstrip().endswith(" text") and 'window
 CHECK [len([l for l in d.split("\n") if l.rstrip().endswith(" text") and 'window="Vessel Info"' in l]) for d in out.split("[uilist] loop=")[1:]] == [1, 1]
 # Two dumps, and two DIFFERENT moments. A --ui-list time fires on the first frame at or
 # after it, so two times inside one frame gap would print the same picture twice and the
-# [8,8] above would prove nothing. The stamps are printed; pin them apart, with a margin
+# [10,10] above would prove nothing. The stamps are printed; pin them apart, with a margin
 # wider than a frame (16ms) but far inside the 1.6s between the click and the second dump.
 CHECK len(re.findall(r'^\[uilist\] loop=([0-9.]+)s', out, re.M)) == 2
 CHECK float(re.findall(r'^\[uilist\] loop=([0-9.]+)s', out, re.M)[1]) - float(re.findall(r'^\[uilist\] loop=([0-9.]+)s', out, re.M)[0]) > 0.5

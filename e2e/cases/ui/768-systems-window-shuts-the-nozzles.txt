@@ -1,0 +1,57 @@
+# The fourth door on the Systems window is the nozzles (#768). The other three -- wheels,
+# aero surfaces, RCS ring -- already had switches, and all three close the same way: the
+# capability model emits no rows for the group, so the laws, the slew budget, the mixer and
+# every readout see a zero without anyone having to remember to ask the switch. TVC was the
+# odd one out: gimballed engines have been vectoring since #227, and a player who wants the
+# nozzles locked straight -- to keep a plume off a neighbour during an undock, or to watch
+# what a hull does with only its drums -- had no handle at all.
+#
+# What "off" means here is STEERING, not thrust. Vehicle::tvc_enabled gates the three
+# figures the mixer sizes its TVC half from (tvcTorque, tvcTorqueAvailable, heffMag), so
+# tvcSplit takes 0 N m, tvcLat_ comes back zero, and gimbalStep drives the nozzles to that
+# zero at their authored gimbal_rate -- the plume recenters rather than sticking at whatever
+# the stick last asked for. availableThrust() does not read the switch, so the hull still
+# pushes as hard; test_authority's test_the_tvc_switch_is_a_door pins that half, along with
+# the aim cone collapsing (a shut switch stops crediting cos(off - gimbal_max), so a hull
+# with no drums and no TVC genuinely cannot turn off-axis).
+#
+# What this case pins is the readout half, and it is the same pair #649 established: the
+# live figure in --steering-log moves, the figure beside the switch does not. tvc_rating_full
+# is the #608 rating -- rated thrust over the ignited stage times sin(gimbal_max) -- and it
+# is the one that moves, because on this hull nothing is throttled up, so tvc_rating
+# (what the last ApplyThrust armed) is already 0 either way. tvc_fitted stays 1 on both
+# sides: the switch hides a capability, it does not unbolt an engine, and the row's 129710 N
+# m is the HARDWARE figure -- what the switch is giving up -- which is why the row reads
+# "off" with the same number it read "on" (#575: quote the hardware, never a third
+# arithmetic).
+#
+# power_test is the right fixture and the reason it looks odd: it carries no fins and no
+# pods, so its other two rows say "no aero surfaces on this hull" / "no thruster pods on
+# this hull". Its engine_r2.25h4.5 IS gimballed -- 0.0873 rad at 1.5708 rad/s in
+# res/data/parts.json -- so this is the one hull in the fleet where the nozzles row has a
+# number instead of an excuse, which is what a case about the switch needs.
+NAME systems-window-shuts-the-nozzles
+CLAIM The Systems window's Thrust vectoring checkbox drops the live gimballed rating in --steering-log from 129710 N m to 0 while the window keeps printing 129710 N m beside the now-off switch, and says nothing about the engines being gone.
+KIND golden
+ARGS --width 1600 --height 900 --timeout 12 --steering-log
+ARGS --startship power_test,res/ships/power_test.json,Kerbin,rot-orbit
+ARGS --ui-click 2000,"Windows/Systems"
+ARGS --ui-list 3400
+ARGS --ui-click 4000,"Systems/Thrust vectoring"
+ARGS --ui-list 5000
+EXPECT [uilist] window="Systems" label="  on   129710 N m (pitch/yaw disk)"
+EXPECT [uilist] window="Systems" label="  off  129710 N m (pitch/yaw disk)"
+FORBID FAILED
+FORBID error:
+# The model's own answer, either side of the click, in that order. tvc_fitted=1 on both
+# rows is the point: the fitting is still there, the switch is what changed.
+CHECK re.search(r'\[steerlog\][^\n]*tvc_on=1 tvc_fitted=1 [^\n]*tvc_rating_full=129710', out)
+CHECK re.search(r'\[steerlog\][^\n]*tvc_on=0 tvc_fitted=1 [^\n]*tvc_rating_full=0 ', out)
+CHECK out.index('tvc_rating_full=129710') < out.index('tvc_rating_full=0 ')
+# One row per switch group, whatever the group's state -- the row that says "off" has to be
+# the SAME row that said "on", not a replacement caption. Counted per dump so a row that
+# vanished with the door closed shows up as [10, 9] instead of looking plausible.
+CHECK [len([l for l in d.split("\n") if l.rstrip().endswith(" text") and 'window="Systems"' in l]) for d in out.split("[uilist] loop=")[1:]] == [10, 10]
+# The click landed on a checkbox, not on the caption beside it: findMatches() skips text
+# rows, so aiming at the figure would report a miss rather than flipping anything.
+CHECK any('path="Systems/Thrust vectoring"' in l and ' pressed' in l for l in out.split("\n"))

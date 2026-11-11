@@ -189,6 +189,10 @@ struct SaveShip {
        pilot's order, not the stage's, so it survives a save like the other two.
        Absent = on -- including for every save written before this row existed. */
     bool rcs_attitude_enabled = true;
+    /* And the nozzle door (#768): telling the engines to stop steering is the pilot's
+       order for THIS vessel, so it survives a save like the other three.
+       Absent = on, including for every save written before this row existed. */
+    bool tvc_enabled = true;
     /* #678's dial: the ceiling on how fast an attitude law may swing this hull, rad/s.
        0 = unlimited, which is also what a save from before this row existed means. */
     double sas_turn_rate = 0.0;
@@ -781,6 +785,7 @@ inline nlohmann::json saveShipToJson(const SaveShip &s) {
     j["wheels_enabled"] = s.wheels_enabled;
     j["surfaces_enabled"] = s.surfaces_enabled;
     j["rcs_attitude_enabled"] = s.rcs_attitude_enabled;   // #595
+    j["tvc_enabled"] = s.tvc_enabled;   // #768
     if(s.sas_turn_rate > 0.0) {
         // Absent = unlimited, so the common case costs nothing (#678).
         j["sas_turn_rate"] = s.sas_turn_rate;
@@ -878,6 +883,7 @@ inline SaveShip saveShipFromJson(const nlohmann::json &j) {
     if(j.contains("wheels_enabled") && j["wheels_enabled"].is_boolean()) { s.wheels_enabled = j["wheels_enabled"].get<bool>(); }
     if(j.contains("surfaces_enabled") && j["surfaces_enabled"].is_boolean()) { s.surfaces_enabled = j["surfaces_enabled"].get<bool>(); }
     if(j.contains("rcs_attitude_enabled") && j["rcs_attitude_enabled"].is_boolean()) { s.rcs_attitude_enabled = j["rcs_attitude_enabled"].get<bool>(); }
+    if(j.contains("tvc_enabled") && j["tvc_enabled"].is_boolean()) { s.tvc_enabled = j["tvc_enabled"].get<bool>(); }
     if(j.contains("sas_turn_rate") && j["sas_turn_rate"].is_number()) { s.sas_turn_rate = j["sas_turn_rate"].get<double>(); }
     if(j.contains("docks") && j["docks"].is_array()) {
         for(auto &&d : j["docks"]) {

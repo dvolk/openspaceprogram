@@ -7,10 +7,10 @@ kind says how much weight the assertions carry.
 | kind | meaning | cases |
 |---|---|---|
 | `invariant` | a behaviour or a player route the game must keep | 320 |
-| `golden` | tuned numbers or a content table -- update deliberately when tuning | 45 |
+| `golden` | tuned numbers or a content table -- update deliberately when tuning | 46 |
 | `harness` | CLI/test-engine plumbing, not game spec | 15 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **384** |
+| | **total** | **385** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -289,7 +289,7 @@ judgement. Select by number, name or path, e.g.
 | `save/582-saved-ship-pose-spread-refused.txt` | invariant | A save whose parts sit so far apart that the game cannot form their inertia is refused, not loaded as a NaN-inertia ship. |
 | `save/612-ask-survives-a-round-trip.txt` | invariant | A saved Guidance ask loads back into the game and is written out again. |
 
-## ui (56)
+## ui (57)
 
 | case | kind | pins |
 |---|---|---|
@@ -349,6 +349,7 @@ judgement. Select by number, name or path, e.g.
 | `ui/649-systems-window-switches-a-group-off.txt` | golden | The Systems window is listed in the Windows panel and prints the EC balance, and its Reaction wheels checkbox drops the live authority in --steering-log from 4950 N m to 0 while the row still quotes the 4950 N m the switch gives up. |
 | `ui/734-wing-card-holds-its-numbers.txt` | invariant | The part window's flow row and watts row publish on an instrument's 2 Hz cadence rather than every frame, EACH OPEN CARD ON ITS OWN -- eleven reads a tenth of a second apart see a couple of different figures, not eleven -- while the model behind them keeps logging every substep, and each published pair is the worst-loaded FRAME of its window, so q, Mach and the watts the player reads belong to one instant rather than to three different moments. |
 | `ui/741-the-debug-clock-solar-row-is-wired-to-the-sun-the-sim-uses.txt` | invariant | The debug window's solar clock row is readable, its value is the sim clock's own, and the rate at which it walks is the day length the atlas prints for the home world -- so the one UI readout that reads the sun cannot be rewired to a different sun, a different day, or nothing at all without a test noticing. |
+| `ui/768-systems-window-shuts-the-nozzles.txt` | golden | The Systems window's Thrust vectoring checkbox drops the live gimballed rating in --steering-log from 129710 N m to 0 while the window keeps printing 129710 N m beside the now-off switch, and says nothing about the engines being gone. |
 
 ## render (66)
 

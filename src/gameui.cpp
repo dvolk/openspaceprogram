@@ -2915,6 +2915,31 @@ void drawUIReadouts(Game &g) {
             uiText("  %-3s  %.0f / %.0f / %.0f N m (R/P/Y)",
                    ship->rcs_attitude_enabled ? "on" : "off", hwv[0], hwv[1], hwv[2]);
         }
+        /* The fourth door (#768): the nozzles. A hull whose only steering is its gimbals
+           has been pointing itself with its throttle since the first shipped rocket, and
+           there was no way to say otherwise -- this is that way. Like the other three it
+           closes a door in the capability model rather than adding an if to the mixer:
+           attitudeAuthorityRows() emits no TVC figures, gimbal.h tvcSplit therefore takes
+           0 N m, and the nozzles walk back to neutral at their own gimbal_rate instead of
+           sticking wherever the stick left them. Thrust itself is untouched: the throttle
+           still does what the player asked.
+           The figure is a DISK, not a per-axis triple: a nozzle levers nothing about the
+           stack (#425), so pitch and yaw share one number and the row says so rather than
+           printing a misleading 0 for roll. */
+        bool tvc = ship->tvc_enabled;
+        if(ImGui::Checkbox("Thrust vectoring", &tvc)) { ship->tvc_enabled = tvc; }
+        if(hw.tvcTorqueAvailable <= 0.0) {
+            /* The same two empties as the fins and the ring: no gimballed nozzle fitted
+               is a build fact (hasGimbals, recorded whatever the switch decided), a
+               stage that is not lit is a flight fact -- and on a coasting rocket that
+               distinction is the whole row. */
+            uiText("  %-3s  %s", ship->tvc_enabled ? "on" : "off",
+                   hw.hasGimbals ? "no stage lit to vector"
+                                 : "no gimballed engines on this hull");
+        } else {
+            uiText("  %-3s  %.0f N m (pitch/yaw disk)",
+                   ship->tvc_enabled ? "on" : "off", hw.tvcTorqueAvailable);
+        }
         /* How fast an attitude LAW may swing this hull (#678). The rows above say what
            the actuators can lever; this says what the autopilot is allowed to ask of
            them, which is the difference between a snap and a crawl -- and on a
