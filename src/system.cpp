@@ -168,14 +168,26 @@ static glm::vec3 rgbFrom(const nlohmann::json &c, const std::string &body,
    and the world loaded as a bare rock with no line anywhere (#762); `"rotating": []`
    stops a world spinning, which reads as a day that never ends. Absent is an author's
    choice and stays one; PRESENT-and-wrong is a typo, so it refuses, naming the body,
-   the key path and the JSON type actually found -- the three things an author needs. */
-static void expectBlockShape(const nlohmann::json &v, const std::string &body,
-                             const std::string &key, bool want_array) {
-    if((want_array && v.is_array()) || (!want_array && v.is_object())) { return; }
+   the key path and the JSON type actually found -- the three things an author needs.
+   Two entry points rather than a shape flag: at a call site `expectArrayBlock(rings,
+   ...)` says what the block is, where `..., true)` made a reader hunt the signature. */
+[[noreturn]] static void refuseBlockShape(const nlohmann::json &v,
+                                          const std::string &body,
+                                          const std::string &key,
+                                          const char *want) {
     throw std::runtime_error("system: '" + body + "': \"" + key + "\" is "
-                             + v.type_name() + ", not an "
-                             + (want_array ? "array" : "object")
+                             + v.type_name() + ", not an " + want
                              + " -- delete the key to leave the block out (#762)");
+}
+static void expectObjectBlock(const nlohmann::json &v, const std::string &body,
+                              const std::string &key) {
+    if(v.is_object()) { return; }
+    refuseBlockShape(v, body, key, "object");
+}
+static void expectArrayBlock(const nlohmann::json &v, const std::string &body,
+                             const std::string &key) {
+    if(v.is_array()) { return; }
+    refuseBlockShape(v, body, key, "array");
 }
 
 System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
@@ -247,8 +259,8 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
     }
 
     // --- debris belts (JSON "belts") --------------------------------------
-    // Strict unlike rings: a dropped belt is invisible in-game, so a typo must
-    // fail the load.
+    // Strict, like the rings below and the body blocks (#762): a dropped belt is
+    // invisible in-game, so a typo must fail the load.
     if(doc.contains("belts")) {
         const nlohmann::json &bl = doc["belts"];
         if(!bl.is_array()) {
@@ -473,7 +485,7 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
         }
 
         if(bv.contains("surface")) {
-            expectBlockShape(bv["surface"], body->name, "surface", false);
+            expectObjectBlock(bv["surface"], body->name, "surface");
             const nlohmann::json &sv = bv["surface"];
             /* The nested spelling of the same retired key, and the more dangerous of the
                two: `power` is still a LIVE key one level down, in surface.atmosphere
@@ -735,8 +747,7 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                 }
             }
             if(sv.contains("atmosphere")) {
-                expectBlockShape(sv["atmosphere"], body->name, "surface.atmosphere",
-                                 false);
+                expectObjectBlock(sv["atmosphere"], body->name, "surface.atmosphere");
                 const nlohmann::json &av = sv["atmosphere"];
                 s.atmosphere.enabled = true;
                 if(av.contains("color") && av["color"].is_array()
@@ -1167,7 +1178,7 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                 }
             }
             if(sv.contains("clouds")) {
-                expectBlockShape(sv["clouds"], body->name, "surface.clouds", false);
+                expectObjectBlock(sv["clouds"], body->name, "surface.clouds");
                 const nlohmann::json &cv = sv["clouds"];
                 s.clouds.enabled = true;
                 if(cv.contains("color") && cv["color"].is_array()
@@ -1203,17 +1214,18 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                 s.clouds.drift = cnum("drift", 0.0f, -1.0, 1.0);
             }
             if(sv.contains("rings")) {
-                expectBlockShape(sv["rings"], body->name, "surface.rings", true);
+                expectArrayBlock(sv["rings"], body->name, "surface.rings");
                 int band_no = 0;
                 for(const nlohmann::json &rv : sv["rings"]) {
                     ++band_no;
                     const std::string at = " band " + std::to_string(band_no)
                                          + " of surface.rings";
-                    /* Refused, not skipped, which is the policy the belts above already
-                       state ("Strict unlike rings"). A band that fails a check is a ring
-                       that is simply not there, and a mistyped number is the likeliest way
-                       to lose one -- Saturn's B-ring at "outer": "117500000" rendered as
-                       nothing at all, with no line anywhere saying why. */
+                    /* Refused, not skipped -- the policy the belts above state, and the
+                       one #762 extended to whole blocks. A band that fails a check is a
+                       ring that is simply not there, and a mistyped number is the
+                       likeliest way to lose one -- Saturn's B-ring at "outer":
+                       "117500000" rendered as nothing at all, with no line anywhere
+                       saying why. */
                     if(!rv.is_object()) {
                         throw std::runtime_error("system: '" + body->name + "'" + at
                                                  + " must be an object");
@@ -1311,11 +1323,26 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
         f->root_orient = glm::dmat3(1.0);
 
         if(bv.contains("inertial")) {
-            expectBlockShape(bv["inertial"], body->name, "inertial", false);
+            expectObjectBlock(bv["inertial"], body->name, "inertial");
             const nlohmann::json &in = bv["inertial"];
             f->soi = in.value("soi", 1e6);
-            if(in.contains("pos") && in["pos"].is_array() && in["pos"].size() >= 3) {
+            /* A pos that is present but not exactly 3 numbers used to be SKIPPED: the
+               body sat at its parent's origin and nothing said so, which is the same
+               silent-deletion class as #762's wrong-typed block. Refuse it instead. */
+            if(in.contains("pos")) {
                 const nlohmann::json &pos = in["pos"];
+                const bool ok = pos.is_array() && pos.size() == 3
+                             && pos[0].is_number() && pos[1].is_number()
+                             && pos[2].is_number();
+                if(!ok) {
+                    throw std::runtime_error("system: '" + body->name
+                            + "': \"inertial.pos\" must be 3 numbers, got "
+                            + (pos.is_array()
+                              ? std::string("array of ") + std::to_string(pos.size())
+                              : std::string(pos.type_name()))
+                            + " -- delete the key to park the body at its parent's "
+                            "origin (#762)");
+                }
                 f->pos = glm::dvec3(pos[0].get<double>(),
                                     pos[1].get<double>(),
                                     pos[2].get<double>());
@@ -1383,7 +1410,7 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
         // which is what science.h's orbit cut and bodylimits.h's asserts read.
         rf->soi = body->seaLevelRadius() + shell;
         if(bv.contains("rotating")) {
-            expectBlockShape(bv["rotating"], body->name, "rotating", false);
+            expectObjectBlock(bv["rotating"], body->name, "rotating");
             const nlohmann::json &rot = bv["rotating"];
             rf->rot_ang_speed = rot.value("rot_ang_speed", 0.0);
             // Same policy as orb_ang_speed: the SPIN sense lives in axial_tilt
@@ -1439,6 +1466,10 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
     }
 
     // --- pass 2: wire the parent/child frame tree --------------------------
+    // Every bv["inertial"] was shape-checked in pass 1 (#762), so the bare
+    // bv.value("inertial", object()) reads below can only mean ABSENT -- they can
+    // never hand nlohmann a string/array to dig into. Keep that ordering if this
+    // loop ever moves.
     // The root's authored universe bound (inertial.soi): the tripwire below
     // rejects orbits that do not fit inside it. 0 = not authored -> skipped.
     double root_soi_bound = 0.0;

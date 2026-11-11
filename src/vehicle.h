@@ -2089,7 +2089,10 @@ struct ScenarioDef {
     /* Dev-only beds stay out of the VAB dropdown unless --dev-scenarios. The
        name resolves either way: --startship, saves and the
        e2e fixtures all name dev beds, so this gates the picker, not the
-       scenario. No default: adding a bed means deciding this. */
+       scenario. WRITE IT ON EVERY ROW (#715): a designated initializer that
+       omits it compiles and yields false, which hands the bed to the player.
+       check_vab_gate() is the net -- it fails if any bed other than "pad" is
+       not dev-only. */
     bool dev_only;
     bool on_pad;
     double alt_frac; // circular: fraction of the near-body shell (rot SOI -

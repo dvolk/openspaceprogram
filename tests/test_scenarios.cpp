@@ -1577,9 +1577,12 @@ static void check_body_claims() {
        the block (sea datum, air, palette, temperature, clouds, rings) and the system
        loaded 18 bodies with an airless home planet and no line printed; `"rotating": []`
        stops a world spinning, which is a day that never ends, and `"inertial": []`
-       parks a body at its parent's origin with a 1e6 m SOI. Measured before/after with
-       tmp/probe_762.py. The positive controls below DELETE the same blocks, because
-       absent has to stay legal -- the star ships without a surface or rotating block. */
+       parks a body at its parent's origin (a moon's SOI is then DERIVED from a = 0).
+       Measured before/after with tmp/probe_762.py. The positive controls below DELETE
+       the same blocks, because absent has to stay legal -- the star ships without a
+       surface or rotating block. Every gate gets a null case too: nlohmann reads a
+       present null as PRESENT, and a future guard that special-cased null would
+       otherwise reopen the whole class unseen. */
     expect_refuses("surface_string", bpatched("Kerbin", [](nlohmann::json &bv) {
                        bv["surface"] = "Mun";
                    }), "\"surface\" is string, not an object");
@@ -1592,18 +1595,50 @@ static void check_body_claims() {
     expect_refuses("atmo_block_string", bpatched("Kerbin", [](nlohmann::json &bv) {
                        bv["surface"]["atmosphere"] = "air";
                    }), "\"surface.atmosphere\" is string, not an object");
+    expect_refuses("atmo_block_null", bpatched("Kerbin", [](nlohmann::json &bv) {
+                       bv["surface"]["atmosphere"] = nullptr;
+                   }), "\"surface.atmosphere\" is null, not an object");
     expect_refuses("clouds_block_number", bpatched("Kerbin", [](nlohmann::json &bv) {
                        bv["surface"]["clouds"] = 4;
                    }), "\"surface.clouds\" is number, not an object");
+    expect_refuses("clouds_block_null", bpatched("Kerbin", [](nlohmann::json &bv) {
+                       bv["surface"]["clouds"] = nullptr;
+                   }), "\"surface.clouds\" is null, not an object");
     expect_refuses("rings_block_object", bpatched("Jool", [](nlohmann::json &bv) {
                        bv["surface"]["rings"] = nlohmann::json::object();
                    }), "\"surface.rings\" is object, not an array");
+    expect_refuses("rings_block_string", bpatched("Jool", [](nlohmann::json &bv) {
+                       bv["surface"]["rings"] = "bands";
+                   }), "\"surface.rings\" is string, not an array");
+    expect_refuses("rings_block_null", bpatched("Jool", [](nlohmann::json &bv) {
+                       bv["surface"]["rings"] = nullptr;
+                   }), "\"surface.rings\" is null, not an array");
     expect_refuses("inertial_block_array", bpatched("Mun", [](nlohmann::json &bv) {
                        bv["inertial"] = nlohmann::json::array();
                    }), "\"inertial\" is array, not an object");
+    expect_refuses("inertial_block_null", bpatched("Mun", [](nlohmann::json &bv) {
+                       bv["inertial"] = nullptr;
+                   }), "\"inertial\" is null, not an object");
     expect_refuses("rotating_block_string", bpatched("Kerbin", [](nlohmann::json &bv) {
                        bv["rotating"] = "spin";
                    }), "\"rotating\" is string, not an object");
+    expect_refuses("rotating_block_null", bpatched("Kerbin", [](nlohmann::json &bv) {
+                       bv["rotating"] = nullptr;
+                   }), "\"rotating\" is null, not an object");
+    /* inertial.pos is the one LEAF inside a gated block that used to fail SILENTLY: a
+       2-element array is not 3 numbers, so the old `is_array() && size() >= 3` guard
+       skipped the read and the body sat at its parent's origin with no line -- the same
+       class #762 refuses, one level down. A string element used to die with nlohmann's
+       type_error, which names no body and no key. */
+    expect_refuses("pos_two_numbers", bpatched("Mun", [](nlohmann::json &bv) {
+                       bv["inertial"]["pos"] = {1.0e9, 0.0};
+                   }), "\"inertial.pos\" must be 3 numbers, got array of 2");
+    expect_refuses("pos_string_element", bpatched("Mun", [](nlohmann::json &bv) {
+                       bv["inertial"]["pos"] = {1.0e9, 0.0, "0"};
+                   }), "\"inertial.pos\" must be 3 numbers, got array of 3");
+    expect_refuses("pos_not_array", bpatched("Mun", [](nlohmann::json &bv) {
+                       bv["inertial"]["pos"] = 1.0e9;
+                   }), "\"inertial.pos\" must be 3 numbers, got number");
 
     /* THE POSITIVE CONTROLS. Each of these is legal data, and must LOAD with the claim
        still attached -- a guard that quietly eats the legal half of its range is the
@@ -1618,6 +1653,9 @@ static void check_body_claims() {
         { "legal_atmo_power", "Kerbin" },   // the LIVE power, one level below the refused one
         { "legal_no_clouds", "Kerbin" },    // an ABSENT deck, not a malformed one
         { "legal_no_spin", "Mun" },         // an absent rotating block, the star's shape
+        { "legal_no_atmo", "Kerbin" },      // an absent atmosphere block
+        { "legal_no_rings", "Jool" },       // an absent rings array
+        { "legal_no_inertial", "Mun" },     // an absent inertial block
     };
     for(const MustLoad &m : legal) {
         const std::string path = std::string("tmp/test_scenarios_body_")
@@ -1641,6 +1679,12 @@ static void check_body_claims() {
                 bv["surface"].erase("clouds");
             } else if(what == "legal_no_spin") {
                 bv.erase("rotating");
+            } else if(what == "legal_no_atmo") {
+                bv["surface"].erase("atmosphere");
+            } else if(what == "legal_no_rings") {
+                bv["surface"].erase("rings");
+            } else if(what == "legal_no_inertial") {
+                bv.erase("inertial");
             } else {
                 bv["surface"]["clouds"]["coverage"] = 0.25;
                 bv["surface"]["clouds"]["freq"] = 8.5;
@@ -1682,12 +1726,27 @@ static void check_body_claims() {
             /* The other face of #762: refusing a wrong SHAPE must not become refusing
                the block. Kerbin ships a deck and Mun ships a spin, so erasing each is
                the author's "no" -- and the loader still has to build a body that says
-               no sky-deck texture and a non-spinning frame (the star's shape). */
+               no sky-deck texture and a non-spinning frame (the star's shape). The
+               spin check is rot_ang_speed only: spin_axis is a constant the loader
+               writes for every frame (axial_tilt lives in initial_orient /
+               equator_orient instead, #174), so asserting it could never fail. */
             if(std::string(m.label) == "legal_no_clouds"
                && b->surface.clouds.enabled) { bad++; }
             if(std::string(m.label) == "legal_no_spin"
-               && !(b->rot_frame && b->rot_frame->rot_ang_speed == 0.0
-                    && b->rot_frame->spin_axis == glm::dvec3(0, 1, 0))) { bad++; }
+               && !(b->rot_frame && b->rot_frame->rot_ang_speed == 0.0)) { bad++; }
+            if(std::string(m.label) == "legal_no_atmo"
+               && b->surface.atmosphere.enabled) { bad++; }
+            if(std::string(m.label) == "legal_no_rings"
+               && !b->surface.rings.empty()) { bad++; }
+            /* An absent inertial block is the star's shape. On a moon it is legal but
+               degenerate: no rate, so no rail (a = 0), the body at its parent's origin,
+               and an SOI DERIVED from that -- NOT the 1e6 the json default would suggest,
+               which is the claim #762's comment used to make. */
+            if(std::string(m.label) == "legal_no_inertial"
+               && !(b->frame && b->frame->pos == glm::dvec3(0, 0, 0)
+                    && b->frame->orb_ang_speed == 0.0 && b->frame->soi != 1e6)) {
+                bad++;
+            }
             if(bad) {
                 printf("  %s: a legal %s claim loaded but did not reach the body\n",
                        path.c_str(), m.label);
@@ -1823,7 +1882,8 @@ static void check_flying_beds() {
        carries, not how big the number is: since #715 the table names its members, so a
        load can no longer land in speed_frac's slot at compile time, and the old
        1..1e4 range was only ever a detector for that shift. A load outside it is a bed
-       someone could author tomorrow. */
+       someone could author tomorrow. Naming slots does not police MAGNITUDES: 50.9 ->
+       509 stays a legal edit, and the flight cases that fly this bed are what notice. */
     if(trim->speed_frac != 0.0 || !(trim->speed_load > 0.0)) {
         printf("  flying-trim is not load-keyed (speed_frac %g, speed_load %g): the "
                "point of this bed is that gravity does not set its speed\n",
@@ -1867,30 +1927,74 @@ static void check_flying_beds() {
 }
 
 /* An abs_r bed pins an ABSOLUTE radius (the neptune/oort ladder, the heli-* beds).
-   Once it does, two of the table's slots stop meaning anything -- and since #715 the
-   table names its members, so a dead slot is the only kind of authoring mistake left
-   here. alt_frac is computed and thrown away (spawn_vehicle takes abs_r for r), and
-   ell_phase >= 0 takes the ellipse branch, which never reads abs_r at all: the bed
-   would fly authored apsides while claiming a pinned radius. atmo_frac rides alt_frac,
-   so it goes too. polar still means something: it picks the PLANE the pinned radius is
-   orbited in. */
+   Once it does, several of the table's slots stop meaning anything -- and since #715 the
+   table names its members, so a dead slot is the main authoring mistake left here.
+   alt_frac is computed and thrown away (spawn_vehicle takes abs_r for r), ell_phase >= 0
+   takes the ellipse branch, which never reads abs_r at all -- the bed would fly authored
+   apsides while claiming a pinned radius -- and peri_alt / apo_alt belong to that branch
+   only. atmo_frac is worse than dead: it gates the wind term and its
+   assert(frame->isRotFrame()) (vehicle.cpp:652,659), and asserts are live in every build,
+   so an abs_r bed with atmo_frac is a crash waiting for a windy body. A NEGATIVE abs_r
+   reads as "not set" to spawn_vehicle and silently falls back to alt_frac, which is the
+   exact fallback this law exists to forbid. polar is deliberately NOT refused: it picks
+   the PLANE the pinned radius is orbited in. */
 static void check_abs_r_beds() {
     int n = 0;
     for(size_t i = 0; i < scenario_count(); i++) {
         const std::string sname = scenario_name_at(i);
         const ScenarioDef *d = scenario_by_name(sname);
-        if(d->abs_r <= 0.0) { continue; }
+        if(d->abs_r < 0.0) {
+            printf("  scenario '%s' has abs_r = %g: a negative pinned radius reads as "
+                   "\"unset\" to spawn_vehicle, which falls back to alt_frac\n",
+                   sname.c_str(), d->abs_r);
+            failures++;
+            continue;
+        }
+        if(d->abs_r == 0.0) { continue; }
         n++;
-        if(d->ell_phase >= 0 || d->alt_frac != 0.0 || d->atmo_frac) {
+        if(d->ell_phase >= 0 || d->alt_frac != 0.0 || d->atmo_frac
+           || d->peri_alt != 0.0 || d->apo_alt != 0.0) {
             printf("  scenario '%s' pins abs_r = %.6g and also sets alt_frac %g / "
-                   "atmo_frac %d / ell_phase %d: a pinned radius throws alt_frac away "
-                   "and an ellipse bed never reads abs_r\n",
+                   "atmo_frac %d / ell_phase %d / peri_alt %g / apo_alt %g: a pinned "
+                   "radius throws alt_frac away and an ellipse bed never reads abs_r\n",
                    sname.c_str(), d->abs_r, d->alt_frac, d->atmo_frac ? 1 : 0,
-                   d->ell_phase);
+                   d->ell_phase, d->peri_alt, d->apo_alt);
             failures++;
         }
     }
     printf("  abs_r beds: %d, each radius-pinned and circular\n", n);
+}
+
+/* The other half of the same law, the other direction: slots that only the ELLIPSE
+   branch reads. peri_alt / apo_alt are dead on a circular bed (spawn_vehicle's
+   ell_phase < 0 branch never touches them), and alt_frac / atmo_frac / abs_r are dead
+   on an ellipse bed, whose radius comes from its own apsides. A row that fills both
+   families reads as if both apply. */
+static void check_ellipse_beds() {
+    int n = 0;
+    for(size_t i = 0; i < scenario_count(); i++) {
+        const std::string sname = scenario_name_at(i);
+        const ScenarioDef *d = scenario_by_name(sname);
+        if(d->ell_phase < 0) {
+            if((d->peri_alt != 0.0 || d->apo_alt != 0.0) && d->abs_r <= 0.0) {
+                printf("  scenario '%s' authors peri_alt %g / apo_alt %g on a circular "
+                       "bed (ell_phase %d): the apsides are never read\n",
+                       sname.c_str(), d->peri_alt, d->apo_alt, d->ell_phase);
+                failures++;
+            }
+            continue;
+        }
+        n++;
+        if(d->alt_frac != 0.0 || d->atmo_frac || d->abs_r > 0.0) {
+            printf("  scenario '%s' is an ellipse bed (ell_phase %d, apsides %g/%g) and "
+                   "also sets alt_frac %g / atmo_frac %d / abs_r %g: an ellipse's radius "
+                   "comes from its own apsides, so those are dead\n",
+                   sname.c_str(), d->ell_phase, d->peri_alt, d->apo_alt, d->alt_frac,
+                   d->atmo_frac ? 1 : 0, d->abs_r);
+            failures++;
+        }
+    }
+    printf("  ellipse beds: %d, each with apsides and no radius/air slots\n", n);
 }
 
 /* A placed bed (--startship lat=/lon=): the bed turns so its circle passes over the
@@ -2005,6 +2109,7 @@ int main() {
     check_vab_gate();
     check_flying_beds();
     check_abs_r_beds();
+    check_ellipse_beds();
     check_spawn_attitude();
     check_bed_turn();
     // The files the heli-* radii were read off. ksp_system/old_system are not

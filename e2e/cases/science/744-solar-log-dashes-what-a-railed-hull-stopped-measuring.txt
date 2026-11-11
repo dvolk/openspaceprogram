@@ -34,7 +34,7 @@ EXPECT @@@ v frozen on rails (grounded around Kerbin)
 EXPECT [toast] Time accel: 100x (rails)
 FORBID error:
 FORBID FAILED
-# Both halves in one run, live first. Four rows at 1x, one at 10x, then the rails rows.
+# Both halves in one run, live first. Three rows at 1x, one at 10x, then the rails rows.
 CHECK len(solar) >= 10
 CHECK any(d["air_T"] is not None for d in solar)
 CHECK any(d["air_T"] is None for d in solar)

@@ -106,7 +106,9 @@ struct GameArgs {
        drawing the previous result while the state already describes the new request.
        That gap is where the "half-updated readout" bugs live (#745 fixed one), and
        until now the only lever was hoping a bake was still running at the dump.
-       -1 = no hold. */
+       -1 = no hold. The span is tested once per frame, so its edges land on frame
+       boundaries and a span narrower than a frame silently no-ops; a job's own log
+       rows keep printing from the worker while held. e2e/README.md has the details. */
     int hold_jobs_from_ms = -1;
     int hold_jobs_to_ms = -1;
     int atlas_dump_ms = -1;          // print the System Atlas rows + dossiers

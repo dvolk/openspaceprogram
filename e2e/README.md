@@ -116,10 +116,18 @@ A long job's in-between state is reachable now. `--hold-jobs FROM_MS,TO_MS` skip
 `JobRunner::poll()` inside a span counted on the same schedule clock `--ui-click` uses: the
 worker still runs the sweep, only its main-thread continuation waits, so a window keeps
 drawing the PREVIOUS result while the rest of the state already describes the new request.
-That gap is where a half-updated readout lives, and it is ~100 ms wide -- too short to put
-a dump inside by timing alone (#748; `ui/748-hold-the-job-runner-and-read-a-window-mid-bake`
-reads a surface-map cursor line mid-rebake, which is the crossing #745 fixed and could not
-pin).
+That gap is where a half-updated readout lives, and it is ~100 ms wide for a 64x32 surface
+map (150-550 ms at `--surfmap-n 1024`) -- too short to put a dump inside by timing alone
+(#748; `ui/748-hold-the-job-runner-and-read-a-window-mid-bake` reads a surface-map cursor
+line mid-rebake, which is the crossing #745 fixed and could not pin).
+
+Three things the flag does NOT do, worth knowing before a case leans on one of them:
+the span is evaluated once per frame, so its edges land on frame boundaries and a span
+narrower than a frame silently no-ops (make spans wide and CHECK the `[holdjobs]` lines,
+which print at both ends with the clock they actually fired on); a job's log rows keep
+printing from the WORKER during the hold (`[surfmap]` appears mid-span, which 748 depends
+on); and if the run ends or a system swap aborts inside the span, pending continuations are
+dropped unrun and no `released` line prints.
 
 Readout rows drawn with `uiText()` (src/uiinput.h) print too, marked ` text`: their
 label is the line as the player reads it, value included, so a case can assert what is

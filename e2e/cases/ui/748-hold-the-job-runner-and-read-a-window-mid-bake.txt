@@ -4,8 +4,8 @@
 # already describes the new request. That gap is the whole point: every long job in the game
 # has one (the surface map, the porkchop grid, the terrain baker, the system load), and until
 # now the only lever was hoping a bake was still running when the dump landed. A 64x32 bake
-# finishes ~100 ms after it is posted even at --surfmap-n 1024, so no --ui-list could be
-# placed inside it reliably.
+# finishes ~100 ms after it is posted (a 1024x512 one measured 150-550 ms on this machine),
+# so no --ui-list could be placed inside it reliably.
 #
 # What that buys is the pin #745 shipped without one. Its fix: a body pick posts a re-bake
 # but the window keeps drawing the old pixels, and lat/lon/elev on the cursor line come from
@@ -50,10 +50,12 @@ CHECK out.index('body="Moon"') < out.index('released')
 CHECK (lambda cs: len(cs) == 3)([r["label"] for r in uilist if r["window"] == "Surface Map" and r["label"].startswith("cursor:")])
 # Before: Earth's picture, a number under the cursor.
 CHECK (lambda cs: re.search(r"ground [+-][\d.]+ C", cs[0]) is not None and "rebaking" not in cs[0])([r["label"] for r in uilist if r["window"] == "Surface Map" and r["label"].startswith("cursor:")])
-# Inside the span: the line already stands on MOON (elev negative -- Moon's terrain, because
-# the pick moved the body the line reads) while the colours are still Earth's. That is the
+# Inside the span: the line already stands on MOON while the colours are still Earth's. The
+# proof it moved is the elevation, not its sign -- the mid reading must equal the AFTER
+# reading (same pixel, same body) and differ from the BEFORE one (Earth's ground there).
+# Pinning "elev -" instead would tie the case to Moon's authored sea level. That is the
 # moment #745 is about, and the number must be a dash with its reason, not a reading.
-CHECK (lambda cs: "ground - (rebaking)" in cs[1] and "elev -" in cs[1])([r["label"] for r in uilist if r["window"] == "Surface Map" and r["label"].startswith("cursor:")])
+CHECK (lambda cs: "ground - (rebaking)" in cs[1] and re.search(r"elev ([-+]?[\d.]+ ?[km])", cs[1]).group(1) == re.search(r"elev ([-+]?[\d.]+ ?[km])", cs[2]).group(1) and re.search(r"elev ([-+]?[\d.]+ ?[km])", cs[0]).group(1) != re.search(r"elev ([-+]?[\d.]+ ?[km])", cs[1]).group(1))([r["label"] for r in uilist if r["window"] == "Surface Map" and r["label"].startswith("cursor:")])
 # After the release: the same point carries a number again, and it is a DIFFERENT one --
 # Moon's picture, not the Earth number still showing at 3.2 s.
 CHECK (lambda cs: re.search(r"ground [+-][\d.]+ C", cs[2]) is not None)([r["label"] for r in uilist if r["window"] == "Surface Map" and r["label"].startswith("cursor:")])
