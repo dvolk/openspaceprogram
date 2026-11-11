@@ -1,0 +1,59 @@
+# Four of --solar-log's columns are MEASURED, not recomputed: air_T, prof_T, w and follow
+# come from the aero pass's own lastAirT / lastAirProfileT / lastAirP, the same figures its
+# Mach number divides by. #687 put them there rather than recomputing them for the log,
+# because a second arithmetic over one fact -- taken at a later instant than the flight
+# model used -- is how a readout and a force law drift apart.
+#
+# That choice has a consequence the row cannot see on its own: a hull ON RAILS never runs
+# applyAeroForce (tick.cpp's substep loop skips it), so those four figures are whatever the
+# LAST LIVE SUBSTEP left. A ship parked in Kerbin's air at noon and warped keeps a noon
+# air temperature while its own sun climbs; the row beside it -- underfoot_T, recomputed
+# every print -- moves, so the row contradicts itself and a log reader concludes the air
+# decoupled or that the day/night model is broken. It is a readout artefact, not a physics
+# one, and 0c27b9b8 gates the four columns on !onRails. What was missing is this test:
+# nothing in the battery rails a hull with --solar-log on, so re-deleting that gate goes
+# green (the ticket's own words).
+#
+# The pad is the fixture because canRail() is `isGrounded() || !inAtmosphere()` -- a
+# GROUNDED hull in air is rail-eligible (it freezes rather than coasts), which is the one
+# way to get a hull inside air whose measurements stop being taken. A hull in vacuum dashes
+# these columns for a different reason (applyAeroForce zeroes them at entry), and #727
+# already pins that half; here the air is real and the numbers exist, and the dash is the
+# rails gate doing it.
+#
+# Two --sim-press PERIOD steps climb the ladder 1x -> 10x -> 100x, and 100x is rails
+# (kRailsWarp = 11). --sim-steps rather than --timeout: the pins below count rows and
+# measure a swing, and a wall-clock cutoff lands on a different tick on a slower machine.
+NAME 744-solar-log-dashes-what-a-railed-hull-stopped-measuring
+CLAIM --solar-log prints numbered air_T / prof_T / w / follow for a hull standing live in Kerbin's air and dashes all four once a warp freezes it on rails, while underfoot_T keeps its number and keeps swinging.
+KIND invariant
+ARGS --solar-log --sim-steps 720
+ARGS --startship v,res/ships/skiff.json,Kerbin,pad
+ARGS --sim-press 3000,50,PERIOD,4500,50,PERIOD
+EXPECT @@@ v frozen on rails (grounded around Kerbin)
+EXPECT [toast] Time accel: 100x (rails)
+FORBID error:
+FORBID FAILED
+# Both halves in one run, live first. Four rows at 1x, one at 10x, then the rails rows.
+CHECK len(solar) >= 10
+CHECK any(d["air_T"] is not None for d in solar)
+CHECK any(d["air_T"] is None for d in solar)
+# The switch happens ONCE: the dashed rows are a SUFFIX of the run. Scatter them and the
+# slice below catches a live row inside the railed stretch, which a per-row CHECK would
+# not -- and a gate that flickered with the substep loop is exactly what this looks like.
+CHECK (lambda r, n: all(x["air_T"] is None for x in r[len(r) - n:]))(solar, len([x for x in solar if x["air_T"] is None]))
+CHECK first(solar)["air_T"] is not None
+CHECK last(solar)["air_T"] is None
+# All four measured columns go together. follow is authored, not measured, and tick.cpp
+# dashes it under rails too -- a knob printed next to frozen air is a third arithmetic.
+CHECK all(d["prof_T"] is None and d["w"] is None and d["follow"] is None for d in solar if d["air_T"] is None)
+# Kerbin's air at the pad is real, so the live rows must carry a real number -- a gate
+# that dashes from the first tick would pass the CHECKs above.
+CHECK all(285.0 < d["air_T"] < 295.0 and 0.9 < d["w"] < 1.0 for d in solar if d["air_T"] is not None)
+# The recomputed column does NOT dash, and it keeps moving while the measured four are
+# frozen. That is the contradiction the gate prevents: measured 295.61 K at the last live
+# row against 297.99 K at the last railed one, with the sun 11 deg higher.
+CHECK all(d["underfoot_T"] is not None for d in solar)
+CHECK (lambda r: max(x["underfoot_T"] for x in r if x["air_T"] is None) - min(x["underfoot_T"] for x in r if x["air_T"] is not None) > 1.0)(solar)
+# And the ground the row stands on never changed body: this is one hull on one pad.
+CHECK all(d["body"] == "Kerbin" and d["star"] == "Kerbol" for d in solar)

@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 322 |
+| `invariant` | a behaviour or a player route the game must keep | 323 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 47 |
 | `harness` | CLI/test-engine plumbing, not game spec | 15 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **388** |
+| | **total** | **389** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -156,7 +156,7 @@ judgement. Select by number, name or path, e.g.
 | `crew/394-spent-pool-kerbal-refused.txt` | invariant | A kerbal spawned on a spent pad pool is refused, not minted off the def. |
 | `crew/547-walking-kerbal-suit-mass-overflow-refused.txt` | invariant | A saved kerbal whose suit contents add up to more mass than the game can store is refused, not stood up as a NaN-inertia Body. |
 
-## science (25)
+## science (26)
 
 | case | kind | pins |
 |---|---|---|
@@ -185,6 +185,7 @@ judgement. Select by number, name or path, e.g.
 | `science/727-solar-log-dashes-what-a-world-does-not-state.txt` | invariant | On Himalia -- a moon the catalogue lists but no fact sheet describes -- --solar-log still reads the star, and prints a DASH rather than a zero for the albedo, the black-body column, the ground, the swing and the air, because nothing in this system states any of them for it. |
 | `science/727-solar-log-weighs-the-star-against-the-ground.txt` | invariant | --solar-log reads the star and the authored ground off the same row, and its black-body column is the law in src/solar.h, not a decoration. |
 | `science/735-the-shipped-world-prices-its-sunshine.txt` | invariant | The system the player actually flies answers the sun for every body that has a surface: each prints the light at its orbit, its Bond albedo with the words saying where that albedo came from, and the airless mean the two imply; the rows are one arithmetic rather than three printings; every swing names the rule that priced it; and the one body with an air but no ground dashes its swing instead of borrowing one. |
+| `science/744-solar-log-dashes-what-a-railed-hull-stopped-measuring.txt` | invariant | --solar-log prints numbered air_T / prof_T / w / follow for a hull standing live in Kerbin's air and dashes all four once a warp freezes it on rails, while underfoot_T keeps its number and keeps swinging. |
 
 ## vab (37)
 
