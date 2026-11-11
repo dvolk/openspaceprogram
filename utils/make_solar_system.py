@@ -1278,7 +1278,6 @@ def make_body(name, type_, parent, data, *, surface=None, seed=0.0,
     body['mass'] = mass_kg
     body['seed'] = seed
     body['has_sea'] = has_sea
-    body['power_scaler'] = 1        # unused by the loader; kept for parity
     if surface is not None:
         body['surface'] = resolve_layer_heights(surface, radius_m)
         # #739: a body's JSON states its air's datum PRESSURE; the densities the

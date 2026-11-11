@@ -433,12 +433,43 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
         body->transfer_dv = bv.value("transfer_dv", 0.0);
         body->seed         = bv.value("seed", 0.0);
 
-        // Legacy flat fields act as defaults for the surface parameters.
+        /* Legacy flat fields act as defaults for the surface parameters. */
         Surface &s = body->surface;
         s.has_sea = bv.value("has_sea", false);
+        /* dd2f5c65 rewrote the height model from scratch and deleted the last two reads
+           of the terrain height exponent: `s.power = bv.value("power_scaler", 3)` and
+           `s.power = sv.value("power", s.power)`. The rows stayed in the files -- 539 in
+           res/systems, 12 more in the e2e fixtures -- only ever 1 or 3, which is why every
+           agent that met one assumed it was a knob that had stopped working (#723). It was
+           a knob once, on a model that no longer exists: the exponent in
+           `n *= pow(n / ref_height, t.surface.power)`, so there is nothing to re-author.
+           Refusing rather than ignoring is the same policy as
+           atmosphere.sea_level_density below (#739): a retired key is worse than an
+           unknown one, because a reader trusts it. #760 decision 1 is whether every body
+           key gets a whitelist instead of these one-off refusals. */
+        if(bv.contains("power_scaler")) {
+            throw std::runtime_error("system: '" + body->name + "': \"power_scaler\""
+                                     " is not a body key any more -- it scaled the"
+                                     " terrain height distribution, and that model was"
+                                     " rewritten. Delete the row; surface.amplitude and"
+                                     " surface.octaves are what shape terrain now (#723)");
+        }
 
         if(bv.contains("surface") && bv["surface"].is_object()) {
             const nlohmann::json &sv = bv["surface"];
+            /* The nested spelling of the same retired key, and the more dangerous of the
+               two: `power` is still a LIVE key one level down, in surface.atmosphere
+               (the atmosphere rim's Fresnel falloff), so a bare surface row reads like a
+               plausible atmosphere/shader knob while doing nothing at all. */
+            if(sv.contains("power")) {
+                throw std::runtime_error("system: '" + body->name + "': \"power\" is"
+                                         " not a surface key any more -- it was the"
+                                         " terrain height exponent, and that model was"
+                                         " rewritten. Delete the row. The live \"power\""
+                                         " is inside surface.atmosphere, and"
+                                         " surface.amplitude / surface.octaves are what"
+                                         " shape terrain (#723)");
+            }
             s.amplitude   = sv.value("amplitude", s.amplitude);
             /* A COUNT with a hard ceiling, so it is checked rather than defaulted: the
                height model resolves ~13 octaves on the deepest mesh cell it can build, and

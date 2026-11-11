@@ -30,7 +30,6 @@
       "mass": 1.757e+28,
       "seed": 0,
       "has_sea": false,
-      "power_scaler": 1,
       "inertial": {
         "soi": 1e+18,
         "pos": [
@@ -54,7 +53,6 @@
       "mass": 5.2915793e+22,
       "seed": 0,
       "has_sea": true,
-      "power_scaler": 3,
       "surface": {
         "atmosphere": {
           "color": [
@@ -90,7 +88,6 @@
       "mass": 9.7600236e+20,
       "seed": 0,
       "has_sea": false,
-      "power_scaler": 1,
       "inertial": {
         "pos": [
           -12000000,

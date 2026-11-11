@@ -42,7 +42,6 @@
       "mass": 1.757e+28,
       "seed": 0.1,
       "has_sea": false,
-      "power_scaler": 1,
       "surface": {
         "palette": [
           [
@@ -84,7 +83,6 @@
       "mass": 2.526e+21,
       "seed": 1,
       "has_sea": false,
-      "power_scaler": 3,
       "surface": {
         "amplitude": 800,
         "palette": [
@@ -143,7 +141,6 @@
       "mass": 1.224e+23,
       "seed": 2,
       "has_sea": false,
-      "power_scaler": 3,
       "surface": {
         "amplitude": 5000,
         "persistence": 0.6,
@@ -246,7 +243,6 @@
       "mass": 1.242e+17,
       "seed": 3,
       "has_sea": false,
-      "power_scaler": 1,
       "surface": {
         "amplitude": 400,
         "palette": [
@@ -305,7 +301,6 @@
       "mass": 5.292e+22,
       "seed": 1,
       "has_sea": true,
-      "power_scaler": 3,
       "surface": {
         "amplitude": 5000,
         "persistence": 0.6,
@@ -451,7 +446,6 @@
       "mass": 9.76e+20,
       "seed": 5,
       "has_sea": false,
-      "power_scaler": 1,
       "surface": {
         "amplitude": 2500,
         "persistence": 0.7,
@@ -501,7 +495,6 @@
       "mass": 2.646e+19,
       "seed": 6,
       "has_sea": false,
-      "power_scaler": 1,
       "surface": {
         "amplitude": 2000,
         "palette": [
@@ -551,7 +544,6 @@
       "mass": 4.0762e+22,
       "seed": 0,
       "has_sea": true,
-      "power_scaler": 3,
       "surface": {
         "amplitude": 3000,
         "persistence": 0.55,
@@ -659,7 +651,6 @@
       "mass": 4.515e+21,
       "seed": 7,
       "has_sea": false,
-      "power_scaler": 3,
       "surface": {
         "palette": [
           [
@@ -759,7 +750,6 @@
       "mass": 2.782e+20,
       "seed": 8,
       "has_sea": false,
-      "power_scaler": 1,
       "surface": {
         "amplitude": 1000,
         "palette": [
@@ -809,7 +799,6 @@
       "mass": 3.219e+20,
       "seed": 9,
       "has_sea": false,
-      "power_scaler": 3,
       "surface": {
         "amplitude": 2000,
         "palette": [
@@ -860,7 +849,6 @@
       "mass": 4.233e+24,
       "seed": 10,
       "has_sea": false,
-      "power_scaler": 3,
       "surface": {
         "bands": true,
         "band_count": 9,
@@ -948,7 +936,6 @@
       "mass": 2.94e+22,
       "seed": 11,
       "has_sea": true,
-      "power_scaler": 3,
       "surface": {
         "amplitude": 5000,
         "octaves": 10,
@@ -1086,7 +1073,6 @@
       "mass": 3.109e+21,
       "seed": 12,
       "has_sea": false,
-      "power_scaler": 1,
       "surface": {
         "amplitude": 2000,
         "palette": [
@@ -1134,7 +1120,6 @@
       "mass": 4.233e+22,
       "seed": 13,
       "has_sea": false,
-      "power_scaler": 3,
       "surface": {
         "palette": [
           [
@@ -1182,7 +1167,6 @@
       "mass": 3.726e+19,
       "seed": 14,
       "has_sea": false,
-      "power_scaler": 1,
       "surface": {
         "amplitude": 800,
         "palette": [
@@ -1233,7 +1217,6 @@
       "mass": 1.081e+19,
       "seed": 15,
       "has_sea": false,
-      "power_scaler": 1,
       "surface": {
         "amplitude": 600,
         "palette": [
@@ -1284,7 +1267,6 @@
       "mass": 1.115e+21,
       "seed": 16,
       "has_sea": false,
-      "power_scaler": 3,
       "surface": {
         "amplitude": 5000,
         "palette": [

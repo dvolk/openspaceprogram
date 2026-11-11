@@ -15,7 +15,6 @@
       "mass": 1.757e+28,
       "seed": 0.1,
       "has_sea": false,
-      "power_scaler": 1,
       "surface": {
         "palette": [
           [
@@ -56,7 +55,6 @@
       "mass": 5.292e+22,
       "seed": 1,
       "has_sea": true,
-      "power_scaler": 3,
       "surface": {
         "amplitude": 5000,
         "persistence": 0.6,
@@ -190,7 +188,6 @@
       "mass": 2.526e+21,
       "seed": 1,
       "has_sea": false,
-      "power_scaler": 3,
       "surface": {
         "amplitude": 800,
         "palette": [
@@ -245,7 +242,6 @@
       "mass": 4.515e+21,
       "seed": 7,
       "has_sea": false,
-      "power_scaler": 3,
       "surface": {
         "palette": [
           [

@@ -27,7 +27,6 @@
       "mass": 1.757e+28,
       "seed": 0.1,
       "has_sea": false,
-      "power_scaler": 1,
       "surface": {
         "palette": [
           [0.0, [1.0, 0.8, 0.35]],
@@ -50,7 +49,6 @@
       "mass": 2.526e+21,
       "seed": 1,
       "has_sea": true,
-      "power_scaler": 3,
       "surface": {
         "amplitude": 800,
         "sea_level": 100.0,

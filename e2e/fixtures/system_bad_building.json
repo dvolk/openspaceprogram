@@ -11,7 +11,6 @@
       "mass": 1.757e+28,
       "seed": 0.1,
       "has_sea": false,
-      "power_scaler": 1,
       "surface": {
         "palette": [
           [
@@ -52,7 +51,6 @@
       "mass": 5.292e+22,
       "seed": 1,
       "has_sea": true,
-      "power_scaler": 3,
       "surface": {
         "amplitude": 5000,
         "persistence": 0.6,

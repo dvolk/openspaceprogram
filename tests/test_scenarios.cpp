@@ -1475,6 +1475,25 @@ static void check_body_claims() {
                        bv["surface"]["octaves"] = -1;
                    }), "surface.octaves");
 
+    /* RETIRED KEYS (#723). "power_scaler" was the legacy default for `surface.power`, the
+       exponent in the old height model's `n *= pow(n / ref_height, power)`; dd2f5c65
+       rewrote that model and deleted both reads, and all 539 rows survived in the
+       shipped files as 1s and 3s -- numbers that look like they do something. Ignoring
+       a retired key is worse than an unknown one, because a reader trusts it, so both
+       spellings refuse the way `g` and atmosphere.sea_level_density do (#739). The
+       nested one matters more: `power` is still a LIVE key one level down, inside
+       surface.atmosphere (the rim's Fresnel falloff), so the positive control below
+       pins it. The loader refuses six retired keys by hand -- `g` (#708),
+       atmosphere.sea_level_density (#739), molar_mass/gamma (#630), atmosphere.heights
+       (#690) and these two (#723); #760 decision 1 is whether every body key gets a
+       whitelist instead. */
+    expect_refuses("power_scaler_retired", bpatched("Mun", [](nlohmann::json &bv) {
+                       bv["power_scaler"] = 3;
+                   }), "power_scaler\" is not a body key any more");
+    expect_refuses("surface_power_retired", bpatched("Mun", [](nlohmann::json &bv) {
+                       bv["surface"]["power"] = 3;
+                   }), "\"power\" is not a surface key any more");
+
     /* The datum every altitude in the game measures from (terragen.h
        TerrainParams::seaLevelRadius). A basin below the datum is legitimate and stays;
        a datum at or below the centre gives a near-body shell of radius <= 0 and an air
@@ -1559,6 +1578,7 @@ static void check_body_claims() {
         { "legal_rings", "Mun" },           // two well-formed bands
         { "legal_clouds", "Kerbin" },       // a thin, drifting deck
         { "legal_colour_ends", "Mun" },     // a colour using both ends of [0..1]
+        { "legal_atmo_power", "Kerbin" },   // the LIVE power, one level below the refused one
     };
     for(const MustLoad &m : legal) {
         const std::string path = std::string("tmp/test_scenarios_body_")
@@ -1576,6 +1596,8 @@ static void check_body_claims() {
                     {{"name", "B"}, {"inner", 245000.0}, {"outer", 260000.0}}});
             } else if(what == "legal_colour_ends") {
                 bv["surface"]["sea_color"] = {0.0, 1.0, 0.0};
+            } else if(what == "legal_atmo_power") {
+                bv["surface"]["atmosphere"]["power"] = 5.0;
             } else {
                 bv["surface"]["clouds"]["coverage"] = 0.25;
                 bv["surface"]["clouds"]["freq"] = 8.5;
@@ -1609,6 +1631,11 @@ static void check_body_claims() {
             if(std::string(m.label) == "legal_clouds"
                && !(b->surface.clouds.enabled && b->surface.clouds.coverage == 0.25f
                     && b->surface.clouds.drift == -0.001f)) { bad++; }
+            /* The refused surface.power is a NAME check sitting directly above a live
+               key of the same name (surface.atmosphere.power, the rim's Fresnel falloff).
+               A guard that ate the live one would look like the law working. */
+            if(std::string(m.label) == "legal_atmo_power"
+               && !(b->surface.atmosphere.power == 5.0f)) { bad++; }
             if(bad) {
                 printf("  %s: a legal %s claim loaded but did not reach the body\n",
                        path.c_str(), m.label);
