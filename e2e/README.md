@@ -112,6 +112,15 @@ as `ambiguous`. `--ui-list` is the source of truth, not the source code. Repeat
 the flag for a dump at each time given: a case that toggles something wants one
 dump on each side of the click, or it is only proving the after picture (#649).
 
+A long job's in-between state is reachable now. `--hold-jobs FROM_MS,TO_MS` skips
+`JobRunner::poll()` inside a span counted on the same schedule clock `--ui-click` uses: the
+worker still runs the sweep, only its main-thread continuation waits, so a window keeps
+drawing the PREVIOUS result while the rest of the state already describes the new request.
+That gap is where a half-updated readout lives, and it is ~100 ms wide -- too short to put
+a dump inside by timing alone (#748; `ui/748-hold-the-job-runner-and-read-a-window-mid-bake`
+reads a surface-map cursor line mid-rebake, which is the crossing #745 fixed and could not
+pin).
+
 Readout rows drawn with `uiText()` (src/uiinput.h) print too, marked ` text`: their
 label is the line as the player reads it, value included, so a case can assert what is
 ON screen and not only what a log printed (#601). A ` text` row is never a click or

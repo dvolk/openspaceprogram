@@ -100,6 +100,15 @@ struct GameArgs {
     std::vector<UiClick> ui_clicks;  // imgui clicks by "Window/Label"
     std::vector<UiScroll> ui_scrolls;  // imgui wheel scrolls by window
     std::vector<int> ui_list_ms;     // dump the clickable items, at each time given
+    /* #748: freeze the job runner's PUBLICATION between two schedule-clock ms -- the
+       same clock --ui-click / --sim-press count on, so a case can put a dump inside the
+       gap. The worker still runs the sweep; only poll() is skipped, so the window keeps
+       drawing the previous result while the state already describes the new request.
+       That gap is where the "half-updated readout" bugs live (#745 fixed one), and
+       until now the only lever was hoping a bake was still running at the dump.
+       -1 = no hold. */
+    int hold_jobs_from_ms = -1;
+    int hold_jobs_to_ms = -1;
     int atlas_dump_ms = -1;          // print the System Atlas rows + dossiers
     int staff_dump_ms = -1;          // print the Staff Lounge roster + locations
     int map_plane = -1;              // the orbit map's plane combo (0 equ, 1 ecl, 2 orb, 3 tgt)

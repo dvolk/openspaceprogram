@@ -392,6 +392,18 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
         ->expected(-1)
         ->delimiter(',');
 
+    std::vector<int> hold_jobs;
+    app.add_option("--hold-jobs", hold_jobs,
+                   "FROM_MS,TO_MS: skip the job runner's poll() inside that span "
+                   "(test hook, #748). Posted jobs still RUN on the worker; only "
+                   "their main-thread continuations are deferred, so the UI keeps "
+                   "drawing the previous result while the state already describes "
+                   "the new one -- the in-flight state a long job has and a case "
+                   "could not reach before, because a bake lands ~100 ms after it "
+                   "is posted. Times count on the same schedule clock as --ui-click. "
+                   "Prints [holdjobs] at both ends of the span.")
+        ->delimiter(',');
+
     std::vector<std::string> ui_scroll;
     app.add_option("--ui-scroll", ui_scroll,
                    "Synthetic imgui wheel scroll for e2e testing: "
@@ -1229,6 +1241,23 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
             a.released = false;
             args.sim_mouse_actions.push_back(a);
         }
+    }
+
+    if(!hold_jobs.empty()) {
+        if(hold_jobs.size() != 2) {
+            printf("error: --hold-jobs expects FROM_MS,TO_MS; got %zu value(s)\n",
+                   hold_jobs.size());
+            *exit_code = 1;
+            return false;
+        }
+        if(hold_jobs[0] < 0 || hold_jobs[1] <= hold_jobs[0]) {
+            printf("error: --hold-jobs needs 0 <= FROM_MS < TO_MS, got %d,%d\n",
+                   hold_jobs[0], hold_jobs[1]);
+            *exit_code = 1;
+            return false;
+        }
+        args.hold_jobs_from_ms = hold_jobs[0];
+        args.hold_jobs_to_ms = hold_jobs[1];
     }
 
     if(!ui_focus.empty()) {

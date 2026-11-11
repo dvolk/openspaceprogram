@@ -1501,6 +1501,7 @@ int main(int argc, char **argv)
        http://gafferongames.com/game-physics/fix-your-timestep/
     */
     bool idled_last = false;   // so the [idle] line prints on transitions only
+    bool hold_logged = false;  // the --hold-jobs span's two lines, once each (#748)
     while (running == true) {
         const Uint32 iter_start_ms = SDL_GetTicks();
         pf_iter = std::chrono::steady_clock::now();
@@ -1611,9 +1612,33 @@ int main(int argc, char **argv)
         game.fireHooks(kHookPostUpdate);
         pf_b = std::chrono::steady_clock::now();
 
-        // Run the finished jobs' continuations BEFORE the UI reads the state
-        // they wrote.
-        game.jobs.poll();
+        /* Run the finished jobs' continuations BEFORE the UI reads the state
+           they wrote. --hold-jobs (test hook, #748) skips this inside its span: the
+           worker still runs the sweep and its result waits in the runner, so the
+           window keeps drawing the PREVIOUS picture while the state already describes
+           the new request. That ~100 ms gap is where a half-updated readout lives --
+           #745 fixed one (a body pick quoting the new body's authored number over the
+           old body's pixels) and no case could sit inside it. The span counts on the
+           schedule clock the --ui-* hooks use, so one case can name both. */
+        const Uint32 sched_ms = game.schedClockMs();
+        const bool held = game.args.hold_jobs_from_ms >= 0
+                       && sched_ms >= (Uint32)game.args.hold_jobs_from_ms
+                       && sched_ms < (Uint32)game.args.hold_jobs_to_ms;
+        if(held) {
+            if(!hold_logged) {
+                printf("[holdjobs] at=%ums holding publication (busy=%d)\n",
+                       sched_ms, (int)game.jobs.busy());
+                fflush(stdout);
+                hold_logged = true;
+            }
+        } else {
+            if(hold_logged) {
+                printf("[holdjobs] at=%ums released\n", sched_ms);
+                fflush(stdout);
+                hold_logged = false;
+            }
+            game.jobs.poll();
+        }
         // Engine hum: pilot scenes only. Gain is the throttle; the sound is ON
         // only while the ship actually produces thrust.
         {

@@ -1,0 +1,60 @@
+# --hold-jobs FROM_MS,TO_MS (#748) skips JobRunner::poll() inside a span on the SAME clock
+# --ui-click counts on. The worker still runs the sweep -- only its main-thread continuation
+# is deferred -- so the window keeps drawing the PREVIOUS result while the rest of the state
+# already describes the new request. That gap is the whole point: every long job in the game
+# has one (the surface map, the porkchop grid, the terrain baker, the system load), and until
+# now the only lever was hoping a bake was still running when the dump landed. A 64x32 bake
+# finishes ~100 ms after it is posted even at --surfmap-n 1024, so no --ui-list could be
+# placed inside it reliably.
+#
+# What that buys is the pin #745 shipped without one. Its fix: a body pick posts a re-bake
+# but the window keeps drawing the old pixels, and lat/lon/elev on the cursor line come from
+# the body NOW on screen -- so quoting the NEW body's authored anchor over the OLD body's
+# colours prints a number that belongs to neither (seen live: Kerbin->Moho showed Moho's
+# elevation and Kerbin's +10.0 C for ~150 ms). While the two disagree the line dashes and
+# says the picture is on its way.
+#
+# The run: Earth's temperature map is open and read (a number, and Earth's elevation); the
+# Body combo picks Moon, which posts a re-bake INSIDE the held span; the dump inside the span
+# shows the cursor already standing on Moon (elev -2.2 km, Moon's terrain) over Earth's
+# colours, with the ground number dashed (rebaking); after the release the same point reads
+# Moon's number. --sim-mouse twice because a --ui-click parks the pointer where it clicked
+# (the combo row), which ends the map hover and would dash lat/lon/elev for the wrong reason.
+NAME hold-the-job-runner-and-read-a-window-mid-bake
+CLAIM --hold-jobs keeps a posted surface-map bake unpublished, so a --ui-list inside the span reads the window mid-sweep: the cursor line dashes its ground number as (rebaking) instead of quoting a number for the body it just switched to, and the number lands after the release.
+KIND invariant
+ARGS --width 1600 --height 900 --timeout 14 --system res/systems/solar_system.json
+ARGS --startship v,res/ships/skiff_trim.json,Earth,pad
+ARGS --surfmap-log --surfmap-n 64 --surfmap-map temperature --surfmap-body Earth
+ARGS --ui-click 2000,"Windows/Surface Map"
+ARGS --sim-mouse 2600,0,700,420,0
+ARGS --ui-list 3200
+ARGS --hold-jobs 4000,9000
+ARGS --ui-click 4000,"Surface Map/Body"
+ARGS --ui-scroll 4400,"##Combo_00",-2
+ARGS --ui-click 5000,"##Combo_00/Moon"
+ARGS --sim-mouse 5300,0,700,420,0
+ARGS --ui-list 5700
+ARGS --ui-list 11000
+FORBID FAILED
+FORBID error:
+# The hook announces both ends, so a passing case cannot be a bake that merely happened
+# to still be running.
+CHECK re.search(r'\[holdjobs\] at=\d+ms holding publication \(busy=\d\)', out)
+CHECK '[holdjobs] at=' in out and 'released' in out
+# The sweep ran WHILE held: the worker's own log line for Moon lands before the release.
+# Deferring publication is not the same as deferring the job, and a hook that stopped the
+# worker would leave the window "mapping ..." forever.
+CHECK out.index('body="Moon"') < out.index('released')
+# Three reads of the Surface Map's cursor row, in dump order.
+CHECK (lambda cs: len(cs) == 3)([r["label"] for r in uilist if r["window"] == "Surface Map" and r["label"].startswith("cursor:")])
+# Before: Earth's picture, a number under the cursor.
+CHECK (lambda cs: re.search(r"ground [+-][\d.]+ C", cs[0]) is not None and "rebaking" not in cs[0])([r["label"] for r in uilist if r["window"] == "Surface Map" and r["label"].startswith("cursor:")])
+# Inside the span: the line already stands on MOON (elev negative -- Moon's terrain, because
+# the pick moved the body the line reads) while the colours are still Earth's. That is the
+# moment #745 is about, and the number must be a dash with its reason, not a reading.
+CHECK (lambda cs: "ground - (rebaking)" in cs[1] and "elev -" in cs[1])([r["label"] for r in uilist if r["window"] == "Surface Map" and r["label"].startswith("cursor:")])
+# After the release: the same point carries a number again, and it is a DIFFERENT one --
+# Moon's picture, not the Earth number still showing at 3.2 s.
+CHECK (lambda cs: re.search(r"ground [+-][\d.]+ C", cs[2]) is not None)([r["label"] for r in uilist if r["window"] == "Surface Map" and r["label"].startswith("cursor:")])
+CHECK (lambda cs: re.search(r"ground \+[\d.]+ C", cs[0]) is not None and re.search(r"ground \+[\d.]+ C", cs[2]) is not None and cs[0].split("ground ")[1] != cs[2].split("ground ")[1])([r["label"] for r in uilist if r["window"] == "Surface Map" and r["label"].startswith("cursor:")])

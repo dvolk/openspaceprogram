@@ -64,12 +64,16 @@ CHECK len([r for r in uilist if r["window"] == "Surface Map" and r["label"].star
 # is the join between the cursor row and the sweep, and it is the only place the map's headline
 # readout is checked at all.
 CHECK (lambda row, lo, hi: "ground " in row["label"] and lo - 273.15 - 0.05 <= float(re.search(r"ground ([-+]?[\d.]+) C", row["label"]).group(1)) <= hi - 273.15 + 0.05)([r for r in uilist if r["window"] == "Surface Map" and r["label"].startswith("cursor:")][0], surfmap[-1]["temp"][0], surfmap[-1]["temp"][2])
-# What is NOT pinned: the instant between a pick and its bake landing. A bake completes ~100 ms
-# after it is posted even at --surfmap-n 1024, so no dump can be placed inside that window
-# reliably. It matters: while it is open the pixels on screen belong to the PREVIOUS body while
-# the cursor's lat/lon/elev belong to the one just picked, and an adversarial pass put a Kerbin
-# temperature on Moho's ground there. The window's body/type gate fixes it (gameui.cpp); the
-# steady ends are pinned above and the crossing is not.
+# The instant between a pick and its bake landing is NOT pinned here, and could not be: a
+# bake completes ~100 ms after it is posted even at --surfmap-n 1024, so no dump can be
+# placed inside that window reliably. It matters: while it is open the pixels on screen
+# belong to the PREVIOUS body while the cursor's lat/lon/elev belong to the one just picked,
+# and an adversarial pass put a Kerbin temperature on Moho's ground there. The window's
+# body/type gate fixes it (gameui.cpp). The crossing now has its own case -- --hold-jobs
+# (#748) freezes the runner's PUBLICATION, so
+# ui/748-hold-the-job-runner-and-read-a-window-mid-bake sits inside the gap and reads the
+# cursor line dashing (rebaking) rather than quoting a number for a body it just switched
+# to. This case keeps the steady ends.
 # The two choosers are sized to their content, and the type names are longer than the level
 # names: Map wider than Level is what "sized, not equal-boxed" means here.
 CHECK (lambda m, l: m["rect"][2] - m["rect"][0] > l["rect"][2] - l["rect"][0])([r for r in uilist if r["window"] == "Surface Map" and r["label"] == "Map"][0], [r for r in uilist if r["window"] == "Surface Map" and r["label"] == "Level"][0])
