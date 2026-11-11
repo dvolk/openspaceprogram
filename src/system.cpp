@@ -1148,7 +1148,25 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                                     + at + "\"lon\" must be finite degrees");
                             }
                             W.lon0 = wrapLonDeg(a);   // equirect.h: one wrap, at the parse
-                            double width = std::fmod(b - a, 360.0);
+                            /* The width is eastward, so a reversed pair is a band that
+                               goes nearly all the way round -- [20, 10] is 350 deg wide
+                               with its hole between 10 and 20. That is legal and worth
+                               saying, because it is what an author gets when they write
+                               "10 to 20" the other way round. What is NOT legal is a
+                               span over a whole turn: fmod would fold it into a smaller
+                               band and the row would answer somewhere the author never
+                               pointed at. Exactly 360 is the whole sphere spelled out,
+                               and it means what it says rather than "nothing". */
+                            const double raw = b - a;
+                            if(!(raw <= 360.0)) {
+                                throw std::runtime_error(
+                                    "system: " + body->name + ": atmosphere.wind"
+                                    + at + "\"lon\" spans more than a whole turn"
+                                    " -- a band is at most 360 deg wide, eastward"
+                                    " from its start");
+                            }
+                            double width = std::fmod(raw, 360.0);
+                            if(raw == 360.0) { width = 360.0; }
                             if(width < 0.0) { width += 360.0; }
                             if(width == 0.0) {
                                 throw std::runtime_error(
@@ -1196,8 +1214,7 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                            at the same height over two places. Across bands the order is
                            the author's, so a base column and then the bands reads fine. */
                         for(const WindLevel &P : s.atmosphere.wind) {
-                            if(!(P.lat0 == W.lat0 && P.lat1 == W.lat1
-                               && P.lon0 == W.lon0 && P.lon1 == W.lon1)) { continue; }
+                            if(!windSameBand(P, W)) { continue; }
                             if(!(W.alt > P.alt)) {
                                 throw std::runtime_error(
                                     "system: " + body->name + ": atmosphere.wind"

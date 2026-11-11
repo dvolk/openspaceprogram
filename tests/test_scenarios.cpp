@@ -981,6 +981,40 @@ static void check_wind() {
                        a["wind"] = rows({band(0.0, 1.0, 0.0, -100.0, 30.0),
                                          row(0.0, 2.0, 0.0)});
                    }).dump(), "[-90, 90]");
+    /* The per-band rise rule, hit through a BAND rather than a whole-sphere pair: the
+       whole-sphere cases above reach it too, but only this one proves the rule is about
+       the band and not about the row list. */
+    expect_refuses("wind_band_backwards", patched("Kerbin", [&](nlohmann::json &a) {
+                       a["wind"] = rows({row(0.0, 1.0, 0.0),
+                                         band(5000.0, 2.0, 0.0, -30.0, 30.0),
+                                         band(1000.0, 3.0, 0.0, -30.0, 30.0)});
+                   }).dump(), "does not rise above the row before it in the same band");
+    // A gap in LONGITUDE, not latitude: the coverage rule is about the sphere, not one axis.
+    expect_refuses("wind_lon_gap", patched("Kerbin", [&](nlohmann::json &a) {
+                       a["wind"] = rows({nlohmann::json{{"alt", 0.0}, {"east", 1.0},
+                                                        {"north", 0.0},
+                                                        {"lon", {0.0, 180.0}}},
+                                         nlohmann::json{{"alt", 0.0}, {"east", 2.0},
+                                                        {"north", 0.0},
+                                                        {"lon", {180.0, 270.0}}}});
+                   }).dump(), "with no row");
+    /* A band wider than a turn is an author error, not a wrap: fmod would fold [0, 400]
+       into a 40 deg band answering somewhere nobody pointed at. A REVERSED pair stays
+       legal -- [20, 10] is 350 deg wide with its hole between 10 and 20. */
+    expect_refuses("wind_lon_over_a_turn", patched("Kerbin", [&](nlohmann::json &a) {
+                       a["wind"] = rows({nlohmann::json{{"alt", 0.0}, {"east", 1.0},
+                                                        {"north", 0.0},
+                                                        {"lon", {0.0, 400.0}}},
+                                         row(0.0, 2.0, 0.0)});
+                   }).dump(), "more than a whole turn");
+    // Writing the whole sphere out longhand is the same row as omitting the key.
+    expect_loads("wind_lon_whole_turn", patched("Kerbin", [&](nlohmann::json &a) {
+                     a["wind"] = rows({nlohmann::json{{"alt", 0.0}, {"east", 7.0},
+                                                      {"north", 0.0},
+                                                      {"lat", {-30.0, 30.0}},
+                                                      {"lon", {0.0, 360.0}}},
+                                       row(1000.0, 2.0, 0.0)});
+                 }).dump(), "Kerbin", 2);
     /* The RISING axis (#767 again): large-scale circulation does go up and down -- a
        Hadley cell's upwelling, a subtropical downdraft -- at centimetres a second. It is
        optional, so no shipped file carries it, and its bound is far tighter than the

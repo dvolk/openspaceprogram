@@ -6877,12 +6877,16 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
                 char lab[96];
                 const bool all_lat = (wl.lat0 == -90.0 && wl.lat1 == 90.0);
                 const bool all_lon = (windRowSpanDeg(wl) >= 360.0);
+                /* A band across the antimeridian is stored as a start plus an eastward
+                   width, so its far edge is 370 for what the author wrote as 10. Echo the
+                   authored number, not the internal one. */
+                const double lon_end = std::fmod(wl.lon1, 360.0);
                 if(all_lat && all_lon) {
                     snprintf(lab, sizeof lab, "air wind %s",
                              fmt_dist(wl.alt, w, sizeof w));
                 } else if(all_lat) {
                     snprintf(lab, sizeof lab, "air wind %s, lon %.0f/%.0f",
-                             fmt_dist(wl.alt, w, sizeof w), wl.lon0, wl.lon1);
+                             fmt_dist(wl.alt, w, sizeof w), wl.lon0, lon_end);
                 } else if(all_lon) {
                     snprintf(lab, sizeof lab, "air wind %s, lat %+.0f/%+.0f",
                              fmt_dist(wl.alt, w, sizeof w), wl.lat0, wl.lat1);
@@ -6890,7 +6894,7 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
                     snprintf(lab, sizeof lab,
                              "air wind %s, lat %+.0f/%+.0f, lon %.0f/%.0f",
                              fmt_dist(wl.alt, w, sizeof w), wl.lat0, wl.lat1,
-                             wl.lon0, wl.lon1);
+                             wl.lon0, lon_end);
                 }
                 /* The rising component (#767) prints only when a row actually has one.
                    Nothing in utils/rss/html publishes a large-scale updraft, so a permanent

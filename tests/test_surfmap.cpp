@@ -410,6 +410,27 @@ static void windLayers() {
         check(near_d(lo, std::sqrt(12.5), 1e-9), "the closest approach to calm sets the floor");
         check(near_d(hi, 5.0, 1e-12), "and the rows themselves its ceiling");
     }
+    /* BANDED rows (#767): the sweep paints the whole sphere, so the ramp spans what the
+       ground sees WHEREVER it stands -- the union over bands, never a blend of them. Here a
+       base column says 5 m/s at the datum and 25 m/s at 20 km, and a tropical belt answers
+       for lat [0,10) with 100 m/s at 10 km and 200 m/s at 30 km. Interpolating the four rows
+       as one column would price 52.5 m/s at 5 km -- a speed no pixel on that world shows. */
+    {
+        std::vector<WindLevel> banded = {
+            {0.0, 5.0, 0.0}, {20000.0, 25.0, 0.0},
+            {10000.0, 100.0, 0.0, 0.0, 0.0, 10.0}, {30000.0, 200.0, 0.0, 0.0, 0.0, 10.0},
+        };  // alt, east, north, up, lat0, lat1 -- the whole-sphere lon pair is the default
+        double lo, hi;
+        windRampEnds(banded, -100.0, 5000.0, lo, hi);
+        check(near_d(lo, 5.0, 1e-12), "the base column's deck still sets the floor");
+        check(near_d(hi, 100.0, 1e-12),
+              "the belt holds at its own low row over the same ground, so it sets the ceiling");
+        check(hi < 200.0, "and the belt's 30 km row stays out of a ramp the ground never reaches");
+        const std::vector<WindLevel> base_only = { banded[0], banded[1] };
+        windRampEnds(base_only, -100.0, 5000.0, lo, hi);
+        check(near_d(hi, 10.0, 1e-9),
+              "without the belt the same ground spans 5..10 -- the belt adds a hot end, not a blend");
+    }
 
     // ---- what a wind LOOKS like on the map ------------------------------------
     /* The corner #769 is really about. An equirectangular map spends the same pixels on a

@@ -26,6 +26,7 @@
 #include <glm/glm.hpp>  // windAt returns a horizontal pair as one dvec2
 
 #include "constants.h"  // kGasR, for the hydrostatic integration below
+#include "equirect.h"   // wrapLonDeg: the ONE lon-wrap law, which a wind band is keyed by
 
 /* One level of an altitude-temperature profile: from `base_alt` up to the next
    level's base_alt (or to the body's air top for the last one),
@@ -115,15 +116,21 @@ inline double levelTemperature(const AtmoLayer &L, double alt) {
    is not in them and must not be, or every spinning body would author its own spin into
    every row and the datum would change with the clock.
 
-   windAt() interpolates LINEARLY between the two rows spanning alt and holds the
-   nearest end's value outside the table -- below the first row (a body whose first row
-   is a jet aloft has no reason to claim the surface is calm) and above the last (the
-   air thins out, it does not calm down). A loader refuses an unsorted row list, a row
-   missing or misspelling a key, a non-finite number, a table past 64 rows (windAt
-   scans linearly on the aero path), or a COMPONENT past kWindMaxSpeed -- per axis, so a
-   row may total up to 500*sqrt2. That bound is a typo net, not physics -- a steady
-   500 m/s flow is a Mach-1.5 wind everywhere at once, which is a decimal point in the
-   wrong place, not weather. */
+   windAt() asks a place as well as an altitude, and the answer is ONE BAND's profile:
+   among the rows that cover the place, the NARROWEST band that covers it answers for it
+   at every altitude, interpolating LINEARLY between the two of its rows that span alt
+   and holding the nearest end outside them -- below the first row (a body whose first
+   row is a jet aloft has no reason to claim the surface is calm) and above the last (the
+   air thins out, it does not calm down). Specificity rather than altitude alone is what
+   makes "a whole-sphere column, overridden where the sheets differ" mean what it says:
+   picking the nearest row below and above from ALL covering rows lets a wide column
+   punch back up through a belt's own span, which turns the profile into a sawtooth.
+   A loader refuses an unsorted row list WITHIN a band, a row missing or misspelling a
+   key, a non-finite number, a table past 64 rows (windAt scans linearly on the aero
+   path), two rows at one altitude answering for overlapping ground, a set of bands that
+   leaves any place on the body without an answer, or a COMPONENT past kWindMaxSpeed --
+   per axis, so a row may total up to kWindMaxSpeed*sqrt2. That bound is a typo net, not
+   physics: see the number's own comment below. */
 struct WindLevel {
     double alt = 0.0;    // [m above the sea-level datum], GEOMETRIC
     double east = 0.0;   // [m/s] toward increasing lon, relative to the ground
@@ -165,13 +172,36 @@ inline double windRowSpanDeg(const WindLevel &W) {
     return W.lon1 - W.lon0;   // wrapped at load into (0, 360]
 }
 
-/* Does this row answer for the place (lat, lon), given in DEGREES with lon in [0, 360)?
-   The lon test rotates the point east into the band's own start rather than splitting the
-   band, so a band across the antimeridian is one row, not two. Both axes are HALF-OPEN
-   upward -- [lat0, lat1) and [lon0, lon1) -- because that is what makes Jupiter's
-   published "<30 deg" and ">30 deg" bands tile the sphere with no overlap and no gap;
-   only the +90 edge is included, so the row that reaches the pole owns it. */
+/* How much of the body a row answers for [deg^2] -- the specificity windAt() selects
+   by. It is only ever compared, never read as a number, so the lat/lon product is fine:
+   a belt is narrower than the column it overrides on both axes at once. */
+inline double windBandAreaDeg2(const WindLevel &W) {
+    return (W.lat1 - W.lat0) * windRowSpanDeg(W);
+}
+
+/* Do these two rows answer for exactly the same patch of the body (#767)? Spelled once
+   because the loader's "rise within your band" rule, its "no two rows answer one place
+   at one alt" rule and surfmap.h's per-band ramp walk all need the same question, and
+   three spellings would drift. */
+inline bool windSameBand(const WindLevel &A, const WindLevel &B) {
+    return A.lat0 == B.lat0 && A.lat1 == B.lat1 && A.lon0 == B.lon0 && A.lon1 == B.lon1;
+}
+
+/* Does this row answer for the place (lat, lon), given in DEGREES? Both axes are
+   HALF-OPEN upward -- [lat0, lat1) and [lon0, lon1) -- because that is what makes
+   Jupiter's published "<30 deg" and ">30 deg" bands tile the sphere with no overlap and
+   no gap; only the +90 edge is included, so the row that reaches the pole owns it.
+   The lon test rotates the point east into the band's own start rather than splitting
+   the band, so a band across the antimeridian is one row, not two.
+
+   lon is wrapped HERE rather than at each caller, because the loader's promise that
+   every place has an answer is made over lon in [0, 360) and two callers land just
+   outside it: the surface map's right-hand edge is u == 1, and equirect.h's inverse
+   unwraps a direction a hair west of the prime meridian to a lon that rounds onto a
+   full turn. A 360 that no half-open band covers is not a place with no wind -- it is
+   the same meridian as 0 -- so it must not reach the assert in windAt(). */
 inline bool windRowCovers(const WindLevel &W, double lat_deg, double lon_deg) {
+    if(lon_deg < 0.0 || lon_deg >= 360.0) { lon_deg = wrapLonDeg(lon_deg); }
     if(lat_deg < W.lat0) { return false; }
     if(lat_deg >= W.lat1 && !(W.lat1 == 90.0 && lat_deg == 90.0)) { return false; }
     if(windRowSpanDeg(W) >= 360.0) { return true; }
@@ -202,24 +232,44 @@ inline constexpr double kWindMaxSpeed = 1000.0;   // m/s, per horizontal compone
    typo. Raise it with a published number, not with a row. */
 inline constexpr double kWindMaxRise = 100.0;     // m/s, up/down
 
-/* The air's velocity at (alt, lat, lon). lat/lon in DEGREES, lon in [0, 360) -- the
-   same convention equirect.h unwraps to, and every caller already has the place in
-   hand: the aero path reads it off the hull's spin-frame direction, the surface sweep
-   off its own pixel. There is no alt-only spelling on purpose: with banded rows,
-   "what is the wind at 11 km" has no answer until someone says where.
+/* The air's velocity at (alt, lat, lon). lat/lon in DEGREES -- the same convention
+   equirect.h unwraps to (a lon just outside [0, 360) is wrapped by windRowCovers), and
+   every caller already has the place in hand: the aero path reads it off the hull's
+   spin-frame direction, the surface sweep off its own pixel. There is no alt-only
+   spelling on purpose: with banded rows, "what is the wind at 11 km" has no answer
+   until someone says where.
    Returned as (east, north, up) in m/s -- the local horizontal basis of equirect.h
-   plus the radial. Among the rows that cover the place, the profile is interpolated
-   LINEARLY in alt, exactly as it was when every row was whole-sphere. Outside the
-   table the nearest end is held. */
+   plus the radial. The NARROWEST band covering the place answers for it, and within
+   that band the profile is interpolated LINEARLY in alt, exactly as it was when every
+   row was whole-sphere. Outside the band's rows the nearest end is held. */
 inline glm::dvec3 windAt(const std::vector<WindLevel> &W, double alt,
                          double lat_deg, double lon_deg) {
     assert(!W.empty());   // the caller's gate, AtmosphereParams::has_wind(), is the law
+    /* A place that is not a place gets no answer. Returning the nearest row instead
+       would put a confident real wind under a hull whose position is NaN, and the
+       NaN would then be a force several steps later with nothing left to trace. */
+    assert(std::isfinite(alt) && std::isfinite(lat_deg) && std::isfinite(lon_deg));
     const WindLevel *lo = nullptr, *hi = nullptr;
+    double best = 0.0;   // the narrowest band so far that covers this place
     for(const WindLevel &Wl : W) {
         if(!windRowCovers(Wl, lat_deg, lon_deg)) { continue; }
+        /* The narrowest covering band owns the place (see the struct comment): a belt
+           answers inside itself at every altitude, and the wider column it overrides
+           answers elsewhere. Comparing areas rather than picking nearest-below/above
+           across everything is what stops a whole-sphere row sitting between a belt's
+           two rows from punching a sawtooth through the belt's own span. Rows of
+           EQUAL area that both cover the place are considered together -- the loader
+           cannot produce a meaningful difference between two same-sized bands over one
+           place, and refusing that case would cost an author more rules than it saves. */
+        const double area = windBandAreaDeg2(Wl);
+        if(best > 0.0) {
+            if(area > best) { continue; }
+            if(area < best) { lo = nullptr; hi = nullptr; }
+        }
+        best = area;
         /* One row per altitude covers any place -- the loader refuses two rows at one
            alt whose bands overlap -- so "nearest below" and "nearest above" are the
-           whole rule and there is no tie to break. */
+           whole rule, and there is no tie to break. */
         if(Wl.alt <= alt && (lo == nullptr || Wl.alt > lo->alt)) { lo = &Wl; }
         if(Wl.alt >= alt && (hi == nullptr || Wl.alt < hi->alt)) { hi = &Wl; }
     }

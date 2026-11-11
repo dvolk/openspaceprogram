@@ -3931,6 +3931,31 @@ static void test_wind_profile() {
     CHECK_NEAR(windAt(wrap, 0.0, 0.0, 5.0).x, 7.0, 0.0, "inside it, east of 0");
     CHECK_NEAR(windAt(wrap, 0.0, 0.0, 180.0).x, 2.0, 0.0, "outside it");
     CHECK_NEAR(windAt(wrap, 0.0, 0.0, 10.0).x, 2.0, 0.0, "the far edge is excluded");
+    /* lon 360 is the same meridian as lon 0, and callers DO hand one over: the surface
+       map's right-hand edge is u == 1, and equirect.h's inverse unwraps a direction a
+       hair west of the prime meridian onto a full turn that rounds to 360 deg. A half
+       open band would find no row there, and the loader promised there is always one, so
+       the assert in windAt would abort the game over a rounding artefact. */
+    CHECK_NEAR(windAt(wrap, 0.0, 0.0, 360.0).x, 7.0, 0.0, "lon 360 is lon 0, not a hole");
+    CHECK_NEAR(windAt(wrap, 0.0, 0.0, -5.0).x, 7.0, 0.0, "and a hair west of 0 is inside it");
+
+    /* A whole-sphere COLUMN and a belt at different altitudes. The narrowest band
+       covering a place answers for it at EVERY altitude; the column answers elsewhere.
+       This is what an author means by "a base profile, overridden where the sheets
+       differ". Picking nearest-below and nearest-above among ALL covering rows instead
+       lets the column's 20 km row land inside the belt's own 10..30 km span, and the
+       profile climbs 0, 50, 100, 55, 10 at 0/5/10/15/20 deg -- the belt bleeding down
+       into the column and the column punching back up through the middle of it. */
+    const std::vector<WindLevel> mix {
+        { 0.0, 0.0, 0.0 }, { 20000.0, 10.0, 0.0 },
+        { 10000.0, 100.0, 0.0, 0.0, 0.0, 10.0 },
+        { 30000.0, 200.0, 0.0, 0.0, 0.0, 10.0 },
+    };
+    CHECK_NEAR(windAt(mix, 0.0, 5.0, 0.0).x, 100.0, 0.0, "inside the belt, held at its own lowest row");
+    CHECK_NEAR(windAt(mix, 20000.0, 5.0, 0.0).x, 150.0, 0.0, "the belt's mid-span, not the column's row");
+    CHECK_NEAR(windAt(mix, 40000.0, 5.0, 0.0).x, 200.0, 0.0, "held above the belt, still inside it");
+    CHECK_NEAR(windAt(mix, 20000.0, -45.0, 0.0).x, 10.0, 0.0, "outside the belt the column answers");
+    CHECK_NEAR(windAt(mix, 5000.0, -45.0, 0.0).x, 2.5, 1e-12, "and interpolates there as its own profile");
 
     /* The RISING axis (#767 again): the air moving along the local vertical, which
        is what a Hadley cell's upwelling and a subtropical downdraft actually are.

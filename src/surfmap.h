@@ -285,7 +285,10 @@ inline WindLayer windLayerFor(const Surface &s) {
 
    Banded rows (#767) interleave in altitude -- a whole-sphere column and a jet band are two
    profiles, not one stretch of the same one -- so the walk goes per BAND: sort by band and
-   then by alt, price each band's own profile over the ground's reach, take the union. A table
+   then by alt, price each band's own profile over the ground's reach, take the union. That
+   union is EXACT because windAt() answers a place with the narrowest band covering it and
+   nothing else: each pixel's value is some one band's profile at that pixel's elevation, so
+   pricing every band over the ground's whole reach covers every pixel and no others. A table
    with no bands, which is every table authored so far, is one band and exactly the old walk. */
 inline void windRampEnds(const std::vector<WindLevel> &rows, double elev_lo, double elev_hi,
                          double &lo_ms, double &hi_ms) {
@@ -293,11 +296,6 @@ inline void windRampEnds(const std::vector<WindLevel> &rows, double elev_lo, dou
     lo_ms = 1e300; hi_ms = -1e300;
     std::vector<int> idx(rows.size());
     for(size_t i = 0; i < rows.size(); i++) { idx[i] = (int)i; }
-    auto same_band = [&](int a, int b) {
-        const WindLevel &A = rows[a], &B = rows[b];
-        return A.lat0 == B.lat0 && A.lat1 == B.lat1
-            && A.lon0 == B.lon0 && A.lon1 == B.lon1;
-    };
     std::sort(idx.begin(), idx.end(), [&](int a, int b) {
         const WindLevel &A = rows[a], &B = rows[b];
         if(A.lat0 != B.lat0) { return A.lat0 < B.lat0; }
@@ -334,7 +332,7 @@ inline void windRampEnds(const std::vector<WindLevel> &rows, double elev_lo, dou
     };
     for(size_t s = 0; s < idx.size(); ) {
         size_t e = s + 1;
-        while(e < idx.size() && same_band(idx[s], idx[e])) { e++; }
+        while(e < idx.size() && windSameBand(rows[idx[s]], rows[idx[e]])) { e++; }
         consider(at_alt(s, e, elev_lo));
         consider(at_alt(s, e, elev_hi));
         for(size_t k = s; k + 1 < e; k++) {
@@ -346,8 +344,18 @@ inline void windRampEnds(const std::vector<WindLevel> &rows, double elev_lo, dou
             const glm::dvec2 dv = v1 - v0;
             const double dd = glm::dot(dv, dv);
             if(dd > 0.0) {
+                /* |v| is convex along a segment, so its low end is where v . dv/de = 0 --
+                   but only if that altitude is one the ground can actually stand at. A dip
+                   40 km up on a body whose highest ground is 3 km must not set the cold end
+                   of the ramp, or the coldest colour paints nothing. */
                 const double t = -glm::dot(v0, dv) / dd;
-                if(t > 0.0 && t < 1.0) { consider(v0 + t * dv); }
+                if(t > 0.0 && t < 1.0) {
+                    const double dip = a0 + t * (a1 - a0);
+                    const double seg_lo = a0 > elev_lo ? a0 : elev_lo;
+                    const double seg_hi = a1 < elev_hi ? a1 : elev_hi;
+                    const double at = dip < seg_lo ? seg_lo : (dip > seg_hi ? seg_hi : dip);
+                    consider(v0 + ((at - a0) / (a1 - a0)) * dv);
+                }
             }
         }
         s = e;
