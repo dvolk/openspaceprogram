@@ -6881,13 +6881,23 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
             const bool gen_wind = !at.wind_gen_law.empty();
             if(gen_wind) {
                 char gv[128];
-                if(std::isfinite(at.wind_gen_ro)) {
-                    snprintf(gv, sizeof gv, "%s: Ro %.3g, %d belts, Rhines scale %.3g deg",
-                             at.wind_gen_law.c_str(), at.wind_gen_ro, at.wind_gen_bands,
-                             at.wind_gen_jet_deg);
+                /* A generated table is 2*belts + 1 bands (one straddles the equator).
+                   Report BELTS PER HEMISPHERE, the same unit the --check diagnostic prints,
+                   and when the answer is none say that instead of quoting a Rhines scale
+                   that decided nothing. */
+                const int belts = (at.wind_gen_bands - 1) / 2;
+                if(!std::isfinite(at.wind_gen_ro)) {
+                    snprintf(gv, sizeof gv, "%s: no spin, so no belts -- the column"
+                                            " is the wind", at.wind_gen_law.c_str());
+                } else if(belts <= 0) {
+                    snprintf(gv, sizeof gv, "%s: Ro %.3g, no belts -- rotation never"
+                                            " constrains this flow",
+                             at.wind_gen_law.c_str(), at.wind_gen_ro);
                 } else {
-                    snprintf(gv, sizeof gv, "%s: no spin, %d belts",
-                             at.wind_gen_law.c_str(), at.wind_gen_bands);
+                    snprintf(gv, sizeof gv, "%s: Ro %.3g, %d %s per hemisphere,"
+                                            " Rhines scale %.3g deg",
+                             at.wind_gen_law.c_str(), at.wind_gen_ro, belts,
+                             belts == 1 ? "belt" : "belts", at.wind_gen_jet_deg);
                 }
                 line("air wind (generated)", gv);
             }
@@ -6935,8 +6945,9 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
             }
             if(gen_wind && hidden_rows > 0) {
                 char hv[96];
-                snprintf(hv, sizeof hv, "%d more belts' rows not listed -- the wind map"
-                                        " shows them all", hidden_rows);
+                snprintf(hv, sizeof hv, "%d more rows (one per anchor per belt) not"
+                                        " listed -- the wind map shows them all",
+                         hidden_rows);
                 line("air wind", hv);
             }
         } else {

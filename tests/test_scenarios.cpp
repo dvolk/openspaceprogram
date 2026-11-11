@@ -1072,6 +1072,13 @@ static void check_wind() {
                        a.erase("wind");
                        a["wind_gen"] = "rhines";
                    }).dump(), "needs atmosphere.wind");
+    /* A near-miss key is the expensive kind of typo: it loads as a body with no generator,
+       flies unbanded, and says nothing anywhere. The atmosphere block has no general
+       unknown-key net, so the wind family gets one. */
+    expect_refuses("wind_key_typo", patched("Kerbin", [&](nlohmann::json &a) {
+                       a["wind"] = rows({row(0.0, 5.0, 0.0)});
+                       a["windgen"] = "rhines";
+                   }).dump(), "is not a wind key");
 
     /* Which shipped bodies are allowed to author wind (#688). The mechanism landed
        before the data on purpose: with no row authored, every shipped flight number,

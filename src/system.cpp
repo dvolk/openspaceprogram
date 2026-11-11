@@ -543,6 +543,13 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
         }
         body->transfer_dv = bv.value("transfer_dv", 0.0);
         body->seed         = bv.value("seed", 0.0);
+        /* Bound it, not just finiteness: the wind generator (#775) folds the seed into an
+           integer hash, and llround of an out-of-range double is undefined rather than
+           weird. Every shipped seed is a small whole number. */
+        if(!std::isfinite(body->seed) || std::fabs(body->seed) > 1e15) {
+            throw std::runtime_error("system: '" + body->name
+                                     + "': seed must be finite and within +-1e15");
+        }
 
         /* Legacy flat fields act as defaults for the surface parameters. */
         Surface &s = body->surface;
@@ -1061,7 +1068,7 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                     /* windAt() scans the rows linearly once per air-relative read per
                        hull, so an unbounded table is a loop on the aero path -- same
                        reason (and same cap) as atmosphere.layers above. */
-                    if(av["wind"].size() > 64) {
+                    if(av["wind"].size() > kWindMaxRows) {
                         throw std::runtime_error(
                             "system: " + body->name + ": atmosphere.wind has too"
                             " many rows (64 max)");
@@ -1298,6 +1305,20 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                         " atmosphere.wind -- the generator expands a column of"
                         " {alt, east, north} rows into latitude bands, and there is"
                         " nothing here to expand (#775)");
+                }
+                /* A mistyped WIND key is the quiet kind of typo: "windgen" or "wind_gene"
+                   loads as a body with no generator, flies with the column unbanded, and
+                   says nothing. The atmosphere block as a whole has no unknown-key net --
+                   its keys are many and several are optional -- so police just the wind
+                   family, which is where the silence is expensive. */
+                for(const auto &kv : av.items()) {
+                    const std::string k = kv.key();
+                    if(k.rfind("wind", 0) == 0 && k != "wind" && k != "wind_gen") {
+                        throw std::runtime_error(
+                            "system: " + body->name + ": atmosphere." + k
+                            + " is not a wind key -- the wind family is \"wind\" (the"
+                              " rows) and \"wind_gen\" (the generator over them)");
+                    }
                 }
                 /* THE ANCHOR (#739). p0 is authored; rho0 -- the number airDensity,
                    airPressure's equation of state and the dossier all read -- is what
@@ -1729,28 +1750,42 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
            the scaling is Ro = U / (2 Omega R) and this is the first point in the body's
            parse where Omega is known. What comes back is ordinary WindLevel rows, so the
            one place wind is read (atmo.h:windAt) never learns a generator exists. The
-           coverage law runs on the OUTPUT: if the generator ever emits a table with a gap,
-           this refuses the file instead of painting a hole in the map. */
+           coverage law and the row budget run on the OUTPUT: if the generator ever emits a
+           table with a gap or past the budget, this refuses the file instead of painting a
+           hole in the map. The row loop's other laws (overlap, rising altitudes, value
+           ranges) hold on the output by construction -- generation never touches `alt` and
+           every amplitude is <= 1 -- so they are asserted in windGenerate, not re-run. */
         if(!body->surface.atmosphere.wind_gen_law.empty()) {
             WindGenInfo gi;
-            uint64_t gseed = 1469598103934665603ull;   // FNV-1a over the name, so two
-            for(const char c : body->name) {           // bodies sharing a seed do not get
-                gseed ^= (uint64_t)(unsigned char)c;   // the same belt layout
-                gseed *= 1099511628211ull;
-            }
-            gseed = windGenHash(gseed, (int)std::llround(body->seed));
+            const size_t anchors = body->surface.atmosphere.wind.size();
             body->surface.atmosphere.wind = windGenerate(
                 body->surface.atmosphere.wind, rf->rot_ang_speed,
-                body->seaLevelRadius(), gseed, gi);
+                body->seaLevelRadius(), windGenSeed(body->name, body->seed), gi);
             body->surface.atmosphere.wind_gen_bands = gi.bands;
             body->surface.atmosphere.wind_gen_ro = gi.ro;
             body->surface.atmosphere.wind_gen_jet_deg = gi.jet_deg;
+            if(body->surface.atmosphere.wind.size() > kWindMaxRows) {
+                throw std::runtime_error(
+                    "system: '" + body->name + "': wind_gen \""
+                    + body->surface.atmosphere.wind_gen_law + "\" produced "
+                    + std::to_string(body->surface.atmosphere.wind.size())
+                    + " rows, over the 64 a linear windAt scan may hold -- that is a"
+                      " generator bug, not an authoring one (#775)");
+            }
             if(!windBandsCoverSphere(body->surface.atmosphere.wind)) {
                 throw std::runtime_error(
                     "system: '" + body->name + "': wind_gen \""
                     + body->surface.atmosphere.wind_gen_law + "\" produced bands that"
                     " leave part of the body uncovered -- that is a generator bug, not"
                     " an authoring one (#775)");
+            }
+            /* The author asked for one thing and the budget granted another; a silent
+               reduction reads as "this body has 5 belts" in the dossier. Same register as
+               the other load-time warnings in this file. */
+            if(gi.clamped && gi.bands > 1) {
+                printf("Warning: %s: wind_gen's Rhines scale asked for %d belts per"
+                       " hemisphere and the 64-row budget kept %d (%zu anchors)\n",
+                       body->name.c_str(), gi.asked, (gi.bands - 1) / 2, anchors);
             }
         }
 

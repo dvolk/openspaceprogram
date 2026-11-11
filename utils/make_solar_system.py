@@ -828,17 +828,24 @@ def check_fact_wind(planets, verbose=True, parsed=None):
         # says about the latitudinal structure this body's air can hold. The table on #775
         # shows it tracks Venus (no belts at all), Jupiter and Saturn and overpredicts Mars
         # and the ice giants, so it is a hint for whoever authors a wind -- not a law the
-        # loader may act on.
-        if comps and top and parsed is not None:
+        # loader may act on. ASKED, not shipped: atmo.h:windGenerate also caps the count at
+        # the 64-row budget and at the decay floor, so this number is the raw Rhines ask.
+        if comps and parsed is not None:
             d = parsed.get(name) or {}
             R, per = d.get('radius_m'), d.get('rot_s')
             if R and per:
-                om = 2.0 * math.pi / per
-                ro = top / (2.0 * om * R)
-                beta = 2.0 * om * math.cos(math.radians(30.0)) / R
-                jet = math.degrees(math.sqrt(top / beta) / R)
-                scaling.append('%-9s Ro %-9.4g Rhines scale %-8.4g deg -> %d belts/hemi'
-                               % (name, ro, jet, max(1, int(round(90.0 / jet)))))
+                # U the way windGenerate takes it -- the fastest hypot in the column, not
+                # the per-row component max the sheet guard above uses.
+                u = max(math.hypot(float(w.get('east', 0.0)), float(w.get('north', 0.0)))
+                        for w in wind)
+                if u > 0.0:
+                    om = 2.0 * math.pi / per
+                    ro = u / (2.0 * om * R)
+                    beta = 2.0 * om * math.cos(math.radians(30.0)) / R
+                    jet = math.degrees(math.sqrt(u / beta) / R)
+                    asked = 0 if ro >= 3.0 else int(math.floor(90.0 / jet))  # kWindGenRoBanded
+                    scaling.append('%-9s Ro %-9.4g Rhines scale %-8.4g deg'
+                                   ' -> %d belts/hemi asked' % (name, ro, jet, asked))
         if not comps:
             continue
         if not sheet:

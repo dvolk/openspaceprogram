@@ -175,6 +175,12 @@ inline double windRowSpanDeg(const WindLevel &W) {
     return W.lon1 - W.lon0;   // wrapped at load into (0, 360]
 }
 
+/* The row budget: windAt() scans the table linearly once per air-relative read per hull,
+   so an unbounded table is a loop on the aero path. Named because two places spend it --
+   the loader refuses it, and the generator (#775) budgets its belts against it -- and two
+   literal 64s would drift apart. */
+inline constexpr size_t kWindMaxRows = 64;
+
 /* How much of the body a row answers for [deg^2] -- the specificity windAt() selects
    by. It is only ever compared, never read as a number, so the lat/lon product is fine:
    a belt is narrower than the column it overrides on both axes at once. */
@@ -244,18 +250,20 @@ inline constexpr double kWindMaxRise = 100.0;     // m/s, up/down
                                                         allows jets no narrower than L.
 
    Measured against the bodies where the answer is known (tmp/wind_scaling.py, table on
-   #775): Venus Ro 27.6 -> no jets, and Venus has none; Jupiter Ro 0.006 -> ~19, and the
-   spacecraft count 10-22; Earth Ro 0.108 -> ~4.5, against 2-3 real. Mars and the ice
-   giants overpredict -- their jets are eddy-driven and weak rather than Rhines-limited
-   -- which is exactly why this ships on INVENTED bodies first and not on the ones whose
-   fact sheets the dossier quotes.
+   #775; utils/make_solar_system.py prints the same numbers per body in --check, using
+   each body's fastest AUTHORED row as U): Venus Ro 27.6 -> no jets, and Venus has none;
+   Jupiter Ro 0.006 -> ~19 asked, spacecraft count 10-22; Earth Ro 0.043 -> 7 asked
+   against 2-3 real cells. Mars and the ice giants overpredict -- their jets are
+   eddy-driven and weak rather than Rhines-limited -- which is exactly why this ships on
+   INVENTED bodies first and not on the ones whose fact sheets the dossier quotes.
 
    What comes out is ordinary WindLevel rows, so windAt, the surface sweep, the Surface
    window and [surfinfo] cannot tell the difference and none of them grew a branch. The
-   generator is a ROW FACTORY, not a second law of wind: system.cpp runs its coverage and
-   overlap checks on the OUTPUT, so a generator bug refuses instead of painting nonsense.
-   Provenance rides beside the table (terragen.h) so the dossier can say "generated"
-   rather than passing a guess off as a published figure. */
+   generator is a ROW FACTORY, not a second law of wind: system.cpp re-runs the coverage
+   law and the 64-row budget on the OUTPUT, and the tiling invariants are asserted here,
+   so a generator bug refuses instead of painting nonsense. Provenance rides beside the
+   table (terragen.h) so the dossier can say "generated" rather than passing a guess off
+   as a published figure. */
 
 /* Rossby number: the flow's own inertia over the planet's rotation. At or above 1 the
    spin never gets a vote. A non-spinning body is infinity, not a divide by zero. */
@@ -280,11 +288,13 @@ struct WindGenInfo {
     int bands = 0;         // latitude bands emitted (1 == the column, unchanged)
     double ro = 0.0;       // Rossby number at the column's fastest row
     double jet_deg = 0.0;  // Rhines scale at 30 deg, in degrees of latitude
+    int asked = 0;         // belts per hemisphere the Rhines scale asked for, before clamps
+    bool clamped = false;  // the 64-row budget cut that count
 };
 
 /* A rotator this slow gets no latitudinal structure at all: rotation never constrains
    the flow, so the honest picture IS the authored column. Venus sits at Ro 27.6, and
-   Earth at 0.108, so the threshold is not close to deciding anything real -- it is there
+   Earth at 0.043, so the threshold is not close to deciding anything real -- it is there
    to stop a slow spinner being banded by a Rhines count that means nothing without it. */
 inline constexpr double kWindGenRoBanded = 3.0;
 
@@ -308,19 +318,42 @@ inline uint64_t windGenHash(uint64_t seed, int k) {
     return z ^ (z >> 31);
 }
 
+/* The generator's seed for ONE body: FNV-1a over its name, mixed with the body's own
+   seed. The name matters because two bodies can share a seed and a spin -- in a system
+   built from a template that is the normal case -- and two worlds with identical belts
+   would read as one world copied. Out of the loader so a test can pin that property
+   without building a whole system around it. */
+inline uint64_t windGenSeed(const std::string &name, double body_seed) {
+    uint64_t h = 1469598103934665603ull;
+    for(const char c : name) { h ^= (uint64_t)(unsigned char)c; h *= 1099511628211ull; }
+    return windGenHash(h ^ (uint64_t)std::llround(body_seed), 0);
+}
+
 /* Expand a column of whole-sphere anchors into latitude bands.
 
    U is the FASTEST horizontal speed in the column, not its average: the scaling is about
    the jet the author is describing, and averaging it against a surface row of 1 m/s would
-   hide it. Bands are mirror-symmetric about the equator because zonal winds are: the
-   equatorial band carries the anchors' own sign, and each band further out alternates
-   against its neighbour and decays by kWindGenDecay. `up` decays with the band but does
-   NOT alternate -- the vertical leg of a cell is not a zonal wind, and flipping its sign
-   every belt would invent sinking air where the author said rising.
+   hide it. A column with no horizontal wind has no jet for rotation to limit, so it comes
+   back exactly as authored -- banded calm air is structure out of nothing.
 
-   The OUTPUT is what system.cpp validates, so this must satisfy the loader's laws itself:
-   bands tile [-90, 90] with no gap or overlap, one row per anchor per band, and the
-   anchors' own alt order inside every band. */
+   The bands mirror about the equator, and "mirror" is per COMPONENT, which is the part
+   that is easy to get wrong:
+     east  -- symmetric. A zonal wind is a scalar under an equatorial mirror, so the ±|j|
+              bands share a sign, and each band further out alternates against its neighbour.
+     north -- ANTI-symmetric. Air moving away from the equator does so in BOTH hemispheres;
+              give the ±|j| bands the same `north` and the field drags mass across the
+              equator, buying a source at one band edge and a sink at the other.
+     up    -- symmetric in the hemispheres, alternating with the belts: rising in one,
+              sinking in the next. Air rising at every latitude has nowhere to come from,
+              and the hand-authored cell in res/systems/wind_playground.json ("Hadley") is
+              the same pattern -- +0.02 over the equator, -0.015 in the flanking belts.
+   The one band straddling lat 0 keeps the anchors' own signs: inside a band that wraps the
+   equator there is no antisymmetric answer to give. Amplitudes decay poleward by
+   kWindGenDecay, so every emitted band sits at or above kWindGenFloor.
+
+   system.cpp re-checks the OUTPUT against the coverage law and the 64-row budget, so this
+   must satisfy the loader's laws itself: bands tile [-90, 90] with no gap or overlap, one
+   row per anchor per band, and the anchors' own alt order inside every band. */
 inline std::vector<WindLevel> windGenerate(const std::vector<WindLevel> &anchors,
                                            double rot_ang_speed, double radius,
                                            uint64_t seed, WindGenInfo &info) {
@@ -332,17 +365,24 @@ inline std::vector<WindLevel> windGenerate(const std::vector<WindLevel> &anchors
     for(const WindLevel &A : anchors) { U = std::max(U, std::hypot(A.east, A.north)); }
     info.ro = windRossby(U, rot_ang_speed, radius);
     info.jet_deg = windRhinesDeg(U, rot_ang_speed, radius, 30.0);
+    info.asked = 0;
+    info.clamped = false;
+    if(U <= 0.0) {
+        info.bands = 1;                              // calm air: nothing to band
+        return anchors;
+    }
 
-    /* How many bands per hemisphere the Rhines scale asks for -- and the row cap answers
-       back. system.cpp refuses a table over 64 rows because windAt scans linearly on the
-       aero path, and this emits one row per anchor per band. */
-    int nb = (int)std::lround(90.0 / info.jet_deg);
-    if(nb < 1) { nb = 1; }
-    const int room = 64 / (int)anchors.size();
-    if(2 * nb + 1 > room) { nb = (room - 1) / 2; }
+    /* How many belts per hemisphere the Rhines scale asks for -- FLOOR, because half a
+       Rhines scale across a whole hemisphere is zero belts. Then the row cap answers back:
+       system.cpp refuses a table over 64 rows because windAt scans linearly on the aero
+       path, and this emits one row per anchor per band. */
+    int nb = (int)std::floor(90.0 / info.jet_deg);
+    info.asked = nb;
+    const int room = (int)(kWindMaxRows / anchors.size());
+    if(2 * nb + 1 > room) { nb = (room - 1) / 2; info.clamped = true; }
     if(info.ro >= kWindGenRoBanded) { nb = 0; }
 
-    /* And the floor answers back too: past jmax the decay has fallen under it, so those
+    /* And the decay floor answers back too: past jmax the amplitude is under it, so those
        belts are dropped and the outermost KEPT band owns everything to the pole. Dropping
        a band and leaving its latitudes out would break the coverage the loader insists on
        -- a faint belt is a wide belt, never a hole. */
@@ -363,15 +403,20 @@ inline std::vector<WindLevel> windGenerate(const std::vector<WindLevel> &anchors
         const double u = (double)(windGenHash(seed, k) >> 11) / 9007199254740992.0;
         edge[(size_t)k] = (k + 0.5) * w + (u * 2.0 - 1.0) * kWindGenJitter * w;
     }
+    for(int k = 0; k < nb; k++) {
+        if(edge[(size_t)k] > 89.0) { edge[(size_t)k] = 89.0; }   // keep the polar cap real
+        if(edge[(size_t)k] < 1.0) { edge[(size_t)k] = 1.0; }
+    }
     for(int k = 1; k < nb; k++) {
         if(edge[(size_t)k] <= edge[(size_t)k - 1]) {
             edge[(size_t)k] = edge[(size_t)k - 1] + 1.0;   // jitter may cross; belts may not
         }
     }
-    for(int k = 0; k < nb; k++) {
-        if(edge[(size_t)k] > 89.0) { edge[(size_t)k] = 89.0; }   // keep the polar cap real
-        if(edge[(size_t)k] < 1.0) { edge[(size_t)k] = 1.0; }
-    }
+    /* Both guards above hold only while kWindGenJitter < 0.5 (consecutive nominal edges
+       are w apart, jitter spans 2 * 0.15 * w) and the clamp keeps the outermost edge off
+       the pole. Retune jitter past that and this asserts rather than emitting a band with
+       lat0 >= lat1, which the loader would then refuse as its own bug. */
+    assert(edge[(size_t)nb - 1] < 90.0);
 
     // -90, -e[nb-1], ... , -e[0], e[0], ... , e[nb-1], 90  ->  2*nb+1 bands, band nb is
     // the equatorial one, so a band's distance from the equator is |band - nb|.
@@ -388,6 +433,7 @@ inline std::vector<WindLevel> windGenerate(const std::vector<WindLevel> &anchors
         const int j = std::abs(b - nb);
         const double amp = std::pow(kWindGenDecay, (double)j);
         const double sign = (j % 2 == 0) ? 1.0 : -1.0;
+        const double hemi = (b < nb) ? -1.0 : 1.0;   // the mirror, for the meridional leg
         for(const WindLevel &A : anchors) {
             WindLevel W = A;
             W.lat0 = E[(size_t)b];
@@ -395,13 +441,13 @@ inline std::vector<WindLevel> windGenerate(const std::vector<WindLevel> &anchors
             W.lon0 = 0.0;
             W.lon1 = 360.0;
             W.east = A.east * amp * sign;
-            W.north = A.north * amp * sign;
-            W.up = A.up * amp;
+            W.north = A.north * amp * sign * hemi;
+            W.up = A.up * amp * sign;
             out.push_back(W);
         }
     }
-    info.bands = out.empty() ? 1 : (int)out.size() / (int)anchors.size();
     assert(!out.empty());
+    info.bands = (int)out.size() / (int)anchors.size();
     return out;
 }
 

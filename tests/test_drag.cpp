@@ -4036,11 +4036,13 @@ static void test_wind_generate() {
     WindGenInfo fast;
     const auto jup = windGenerate(col, 1.759e-4, 6.991e7, 7ull, fast);
     CHECK_NEAR(fast.ro, 0.00163, 0.02, "Jupiter's Rossby number");
-    CHECK_TRUE(fast.bands > 6, "a fast spinner bands");
-    CHECK_TRUE(jup.size() == (size_t)fast.bands * col.size(),
-               "one row per anchor per band");
-    CHECK_TRUE(jup.size() <= 64, "and never past the loader's row cap, which is the"
-                                 " aero path's linear-scan budget");
+    CHECK_TRUE(fast.asked > 30 && fast.clamped, "the Rhines scale asks for more belts than"
+                                                " the row budget could ever hold");
+    CHECK_TRUE(fast.bands == 15, "and the decay floor keeps 7 belts per hemisphere: a"
+                                 " faint belt is a WIDE belt, never a hole in the coverage");
+    CHECK_TRUE(jup.size() == 30, "one row per anchor per band");
+    CHECK_TRUE(jup.size() <= kWindMaxRows, "and never past the loader's row cap, which is"
+                                           " the aero path's linear-scan budget");
 
     /* Coverage and alternation, asked the way the game asks: through windAt. The loader
        runs its own checks on the generator's OUTPUT, so a table that left a latitude
@@ -4085,6 +4087,69 @@ static void test_wind_generate() {
     }
     CHECK_TRUE(moved, "a different seed moves the belts, so two bodies sharing a spin"
                       " do not get the same planet");
+
+    /* "Mirror" is per COMPONENT, which is the part easy to get wrong: `east` is a scalar
+       under an equatorial mirror, `north` has to be ANTI-symmetric or the field drags mass
+       across the equator, and `up` mirrors while alternating with the belts -- rising in
+       one, sinking in the next, the pattern the hand-authored "Hadley" body in
+       res/systems/wind_playground.json states outright. Sample away from the band that
+       straddles lat 0, where there is no antisymmetric answer to give. */
+    const std::vector<WindLevel> cell = { {0.0, 40.0, 10.0, 0.02} };
+    WindGenInfo cellgi;
+    const auto rows = windGenerate(cell, 1.759e-4, 6.991e7, 7ull, cellgi);
+    bool per_component = true;
+    for(double lat : {10.0, 25.0, 40.0, 55.0, 70.0, 85.0}) {
+        const glm::dvec3 n = windAt(rows, 0.0, lat, 0.0);
+        const glm::dvec3 s = windAt(rows, 0.0, -lat, 0.0);
+        if(std::abs(n.x - s.x) > 1e-9 || std::abs(n.y + s.y) > 1e-9
+           || std::abs(n.z - s.z) > 1e-9) { per_component = false; }
+    }
+    CHECK_TRUE(per_component, "the zonal leg mirrors, the meridional leg anti-mirrors"
+                              " and the vertical leg mirrors");
+    bool rose = false, sank = false;
+    for(int i = 0; i <= 180; i++) {
+        const double z = windAt(rows, 0.0, -90.0 + (double)i, 0.0).z;
+        if(z > 0.0) { rose = true; }
+        if(z < 0.0) { sank = true; }
+    }
+    CHECK_TRUE(rose && sank, "the vertical leg closes cells; air rising at every latitude"
+                             " would have nowhere to come from");
+
+    /* Calm air gets no structure. A column with no horizontal wind has no jet for rotation
+       to limit, and banding an `up`-only column would invent mid-latitude updrafts the
+       author never wrote -- and triple the table doing it. */
+    const std::vector<WindLevel> calm = { {0.0, 0.0, 0.0, 0.02} };  // alt, east, north, up
+    WindGenInfo calmgi;
+    const auto flat = windGenerate(calm, 7.3e-5, 6.0e6, 7ull, calmgi);
+    CHECK_TRUE(calmgi.bands == 1 && flat.size() == 1, "a calm column comes back as authored");
+    CHECK_TRUE(flat[0].lat0 == -90.0 && flat[0].lat1 == 90.0 && flat[0].up == 0.02,
+               "and still answers for the whole body, unchanged");
+
+    /* A Rhines scale wider than a hemisphere is ZERO belts, not one: the count is a floor,
+       so a body just inside kWindGenRoBanded does not get a belt and a half. 100 m/s over a
+       1000 km body at 2e-5 rad/s is Ro 2.5 with a ~97 deg Rhines scale. */
+    const std::vector<WindLevel> gust = { {0.0, 100.0, 0.0} };
+    WindGenInfo widegi;
+    const auto wide = windGenerate(gust, 2.0e-5, 1.0e6, 7ull, widegi);
+    CHECK_TRUE(widegi.jet_deg > 90.0 && widegi.bands == 1 && wide.size() == 1,
+               "a hemisphere too small for one Rhines scale gets no belts");
+
+    /* The NAME is half the seed (atmo.h:windGenSeed). Two bodies sharing a seed and a spin
+       is the normal case for a system built from a template, and identical belts on both
+       would read as one world copied. This lives in atmo.h rather than only in the loader
+       so it can be pinned without building a whole system around it. */
+    CHECK_TRUE(windGenSeed("Earthlike", 22.0) != windGenSeed("Slowpoke", 22.0),
+               "one body seed under two names gives two belt layouts");
+    CHECK_TRUE(windGenSeed("Earthlike", 22.0) != windGenSeed("Earthlike", 23.0),
+               "and the body seed still moves it");
+    WindGenInfo twin;
+    const auto named = windGenerate(col, 1.759e-4, 6.991e7,
+                                    windGenSeed("Slowpoke", 22.0), twin);
+    bool shifted = named.size() != jup.size();
+    for(size_t r = 0; !shifted && r < jup.size() && r < named.size(); r++) {
+        if(named[r].lat0 != jup[r].lat0) { shifted = true; }
+    }
+    CHECK_TRUE(shifted, "so two bodies with one seed and one spin do not get one planet");
 }
 
 int main() {
