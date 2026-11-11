@@ -1997,6 +1997,11 @@ void drawUIReadouts(Game &g) {
             const double lat = std::numbers::pi * 0.5 - sm_v * std::numbers::pi;
             const glm::vec3 dir = equirectDir(lon, lat);
             char elev_s[32];
+            /* This point's height above the sea-level datum -- the coordinate the wind profile
+               is keyed on (#688) as well as the number the line prints. Hoisted because two
+               readers want it and a second GetTerrainHeight call would be a second answer. */
+            const double sm_elev = (double)sm_body->GetTerrainHeight(dir)
+                                 - sm_body->seaLevelRadius();
             // The nearest site under the cursor, so a marker is still identifiable with the
             // labels box off. One suffix on the same line, never a second line.
             char site_s[64] = "";
@@ -2049,12 +2054,31 @@ void drawUIReadouts(Game &g) {
                                                           : g.surfmap.temp_block.c_str());
                 }
             }
-            uiTextDisabled("cursor: lat %+.1f  lon %.1f  elev %s%s%s",
+            /* #769: on a wind map, the same idea one axis over -- the speed and direction of the
+               air OVER THE PIXEL under the cursor. It goes through the profile the picture was
+               BAKED with (g.surfmap.wind_rows) at this point's elevation, which is the same
+               arithmetic the sweep used to colour that pixel; the Surface window's Wind: row two
+               windows away reads the same table at the hull's altitude, so the two agree by
+               construction rather than by luck. Dashed with the reason, because "no air" and
+               "air the file states no wind for" are different news (#726). */
+            char wind_s[48] = "";
+            if(g.surfmap.baked_type == kMapWind) {
+                if(!sm_bake_here) {
+                    snprintf(wind_s, sizeof wind_s, "  wind - (rebaking)");
+                } else if(g.surfmap.wind_ok) {
+                    const glm::dvec2 wv = windAt(g.surfmap.wind_rows, sm_elev);
+                    snprintf(wind_s, sizeof wind_s, "  wind %.1f m/s %s",
+                             glm::length(wv), windToward(wv.x, wv.y));
+                } else {
+                    snprintf(wind_s, sizeof wind_s, "  wind - (%s)",
+                             g.surfmap.wind_block.empty() ? "unavailable"
+                                                          : g.surfmap.wind_block.c_str());
+                }
+            }
+            uiTextDisabled("cursor: lat %+.1f  lon %.1f  elev %s%s%s%s",
                            glm::degrees(lat), glm::degrees(lon),
-                           fmt_dist((double)sm_body->GetTerrainHeight(dir)
-                                    - sm_body->seaLevelRadius(),
-                                    elev_s, sizeof elev_s),
-                           gt_s, site_s);
+                           fmt_dist(sm_elev, elev_s, sizeof elev_s),
+                           gt_s, wind_s, site_s);
         } else {
             uiTextDisabled("cursor: lat --  lon --  elev --");
         }

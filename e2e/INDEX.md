@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 320 |
+| `invariant` | a behaviour or a player route the game must keep | 321 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 46 |
 | `harness` | CLI/test-engine plumbing, not game spec | 15 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **385** |
+| | **total** | **386** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -351,7 +351,7 @@ judgement. Select by number, name or path, e.g.
 | `ui/741-the-debug-clock-solar-row-is-wired-to-the-sun-the-sim-uses.txt` | invariant | The debug window's solar clock row is readable, its value is the sim clock's own, and the rate at which it walks is the day length the atlas prints for the home world -- so the one UI readout that reads the sun cannot be rewired to a different sun, a different day, or nothing at all without a test noticing. |
 | `ui/768-systems-window-shuts-the-nozzles.txt` | golden | The Systems window's Thrust vectoring checkbox drops the live gimballed rating in --steering-log from 129710 N m to 0 while the window keeps printing 129710 N m beside the now-off switch, and says nothing about the engines being gone. |
 
-## render (66)
+## render (67)
 
 | case | kind | pins |
 |---|---|---|
@@ -421,6 +421,7 @@ judgement. Select by number, name or path, e.g.
 | `render/745-the-surface-map-prices-every-pixel-it-draws.txt` | invariant | The Surface Map can be drawn as the ground's temperature instead of its albedo, and the picture closes on the numbers the model claims: its coldest pixel IS the night end the atlas prints, and the area-weighted mean taken in T^4 comes back to the anchor. |
 | `render/745-the-surface-maps-chooser-actually-changes-the-picture.txt` | invariant | The Surface Map's Map combo switches what the sweep paints -- ground, ground+ocean, temperature -- each row says which picture it is, and switching re-bakes without a second keypress. |
 | `render/760-perf-gpu-waits-for-the-gpu.txt` | invariant | --perf-gpu implies --perf, says what it is doing, and puts the GPU's wait inside the paint half. |
+| `render/769-the-surface-map-draws-the-wind.txt` | invariant | --surfmap-map wind paints the air's speed and direction over the ground: Earth prints the speeds it actually drew between the ends its file states, the Moon refuses for want of air, Jupiter refuses for want of an authored wind, and the cursor reads the number under it. |
 
 ## harness (16)
 

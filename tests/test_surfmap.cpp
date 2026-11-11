@@ -288,6 +288,107 @@ static void cursorTemperature() {
     check(hi > lo + 1.0, "and the warmest is lit by more than rounding");
 }
 
+/* #769: the wind map. Same division of labour as mapLayers() -- the window builds its combo
+   from the table and paints the field per pixel, so what belongs HERE is the policy the window
+   cannot check (which worlds can be drawn, and which absence a refusal names) and the geometry
+   the sweep cannot see (what a wind looks like as a direction on an equirectangular map). */
+static void windLayers() {
+    // ---- the name the CLI and the combo share ---------------------------------
+    check(surfMapTypeFromName("wind") == kMapWind, "\"wind\" is a map type");
+    check(surfMapTypeFromName("Wind") == kMapWind, "and matches whatever its case");
+    check(surfMapTypeFromName("winds") == -1, "a near-miss word is refused, not guessed");
+
+    // ---- the three states a body can be in ------------------------------------
+    // 1. No air at all (the Moon).
+    Surface moon;
+    WindLayer wm = windLayerFor(moon);
+    check(!wm.ok, "a body with no air paints no wind");
+    check(wm.rows.empty(), "and publishes no rows to read");
+    check(wm.block == "no air", "naming which absence: no air");
+    check(!wm.legend.empty(), "with a sentence for the log");
+
+    // 2. Air the file states no wind for (every body but Venus, Earth, Mars).
+    Surface kerbin;
+    kerbin.atmosphere.enabled = true;
+    kerbin.atmosphere.layers.push_back(AtmoLayer{});
+    WindLayer wk = windLayerFor(kerbin);
+    check(!wk.ok, "a body with air and no wind rows paints no wind");
+    check(wk.block == "no wind", "and says so differently from a body with no air");
+    check(wk.block != wm.block, "the two absences do not collapse into one (#726)");
+
+    // 3. Authored wind (Earth's two rows).
+    Surface earth;
+    earth.atmosphere.enabled = true;
+    earth.atmosphere.layers.push_back(AtmoLayer{});
+    earth.atmosphere.wind = { {0.0, 5.0, 0.0}, {11000.0, 40.0, 0.0} };
+    WindLayer we = windLayerFor(earth);
+    check(we.ok, "a body that authors wind paints it");
+    check(we.rows.size() == 2, "carrying the profile for the sweep and the cursor alike");
+    check(near_d(we.lo_ms, 5.0, 1e-12) && near_d(we.hi_ms, 40.0, 1e-12),
+          "the ramp spans the body's OWN rows, not a global constant");
+
+    /* Ends from the MAGNITUDE, not from one component: a row blowing hard north-west is the
+       fastest row on this world, and a ramp that read only `east` would paint it cold. */
+    Surface skew;
+    skew.atmosphere.enabled = true;
+    skew.atmosphere.wind = { {0.0, 3.0, 0.0}, {20000.0, -30.0, -40.0} };
+    WindLayer ws = windLayerFor(skew);
+    check(near_d(ws.lo_ms, 3.0, 1e-12), "the slow row still sets the cold end");
+    check(near_d(ws.hi_ms, 50.0, 1e-12), "and the fast one its hot end, whichever way it blows");
+
+    // A one-row body (Mars): the span collapses, and the ramp must not invent a gradient.
+    Surface mars;
+    mars.atmosphere.enabled = true;
+    mars.atmosphere.wind = { {0.0, 10.0, 0.0} };
+    WindLayer wa = windLayerFor(mars);
+    check(wa.ok && near_d(wa.lo_ms, wa.hi_ms, 1e-12), "one row spans nothing");
+    check(near_d(surfmapWindT01(10.0, wa.lo_ms, wa.hi_ms), 0.5, 1e-12),
+          "so every pixel takes the midpoint: one honest flat colour");
+    check(near_d(surfmapWindT01(40.0, we.lo_ms, we.hi_ms), 1.0, 1e-12)
+          && near_d(surfmapWindT01(5.0, we.lo_ms, we.hi_ms), 0.0, 1e-12),
+          "the ends of an Earth profile map to the ends of the ramp");
+    check(surfmapWindT01(20.0, we.lo_ms, we.hi_ms)
+          > surfmapWindT01(10.0, we.lo_ms, we.hi_ms),
+          "and the ramp does not stall between them");
+
+    // ---- what a wind LOOKS like on the map ------------------------------------
+    /* The corner #769 is really about. An equirectangular map spends the same pixels on a
+       degree of longitude wherever it is, while the ground gets cos(lat) as much of it, so the
+       east component needs 1/cos(lat) or every wind tilts toward the pole. */
+    {
+        const glm::dvec2 e = surfmapWindPixelVec(10.0, 0.0, 1.0);      // equator
+        check(e.x > 0.0 && near_d(e.y, 0.0, 1e-12), "east points along +column");
+        const glm::dvec2 n = surfmapWindPixelVec(0.0, 10.0, 1.0);
+        check(near_d(n.x, 0.0, 1e-12) && n.y < 0.0, "north points up the map (row 0 is north)");
+        const glm::dvec2 s = surfmapWindPixelVec(0.0, -10.0, 1.0);
+        check(s.y > 0.0, "and south down it");
+    }
+    {
+        // 60 deg N: cos = 0.5, so an eastward wind spans twice the map distance.
+        const double cl = 0.5;
+        const glm::dvec2 e60 = surfmapWindPixelVec(10.0, 0.0, cl);
+        check(near_d(e60.x, 20.0, 1e-9), "at 60 deg an east wind is stretched by 1/cos(lat)") ;
+        check(near_d(e60.y, 0.0, 1e-12), "without tipping off the parallel");
+        /* A wind that is 45 deg on the GROUND reads shallower than 45 deg on the map at 60 deg
+           N -- that is the whole point, and the naive (east, north) drawing fails it. */
+        const glm::dvec2 ne = surfmapWindPixelVec(10.0, 10.0, cl);
+        check(std::fabs(ne.x) > std::fabs(ne.y),
+              "a ground-NE wind is more eastward than northward on the map");
+        check(near_d(std::atan2(ne.y, ne.x), std::atan2(-10.0, 20.0), 1e-12),
+              "by exactly the projection's factor");
+    }
+    {
+        /* Near a pole the divide would run away (cos -> 0) and put an arrow's head off the
+           picture. The floor keeps the direction sane where the map is degenerate anyway. */
+        const glm::dvec2 p1 = surfmapWindPixelVec(10.0, 0.0, 0.0);
+        const glm::dvec2 p2 = surfmapWindPixelVec(10.0, 0.0, kMapPoleCos);
+        check(near_d(p1.x, p2.x, 1e-12), "a pole does not divide by zero");
+        check(std::isfinite(p1.x) && p1.x > 0.0, "and stays a finite eastward arrow");
+        check(kMapPoleCos > 0.0 && kMapPoleCos < 0.2,
+              "the floor is small (a real latitude) without being negligible");
+    }
+}
+
 int main() {
     const int w = 16, h = 8;
 
@@ -533,6 +634,7 @@ int main() {
 
     mapLayers();
     cursorTemperature();
+    windLayers();
 
     if(g_failures == 0) {
         std::printf("test_surfmap: all checks passed\n");

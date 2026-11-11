@@ -56,6 +56,7 @@ void surfmapCompute(Game &g) {
     const int type = g.surfmap.map_type;
     const bool ocean = (type == kMapGroundOcean);
     const bool want_temp = (type == kMapTemperature);
+    const bool want_wind = (type == kMapWind);
 
     /* The terminator at the REQUEST instant (frames move with the sim), read BEFORE the
        temperature layer: a world with no star to light it has no day side to price, and the
@@ -84,6 +85,11 @@ void surfmapCompute(Game &g) {
     // patch applied afterwards where a reader has to find both halves.
     const TempLayer tl = want_temp ? tempLayerFor(body->surface, derived_bb, has_sun)
                                    : TempLayer{};
+    /* The wind profile (#769). Decided here, once, and COPIED into the job: the worker never
+       touches a body pointer, exactly like the TerrainParams snapshot below. A wind needs no
+       sun and no clock -- it is authored data about the air, not a sample of the sky right
+       now -- so unlike the temperature layer it does not care what instant the map is baked at. */
+    const WindLayer wl = want_wind ? windLayerFor(body->surface) : WindLayer{};
 
     // Snapshot terrain params and hand the sweep to the worker. The worker
     // colours from THIS snapshot: surface.max_height is applied LATER by
@@ -110,6 +116,7 @@ void surfmapCompute(Game &g) {
     // the non-copyable Game).
     g.jobs.post("Surface map", [&g, tp, sea_r, sun_dir, w, h, baked, has_sun, ocean,
                                 type, level = g.surfmap.level, want_temp, tl,
+                                want_wind, wl,
                                 log, n_sites, body_name, t_now, epoch]()
                 -> std::function<void()> {
         // Worker: build the pixel buffers (pure). shared_ptr because the
@@ -137,6 +144,14 @@ void surfmapCompute(Game &g) {
            of the swing and a stale number here would be a lie with a decimal point on it). cos(lat) is the xz length of the unit
            direction, so the weight is free. min/max stay unweighted -- extremes, not means. */
         double tmin = 1e30, tmax = -1e30, tsum = 0.0, t4sum = 0.0, tw = 0.0;
+        /* Wind stats, same shape and the same area weighting (cos lat) as the temperature
+           block above: what the sweep actually painted, so the log can show the ground's reach
+           against the table's ends rather than assuming they meet. */
+        double wmin = 1e30, wmax = -1e30, wsum = 0.0, wwt = 0.0;
+        /* Arrow cells drawn by the pass below, counted where they are drawn. A wind map whose
+           grid silently draws nothing (a stride bug, a refusal that painted anyway) is otherwise
+           invisible to every reader but one standing in front of the screen. */
+        int wind_cells = 0;
 
         for(int j = 0; j < h; j++) {
             for(int i = 0; i < w; i++) {
@@ -159,12 +174,33 @@ void surfmapCompute(Game &g) {
                     tw += cw;
                     tsum += cw * T;
                     t4sum += cw * T * T * T * T;
-                } else if(want_temp) {
+                } else if(want_wind && wl.ok) {
+                    /* The scalar half of the field: how fast the air moves OVER THIS PIXEL.
+                       The altitude windAt() wants is this pixel's ground elevation above the
+                       sea-level datum -- the same coordinate the Surface window's Wind: row
+                       asks with and the aero law reads -- so a mountain pokes into faster air
+                       and shows up brighter, and a basin does not get credited with the wind
+                       of the ridge above it. The arrows go on afterwards; a scalar alone is not
+                       a vector field (#769). */
+                    const double elev = (double)terrainHeight((glm::vec3)d, tp) - sea_r;
+                    const glm::dvec2 wv = windAt(wl.rows, elev);
+                    const double spd = glm::length(wv);
+                    unsigned char r = 0, gg = 0, bb = 0;
+                    surfmapRamp(surfmapWindT01(spd, wl.lo_ms, wl.hi_ms), r, gg, bb);
+                    c = glm::vec3(r / 255.0f, gg / 255.0f, bb / 255.0f);
+                    if(spd < wmin) { wmin = spd; }
+                    if(spd > wmax) { wmax = spd; }
+                    const double cw = std::sqrt(d.x * d.x + d.z * d.z);   // cos(latitude)
+                    wwt += cw;
+                    wsum += cw * spd;
+                } else if(want_temp || want_wind) {
                     /* Asked for a temperature this world does not have, so the picture says
                        so: a flat neutral field, with the reason in the window's legend row.
                        Falling back to the albedo here would put a ground picture under a
                        "temperature" label, which is the map lying about what it is (#727's
-                       law, applied to a picture rather than a number). */
+                       law, applied to a picture rather than a number). A wind map refuses the
+                       same way -- and the two refusals say WHICH absence in the log's note= and
+                       on the cursor row, not here (#726). */
                     c = glm::vec3(0.34f, 0.34f, 0.34f);
                 } else {
                     // Ocean map on and at/below sea level: flat sea covers the floor
@@ -193,17 +229,73 @@ void surfmapCompute(Game &g) {
                 sr += f_log * c.r; sg += f_log * c.g; sb += f_log * c.b;
             }
         }
+        /* THE ARROWS (#769) -- the vector half. A speed-coloured field says where the air
+           moves HARDER and nothing about WHICH WAY, and which way is the half a player asks
+           for. They go on afterwards rather than inside the loop above: a base pixel has to be
+           one colour, and an arrow is a stroke across several of them.
+           On a coarse grid, because the field is sampled -- not a streamline integration. The
+           grid is what makes the flat parts visible: every body authored today has one wind
+           direction and one altitude axis (#767), so the honest picture is a grid of parallel
+           arrows whose length changes where the ground changes height.
+           The base mean (ar/ag/ab) above is taken BEFORE this: those columns describe the
+           field, not the ink drawn on it. (They dash for a wind map anyway.) */
+        if(want_wind && wl.ok) {
+            const int stride = std::max(8, w / 32);   // ~32 cells across, whatever the bake size
+            const double half = stride * 0.42;        // arrow half-length, kept inside one cell
+            const unsigned char kr = 245, kg = 248, kb = 255;   // near-white: reads over any ramp colour
+            auto put = [&](int xi, int yj, unsigned char r, unsigned char g, unsigned char b) {
+                if(xi < 0 || yj < 0 || xi >= w || yj >= h) { return; }
+                unsigned char *q = &px[((size_t)yj * w + xi) * 4];
+                q[0] = r; q[1] = g; q[2] = b; q[3] = 255;
+            };
+            auto stroke = [&](double x0, double y0, double x1, double y1) {
+                const int n = std::max(1, (int)std::ceil(std::hypot(x1 - x0, y1 - y0)));
+                for(int k = 0; k <= n; k++) {
+                    const double f = (double)k / (double)n;
+                    put((int)std::llround(x0 + (x1 - x0) * f),
+                        (int)std::llround(y0 + (y1 - y0) * f), kr, kg, kb);
+                }
+            };
+            for(int j = stride / 2; j < h; j += stride) {
+                for(int i = stride / 2; i < w; i += stride) {
+                    const glm::dvec3 d = equirectDirAt(i, j, w, h);
+                    const double elev = (double)terrainHeight((glm::vec3)d, tp) - sea_r;
+                    const glm::dvec2 wv = windAt(wl.rows, elev);
+                    const double spd = glm::length(wv);
+                    const double cl = std::sqrt(d.x * d.x + d.z * d.z);   // cos(latitude)
+                    const glm::dvec2 pv = surfmapWindPixelVec(wv.x, wv.y, cl);
+                    const double pvl = glm::length(pv);
+                    wind_cells++;   // every cell draws something: an arrow, or a dot for calm air
+                    if(spd <= 0.0 || pvl <= 0.0) {
+                        /* Calm air gets a dot, not an arrow. A direction drawn for a wind of
+                           zero -- or a headless dash for one that has no horizontal component at
+                           all -- is a reading the file never gave (#727). */
+                        put(i, j, kr, kg, kb);
+                        continue;
+                    }
+                    const glm::dvec2 u = pv * (1.0 / pvl);
+                    const double L = half * (0.35 + 0.65 * surfmapWindT01(spd, wl.lo_ms, wl.hi_ms));
+                    const double x1 = i + u.x * L, y1 = j + u.y * L;
+                    stroke(i - u.x * L, j - u.y * L, x1, y1);
+                    /* A head at the tip: two strokes back at 150 deg, so the arrow reads as
+                       pointing somewhere rather than as a dash lying across the cell. */
+                    const double ca = std::cos(2.618), sa = std::sin(2.618), hl = L * 0.45;
+                    stroke(x1, y1, x1 + (u.x * ca - u.y * sa) * hl, y1 + (u.x * sa + u.y * ca) * hl);
+                    stroke(x1, y1, x1 + (u.x * ca + u.y * sa) * hl, y1 + (-u.x * sa + u.y * ca) * hl);
+                }
+            }
+        }
         if(log) {
             // Base colour means before/after the terminator, then the map's identity and,
             // for a temperature map, what the sweep actually priced. A dash is an absent
             // reading, never a zero (#727): a ground map has no temperatures to report and
             // a world the model cannot price reports none either.
             const bool have_t = want_temp && tl.ok;
-            /* A dash is an absent reading, never a zero (#727). Under a temperature map the
-               base picture's colours are RAMP COLOURS, not albedos, so the albedo columns
-               dash rather than reporting a meaningless mean of the palette. */
+            /* A dash is an absent reading, never a zero (#727). Under a temperature or a wind
+               map the base picture's colours are RAMP COLOURS, not albedos, so the albedo
+               columns dash rather than reporting a meaningless mean of the palette. */
             char alb_s[64], shd_s[64];
-            if(want_temp) {
+            if(want_temp || want_wind) {
                 snprintf(alb_s, sizeof alb_s, "-");
                 snprintf(shd_s, sizeof shd_s, "-");
             } else {
@@ -234,6 +326,26 @@ void surfmapCompute(Game &g) {
                     printf(" temp=- note=\"%s\"", tl.legend.c_str());
                 }
             }
+            if(want_wind) {
+                if(wl.ok) {
+                    /* wind= is what the sweep painted (min, area-weighted mean, max) at the
+                       GROUND's altitudes; wind_ends= is what the file states at its two rows.
+                       The gap between them is the point: on Earth the deck row lives at 11 km
+                       while the ground tops out around 6, so the ramp spans a span the picture
+                       only partly reaches -- and a reader can see that here instead of being
+                       shown a colour with no scale. wind_rows= says how much profile the body
+                       authored, which is the difference between a two-row datum and a real
+                       layered claim (#767 is what would add the other axis). wind_cells= is how
+                       many grid cells the arrow pass drew: the vector half has no other readout,
+                       and a field that paints its colours but forgets its arrows looks fine. */
+                    printf(" wind=[%.2f %.2f %.2f] wind_ends=[%.2f %.2f] wind_rows=%d"
+                           " wind_cells=%d",
+                           wmin, wwt > 0.0 ? wsum / wwt : 0.0, wmax,
+                           wl.lo_ms, wl.hi_ms, (int)wl.rows.size(), wind_cells);
+                } else {
+                    printf(" wind=- note=\"%s\"", wl.legend.c_str());
+                }
+            }
             printf("\n");
             fflush(stdout);
         }
@@ -244,7 +356,8 @@ void surfmapCompute(Game &g) {
             std::make_shared<std::vector<unsigned char> >(std::move(px));
         std::shared_ptr<std::vector<unsigned char> > pshpx =
             std::make_shared<std::vector<unsigned char> >(std::move(shpx));
-        return [&g, ppx, pshpx, w, h, body_name, type, level, want_temp, tl, sun_dir, has_sun,
+        return [&g, ppx, pshpx, w, h, body_name, type, level, want_temp, tl, want_wind, wl,
+                sun_dir, has_sun,
                 have_t = (want_temp && tl.ok),
                 epoch]() {
             // Epoch bumped after we posted: this map is for the old world.
@@ -277,6 +390,15 @@ void surfmapCompute(Game &g) {
             g.surfmap.temp_anchor_K = have_t ? tl.anchor_K : 0.0;
             g.surfmap.temp_knob = have_t ? tl.knob : kEvenShareUnauthored;
             g.surfmap.temp_block = want_temp ? tl.block : std::string();
+            /* The wind, published the same way and for the same reason: the cursor's m/s has to
+               be the number THIS picture's pixels were coloured from, so it reads the profile
+               that was baked, not the body now on screen. Copying the rows rather than a pointer
+               is also what keeps the worker honest -- nothing on that thread dereferences a
+               TerrainBody. Empty rows and ok=false go together, so windAt() never sees the empty
+               vector its assert refuses. */
+            g.surfmap.wind_ok = want_wind && wl.ok;
+            g.surfmap.wind_rows = (want_wind && wl.ok) ? wl.rows : std::vector<WindLevel>();
+            g.surfmap.wind_block = want_wind ? wl.block : std::string();
             g.surfmap.valid = true;
             g.surfmap.rev++;
             if(g.surfmap.in_flight > 0) { g.surfmap.in_flight--; }

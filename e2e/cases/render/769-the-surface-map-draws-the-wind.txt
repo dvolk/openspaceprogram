@@ -1,0 +1,80 @@
+# The Surface Map's fourth picture is the wind (#769). #745 built the seam and said so out
+# loud -- "a wind vector field is the third in reach, so the seam goes in now" -- and #688 put
+# real profiles in three bodies' files, with a Wind: row on the Surface window to read one
+# number off them (#717). What was missing is the picture: which way the air moves, and where
+# on this world it moves harder.
+#
+# Two halves, and the case pins both. The BASE is the speed, ramp-coloured between the ends
+# that body's own rows state -- not a global 0..500 scale, because Earth spans 5..40 m/s and
+# Venus 1..100 and one shared span would flatten Venus to two colours while parking Mars at the
+# bottom of a range it cannot reach. Under each pixel the altitude is that pixel's GROUND
+# elevation above the sea-level datum, which is the same coordinate windAt() keys on and the
+# same one the Surface window's Wind: row asks with, so a mountain pokes into faster air and
+# shows up brighter. The ARROWS are the vector half: a speed field alone says where the air
+# moves harder and nothing about which way. They are counted in the log as wind_cells= because
+# a picture that paints its colours and forgets its ink looks exactly like one that did not.
+#
+# The refusals are the other half of the design, and they are the reason this is a case and not
+# just a shader. A body with no air and a body whose file states a still sky are different news
+# (#726), so each prints wind=- with a note naming which one, and neither falls back to the
+# albedo -- that would put a ground picture under a "wind" label, which is the map lying about
+# what it is (#727). Earth, the Moon and Jupiter come from ONE run: the Body combo picks them,
+# and a body pick re-bakes by itself, which is also what pins the pick reaching the sweep
+# rather than only the label.
+#
+# Why the Moon needs --ui-scroll: the Body popup shows nine rows and the Moon is the eleventh
+# body in the file. NOTCHES is negative to go down, and two is enough -- four scrolls past it
+# and the click reports a miss, which is the failure mode worth knowing about here.
+NAME the-surface-map-draws-the-wind
+CLAIM --surfmap-map wind paints the air's speed and direction over the ground: Earth prints the speeds it actually drew between the ends its file states, the Moon refuses for want of air, Jupiter refuses for want of an authored wind, and the cursor reads the number under it.
+KIND invariant
+ARGS --width 1600 --height 900 --timeout 13 --system res/systems/solar_system.json
+ARGS --startship v,res/ships/skiff_trim.json,Earth,pad
+ARGS --surfmap-log --surfmap-n 128 --surfmap-map wind --surfmap-body Earth
+ARGS --ui-click 2000,"Windows/Surface Map"
+ARGS --sim-mouse 2600,0,900,560,0
+ARGS --ui-list 3200
+ARGS --ui-click 4000,"Surface Map/Body"
+ARGS --ui-scroll 4400,"##Combo_00",-2
+ARGS --ui-click 5000,"##Combo_00/Moon"
+ARGS --ui-click 6200,"Surface Map/Body"
+ARGS --ui-scroll 6600,"##Combo_00",1
+ARGS --ui-list 7000
+ARGS --ui-click 7400,"##Combo_00/Jupiter"
+FORBID FAILED
+FORBID error:
+# Three bodies, one run, every row naming its own picture -- a stale buffer under a new label
+# is the #745 failure this shape keeps catching.
+CHECK len(surfmap) >= 3
+CHECK all(r["map"] == "wind" for r in surfmap)
+# Earth's own ends: 5 m/s at the datum and 40 m/s at the 11 km deck, exactly the two rows
+# res/systems/solar_system.json authors (#688) -- not a global constant, and not one row
+# painted verbatim everywhere either.
+CHECK [r for r in surfmap if r["body"] == "Earth"][-1]["wind_ends"] == (5.0, 40.0)
+CHECK [r for r in surfmap if r["body"] == "Earth"][-1]["wind_rows"] == 2
+# What the sweep actually drew, against what the file states. The ground never reaches the deck
+# row, so the max sits between the two ends: the ramp spans a range the picture only partly
+# reaches, and the log says so instead of hiding it.
+CHECK [r for r in surfmap if r["body"] == "Earth"][-1]["wind"][0] == 5.0
+CHECK (lambda w: 15.0 < w[2] < 40.0 and w[1] > w[0])([r for r in surfmap if r["body"] == "Earth"][-1]["wind"])
+# The vector half. At --surfmap-n 128 the grid stride is 8, so 16 columns x 8 rows: every part
+# of the map is sampled. A count of 0 is the bug this column exists for -- colours with no ink.
+CHECK [r for r in surfmap if r["body"] == "Earth"][-1]["wind_cells"] == 128
+# A wind map's base colours are RAMP colours, so the albedo columns dash rather than report a
+# meaningless mean of the palette (#727).
+CHECK (lambda r: r["albedo"] is None and r["shaded"] is None)([r for r in surfmap if r["body"] == "Earth"][-1])
+# The two refusals, kept apart (#726): neither prints numbers, neither prints the other's
+# reason, and neither falls back to a ground picture.
+CHECK (lambda m: m["wind"] is None and m["wind_ends"] is None and m["wind_cells"] is None and "no air" in m["wind_note"])([r for r in surfmap if r["body"] == "Moon"][-1])
+CHECK (lambda j, m: j["wind"] is None and "no wind" in j["wind_note"] and j["wind_note"] != m["wind_note"])([r for r in surfmap if r["body"] == "Jupiter"][-1], [r for r in surfmap if r["body"] == "Moon"][-1])
+# THE NUMBER UNDER THE CURSOR is the picture's number: it must sit inside the range that same
+# sweep painted, so a readout wired to the live body rather than the baked profile, or to the
+# hull's altitude rather than the ground's, eventually breaks out of it -- and one printing a
+# blank or a zero breaks at once. The cursor sits over the ocean at elev 0, where the profile's
+# datum row answers 5 m/s, and the direction is NAMED in the same eight-word vocabulary the
+# Surface window's Wind: row uses -- not an angle, so the two windows describe one wind.
+CHECK (lambda c: " wind " in c["label"] and re.search(r"wind [0-9.]+ m/s (east|north-east|north|north-west|west|south-west|south|south-east|calm)$", c["label"]) is not None)([r for r in uilist if r["window"] == "Surface Map" and r["label"].startswith("cursor:")][0])
+CHECK (lambda c, w: w[0] - 0.05 <= float(re.search(r"wind ([-+]?[0-9.]+) m/s", c["label"]).group(1)) <= w[2] + 0.05)([r for r in uilist if r["window"] == "Surface Map" and r["label"].startswith("cursor:")][0], [r for r in surfmap if r["body"] == "Earth"][-1]["wind"])
+# And the cursor leaves the map when the mouse does (here: over the Body popup). Dashed, not a
+# stale reading of the last map pixel.
+CHECK [r for r in uilist if r["window"] == "Surface Map" and r["label"].startswith("cursor:")][1]["label"] == "cursor: lat --  lon --  elev --"

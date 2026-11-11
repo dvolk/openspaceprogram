@@ -589,10 +589,11 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
 
     app.add_option("--surfmap-map", args.surfmap_map,
                    "Pin the Surface Map's picture at boot: 'ground', "
-                   "'ground+ocean' or 'temperature' (the window's 'Map' combo). "
-                   "An unknown name is an error, not a silent fallback. A test "
-                   "hook in the shape of --surfmap-body: a temperature map needs "
-                   "no combo click to appear in the log (issue #745)");
+                   "'ground+ocean', 'temperature' or 'wind' (the window's 'Map' "
+                   "combo). An unknown name is an error, not a silent fallback. "
+                   "A test hook in the shape of --surfmap-body: a wind map needs "
+                   "no combo click to appear in the log (issue #745, the wind "
+                   "half #769)");
 
     app.add_flag("--spin-log", args.spin_log_enabled,
                  "Print the ship's rotational state to stdout every 0.5s of "

@@ -186,6 +186,14 @@ SURFMAP_RE = re.compile(
     r"(?:\s+temp=\[([-\d.]+) ([-\d.]+) ([-\d.]+)\]\s+temp_ends=\[([-\d.]+) ([-\d.]+)\]\s+"
     r"temp_mean4=([-\d.]+)\s+anchor=([-\d.]+))?"
     r"(?:\s+temp=-\s+note=\"([^\"]*)\")?"
+    # #769: the wind map's tail. wind= is what the sweep painted over this body's GROUND,
+    # wind_ends= what its file states at its two rows, wind_rows= how many rows that is, and
+    # wind_cells= how many arrow cells the vector half drew -- the only observable the arrows
+    # have. Same dash law as temp=: a body with no wind prints wind=- plus a note saying which
+    # absence ("no air" and "air the file states no wind for" are different news).
+    r"(?:\s+wind=\[([-\d.]+) ([-\d.]+) ([-\d.]+)\]\s+wind_ends=\[([-\d.]+) ([-\d.]+)\]\s+"
+    r"wind_rows=(\d+)\s+wind_cells=(\d+))?"
+    r"(?:\s+wind=-\s+note=\"([^\"]*)\")?"
 )
 # --solar-log (src/cli.cpp's flag, printed by the kGateSolar block in tick.cpp): the
 # star as the world states it, and the ground under the hull as the world states it.
@@ -946,7 +954,8 @@ def parse_surfmap(out):
     rows = []
     for m in SURFMAP_RE.finditer(out):
         (t, body, w, h, mtype, level, ar, ag, ab, sr, sg, sb, shade, ocean,
-         sites, tmin, tmean, tmax, elo, ehi, mean4, anchor, note) = m.groups()
+         sites, tmin, tmean, tmax, elo, ehi, mean4, anchor, note,
+         wmin, wmean, wmax, welo, wehi, wrows, wcells, wnote) = m.groups()
         trip = lambda a, b, c: None if a is None else (float(a), float(b), float(c))
         rows.append({
             "t": float(t), "body": body,
@@ -965,6 +974,15 @@ def parse_surfmap(out):
             "temp_mean4": None if mean4 is None else float(mean4),
             "anchor": None if anchor is None else float(anchor),
             "note": note,
+            # #769: the wind map. "wind" is what the sweep painted over the ground (min, the
+            # cos-lat weighted mean, max); "wind_ends" is what the body's file states at its
+            # rows. The gap between them is information, not a bug: Earth's deck row sits at
+            # 11 km while its ground tops out near 6.
+            "wind": trip(wmin, wmean, wmax),
+            "wind_ends": (float(welo), float(wehi)) if welo is not None else None,
+            "wind_rows": None if wrows is None else int(wrows),
+            "wind_cells": None if wcells is None else int(wcells),
+            "wind_note": wnote,
         })
         # A temperature row that carries neither its numbers nor a reason is a MALFORMED row,
         # not a ground row: the whole temp tail is optional in the regex (a ground row has no
@@ -975,6 +993,13 @@ def parse_surfmap(out):
         if mtype == "temperature" and tmin is None and note is None:
             raise ValueError(
                 "surfmap row claims map=temperature but carries neither temp= nor note=: "
+                + m.group(0))
+        # Same law for the wind map (#769): "wind" is a picture the world either can or cannot
+        # draw, and a row that says it drew one while printing neither its numbers nor a reason
+        # is a mangled row, not a refusal.
+        if mtype == "wind" and wmin is None and wnote is None:
+            raise ValueError(
+                "surfmap row claims map=wind but carries neither wind= nor note=: "
                 + m.group(0))
     return rows
 

@@ -414,6 +414,15 @@ struct SurfmapState {
        (surfmap.h:TempLayer). A bare dash would merge the different absences back into one
        (#726). */
     std::string temp_block;
+    /* The wind profile these pixels were coloured from (#769), for the same reason the three
+       fields above exist and no more: the cursor's "wind 32.0 m/s east" must be the number the
+       picture under it was drawn with, so it reads the BAKED body's table rather than the body
+       now on screen while a re-bake is in flight. A copy rather than a pointer -- the sweep runs
+       on a worker that never dereferences a TerrainBody, and a body pick can outlive nothing
+       here. Empty with ok=false, which is what keeps windAt()'s assert honest. */
+    bool wind_ok = false;
+    std::vector<WindLevel> wind_rows;
+    std::string wind_block;
     bool valid = false;
     int rev = 0;
     // Jobs posted but not landed (the window shows "mapping ...").
