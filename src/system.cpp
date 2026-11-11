@@ -161,6 +161,23 @@ static glm::vec3 rgbFrom(const nlohmann::json &c, const std::string &body,
     return out;
 }
 
+/* The optional BLOCKS below (surface, its atmosphere / clouds / rings, and a body's
+   inertial / rotating frames) are all read behind a `contains(key) && <shape>()` guard,
+   which used to make a wrong shape indistinguishable from no block at all. `"surface":
+   "Mun"` therefore deleted a planet's sea datum, air, palette, temperature and clouds
+   and the world loaded as a bare rock with no line anywhere (#762); `"rotating": []`
+   stops a world spinning, which reads as a day that never ends. Absent is an author's
+   choice and stays one; PRESENT-and-wrong is a typo, so it refuses, naming the body,
+   the key path and the JSON type actually found -- the three things an author needs. */
+static void expectBlockShape(const nlohmann::json &v, const std::string &body,
+                             const std::string &key, bool want_array) {
+    if((want_array && v.is_array()) || (!want_array && v.is_object())) { return; }
+    throw std::runtime_error("system: '" + body + "': \"" + key + "\" is "
+                             + v.type_name() + ", not an "
+                             + (want_array ? "array" : "object")
+                             + " -- delete the key to leave the block out (#762)");
+}
+
 System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                    std::function<void(size_t i, size_t total,
                                       const std::string &name)> progress) {
@@ -455,7 +472,8 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                                      " surface.octaves are what shape terrain now (#723)");
         }
 
-        if(bv.contains("surface") && bv["surface"].is_object()) {
+        if(bv.contains("surface")) {
+            expectBlockShape(bv["surface"], body->name, "surface", false);
             const nlohmann::json &sv = bv["surface"];
             /* The nested spelling of the same retired key, and the more dangerous of the
                two: `power` is still a LIVE key one level down, in surface.atmosphere
@@ -716,7 +734,9 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                            "read\n", body->name.c_str(), sb, pb);
                 }
             }
-            if(sv.contains("atmosphere") && sv["atmosphere"].is_object()) {
+            if(sv.contains("atmosphere")) {
+                expectBlockShape(sv["atmosphere"], body->name, "surface.atmosphere",
+                                 false);
                 const nlohmann::json &av = sv["atmosphere"];
                 s.atmosphere.enabled = true;
                 if(av.contains("color") && av["color"].is_array()
@@ -1146,7 +1166,8 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                         " body's own gravity falloff (atmo.h:resolveAtmoLevels)");
                 }
             }
-            if(sv.contains("clouds") && sv["clouds"].is_object()) {
+            if(sv.contains("clouds")) {
+                expectBlockShape(sv["clouds"], body->name, "surface.clouds", false);
                 const nlohmann::json &cv = sv["clouds"];
                 s.clouds.enabled = true;
                 if(cv.contains("color") && cv["color"].is_array()
@@ -1181,7 +1202,8 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                 s.clouds.freq = cnum("freq", 10.0f, 0.01, 1000.0);
                 s.clouds.drift = cnum("drift", 0.0f, -1.0, 1.0);
             }
-            if(sv.contains("rings") && sv["rings"].is_array()) {
+            if(sv.contains("rings")) {
+                expectBlockShape(sv["rings"], body->name, "surface.rings", true);
                 int band_no = 0;
                 for(const nlohmann::json &rv : sv["rings"]) {
                     ++band_no;
@@ -1288,7 +1310,8 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
         f->root_vel = glm::dvec3(0);
         f->root_orient = glm::dmat3(1.0);
 
-        if(bv.contains("inertial") && bv["inertial"].is_object()) {
+        if(bv.contains("inertial")) {
+            expectBlockShape(bv["inertial"], body->name, "inertial", false);
             const nlohmann::json &in = bv["inertial"];
             f->soi = in.value("soi", 1e6);
             if(in.contains("pos") && in["pos"].is_array() && in["pos"].size() >= 3) {
@@ -1359,7 +1382,8 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
         // uses: soi - seaLevelRadius() is then exactly shellEdge() for every body,
         // which is what science.h's orbit cut and bodylimits.h's asserts read.
         rf->soi = body->seaLevelRadius() + shell;
-        if(bv.contains("rotating") && bv["rotating"].is_object()) {
+        if(bv.contains("rotating")) {
+            expectBlockShape(bv["rotating"], body->name, "rotating", false);
             const nlohmann::json &rot = bv["rotating"];
             rf->rot_ang_speed = rot.value("rot_ang_speed", 0.0);
             // Same policy as orb_ang_speed: the SPIN sense lives in axial_tilt

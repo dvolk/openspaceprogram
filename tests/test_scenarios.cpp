@@ -1571,6 +1571,40 @@ static void check_body_claims() {
                        bv["surface"]["clouds"]["height"] = -100.0;
                    }), "surface.clouds.height");
 
+    /* THE BLOCK SHAPES (#762). Everything above sits INSIDE a block, and until now each
+       block was read behind `contains(key) && <shape>()` -- a guard that cannot tell a
+       typo from an author's choice. `"surface": "Mun"` therefore skipped every read in
+       the block (sea datum, air, palette, temperature, clouds, rings) and the system
+       loaded 18 bodies with an airless home planet and no line printed; `"rotating": []`
+       stops a world spinning, which is a day that never ends, and `"inertial": []`
+       parks a body at its parent's origin with a 1e6 m SOI. Measured before/after with
+       tmp/probe_762.py. The positive controls below DELETE the same blocks, because
+       absent has to stay legal -- the star ships without a surface or rotating block. */
+    expect_refuses("surface_string", bpatched("Kerbin", [](nlohmann::json &bv) {
+                       bv["surface"] = "Mun";
+                   }), "\"surface\" is string, not an object");
+    expect_refuses("surface_array", bpatched("Mun", [](nlohmann::json &bv) {
+                       bv["surface"] = nlohmann::json::array();
+                   }), "\"surface\" is array, not an object");
+    expect_refuses("surface_null", bpatched("Mun", [](nlohmann::json &bv) {
+                       bv["surface"] = nullptr;
+                   }), "\"surface\" is null, not an object");
+    expect_refuses("atmo_block_string", bpatched("Kerbin", [](nlohmann::json &bv) {
+                       bv["surface"]["atmosphere"] = "air";
+                   }), "\"surface.atmosphere\" is string, not an object");
+    expect_refuses("clouds_block_number", bpatched("Kerbin", [](nlohmann::json &bv) {
+                       bv["surface"]["clouds"] = 4;
+                   }), "\"surface.clouds\" is number, not an object");
+    expect_refuses("rings_block_object", bpatched("Jool", [](nlohmann::json &bv) {
+                       bv["surface"]["rings"] = nlohmann::json::object();
+                   }), "\"surface.rings\" is object, not an array");
+    expect_refuses("inertial_block_array", bpatched("Mun", [](nlohmann::json &bv) {
+                       bv["inertial"] = nlohmann::json::array();
+                   }), "\"inertial\" is array, not an object");
+    expect_refuses("rotating_block_string", bpatched("Kerbin", [](nlohmann::json &bv) {
+                       bv["rotating"] = "spin";
+                   }), "\"rotating\" is string, not an object");
+
     /* THE POSITIVE CONTROLS. Each of these is legal data, and must LOAD with the claim
        still attached -- a guard that quietly eats the legal half of its range is the
        same bug from the other side, and "did it throw" alone would not see it. */
@@ -1582,6 +1616,8 @@ static void check_body_claims() {
         { "legal_clouds", "Kerbin" },       // a thin, drifting deck
         { "legal_colour_ends", "Mun" },     // a colour using both ends of [0..1]
         { "legal_atmo_power", "Kerbin" },   // the LIVE power, one level below the refused one
+        { "legal_no_clouds", "Kerbin" },    // an ABSENT deck, not a malformed one
+        { "legal_no_spin", "Mun" },         // an absent rotating block, the star's shape
     };
     for(const MustLoad &m : legal) {
         const std::string path = std::string("tmp/test_scenarios_body_")
@@ -1601,6 +1637,10 @@ static void check_body_claims() {
                 bv["surface"]["sea_color"] = {0.0, 1.0, 0.0};
             } else if(what == "legal_atmo_power") {
                 bv["surface"]["atmosphere"]["power"] = 5.0;
+            } else if(what == "legal_no_clouds") {
+                bv["surface"].erase("clouds");
+            } else if(what == "legal_no_spin") {
+                bv.erase("rotating");
             } else {
                 bv["surface"]["clouds"]["coverage"] = 0.25;
                 bv["surface"]["clouds"]["freq"] = 8.5;
@@ -1639,6 +1679,15 @@ static void check_body_claims() {
                A guard that ate the live one would look like the law working. */
             if(std::string(m.label) == "legal_atmo_power"
                && !(b->surface.atmosphere.power == 5.0f)) { bad++; }
+            /* The other face of #762: refusing a wrong SHAPE must not become refusing
+               the block. Kerbin ships a deck and Mun ships a spin, so erasing each is
+               the author's "no" -- and the loader still has to build a body that says
+               no sky-deck texture and a non-spinning frame (the star's shape). */
+            if(std::string(m.label) == "legal_no_clouds"
+               && b->surface.clouds.enabled) { bad++; }
+            if(std::string(m.label) == "legal_no_spin"
+               && !(b->rot_frame && b->rot_frame->rot_ang_speed == 0.0
+                    && b->rot_frame->spin_axis == glm::dvec3(0, 1, 0))) { bad++; }
             if(bad) {
                 printf("  %s: a legal %s claim loaded but did not reach the body\n",
                        path.c_str(), m.label);
