@@ -1866,6 +1866,33 @@ static void check_flying_beds() {
            trim->speed_load);
 }
 
+/* An abs_r bed pins an ABSOLUTE radius (the neptune/oort ladder, the heli-* beds).
+   Once it does, two of the table's slots stop meaning anything -- and since #715 the
+   table names its members, so a dead slot is the only kind of authoring mistake left
+   here. alt_frac is computed and thrown away (spawn_vehicle takes abs_r for r), and
+   ell_phase >= 0 takes the ellipse branch, which never reads abs_r at all: the bed
+   would fly authored apsides while claiming a pinned radius. atmo_frac rides alt_frac,
+   so it goes too. polar still means something: it picks the PLANE the pinned radius is
+   orbited in. */
+static void check_abs_r_beds() {
+    int n = 0;
+    for(size_t i = 0; i < scenario_count(); i++) {
+        const std::string sname = scenario_name_at(i);
+        const ScenarioDef *d = scenario_by_name(sname);
+        if(d->abs_r <= 0.0) { continue; }
+        n++;
+        if(d->ell_phase >= 0 || d->alt_frac != 0.0 || d->atmo_frac) {
+            printf("  scenario '%s' pins abs_r = %.6g and also sets alt_frac %g / "
+                   "atmo_frac %d / ell_phase %d: a pinned radius throws alt_frac away "
+                   "and an ellipse bed never reads abs_r\n",
+                   sname.c_str(), d->abs_r, d->alt_frac, d->atmo_frac ? 1 : 0,
+                   d->ell_phase);
+            failures++;
+        }
+    }
+    printf("  abs_r beds: %d, each radius-pinned and circular\n", n);
+}
+
 /* A placed bed (--startship lat=/lon=): the bed turns so its circle passes over the
    asked-for point, tilting its plane as little as it can and keeping its velocity
    across the circle. Hand-computed on an equatorial bed -- position +X, velocity +Y,
@@ -1977,6 +2004,7 @@ static void check_spawn_attitude() {
 int main() {
     check_vab_gate();
     check_flying_beds();
+    check_abs_r_beds();
     check_spawn_attitude();
     check_bed_turn();
     // The files the heli-* radii were read off. ksp_system/old_system are not

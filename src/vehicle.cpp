@@ -224,8 +224,10 @@ static Frame *resolve_frame_by_soi(Frame *root, glm::dvec3 worldPos) {
    slot and still built -- and every flight golden in e2e/cases/flight/ was tuned off one
    of these rows, so a silent slot shift is expensive to notice. Members left out are zero
    (static storage), which is why ell_phase is ALWAYS written: its zero means periapsis,
-   not circular. Only "pad" -- dev_only left false -- shows in the VAB dropdown without
-   --dev-scenarios. */
+   not circular. Members must also stay in STRUCT ORDER: writing .alt_frac after
+   .ell_phase is "designator order ... does not match declaration order", which is worth
+   knowing before a row looks mis-sorted. Only "pad" -- dev_only left false -- shows in the
+   VAB dropdown without --dev-scenarios. */
 static const ScenarioDef kScenarios[] = {
     {.name = "pad", .on_pad = true, .ell_phase = -1},
     {.name = "rot-orbit", .dev_only = true, .alt_frac = 0.85, .ell_phase = -1},
