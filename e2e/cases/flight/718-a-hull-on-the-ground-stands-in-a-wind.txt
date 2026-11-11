@@ -21,6 +21,15 @@
 # stops being landed at all: at 30 m/s its ground speed crosses kShipGroundSpeed (3 m/s) and
 # the situation flips to "flying low" while it is still sat on the plain.
 #
+# "Holds it" needs its shape, because a 12 s endpoint on its own is a number with no behaviour
+# behind it. Run out to 32 s at the shipped row, the hull CREEPS and wobbles at the
+# millimetre-per-second scale rather than settling to zero: hs reads 0.0012 at 6.8 s, rises
+# through 0.0022 at 12.9 s, peaks near 0.004 around 17 s and is back to 0.00098 at 31.1 s,
+# while roll takes up ~2.7 deg and alt_agl does not move (5.7040 -> 5.7035). That is a hull
+# being pushed against the ground and losing by millimetres, not one sliding away. Worth
+# writing down: extrapolating the 6.8..12.9 s rise alone would put it over 0.01 m/s by ~28 s,
+# and the 32 s run says that rise is the first half of a wobble, not a slope.
+#
 # Why that matters for Venus. The tallest Venus ground reads ~4 m/s of air in a ~57 kg/m3
 # column: q ~460 Pa, against Earth sea level's 0.5 x 1.225 x 30^2 = 551 Pa. The Venus highland
 # regime is therefore on the DRAGGED side of that line, not the parked side. The shipped
@@ -40,24 +49,29 @@ ARGS --timeout 12 --system res/systems/solar_system.json --info-log --startship 
 FORBID error:
 FORBID place_vehicle
 # The pad bed needs a launch site, and Earth is the only windy body with one. If that ever
-# stops being true this case should say so rather than spawn somewhere else.
-CHECK "sit=\"landed\"" in out
+# stops being true the spawn says so out loud and this FORBID fires, rather than the hull
+# landing somewhere else and the case quietly pinning a different world.
 # The air is moving over a hull that is not: tas= is |airRelativeVel|, the speed the aero law
-# bills, and it sits on the datum row interpolated at this pad's 143 m ASL -- 5 + (143/11000)
-# x 35 = 5.46 m/s, not zero and not the hull's own speed. wind_east= is the table's answer for
-# the same place, so the two agree by construction.
+# bills, and it sits on the datum row interpolated at this pad's 140.7 m ASL -- 5 + (140.7 /
+# 11000) x 35 = 5.448 m/s, not zero and not the hull's own speed. wind_east= is the table's
+# answer for the same place, so the two agree by construction (and read 5.4477 / 5.4465 in the
+# log, tas a hair under the wind because the hull is creeping downwind of it).
 CHECK all(s["tas"] is not None and 5.3 < s["tas"] < 5.6 for s in surf if s["t"] > 6.0)
-CHECK all(abs(s["wind_east"] - 5.46) < 0.05 and s["wind_north"] == 0.0 for s in surf if s["t"] > 6.0)
+CHECK all(abs(s["wind_east"] - 5.448) < 0.01 and s["wind_north"] == 0.0 for s in surf if s["t"] > 6.0)
 # And the hull does not go with it. Measured 0.0025 m/s at t=11.9s against 8e-9 with the wind
 # rows dropped from the file (tmp/earth_nowind.json, not shipped): the push is real and the
 # ground holds it. 0.01 m/s is far above the residual and far below anything that reads as
-# creep, so a hull that started sliding breaks this rather than tuning it.
+# creep, so a hull that started sliding breaks this rather than tuning it. The bound is not a
+# timeout artifact -- the header's 32 s run holds hs under 0.004 the whole way, and this case
+# stops at 12 s because it is a behaviour pin, not a patience test.
 CHECK all(s["hs"] < 0.01 for s in surf if s["t"] > 6.0)
-# Still on the ground, in the sim's own words, at the end of the run. This is the assertion the
-# 30 m/s experiment breaks: at that speed the same hull reads 3.09 m/s of ground speed and
-# sit="flying low" while still sat on the plain.
+# Still on the ground, in the sim's own words, for the whole pinned window. This is the
+# assertion the 30 m/s experiment breaks: at that speed the same hull reads 3.09 m/s of ground
+# speed and sit="flying low" while still sat on the plain.
 CHECK all(s["sit"] == "landed" for s in surf if s["t"] > 6.0)
-# It settled rather than oscillating: alt_agl converges to 5.70 m and holds. The pad spawn tips
-# the hull over in the first ~4 s (pitch 86 deg -> 2.9 deg), which is the spawn settling and
-# not the wind -- the windless control tips the same way -- so the pin starts at 6 s.
+# It did not get pushed OVER either: alt_agl converges to 5.70 m and holds to a millimetre.
+# That is the observable the 60 m/s experiment breaks -- there the same hull ends up lying at
+# 1.93 m AGL -- so it is pinning the wind's effect, not the terrain. The pad spawn does tip the
+# hull in the first ~4 s (pitch 86 deg -> ~2.9 deg), which is the spawn settling and not the
+# wind: the windless control tips the same way. Hence the pin starting at 8 s.
 CHECK all(abs(s["alt_agl"] - 5.70) < 0.2 for s in surf if s["t"] > 8.0)
