@@ -61,9 +61,11 @@ CHECK re.search(r"air profile\s+2 levels to 65\.0 km\s*\n", re.search(r"\[atlas\
 # only the share, which is the number the mix actually authors.
 CHECK re.search(r"air gas O2\s+0\.1303%", re.search(r"\[atlas\] Mars weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
 CHECK re.search(r"air oxidizer\s+0\.09588% by mass\s*\n", re.search(r"\[atlas\] Mars weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
-# Jupiter: an H2/He sky. Hydrogen is the fuel, not the oxidizer, so the densest air in the
-# system after Titan buys a jet nothing. Its molar mass is 0.0022 kg/mol -- a factor 13
-# under dry air, and every temperature and sound-speed row in this dossier follows it.
+# Jupiter: an H2/He sky. Hydrogen is the fuel, not the oxidizer, so a jet flying in the
+# densest hydrogen air here buys nothing from this sky: 0.162 kg/m3 at its 1-bar datum, a
+# thirtieth of Titan's and four hundred times under Venus. Its molar mass is 0.0022 kg/mol --
+# a factor 13 under dry air, and every temperature and sound-speed row in this dossier follows
+# it.
 CHECK re.search(r"air gas H2\s+89\.8%\s*\n\s*\[atlas\]   air gas He\s+10\.2%", re.search(r"\[atlas\] Jupiter weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
 CHECK re.search(r"air oxidizer\s+none\s*\n", re.search(r"\[atlas\] Jupiter weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
 # Every row above searches a BOUNDED block -- (?=\[atlas\] \w+ weight=|\Z) stops at the next
