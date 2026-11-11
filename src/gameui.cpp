@@ -1662,6 +1662,17 @@ void drawUIReadouts(Game &g) {
             ImGui::SameLine();
             ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.4f, 1.0f),
                                "   mapping ...");
+        } else if(g.surfmap.valid) {
+            /* The map is a SNAPSHOT (#746): it is taken at the instant of the last Refresh,
+               body pick or map-type change, and nothing redraws it while the sim runs. That
+               was harmless while the only picture was an albedo, which does not change. It
+               draws a temperature field now, and a frozen hot spot reads like weather that
+               has stopped -- the subsolar point does not walk across Duna while the clock in
+               the corner does, and the terminator overlay is frozen from the same instant.
+               Say which instant, in the space "mapping ..." already owns, so the age is at
+               least visible next to the picture. Same number --surfmap-log prints as t=. */
+            ImGui::SameLine();
+            uiTextDisabled("   baked t=%.1fs", g.surfmap.baked_t);
         }
 
         if(!g.surfmap.valid || g.surfmap.px.empty()) {

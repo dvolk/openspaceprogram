@@ -357,7 +357,7 @@ void surfmapCompute(Game &g) {
         std::shared_ptr<std::vector<unsigned char> > pshpx =
             std::make_shared<std::vector<unsigned char> >(std::move(shpx));
         return [&g, ppx, pshpx, w, h, body_name, type, level, want_temp, tl, want_wind, wl,
-                sun_dir, has_sun,
+                sun_dir, has_sun, t_now,
                 have_t = (want_temp && tl.ok),
                 epoch]() {
             // Epoch bumped after we posted: this map is for the old world.
@@ -377,6 +377,11 @@ void surfmapCompute(Game &g) {
             // numbers of the body on screen while the picture still belongs to another (#745).
             g.surfmap.baked_type = type;
             g.surfmap.baked_level = level;
+            /* WHEN the picture is from (#746). The request instant, not the landing instant --
+               the same stamp --surfmap-log prints as t=, and the same instant the terminator
+               above was measured at, so the number on the window and the number in the log
+               describe one bake. */
+            g.surfmap.baked_t = t_now;
             // The star this picture was baked under, so the cursor's number is the picture's
             // number rather than a fresh sample of a sun that has since moved.
             g.surfmap.baked_sun_dir = sun_dir;

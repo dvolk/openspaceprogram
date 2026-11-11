@@ -1,0 +1,53 @@
+# The Surface Map has always been a snapshot (#746), and until this case nothing said so out
+# loud. It is taken at the instant of the last Refresh, body pick or map-type change, and
+# nothing redraws it while the sim runs. That was harmless while the only picture was an
+# albedo -- an albedo does not change. It stopped being harmless when the map learned to draw
+# a TEMPERATURE field: a frozen hot spot reads like weather that has stopped, the subsolar
+# point does not walk across Duna while the clock in the corner does, and the "Sun shading"
+# overlay is frozen from the same instant, so the picture stays internally consistent while
+# being stale against everything else on screen.
+#
+# The fix is the cheapest honest one from the ticket: print which instant the pixels are from,
+# in the space "mapping ..." already owns. One published field (SurfmapState::baked_t, the
+# same stamp --surfmap-log prints as t=) and one text row. The other option in the ticket --
+# a "follow the sim" box that re-posts the bake every N seconds -- is affordable on the worker
+# but is a different feature: it would make the picture move, whereas this one makes the
+# picture's age visible. Not taken here.
+#
+# Three dumps and one keypress, which is the shape that pins both halves: the stamp survives
+# 5 s of flying (snapshot, and NOT a silent re-bake -- hence the log row count), and Refresh
+# moves it. The stamp is also checked against the log's own t= values, because a window
+# printing a plausible instant that no bake ever recorded is the same class of bug #687 is
+# about: a readout and a measurement that have drifted apart.
+NAME the-surface-map-says-when-it-was-taken
+CLAIM The Surface Map prints the sim instant its pixels were baked at: the stamp is unchanged across 5 s of flying, matches a --surfmap-log t= value, and moves when Refresh re-takes the picture.
+KIND golden
+ARGS --width 1600 --height 900 --timeout 13 --system res/systems/ksp_system.json
+ARGS --startship racer,res/ships/racer.json,Kerbin,pad
+ARGS --surfmap-log --surfmap-n 128 --surfmap-body Duna --surfmap-map temperature
+ARGS --ui-click 2000,"Windows/Surface Map"
+ARGS --ui-list 4000
+ARGS --ui-list 9000
+ARGS --sim-press 10000,0,M
+ARGS --ui-list 11500
+FORBID FAILED
+FORBID error:
+# One stamp per dump, three dumps, and the row is a text row -- so --ui-list can read it and a
+# renamed label fails the case instead of clicking past it.
+CHECK len([l for l in uilist if l["window"] == "Surface Map" and "baked t=" in l["label"]]) == 3
+CHECK (lambda s: s[0] == s[1] and float(s[2]) > float(s[1]) + 3.0)([re.search(r"baked t=([0-9.]+)s", l["label"]).group(1) for l in uilist if l["window"] == "Surface Map" and "baked t=" in l["label"]])
+# And nothing re-baked behind the player's back: two bakes in the log -- the window opening
+# posts one, the M press posts the other -- while the sim ran 8 s between the dumps. A "follow
+# the sim" behaviour that quietly re-posted every frame would show up here as a stream of rows
+# as well as a moving stamp, and this case would fail on both.
+CHECK len(surfmap) == 2
+CHECK surfmap[1]["t"] - surfmap[0]["t"] > 7.0
+# The number on the window is the number the sweep logged, not a plausible one printed beside
+# the picture (#687). Each stamp must be one of the logged bake instants.
+CHECK all(float(re.search(r"baked t=([0-9.]+)s", l["label"]).group(1)) in [r["t"] for r in surfmap] for l in uilist if l["window"] == "Surface Map" and "baked t=" in l["label"])
+# The stamp shares the checkbox line rather than taking a row of its own: the window is a
+# fixed 2:1 aspect, so every extra row costs the map its own pixels -- the same argument that
+# moved the temperature legend off this window and onto the cursor line (#747). Pinned as
+# "inside the checkbox row's rect" rather than as a y number, so a layout walk that pushed the
+# stamp onto its own line fails here instead of quietly costing the picture 16 px.
+CHECK (lambda s, c: c["rect"][1] <= s["rect"][1] and s["rect"][3] <= c["rect"][3] and s["rect"][0] > c["rect"][0])([l for l in uilist if l["window"] == "Surface Map" and "baked t=" in l["label"]][0], [l for l in uilist if l["window"] == "Surface Map" and l["label"] == "Sun shading"][0])

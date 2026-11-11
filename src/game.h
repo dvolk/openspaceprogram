@@ -394,6 +394,13 @@ struct SurfmapState {
     // body's authored fields would be neither picture's (#687).
     int baked_type = kMapGround;
     int baked_level = kLevelGround;
+    /* The sim instant these pixels were baked at (#746). The map has always been a snapshot
+       -- nothing redraws it while the sim runs -- and that was harmless while it drew only an
+       albedo, which does not change. It draws a temperature field now, and a frozen hot spot
+       reads like weather that has stopped: the subsolar point does not walk across Duna while
+       the clock in the corner does. The window prints this beside the checkboxes so the
+       staleness is at least visible; --surfmap-log carries the same number. */
+    double baked_t = 0.0;
     /* What the temperature layer published with these buffers, and NOTHING MORE than the two
        readouts read: the cursor's kelvin needs the anchor, the knob and the star the picture
        was baked under, and a refusal needs the three-word reason. The sweep's own statistics
