@@ -2873,6 +2873,7 @@ number, an assert that it cannot overwrite a stated row, and one printed line pe
 """
 
 ASTEROIDS_JSON = os.path.join(HERE, 'rss', 'asteroids', 'asteroids.json')
+COMETS_JSON = os.path.join(HERE, 'rss', 'asteroids', 'comets.json')
 
 # The catalogue's own epoch: the root's epoch_utc, as a Julian date. SBDB states each
 # orbit at its OWN epoch (2008 for one row, 2024 for another), so the mean anomaly has to
@@ -3476,6 +3477,135 @@ def fmt_km(m):
     return ('%.3g km' % (m / 1000.0)) if m >= 1000 else ('%.0f m' % m)
 
 
+# The comet roster, by MPC identity. Comets are deliberately NOT sampled by category the
+# way 419 asteroids are: the pool is 17 sized rows, and a long-period rail can put a body
+# most of the way to the universe bound or under the star it orbits -- C/2006 P1 (McNaught)
+# reaches 4,893 AU of the Sun's 6,684 AU SOI, and C/2011 W3 (Lovejoy) has a perihelion of
+# 0.004 AU against the Sun's own 0.00466 AU radius, i.e. inside the star. Which of them fly
+# is a design call, so it is written out rather than derived from a size ranking.
+#
+# Seven in the core file, one per kind of play (reports/comets2026_11_12): 29P, whose e
+# 0.043 makes it the only comet reachable without a transfer window; 252P, a 300 m rock to
+# land on; 67P, the one nucleus whose mass AND radius are both measured; 1P, retrograde at
+# i 162 deg, which is what makes a player care about inclination; C/1995 O1, a 30 km
+# destination at 10 AU rather than an absurd one; C/1965 S1, a sungrazer whose perihelion is
+# 1.4 solar radii; and C/1811 F1, sitting at 254 AU at the epoch as a deep-space curiosity.
+# The four flyby comets (9P, 19P, 81P, 103P) join the deeper rungs only.
+COMET_CORE = frozenset({'1P', '29P', '67P', '252P', 'C/1995 O1', 'C/1965 S1', 'C/1811 F1'})
+COMET_DEEPER = frozenset({'9P', '19P', '81P', '103P'})
+
+# A comet nucleus draws as a C-type: the darkest palette and albedo in the file, which is
+# the "grey rock" the roster was approved as. No page states a geometric albedo for a
+# nucleus (a comet's H is the COMA's brightness), so it stays INVENTED in the provenance
+# string like every other class-typed number here.
+COMET_CLASS = 'C'
+
+# So a comet's procedural noise can never coincide with an asteroid's: the asteroid seeds
+# are 2000 + their row index, and this file grows.
+COMET_SEED_BASE = 9000
+
+
+def comet_handle(desig):
+    """[name] What a comet is CALLED in the file: its MPC designation, never its nickname.
+
+    A body name is a key here -- the catalogue, saves, --startship and --transfer-target all
+    look a body up by name -- and the corpus ALREADY ships a body named LINEAR. That one is
+    asteroid 118401, a main-belt comet at a 3.20 AU and e 0.19; 252P/LINEAR is a different
+    object at a 3.05 AU and e 0.67. Two worlds, one handle, and the collision pass that
+    disambiguates asteroids by their number has nothing to work on for a comet. Designations
+    are also ASCII: the wiki spellings use en dashes, which a player typing --atlas-body
+    would have to reproduce exactly.
+
+    A fragment suffix comes back off: the MPC rails C/1965 S1-A and -B as two solutions of
+    ONE breakup, and the corpus authors one comet, not a pair of twins 200 m apart."""
+    head, sep, tail = desig.partition(' (')
+    return re.sub(r'-[A-Z]$', '', head) + sep + tail
+
+
+def comet_density(raw):
+    """[kg/m^3] Only three of the sized comets state a mass, so the rest need a rule, and
+    the rule is this corpus's own: the median density of the rows that state BOTH a mass and
+    a radius. Today those three answer 276, 298 and 386 kg/m3 -- a rubble pile with a great
+    deal of void in it, which is what comet nuclei are -- so borrowing an asteroid class
+    density would be wrong even if ASTEROID_DENSITY had a comet row. INVENTED, and the
+    provenance string says so."""
+    rho = sorted(r['mass_kg'] / ((4.0 / 3.0) * math.pi * r['radius_m'] ** 3)
+                 for r in raw if r.get('mass_kg'))
+    assert rho, 'no comet row states both a mass and a radius: the density rule has ' \
+                'nothing to stand on'
+    return rho[len(rho) // 2]
+
+
+def load_comets(q, existing_names, verbose=True):
+    """[rows] The sized comets as game bodies: an eccentric heliocentric rail, an airless
+    grey nucleus, and nothing else. No coma, no tail, no sublimation -- the roster was
+    approved as rock, and the flux law an activity model would want is already insolation.h
+    rather than a fourth spelling of 1/r^2.
+
+    The rail comes from the PERIHELION DATE rather than a mean anomaly at an epoch, because
+    that is how the MPC publishes a comet: M0 = n (t_epoch - T). Under two-body motion that
+    is exact. For a real long-period comet it is an extrapolation of up to 189 years
+    (C/1811 F1) along an orbit that gets kicked by its own outgassing, which the printed
+    provenance says rather than hiding."""
+    with open(COMETS_JSON) as f:
+        raw = json.load(f)['bodies']
+    assert raw, 'comets.json is empty'
+    rho = comet_density(raw)
+    rows = []
+    for c in sorted(raw, key=lambda c: c['key']):
+        key = c['key']
+        if key not in COMET_CORE and key not in COMET_DEEPER:
+            continue
+        name = comet_handle(c['desig'])
+        assert name not in existing_names, \
+            'comet %s would collide with a body already in the file' % name
+        ecc = c['e']
+        assert 0.0 <= ecc < 1.0, '%s: e %g is not an elliptical orbit' % (name, ecc)
+        a = c['a_au'] * AU
+        assert a > 0.0, '%s: no semimajor axis' % name
+        w = math.sqrt(G * SUN_MASS / a ** 3)     # the loader inverts exactly this
+        M0 = w * DAY * (CATALOGUE_EPOCH_JD - c['perihelion_jd'])
+        stated = c['mass_kg']
+        rows.append(dict(
+            name=name, raw_name=c['desig'], display=name, parent='Sun',
+            radius_m=c['radius_m'], radius_src=c['radius_src'],
+            mass_kg=stated or rho * (4.0 / 3.0) * math.pi * c['radius_m'] ** 3,
+            cls=COMET_CLASS,
+            albedo=invent_asteroid_albedo(COMET_CLASS, q),
+            albedo_src='INVENTED: %s-class nucleus (no page states a geometric albedo for '
+                       'a comet -- its H is a coma): pV %.3f x q %.3f'
+                       % (COMET_CLASS, ASTEROID_GEOMETRIC[COMET_CLASS], q),
+            # No page states a comet nucleus' day, so it is left unspun exactly as the
+            # irregular moons are. Its anchor and even_share then come from the same
+            # derived pass every other airless body goes through.
+            rot_s=None,
+            rail=dict(w=w, e=ecc, i=c['incl_deg'] * D2R, raan=c['node_deg'] * D2R,
+                      omega=c['peri_deg'] * D2R, nu0=true_anomaly_kepler(M0, ecc)),
+            sections=['comet', c['family']], idx=len(rows), dwarf=False, comet=True,
+            seed_base=COMET_SEED_BASE,
+            measured=True, named=True, core=key in COMET_CORE,
+            key=key, family=c['family'], perihelion=c['perihelion']))
+    if verbose:
+        print('comets: %d sized rows in %s, %d on the roster'
+              % (len(raw), os.path.relpath(COMETS_JSON, ROOT), len(rows)))
+        print('  tiers  core %d  measured %d  named %d  full %d'
+              % (sum(1 for r in rows if r['core']), len(rows), len(rows), len(rows)))
+        for r in sorted(rows, key=lambda r: (not r['core'], r['name'])):
+            a_m = (G * SUN_MASS / r['rail']['w'] ** 2) ** (1.0 / 3.0)
+            print('    %-26s %-15s r %6.0f m  a %9.2f AU  e %.5f  q %.3f AU  P %9.1f y%s'
+                  % (r['name'], r['family'], r['radius_m'], a_m / AU, r['rail']['e'],
+                     a_m * (1.0 - r['rail']['e']) / AU,
+                     2.0 * math.pi / r['rail']['w'] / (365.25 * DAY),
+                     '' if r['core'] else '  [named only]'))
+        print('  mass   stated %d  INVENTED at %.0f kg/m3 (median of the rows that state '
+              'both)' % (sum(1 for c in raw if c['mass_kg']), rho))
+        skipped = sorted(set(c['key'] for c in raw) - {r['key'] for r in rows})
+        if skipped:
+            print('  sized but not on the roster: %d (%s)'
+                  % (len(skipped), ' '.join(skipped)))
+    return rows
+
+
 def invented_moon_rail(name, parent_row):
     """[rail] The two asteroid moons the pages never place. See load_asteroids: the
     DISTANCE is the invention (6 parent radii, anchored on the one such orbit that has
@@ -3520,13 +3650,20 @@ def build_asteroid(a, by, home):
                 raan=rail['raan'], nu0=rail['nu0'], rot_s=a['rot_s'])
     if a['parent'] != 'Sun':
         type_ = 'moon'
+    elif a.get('comet'):
+        # src/terrain.h:BodyType::Comet. As with DwarfPlanet, nothing about the rail or the
+        # render path depends on it -- it exists so the dossier can say what the body is, and
+        # so that when a coma/tail law arrives it has a branch to land on instead of having
+        # to recognise comets by name.
+        type_ = 'comet'
     else:
         # A dwarf planet draws exactly like an asteroid and is indistinguishable from one in
         # every law the engine applies. It is in the file because the DOSSIER says so: the
         # dossier already calls Pluto a planet, and calling Eris an asteroid next to it is a
         # contradiction a player can see. src/system.cpp:BodyType::DwarfPlanet.
         type_ = 'dwarf_planet' if a['dwarf'] else 'asteroid'
-    return make_body(a['name'], type_, a['parent'], data, seed=2000 + a['idx'],
+    return make_body(a['name'], type_, a['parent'], data,
+                     seed=a.get('seed_base', 2000) + a['idx'],
                      surface=asteroid_surface(a),
                      parent_body=by.get(a['parent']), home_body=home)
 
@@ -3800,6 +3937,17 @@ def main():
     q, _ = corpus_phase_integral(verbose=False)
     asteroids = load_asteroids(q, {b['name'] for b in base_bodies} | {m['name'] for m in moons})
     core |= {a['name'] for a in asteroids if a['core']}
+    # The third corpus. It joins the same name set for the same reason the asteroids do: one
+    # cut list selects every variant, so the four files stay one ladder. Its rows are keyed
+    # against the names the other two already took, which is what turns "LINEAR is already a
+    # world" from a curiosity into a load-time assert.
+    comets = load_comets(q, {b['name'] for b in base_bodies} | {m['name'] for m in moons}
+                            | {a['name'] for a in asteroids})
+    core |= {c['name'] for c in comets if c['core']}
+    # One list into emit(): the comets ride the asteroid corpus's predicate and its parent
+    # ordering, so a variant cannot contain one without the other, and the four files stay
+    # one ladder rather than three corpora that happen to share a filename prefix.
+    minor_bodies = asteroids + comets
     print()
     targets = [
         # emit() keys its verbose prints off label.startswith('core'), so the label must
@@ -3818,7 +3966,7 @@ def main():
         ok = True
         for pred, path, label in targets:
             doc = emit(base_bodies, moons, pred, path, label, fact_sheets, dry=True,
-                       asteroids=asteroids)
+                       asteroids=minor_bodies)
             with open(path) as f:
                 committed = json.load(f)
             same = _comparable(committed) == _comparable(doc)
@@ -3843,7 +3991,7 @@ def main():
             ok = ok and good
         return 0 if ok else 1
     for pred, path, label in targets:
-        emit(base_bodies, moons, pred, path, label, fact_sheets, asteroids=asteroids)
+        emit(base_bodies, moons, pred, path, label, fact_sheets, asteroids=minor_bodies)
 
     # ---- verification table for the 'named' set ----
     # hill = the PRE-lift law value; the game's SOI is

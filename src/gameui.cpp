@@ -6710,11 +6710,22 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
     };
 
     head("body");
-    line("type", b.isStar() ? "star"
-               : (b.type == BodyType::Moon ? "moon"
-                  : (b.type == BodyType::Asteroid ? "asteroid"
-                     : (b.type == BodyType::DwarfPlanet ? "dwarf planet"
-                        : "planet"))));
+    /* One word for what a body is, as a switch rather than a ternary chain: BodyType has
+       six values now, and a chain makes any new one answer "planet" silently -- the exact
+       contradiction DwarfPlanet and Comet were each added to avoid. A switch means the
+       compiler notices instead. */
+    auto type_word = [](const TerrainBody &b) {
+        switch(b.type) {
+        case BodyType::Star:        return "star";
+        case BodyType::Moon:        return "moon";
+        case BodyType::Asteroid:    return "asteroid";
+        case BodyType::DwarfPlanet: return "dwarf planet";
+        case BodyType::Comet:       return "comet";
+        case BodyType::Planet:      return "planet";
+        }
+        return "planet";    // unreachable: every enumerator returns above
+    };
+    line("type", type_word(b));
     line("radius", fmt_dist((double)b.radius, v, sizeof v));
     line("mass", fmt_mass((double)b.mass, v, sizeof v));
     line("surface gravity", fmt_accel(b.g, v, sizeof v));

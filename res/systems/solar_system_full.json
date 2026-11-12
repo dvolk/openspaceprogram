@@ -30767,6 +30767,490 @@
       "science_mult": 1.8
     },
     {
+      "name": "103P/Hartley",
+      "type": "comet",
+      "orbits": "Sun",
+      "radius": 570.0,
+      "mass": 300000000000.0,
+      "seed": 9000,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 85.5,
+        "palette": [
+          [
+            0.0,
+            [
+              0.28,
+              0.27,
+              0.26
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.42,
+              0.41,
+              0.4
+            ]
+          ]
+        ],
+        "albedo": 0.03406975240804189,
+        "albedo_src": "INVENTED: C-class nucleus (no page states a geometric albedo for a comet -- its H is a coma): pV 0.050 x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 3.072444824044487e-08,
+        "ecc": 0.693362,
+        "arg_peri": 3.164864873835886,
+        "orb_incl": 0.2374572807215845,
+        "lon_asc_node": 3.8355425454997465,
+        "true_anomaly0": 2.8580515291514543
+      },
+      "transfer_dv": 12632.3,
+      "science_mult": 1.7
+    },
+    {
+      "name": "19P/Borrelly",
+      "type": "comet",
+      "orbits": "Sun",
+      "radius": 2660.0,
+      "mass": 23479317260000.0,
+      "seed": 9001,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 399.0,
+        "palette": [
+          [
+            0.0,
+            [
+              0.28,
+              0.27,
+              0.26
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.42,
+              0.41,
+              0.4
+            ]
+          ]
+        ],
+        "albedo": 0.03406975240804189,
+        "albedo_src": "INVENTED: C-class nucleus (no page states a geometric albedo for a comet -- its H is a coma): pV 0.050 x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 2.904411455110975e-08,
+        "ecc": 0.637519,
+        "arg_peri": 6.143892324907171,
+        "orb_incl": 0.5114774639431983,
+        "lon_asc_node": 1.2952961043675917,
+        "true_anomaly0": -2.544016574360428
+      },
+      "transfer_dv": 12839.6,
+      "science_mult": 1.7
+    },
+    {
+      "name": "1P/Halley",
+      "type": "comet",
+      "orbits": "Sun",
+      "radius": 5750.0,
+      "mass": 220000000000000.0,
+      "seed": 9002,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 500.0,
+        "palette": [
+          [
+            0.0,
+            [
+              0.28,
+              0.27,
+              0.26
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.42,
+              0.41,
+              0.4
+            ]
+          ]
+        ],
+        "albedo": 0.03406975240804189,
+        "albedo_src": "INVENTED: C-class nucleus (no page states a geometric albedo for a comet -- its H is a coma): pV 0.050 x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 2.638552379943561e-09,
+        "ecc": 0.967941,
+        "arg_peri": 1.9620921637750173,
+        "orb_incl": 2.830187517790461,
+        "lon_asc_node": 1.0388426600673009,
+        "true_anomaly0": 2.9821412968344356
+      },
+      "transfer_dv": 15959.4,
+      "science_mult": 1.9
+    },
+    {
+      "name": "252P/LINEAR",
+      "type": "comet",
+      "orbits": "Sun",
+      "radius": 300.0,
+      "mass": 33682500000.0,
+      "seed": 9003,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 45.0,
+        "palette": [
+          [
+            0.0,
+            [
+              0.28,
+              0.27,
+              0.26
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.42,
+              0.41,
+              0.4
+            ]
+          ]
+        ],
+        "albedo": 0.03406975240804189,
+        "albedo_src": "INVENTED: C-class nucleus (no page states a geometric albedo for a comet -- its H is a coma): pV 0.050 x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 3.735343342795674e-08,
+        "ecc": 0.671151,
+        "arg_peri": 5.992956251194702,
+        "orb_incl": 0.1818755253625731,
+        "lon_asc_node": 3.3319626964218227,
+        "true_anomaly0": -1.2726749020399226
+      },
+      "transfer_dv": 11842.7,
+      "science_mult": 1.6
+    },
+    {
+      "name": "29P/Schwassmann-Wachmann",
+      "type": "comet",
+      "orbits": "Sun",
+      "radius": 30200.0,
+      "mass": 3.436065098e+16,
+      "seed": 9004,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 500.0,
+        "palette": [
+          [
+            0.0,
+            [
+              0.28,
+              0.27,
+              0.26
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.42,
+              0.41,
+              0.4
+            ]
+          ]
+        ],
+        "albedo": 0.03406975240804189,
+        "albedo_src": "INVENTED: C-class nucleus (no page states a geometric albedo for a comet -- its H is a coma): pV 0.050 x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 1.3353786772753167e-08,
+        "ecc": 0.042886,
+        "arg_peri": 0.8991307987744067,
+        "orb_incl": 0.16327555152406953,
+        "lon_asc_node": 5.452413819218042,
+        "true_anomaly0": -1.9325708828677735
+      },
+      "transfer_dv": 14899.9,
+      "science_mult": 1.8
+    },
+    {
+      "name": "67P/Churyumov-Gerasimenko",
+      "type": "comet",
+      "orbits": "Sun",
+      "radius": 2000.0,
+      "mass": 9980000000000.0,
+      "seed": 9005,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 300.0,
+        "palette": [
+          [
+            0.0,
+            [
+              0.28,
+              0.27,
+              0.26
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.42,
+              0.41,
+              0.4
+            ]
+          ]
+        ],
+        "albedo": 0.03406975240804189,
+        "albedo_src": "INVENTED: C-class nucleus (no page states a geometric albedo for a comet -- its H is a coma): pV 0.050 x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 3.0953503333493075e-08,
+        "ecc": 0.64956,
+        "arg_peri": 0.3881106110952311,
+        "orb_incl": 0.06748141019910876,
+        "lon_asc_node": 0.633416637463034,
+        "true_anomaly0": -2.9539671853454714
+      },
+      "transfer_dv": 12604.3,
+      "science_mult": 1.7
+    },
+    {
+      "name": "81P/Wild",
+      "type": "comet",
+      "orbits": "Sun",
+      "radius": 2133.0,
+      "mass": 12106347079657.5,
+      "seed": 9006,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 319.95,
+        "palette": [
+          [
+            0.0,
+            [
+              0.28,
+              0.27,
+              0.26
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.42,
+              0.41,
+              0.4
+            ]
+          ]
+        ],
+        "albedo": 0.03406975240804189,
+        "albedo_src": "INVENTED: C-class nucleus (no page states a geometric albedo for a comet -- its H is a coma): pV 0.050 x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 3.1057651478744673e-08,
+        "ecc": 0.537832,
+        "arg_peri": 0.7250813297777763,
+        "orb_incl": 0.05652423315508835,
+        "lon_asc_node": 2.375466415792866,
+        "true_anomaly0": 2.9572824530917794
+      },
+      "transfer_dv": 12591.5,
+      "science_mult": 1.7
+    },
+    {
+      "name": "9P/Tempel",
+      "type": "comet",
+      "orbits": "Sun",
+      "radius": 3000.0,
+      "mass": 33682500000000.0,
+      "seed": 9007,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 450.0,
+        "palette": [
+          [
+            0.0,
+            [
+              0.28,
+              0.27,
+              0.26
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.42,
+              0.41,
+              0.4
+            ]
+          ]
+        ],
+        "albedo": 0.03406975240804189,
+        "albedo_src": "INVENTED: C-class nucleus (no page states a geometric albedo for a comet -- its H is a coma): pV 0.050 x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 3.326766378198509e-08,
+        "ecc": 0.468931,
+        "arg_peri": 3.2199876076016225,
+        "orb_incl": 0.18441323409497287,
+        "lon_asc_node": 1.1719676487631683,
+        "true_anomaly0": 2.5932792249771532
+      },
+      "transfer_dv": 12324.1,
+      "science_mult": 1.7
+    },
+    {
+      "name": "C/1811 F1 (Great comet)",
+      "type": "comet",
+      "orbits": "Sun",
+      "radius": 17500.0,
+      "mass": 6685820312500000.0,
+      "seed": 9008,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 500.0,
+        "palette": [
+          [
+            0.0,
+            [
+              0.28,
+              0.27,
+              0.26
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.42,
+              0.41,
+              0.4
+            ]
+          ]
+        ],
+        "albedo": 0.03406975240804189,
+        "albedo_src": "INVENTED: C-class nucleus (no page states a geometric albedo for a comet -- its H is a coma): pV 0.050 x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 6.76340841152942e-11,
+        "ecc": 0.994826,
+        "arg_peri": 1.1407768697007776,
+        "orb_incl": 1.8287402822763905,
+        "lon_asc_node": 2.4524214731718,
+        "true_anomaly0": -3.061636933438413
+      },
+      "transfer_dv": 14109.9,
+      "science_mult": 1.8
+    },
+    {
+      "name": "C/1965 S1 (Ikeya-Seki)",
+      "type": "comet",
+      "orbits": "Sun",
+      "radius": 4300.0,
+      "mass": 99184982500000.0,
+      "seed": 9009,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 500.0,
+        "palette": [
+          [
+            0.0,
+            [
+              0.28,
+              0.27,
+              0.26
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.42,
+              0.41,
+              0.4
+            ]
+          ]
+        ],
+        "albedo": 0.03406975240804189,
+        "albedo_src": "INVENTED: C-class nucleus (no page states a geometric albedo for a comet -- its H is a coma): pV 0.050 x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 2.4624759830232906e-10,
+        "ecc": 0.999883,
+        "arg_peri": 0.13134998884658924,
+        "orb_incl": 2.573213965373076,
+        "lon_asc_node": 1.4978433093907855,
+        "true_anomaly0": 3.1191178162766984
+      },
+      "transfer_dv": 14812.5,
+      "science_mult": 1.8
+    },
+    {
+      "name": "C/1995 O1 (Hale-Bopp)",
+      "type": "comet",
+      "orbits": "Sun",
+      "radius": 30000.0,
+      "mass": 3.36825e+16,
+      "seed": 9010,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 500.0,
+        "palette": [
+          [
+            0.0,
+            [
+              0.28,
+              0.27,
+              0.26
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.42,
+              0.41,
+              0.4
+            ]
+          ]
+        ],
+        "albedo": 0.03406975240804189,
+        "albedo_src": "INVENTED: C-class nucleus (no page states a geometric albedo for a comet -- its H is a coma): pV 0.050 x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 8.231787754739068e-11,
+        "ecc": 0.994922,
+        "arg_peri": 2.280059737561848,
+        "orb_incl": 1.5667977774785775,
+        "lon_asc_node": 4.917189405472208,
+        "true_anomaly0": 2.539912336697203
+      },
+      "transfer_dv": 14207.8,
+      "science_mult": 1.8
+    },
+    {
       "name": "152830 Dinkinesh I Selam",
       "type": "moon",
       "orbits": "Dinkinesh",

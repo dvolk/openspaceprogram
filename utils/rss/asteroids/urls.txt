@@ -135,3 +135,23 @@ https://minorplanetcenter.net/Extended_Files/allcometels.json.gz
     - the size page names four of its comet rows instead of giving a joinable designation,
       and two of those are not what they look like: the Great Comet of 1811 is C/1811 F1,
       and Tsuchinshan-ATLAS is C/2023 A3 (C/2022 N1 is Attard-Maury).
+
+Nucleus sizes for the GREAT COMETS (the only long-period sizes we hold anywhere):
+
+https://en.wikipedia.org/wiki/Great_comet
+  -> raw/great_comet.html   (parse via comets.great_rows)
+  One 100-row table: Designation, Name, Image, Dimensions (km), Total magnitude (M1),
+  Maximum brightness, Perihelion date, Remarks. The traps, all three handled in comets.py:
+    - Dimensions is a DIAMETER, not a radius. Proved by the page against the by-size page
+      rather than assumed: C/1811 F1 is "30 - 40 km" here and "15 - 20" (a radius) there;
+      Halley "11 km" here against 5.75 km there. Halved once, in the parser, so no consumer
+      has to remember it.
+    - The Designation column is editorial. The page labels Hyakutake "C/1996 B1"; MPC's
+      C/1996 B1 is Szczepanski, and Hyakutake is C/1996 B2. Both have a 1996 perihelion, so
+      the DATES cannot catch the wrong join -- only the names can, which is why a row from
+      this page carries name_guard and build() refuses a join whose identity words do not
+      overlap (NAME_STOPWORDS keeps "great"/"comet" from doing it for free).
+    - Halley's apparitions are ~28 rows under designations the MPC never adopted ("P/1066
+      G1"), each repeating the same 11 km nucleus. They have no MPC orbit row to join and
+      are refused by name: the corpus authors ONE Halley, at 1P's elements.
+      (And the page writes BC years with U+2212 MINUS SIGN, not a hyphen.)

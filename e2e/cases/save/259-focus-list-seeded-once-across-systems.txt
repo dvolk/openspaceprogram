@@ -9,9 +9,9 @@
 # which is why boot reports it -- and the length is the file's body count plus the
 # ship, so this case's two numbers travel with the corpus: solar_system.json wore 31
 # bodies when #298 was filed, then the catalogue pass (0ba3487a, aece9303) brought it
-# to 85, so the row now reads 86 targets (85 body/bodies). When the corpus changes,
-# update the EXPECT and the FORBID together: the FORBID is exactly twice the target
-# count, which is what the bug prints.
+# to 85 and the comet roster's seven to 92, so the row now reads 93 targets (92
+# body/bodies). When the corpus changes, update the EXPECT and the FORBID together: the
+# FORBID is exactly twice the target count, which is what the bug prints.
 NAME focus-list-seeded-once-across-systems
 CLAIM A cross-system boot seeds the focus list once, not twice.
 KIND invariant
@@ -19,8 +19,8 @@ ARGS --system res/systems/ksp_system.json --load e2e/fixtures/save_solar --time-
 ARGS --timeout 5
 EXPECT [load] save is from system 'res/systems/solar_system.json'; switched before loading
 EXPECT Loaded game from e2e/fixtures/save_solar (active: racer)
-EXPECT [cam] focus: 86 targets (85 body/bodies)
+EXPECT [cam] focus: 93 targets (92 body/bodies)
 CHECK out.count("[cam] focus:") == 1
-FORBID [cam] focus: 172
+FORBID [cam] focus: 186
 FORBID error:
 LIMIT 120

@@ -8,7 +8,13 @@ Sources (also listed in urls.txt):
          for redistribution with attribution -- which every consumer below carries.)
   https://en.wikipedia.org/wiki/List_of_Solar_System_objects_by_size
       -> raw/objects_by_size.html  (already cached for the asteroids and read by sizes.py.
-         It is the ONLY place we have a comet nucleus radius: 12 of them, 60 km to 300 m.)
+         It is where most of our comet nucleus radii come from: 12 of them, 60 km to 300 m.)
+  https://en.wikipedia.org/wiki/Great_comet
+      -> raw/great_comet.html      (read by great_rows() below. The ONLY source we hold for a
+         long-period nucleus size -- Hale-Bopp, Ikeya-Seki, McNaught, NEOWISE -- and its
+         "Dimensions" column is a DIAMETER, which the by-size page's own comparison proves:
+         C/1811 F1 is "30 - 40 km" here and "15 - 20" (a radius) there, Halley "11 km" here
+         against 5.75 km there. Halved, never halved twice.)
 
 What the MPC file is: 4,666 ORBIT records, one per APPARITION, not one per comet. A row
 states Perihelion_dist (AU), e, Peri (argument of perihelion), Node, i, the perihelion date
@@ -54,6 +60,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 RAW = os.path.join(HERE, 'raw')
 ELEMENTS_GZ = os.path.join(RAW, 'allcometels.json.gz')
 SIZE_HTML = os.path.join(RAW, 'objects_by_size.html')
+GREAT_HTML = os.path.join(RAW, 'great_comet.html')
 OUT = os.path.join(HERE, 'comets.json')
 
 # The epoch the catalogue is a snapshot of. Keep in step with make_solar_system.py.
@@ -157,6 +164,138 @@ def radius_rows():
             if 'comet' in (e.get('type_note') or '').lower()]
 
 
+# Words that carry no identity. They sit in both columns of a CORRECT join ("Great Comet of
+# 1882" / "(Great September comet)") and in nothing that tells one comet from another, so a
+# name test that counted them would pass the join it is meant to refuse.
+NAME_STOPWORDS = frozenset({'great', 'comet', 'comets', 'of', 'the', 'and', 'large',
+                            'small', 'day', 'night', 'north', 'northen', 'northern',
+                            'south', 'southern', 'century', 'comet'})
+
+
+def name_tokens(s):
+    """[set] The identity-bearing words of a comet's name, lower-cased."""
+    return {w for w in re.findall(r'[a-z]+', (s or '').lower())
+            if w not in NAME_STOPWORDS}
+
+
+def great_rows():
+    """[dict] The 'Great comet' article's list of great comets: Designation, Name,
+    Dimensions (km), Perihelion date. Shaped like sizes.objects() rows so build() joins
+    both pages the same way; it is the only source we hold for a long-period nucleus size
+    (the by-size page has 12 comets and not one of them is a great comet of the last
+    century).
+
+    Three things this page does that the by-size page does not, each handled here:
+      * Dimensions is a DIAMETER. Halving it is not a guess, it is what the page itself
+        says against the size page: C/1811 F1 is '30 - 40 km' here and '15 - 20' (a
+        radius) there; Halley is '11 km' here against 5.75 km there.
+      * Its Designation column is not always the MPC's. The page labels Hyakutake
+        'C/1996 B1'; MPC's C/1996 B1 is Szczepanski, and Hyakutake is C/1996 B2. The two
+        perihelia are 1996 and 1996, so dates cannot catch that -- only the NAMES can,
+        which is why an entry from this page carries name_guard and build() refuses a
+        join whose names share no identity word. Same policy as parse.sbdb_identity_ok().
+      * Halley's apparitions are ~30 rows under designations MPC never adopted ('P/1066
+        G1'), all the SAME nucleus repeating 11 km. They join nothing, which is the right
+        answer rather than a gap: the corpus authors one Halley, at 1P's elements.
+    """
+    if not os.path.exists(GREAT_HTML):
+        return []
+    text = open(GREAT_HTML, encoding='utf-8', errors='replace').read()
+    return _great_table(text)
+
+
+_GREAT_HDR = ('Designation', 'Name', 'Dimensions', 'Perihelion')
+
+
+def _cell_text(raw):
+    s = re.sub(r'<sup[^>]*>.*?</sup>', '', raw, flags=re.S)   # footnote markers
+    s = re.sub(r'<[^>]+>', '', s)
+    return re.sub(r'\s+', ' ', s).strip()
+
+
+def _table_cells(row_html):
+    """[cells] The d and h cells of one table row, tags stripped."""
+    return [_cell_text(m.group(2))
+            for m in re.finditer(r'<t([dh])[^>]*>(.*?)</t\1>', row_html, re.S)]
+
+
+def _great_table(text):
+    """[rows] Parse the table, NOT its index: the article reorders and adds tables."""
+    for tab in re.findall(r'<table[^>]*>.*?</table>', text, re.S):
+        rows = re.findall(r'<tr[^>]*>(.*?)</tr>', tab, re.S)
+        col = {}
+        for raw in rows:
+            hdr = _table_cells(raw)
+            want = [next((i for i, h in enumerate(hdr) if h.startswith(k)), None)
+                    for k in _GREAT_HDR]
+            if all(v is not None for v in want):
+                col = dict(zip(('desig', 'name', 'dim', 'peri'), want))
+                break
+        if not col:
+            continue
+        out = []
+        for raw in rows:
+            c = _table_cells(raw)
+            if len(c) <= max(col.values()):
+                continue
+            # U+2212 MINUS SIGN, not a hyphen: every BC row on the page.
+            desig = c[col['desig']].replace('\u2212', '-').strip()
+            name = c[col['name']].strip()
+            # '20 - 25' is a stated span (the size page's own convention), not a value with
+            # a stray dash; '8.6 km[13]' keeps its number after the tag strip above.
+            nums = [float(x) for x in re.findall(r'\d+(?:\.\d+)?', c[col['dim']])]
+            if not nums or desig.startswith('Designation'):
+                continue
+            diam_km = sum(nums) / len(nums)
+            out.append(dict(
+                name=('%s (%s)' % (desig, name)) if name else desig,
+                designation=desig,
+                wiki_name=name,
+                radius_m=diam_km * 500.0,      # a DIAMETER, so half of it in metres
+                radius_text=c[col['dim']],
+                mass_kg=None,
+                mass_text=None,
+                table=0,
+                type_note='great comet list (Dimensions is a diameter)',
+                radius_src='Wikipedia Great comet (halved: the column is a diameter, %s km)'
+                           % c[col['dim']],
+                name_guard=True,
+                peri_text=c[col['peri']],
+            ))
+        return out
+    return []
+
+
+def sized_rows(verbose=True):
+    """[dict] Every page we hold that states a nucleus size, deduplicated by the MPC
+    identity the row resolves to -- not by the page's spelling, which is why the dedup runs
+    after the alias pass. The by-size page wins: it states a radius outright, while the
+    great-comet page states a diameter and several of its Dimensions cells are the article's
+    own rough figures."""
+    out, seen = [], {}
+    for e in radius_rows() + great_rows():
+        key = resolve_key(e)
+        if key in seen:
+            if verbose:
+                print('  size source dedup: %s also sized by %s (kept %s)'
+                      % (key, e.get('radius_src', '')[:40], seen[key]))
+            continue
+        seen[key] = ('size page' if not e.get('name_guard') else 'great comet page')
+        out.append(e)
+    return out
+
+
+def resolve_key(e):
+    """[str] Which MPC identity a size row means: the page's own designation when it is
+    shaped like one, else COMET_ALIASES. The alias step has to run before anything
+    deduplicates, because the size page writes 'Great Comet of 1811' where the great-comet
+    page writes 'C/1811 F1'."""
+    desig = (e.get('designation') or '').strip()
+    if desig and (_ID_NUM.match(desig) or _ID_LETTER.match(desig)):
+        return id_key(desig)
+    return COMET_ALIASES.get(e['name'], id_key(desig) if desig else e['name'])
+
+
 def elements():
     with gzip.open(ELEMENTS_GZ, 'rt', encoding='utf-8') as f:
         return json.load(f)
@@ -199,7 +338,7 @@ def heliocentric_r(a_au, e, t_peri_jd, jd):
 
 def build(verbose=True):
     rows = elements()
-    sized = radius_rows()          # one parse of the size page, not one per call site
+    sized = sized_rows(verbose=verbose)   # one parse per page, not one per call site
     by_key = {}
     for r in rows:
         by_key.setdefault(id_key(r['Designation_and_name']), []).append(r)
@@ -211,15 +350,30 @@ def build(verbose=True):
         if display in REFUSED:
             refused.append((display, REFUSED[display]))
             continue
-        key = id_key(e['designation'] or '') if e['designation'] else None
-        if not key or key not in by_key:
-            key = COMET_ALIASES.get(display)
+        key = resolve_key(e)
         cands = by_key.get(key)
         if not cands:
-            refused.append((display, 'no MPC orbit row for identity %r (size page says %r)'
-                            % (key, e['designation'] or display)))
+            refused.append((display, 'no MPC orbit row for identity %r (%s says %r)'
+                            % (key, 'great comet page' if e.get('name_guard')
+                               else 'size page', e['designation'] or display)))
             continue
         r = pick_apparition(cands)
+        orbit_name = r['Designation_and_name']
+        # The page's Designation column is editorial, not the MPC's. Two comets discovered
+        # in the same half-month share a year and a number space, so the ONLY thing that
+        # catches 'C/1996 B1 = Hyakutake' (MPC's C/1996 B1 is Szczepanski) is the name.
+        if e.get('name_guard'):
+            mine, theirs = name_tokens(e.get('wiki_name')), name_tokens(proper_name(orbit_name))
+            if mine and theirs and not mine & theirs:
+                refused.append((display, 'the page writes %r where MPC\'s %s is %r'
+                                % (e.get('wiki_name'), key, proper_name(orbit_name))))
+                continue
+            # And the page's own perihelion date has to be the apparition we railed on.
+            yr = re.search(r'\d{3,4}', e.get('peri_text') or '')
+            if yr and abs(int(yr.group(0)) - int(r['Year_of_perihelion'])) > 1:
+                refused.append((display, 'the page dates perihelion %s, MPC\'s %s is %+04d'
+                                % (yr.group(0), key, int(r['Year_of_perihelion']))))
+                continue
         q = float(r['Perihelion_dist'])
         ecc = float(r['e'])
         if not (0.0 <= ecc < 1.0):
@@ -230,7 +384,6 @@ def build(verbose=True):
                      int(float(r['Day_of_perihelion'])))
         period_y = a ** 1.5
         r_ep = heliocentric_r(a, ecc, t_jd, CATALOGUE_EPOCH_JD)
-        orbit_name = r['Designation_and_name']
         out.append(dict(
             name=display,
             desig=orbit_name,
@@ -239,7 +392,8 @@ def build(verbose=True):
             family=family(r.get('Orbit_type'), a, period_y, q),
             radius_m=e['radius_m'],
             radius_text=e['radius_text'],
-            radius_src='Wikipedia List of Solar System objects by size, table %d' % e['table'],
+            radius_src=e.get('radius_src')
+                       or 'Wikipedia List of Solar System objects by size, table %d' % e['table'],
             mass_kg=e['mass_kg'],
             mass_text=e['mass_text'],
             mass_src=('stated on the size page, table %d' % e['table']) if e['mass_kg']

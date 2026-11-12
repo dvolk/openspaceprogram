@@ -107,6 +107,11 @@ enum class BodyType : unsigned char {
        the other types exist for -- the dossier must not call Eris an asteroid while it
        calls Pluto a planet. */
     DwarfPlanet,
+    /* Orbits the star on an eccentric rail and is a nucleus of ice and dust. Today it is
+       rendered as airless rock like the two above: nothing here models a coma or a tail
+       yet, so the type carries the dossier word and a place for the activity law to land
+       (the flux it needs is the insolation law in insolation.h, not a second one). */
+    Comet,
 };
 
 struct TerrainBody {
