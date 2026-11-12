@@ -16,10 +16,13 @@
 
 #include "groundtemp.h"   // the temperature layer's law, and the anchor's rungs
 #include "terragen.h"     // Surface: the data the layer decides from
+#include "solar.h"        // cosIncidence: the law's ONE floored cosine (#724)
 
 #include "equirect.h"
 
-// Terminator shading: light factor in [0.3, 1] (night keeps 30% ambient).
+/* The terminator's light factor, NOT a cosine of the law: a picture wants a soft edge over
+   ~0.2 of the cosine with 30 % ambient left in the night, where the temperature law wants a
+   hard floor at 0 (groundtemp.h). Same dot product, different purpose -- do not merge them. */
 inline float surfmapShade(const glm::dvec3 &n, const glm::dvec3 &sun) {
     const double d = glm::dot(n, sun);
     const double t = glm::clamp((d + 0.05) / 0.20, 0.0, 1.0);
@@ -213,11 +216,23 @@ inline TempLayer tempLayerFor(const Surface &s, double derived_bb, bool has_sun)
    number beside a pixel has to BE that pixel's number -- and because the sun it uses is the
    one the picture was BAKED with, not the sim's sun now (the map is a snapshot; frames move
    underneath it). #687's rule that a figure is measured or recomputed, never both at different
-   instants. */
-inline double surfmapGroundT(double anchor_K, double even_share, const glm::dvec3 &dir,
+   instants.
+   The cosine is solar.h's, not a local max/min of a dot product: groundtemp.h's contract says
+   cos_inc comes from solar.h's floored cosine and nothing re-derives it, and this was the one
+   place that did. The sweep's directions are unit (equirectDirAt) and so is the baked sun
+   (starFromBody), but the CURSOR readout is not guaranteed to be, and its old guard was a
+   clamp on the dot -- which read a direction 3x longer as 3x hotter than the angle it points
+   at, up to the ceiling. Put the guard where it belongs, on the direction: a direction is a
+   bearing, so scale it to the unit sphere and let solar.h floor it. Under 1 it stays as it
+   is -- a zero-length direction has no bearing to normalise, and the floor answering with the
+   night end is the honest reading of that. tests/test_surfmap.cpp
+   pins the ceiling either way (an un-normalised direction cannot read hotter than the day
+   end); it now also gets the right temperature for an angled one. */
+inline double surfmapGroundT(double anchor_K, double even_share, glm::dvec3 dir,
                              const glm::dvec3 &sun_dir) {
-    const double c = std::max(0.0, std::min(1.0, glm::dot(dir, sun_dir)));
-    return groundTemperature(anchor_K, even_share, c);
+    const double len2 = glm::dot(dir, dir);   // length2 would want glm/gtx/norm.hpp
+    if(len2 > 1.0) { dir *= 1.0 / std::sqrt(len2); }
+    return groundTemperature(anchor_K, even_share, cosIncidence(dir, sun_dir));
 }
 
 /* What the WIND layer can do for a body (#769), decided once per bake on the main thread for
