@@ -200,21 +200,24 @@ static void drawOrbitThroughBody(ImDrawList *dl, const OrbitMap &map,
 static constexpr float kMinorQuiet = 0.090f;
 
 // Which name wins a contested patch of map (lower wins): the plan the player is making
-// first, then the bodies they plan AROUND, then the rocks. Same catalogue weight the
-// rails use for quiet-vs-bright.
+// first, then the bodies they plan AROUND, then the body they are orbiting, then the
+// rest of the catalogue by type, rocks last. Same catalogue weight the rails use for
+// quiet-vs-bright.
 enum : unsigned char {
     kLabelXfer   = 0,   // the transfer leg's arrival note
     kLabelTarget = 1,   // the body the plan points at
-    kLabelShip   = 2,   // another of the player's craft
-    kLabelStar   = 3,
-    kLabelPlanet = 4,
-    kLabelMoon   = 5,
-    kLabelDwarf  = 6,
-    kLabelComet  = 7,
-    kLabelRock   = 8,   // asteroids, and anything the catalogue adds later
+    kLabelFocus  = 2,   // the body this map is centred on: the one being orbited
+    kLabelShip   = 3,   // another of the player's craft
+    kLabelStar   = 4,
+    kLabelPlanet = 5,
+    kLabelMoon   = 6,
+    kLabelDwarf  = 7,
+    kLabelComet  = 8,
+    kLabelRock   = 9,   // asteroids, and anything the catalogue adds later
 };
-static unsigned char labelPriority(const TerrainBody *b, bool selected) {
+static unsigned char labelPriority(const TerrainBody *b, bool selected, bool focus) {
     if(selected) { return kLabelTarget; }
+    if(focus) { return kLabelFocus; }
     switch(b->type) {
         case BodyType::Star:        return kLabelStar;
         case BodyType::Planet:      return kLabelPlanet;
@@ -251,6 +254,12 @@ struct MapLabelPass {
     // Discs the map draws that are not label candidates -- the player's own marker
     // above all -- so a name cannot print across them.
     std::vector<MapLabelCand> blocked;
+    // Opaque body discs, held back so the orbit lines go DOWN first. A body is solid
+    // and nearer than any line crossing it, so a rail drawn over the sun reads as a
+    // gap in the sun. Submitted in the order the bodies are walked, which is what
+    // keeps a nearer disc over a further one.
+    struct Disc { ImVec2 at; float r_px; ImU32 col; };
+    std::vector<Disc> discs;
 
     void add(const ImVec2 &dot, float r_px, ImU32 col, const char *text,
              unsigned char prio) {
@@ -262,13 +271,28 @@ struct MapLabelPass {
         arena.insert(arena.end(), text, text + len + 1);   // the NUL travels too
         items.push_back({{dot, ImGui::CalcTextSize(text), r_px, prio}, col, off});
     }
-    void block(const ImVec2 &dot, float r_px) {
-        blocked.push_back({ dot, ImVec2(0.0f, 0.0f), r_px, 0 });
+    // A marker that is not itself a label candidate. `prio` is the tier it belongs to:
+    // a name may cross a marker only when it outranks that marker (LabelGrid::freeBox).
+    void block(const ImVec2 &dot, float r_px, unsigned char prio = 0) {
+        blocked.push_back({ dot, ImVec2(0.0f, 0.0f), r_px, prio });
     }
-    void reset() { items.clear(); arena.clear(); blocked.clear(); }
-    void flush(ImDrawList *dl, const MapViewRect &view) {
+    void disc(const ImVec2 &at, float r_px, ImU32 col) {
+        discs.push_back({ at, r_px, col });
+    }
+    // Call this where the window's LINES end: every disc queued up to there lands as
+    // one solid layer, under the markers and names drawn after it. flush() asserts the
+    // queue is empty, so a missing call cannot quietly paint a disc over a ship marker.
+    void flushDiscs(ImDrawList *dl) {
+        for(const Disc &d : discs) { dl->AddCircleFilled(d.at, d.r_px, d.col); }
+        discs.clear();
+    }
+    void reset() { items.clear(); arena.clear(); blocked.clear(); discs.clear(); }
+    // `focus` is the map's centre in screen px: names sit on the far side of their
+    // marker from it, which is what keeps them from sliding across a dot mid-pan.
+    void flush(ImDrawList *dl, const MapViewRect &view, const ImVec2 &focus) {
+        assert(discs.empty() && "map discs must be flushed before the names");
         const ImVec4 rect(view.l, view.t, view.r, view.b);
-        for(const MapLabelPlaced &p : placeMapLabels(items, blocked, rect,
+        for(const MapLabelPlaced &p : placeMapLabels(items, blocked, rect, focus,
                                                      kMaxMapLabels)) {
             const Item &it = items[(size_t)p.cand];
             dl->AddText(p.at, it.col, arena.data() + it.off);
@@ -362,7 +386,9 @@ static void drawSystemBodyOrbits(Game &g, TerrainBody *focus,
         if(view.hitsDisc(sun_px.x, sun_px.y, sun_r_px)) {
             const ImU32 col_sun =
                 ImGui::GetColorU32(ImVec4(1.0f, 0.85f, 0.45f, 1.0f));
-            map.drawBody(dl, sun_f, sun->radius, col_sun, 4.0f);
+            // Held back with the other body discs: the sun is solid, so the 670 rails
+            // that cross it must go under it, not across it.
+            labels.disc(sun_px, sun_r_px, col_sun);
             if(view.contains(sun_px.x, sun_px.y, sun_r_px)) {
                 labels.add(sun_px, sun_r_px, ink, sun->name.c_str(), kLabelStar);
             }
@@ -406,7 +432,7 @@ static void drawSystemBodyOrbits(Game &g, TerrainBody *focus,
         rails.push_back({&cpts_p, O, P, cpos_p, cpos_f, body_px, b->name.c_str(),
                          b->radius, b->frame->soi,
                          map.bodyRadiusPx(b->radius, min_r),
-                         labelPriority(b, selected),
+                         labelPriority(b, selected, b == focus),
                          /*faint=*/ minor && !selected, selected});
     }
     /* Asteroid and comet rails are BACKGROUND, so they draw a shade closer to the
@@ -434,7 +460,9 @@ static void drawSystemBodyOrbits(Game &g, TerrainBody *focus,
     for(const BodyRail &r : rails) {
         const ImU32 ccol = r.selected ? col_sel : col_child;
         // Disk at the body's TRUE radius, floored so it stays visible zoomed out.
-        map.drawBody(dl, r.cpos_f, r.radius, ccol, r.selected ? 5.0f : 3.0f);
+        // Queued, not drawn: the rails of every body in the catalogue are down by now,
+        // and a disc sitting on top of them is what makes a body look solid.
+        labels.disc(r.body_px, r.body_r_px, ccol);
         if(r.selected) {
             dl->AddCircle(r.body_px, r.body_r_px + 4.0f, ccol, 0, 1.0f);
         }
@@ -4614,13 +4642,19 @@ void drawUIMap(Game &g) {
         }
         // closed=true for the ellipse; false for the open arc (a chord would close it).
         proj.drawOrbit(dl, *traj_pts, col_ship, 1.0f, closed);
-        proj.drawBody(dl, glm::dvec3(0.0, 0.0, 0.0), focus->radius,
-                     col_body, 3.0f);
+        labels.disc(focus_px, proj.bodyRadiusPx(focus->radius, 3.0f), col_body);
+        labels.block(focus_px, proj.bodyRadiusPx(focus->radius, 3.0f));
+        /* The lines end here: every body disc -- the star, every planet in the
+           catalogue, and the focus under the ship's own conic -- lands as one solid
+           layer, and the markers and names drawn below it stay legible. */
+        labels.flushDiscs(dl);
         const ImVec2 ship_px = proj.px(orbit_pos);
         dl->AddLine(focus_px, ship_px, ink, 1.0f);
         dl->AddCircleFilled(ship_px, 5.0f, ink);
         dl->AddCircle(ship_px, 8.0f, col_ship, 0, 1.5f);
-        labels.block(ship_px, 9.0f);   // the most important dot on the map
+        labels.block(ship_px, 9.0f, kLabelShip);   // your marker keeps every name off
+        // it except the plan and the body you are orbiting, which sits under it at
+        // any planning zoom -- losing that one was costing Earth its own label.
         // Prograde (velocity) arrow.
         proj.drawArrow(dl, orbit_pos, orbit_vel, 24.0f, col_ship, 1.5f);
         // Apside markers only mean anything for a non-circular orbit.
@@ -4683,7 +4717,7 @@ void drawUIMap(Game &g) {
 
         // Names last: every line in the window is down by now, so no rail, SOI ring or
         // transfer leg can cross a name.
-        labels.flush(dl, view);
+        labels.flush(dl, view, focus_px);
         dl->PopClipRect();
     });
 }
@@ -6708,17 +6742,23 @@ void drawTrackingMap(Game &g) {
             proj.drawBody(dl, glm::dvec3(0.0, 0.0, 0.0),
                          focus->seaLevelRadius() + atmo_top, col_atmo, 3.0f);
         }
-        proj.drawBody(dl, glm::dvec3(0.0, 0.0, 0.0), focus->radius, col_body, 3.0f);
+        // The ship's conic is a line, so it belongs under the body discs exactly as the
+        // flight map's does; its markers are drawn on top of the discs below.
+        if(ship) { proj.drawOrbit(dl, *traj_pts, col_ship, 1.0f, closed); }
+        labels.disc(focus_px, proj.bodyRadiusPx(focus->radius, 3.0f), col_body);
+        labels.block(focus_px, proj.bodyRadiusPx(focus->radius, 3.0f));
+        // The lines end here (see the flight map): every body disc lands as one solid
+        // layer under the markers and names.
+        labels.flushDiscs(dl);
 
-        // The ship itself: its orbit (open arc uses closed=false so a chord does not close
-        // it), a dot with a green ring, the prograde arrow and the apside markers.
+        // The ship itself: a dot with a green ring, the prograde arrow and the apside
+        // markers.
         if(ship) {
-            proj.drawOrbit(dl, *traj_pts, col_ship, 1.0f, closed);
             const ImVec2 ship_px = proj.px(orbit_pos);
             dl->AddLine(focus_px, ship_px, ink, 1.0f);
             dl->AddCircleFilled(ship_px, 5.0f, ink);
             dl->AddCircle(ship_px, 8.0f, col_ship, 0, 1.5f);
-            labels.block(ship_px, 9.0f);   // the most important dot on the map
+            labels.block(ship_px, 9.0f, kLabelShip);   // see the flight map
             // Prograde (velocity) arrow.
             proj.drawArrow(dl, orbit_pos, orbit_vel, 24.0f, col_ship, 1.5f);
             // Apside markers only mean anything for a non-circular orbit.
@@ -6767,7 +6807,7 @@ void drawTrackingMap(Game &g) {
         }
 
         // Names last: every line in the window is down by now.
-        labels.flush(dl, view);
+        labels.flush(dl, view, focus_px);
         dl->PopClipRect();
 
         if(!ship) {
