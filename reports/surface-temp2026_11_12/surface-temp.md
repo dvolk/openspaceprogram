@@ -10,6 +10,15 @@ written yet. Every number in this report was measured off `res/systems/*.json` w
 generators' own arithmetic (`utils/atmo_units.py:blackbody_temperature`, `semimajor_axis`)
 by `tmp/temp_surface_probe.py` → `tmp/surface_probe.log`.
 
+> **Amended same day, before any code was written.** Jool is *not* pair-solved. The KSP wiki's
+> min/max column is the one this file already knows is (record low, average) — Kerbin's `max`
+> *is* its 288.15 K mean, argued in `utils/gen_systems.py:1275-1278` — and Duna and Laythe sit
+> in that same column. Pair-solving Jool while refusing Duna's would be reading one column two
+> ways, so the Kerbal airs keep their air-datum anchors and Jool takes the DEFAULT air-mass knob
+> like the four solar giants: **151.43 K, f 0.9299, ends 148.7 / 158.8 K**. §3.1, §3.2, §3.4, §7
+> and §8 are updated; the pair-solve set is now exactly {Moon, Pluto}, both from RSS pages that
+> state a range and no mean.
+
 ---
 
 ## 1. Where the dash comes from today (measured, not guessed)
@@ -81,8 +90,8 @@ A hand-authored file can still decline; §6 makes sure a *shipped* file cannot d
 | rank | rung | who it catches |
 |---|---|---|
 | 1 | stated `surface.temperature` | Mercury, Venus, Earth, Mars, the 4 solar giants, Kerbin |
-| **1.5 (new)** | **a stated night/day pair, solved for both unknowns** | **Moon, Pluto, Jool** |
-| 2 | the datum of the air sitting on the ground (#625) | Eve, Shay, Duna, Laythe |
+| **1.5 (new)** | **a stated night/day range, solved for both unknowns** | **Moon, Pluto** |
+| 2 | the datum of the air sitting on the ground (#625) | Eve, Shay, Duna, Laythe, **Jool** |
 | 3 | DERIVED black-body: starlight + albedo | everything else — all 12 airless KSP bodies, all 239-minus-9 solar bodies |
 
 Rung 1.5 outranks 2 because a source that states a ground's two extremes is talking about the
@@ -90,6 +99,21 @@ ground; the air datum is a number we authored for a column. It loses to rung 1 b
 *mean* plus a stated pair over-determines the law, and an over-determined law is a test
 (#727's whole point) — so Earth, Mars, Kerbin and the solar giants keep their current
 behaviour untouched.
+
+**It fires on a range only when the range is a claim about night and day.** RSS labels the
+Moon's row "Diurnal temperature range (equator)" and states Pluto's as a surface temperature
+range; the KSP wiki's min/max column is a different claim altogether — `gen_systems.py:1275-1278`
+established that its `max` is that body's *mean* — so no Kerbal body is pair-solved, Jool
+included.
+
+**How it lands in the file (this replaces a 4th C++ rung).** The solving happens at generation
+time, so the game needs no new algebra: the generator writes the solved anchor into the key
+every consumer already reads — `surface.temperature` — and says what it is in a sibling
+`surface.temperature_src`, exactly the way `albedo_src` and `even_share_src` already travel
+(`src/system.cpp:668` and `:701` parse those two and refuse a src string that explains an
+absent value; the third gets the same invariant). The dossier prints the src string when it is
+there instead of "stated ground temperature", which is the #722 rule that a computed figure
+announces itself.
 
 ### 3.2 The pair algebra (this is the only new maths in the plan)
 
@@ -107,17 +131,35 @@ f  = 4.0 / (3.0 + r)
 T0 = T_night / f ** 0.25
 ```
 
-| body | stated pair | → f | → anchor | cross-check |
+| body | stated range | → f | → anchor | cross-check |
 |---|---|---|---|---|
 | Moon | 95 – 390 K | 0.0139 | **276.50 K** | its derived black-body is 270.33 K → **+2.3 %** |
-| Pluto | 24 – 38 K | 0.4308 | **29.62 K** | derived 32.23 K → **−8 %** (waiver, see §6.2) |
-| Jool | 120.01 – 225.07 K | 0.2602 | **168.03 K** | derived 111.43 K → +51 %; its air datum is 151.43 K → **+11 %** |
+| Pluto | 24 – 38 K | 0.4308 | **29.62 K** | derived 32.23 K → **−8 %** (waiver, see §5.2) |
 
 The Moon's +2.3 % is the interesting one: a number solved from a lander-page's two extremes
 lands 2.3 % from a number derived independently from the Sun's temperature and a scraped
 albedo. That is the law being right, and it is a much better test than the one we have now
 (which only checks the night end, exactly the end the algebra can't get wrong). The cross-check
 becomes the guard (§6.2) instead of the anchor.
+
+**Why no Kerbal body goes through here.** The wiki's min/max column would pair-solve all six
+airs, and the guard catches four of them for us — read it as evidence about the column:
+
+| body | wiki min/max | → anchor | vs its derived black-body | vs its own air datum |
+|---|---|---|---|---|
+| Kerbin | 186.95 – 288.15 | 226.67 K | **−11.2 % (refused)** | −21.3 % |
+| Duna | 150 – 233 | 182.80 K | **−12.9 % (refused)** | −14.9 % |
+| Eve | 160.02 – 420 | 301.57 K | +33.0 % | +3.4 % |
+| Laythe | 199 – 277 | 226.85 K | +100.0 % | **−21.3 %** |
+| Jool | 120.01 – 225.07 | 168.03 K | +50.8 % | +11.0 % |
+
+A ground that pair-solves out *colder than starlight alone permits* is not a night-side
+temperature — Kerbin and Duna say so on their own, and they are the two bodies where #742 had
+already caught the column being (record low, average). Laythe is the one the guard misses (its
+air is a greenhouse by construction, which is #738's open question), and it is 21 % under the
+air we authored for it. So the rule is by the source's wording, not by the arithmetic: RSS
+labels the Moon's row "Diurnal temperature range (equator)"; the KSP wiki states one min and
+one max with no claim about what they are extremes *of*.
 
 ### 3.3 `invent_albedo_value()` — the invention layer, named so it cannot be mistaken for data
 
@@ -187,7 +229,7 @@ five bodies into the tiers; nothing else in it changes.
 | Saturn | 134.00 | DEFAULT 0.9299 | 131.6 / 140.5 |
 | Uranus | 76.00 | DEFAULT 0.9299 | 74.6 / 79.7 |
 | Neptune | 72.00 | DEFAULT 0.9299 | 70.7 / 75.5 |
-| Jool | **168.03 K (pair)** | **0.2602 (pair)** | **120.0 / 225.1** |
+| Jool | 151.43 K (air datum) | DEFAULT 0.9299 | 148.7 / 158.8 |
 | Venus | 737.00 | 1.0000 **stated ~0 range** | 737.0 / 737.0 |
 
 Two things to read there. The four solar giants' pages state **no diurnal range at all** (only
@@ -198,13 +240,14 @@ returns exactly 1.000000, the same number Venus's source states. That is why the
 matters (`DEFAULT air-mass rule` vs `stated: no range`) and why the two must never be merged
 into one field.
 
-Jool is the outlier and it is a real decision: the wiki's pair prices its ground at 168.03 K,
-16.6 K **above** the 151.43 K datum we authored for its air. I recommend taking the pair (it's
-the only ground-shaped statement the KSP corpus makes about Jool, and 120–225 K is a swing a
-player can feel on Laythe's parent). What it does **not** do is change the air: Jool has no
+Jool now sits in the same tier as its four real analogues, which is also the cheapest thing to
+explain in the dossier: *a banded world's surface is its 1 bar level, and a 1-bar air spreads
+day and night into each other.* Deleting the banded skip therefore gives Jool an anchor it
+already had (its air datum) and a knob from the same rule the solar giants get — one rule, five
+worlds, no Kerbal special case. What it does **not** do is touch the air: Jool has no
 `air_follow` authored (`KSP_AIR_FOLLOW` is Kerbin and Laythe only), so its profile stays exactly
-as authored. If anyone later gives Jool a follow, the 1-bar air would swing to ~177 K under the
-sun and ~140 K at midnight — print that when it happens, don't let it arrive by accident.
+as authored. If anyone later gives Jool a follow, the 1-bar air would swing with that ground —
+print it when it happens, don't let it arrive by accident.
 
 ---
 
@@ -213,13 +256,17 @@ sun and ~140 K at midnight — print that when it happens, don't let it arrive b
 The rule in this corpus is that a computed figure announces itself (#722). Invention is a
 third degree of separation from a source, so the readouts get one more word, not a new layout:
 
-* `src/gameui.cpp:7090-7115` dossier: the anchor's source word gains `"stated pair"` for rung
-  1.5, and the albedo row gains `INVENTED` (it already prints `albedo_src`, so the string from
-  §3.3 is enough — no C++ change beyond the rung name).
+* `src/gameui.cpp:7090-7115` dossier: when a body carries `surface.temperature_src`, its anchor
+  row prints that string rather than "stated ground temperature", and the albedo row already
+  prints `albedo_src`, so §3.3's `INVENTED: …` needs no C++ at all.
+* `src/system.cpp` gains a third src string beside `albedo_src` (`:668`) and `even_share_src`
+  (`:701`), with the same invariant it already enforces for those two: a src string that
+  explains an absent value is a loader error, not a decoration.
 * `src/surfmap.h` legend: banded worlds keep "the 1 bar level, not a sea floor" and lose
   "no ground"; a body whose albedo was invented says so on the legend, because the anchor under
   it is only as good as that albedo.
-* `groundAnchorRungName()` gains `kAnchorPair → "a stated night/day pair"`.
+* `src/groundtemp.h`'s rung enum is **unchanged** — the pair was solved at generation time, so
+  spelling its algebra in C++ would be a fourth copy for nothing (#636).
 
 ---
 
@@ -231,14 +278,15 @@ third degree of separation from a source, so the readouts get one more word, not
    outcome there. Under this directive it is a build failure. This is the single change that
    stops the 209 from reappearing next time a page moves.
 2. **The one-sided black-body cross-check** (the new use for the derived figure, replacing it
-   as the anchor for pair-anchored bodies): the pair anchor may sit **above** its derived
-   black-body — that gap is internal heat, and it is a real published fact about Jupiter and
-   Jool — but never *below*, which would mean the pair cannot be radiative at all. Moon +2.3 %
-   pass, Jool +51 % pass-and-print, **Pluto −8 % fails**, and fails against a corpus that
-   already contradicts itself: the `('Pluto','bb')` waiver at `make_solar_system.py:1338-1348`
-   documents that its Bond albedo 0.72 and its published black-body 37.5 K cannot both come
-   from its own 0.873 W/m² row. Extend that waiver to the pair, same argument, and keep
-   printing the number.
+   as the anchor for pair-solved bodies): the pair anchor may sit **above** its derived
+   black-body — that gap is internal heat, and it is a real published fact about the giants —
+   but never *below*, which would mean the pair cannot be radiative at all. Moon +2.3 % pass,
+   **Pluto −8 % fails**, and fails against a corpus that already contradicts itself: the
+   `('Pluto','bb')` waiver at `make_solar_system.py:1338-1348` documents that its Bond albedo
+   0.72 and its published black-body 37.5 K cannot both come from its own 0.873 W/m² row.
+   Extend that waiver to the pair, same argument, and keep printing the number. Applied to the
+   Kerbal wiki's min/max column this guard is what refuses Kerbin (−11.2 %) and Duna (−12.9 %)
+   — see §3.2 — which is the guard earning its keep on bodies we were never going to take.
 3. **A C++ pin** beside `tests/test_scenarios.cpp`'s existing catalogue loops (it already walks
    `ksp_system.json` + the four solar variants for `kWindsAuthored`): every non-star body in
    every shipped file answers `groundAnchorRung(...) != kAnchorNone` and
@@ -250,7 +298,7 @@ third degree of separation from a source, so the readouts get one more word, not
 5. `tests/test_groundtemp.cpp` moves with the law (it is the pin between the header and
    `ground_model.py`): its Moon row goes from `270.33 / 0.015251705 / 95.0 / 381.2` to
    `276.50 / 0.0139 / 95.0 / 390.0` — both ends exact instead of one — and gains Pluto and a
-   pair-solved giant.
+   banded world under the DEFAULT knob (`Jool 151.43 / 0.9299 → 148.7 / 158.8`).
 
 ---
 
@@ -280,48 +328,68 @@ third degree of separation from a source, so the readouts get one more word, not
 
 ## 7. Order of work, one proof per step
 
-1. `invent_albedo_value()` in `utils/ground_model.py` + both generators' calls, with the
-   per-body print and the src string. **Proof:** the generator prints 209 INVENTED rows and
-   `solar_system_full.json`'s no-albedo count goes 209 → 0; the JSON-normalised diff touches
-   only `albedo`/`albedo_src`.
-2. New anchor rung 1.5 + the pair algebra in `utils/ground_model.py`, `src/groundtemp.h` and
-   `src/gameui.cpp`'s source word. **Proof:** `make test` with the moved
-   `test_groundtemp.cpp` rows — Moon 95.0/390.0 and Pluto 24.0/38.0 exact, and the
-   black-body cross-check printed for all three.
-3. Delete the banded skips (three in the generators, one in `src/surfmap.h`). **Proof:** the
-   verdict lines print `Jupiter 0.9299`, `Saturn 0.9299`, `Uranus 0.9299`, `Neptune 0.9299`
-   and Jool's pair row; `--surfmap-body Jupiter` draws a temperature grid instead of "no
-   ground" (visual check, ask me).
-4. Coverage assert in both generators + the catalogue walk in `tests/test_scenarios.cpp` +
-   the three red mutations. **Proof:** `make test` green, and each mutation red with the
-   body's name in the failure.
-5. Re-pin by measurement, not by reasoning: the cases that quote ground/air temperatures —
+1. `invent_albedo_value()` in `utils/ground_model.py` + both generators' calls, with the src
+   string and a per-family print (209 per-body lines would bury the rest of the verdict; the
+   default pass already suppresses per-moon chatter for bodies with no page). **Proof:** the
+   generator prints the family rows and `solar_system_full.json`'s no-albedo count goes
+   209 → 0; the JSON-normalised diff touches only `albedo`/`albedo_src`.
+2. Scrape Pluto's `Surface temperature: 24 - 38 K` row. The sheet parser reads only a "Diurnal
+   temperature range" line today (`make_solar_system.py:1300`), so this range is in the corpus
+   and invisible to it. **Proof:** the parse prints both ends; nothing emitted changes yet.
+3. `pair_solve()` in `utils/ground_model.py`, the authoring into `surface.temperature` /
+   `temperature_src` / `even_share`, and the one-sided cross-check with its Pluto waiver.
+   **Proof:** the generator prints Moon `276.50 / 0.0139` and Pluto `29.62 / 0.4308`, each with
+   both stated ends exact, and the black-body comparison printed beside each.
+4. The C++ half of the src string: `terragen.h`, `src/system.cpp` (with the "explains an
+   authored value" invariant the other two src strings already carry), `src/gameui.cpp`.
+   **Proof:** loading a mutated file that puts a `temperature_src` on a body with no
+   `temperature` is a loader error; the Moon's dossier anchor row reads the SOLVED string
+   instead of "stated ground temperature".
+5. Delete the banded skips (three in the generators, one in `src/surfmap.h`). **Proof:** the
+   verdict lines print `Jupiter 0.9299`, `Saturn 0.9299`, `Uranus 0.9299`, `Neptune 0.9299` and
+   Jool's DEFAULT row; `--surfmap-body Jupiter` draws a temperature grid instead of "no ground"
+   (visual check, ask me).
+6. Coverage assert in both generators + the catalogue walk in `tests/test_scenarios.cpp` + the
+   three red mutations. **Proof:** `make test` green, and each mutation red with the body's
+   name in the failure.
+7. Re-pin by measurement, not by reasoning: the cases that quote ground/air temperatures —
    `science/727-solar-log-dashes-what-a-world-does-not-state` (its dash legs have to move:
    Pluto and the swarm no longer dash), `science/727-solar-log-weighs-the-star-against-the-ground`,
    `science/667`, `science/125-jool-shell-vacuum`, `science/724-air-follows-ground`,
    `flight/631-earth-air-in-flight`, `flight/245-air-below-datum`, `harness/662`. Run these
    once, at the end, together — not per step.
-6. Issue for the parent-flux term, and close #724's coverage line.
+8. Issue for the parent-flux term, and close #724's coverage line.
 
-Estimated file count: 6 code files (2 generators, `ground_model.py`, `groundtemp.h`,
-`surfmap.h`, `gameui.cpp`), 2 test files, 5 emitted JSONs, and 8 e2e case files re-pinned.
+Estimated file count: 7 code files (2 generators, `ground_model.py`, `terragen.h`,
+`system.cpp`, `surfmap.h`, `gameui.cpp`), 2 test files, 5 emitted JSONs, and 8 e2e case files
+re-pinned.
 
 ---
 
 ## 8. Decisions I took that you can veto
 
-1. **Jool's ground is 168.03 K** (from the wiki pair), not 151.43 K (its air datum) and not a
-   flat DEFAULT 148.7/158.8 K. Cost: the ground sits 11 % above the air's own datum, and the
-   dossier will show both.
-2. **Pluto is re-anchored** from 38 K (air datum, printing 13.4/53.6 K) to 29.62 K with knob
+1. **The KSP wiki's min/max column is not a night/day range**, so no Kerbal body is pair-solved
+   and Jool takes the DEFAULT air-mass knob like its four real analogues — **151.43 K,
+   f 0.9299, 148.7 / 158.8 K**. This reverses what the first cut of this report argued (Jool at
+   168.03 K from its pair); §3.2 has the evidence, which is that Kerbin's and Duna's pairs
+   solve *below* their own black-bodies, so the column cannot be extremes of a day.
+2. **The solved anchor goes into `surface.temperature` with a sibling `temperature_src`**,
+   rather than into a 4th rung of the anchor ladder. Cost: the ladder's rank no longer
+   distinguishes "a source states a mean" from "we solved this from a range" — that honesty
+   lives entirely in the src string and in the dossier printing it. The gain is that every
+   existing consumer (surfmap, the air-follow coupling, the tick readout) works unchanged and
+   the algebra stays spelled twice instead of three times.
+3. **Pluto is re-anchored** from 38 K (air datum, printing 13.4/53.6 K) to 29.62 K with knob
    0.4308, printing exactly its stated 24/38 K, with the −8 % black-body deficit waived under
-   the argument that already covers its albedo/black-body contradiction.
-3. **A DEFAULT knob of exactly 1.000000 is allowed to print** for an air thick enough to saturate
+   the argument that already covers its albedo/black-body contradiction. Its row is not labelled
+   diurnal — it is RSS's "Surface temperature" range — so this is reading a stated *range*, and
+   the waiver is where that gets argued rather than hidden.
+4. **A DEFAULT knob of exactly 1.000000 is allowed to print** for an air thick enough to saturate
    the air-mass rule (Venus), as long as the src string distinguishes it from Venus's *stated*
    ~0 range. If you would rather no body ever print a perfectly flat swing, the alternative is a
    `f_max = 0.99` cap on the rule — one more invented number, and every thick air gets a 2 K
    swing nobody stated.
-4. **The captured/regular line at 100 parent radii** decides whether Phoebe is icy or rocky. It
+5. **The captured/regular line at 100 parent radii** decides whether Phoebe is icy or rocky. It
    puts Phoebe (222 R) with the dark rock and Pan (2.3 R) with the ice, which is right for both,
    and it is one comparison instead of a 209-name list.
-5. **Stars keep a dashed swing** while keeping their stated temperature.
+6. **Stars keep a dashed swing** while keeping their stated temperature.
