@@ -23,14 +23,22 @@ CHECK out.count("[atlas]   type                   planet") == 9
 #    planet with an indistinguishable handle, and the asteroid collision pass has no number to
 #    disambiguate a comet with. The bare name stays out of the file that a new game boots.
 FORBID [atlas] LINEAR weight=
-# 3. AND THE FAR RAILS LOAD. C/1811 F1 sits 253 AU from the Sun at the catalogue epoch and
-#    reaches 410 AU at apoapsis -- five times out further than anything the corpus shipped
-#    before comets -- inside the star's 6,684 AU universe bound. The dossier printing it in AU
-#    at all is the check: fmt_dist switches unit past 1 Tm, and a rail that overflowed or
-#    arrived as an ellipse-clamped stand-in prints a different row, not a loud failure.
-CHECK (lambda blk: re.search(r"semi-major axis\s+[\d.]+ AU", blk) and float(re.search(r"apoapsis\s+([\d.]+) AU", blk).group(1)) > 400.0)(re.search(r"\[atlas\] C/1811 F1 \(Great comet\) weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
-# 4. A NUCLEUS IS A ROCK, NOT A FOUNDRY: the 300 m one keeps the loader's ordering -- a near-
-#    body shell a player can enter and an SoI above it (#785 is the ticket that says this
-#    window is too wide for a body this small to deserve; the atlas numbers here are what that
-#    ticket complains about, pinned so the complaint can be measured when it is fixed).
-CHECK (lambda blk: float(re.search(r"surface shell\s+([\d.]+) km", blk).group(1)) < float(re.search(r"SoI\s+([\d.]+) km", blk).group(1)))(re.search(r"\[atlas\] 252P/LINEAR weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+# 3. AND THE FAR RAILS LOAD. C/1811 F1 sits 253.8 AU from the Sun at the catalogue epoch --
+#    further from the star at that epoch than any other body in this file (Eris is next at
+#    97 AU) -- and reaches 409.8 AU at apoapsis, inside the star's 6,684 AU universe bound.
+#    Deeper RAILS exist in the same file (Sedna's apoapsis is 1,011 AU, 2015 RM306's 527 AU);
+#    what comets add is bodies that are out there NOW, not just on rails that reach there.
+#    The dossier printing an apoapsis in AU at all is the check: fmt_dist switches unit past
+#    1 Tm, and a rail that overflowed or arrived as an ellipse-clamped stand-in prints a
+#    different row rather than failing loudly.
+CHECK (lambda blk: re.search(r"semi-major axis\s+[\d.]+ AU", blk) and float(re.search(r"apoapsis\s+([\d.]+) AU", blk).group(1)) > 400.0)(re.search(r"\[atlas\] C/1811 F1 \(Great comet\) weight=.*?(?=\n\[atlas\] [^\n]* weight=|\Z)", out, re.S).group(0))
+# 4. THE SOI ON A 300 m NUCLEUS IS A FLOOR, NOT A DERIVATION, and #785 says that floor is
+#    wrong. So pin the MAGNITUDE, not the ordering: an SoI above the near-body shell is
+#    guaranteed by the loader (inertialSoi takes a max, and validateBodyLimits throws if the
+#    ordering ever inverts), so "shell < SoI" could not fail for any body that boots. The
+#    ratio can fail, and it should when #785 is fixed: 252P's sphere is currently 451 times
+#    its own radius (135.3 km around 300 m), which is the number that ticket exists to shrink.
+#    (Both block patterns above end at the next line that STARTS a dossier, not at
+#    "\[atlas\] \w+ weight=": a designation like "C/1965 S1 (Ikeya-Seki)" has spaces, so the
+#    \w+ form silently spans three bodies and would read the wrong one's apoapsis.)
+CHECK (lambda blk: (lambda r_km, soi_km: soi_km / r_km > 100.0)(float(re.search(r"radius\s+([\d.]+) m", blk).group(1)) / 1000.0, float(re.search(r"SoI\s+([\d.]+) km", blk).group(1))))(re.search(r"\[atlas\] 252P/LINEAR weight=.*?(?=\n\[atlas\] [^\n]* weight=|\Z)", out, re.S).group(0))

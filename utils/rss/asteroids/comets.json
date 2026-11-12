@@ -54,7 +54,7 @@
    "q_au": 0.005527,
    "r_at_epoch_au": 115.98609145074272,
    "radius_m": 7900.0,
-   "radius_src": "Wikipedia Great comet (halved: the column is a diameter, 15.8 km km)",
+   "radius_src": "Wikipedia Great comet (halved: the column is a diameter, 15.8 km)",
    "radius_text": "15.8 km",
    "type_note": "great comet list (Dimensions is a diameter)"
   },
@@ -83,7 +83,7 @@
    "q_au": 0.012272,
    "r_at_epoch_au": 109.45895277733797,
    "radius_m": 30700.0,
-   "radius_src": "Wikipedia Great comet (halved: the column is a diameter, 61.4 km km)",
+   "radius_src": "Wikipedia Great comet (halved: the column is a diameter, 61.4 km)",
    "radius_text": "61.4 km",
    "type_note": "great comet list (Dimensions is a diameter)"
   },
@@ -112,7 +112,7 @@
    "q_au": 0.010155,
    "r_at_epoch_au": 54.956649314491095,
    "radius_m": 4300.0,
-   "radius_src": "Wikipedia Great comet (halved: the column is a diameter, 8.6 km km)",
+   "radius_src": "Wikipedia Great comet (halved: the column is a diameter, 8.6 km)",
    "radius_text": "8.6 km",
    "type_note": "great comet list (Dimensions is a diameter)"
   },
@@ -141,7 +141,7 @@
    "q_au": 0.531723,
    "r_at_epoch_au": 51.44586765047991,
    "radius_m": 3760.0,
-   "radius_src": "Wikipedia Great comet (halved: the column is a diameter, 7.52 km km)",
+   "radius_src": "Wikipedia Great comet (halved: the column is a diameter, 7.52 km)",
    "radius_text": "7.52 km",
    "type_note": "great comet list (Dimensions is a diameter)"
   },
@@ -170,7 +170,7 @@
    "q_au": 0.915037,
    "r_at_epoch_au": 10.151767945770725,
    "radius_m": 30000.0,
-   "radius_src": "Wikipedia Great comet (halved: the column is a diameter, 60 km km)",
+   "radius_src": "Wikipedia Great comet (halved: the column is a diameter, 60 km)",
    "radius_text": "60 km",
    "type_note": "great comet list (Dimensions is a diameter)"
   },
@@ -199,7 +199,7 @@
    "q_au": 0.171272,
    "r_at_epoch_au": 20.451862387857915,
    "radius_m": 12500.0,
-   "radius_src": "Wikipedia Great comet (halved: the column is a diameter, 25 km? km)",
+   "radius_src": "Wikipedia Great comet (halved: the column is a diameter, 25 km?)",
    "radius_text": "25 km?",
    "type_note": "great comet list (Dimensions is a diameter)"
   },
@@ -228,7 +228,7 @@
    "q_au": 0.004479,
    "r_at_epoch_au": 28.169180240439232,
    "radius_m": 175.0,
-   "radius_src": "Wikipedia Great comet (halved: the column is a diameter, 0.2\u20130.5 km km)",
+   "radius_src": "Wikipedia Great comet (halved: the column is a diameter, 0.2\u20130.5 km)",
    "radius_text": "0.2\u20130.5 km",
    "type_note": "great comet list (Dimensions is a diameter)"
   },
@@ -257,7 +257,7 @@
    "q_au": 0.293448,
    "r_at_epoch_au": 41.395894435461535,
    "radius_m": 2500.0,
-   "radius_src": "Wikipedia Great comet (halved: the column is a diameter, 5 km km)",
+   "radius_src": "Wikipedia Great comet (halved: the column is a diameter, 5 km)",
    "radius_text": "5 km",
    "type_note": "great comet list (Dimensions is a diameter)"
   },

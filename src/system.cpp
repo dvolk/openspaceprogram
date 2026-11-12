@@ -1609,8 +1609,8 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                decides the colour anyway; the split is only that a planet's path knows
                about sea and cloud, which an asteroid never has. A dwarf planet is the
                same kind of world, only big enough to be round. A comet nucleus is the
-               darkest of them -- the palette carries that -- but no coma or tail is
-               modelled yet, so it draws like the rock it is. */
+               darkest neutral rock in the corpus (it draws on a C-type palette), but no
+               coma or tail is modelled yet, so it draws like the rock it is. */
             body->shader = terrainshader;
             body->colour_func = GetColourMoon;
             break;

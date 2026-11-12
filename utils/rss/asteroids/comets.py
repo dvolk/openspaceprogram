@@ -168,8 +168,8 @@ def radius_rows():
 # 1882" / "(Great September comet)") and in nothing that tells one comet from another, so a
 # name test that counted them would pass the join it is meant to refuse.
 NAME_STOPWORDS = frozenset({'great', 'comet', 'comets', 'of', 'the', 'and', 'large',
-                            'small', 'day', 'night', 'north', 'northen', 'northern',
-                            'south', 'southern', 'century', 'comet'})
+                            'small', 'day', 'night', 'north', 'northern',
+                            'south', 'southern', 'century'})
 
 
 def name_tokens(s):
@@ -194,7 +194,7 @@ def great_rows():
         perihelia are 1996 and 1996, so dates cannot catch that -- only the NAMES can,
         which is why an entry from this page carries name_guard and build() refuses a
         join whose names share no identity word. Same policy as parse.sbdb_identity_ok().
-      * Halley's apparitions are ~30 rows under designations MPC never adopted ('P/1066
+      * Halley's apparitions are 27 rows under designations MPC never adopted ('P/1066
         G1'), all the SAME nucleus repeating 11 km. They join nothing, which is the right
         answer rather than a gap: the corpus authors one Halley, at 1P's elements.
     """
@@ -257,7 +257,7 @@ def _great_table(text):
                 mass_text=None,
                 table=0,
                 type_note='great comet list (Dimensions is a diameter)',
-                radius_src='Wikipedia Great comet (halved: the column is a diameter, %s km)'
+                radius_src='Wikipedia Great comet (halved: the column is a diameter, %s)'
                            % c[col['dim']],
                 name_guard=True,
                 peri_text=c[col['peri']],
@@ -271,16 +271,24 @@ def sized_rows(verbose=True):
     identity the row resolves to -- not by the page's spelling, which is why the dedup runs
     after the alias pass. The by-size page wins: it states a radius outright, while the
     great-comet page states a diameter and several of its Dimensions cells are the article's
-    own rough figures."""
-    out, seen = [], {}
+    own rough figures.
+
+    The loser still gets to object. A size row states no perihelion date, so it cannot be
+    date-checked against the MPC apparition build() picks; the page that lost the dedup may
+    have one, and build() prints the disagreement as a NOTE rather than letting two pages
+    place the same comet 3,000 years apart in silence."""
+    out, seen, kept = [], {}, {}
     for e in radius_rows() + great_rows():
         key = resolve_key(e)
         if key in seen:
             if verbose:
                 print('  size source dedup: %s also sized by %s (kept %s)'
                       % (key, e.get('radius_src', '')[:40], seen[key]))
+            if e.get('peri_text') and not kept[key].get('peri_text'):
+                kept[key]['other_peri_text'] = e['peri_text']
             continue
         seen[key] = ('size page' if not e.get('name_guard') else 'great comet page')
+        kept[key] = e
         out.append(e)
     return out
 
@@ -345,6 +353,7 @@ def build(verbose=True):
 
     out = []
     refused = []
+    noted = []
     for e in sorted(sized, key=lambda e: e['name']):
         display = e['name']
         if display in REFUSED:
@@ -359,9 +368,26 @@ def build(verbose=True):
             continue
         r = pick_apparition(cands)
         orbit_name = r['Designation_and_name']
+        # A page that lost the size dedup may still date the apparition differently. That is
+        # not a refusal -- the MPC row IS the rail, and its date sets the epoch phase -- but
+        # it gets printed. For C/1811 F1 the page says 1811 and MPC's row says +5339, so the
+        # phase at our catalogue epoch is an extrapolation of 3,339 years along what the row
+        # itself calls a 2,944-year orbit.
+        other = e.get('other_peri_text')
+        if other:
+            oyr = re.search(r'\d{3,4}', other)
+            if oyr and abs(int(oyr.group(0)) - int(r['Year_of_perihelion'])) > 1:
+                noted.append((display, 'the page that also sizes it dates perihelion %s while '
+                                       'MPC\'s %s is %+04d (%d years apart): the rail follows '
+                                       'MPC'
+                              % (other, key, int(r['Year_of_perihelion']),
+                                 abs(int(oyr.group(0)) - int(r['Year_of_perihelion'])))))
         # The page's Designation column is editorial, not the MPC's. Two comets discovered
         # in the same half-month share a year and a number space, so the ONLY thing that
         # catches 'C/1996 B1 = Hyakutake' (MPC's C/1996 B1 is Szczepanski) is the name.
+        # It only bites when both sides carry an identity word: name_tokens keeps letters,
+        # not digits, so "Great Comet of 1843" reduces to nothing and the date test below is
+        # the only one running for rows shaped like that.
         if e.get('name_guard'):
             mine, theirs = name_tokens(e.get('wiki_name')), name_tokens(proper_name(orbit_name))
             if mine and theirs and not mine & theirs:
@@ -421,6 +447,8 @@ def build(verbose=True):
         print('  nucleus radii stated: %d   authorable: %d' % (len(sized), len(out)))
         for name, why in refused:
             print('  REFUSED %s: %s' % (name, why))
+        for name, why in noted:
+            print('  NOTE %s: %s' % (name, why))
         print('  %-26s %-16s %8s %8s %9s %9s %9s %7s %6s'
               % ('comet', 'family', 'radius_m', 'q AU', 'e', 'P yr', 'Q AU', 'r@epoch',
                  'i deg'))

@@ -3478,26 +3478,29 @@ def fmt_km(m):
 
 
 # The comet roster, by MPC identity. Comets are deliberately NOT sampled by category the
-# way 419 asteroids are: the pool is 17 sized rows, and a long-period rail can put a body
-# most of the way to the universe bound or under the star it orbits -- C/2006 P1 (McNaught)
-# reaches 4,893 AU of the Sun's 6,684 AU SOI, and C/2011 W3 (Lovejoy) has a perihelion of
-# 0.004 AU against the Sun's own 0.00466 AU radius, i.e. inside the star. Which of them fly
-# is a design call, so it is written out rather than derived from a size ranking.
+# way 419 asteroids are: the authorable pool is 17 rows (of 49 that state a size), and a
+# long-period rail can put a body most of the way to the universe bound or under the star it
+# orbits -- C/2006 P1 (McNaught) reaches 4,893 AU of the Sun's 6,684 AU SOI, and C/2011 W3
+# (Lovejoy) has a perihelion of 0.00448 AU against the Sun's own 0.00466 AU radius, i.e.
+# inside the star. Which of them fly is a design call, so it is written out rather than
+# derived from a size ranking.
 #
 # Seven in the core file, one per kind of play (reports/comets2026_11_12): 29P, whose e
 # 0.043 makes it the only comet reachable without a transfer window; 252P, a 300 m rock to
-# land on; 67P, the one nucleus whose mass AND radius are both measured; 1P, retrograde at
+# land on; 67P, a nucleus both sized and weighed in the same table; 1P, retrograde at
 # i 162 deg, which is what makes a player care about inclination; C/1995 O1, a 30 km
-# destination at 10 AU rather than an absurd one; C/1965 S1, a sungrazer whose perihelion is
-# 1.4 solar radii; and C/1811 F1, sitting at 254 AU at the epoch as a deep-space curiosity.
-# The four flyby comets (9P, 19P, 81P, 103P) join the deeper rungs only.
+# destination at 10 AU rather than an absurd one; C/1965 S1, a sungrazer that passes at 2.2
+# solar radii; and C/1811 F1, the deepest thing the file places anywhere at the catalogue
+# epoch (254 AU, against Sedna's 91 AU -- Sedna reaches further at apoapsis but is not there
+# in 2000). The four flyby comets (9P, 19P, 81P, 103P) join the deeper rungs only.
 COMET_CORE = frozenset({'1P', '29P', '67P', '252P', 'C/1995 O1', 'C/1965 S1', 'C/1811 F1'})
 COMET_DEEPER = frozenset({'9P', '19P', '81P', '103P'})
 
-# A comet nucleus draws as a C-type: the darkest palette and albedo in the file, which is
-# the "grey rock" the roster was approved as. No page states a geometric albedo for a
-# nucleus (a comet's H is the COMA's brightness), so it stays INVENTED in the provenance
-# string like every other class-typed number here.
+# A comet nucleus draws as a C-type: the darkest NEUTRAL palette and albedo in the file (the
+# D and P classes are darker still but tinted), which is the "grey rock" the roster was
+# approved as. No page states a geometric albedo for a nucleus (a comet's H is the COMA's
+# brightness), so it stays INVENTED in the provenance string like every other class-typed
+# number here.
 COMET_CLASS = 'C'
 
 # So a comet's procedural noise can never coincide with an asteroid's: the asteroid seeds
@@ -3506,15 +3509,17 @@ COMET_SEED_BASE = 9000
 
 
 def comet_handle(desig):
-    """[name] What a comet is CALLED in the file: its MPC designation, never its nickname.
+    """[name] What a comet is CALLED in the file: keyed on its MPC designation, not on its
+    nickname alone -- 252P/LINEAR, C/1995 O1 (Hale-Bopp).
 
     A body name is a key here -- the catalogue, saves, --startship and --transfer-target all
     look a body up by name -- and the corpus ALREADY ships a body named LINEAR. That one is
     asteroid 118401, a main-belt comet at a 3.20 AU and e 0.19; 252P/LINEAR is a different
     object at a 3.05 AU and e 0.67. Two worlds, one handle, and the collision pass that
-    disambiguates asteroids by their number has nothing to work on for a comet. Designations
-    are also ASCII: the wiki spellings use en dashes, which a player typing --atlas-body
-    would have to reproduce exactly.
+    disambiguates asteroids by their number has nothing to work on for a comet. (LCDB does the
+    same thing the other way: asteroids 2627 Churyumov and 2688 Halley are named for the
+    discoverers, not the comets.) Designations are ASCII too: the wiki spellings use en
+    dashes, which a player typing a name into --startship would have to reproduce exactly.
 
     A fragment suffix comes back off: the MPC rails C/1965 S1-A and -B as two solutions of
     ONE breakup, and the corpus authors one comet, not a pair of twins 200 m apart."""
@@ -3544,9 +3549,16 @@ def load_comets(q, existing_names, verbose=True):
 
     The rail comes from the PERIHELION DATE rather than a mean anomaly at an epoch, because
     that is how the MPC publishes a comet: M0 = n (t_epoch - T). Under two-body motion that
-    is exact. For a real long-period comet it is an extrapolation of up to 189 years
-    (C/1811 F1) along an orbit that gets kicked by its own outgassing, which the printed
-    provenance says rather than hiding."""
+    is exact; for a real comet it is an extrapolation, and the printed roster says how far.
+    For ten of the eleven it is a gentle one -- their perihelion falls within 62 years of the
+    catalogue epoch. C/1811 F1 is the exception and it is a data oddity rather than a
+    physics one: MPC's own row dates its perihelion +5339-02-08, which under that row's own
+    2,944-year period is not the 1811 apparition the comet is named for, so its phase at the
+    epoch is extrapolated 3,339 years and means nothing at the precision it looks like. Its
+    rail (a, e, plane) is still the published one, so the body is worth authoring as the
+    deep-space curiosity it is; the print discloses the phase rather than hiding it, and #806
+    is the ticket for deciding it. See also the roster comment above on why the whole pool is
+    not authored."""
     with open(COMETS_JSON) as f:
         raw = json.load(f)['bodies']
     assert raw, 'comets.json is empty'
@@ -3563,6 +3575,11 @@ def load_comets(q, existing_names, verbose=True):
         assert 0.0 <= ecc < 1.0, '%s: e %g is not an elliptical orbit' % (name, ecc)
         a = c['a_au'] * AU
         assert a > 0.0, '%s: no semimajor axis' % name
+        # The roster comment above argues this in prose; this is the same argument as an
+        # invariant -- nothing in the loader checks that a rail clears its parent.
+        assert c['q_au'] * AU > SUN_RADIUS, \
+            '%s: perihelion %.5f AU is inside the authored Sun (%.5f AU)' \
+            % (name, c['q_au'], SUN_RADIUS / AU)
         w = math.sqrt(G * SUN_MASS / a ** 3)     # the loader inverts exactly this
         M0 = w * DAY * (CATALOGUE_EPOCH_JD - c['perihelion_jd'])
         stated = c['mass_kg']
@@ -3584,7 +3601,8 @@ def load_comets(q, existing_names, verbose=True):
             sections=['comet', c['family']], idx=len(rows), dwarf=False, comet=True,
             seed_base=COMET_SEED_BASE,
             measured=True, named=True, core=key in COMET_CORE,
-            key=key, family=c['family'], perihelion=c['perihelion']))
+            key=key, family=c['family'], perihelion=c['perihelion'],
+            perihelion_jd=c['perihelion_jd']))
     if verbose:
         print('comets: %d sized rows in %s, %d on the roster'
               % (len(raw), os.path.relpath(COMETS_JSON, ROOT), len(rows)))
@@ -3592,11 +3610,15 @@ def load_comets(q, existing_names, verbose=True):
               % (sum(1 for r in rows if r['core']), len(rows), len(rows), len(rows)))
         for r in sorted(rows, key=lambda r: (not r['core'], r['name'])):
             a_m = (G * SUN_MASS / r['rail']['w'] ** 2) ** (1.0 / 3.0)
-            print('    %-26s %-15s r %6.0f m  a %9.2f AU  e %.5f  q %.3f AU  P %9.1f y%s'
+            # "peri" is how far the epoch's phase is extrapolated from the published
+            # perihelion date: exact under two-body motion, nothing under three.
+            print('    %-26s %-15s r %6.0f m  a %9.2f AU  e %.5f  q %.3f AU  P %9.1f y'
+                  '  peri %s (%+.0f y)%s'
                   % (r['name'], r['family'], r['radius_m'], a_m / AU, r['rail']['e'],
                      a_m * (1.0 - r['rail']['e']) / AU,
                      2.0 * math.pi / r['rail']['w'] / (365.25 * DAY),
-                     '' if r['core'] else '  [named only]'))
+                     r['perihelion'], (CATALOGUE_EPOCH_JD - r['perihelion_jd']) / 365.25,
+                     '' if r['core'] else '  [deeper only]'))
         print('  mass   stated %d  INVENTED at %.0f kg/m3 (median of the rows that state '
               'both)' % (sum(1 for c in raw if c['mass_kg']), rho))
         skipped = sorted(set(c['key'] for c in raw) - {r['key'] for r in rows})
@@ -3815,7 +3837,7 @@ def emit(base_bodies, moons, pred, out_path, label, sheets, dry=False, asteroids
     with open(out_path, 'w') as f:
         json.dump(doc, f, indent=2)
         f.write('\n')
-    print('wrote %-32s  %3d bodies (%3d moons, %3d asteroids)%s  [%s]' %
+    print('wrote %-32s  %3d bodies (%3d moons, %3d minor)%s  [%s]' %
           (out_path, len(bodies), n, n_ast,
            ('  (%d skipped: no orbit data)' % skipped) if skipped else '', label))
     return n

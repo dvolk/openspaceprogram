@@ -151,7 +151,7 @@ https://en.wikipedia.org/wiki/Great_comet
       the DATES cannot catch the wrong join -- only the names can, which is why a row from
       this page carries name_guard and build() refuses a join whose identity words do not
       overlap (NAME_STOPWORDS keeps "great"/"comet" from doing it for free).
-    - Halley's apparitions are ~28 rows under designations the MPC never adopted ("P/1066
+    - Halley's apparitions are 27 rows under designations the MPC never adopted ("P/1066
       G1"), each repeating the same 11 km nucleus. They have no MPC orbit row to join and
       are refused by name: the corpus authors ONE Halley, at 1P's elements.
       (And the page writes BC years with U+2212 MINUS SIGN, not a hyphen.)

@@ -6723,7 +6723,8 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
         case BodyType::Comet:       return "comet";
         case BodyType::Planet:      return "planet";
         }
-        return "planet";    // unreachable: every enumerator returns above
+        assert(!"atlas dossier: a BodyType with no word");
+        return "planet";    // only reachable if asserts are compiled out
     };
     line("type", type_word(b));
     line("radius", fmt_dist((double)b.radius, v, sizeof v));
