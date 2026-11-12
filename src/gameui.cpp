@@ -199,6 +199,32 @@ static void drawOrbitThroughBody(ImDrawList *dl, const OrbitMap &map,
 // at the perceptibility floor, and at #22 the map still read as a thicket.
 static constexpr float kMinorQuiet = 0.090f;
 
+// Which name wins a contested patch of map (lower wins): the plan the player is making
+// first, then the bodies they plan AROUND, then the rocks. Same catalogue weight the
+// rails use for quiet-vs-bright.
+enum : unsigned char {
+    kLabelXfer   = 0,   // the transfer leg's arrival note
+    kLabelTarget = 1,   // the body the plan points at
+    kLabelShip   = 2,   // another of the player's craft
+    kLabelStar   = 3,
+    kLabelPlanet = 4,
+    kLabelMoon   = 5,
+    kLabelDwarf  = 6,
+    kLabelComet  = 7,
+    kLabelRock   = 8,   // asteroids, and anything the catalogue adds later
+};
+static unsigned char labelPriority(const TerrainBody *b, bool selected) {
+    if(selected) { return kLabelTarget; }
+    switch(b->type) {
+        case BodyType::Star:        return kLabelStar;
+        case BodyType::Planet:      return kLabelPlanet;
+        case BodyType::Moon:        return kLabelMoon;
+        case BodyType::DwarfPlanet: return kLabelDwarf;
+        case BodyType::Comet:       return kLabelComet;
+        default:                    return kLabelRock;
+    }
+}
+
 // Map text is COLLECTED and drawn after every line in the window, because the rails
 // are submitted in body order: without this, body N+1's rail paints across body N's
 // name, and the ship's own orbit and the transfer leg land on top of every name in
@@ -206,23 +232,48 @@ static constexpr float kMinorQuiet = 0.090f;
 // call -- the transfer label is a stack buffer in an inner scope. (Body and vessel
 // names outlive the frame, but one rule for every label is cheaper than checking which
 // is which.)
+//
+// And only one name may sit on a patch of map: placeMapLabels() claims space in
+// priority order and drops the rest. Without that, the 670-body corpus prints ~440
+// names on top of each other at a planning zoom (#808). kMaxMapLabels is the other
+// half: overlap rejection alone still leaves a big window room for the whole
+// catalogue, which is the pile itself, so the count is capped too -- and because the
+// sweep runs in priority order the cap costs the least important names first.
+static constexpr size_t kMaxMapLabels = 160;
 struct MapLabelPass {
-    struct Item { ImVec2 pos; ImU32 col; uint16_t off; };
+    struct Item {
+        MapLabelCand cand;
+        ImU32 col;
+        uint16_t off;             // into arena
+    };
     std::vector<Item> items;
     std::vector<char> arena;
-    void add(const ImVec2 &pos, ImU32 col, const char *text) {
+    // Discs the map draws that are not label candidates -- the player's own marker
+    // above all -- so a name cannot print across them.
+    std::vector<MapLabelCand> blocked;
+
+    void add(const ImVec2 &dot, float r_px, ImU32 col, const char *text,
+             unsigned char prio) {
         const size_t len = std::strlen(text);
         // Item::off is uint16_t: drop the name rather than wrap it into another one.
         // In practice ~7,000 labels would be needed and the corpus ships 670.
         if(arena.size() + len + 1 > 0xFFFFu) { return; }
         const uint16_t off = (uint16_t)arena.size();
         arena.insert(arena.end(), text, text + len + 1);   // the NUL travels too
-        items.push_back({pos, col, off});
+        items.push_back({{dot, ImGui::CalcTextSize(text), r_px, prio}, col, off});
     }
-    void flush(ImDrawList *dl) {
-        for(const Item &it : items) { dl->AddText(it.pos, it.col, arena.data() + it.off); }
-        items.clear();
-        arena.clear();     // capacity is what is reused; the callers keep one per window
+    void block(const ImVec2 &dot, float r_px) {
+        blocked.push_back({ dot, ImVec2(0.0f, 0.0f), r_px, 0 });
+    }
+    void reset() { items.clear(); arena.clear(); blocked.clear(); }
+    void flush(ImDrawList *dl, const MapViewRect &view) {
+        const ImVec4 rect(view.l, view.t, view.r, view.b);
+        for(const MapLabelPlaced &p : placeMapLabels(items, blocked, rect,
+                                                     kMaxMapLabels)) {
+            const Item &it = items[(size_t)p.cand];
+            dl->AddText(p.at, it.col, arena.data() + it.off);
+        }
+        reset();     // capacity is what is reused; the callers keep one per window
     }
 };
 
@@ -284,6 +335,7 @@ struct BodyRail {
     const char *name;                      // b->name, alive all frame
     double radius, soi;
     float body_r_px;
+    unsigned char prio;    // labelPriority(): who keeps their name in a crowd
     bool faint;      // asteroid/comet rail: quiet, and drawn under the others
     bool selected;   // the transfer target: bright, and never culled
 };
@@ -311,11 +363,8 @@ static void drawSystemBodyOrbits(Game &g, TerrainBody *focus,
             const ImU32 col_sun =
                 ImGui::GetColorU32(ImVec4(1.0f, 0.85f, 0.45f, 1.0f));
             map.drawBody(dl, sun_f, sun->radius, col_sun, 4.0f);
-            if(view.contains(sun_px.x, sun_px.y, sun_r_px + 16.0f)) {
-                const float above = sun_px.y - sun_r_px - 12.0f;
-                labels.add(ImVec2(sun_px.x + 6.0f,
-                                  above < view.t ? sun_px.y + sun_r_px + 4.0f : above),
-                           ink, sun->name.c_str());
+            if(view.contains(sun_px.x, sun_px.y, sun_r_px)) {
+                labels.add(sun_px, sun_r_px, ink, sun->name.c_str(), kLabelStar);
             }
         }
     }
@@ -357,6 +406,7 @@ static void drawSystemBodyOrbits(Game &g, TerrainBody *focus,
         rails.push_back({&cpts_p, O, P, cpos_p, cpos_f, body_px, b->name.c_str(),
                          b->radius, b->frame->soi,
                          map.bodyRadiusPx(b->radius, min_r),
+                         labelPriority(b, selected),
                          /*faint=*/ minor && !selected, selected});
     }
     /* Asteroid and comet rails are BACKGROUND, so they draw a shade closer to the
@@ -388,15 +438,10 @@ static void drawSystemBodyOrbits(Game &g, TerrainBody *focus,
         if(r.selected) {
             dl->AddCircle(r.body_px, r.body_r_px + 4.0f, ccol, 0, 1.0f);
         }
-        if(view.contains(r.body_px.x, r.body_px.y, r.body_r_px + 16.0f)) {
-            const float label_dx = 6.0f, label_gap = 12.0f;
-            const float above = r.body_px.y - r.body_r_px - label_gap;
-            // The map is clipped to its rect, so a name with no room above the top edge
-            // drops below the dot instead of being cut -- same fit rule as the Surface
-            // Map's site labels.
-            const float ty = (above < view.t)
-                                 ? r.body_px.y + r.body_r_px + 4.0f : above;
-            labels.add(ImVec2(r.body_px.x + label_dx, ty), ink, r.name);
+        // The dot on screen is enough: MapLabelPass picks the side and drops a name
+        // whose every slot would hang off the clipped map.
+        if(view.contains(r.body_px.x, r.body_px.y, r.body_r_px)) {
+            labels.add(r.body_px, r.body_r_px, ink, r.name, r.prio);
         }
         if(r.soi > 0.0) {
             const float soi_px = (float)(r.soi / map_scale);
@@ -4546,8 +4591,7 @@ void drawUIMap(Game &g) {
         // Reused across frames (flush() empties it); cleared here too so a partial
         // frame can never leave a name for the next one.
         static thread_local MapLabelPass labels;
-        labels.items.clear();
-        labels.arena.clear();
+        labels.reset();
         const MapViewRect view{p0.x, p0.y, p0.x + map_w, p0.y + map_h};
         dl->PushClipRect(p0, ImVec2(p0.x + map_w, p0.y + map_h), true);
         // Drawn before the ship's orbit so the ship sits on top.
@@ -4576,6 +4620,7 @@ void drawUIMap(Game &g) {
         dl->AddLine(focus_px, ship_px, ink, 1.0f);
         dl->AddCircleFilled(ship_px, 5.0f, ink);
         dl->AddCircle(ship_px, 8.0f, col_ship, 0, 1.5f);
+        labels.block(ship_px, 9.0f);   // the most important dot on the map
         // Prograde (velocity) arrow.
         proj.drawArrow(dl, orbit_pos, orbit_vel, 24.0f, col_ship, 1.5f);
         // Apside markers only mean anything for a non-circular orbit.
@@ -4612,14 +4657,7 @@ void drawUIMap(Game &g) {
                 }
                 const ImVec2 tpx = proj.px(r2);
                 dl->AddCircleFilled(tpx, 3.0f, col_vessel);
-                // Label offset from the marker (px): +x right, -y up.
-                const float label_dx = 6.0f, label_dy = 14.0f;
-                // The map clips, so a name with no room above the marker drops below it
-                // instead of being cut (as on the Surface Map).
-                const float above = tpx.y - label_dy;
-                labels.add(ImVec2(tpx.x + label_dx,
-                                  above < view.t ? tpx.y + 8.0f : above),
-                           col_vessel, s->displayName().c_str());
+                labels.add(tpx, 3.0f, col_vessel, s->displayName().c_str(), kLabelShip);
             }
         }
 
@@ -4640,16 +4678,12 @@ void drawUIMap(Game &g) {
             snprintf(xfer_label, sizeof(xfer_label), "%s  %.0f m/s",
                      xfer.target.name.c_str(), sol.total_dv);
             const ImVec2 apx = proj.px(arrival);
-            // Below-right of the arrival dot, or above it if the map's bottom edge bites.
-            const float below = apx.y + 4.0f;
-            labels.add(ImVec2(apx.x + 5.0f,
-                              below + 12.0f > view.b ? apx.y - 16.0f : below),
-                       col_xfer, xfer_label);
+            labels.add(apx, 4.0f, col_xfer, xfer_label, kLabelXfer);
         }
 
         // Names last: every line in the window is down by now, so no rail, SOI ring or
         // transfer leg can cross a name.
-        labels.flush(dl);
+        labels.flush(dl, view);
         dl->PopClipRect();
     });
 }
@@ -6655,8 +6689,7 @@ void drawTrackingMap(Game &g) {
         // already clips a window to -- it is here so the two map windows behave the
         // same way, and so a future control row inside this one cannot be painted over.
         static thread_local MapLabelPass labels;
-        labels.items.clear();
-        labels.arena.clear();
+        labels.reset();
         const MapViewRect view{p0.x, p0.y, p0.x + mapW, p0.y + mapH};
         dl->PushClipRect(p0, ImVec2(p0.x + mapW, p0.y + mapH), true);
         // Drawn before the ship's orbit so the ship sits on top.
@@ -6685,6 +6718,7 @@ void drawTrackingMap(Game &g) {
             dl->AddLine(focus_px, ship_px, ink, 1.0f);
             dl->AddCircleFilled(ship_px, 5.0f, ink);
             dl->AddCircle(ship_px, 8.0f, col_ship, 0, 1.5f);
+            labels.block(ship_px, 9.0f);   // the most important dot on the map
             // Prograde (velocity) arrow.
             proj.drawArrow(dl, orbit_pos, orbit_vel, 24.0f, col_ship, 1.5f);
             // Apside markers only mean anything for a non-circular orbit.
@@ -6728,19 +6762,12 @@ void drawTrackingMap(Game &g) {
                 }
                 const ImVec2 tpx = proj.px(O * r2 + P);
                 dl->AddCircleFilled(tpx, 3.0f, col_vessel);
-                // Label offset from the marker (px): +x right, -y up.
-                const float label_dx = 6.0f, label_dy = 14.0f;
-                // The map clips, so a name with no room above the marker drops below it
-                // instead of being cut (as on the Surface Map).
-                const float above = tpx.y - label_dy;
-                labels.add(ImVec2(tpx.x + label_dx,
-                                  above < view.t ? tpx.y + 8.0f : above),
-                           col_vessel, s->displayName().c_str());
+                labels.add(tpx, 3.0f, col_vessel, s->displayName().c_str(), kLabelShip);
             }
         }
 
         // Names last: every line in the window is down by now.
-        labels.flush(dl);
+        labels.flush(dl, view);
         dl->PopClipRect();
 
         if(!ship) {

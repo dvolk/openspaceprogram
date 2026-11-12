@@ -442,6 +442,144 @@ int main() {
                      "quietRgba: clamps toward black");
     }
 
+    /* placeMapLabels(): the map's name budget (#808). Names claim space in priority
+       order and the rest are dropped, which is what stops the belts and the big
+       planets' moons printing their names on top of each other -- the shipped 670-body
+       corpus offers ~440 names at a planning zoom and printed every one of them. */
+    {
+        struct Lbl { MapLabelCand cand; };   // the game carries colour/text beside it
+        const ImVec4 view(0.0f, 0.0f, 400.0f, 300.0f);
+        const std::vector<MapLabelCand> none;   // no extra discs to dodge
+
+        // The four slots, pinned. Left is measured from the text's END (so a body at
+        // the right edge keeps a whole name) and the vertical pair starts clear of the
+        // horizontal row, not merely clear of the dot.
+        {
+            const MapLabelCand c{ ImVec2(100.0f, 100.0f), ImVec2(30.0f, 12.0f), 3.0f, 0 };
+            ImVec2 s[4];
+            mapLabelSlots(c, 4.0f, s);
+            expect_near(s[0].x, 107.0, "mapLabelSlots: right x = dot + r + pad");
+            expect_near(s[0].y, 94.0, "mapLabelSlots: right y centres on the dot");
+            expect_near(s[1].x, 63.0, "mapLabelSlots: left x ends at the gap");
+            expect_near(s[2].x, 85.0, "mapLabelSlots: below x centres the text");
+            expect_near(s[2].y, 113.0, "mapLabelSlots: below y clears the right row");
+            expect_near(s[3].y, 75.0, "mapLabelSlots: above y clears the right row");
+        }
+
+        // Two names on one marker: the plan the player is making wins the near side and
+        // the rock falls back to the far side, so neither is dropped for nothing.
+        {
+            std::vector<Lbl> items = {
+                { { ImVec2(50.0f, 50.0f), ImVec2(30.0f, 12.0f), 3.0f, 8 } },  // a rock
+                { { ImVec2(50.0f, 50.0f), ImVec2(30.0f, 12.0f), 3.0f, 1 } },  // a target
+            };
+            const auto placed = placeMapLabels(items, none, view, 160);
+            if(placed.size() != 2) {
+                std::printf("FAIL placeMapLabels: a 2-name pile kept %zu, want 2\n",
+                            placed.size());
+                ++g_failures;
+            } else {
+                // Priority order out, so the caller needs no z-order to protect names.
+                if(placed[0].cand != 1 || placed[1].cand != 0) {
+                    std::printf("FAIL placeMapLabels: the rock won the near side "
+                                "(%d, %d)\n", placed[0].cand, placed[1].cand);
+                    ++g_failures;
+                }
+                expect_near(placed[0].at.x, 57.0, "placeMapLabels: the target takes right");
+                expect_near(placed[1].at.x, 13.0, "placeMapLabels: the rock takes left");
+            }
+        }
+
+        // A crowded cluster (a belt crossing at a planning zoom): the claim is not how
+        // many survive but that none of them touch, that all of them fit, and that the
+        // pass really is choosing -- 48 dots in a 24 x 18 px blob can hold a handful of
+        // 28 px names, not 48.
+        {
+            std::vector<Lbl> items;
+            for(int i = 0; i < 8; i++) {
+                for(int j = 0; j < 6; j++) {
+                    items.push_back({ { ImVec2(20.0f + 3.0f * i, 50.0f + 3.0f * j),
+                                        ImVec2(28.0f, 11.0f), 2.0f, 4 } });
+                }
+            }
+            const auto placed = placeMapLabels(items, none, view, 160);
+            if(placed.empty() || placed.size() > 10) {
+                std::printf("FAIL placeMapLabels: %zu of 48 crowded names placed\n",
+                            placed.size());
+                ++g_failures;
+            }
+            int overlaps = 0, outside = 0;
+            for(size_t a = 0; a < placed.size(); a++) {
+                const MapLabelCand &ca = items[(size_t)placed[a].cand].cand;
+                if(placed[a].at.x < view.x || placed[a].at.y < view.y ||
+                   placed[a].at.x + ca.size.x > view.z ||
+                   placed[a].at.y + ca.size.y > view.w) { ++outside; }
+                for(size_t b = a + 1; b < placed.size(); b++) {
+                    const MapLabelCand &cb = items[(size_t)placed[b].cand].cand;
+                    if(placed[a].at.x + ca.size.x > placed[b].at.x &&
+                       placed[b].at.x + cb.size.x > placed[a].at.x &&
+                       placed[a].at.y + ca.size.y > placed[b].at.y &&
+                       placed[b].at.y + cb.size.y > placed[a].at.y) { ++overlaps; }
+                }
+            }
+            if(overlaps) {
+                std::printf("FAIL placeMapLabels: %d name(s) printed on top of "
+                            "another\n", overlaps);
+                ++g_failures;
+            }
+            if(outside) {
+                std::printf("FAIL placeMapLabels: %d name(s) hang off the map\n",
+                            outside);
+                ++g_failures;
+            }
+        }
+
+        // The count cap costs the least important names first (the sweep is in priority
+        // order), and with room to spare every survivor sits in its own slot.
+        {
+            std::vector<Lbl> items;
+            for(int i = 0; i < 10; i++) {
+                items.push_back({ { ImVec2(20.0f + 100.0f * (i % 4),
+                                           20.0f + 100.0f * (i / 4)),
+                                    ImVec2(30.0f, 12.0f), 3.0f,
+                                    (unsigned char)i } });
+            }
+            const auto placed = placeMapLabels(items, none, view, 3);
+            if(placed.size() != 3) {
+                std::printf("FAIL placeMapLabels: cap 3 kept %zu\n", placed.size());
+                ++g_failures;
+            }
+            // prio 0, 1, 2 are the three most important, i.e. cands 0, 1, 2.
+            for(size_t k = 0; k < placed.size() && k < 3; k++) {
+                if(placed[k].cand != (int)k) {
+                    std::printf("FAIL placeMapLabels: rank %zu kept cand %d, want %zu\n",
+                                k, placed[k].cand, k);
+                    ++g_failures;
+                }
+            }
+        }
+
+        // Edges: a body against the right edge keeps its name on its LEFT rather than
+        // losing it, and a corner body whose every slot hangs off the map claims nothing
+        // -- a clipped name would cost the map one that fits.
+        {
+            std::vector<Lbl> edge = {
+                { { ImVec2(395.0f, 50.0f), ImVec2(30.0f, 12.0f), 3.0f, 4 } } };
+            const auto placed = placeMapLabels(edge, none, view, 160);
+            if(placed.size() != 1 || placed[0].at.x >= 395.0f) {
+                std::printf("FAIL placeMapLabels: a body at the right edge lost its "
+                            "left-side name\n");
+                ++g_failures;
+            }
+            std::vector<Lbl> corner = {
+                { { ImVec2(2.0f, 1.0f), ImVec2(30.0f, 12.0f), 3.0f, 4 } } };
+            if(!placeMapLabels(corner, none, view, 160).empty()) {
+                std::printf("FAIL placeMapLabels: an off-map name claimed space\n");
+                ++g_failures;
+            }
+        }
+    }
+
     if(g_failures == 0) {
         std::printf("test_orbitmap: all checks passed\n");
         return 0;

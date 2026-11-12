@@ -2,6 +2,7 @@
 // orbitmap.h -- orthographic top-down projection + drawing for the orbital map.
 // Drops the out-of-plane component, so inclined orbits look squashed.
 
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 
@@ -173,4 +174,158 @@ inline ImVec4 quietRgba(const ImVec4 &bg, float v) {
         return x < 0.0f ? 0.0f : (x > 1.0f ? 1.0f : x);
     };
     return ImVec4(ch(bg.x), ch(bg.y), ch(bg.z), 1.0f);
+}
+
+// --- Map names ------------------------------------------------------------------
+// A name waiting to be placed: where its marker is, how big the text is (measured by
+// the caller -- there is no font here), and how much it matters when space is
+// contested. Separated from the drawing so the rule below is testable without a
+// window, a font atlas or a Game.
+struct MapLabelCand {
+    ImVec2 dot;       // the marker the name belongs to
+    ImVec2 size;      // text extent
+    float r_px;       // that marker's radius, for the air gap
+    unsigned char prio;   // lower claims space first
+};
+struct MapLabelPlaced { int cand; ImVec2 at; };   // index into items; top-left to draw at
+
+// Where a name may sit around its marker, in preference order: right (how map names
+// read today), then left -- which is also what keeps a name whole for a body against
+// the right edge -- then below and above, for a body whose east and west are taken.
+// The vertical slots start clear of the horizontal row, not just clear of the marker:
+// a 12 px name centred on the dot reaches 6 px below it, so a below slot measured only
+// from the marker would sit on top of the right-hand name.
+inline void mapLabelSlots(const MapLabelCand &c, float pad, ImVec2 out[4]) {
+    const float g = c.r_px + pad;
+    out[0] = ImVec2(c.dot.x + g,              c.dot.y - c.size.y * 0.5f);
+    out[1] = ImVec2(c.dot.x - g - c.size.x,   c.dot.y - c.size.y * 0.5f);
+    out[2] = ImVec2(c.dot.x - c.size.x * 0.5f, c.dot.y + g + c.size.y * 0.5f);
+    out[3] = ImVec2(c.dot.x - c.size.x * 0.5f, c.dot.y - g - c.size.y * 1.5f);
+}
+
+// Only one name may sit on a patch of map, and no name may sit on a body: candidates
+// claim space in priority order -- whole, inside `view` (l,t,r,b), at most max_drawn of
+// them -- and the rest are dropped. Without this the shipped catalogue prints every
+// body on screen at once: ~440 names overlapping at a planning zoom, where the belts
+// and the big planets' moons sit on each other. And a name printed across a dot makes
+// that dot unidentifiable, so every marker (whether its name survives or not) plus
+// anything in `blocks` reserves its own space first.
+//
+// A loser is dropped, not slid to a free row: a name a line away from its marker can
+// read as belonging to whichever dot is nearest, which is a worse map than one with
+// fewer names. `items` may be any type carrying a `.cand` member (the game's label pass
+// keeps colour and text beside it); the result indexes `items`.
+//
+// `cell` bounds the overlap tests with a coarse occupancy grid: the catalogue is 670
+// bodies and the plan is to scale that up, where testing every box against every other
+// is ~0.4 M comparisons per window per frame.
+class LabelGrid {
+public:
+    void reset(const ImVec4 &view, float cell) {
+        x0_ = view.x; y0_ = view.y; cell_ = cell;
+        cols_ = (int)((view.z - view.x) / cell) + 2;
+        rows_ = (int)((view.w - view.y) / cell) + 2;
+        heads_.assign((size_t)cols_ * rows_, -1);
+        nodes_.clear();
+    }
+    // True if no claimed box overlaps this one. Only the cells the box touches are
+    // walked, so the cost follows how crowded that corner of the map is.
+    bool freeBox(const ImVec4 &b) const {
+        const int cx0 = clampCol(b.x), cx1 = clampCol(b.z);
+        const int cy0 = clampRow(b.y), cy1 = clampRow(b.w);
+        for(int cy = cy0; cy <= cy1; cy++) {
+            for(int cx = cx0; cx <= cx1; cx++) {
+                for(int i = heads_[(size_t)cy * cols_ + cx]; i >= 0; i = nodes_[i].next) {
+                    const ImVec4 &t = nodes_[i].box;
+                    if(b.z > t.x && b.x < t.z && b.w > t.y && b.y < t.w) { return false; }
+                }
+            }
+        }
+        return true;
+    }
+    void claim(const ImVec4 &b) {
+        // Fully off the map: nothing that can be drawn overlaps it. (A partially off
+        // box is clamped, which is what keeps an edge marker's dot free of names.)
+        if(b.z < x0_ || b.x > x0_ + (float)cols_ * cell_ ||
+           b.w < y0_ || b.y > y0_ + (float)rows_ * cell_) { return; }
+        const int cx0 = clampCol(b.x), cx1 = clampCol(b.z);
+        const int cy0 = clampRow(b.y), cy1 = clampRow(b.w);
+        for(int cy = cy0; cy <= cy1; cy++) {
+            for(int cx = cx0; cx <= cx1; cx++) {
+                const size_t h = (size_t)cy * cols_ + cx;
+                nodes_.push_back({ b, heads_[h] });
+                heads_[h] = (int)nodes_.size() - 1;
+            }
+        }
+    }
+private:
+    struct Node { ImVec4 box; int next; };
+    int clampCol(float x) const {
+        const int c = (int)((x - x0_) / cell_);
+        return c < 0 ? 0 : (c >= cols_ ? cols_ - 1 : c);
+    }
+    int clampRow(float y) const {
+        const int r = (int)((y - y0_) / cell_);
+        return r < 0 ? 0 : (r >= rows_ ? rows_ - 1 : r);
+    }
+    int cols_ = 0, rows_ = 0;
+    float x0_ = 0.0f, y0_ = 0.0f, cell_ = 1.0f;
+    std::vector<int> heads_;      // cell -> first node index, -1 when empty
+    std::vector<Node> nodes_;     // one node per (box, cell) pair
+};
+
+template <class Item>
+inline std::vector<MapLabelPlaced> placeMapLabels(const std::vector<Item> &items,
+                                                  const std::vector<MapLabelCand> &blocks,
+                                                  const ImVec4 &view,
+                                                  size_t max_drawn,
+                                                  float gap = 1.0f, float pad = 4.0f,
+                                                  float cell = 32.0f) {
+    // Index order: the caller's items stay where they are because the result indexes
+    // them. stable_sort keeps bodies in catalogue order inside a priority tier, so
+    // which name wins a contest does not chatter between frames as bodies drift.
+    std::vector<int> order(items.size());
+    for(size_t i = 0; i < order.size(); i++) { order[i] = (int)i; }
+    std::stable_sort(order.begin(), order.end(),
+                     [&](int a, int b) { return items[a].cand.prio < items[b].cand.prio; });
+
+    // Reused across frames and both map windows (they draw in turn on one thread);
+    // reset() is what re-fits it to this window.
+    static thread_local LabelGrid grid;
+    grid.reset(view, cell);
+    // Markers first, before any name: a body keeps its own dot even when the map has
+    // no room for its name.
+    for(const Item &it : items) {
+        const MapLabelCand &c = it.cand;
+        grid.claim(ImVec4(c.dot.x - c.r_px - gap, c.dot.y - c.r_px - gap,
+                          c.dot.x + c.r_px + gap, c.dot.y + c.r_px + gap));
+    }
+    for(const MapLabelCand &b : blocks) {
+        grid.claim(ImVec4(b.dot.x - b.r_px - gap, b.dot.y - b.r_px - gap,
+                          b.dot.x + b.r_px + gap, b.dot.y + b.r_px + gap));
+    }
+
+    std::vector<MapLabelPlaced> out;
+    out.reserve(max_drawn < items.size() ? max_drawn : items.size());
+    ImVec2 slot[4];
+    for(int idx : order) {
+        if(out.size() >= max_drawn) { break; }
+        const MapLabelCand &c = items[(size_t)idx].cand;
+        mapLabelSlots(c, pad, slot);
+        for(const ImVec2 &p : slot) {
+            const ImVec4 box(p.x - gap, p.y - gap,
+                             p.x + c.size.x + gap, p.y + c.size.y + gap);
+            // A name the window's clip rect would cut must not claim space -- it would
+            // cost the map a name that fits. (A body at the very edge keeps its dot
+            // and loses its name.)
+            if(box.x < view.x || box.z > view.z || box.y < view.y || box.w > view.w) {
+                continue;
+            }
+            if(!grid.freeBox(box)) { continue; }
+            grid.claim(box);
+            out.push_back({idx, p});
+            break;
+        }
+    }
+    return out;
 }
