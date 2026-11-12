@@ -26,11 +26,11 @@ constant is anywhere in sight.
 
 WHICH MEAN IS ANCHORED, because the two are not the same number. The conserved one is the
 RADIATION mean, <T^4>^(1/4). The arithmetic mean of T is not conserved: measured here at the
-knobs this corpus actually authors it sits 0.07 % below (Earth, f = 0.932 -- 0.2 K), 35 %
-below at the Moon's f = 0.015, and 43 % below at f = 0 (0.566 T0). Do not confuse that with
-the gap the dossier prints between a body's airless black-body and its authored ground --
-Earth's 255 K against 288 K, 33 K -- which is a POWER imbalance the model does not have (the
-greenhouse, #728/#738). This swing neither explains that gap nor closes it.
+knobs this corpus actually authors it sits 0.07 % below (Earth, f = 0.932 -- 0.2 K), 26 %
+below at the Moon's f = 0.014 (0.738 T0), and 43 % below at f = 0 (0.566 T0). Do not confuse
+that with the gap the dossier prints between a body's airless black-body and its authored
+ground -- Earth's 255 K against 288 K, 33 K -- which is a POWER imbalance the model does not
+have (the greenhouse, #728/#738). This swing neither explains that gap nor closes it.
 
 ONE KNOB, SO A STATED PAIR IS A TEST AND NOT A FIT. With a = (T_night/T0)^4, the day end is
 forced to (T_day/T0)^4 = 4 - 3a. So a corpus that states BOTH ends of a swing is giving an

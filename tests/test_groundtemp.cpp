@@ -124,10 +124,15 @@ int main() {
                  < groundTemperature(288.15, 0.9, 0.75),
                "more light, warmer ground -- the swing is monotone in the cosine");
 
-    /* ---- the seam: the authored knobs, applied here, land back on their pairs -------- */
+    /* ---- the seam: the authored knobs, applied here, land back on their pairs --------
+       The pairs are the ones res/systems/*.json ships, not a remembered fit. The Moon's row
+       used to carry the FIRST solve (270.33 K / 0.0152517), which lands the day end at
+       381.2 K -- inside the fit's 8 % gate, so the test stayed green while auditing a pair
+       no shipped file contains. When the generator changes the solve, re-derive the row
+       from the shipped body: a stale row audits nothing. */
     const Authored rows[] = {
         {"Earth",  288.00, 0.9323431643529773, 283.0, 293.0, 0.08 * 288.00},
-        {"Moon",   270.33, 0.015251705420212182,  95.0, 390.0, 0.08 * 270.33},
+        {"Moon",   276.49697165253286, 0.013935832091621402, 95.0, 390.0, 0.08 * 276.50},
         {"Eve",    291.68, 0.09058795570276411, 160.02, 420.00, 0.08 * 291.68},
         {"Venus",  737.00, 1.0,                 737.0, 737.0, 0.0},
     };

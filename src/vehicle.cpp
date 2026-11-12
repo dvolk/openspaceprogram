@@ -3137,18 +3137,28 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
         sv.to_sun = rot_to_S * sv_rot.to_sun;
         sv.valid = sv_rot.valid;
         const SkyAtZenith sky = skyAtZenith(sv, com);
-        const double anchor = groundAnchor_K(m_parent->surface.temperature,
-                                             airDatum_K(atm), 0.0);
-        const double w = followWeight(lastAirP, atm.sea_level_pressure);
-        const double coupled = coupledAirTemperature(
-            lastAirT, anchor, m_parent->surface.even_share,
-            atm.air_follow, w, sky.valid ? sky.cos_inc : 0.0);
-        if(coupled != lastAirT) {
-            lastAirT = coupled;
-            /* The Mach number this pass divides by comes from the SAME temperature the
-               readout now prints (drag.h:soundSpeedFromT), or the two rows of one log would
-               be describing two different airs (#687). */
-            lastAirA = soundSpeedFromT(da, lastAirT);
+        /* An invalid sky is NOT midnight. cos_inc = 0 is a reading of a dark sky; "no
+           reading" and "dark" give different airs -- Kerbin's coupled air at 6.4 km sits
+           0.35 * (283.15 - 288.15) = -1.75 K below the profile when fed 0, and with it the
+           speed of sound the drag line right below divides by. insolation.h's rule for the
+           readouts is that an unmeasurable sky dashes the columns rather than answering 0;
+           the air follows the same rule, so it stays on the profile until a sun is in sight.
+           (#794 asks for this branch to be covered once a kernel makes the coupling more
+           than a per-tick blend.) */
+        if(sky.valid) {
+            const double anchor = groundAnchor_K(m_parent->surface.temperature,
+                                                 airDatum_K(atm), 0.0);
+            const double w = followWeight(lastAirP, atm.sea_level_pressure);
+            const double coupled = coupledAirTemperature(
+                lastAirT, anchor, m_parent->surface.even_share,
+                atm.air_follow, w, sky.cos_inc);
+            if(coupled != lastAirT) {
+                lastAirT = coupled;
+                /* The Mach number this pass divides by comes from the SAME temperature the
+                   readout now prints (drag.h:soundSpeedFromT), or the two rows of one log would
+                   be describing two different airs (#687). */
+                lastAirA = soundSpeedFromT(da, lastAirT);
+            }
         }
     }
     /* GetVel() minus the air's OWN velocity: its co-rotation when outside the body's
