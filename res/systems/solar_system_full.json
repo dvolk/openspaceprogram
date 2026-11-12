@@ -109,7 +109,7 @@
         ],
         "albedo": 0.068,
         "temperature": 440.0,
-        "even_share": 0.015251705420212182,
+        "even_share": 0.013935832091621402,
         "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
@@ -649,7 +649,9 @@
             "albedo": 0.12,
             "opacity": 0.8
           }
-        ]
+        ],
+        "even_share": 0.9299178553106822,
+        "even_share_src": "DEFAULT air-mass rule"
       },
       "inertial": {
         "orb_ang_speed": 1.678489516693838e-08,
@@ -791,7 +793,9 @@
             "albedo": 0.55,
             "opacity": 0.7
           }
-        ]
+        ],
+        "even_share": 0.9299178553106822,
+        "even_share_src": "DEFAULT air-mass rule"
       },
       "inertial": {
         "orb_ang_speed": 6.761257652006661e-09,
@@ -891,7 +895,9 @@
           "height": 250000.0
         },
         "albedo": 0.3,
-        "temperature": 76.0
+        "temperature": 76.0,
+        "even_share": 0.9299178553106822,
+        "even_share_src": "DEFAULT air-mass rule"
       },
       "inertial": {
         "orb_ang_speed": 2.3699235521267574e-09,
@@ -991,7 +997,9 @@
           "height": 200000.0
         },
         "albedo": 0.29,
-        "temperature": 72.0
+        "temperature": 72.0,
+        "even_share": 0.9299178553106822,
+        "even_share_src": "DEFAULT air-mass rule"
       },
       "inertial": {
         "orb_ang_speed": 1.2082279223500606e-09,
@@ -1076,8 +1084,10 @@
           "height": 20000.0
         },
         "albedo": 0.72,
-        "even_share": 0.015251705420212182,
-        "even_share_src": "DEFAULT airless floor"
+        "temperature": 29.62368196872856,
+        "temperature_src": "SOLVED from the stated range 24.00-38.00 K, not a stated mean",
+        "even_share": 0.43081302037615116,
+        "even_share_src": "solved from a stated range"
       },
       "inertial": {
         "orb_ang_speed": 8.030261944172967e-10,
@@ -1125,8 +1135,10 @@
           ]
         ],
         "albedo": 0.11,
-        "even_share": 0.015251705420212182,
-        "even_share_src": "fitted from the night end"
+        "temperature": 276.49697165253286,
+        "temperature_src": "SOLVED from the stated range 95.00-390.00 K, not a stated mean",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "solved from a stated range"
       },
       "inertial": {
         "orb_ang_speed": 2.6616957278072153e-06,
@@ -1174,7 +1186,7 @@
         ],
         "albedo": 0.04769765337125865,
         "albedo_src": "geom 0.07, q=0.681",
-        "even_share": 0.015251705420212182,
+        "even_share": 0.013935832091621402,
         "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
@@ -1224,7 +1236,7 @@
         ],
         "albedo": 0.05451160385286702,
         "albedo_src": "geom 0.08, q=0.681",
-        "even_share": 0.015251705420212182,
+        "even_share": 0.013935832091621402,
         "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
@@ -1284,7 +1296,7 @@
         },
         "albedo": 0.4224649298597194,
         "albedo_src": "geom 0.62, q=0.681",
-        "even_share": 0.015251705420212182,
+        "even_share": 0.013935832091621402,
         "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
@@ -1334,7 +1346,7 @@
         ],
         "albedo": 0.4633486327493697,
         "albedo_src": "geom 0.68, q=0.681",
-        "even_share": 0.015251705420212182,
+        "even_share": 0.013935832091621402,
         "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
@@ -1384,7 +1396,7 @@
         ],
         "albedo": 0.2998138211907686,
         "albedo_src": "geom 0.44, q=0.681",
-        "even_share": 0.015251705420212182,
+        "even_share": 0.013935832091621402,
         "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
@@ -1434,7 +1446,7 @@
         ],
         "albedo": 0.12946505915055917,
         "albedo_src": "geom 0.19, q=0.681",
-        "even_share": 0.015251705420212182,
+        "even_share": 0.013935832091621402,
         "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
@@ -1481,7 +1493,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: Jupiter-family value, no albedo row in the corpus",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 0.0002467002471900318,
@@ -1527,7 +1543,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: Jupiter-family value, no albedo row in the corpus",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 0.00024382100236850532,
@@ -1573,7 +1593,11 @@
               0.45
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: Jupiter-family value, no albedo row in the corpus",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 0.00014597574800710267,
@@ -1619,7 +1643,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: Jupiter-family value, no albedo row in the corpus",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 0.00010781623745949652,
@@ -1665,7 +1693,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 106 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 5.593143529182464e-07,
@@ -1705,7 +1737,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 160 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 3.01851453455215e-07,
@@ -1745,7 +1781,11 @@
               0.65
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 164 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 2.9023089373758473e-07,
@@ -1785,7 +1825,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 165 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 2.885795720890095e-07,
@@ -1830,7 +1874,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 165 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 2.885795720890095e-07,
@@ -1870,7 +1918,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 165 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 2.884651018105133e-07,
@@ -1910,7 +1962,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 168 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 2.805418261184723e-07,
@@ -1950,7 +2006,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 168 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 2.8007420742788214e-07,
@@ -1990,7 +2050,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 169 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 2.7650970405486843e-07,
@@ -2030,7 +2094,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 179 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 2.5338694134644737e-07,
@@ -2070,7 +2138,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 237 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 1.672925055588461e-07,
@@ -2115,7 +2187,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 244 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 1.5944321895731286e-07,
@@ -2155,7 +2231,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 271 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 1.3636237046021077e-07,
@@ -2195,7 +2275,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 277 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 1.3205384450050914e-07,
@@ -2235,7 +2319,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 289 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 1.2367695946671837e-07,
@@ -2275,7 +2363,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 289 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 1.236559295467274e-07,
@@ -2315,7 +2407,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 293 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 1.2148688968665285e-07,
@@ -2355,7 +2451,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 294 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 1.2074058138208603e-07,
@@ -2395,7 +2495,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 294 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 1.2068047156725922e-07,
@@ -2435,7 +2539,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 294 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 1.2066044826021303e-07,
@@ -2475,7 +2583,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 295 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 1.1994400819137458e-07,
@@ -2515,7 +2627,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 301 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 1.1680381009706135e-07,
@@ -2555,7 +2671,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 295 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 1.1992422850664642e-07,
@@ -2595,7 +2715,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 300 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 1.1718023230169254e-07,
@@ -2635,7 +2759,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 302 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 1.1592866597549882e-07,
@@ -2675,7 +2803,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 299 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 1.1780666153641731e-07,
@@ -2715,7 +2847,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 300 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 1.1729363252650064e-07,
@@ -2755,7 +2891,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 301 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 1.1667263302812515e-07,
@@ -2795,7 +2935,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 304 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 1.1472164721001798e-07,
@@ -2835,7 +2979,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 302 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 1.1629945972562036e-07,
@@ -2875,7 +3023,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 302 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 1.1578100965838306e-07,
@@ -2915,7 +3067,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 302 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 1.1583633667797133e-07,
@@ -2955,7 +3111,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 302 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 1.1583633667797133e-07,
@@ -2995,7 +3155,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 305 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 1.1455899837181854e-07,
@@ -3035,7 +3199,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 304 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 1.1515764396901093e-07,
@@ -3075,7 +3243,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 297 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 1.1911884056745356e-07,
@@ -3115,7 +3287,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 306 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 1.1377041953446556e-07,
@@ -3155,7 +3331,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 307 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 1.1313324854765153e-07,
@@ -3195,7 +3375,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 308 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 1.1257283617094488e-07,
@@ -3235,7 +3419,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 315 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 1.088001977355332e-07,
@@ -3275,7 +3463,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 315 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 1.0886534755453653e-07,
@@ -3315,7 +3507,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 318 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 1.0762476271485924e-07,
@@ -3355,7 +3551,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 320 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 1.0647445412361698e-07,
@@ -3395,7 +3595,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 321 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 1.0591618433794116e-07,
@@ -3435,7 +3639,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 321 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 1.059007603996365e-07,
@@ -3475,7 +3683,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 324 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 1.042460610183922e-07,
@@ -3515,7 +3727,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 325 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 1.0369606754089606e-07,
@@ -3555,7 +3771,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 330 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 1.0138303661847261e-07,
@@ -3595,7 +3815,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 327 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 1.0316648058792793e-07,
@@ -3635,7 +3859,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 327 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 1.0316648058792793e-07,
@@ -3675,7 +3903,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 327 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 1.0316648058792793e-07,
@@ -3715,7 +3947,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 332 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 1.0045869894520016e-07,
@@ -3755,7 +3991,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 328 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 1.0262779024333953e-07,
@@ -3795,7 +4035,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 344 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 9.534817381202359e-08,
@@ -3835,7 +4079,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 331 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 1.0107303984215482e-07,
@@ -3875,7 +4123,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 330 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 1.0165229545209729e-07,
@@ -3915,7 +4167,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 330 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 1.0158129929659225e-07,
@@ -3955,7 +4211,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 332 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 1.004725782901774e-07,
@@ -3995,7 +4255,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 334 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 9.968752867228292e-08,
@@ -4035,7 +4299,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 333 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 1.0023714978143404e-07,
@@ -4075,7 +4343,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 334 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 9.959196407344616e-08,
@@ -4115,7 +4387,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 331 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 1.0107303984215482e-07,
@@ -4155,7 +4431,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 331 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 1.0105899411677376e-07,
@@ -4195,7 +4475,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 334 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 9.985178108805492e-08,
@@ -4235,7 +4519,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 332 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 1.0056984119268483e-07,
@@ -4275,7 +4563,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 332 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 1.0055593496464379e-07,
@@ -4315,7 +4607,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 335 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 9.93199292084545e-08,
@@ -4355,7 +4651,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 326 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 1.035484154441555e-07,
@@ -4395,7 +4695,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 334 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 9.95510638828616e-08,
@@ -4435,7 +4739,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 340 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 9.718301772875906e-08,
@@ -4475,7 +4783,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 336 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 9.906286904567552e-08,
@@ -4515,7 +4827,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 336 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 9.904937641845598e-08,
@@ -4555,7 +4871,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 338 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 9.787624786868155e-08,
@@ -4595,7 +4915,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 338 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 9.779727295108983e-08,
@@ -4635,7 +4959,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 339 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 9.743040215223794e-08,
@@ -4675,7 +5003,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 338 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 9.778412285387977e-08,
@@ -4715,7 +5047,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 343 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 9.572469680983334e-08,
@@ -4755,7 +5091,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 341 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 9.660208842512009e-08,
@@ -4795,7 +5135,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 333 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 1.0037550333530765e-07,
@@ -4835,7 +5179,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 337 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 9.83261927615338e-08,
@@ -4875,7 +5223,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 344 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 9.549842700778778e-08,
@@ -4915,7 +5267,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 345 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 9.509879974686856e-08,
@@ -4955,7 +5311,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 343 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 9.58382342731028e-08,
@@ -4995,7 +5355,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 345 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 9.487547575529079e-08,
@@ -5035,7 +5399,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 337 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 9.856607775336189e-08,
@@ -5075,7 +5443,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 349 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 9.332912239018274e-08,
@@ -5115,7 +5487,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 343 Jupiter radii), not Jupiter-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 9.572469680983334e-08,
@@ -5158,7 +5534,7 @@
         ],
         "albedo": 0.40883702889650264,
         "albedo_src": "geom 0.6, q=0.681",
-        "even_share": 0.015251705420212182,
+        "even_share": 0.013935832091621402,
         "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
@@ -5208,7 +5584,7 @@
         ],
         "albedo": 0.6813950481608377,
         "albedo_src": "geom 1.0, q=0.681",
-        "even_share": 0.015251705420212182,
+        "even_share": 0.013935832091621402,
         "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
@@ -5258,7 +5634,7 @@
         ],
         "albedo": 0.5451160385286702,
         "albedo_src": "geom 0.8, q=0.681",
-        "even_share": 0.015251705420212182,
+        "even_share": 0.013935832091621402,
         "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
@@ -5308,7 +5684,7 @@
         ],
         "albedo": 0.47697653371258636,
         "albedo_src": "geom 0.7, q=0.681",
-        "even_share": 0.015251705420212182,
+        "even_share": 0.013935832091621402,
         "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
@@ -5358,7 +5734,7 @@
         ],
         "albedo": 0.47697653371258636,
         "albedo_src": "geom 0.7, q=0.681",
-        "even_share": 0.015251705420212182,
+        "even_share": 0.013935832091621402,
         "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
@@ -5498,7 +5874,11 @@
               0.68
             ]
           ]
-        ]
+        ],
+        "albedo": 0.5,
+        "albedo_src": "INVENTED: Saturn-family value, no albedo row in the corpus",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 3.4179343224491453e-06,
@@ -5542,7 +5922,7 @@
         ],
         "albedo": 0.1873836382442304,
         "albedo_src": "geom 0.05 / 0.5, q=0.681",
-        "even_share": 0.015251705420212182,
+        "even_share": 0.013935832091621402,
         "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
@@ -5589,7 +5969,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.5,
+        "albedo_src": "INVENTED: Saturn-family value, no albedo row in the corpus",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 0.00015423552951522885,
@@ -5635,7 +6019,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.5,
+        "albedo_src": "INVENTED: Saturn-family value, no albedo row in the corpus",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 0.00012647313420248766,
@@ -5681,7 +6069,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.5,
+        "albedo_src": "INVENTED: Saturn-family value, no albedo row in the corpus",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 0.00012242769724988282,
@@ -5727,7 +6119,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.5,
+        "albedo_src": "INVENTED: Saturn-family value, no albedo row in the corpus",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 0.00012082082101084965,
@@ -5773,7 +6169,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.5,
+        "albedo_src": "INVENTED: Saturn-family value, no albedo row in the corpus",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 0.00011863303779189299,
@@ -5819,7 +6219,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.5,
+        "albedo_src": "INVENTED: Saturn-family value, no albedo row in the corpus",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 0.00011570732246050979,
@@ -5865,7 +6269,11 @@
               0.74
             ]
           ]
-        ]
+        ],
+        "albedo": 0.5,
+        "albedo_src": "INVENTED: Saturn-family value, no albedo row in the corpus",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 0.0001047566294532273,
@@ -5911,7 +6319,11 @@
               0.74
             ]
           ]
-        ]
+        ],
+        "albedo": 0.5,
+        "albedo_src": "INVENTED: Saturn-family value, no albedo row in the corpus",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 0.00010471137820940301,
@@ -5957,7 +6369,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.5,
+        "albedo_src": "INVENTED: Saturn-family value, no albedo row in the corpus",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 8.999140226015394e-05,
@@ -6003,7 +6419,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.5,
+        "albedo_src": "INVENTED: Saturn-family value, no albedo row in the corpus",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 7.200203184795089e-05,
@@ -6049,7 +6469,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.5,
+        "albedo_src": "INVENTED: Saturn-family value, no albedo row in the corpus",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 6.992505016002923e-05,
@@ -6095,7 +6519,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.5,
+        "albedo_src": "INVENTED: Saturn-family value, no albedo row in the corpus",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 6.379127383020211e-05,
@@ -6141,7 +6569,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.5,
+        "albedo_src": "INVENTED: Saturn-family value, no albedo row in the corpus",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 3.852211683781672e-05,
@@ -6187,7 +6619,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.5,
+        "albedo_src": "INVENTED: Saturn-family value, no albedo row in the corpus",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 3.852211683781672e-05,
@@ -6233,7 +6669,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.5,
+        "albedo_src": "INVENTED: Saturn-family value, no albedo row in the corpus",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 2.6540894951251965e-05,
@@ -6279,7 +6719,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.5,
+        "albedo_src": "INVENTED: Saturn-family value, no albedo row in the corpus",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 2.657095698287493e-05,
@@ -6325,7 +6769,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 194 Saturn radii), not Saturn-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 1.6196448143971135e-07,
@@ -6365,7 +6813,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 195 Saturn radii), not Saturn-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 1.6124623540228469e-07,
@@ -6405,7 +6857,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 193 Saturn radii), not Saturn-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 1.630539286242834e-07,
@@ -6445,7 +6901,11 @@
               0.4
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 222 Saturn radii), not Saturn-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 1.3270447475625983e-07,
@@ -6485,7 +6945,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 258 Saturn radii), not Saturn-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 1.0585451552609955e-07,
@@ -6525,7 +6989,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 268 Saturn radii), not Saturn-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 9.989292880004175e-08,
@@ -6565,7 +7033,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 287 Saturn radii), not Saturn-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 9.00025398099386e-08,
@@ -6605,7 +7077,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 274 Saturn radii), not Saturn-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 9.657643049990756e-08,
@@ -6645,7 +7121,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 281 Saturn radii), not Saturn-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 9.287618412060076e-08,
@@ -6685,7 +7165,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 294 Saturn radii), not Saturn-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 8.709227804362921e-08,
@@ -6725,7 +7209,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 302 Saturn radii), not Saturn-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 8.349259720600504e-08,
@@ -6765,7 +7253,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 298 Saturn radii), not Saturn-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 8.515462782954379e-08,
@@ -6805,7 +7297,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 299 Saturn radii), not Saturn-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 8.465896643356275e-08,
@@ -6845,7 +7341,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 308 Saturn radii), not Saturn-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 8.116300465003393e-08,
@@ -6885,7 +7385,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 304 Saturn radii), not Saturn-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 8.28269386861394e-08,
@@ -6925,7 +7429,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 315 Saturn radii), not Saturn-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 7.853353365705227e-08,
@@ -6965,7 +7473,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 306 Saturn radii), not Saturn-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 8.189420289012432e-08,
@@ -7005,7 +7517,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 313 Saturn radii), not Saturn-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 7.895988291686254e-08,
@@ -7045,7 +7561,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 316 Saturn radii), not Saturn-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 7.802795296827296e-08,
@@ -7085,7 +7605,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 316 Saturn radii), not Saturn-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 7.794432172179035e-08,
@@ -7125,7 +7649,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 321 Saturn radii), not Saturn-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 7.630855421451248e-08,
@@ -7165,7 +7693,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 334 Saturn radii), not Saturn-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 7.164734203589202e-08,
@@ -7205,7 +7737,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 323 Saturn radii), not Saturn-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 7.535963955070507e-08,
@@ -7245,7 +7781,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 332 Saturn radii), not Saturn-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 7.243232287493068e-08,
@@ -7285,7 +7825,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 329 Saturn radii), not Saturn-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 7.345661834992969e-08,
@@ -7325,7 +7869,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 332 Saturn radii), not Saturn-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 7.22883222330322e-08,
@@ -7365,7 +7913,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 334 Saturn radii), not Saturn-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 7.185973534232253e-08,
@@ -7405,7 +7957,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 335 Saturn radii), not Saturn-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 7.150644264152448e-08,
@@ -7445,7 +8001,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 338 Saturn radii), not Saturn-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 7.039888883487937e-08,
@@ -7485,7 +8045,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 340 Saturn radii), not Saturn-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 6.999235049704561e-08,
@@ -7525,7 +8089,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 328 Saturn radii), not Saturn-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 7.375461680165355e-08,
@@ -7565,7 +8133,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 341 Saturn radii), not Saturn-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 6.952395044591816e-08,
@@ -7605,7 +8177,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 349 Saturn radii), not Saturn-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 6.708676399117195e-08,
@@ -7645,7 +8221,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 349 Saturn radii), not Saturn-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 6.733523348743555e-08,
@@ -7685,7 +8265,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 350 Saturn radii), not Saturn-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 6.696321562286409e-08,
@@ -7725,7 +8309,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 349 Saturn radii), not Saturn-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 6.708676399117195e-08,
@@ -7765,7 +8353,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 352 Saturn radii), not Saturn-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 6.64735394574318e-08,
@@ -7805,7 +8397,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 352 Saturn radii), not Saturn-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 6.641283302870355e-08,
@@ -7845,7 +8441,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 357 Saturn radii), not Saturn-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 6.510479155454824e-08,
@@ -7885,7 +8485,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 380 Saturn radii), not Saturn-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 5.92681761747599e-08,
@@ -7925,7 +8529,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 366 Saturn radii), not Saturn-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 6.247598983370309e-08,
@@ -7965,7 +8573,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 369 Saturn radii), not Saturn-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 6.189110822674927e-08,
@@ -8005,7 +8617,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 361 Saturn radii), not Saturn-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 6.37912738302021e-08,
@@ -8045,7 +8661,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 373 Saturn radii), not Saturn-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 6.0753594124002e-08,
@@ -8085,7 +8705,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 376 Saturn radii), not Saturn-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 6.020037430995894e-08,
@@ -8125,7 +8749,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 381 Saturn radii), not Saturn-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 5.893197096145089e-08,
@@ -8165,7 +8793,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 386 Saturn radii), not Saturn-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 5.7715914417801904e-08,
@@ -8205,7 +8837,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 394 Saturn radii), not Saturn-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 5.602623433469214e-08,
@@ -8245,7 +8881,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 390 Saturn radii), not Saturn-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 5.690301421473427e-08,
@@ -8290,7 +8930,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 394 Saturn radii), not Saturn-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 5.611269457286296e-08,
@@ -8330,7 +8974,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 397 Saturn radii), not Saturn-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 5.542839341953536e-08,
@@ -8370,7 +9018,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 397 Saturn radii), not Saturn-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 5.53861783445776e-08,
@@ -8410,7 +9062,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 398 Saturn radii), not Saturn-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 5.517606385920364e-08,
@@ -8455,7 +9111,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 405 Saturn radii), not Saturn-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 5.370904886737843e-08,
@@ -8495,7 +9155,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 407 Saturn radii), not Saturn-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 5.33935772147066e-08,
@@ -8535,7 +9199,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 408 Saturn radii), not Saturn-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 5.32762286933556e-08,
@@ -8575,7 +9243,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 417 Saturn radii), not Saturn-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 5.146642049995074e-08,
@@ -8615,7 +9287,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 432 Saturn radii), not Saturn-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 4.8774012184057944e-08,
@@ -8655,7 +9331,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 458 Saturn radii), not Saturn-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 4.477958877243251e-08,
@@ -8698,7 +9378,7 @@
         ],
         "albedo": 0.21804641541146808,
         "albedo_src": "geom 0.32, q=0.681",
-        "even_share": 0.015251705420212182,
+        "even_share": 0.013935832091621402,
         "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
@@ -8748,7 +9428,7 @@
         ],
         "albedo": 0.2657440687827267,
         "albedo_src": "geom 0.39, q=0.681",
-        "even_share": 0.015251705420212182,
+        "even_share": 0.013935832091621402,
         "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
@@ -8798,7 +9478,7 @@
         ],
         "albedo": 0.14309296011377592,
         "albedo_src": "geom 0.21, q=0.681",
-        "even_share": 0.015251705420212182,
+        "even_share": 0.013935832091621402,
         "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
@@ -8848,7 +9528,7 @@
         ],
         "albedo": 0.1839766630034262,
         "albedo_src": "geom 0.27, q=0.681",
-        "even_share": 0.015251705420212182,
+        "even_share": 0.013935832091621402,
         "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
@@ -8898,7 +9578,7 @@
         ],
         "albedo": 0.15672086107699268,
         "albedo_src": "geom 0.23, q=0.681",
-        "even_share": 0.015251705420212182,
+        "even_share": 0.013935832091621402,
         "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
@@ -8945,7 +9625,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.07,
+        "albedo_src": "INVENTED: Uranus-family value, no albedo row in the corpus",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 0.00021705872289508047,
@@ -8991,7 +9675,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.07,
+        "albedo_src": "INVENTED: Uranus-family value, no albedo row in the corpus",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 0.00019320417685024014,
@@ -9037,7 +9725,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.07,
+        "albedo_src": "INVENTED: Uranus-family value, no albedo row in the corpus",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 0.00016733908487623746,
@@ -9083,7 +9775,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.07,
+        "albedo_src": "INVENTED: Uranus-family value, no albedo row in the corpus",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 0.00015687393956992558,
@@ -9129,7 +9825,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.07,
+        "albedo_src": "INVENTED: Uranus-family value, no albedo row in the corpus",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 0.00015353542102064898,
@@ -9175,7 +9875,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.07,
+        "albedo_src": "INVENTED: Uranus-family value, no albedo row in the corpus",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 0.00014748978768809468,
@@ -9221,7 +9925,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.07,
+        "albedo_src": "INVENTED: Uranus-family value, no albedo row in the corpus",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 0.0001417042458757091,
@@ -9267,7 +9975,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.07,
+        "albedo_src": "INVENTED: Uranus-family value, no albedo row in the corpus",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 0.00013021890944101707,
@@ -9313,7 +10025,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.07,
+        "albedo_src": "INVENTED: Uranus-family value, no albedo row in the corpus",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 0.00011863303779189299,
@@ -9359,7 +10075,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.07,
+        "albedo_src": "INVENTED: Uranus-family value, no albedo row in the corpus",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 0.00011663015742129914,
@@ -9405,7 +10125,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.07,
+        "albedo_src": "INVENTED: Uranus-family value, no albedo row in the corpus",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 0.00011398440778437365,
@@ -9451,7 +10175,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.07,
+        "albedo_src": "INVENTED: Uranus-family value, no albedo row in the corpus",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 9.545668429489193e-05,
@@ -9497,7 +10225,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.07,
+        "albedo_src": "INVENTED: Uranus-family value, no albedo row in the corpus",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 7.8788788912709e-05,
@@ -9543,7 +10275,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 168 Uranus radii), not Uranus-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 2.7277588959651305e-07,
@@ -9583,7 +10319,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 283 Uranus radii), not Uranus-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 1.2549103048564348e-07,
@@ -9623,7 +10363,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 314 Uranus radii), not Uranus-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 1.0703864022141654e-07,
@@ -9663,7 +10407,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 313 Uranus radii), not Uranus-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 1.074974902681898e-07,
@@ -9703,7 +10451,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 338 Uranus radii), not Uranus-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 9.592672756421369e-08,
@@ -9743,7 +10495,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 480 Uranus radii), not Uranus-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 5.6663590592512377e-08,
@@ -9783,7 +10539,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 578 Uranus radii), not Uranus-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 4.290892858533774e-08,
@@ -9823,7 +10583,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 640 Uranus radii), not Uranus-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 3.6778461622632074e-08,
@@ -9863,7 +10627,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 695 Uranus radii), not Uranus-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 3.2540742870248066e-08,
@@ -9903,7 +10671,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 812 Uranus radii), not Uranus-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 2.575690733386357e-08,
@@ -9943,7 +10715,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.07,
+        "albedo_src": "INVENTED: Neptune-family value, no albedo row in the corpus",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 0.0002470211965054906,
@@ -9989,7 +10765,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.07,
+        "albedo_src": "INVENTED: Neptune-family value, no albedo row in the corpus",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 0.0002334688738347927,
@@ -10035,7 +10815,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.07,
+        "albedo_src": "INVENTED: Neptune-family value, no albedo row in the corpus",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 0.00021730454398240099,
@@ -10081,7 +10865,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.07,
+        "albedo_src": "INVENTED: Neptune-family value, no albedo row in the corpus",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 0.0001696160938703201,
@@ -10127,7 +10915,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.07,
+        "albedo_src": "INVENTED: Neptune-family value, no albedo row in the corpus",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 0.00013111246320486359,
@@ -10173,7 +10965,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.07,
+        "albedo_src": "INVENTED: Neptune-family value, no albedo row in the corpus",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 7.654952859624252e-05,
@@ -10219,7 +11015,11 @@
               0.73
             ]
           ]
-        ]
+        ],
+        "albedo": 0.07,
+        "albedo_src": "INVENTED: Neptune-family value, no albedo row in the corpus",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 6.479647172712688e-05,
@@ -10278,7 +11078,7 @@
         },
         "albedo": 0.49060443467580317,
         "albedo_src": "geom 0.72, q=0.681",
-        "even_share": 0.015251705420212182,
+        "even_share": 0.013935832091621402,
         "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
@@ -10324,7 +11124,11 @@
               0.78
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 224 Neptune radii), not Neptune-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 2.0192930948269985e-07,
@@ -10364,7 +11168,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 674 Neptune radii), not Neptune-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 3.868811627729446e-08,
@@ -10404,7 +11212,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 903 Neptune radii), not Neptune-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 2.495523563584997e-08,
@@ -10444,7 +11256,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 949 Neptune radii), not Neptune-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 2.3151778729244658e-08,
@@ -10484,7 +11300,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 954 Neptune radii), not Neptune-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 2.2955917852972124e-08,
@@ -10524,7 +11344,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 1931 Neptune radii), not Neptune-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 7.977495602894985e-09,
@@ -10564,7 +11388,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 1967 Neptune radii), not Neptune-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 7.757846401368722e-09,
@@ -10604,7 +11432,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.05,
+        "albedo_src": "INVENTED: captured irregular (a = 2056 Neptune radii), not Neptune-family ice",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 7.2585591254871245e-09,
@@ -10646,7 +11478,7 @@
           ]
         ],
         "albedo": 0.25,
-        "even_share": 0.015251705420212182,
+        "even_share": 0.013935832091621402,
         "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
@@ -10693,7 +11525,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.25,
+        "albedo_src": "INVENTED: Pluto-family value, no albedo row in the corpus",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 3.6072446511126188e-06,
@@ -10739,7 +11575,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.25,
+        "albedo_src": "INVENTED: Pluto-family value, no albedo row in the corpus",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 2.9264407310434766e-06,
@@ -10785,7 +11625,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.25,
+        "albedo_src": "INVENTED: Pluto-family value, no albedo row in the corpus",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 2.2605549321240408e-06,
@@ -10831,7 +11675,11 @@
               0.72
             ]
           ]
-        ]
+        ],
+        "albedo": 0.25,
+        "albedo_src": "INVENTED: Pluto-family value, no albedo row in the corpus",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
         "orb_ang_speed": 1.9037186431002718e-06,

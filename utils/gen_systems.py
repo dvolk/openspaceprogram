@@ -36,8 +36,8 @@ from atmo_units import (resolve_layer_heights, anchor_sea_level_pressure,
 # system and the catalogue cannot grow two different weathers (#636).
 from ground_model import (fit_even_share, even_share_air_note, ground_anchor,
                           night_T, calibration_from_fitted, default_even_share,
-                          SRC_PAIR_NIGHT, SRC_PAIR_DAY,
-                          AIR_FOLLOW)
+                          SRC_PAIR_NIGHT, SRC_PAIR_DAY, SRC_PAIR_BOTH,
+                          invent_missing_albedos, AIR_FOLLOW)
 
 TWOPI = 2.0 * math.pi
 G = 6.674e-11
@@ -1191,18 +1191,11 @@ def author_ksp_diurnal(obj):
     sT = (star.get("surface") or {}).get("temperature") or 0.0
     assert sT > 0.0, "author_ksp_diurnal() must run after author_star_temperature()"
     lum = 4.0 * math.pi * star["radius"] ** 2 * SIGMA_SB * sT ** 4
-    rows, unpaired, no_ground, n_authored = [], [], [], 0
+    rows, unpaired, n_authored = [], [], 0
     for body in obj["bodies"]:
         name = body["name"]
         if body.get("type") == "star":
             continue          # its pair is a photosphere-to-corona range, not a surface
-        if (body.get("surface") or {}).get("bands"):
-            # Same test as author_ksp_diurnal_defaults() and make_solar_system.py: a banded
-            # world's wiki "night/day" row is a reading at the 1-bar level, not a ground's
-            # extremes, and there is no ground to fit them onto (#738). Skipping it here keeps
-            # the verdict line from printing a REFUSE for a body that has nothing to refuse.
-            no_ground.append(name)
-            continue
         rng = WIKI_THERMAL.get(name)
         if not rng or rng[1] is None or rng[2] is None:
             unpaired.append(name)
@@ -1242,10 +1235,13 @@ def author_ksp_diurnal(obj):
                        ('\n%20s%s' % ('', air_note)) if air_note else ''))
     for r in rows:
         print(r)
-    print('  diurnal   %d bodies state a night/day pair: %d authored a swing, %d refused; '
-          '%d state none, and the dossier dashes their row; %d has no ground at all (%s)'
-          % (len(rows), n_authored, len(rows) - n_authored, len(unpaired), len(no_ground),
-             ', '.join(no_ground)))
+    # Every body in this system reaches a knob one way or the other: a fitted pair, or the
+    # defaults pass below (analogue, then the air-mass rule). "Refused" here is a pair the law
+    # cannot meet -- Jool, whose wiki max is 19% above what its own air datum implies -- and
+    # it is printed rather than swallowed, not a hole in the file.
+    print('  diurnal   %d bodies state a wiki temperature pair: %d authored a swing from it, '
+          '%d refused it and take the defaults pass; %d state none and take it too'
+          % (len(rows), n_authored, len(rows) - n_authored, len(unpaired)))
 
 
 def author_ksp_air_follow(obj):
@@ -1279,11 +1275,15 @@ def author_ksp_air_follow(obj):
 # and its two constants are measured, not typed.
 KSP_DIURNAL_FITTED = {"Eve"}   # the one body whose wiki pair is a genuine night/day extreme
 
-# #738's label question, applied here with the SAME test the reference file uses: a `bands`
-# surface has no ground to swing. Jool is banded, so its dossier already speaks in levels rather
-# than a surface; what this check stops is the defaults pass, whose anchor chain reads an air's
-# base temperature as a ground and would otherwise price a day/night swing on the inside of a
-# cloud. One rule in two generators, not a name in one and a shape in the other (#707).
+# #738's label question, settled the other way: a banded world's ground IS the level this file
+# authors a surface at -- `sea_level_pressure 100000` is the 1 bar, and #689 made that the
+# datum the air, the shell and the dossier all read -- so the anchor chain reading an air's
+# base temperature as a ground is not a bug to stop there, it is the only anchor Jool has. The
+# skip that used to sit in both passes for `bands` is gone; what keeps a wiki min/max from
+# being read as a night and a day on a giant is that the page never claims they are, and
+# Jool's own pair is refused by the fit for exactly that reason (its max sits 19% above what
+# its air datum allows), so it lands on the DEFAULT rule like Jupiter, Saturn, Uranus and
+# Neptune -- one rule, five banded worlds.
 
 # #724 rung D: which of these airs is allowed to feel its ground. Named, not blanket: the
 # knob is inert without a swing to follow and dishonest on a body whose air the corpus prices
@@ -1402,16 +1402,13 @@ def author_ksp_diurnal_defaults(obj):
     # air case, the Moon the airless floor; Venus (a stated ~0 range, not a fit) and Mars (a
     # pair its own mean denies) are excluded by the src strings, exactly as they are there.
     fits = {n: f for n, f in ref.items()
-            if f is not None and ref_src.get(n) in (SRC_PAIR_NIGHT, SRC_PAIR_DAY)}
+            if f is not None and ref_src.get(n) in (SRC_PAIR_NIGHT, SRC_PAIR_DAY,
+                                                    SRC_PAIR_BOTH)}
     p_ref, floor, cal = calibration_from_fitted(fits, ref_p)
     print('  diurnal   %s' % cal)
     for name, analogue in KSP_ANALOGUE.items():
         body = by_name[name]
         surf = body.setdefault("surface", {})
-        if surf.get("bands"):
-            print('  diurnal   %-8s dash  (a banded giant: the file gives this world air at '
-                  'levels and no ground to swing, #738)' % name)
-            continue
         if name in KSP_DIURNAL_FITTED:
             assert surf.get("even_share") is not None, (
                 "%s is in KSP_DIURNAL_FITTED but author_ksp_diurnal() authored no swing" % name)
@@ -1505,6 +1502,11 @@ def main():
     # purpose. It is a frozen fixture (tests/test_belts.cpp builds on it), not a showcase,
     # and leaving it dashed keeps the absent-reading path loaded by a file the tests use.
     author_ksp_albedos(ksp)
+    # The same invention layer the catalogue runs, wired here as a roster check: every KSP
+    # body's albedo comes from KSP_ANALOGUE above, so this prints "nothing invented" -- and if
+    # an analogue is ever dropped, it prints the INVENTED row instead of letting a body lose
+    # its anchor and its ground temperature in silence.
+    invent_missing_albedos(ksp["bodies"])
     # #625 after #735 on purpose: an authored air temperature is built on the light, so
     # the albedos have to be in the object before the airs are.
     author_ksp_air_thermal(ksp)

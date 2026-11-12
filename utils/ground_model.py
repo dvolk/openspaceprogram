@@ -43,6 +43,10 @@ import math
 import re
 import sys
 
+from atmo_units import semimajor_axis   # the loader's rail, spelled once (#636)
+
+G = 6.674e-11      # m^3/kg/s^2 -- the same literal both generators and the loader use
+
 # [1] How far the PREDICTED day end may sit from a stated one before this module refuses to
 # author the swing. Not a physics tolerance: the model's day end is the SUBSOLAR point, the
 # hottest place a body can have, while a fact sheet's maximum is a station's afternoon at
@@ -181,6 +185,10 @@ SRC_NO_RANGE   = 'stated: no range'
 SRC_AIR_RULE   = 'DEFAULT air-mass rule'
 SRC_AIRLESS    = 'DEFAULT airless floor'
 SRC_PAIR_LEAST = 'least-squares fit to the pair'
+# The range that priced BOTH numbers (pair_solve): the knob and the anchor arrive together, so
+# neither is a fit to the other and the pair is not a test of anything. What tests it is the
+# derived black-body, which pair_anchor_check weighs beside this line rather than using.
+SRC_PAIR_BOTH  = 'solved from a stated range'
 
 
 def fit_even_share_pair(T0, T_night, T_day, gate=DAY_PREDICTION_GATE):
@@ -295,16 +303,32 @@ def calibration_from_fitted(fitted, pressures_pa):
                  archetype), floored away from 0 because a 0-K midnight is not a reading."""
     air = {n: f for n, f in fitted.items() if pressures_pa.get(n) and 0.0 < f < 1.0}
     assert air, 'no fitted body with a stated pressure: the air rule is uncalibrated'
-    # Exactly ONE, deliberately. Two air bodies with pair fits would give two different p_ref
-    # and dict order would pick -- so the second one is a finding to look at, not a coin flip.
-    assert len(air) == 1, (
+    # Each candidate implies its own p_ref; the ONE with a real column is the reference.
+    implied = {n: -pressures_pa[n] / math.log(1.0 - air[n]) for n in air}
+    name = max(implied, key=implied.get)
+    # Exactly ONE, deliberately -- and the assert is about COLUMNS, not about the presence of
+    # a pressure key. Pluto has an atmosphere row and 1.3 Pa at its datum; its implied p_ref
+    # (1.8 Pa) is four and a half orders under Earth's (37,622 Pa), and default_even_share
+    # would answer a body at that pressure with the FLOOR's name, so letting it calibrate the
+    # air rule would be letting a vacuum set a constant. FOUR orders, not two: Earth's implied
+    # p_ref is only two orders under Venus's, and Earth is not anyone's trace. Two bodies
+    # closer than that are two airs, and which p_ref wins would still be dict order -- that
+    # still raises, which is the whole point of the assert.
+    traces = sorted(n for n in implied if n != name
+                    and implied[n] < 1e-4 * implied[name])
+    real = sorted(n for n in implied if n != name and implied[n] >= 1e-4 * implied[name])
+    assert not real, (
         'the air rule calibrates on ONE fitted air body; this run fitted %s -- two answers '
-        'means the corpus priced a second pair, and which p_ref wins would be dict order'
-        % sorted(air))
-    name = sorted(air)[0]
+        "whose columns are within four orders of each other, and which p_ref wins would be "
+        'dict order' % real)
     f, p = air[name], pressures_pa[name]
-    p_ref = -p / math.log(1.0 - f)
+    p_ref = implied[name]
     ref_note = '%s (f %.4f at %g Pa)' % (name, f, p)
+    if traces:
+        ref_note += ('; %s fitted too, but at %s Pa it is a trace, not an air -- the rule '
+                     'answers such a body with the floor\'s name'
+                     % (', '.join(traces),
+                        ', '.join('%g' % pressures_pa[n] for n in traces)))
     floors = [f for n, f in fitted.items() if not pressures_pa.get(n)]
     assert floors, 'no fitted airless body: the airless floor is uninvented'
     # The LARGEST floor of the airless fits: the least extreme of several measured nights, so
@@ -358,6 +382,171 @@ def parse_diurnal_pair(text):
     if m:
         return (0.0, 0.0)                             # "Diurnal range: ~0" -- stated zero
     return None
+
+
+def parse_kelvin_range(text):
+    """[(K, K) or None] A stated range that puts its unit after BOTH ends -- Pluto's
+    "Surface temperature: 24 - 38 K" is the only such row in this corpus, and
+    parse_diurnal_pair's "N K" pattern reads it as one number (38 K) and throws the 24 away.
+    Only the text up to the first parenthesis is read: that row continues "(-247 - -233 C)",
+    and those two are Celsius. Falls back to parse_diurnal_pair, so a caller that asks for
+    "the range this sheet states" gets one answer whichever spelling the page used."""
+    if not text:
+        return None
+    head = text.split('(')[0]
+    m = re.search(r'(\d+(?:\.\d+)?)\s*(?:K\b)?\s*[-\u2013]\s*(\d+(?:\.\d+)?)\s*K\b', head)
+    if m:
+        lo, hi = float(m.group(1)), float(m.group(2))
+        return (lo, hi) if hi > lo else None
+    return parse_diurnal_pair(text)
+
+
+# ---------------------------------------------------------------------------
+# A STATED RANGE WITH NO STATED MEAN: the range itself prices BOTH unknowns.
+#
+# Everything above takes the anchor as given and fits the one knob, which is what makes a
+# stated pair a TEST (one knob, two ends). But two of this corpus's bodies state a range and
+# NO mean -- the Moon's "Diurnal temperature range (equator): 95 K to 390 K" and Pluto's
+# "Surface temperature: 24 - 38 K" -- and the anchor ladder would otherwise answer for them
+# with a derived black-body (the Moon) or an air's datum (Pluto, whose 1 Pa sheet of gas is
+# not a thermal object). With no mean, the two ends are no longer over-determined: they are
+# exactly two equations for the two unknowns, and the answer is exact rather than fitted:
+#
+#     T_night^4 = T0^4 f            T_day^4 = T0^4 (4 - 3f)
+#     r = (T_day/T_night)^4  =>  f = 4/(3+r)  and  T0 = T_night / f^(1/4)
+#
+# What that loses is the test, and what it gains is a BETTER one: the derived black-body, no
+# longer needed as the anchor, becomes the check instead (pair_anchor_check). It is worth
+# reading that the Moon's solved 276.50 K sits 2.3% from the 270.33 K this system derives from
+# the Sun's authored temperature and a scraped albedo -- two numbers with nothing in common
+# except that both are about the Moon.
+def pair_solve(T_night, T_day):
+    """[(1, K)] The knob and the anchor a stated night/day range prices exactly, for a body
+    that states no mean. Asserts the range is a range; a pair this cannot read is a pair about
+    something other than a day, and the caller should not have brought it here."""
+    assert T_night > 0.0, "a night end of %r cannot set an anchor (0 K is not a reading)" % (T_night,)
+    assert T_day > T_night, "a pair with T_day <= T_night (%g <= %g) is not a night/day range" % (T_day, T_night)
+    r = (T_day / T_night) ** 4.0
+    f = 4.0 / (3.0 + r)
+    assert 0.0 < f < 1.0, "f = %g out of [0,1] for a pair %g-%g K" % (f, T_night, T_day)
+    return f, T_night / f ** 0.25
+
+
+# [1] How far a pair-solved anchor may sit BELOW the black-body the starlight implies before
+# this module refuses the range. ONE-SIDED on purpose: sitting ABOVE it is internal heat, a
+# real and published property (Jupiter radiates more than it receives; Laythe's whole #738
+# question is that its air is warmer than its sunlight), while sitting BELOW it means the
+# stated range cannot be a day/night range at all -- no ground this model knows can be colder
+# on its night side than equilibrium allows. 2% is loose against the ~0.2% the irradiance rows
+# are good to, because the albedo is the soft number in the black-body, not the flux.
+PAIR_ANCHOR_BAND = 0.02
+
+
+def pair_anchor_check(T0, derived_bb, band=PAIR_ANCHOR_BAND):
+    """[(ok, note)] The one-sided cross-check described above. derived_bb 0.0 means "nothing
+    to weigh this against" (no albedo, no light), which passes with a note rather than
+    silently: an uncheckable figure has to say so the way an invented one does."""
+    if not derived_bb:
+        return True, "no derived black-body to weigh the pair against: nothing to check"
+    frac = T0 / derived_bb - 1.0
+    if frac < -band:
+        return False, ("the range solves to a ground %.1f%% BELOW the black-body its own "
+                       "sunlight allows (%.2f K against %.2f K): not a night/day range"
+                       % (-100.0 * frac, T0, derived_bb))
+    if frac > band:
+        return True, ("the range sits %.1f%% above the black-body -- internal heat, printed "
+                      "not explained" % (100.0 * frac))
+    return True, ("the range agrees with the derived black-body to %.1f%%: the anchor and the "
+                  "starlight are two independent readings of one world" % (100.0 * frac))
+
+
+# ---------------------------------------------------------------------------
+# INVENTED ALBEDOS -- the layer that costs 209 worlds their dash and buys them a temperature.
+#
+# The RSS satellite pages for the giant swarms state a radius, a mass and an orbit and stop:
+# no albedo row, so the black-body rung of the anchor ladder cannot fire, and 209 of the 239
+# solar bodies print "nothing anchors this world's ground". That is a gap in what the sources
+# happen to have measured, not a claim that these worlds have no temperature, so the value is
+# INVENTED -- and named, in the function, in the constant, and in the src string that travels
+# into the file, exactly the way KSP_AIR_FOLLOW's value and the air-mass rule's constants are
+# invented. What is NOT done here is dressing a made-up number in an analogue's clothes: a
+# swarm moon is not "via the Moon", it is this table.
+#
+# How much the invention can be wrong, exactly: T goes as (1 - A)^(1/4), so any albedo in
+# [0.05, 0.5] moves a derived anchor by at most 17%. That is the whole cost, and it buys the
+# difference between a number and a dash on 87% of the catalogue.
+#
+# What the values ARE: each is what that family's surface is made of, read from the family's
+# OWN stated moons and from who orbits close in. Jupiter's four stated moons are ice-rich
+# Galileans (0.13-0.46) but its inner swarm and its captured hundreds are dark rock, so the
+# family value is dark. Saturn's ring-region moons are water ice -- its own stated rows run
+# 0.41-0.68 -- while its captured swarm is not. Uranus' and Neptune's small inner moons are
+# dark (their stated big ones are 0.14-0.49 and Triton 0.49). Pluto's is its only stated moon.
+INVENTED_ALBEDO_FAMILY = {"Jupiter": 0.05, "Saturn": 0.50, "Uranus": 0.07,
+                          "Neptune": 0.07, "Pluto": 0.25}
+INVENTED_ALBEDO_CAPTURED = 0.05     # anything this far out was captured, not built here
+INVENTED_ALBEDO_LOOSE = 0.11        # the Moon's, for a body with no family to read
+INVENTED_CAPTURED_PARENT_RADII = 100.0   # the line between a family's regular swarm and
+                                         # its captured one, in parent radii. One number,
+                                         # and it sorts the corpus the way the solar system
+                                         # does: Metis 1.8 R_J and Pan 2.3 R_S in, Himalia
+                                         # 164, Phoebe 222, Sycorax 480, Nereid 224 out.
+
+
+def invent_albedo_value(body, by_name):
+    """[(A, src)] An INVENTED Bond albedo for a body the corpus gives no row for. Returns the
+    provenance string with it, because a value in this corpus is only as good as the file's
+    ability to say where it came from. `by_name` is the whole system: a moon's family is its
+    parent, and the regular/captured split is read off the moon's OWN rail (semimajor_axis off
+    orb_ang_speed, the loader's distance), not off a list of 209 names."""
+    assert (body.get('surface') or {}).get('albedo') is None, (
+        "%s already has an albedo: invent_albedo_value() must not overwrite a scraped row"
+        % body.get('name'))
+    parent = by_name.get(body.get('orbits'))
+    if parent is None or parent.get('type') == 'star' \
+            or not parent.get('mass') or not parent.get('radius'):
+        return INVENTED_ALBEDO_LOOSE, (
+            "INVENTED: no albedo row in the corpus and no planet family (airless rock, "
+            "the Moon's value)")
+    w = (body.get('inertial') or {}).get('orb_ang_speed')
+    a_R = (semimajor_axis(G * parent['mass'], w) / parent['radius']) if w else 0.0
+    if a_R >= INVENTED_CAPTURED_PARENT_RADII:
+        return INVENTED_ALBEDO_CAPTURED, (
+            "INVENTED: captured irregular (a = %.0f %s radii), not %s-family ice"
+            % (a_R, parent['name'], parent['name']))
+    fam = INVENTED_ALBEDO_FAMILY.get(parent['name'])
+    if fam is None:
+        return INVENTED_ALBEDO_LOOSE, (
+            "INVENTED: no albedo row in the corpus and no value for the %s family"
+            % parent['name'])
+    return fam, "INVENTED: %s-family value, no albedo row in the corpus" % parent['name']
+
+
+def invent_missing_albedos(bodies, verbose=True):
+    """[] Author the invented albedo (and its src string) onto every non-star body the corpus
+    leaves without one. Prints ONE row per rule, not one per moon: 209 lines would bury every
+    other verdict the generator has to say, and the bodies under one rule are one decision.
+    Returns {src: count} so a caller can assert coverage afterwards (#784: a body must never
+    regain a silent dash)."""
+    by_name = {b['name']: b for b in bodies}
+    counts = {}
+    for b in bodies:
+        if b.get('type') == 'star':
+            continue
+        surf = b.setdefault('surface', {})
+        if surf.get('albedo') is not None:
+            continue
+        A, src = invent_albedo_value(b, by_name)
+        assert 0.0 <= A < 1.0, "%s: invented albedo %g is not in [0,1)" % (b['name'], A)
+        surf['albedo'] = A
+        surf['albedo_src'] = src
+        counts[src] = counts.get(src, 0) + 1
+    if verbose:
+        for src, n in sorted(counts.items()):
+            print('  albedo    %-3d %s' % (n, src))
+        if not counts:
+            print('  albedo    every body in this system already has a row: nothing invented')
+    return counts
 
 
 def anchor_note(stated_T0, derived_T0):
@@ -487,6 +676,16 @@ def _self_test():
     except AssertionError as ex:
         check("ONE fitted air" in str(ex) or "ONE fitted air body" in str(ex),
               "two fitted airs raise rather than being chosen by dict order")
+    # Pluto IS fitted this run (its range pair-solves a knob) and DOES have an atmosphere row,
+    # at 1.3 Pa. It must not calibrate the air rule -- an implied p_ref of 1.8 Pa would make
+    # every air in the catalogue saturate -- and it must not raise either, because the corpus
+    # has one air and one vacuum, not two airs. So: Earth's p_ref, and the note says which.
+    tr = calibration_from_fitted({"Earth": 0.9323, "Moon": 0.0139, "Pluto": 0.4308},
+                                 {"Earth": 101325.0, "Moon": 0.0, "Pluto": 1.3})
+    check(abs(tr[0] + 101325.0 / math.log(1.0 - 0.9323)) < 1e-6,
+          "a 1 Pa column does not calibrate the air rule (%g Pa)" % tr[0])
+    check("trace" in tr[2] and "Pluto" in tr[2],
+          "the calibration note names the column it declined to use")
     try:
         calibration_from_fitted({"Earth": 0.9323}, {"Earth": 101325.0})
         check(False, "calibration without an airless fit must raise, not guess a floor")

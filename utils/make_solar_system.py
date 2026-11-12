@@ -18,9 +18,10 @@ from atmo_units import (resolve_layer_heights, anchor_sea_level_pressure,
 # tests/test_groundtemp.cpp pins the two against the same numbers -- the atmo.h /
 # atmo_units.py arrangement, which is the only way two spellings of one law can be caught
 # drifting (#636).
-from ground_model import (parse_diurnal_pair, fit_even_share_pair,
+from ground_model import (parse_diurnal_pair, parse_kelvin_range, fit_even_share_pair,
                           calibration_from_fitted, default_even_share,
-                          SRC_PAIR_NIGHT, SRC_PAIR_DAY,
+                          SRC_PAIR_NIGHT, SRC_PAIR_DAY, SRC_PAIR_BOTH,
+                          pair_solve, pair_anchor_check, invent_missing_albedos,
                           ground_anchor, even_share_air_note)
 
 G      = 6.674e-11      # m^3 / kg / s^2  (matches the loader's G)
@@ -1297,7 +1298,14 @@ def fact_surface(page):
            # ("283 K to 293 K"), and on Venus a stated nothing ("~0"). It is the only place
            # the corpus talks about a ground SWINGING, which is what ground_model's one
            # knob is fitted to. None means the sheet says nothing about a swing.
-           'diurnal': parse_diurnal_pair(sheet_line(h, 'Diurnal temperature range'))}
+           'diurnal': parse_diurnal_pair(sheet_line(h, 'Diurnal temperature range')),
+           # Pluto spells its ground a range and puts the unit after both ends ("Surface
+           # temperature: 24 - 38 K"), which the "N K" pattern above reads as ONE number and
+           # throws the 24 away. It is the only page in the corpus that does this, and it is
+           # the only body whose ground the corpus states at all without also stating a mean
+           # -- which is exactly the case where a range prices the anchor and the knob
+           # instead of testing them (ground_model.pair_solve).
+           'surf_range': parse_kelvin_range(sheet_line(h, 'Surface temperature:'))}
     # The prose line, deliberately NOT sheet_quantity(): that one reads a stated
     # range, and Mercury writes 'Average temperature: 440 K (167 C) (590-725 K,
     # sunward side)' -- the hyphenated pair is the day-side extreme, not the average.
@@ -1344,6 +1352,22 @@ FACT_SURFACE_KNOWN = {
         "row with physics in it, and the one every other body's bb row answers to "
         "to within half a percent -- and print the 14% difference rather than "
         "quietly dropping one of the two rows (#687)"),
+}
+
+
+# The pair cross-check's waivers (ground_model.pair_anchor_check), in the same shape as the
+# surface guard's above: granted against the VALUE they were written for, so a moved number
+# revokes one rather than leaving it open-ended. One entry, and it is the same contradiction
+# FACT_SURFACE_KNOWN already holds: Pluto's sheet gives three thermal numbers and no two of
+# them agree, and the range among them is the only one that speaks about the SURFACE.
+PAIR_ANCHOR_KNOWN = {
+    ('Pluto', 29.62): (
+        "the range 24-38 K solves an anchor 8.1% below the black-body this system derives from "
+        "the same page's own 0.873 W/m^2 and 0.72 albedo (32.23 K) -- and that page's own "
+        "black-body row says 37.5 K, which is 16% above the albedo's answer. Three rows, no two "
+        "consistent; the range is the only one about the ground, so the ground follows the "
+        "range and the disagreement stays printed rather than being resolved by choosing "
+        "(#687's Pluto waiver, arguing the same contradiction one key over)"),
 }
 
 
@@ -2584,14 +2608,14 @@ def author_diurnal(bodies, by, sun, sheets, sat_sheet, verbose=True):
             continue                      # its 'temperature pair' is a photosphere range
         at0 = ((b.get('surface') or {}).get('atmosphere') or {})
         pressures[b['name']] = at0.get('sea_level_pressure') or 0.0
-        if (b.get('surface') or {}).get('bands'):
-            if verbose:
-                rows.append('%-9s diurnal -   a banded giant: no ground to swing (#738)'
-                            % b['name'])
-            continue
         # The anchor FIRST, for every ground-bearing body whether or not a page states a
         # pair: the default pass below needs to know which bodies have a ground to price at
         # all, and asking it per body avoids a second copy of the anchor chain (#636).
+        sheet = sheets.get(b['name']) or sat_sheet.get(b['name'])
+        # Two spellings of "this page states a range": the diurnal row, and Pluto's surface
+        # row. They are read as ONE because the pass below asks what the page claims about
+        # the ground's two ends, not which heading it used.
+        pair = (sheet.get('diurnal') or sheet.get('surf_range')) if sheet else None
         star, a = star_rail(b, by)
         flux = flux_at_rail(star, a, T_sun) if star else None
         albedo = (b.get('surface') or {}).get('albedo')
@@ -2601,8 +2625,50 @@ def author_diurnal(bodies, by, sun, sheets, sat_sheet, verbose=True):
                    if (flux and albedo is not None) else 0.0)
         T0, why = ground_anchor(b, derived)
         anchors[b['name']] = (T0, why)
-        sheet = sheets.get(b['name']) or sat_sheet.get(b['name'])
-        pair = sheet.get('diurnal') if sheet else None
+        # A stated RANGE with no stated mean prices BOTH unknowns exactly (ground_model's
+        # pair_solve), and it beats the ladder's air-datum and derived rungs because a page
+        # that gives the ground's two extremes is talking about the ground. The Moon and
+        # Pluto are the whole set: every other page either states an average -- where the pair
+        # stays a TEST of one knob, which is #727's point and unchanged below -- or states
+        # nothing. Banded giants are in this loop now: their 1-bar datum IS the surface the
+        # file authors, and what stops a pair being read for them is the same thing that
+        # stops it for a Kerbal air -- the page never claims the ends are a night and a day.
+        if pair is not None and pair[1] > pair[0] \
+                and (not (b.get('surface') or {}).get('temperature')
+                     or str(((b.get('surface') or {}).get('temperature_src')
+                             or '')).startswith('SOLVED')):
+            # The `or SOLVED` half is idempotence, and emit() needs it: the four variants
+            # share their planet dicts, so a body solved on the core pass arrives here with a
+            # temperature already on it. Without this it falls through to the night-end fit
+            # below and keeps its (identical) number under someone else's provenance string --
+            # an emitted file whose words depend on which variant ran first. That is what it
+            # did before this line existed: Pluto came out of the three non-core variants
+            # saying "fitted from the night end" for a knob the stated range priced.
+            f, T_pair = pair_solve(pair[0], pair[1])
+            ok, note = pair_anchor_check(T_pair, derived)
+            waiver = PAIR_ANCHOR_KNOWN.get((b['name'], round(T_pair, 2)))
+            if ok or waiver:
+                surf = b.setdefault('surface', {})
+                # The anchor lands in the key every consumer already reads -- surfmap, the
+                # air-follow coupling, the dossier -- and says what it is in the sibling src
+                # string, the way albedo_src and even_share_src do. A fourth rung in the
+                # anchor ladder would mean spelling this algebra in C++ for nothing (#636).
+                surf['temperature'] = T_pair
+                surf['temperature_src'] = (
+                    'SOLVED from the stated range %.2f-%.2f K, not a stated mean'
+                    % (pair[0], pair[1]))
+                surf['even_share'] = f
+                surf['even_share_src'] = SRC_PAIR_BOTH
+                fitted[b['name']] = (f, SRC_PAIR_BOTH)
+                if verbose:
+                    rows.append('%-9s diurnal %.4f  anchor %7.2f K (SOLVED from the stated '
+                                'range %.2f-%.2f K)%s\n%18s%s'
+                                % (b['name'], f, T_pair, pair[0], pair[1],
+                                   ('  WAIVED: ' + waiver) if waiver else '', '', note))
+                continue
+            if verbose:
+                rows.append('%-9s diurnal -   %7.2f K from the range, but %s'
+                            % (b['name'], T_pair, note))
         if pair is None:
             if verbose and sheet:
                 rows.append('%-9s diurnal -   the page states no temperature range'
@@ -2627,16 +2693,18 @@ def author_diurnal(bodies, by, sun, sheets, sat_sheet, verbose=True):
     # our law cannot meet, still gets a knob -- from a NAMED rule whose two constants are
     # MEASURED from this run's own fits (Earth's for the air, the Moon's for the airless
     # floor), so no number here is typed (#636). The file carries the words, and the dossier
-    # prints DEFAULT beside the knob (#722's rule that a computed figure says so). Banded
-    # giants and stars stay out: no ground, no swing -- a fact, not a gap.
+    # prints DEFAULT beside the knob (#722's rule that a computed figure says so). Only stars
+    # stay out: a star's photosphere is not a ground under a star. Banded giants are IN --
+    # their 1-bar datum is the surface this file authors for them, and a 1-bar air is exactly
+    # what the air-mass rule says spreads day into night.
     pair_fits = {n: f for n, (f, src) in fitted.items()
-                 if src in (SRC_PAIR_NIGHT, SRC_PAIR_DAY)}
+                 if src in (SRC_PAIR_NIGHT, SRC_PAIR_DAY, SRC_PAIR_BOTH)}
     if pair_fits:
         p_ref, floor, cal_note = calibration_from_fitted(pair_fits, pressures)
         if verbose:
             rows.append('  %s' % cal_note)
         for b in bodies:
-            if b.get('type') == 'star' or (b.get('surface') or {}).get('bands'):
+            if b.get('type') == 'star':
                 continue
             if (b.get('surface') or {}).get('even_share') is not None:
                 continue
@@ -2816,6 +2884,13 @@ def emit(base_bodies, moons, pred, out_path, label, sheets, dry=False):
     # ... and the two satellites the corpus states rows for, weighed at their PARENT's rail
     # (#737). This runs in emit() rather than beside the planets because a moon has no rail
     # until the Kepler rows are built, and its sheet lives inside another body's page.
+    # The albedo layer FIRST: the swarm pages state no albedo, and the anchor ladder's third
+    # rung needs one, so this is what stands between 209 worlds and a dashed ground row. It
+    # invents, it says so in the value's src string, and it runs before both the surface
+    # guard and the diurnal pass so neither sees a hole that is really a decision. Printed on
+    # every variant, not just the core: the core has no swarm to invent for, so a core-only
+    # print would announce nothing about the 209 bodies the invention is for.
+    invent_missing_albedos(bodies)
     bad = check_fact_surface(bodies, sat_sheet, by['Sun'],
                              verbose=label.startswith('core'))
     if bad:

@@ -109,7 +109,7 @@
         ],
         "albedo": 0.068,
         "temperature": 440.0,
-        "even_share": 0.015251705420212182,
+        "even_share": 0.013935832091621402,
         "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
@@ -649,7 +649,9 @@
             "albedo": 0.12,
             "opacity": 0.8
           }
-        ]
+        ],
+        "even_share": 0.9299178553106822,
+        "even_share_src": "DEFAULT air-mass rule"
       },
       "inertial": {
         "orb_ang_speed": 1.678489516693838e-08,
@@ -791,7 +793,9 @@
             "albedo": 0.55,
             "opacity": 0.7
           }
-        ]
+        ],
+        "even_share": 0.9299178553106822,
+        "even_share_src": "DEFAULT air-mass rule"
       },
       "inertial": {
         "orb_ang_speed": 6.761257652006661e-09,
@@ -891,7 +895,9 @@
           "height": 250000.0
         },
         "albedo": 0.3,
-        "temperature": 76.0
+        "temperature": 76.0,
+        "even_share": 0.9299178553106822,
+        "even_share_src": "DEFAULT air-mass rule"
       },
       "inertial": {
         "orb_ang_speed": 2.3699235521267574e-09,
@@ -991,7 +997,9 @@
           "height": 200000.0
         },
         "albedo": 0.29,
-        "temperature": 72.0
+        "temperature": 72.0,
+        "even_share": 0.9299178553106822,
+        "even_share_src": "DEFAULT air-mass rule"
       },
       "inertial": {
         "orb_ang_speed": 1.2082279223500606e-09,
@@ -1076,8 +1084,10 @@
           "height": 20000.0
         },
         "albedo": 0.72,
-        "even_share": 0.015251705420212182,
-        "even_share_src": "DEFAULT airless floor"
+        "temperature": 29.62368196872856,
+        "temperature_src": "SOLVED from the stated range 24.00-38.00 K, not a stated mean",
+        "even_share": 0.43081302037615116,
+        "even_share_src": "solved from a stated range"
       },
       "inertial": {
         "orb_ang_speed": 8.030261944172967e-10,
@@ -1125,8 +1135,10 @@
           ]
         ],
         "albedo": 0.11,
-        "even_share": 0.015251705420212182,
-        "even_share_src": "fitted from the night end"
+        "temperature": 276.49697165253286,
+        "temperature_src": "SOLVED from the stated range 95.00-390.00 K, not a stated mean",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "solved from a stated range"
       },
       "inertial": {
         "orb_ang_speed": 2.6616957278072153e-06,
@@ -1174,7 +1186,7 @@
         ],
         "albedo": 0.04769765337125865,
         "albedo_src": "geom 0.07, q=0.681",
-        "even_share": 0.015251705420212182,
+        "even_share": 0.013935832091621402,
         "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
@@ -1224,7 +1236,7 @@
         ],
         "albedo": 0.05451160385286702,
         "albedo_src": "geom 0.08, q=0.681",
-        "even_share": 0.015251705420212182,
+        "even_share": 0.013935832091621402,
         "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
@@ -1284,7 +1296,7 @@
         },
         "albedo": 0.4224649298597194,
         "albedo_src": "geom 0.62, q=0.681",
-        "even_share": 0.015251705420212182,
+        "even_share": 0.013935832091621402,
         "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
@@ -1334,7 +1346,7 @@
         ],
         "albedo": 0.4633486327493697,
         "albedo_src": "geom 0.68, q=0.681",
-        "even_share": 0.015251705420212182,
+        "even_share": 0.013935832091621402,
         "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
@@ -1384,7 +1396,7 @@
         ],
         "albedo": 0.2998138211907686,
         "albedo_src": "geom 0.44, q=0.681",
-        "even_share": 0.015251705420212182,
+        "even_share": 0.013935832091621402,
         "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
@@ -1434,7 +1446,7 @@
         ],
         "albedo": 0.12946505915055917,
         "albedo_src": "geom 0.19, q=0.681",
-        "even_share": 0.015251705420212182,
+        "even_share": 0.013935832091621402,
         "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
@@ -1484,7 +1496,7 @@
         ],
         "albedo": 0.40883702889650264,
         "albedo_src": "geom 0.6, q=0.681",
-        "even_share": 0.015251705420212182,
+        "even_share": 0.013935832091621402,
         "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
@@ -1534,7 +1546,7 @@
         ],
         "albedo": 0.6813950481608377,
         "albedo_src": "geom 1.0, q=0.681",
-        "even_share": 0.015251705420212182,
+        "even_share": 0.013935832091621402,
         "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
@@ -1584,7 +1596,7 @@
         ],
         "albedo": 0.5451160385286702,
         "albedo_src": "geom 0.8, q=0.681",
-        "even_share": 0.015251705420212182,
+        "even_share": 0.013935832091621402,
         "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
@@ -1634,7 +1646,7 @@
         ],
         "albedo": 0.47697653371258636,
         "albedo_src": "geom 0.7, q=0.681",
-        "even_share": 0.015251705420212182,
+        "even_share": 0.013935832091621402,
         "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
@@ -1684,7 +1696,7 @@
         ],
         "albedo": 0.47697653371258636,
         "albedo_src": "geom 0.7, q=0.681",
-        "even_share": 0.015251705420212182,
+        "even_share": 0.013935832091621402,
         "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
@@ -1827,7 +1839,7 @@
         ],
         "albedo": 0.1873836382442304,
         "albedo_src": "geom 0.05 / 0.5, q=0.681",
-        "even_share": 0.015251705420212182,
+        "even_share": 0.013935832091621402,
         "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
@@ -1877,7 +1889,7 @@
         ],
         "albedo": 0.21804641541146808,
         "albedo_src": "geom 0.32, q=0.681",
-        "even_share": 0.015251705420212182,
+        "even_share": 0.013935832091621402,
         "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
@@ -1927,7 +1939,7 @@
         ],
         "albedo": 0.2657440687827267,
         "albedo_src": "geom 0.39, q=0.681",
-        "even_share": 0.015251705420212182,
+        "even_share": 0.013935832091621402,
         "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
@@ -1977,7 +1989,7 @@
         ],
         "albedo": 0.14309296011377592,
         "albedo_src": "geom 0.21, q=0.681",
-        "even_share": 0.015251705420212182,
+        "even_share": 0.013935832091621402,
         "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
@@ -2027,7 +2039,7 @@
         ],
         "albedo": 0.1839766630034262,
         "albedo_src": "geom 0.27, q=0.681",
-        "even_share": 0.015251705420212182,
+        "even_share": 0.013935832091621402,
         "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
@@ -2077,7 +2089,7 @@
         ],
         "albedo": 0.15672086107699268,
         "albedo_src": "geom 0.23, q=0.681",
-        "even_share": 0.015251705420212182,
+        "even_share": 0.013935832091621402,
         "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
@@ -2137,7 +2149,7 @@
         },
         "albedo": 0.49060443467580317,
         "albedo_src": "geom 0.72, q=0.681",
-        "even_share": 0.015251705420212182,
+        "even_share": 0.013935832091621402,
         "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {
@@ -2185,7 +2197,7 @@
           ]
         ],
         "albedo": 0.25,
-        "even_share": 0.015251705420212182,
+        "even_share": 0.013935832091621402,
         "even_share_src": "DEFAULT airless floor"
       },
       "inertial": {

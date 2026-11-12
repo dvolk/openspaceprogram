@@ -58,6 +58,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
+#include <string>
 
 #include "authored.h"   // kEvenShareUnauthored, kThermalUnauthored + the authored?() pairs
 
@@ -181,4 +182,16 @@ inline const char *groundAnchorRungName(GroundAnchorRung r) {
         case kAnchorDerived:  return "DERIVED: sun + albedo";
         default:               return "no anchor";
     }
+}
+
+/* [std::string] What a readout should CALL this body's anchor. The file's own provenance
+   string wins when it carries one: the generators SOLVE an anchor when a page states a range
+   and no mean -- the Moon's 95-390 K and Pluto's 24-38 K price both the anchor and the knob
+   (utils/ground_model.py:pair_solve) -- and the result lands in the same key a stated average
+   uses. Calling that "stated ground temperature" at the readout would credit the corpus with a
+   number it never stated, which is #722's rule running in the other direction. Takes the
+   string rather than a Surface so this header stays out of the loader's way (#636: one
+   spelling of the order, here; the strings travel with the values that carry them). */
+inline std::string groundAnchorSource(GroundAnchorRung r, const std::string &temperature_src) {
+    return temperature_src.empty() ? std::string(groundAnchorRungName(r)) : temperature_src;
 }

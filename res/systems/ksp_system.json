@@ -113,7 +113,7 @@
         ],
         "albedo": 0.068,
         "albedo_src": "via Mercury",
-        "even_share": 0.015251705420212182,
+        "even_share": 0.013935832091621402,
         "even_share_src": "via Mercury, defaulted"
       },
       "inertial": {
@@ -285,7 +285,7 @@
         ],
         "albedo": 0.04769765337125865,
         "albedo_src": "via Phobos, converted",
-        "even_share": 0.015251705420212182,
+        "even_share": 0.013935832091621402,
         "even_share_src": "via Phobos, defaulted"
       },
       "inertial": {
@@ -494,7 +494,7 @@
         ],
         "albedo": 0.11,
         "albedo_src": "via Moon",
-        "even_share": 0.015251705420212182,
+        "even_share": 0.013935832091621402,
         "even_share_src": "via Moon"
       },
       "inertial": {
@@ -541,7 +541,7 @@
         ],
         "albedo": 0.6813950481608377,
         "albedo_src": "via Enceladus, converted",
-        "even_share": 0.015251705420212182,
+        "even_share": 0.013935832091621402,
         "even_share_src": "via Enceladus, defaulted"
       },
       "inertial": {
@@ -815,7 +815,7 @@
         ],
         "albedo": 0.11,
         "albedo_src": "via Moon",
-        "even_share": 0.015251705420212182,
+        "even_share": 0.013935832091621402,
         "even_share_src": "via Moon"
       },
       "inertial": {
@@ -864,7 +864,7 @@
         ],
         "albedo": 0.11,
         "albedo_src": "via Moon",
-        "even_share": 0.015251705420212182,
+        "even_share": 0.013935832091621402,
         "even_share_src": "via Moon"
       },
       "inertial": {
@@ -964,7 +964,9 @@
           ]
         },
         "albedo": 0.343,
-        "albedo_src": "via Jupiter"
+        "albedo_src": "via Jupiter",
+        "even_share": 0.9299178553106822,
+        "even_share_src": "via Jupiter, defaulted"
       },
       "inertial": {
         "orb_ang_speed": 6.003343530766506e-08,
@@ -1162,7 +1164,7 @@
         ],
         "albedo": 0.4633486327493697,
         "albedo_src": "via Europa, converted",
-        "even_share": 0.015251705420212182,
+        "even_share": 0.013935832091621402,
         "even_share_src": "via Europa, defaulted"
       },
       "inertial": {
@@ -1208,7 +1210,7 @@
         ],
         "albedo": 0.11,
         "albedo_src": "via Moon",
-        "even_share": 0.015251705420212182,
+        "even_share": 0.013935832091621402,
         "even_share_src": "via Moon"
       },
       "inertial": {
@@ -1256,7 +1258,7 @@
         ],
         "albedo": 0.04769765337125865,
         "albedo_src": "via Phobos, converted",
-        "even_share": 0.015251705420212182,
+        "even_share": 0.013935832091621402,
         "even_share_src": "via Phobos, defaulted"
       },
       "inertial": {
@@ -1306,7 +1308,7 @@
         ],
         "albedo": 0.12946505915055917,
         "albedo_src": "via Callisto, converted",
-        "even_share": 0.015251705420212182,
+        "even_share": 0.013935832091621402,
         "even_share_src": "via Callisto, defaulted"
       },
       "inertial": {
@@ -1356,8 +1358,8 @@
         ],
         "albedo": 0.72,
         "albedo_src": "via Pluto",
-        "even_share": 0.015251705420212182,
-        "even_share_src": "via Pluto, defaulted"
+        "even_share": 0.43081302037615116,
+        "even_share_src": "via Pluto"
       },
       "inertial": {
         "orb_ang_speed": 4.002231569830586e-08,

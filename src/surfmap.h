@@ -177,9 +177,6 @@ inline TempLayer tempLayerFor(const Surface &s, double derived_bb, bool has_sun)
         // agreeing with the other absences (#726).
         tl.legend = "no star in range to light this world";
         tl.block = "no sun";
-    } else if(s.bands) {
-        tl.legend = "a banded giant: the file gives this world air at levels, no ground";
-        tl.block = "no ground";
     } else if(rung == kAnchorNone) {
         tl.legend = "nothing anchors this world's ground: no stated temperature, no air "
                     "datum, no albedo to derive one from";
@@ -193,7 +190,16 @@ inline TempLayer tempLayerFor(const Surface &s, double derived_bb, bool has_sun)
         tl.block = "no swing";
     } else {
         tl.ok = true;
-        tl.legend = groundAnchorRungName(rung);
+        // A banded world gets a temperature like every other world, and the legend says which
+        // level it is. The file authors its surface AT the 1 bar (#689 makes sea_level that
+        // datum), so the anchor the ladder picks IS a level of that air, and "the ground" here
+        // means the level the file calls the surface -- not a sea floor nobody can find. The
+        // branch that used to sit above this one dashed five worlds with the words "no ground",
+        // which read as a hole in the data on the best-measured airs in either catalogue.
+        tl.legend = s.bands
+            ? std::string("the 1 bar level, not a sea floor: ")
+                  + groundAnchorSource(rung, s.temperature_src)
+            : groundAnchorSource(rung, s.temperature_src);
     }
     if(tl.ok) {
         tl.lo_K = groundTemperature(tl.anchor_K, tl.knob, 0.0);

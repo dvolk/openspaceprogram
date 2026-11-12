@@ -645,6 +645,24 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                 }
                 s.temperature = tK;
             }
+            /* Provenance travels with the figure it describes (#687), and this one earns
+               its keep: utils/make_solar_system.py solves an anchor when a page states a
+               RANGE and no mean (the Moon, Pluto), and without this string the dossier would
+               call a solved number a stated one. */
+            if(sv.contains("temperature_src")) {
+                if(!sv["temperature_src"].is_string()) {
+                    throw std::runtime_error("system: '" + body->name
+                                             + "': \"surface.temperature_src\" must be a"
+                                               " string");
+                }
+                s.temperature_src = sv["temperature_src"].get<std::string>();
+            }
+            if(!s.temperature_src.empty() && !thermalAuthored(s.temperature)) {
+                throw std::runtime_error("system: '" + body->name
+                                         + "': surface.temperature_src explains a ground"
+                                           " temperature that surface.temperature does not"
+                                           " author");
+            }
             /* The JSON key is "albedo" and it is the BOND albedo (terragen.h).
                RingParams::albedo is a different thing -- a ring's visual brightness --
                and lives in a different block; the two must never be confused by a

@@ -394,6 +394,15 @@ struct Surface {
        utils/rss/html sheets state an average temperature and a Bond albedo) and
        left absent where nothing states one. */
     double temperature = kThermalUnauthored;  // [K]; -1 = not authored, never 0 K
+    /* Where that temperature came from, when it is not a reading. Today exactly one case in
+       the shipped files: a page that states a RANGE and no mean -- the Moon's 95-390 K,
+       Pluto's 24-38 K -- whose two ends price the anchor and the knob together, so what lands
+       here is solved, not quoted ("SOLVED from the stated range 95.00-390.00 K, not a stated
+       mean"). Same rule as albedo_src and even_share_src below: a figure and its provenance
+       travel together or one of them goes stale, and a dossier that prints a solved anchor
+       under the words "stated ground temperature" has invented a source (#687, #722).
+       Empty where the sheet states an average outright, which is every planet page. */
+    std::string temperature_src;
     double bond_albedo = kAlbedoUnauthored;   // Bond albedo [0,1); -1 = not authored
     /* How that albedo was obtained, when it is not a reading: "geom 0.68, q=
        0.681" (the satellite fact sheets state a VISUAL GEOMETRIC albedo and the corpus's own
