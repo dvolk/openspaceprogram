@@ -25,6 +25,11 @@ Sources (also in urls.txt):
       -> raw/tno_list.html                (~1050 rows of D (km) plus a, e, i, q, Q --
          the Kuiper belt population, which the other four sources size almost not at
          all). See sizes.tno_rows().
+  https://minorplanetcenter.net/Extended_Files/allcometels.json.gz
+      -> raw/allcometels.json.gz          (4,666 comet ORBIT rows, one per apparition:
+         q, e, Peri, Node, i and the perihelion date, plus H/G for modern rows. It states
+         NO nucleus size, which is why comets are joined to the size table rather than
+         sized from H. See comets.py.)
 
 JPL's SBDB API has NO physical parameters (probe: ?phys_par=1 returns an error
 object), so the two sources are complementary rather than redundant -- and neither
@@ -45,6 +50,7 @@ import urllib.parse
 import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import comets  # noqa: E402  -- knows where the MPC comet-elements cache lives
 import mporb  # noqa: E402  -- knows where the MPCORB cache lives
 import parse  # noqa: E402  -- the offline parser, reused here to list what to fetch
 
@@ -56,6 +62,7 @@ WIKI_URL = "https://en.wikipedia.org/wiki/List_of_exceptional_asteroids"
 SIZES_URL = "https://en.wikipedia.org/wiki/List_of_Solar_System_objects_by_size"
 TNO_URL = "https://en.wikipedia.org/wiki/List_of_trans-Neptunian_objects"
 MPCORB_URL = "https://minorplanetcenter.net/Extended_Files/mpcorb_extended.json.gz"
+COMET_ELS_URL = "https://minorplanetcenter.net/Extended_Files/allcometels.json.gz"
 SBDB_URL = "https://ssd-api.jpl.nasa.gov/sbdb.api"
 # JPL's SSD-API terms of use ask for a User-Agent that says who is calling.
 USER_AGENT = "openspaceprogram-rss/1.0 (game world data; https://git.oxfordfun.com/dvolk/openspaceprogram)"
@@ -101,6 +108,14 @@ def fetch_mpcorb(refresh):
     which streams it -- nothing else in the tree ever holds it in memory."""
     body, got = get(MPCORB_URL, mporb.MPCORB_GZ, refresh)
     print("%s %s (%d bytes)" % ("fetched" if got else "cached ", MPCORB_URL, len(body)))
+
+
+def fetch_comet_els(refresh):
+    """The MPC's all-comet orbital elements: 4,666 rows, one per APPARITION, 200 KB
+    gzipped. Small enough to commit, unlike MPCORB, because a comet census is four thousand
+    rows and the asteroid one is 1.58 million. Read by comets.py."""
+    body, got = get(COMET_ELS_URL, comets.ELEMENTS_GZ, refresh)
+    print("%s %s (%d bytes)" % ("fetched" if got else "cached ", COMET_ELS_URL, len(body)))
 
 
 def sbdb_candidates(query):
@@ -185,6 +200,8 @@ def main():
                     help="skip the two size tables (objects-by-size, TNO list)")
     ap.add_argument("--skip-mporb", action="store_true",
                     help="skip the 175 MB MPCORB download")
+    ap.add_argument("--skip-comets", action="store_true",
+                    help="skip the MPC all-comet orbital elements (200 KB)")
     ap.add_argument("--list", action="store_true",
                     help="print the object list and exit (no SBDB calls)")
     args = ap.parse_args()
@@ -202,6 +219,8 @@ def main():
         fetch_size_tables(args.refresh)
     if not args.skip_mporb:
         fetch_mporb(args.refresh)
+    if not args.skip_comets:
+        fetch_comet_els(args.refresh)
     if args.skip_sbdb:
         return 0
 

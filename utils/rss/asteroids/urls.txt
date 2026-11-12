@@ -116,3 +116,22 @@ https://en.wikipedia.org/wiki/List_of_trans-Neptunian_objects
   class column is the classification, and D is often a rough estimate (the Remarks
   column says so when it is a brightness-derived guess).
 
+
+Comet ORBITS (4,666 rows, one per apparition):
+
+https://minorplanetcenter.net/Extended_Files/allcometels.json.gz
+  -> raw/allcometels.json.gz   (parse via comets.py; 200 KB gz, committed unlike MPCORB)
+  One row per APPARITION, not per comet: Orbit_type (C/P/D/A/I), Perihelion_dist, e, Peri,
+  Node, i, the perihelion date (negative years are real: C/-146 P1 is the Comet of 146 AD),
+  and for modern rows an Epoch plus H and G. The traps:
+    - NO nucleus size anywhere. H is the COMA's brightness, and G (usually 4.0) is the
+      slope that turns it into a heliocentric-distance law. Applying the asteroid H->diameter
+      formula to a comet is not imprecise, it is meaningless: Halley "sizes" at ~20 km
+      against a measured 5.75 km. So a comet is only ever joined to a stated radius.
+    - grouping on the part before '/' puts 3,735 unrelated comets under the key "C"; the
+      MPC's identity is "67P" for numbered ones and "C/1995 O1" for the rest (comets.id_key).
+    - a = q/(1-e) is not a number for the 2,351 rows at e == 1.0 or the 354 hyperbolic ones:
+      C/2022 F1 (ATLAS) gives a = 373,777 AU. Refused by name, never clamped.
+    - the size page names four of its comet rows instead of giving a joinable designation,
+      and two of those are not what they look like: the Great Comet of 1811 is C/1811 F1,
+      and Tsuchinshan-ATLAS is C/2023 A3 (C/2022 N1 is Attard-Maury).
