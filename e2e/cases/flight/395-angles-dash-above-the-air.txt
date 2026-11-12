@@ -1,0 +1,33 @@
+NAME angles-dash-above-the-air
+CLAIM Every column the SURFACE window reads off the air dashes together where the hull has no air to read it from -- the angle of attack, the sideslip, the air-relative prograde, the air-relative speed and the stability pair -- on a body whose air and wind are fully authored, so a dash means "no flow HERE" and not "this body has no wind".
+KIND invariant
+ARGS --info-log --time-accel 1 --timeout 3 --startship racer,res/ships/racer.json,Kerbin,ellipse-apo --no-paint
+FORBID error:
+# ellipse-apo drops the hull at apoapsis: 1.0e6 m over Kerbin, 915 km clear of the top of an
+# atmosphere the file authors in full (sea level 101325 Pa, top at 85 km). So this is the same
+# body, the same hull and the same code path as flight/395, one hundred times deeper into the
+# sky -- and every flow-derived column on the line reads "-" instead.
+CHECK len(surf) >= 3
+CHECK all(s["alt_asl"] > 500e3 for s in surf)
+CHECK all(s["aoa"] is None for s in surf)
+CHECK all(s["beta"] is None for s in surf)
+CHECK all(s["aprg"] is None for s in surf)
+CHECK all(s["tas"] is None for s in surf)
+CHECK all(s["cla"] is None for s in surf)
+CHECK all(s["sm"] is None for s in surf)
+# And the hull is not parked: at apoapsis it is coasting at 695 m/s over the ground, so the dash
+# is not "nothing is moving", it is "there is no air for a motion to be relative to". The ground
+# columns prove the run is live.
+CHECK all(s["hs"] > 600.0 for s in surf)
+CHECK all(abs(s["vs"]) < 5.0 for s in surf)
+# WHY THIS CASE EXISTS. Until the air started moving (#688, and #718 putting hulls on the ground
+# inside it), the parked-hull rows of flight/395 were this rule's evidence: a pad hull had only
+# integrator jitter to show, under the 0.1 m/s flow floor of kAoAFlowFloor, so it dashed. Now
+# every shipped air moves and a pad hull has a genuine 5.8 m/s of flow -- correct, and pinned
+# there -- which leaves the "no flow at all" half of the floor unexercised anywhere else in the
+# set. This case is that half, moved up where there really is no air, so a floor that stops
+# refusing (or starts refusing a real wind) reddens somewhere.
+# One thing on this line is NOT dashed and should be: wind_east=40 m/s, printed in vacuum
+# because the profile's last authored row (alt 11205 m) is read as holding forever. Filed as
+# #788; pinned here as it stands, so that fix reddens this row rather than passing unnoticed.
+CHECK all(s["wind_east"] == 40.0 for s in surf)

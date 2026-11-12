@@ -1,12 +1,14 @@
 # [surfinfo] aoa= is the SURFACE window's AoA: the aero law's own alpha (drag.h
-# AeroFrame), air-relative flow against the nose. Two ways it goes wrong:
-# a parked ship co-rotates with the air, so its only "flow" is integrator jitter
-# (~1e-4 m/s measured) -- nearly perpendicular to a nose-up hull, so atan2 hands
-# back a full +/-90 deg that means nothing; and outside an atmosphere there is no
-# flow at all. Both must read "-", not a number (kAoAFlowFloor, constants.h).
-# Nose-up climb is the numeric half: the flow runs along the nose, so AoA sits
-# near zero. |aoa| is pinned, not aoa, so the case does not freeze the sign
-# convention against conventional aero.
+# AeroFrame), air-relative flow against the nose. Two ways it goes wrong: a parked ship with
+# calm air has no "flow" at all -- integrator jitter only (~1e-4 m/s measured) -- so atan2
+# would hand back a number that means nothing, and outside an atmosphere there is no flow to
+# have an angle to. Both must read "-", not a number (kAoAFlowFloor, constants.h).
+# THE WIND CHANGED WHICH ROWS ARE WHICH (#688, #718). Kerbin authors 5 m/s of east air at the
+# deck ramping to 40 m/s at 11 km, so a hull parked nose-up on the pad is not at rest in calm
+# air: it stands in 5.8 m/s of it. Its flow is real, so all three angles print, and the case's
+# dash half moved to flight/395-angles-dash-above-the-air -- which is the same rule sampled
+# where there really is no air. What this case pins now is that the numbers are the WIND's:
+# broadside at the pad, and shrinking to the wind's own angle as the climb outruns it.
 # #499 hung the SURFACE window's stability pair off the same line, and the racer
 # is the case that shows the honest way to report an airframe with nothing lifting:
 # cla prints 0.0 (the substep measured the air and found no slope), while sm DASHES.
@@ -14,38 +16,75 @@
 # that cancelled had the drag log saying Np=+15.9 m, then +121.5, then -89.7 for
 # one skiff, which is why LiftSlopeSum::usable refuses rather than divides.
 # #450: beta= is the yaw-plane half of the same AeroFrame pair. Until it was
-# printed, the sideslip that keys the hull-silhouette cache (#463) had no
-# instrument at all -- the [drag] line printed it, [surfinfo] did not, so the two
-# dumps of the same substep disagreed about what was measured. Same dash rule as
-# aoa=: no usable flow, no angle.
+# printed, the sideslip that keys the hull-silhouette cache (#463) had no instrument at all --
+# the [drag] line printed it, [surfinfo] did not, so the two dumps of the same substep disagreed
+# about what was measured. Same dash rule as aoa=: no usable flow, no angle. What the wind added
+# is a case where the angle is NUMERIC AND MEANINGLESS (a flow lying in the pitch plane has an
+# undefined yaw angle): pinned below as it stands, and filed as #787.
 # #498: aprg= is the third reader of the same flow -- the angle from the nose to the
 # AIR-relative prograde, which is what the new yellow marker pair points at. It is
 # dashed on the same test as aoa=/beta= because it needs the same thing: air, and a
-# flow with a direction. The parked-then-climbing shape of this case is what pins
-# both halves of that rule; the flying-plane half -- the air-relative and conic
-# progrades disagreeing by 13+ deg -- lives in flight/498.
+# flow with a direction.
 NAME surface-aoa-readout
-CLAIM [surfinfo] reports the aero angle of attack, the sideslip and the air-relative prograde while the ship has air-relative flow and "-" when it has none, and its stability pair reports a zero slope without inventing a neutral-looking margin for an airframe that has nothing lifting.
+CLAIM [surfinfo] reports the aero angle of attack, the sideslip and the air-relative prograde while the ship has air-relative flow and "-" when it has none, and on a windy pad the numbers it reports are the authored wind: broadside at rest, and closing as the climb outruns it. Its stability pair reports a zero slope without inventing a neutral-looking margin for an airframe that has nothing lifting.
 KIND invariant
 ARGS --time-accel 1 --timeout 6 --info-log --orbit-interval 0.5 --startship racer,res/ships/racer.json,Kerbin,pad --sim-press 1000,0,SPACE,1500,4000,T
 FORBID error:
 CHECK len(surf) >= 6
-CHECK any(s["aoa"] is None for s in surf if s["t"] < 1.2)
-CHECK all(s["aoa"] is not None for s in surf if s["t"] >= 2.0)
-CHECK all(abs(s["aoa"]) < 1.0 for s in surf if s["t"] >= 2.0)
-# beta goes numeric and numeric-dashed on exactly the same rows as aoa: one
-# AeroFrame, one flow-floor test. Flying straight up off the pad, both angles sit
-# near zero; |beta| is pinned rather than beta, as for aoa.
-CHECK any(s["beta"] is None for s in surf if s["t"] < 1.2)
-CHECK all(s["beta"] is not None for s in surf if s["t"] >= 2.0)
-CHECK all(abs(s["beta"]) < 1.0 for s in surf if s["t"] >= 2.0)
-# aprg (#498) follows the same dash rule, and flying straight up off the pad the
-# nose is on the air, so it sits near zero too -- near enough to aoa that the two
-# readings being the same vector is checkable here rather than only in flight/498.
-CHECK any(s["aprg"] is None for s in surf if s["t"] < 1.2)
-CHECK all(s["aprg"] is not None for s in surf if s["t"] >= 2.0)
-CHECK all(abs(s["aprg"]) < 1.0 for s in surf if s["t"] >= 2.0)
-CHECK all(abs(s["aprg"] - s["aoa"]) < 0.5 for s in surf if s["aoa"] is not None)
+# PARKED (t < 1.2 s): the hull's own speed is 1e-5 m/s and the air's is the file's. tas is
+# |airRelativeVel|, wind_east is the authored table interpolated at alt_asl (Kerbin: 5 m/s at
+# alt 0, 40 m/s at 11205 m, and the pad sits at 264 m), and at rest the two are the same number
+# to the digit -- 5.82 both. That equality is the whole wind feature in one row: the aero law is
+# billing air the file authored, not a stillness the file never claimed.
+CHECK all(4.8 < s["tas"] < 6.2 for s in surf if s["t"] < 1.2)
+CHECK all(abs(s["tas"] - s["wind_east"]) < 0.02 for s in surf if s["t"] < 1.2)
+CHECK all(5.6 < s["wind_east"] < 6.0 for s in surf if s["t"] < 1.2)
+# And it is the table's wind, not a constant bolted to the hull: over the 78 m this climb gains
+# (264 m to 342 m) the column itself walks 5.82 -> 6.07, which is the 5-to-40 m/s ramp read at
+# each row's own altitude. A pin spread over 6.0 m/s of altitude is a band; the column RISING
+# with the hull is the part that cannot happen if the wind were one number or read off the deck.
+CHECK all(5.6 < s["wind_east"] < 6.3 for s in surf)
+CHECK all(s2["wind_east"] > s1["wind_east"] for s1, s2 in zip(surf[:-1], surf[1:]) if s2["alt_asl"] > s1["alt_asl"] + 1.0)
+# A nose-up hull under a horizontal wind meets it broadside: aoa -90.00, aprg +90.00, on
+# every parked row. Before the wind these rows dashed (jitter under the 0.1 m/s flow floor);
+# the number that replaced the dash is the geometry the wind implies, so it is pinned to a tenth
+# of a degree rather than re-banded.
+CHECK all(abs(abs(s["aoa"]) - 90.0) < 0.1 for s in surf if s["t"] < 1.2)
+CHECK all(abs(s["aprg"] - 90.0) < 0.1 for s in surf if s["t"] < 1.2)
+# CLIMBING: the air-relative speed exceeds the vertical one by the sideways flow. Measured
+# tas - vs = 3.74 at a 2.63 m/s climb, 1.43 at 11.2, 0.87 at 27.8 -- against 5.8 m/s of
+# crosswind, so the excess is nowhere near the crosswind itself: the hull goes UP through the
+# air, and sqrt(vs^2 + w^2) - vs shrinks as vs outruns w. The old case pinned "< 1.5" for every
+# row over 2 m/s, which the first climbing rows blow through by more than a metre per second;
+# what is pinned now is the SHAPE -- always more than the ground speed, and falling monotonically
+# through the burn (t=5.5 and 6.0 excluded: that is the throttle-down, where vs drops and the
+# excess turns back up to 0.91 and 1.05).
+CHECK all(s["tas"] > s["vs"] for s in surf if s["vs"] > 2.0)
+CHECK all(0.7 < s["tas"] - s["vs"] < 4.0 for s in surf if s["vs"] > 2.0)
+CHECK all(s2["tas"] - s2["vs"] < s1["tas"] - s1["vs"] for s1, s2 in zip([r for r in surf if 1.9 <= r["t"] <= 5.0][:-1], [r for r in surf if 1.9 <= r["t"] <= 5.0][1:]))
+# aoa falls from -65.95 deg at 2.63 m/s of climb to -8.67 at 31.6: the angle is where the wind
+# arrives, and the faster the hull climbs the less a 6 m/s crosswind bends it. Monotone through
+# the burn (t=6.0 is the throttle-down row, so it is excluded rather than band-ed around).
+CHECK all(abs(s2["aoa"]) < abs(s1["aoa"]) for s1, s2 in zip([r for r in surf if 1.5 < r["t"] < 5.6][:-1], [r for r in surf if 1.5 < r["t"] < 5.6][1:]))
+CHECK all(8.0 < abs(s["aoa"]) < 11.0 for s in surf if 4.9 < s["t"] < 5.6)
+# aprg and aoa are the same flow read twice -- the direction the air is going, and the angle it
+# arrives at -- so they are equal and OPPOSITE. Pre-wind, both read near zero and the sign was
+# invisible; with a 5.8 m/s crosswind at a 2.9 m/s climb the two would disagree by 127 deg if
+# one of them were reading the ground instead of the air. Measured -0.37 .. +0.01 over all 12
+# rows, the widest being that first climbing row where the flow is most broadside.
+CHECK all(abs(s["aprg"] + s["aoa"]) < 0.5 for s in surf)
+# Where the flow lies IN the pitch plane -- straight up, an east wind, a hull heading ~274 deg
+# -- the yaw angle answers ~0 and the pair is well-conditioned.
+CHECK all(abs(s["beta"]) < 0.1 for s in surf if s["vs"] > 2.0)
+# The parked rows are the ill-conditioned half: the flow is 90 deg off the nose, so the yaw-plane
+# projection is whatever the hull's 1e-5 m/s of jitter points at. What is pinned is that a NUMBER
+# comes back at all -- #787's wart is that it prints rather than dashes. Its magnitude is not
+# pinnable and that is part of the defect: the first parked row read -92.93 deg on one run and
+# -71.10 deg on the next, with the identical hull at the identical stillness, so any band here
+# would be a bet on phase. (The later parked rows did repeat -- +85.48, +85.21 -- which is why
+# this is a conditioning bug and not noise in the log.) Fixing #787 dashes these rows, and
+# `is not None` reddens at that change rather than letting it pass unnoticed.
+CHECK all(s["beta"] is not None for s in surf if s["t"] < 1.2)
 # The racer is under an atmosphere the whole run, so cla is a number throughout
 # (0.0: no lifting surface on the ship), and sm is never a number.
 CHECK all(s["cla"] == 0.0 for s in surf)

@@ -36,11 +36,17 @@ CHECK max(abs(a-b) for a,b,g in zip([s["a"] for s in surface][2::10],[s["a"] for
 CHECK max(abs(a-b) for a,b,g in zip([s["a"] for s in surface][8::10],[s["a"] for s in surface][9::10],[d["beta"] for d in drag]) if abs(g) < 0.6) < 0.3
 # WHAT THE READOUT IS FOR: the angles the forces actually come from. The tailplane is
 # bolted at -5 deg (shipdef "roll" on its mounts) and the elevators at 0, so a quiet
-# run must show the tail 4.5-5.5 deg BELOW the wing and the elevators on the wing's
+# run must show the tail ABOUT 5 deg BELOW the wing and the elevators on the wing's
 # number -- which is #490's trim read part by part instead of one ship-wide AoA.
-CHECK all(4.5 < w - t < 5.5 for w,t,g in zip([s["a"] for s in surface][0::10],[s["a"] for s in surface][2::10],[d["beta"] for d in drag]) if abs(g) < 0.6)
-# The elevators ride 0.6 deg UNDER the wing's number at the worst row of this run
-# (t=23, |Beta| 0.0) and no row puts them above it by more than 0.1. That gap is not the
+# Measured 4.9..5.7 on the quiet rows now, against 4.5..5.5 before the air started
+# moving (#688). The widening is not the mount drifting: a part's local flow carries the
+# rigid-body sweep term omega x r (#483), which is an ANGLE, so the same metre per second
+# at the tail is atan(1/30) rather than atan(1/78) -- this run's AIR-relATIVE speed is
+# 30.0..78.3 m/s while its inertial |v| runs 59.3..104.5. Same law, lower airspeed, wider
+# noise around a mount that is still exactly 5.0.
+CHECK all(4.5 < w - t < 6.0 for w,t,g in zip([s["a"] for s in surface][0::10],[s["a"] for s in surface][2::10],[d["beta"] for d in drag]) if abs(g) < 0.6)
+# The elevators ride 1.2 deg UNDER the wing's number at the worst row of this run and no
+# row puts them above it by more than 0.1. That gap is not the
 # mount -- a tab bolted flat to its parent meets the flow at the parent's own angle,
 # which is what the aileron bands below pin -- it is the flow arriving at the tail
 # already angled down by the wing behind which it sits. The downwash angle tracks the
@@ -51,22 +57,24 @@ CHECK all(4.5 < w - t < 5.5 for w,t,g in zip([s["a"] for s in surface][0::10],[s
 # the bed spawns at 1.9x this hull's trim rather than 1.6x (#693), so the run visits a
 # wider AoA range and a deeper worst row than the old one did.
 # The old -0.5 floor sat exactly on the old worst row, so the floor moves with the arc
-# rather than the mount: -0.7 measured, 0.1 deg of slack.
-CHECK all(-0.7 < e - w < 0.4 for e,w in zip([s["a"] for s in surface][5::10],[s["a"] for s in surface][0::10]))
+# rather than the mount: -1.2 measured, at t=26 s in the middle of the rudder kick
+# (the sweep term again, at this run's airspeeds), with 0.3 deg of slack.
+CHECK all(-1.5 < e - w < 0.4 for e,w in zip([s["a"] for s in surface][5::10],[s["a"] for s in surface][0::10]))
 # A tab bolted flat to a wing meets the flow at the wing's own angle: the ailerons
 # hang off the wing's trailing edge (point/normal, #566, sat clear of it by #570). Each
 # one is compared with the wing it is bolted through, NOT across the hull: sideslip
 # makes wing_l and wing_r disagree (0.3 deg over this run, all of it on the kick rows),
 # and ail_r against wing_l would sample that instead of the mount. Measured all the way
-# through the run, rudder kick included: both tabs sit -0.3..+0.1 deg off the wing they
-# hang on -- and #567's reshaped wing did not disturb that either: the tab still
-# meets the air at its parent's angle.
-CHECK all(-0.5 < x - w < 0.4 for x,w in zip([s["a"] for s in surface][8::10],[s["a"] for s in surface][0::10]))
-CHECK all(-0.5 < x - w < 0.4 for x,w in zip([s["a"] for s in surface][9::10],[s["a"] for s in surface][1::10]))
+# through the run, rudder kick included: both tabs sit -0.5..+0.1 deg off the wing they
+# hang on (0.5, not the old 0.3, for the same reason as the elevator band: the sweep
+# angle at a wing tip grows as the airspeed falls) -- and #567's reshaped wing did not
+# disturb that either: the tab still meets the air at its parent's angle.
+CHECK all(-0.7 < x - w < 0.4 for x,w in zip([s["a"] for s in surface][8::10],[s["a"] for s in surface][0::10]))
+CHECK all(-0.7 < x - w < 0.4 for x,w in zip([s["a"] for s in surface][9::10],[s["a"] for s in surface][1::10]))
 # THE WEATHERVANE, MECHANISM AND NOT JUST OUTCOME. One 1 s rudder press at 25 s, never
 # held. The ship yaws away and the fin meets the flow at exactly the angle it is
-# weathervaning through, of the OPPOSITE sign: Beta -6.2 (t=26 s) -> fin +6.7, Beta
-# +5.0 (t=28 s) -> fin -5.1. (Before #686 the same press read -7.7 -> +8.0 and +6.7 ->
+# weathervaning through, of the OPPOSITE sign: Beta -6.0 (t=27 s) -> fin +5.8, Beta
+# +3.6 (t=29 s) -> fin -3.7. (Before #686 the same press read -7.7 -> +8.0 and +6.7 ->
 # -6.8: the kick now lands further down the phugoid, where the hull is slower and the
 # 1 s of rudder swings less air around it.) The rudder, which nobody is touching, reads
 # the same as the fin behind which it hangs (#570), which is how a player tells a
@@ -102,27 +110,43 @@ CHECK all(abs(f - r) < 0.6 for f,r in zip([s["a"] for s in surface][4::10],[s["a
 # and the band itself stays at 0.3.
 # The wing band used to be 2.2..3.6, a 1.4 deg window around a signal that measured
 # 2.5..2.7 on every row of this run -- a band that could not fail for a sideslip leaking
-# into pitch. It is 2.3..3.2 now: the run measures 2.5..2.9, so 0.2 deg of slack below
-# and 0.3 above, and the leak this pins is a fraction of that.
-CHECK all(2.3 < a < 3.2 for a in [s["a"] for s in surface][0::10])
+# into pitch. It is 2.4..3.4 now: the run measures 2.50..3.20, so 0.1 deg of slack below
+# and 0.2 above, and the leak this pins is a fraction of that. The top of the signal is
+# what moved when the air started moving (#688): at t=25 s the hull is slipping into the
+# kick at 30 m/s of AIR, so a metre per second of sweep across a 4 m half-span is 1.9 deg
+# of angle where the same turn reads 0.7 deg at 78 m/s.
+CHECK all(2.4 < a < 3.4 for a in [s["a"] for s in surface][0::10])
 CHECK max(abs(f) for f,t in zip([s["a"] for s in surface][4::10],[d["t"] for d in drag]) if t >= 44.0) < 0.3
 # q is the pressure of the flow AT the surface (#483), not one ship-wide number, and the
-# log shows it: the widest wing-tip split of this run is 35 Pa (744 on wing_l, 779 on
-# wing_r at t=29 s) and the split FLIPS SIGN with the yaw -- t=27 reads wing_l 578 over
-# wing_r 544, t=29 the other way -- which is omega x r across a 16 m span, a metre or
+# log shows it: the widest wing-tip split of this run is 15 Pa (t=30 s reads 444 on
+# wing_l and 459 on wing_r) and the split FLIPS SIGN with the yaw -- t=28 reads wing_l 284
+# over wing_r 270, t=30 the other way -- which is omega x r across a 16 m span, a metre or
 # so per second of sideways flow at the tip while the hull is turning
-# through its kick. The same row spans 52 Pa across all ten parts (736..788): the two
+# through its kick. The same row spans 21 Pa across all ten parts: the two
 # outermost plates pay the sweep and the ones near the rotation axis do not, so the row
 # spread is always at least the tip split. A quiet row prints all ten parts within 1 Pa
 # of each other.
-# Sampled on every part of every row rather than one survivor: the shared band against
-# the hull's own 0.5*rho*v^2 is 0.955..1.046 across all 500 values, the residual being
-# the substep between the aero pass and the log line plus that per-part spread.
+# The split used to measure 35 Pa. It is a pressure DIFFERENCE, and a pressure difference
+# from a given sideways speed is rho * v_air * (omega x r): the same turn at half the
+# AIRSPEED pays half the split. Hence the floor moves from 30 Pa to 10 -- measured 15, so
+# a third of slack, and the sign flip above is the part that cannot happen at all if the
+# flow stops being per-part.
+# Sampled on every part of every row rather than one survivor: the shared band against the
+# air's OWN speed is 0.96..1.05 across all 500 values, the residual being the substep
+# between the aero pass and the log line plus that per-part spread.
+# It has to be the air's speed, not the row's |v|: since #688 the air moves, and the [drag]
+# line documents that its |v| is live GetVel() while Mach is over the air-relative speed
+# (tick.cpp). Kerbin authors 5 m/s at the deck ramping to 40 m/s at 11 km, so at this
+# 8.5 km cruise the two differ by roughly 30 m/s and 0.5*rho*|v|^2 is a factor 2.5 off the
+# q every part actually pays -- which is exactly what this CHECK used to pass on. Rebuild
+# the air-relative speed from the row's own Mach x airA (29.95..78.27 m/s against an
+# inertial 59.31..104.47) rather than adding a field to a line whose parsers are older
+# than most of its columns.
 # (The inner comprehension repeats each drag row once per part: [surface] flattens ten
 # parts onto one row, and the CHECK sandbox has no range().)
-CHECK all(0.92 < sp["q"] / (0.5 * d["rho"] * d["v"] * d["v"]) < 1.08 for d, sp in zip([r for r in drag for _ in surface[0:10]], surface))
+CHECK all(0.92 < sp["q"] / (0.5 * d["rho"] * (d["mach"] * d["airA"]) ** 2) < 1.08 for d, sp in zip([r for r in drag for _ in surface[0:10]], surface))
 # ... and the twins disagree where they should: the wing pair's q is not one number.
-# This one reads the mirrored wing pair only -- 35 Pa measured against a 30 Pa floor, so
+# This one reads the mirrored wing pair only -- 15 Pa measured against a 10 Pa floor, so
 # it reddens if a per-part flow stops being per-part.
-CHECK max(abs(l["q"] - r["q"]) for l, r in zip(surface[0::10], surface[1::10])) > 30.0
+CHECK max(abs(l["q"] - r["q"]) for l, r in zip(surface[0::10], surface[1::10])) > 10.0
 FORBID error:

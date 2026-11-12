@@ -1,7 +1,7 @@
-# A hull parked in thick air has no flow to bill, and until #560 was measured the log
-# disagreed with itself about what that means. The same row dashes its own AoA -- AeroFrame
-# found no usable direction -- while charging a SWING of INDUCED DRAG against a 0.00 N
-# force, from this case's own pre-fix run:
+# A hull parked on Kerbin's pad used to have no flow to bill, and the log disagreed with itself
+# about what that means. The same row used to dash its own AoA -- AeroFrame found no usable
+# direction -- while charging a SWING of INDUCED DRAG against a 0.00 N force, from this case's
+# own pre-fix run:
 #   t=5.0s  |v|=0.02 m/s |F|=0.04 N ... AoA=- Chute=0.00 m2 Induced=1.442 m2
 #   t=6.0s  |v|=0.00 m/s |F|=0.00 N ... AoA=- Chute=0.00 m2 Induced=0.000 m2
 #   t=21.0s |v|=0.00 m/s              ... AoA=- Chute=0.00 m2 Induced=0.473 m2
@@ -11,54 +11,77 @@
 # value the wobble happens to hand it, and the CdA the log prints is area x that
 # coefficient, with no q left in it to shrink it back. The force is fine (it re-multiplies
 # by q, hence 0.00 N); the READOUT was inventing drag out of an at-rest hull.
-# So Induced= now dashes with the direction-derived fields. What stays printed on those
-# rows is what does not need a flow to be true: the density, the air's own T/p/a, the
-# hull's Mach (a magnitude -- at rest it reads 0.000, and 0.000 is the answer, not a
-# failure to measure) and the canopy area (0.00, because no canopy is out).
-# The skiff on the Kerbin pad never leaves that state: rho ~1.19, |v| 0.00-0.02 m/s.
-# --sim-steps, not --timeout: the settle is chaotic, and a wall-clock log gate samples it
-# at a different phase each run. Logic-tick gating puts the rows at t=1..N identically.
+# So Induced= now dashes with the direction-derived fields -- and the row this case pinned no
+# longer reaches that state, because the air on Kerbin moves (#688, and the hull on the ground
+# inside it, #718). Kerbin authors 5 m/s of east air at alt 0 ramping to 40 m/s at 11205 m; the
+# pad sits at 260.8 m, so a hull at rest there stands in 5.80 m/s of flow. It has a direction,
+# so AoA/Beta/Induced/Profile/FormCp/Ld all print, and they print the WIND's numbers. The dash
+# half of that rule is pinned in flight/395-angles-dash-above-the-air, where there is no air;
+# what is pinned here is that a real 5.8 m/s of air is not treated like nothing, and that the
+# bill it writes closes against the row's own columns.
+# A NOTE ON HOW THIS CASE WENT RED: three lines reported, and eight more CHECKs -- every one of
+# them `all(... for d in drag if d.get("aoa") is None)` -- passed VACUOUSLY, because no row had
+# a dashed aoa any more (#653's trap, in the other direction: a filter that selects nothing
+# tests nothing). A re-pinned case has to say which rows it is talking about, so the filter
+# below selects by time, not by absence.
 NAME parked-hull-bills-nothing
-CLAIM A hull at rest in air bills nothing: every reading that needs a flow direction dashes, and the air it sits in still prints.
+CLAIM A hull at rest on the ground is still standing in the air the file authors, and its bill is the wind's: the flow-derived columns print rather than dash, the force the row charges closes against its own q, Cd, area and shape bill, and the air's own readings (rho, T, p, a) print beside them.
 KIND invariant
 ARGS --startship skiff,res/ships/skiff.json,Kerbin,pad
 ARGS --drag-log
 ARGS --sim-steps 1500
 LIMIT 60
 EXPECT [drag]
-EXPECT Induced=-
+# THE STATE, by time rather than by absence: the settle is chaotic for the first three seconds
+# (|v| 0.6 to 2.4 m/s as the landing gear takes the hull) and the t=4 s row still carries 0.02 m/s
+# of hull motion -- and a correspondingly different bill, 33.28 N -- so the gate is t >= 5 s,
+# where |v| prints 0.00 and 21 consecutive rows are bit-identical. --sim-steps, not --timeout: the
+# settle is chaotic, and a wall-clock log gate samples it at a different phase each run. Logic-tick
+# gating puts the rows at t=1..N identically.
 CHECK len(drag) >= 10
-# THE STATE: rows with no usable flow direction. The pad row at t=1 still has one (the
-# hull is bouncing as it settles, |v| ~0.6 m/s), so this asks for the settled majority
-# rather than all rows, and then never mixes the two kinds of row again.
-CHECK len([d for d in drag if d.get("aoa") is None]) >= 5
-# THE FIX: on those rows the q-normalised bill dashes too, beside the direction fields
-# that already did. Against the pre-fix binary this is the CHECK that reddens -- that
-# run printed 1.442, 0.000, 0.000, 0.234, 0.273, 0.473 m2 down its dashed rows, so the
-# value was present AND swinging second to second, which is also why a flat 0.000 could
-# not be left standing in its place (an unloaded wing prints 0.000 honestly).
-CHECK all(d.get("induced") is None for d in drag if d.get("aoa") is None)
-CHECK all(d.get("profile") is None for d in drag if d.get("aoa") is None)
-CHECK all(d.get("formcp") is None for d in drag if d.get("aoa") is None)
-CHECK all(d.get("beta") is None and d.get("cpl") is None for d in drag if d.get("aoa") is None)
-# Ld= (#694) is read off the same direction, so it dashes here too -- 21 of this run's 25
-# rows. Pinned because a CHECK over a key the parser never learned passes without testing
-# anything (#653): this is the arm that keeps run.py's dashed-Ld branch honest.
-CHECK all(d.get("ld") is None for d in drag if d.get("aoa") is None)
-# NOTHING IS BILLED: the forces these fields claim to explain are ~nil. 20 N is the
-# whole hull at 6 m/s in this air; the settled rows sit two orders under it.
-CHECK max(d["F"] for d in drag if d.get("aoa") is None) < 20.0
-# WHAT STILL PRINTS, and why: rho, the body's air and the Mach number are not read off a
-# direction. This is the #560 distinction made visible in one row -- AoA dashed, air
-# numbered. Mach is under 0.02 (|v| <= 5 m/s over Kerbin's 339.5 m/s air), so the
-# 0.000 that prints is a measurement of a hull at rest, not a gap.
-CHECK all(d["rho"] > 1.10 for d in drag if d.get("aoa") is None)
-CHECK all(d["chute"] == 0.0 for d in drag if d.get("aoa") is None)
-CHECK all(abs(d["airT"] - 286.5) < 0.05 for d in drag if d.get("aoa") is None)
-# 339.5 m/s at the pad, not the datum's 340.5: #686 gave Kerbin a lapse rate, so the
-# thermometer now reads the 260.8 m the pad sits above sea level -- 1.7 K down, level 0
-# lapsing 6.4 K/km, a step an isothermal body could never show. gamma comes from the
-# authored dry-air mix (1.40146, #630) as ever. Before #686 this row was Kerbin's implied
-# 274.8 m/s at 188.0 K.
-CHECK all(abs(d["airA"] - 339.5) < 0.05 for d in drag if d.get("aoa") is None)
-CHECK all(d["mach"] < 0.02 for d in drag if d.get("aoa") is None)
+CHECK all(d["v"] == 0.0 for d in drag if d["t"] >= 5.0)
+# WHAT THE FLOW IS: the row's |v| is the hull over the ground (0.00) and its Mach is over the
+# air (tick.cpp says so explicitly), so Mach x a is the air coming at a parked hull. Measured
+# 5.80 m/s against the authored 5.82 the profile implies at 260.8 m -- which is the wind feature
+# arriving in the drag log through the door the [surfinfo] line already had (tas=, wind_east=).
+CHECK all(5.6 < d["mach"] * d["airA"] < 6.0 for d in drag if d["t"] >= 5.0)
+# THE BILL CLOSES. q = 0.5 rho v_air^2 = 20.1 Pa; the force is q x (1.2 Cd A + Profile) --
+# 1.2 because the hull product is charged at that multiplier while A=/Cd= print raw, and Profile
+# because the lifting parts pay their shape bill outside the hull union (#455). 20.1 x (1.2 x
+# 1.137 x 0.81 + 0.469) = 31.7 N, which is what the row charges to the decimal. Before the wind
+# this row charged 0.00 N and the arithmetic was vacuous in a different way.
+CHECK all(abs(d["F"] - 0.5 * d["rho"] * (d["mach"] * d["airA"]) ** 2 * (1.2 * d["cd"] * d["a"] + d["profile"])) < 0.5 for d in drag if d["t"] >= 5.0)
+# THE FLOW HAS A DIRECTION, and a fixed one: the pad holds the hull at one attitude, so the wind
+# arrives along the hull's line from behind on every settled row -- AoA -177.2, Beta -179.4.
+# Pinned to a degree and a half, which is slack for the settle's residual, not for the wind.
+CHECK all(174.0 < abs(d["aoa"]) <= 180.0 for d in drag if d["t"] >= 5.0)
+CHECK all(176.0 < abs(d["beta"]) <= 180.0 for d in drag if d["t"] >= 5.0)
+# #560'S ACTUAL FIX, still true and now checkable on non-empty rows: Induced= is 0.000 here
+# because the wings are genuinely unloaded, not because the ratio had nothing to divide by. The
+# distinction the dash exists for -- 0.000 = unloaded, "-" = never measured -- is why this row
+# must print a zero and not a dash now that there is flow: a hull in a wind has measured air,
+# and a dash would claim the aero pass did not run.
+CHECK all(d["induced"] == 0.0 for d in drag if d["t"] >= 5.0)
+CHECK all(d["profile"] is not None and d["formcp"] is not None for d in drag if d["t"] >= 5.0)
+# Ld= (#694) prints 0.00 rather than dashing: there IS along-flow drag to divide by (31.7 N) and
+# no lift over it. A dash here would mean "no flow", which is what used to be true of this row.
+CHECK all(d["ld"] == 0.0 for d in drag if d["t"] >= 5.0)
+# WHAT STILL PRINTS, and why unchanged: rho and the body's air are not read off a direction.
+# Kerbin's pad air is 1.1945 kg/m3 at 260.8 m; the thermometer reads 289.6 K, not the 286.5 K the
+# profile alone answers there -- Kerbin authors air_follow 0.35 (#724 rung D), so the air nearest
+# the deck is pulled toward the ground under it. The [solar] line of the same run shows the whole
+# sum: prof_T=286.49, w=0.9695 (the pressure weight, near 1 at the deck), underfoot_T=295.62 at
+# a 40.4 deg star -> 286.49 + 0.35 x 0.9695 x (295.62 - 286.49) = 289.59. The sound speed follows
+# the SAME temperature the readout prints, which is why a= is 341.3 and not the 339.3 the profile
+# alone would give. Band 286-292 rather than a digit: underfoot_T moves with the star's elevation
+# (295.62 K here at 40.4 deg, and the anchor under it is 288.15), so pinning the deck reading to
+# a tenth is a bet on where the sim's sun happens to sit at t=4..25 s.
+CHECK all(d["rho"] > 1.10 for d in drag if d["t"] >= 5.0)
+CHECK all(d["chute"] == 0.0 for d in drag if d["t"] >= 5.0)
+CHECK all(286.0 < d["airT"] < 292.0 for d in drag if d["t"] >= 5.0)
+CHECK all(338.0 < d["airA"] < 342.0 for d in drag if d["t"] >= 5.0)
+# The Mach number is small -- 0.017 over 341.3 m/s -- because the flow is 5.8 m/s, not because
+# the hull is not moving through anything. This is the reading that used to be 0.000 for an
+# at-rest hull; a parked hull in wind has airspeed, and the airspeed TAS row in the Surface
+# window says so too (#717).
+CHECK all(d["mach"] < 0.05 for d in drag if d["t"] >= 5.0)

@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 325 |
+| `invariant` | a behaviour or a player route the game must keep | 326 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 48 |
 | `harness` | CLI/test-engine plumbing, not game spec | 15 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **392** |
+| | **total** | **393** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -18,7 +18,7 @@ paces a run: how much e2e a change deserves is the caller's
 judgement. Select by number, name or path, e.g.
 `python3 e2e/run.py save/172 262`.
 
-## flight (103)
+## flight (104)
 
 | case | kind | pins |
 |---|---|---|
@@ -87,7 +87,8 @@ judgement. Select by number, name or path, e.g.
 | `flight/376-drain-rate-warp-invariant.txt` | golden | --drain-log's kg/s figures do not depend on the warp factor, and consecutive rows account for all the sim time between them. |
 | `flight/376-drain-window-survives-a-ship-switch.txt` | golden | Switching ships does not stretch a --drain-log row's interval or corrupt its kg/s. |
 | `flight/377-power-log-balances-the-battery.txt` | golden | --power-log's charge moves at the rate its own printed watts imply. |
-| `flight/395-surface-aoa-readout.txt` | invariant | [surfinfo] reports the aero angle of attack, the sideslip and the air-relative prograde while the ship has air-relative flow and "-" when it has none, and its stability pair reports a zero slope without inventing a neutral-looking margin for an airframe that has nothing lifting. |
+| `flight/395-angles-dash-above-the-air.txt` | invariant | Every column the SURFACE window reads off the air dashes together where the hull has no air to read it from -- the angle of attack, the sideslip, the air-relative prograde, the air-relative speed and the stability pair -- on a body whose air and wind are fully authored, so a dash means "no flow HERE" and not "this body has no wind". |
+| `flight/395-surface-aoa-readout.txt` | invariant | [surfinfo] reports the aero angle of attack, the sideslip and the air-relative prograde while the ship has air-relative flow and "-" when it has none, and on a windy pad the numbers it reports are the authored wind: broadside at rest, and closing as the climb outruns it. Its stability pair reports a zero slope without inventing a neutral-looking margin for an airframe that has nothing lifting. |
 | `flight/412-sea-level-datum.txt` | invariant | A body's authored sea_level is part of its altitude datum: the centre-relative keys carry it and the above-sea-level keys do not. |
 | `flight/421-pilot-loses-to-sas.txt` | invariant | With --sas-policy keep, the same held pitch key against a latched prograde hold moves the nose by nothing at all: the law keeps its full demand and out-shouts the pilot on the steered axis. |
 | `flight/421-pilot-owns-the-axis.txt` | invariant | With the default pilot-vs-SAS policy, a held pitch key takes its own axis away from a latched prograde hold: the nose swings away while the key is down and SAS closes the error again when it comes up. |
@@ -103,7 +104,7 @@ judgement. Select by number, name or path, e.g.
 | `flight/492-elevator-trim.txt` | golden | The same 569 kg skiff, with 12 deg of elevator trim authored on the parts and nothing else changed, holds +4.8..+5.8 deg of angle of attack through its phugoid with the stick released: the download that trims this airframe comes from deflection, and the standing bill is real (0.33-0.43 m2 of induced CdA while the hull is pointing into the flow, 0.82 the instant the rudder is kicked). The gravity-keyed bed spawns it at 80 m/s of GROUND speed, and Kerbin's column is worth 31.6 m/s at that band -- 19 deg off the spawn heading -- so the hull arrives with 52 m/s of air and this run stays inside its envelope and settles back after the kick. |
 | `flight/498-surface-prograde.txt` | invariant | A plane cruising inside an atmosphere reads two different progrades: the air-relative one sits 4.85-5.05 deg off the nose -- the same angle the aero law calls its angle of attack -- while the conic one sits 30.5-31.7 deg off, because the conic points where the ground is going rather than where the plane is flying. |
 | `flight/541-booster-root-decoupler.txt` | invariant | Pressing a stage on a ship whose root part is the decoupler says which part cannot separate, instead of claiming the ship has run out of stages. |
-| `flight/560-parked-hull-bills-nothing.txt` | invariant | A hull at rest in air bills nothing: every reading that needs a flow direction dashes, and the air it sits in still prints. |
+| `flight/560-parked-hull-bills-nothing.txt` | invariant | A hull at rest on the ground is still standing in the air the file authors, and its bill is the wind's: the flow-derived columns print rather than dash, the force the row charges closes against its own q, Cd, area and shape bill, and the air's own readings (rho, T, p, a) print beside them. |
 | `flight/563-roll-ailerons.txt` | invariant | A plane rolls with its ailerons: a pair of ailerons at the skiff's wing trailing edge answers the roll stick and banks the hull past 28 deg by t=3 s of a stick held from t=1 s, where before #563 nothing on this airframe could roll it at all. |
 | `flight/571-stick-faces-the-root.txt` | invariant | W/S pitches about the ROOT's right axis and A/D yaws about its up axis, even when the hull's only wheel is mounted on its side. |
 | `flight/573-hud-speaks-the-hull.txt` | invariant | The SURFACE window's pitch/roll/heading describe the hull the keys turn, even though the crew sit on a wheel that is rolled 90 deg about the stack. |
@@ -185,7 +186,7 @@ judgement. Select by number, name or path, e.g.
 | `science/724-the-ground-prices-a-swing-when-a-source-or-a-rule-does.txt` | invariant | A world's dossier carries its SWING -- the ground's coldest and hottest ends, the one knob that ties them, and the temperature they swing around -- and beside them the words saying where the knob came from: fitted from a stated pair, stated as having no range, borrowed by analogy, or a DEFAULT of ours. The two ends are not two free numbers: one knob forces both from the anchor, which is what makes this row arithmetic a test can check rather than two figures to eyeball. |
 | `science/727-solar-log-dashes-what-a-world-does-not-state.txt` | invariant | On Himalia -- a moon the catalogue lists but no fact sheet describes -- --solar-log still reads the star, and prints a DASH rather than a zero for the albedo, the black-body column, the ground, the swing and the air, because nothing in this system states any of them for it. |
 | `science/727-solar-log-weighs-the-star-against-the-ground.txt` | invariant | --solar-log reads the star and the authored ground off the same row, and its black-body column is the law in src/solar.h, not a decoration. |
-| `science/735-the-shipped-world-prices-its-sunshine.txt` | invariant | The system the player actually flies answers the sun for every body that has a surface: each prints the light at its orbit, its Bond albedo with the words saying where that albedo came from, and the airless mean the two imply; the rows are one arithmetic rather than three printings; every swing names the rule that priced it; and the one body with an air but no ground dashes its swing instead of borrowing one. |
+| `science/735-the-shipped-world-prices-its-sunshine.txt` | invariant | The system the player actually flies answers the sun for every body that has a surface: each prints the light at its orbit, its Bond albedo with the words saying where that albedo came from, and the airless mean the two imply; the rows are one arithmetic rather than three printings; every swing names the rule that priced it; and no world is left without one -- a banded world's swing is its 1 bar level's, and the atlas uses a different word to say so. |
 | `science/744-solar-log-dashes-what-a-railed-hull-stopped-measuring.txt` | invariant | --solar-log prints numbered air_T / prof_T / w / follow for a hull standing live in Kerbin's air and dashes all four once a warp freezes it on rails, while underfoot_T keeps its number and keeps swinging. |
 
 ## vab (37)

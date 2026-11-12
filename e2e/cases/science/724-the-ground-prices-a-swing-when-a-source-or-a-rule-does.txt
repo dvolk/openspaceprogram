@@ -13,12 +13,13 @@ ARGS --solar-log --startship v,res/ships/skiff_trim.json,Mars,flying-trim
 # already prints -- it just used to stop at the log.
 CHECK re.search(r"ground swing\s+283\.0 to 30[01]\.[0-9] K", re.search(r"\[atlas\] Earth weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
 CHECK re.search(r"ground anchor\s+288\.0 K", re.search(r"\[atlas\] Earth weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
-# The Moon: no page states a ground temperature, so the anchor is the black-body its
-# sunlight and albedo imply, and the ROW SAYS SO. Its 95.0 to end is what the corpus
-# states for the lunar equator; the 381 K end is the model's own, 9 K under the 390 K
-# the page states, which is the residual the generator prints and refuses to hide.
-CHECK re.search(r"ground swing\s+95\.0 to 38[01]\.[0-9] K", re.search(r"\[atlas\] Moon weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
-CHECK re.search(r"ground anchor\s+27[01]\.[0-9] K", re.search(r"\[atlas\] Moon weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+# The Moon: its page states a PAIR (95-390 K at the lunar equator) and no mean, so the anchor
+# is solved from the pair and the row says so (surface.temperature_src: "SOLVED from the stated
+# range 95.00-390.00 K, not a stated mean"). Both ends come back EXACT now, which is a strictly
+# better pin than the old one: that honoured the night end and printed 381.2 K against the
+# stated 390 K, a 9 K residual nobody read. If pair-solving dies, this row goes red.
+CHECK re.search(r"ground swing\s+95\.0 to 390\.0 K", re.search(r"\[atlas\] Moon weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+CHECK re.search(r"ground anchor\s+276\.5 K", re.search(r"\[atlas\] Moon weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
 # Venus: the page states a range of about zero, so a swing of zero is AUTHORED DATA here --
 # a stated 1.000, not a default. That is #726's distinction made visible, and #749 kept it
 # intact: Mercury states NOTHING about night and day and now gets the airless floor as a
@@ -26,7 +27,7 @@ CHECK re.search(r"ground anchor\s+27[01]\.[0-9] K", re.search(r"\[atlas\] Moon w
 # behaviour, different STATE, and the row is where a reader sees which is which.
 CHECK re.search(r"ground swing\s+737\.0 to 737\.0 K", re.search(r"\[atlas\] Venus weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
 CHECK re.search(r"ground anchor\s+737\.0 K", re.search(r"\[atlas\] Venus weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
-CHECK re.search(r"ground swing\s+154\.6 to 620\.5 K", re.search(r"\[atlas\] Mercury weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+CHECK re.search(r"ground swing\s+151\.2 to 620\.6 K", re.search(r"\[atlas\] Mercury weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
 # Mars is the interesting one, and it changed twice. Its page DOES state a pair (184 K to
 # 242 K, at the Viking 1 lander). #742 refused that pair: one knob plus the page's own mean
 # (214 K) forces a day/night RATIO, and 184-242 implies a mean nearer 203 K -- so the pair and
@@ -36,25 +37,34 @@ CHECK re.search(r"ground swing\s+154\.6 to 620\.5 K", re.search(r"\[atlas\] Merc
 # to honouring one end exactly, or drop the label, and this row goes red.
 CHECK re.search(r"ground swing\s+19[0-9]\.[0-9] to 25[0-9]\.[0-9] K", re.search(r"\[atlas\] Mars weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
 CHECK re.search(r"ground anchor\s+214\.0 K", re.search(r"\[atlas\] Mars weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
-# A banded giant has NO ground to swing, and that stays a dash after #749 -- it is a fact about
-# the body, not a gap in the file. The dossier's label changes too (level, not ground: #738).
-CHECK re.search(r"level swing\s+-", re.search(r"\[atlas\] Jupiter weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+# A banded world prices a swing too now: this file authors its surface AT the 1 bar, so the
+# two ends are two ends of that level, and the atlas keeps a different WORD for it (level, not
+# ground) so the row cannot read as a sea floor nobody can find. Jupiter's knob is the DEFAULT
+# air-mass rule, which says a 1-bar air meets itself night to day -- 162.0 to 173.1 K around a
+# stated 165 K. The dash this row used to pin was the refusal that the surface-temp plan of
+# 2026_11_12 deleted on purpose; the word "level" is what survived of it.
+CHECK re.search(r"level swing\s+162\.0 to 173\.1 K", re.search(r"\[atlas\] Jupiter weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+CHECK re.search(r"level anchor\s+165\.0 K", re.search(r"\[atlas\] Jupiter weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
 # THE IDENTITY, on every swing the file printed. One knob and an anchor force the two ends:
 # (day/T0)^4 + 3 (night/T0)^4 == 4, which is the same statement as "the sphere radiates
 # exactly the star's absorbed power whatever the swing". The C++ that prints these ends and
 # the python that fitted the knob are two spellings of one law, and this is the pass that
-# catches them drifting -- the atmo.h / atmo_units.py arrangement (#636). Tolerance 4e-2:
-# the dossier prints tenths of a kelvin, and the identity's fourth powers multiply that
-# rounding by four. Measured on this file: the worst row is Ariel at a 58.8 K anchor, where
-# 0.1 K of print rounding is 0.17% and the sum lands 0.016 off; the giants' rows are an order
-# of magnitude tighter. A real law change moves this by whole units, not hundredths.
+# catches them drifting -- the atmo.h / atmo_units.py arrangement (#636).
+# The tolerance is NOT a constant, because it is rounding: the dossier prints tenths, so each
+# end carries up to 0.05/a of relative error and the fourth powers multiply it by four. At a
+# 288 K anchor that is nothing; at the coldest row in the file (a Kuiper body anchored at
+# 10.6 K) the same half-decimal is 0.5% and the identity lands 0.05 off on arithmetic alone.
+# So: 1.6/a, measured -- the worst row in this file is 1.003/a and the giants are 0.001/a. A
+# real law change moves it by whole units, not hundredths.
 CHECK len(re.findall(r"ground swing\s+([\d.]+) to ([\d.]+) K", out)) == len(re.findall(r"ground anchor\s+([\d.]+) K", out))
-CHECK all(abs((float(d) / float(a)) ** 4 + 3.0 * (float(n) / float(a)) ** 4 - 4.0) < 4e-2 for (n, d), a in zip(re.findall(r"ground swing\s+([\d.]+) to ([\d.]+) K", out), re.findall(r"ground anchor\s+([\d.]+) K", out)))
-# ... and the identity is not vacuous: #749 priced a swing for every body in this file that has
-# a ground, which is 26 of its 31 rows. The five that stay dashed are the four banded giants
-# and the star.
-CHECK len(re.findall(r"ground swing\s+([\d.]+) to", out)) >= 26
-CHECK len(re.findall(r"ground swing\s+-", out)) == 0
+CHECK all(abs((float(d) / float(a)) ** 4 + 3.0 * (float(n) / float(a)) ** 4 - 4.0) < 1.6 / float(a) for (n, d), a in zip(re.findall(r"ground swing\s+([\d.]+) to ([\d.]+) K", out), re.findall(r"ground anchor\s+([\d.]+) K", out)))
+# ... and the identity is not vacuous, nor is any world left out: this file ships 85 rows --
+# one star, four banded worlds that price a LEVEL swing, and 80 grounds that price a GROUND
+# swing. That is the coverage claim from the surface-temp plan, read back off the dossier
+# rather than asserted by the generator that made the file.
+CHECK len(re.findall(r"ground swing\s+([\d.]+) to", out)) == 80
+CHECK len(re.findall(r"level swing\s+([\d.]+) to", out)) == 4
+CHECK len(re.findall(r"(?:ground|level) swing\s+-", out)) == 0
 # A dash must never arrive as a zero. 0.0 K of night would be a reading, and a 0.000 knob
 # would be bare rock; both are numbers this file declines to invent (#727).
 FORBID ground swing\s+0\.0 to
@@ -71,4 +81,4 @@ CHECK all(d["swing"] is not None and abs(d["swing"] - 0.708) < 1e-3 for d in sol
 CHECK all(d["underfoot_T"] is not None and 196.0 < d["underfoot_T"] < 251.0 for d in solar)
 CHECK all(d["ground_T"] is not None and abs(d["ground_T"] - 214.0) < 0.5 for d in solar)
 # A world with no swing at all still dashes this column rather than answering with its anchor:
-# science/727 pins that on Himalia, a catalogue moon nothing anchors.
+# science/727 pins that on a body nothing anchors.

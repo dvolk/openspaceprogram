@@ -1,5 +1,5 @@
 NAME 735-the-shipped-world-prices-its-sunshine
-CLAIM The system the player actually flies answers the sun for every body that has a surface: each prints the light at its orbit, its Bond albedo with the words saying where that albedo came from, and the airless mean the two imply; the rows are one arithmetic rather than three printings; every swing names the rule that priced it; and the one body with an air but no ground dashes its swing instead of borrowing one.
+CLAIM The system the player actually flies answers the sun for every body that has a surface: each prints the light at its orbit, its Bond albedo with the words saying where that albedo came from, and the airless mean the two imply; the rows are one arithmetic rather than three printings; every swing names the rule that priced it; and no world is left without one -- a banded world's swing is its 1 bar level's, and the atlas uses a different word to say so.
 KIND invariant
 ARGS --system res/systems/ksp_system.json --timeout 6 --atlas-dump 4000
 # #735: res/systems/ksp_system.json authored no albedo for any body, so render/736's
@@ -73,14 +73,16 @@ CHECK (lambda k: abs((float(re.search(r"to ([\d.]+) K", k).group(1)) / float(re.
 #    214 K). Moho takes Mercury's airless floor -- and says so TWO hops deep: "via Mercury,
 #    defaulted there". Both rows are our arithmetic, and both say so beside the ends.
 CHECK (lambda d: re.search(r"ground swing\s+19[67]\.[0-9] to 25[01]\.[0-9] K", d) and re.search(r"ground anchor\s+214\.[0-9] K", d))(re.search(r"\[atlas\] Duna weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
-CHECK (lambda m: re.search(r"ground swing\s+15[34]\.[0-9] to 6[12][0-9]\.[0-9] K", m) and re.search(r"ground anchor\s+439\.[0-9] K", m))(re.search(r"\[atlas\] Moho weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
-#    And the file's one remaining swing dash, which is a fact rather than a gap: Jool has an air
-#    with a base temperature, and the anchor chain reads an air's datum as a ground -- so the
-#    only thing between a gas giant and a painted day/night cycle on its cloud deck is the
-#    refusal of a `bands` surface (gen_systems.py author_ksp_diurnal_defaults, and the same test
-#    in make_solar_system.py's author_diurnal). A gas giant has no ground to swing, which is
-#    #738's label question applied to the shipped file. Delete that one surf.get("bands") test
-#    and the default rule happily prices Jool's cloud deck: this row goes red.
-CHECK (lambda j: re.search(r"level swing\s+-", j) and re.search(r"air temp \(sea level\)\s+[\d.]+ K", j) and re.search(r"bond albedo\s+0\.343", j))(re.search(r"\[atlas\] Jool weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+CHECK (lambda m: re.search(r"ground swing\s+151\.0 to 620\.0 K", m) and re.search(r"ground anchor\s+439\.[0-9] K", m))(re.search(r"\[atlas\] Moho weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+#    And Jool, which used to be this file's one swing DASH. The dash came from a `bands` test
+#    in the generators that refused to price a cloud deck; the surface-temp plan of
+#    2026_11_12 deleted it on purpose, because this file authors a banded world's surface AT
+#    the 1 bar, so a day/night pair there is a statement about that level rather than a
+#    fiction. Jool now takes the same DEFAULT air-mass rule as its four real analogues in
+#    solar_system.json -- 148.7 to 158.8 K around its air datum of 151.4 K -- and the atlas
+#    keeps a different WORD for it (level, not ground), which is all that survived of the
+#    refusal. Fit a pair for Jool instead of borrowing a default, or rename its row back to
+#    "ground", and this check goes red.
+CHECK (lambda j: re.search(r"level swing\s+148\.7 to 158\.8 K", j) and re.search(r"level anchor\s+151\.4 K", j) and re.search(r"air temp \(sea level\)\s+[\d.]+ K", j) and re.search(r"bond albedo\s+0\.343", j))(re.search(r"\[atlas\] Jool weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
 FORBID bond albedo 0.000
 FORBID error:
