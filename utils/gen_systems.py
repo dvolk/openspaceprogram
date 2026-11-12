@@ -1293,6 +1293,89 @@ KSP_DIURNAL_FITTED = {"Eve"}   # the one body whose wiki pair is a genuine night
 # analogies belong (#735, #742).
 KSP_AIR_FOLLOW = {"Kerbin": AIR_FOLLOW, "Laythe": AIR_FOLLOW}
 
+# v1 wind: every Kerbal air carries a column. These rows are INVENTED -- no page states the
+# wind of a world only this file describes -- so the reasoning has to live beside the numbers,
+# and the print says INVENTED rather than dressing a made-up speed in an analogy's clothes. The
+# solar half weighs its wind against scraped fact pages (make_solar_system.py:check_fact_wind);
+# there is no page to weigh these against, and that guard's waiver table is for CITED figures,
+# so it must not be bent to cover an invented one.
+#
+# Hand-authored, not wind_gen, on all six. The Kerbal spins are fast and the radii small, so
+# Ro = U/(2 omega R) comes out 0.1-0.6 on the terrestrial airs, which is where the cascade
+# argument behind the belt generator is weakest -- it already overpredicts on Mars, asking 10
+# belts where reality has one jet -- and a generated field would launder a made-up speed into a
+# Rossby number the dossier prints as though it were derived. Jool (Ro 0.14 at 300 m/s, 3 belts
+# per hemisphere) is the one Kerbal body where generating would be defensible; it stays authored
+# because the belt count there follows the authored SPEED, not the generator, so an interesting
+# Jool storm is a data decision that wants #716's impulse cap before it wants a pattern.
+#
+# `alt` is metres GEOMETRIC, the unit the emitted file speaks: the loader does no unit
+# conversion on wind rows, only on layer tables marked "heights": "geopotential". So "trop"
+# below reads the body's own converted tropopause rather than retyping 11205.4 and going stale
+# the day someone moves a radius. q and Mach quoted under each row were resolved by the game
+# itself (SDL_VIDEODRIVER=offscreen ./osp --system res/systems/ksp_system.json --atlas-dump),
+# not by a fourth copy of the aero law in utils/.
+KSP_WIND = {
+    # Earth's authored column, row for row: 5 m/s at the ground, 40 m/s at the tropopause.
+    # Kerbin wears US76's rows and its own 6 h day, so the column transfers with the profile.
+    # Costs 15 Pa at the datum, 180 Pa at the jet, Mach 0.12 -- under a fifth of a Kerbin cruise.
+    "Kerbin": [(0.0, 5.0), ("trop", 40.0)],
+    # Kerbin's air on a 550 km moon: same mix, same table, so the same column. 15 Pa / 208 Pa.
+    "Shay": [(0.0, 5.0), ("trop", 40.0)],
+    # Likewise Laythe (its +175 K is Jool's tides, #738, and the jet height follows the table).
+    # 15 Pa at the datum, 254 Pa aloft -- its own air is thicker there than Kerbin's.
+    "Laythe": [(0.0, 5.0), ("trop", 40.0)],
+    # Venus's shape -- slow deck, fast aloft -- scaled to an air a third as dense and a quarter
+    # of the profile height. Eve is the row to watch: 3.55 kg/m3 is the densest air in this
+    # catalogue (and the third in either, behind Venus's 65 and Titan's 5.3), so 60 m/s there is
+    # 1.11 kPa -- comparable to a Kerbin cruise -- and a 100 m/s squall would be 3.2 kPa. Mach
+    # 0.22 keeps it clear of the transonic blend; anything livelier wants #716's cap, not a
+    # bigger number here.
+    "Eve": [(0.0, 10.0), (5000.0, 60.0)],
+    # Mars's lander-site figure, one row: at 0.015 kg/m3 the deck costs 0.8 Pa and even a 30 m/s
+    # jet 3 Pa, so on Duna the wind is a fact about the sky rather than a force to design around.
+    "Duna": [(0.0, 10.0)],
+    # Jupiter's and Saturn's envelope: zonal jets at a fraction of the sound speed. 120 m/s at the
+    # 1-bar datum (1.35 kPa), 300 m/s at 30 km (5.10 kPa) -- the fastest column in either
+    # catalogue, and still subsonic by a factor of three.
+    "Jool": [(0.0, 120.0), (30000.0, 300.0)],
+}
+
+
+def author_ksp_wind(obj):
+    """v1: give every Kerbal air a wind column, and refuse to leave a hole.
+
+    Coverage is checked the way KSP_AIR's is: a body added to this system with air and no row
+    here would regain a silently calm sky, which is the one outcome an author never notices
+    (src/system.cpp made a missing wind key a load error for the same reason)."""
+    air = {b["name"] for b in obj["bodies"]
+           if (b.get("surface") or {}).get("atmosphere")}
+    assert air == set(KSP_WIND), (
+        "KSP_WIND and this system's airs disagree: only in the system %s, only in the table %s"
+        % (sorted(air - set(KSP_WIND)), sorted(set(KSP_WIND) - air)))
+    for name, rows in KSP_WIND.items():
+        body = next(b for b in obj["bodies"] if b["name"] == name)
+        at = body["surface"]["atmosphere"]
+        assert "wind" not in at, (
+            "%s: KSP_WIND owns this body's wind, so the surface block must not also state one "
+            "(two sources, one of them silent)" % name)
+        out, prev = [], -1.0
+        for alt, speed in rows:
+            if alt == "trop":
+                assert len(at.get("layers", [])) > 1, (
+                    "%s: no tropopause to put a jet at" % name)
+                alt = at["layers"][1]["alt"]
+            assert alt > prev, "%s: wind rows must rise with altitude" % name
+            assert 0.0 <= alt < at["height"], (
+                "%s: wind row at %.0f m is not inside the air (top %.0f m)"
+                % (name, alt, at["height"]))
+            prev = alt
+            out.append({"alt": alt, "east": speed, "north": 0.0})
+        at["wind"] = out
+        print('  air wind  %-7s %s  INVENTED (analogue: %s)'
+              % (name, ", ".join("%.0f m/s at %.0f m" % (r["east"], r["alt"]) for r in out),
+                 KSP_ANALOGUE.get(name, "?")))
+
 
 def author_ksp_diurnal_defaults(obj):
     """#742/#749: price the swing for every shipped body, by analogy first and by the air-mass
@@ -1429,6 +1512,9 @@ def main():
     author_ksp_diurnal(ksp)
     author_ksp_diurnal_defaults(ksp)
     author_ksp_air_follow(ksp)
+    # Last of the air passes: a wind column is authored on top of a profile the passes above
+    # have already settled, and "trop" reads that profile's own tropopause.
+    author_ksp_wind(ksp)
     if bad:
         for m in bad:
             print('DRIFT   wiki gravity: ' + m)

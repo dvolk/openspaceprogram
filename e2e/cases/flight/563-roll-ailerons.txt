@@ -25,13 +25,16 @@ CHECK len(drag) >= 5
 # against the 0.40 the 12 m wing gave. Rig travel is still not authority (#566/#509);
 # buying the bank back means a bigger tab, which is #588 rather than this case's.
 # The first band is about the RATE, not the destination. Measured Up is 1.00 at t=1 s,
-# 0.97 at t=2 and 0.88 at t=3, so "under 0.95 from t=3 on" fails as soon as roll
+# 0.98 at t=2 and 0.92 at t=3 (unwinded it was 1.00 / 0.97 / 0.88 -- Kerbin's column took
+# ~28 m/s off the air a gravity-keyed bed spawns at, and aileron authority goes with the
+# air), so "under 0.95 from t=3 on" fails as soon as roll
 # authority drops, where a bank-only pin would still pass a hull that took eight seconds
 # to lean over.
 CHECK all(d["up"] < 0.95 for d in drag if d["t"] >= 3.0)
 CHECK all(abs(d["beta"]) < 3.0 for d in drag if d.get("beta") is not None)
 # And it comes back: release the stick at t=3 s and the airframe still shows the same
-# bank at t>=5 s -- 0.86..0.87, no self-righting and no wheel levelling it either,
-# which is what a plane does.
-CHECK all(d["up"] < 0.90 for d in drag if d["t"] >= 5.0)
+# bank from t=6 s on -- 0.88..0.89, no self-righting and no wheel levelling it either,
+# which is what a plane does. The band starts a second later than it did unwinded, for the
+# same reason as the note above; the bank itself is shallower by 0.01-0.02.
+CHECK all(d["up"] < 0.90 for d in drag if d["t"] >= 6.0)
 FORBID error:

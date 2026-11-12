@@ -211,7 +211,19 @@
               "lapse": 0.0
             }
           ],
-          "height": 31000.0
+          "height": 31000.0,
+          "wind": [
+            {
+              "alt": 0.0,
+              "east": 10.0,
+              "north": 0.0
+            },
+            {
+              "alt": 5000.0,
+              "east": 60.0,
+              "north": 0.0
+            }
+          ]
         },
         "albedo": 0.77,
         "albedo_src": "via Venus",
@@ -411,7 +423,19 @@
               "lapse": -0.00154453
             }
           ],
-          "air_follow": 0.35
+          "air_follow": 0.35,
+          "wind": [
+            {
+              "alt": 0.0,
+              "east": 5.0,
+              "north": 0.0
+            },
+            {
+              "alt": 11205.4,
+              "east": 40.0,
+              "north": 0.0
+            }
+          ]
         },
         "clouds": {
           "height": 7500,
@@ -613,6 +637,18 @@
               "T": 214.65,
               "lapse": -0.00148527
             }
+          ],
+          "wind": [
+            {
+              "alt": 0.0,
+              "east": 5.0,
+              "north": 0.0
+            },
+            {
+              "alt": 11224.5,
+              "east": 40.0,
+              "north": 0.0
+            }
           ]
         },
         "clouds": {
@@ -718,7 +754,14 @@
               "lapse": 0.0
             }
           ],
-          "height": 50000.0
+          "height": 50000.0,
+          "wind": [
+            {
+              "alt": 0.0,
+              "east": 10.0,
+              "north": 0.0
+            }
+          ]
         },
         "albedo": 0.25,
         "albedo_src": "via Mars",
@@ -906,7 +949,19 @@
               "lapse": 0.0
             }
           ],
-          "height": 600000.0
+          "height": 600000.0,
+          "wind": [
+            {
+              "alt": 0.0,
+              "east": 120.0,
+              "north": 0.0
+            },
+            {
+              "alt": 30000.0,
+              "east": 300.0,
+              "north": 0.0
+            }
+          ]
         },
         "albedo": 0.343,
         "albedo_src": "via Jupiter"
@@ -1038,7 +1093,19 @@
               "lapse": -0.00141818
             }
           ],
-          "air_follow": 0.35
+          "air_follow": 0.35,
+          "wind": [
+            {
+              "alt": 0.0,
+              "east": 5.0,
+              "north": 0.0
+            },
+            {
+              "alt": 11247.4,
+              "east": 40.0,
+              "north": 0.0
+            }
+          ]
         },
         "clouds": {
           "height": 7000,

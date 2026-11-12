@@ -11,7 +11,8 @@ CHECK len(drag) >= 3
 # than as a wrong number further down.
 # Kerbin's flying-low bed runs CIRCULAR at 2412 m/s, which is what lets it hold
 # 7 km with no lift at all (#99). 0.08 of that speed, read off the frame the bed
-# resolves into, is 180 m/s of air: the start a wing can carry.
+# resolves into, is 180 m/s over the ground -- 151 of it through the air once
+# Kerbin's column is counted: the start a wing can carry.
 CHECK 150.0 < float(re.search(r"Spawn 'flying-slow' around Kerbin:.*?\|v\| = ([\d.]+) m/s", out).group(1)) < 188.0
 # The upper bound is the bug this bed was written around. The atmosphere
 # co-rotates, so scaling the INERTIAL circular speed prints 193 m/s while
@@ -21,11 +22,15 @@ CHECK 150.0 < float(re.search(r"Spawn 'flying-slow' around Kerbin:.*?\|v\| = ([\
 # something already decaying at 45 m/s^2.
 CHECK drag[0]["v"] > 0.9 * float(re.search(r"Spawn 'flying-slow' around Kerbin:.*?\|v\| = ([\d.]+) m/s", out).group(1))
 # The same line now also prints the speed the AIR feels (#459), which is the one
-# the aero pass uses. On a speed_frac bed the two agree -- that IS the bed's
-# promise -- whereas the circular flying-low bed prints |v| = 2412 m/s next to
-# |v_air| = 2112 m/s, because the atmosphere co-rotates. A missing field fails
-# here (the regex raises) instead of quietly reading as one fewer number.
-CHECK abs(float(re.search(r"\|v_air\| = ([\d.]+) m/s", out).group(1)) - drag[0]["v"]) < 20.0
+# the aero pass uses. Unwinded, a speed_frac bed printed the two equal -- that was the
+# bed's promise -- whereas the circular flying-low bed prints |v| = 2412 m/s next to
+# |v_air| = 2112 m/s, because the atmosphere co-rotates. Kerbin now carries a column of its
+# own, so the two differ on EVERY bed here: 179.6 m/s over the ground against 151.1 through
+# the air, the 28.5 m/s gap being this body's row at the 8.5 km band (worth 31.6 m/s, at
+# 25 deg to the spawn heading). So the pin moves from "they agree" to "the aero pass uses
+# the AIR one", read off the same row's Mach x sound speed. A missing field fails here (the
+# regex raises) instead of quietly reading as one fewer number.
+CHECK abs(float(re.search(r"\|v_air\| = ([\d.]+) m/s", out).group(1)) - drag[0]["mach"] * drag[0]["airA"]) < 1.0
 # Nose along the flow, wings level. Up is the airframe's own +Y against the local
 # vertical; the air-relative velocity here sits 1.5 deg out of the orbit plane
 # (the co-rotation term), and faceAlong picks its roll axis from three candidates,

@@ -10,25 +10,27 @@
 # prg= the conic one (that pair's Orbital-window row went away on 2026_11_06, so this log
 # is where it lives):
 #
-#   t= 2.0  aprg   4.73  aoa   4.73  beta -0.0002  prg  28.37  vel 233.6 m/s
-#   t= 4.0  aprg   4.80  aoa   4.80  beta -0.0046  prg  42.82  vel 211.7
-#   t= 6.0  aprg   5.02  aoa   5.02  beta -0.016   prg  52.27  vel 195.7
-#   t= 8.0  aprg   6.66  aoa   6.64  beta -0.093   prg  48.69  vel 187.8
-#   t=10.0  aprg  12.02  aoa  12.04  beta -0.443   prg  21.28  vel 185.6
-#   t=12.0  aprg   4.69  aoa   4.65  beta -0.151   prg  49.84  vel 187.0
-#   t=14.0  aprg   4.76  aoa   4.75  beta  0.203   prg  47.38  vel 195.6
-#   t=16.0  aprg   4.74  aoa   4.73  beta -0.106   prg  37.13  vel 209.4
+#   t= 2.0  aprg   4.90  aoa   4.90  beta -0.006   prg  30.54  vel 245.9 m/s
+#   t= 4.0  aprg   4.95  aoa   4.95  beta -0.007   prg  31.58  vel 241.4
+#   t= 6.0  aprg   5.03  aoa   5.03  beta -0.006   prg  31.32  vel 238.0
+#   t= 8.0  aprg   5.05  aoa   5.05  beta -0.001   prg  30.75  vel 236.4
+#   t=10.0  aprg   4.99  aoa   4.99  beta  0.001   prg  31.11  vel 236.6
+#   t=12.0  aprg   4.92  aoa   4.92  beta  0.002   prg  31.67  vel 238.4
+#   t=14.0  aprg   4.87  aoa   4.87  beta -0.001   prg  31.38  vel 241.2
+#   t=16.0  aprg   4.85  aoa   4.85  beta -0.002   prg  30.47  vel 243.9
 #
 # Before #686 the same case read aprg 4.98-5.30 against prg 19.1-28.2. The bed moved from
-# 7.0 to 8.5 km and Kerbin's air became 1.44x denser there, so the bed's 80 m/s spawn is
-# 1.9x this hull's trimmed glide instead of 1.6x and its first exchange is much deeper.
-# This run is unpowered -- no --sim-press at all, so the jet never lights -- which is why
-# the air-relative angle reaches 12.0 deg at the top of that climb where flight/492, with
-# 20 s of throttle holding the exchange, never passes 6. The conic angle is the
-# GROUND-relative vector, so it swings with the arc's vertical leg as well as its
-# horizontal one: 21 to 52 instead of 19 to 28. Where the two converge is the same
-# top-of-climb row: the conic still reads 185.6 m/s while the air-relative flow has fallen
-# toward this hull's glide speed, and that is what narrows the instrument gap to 9.3 deg.
+# 7.0 to 8.5 km and Kerbin's air became 1.44x denser there, so the bed's 80 m/s spawn was
+# 1.9x this hull's trimmed glide instead of 1.6x and its first exchange was much deeper:
+# aprg 4.7..12.0 against prg 21..52, converging to 9.3 deg at the top of the climb, where
+# the conic still read 185.6 m/s while the air-relative flow had fallen toward the glide.
+# Kerbin carrying air flattened all of that. The bed's 80 m/s is a GROUND speed and the
+# column is worth 31.6 m/s at that band, mostly under the hull, so it arrives with ~48 m/s
+# of air -- near its own glide -- and there is no deep exchange to climb out of. aprg holds
+# 4.85..5.05, prg holds 30.5..31.7, and the gap is 25.6..26.8 deg on every row instead of
+# 9.3..47.3. What is left is the half that was never about the arc: the conic reads the
+# ground's 175 m/s of co-rotation, the air-relative readout reads the plane's 48 m/s, and
+# the two disagree by a quarter-turn no matter how steadily the hull flies.
 # That is the honest shape of the complaint.
 #
 # The window is gated in LOGIC TICKS, not wall clock. With --timeout 16 the eight rows
@@ -50,7 +52,7 @@
 # conic one drifting, which is the whole complaint. The markers themselves are only on
 # screen: e2e cannot read imgui rows or billboards (#333), so the numbers are the pin.
 NAME surface-prograde
-CLAIM A plane cruising inside an atmosphere reads two different progrades: the air-relative one sits 4.7-12 deg off the nose -- the same angle the aero law calls its angle of attack -- while the conic one sits 21-52 deg off and walks with the arc, because the conic points where the ground is going rather than where the plane is flying.
+CLAIM A plane cruising inside an atmosphere reads two different progrades: the air-relative one sits 4.85-5.05 deg off the nose -- the same angle the aero law calls its angle of attack -- while the conic one sits 30.5-31.7 deg off, because the conic points where the ground is going rather than where the plane is flying.
 KIND invariant
 ARGS --time-accel 1 --sim-steps 960 --startship skiff_trim,res/ships/skiff_trim.json,Kerbin,flying-cruise
 ARGS --info-log --orbit-interval 2
@@ -66,9 +68,11 @@ CHECK len(orbinfo) >= 6
 # top of the range is #686's deeper exchange, not a new reading of the marker.
 CHECK all(s["aprg"] is not None for s in surf)
 CHECK all(abs(s["aprg"]) < 13.0 for s in surf)
-# The band is not all slack: the arc does take the nose 12.0 deg off the air it is flying
-# through (t=10.0 s), and a marker that only ever read 5 would fail here.
-CHECK max(s["aprg"] for s in surf) > 10.0
+# The band is not all slack: the hull holds a real 4.85..5.05 deg of angle of attack on
+# the air it is flying through, and a marker wired to the conic vector would read 30.5
+# here instead. (It used to reach 12.0 at the top of a deep exchange; Kerbin's column took
+# 32 m/s off this bed's spawn air, so the exchange never got deep -- see the table above.)
+CHECK max(s["aprg"] for s in surf) > 4.5
 # The split between the two progrades is a pose property (co-rotation x speed),
 # not a plumbing one; it was pinned in the UI here and moved with every airframe.
 # Dropped.
@@ -83,17 +87,19 @@ CHECK all(abs(s["aprg"] - abs(s["aoa"])) < 0.5 for s in surf if s["aoa"] is not 
 # The skiff now carries ailerons, so a stick input leaves a little sideslip; the
 # invariant is "small", not "zero".
 CHECK all(abs(s["beta"]) < 3.0 for s in surf if s.get("beta") is not None)
-# The conic prograde: far off the nose the whole run, and drifting further as the
-# suborbital conic curves under a ship the air is holding up. Both ends of that walk are
-# pinned now -- 21.28 deg at t=10.0 s (the top of the climb, where the conic and the air
-# nearly agree) and 52.27 at t=6.0 s -- because "walks with the arc" is the CLAIM and a
-# one-sided floor would pass on a marker that stopped walking.
-CHECK all(o["prg"] > 20.0 for o in orbinfo)
-CHECK max(o["prg"] for o in orbinfo) > 50.0
-# The gap itself -- the smallest conic error in the run still leaves 9.3 deg between the
-# two instruments for the same ship in the same frame (measured: 9.26 deg at t=10.0 s, the
-# top of the climb where the air-relative flow is slowest, up to 47.25 at t=6.0 s). It was
-# 13.8..23.0 before #686, and the floor came down because the arc came up: read the band
-# again whenever the bed's air changes. Keyed on t= so an orbinfo row with no surfinfo
-# twin raises instead of quietly comparing against the wrong frame.
-CHECK all(o["prg"] - {s["t"]: s["aprg"] for s in surf}[o["t"]] > 9.0 for o in orbinfo)
+# The conic prograde: far off the nose the whole run. Unwinded it also WALKED with the arc
+# -- 21.28 deg at the top of the climb (t=10.0 s) against 52.27 at t=6.0 -- because that
+# arc had a vertical leg to swing the ground-relative vector through. With the column
+# flattening the arc, the walk is gone: 30.47..31.67 over the eight rows. Both ends are
+# still pinned, and the ceiling matters more than it did -- it is what stops "prg is far
+# off the nose" passing on a marker that merely wobbles.
+CHECK all(25.0 < o["prg"] < 40.0 for o in orbinfo)
+# The gap itself -- the smallest conic error in the run leaves 25.6 deg between the two
+# instruments for the same ship in the same frame (measured 25.61 at t=2.0 s, 26.75 at
+# t=12.0 s). It was 9.26..47.25 unwinded, and the floor went UP because the shallow run has
+# no top-of-climb row where the two nearly agree: what is being measured now is the
+# co-rotation term alone -- the ground's 175 m/s under a 240 m/s conic -- rather than that
+# term occasionally cancelled by a vertical leg. Read the band again whenever the bed's air
+# changes. Keyed on t= so an orbinfo row with no surfinfo twin raises instead of quietly
+# comparing against the wrong frame.
+CHECK all(o["prg"] - {s["t"]: s["aprg"] for s in surf}[o["t"]] > 20.0 for o in orbinfo)

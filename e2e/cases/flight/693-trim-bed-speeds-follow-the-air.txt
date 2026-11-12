@@ -38,18 +38,24 @@ FORBID needs air
 # measured on; Eve's air is 3x denser at that band and its gravity 1.7x, and the extra
 # weight it must carry is paid for in denser air, not in speed; Duna's air is 135x
 # thinner and its gravity a third, and those do NOT cancel -- sqrt(g/rho) still lands 4x up.
-CHECK re.search(r"Spawn 'flying-trim' around Kerbin.*\|v\| = 4[34]\.[0-9] m/s \|v_air\| = 4[34]\.[0-9]", out)
-CHECK re.search(r"Spawn 'flying-trim' around Eve.*\|v\| = 3[34]\.[0-9] m/s \|v_air\| = 3[34]\.[0-9]", out)
-CHECK re.search(r"Spawn 'flying-trim' around Duna.*\|v\| = 16[12]\.[0-9] m/s \|v_air\| = 16[12]\.[0-9]", out)
+CHECK re.search(r"Spawn 'flying-trim' around Kerbin.*\|v\| = 7[34]\.[0-9] m/s \|v_air\| = 4[34]\.[0-9]", out)
+CHECK re.search(r"Spawn 'flying-trim' around Eve.*\|v\| = 7[45]\.[0-9] m/s \|v_air\| = 3[34]\.[0-9]", out)
+CHECK re.search(r"Spawn 'flying-trim' around Duna.*\|v\| = 17[12]\.[0-9] m/s \|v_air\| = 16[12]\.[0-9]", out)
 # Same band on all three: Duna's air top is 50 km (its wiki row, adopted by #625 because
 # it lands in band), so 0.1 of it is 5 km off its datum, r = 325000 m. Eve's top is 31 km,
 # so its bed is at 3.1 km -- r = 703100 m, of a 700 km world. Without these pins, "it just
 # spawned somewhere else" would explain the 4x spread away -- the wrong explanation.
 CHECK re.search(r"Spawn 'flying-trim' around Duna.*r = 325000 m", out)
 CHECK re.search(r"Spawn 'flying-trim' around Eve.*r = 703100 m", out)
-# The contrast, same air, same band, gravity-keyed: 33 m/s where that hull needs 175 to
-# carry its own weight. Over 40 here means the load keying stopped being air-keyed.
-CHECK re.search(r"Spawn 'flying-cruise' around Duna.*\|v\| = 3[23]\.[0-9] m/s", out)
-# |v| == |v_air| on all three because no shipped body authors a wind. The bed authors an
-# AIRspeed either way -- on the #688 windy fixture the same bed reads |v| 53.9 against
-# |v_air| 44.0 -- which is what e2e flight/688-wind-bends-airspeed pins.
+# The contrast, same air, same band, gravity-keyed: 23.3 m/s of airspeed where that hull
+# needs 175 to carry its own weight. Over 40 here means the load keying stopped being
+# air-keyed.
+CHECK re.search(r"Spawn 'flying-cruise' around Duna.*\|v\| = 3[23]\.[0-9] m/s \|v_air\| = 2[34]\.[0-9]", out)
+# |v_air| is the bed's number and |v| is the ground's, and the gap is this file's own wind
+# at the bed's band: Eve 74.6 - 33.6 = 41.0 m/s, exactly 10 rising to 60 across a 5 km
+# column sampled at 3.1 km; Duna 172.3 - 162.4 = 9.9, its one 10 m/s row; Kerbin
+# 74.1 - 44.0 = 30.1 against a column worth 31.6 there, the shortfall being the spawn's
+# heading not being due east. So the speed this case is about -- the load's speed -- is the
+# AIR one, and moving air moves only the ground number. That is #688's law, which
+# flight/688-wind-bends-airspeed pins in isolation; here it is a side effect of a bed that
+# has to be right on three bodies at once.

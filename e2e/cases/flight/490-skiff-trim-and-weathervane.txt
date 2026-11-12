@@ -25,11 +25,13 @@ EXPECT [drag]
 EXPECT [mass]
 CHECK len(drag) >= 40
 # Cruise, held: the trim is a wing station and a wing-loading, not a stick. This hull's
-# zero-moment AoA is 2.5 deg and no row of the run reads above 2.8 -- the phugoid and
-# the rudder kick carry it 0.3 deg nose-high at their extremes. The 3.0 ceiling is 0.2
-# deg over this run's peak; #567's bigger wing moved that peak 0.1 deg on its own, so
-# re-measure before tightening it.
-CHECK all(2.3 < d["aoa"] < 3.0 for d in drag if d["aoa"] is not None)
+# zero-moment AoA is 2.5 deg and the phugoid and the rudder kick carry it 0.3 deg
+# nose-high at their extremes. The ceiling is 0.1 deg over this run's peak; #567's bigger
+# wing moved that peak 0.1 deg on its own, so re-measure before tightening it. Kerbin's
+# wind column moved it once already: the bed sits at 8.5 km, where the authored column is
+# worth ~31 m/s, and a weathervaning hull's null attitude in moving air is not the same
+# attitude in still air -- the run went 2.5..2.8 unwinded and reads 2.5..3.2 with it.
+CHECK all(2.4 < d["aoa"] < 3.3 for d in drag if d["aoa"] is not None)
 # The first, uncoupled exchange: the bed gives 80 m/s of air and this hull trims near
 # 41 m/s in #686's air (47..50 in the air this case was written against, because the
 # bed's rho went 0.348 -> 0.502 kg/m3 and trim speed goes as 1/sqrt(rho)). So the arc

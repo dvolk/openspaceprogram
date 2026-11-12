@@ -1118,10 +1118,22 @@ static void check_wind() {
        on any of these five quotes an airspeed or a drag figure -- render/145 (Uranus, an
        orbit bed) and flight/255 (a Jupiter transfer) are the only flight cases that touch
        them at all, and both were re-run and print what they printed before. Pluto keeps the
-       "air, but no wind authored" hole that render/769 and render/717 need an example of. */
+       "air, but no wind authored" hole that render/769 and render/717 need an example of.
+       The Kerbal side came last: Kerbin, Shay, Laythe, Eve, Duna and Jool now author rows as
+       well, hand-authored in utils/gen_systems.py's KSP_WIND rather than wind_gen, with the
+       why argued beside the table. Their pin is flight/693, which reads each bed's spawn
+       against the authored column at that band on Kerbin, Eve and Duna, and the five flight
+       cases that quote an airspeed on Kerbin -- 451, 490, 492, 498, 563 -- all re-run and
+       re-pinned by measurement. What moved is one mechanism seen five ways: those beds key
+       to the body's CIRCULAR speed, so the number they print is a GROUND speed, and Kerbin's
+       31.6 m/s column at the 8.5 km band took ~28 m/s off the air a hull arrives with. That
+       flattened 498's exchange and 492's phugoid, ended a departure 492 used to start, and
+       cost 563 a little aileron authority. The bed is #693's problem, not this list's. */
     static const char *const kWindsAuthored[] = {"Venus", "Earth", "Mars",
                                                  "Jupiter", "Saturn", "Uranus",
-                                                 "Neptune", "Titan"};
+                                                 "Neptune", "Titan",
+                                                 "Kerbin", "Shay", "Laythe",
+                                                 "Eve", "Duna", "Jool"};
     constexpr size_t kNumWinds = sizeof(kWindsAuthored) / sizeof(kWindsAuthored[0]);
     /* The CATALOGUE, named rather than enumerated. res/systems is also what the in-game
        system picker lists, so it can hold a demo file whose bodies are invented to show a
