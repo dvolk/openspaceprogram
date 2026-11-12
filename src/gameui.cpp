@@ -1540,8 +1540,11 @@ void drawUIReadouts(Game &g) {
         // map follows the ship).
         // This list is rebuilt every frame the window is open, so the vector is
         // static (reserved once) and the item-0 label is a static buffer: the only
-        // long string here was that label, and the other 18 push_backs each grew
-        // two vectors from scratch. sm_active is static too so sm_items never
+        // long string here was that label. It used to say "the other 18 push_backs";
+        // since the asteroid catalogue it is one per body -- 85 in solar_system.json,
+        // 659 in _full (the reserve below tracks sys.bodies, not a literal). Whether a
+        // 659-row combo is a usable widget is a different question, and it is #797's.
+        // sm_active is static too so sm_items never
         // outlives the bytes it points at, even though Combo consumes it in place.
         static std::vector<const char *> sm_items;
         static char sm_active[160];

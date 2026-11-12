@@ -2837,40 +2837,36 @@ def build_moon(m, parent_body=None, home_body=None, sat_sheets=None):
 # ASTEROIDS: a second corpus, with the holes in it named rather than papered over
 # =====================================================================================
 """utils/rss/asteroids/ (fetch.py caches JPL SBDB + LCDB V4.0; parse.py derives
-asteroids.json offline) brings 259 minor planets. They ride the machinery this file already
+asteroids.json offline) brings 419 minor planets. They ride the machinery this file already
 has: heliocentric Kepler elements at an epoch, which make_body spells into inertial{}, and
 the same surface laws the moons get.
 
-What the corpus states, counted over the 259 rows -- the tiers and the invention below both
-turn on these numbers, and they are not what the NSSDC pages give:
+THE CENSUS IS PRINTED, NOT QUOTED. This comment used to carry its own copy of the counts,
+and it drifted ~160 rows behind the corpus without anything noticing. load_asteroids prints
+the same facts under --check instead -- `asteroids: %d rows`, `tiers core %d measured %d
+named %d full %d`, `rails stated ... INVENTED ...`, `radius stated ... INVENTED ...` with
+the per-kind breakdown, `mass stated ... INVENTED by spectral class` -- so what is quoted
+here is only the SHAPE of the corpus, which is what the tiering law turns on:
 
-    a rail (a, e, i, node, peri, M at an epoch)              256
-    a size of any kind                                      139
-      ... of which MEASURED (an effective diameter from radar/occultation, or a triaxial
-          ellipsoid)                                         42
-    NOTHING AT ALL about size                               120  -- no diameter and no
-          absolute magnitude to derive one from: discovery-page rows
-    a proper name or a number                               135
-    a measured mass                                          20
-    a rotation period                                       144
-    a geometric albedo pV (NOT Bond: it goes through the same q as the satellites, #749)
-                                                            143
-    a spectral class                                         85
+    almost every row carries a rail (a, e, i, node, peri, M at an epoch); the handful
+        that do not get a cohort-invented one, named as invented
+    sizes come in three qualities -- MEASURED (radar/occultation diameter, a triaxial
+        ellipsoid), derived (H and an albedo), and stated outright
+    a slice of rows state NOTHING about size -- discovery-page rows
+    a measured mass exists for only a couple of dozen bodies; the rest of the masses are
+        the spectral-class density rule, which is an invention and prints as one
+    names, numbers and spectral classes cover a minority each
 
-So "the measured ones" cannot be a tier of 68 the way it is for the moons: there are not 68
-measured asteroids. The four asteroid groups therefore NEST the way the four moon variants
-already nest (core subset measured subset named subset full -- checked at the bottom of
-load_asteroids, because four files that are not a ladder are four different cut lists), and
-each is named for what it actually selects:
-
-    core      the 18 a spacecraft has flown to, plus the 28 with r >= 100 km      44
-    measured  core + every body the corpus measured (size or mass)               ~70
-    named     the above, plus every named or numbered row                        135
-    full      every row, rails invented for the 3 the pages place nowhere        259
-
-That puts the four files at 75 / ~138 / ~314 / 499 bodies: roughly double each, which is the
-size the tiers were picked for. solar_system.json gets the rocks a player has heard of;
-_full gets every one the corpus can place.
+So "the measured ones" cannot be a tier of 68 the way it is for the moons: the corpus has
+never held 68 measured asteroids. The four asteroid groups therefore NEST the way the four
+moon variants already nest (core subset measured subset named subset full -- checked at the
+bottom of load_asteroids, because four files that are not a ladder are four different cut
+lists), and each is named for what it actually selects. The bottom rung is CURATED rather
+than a size threshold -- see the LADDER_CATEGORIES comment below for why a "100 km across"
+floor stopped being a floor at 419 rows. As the corpus stands that ladder is 54 / 208 /
+297 / 419 minor planets, which puts the four files at 85 / 276 / 476 / 659 bodies: roughly
+doubling each step, which is the size the tiers were picked for. solar_system.json gets the
+rocks a player has heard of; _full gets every one the corpus can place.
 
 Invention follows invent_missing_albedos(): a named rule, never a per-body hand-nudged
 number, an assert that it cannot overwrite a stated row, and one printed line per rule.
