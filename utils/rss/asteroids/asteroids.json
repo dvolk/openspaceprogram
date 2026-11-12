@@ -121,7 +121,7 @@
     "landmark"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 5.5,
     "radius_text": "5.5\u00b11",
     "src": "Wikipedia List of Solar System objects by size, table 6",
@@ -2361,7 +2361,7 @@
     "landmark"
    ],
    "size_page": {
-    "mass_1e18_kg": 8e-05,
+    "mass_kg": 80000.0,
     "radius_m": 2.05,
     "radius_text": "2.05",
     "src": "Wikipedia List of Solar System objects by size, table 6",
@@ -6062,7 +6062,7 @@
     "landmark"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 11.0,
     "radius_text": "\u2248 11",
     "src": "Wikipedia List of Solar System objects by size, table 6",
@@ -10665,7 +10665,7 @@
     "landmark"
    ],
    "size_page": {
-    "mass_1e18_kg": 0.0742,
+    "mass_kg": null,
     "radius_m": 469700.0,
     "radius_text": "469.7\u00b10.1[74]",
     "src": "Wikipedia List of Solar System objects by size, table 0",
@@ -11155,7 +11155,7 @@
     "inclined"
    ],
    "size_page": {
-    "mass_1e18_kg": 204.0,
+    "mass_kg": 2.04e+20,
     "radius_m": 256000.0,
     "radius_text": "256\u00b12",
     "src": "Wikipedia List of Solar System objects by size, table 1",
@@ -11533,7 +11533,7 @@
     "brightest"
    ],
    "size_page": {
-    "mass_1e18_kg": 27.0,
+    "mass_kg": 2.7e+19,
     "radius_m": 127000.0,
     "radius_text": "127\u00b11",
     "src": "Wikipedia List of Solar System objects by size, table 2",
@@ -11978,7 +11978,7 @@
     "visited"
    ],
    "size_page": {
-    "mass_1e18_kg": 259.0271,
+    "mass_kg": 2.590271e+20,
     "radius_m": 262700.0,
     "radius_text": "262.7\u00b10.1",
     "src": "Wikipedia List of Solar System objects by size, table 1",
@@ -12332,7 +12332,7 @@
     "landmark"
    ],
    "size_page": {
-    "mass_1e18_kg": 2.9,
+    "mass_kg": 2.9e+18,
     "radius_m": 53300.0,
     "radius_text": "53.3\u00b11.6",
     "src": "Wikipedia List of Solar System objects by size, table 3",
@@ -12712,7 +12712,7 @@
     "brightest"
    ],
    "size_page": {
-    "mass_1e18_kg": 12.4,
+    "mass_kg": 1.24e+19,
     "radius_m": 97500.0,
     "radius_text": "97.5\u00b11.5",
     "src": "Wikipedia List of Solar System objects by size, table 3",
@@ -13171,7 +13171,7 @@
     "brightest"
    ],
    "size_page": {
-    "mass_1e18_kg": 13.5,
+    "mass_kg": 1.35e+19,
     "radius_m": 100000.0,
     "radius_text": "100\u00b15",
     "src": "Wikipedia List of Solar System objects by size, table 2",
@@ -13503,7 +13503,7 @@
     "brightest"
    ],
    "size_page": {
-    "mass_1e18_kg": 4.0,
+    "mass_kg": 4e+18,
     "radius_m": 73000.0,
     "radius_text": "73\u00b11",
     "src": "Wikipedia List of Solar System objects by size, table 3",
@@ -13908,7 +13908,7 @@
     "brightest"
    ],
    "size_page": {
-    "mass_1e18_kg": 8.0,
+    "mass_kg": 8e+18,
     "radius_m": 86500.0,
     "radius_text": "86.5\u00b11",
     "src": "Wikipedia List of Solar System objects by size, table 3",
@@ -14351,7 +14351,7 @@
     "massive"
    ],
    "size_page": {
-    "mass_1e18_kg": 87.4,
+    "mass_kg": 8.74e+19,
     "radius_m": 216000.0,
     "radius_text": "216\u00b14",
     "src": "Wikipedia List of Solar System objects by size, table 1",
@@ -14556,7 +14556,7 @@
     "largest"
    ],
    "size_page": {
-    "mass_1e18_kg": 9.2,
+    "mass_kg": 9.199999999999999e+18,
     "radius_m": 101000.0,
     "radius_text": "101\u00b12",
     "src": "Wikipedia List of Solar System objects by size, table 2",
@@ -14963,7 +14963,7 @@
     "brightest"
    ],
    "size_page": {
-    "mass_1e18_kg": 30.5,
+    "mass_kg": 3.05e+19,
     "radius_m": 135000.0,
     "radius_text": "135\u00b12",
     "src": "Wikipedia List of Solar System objects by size, table 2",
@@ -15554,7 +15554,7 @@
     "massive"
    ],
    "size_page": {
-    "mass_1e18_kg": 26.2,
+    "mass_kg": 2.62e+19,
     "radius_m": 112000.0,
     "radius_text": "112\u00b12",
     "src": "Wikipedia List of Solar System objects by size, table 2",
@@ -15738,7 +15738,7 @@
     "brightest"
    ],
    "size_page": {
-    "mass_1e18_kg": 4.5,
+    "mass_kg": 4.5e+18,
     "radius_m": 70500.0,
     "radius_text": "70.5\u00b11",
     "src": "Wikipedia List of Solar System objects by size, table 3",
@@ -16107,7 +16107,7 @@
     "largest"
    ],
    "size_page": {
-    "mass_1e18_kg": 8.8,
+    "mass_kg": 8.800000000000001e+18,
     "radius_m": 105500.0,
     "radius_text": "105.5\u00b11.0",
     "src": "Wikipedia List of Solar System objects by size, table 2",
@@ -16460,7 +16460,7 @@
     "landmark"
    ],
    "size_page": {
-    "mass_1e18_kg": 5.0,
+    "mass_kg": 5e+18,
     "radius_m": 67800.0,
     "radius_text": "67.8\u00b11.8",
     "src": "Wikipedia List of Solar System objects by size, table 3",
@@ -16859,7 +16859,7 @@
     "visited"
    ],
    "size_page": {
-    "mass_1e18_kg": 1700.0,
+    "mass_kg": 1.7e+18,
     "radius_m": 49000.0,
     "radius_text": "49\u00b11",
     "src": "Wikipedia List of Solar System objects by size, table 4",
@@ -17080,7 +17080,7 @@
     "largest"
    ],
    "size_page": {
-    "mass_1e18_kg": 6.2,
+    "mass_kg": 6.2e+18,
     "radius_m": 104000.0,
     "radius_text": "104\u00b12",
     "src": "Wikipedia List of Solar System objects by size, table 2",
@@ -17508,7 +17508,7 @@
     "massive"
    ],
    "size_page": {
-    "mass_1e18_kg": 12.7,
+    "mass_kg": 1.27e+19,
     "radius_m": 102000.0,
     "radius_text": "102\u00b11",
     "src": "Wikipedia List of Solar System objects by size, table 2",
@@ -17865,7 +17865,7 @@
     "massive"
    ],
    "size_page": {
-    "mass_1e18_kg": 16.5,
+    "mass_kg": 1.65e+19,
     "radius_m": 134000.0,
     "radius_text": "134\u00b12",
     "src": "Wikipedia List of Solar System objects by size, table 2",
@@ -18331,7 +18331,7 @@
     "largest"
    ],
    "size_page": {
-    "mass_1e18_kg": 6.1,
+    "mass_kg": 6.1e+18,
     "radius_m": 94000.0,
     "radius_text": "94\u00b17",
     "src": "Wikipedia List of Solar System objects by size, table 3",
@@ -18719,7 +18719,7 @@
     "landmark"
    ],
    "size_page": {
-    "mass_1e18_kg": 5.8,
+    "mass_kg": 5.8e+18,
     "radius_m": 94000.0,
     "radius_text": "94\u00b11",
     "src": "Wikipedia List of Solar System objects by size, table 3",
@@ -18921,7 +18921,7 @@
     "largest"
    ],
    "size_page": {
-    "mass_1e18_kg": 6.9,
+    "mass_kg": 6.9e+18,
     "radius_m": 108000.0,
     "radius_text": "108\u00b12",
     "src": "Wikipedia List of Solar System objects by size, table 2",
@@ -19316,7 +19316,7 @@
     "massive"
    ],
    "size_page": {
-    "mass_1e18_kg": 23.9,
+    "mass_kg": 2.39e+19,
     "radius_m": 160000.0,
     "radius_text": "160\u00b12",
     "src": "Wikipedia List of Solar System objects by size, table 2",
@@ -19564,7 +19564,7 @@
     "massive"
    ],
    "size_page": {
-    "mass_1e18_kg": 14.8,
+    "mass_kg": 1.48e+19,
     "radius_m": 131500.0,
     "radius_text": "131.5\u00b11.5",
     "src": "Wikipedia List of Solar System objects by size, table 2",
@@ -19956,7 +19956,7 @@
     "landmark"
    ],
    "size_page": {
-    "mass_1e18_kg": 14.3,
+    "mass_kg": 1.43e+19,
     "radius_m": 137000.0,
     "radius_text": "137\u00b12",
     "src": "Wikipedia List of Solar System objects by size, table 2",
@@ -20304,7 +20304,7 @@
     "massive"
    ],
    "size_page": {
-    "mass_1e18_kg": 11.6,
+    "mass_kg": 1.16e+19,
     "radius_m": 109000.0,
     "radius_text": "109\u00b12",
     "src": "Wikipedia List of Solar System objects by size, table 2",
@@ -20523,7 +20523,7 @@
     "landmark"
    ],
    "size_page": {
-    "mass_1e18_kg": 828.0,
+    "mass_kg": 8.28e+17,
     "radius_m": 43900.0,
     "radius_text": "43.9\u00b10.5",
     "src": "Wikipedia List of Solar System objects by size, table 4",
@@ -20714,7 +20714,7 @@
     "largest"
    ],
    "size_page": {
-    "mass_1e18_kg": 6.2,
+    "mass_kg": 6.2e+18,
     "radius_m": 93800.0,
     "radius_text": "93.8\u00b13.6[dubious \u2013 discuss]",
     "src": "Wikipedia List of Solar System objects by size, table 3",
@@ -21062,7 +21062,7 @@
     "massive"
    ],
    "size_page": {
-    "mass_1e18_kg": 11.2,
+    "mass_kg": 1.12e+19,
     "radius_m": 105000.0,
     "radius_text": "105\u00b14",
     "src": "Wikipedia List of Solar System objects by size, table 2",
@@ -21359,7 +21359,7 @@
     "largest"
    ],
    "size_page": {
-    "mass_1e18_kg": 5.0,
+    "mass_kg": 5e+18,
     "radius_m": 94000.0,
     "radius_text": "94\u00b13",
     "src": "Wikipedia List of Solar System objects by size, table 3",
@@ -21502,7 +21502,7 @@
     "largest"
    ],
    "size_page": {
-    "mass_1e18_kg": 3.4,
+    "mass_kg": 3.4e+18,
     "radius_m": 81500.0,
     "radius_text": "81.5\u00b12.5",
     "src": "Wikipedia List of Solar System objects by size, table 3",
@@ -21853,7 +21853,7 @@
     "largest"
    ],
    "size_page": {
-    "mass_1e18_kg": 6.4,
+    "mass_kg": 6.4e+18,
     "radius_m": 99500.0,
     "radius_text": "99.5\u00b11",
     "src": "Wikipedia List of Solar System objects by size, table 3",
@@ -22002,7 +22002,7 @@
     "largest"
    ],
    "size_page": {
-    "mass_1e18_kg": 9.2,
+    "mass_kg": 9.199999999999999e+18,
     "radius_m": 93400.0,
     "radius_text": "93.4\u00b10.9",
     "src": "Wikipedia List of Solar System objects by size, table 3",
@@ -22565,7 +22565,7 @@
     "landmark"
    ],
    "size_page": {
-    "mass_1e18_kg": 3.0,
+    "mass_kg": 3e+18,
     "radius_m": 59000.0,
     "radius_text": "59\u00b11",
     "src": "Wikipedia List of Solar System objects by size, table 3",
@@ -22803,7 +22803,7 @@
     "landmark"
    ],
    "size_page": {
-    "mass_1e18_kg": 42.0,
+    "mass_kg": 4.2e+16,
     "radius_m": 15700.0,
     "radius_text": "15.7",
     "src": "Wikipedia List of Solar System objects by size, table 5",
@@ -22985,7 +22985,7 @@
     "visited"
    ],
    "size_page": {
-    "mass_1e18_kg": 103.3,
+    "mass_kg": 1.033e+17,
     "radius_m": 26400.0,
     "radius_text": "26.4",
     "src": "Wikipedia List of Solar System objects by size, table 4",
@@ -23249,7 +23249,7 @@
     "landmark"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 63300.0,
     "radius_text": "63.3\u00b11.8",
     "src": "Wikipedia List of Solar System objects by size, table 3",
@@ -23733,7 +23733,7 @@
     "brightest"
    ],
    "size_page": {
-    "mass_1e18_kg": 10.2,
+    "mass_kg": 1.02e+19,
     "radius_m": 114000.0,
     "radius_text": "114\u00b12",
     "src": "Wikipedia List of Solar System objects by size, table 2",
@@ -24137,7 +24137,7 @@
     "largest"
    ],
    "size_page": {
-    "mass_1e18_kg": 7.5,
+    "mass_kg": 7.5e+18,
     "radius_m": 82500.0,
     "radius_text": "82.5\u00b11.5",
     "src": "Wikipedia List of Solar System objects by size, table 3",
@@ -24380,7 +24380,7 @@
     "largest"
    ],
    "size_page": {
-    "mass_1e18_kg": 5.2,
+    "mass_kg": 5.2e+18,
     "radius_m": 86800.0,
     "radius_text": "86.8\u00b11.4[dubious \u2013 discuss]",
     "src": "Wikipedia List of Solar System objects by size, table 3",
@@ -24506,7 +24506,7 @@
     "largest"
    ],
    "size_page": {
-    "mass_1e18_kg": 8.4,
+    "mass_kg": 8.4e+18,
     "radius_m": 96800.0,
     "radius_text": "96.8\u00b11.3",
     "src": "Wikipedia List of Solar System objects by size, table 3",
@@ -25161,7 +25161,7 @@
     "landmark"
    ],
    "size_page": {
-    "mass_1e18_kg": 6.687,
+    "mass_kg": 6687000000000000.0,
     "radius_m": 8420.0,
     "radius_text": "8.42\u00b10.02",
     "src": "Wikipedia List of Solar System objects by size, table 5",
@@ -25351,7 +25351,7 @@
     "largest"
    ],
    "size_page": {
-    "mass_1e18_kg": 10.9,
+    "mass_kg": 1.09e+19,
     "radius_m": 112900.0,
     "radius_text": "112.9\u00b12.3",
     "src": "Wikipedia List of Solar System objects by size, table 2",
@@ -26243,7 +26243,7 @@
     "massive"
    ],
    "size_page": {
-    "mass_1e18_kg": 26.6,
+    "mass_kg": 2.66e+19,
     "radius_m": 149000.0,
     "radius_text": "149\u00b12",
     "src": "Wikipedia List of Solar System objects by size, table 2",
@@ -26548,7 +26548,7 @@
     "massive"
    ],
    "size_page": {
-    "mass_1e18_kg": 10.0,
+    "mass_kg": 1e+19,
     "radius_m": 111200.0,
     "radius_text": "111.2\u00b12.4",
     "src": "Wikipedia List of Solar System objects by size, table 2",
@@ -26677,7 +26677,7 @@
     "landmark"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 65000.0,
     "radius_text": "65.0\u00b10.3",
     "src": "Wikipedia List of Solar System objects by size, table 3",
@@ -27140,7 +27140,7 @@
     "landmark"
    ],
    "size_page": {
-    "mass_1e18_kg": 7.9,
+    "mass_kg": 7.9e+18,
     "radius_m": 125000.0,
     "radius_text": "125\u00b113",
     "src": "Wikipedia List of Solar System objects by size, table 2",
@@ -27276,7 +27276,7 @@
     "largest"
    ],
    "size_page": {
-    "mass_1e18_kg": 6.06,
+    "mass_kg": 6.06e+18,
     "radius_m": 86000.0,
     "radius_text": "86\u00b128",
     "src": "Wikipedia List of Solar System objects by size, table 3",
@@ -27545,7 +27545,7 @@
     "massive"
    ],
    "size_page": {
-    "mass_1e18_kg": 35.2,
+    "mass_kg": 3.5200000000000004e+19,
     "radius_m": 166000.0,
     "radius_text": "166\u00b13",
     "src": "Wikipedia List of Solar System objects by size, table 2",
@@ -28206,7 +28206,7 @@
     "inclined"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 26200.0,
     "radius_text": "26.2\u00b11.8",
     "src": "Wikipedia List of Solar System objects by size, table 4",
@@ -28476,7 +28476,7 @@
     "visited"
    ],
    "size_page": {
-    "mass_1e18_kg": 20.0,
+    "mass_kg": null,
     "radius_m": 6266.0,
     "radius_text": "6.266",
     "src": "Wikipedia List of Solar System objects by size, table 5",
@@ -28655,7 +28655,7 @@
     "brightest"
    ],
    "size_page": {
-    "mass_1e18_kg": 167.0,
+    "mass_kg": 1.67e+17,
     "radius_m": 18840.0,
     "radius_text": "18.84\u00b10.20",
     "src": "Wikipedia List of Solar System objects by size, table 5",
@@ -29320,7 +29320,7 @@
     "landmark"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 730.0,
     "radius_text": "730",
     "src": "Wikipedia List of Solar System objects by size, table 6",
@@ -29611,7 +29611,7 @@
     "comets"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 98000.0,
     "radius_text": "98\u00b117",
     "src": "Wikipedia List of Solar System objects by size, table 3",
@@ -30231,7 +30231,7 @@
     "visited"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 2580.0,
     "radius_text": "2.58\u00b10.084",
     "src": "Wikipedia List of Solar System objects by size, table 5",
@@ -30528,7 +30528,7 @@
     "landmark"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 2900.0,
     "radius_text": "2.9",
     "src": "Wikipedia List of Solar System objects by size, table 5",
@@ -30648,7 +30648,7 @@
     "landmark"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 1036.0,
     "radius_text": "1.036\u00b10.053",
     "src": "Wikipedia List of Solar System objects by size, table 5",
@@ -30944,7 +30944,7 @@
     "landmark"
    ],
    "size_page": {
-    "mass_1e18_kg": 0.0505,
+    "mass_kg": 50500000000000.0,
     "radius_m": 1516.0,
     "radius_text": "1.516",
     "src": "Wikipedia List of Solar System objects by size, table 5",
@@ -31263,7 +31263,7 @@
     "landmark"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 700.0,
     "radius_text": "700",
     "src": "Wikipedia List of Solar System objects by size, table 6",
@@ -31609,7 +31609,7 @@
     "visited"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 2400.0,
     "radius_text": "2.4",
     "src": "Wikipedia List of Solar System objects by size, table 5",
@@ -32042,7 +32042,7 @@
     "visited"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 820.0,
     "radius_text": "820",
     "src": "Wikipedia List of Solar System objects by size, table 6",
@@ -32248,7 +32248,7 @@
     "retrograde"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 14000.0,
     "radius_text": "14\u00b13",
     "src": "Wikipedia List of Solar System objects by size, table 5",
@@ -32515,7 +32515,7 @@
     "visited"
    ],
    "size_page": {
-    "mass_1e18_kg": 35.1,
+    "mass_kg": 35100000000.0,
     "radius_m": 173.0,
     "radius_text": "173",
     "src": "Wikipedia List of Solar System objects by size, table 6",
@@ -32666,7 +32666,7 @@
     "landmark"
    ],
    "size_page": {
-    "mass_1e18_kg": 2000.0,
+    "mass_kg": 2000000000000.0,
     "radius_m": 653.0,
     "radius_text": "653",
     "src": "Wikipedia List of Solar System objects by size, table 6",
@@ -33006,7 +33006,7 @@
     "visited"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 1948.0,
     "radius_text": "1.948\u00b10.007",
     "src": "Wikipedia List of Solar System objects by size, table 5",
@@ -33124,7 +33124,7 @@
     "comets"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 32299.999999999996,
     "radius_text": "32.3\u00b10.8",
     "src": "Wikipedia List of Solar System objects by size, table 4",
@@ -33424,7 +33424,7 @@
     "visited"
    ],
    "size_page": {
-    "mass_1e18_kg": 527.0,
+    "mass_kg": 527000000000.0,
     "radius_m": 390.0,
     "radius_text": "390\u00b14",
     "src": "Wikipedia List of Solar System objects by size, table 6",
@@ -33570,7 +33570,7 @@
     "landmark"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 400.0,
     "radius_text": "400\u00b150",
     "src": "Wikipedia List of Solar System objects by size, table 6",
@@ -33890,7 +33890,7 @@
     "visited"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 232.5,
     "radius_text": "232.5\u00b17.5",
     "src": "Wikipedia List of Solar System objects by size, table 6",
@@ -34074,7 +34074,7 @@
     "landmark"
    ],
    "size_page": {
-    "mass_1e18_kg": 61.0,
+    "mass_kg": 61000000000.0,
     "radius_m": 162.5,
     "radius_text": "162.5\u00b17.5",
     "src": "Wikipedia List of Solar System objects by size, table 6",
@@ -34213,7 +34213,7 @@
     "visited"
    ],
    "size_page": {
-    "mass_1e18_kg": 78.0,
+    "mass_kg": 78000000000.0,
     "radius_m": 245.03,
     "radius_text": "245.03\u00b10.08",
     "src": "Wikipedia List of Solar System objects by size, table 6",
@@ -34307,7 +34307,7 @@
     "comets"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 300.0,
     "radius_text": "300\u00b130",
     "src": "Wikipedia List of Solar System objects by size, table 6",
@@ -34681,7 +34681,7 @@
     "visited"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 369.0,
     "radius_text": "369",
     "src": "Wikipedia List of Solar System objects by size, table 6",
@@ -34808,7 +34808,7 @@
     "brightest"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 466.0,
     "radius_text": "466\u00b15.5",
     "src": "Wikipedia List of Solar System objects by size, table 6",
@@ -34946,7 +34946,7 @@
     "slow_rot"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 423.5,
     "radius_text": "423.5\u00b16.5",
     "src": "Wikipedia List of Solar System objects by size, table 6",
@@ -35132,7 +35132,7 @@
     "visited"
    ],
    "size_page": {
-    "mass_1e18_kg": 450.0,
+    "mass_kg": 450000000000.0,
     "radius_m": 432.5,
     "radius_text": "432.5\u00b17.5",
     "src": "Wikipedia List of Solar System objects by size, table 6",
@@ -35833,7 +35833,7 @@
     "brightest"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 23.75,
     "radius_text": "23.75",
     "src": "Wikipedia List of Solar System objects by size, table 6",
@@ -36448,7 +36448,7 @@
     "retrograde"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 1500.0,
     "radius_text": "1.5",
     "src": "Wikipedia List of Solar System objects by size, table 5",
@@ -36939,7 +36939,7 @@
     "landmark"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 189.5,
     "radius_text": "189.5\u00b161.5",
     "src": "Wikipedia List of Solar System objects by size, table 6",
@@ -37102,7 +37102,7 @@
     "coorbital_famed"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 20.5,
     "radius_text": "20.5",
     "src": "Wikipedia List of Solar System objects by size, table 6",
@@ -37145,7 +37145,7 @@
     "coorbital_famed"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 0.45,
     "radius_text": "0.45\u00b10.05",
     "src": "Wikipedia List of Solar System objects by size, table 6",
@@ -37266,7 +37266,7 @@
     "bright"
    ],
    "size_page": {
-    "mass_1e18_kg": 2.9,
+    "mass_kg": 2.9e+18,
     "radius_m": 72000.0,
     "radius_text": "72\u00b11",
     "src": "Wikipedia List of Solar System objects by size, table 3",
@@ -37314,7 +37314,7 @@
     "bright"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 55600.0,
     "radius_text": "55.6\u00b10.2",
     "src": "Wikipedia List of Solar System objects by size, table 3",
@@ -37359,7 +37359,7 @@
     "bright"
    ],
    "size_page": {
-    "mass_1e18_kg": 5.5,
+    "mass_kg": 5.5e+18,
     "radius_m": 74500.0,
     "radius_text": "74.5\u00b11",
     "src": "Wikipedia List of Solar System objects by size, table 3",
@@ -37407,7 +37407,7 @@
     "bright"
    ],
    "size_page": {
-    "mass_1e18_kg": 576.0,
+    "mass_kg": 5.76e+17,
     "radius_m": 37500.0,
     "radius_text": "37.5+1.5\u22120.5",
     "src": "Wikipedia List of Solar System objects by size, table 4",
@@ -37452,7 +37452,7 @@
     "bright"
    ],
    "size_page": {
-    "mass_1e18_kg": 7.7,
+    "mass_kg": 7.7e+18,
     "radius_m": 75000.0,
     "radius_text": "75\u00b12.5",
     "src": "Wikipedia List of Solar System objects by size, table 3",
@@ -37500,7 +37500,7 @@
     "bright"
    ],
    "size_page": {
-    "mass_1e18_kg": 12.6,
+    "mass_kg": null,
     "radius_m": 56300.0,
     "radius_text": "56.3\u00b11.4",
     "src": "Wikipedia List of Solar System objects by size, table 3",
@@ -37548,7 +37548,7 @@
     "bright"
    ],
    "size_page": {
-    "mass_1e18_kg": 1.67,
+    "mass_kg": 1.67e+18,
     "radius_m": 54900.0,
     "radius_text": "54.9\u00b10.8",
     "src": "Wikipedia List of Solar System objects by size, table 3",
@@ -37597,7 +37597,7 @@
     "bright"
    ],
    "size_page": {
-    "mass_1e18_kg": 1.96,
+    "mass_kg": 1.96e+18,
     "radius_m": 53800.0,
     "radius_text": "53.8\u00b11.1",
     "src": "Wikipedia List of Solar System objects by size, table 3",
@@ -37645,7 +37645,7 @@
     "bright"
    ],
    "size_page": {
-    "mass_1e18_kg": 2.62,
+    "mass_kg": 2.62e+18,
     "radius_m": 60450.0,
     "radius_text": "60.45\u00b11.90",
     "src": "Wikipedia List of Solar System objects by size, table 3",
@@ -37731,7 +37731,7 @@
     "bright"
    ],
    "size_page": {
-    "mass_1e18_kg": 2.7,
+    "mass_kg": 2.7e+18,
     "radius_m": 58000.0,
     "radius_text": "58\u00b11",
     "src": "Wikipedia List of Solar System objects by size, table 3",
@@ -37780,7 +37780,7 @@
     "bright"
    ],
    "size_page": {
-    "mass_1e18_kg": 748.0,
+    "mass_kg": 7.48e+17,
     "radius_m": 47400.0,
     "radius_text": "47.4\u00b10.8",
     "src": "Wikipedia List of Solar System objects by size, table 4",
@@ -37828,7 +37828,7 @@
     "bright"
    ],
    "size_page": {
-    "mass_1e18_kg": 1300.0,
+    "mass_kg": 1.3e+18,
     "radius_m": 44000.0,
     "radius_text": "44\u00b11",
     "src": "Wikipedia List of Solar System objects by size, table 4",
@@ -37878,7 +37878,7 @@
     "bright"
    ],
    "size_page": {
-    "mass_1e18_kg": 1.58,
+    "mass_kg": 1.58e+18,
     "radius_m": 51400.0,
     "radius_text": "51.4\u00b11.4",
     "src": "Wikipedia List of Solar System objects by size, table 3",
@@ -37927,7 +37927,7 @@
     "bright"
    ],
    "size_page": {
-    "mass_1e18_kg": 3.9,
+    "mass_kg": 3.9e+18,
     "radius_m": 75000.0,
     "radius_text": "75\u00b11.5",
     "src": "Wikipedia List of Solar System objects by size, table 3",
@@ -37979,7 +37979,7 @@
     "bright"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 40400.0,
     "radius_text": "40.4\u00b10.8",
     "src": "Wikipedia List of Solar System objects by size, table 4",
@@ -38024,7 +38024,7 @@
     "bright"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 42400.0,
     "radius_text": "42.4\u00b11.3",
     "src": "Wikipedia List of Solar System objects by size, table 4",
@@ -38072,7 +38072,7 @@
     "bright"
    ],
    "size_page": {
-    "mass_1e18_kg": 599.0,
+    "mass_kg": 5.99e+17,
     "radius_m": 30530.0,
     "radius_text": "30.53\u00b11.23",
     "src": "Wikipedia List of Solar System objects by size, table 4",
@@ -38122,7 +38122,7 @@
     "bright"
    ],
    "size_page": {
-    "mass_1e18_kg": 1200.0,
+    "mass_kg": 1.2e+18,
     "radius_m": 42400.0,
     "radius_text": "42.4\u00b11.0",
     "src": "Wikipedia List of Solar System objects by size, table 4",
@@ -38167,7 +38167,7 @@
     "bright"
    ],
    "size_page": {
-    "mass_1e18_kg": 1210.0,
+    "mass_kg": 1.21e+18,
     "radius_m": 35670.0,
     "radius_text": "35.67\u00b10.63",
     "src": "Wikipedia List of Solar System objects by size, table 4",
@@ -38216,7 +38216,7 @@
     "bright"
    ],
    "size_page": {
-    "mass_1e18_kg": 6.2,
+    "mass_kg": 6.2e+18,
     "radius_m": 77070.0,
     "radius_text": "77.07\u00b10.32",
     "src": "Wikipedia List of Solar System objects by size, table 3",
@@ -38268,7 +38268,7 @@
     "bright"
    ],
    "size_page": {
-    "mass_1e18_kg": 4.2,
+    "mass_kg": 4.2e+18,
     "radius_m": 74900.0,
     "radius_text": "\u2248 74.9",
     "src": "Wikipedia List of Solar System objects by size, table 3",
@@ -38317,7 +38317,7 @@
     "bright"
    ],
    "size_page": {
-    "mass_1e18_kg": 3.2,
+    "mass_kg": 3.2e+18,
     "radius_m": 71000.0,
     "radius_text": "71\u00b14",
     "src": "Wikipedia List of Solar System objects by size, table 3",
@@ -38412,7 +38412,7 @@
     "bright"
    ],
    "size_page": {
-    "mass_1e18_kg": 5.71,
+    "mass_kg": 5.71e+18,
     "radius_m": 57700.0,
     "radius_text": "57.7\u00b10.7",
     "src": "Wikipedia List of Solar System objects by size, table 3",
@@ -38462,7 +38462,7 @@
     "bright"
    ],
    "size_page": {
-    "mass_1e18_kg": 4.61,
+    "mass_kg": 4.6100000000000005e+18,
     "radius_m": 56620.0,
     "radius_text": "56.62\u00b10.85",
     "src": "Wikipedia List of Solar System objects by size, table 3",
@@ -38510,7 +38510,7 @@
     "bright"
    ],
    "size_page": {
-    "mass_1e18_kg": 3.5,
+    "mass_kg": 3.5e+18,
     "radius_m": 62100.0,
     "radius_text": "62.1\u00b11.7",
     "src": "Wikipedia List of Solar System objects by size, table 3",
@@ -38602,7 +38602,7 @@
     "bright"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 51500.0,
     "radius_text": "51.5\u00b10.6",
     "src": "Wikipedia List of Solar System objects by size, table 3",
@@ -38650,7 +38650,7 @@
     "bright"
    ],
    "size_page": {
-    "mass_1e18_kg": 3.66,
+    "mass_kg": 3.66e+18,
     "radius_m": 57700.0,
     "radius_text": "57.7\u00b11.0",
     "src": "Wikipedia List of Solar System objects by size, table 3",
@@ -38701,7 +38701,7 @@
     "bright"
    ],
    "size_page": {
-    "mass_1e18_kg": 5630.0,
+    "mass_kg": null,
     "radius_m": 49000.0,
     "radius_text": "49\u00b113",
     "src": "Wikipedia List of Solar System objects by size, table 4",
@@ -38749,7 +38749,7 @@
     "bright"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 44810.0,
     "radius_text": "44.81\u00b10.42",
     "src": "Wikipedia List of Solar System objects by size, table 4",
@@ -38799,7 +38799,7 @@
     "bright"
    ],
    "size_page": {
-    "mass_1e18_kg": 2310.0,
+    "mass_kg": 2.31e+18,
     "radius_m": 42040.0,
     "radius_text": "42.04\u00b10.12",
     "src": "Wikipedia List of Solar System objects by size, table 4",
@@ -38923,7 +38923,7 @@
     "coorbital"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 365.0,
     "radius_text": "365\u00b115",
     "src": "Wikipedia List of Solar System objects by size, table 6",
@@ -39118,7 +39118,7 @@
     "coorbital"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 61.8,
     "radius_text": "61.8",
     "src": "Wikipedia List of Solar System objects by size, table 6",
@@ -39754,7 +39754,7 @@
     "sungrazer"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 609.0,
     "radius_text": "609\u00b1114",
     "src": "Wikipedia List of Solar System objects by size, table 6",
@@ -39985,7 +39985,7 @@
     "trojan"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 83300.0,
     "radius_text": "83.3\u00b12.0",
     "src": "Wikipedia List of Solar System objects by size, table 3",
@@ -40035,7 +40035,7 @@
     "trojan"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 58890.0,
     "radius_text": "58.89\u00b10.59",
     "src": "Wikipedia List of Solar System objects by size, table 3",
@@ -40084,7 +40084,7 @@
     "trojan"
    ],
    "size_page": {
-    "mass_1e18_kg": 1.36,
+    "mass_kg": 1.36e+18,
     "radius_m": 70200.0,
     "radius_text": "70.2\u00b10.4",
     "src": "Wikipedia List of Solar System objects by size, table 3",
@@ -40129,7 +40129,7 @@
     "trojan"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 59010.0,
     "radius_text": "59.01\u00b10.40",
     "src": "Wikipedia List of Solar System objects by size, table 3",
@@ -40174,7 +40174,7 @@
     "trojan"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 57300.0,
     "radius_text": "57.3\u00b10.3",
     "src": "Wikipedia List of Solar System objects by size, table 3",
@@ -40223,7 +40223,7 @@
     "trojan"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 54400.0,
     "radius_text": "54.4\u00b10.3",
     "src": "Wikipedia List of Solar System objects by size, table 3",
@@ -40313,7 +40313,7 @@
     "trojan"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 56200.0,
     "radius_text": "56.2\u00b10.9",
     "src": "Wikipedia List of Solar System objects by size, table 3",
@@ -40358,7 +40358,7 @@
     "trojan"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 60200.0,
     "radius_text": "60.2\u00b11.5",
     "src": "Wikipedia List of Solar System objects by size, table 3",
@@ -40406,7 +40406,7 @@
     "trojan"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 50300.0,
     "radius_text": "50.3\u00b10.5",
     "src": "Wikipedia List of Solar System objects by size, table 3",
@@ -40527,7 +40527,7 @@
     "kuiper"
    ],
    "size_page": {
-    "mass_1e18_kg": 0.1825,
+    "mass_kg": null,
     "radius_m": 1163000.0,
     "radius_text": "1163\u00b16[c][46]",
     "src": "Wikipedia List of Solar System objects by size, table 0",
@@ -40585,7 +40585,7 @@
     "kuiper"
    ],
    "size_page": {
-    "mass_1e18_kg": 0.12,
+    "mass_kg": null,
     "radius_m": 772000.0,
     "radius_text": "772+20\u221219[52]",
     "src": "Wikipedia List of Solar System objects by size, table 0",
@@ -40644,7 +40644,7 @@
     "kuiper"
    ],
    "size_page": {
-    "mass_1e18_kg": 0.112,
+    "mass_kg": null,
     "radius_m": 715000.0,
     "radius_text": "715\u00b17[59]",
     "src": "Wikipedia List of Solar System objects by size, table 0",
@@ -40702,7 +40702,7 @@
     "kuiper"
    ],
    "size_page": {
-    "mass_1e18_kg": 0.0983,
+    "mass_kg": null,
     "radius_m": 615000.0,
     "radius_text": "615\u00b125[61][k]",
     "src": "Wikipedia List of Solar System objects by size, table 0",
@@ -40759,7 +40759,7 @@
     "kuiper"
    ],
    "size_page": {
-    "mass_1e18_kg": 0.0879,
+    "mass_kg": null,
     "radius_m": 557850.0,
     "radius_text": "557.85\u00b14.7[67]",
     "src": "Wikipedia List of Solar System objects by size, table 0",
@@ -40818,7 +40818,7 @@
     "kuiper"
    ],
    "size_page": {
-    "mass_1e18_kg": 0.0719,
+    "mass_kg": null,
     "radius_m": 455000.0,
     "radius_text": "455+25\u221220[77]",
     "src": "Wikipedia List of Solar System objects by size, table 0",
@@ -40876,7 +40876,7 @@
     "kuiper"
    ],
    "size_page": {
-    "mass_1e18_kg": 0.0711,
+    "mass_kg": null,
     "radius_m": 450000.0,
     "radius_text": "450+160\u2212130[78]",
     "src": "Wikipedia List of Solar System objects by size, table 0",
@@ -40933,7 +40933,7 @@
     "kuiper"
    ],
    "size_page": {
-    "mass_1e18_kg": 0.0664,
+    "mass_kg": null,
     "radius_m": 419000.0,
     "radius_text": "419\u00b122[79]",
     "src": "Wikipedia List of Solar System objects by size, table 0",
@@ -40991,7 +40991,7 @@
     "kuiper"
    ],
    "size_page": {
-    "mass_1e18_kg": 0.0629,
+    "mass_kg": null,
     "radius_m": 401000.0,
     "radius_text": "401+28\u221240[82]",
     "src": "Wikipedia List of Solar System objects by size, table 0",
@@ -41048,7 +41048,7 @@
     "kuiper"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 398000.0,
     "radius_text": "398\u00b112",
     "src": "Wikipedia List of Solar System objects by size, table 1",
@@ -41104,7 +41104,7 @@
     "kuiper"
    ],
    "size_page": {
-    "mass_1e18_kg": 200.0,
+    "mass_kg": 2e+20,
     "radius_m": 386000.0,
     "radius_text": "386\u00b16 (area equivalent)",
     "src": "Wikipedia List of Solar System objects by size, table 1",
@@ -41162,7 +41162,7 @@
     "kuiper"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 371000.0,
     "radius_text": "371+39\u221242",
     "src": "Wikipedia List of Solar System objects by size, table 1",
@@ -41219,7 +41219,7 @@
     "kuiper"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 348400.0,
     "radius_text": "348.4+5.4\u22124.4 (area equivalent)",
     "src": "Wikipedia List of Solar System objects by size, table 1",
@@ -41276,7 +41276,7 @@
     "kuiper"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 340000.0,
     "radius_text": "340\u00b117",
     "src": "Wikipedia List of Solar System objects by size, table 1",
@@ -41333,7 +41333,7 @@
     "kuiper"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 340000.0,
     "radius_text": "340+28\u221236",
     "src": "Wikipedia List of Solar System objects by size, table 1",
@@ -41438,7 +41438,7 @@
     "kuiper"
    ],
    "size_page": {
-    "mass_1e18_kg": 160.0,
+    "mass_kg": 1.6e+20,
     "radius_m": 327000.0,
     "radius_text": "327+77\u221251",
     "src": "Wikipedia List of Solar System objects by size, table 1",
@@ -41494,7 +41494,7 @@
     "kuiper"
    ],
    "size_page": {
-    "mass_1e18_kg": 3003.0,
+    "mass_kg": null,
     "radius_m": 325000.0,
     "radius_text": "325+0.5\u221288",
     "src": "Wikipedia List of Solar System objects by size, table 1",
@@ -41551,7 +41551,7 @@
     "kuiper"
    ],
    "size_page": {
-    "mass_1e18_kg": 244.0,
+    "mass_kg": 2.44e+20,
     "radius_m": 370000.0,
     "radius_text": "370\u00b17",
     "src": "Wikipedia List of Solar System objects by size, table 1",
@@ -41608,7 +41608,7 @@
     "kuiper"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 375000.0,
     "radius_text": "\u2248 375\u00b175[q]",
     "src": "Wikipedia List of Solar System objects by size, table 1",
@@ -41664,7 +41664,7 @@
     "kuiper"
    ],
    "size_page": {
-    "mass_1e18_kg": 136.1,
+    "mass_kg": 1.361e+20,
     "radius_m": 317000.0,
     "radius_text": "317+5\u22124",
     "src": "Wikipedia List of Solar System objects by size, table 1",
@@ -41818,7 +41818,7 @@
     "kuiper"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 208000.0,
     "radius_text": "208+42\u221215 equivalent",
     "src": "Wikipedia List of Solar System objects by size, table 1",
@@ -41874,7 +41874,7 @@
     "kuiper"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 305000.0,
     "radius_text": "305+85\u221270[q]",
     "src": "Wikipedia List of Solar System objects by size, table 1",
@@ -41979,7 +41979,7 @@
     "kuiper"
    ],
    "size_page": {
-    "mass_1e18_kg": 125.0,
+    "mass_kg": 1.25e+20,
     "radius_m": 330000.0,
     "radius_text": "330\u00b119",
     "src": "Wikipedia List of Solar System objects by size, table 1",
@@ -42085,7 +42085,7 @@
     "kuiper"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 283000.0,
     "radius_text": "283+36\u221237",
     "src": "Wikipedia List of Solar System objects by size, table 1",
@@ -42236,7 +42236,7 @@
     "kuiper"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 235000.0,
     "radius_text": "235+22\u221215",
     "src": "Wikipedia List of Solar System objects by size, table 1",
@@ -42579,7 +42579,7 @@
     "kuiper"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 335000.0,
     "radius_text": "\u2248 335[q]",
     "src": "Wikipedia List of Solar System objects by size, table 1",
@@ -42635,7 +42635,7 @@
     "kuiper"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 262000.0,
     "radius_text": "262\u00b14",
     "src": "Wikipedia List of Solar System objects by size, table 1",
@@ -42691,7 +42691,7 @@
     "kuiper"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 322000.0,
     "radius_text": "\u2248 322",
     "src": "Wikipedia List of Solar System objects by size, table 1",
@@ -42891,7 +42891,7 @@
     "kuiper"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 256000.0,
     "radius_text": "256+19\u221220",
     "src": "Wikipedia List of Solar System objects by size, table 1",
@@ -43046,7 +43046,7 @@
     "kuiper"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 250000.0,
     "radius_text": "250\u00b17",
     "src": "Wikipedia List of Solar System objects by size, table 1",
@@ -43198,7 +43198,7 @@
     "size_page"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 310000.0,
     "radius_text": "310+28\u221256[q]",
     "src": "Wikipedia List of Solar System objects by size, table 1",
@@ -43254,7 +43254,7 @@
     "size_page"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 300000.0,
     "radius_text": "300\u00b185",
     "src": "Wikipedia List of Solar System objects by size, table 1",
@@ -43310,7 +43310,7 @@
     "size_page"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 292000.0,
     "radius_text": "292+78\u221272",
     "src": "Wikipedia List of Solar System objects by size, table 1",
@@ -43365,7 +43365,7 @@
     "size_page"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 254000.0,
     "radius_text": "254+64\u221258",
     "src": "Wikipedia List of Solar System objects by size, table 1",
@@ -43421,7 +43421,7 @@
     "size_page"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 249000.0,
     "radius_text": "249+32\u221238",
     "src": "Wikipedia List of Solar System objects by size, table 1",
@@ -43477,7 +43477,7 @@
     "size_page"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 235000.0,
     "radius_text": "235+18\u22125",
     "src": "Wikipedia List of Solar System objects by size, table 1",
@@ -43532,7 +43532,7 @@
     "size_page"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 231000.0,
     "radius_text": "231\u00b123",
     "src": "Wikipedia List of Solar System objects by size, table 1",
@@ -43588,7 +43588,7 @@
     "size_page"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 230000.0,
     "radius_text": "230\u00b111",
     "src": "Wikipedia List of Solar System objects by size, table 1",
@@ -43644,7 +43644,7 @@
     "size_page"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 224000.0,
     "radius_text": "224+24\u221222",
     "src": "Wikipedia List of Solar System objects by size, table 1",
@@ -43699,7 +43699,7 @@
     "size_page"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 212000.0,
     "radius_text": "212+44\u221240",
     "src": "Wikipedia List of Solar System objects by size, table 1",
@@ -43755,7 +43755,7 @@
     "size_page"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 204000.0,
     "radius_text": "204+20\u221222",
     "src": "Wikipedia List of Solar System objects by size, table 1",
@@ -43812,7 +43812,7 @@
     "size_page"
    ],
    "size_page": {
-    "mass_1e18_kg": 40.1,
+    "mass_kg": 4.01e+19,
     "radius_m": 203000.0,
     "radius_text": "203\u00b18",
     "src": "Wikipedia List of Solar System objects by size, table 1",
@@ -43869,7 +43869,7 @@
     "size_page"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 203000.0,
     "radius_text": "203+49\u221238",
     "src": "Wikipedia List of Solar System objects by size, table 1",
@@ -43924,7 +43924,7 @@
     "size_page"
    ],
    "size_page": {
-    "mass_1e18_kg": 30.0,
+    "mass_kg": 3e+19,
     "radius_m": 199000.0,
     "radius_text": "199+16\u221220",
     "src": "Wikipedia List of Solar System objects by size, table 2",
@@ -43980,7 +43980,7 @@
     "size_page"
    ],
    "size_page": {
-    "mass_1e18_kg": 47.0,
+    "mass_kg": 4.7e+19,
     "radius_m": 199000.0,
     "radius_text": "199+55\u221286",
     "src": "Wikipedia List of Solar System objects by size, table 2",
@@ -44036,7 +44036,7 @@
     "size_page"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 196000.0,
     "radius_text": "196\u00b120",
     "src": "Wikipedia List of Solar System objects by size, table 2",
@@ -44092,7 +44092,7 @@
     "size_page"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 194600.0,
     "radius_text": "194.6\u00b14.4",
     "src": "Wikipedia List of Solar System objects by size, table 2",
@@ -44148,7 +44148,7 @@
     "size_page"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 176000.0,
     "radius_text": "176\u00b142",
     "src": "Wikipedia List of Solar System objects by size, table 2",
@@ -44204,7 +44204,7 @@
     "size_page"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 170000.0,
     "radius_text": "170\u00b110",
     "src": "Wikipedia List of Solar System objects by size, table 2",
@@ -44260,7 +44260,7 @@
     "size_page"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 170000.0,
     "radius_text": "170+60\u221248",
     "src": "Wikipedia List of Solar System objects by size, table 2",
@@ -44315,7 +44315,7 @@
     "size_page"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 165000.0,
     "radius_text": "165\u00b128",
     "src": "Wikipedia List of Solar System objects by size, table 2",
@@ -44371,7 +44371,7 @@
     "size_page"
    ],
    "size_page": {
-    "mass_1e18_kg": 48.0,
+    "mass_kg": 4.8e+19,
     "radius_m": 155000.0,
     "radius_text": "< 155",
     "src": "Wikipedia List of Solar System objects by size, table 2",
@@ -44427,7 +44427,7 @@
     "size_page"
    ],
    "size_page": {
-    "mass_1e18_kg": 11.0,
+    "mass_kg": 1.1e+19,
     "radius_m": 143000.0,
     "radius_text": "143\u00b15",
     "src": "Wikipedia List of Solar System objects by size, table 2",
@@ -44483,7 +44483,7 @@
     "size_page"
    ],
    "size_page": {
-    "mass_1e18_kg": 45.0,
+    "mass_kg": 4.5e+19,
     "radius_m": 137000.0,
     "radius_text": "137+24\u221212.",
     "src": "Wikipedia List of Solar System objects by size, table 2",
@@ -44540,7 +44540,7 @@
     "size_page"
    ],
    "size_page": {
-    "mass_1e18_kg": 6.71,
+    "mass_kg": 6.71e+18,
     "radius_m": 136000.0,
     "radius_text": "136\u00b19",
     "src": "Wikipedia List of Solar System objects by size, table 2",
@@ -44597,7 +44597,7 @@
     "size_page"
    ],
    "size_page": {
-    "mass_1e18_kg": 6.87,
+    "mass_kg": 6.87e+18,
     "radius_m": 134000.0,
     "radius_text": "134\u00b114",
     "src": "Wikipedia List of Solar System objects by size, table 2",
@@ -44655,7 +44655,7 @@
     "size_page"
    ],
    "size_page": {
-    "mass_1e18_kg": 6.4,
+    "mass_kg": 6.4e+18,
     "radius_m": 124800.0,
     "radius_text": "124.8+3.0\u22122.3",
     "src": "Wikipedia List of Solar System objects by size, table 2",
@@ -44700,7 +44700,7 @@
     "size_page"
    ],
    "size_page": {
-    "mass_1e18_kg": 5.89,
+    "mass_kg": 5.89e+18,
     "radius_m": 124000.0,
     "radius_text": "124\u00b115",
     "src": "Wikipedia List of Solar System objects by size, table 2",
@@ -44757,7 +44757,7 @@
     "size_page"
    ],
    "size_page": {
-    "mass_1e18_kg": null,
+    "mass_kg": null,
     "radius_m": 124000.0,
     "radius_text": "124\u00b115",
     "src": "Wikipedia List of Solar System objects by size, table 2",
@@ -44813,7 +44813,7 @@
     "size_page"
    ],
    "size_page": {
-    "mass_1e18_kg": 2.388,
+    "mass_kg": 2.388e+18,
     "radius_m": 123000.0,
     "radius_text": "123+19\u221270",
     "src": "Wikipedia List of Solar System objects by size, table 2",
@@ -44871,7 +44871,7 @@
     "size_page"
    ],
    "size_page": {
-    "mass_1e18_kg": 5.4,
+    "mass_kg": 5.4e+18,
     "radius_m": 112000.0,
     "radius_text": "112\u00b15",
     "src": "Wikipedia List of Solar System objects by size, table 2",

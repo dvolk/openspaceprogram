@@ -14,13 +14,33 @@ separated -- stripping the tags concatenates them into "Huya38628" -- so the hre
 what the keys come from.
 
 Tables are per class and the RADIUS UNIT IS NOT THE SAME IN EVERY ONE: tables up to 5
-are in km, table 6 is in metres. The unit is read from the header, never assumed.
+are in km, table 6 is in metres. Nor is the MASS UNIT: tables 0/1-3/4-5/6 state 10^21,
+10^18, 10^15 and 10^9 kg respectively. Both units are read from the header, never assumed.
 """
 import html
+import math
 import re
 
 # Radius header cells read "Radius[note 2](km)" / "Radius[note 2](m)".
 RADIUS_UNIT = re.compile(r'\(\s*(km|m)\s*\)', re.I)
+# Mass header cells read "(10^18 kg)" once the tags are gone -- and tag-stripping glues the
+# superscript to the base, so what is actually left is "(1018 kg)". The page is NOT
+# consistent: table 0 is 10^21, tables 1-3 are 10^18, tables 4-5 are 10^15 and table 6 is
+# 10^9, so the unit is read per table exactly like the radius unit is. A row's number is
+# meaningless without its table: Hartley 2 states 300 in table 6, which is 3e11 kg, and
+# reading it as 10^18 makes it 3e20 -- a 570 m pebble with the mass of a main-belt asteroid.
+# Nothing consumed this column before comets did, so this is a landmine being defused, not a
+# shipped number being corrected.
+# The unit is found by "kg", not by anchoring on the word Mass: table 0's label row and its
+# unit row are separate rows, and an Earth-volume note between them runs to hundreds of
+# characters. Nothing else on the page states a unit in kg, so the first kg-unit in a table is
+# its mass unit.
+MASS_UNIT = re.compile(r'\(\s*10(\d{1,2})\s*kg\s*\)', re.I)
+# What a stated mass and a stated radius have to imply, kg/m3. The floor is LOW on purpose:
+# the least dense things here are comet nuclei and contact-binary TNOs, and they are measured
+# there (Halley 220-276, Bienor ~215, 67P 533). The ceiling is iron-asteroid-ish; above it the
+# pair is a mis-read cell or a citation superscript that ate the number.
+DENSITY_BAND = (150.0, 9000.0)
 MEANINGFUL_ROW = re.compile(r'<td', re.I)
 
 
@@ -105,8 +125,9 @@ def parse_mass(cell):
 
 
 def objects(html_text):
-    """[dict] One entry per data row, with keys name, number, designation, radius_km,
-    radius_text, mass_text, type_note, table, and the lookup keys it answers to."""
+    """[dict] One entry per data row, with keys name, number, designation, radius_m,
+    radius_text, mass_kg (SI, or None when the cell has no number or the implied density
+    is absurd), mass_text, type_note, table, and the lookup keys it answers to."""
     out = []
     tables = re.findall(r'<table[^>]*>.*?</table>', html_text, re.S)
     for ti, table in enumerate(tables):
@@ -129,6 +150,23 @@ def objects(html_text):
                 unit = u.group(1).lower()
         if unit is None:
             continue                      # navboxes and the like
+        # Same read for the mass column. Table 0 puts Volume's "(10 9 km 3)" between the
+        # word Mass and its own unit, which is why MASS_UNIT anchors on "Mass".
+        mass_unit = None
+        m = MASS_UNIT.search(header_text)
+        if m:
+            mass_unit = 10.0 ** int(m.group(1))
+        # cells[3] is Mass in every small-body table -- Body|Image|Radius|Mass| then whatever
+        # else (Density, Type, Refs) the table adds. Table 0 is the exception: it splits
+        # Radius, Volume, Mass, Surface area, Density and Gravity each into an SI cell and an
+        # Earth-units cell, so its Mass sits at column 6 and column 3 is an EARTH RADII
+        # number -- the Sun would read as 109.2 x 10^21 kg. Counting the table's own data-row
+        # widths tells the two layouts apart; table 0's masses come from the fact sheets and
+        # are not read here at all.
+        widths = [len(re.findall(r'<t[dh][^>]*>(.*?)</t[dh]>', tr, re.S))
+                  for tr in re.findall(r'<tr[^>]*>.*?</tr>', table, re.S)
+                  if MEANINGFUL_ROW.search(tr)]
+        mass_col = None if widths and max(widths) >= 10 else 3
         for tr in re.findall(r'<tr[^>]*>.*?</tr>', table, re.S):
             if not MEANINGFUL_ROW.search(tr):
                 continue
@@ -140,7 +178,23 @@ def objects(html_text):
             if r is None:
                 continue
             radius_m = r if unit == 'm' else r * 1000.0
-            mass, mtext = (parse_mass(cells[3]) if len(cells) > 3 else (None, None))
+            mass, mtext = (parse_mass(cells[mass_col])
+                           if mass_col is not None and len(cells) > mass_col
+                           else (None, None))
+            mass_kg = mass * mass_unit if (mass is not None and mass_unit) else None
+            # Weigh the pair rather than trust it: mass over radius has to imply a plausible
+            # density. Most of what this drops is a citation superscript that ate the number
+            # (2003 UZ413's cell strips to '3003</sup>...'), and a few are the page stating a
+            # mass for a satellite or a wide binary under a sphere radius. Returning the
+            # number silently is the failure mode this exists for.
+            if mass_kg is not None:
+                rho = mass_kg / (4.0 / 3.0 * math.pi * radius_m ** 3)
+                if not (DENSITY_BAND[0] <= rho <= DENSITY_BAND[1]):
+                    print('  SANITY size-page %s (table %d): %s kg against %s m implies '
+                          '%.3g kg/m3 -- dropping the mass (unit read %s)'
+                          % (name, ti, mtext, radius_m, rho,
+                             ('10^%d kg' % round(math.log10(mass_unit))) if mass_unit else None))
+                    mass_kg = None
             # The Type column is not at a fixed index (the dwarf-planet table has more
             # columns than the small-body tables), so scan everything past the radius.
             tnote = None
@@ -155,7 +209,7 @@ def objects(html_text):
                     break
             out.append({'table': ti, 'number': number, 'name': name,
                         'designation': designation, 'radius_m': radius_m,
-                        'radius_text': rtext, 'mass_1e18_kg': mass,
+                        'radius_text': rtext, 'mass_kg': mass_kg,
                         'mass_text': mtext, 'type_note': tnote})
     return out
 

@@ -795,7 +795,7 @@ def size_block(e):
     """The size-page fields as a corpus block, with the page's own text kept alongside the
     number so a reader can see what it actually claimed ('371+39−42')."""
     return {"radius_m": e["radius_m"], "radius_text": e["radius_text"],
-            "mass_1e18_kg": e["mass_1e18_kg"], "type_note": e["type_note"],
+            "mass_kg": e["mass_kg"], "type_note": e["type_note"],
             "src": "Wikipedia List of Solar System objects by size, table %d" % e["table"]}
 
 
