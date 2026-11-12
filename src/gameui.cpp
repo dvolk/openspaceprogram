@@ -195,11 +195,13 @@ static void drawOrbitThroughBody(ImDrawList *dl, const OrbitMap &map,
 // Sampled from each rail's IMMUTABLE epoch state (not the live rail -- that is
 // what makes the cache hit), then rotated/translated into the focus's frame.
 // LOD skips parents under 10 px SoI and orbits whose apoapsis disc misses the view.
+// `col_minor` draws asteroid and comet rails only: see the note in the loop.
 static void drawSystemBodyOrbits(Game &g, TerrainBody *focus,
                                  const OrbitMap &map, ImDrawList *dl,
                                  const MapViewRect &view, double map_scale,
                                  TerrainBody *sel_body,
-                                 ImU32 col_child, ImU32 col_sel, ImU32 ink,
+                                 ImU32 col_child, ImU32 col_minor,
+                                 ImU32 col_sel, ImU32 ink,
                                  ImU32 soi_col) {
     std::vector<TerrainBody *> &planets = g.sys.bodies;
     // The star has no parent, so the loop below skips it: draw its disk + label here.
@@ -247,8 +249,18 @@ static void drawSystemBodyOrbits(Game &g, TerrainBody *focus,
         const std::vector<glm::dvec3> &cpts_p =
             orbit_caches[(const void *)b].sample(epos_p, evel_p, mu_c, N);
         if(cpts_p.empty()) continue;
+        /* Asteroid and comet rails are BACKGROUND, so they draw a shade closer to the
+           canvas than the planets. This matters out of proportion for the near-parabolic
+           comets: the cull above is a disc of radius APOAPSIS, so a 410 AU ellipse can
+           never miss the view and C/1811 F1 draws a full near-radial needle across a 2 AU
+           transfer map, at i 105 deg where nothing else the player follows lives. The dots,
+           rings and labels stay put -- a body you can fly to should still be findable --
+           and the body the transfer plan is pointed at keeps the bright line. */
+        const bool minor = (b->type == BodyType::Asteroid
+                            || b->type == BodyType::Comet);
         const ImU32 ccol = selected ? col_sel : col_child;
-        drawOrbitThroughBody(dl, map, cpts_p, O, P, cpos_p, ccol,
+        const ImU32 lcol = selected ? col_sel : (minor ? col_minor : col_child);
+        drawOrbitThroughBody(dl, map, cpts_p, O, P, cpos_p, lcol,
                              selected ? 2.0f : 1.0f);
         // Disk at the body's TRUE radius, floored so it stays visible zoomed out.
         const float min_r = selected ? 5.0f : 3.0f;
@@ -4260,7 +4272,10 @@ void drawUIMap(Game &g) {
         const ImU32 col_apsis = col_ship;  // periapsis / apoapsis: part of your orbit
         const ImU32 col_xfer  = ImGui::GetColorU32(ImVec4(0.35f, 0.55f, 1.00f, 1.0f));
         const ImU32 col_vessel = ImGui::GetColorU32(ImVec4(1.00f, 0.62f, 0.22f, 1.0f));
-        const ImU32 col_child = ImGui::GetColorU32(ImVec4(0.55f, 0.55f, 0.55f, 1.0f));
+        const ImVec4 child_rgba(0.55f, 0.55f, 0.55f, 1.0f);
+        const ImU32 col_child = ImGui::GetColorU32(child_rgba);
+        // Asteroid and comet rails sit halfway to the canvas (see drawSystemBodyOrbits).
+        const ImU32 col_minor = dimToward(child_rgba, bg, 0.5f);
         const ImU32 col_body  = ink;
         const ImU32 col_sel   = ImGui::GetColorU32(ImVec4(0.90f, 0.90f, 0.90f, 1.0f));
         const ImU32 soi_col   = ImGui::GetColorU32(ImVec4(0.50f, 0.50f, 0.50f, 0.30f));
@@ -4298,6 +4313,9 @@ void drawUIMap(Game &g) {
             legend("xfer", col_xfer, kRect);
             ImGui::SameLine();
             legend("bodies", col_child, kRect);
+            ImGui::SameLine();
+            // Name the quiet rails, or the faint gray reads as a rendering bug.
+            legend("minor", col_minor, kRect);
             ImGui::SameLine();
             legend("apsides", col_apsis, kDot);
             ImGui::SameLine();
@@ -4389,7 +4407,7 @@ void drawUIMap(Game &g) {
         {
             const MapViewRect view{p0.x, p0.y, p0.x + map_w, p0.y + map_h};
             drawSystemBodyOrbits(g, focus, proj, dl, view, map_scale,
-                                 sel_body, col_child, col_sel, ink,
+                                 sel_body, col_child, col_minor, col_sel, ink,
                                  soi_col);
         }
         // The focus body's own SOI -- the gravitational regime the ship is inside.
@@ -6452,7 +6470,10 @@ void drawTrackingMap(Game &g) {
         const ImU32 col_ship  = ImGui::GetColorU32(ImVec4(0.20f, 0.80f, 0.40f, 1.0f));
         const ImU32 col_apsis = col_ship;  // periapsis / apoapsis: part of your orbit
         const ImU32 col_vessel = ImGui::GetColorU32(ImVec4(1.00f, 0.62f, 0.22f, 1.0f));
-        const ImU32 col_child = ImGui::GetColorU32(ImVec4(0.55f, 0.55f, 0.55f, 1.0f));
+        const ImVec4 child_rgba(0.55f, 0.55f, 0.55f, 1.0f);
+        const ImU32 col_child = ImGui::GetColorU32(child_rgba);
+        // Asteroid and comet rails sit halfway to the canvas (see drawSystemBodyOrbits).
+        const ImU32 col_minor = dimToward(child_rgba, bg, 0.5f);
         const ImU32 col_body  = ink;
         const ImU32 col_sel   = ImGui::GetColorU32(ImVec4(0.90f, 0.90f, 0.90f, 1.0f));
         const ImU32 soi_col   = ImGui::GetColorU32(ImVec4(0.50f, 0.50f, 0.50f, 0.30f));
@@ -6479,7 +6500,7 @@ void drawTrackingMap(Game &g) {
             // Belts go down first: orbits, bodies and labels should read through them.
             drawDebrisBelts(g, focus, proj, dl, view, map_scale);
             drawSystemBodyOrbits(g, focus, proj, dl, view, map_scale,
-                                 sel_body, col_child, col_sel, ink,
+                                 sel_body, col_child, col_minor, col_sel, ink,
                                  soi_col);
         }
         // The focus body's own SOI -- the gravitational regime in play.

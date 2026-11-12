@@ -406,6 +406,26 @@ int main() {
         }
     }
 
+    // dimToward(): the map's quiet rail colour, measured on BOTH canvases. Halfway to
+    // a black canvas is darker than the body gray; halfway to a WHITE one is lighter,
+    // which is the whole point -- a hardcoded dark gray vanishes on the light style.
+    {
+        const ImVec4 child(0.55f, 0.55f, 0.55f, 1.0f);   // == 140 per channel
+        const auto gray = [](ImU32 c) { return (double)(c & 0xFF); };  // R==G==B
+        expect_close(gray(dimToward(child, ImVec4(0.0f, 0.0f, 0.0f, 1.0f), 0.0f)),
+                     140.0, 1.0, "dimToward t=0 keeps the colour");
+        expect_close(gray(dimToward(child, ImVec4(0.0f, 0.0f, 0.0f, 1.0f), 1.0f)),
+                     0.0, 1.0, "dimToward t=1 reaches the canvas");
+        expect_close(gray(dimToward(child, ImVec4(0.0f, 0.0f, 0.0f, 1.0f), 0.5f)),
+                     70.0, 1.0, "dimToward on the black Tracking map");
+        expect_close(gray(dimToward(child, ImVec4(1.0f, 1.0f, 1.0f, 1.0f), 0.5f)),
+                     198.0, 1.0, "dimToward on a light canvas must go UP, not down");
+        // Alpha stays the caller's -- dimming a faint ring must not brighten it.
+        const ImU32 half = dimToward(ImVec4(0.55f, 0.55f, 0.55f, 0.5f),
+                                     ImVec4(0.0f, 0.0f, 0.0f, 1.0f), 0.5f);
+        expect_close(double((half >> 24) & 0xFF), 128.0, 1.0, "dimToward keeps alpha");
+    }
+
     if(g_failures == 0) {
         std::printf("test_orbitmap: all checks passed\n");
         return 0;

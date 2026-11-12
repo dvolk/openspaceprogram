@@ -152,3 +152,18 @@ inline ImU32 contrastingColor(const ImVec4 &bg,
     return (ImU32)(((a & 0xFF) << 24) | ((b & 0xFF) << 16) |
                    ((g & 0xFF) << 8) | (r & 0xFF));
 }
+
+// `t` of the way from `c` to `bg`: a QUIETER colour that recedes on either canvas -- toward
+// black on the black Tracking map, toward white on a light style. A hardcoded dark gray would
+// just vanish on the light theme. Packed by hand like contrastingColor(), so this stays
+// usable in the link-free unit test.
+inline ImU32 dimToward(const ImVec4 &c, const ImVec4 &bg, float t) {
+    const auto mix = [t](float a, float b) {
+        const float v = a + (b - a) * t;
+        return (int)(255.0f * (v < 0.0f ? 0.0f : (v > 1.0f ? 1.0f : v)) + 0.5f);
+    };
+    const int r = mix(c.x, bg.x), g = mix(c.y, bg.y), b = mix(c.z, bg.z);
+    const int a = (int)(255.0f * c.w + 0.5f);
+    return (ImU32)(((a & 0xFF) << 24) | ((b & 0xFF) << 16) |
+                   ((g & 0xFF) << 8) | (r & 0xFF));
+}
