@@ -2072,11 +2072,16 @@ void drawUIReadouts(Game &g) {
             }
             /* #769: on a wind map, the same idea one axis over -- the speed and direction of the
                air OVER THE PIXEL under the cursor. It goes through the profile the picture was
-               BAKED with (g.surfmap.wind_rows) at this point's elevation, which is the same
-               arithmetic the sweep used to colour that pixel; the Surface window's Wind: row two
-               windows away reads the same table at the hull's altitude, so the two agree by
-               construction rather than by luck. Dashed with the reason, because "no air" and
-               "air the file states no wind for" are different news (#726). */
+               BAKED with (g.surfmap.wind_rows) at this point's elevation. Same rows, same law --
+               but not the same SAMPLE as the colour beside it: the sweep asked with the float
+               elevation it stored for the pixel's centre (surfmap.cpp's elevs[]), while the cursor
+               asks with the live terrain height at the exact point under the mouse, which is also
+               the `elev` this line prints. Over a ridge those differ by tens of metres and the
+               number can outrun the swatch; that is the cursor reading the place and the swatch
+               reading the cell, and the row set behind both is one set. The Surface window's Wind:
+               row two windows away reads the same table at the hull's altitude. Dashed with the
+               reason, because "no air" and "air the file states no wind for" are different news
+               (#726). */
             char wind_s[48] = "";
             if(g.surfmap.baked_type == kMapWind) {
                 int wn;

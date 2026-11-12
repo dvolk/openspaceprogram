@@ -254,8 +254,16 @@ inline constexpr double kWindMaxRise = 100.0;     // m/s, up/down
    each body's fastest AUTHORED row as U): Venus Ro 27.6 -> no jets, and Venus has none;
    Jupiter Ro 0.006 -> ~19 asked, spacecraft count 10-22; Earth Ro 0.043 -> 7 asked
    against 2-3 real cells. Mars and the ice giants overpredict -- their jets are
-   eddy-driven and weak rather than Rhines-limited -- which is exactly why this ships on
-   INVENTED bodies first and not on the ones whose fact sheets the dossier quotes.
+   eddy-driven and weak rather than Rhines-limited -- which is a reason to distrust the
+   COUNT, not to hide the law. Where the generator may run is decided by the data, not by
+   this comment: utils/make_solar_system.py:check_fact_wind refuses it on any body whose
+   sheet bounds wind BY LATITUDE (Jupiter and Saturn, where a generated field would put
+   derived numbers inside a bound the page set) and allows it where the sheet gives a bare
+   speed range and says nothing about structure -- which is how Uranus (Ro 0.049, 6 belts
+   per hemisphere) and Neptune ship today (#772). amp <= 1 keeps every generated row inside
+   the authored column, so those stay inside their sheets' 0-250 and 0-580 m/s, and the
+   atlas prints "air wind (generated) rhines: Ro ..." rather than passing a belt off as a
+   published figure.
 
    What comes out is ordinary WindLevel rows, so windAt, the surface sweep, the Surface
    window and [surfinfo] cannot tell the difference and none of them grew a branch. The
@@ -354,6 +362,14 @@ inline std::vector<WindLevel> windGenerate(const std::vector<WindLevel> &anchors
                                            double rot_ang_speed, double radius,
                                            uint64_t seed, WindGenInfo &info) {
     assert(!anchors.empty());
+    /* THE CONSTANTS THE VALUE LAWS REST ON. system.cpp does NOT re-run its row-value
+       checks on a generated table: the anchors were checked at parse time and generation
+       cannot raise an amplitude, because amp = pow(kWindGenFloor, j/nb) with j in [0,nb]
+       -- exactly 1 over the equator, exactly kWindGenFloor at the poleward belt. That
+       argument is worth nothing four hundred lines from the constants it quantifies, so
+       it is asserted here, next to them. */
+    assert(kWindGenFloor > 0.0 && kWindGenFloor <= 1.0);
+    assert(kWindGenJitter >= 0.0 && kWindGenJitter < 0.5);   // edge ordering, below
     for(const WindLevel &A : anchors) {
         assert(A.lat0 == -90.0 && A.lat1 == 90.0);   // anchors are columns, not bands
     }
@@ -427,6 +443,10 @@ inline std::vector<WindLevel> windGenerate(const std::vector<WindLevel> &anchors
         /* Normalized across the belt count, so the poleward belt sits exactly on the floor
            whether this body fits 2 belts or 15. */
         const double amp = std::pow(kWindGenFloor, (double)j / (double)nb);
+        /* The claim system.cpp leans on when it skips the value laws for generated
+           rows: the amplitude never exceeds 1, so every component stays inside whatever
+           the anchors were checked against at parse time. Asserted, not assumed. */
+        assert(amp <= 1.0);
         const double sign = (j % 2 == 0) ? 1.0 : -1.0;
         const double hemi = (b < nb) ? -1.0 : 1.0;   // the mirror, for the meridional leg
         for(const WindLevel &A : anchors) {
