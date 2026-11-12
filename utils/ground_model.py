@@ -587,6 +587,25 @@ def _self_test():
     cmean = 0.5 * (math.pi / n) * s
     check(abs(cmean - 0.25) < 1e-5, "<cos_inc> over the sphere is 1/4 (got %.6f)" % cmean)
 
+    # The ARITHMETIC mean of T, which is NOT conserved -- this is the number the header quotes at
+    # three rungs of f, and it was quoted wrong for years (the Moon rung said 35 %, the quadrature
+    # says 26 %), which is why it is checked here rather than left as prose. Same area measure as
+    # above: mu = cos zenith is uniform over the sphere. An equirectangular pixel grid WITHOUT the
+    # cos(lat) weight lands elsewhere again (30 % at the Moon's f) -- that is the map's grid, not
+    # the sphere, and the map's own T^4 mean is area-weighted for exactly this reason (#745).
+    for f, want_pct in ((0.9323431643529773, 0.07),     # Earth's authored knob
+                        (0.013935832091621402, 26.2),   # the Moon's
+                        (0.0, 43.4)):                   # local radiative balance
+        n2, s2 = 200000, 0.0
+        for i in range(n2):
+            mu = -1.0 + 2.0 * (i + 0.5) / n2
+            s2 += (f + (1.0 - f) * 4.0 * max(0.0, mu)) ** 0.25
+        arith = s2 / n2     # (1/2) * integral over mu in [-1,1], and dmu = 2/n: the halves cancel
+        deficit = (1.0 - arith) * 100.0
+        check(abs(deficit - want_pct) < 0.15,
+              "arithmetic mean of T sits %.1f %% below T0 at f=%.6f (quadrature: %.2f %%)"
+              % (want_pct, f, deficit))
+
     # The forced relation between the two ends -- one knob means a pair over-determines it.
     for T0, f in ((288.0, 0.95), (270.4, 0.015), (151.43, 0.5)):
         a = (night_T(T0, f) / T0) ** 4

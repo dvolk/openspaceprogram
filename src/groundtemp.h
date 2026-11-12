@@ -21,7 +21,10 @@
    not the same number. What is conserved is the RADIATION mean, <T^4>^(1/4). The arithmetic
    mean of T is not conserved -- measured at the knobs this corpus authors it sits 0.07 %
    below (Earth, f = 0.932: 0.2 K), 26 % below at the Moon's f = 0.014 (0.738 T0), and 43 %
-   below at f = 0. Do NOT read that as the gap the dossier prints between a body's airless
+   below at f = 0. That mean is AREA-weighted, which is the same distinction the surface map
+   makes a point of: averaging an equirectangular grid's pixels without the cos(lat) weight
+   puts it a further 4 % lower (30 % at the Moon's f). Do NOT read either as the gap the
+   dossier prints between a body's airless
    black-body and its authored ground (Earth's 255 K against its 288 K, 33 K): that one is a
    POWER imbalance this model does not have -- the unmodelled greenhouse (#728, #738). This
    swing neither explains it nor closes it, which is why this file anchors the radiation mean

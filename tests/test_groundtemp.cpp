@@ -63,7 +63,8 @@ static int g_checks = 0;
    science/724 catches the readout -- the dossier and the solar log -- rendering something
    other than what these numbers imply.
      Earth  earthfact.html  "Diurnal temperature range: 283 K to 293 K", anchor = stated avg
-     Moon   moonfact.html   "95 K to 390 K (equator)",       anchor = DERIVED black-body
+     Moon   moonfact.html   "95 K to 390 K (equator)",       anchor = SOLVED from that pair
+                                                              (temperature_src says so)
      Eve    ksp_bodies.csv  night/day 160.02 - 420.00 K,     anchor = the air's datum
      Venus  venusfact.html  "Diurnal temperature range: ~0" -> f = 1, stated 737 K */
 struct Authored {
@@ -132,7 +133,11 @@ int main() {
        from the shipped body: a stale row audits nothing. */
     const Authored rows[] = {
         {"Earth",  288.00, 0.9323431643529773, 283.0, 293.0, 0.08 * 288.00},
-        {"Moon",   276.49697165253286, 0.013935832091621402, 95.0, 390.0, 0.08 * 276.50},
+        /* The Moon's pair is not a fit: the generator SOLVES f so that BOTH stated ends fall
+           out of one knob (temperature_src: "SOLVED from the stated range 95.00-390.00 K").
+           So its day end has no gate to sit inside -- hold it exact and let the loop's 1e-9
+           carry. Earth and Eve are still fits against a stated mean, so they keep the 8 %. */
+        {"Moon",   276.49697165253286, 0.013935832091621402, 95.0, 390.0, 0.0},
         {"Eve",    291.68, 0.09058795570276411, 160.02, 420.00, 0.08 * 291.68},
         {"Venus",  737.00, 1.0,                 737.0, 737.0, 0.0},
     };

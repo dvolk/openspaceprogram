@@ -3137,14 +3137,19 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
         sv.to_sun = rot_to_S * sv_rot.to_sun;
         sv.valid = sv_rot.valid;
         const SkyAtZenith sky = skyAtZenith(sv, com);
-        /* An invalid sky is NOT midnight. cos_inc = 0 is a reading of a dark sky; "no
-           reading" and "dark" give different airs -- Kerbin's coupled air at 6.4 km sits
-           0.35 * (283.15 - 288.15) = -1.75 K below the profile when fed 0, and with it the
-           speed of sound the drag line right below divides by. insolation.h's rule for the
-           readouts is that an unmeasurable sky dashes the columns rather than answering 0;
-           the air follows the same rule, so it stays on the profile until a sun is in sight.
-           (#794 asks for this branch to be covered once a kernel makes the coupling more
-           than a per-tick blend.) */
+        /* An invalid sky is NOT midnight. cos_inc = 0 is a READING -- a sky measured to be dark;
+           an invalid one is "no measurement". Feeding it the 0 invents a specific insolation, and
+           the invented amount is not one number: Kerbin's ground swings to a 283.16 K night end, so
+           a false 0 lifts the air well above the profile at altitude (measured on the cruise bed:
+           prof_T 233.92 K against air_T 239.66 K, w = 0.33) and pulls it about 1.8 K BELOW the
+           profile at the datum, where the profile sits above that night end. Either way the speed
+           of sound the drag line below divides by comes off a sun nobody saw.
+           insolation.h's rule for the readouts is that an unmeasurable sky dashes the columns
+           rather than answering 0, and the air follows the same rule: stay on the profile.
+           In play this branch is nearly inert -- skyAtZenith goes invalid only when the star and
+           the body coincide (kSunMinDistance_m) or a hull sits at the body's exact centre. There
+           is no eclipse in this model, so a hull on the night side keeps a VALID sky at cos_inc
+           0.0 and keeps its midnight-coupled air: this guard is about the contract, not about dusk. */
         if(sky.valid) {
             const double anchor = groundAnchor_K(m_parent->surface.temperature,
                                                  airDatum_K(atm), 0.0);

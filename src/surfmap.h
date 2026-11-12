@@ -217,21 +217,23 @@ inline TempLayer tempLayerFor(const Surface &s, double derived_bb, bool has_sun)
    one the picture was BAKED with, not the sim's sun now (the map is a snapshot; frames move
    underneath it). #687's rule that a figure is measured or recomputed, never both at different
    instants.
-   The cosine is solar.h's, not a local max/min of a dot product: groundtemp.h's contract says
-   cos_inc comes from solar.h's floored cosine and nothing re-derives it, and this was the one
-   place that did. The sweep's directions are unit (equirectDirAt) and so is the baked sun
-   (starFromBody), but the CURSOR readout is not guaranteed to be, and its old guard was a
-   clamp on the dot -- which read a direction 3x longer as 3x hotter than the angle it points
-   at, up to the ceiling. Put the guard where it belongs, on the direction: a direction is a
-   bearing, so scale it to the unit sphere and let solar.h floor it. Under 1 it stays as it
-   is -- a zero-length direction has no bearing to normalise, and the floor answering with the
-   night end is the honest reading of that. tests/test_surfmap.cpp
-   pins the ceiling either way (an un-normalised direction cannot read hotter than the day
-   end); it now also gets the right temperature for an angled one. */
+   The cosine is solar.h's: groundtemp.h says cos_inc comes from that floored cosine and nothing
+   re-derives it, and this was the one place that did. Both vectors go onto the unit sphere
+   first, because a direction is a BEARING and its length must not reach the law. It used to:
+   the old clamp sat on the DOT PRODUCT, so a direction 3x too long priced as three times the
+   cosine of its angle -- saturating to the day end inside ~70 deg of the star, reading 80 deg
+   as 59 outside it. Normalising also absorbs the cursor's float round-trip (gameui.cpp widens
+   a glm::vec3, unit to ~1e-7, worth ~4e-6 K) and keeps an over-long sun vector away from
+   groundTemperature's cos_inc assert. A zero-length vector stays zero: no bearing to normalise,
+   and the floor's night end is the honest answer for it. Only the unit test feeds a direction
+   that is deliberately off the sphere -- the sweep (equirectDirAt) and the baked sun
+   (starFromBody) are unit by construction. */
 inline double surfmapGroundT(double anchor_K, double even_share, glm::dvec3 dir,
-                             const glm::dvec3 &sun_dir) {
-    const double len2 = glm::dot(dir, dir);   // length2 would want glm/gtx/norm.hpp
-    if(len2 > 1.0) { dir *= 1.0 / std::sqrt(len2); }
+                             glm::dvec3 sun_dir) {
+    const double dir_len2 = glm::dot(dir, dir);    // length2 would need glm/gtx/norm.hpp
+    if(dir_len2 > 0.0) { dir *= 1.0 / std::sqrt(dir_len2); }
+    const double sun_len2 = glm::dot(sun_dir, sun_dir);
+    if(sun_len2 > 0.0) { sun_dir *= 1.0 / std::sqrt(sun_len2); }
     return groundTemperature(anchor_K, even_share, cosIncidence(dir, sun_dir));
 }
 

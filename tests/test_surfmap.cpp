@@ -273,10 +273,20 @@ static void cursorTemperature() {
           "the antipode reads the night end");
     check(near_d(surfmapGroundT(anchor, knob, glm::dvec3(0.0, 0.0, 1.0), sun), duna.lo_K, 1e-9),
           "the terminator reads the night end too");
-    // A direction NOT on the unit sphere (a cursor un-normalised somewhere) is clamped, not
-    // extrapolated: the readout cannot exceed the map's own day end.
+    // A direction NOT on the unit sphere cannot read hotter than the map's own day end. This is
+    // the ceiling only: it passed under the OLD spelling too, which clamped the DOT PRODUCT and
+    // so priced a 3x-long direction at three times the cosine of its angle -- a point 70 deg off
+    // the star came back as the subsolar one, 80 deg came back as 59. The pair below is what the
+    // clamp could not see: off the star, a longer or shorter vector must read the SAME place,
+    // because a direction is a bearing and its length is not part of where it points.
     check(surfmapGroundT(anchor, knob, 3.0 * sun, sun) <= duna.hi_K + 1e-9,
           "an un-normalised direction cannot read hotter than the picture's day end");
+    const glm::dvec3 off = glm::normalize(glm::dvec3(std::cos(1.4), 0.0, std::sin(1.4)));
+    const double off_T = surfmapGroundT(anchor, knob, off, sun);
+    check(near_d(surfmapGroundT(anchor, knob, 3.0 * off, sun), off_T, 1e-9),
+          "a longer direction off the star is the same place, not a hotter one");
+    check(near_d(surfmapGroundT(anchor, knob, 0.4 * off, sun), off_T, 1e-9),
+          "and so is a shorter one");
     // Three places a third of a turn apart on the equator: at least one is in night and at
     // least one is lit, whatever the star's bearing -- which is why an e2e case could ask for
     // this spread without knowing where local noon is. Pinned here instead of there, because

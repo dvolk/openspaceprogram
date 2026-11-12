@@ -588,13 +588,14 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
     app.add_option("--surfmap-n", args.surfmap_n,
                    "Surface map width in pixels (height = surfmap-n / 2); "
                    "default 512. The sweep costs w*h, so each doubling of this "
-                   "quadruples it: measured on the map thread, Earth's ground "
-                   "picture is 28 ms at 256, 101 ms at 512, 392 ms at 1024 -- an "
-                   "order less for a temperature bake (4/12/33 ms), which is a "
-                   "field evaluation and not a terrain cast (and the printed "
-                   "sweep_ms= says what any bake took). 512 rather than 256 "
-                   "because the wind arrows scale with the grid stride: at 256 "
-                   "their heads are ~2 px");
+                   "quadruples it: measured on the map thread on Earth, the "
+                   "ground picture is 28 / 101 / 392 ms at 256 / 512 / 1024. A "
+                   "temperature bake is an order cheaper (single ms up to ~35 ms "
+                   "at 1024) because it evaluates a field rather than casting "
+                   "terrain, and its own doubling is softer than x4 while the "
+                   "fixed costs still dominate. The printed sweep_ms= says what "
+                   "any bake took. 512 rather than 256 because the wind arrows "
+                   "scale with the grid stride: at 256 their heads are ~2 px");
     app.add_flag("--surfmap-noshade", args.surfmap_noshade,
                  "Skip the terminator (day/night shading) when computing the "
                  "surface map (the window's 'Sun shading' box does the same "

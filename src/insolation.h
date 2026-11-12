@@ -125,17 +125,25 @@ inline SkyAtZenith skyAtZenith(const StarFromBody &sv, const glm::dvec3 &zenith)
 
 /* The same question for a named place -- the entry point the surface temperature field
    (#724) is built on, which is why it exists before any caller in src/ does. Note
-   equirect.h's argument order: lon first. */
+   equirect.h's argument order: lon first. Nothing in src/ calls it today: the sweep builds its
+   direction from pixel indices through equirectDirAt rather than from a place name.
+   tests/test_solar.cpp does call it, so the wrapper is exercised rather than dead weight. */
 inline SkyAtZenith skyAtPlace(const StarFromBody &sv, double lon, double lat) {
     return skyAtZenith(sv, equirectDir(lon, lat));
 }
 
 /* [s since local midnight] What a clock reads at the body's prime meridian, from the
    subsolar longitude: that point is local noon, and east-positive longitude (#200) means
-   every degree east of it is 4 minutes later. Kept geometric on purpose (#202): this is
-   the subsolar point read as hours, not a mean-time table, so it is exactly the quantity
-   the terminator and the solar log agree with. The clamp at the end of the day is the
-   "23:59:59 rather than 24:00:00" of a display, not a law. */
+   every degree east of it is later. Kept geometric on purpose (#202): this is the subsolar
+   point read as hours, not a mean-time table, so it is exactly the quantity the terminator
+   and the solar log agree with.
+   The FACE IS 24 HOURS FOR EVERY BODY -- the 15 deg/hour below is 360/24, the dial's own
+   graduation, not a rotation rate. On Earth that graduation matches the day; on Kerbin
+   (5:59:59) one dial hour is ~15 minutes of sim time and a dial minute is ~15 sim seconds,
+   so noon still sits at 12:00 and local midnight at 00:00 whatever the world's spin. That
+   is a display convention with a pinned case (e2e ui/741), not physics: nothing in the
+   simulation ticks in these hours. The clamp at the end of the day is the "23:59:59 rather
+   than 24:00:00" of a display, not a law. */
 inline int solarSecOfDay(double subsolar_lon) {
     double sod = 12.0 - glm::degrees(subsolar_lon) / 15.0;
     while(sod < 0.0) { sod += 24.0; }
