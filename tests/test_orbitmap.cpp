@@ -406,24 +406,38 @@ int main() {
         }
     }
 
-    // dimToward(): the map's quiet rail colour, measured on BOTH canvases. Halfway to
-    // a black canvas is darker than the body gray; halfway to a WHITE one is lighter,
-    // which is the whole point -- a hardcoded dark gray vanishes on the light style.
+    // quietColor(): the map's quiet rail gray, measured OFF THE CANVAS rather than
+    // hardcoded -- #22 on the black Tracking map, #DD on a light style. The pair is the
+    // point: a fixed dark gray would vanish on the light theme.
     {
-        const ImVec4 child(0.55f, 0.55f, 0.55f, 1.0f);   // == 140 per channel
-        const auto gray = [](ImU32 c) { return (double)(c & 0xFF); };  // R==G==B
-        expect_close(gray(dimToward(child, ImVec4(0.0f, 0.0f, 0.0f, 1.0f), 0.0f)),
-                     140.0, 1.0, "dimToward t=0 keeps the colour");
-        expect_close(gray(dimToward(child, ImVec4(0.0f, 0.0f, 0.0f, 1.0f), 1.0f)),
-                     0.0, 1.0, "dimToward t=1 reaches the canvas");
-        expect_close(gray(dimToward(child, ImVec4(0.0f, 0.0f, 0.0f, 1.0f), 0.5f)),
-                     70.0, 1.0, "dimToward on the black Tracking map");
-        expect_close(gray(dimToward(child, ImVec4(1.0f, 1.0f, 1.0f, 1.0f), 0.5f)),
-                     198.0, 1.0, "dimToward on a light canvas must go UP, not down");
-        // Alpha stays the caller's -- dimming a faint ring must not brighten it.
-        const ImU32 half = dimToward(ImVec4(0.55f, 0.55f, 0.55f, 0.5f),
-                                     ImVec4(0.0f, 0.0f, 0.0f, 1.0f), 0.5f);
-        expect_close(double((half >> 24) & 0xFF), 128.0, 1.0, "dimToward keeps alpha");
+        const auto gray = [](ImU32 c) { return (double)(c & 0xFF); };   // R==G==B here
+        const ImVec4 black(0.0f, 0.0f, 0.0f, 1.0f);
+        const ImVec4 white(1.0f, 1.0f, 1.0f, 1.0f);
+        expect_close(gray(quietColor(black, 0.133f)), 34.0, 1.0,
+                     "quietColor: the map's gray on black is #22");
+        expect_close(gray(quietColor(white, 0.133f)), 221.0, 1.0,
+                     "quietColor: the same call on white is #DD, not a vanishing #22");
+        // Invariant behind those numbers: the quiet rail sits closer to the canvas than
+        // the 0.55 body gray does, whichever canvas that is.
+        const double body = 140.0;   // GetColorU32(0.55) rounds to 140
+        if(fabs(gray(quietColor(black, 0.133f)) - 0.0) >= fabs(body - 0.0)) {
+            std::puts("FAIL quietColor: not quieter than the body gray on black");
+            ++g_failures;
+        }
+        if(fabs(gray(quietColor(white, 0.133f)) - 255.0) >= fabs(body - 255.0)) {
+            std::puts("FAIL quietColor: not quieter than the body gray on white");
+            ++g_failures;
+        }
+        // The canvas's own alpha (0.94 in the default theme) must not leak into a line
+        // drawn on it.
+        const ImU32 tinted = quietColor(ImVec4(0.06f, 0.06f, 0.06f, 0.94f), 0.133f);
+        expect_close(double((tinted >> 24) & 0xFF), 255.0, 1.0,
+                     "quietColor: output must be opaque");
+        // A huge offset clamps instead of wrapping to bright.
+        expect_close(gray(quietColor(black, 5.0f)), 255.0, 1.0,
+                     "quietColor: clamps toward white");
+        expect_close(gray(quietColor(white, 5.0f)), 0.0, 1.0,
+                     "quietColor: clamps toward black");
     }
 
     if(g_failures == 0) {

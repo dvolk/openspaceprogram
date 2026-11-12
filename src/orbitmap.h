@@ -153,17 +153,20 @@ inline ImU32 contrastingColor(const ImVec4 &bg,
                    ((g & 0xFF) << 8) | (r & 0xFF));
 }
 
-// `t` of the way from `c` to `bg`: a QUIETER colour that recedes on either canvas -- toward
-// black on the black Tracking map, toward white on a light style. A hardcoded dark gray would
-// just vanish on the light theme. Packed by hand like contrastingColor(), so this stays
-// usable in the link-free unit test.
-inline ImU32 dimToward(const ImVec4 &c, const ImVec4 &bg, float t) {
-    const auto mix = [t](float a, float b) {
-        const float v = a + (b - a) * t;
-        return (int)(255.0f * (v < 0.0f ? 0.0f : (v > 1.0f ? 1.0f : v)) + 0.5f);
+// A gray `v` of luminance OFF THE CANVAS, always away from it: 0.133 is #222 on the
+// black Tracking map and #DDD on a light style, so a quiet rail is equally quiet on
+// either theme -- a hardcoded dark gray would vanish on the light one. Keeps the
+// canvas's hue, so a tinted theme gets a tinted quiet rather than flat gray.
+// Always opaque: the canvas alpha belongs to the window, not to a line drawn on it.
+// Packed by hand like contrastingColor(), so this stays usable in the link-free test.
+inline ImU32 quietColor(const ImVec4 &bg, float v) {
+    const float lum = 0.2126f * bg.x + 0.7152f * bg.y + 0.0722f * bg.z;
+    const float d = (lum > 0.5f) ? -v : v;   // away from the canvas: down on light, up on dark
+    const auto ch = [d](float c) {
+        const float x = c + d;
+        return (int)(255.0f * (x < 0.0f ? 0.0f : (x > 1.0f ? 1.0f : x)) + 0.5f);
     };
-    const int r = mix(c.x, bg.x), g = mix(c.y, bg.y), b = mix(c.z, bg.z);
-    const int a = (int)(255.0f * c.w + 0.5f);
-    return (ImU32)(((a & 0xFF) << 24) | ((b & 0xFF) << 16) |
+    const int r = ch(bg.x), g = ch(bg.y), b = ch(bg.z);
+    return (ImU32)((0xFFu << 24) | ((b & 0xFF) << 16) |
                    ((g & 0xFF) << 8) | (r & 0xFF));
 }

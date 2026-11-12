@@ -4272,10 +4272,10 @@ void drawUIMap(Game &g) {
         const ImU32 col_apsis = col_ship;  // periapsis / apoapsis: part of your orbit
         const ImU32 col_xfer  = ImGui::GetColorU32(ImVec4(0.35f, 0.55f, 1.00f, 1.0f));
         const ImU32 col_vessel = ImGui::GetColorU32(ImVec4(1.00f, 0.62f, 0.22f, 1.0f));
-        const ImVec4 child_rgba(0.55f, 0.55f, 0.55f, 1.0f);
-        const ImU32 col_child = ImGui::GetColorU32(child_rgba);
-        // Asteroid and comet rails sit halfway to the canvas (see drawSystemBodyOrbits).
-        const ImU32 col_minor = dimToward(child_rgba, bg, 0.5f);
+        const ImU32 col_child = ImGui::GetColorU32(ImVec4(0.55f, 0.55f, 0.55f, 1.0f));
+        // Asteroid and comet rails: #222 on the black map, #DDD on a light theme
+        // (see drawSystemBodyOrbits).
+        const ImU32 col_minor = quietColor(bg, 0.133f);
         const ImU32 col_body  = ink;
         const ImU32 col_sel   = ImGui::GetColorU32(ImVec4(0.90f, 0.90f, 0.90f, 1.0f));
         const ImU32 soi_col   = ImGui::GetColorU32(ImVec4(0.50f, 0.50f, 0.50f, 0.30f));
@@ -6470,10 +6470,10 @@ void drawTrackingMap(Game &g) {
         const ImU32 col_ship  = ImGui::GetColorU32(ImVec4(0.20f, 0.80f, 0.40f, 1.0f));
         const ImU32 col_apsis = col_ship;  // periapsis / apoapsis: part of your orbit
         const ImU32 col_vessel = ImGui::GetColorU32(ImVec4(1.00f, 0.62f, 0.22f, 1.0f));
-        const ImVec4 child_rgba(0.55f, 0.55f, 0.55f, 1.0f);
-        const ImU32 col_child = ImGui::GetColorU32(child_rgba);
-        // Asteroid and comet rails sit halfway to the canvas (see drawSystemBodyOrbits).
-        const ImU32 col_minor = dimToward(child_rgba, bg, 0.5f);
+        const ImU32 col_child = ImGui::GetColorU32(ImVec4(0.55f, 0.55f, 0.55f, 1.0f));
+        // Asteroid and comet rails: #222 on the black map, #DDD on a light theme
+        // (see drawSystemBodyOrbits).
+        const ImU32 col_minor = quietColor(bg, 0.133f);
         const ImU32 col_body  = ink;
         const ImU32 col_sel   = ImGui::GetColorU32(ImVec4(0.90f, 0.90f, 0.90f, 1.0f));
         const ImU32 soi_col   = ImGui::GetColorU32(ImVec4(0.50f, 0.50f, 0.50f, 0.30f));
