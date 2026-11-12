@@ -204,17 +204,21 @@ static void mapLayers() {
     check(tg.legend.find("nothing anchors") != std::string::npos,
           "and the reason says there is no anchor -- not that a swing is missing");
 
-    // Jool: asked about a ground temperature, this world has no ground to have one about
-    // (#738). Said FIRST, ahead of any missing number.
+    /* Jool: the banded refusal is gone (surface-temp plan 2026_11_12 §2.2). The file authors a
+       banded world's surface AT the 1 bar, so a temperature there is a temperature and the map
+       paints it like any other. What the readout must still never do is let that read as a sea
+       floor nobody can find. */
     Surface jool;
     jool.bands = true;
     jool.temperature = 165.0;
     jool.even_share = 0.5;
     jool.bond_albedo = 0.34;
     TempLayer tb = tempLayerFor(jool, 100.0, true);
-    check(!tb.ok, "a banded giant never paints as a ground");
-    check(tb.legend.find("banded giant") != std::string::npos,
-          "and the reason says it has no ground, not that a number is missing");
+    check(tb.ok, "a banded world paints, at the level the file calls the surface");
+    check(tb.legend.find("1 bar level") != std::string::npos
+              && tb.legend.find("not a sea floor") != std::string::npos,
+          "and the legend says WHICH level, rather than refusing over a missing number");
+    check(near_d(tb.anchor_K, 165.0, 1e-12), "the stated deck temperature anchors it");
 
     // Duna: the air's datum anchors it (rung two -- how most of the shipped system is
     // anchored), and outranks the derived black-body handed to it.
@@ -229,13 +233,13 @@ static void mapLayers() {
 
     /* Which ABSENCE, in the three words the cursor row prints. The sentence goes to the log and
        the word to the line, and they are the same decision -- so the words have to stay as
-       distinct as the states they name (#726): a bare dash would fold "this world has no
-       ground" and "nobody stated a night/day pair" back into one. */
-    check(tempLayerFor(jool, 0.0, true).block == "no ground", "a giant's cursor row says no ground");
+       distinct as the states they name (#726): a bare dash would fold "nobody stated a night/day
+       pair" and "nothing prices this world at all" back into one. */
     check(tempLayerFor(moho, 0.0, true).block == "no swing", "a refused pair says no swing");
     check(tempLayerFor(minmus, 0.0, true).block == "no anchor", "an unpriced world says no anchor");
-    check(td.block.empty() && tk.block.empty(), "a world that DOES paint has no block word");
-    check(tempLayerFor(jool, 0.0, true).block != tempLayerFor(moho, 0.0, true).block,
+    check(td.block.empty() && tk.block.empty() && tb.block.empty(),
+          "a world that DOES paint has no block word -- the banded one included");
+    check(tempLayerFor(moho, 0.0, true).block != tempLayerFor(minmus, 0.0, true).block,
           "the two refusals do not read alike on the cursor line");
 
     /* The fourth absence: no star. The whole field would be night, so the layer refuses rather

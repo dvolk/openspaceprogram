@@ -360,15 +360,17 @@ int main() {
     }
     {
         /* The claim that matters is about the SHIPPED file, so it is pinned against the
-           shipped file: the defaults are in it, they are named, and the one body that has an
-           air but no ground refuses its knob instead of borrowing one. A generator that
-           stopped writing the strings, or that priced Jool's cloud deck, reddens here. */
+           shipped file: the defaults are in it, they are named, and every world the file gives
+           a surface gets a knob -- a banded world included, because this file authors a giant's
+           surface AT the 1 bar (#689) and a swing there is as good a swing as any. A generator
+           that stopped writing the strings, or that let one world's knob die quietly, reddens
+           here. */
         nlohmann::json j = read_json("res/systems/ksp_system.json");
         expect_loaded(j, "the shipped catalogue prices every ground it has",
                       [&](const System &sys) {
             int priced = 0, named = 0, grounded = 0;
             for(const TerrainBody *b : sys.bodies) {
-                if(!b->isStar() && !b->surface.bands) { ++grounded; }
+                if(!b->isStar()) { ++grounded; }
                 if(!evenShareAuthored(b->surface.even_share)) { continue; }
                 ++priced;
                 if(!b->surface.even_share_src.empty()) { ++named; }
@@ -409,13 +411,25 @@ int main() {
                 {"Venus", "stated: no range"},
                 {"Mars", "least-squares fit to the pair"},
                 {"Earth", "fitted from the night end"},
-                {"Moon", "fitted from the night end"},
+                {"Moon", "solved from a stated range"},
             };
             for(const auto &rung : rungs) {
                 const TerrainBody *b = sol.find(rung[0]);
                 check(b != nullptr && b->surface.even_share_src == rung[1],
                       (std::string("the shipped file names which rung priced ")
                        + rung[0]).c_str());
+            }
+            /* The Moon's and Pluto's anchors are not readings at all -- they were solved from a
+               stated night/day pair -- so the honesty lives in the temperature's own src string.
+               Nothing else in the tree reads that key back. */
+            for(const char *name : { "Moon", "Pluto" }) {
+                const TerrainBody *b = sol.find(name);
+                check(b != nullptr
+                          && b->surface.temperature_src.find("SOLVED from the stated range")
+                                 != std::string::npos,
+                      (std::string(name)
+                       + ": a pair-solved anchor says so beside the number, not only the knob")
+                          .c_str());
             }
             const TerrainBody *iap = sol.find("Iapetus");
             check(iap != nullptr
@@ -426,9 +440,15 @@ int main() {
             check(mun != nullptr && albedoAuthored(mun->surface.bond_albedo)
                       && mun->surface.albedo_src.find("converted") == std::string::npos,
                   "a borrowed READING does not claim to be a conversion");
+            /* Jool used to be the one world that refused its knob. It no longer does: a banded
+               world's surface IS its 1 bar level, so it takes the same DEFAULT air-mass rule as
+               Jupiter, Saturn, Uranus and Neptune. What still has to be true is that the file
+               says WHERE the knob came from -- borrowed from Jupiter, whose own was a DEFAULT,
+               is a different claim than a fitted pair. */
             const TerrainBody *jool = sys.find("Jool");
-            check(jool != nullptr && !evenShareAuthored(jool->surface.even_share),
-                  "Jool has an air but no ground, so it swings nowhere (#738)");
+            check(jool != nullptr && evenShareAuthored(jool->surface.even_share)
+                      && jool->surface.even_share_src.find("via Jupiter") != std::string::npos,
+                  "Jool is priced like its four real analogues, and says who it was borrowed from");
         });
     }
 
