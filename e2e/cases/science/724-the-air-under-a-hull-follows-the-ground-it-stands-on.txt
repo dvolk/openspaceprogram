@@ -11,9 +11,13 @@ ARGS --system res/systems/ksp_system.json --timeout 5 --solar-log --startship v,
 #
 # air_T, prof_T and w are all MEASURED at the hull -- src/tick.cpp prints the aero pass's own
 # lastAirT, lastAirProfileT and lastAirP, the same numbers its Mach number divides by -- so the
-# residual below is print rounding and nothing else (measured worst case 0.004 K with the
-# columns at 0.01 K and w at 4 dp). A recomputed prof_T would have been a second authority at a
-# later instant than the flight model used, which is how #687 gets broken quietly.
+# residual below is print rounding and nothing else. It is NOT symmetric rounding on one number:
+# the closure multiplies a ~49 K span (underfoot - prof) by follow (3 dp) and w (4 dp), so the
+# 0.005 K each column's last digit hides arrives at the product several times over. Measured
+# worst row this run: +0.0101 K, and the tolerance is 0.02 for that reason -- the case that
+# pinned 0.01 went red on the rounding it had always contained, not on a change in the model.
+# A recomputed prof_T would have been a second authority at a later instant than the flight
+# model used, which is how #687 gets broken quietly.
 #
 # A cruise bed at ~8.5 km is where this is worth pinning: w = 0.33 there, so a coupling that
 # ignored the column is measurably wrong. On a pad w = 0.97 and the two are nearly identical --
@@ -26,8 +30,11 @@ CHECK all(d["prof_T"] < d["air_T"] < d["underfoot_T"] for d in solar if d["under
 CHECK all(d["air_T"] - d["prof_T"] > 1.0 for d in solar)
 # 2. THE IDENTITY, closed on the row's own columns -- including `follow`, which the log prints
 #    rather than this file retyping. A hardcoded 0.350 here would be a third spelling of a
-#    number ground_model.py and ksp_system.json already state (#636).
-CHECK all(abs(d["air_T"] - (d["prof_T"] + d["follow"] * d["w"] * (d["underfoot_T"] - d["prof_T"]))) < 0.01 for d in solar)
+#    number ground_model.py and ksp_system.json already state (#636). The band is 0.02 K: the
+#    rounding envelope of the row's own four printed columns is about 0.010 K (measured worst
+#    +0.0101), and the coupling this pins is 5.7 K here, so a closure that dropped w, or used the
+#    anchor instead of the underfoot reading, misses by hundreds of times the band.
+CHECK all(abs(d["air_T"] - (d["prof_T"] + d["follow"] * d["w"] * (d["underfoot_T"] - d["prof_T"]))) < 0.02 for d in solar)
 # 3. ...AND THE KNOB IS THE FILE'S, not the model's opinion: 0.350 is what gen_systems writes.
 #    Moving it in the generator reddens THIS line and asks for a reason.
 CHECK all(d["follow"] is not None and abs(d["follow"] - 0.350) < 1e-9 for d in solar)

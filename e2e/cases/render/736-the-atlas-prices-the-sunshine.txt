@@ -38,14 +38,18 @@ CHECK (lambda e, u: abs(float(re.search(r"sunlight \(mean orbit\)\s+([\d.]+)", e
 # 4. A STAR IS the black body: its dossier reports its photosphere and its luminosity, and
 #    neither a sunlight row (nothing is above it) nor a black-body row of its own.
 CHECK re.search(r"surface temp \(photosphere\)\s+[\d.]+ K\s*\n\s*\[atlas\]   luminosity\s+[\d.e+]+ W\s*\n\s*\[atlas\]   \[orbit\]", re.search(r"\[atlas\] Sun weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
-# 5. A SURFACE THAT ONLY JUST LEARNED TO ANSWER. The Moon now authors a Bond albedo (0.11,
-#    moonfact.html's Bulk parameters -- #737 found that the corpus stated it and our parser
-#    read it only for planets), so its dossier closes: the light at its PLANET's orbit, the
-#    albedo, and the black-body those two imply. Its surface temp and the gap still dash,
-#    because no satellite page states a ground temperature (#722). A moon's light is labelled
-#    for the rail it was taken from -- its own distance to the sun swings over its month, so
-#    no single figure for the moon itself is honest.
-CHECK re.search(r"sunlight \(parent's orbit\)\s+[\d.]+ W/m2\s*\n\s*\[atlas\]   bond albedo\s+0\.110\s*\n\s*\[atlas\]   black-body temp\s+27[01]\.[0-9] K[^\n]*\n\s*\[atlas\]   surface temp\s+-\s*\n\s*\[atlas\]   greenhouse gap\s+-", re.search(r"\[atlas\] Moon weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+# 5. A SURFACE THAT ONLY JUST LEARNED TO ANSWER -- AND THEN LEARNED THE REST. The Moon authors
+#    a Bond albedo (0.11, moonfact.html's Bulk parameters -- #737 found that the corpus stated
+#    it and our parser read it only for planets), so its dossier closes: the light at its
+#    PLANET's orbit, the albedo, and the black-body those two imply. When this case was written
+#    its surface temp and gap still dashed, because no satellite page states a ground
+#    temperature (#722). The satellite pages DO state a day/night RANGE, and #724's solved rung
+#    takes an anchor from a range: the Moon's 95.0 to 390.0 K ties at its own anchor (276.5 K),
+#    so the surface row and the gap beside it (+6.2 K -- the Moon is not airless-neutral, it is
+#    a slow rotator whose mean sits above the airless mean) print too. A moon's light is still
+#    labelled for the rail it was taken from -- its own distance to the sun swings over its
+#    month, so no single figure for the moon itself is honest.
+CHECK re.search(r"sunlight \(parent's orbit\)\s+[\d.]+ W/m2\s*\n\s*\[atlas\]   bond albedo\s+0\.110\s*\n\s*\[atlas\]   black-body temp\s+270\.3 K[^\n]*\n\s*\[atlas\]   surface temp\s+276\.5 K[^\n]*\n\s*\[atlas\]   greenhouse gap\s+\+6\.2 K[^\n]*\n\s*\[atlas\]   ground swing\s+95\.0 to 390\.0 K[^\n]*\n\s*\[atlas\]   ground anchor\s+276\.5 K", re.search(r"\[atlas\] Moon weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
 # 5b. AND A SATELLITE THAT COULD NOT ANSWER UNTIL THE CORPUS WAS ASKED TWICE. The satellite
 #     pages state a VISUAL GEOMETRICAL albedo (Europa's row in utils/rss/html/joviansatfact.html:
 #     0.68) and no Bond albedo, and (1-A)S/4 needs the Bond one -- #736 filed that as a gap
@@ -59,14 +63,19 @@ CHECK re.search(r"sunlight \(parent's orbit\)\s+[\d.]+ W/m2\s*\n\s*\[atlas\]   b
 #     moons, and science/727 pins it on Himalia in solar_system_named.json; this core file no
 #     longer contains one, which is what #735 and #749 were for.)
 CHECK (lambda m: abs(float(m.group(3)) - (float(m.group(1)) * (1.0 - float(m.group(2))) / 4.0 / 5.670374419e-8) ** 0.25) < 0.05)(re.search(r"sunlight \(parent's orbit\)\s+([\d.]+) W/m2\s*\n\s*\[atlas\]   bond albedo\s+([\d.]+)\s*\n\s*\[atlas\]   black-body temp\s+([\d.]+) K", re.search(r"\[atlas\] Europa weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0)))
-# 6. Half-authored is half-authored. Pluto authors an albedo (0.720, the file's second
-#    brightest after Venus's 0.770) and no ground reading, so its implied 32.2 K prints while
-#    its surface temp and the
-#    gap dash. A dash here is a missing FILE ENTRY, never a 0.0 -- the #727 law, which is
-#    sharp for albedo: an albedo of 0.0 is a real reading (a body that absorbs everything the
-#    star sends, the hottest case available) and prints 0.000, while "-" means the file never
-#    said. Pluto and Titan are the two bodies the generator leaves without a ground reading.
-CHECK re.search(r"bond albedo\s+0\.720\s*\n\s*\[atlas\]   black-body temp\s+32\.[0-9] K[^\n]*\n\s*\[atlas\]   surface temp\s+-\s*\n\s*\[atlas\]   greenhouse gap\s+-", re.search(r"\[atlas\] Pluto weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+# 6. HALF-AUTHORED IS HALF-AUTHORED -- AND WHAT "HALF" MEANS HAS MOVED. Pluto used to be this
+#    check: an albedo (0.720, the file's second brightest after Venus's 0.770) with no ground
+#    reading, so its implied 32.2 K printed beside two dashes. It answers now, and answers
+#    entirely: a stated 24.0 to 38.0 K range solved to a 29.6 K anchor, which sits 2.6 K BELOW
+#    its airless mean -- the coldest dossier in the file, and a real reading rather than a
+#    borrowed one. The dash has to live somewhere, so the check moved to Titan: an albedo
+#    (0.150) and a black-body (86.5 K), and a surface row and gap that still read "-" because no
+#    source prices Titan's ground. A dash here is a missing FILE ENTRY, never a 0.0 -- the #727
+#    law, which is sharp for albedo: an albedo of 0.0 is a real reading (a body that absorbs
+#    everything the star sends, the hottest case available) and prints 0.000, while "-" means the
+#    file never said.
+CHECK re.search(r"bond albedo\s+0\.720\s*\n\s*\[atlas\]   black-body temp\s+32\.2 K[^\n]*\n\s*\[atlas\]   surface temp\s+29\.6 K[^\n]*\n\s*\[atlas\]   greenhouse gap\s+-2\.6 K[^\n]*\n\s*\[atlas\]   ground swing\s+24\.0 to 38\.0 K", re.search(r"\[atlas\] Pluto weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+CHECK re.search(r"bond albedo\s+0\.150\s*\n\s*\[atlas\]   black-body temp\s+86\.5 K[^\n]*\n\s*\[atlas\]   surface temp\s+-\s*\n\s*\[atlas\]   greenhouse gap\s+-", re.search(r"\[atlas\] Titan weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
 # 7. #738: A BANDED GIANT HAS NO GROUND, and the dossier is the one place that has to say so.
 #    The corpus authors "Temperature at 1 bar" for Jupiter (165.0 K, and #689 notes that IS our
 #    datum level), and the gap beside its airless mean (+55.1 K) is mostly internal heat --
@@ -74,7 +83,15 @@ CHECK re.search(r"bond albedo\s+0\.720\s*\n\s*\[atlas\]   black-body temp\s+32\.
 #    claim the data does not support. atlasDossier() branches on Surface::bands: the three rows
 #    become temp at 1 bar / level - airless mean / level swing. Revert that branch to the rocky
 #    labels and both lines below go red.
-CHECK re.search(r"black-body temp\s+109\.9 K[^\n]*\n\s*\[atlas\]   temp at 1 bar\s+165\.0 K[^\n]*\n\s*\[atlas\]   level - airless mean\s+\+55\.1 K[^\n]*\n\s*\[atlas\]   level swing\s+-", re.search(r"\[atlas\] Jupiter weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+#    The swing row used to dash here. It carries numbers now because a banded world has a
+#    day/night knob whether or not a surface does: Jupiter's even_share is 0.930, provenanced
+#    "DEFAULT air-mass rule" (the rule of ours that prices a world with a lot of air, not a
+#    reading anyone took), and the dossier's level swing / level anchor rows are that knob read
+#    around the 165.0 K the file states for the 1 bar level. Same knob, same arithmetic, as the
+#    rocky bodies' ground swing row -- it just has to be labelled for a level rather than a
+#    sea floor, which is what the two labels above are for. science/735 pins the same pair for
+#    Jool.
+CHECK re.search(r"black-body temp\s+109\.9 K[^\n]*\n\s*\[atlas\]   temp at 1 bar\s+165\.0 K[^\n]*\n\s*\[atlas\]   level - airless mean\s+\+55\.1 K[^\n]*\n\s*\[atlas\]   level swing\s+162\.0 to 173\.1 K[^\n]*\n\s*\[atlas\]   level anchor\s+165\.0 K", re.search(r"\[atlas\] Jupiter weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
 CHECK not re.search(r"greenhouse gap|surface temp", re.search(r"\[atlas\] Jupiter weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
 #    And --solar-log agrees rather than contradicting it: a hull in a giant's air prints its
 #    light columns (an albedo and an airless mean are as meaningful for a giant as for a rock)

@@ -5,11 +5,21 @@ KIND invariant
 # family table saying "temperature" instead of "pressure" -- which is what decides
 # the row its window shows and the unit its finding prints, so the part JSON and the
 # family JSON are the whole feature and no code knows the part's name.
-# The number is cross-checked against --drag-log's T= column (the air the flight
-# model stands in, at the hull's COM). Kerbin wears a layer table (#686), so both
-# reads are at THIS hull's altitude and neither is a constant of the world -- which
-# is why the pin is an agreement to 0.11 K rather than a literal temperature.
-ARGS --time-accel 1 --timeout 8 --width 1920 --height 1080 --drag-log
+# The number is cross-checked against the PROFILE --solar-log prints (prof_T=, "the air
+# temperature before any ground coupling" -- vehicle.cpp). Kerbin wears a layer table (#686),
+# so the read is at THIS hull's altitude and is not a constant of the world -- which is why the
+# pin is an agreement to 0.11 K rather than a literal temperature.
+#
+# WHY IT MOVED OFF --drag-log's T= column (#783). At this 8.5 km spawn the pod reads 233.9 K,
+# prof_T says 233.95, and the [drag] row says T=239.8 a=310.6 -- 5.8 K up, while its own
+# p=33774 and rho=0.50278 imply 234.0 K. The drag row's T/a are the RUNG D coupled air (follow
+# 0.35, pressure weight 0.333 at this height), the pod and prof_T are the profile, and the row
+# therefore describes two airs at once: the force comes from the profile's rho and the Mach is
+# divided by the coupled a. #783 is open on which side moves; this case stays on the profile
+# because that is the seam Vehicle::airReadingAt -- the gauge and the finding -- actually reads.
+# Whichever way the model resolves it, the pod and the drag log currently disagree by 5.8 K over
+# the same hull at the same instant, and that split is what #783 owes the player.
+ARGS --time-accel 1 --timeout 8 --width 1920 --height 1080 --drag-log --solar-log
 ARGS --startship thermopod,res/ships/thermopod.json,Kerbin,flying-low
 ARGS --ui-focus 800,thermopod/thermometer_1
 ARGS --sim-mouse 900,0,CUR,CUR,RMB
@@ -23,9 +33,18 @@ EXPECT recorded 'Flying low thermometer of
 EXPECT [science]   new: Flying low thermometer of
 EXPECT [science] recovered +11
 EXPECT [recover] t=
+EXPECT [solar]
 FORBID FAILED
 FORBID error:
 CHECK re.search(r'label="Air temp: \d+\.\d K \(-\d+\.\d C\)"', out)
-CHECK any(abs(float(k) - r["airT"]) < 0.11 for k in re.findall(r'label="Air temp: ([\d.]+) K', out) for r in drag if "airT" in r)
-CHECK any(abs(float(k) - r["airT"]) < 0.11 for k in re.findall(r"recorded '[^']*'  ([\d.]+) K \(pod\)", out) for r in drag if "airT" in r)
+CHECK any(abs(float(k) - r["prof_T"]) < 0.11 for k in re.findall(r'label="Air temp: ([\d.]+) K', out) for r in solar)
+CHECK any(abs(float(k) - r["prof_T"]) < 0.11 for k in re.findall(r"recorded '[^']*'  ([\d.]+) K \(pod\)", out) for r in solar)
 CHECK re.findall(r"recorded '[^']*'  ([\d.]+) K \(pod\)", out) == re.findall(r"\[science\]   new: [^\n]*  ([\d.]+) K", out)
+# And the gauge and the finding this same part writes are one number: the window is open the
+# whole time the pod runs, so a drift between them means two seams reading two airs (#665's
+# barometer argues the same about its pair).
+CHECK all(abs(float(a) - float(b)) < 0.11 for a, b in zip(re.findall(r'label="Air temp: ([\d.]+) K', out), re.findall(r"recorded '[^']*'  ([\d.]+) K \(pod\)", out)))
+# What is NOT pinned here, on purpose: --drag-log's T= column, 5.8 K warmer than this part's
+# reading at the same instant (the rung D coupled air vs the profile). #783 decides which one
+# the game means; when it does, re-pin this row to that seam rather than leaving two airs in
+# the log and one in the window.

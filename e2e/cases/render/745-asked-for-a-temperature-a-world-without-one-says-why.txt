@@ -1,27 +1,33 @@
 NAME 745-asked-for-a-temperature-a-world-without-one-says-why
 CLAIM Ask the Surface Map for a temperature this world cannot support and it dashes the temperature columns and names the reason -- a flat grey field and a sentence, not a colour nobody priced.
 KIND invariant
-# Himalia is a moon the catalogue ORBITS and no fact sheet describes: 148 of the bodies in
-# solar_system_named.json are like it. It has no stated ground temperature, no air to supply a
-# datum, and no albedo to derive a black-body from, so nothing anchors a temperature anywhere on
-# it, and the map says so instead of painting a plausible grey. This subject moved here from
-# Moho (#749): the shipped catalogue now prices a swing for every body with a ground, so the
-# "no swing" refusal has no game-run subject left in it -- Jool, the one body that refuses, has
-# no ground at all and is pinned in tests/test_belts.cpp and tests/test_surfmap.cpp instead.
+# Himalia held this subject until the catalogue pass (0ba3487a) priced it: an invented albedo
+# (0.05, "INVENTED: captured irregular") and the DEFAULT airless even_share. With an albedo the
+# star implies a black-body, so an anchor exists and the map paints. Every body in the four
+# shipped solar_system files is like that now -- the Sun aside -- and even Jool paints, at the
+# 1 bar level its air's datum supplies ("the 1 bar level, not a sea floor: the air's datum").
+# So the shipped corpus has no subject left for this refusal, which is the point of #735/#749
+# and the catalogue pass rather than an accident.
+#
+# What still states nothing is res/systems/old_system.json -- the legacy system the save-compat
+# cases exercise, which no generator has ever priced and none should. Its Moon has a palette and
+# no albedo, no air and no stated ground: all three anchor rungs absent at once, which is the
+# whole refusal chain in one world. And because it is frozen legacy data rather than generated
+# content, this subject cannot drift the way a corpus world just did.
 #
 # The other three refusals (no sun, no ground, no swing) are pinned by unit tests in
 # tests/test_surfmap.cpp, which is where a policy table belongs; this case pays for the one game
 # run that proves the game prints the sentence at all, and that the sentence is a NAMED one
 # (#726: folding four absences back into one mystery is the regression to guard).
-ARGS --timeout 10 --time-accel 1 --system res/systems/solar_system_named.json
-ARGS --startship racer,res/ships/racer.json,Himalia,high-orbit
-ARGS --surfmap-log --surfmap-n 64 --surfmap-body Himalia --surfmap-map temperature
+ARGS --timeout 10 --time-accel 1 --system res/systems/old_system.json
+ARGS --startship racer,res/ships/racer.json,Moon,high-orbit
+ARGS --surfmap-log --surfmap-n 64 --surfmap-body Moon --surfmap-map temperature
 ARGS --sim-press 3000,0,M
 ARGS --ui-click 4000,"Windows/Surface Map"
 ARGS --sim-mouse 5000,0,900,560,0
 ARGS --ui-list 5600
 CHECK len(surfmap) >= 1
-CHECK last(surfmap)["body"] == "Himalia"
+CHECK last(surfmap)["body"] == "Moon"
 CHECK last(surfmap)["map"] == "temperature" and last(surfmap)["level"] == "ground"
 # The picture exists (64x32 pixels were painted) but carries no temperatures: the columns dash
 # and the note says which absence this is (#726 keeps these states apart, #727 renders them).
@@ -29,12 +35,12 @@ CHECK last(surfmap)["w"] == 64 and last(surfmap)["h"] == 32
 CHECK last(surfmap)["temp"] is None
 CHECK "no albedo to derive one from" in last(surfmap)["note"]
 CHECK last(surfmap)["albedo"] is None and last(surfmap)["shaded"] is None
-# A moon with no fact sheet has no authored albedo either, and that is the absence this refusal
+# A world no generator priced has no authored albedo either, and that is the absence this refusal
 # is built from: the anchor chain's last rung is the black-body the star and an albedo imply.
 # The cursor line carries the same decision in three words. The hover point is a pixel inside
-# the map area (x 708-1212, y 449-701 as the layout pins in the chooser case attest); it is not
-# a spot chosen for its weather -- anywhere on this map is night-equivalent for the readout,
-# because the map REFUSES to price the world at all.
+# the map area (x 708-1212, y 449-701 as the chooser case attest); it is not a spot chosen for
+# its weather -- anywhere on this map is night-equivalent for the readout, because the map
+# REFUSES to price the world at all.
 CHECK len([r for r in uilist if r["window"] == "Surface Map" and r["label"].startswith("cursor:")]) == 1
 CHECK "ground - (no anchor)" in [r for r in uilist if r["window"] == "Surface Map" and r["label"].startswith("cursor:")][0]["label"]
 CHECK len([r for r in uilist if r["window"] == "Surface Map" and r["label"].startswith("ground: ")]) == 0

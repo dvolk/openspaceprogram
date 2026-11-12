@@ -10,8 +10,9 @@
 # numbers (288.1 K / 101.3 kPa / 340.5 m/s at Earth's datum). This pins the last inch,
 # which no unit test can see: WHICH LABEL the dossier picks. "(isothermal)" is a warning
 # that a body has no lapse rate, so it must not sit beside a body that authored one, and
-# it must still sit beside the ones that did not -- Venus, Mars, Titan and the rest of
-# this file still author a single scale height.
+# it must still sit beside the ones that did not. When this case was written that was
+# Venus, Mars, Titan and most of the file; the corpus pass that gave Mars and the rest a
+# stated air column has narrowed it to Titan, so the warning is pinned there now.
 #
 # Earth's "atmosphere top" row is pinned too: a layer table has no H for top() to
 # multiply by 10, so it must author `height`, and 85 km is what its old H 8500 already
@@ -50,9 +51,19 @@ CHECK re.search(r"\[atlas\] Earth weight=.*?sound speed\s+340\.5 m/s", out, re.S
 # here) and still matches if Earth were last in the dump.
 CHECK "scale height" not in re.search(r"\[atlas\] Earth weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0)
 CHECK "isothermal" not in re.search(r"\[atlas\] Earth weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0)
-# And the label still rides with the bodies that DO owe the warning. Mars is in this
-# file (rho0 0.016, H 11000, CO2-heavy mix, g 3.73), so its row keeps saying isothermal
-# -- and 3.73 x 11000 / (R/0.043496) is 214.6 K, which #698 chose precisely because it
-# is Mars's own mean to within a few K. Before that row this CHECK read 224.4 K off an
-# authored pair that weighed the air a third too heavy.
-CHECK re.search(r"air temp \(isothermal\)\s+214\.6 K", re.search(r"\[atlas\] Mars weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+# And the label still rides with the bodies that DO owe the warning -- though the corpus has
+# moved since this case was written, and the warning's carrier moved with it. Mars used to be
+# the example (rho0 0.016, H 11000, CO2-heavy mix); it now wears a two-level table of its own
+# (214.0 K at the datum, lapse -4 K/km to 16.5 km, then isothermal at 148.0 K), so its row
+# reads "(sea level)" like Earth's and its block carries no warning word at all.
+CHECK re.search(r"\[atlas\] Mars weight=.*?air profile\s+2 levels to 16\.5 km", out, re.S)
+CHECK re.search(r"\[atlas\] Mars weight=.*?air temp \(sea level\)\s+214\.0 K \(-59\.1 C\)", out, re.S)
+CHECK "isothermal" not in re.search(r"\[atlas\] Mars weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0)
+# Titan is the one body left in this file whose air is still one scale height, so it carries the
+# warning now: scale height 20.0 km, density 5.300 kg/m3, g 1.35 m/s2 -- rho x g x H = 143.1 kPa
+# beside the row's 143.6 kPa, and the temperature that density-and-pressure pair implies through
+# the authored N2/CH4/H2 mix is the 90.5 K the row prints. "(isothermal)" is the dossier saying
+# "I did not author a lapse rate, so this temperature is BACK-OUT, not a reading" -- and 90.5 K
+# is Titan's own mean to within a few K, which is why the pair is plausible rather than a clue.
+CHECK re.search(r"air temp \(isothermal\)\s+90\.5 K", re.search(r"\[atlas\] Titan weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+CHECK re.search(r"\[atlas\] Titan weight=.*?scale height\s+20\.0 km", out, re.S)

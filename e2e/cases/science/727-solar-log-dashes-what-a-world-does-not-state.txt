@@ -1,5 +1,5 @@
 NAME 727-solar-log-dashes-what-a-world-does-not-state
-CLAIM On Himalia -- a moon the catalogue lists but no fact sheet describes -- --solar-log still reads the star, and prints a DASH rather than a zero for the albedo, the black-body column, the ground, the swing and the air, because nothing in this system states any of them for it.
+CLAIM On Belts -- a world in the wind playground, which the file gives an atmosphere and no facts at all -- --solar-log still reads the star, and prints a DASH rather than a zero for the albedo, the black-body column, the ground, the swing and the air, because nothing in this system states any of them for it.
 KIND invariant
 # The other half of #727, and the only thing standing between #726 and a silent
 # regression: an ABSENT reading must render as absent. If someone "fixes" a dash by
@@ -7,35 +7,47 @@ KIND invariant
 # 0 where the world said nothing. #728 makes that a bug with teeth (absorbed flux, then a
 # part's skin), so pin it before then.
 #
-# The subject has moved twice. It ran on Kerbin until #735 priced that body's albedo, then
-# on Minmus until #749 priced the KSP worlds by analogy and converted the corpus's icy
-# satellites' geometric albedos into Bond ones (make_solar_system.py:corpus_phase_integral)
-# -- so the shipped file no longer contains a body this row can dash on, and that is the
-# point of #735/#749 rather than an accident. What is left is the honest remainder: the
-# 148 moons in solar_system_named.json that the catalogue ORBITS but no fact sheet
-# describes. Himalia is one, and it is the better subject for the law, because its dashes
-# are not a policy decision -- they are the absence the sources actually leave.
+# The subject has moved three times. It ran on Kerbin until #735 priced that body's albedo,
+# then on Minmus until #749 priced the KSP worlds by analogy and converted the corpus's icy
+# satellites' geometric albedos into Bond ones (make_solar_system.py:corpus_phase_integral),
+# then on Himalia -- one of the catalogue moons that ORBIT but have no fact sheet. The
+# catalogue pass (0ba3487a) priced even those: every body in all four shipped solar_system
+# files now carries an albedo (the Sun aside), an albedo_src and an even_share, so no shipped
+# world dashes this row any more. That is the point of #735/#749/the catalogue pass rather
+# than an accident, and it left the rule with no subject in the corpus.
+#
+# What still states nothing is the wind playground (res/systems/wind_playground.json): eight
+# bodies with an authored atmosphere and authored wind, and no albedo, no ground temperature
+# and no even_share. Its Belts is the better subject for the law than any catalogue moon ever
+# was, because the dashes here are not a policy the data reached -- they are the flat absence
+# of facts, which is what a dash means. In high orbit its air dashes too (the hull sits at
+# 5 radii, far above an 80 km air), so all nine of the row's body-derived columns are absent
+# at once and only the star prints.
 #
 # One source still prints on this row: the star, sampled at the hull's LIVE distance --
 # --solar-log has no mean-rail rule, that is the atlas' (gameui.cpp picks a moon its
-# planet's orbit; tick.cpp just measures). Himalia is a captured moon on a slanted,
-# eccentric orbit, so the light is bounded rather than exact; the dashes are exact.
-ARGS --timeout 3 --solar-log --system res/systems/solar_system_named.json
-ARGS --startship v,res/ships/skiff_trim.json,Himalia,high-orbit
+# planet's orbit; tick.cpp just measures). The playground's Sun sits 2.00008e10 m from the
+# hull through this run (its bodies do not orbit each other), so the light is a band rather
+# than a literal only because the hull drifts a hair; the dashes are exact.
+ARGS --timeout 3 --solar-log --system res/systems/wind_playground.json
+ARGS --startship v,res/ships/skiff_trim.json,Belts,high-orbit
 CHECK len(solar) >= 1
-CHECK all(d["body"] == "Himalia" and d["star"] == "Sun" for d in solar)
+CHECK all(d["body"] == "Belts" and d["star"] == "Sun" for d in solar)
 CHECK all(d["albedo"] is None and d["bb_T"] is None for d in solar)
 CHECK all(d["ground_T"] is None for d in solar)
-# #749 priced swings wherever a ground could be anchored. A catalogue moon has no albedo,
-# so nothing anchors its ground, and the swing row must dash with the rest -- a knob with
-# no anchor would otherwise be the file inventing a day for a moon it cannot even weigh.
+# #749 priced swings wherever a ground could be anchored -- an albedo, or a stated mean, is an
+# anchor. Here there is neither, so the swing row must dash with the rest: a knob with no
+# anchor would otherwise be the file inventing a day for a world it refuses to give a colour.
 CHECK all(d["underfoot_T"] is None and d["swing"] is None for d in solar)
 CHECK all(d["air_T"] is None and d["prof_T"] is None and d["follow"] is None for d in solar)
-CHECK all(d["flux"] is not None and 25.0 < d["flux"] < 100.0 for d in solar)
-# Himalia has no air, so nothing dims the plate: what a horizontal surface reads is the
-# overhead flux times the sun's sine, never more and never negative.
+CHECK all(d["flux"] is not None and 600.0 < d["flux"] < 660.0 for d in solar)
+# Belts has an authored atmosphere but the hull is nowhere near it, so nothing dims the plate:
+# what a horizontal surface reads is the overhead flux times the sun's sine, never more and
+# never negative. At this spawn the star stands 89.9 deg up, so flat is flux to four digits --
+# the ORDER is the pin, not that number.
 CHECK all(0.0 <= d["flat"] <= d["flux"] for d in solar)
 FORBID albedo=0.000
 FORBID bb_T=0.00
 FORBID ground_T=0.00
 FORBID swing=0.000
+FORBID error:

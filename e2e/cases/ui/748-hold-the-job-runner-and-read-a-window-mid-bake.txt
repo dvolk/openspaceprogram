@@ -28,7 +28,13 @@ ARGS --startship v,res/ships/skiff_trim.json,Earth,pad
 ARGS --surfmap-log --surfmap-n 64 --surfmap-map temperature --surfmap-body Earth
 ARGS --ui-click 2000,"Windows/Surface Map"
 ARGS --sim-mouse 2600,0,700,420,0
-ARGS --ui-list 3200
+# The first dump sits at 3.8 s, not the 3.2 s this case used to use. The BEFORE read needs the
+# map to have taken the hover -- the window opens on a click at 2.0 s, the pointer lands at 2.6 s,
+# and imgui needs a frame or two of that hover before the cursor row is drawn. On an idle box 3.2 s
+# was enough; on a loaded one (this case under --jobs) the dump landed in the gap and the row was
+# simply absent, which reddened all four cursor CHECKs at once rather than one. 3.8 s is still
+# 200 ms clear of the hold span opening at 4.0 s.
+ARGS --ui-list 3800
 ARGS --hold-jobs 4000,9000
 ARGS --ui-click 4000,"Surface Map/Body"
 ARGS --ui-scroll 4400,"##Combo_00",-2

@@ -35,5 +35,11 @@ CHECK min(s["pitch"] for s in surf if 2.4 <= s["t"] <= 3.6) < -50.0
 # ... while the hull has not rolled at all. Against the 90 deg a seat-frame HUD prints,
 # 5 deg is a wide net: this is the check that makes the case bite.
 CHECK all(abs(s["roll"]) < 5.0 for s in surf if s["t"] <= 3.6)
-# And pitching is not turning: the heading drifts by a fifth of a degree across the window.
-CHECK max(abs(s["hdg"] - 249.2) for s in surf if s["t"] <= 3.6) < 1.0
+# And pitching is not turning. This used to read `abs(hdg - 249.2) < 1.0`, which pinned the
+# spawn's ABSOLUTE heading -- a number that belongs to the bed, not to the law: the hull now
+# starts at 110.8 deg (the bed's epoch/rotation moved under it) and the check went red while
+# the drift itself was unchanged at 0.197 deg across the whole window. What the case means is
+# SPREAD, so that is what it pins now: an S press that yaws would show up here no matter where
+# the run starts. The window still stops at 3.6 s to dodge the roll-formula flip (hdg jumps a
+# clean 180 deg -- 110.9 to 290.8 -- at t=3.9 when the nose passes vertical).
+CHECK max(s["hdg"] for s in surf if s["t"] <= 3.6) - min(s["hdg"] for s in surf if s["t"] <= 3.6) < 1.0
