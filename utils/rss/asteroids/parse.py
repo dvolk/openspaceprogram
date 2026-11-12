@@ -39,6 +39,8 @@ import warnings
 import pandas as pd
 
 import lcdb
+import mporb      # MPCORB: H, dynamical class, orbit quality, candidate bodies
+import sizes      # the two wiki tables that state a size where the first one is blank
 
 warnings.filterwarnings("ignore")
 
@@ -46,6 +48,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 RAW = os.path.join(HERE, "raw")
 WIKI_HTML = os.path.join(RAW, "exceptional_asteroids.html")
 SBDB_DIR = os.path.join(RAW, "sbdb")
+# Two more wiki tables, both there for one field the first page does not carry: a SIZE
+# for the bodies the exceptional-asteroids list leaves size-less (see sizes.py).
+SIZES_HTML = os.path.join(RAW, "objects_by_size.html")
+TNO_HTML = os.path.join(RAW, "tno_list.html")
 OUT = os.path.join(HERE, "asteroids.json")
 
 # h2/h3 heading text -> short section key. Only these sections are read; the rest of
@@ -594,6 +600,427 @@ def merge():
     return records
 
 
+# --- MPCORB, and the two wiki tables that state a size -------------------------------
+# One streaming pass over 1.58M MPCORB records serves every row at once (mporb.py), which
+# is also the only way it can be done. What the pass is FOR, in order of how much it buys:
+#   H for the 111 rows that state no magnitude anywhere, which turns a cohort-median guess
+#     at a size into arithmetic on the body's own brightness;
+#   a dynamical class for the 115 rows that state no spectral type;
+#   stated radii for the dwarf planets, the big Kuiper bodies, the Trojans and the centaurs
+#     -- all of which the exceptional-asteroids page leaves size-less;
+#   whole new rows for bodies the wiki page never listed (see CANDIDATE_BUCKETS).
+# The one thing MPCORB is NOT used for is the rail of an existing row: 245 of the 255
+# matched records carry the same epoch as our SBDB blocks, and where the two disagree the
+# SBDB solution is the one already cross-checked against the wiki (urls.txt has the run).
+
+# Names the planetary file already authors as worlds. MPCORB carries (134340) Pluto, and
+# the catalogue keys bodies by NAME (so do saves, src/save.h), so a Pluto row here would
+# not be a second data point, it would be a collision the generator would "solve" by
+# renaming it (134340) Pluto. Ceres is already a corpus row and never gets here.
+ALREADY_AUTHORED = {"pluto"}
+
+# What to go looking for among the 1.58M records the wiki page never mentions, and how
+# many of each. Every criterion is something the player can see from the Tracking map: a
+# big rock, an extreme orbit, a family the 259 barely touch. MPCORB's U == 0 (its best
+# uncertainty class) gates all of them, because a body tracked over two oppositions is a
+# body whose orbit we would have to invent anyway.
+# Brightness ranks most of them, and it is deliberately NOT what ranks the co-orbital
+# family: Earth's quasi-satellites and minimoons (2016 HO3, 2020 CD3, 2024 PT5) are H 24
+# to H 32, so an H ranking keeps the kilometre rocks sharing the orbit and drops exactly
+# the bodies that make the family famous. That rule is therefore asked for twice, once per
+# ranking. The small end is real -- H 31.7 is a metre across -- and the engine has to grow
+# up around bodies that small rather than the catalogue hiding them.
+CANDIDATE_BUCKETS = {
+    "bright": 34,          # the biggest minor planets there are, family aside
+    "sungrazer": 6,        # q < 0.1 AU: passes inside Mercury
+    "coorbital": 8,        # |a - 1| < 0.05 and e < 0.5, brightest first
+    "coorbital_close": 12,  # the same band, closest to 1 AU first: the minimoons
+    "high_i": 6,           # i >= 90 deg: retrograde and polar orbits
+    "hungaria": 4,         # a 1.75-2.1 AU, the innermost belt family
+    "phocaea": 4,          # a 2.2-2.5 AU
+    "trojan": 12,          # Jupiter's camp -- the wiki list carries two of some 12,000
+}
+# Kuiper bodies to add on top of those buckets: the TNO list has ~1,050 with a stated
+# diameter, and the ratified depth is a headline set plus 40-60 numbered ones. Ranked by
+# that diameter.
+TNO_ADDS = 50
+# Earth's co-orbital family, curated BY NAME. These cannot be mined: MPCORB's elements are
+# an osculating HELIOCENTRIC orbit, and what makes a minimoon interesting -- that it spends
+# part of its orbit inside Earth's Hill sphere -- is not an |a - 1| cut, because the 12
+# tightest |a - 1| in 1.58M records are other bodies. So the family is named here and each
+# member's rail and H come from MPCORB like every other row. Sizes land out of H alone:
+# Kamo'oalewa comes to ~70 m, which is what New Horizons' follow-up imaging measured, so the
+# arithmetic is trustworthy even at that end. The smallest of them is ~1 m across, and that
+# is a real body with a real orbit -- the engine has to grow around it, not the other way.
+FAMED_COORBITALS = ("2010 TK7", "2020 XL5", "2016 HO3", "2020 CD3", "2024 PT5",
+                    "2003 YN107", "2002 AA29")
+# Every rule that names a row's only section, so report() can tell an added row from a
+# wiki row without a flag column.
+CANDIDATE_RULES = set(CANDIDATE_BUCKETS) | {"kuiper", "size_page", "coorbital_famed"}
+# MPCORB's uncertainty parameter, 0 (a well-determined orbit) to 9. The buckets already
+# require 0; the two rules that mine a size table instead of a dynamical criterion accept
+# anything up to this, because the TNO list's big bodies are exactly the ones MPC scores on
+# opposition COUNT (Sedna: 26 oppositions, U 5, and its orbit is textbook). Above it the
+# rail we would author is a guess with a decimal point on it -- U 7-8 objects like
+# 2015 BP519 (a 486 AU orbit) move by AU per year of ephemeris.
+MAX_ORBIT_U = 6
+
+
+def mpcorb_buckets(rec):
+    """[(rule, rank)] for one MPCORB record; rank None means rank by H. See
+    CANDIDATE_BUCKETS for what the rules are for and why the co-orbital one appears twice.
+    'bright' is the catch-all, so its heap cap is what keeps the 34 biggest rather than the
+    first 34 seen."""
+    if str(rec.get("U")) != "0":
+        return []
+    if rec.get("H") is None or rec.get("a") is None or rec.get("e") is None:
+        return []
+    a, e = float(rec["a"]), float(rec["e"])
+    i = float(rec.get("i") or 0.0)
+    q = rec.get("Perihelion_dist")
+    t = rec.get("Orbit_type") or ""
+    out = []
+    if q is not None and float(q) < 0.1:
+        out.append(("sungrazer", None))
+    if abs(a - 1.0) < 0.05 and e < 0.5:
+        out.append(("coorbital", None))
+        out.append(("coorbital_close", abs(a - 1.0)))
+    if i >= 90.0:
+        out.append(("high_i", None))
+    if t == "Hungaria":
+        out.append(("hungaria", None))
+    if t == "Phocaea":
+        out.append(("phocaea", None))
+    if t == "Jupiter Trojan":
+        out.append(("trojan", None))
+    out.append(("bright", None))
+    return out
+
+
+def text_key(s):
+    """Lowercased, whitespace-collapsed key ('' for nothing)."""
+    return " ".join((s or "").lower().split())
+
+
+def row_wanted_keys(row):
+    """Every key one row answers to in MPCORB. The number leads; a name is only trusted
+    alongside it, because (52) Europa and (9) Metis are named for moons the game already
+    has and MPCORB's own (52) is the asteroid."""
+    out = set()
+    n = row.get("number")
+    if isinstance(n, int):
+        out.add(("n", n))
+    for field in ("name", "query"):
+        s = text_key(row.get(field))
+        if not s:
+            continue
+        bare = re.sub(r"^\(?\d+\)?\s+", "", s)
+        for cand in {s, bare}:
+            if cand:
+                out.add(("d", cand))
+                out.add(("nm", cand))
+    return out
+
+
+def mporb_identity_ok(row, rec):
+    """Refuse a join where both sides carry a number and they differ. A designation or a
+    name match clears it, so this only fires on the case that matters: MPCORB listing a
+    DIFFERENT numbered body under a name we also use."""
+    n = row.get("number")
+    if not isinstance(n, int):
+        return True
+    rn = rec.get("number")
+    return rn is None or rn == n
+
+
+def size_page_index(entries):
+    """{key: entry} for the size page: by number, by designation, and by bare NAME for the
+    entries that are actually minor planets (sizes.is_minor_planet). The name keys are what
+    reach Eris and Makemake, which the page lists by name with no number at all; the moons
+    it also lists are what makes the filter necessary rather than cosmetic."""
+    out = {}
+    for e in entries:
+        if not e['radius_m'] or not sizes.is_minor_planet(e):
+            continue
+        for k in size_entry_keys(e):
+            out.setdefault(k, e)
+    return out
+
+
+def tno_index(rows):
+    """{key: row} for the TNO list, same rule: number or exact designation."""
+    out = {}
+    for r in rows:
+        if r["number"] is not None:
+            out[("n", r["number"])] = r
+        for key in (r["designation"], r["desig"]):
+            k = text_key(re.sub(r"^\(?\d+\)?\s+", "", key or ""))
+            if k:
+                out.setdefault(("d", k), r)
+    return out
+
+
+def size_entry_keys(e):
+    """Keys a size-page entry answers to: its number, its designation, its name (minus the
+    wiki's '(moon)'/'(dwarf planet)' disambiguation)."""
+    out = set()
+    if e["number"] is not None:
+        out.add(("n", e["number"]))
+    for key in (e["designation"], e["name"]):
+        k = text_key(re.sub(r"\s*\((?:moon|planet|dwarf planet)\)\s*$", "", key or ""))
+        if k:
+            out.add(("d", k))
+            out.add(("nm", k))
+    return out
+
+
+def slim_keys(hit):
+    """Keys an MPCORB record answers to, in the same shape, for the two wiki joins."""
+    out = set()
+    n = hit.get("number")
+    if isinstance(n, int):
+        out.add(("n", n))
+    for v in [hit.get("Principal_desig")] + list(hit.get("aliases") or []):
+        k = text_key(v)
+        if k:
+            out.add(("d", k))
+            out.add(("nm", k))
+    k = text_key(hit.get("Name"))
+    if k:
+        out.add(("nm", k))
+    return out
+
+
+def size_block(e):
+    """The size-page fields as a corpus block, with the page's own text kept alongside the
+    number so a reader can see what it actually claimed ('371+39−42')."""
+    return {"radius_m": e["radius_m"], "radius_text": e["radius_text"],
+            "mass_1e18_kg": e["mass_1e18_kg"], "type_note": e["type_note"],
+            "src": "Wikipedia List of Solar System objects by size, table %d" % e["table"]}
+
+
+def row_h_mag(row):
+    """H from anywhere on the row -- the wiki cell, LCDB's adopted value, or the MPCORB
+    block. Whichever it is, it is this body's brightness, which is what bounds its size."""
+    for v in ((row.get("h_mag") or {}).get("value"),
+              (row.get("lcdb") or {}).get("h_mag"),
+              (row.get("mporb") or {}).get("H")):
+        if v is not None:
+            return float(v)
+    return None
+
+
+def size_is_plausible(radius_m, h_mag, other_km=None):
+    """Does a stated radius belong to the body this H describes?
+
+    The join guard, and it does not need to be tight: with the albedo band a real body can
+    have (0.02 for a comet-like coal, 1.0 for Eris' frost), H bounds the radius within a
+    factor ~7. A size-page entry that lands outside that band is the same WORD describing a
+    different object -- the page's 'Ariel' is Uranus' moon at 579 km, and an asteroid
+    called Ariel is a few km across. Returns False only when there is an H to argue with,
+    and the 2x margins are there because H itself carries a few tenths of uncertainty.
+    """
+    if h_mag is None or not radius_m:
+        if other_km and radius_m:
+            return 0.4 <= (other_km * 500.0) / radius_m <= 2.5
+        return True
+    lo = 1329.0 / math.sqrt(1.0) * 10 ** (-float(h_mag) / 5.0) * 500.0     # pV 1.0
+    hi = 1329.0 / math.sqrt(0.02) * 10 ** (-float(h_mag) / 5.0) * 500.0    # pV 0.02
+    return 0.5 * lo <= radius_m <= 2.0 * hi
+
+
+def augment(records):
+    """Mutate the rows with an "mporb" block and a "size_page" block; return [row] for the
+    bodies MPCORB and the size tables know about but the exceptional list never did."""
+    tno_rows = []
+    if os.path.exists(TNO_HTML):
+        tno_rows = sizes.tno_rows(open(TNO_HTML, encoding="utf-8").read())
+    else:
+        print("note    no %s -- no Kuiper rows (run fetch.py)" % TNO_HTML)
+    size_entries = []
+    if os.path.exists(SIZES_HTML):
+        size_entries = sizes.objects(open(SIZES_HTML, encoding="utf-8").read())
+    else:
+        print("note    no %s -- no stated radii for the distant tail (run fetch.py)"
+              % SIZES_HTML)
+
+    corpus_keys = set()
+    for r in records:
+        corpus_keys |= row_wanted_keys(r)
+    wanted = set(corpus_keys)
+    for r in tno_rows:
+        if r["number"] is not None:
+            wanted.add(("n", r["number"]))
+        for key in (r["designation"], r["desig"]):
+            k = text_key(re.sub(r"^\(?\d+\)?\s+", "", key or ""))
+            if k:
+                wanted.add(("d", k))
+                wanted.add(("nm", k))
+    for e in size_entries:
+        if not sizes.is_minor_planet(e):
+            continue
+        for k in size_entry_keys(e):
+            wanted.add(k)
+    for desig in FAMED_COORBITALS:
+        wanted.add(("d", text_key(desig)))
+
+    if not os.path.exists(mporb.MPCORB_GZ):
+        print("note    no %s -- no H, no dynamical class, no new candidates (run fetch.py)"
+              % mporb.MPCORB_GZ)
+        hits, picks = {}, {}
+    else:
+        def bucket(rec, keys):
+            """A candidate is a record the corpus has NO row for. The test is necessary,
+            not tidy: `wanted` now includes the two candidate tables, so without it the
+            'brightest 34' bucket returns nothing -- every bright body in MPCORB is in one
+            of the lists we are also looking up."""
+            if keys & corpus_keys:
+                return []
+            return mpcorb_buckets(rec)
+        hits, picks = mporb.extract(wanted, bucket=bucket, bucket_cap=CANDIDATE_BUCKETS)
+
+    # 1. The existing rows.
+    joined_h = joined_cls = 0
+    for r in records:
+        rec = next((hits[k] for k in row_wanted_keys(r) if k in hits), None)
+        if rec is None:
+            continue
+        if not mporb_identity_ok(r, rec):
+            print("  REFUSE %s: MPCORB has %s (%s) -- a different number, so not this body"
+                  % (r["name"], rec.get("Number"), rec.get("Name")))
+            continue
+        r["mporb"] = rec
+        if rec.get("H") is not None and "h_mag" not in r and "lcdb" not in r:
+            joined_h += 1
+        if rec.get("Orbit_type") and "spectral_type" not in r:
+            joined_cls += 1
+
+    # 2. The size page, for the rows it answers to.
+    sidx = size_page_index(size_entries)
+    sized_here = 0
+    for r in records:
+        e = next((sidx[k] for k in row_wanted_keys(r) if k in sidx), None)
+        if e is None:
+            continue
+        other = (r.get("diam_eff_km") or {}).get("value") or \
+                (r.get("diameter_km") or {}).get("value")
+        if not size_is_plausible(e["radius_m"], row_h_mag(r), other):
+            print("  REFUSE %s: the size page's %.0f km does not belong to a body with "
+                  "H %s -- a namesake, not this object"
+                  % (r["name"], e["radius_m"] / 1000.0, row_h_mag(r)))
+            continue
+        r["size_page"] = size_block(e)
+        sized_here += 1
+
+    # 3. New rows. Every candidate needs an MPCORB record with a rail and an H, so the
+    # generator has both a place to put the body and a way to size it. Which rule found it
+    # is only a label: the size page and the TNO list are looked up for every one of them,
+    # because Eris walks in on the 'bright' rule and still needs a stated radius -- sizing
+    # it from H alone would make it four times its real size.
+    taken = {text_key(r["name"]) for r in records}
+    taken |= {r["number"] for r in records if isinstance(r.get("number"), int)}
+    ti = tno_index(tno_rows)
+    extra = []
+    too_weak = []
+
+    def add(hit, why):
+        name = " ".join((hit.get("Name") or hit.get("Principal_desig") or "").split())
+        key = text_key(name)
+        number = hit.get("number")
+        if not name or key in ALREADY_AUTHORED or key in taken:
+            return None
+        try:
+            u = int(str(hit.get("U")))
+        except (TypeError, ValueError):
+            u = 99
+        if u > MAX_ORBIT_U:
+            too_weak.append("%s (U %s, %s)" % (name or number, hit.get("U"),
+                                               hit.get("Principal_desig")))
+            return None
+        if isinstance(number, int) and number in taken:
+            return None
+        keys = slim_keys(hit)
+        sent = next((sidx[k] for k in keys if k in sidx), None)
+        if sent is not None and not size_is_plausible(sent["radius_m"], hit.get("H")):
+            print("  REFUSE %s: the size page's %.0f km does not belong to a body with "
+                  "H %s -- a namesake, not this object"
+                  % (name, sent["radius_m"] / 1000.0, hit.get("H")))
+            sent = None
+        row = {"name": name, "number": number, "query": name, "sections": [why],
+               "mporb": hit,
+               "comments": "Added from MPCORB (%s) for the %s rule; not on the "
+                           "exceptional-asteroids page." % (hit.get("Principal_desig"), why)}
+        if sent is not None:
+            row["size_page"] = size_block(sent)
+        trow = next((ti[k] for k in keys if k in ti), None)
+        if trow is not None:
+            row["tno"] = {k: trow[k] for k in ("diam_km", "class", "albedo", "taxonomy",
+                                               "binary", "rings", "a_au", "e", "i_deg",
+                                               "q_au", "Q_au", "year")
+                          if trow.get(k) is not None}
+        taken.add(key)
+        if isinstance(number, int):
+            taken.add(number)
+        extra.append(row)
+        return row
+
+    counts = {}
+    # The named family first, so a member that also falls in a mined bucket keeps the
+    # curated rule as its section.
+    missing_famed = []
+    for desig in FAMED_COORBITALS:
+        hit = hits.get(("d", text_key(desig)))
+        if hit is None:
+            missing_famed.append(desig)
+            continue
+        add(hit, "coorbital_famed")
+    counts["coorbital_famed"] = sum(1 for r in extra
+                                    if r["sections"][0] == "coorbital_famed")
+    if missing_famed:
+        print("  MISS  co-orbital family not in MPCORB: %s" % ", ".join(missing_famed))
+    for b in sorted(CANDIDATE_BUCKETS):
+        counts[b] = sum(1 for hit in picks.get(b, []) if add(hit, b) is not None)
+
+    # 4. The Kuiper belt: the TNO list ranked by the diameter IT states, keeping the ones
+    # MPCORB has a first-class orbit for.
+    got = 0
+    for r in sorted((r for r in tno_rows if r["diam_km"] and r["number"] is not None),
+                    key=lambda r: -r["diam_km"]):
+        if got >= TNO_ADDS:
+            break
+        hit = hits.get(("n", r["number"]))
+        if hit is None or hit.get("H") is None:
+            continue
+        if add(hit, "kuiper") is not None:
+            got += 1
+    counts["kuiper"] = got
+
+    # ... and the size page's own headline bodies that the TNO list misses: the centaurs,
+    # the largest Trojans, the named scattered-disc objects. Ranked by its own radius.
+    got = 0
+    for e in sorted((e for e in size_entries
+                     if e["number"] is not None and sizes.is_minor_planet(e)
+                     and e["radius_m"] >= 100e3), key=lambda e: -e["radius_m"]):
+        hit = next((hits[k] for k in size_entry_keys(e) if k in hits), None)
+        if hit is None or hit.get("H") is None:
+            continue
+        if add(hit, "size_page") is not None:
+            got += 1
+    counts["size_page"] = got
+
+    print("mporb   %d distinct records matched, %d rows given an H they lacked, %d a "
+          "dynamical class; %d new rows (%s)"
+          % (len({id(v) for v in hits.values()}), joined_h, joined_cls, len(extra),
+             ", ".join("%s %d" % (k, v) for k, v in sorted(counts.items()))))
+    if too_weak:
+        print("  SKIP  %d candidates whose MPCORB orbit is worse than U %d: %s"
+              % (len(too_weak), MAX_ORBIT_U, ", ".join(too_weak[:8])))
+    print("sizes   %d size-page entries (%d joined, %d only as new rows), %d TNO rows"
+          % (len(size_entries), sized_here,
+             sum(1 for r in extra if "size_page" in r), len(tno_rows)))
+    return extra
+
+
 def check_crosscheck(records):
     """The wiki's rounded orbit rows against SBDB's elements -- the disagreement a
     reader would otherwise inherit silently."""
@@ -735,6 +1162,26 @@ def report(records):
     print("  %-26s %3d" % ("binary records", sum(1 for r in records if "lcdb_binaries" in r)))
     print("  %-26s %3d" % ("tumbling (NPA) records",
                            sum(1 for r in records if "lcdb_tumbling" in r)))
+    # MPCORB and the two size tables -- what the extra sources contribute, and the class
+    # they contribute, which for most rows is a DYNAMICAL class rather than a spectral one.
+    print("  %-26s %3d" % ("MPCORB block", sum(1 for r in records if "mporb" in r)))
+    print("  %-26s %3d" % ("MPCORB H", sum(1 for r in records
+                                           if (r.get("mporb") or {}).get("H") is not None)))
+    print("  %-26s %3d" % ("MPCORB U=0", sum(1 for r in records
+                                             if str((r.get("mporb") or {}).get("U")) == "0")))
+    print("  %-26s %3d" % ("size-page radius", sum(1 for r in records if "size_page" in r)))
+    print("  %-26s %3d" % ("TNO-list row", sum(1 for r in records if "tno" in r)))
+    print("  %-26s %3d" % ("rows from MPCORB rules",
+                           sum(1 for r in records
+                               if r["sections"] and set(r["sections"]) <= CANDIDATE_RULES)))
+    tally = {}
+    for r in records:
+        t = (r.get("mporb") or {}).get("Orbit_type")
+        if t:
+            tally[t] = tally.get(t, 0) + 1
+    print("  %-26s %s" % ("dynamical class", " ".join("%s:%d" % kv for kv in
+                                                      sorted(tally.items(),
+                                                             key=lambda kv: -kv[1]))))
     # What the LCDB values are actually worth: 'A' albedo is assumed from the class and
     # 'C'/'D' diameter is arithmetic on H, not a measurement.
     for key, label in (("diam_src", "LCDB diameter by DiamSource"),
@@ -798,6 +1245,7 @@ def main():
     if not os.path.exists(WIKI_HTML):
         raise SystemExit("parse: %s missing -- run fetch.py first" % WIKI_HTML)
     records = merge()
+    records += augment(records)
     drift = check_crosscheck(records)
     diam = check_diameters(records)
     axes = check_axes(records)

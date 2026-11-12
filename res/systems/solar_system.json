@@ -65,7 +65,7 @@
         "temperature": 5769.41
       },
       "inertial": {
-        "soi": 100000000000000.0,
+        "soi": 1000000000000000.0,
         "orb_ang_speed": 0.0
       },
       "transfer_dv": 0.0,
@@ -2216,6 +2216,2502 @@
       },
       "transfer_dv": 458.8,
       "science_mult": 1.9
+    },
+    {
+      "name": "2000 WH10",
+      "type": "asteroid",
+      "orbits": "Sun",
+      "radius": 47.0,
+      "mass": 1174210466.6651511,
+      "seed": 2007,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 7.05,
+        "palette": [
+          [
+            0.0,
+            [
+              0.42,
+              0.36,
+              0.28
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.62,
+              0.54,
+              0.43
+            ]
+          ]
+        ],
+        "albedo": 0.13620505559740223,
+        "albedo_src": "stated: pV 0.200 x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 4.9693402313727434e-08,
+        "ecc": 0.662,
+        "arg_peri": 1.1047934165124105,
+        "orb_incl": 0.23212879051524585,
+        "lon_asc_node": 0.8796459430051421,
+        "true_anomaly0": -2.652517545446131
+      },
+      "rotating": {
+        "rot_ang_speed": 0.07858303701010037,
+        "axial_tilt": 0.0,
+        "spin_phase0": 1.498953760402641
+      },
+      "transfer_dv": 10483.9,
+      "science_mult": 1.6
+    },
+    {
+      "name": "2008 WA14",
+      "type": "asteroid",
+      "orbits": "Sun",
+      "radius": 37.5,
+      "mass": 596411730.3299372,
+      "seed": 2026,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 5.625,
+        "palette": [
+          [
+            0.0,
+            [
+              0.42,
+              0.36,
+              0.28
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.62,
+              0.54,
+              0.43
+            ]
+          ]
+        ],
+        "albedo": 0.13499771209073194,
+        "albedo_src": "stated: pV 0.198 x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 1.401919561208408e-07,
+        "ecc": 0.428,
+        "arg_peri": 1.4730578886832142,
+        "orb_incl": 0.22689280275926285,
+        "lon_asc_node": 1.2479104151759457,
+        "true_anomaly0": -2.8441137388249857
+      },
+      "rotating": {
+        "rot_ang_speed": 0.0895040642048374,
+        "axial_tilt": 0.0,
+        "spin_phase0": 2.55834214772885
+      },
+      "transfer_dv": 3275.9,
+      "science_mult": 1.2
+    },
+    {
+      "name": "2015 FR561",
+      "type": "asteroid",
+      "orbits": "Sun",
+      "radius": 65019.67689935806,
+      "mass": 2.1876439074512049e+18,
+      "seed": 2080,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 500.0,
+        "palette": [
+          [
+            0.0,
+            [
+              0.28,
+              0.27,
+              0.26
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.42,
+              0.41,
+              0.4
+            ]
+          ]
+        ],
+        "albedo": 0.03406975240804189,
+        "albedo_src": "INVENTED: C-class geometric x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 6.363179564562661e-10,
+        "ecc": 0.649,
+        "arg_peri": 5.602506898901797,
+        "orb_incl": 3.036872898470133,
+        "lon_asc_node": 0.03682644721708035,
+        "true_anomaly0": -2.6034401735068466
+      },
+      "transfer_dv": 15372.0,
+      "science_mult": 1.8
+    },
+    {
+      "name": "Ceres",
+      "type": "dwarf_planet",
+      "orbits": "Sun",
+      "radius": 469750.52046940767,
+      "mass": 9.3835e+20,
+      "seed": 2124,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 500.0,
+        "palette": [
+          [
+            0.0,
+            [
+              0.3,
+              0.29,
+              0.28
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.45,
+              0.44,
+              0.43
+            ]
+          ]
+        ],
+        "albedo": 0.052808116232464924,
+        "albedo_src": "stated: pV 0.077 x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 4.3229219898933624e-08,
+        "ecc": 0.0797,
+        "arg_peri": 1.2793263417118435,
+        "orb_incl": 0.18500490071139894,
+        "lon_asc_node": 1.3997540600994522,
+        "true_anomaly0": 0.15635100550090955
+      },
+      "rotating": {
+        "rot_ang_speed": 0.0001923403740501147,
+        "axial_tilt": 0.0,
+        "spin_phase0": 2.6085781060951483
+      },
+      "transfer_dv": 11178.7,
+      "science_mult": 1.6
+    },
+    {
+      "name": "Pallas",
+      "type": "asteroid",
+      "orbits": "Sun",
+      "radius": 256792.44598852558,
+      "mass": 2.04e+20,
+      "seed": 2125,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 500.0,
+        "palette": [
+          [
+            0.0,
+            [
+              0.3,
+              0.3,
+              0.31
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.46,
+              0.46,
+              0.47
+            ]
+          ]
+        ],
+        "albedo": 0.10220925722412566,
+        "albedo_src": "stated: pV 0.150 x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 4.3229219898933624e-08,
+        "ecc": 0.231,
+        "arg_peri": 5.427973973702365,
+        "orb_incl": 0.609119908946021,
+        "lon_asc_node": 3.01941960595019,
+        "true_anomaly0": -0.35285344165084337
+      },
+      "rotating": {
+        "rot_ang_speed": 0.00022338212921649639,
+        "axial_tilt": 0.0,
+        "spin_phase0": 2.4969377149326704
+      },
+      "transfer_dv": 11178.7,
+      "science_mult": 1.6
+    },
+    {
+      "name": "Vesta",
+      "type": "asteroid",
+      "orbits": "Sun",
+      "radius": 261115.2379657525,
+      "mass": 2.5907600000000003e+20,
+      "seed": 2127,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 500.0,
+        "palette": [
+          [
+            0.0,
+            [
+              0.55,
+              0.52,
+              0.48
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.76,
+              0.73,
+              0.69
+            ]
+          ]
+        ],
+        "albedo": 0.22915315469648972,
+        "albedo_src": "stated: pV 0.336 x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 5.494555052574741e-08,
+        "ecc": 0.0902,
+        "arg_peri": 2.6354471705114375,
+        "orb_incl": 0.12461650859239512,
+        "lon_asc_node": 1.8151424220741028,
+        "true_anomaly0": -0.5258666941403232
+      },
+      "rotating": {
+        "rot_ang_speed": 0.00032671831748302694,
+        "axial_tilt": 0.0,
+        "spin_phase0": 0.9013606950580787
+      },
+      "transfer_dv": 9944.7,
+      "science_mult": 1.5
+    },
+    {
+      "name": "Lutetia",
+      "type": "asteroid",
+      "orbits": "Sun",
+      "radius": 49324.241486609404,
+      "mass": 9.550441666912972e+17,
+      "seed": 2140,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 500.0,
+        "palette": [
+          [
+            0.0,
+            [
+              0.28,
+              0.27,
+              0.26
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.42,
+              0.41,
+              0.4
+            ]
+          ]
+        ],
+        "albedo": 0.14199338515591228,
+        "albedo_src": "stated: pV 0.208 x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 5.231947641973742e-08,
+        "ecc": 0.165,
+        "arg_peri": 4.363323129985824,
+        "orb_incl": 0.053407075111026485,
+        "lon_asc_node": 1.4102260356114182,
+        "true_anomaly0": -0.9884725614383386
+      },
+      "rotating": {
+        "rot_ang_speed": 0.00021374432086146953,
+        "axial_tilt": 0.0,
+        "spin_phase0": 5.6564329755566
+      },
+      "transfer_dv": 10211.6,
+      "science_mult": 1.5
+    },
+    {
+      "name": "Ida",
+      "type": "asteroid",
+      "orbits": "Sun",
+      "radius": 15223.325222040487,
+      "mass": 2.807829850072411e+16,
+      "seed": 2160,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 500.0,
+        "palette": [
+          [
+            0.0,
+            [
+              0.28,
+              0.27,
+              0.26
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.42,
+              0.41,
+              0.4
+            ]
+          ]
+        ],
+        "albedo": 0.16237643997672763,
+        "albedo_src": "stated: pV 0.238 x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 4.100715719384825e-08,
+        "ecc": 0.0461,
+        "arg_peri": 1.9722220547535925,
+        "orb_incl": 0.01972222054753592,
+        "lon_asc_node": 5.654866776461628,
+        "true_anomaly0": -2.0142837827387634
+      },
+      "rotating": {
+        "rot_ang_speed": 0.00037663557444849577,
+        "axial_tilt": 0.0,
+        "spin_phase0": 1.5517117754883085
+      },
+      "transfer_dv": 11426.0,
+      "science_mult": 1.6
+    },
+    {
+      "name": "Mathilde",
+      "type": "asteroid",
+      "orbits": "Sun",
+      "radius": 26311.82705252306,
+      "mass": 1.449757045037389e+17,
+      "seed": 2161,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 500.0,
+        "palette": [
+          [
+            0.0,
+            [
+              0.28,
+              0.27,
+              0.26
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.42,
+              0.41,
+              0.4
+            ]
+          ]
+        ],
+        "albedo": 0.025143477277134913,
+        "albedo_src": "stated: pV 0.037 x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 4.625930540586823e-08,
+        "ecc": 0.264,
+        "arg_peri": 2.7576202181510405,
+        "orb_incl": 0.11763519158441782,
+        "lon_asc_node": 3.12413936106985,
+        "true_anomaly0": -2.6796017557477567
+      },
+      "rotating": {
+        "rot_ang_speed": 4.178427704080272e-06,
+        "axial_tilt": 0.0,
+        "spin_phase0": 0.7158828988062409
+      },
+      "transfer_dv": 10848.6,
+      "science_mult": 1.6
+    },
+    {
+      "name": "Eros",
+      "type": "asteroid",
+      "orbits": "Sun",
+      "radius": 8011.701625649435,
+      "mass": 4092762189341665.5,
+      "seed": 2171,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 500.0,
+        "palette": [
+          [
+            0.0,
+            [
+              0.28,
+              0.27,
+              0.26
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.42,
+              0.41,
+              0.4
+            ]
+          ]
+        ],
+        "albedo": 0.3040460811162535,
+        "albedo_src": "stated: pV 0.446 x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 1.1312319225889174e-07,
+        "ecc": 0.223,
+        "arg_peri": 3.12413936106985,
+        "orb_incl": 0.1884955592153876,
+        "lon_asc_node": 5.305800926062762,
+        "true_anomaly0": 1.383988424362958
+      },
+      "rotating": {
+        "rot_ang_speed": 0.00033118202125129593,
+        "axial_tilt": 0.0,
+        "spin_phase0": 2.9904780880065305
+      },
+      "transfer_dv": 5071.1,
+      "science_mult": 1.3
+    },
+    {
+      "name": "Hektor",
+      "type": "asteroid",
+      "orbits": "Sun",
+      "radius": 142305.12991456062,
+      "mass": 2.655662973449037e+19,
+      "seed": 2179,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 500.0,
+        "palette": [
+          [
+            0.0,
+            [
+              0.24,
+              0.19,
+              0.15
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.38,
+              0.31,
+              0.25
+            ]
+          ]
+        ],
+        "albedo": 0.026642546383088758,
+        "albedo_src": "stated: pV 0.039 x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 1.642306344758553e-08,
+        "ecc": 0.0243,
+        "arg_peri": 3.1590459461097367,
+        "orb_incl": 0.3159045946109737,
+        "lon_asc_node": 5.98647933434055,
+        "true_anomaly0": -0.7325137225326355
+      },
+      "rotating": {
+        "rot_ang_speed": 0.00025206950490963743,
+        "axial_tilt": 0.0,
+        "spin_phase0": 4.682483620592662
+      },
+      "transfer_dv": 14484.9,
+      "science_mult": 1.8
+    },
+    {
+      "name": "Lipperta",
+      "type": "asteroid",
+      "orbits": "Sun",
+      "radius": 26205.0,
+      "mass": 1.4321704292064632e+17,
+      "seed": 2183,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 500.0,
+        "palette": [
+          [
+            0.0,
+            [
+              0.28,
+              0.27,
+              0.26
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.42,
+              0.41,
+              0.4
+            ]
+          ]
+        ],
+        "albedo": 0.03209370676837546,
+        "albedo_src": "stated: pV 0.047 x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 3.5957014682290585e-08,
+        "ecc": 0.175,
+        "arg_peri": 2.2863813201125716,
+        "orb_incl": 0.0046251225177849735,
+        "lon_asc_node": 4.537856055185257,
+        "true_anomaly0": 0.6959204140828011
+      },
+      "rotating": {
+        "rot_ang_speed": 1.0635766313189089e-06,
+        "axial_tilt": 0.0,
+        "spin_phase0": 0.5633222805336683
+      },
+      "transfer_dv": 12005.3,
+      "science_mult": 1.6
+    },
+    {
+      "name": "Maritima",
+      "type": "asteroid",
+      "orbits": "Sun",
+      "radius": 41070.0,
+      "mass": 5.5133595905428326e+17,
+      "seed": 2184,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 500.0,
+        "palette": [
+          [
+            0.0,
+            [
+              0.28,
+              0.27,
+              0.26
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.42,
+              0.41,
+              0.4
+            ]
+          ]
+        ],
+        "albedo": 0.031071614196134204,
+        "albedo_src": "stated: pV 0.046 x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 3.5957014682290585e-08,
+        "ecc": 0.18,
+        "arg_peri": 1.5987215948268059,
+        "orb_incl": 0.3193952531149623,
+        "lon_asc_node": 0.582939970166106,
+        "true_anomaly0": -1.735963605557276
+      },
+      "rotating": {
+        "rot_ang_speed": 1.310307246241989e-06,
+        "axial_tilt": 0.0,
+        "spin_phase0": 3.323254767554334
+      },
+      "transfer_dv": 12005.3,
+      "science_mult": 1.6
+    },
+    {
+      "name": "Gaspra",
+      "type": "asteroid",
+      "orbits": "Sun",
+      "radius": 5968.34018092074,
+      "mass": 1692009966944678.2,
+      "seed": 2187,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 500.0,
+        "palette": [
+          [
+            0.0,
+            [
+              0.28,
+              0.27,
+              0.26
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.42,
+              0.41,
+              0.4
+            ]
+          ]
+        ],
+        "albedo": 0.210687348891331,
+        "albedo_src": "stated: pV 0.309 x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 6.060171013869199e-08,
+        "ecc": 0.174,
+        "arg_peri": 2.2689280275926285,
+        "orb_incl": 0.0715584993317675,
+        "lon_asc_node": 4.4156830075456535,
+        "true_anomaly0": 2.0108535714849864
+      },
+      "rotating": {
+        "rot_ang_speed": 0.000247845676227539,
+        "axial_tilt": 0.0,
+        "spin_phase0": 6.0012451462141065
+      },
+      "transfer_dv": 9387.1,
+      "science_mult": 1.5
+    },
+    {
+      "name": "Chiron",
+      "type": "asteroid",
+      "orbits": "Sun",
+      "radius": 98000.0,
+      "mass": 7.490666077804293e+18,
+      "seed": 2195,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 500.0,
+        "palette": [
+          [
+            0.0,
+            [
+              0.28,
+              0.27,
+              0.26
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.42,
+              0.41,
+              0.4
+            ]
+          ]
+        ],
+        "albedo": 0.03883951774516775,
+        "albedo_src": "stated: pV 0.057 x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 3.9391111590149795e-09,
+        "ecc": 0.38,
+        "arg_peri": 5.916666164260777,
+        "orb_incl": 0.12095131716320703,
+        "lon_asc_node": 3.6477381366681487,
+        "true_anomaly0": 1.0797783607341322
+      },
+      "rotating": {
+        "rot_ang_speed": 0.00029491876512239434,
+        "axial_tilt": 0.0,
+        "spin_phase0": 3.4750437771790526
+      },
+      "transfer_dv": 15958.9,
+      "science_mult": 1.9
+    },
+    {
+      "name": "\u0160teins",
+      "type": "asteroid",
+      "orbits": "Sun",
+      "radius": 2580.0,
+      "mass": 136678853810024.9,
+      "seed": 2199,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 387.0,
+        "palette": [
+          [
+            0.0,
+            [
+              0.28,
+              0.27,
+              0.26
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.42,
+              0.41,
+              0.4
+            ]
+          ]
+        ],
+        "albedo": 0.23167431637468486,
+        "albedo_src": "stated: pV 0.340 x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 5.474354482528511e-08,
+        "ecc": 0.147,
+        "arg_peri": 4.380776422505767,
+        "orb_incl": 0.1731366617978375,
+        "lon_asc_node": 0.9651670763528641,
+        "true_anomaly0": 3.1182868937083206
+      },
+      "rotating": {
+        "rot_ang_speed": 0.0002885318651007322,
+        "axial_tilt": 0.0,
+        "spin_phase0": 5.370368902052353
+      },
+      "transfer_dv": 9965.0,
+      "science_mult": 1.5
+    },
+    {
+      "name": "Toutatis",
+      "type": "asteroid",
+      "orbits": "Sun",
+      "radius": 1500.0000000000002,
+      "mass": 26860617188192.74,
+      "seed": 2204,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 225.00000000000003,
+        "palette": [
+          [
+            0.0,
+            [
+              0.28,
+              0.27,
+              0.26
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.42,
+              0.41,
+              0.4
+            ]
+          ]
+        ],
+        "albedo": 0.045084152222613263,
+        "albedo_src": "stated: pV 0.066 x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 4.908738521234052e-08,
+        "ecc": 0.625,
+        "arg_peri": 4.852015320544236,
+        "orb_incl": 0.007819075048934596,
+        "lon_asc_node": 2.181661564992912,
+        "true_anomaly0": -2.325373373768721
+      },
+      "rotating": {
+        "rot_ang_speed": 9.91664347724051e-06,
+        "axial_tilt": 0.0,
+        "spin_phase0": 1.388974064133744
+      },
+      "transfer_dv": 10547.6,
+      "science_mult": 1.6
+    },
+    {
+      "name": "Annefrank",
+      "type": "asteroid",
+      "orbits": "Sun",
+      "radius": 2400.0,
+      "mass": 110021088002837.4,
+      "seed": 2209,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 360.0,
+        "palette": [
+          [
+            0.0,
+            [
+              0.28,
+              0.27,
+              0.26
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.42,
+              0.41,
+              0.4
+            ]
+          ]
+        ],
+        "albedo": 0.225075877690428,
+        "albedo_src": "stated: pV 0.330 x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 6.060171013869199e-08,
+        "ecc": 0.0632,
+        "arg_peri": 0.16667894356545848,
+        "orb_incl": 0.07417649320975901,
+        "lon_asc_node": 2.111848394913139,
+        "true_anomaly0": -2.130884044839639
+      },
+      "rotating": {
+        "rot_ang_speed": 0.0001154318288356038,
+        "axial_tilt": 0.0,
+        "spin_phase0": 2.989752242285682
+      },
+      "transfer_dv": 9387.1,
+      "science_mult": 1.5
+    },
+    {
+      "name": "Braille",
+      "type": "asteroid",
+      "orbits": "Sun",
+      "radius": 574.4562646538028,
+      "mass": 1508735537586.4368,
+      "seed": 2212,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 86.16843969807042,
+        "palette": [
+          [
+            0.0,
+            [
+              0.28,
+              0.27,
+              0.26
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.42,
+              0.41,
+              0.4
+            ]
+          ]
+        ],
+        "albedo": 0.06848627941557812,
+        "albedo_src": "stated: pV 0.101 x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 5.555156762713434e-08,
+        "ecc": 0.434,
+        "arg_peri": 6.213372137099813,
+        "orb_incl": 0.5061454830783556,
+        "lon_asc_node": 4.223696789826278,
+        "true_anomaly0": 1.5879512381325034
+      },
+      "rotating": {
+        "rot_ang_speed": 7.70905146640605e-06,
+        "axial_tilt": 0.0,
+        "spin_phase0": 5.1563387147933195
+      },
+      "transfer_dv": 9883.8,
+      "science_mult": 1.5
+    },
+    {
+      "name": "Itokawa",
+      "type": "asteroid",
+      "orbits": "Sun",
+      "radius": 155.36162529769294,
+      "mass": 29845130209.103027,
+      "seed": 2216,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 23.30424379465394,
+        "palette": [
+          [
+            0.0,
+            [
+              0.28,
+              0.27,
+              0.26
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.42,
+              0.41,
+              0.4
+            ]
+          ]
+        ],
+        "albedo": 0.2012340333465222,
+        "albedo_src": "stated: pV 0.295 x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 1.306976881991124e-07,
+        "ecc": 0.28,
+        "arg_peri": 2.8448866807507573,
+        "orb_incl": 0.028274333882308142,
+        "lon_asc_node": 1.2060225131280815,
+        "true_anomaly0": 1.253755368850734
+      },
+      "rotating": {
+        "rot_ang_speed": 0.00014386162644199882,
+        "axial_tilt": 0.0,
+        "spin_phase0": 2.346025135054006
+      },
+      "transfer_dv": 3880.3,
+      "science_mult": 1.2
+    },
+    {
+      "name": "Donaldjohanson",
+      "type": "asteroid",
+      "orbits": "Sun",
+      "radius": 1948.0,
+      "mass": 58831384360210.13,
+      "seed": 2220,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 292.2,
+        "palette": [
+          [
+            0.0,
+            [
+              0.28,
+              0.27,
+              0.26
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.42,
+              0.41,
+              0.4
+            ]
+          ]
+        ],
+        "albedo": 0.04520755700578608,
+        "albedo_src": "DERIVED from size page radius + H 15.61: pV 0.066 x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 5.413752772389818e-08,
+        "ecc": 0.187,
+        "arg_peri": 3.717551306747922,
+        "orb_incl": 0.07731808586334879,
+        "lon_asc_node": 4.590215932745087,
+        "true_anomaly0": 1.7743970011235117
+      },
+      "transfer_dv": 10026.3,
+      "science_mult": 1.5
+    },
+    {
+      "name": "Echeclus",
+      "type": "asteroid",
+      "orbits": "Sun",
+      "radius": 32299.999999999996,
+      "mass": 2.681944443829652e+17,
+      "seed": 2221,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 500.0,
+        "palette": [
+          [
+            0.0,
+            [
+              0.28,
+              0.27,
+              0.26
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.42,
+              0.41,
+              0.4
+            ]
+          ]
+        ],
+        "albedo": 0.03883951774516775,
+        "albedo_src": "stated: pV 0.057 x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 5.635959042898356e-09,
+        "ecc": 0.454,
+        "arg_peri": 2.8448866807507573,
+        "orb_incl": 0.0757472895365539,
+        "lon_asc_node": 3.01941960595019,
+        "true_anomaly0": -2.958994874705418
+      },
+      "rotating": {
+        "rot_ang_speed": 6.511936616649242e-05,
+        "axial_tilt": 0.0,
+        "spin_phase0": 1.2591820569676575
+      },
+      "transfer_dv": 15843.8,
+      "science_mult": 1.9
+    },
+    {
+      "name": "Didymos",
+      "type": "asteroid",
+      "orbits": "Sun",
+      "radius": 390.0,
+      "mass": 472102207699.6754,
+      "seed": 2223,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 58.5,
+        "palette": [
+          [
+            0.0,
+            [
+              0.28,
+              0.27,
+              0.26
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.42,
+              0.41,
+              0.4
+            ]
+          ]
+        ],
+        "albedo": 0.2707189952314543,
+        "albedo_src": "stated: pV 0.397 x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 9.453866781635952e-08,
+        "ecc": 0.383,
+        "arg_peri": 5.585053606381854,
+        "orb_incl": 0.05951572749300664,
+        "lon_asc_node": 1.2740903539558606,
+        "true_anomaly0": 1.861889724613672
+      },
+      "rotating": {
+        "rot_ang_speed": 0.0007725088531821048,
+        "axial_tilt": 0.0,
+        "spin_phase0": 3.160608413062742
+      },
+      "transfer_dv": 6449.9,
+      "science_mult": 1.3
+    },
+    {
+      "name": "Torifune",
+      "type": "asteroid",
+      "orbits": "Sun",
+      "radius": 232.5,
+      "mass": 100025580831.6812,
+      "seed": 2227,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 34.875,
+        "palette": [
+          [
+            0.0,
+            [
+              0.28,
+              0.27,
+              0.26
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.42,
+              0.41,
+              0.4
+            ]
+          ]
+        ],
+        "albedo": 0.2297391604048378,
+        "albedo_src": "stated: pV 0.337 x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 1.8988535843456825e-07,
+        "ecc": 0.219,
+        "arg_peri": 3.12413936106985,
+        "orb_incl": 0.08395033702092725,
+        "lon_asc_node": 1.3159782560037245,
+        "true_anomaly0": -2.2550616728740724
+      },
+      "rotating": {
+        "rot_ang_speed": 0.00034788304803554505,
+        "axial_tilt": 0.0,
+        "spin_phase0": 2.4782568629305066
+      },
+      "transfer_dv": 466.7,
+      "science_mult": 1.1
+    },
+    {
+      "name": "Bennu",
+      "type": "asteroid",
+      "orbits": "Sun",
+      "radius": 245.03,
+      "mass": 117084657625.16718,
+      "seed": 2229,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 36.7545,
+        "palette": [
+          [
+            0.0,
+            [
+              0.28,
+              0.27,
+              0.26
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.42,
+              0.41,
+              0.4
+            ]
+          ]
+        ],
+        "albedo": 0.0256164373575611,
+        "albedo_src": "stated: pV 0.038 x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 1.664526971809407e-07,
+        "ecc": 0.204,
+        "arg_peri": 1.1554079648202462,
+        "orb_incl": 0.10524335389525807,
+        "lon_asc_node": 0.03595378259108319,
+        "true_anomaly0": 0.8099794237107943
+      },
+      "rotating": {
+        "rot_ang_speed": 0.00040619280673857974,
+        "axial_tilt": 0.0,
+        "spin_phase0": 3.6985499898742153
+      },
+      "transfer_dv": 1724.6,
+      "science_mult": 1.1
+    },
+    {
+      "name": "Dinkinesh",
+      "type": "asteroid",
+      "orbits": "Sun",
+      "radius": 369.0,
+      "mass": 399872289001.1251,
+      "seed": 2234,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 55.35,
+        "palette": [
+          [
+            0.0,
+            [
+              0.28,
+              0.27,
+              0.26
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.42,
+              0.41,
+              0.4
+            ]
+          ]
+        ],
+        "albedo": 0.2422904024870939,
+        "albedo_src": "DERIVED from size page radius + H 17.40: pV 0.356 x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 6.140973294054121e-08,
+        "ecc": 0.113,
+        "arg_peri": 1.1676252695842066,
+        "orb_incl": 0.03647738136668149,
+        "lon_asc_node": 0.3735004599267865,
+        "true_anomaly0": -0.5631625350502246
+      },
+      "transfer_dv": 9309.3,
+      "science_mult": 1.5
+    },
+    {
+      "name": "Ryugu",
+      "type": "asteroid",
+      "orbits": "Sun",
+      "radius": 432.5,
+      "mass": 643873491878.693,
+      "seed": 2237,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 64.875,
+        "palette": [
+          [
+            0.0,
+            [
+              0.28,
+              0.27,
+              0.26
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.42,
+              0.41,
+              0.4
+            ]
+          ]
+        ],
+        "albedo": 0.035681979142472516,
+        "albedo_src": "stated: pV 0.052 x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 1.5312032095042844e-07,
+        "ecc": 0.191,
+        "arg_peri": 3.7000980142279785,
+        "orb_incl": 0.10245082709206714,
+        "lon_asc_node": 4.380776422505767,
+        "true_anomaly0": -1.3536760926123064
+      },
+      "rotating": {
+        "rot_ang_speed": 0.00022866712242903872,
+        "axial_tilt": 0.0,
+        "spin_phase0": 5.219205230120293
+      },
+      "transfer_dv": 2491.5,
+      "science_mult": 1.1
+    },
+    {
+      "name": "Taowu",
+      "type": "asteroid",
+      "orbits": "Sun",
+      "radius": 62667.85170225431,
+      "mass": 1.958739274301045e+18,
+      "seed": 2250,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 500.0,
+        "palette": [
+          [
+            0.0,
+            [
+              0.28,
+              0.27,
+              0.26
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.42,
+              0.41,
+              0.4
+            ]
+          ]
+        ],
+        "albedo": 0.03406975240804189,
+        "albedo_src": "INVENTED: C-class geometric x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 9.37306450145103e-10,
+        "ecc": 0.333,
+        "arg_peri": 5.619960191421741,
+        "orb_incl": 1.9198621771937625,
+        "lon_asc_node": 4.258603374866164,
+        "true_anomaly0": 0.04424071957218497
+      },
+      "transfer_dv": 15584.1,
+      "science_mult": 1.8
+    },
+    {
+      "name": "2020 XL5",
+      "type": "asteroid",
+      "orbits": "Sun",
+      "radius": 132.7302780987768,
+      "mass": 18610250686.353558,
+      "seed": 2259,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 19.90954171481652,
+        "palette": [
+          [
+            0.0,
+            [
+              0.28,
+              0.27,
+              0.26
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.42,
+              0.41,
+              0.4
+            ]
+          ]
+        ],
+        "albedo": 0.03406975240804189,
+        "albedo_src": "INVENTED: C-class geometric x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 1.988924128474656e-07,
+        "ecc": 0.3871883,
+        "arg_peri": 1.536626619765202,
+        "orb_incl": 0.24168621349916677,
+        "lon_asc_node": 2.6802771740793885,
+        "true_anomaly0": -1.7513807522581344
+      },
+      "transfer_dv": 9478.1,
+      "science_mult": 1.5
+    },
+    {
+      "name": "Kamo`oalewa",
+      "type": "asteroid",
+      "orbits": "Sun",
+      "radius": 20.5,
+      "mass": 68565207.30471967,
+      "seed": 2260,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 3.0749999999999997,
+        "palette": [
+          [
+            0.0,
+            [
+              0.28,
+              0.27,
+              0.26
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.42,
+              0.41,
+              0.4
+            ]
+          ]
+        ],
+        "albedo": 0.13517028254048888,
+        "albedo_src": "DERIVED from size page radius + H 24.31: pV 0.198 x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 1.9885655077546255e-07,
+        "ecc": 0.1022406,
+        "arg_peri": 5.312142754432808,
+        "orb_incl": 0.13618350367706236,
+        "lon_asc_node": 1.1448166087874436,
+        "true_anomaly0": 1.9067279161306712
+      },
+      "transfer_dv": 5100.9,
+      "science_mult": 1.3
+    },
+    {
+      "name": "2020 CD3",
+      "type": "asteroid",
+      "orbits": "Sun",
+      "radius": 0.45,
+      "mass": 725.2366640812038,
+      "seed": 2261,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 0.1125,
+        "palette": [
+          [
+            0.0,
+            [
+              0.28,
+              0.27,
+              0.26
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.42,
+              0.41,
+              0.4
+            ]
+          ]
+        ],
+        "albedo": 0.29920160311775296,
+        "albedo_src": "DERIVED from size page radius + H 31.74: pV 0.439 x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 1.9073478230472725e-07,
+        "ecc": 0.0123694,
+        "arg_peri": 0.8708939894710165,
+        "orb_incl": 0.011065212924718851,
+        "lon_asc_node": 1.4354547699489963,
+        "true_anomaly0": -1.4954143001976856
+      },
+      "transfer_dv": 423.1,
+      "science_mult": 1.1
+    },
+    {
+      "name": "2024 PT5",
+      "type": "asteroid",
+      "orbits": "Sun",
+      "radius": 4.833286167332278,
+      "mass": 898606.8783788953,
+      "seed": 2262,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 1.0,
+        "palette": [
+          [
+            0.0,
+            [
+              0.28,
+              0.27,
+              0.26
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.42,
+              0.41,
+              0.4
+            ]
+          ]
+        ],
+        "albedo": 0.03406975240804189,
+        "albedo_src": "INVENTED: C-class geometric x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 1.9265702208901544e-07,
+        "ecc": 0.0152736,
+        "arg_peri": 3.433963752165651,
+        "orb_incl": 0.02990482046952124,
+        "lon_asc_node": 5.036481089049694,
+        "true_anomaly0": -1.6340100456391726
+      },
+      "transfer_dv": 324.8,
+      "science_mult": 1.1
+    },
+    {
+      "name": "2003 YN107",
+      "type": "asteroid",
+      "orbits": "Sun",
+      "radius": 7.334351062205845,
+      "mass": 3139982.963611648,
+      "seed": 2263,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 1.1001526593308766,
+        "palette": [
+          [
+            0.0,
+            [
+              0.28,
+              0.27,
+              0.26
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.42,
+              0.41,
+              0.4
+            ]
+          ]
+        ],
+        "albedo": 0.03406975240804189,
+        "albedo_src": "INVENTED: C-class geometric x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 2.024780604919827e-07,
+        "ecc": 0.0139205,
+        "arg_peri": 1.5258879579435314,
+        "orb_incl": 0.07541323351772218,
+        "lon_asc_node": 4.6140534651359,
+        "true_anomaly0": 1.2136352599738292
+      },
+      "transfer_dv": 167.6,
+      "science_mult": 1.1
+    },
+    {
+      "name": "Kalliope",
+      "type": "asteroid",
+      "orbits": "Sun",
+      "radius": 75000.0,
+      "mass": 3.357577148524091e+18,
+      "seed": 2268,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 500.0,
+        "palette": [
+          [
+            0.0,
+            [
+              0.28,
+              0.27,
+              0.26
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.42,
+              0.41,
+              0.4
+            ]
+          ]
+        ],
+        "albedo": 0.10286471257314546,
+        "albedo_src": "DERIVED from size page radius + H 6.79: pV 0.151 x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 4.012499425981535e-08,
+        "ecc": 0.0988425,
+        "arg_peri": 6.253731305255855,
+        "orb_incl": 0.23914728303629063,
+        "lon_asc_node": 1.151313073329217,
+        "true_anomaly0": -2.3732468968137703
+      },
+      "transfer_dv": 11525.4,
+      "science_mult": 1.6
+    },
+    {
+      "name": "Alexandra",
+      "type": "asteroid",
+      "orbits": "Sun",
+      "radius": 77070.0,
+      "mass": 3.6433281319638e+18,
+      "seed": 2284,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 500.0,
+        "palette": [
+          [
+            0.0,
+            [
+              0.28,
+              0.27,
+              0.26
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.42,
+              0.41,
+              0.4
+            ]
+          ]
+        ],
+        "albedo": 0.034089311172341506,
+        "albedo_src": "DERIVED from size page radius + H 7.93: pV 0.050 x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 4.4622717842489755e-08,
+        "ecc": 0.1991502,
+        "arg_peri": 6.045089759550548,
+        "orb_incl": 0.20658170812210402,
+        "lon_asc_node": 5.463114258329094,
+        "true_anomaly0": -2.145787304730748
+      },
+      "transfer_dv": 11025.9,
+      "science_mult": 1.6
+    },
+    {
+      "name": "Amun",
+      "type": "asteroid",
+      "orbits": "Sun",
+      "radius": 975.8019773714072,
+      "mass": 7394814629899.283,
+      "seed": 2297,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 146.37029660571108,
+        "palette": [
+          [
+            0.0,
+            [
+              0.28,
+              0.27,
+              0.26
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.42,
+              0.41,
+              0.4
+            ]
+          ]
+        ],
+        "albedo": 0.03406975240804189,
+        "albedo_src": "INVENTED: C-class geometric x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 2.071607485742284e-07,
+        "ecc": 0.2805218,
+        "arg_peri": 6.2730943370433305,
+        "orb_incl": 0.4076644073699495,
+        "lon_asc_node": 6.258619623424841,
+        "true_anomaly0": -1.616180900559264
+      },
+      "transfer_dv": 396.7,
+      "science_mult": 1.1
+    },
+    {
+      "name": "Izhdubar",
+      "type": "asteroid",
+      "orbits": "Sun",
+      "radius": 620.8261537962046,
+      "mass": 1904373911193.3672,
+      "seed": 2298,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 93.12392306943069,
+        "palette": [
+          [
+            0.0,
+            [
+              0.28,
+              0.27,
+              0.26
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.42,
+              0.41,
+              0.4
+            ]
+          ]
+        ],
+        "albedo": 0.03406975240804189,
+        "albedo_src": "INVENTED: C-class geometric x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 1.9708420932120242e-07,
+        "ecc": 0.2661967,
+        "arg_peri": 2.3071538798039577,
+        "orb_incl": 1.107663261401465,
+        "lon_asc_node": 0.987092775081043,
+        "true_anomaly0": -2.05856615543559
+      },
+      "transfer_dv": 100.8,
+      "science_mult": 1.1
+    },
+    {
+      "name": "2015 RM306",
+      "type": "asteroid",
+      "orbits": "Sun",
+      "radius": 17000.0,
+      "mass": 3.910109992461952e+16,
+      "seed": 2308,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 500.0,
+        "palette": [
+          [
+            0.0,
+            [
+              0.28,
+              0.27,
+              0.26
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.42,
+              0.41,
+              0.4
+            ]
+          ]
+        ],
+        "albedo": 0.04069031959307411,
+        "albedo_src": "DERIVED from TNO list diameter + H 11.02: pV 0.060 x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 4.513413365429318e-11,
+        "ecc": 0.9573077,
+        "arg_peri": 0.7829377727509118,
+        "orb_incl": 3.0713513542445057,
+        "lon_asc_node": 0.9216059271511133,
+        "true_anomaly0": -1.8645400242822108
+      },
+      "transfer_dv": 13920.1,
+      "science_mult": 1.7
+    },
+    {
+      "name": "2021 CT3",
+      "type": "asteroid",
+      "orbits": "Sun",
+      "radius": 1469.0778375462023,
+      "mass": 25233449920020.586,
+      "seed": 2309,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 220.36167563193035,
+        "palette": [
+          [
+            0.0,
+            [
+              0.28,
+              0.27,
+              0.26
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.42,
+              0.41,
+              0.4
+            ]
+          ]
+        ],
+        "albedo": 0.03406975240804189,
+        "albedo_src": "INVENTED: C-class geometric x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 1.0123695463741912e-08,
+        "ecc": 0.4108328,
+        "arg_peri": 3.7694888146287693,
+        "orb_incl": 2.7969032162903034,
+        "lon_asc_node": 5.561166332107359,
+        "true_anomaly0": -1.538356407928794
+      },
+      "transfer_dv": 15328.3,
+      "science_mult": 1.8
+    },
+    {
+      "name": "Hungaria",
+      "type": "asteroid",
+      "orbits": "Sun",
+      "radius": 6045.05895592912,
+      "mass": 1758101047138810.2,
+      "seed": 2312,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 500.0,
+        "palette": [
+          [
+            0.0,
+            [
+              0.28,
+              0.27,
+              0.26
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.42,
+              0.41,
+              0.4
+            ]
+          ]
+        ],
+        "albedo": 0.03406975240804189,
+        "albedo_src": "INVENTED: C-class geometric x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 7.345083217210228e-08,
+        "ecc": 0.073879,
+        "arg_peri": 2.1613019502025477,
+        "orb_incl": 0.39282177834513937,
+        "lon_asc_node": 3.0590750573518277,
+        "true_anomaly0": 3.125331026175752
+      },
+      "transfer_dv": 8199.8,
+      "science_mult": 1.4
+    },
+    {
+      "name": "Sequoia",
+      "type": "asteroid",
+      "orbits": "Sun",
+      "radius": 3831.7797749258916,
+      "mass": 447758493395456.1,
+      "seed": 2313,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 500.0,
+        "palette": [
+          [
+            0.0,
+            [
+              0.28,
+              0.27,
+              0.26
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.42,
+              0.41,
+              0.4
+            ]
+          ]
+        ],
+        "albedo": 0.03406975240804189,
+        "albedo_src": "INVENTED: C-class geometric x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 7.403739612453466e-08,
+        "ecc": 0.0945792,
+        "arg_peri": 1.3614995844883901,
+        "orb_incl": 0.3123802512524215,
+        "lon_asc_node": 4.6704356284898765,
+        "true_anomaly0": -2.5425793557257066
+      },
+      "transfer_dv": 8148.0,
+      "science_mult": 1.4
+    },
+    {
+      "name": "Zelinda",
+      "type": "asteroid",
+      "orbits": "Sun",
+      "radius": 23920.018320657196,
+      "mass": 1.0892479069815942e+17,
+      "seed": 2316,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 500.0,
+        "palette": [
+          [
+            0.0,
+            [
+              0.28,
+              0.27,
+              0.26
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.42,
+              0.41,
+              0.4
+            ]
+          ]
+        ],
+        "albedo": 0.03406975240804189,
+        "albedo_src": "INVENTED: C-class geometric x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 5.717892555005867e-08,
+        "ecc": 0.231691,
+        "arg_peri": 3.7441906161869616,
+        "orb_incl": 0.31584403168592945,
+        "lon_asc_node": 4.857686767948592,
+        "true_anomaly0": 2.6516166301907163
+      },
+      "transfer_dv": 9721.8,
+      "science_mult": 1.5
+    },
+    {
+      "name": "Celuta",
+      "type": "asteroid",
+      "orbits": "Sun",
+      "radius": 19264.667068544004,
+      "mass": 5.6901895548245224e+16,
+      "seed": 2317,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 500.0,
+        "palette": [
+          [
+            0.0,
+            [
+              0.28,
+              0.27,
+              0.26
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.42,
+              0.41,
+              0.4
+            ]
+          ]
+        ],
+        "albedo": 0.03406975240804189,
+        "albedo_src": "INVENTED: C-class geometric x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 5.482425822296182e-08,
+        "ecc": 0.1498942,
+        "arg_peri": 5.515120706715394,
+        "orb_incl": 0.23012951585708633,
+        "lon_asc_node": 0.25502960469651387,
+        "true_anomaly0": 1.5501550059425546
+      },
+      "transfer_dv": 9956.9,
+      "science_mult": 1.5
+    },
+    {
+      "name": "2006 HY51",
+      "type": "asteroid",
+      "orbits": "Sun",
+      "radius": 609.0,
+      "mass": 1797604258102.172,
+      "seed": 2320,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 91.35,
+        "palette": [
+          [
+            0.0,
+            [
+              0.28,
+              0.27,
+              0.26
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.42,
+              0.41,
+              0.4
+            ]
+          ]
+        ],
+        "albedo": 0.10499155269043613,
+        "albedo_src": "DERIVED from size page radius + H 17.22: pV 0.154 x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 4.7797148542746706e-08,
+        "ecc": 0.9683806,
+        "arg_peri": 5.968413605786082,
+        "orb_incl": 0.5848285909496891,
+        "lon_asc_node": 0.7091164540439336,
+        "true_anomaly0": 3.108259461284045
+      },
+      "transfer_dv": 10684.0,
+      "science_mult": 1.6
+    },
+    {
+      "name": "2000 BD19",
+      "type": "asteroid",
+      "orbits": "Sun",
+      "radius": 471.3697342170736,
+      "mass": 833541623971.1934,
+      "seed": 2321,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 70.70546013256103,
+        "palette": [
+          [
+            0.0,
+            [
+              0.28,
+              0.27,
+              0.26
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.42,
+              0.41,
+              0.4
+            ]
+          ]
+        ],
+        "albedo": 0.03406975240804189,
+        "albedo_src": "INVENTED: C-class geometric x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 2.4263673718229317e-07,
+        "ecc": 0.8949705,
+        "arg_peri": 5.661630799977732,
+        "orb_incl": 0.4495488187593094,
+        "lon_asc_node": 5.823381457334333,
+        "true_anomaly0": 3.0418075219566787
+      },
+      "transfer_dv": 2027.6,
+      "science_mult": 1.1
+    },
+    {
+      "name": "Agamemnon",
+      "type": "asteroid",
+      "orbits": "Sun",
+      "radius": 83300.0,
+      "mass": 4.6002053050315617e+18,
+      "seed": 2326,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 500.0,
+        "palette": [
+          [
+            0.0,
+            [
+              0.28,
+              0.27,
+              0.26
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.42,
+              0.41,
+              0.4
+            ]
+          ]
+        ],
+        "albedo": 0.030838904415090164,
+        "albedo_src": "DERIVED from size page radius + H 7.87: pV 0.045 x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 1.6378983783687653e-08,
+        "ecc": 0.0666811,
+        "arg_peri": 1.437980261376632,
+        "orb_incl": 0.37967211869476364,
+        "lon_asc_node": 5.899542913502386,
+        "true_anomaly0": 1.0860793181159765
+      },
+      "transfer_dv": 14490.9,
+      "science_mult": 1.8
+    },
+    {
+      "name": "Patroclus",
+      "type": "asteroid",
+      "orbits": "Sun",
+      "radius": 70200.0,
+      "mass": 2.753300075304507e+18,
+      "seed": 2328,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 500.0,
+        "palette": [
+          [
+            0.0,
+            [
+              0.28,
+              0.27,
+              0.26
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.42,
+              0.41,
+              0.4
+            ]
+          ]
+        ],
+        "albedo": 0.03145681291406254,
+        "albedo_src": "DERIVED from size page radius + H 8.22: pV 0.046 x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 1.676156439985022e-08,
+        "ecc": 0.1391468,
+        "arg_peri": 5.390235068352342,
+        "orb_incl": 0.3850822903100957,
+        "lon_asc_node": 0.774048112738804,
+        "true_anomaly0": -0.519909875513494
+      },
+      "transfer_dv": 14439.2,
+      "science_mult": 1.8
+    },
+    {
+      "name": "Eris",
+      "type": "dwarf_planet",
+      "orbits": "Sun",
+      "radius": 1163000.0,
+      "mass": 1.2519337702146418e+22,
+      "seed": 2338,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 500.0,
+        "palette": [
+          [
+            0.0,
+            [
+              0.28,
+              0.27,
+              0.26
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.42,
+              0.41,
+              0.4
+            ]
+          ]
+        ],
+        "albedo": 0.7099528619304639,
+        "albedo_src": "DERIVED from size page radius + H -1.26: pV 1.042 x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 3.555724540107568e-10,
+        "ecc": 0.4382371,
+        "arg_peri": 2.6318062391588524,
+        "orb_incl": 0.7666528036322536,
+        "lon_asc_node": 0.6284005611928024,
+        "true_anomaly0": -3.029087142198194
+      },
+      "transfer_dv": 15030.0,
+      "science_mult": 1.8
+    },
+    {
+      "name": "Haumea",
+      "type": "dwarf_planet",
+      "orbits": "Sun",
+      "radius": 772000.0,
+      "mass": 3.661795707659326e+21,
+      "seed": 2339,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 500.0,
+        "palette": [
+          [
+            0.0,
+            [
+              0.28,
+              0.27,
+              0.26
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.42,
+              0.41,
+              0.4
+            ]
+          ]
+        ],
+        "albedo": 0.4437663251108901,
+        "albedo_src": "DERIVED from size page radius + H 0.14: pV 0.651 x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 7.046080035545534e-10,
+        "ecc": 0.1944357,
+        "arg_peri": 4.200843448600663,
+        "orb_incl": 0.49233102751589525,
+        "lon_asc_node": 2.125571395222795,
+        "true_anomaly0": -3.0271258202502556
+      },
+      "transfer_dv": 15429.7,
+      "science_mult": 1.8
+    },
+    {
+      "name": "Makemake",
+      "type": "dwarf_planet",
+      "orbits": "Sun",
+      "radius": 715000.0,
+      "mass": 2.9091112891123515e+21,
+      "seed": 2340,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 500.0,
+        "palette": [
+          [
+            0.0,
+            [
+              0.28,
+              0.27,
+              0.26
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.42,
+              0.41,
+              0.4
+            ]
+          ]
+        ],
+        "albedo": 0.7409294549473386,
+        "albedo_src": "DERIVED from size page radius + H -0.25: pV 1.087 x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 6.471899032551473e-10,
+        "ecc": 0.1588848,
+        "arg_peri": 5.185258190477446,
+        "orb_incl": 0.506631557275036,
+        "lon_asc_node": 1.3839590049018289,
+        "true_anomaly0": 2.606242340437334
+      },
+      "transfer_dv": 15381.6,
+      "science_mult": 1.8
+    },
+    {
+      "name": "Gonggong",
+      "type": "dwarf_planet",
+      "orbits": "Sun",
+      "radius": 615000.0,
+      "mass": 1.8512605972274311e+21,
+      "seed": 2341,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 500.0,
+        "palette": [
+          [
+            0.0,
+            [
+              0.28,
+              0.27,
+              0.26
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.42,
+              0.41,
+              0.4
+            ]
+          ]
+        ],
+        "albedo": 0.15018920282276557,
+        "albedo_src": "DERIVED from size page radius + H 1.81: pV 0.220 x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 3.641294154823401e-10,
+        "ecc": 0.5042562,
+        "arg_peri": 3.606258292599401,
+        "orb_incl": 0.5392917290346807,
+        "lon_asc_node": 5.878937556353341,
+        "true_anomaly0": 2.494544080241139
+      },
+      "transfer_dv": 15044.1,
+      "science_mult": 1.8
+    },
+    {
+      "name": "Quaoar",
+      "type": "dwarf_planet",
+      "orbits": "Sun",
+      "radius": 557850.0,
+      "mass": 1.3816388052600968e+21,
+      "seed": 2342,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 500.0,
+        "palette": [
+          [
+            0.0,
+            [
+              0.28,
+              0.27,
+              0.26
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.42,
+              0.41,
+              0.4
+            ]
+          ]
+        ],
+        "albedo": 0.10699268069170233,
+        "albedo_src": "DERIVED from size page radius + H 2.39: pV 0.157 x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 7.022667574861953e-10,
+        "ecc": 0.0351987,
+        "arg_peri": 2.8485005594999366,
+        "orb_incl": 0.13947938343652844,
+        "lon_asc_node": 3.297261362101971,
+        "true_anomaly0": -1.826419797179964
+      },
+      "transfer_dv": 15427.8,
+      "science_mult": 1.8
+    },
+    {
+      "name": "Orcus",
+      "type": "dwarf_planet",
+      "orbits": "Sun",
+      "radius": 455000.0,
+      "mass": 7.496808205601327e+20,
+      "seed": 2343,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 500.0,
+        "palette": [
+          [
+            0.0,
+            [
+              0.28,
+              0.27,
+              0.26
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.42,
+              0.41,
+              0.4
+            ]
+          ]
+        ],
+        "albedo": 0.20434600442628698,
+        "albedo_src": "DERIVED from size page radius + H 2.13: pV 0.300 x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 8.057825586310996e-10,
+        "ecc": 0.2205384,
+        "arg_peri": 1.2839294730810533,
+        "orb_incl": 0.35878401820689554,
+        "lon_asc_node": 4.684557436533613,
+        "true_anomaly0": 2.801864186146589
+      },
+      "transfer_dv": 15503.8,
+      "science_mult": 1.8
+    },
+    {
+      "name": "Sedna",
+      "type": "dwarf_planet",
+      "orbits": "Sun",
+      "radius": 450000.0,
+      "mass": 7.252366640812036e+20,
+      "seed": 2344,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 500.0,
+        "palette": [
+          [
+            0.0,
+            [
+              0.28,
+              0.27,
+              0.26
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.42,
+              0.41,
+              0.4
+            ]
+          ]
+        ],
+        "albedo": 0.37321914716414467,
+        "albedo_src": "DERIVED from size page radius + H 1.50: pV 0.548 x q 0.681",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "DEFAULT airless floor"
+      },
+      "inertial": {
+        "orb_ang_speed": 1.570392315393972e-11,
+        "ecc": 0.8598806,
+        "arg_peri": 5.429706387517895,
+        "orb_incl": 0.2081354002222294,
+        "lon_asc_node": 2.522101998228422,
+        "true_anomaly0": -0.8650339357069614
+      },
+      "transfer_dv": 13499.6,
+      "science_mult": 1.7
     }
   ]
 }

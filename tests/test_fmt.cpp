@@ -86,6 +86,37 @@ int main() {
     CHECK_FMT(fmt_speed, 2270.69,    "2.27 km/s");  // a low Kerbin orbit
     CHECK_FMT(fmt_speed, 3232.0,     "3.23 km/s");  // Kerbin escape velocity
     CHECK_FMT(fmt_speed, -250.0,     "-250 m/s");   // sign kept
+    /* The rungs under 1 m/s, which the real asteroid catalogue needs. "%.0f m/s"
+       printed Kamo'oalewa's escape velocity (0.0211 m/s) and 2020 CD3's (0.00046 m/s)
+       as "0 m/s" -- a minimoon's escape velocity is the number a boot or a hook has to
+       beat, so rounding it out of the row tells the player the rock has none. Same cut
+       as fmt_accel's mm/s tier, and for the same digit reason. */
+    CHECK_FMT(fmt_speed, 0.5,        "0.50 m/s");        // where the old ladder read "0 m/s"
+    CHECK_FMT(fmt_speed, 9.999,      "10.00 m/s");       // rounds up, same number next tier
+    CHECK_FMT(fmt_speed, 12.4,       "12 m/s");          // a nudged thruster
+    CHECK_FMT(fmt_speed, 0.1,        "0.10 m/s");        // bottom of the two-decimal tier
+    CHECK_FMT(fmt_speed, 0.0999,     "99.90 mm/s");      // top of the mm tier
+    CHECK_FMT(fmt_speed, 0.0211,     "21.10 mm/s");      // Kamo'oalewa's escape velocity
+    CHECK_FMT(fmt_speed, 0.00046,    "0.46 mm/s");       // 2020 CD3's
+    CHECK_FMT(fmt_speed, 9.9e-6,     "9.90e-06 m/s");    // just under the mm tier
+    CHECK_FMT(fmt_speed, -0.4,       "-0.40 m/s");       // sign kept below 1 m/s
+    // A NaN must not read "0 m/s" either: same misreading, same reason as fmt_accel.
+    CHECK_FMT(fmt_speed, std::nan(""), "-");
+    {
+        static const double worst[] = { 999999.99, -999999.99, 1e6, -1e6,
+                                        0.0999, -0.0999, 1e-19, -1e-19,
+                                        0.0, std::nan("") };
+        for(double v : worst) {
+            char wide[128], call[32];
+            fmt_speed(v, wide, sizeof wide);
+            fmt_speed(v, call, sizeof call);
+            if(std::strcmp(wide, call) != 0) {
+                printf("FAIL %s:%d: fmt_speed(%g) = \"%s\" does not fit the 32 chars"
+                       " every call site passes\n", __FILE__, __LINE__, v, wide);
+                failures++;
+            }
+        }
+    }
     // fmt_deg: the authored angles are radians.
     CHECK_FMT(fmt_deg, 0.0,               "0.00 deg");
     CHECK_FMT(fmt_deg, 0.409105,          "23.44 deg");   // Earth's tilt

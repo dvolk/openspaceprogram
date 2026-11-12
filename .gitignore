@@ -67,6 +67,12 @@ utils/rss/asteroids/*.zip
 utils/rss/asteroids/raw/lc_*.csv
 utils/rss/asteroids/raw/lcdb_pds_readme.pdf
 
+# MPCORB extended JSON (utils/rss/asteroids): 175 MB gzipped / 983 MB as text, 1.58M
+# orbits, reissued daily. fetch.py can download it, but it is a daily-changing blob
+# bigger than the whole repo, so it stays out of git and mporb.py streams it. What we
+# take from it lands in raw/asteroids.json per row, which IS tracked.
+utils/rss/asteroids/raw/mpcorb/
+
 # bear -- make
 compile_commands.json
 

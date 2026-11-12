@@ -59,3 +59,60 @@ https://sbnarchive.psi.edu/pds4/non_mission/ast-lightcurve-database_V4_0.zip
   reliable it is), not for a size. Bennu is the cautionary row: Diam 0.213 km and albedo
   0.20 (assumed, class S*) against a radar mean diameter of ~0.49 km and albedo 0.049.
   LCDB has no mass and no orbit.
+
+Orbits + absolute magnitude for 1,580,227 minor planets (895,910 numbered):
+
+https://minorplanetcenter.net/Extended_Files/mpcorb_extended.json.gz
+  -> raw/mpcorb/mpcorb_extended.json.gz   (175 MB gzipped, 983 MB as text, GITIGNORED)
+  The plain MPCORB.DAT carries the same orbits as fixed-width text with a PACKED epoch
+  and packed designators (numbers over 99,999 become letter+4 digits: Q9337 is 269337).
+  The extended JSON has those unpacked AND adds H, G, the uncertainty parameter U, the
+  observation/opposition counts and arc length, the perihelion passage time and a
+  dynamical class. mporb.py cuts records by brace depth so the file streams; json.load
+  needs ~4 GB.
+  What it is good for, measured against the 259 rows already here:
+    - H: all 111 matched rows that carry no magnitude anywhere else get one (the corpus
+      has H for 144 rows: 46 from the wiki, 144 from LCDB, 255 of 259 matched)
+    - a dynamical class: MBA 84, Distant Object 91, Apollo 44, Amor 12, Aten 9,
+      perihelion<1.665 AU 8, Phocaea 2, Jupiter Trojan 2, Hungaria 2, Atira 1 -- over the
+      255 matched rows. 115 of them state no spectral type at all, and this is the only
+      classification the corpus has for them.
+    - orbit quality: U, Num_obs, Num_opps, Arc_years, so a weak rail can be refused
+  What it is NOT good for: the orbit itself. 245 of 255 sit at epoch JD 2461200.5, the
+  same epoch as our SBDB blocks, and where they disagree both solutions are weak (2016
+  DF2: 10 observations over 2 days; 2005 VX3: U 8). The biggest gaps are 17% in a on
+  2016 DF2 and 2005 VX3, 9% on 2006 LM1. So parse.py stores the record and the generator
+  keeps the SBDB rail.
+  The MPC's header asks that the datafile be redistributed with attribution; we commit a
+  per-row extract, and every consumer says where it came from.
+
+Stated radius + mass for the bodies the exceptional list leaves size-less:
+
+https://en.wikipedia.org/wiki/List_of_Solar_System_objects_by_size
+  -> raw/objects_by_size.html   (parse via sizes.py)
+  Seven data tables by class. All 91 MPCORB "Distant Object" rows have NO diameter in
+  any of the other sources, and H alone cannot size them: the albedo spans 0.04 (a coal)
+  to ~1.0 (Eris' frost), which is a factor 5 in RADIUS. This page states a radius for 63
+  KBO/SDO/plutino/cubewano rows, 25 Trojans, 12 centaurs and the dwarf planets.
+  Parsing traps, all handled in sizes.py:
+    - the row link's HREF is the only place number and name are separated; stripping the
+      tags concatenates them ("Huya38628")
+    - a provisional designation like "2025 UC11" is NOT number 2025
+    - the RADIUS UNIT IS NOT THE SAME IN EVERY TABLE: tables 0-5 are km, table 6 is m.
+      Table 0 gives Radius TWO sub-columns (km and Earth radii), so the unit row is
+      offset from the label row -- align by column index and Eris, Makemake and Haumea
+      silently drop. Read the header text in document order instead.
+    - "0.205 - 0.465" is a stated span, not a value with a stray dash
+
+Diameter + orbit for the trans-Neptunian population (~1,050 rows):
+
+https://en.wikipedia.org/wiki/List_of_trans-Neptunian_objects
+  -> raw/tno_list.html   (parse via sizes.tno_rows)
+  One big table: Designation, Discovery, D (km), Class, a(AU), e, i, q(AU), Q(AU),
+  Remarks, Refs. This is the Kuiper belt population -- MPCORB has 91 Distant Object
+  rows for our cohort and sizes.py has 63 with a stated radius, but neither gives a
+  few hundred sized bodies at 30-55 AU.
+  Not every row is numbered or has a diameter; the classical/KBO/SDO/plutino/resonant
+  class column is the classification, and D is often a rough estimate (the Remarks
+  column says so when it is a brightness-derived guess).
+

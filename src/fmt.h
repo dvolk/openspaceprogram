@@ -23,11 +23,23 @@ inline char *fmt_dist(double meters, char *buf, size_t n) {
     return buf;
 }
 
-// A speed: m/s below 1 km/s, km/s above.
+// A speed: km/s above 1 km/s; below that, m/s -- and below 1 m/s two more rungs, which the
+// real asteroid catalogue needs. The catalogue now has bodies a metre across (2020 CD3,
+// 2024 PT5: Earth co-orbitals the corpus states at a metre and two metres), and "%.0f m/s"
+// printed their escape velocity and low-orbit speed as "0 m/s" -- the same lie fmt_accel was
+// written for below. A minimoon's escape velocity IS its interesting number (the speed a boot
+// or a grappling hook has to beat), so a row reading "0 m/s" about a body that still pulls on
+// a lander tells the player the rock has none. The mm/s cut is fmt_accel's 1e-1 for the same
+// digit reason (0.0211 m/s is one significant figure, 21.10 mm/s is four), and the m/s tier
+// splits at 10 because "%.0f" would spend all its digits on the whole part again.
 inline char *fmt_speed(double m_s, char *buf, size_t n) {
     const double a = m_s < 0.0 ? -m_s : m_s;
-    if(a < 1e3) { snprintf(buf, n, "%.0f m/s", m_s); }
-    else        { snprintf(buf, n, "%.2f km/s", m_s / 1e3); }
+    if(!(a > 0.0))      { snprintf(buf, n, a == 0.0 ? "0 m/s" : "-"); }
+    else if(a < 1e-5)   { snprintf(buf, n, "%.2e m/s", m_s); }
+    else if(a < 1e-1)   { snprintf(buf, n, "%.2f mm/s", m_s * 1e3); }
+    else if(a < 1e1)    { snprintf(buf, n, "%.2f m/s", m_s); }
+    else if(a < 1e3)    { snprintf(buf, n, "%.0f m/s", m_s); }
+    else                { snprintf(buf, n, "%.2f km/s", m_s / 1e3); }
     return buf;
 }
 

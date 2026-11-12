@@ -21,7 +21,8 @@
 # there). The star/root has no transfer edge; it is scored at a flat 2.0.
 # Non-home bodies are floored at 1.1: a separate body never ties home.
 # Sibling hops with degenerate (near-equal SMA) Hohmann cost use the
-# co-orbital phasing term instead (utils/sci_phase.py, issue #128).
+# co-orbital phasing term instead (utils/sci_phase.py, issue #128), plus the
+# plane change when the two co-orbitals are not coplanar (#177 option 1).
 # A body that should sit off the computed default (e.g. a trojan's mult
 # tuned above its drift dv for destination value) is an OVERRIDE in the
 # generator (gen_systems.py KSP_SCIENCE_MULT_OVERRIDES), not a post-
@@ -32,7 +33,8 @@ import hashlib
 import math
 import sys
 
-from sci_phase import (is_co_orbital, orb_w, phase_gap_rad, phasing_delta_v)
+from sci_phase import (is_co_orbital, orb_w, phase_gap_rad, phasing_delta_v,
+                       plane_angle_rad)
 
 G = 6.674e-11
 K_DIST_MULT_MIN = 1.0
@@ -132,9 +134,24 @@ def body_sma(body, parent):
 def _sibling_leg_dv(home_body, home_sma, body, sma, mu_parent):
     """Home -> sibling-planet heliocentric hop [m/s]. A Hohmann between
     near-equal SMAs is degenerate (the phase gap never closes), so those
-    hops price the phasing drift instead (sci_phase.py, issue #128)."""
+    hops price the phasing drift instead (sci_phase.py, issue #128).
+
+    A co-orbital pair on DIFFERENT planes pays for the plane too. Meeting an
+    orbit of the same radius tilted by di costs 2 v sin(di/2) at a node
+    crossing, and the real Earth co-orbitals are tilted 13.9 and 7.8 deg, which
+    at 29.8 km/s is 7.2 and 4.0 km/s -- the same order as the drift itself.
+    Without it Kamo'oalewa priced CHEAPER than a coplanar co-orbital, which
+    would rank the hardest destinations in the game as the easiest. Coplanar
+    pairs get 0 from this term, and every co-orbital pair shipped before the
+    real Solar System arrived (Kerbin-Shay, one pair) is coplanar, so no
+    existing number moves. #177 closed with "option 1 if a system ever needs
+    inclined co-orbitals"; the catalogue grew the bodies that need it."""
     if is_co_orbital(home_sma, sma):
-        return phasing_delta_v(sma, orb_w(body), phase_gap_rad(home_body, body))
+        gap = phase_gap_rad(home_body, body)
+        v_circ = math.sqrt(mu_parent / sma)
+        tilt = plane_angle_rad(home_body, body)
+        return (phasing_delta_v(sma, orb_w(body), gap)
+                + 2.0 * v_circ * math.sin(0.5 * tilt))
     return hohmann_delta_v(home_sma, sma, mu_parent)
 
 

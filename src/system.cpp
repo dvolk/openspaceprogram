@@ -458,10 +458,13 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
         if(type == "star")        { body->type = BodyType::Star; }
         else if(type == "moon")   { body->type = BodyType::Moon; }
         else if(type == "planet") { body->type = BodyType::Planet; }
+        else if(type == "asteroid") { body->type = BodyType::Asteroid; }
+        else if(type == "dwarf_planet") { body->type = BodyType::DwarfPlanet; }
         else {
             throw std::runtime_error("system: '" + body->name
                                      + "': unknown \"type\" \"" + type
-                                     + "\" (expected \"star\", \"moon\" or \"planet\")");
+                                     + "\" (expected \"star\", \"moon\", \"planet\","
+                                       " \"asteroid\" or \"dwarf_planet\")");
         }
         /* "radius" and "mass" are REQUIRED, and a missing or non-number row names the
            body rather than throwing nlohmann's type_error, which names neither (#515).
@@ -1595,6 +1598,15 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
             body->colour_func = GetColourSun;
             break;
         case BodyType::Moon:
+            body->shader = terrainshader;
+            body->colour_func = GetColourMoon;
+            break;
+        case BodyType::Asteroid:
+        case BodyType::DwarfPlanet:
+            /* Airless rock, so the moon's colour path -- the palette in surface is what
+               decides the colour anyway; the split is only that a planet's path knows
+               about sea and cloud, which an asteroid never has. A dwarf planet is the
+               same kind of world, only big enough to be round. */
             body->shader = terrainshader;
             body->colour_func = GetColourMoon;
             break;

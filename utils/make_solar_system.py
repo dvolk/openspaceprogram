@@ -1804,7 +1804,11 @@ def build_base(verbose_air=False):
     parsed = {}
 
     sun = make_body('Sun', 'star', None,
-        dict(mass_kg=SUN_MASS, radius_m=SUN_RADIUS, soi=1.0e14, rot_s=None),
+        # 1e15 m, up from 1e14: this is the universe bound, not a physical sphere, and the
+        # five far-apoapsis rows the asteroid pass brings (2005 VX3 out to 3.7e14 m) sit
+        # outside the old one. Kerbol already authors 1e18 in gen_systems.py, so the real
+        # system was the tight one.
+        dict(mass_kg=SUN_MASS, radius_m=SUN_RADIUS, soi=1.0e15, rot_s=None),
         # No atmosphere rim on the star: the limb shader's day/night term falls
         # back to a fixed world direction and paints a half-eclipse crescent.
         surface={'palette': [[0.0, [1.0, 0.8, 0.35]], [1.0, [1.0, 1.0, 0.75]]]})
@@ -2829,6 +2833,708 @@ def build_moon(m, parent_body=None, home_body=None, sat_sheets=None):
                      surface=surface, parent_body=parent_body,
                      home_body=home_body)
 
+# =====================================================================================
+# ASTEROIDS: a second corpus, with the holes in it named rather than papered over
+# =====================================================================================
+"""utils/rss/asteroids/ (fetch.py caches JPL SBDB + LCDB V4.0; parse.py derives
+asteroids.json offline) brings 259 minor planets. They ride the machinery this file already
+has: heliocentric Kepler elements at an epoch, which make_body spells into inertial{}, and
+the same surface laws the moons get.
+
+What the corpus states, counted over the 259 rows -- the tiers and the invention below both
+turn on these numbers, and they are not what the NSSDC pages give:
+
+    a rail (a, e, i, node, peri, M at an epoch)              256
+    a size of any kind                                      139
+      ... of which MEASURED (an effective diameter from radar/occultation, or a triaxial
+          ellipsoid)                                         42
+    NOTHING AT ALL about size                               120  -- no diameter and no
+          absolute magnitude to derive one from: discovery-page rows
+    a proper name or a number                               135
+    a measured mass                                          20
+    a rotation period                                       144
+    a geometric albedo pV (NOT Bond: it goes through the same q as the satellites, #749)
+                                                            143
+    a spectral class                                         85
+
+So "the measured ones" cannot be a tier of 68 the way it is for the moons: there are not 68
+measured asteroids. The four asteroid groups therefore NEST the way the four moon variants
+already nest (core subset measured subset named subset full -- checked at the bottom of
+load_asteroids, because four files that are not a ladder are four different cut lists), and
+each is named for what it actually selects:
+
+    core      the 18 a spacecraft has flown to, plus the 28 with r >= 100 km      44
+    measured  core + every body the corpus measured (size or mass)               ~70
+    named     the above, plus every named or numbered row                        135
+    full      every row, rails invented for the 3 the pages place nowhere        259
+
+That puts the four files at 75 / ~138 / ~314 / 499 bodies: roughly double each, which is the
+size the tiers were picked for. solar_system.json gets the rocks a player has heard of;
+_full gets every one the corpus can place.
+
+Invention follows invent_missing_albedos(): a named rule, never a per-body hand-nudged
+number, an assert that it cannot overwrite a stated row, and one printed line per rule.
+"""
+
+ASTEROIDS_JSON = os.path.join(HERE, 'rss', 'asteroids', 'asteroids.json')
+
+# The catalogue's own epoch: the root's epoch_utc, as a Julian date. SBDB states each
+# orbit at its OWN epoch (2008 for one row, 2024 for another), so the mean anomaly has to
+# be rolled to t=0 before it means anything here. TDB-vs-UTC (64 s at this epoch) is a
+# 5e-4 of a degree on the fastest orbit in the set: not worth a conversion.
+CATALOGUE_EPOCH_JD = 2451544.5
+
+# kg/m^3. Measured values for the classes the corpus carries (the sources are the ones the
+# data pass cites: radar+mass pairs for the big ones, family means for the rest). These are
+# INVENTED per body -- the row states a class, not a density -- so a metal rock and a coal
+# one stop sharing one number, which is what #764 is about.
+ASTEROID_DENSITY = {
+    'C': 1900.0, 'B': 2100.0, 'G': 2200.0, 'Cg': 2200.0, 'Cb': 2200.0, 'Ch': 2400.0,
+    'D': 2200.0, 'T': 2000.0, 'P': 2000.0, 'F': 2000.0,
+    'S': 2700.0, 'Q': 2700.0, 'R': 2700.0, 'K': 2700.0, 'L': 3000.0,
+    'X': 2700.0, 'Xe': 2700.0, 'M': 5300.0, 'V': 3400.0, 'A': 3200.0,
+}
+# Geometric albedos by class, same status (INVENTED where the row states no pV).
+ASTEROID_GEOMETRIC = {
+    'C': 0.05, 'B': 0.10, 'G': 0.10, 'Cg': 0.10, 'Cb': 0.10, 'Ch': 0.09,
+    'D': 0.04, 'T': 0.06, 'P': 0.06, 'F': 0.05,
+    'S': 0.20, 'Q': 0.22, 'R': 0.22, 'K': 0.20, 'L': 0.20,
+    'X': 0.12, 'Xe': 0.12, 'M': 0.15, 'V': 0.42, 'A': 0.14,
+}
+ASTEROID_CLASS_DEFAULT = 'C'   # the most common class, and the flattest guess
+
+# Surface palette by class: carbonaceous dark and neutral, primitive slightly redder,
+# silicaceous brighter and redder still, Vesta's basalt pale, metals grey.
+ASTEROID_COLORS = {
+    'C': ([0.28, 0.27, 0.26], [0.42, 0.41, 0.40]),
+    'B': ([0.30, 0.30, 0.31], [0.46, 0.46, 0.47]),
+    'G': ([0.30, 0.29, 0.28], [0.45, 0.44, 0.43]),
+    'D': ([0.24, 0.19, 0.15], [0.38, 0.31, 0.25]),
+    'T': ([0.26, 0.21, 0.17], [0.40, 0.33, 0.27]),
+    'P': ([0.25, 0.22, 0.19], [0.39, 0.35, 0.30]),
+    'F': ([0.26, 0.25, 0.24], [0.40, 0.39, 0.38]),
+    'S': ([0.42, 0.36, 0.28], [0.62, 0.54, 0.43]),
+    'Q': ([0.44, 0.38, 0.30], [0.64, 0.56, 0.45]),
+    'R': ([0.46, 0.40, 0.33], [0.66, 0.58, 0.48]),
+    'V': ([0.55, 0.52, 0.48], [0.76, 0.73, 0.69]),
+    'X': ([0.40, 0.39, 0.40], [0.58, 0.57, 0.58]),
+    'M': ([0.45, 0.44, 0.46], [0.66, 0.65, 0.67]),
+    'A': ([0.48, 0.40, 0.32], [0.68, 0.58, 0.48]),
+}
+
+# Two rows are MOONS of asteroids, and the pages state the moon but never its orbit. The
+# parent is spelled out here rather than parsed out of the name: "243 Ida I Dactyl" is
+# Dactyl of 243 Ida, and the data pass keeps the whole phrase as the display name.
+ASTEROID_MOON_PARENTS = {'243 Ida I Dactyl': 'Ida',
+                         '152830 Dinkinesh I Selam': 'Dinkinesh'}
+
+# Which size kinds count as the row MEASURING its own body: radar or occultation chords, a
+# size-page radius stated with its own uncertainty, and an effective diameter whose LCDB
+# source code says it was measured (T thermal, W WISE, K AKARI, S SIMPS, L from a details
+# row). Anything back-derived from H and an assumed albedo -- LCDB DiamSource C/D, the TNO
+# list's D column, the H arithmetic below -- is already a guess, so a body that only has one
+# is not in the 'measured mass' tier.
+MEASURED_SIZE_KINDS = ('triaxial mean', 'two-axis mean', 'diam_eff_km', 'size page radius',
+                       'lcdb diam (measured)')
+LCDB_MEASURED_DIAM = ('L', 'S', 'T', 'W', 'K')
+
+
+def true_anomaly_kepler(M, e):
+    """[rad] Kepler's equation done in two steps: solve M = E - e sin E for the eccentric
+    anomaly, then get the true anomaly from E.
+
+    WHY A SECOND SOLVER. The one above (true_anomaly) iterates M = nu - e sin nu, which is
+    Kepler's equation with the TRUE anomaly standing in for the eccentric one, so its answer
+    is a pseudo-E rather than a true anomaly. Measured over the nine planets (e <= 0.249),
+    that puts the shipped epoch phase off the fact sheet's own mean longitude by up to
+    5.5 deg: Pluto +5.53, Saturn -2.23, Mars +2.02, Mercury +1.13, Earth -0.05. Small, and
+    consistent enough that nothing in the game notices -- but not the rounding error a reader
+    would assume from the name. The asteroid rows are the ones that cannot afford it: their M
+    comes from JPL and their e reaches 0.996, where the one-step iteration is not a solver at
+    all (fp -> 1 - e -> 0, and it diverges by radians). So the asteroids use this one and the
+    planets do not, which is a trap rather than a decision -- nothing at the call site says
+    which is safe. Filed as #784 to fold the two together and re-pin the phases that move."""
+    M = M % TWO_PI
+    if M > math.pi:
+        M -= TWO_PI
+    E = M + e * math.sin(M)
+    for _ in range(60):
+        f = E - e * math.sin(E) - M
+        fp = 1.0 - e * math.cos(E)
+        if fp <= 1e-12:
+            break
+        dE = f / fp
+        E -= dE
+        if abs(dE) < 1e-13:
+            break
+    # Half-angle form: stable as e -> 1, where tan(nu/2) blows up.
+    return 2.0 * math.atan2(math.sqrt(1.0 + e) * math.sin(E / 2.0),
+                            math.sqrt(1.0 - e) * math.cos(E / 2.0))
+
+
+def asteroid_num(row):
+    """float or None, tolerating the corpus's rounded and quoted cells."""
+    v = row.get('value') if isinstance(row, dict) else row
+    if isinstance(v, (int, float)):
+        return float(v)
+    if isinstance(v, str):
+        m = re.search(r'[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?', v)
+        return float(m.group(0)) if m else None
+    return None
+
+
+def asteroid_radius_m(row, pv=None):
+    """[m] The stated size, in the corpus's own order of confidence, or None.
+
+    1. a triaxial ellipsoid -- radar or occultation chords, the only shape this corpus
+       measures rather than computes;
+    2. the size page's radius, which comes with its own uncertainty;
+    3. an effective diameter: the wiki's (parse.py derives it from the axes the page states),
+       then LCDB's adopted one -- WITH its source code, because LCDB says whether it measured
+       the rock or divided H by an assumed albedo;
+    4. the diameter column of the TNO list, which most rows get the same way (their own
+       Remarks cell names the assumed albedo);
+    5. H with an albedo fitted from the corpus's own (size, H) pairs -- arithmetic, but the
+       body's OWN brightness, which is what beats a cohort median by orders of magnitude.
+       Under the cohort rule this replaces, 2004 LG came out 662x too big and Chiron 38x too
+       small, and 122 rows had nothing better.
+
+    This engine draws spheres and #763 is the ticket for triaxial bodies, so every kind
+    returns a mean radius."""
+    dim = row.get('dimensions_km')
+    if isinstance(dim, dict) and dim.get('value'):
+        vals = [float(x) for x in re.findall(r'[-+]?\d*\.?\d+', str(dim['value']))
+                if float(x) > 0.0]
+        if vals:
+            # Geometric mean of the axes the page states, which is the volume-equivalent
+            # radius for three and the best mean-radius estimate for the rows that state
+            # only a/b (Antiope, Kleopatra, Hektor...: the third axis is unresolved). The
+            # volume-equivalent radius is what mass and surface gravity both want, and the
+            # parse already labels the three-axis cases DERIVED.
+            mean = math.exp(sum(math.log(v) for v in vals) / len(vals))
+            return mean * 500.0, ('triaxial mean' if len(vals) >= 3 else 'two-axis mean')
+    sp = row.get('size_page')
+    if isinstance(sp, dict) and sp.get('radius_m'):
+        return float(sp['radius_m']), 'size page radius'
+    for field in ('diam_eff_km', 'diameter_km'):
+        cell = row.get(field)
+        v = asteroid_num(cell)
+        if v:
+            return v * 500.0, field
+    lc = row.get('lcdb') or {}
+    if lc.get('diam_eff_km'):
+        kind = ('lcdb diam (measured)' if lc.get('diam_src') in LCDB_MEASURED_DIAM
+                else 'lcdb diam (H and an assumed albedo, DiamSource %s)'
+                     % lc.get('diam_src', '?'))
+        return float(lc['diam_eff_km']) * 500.0, kind
+    tno = row.get('tno') or {}
+    if tno.get('diam_km'):
+        return float(tno['diam_km']) * 500.0, 'TNO list diameter'
+    h = asteroid_h_mag(row)
+    if h is not None and pv:
+        d_km = 1329.0 / math.sqrt(pv) * 10.0 ** (-h / 5.0)
+        if d_km > 0.0:
+            return d_km * 500.0, 'H x fitted albedo'
+    return None, None
+
+
+def asteroid_h_mag(row):
+    """[mag] The body's absolute magnitude from whichever source states it: the wiki cell,
+    LCDB's adopted value, or MPCORB's. 341 of the 419 rows have one, and it is the single
+    number that sizes the rest."""
+    for v in ((row.get('h_mag') or {}).get('value'),
+              (row.get('lcdb') or {}).get('h_mag'),
+              (row.get('mporb') or {}).get('H')):
+        if v is not None:
+            try:
+                return float(v)
+            except (TypeError, ValueError):
+                continue
+    return None
+
+
+def asteroid_orbit_class(row):
+    """MPCORB's dynamical class ('MBA', 'Jupiter Trojan', 'Distant Object'...) -- the only
+    classification 170 of these rows carry. It is an ORBIT class, not a composition class,
+    which is exactly why it is a fallback and not a replacement for a spectral type."""
+    return (row.get('mporb') or {}).get('Orbit_type')
+
+
+def asteroid_class(row):
+    """[str] The leading spectral class the row states ('C' out of 'C/B'), or the corpus
+    default. Both the colour palette and the density table key on this."""
+    cell = row.get('spectral_type')
+    raw = cell.get('value') if isinstance(cell, dict) else cell
+    cls = re.split(r'[/\s]', str(raw or ''))[0]
+    return cls if cls in ASTEROID_COLORS else ASTEROID_CLASS_DEFAULT
+
+
+def row_orbit(row):
+    """[elements] The osculating elements to fly this row on: the page's SBDB block when it
+    quoted one, else the MPCORB block parse.py folded in -- whose keys were normalised to
+    SBDB's names in utils/rss/asteroids/mporb.py:ELEMENTS, so this reads one shape.
+
+    SBDB first even where MPCORB also has an orbit: 245 of the 255 rows that have both agree
+    on the epoch outright, and where they disagree MPCORB is the weaker solution (its U is
+    worse on 2016 DF2 and 2005 VX3, the two rows whose orbit is genuinely unsettled). For the
+    160 rows the wiki list never heard of, MPCORB is the only rail there is."""
+    o = row.get('sbdb')
+    if o and o.get('a_au') is not None and o.get('e') is not None:
+        return o
+    el = (row.get('mporb') or {}).get('elements')
+    if el and el.get('a_au') is not None and el.get('e') is not None:
+        return el
+    return None
+
+
+# The size page's Type cell leads with 'dwarf planet' for the bodies it claims are round
+# under their own gravity: Ceres, Eris, Haumea, Makemake, Gonggong, Quaoar, Orcus, Sedna.
+# Anchored at the START because the cell is scraped HTML and some rows carry citation
+# garbage -- Aya's contains a paper title, "Exploration Strategy for the Ice Dwarf Planets".
+# The IAU's five are listed too so a dwarf that reaches us only through MPCORB (no size-page
+# row) is still typed as what it is rather than as a large rock.
+DWARF_PLANET_NOTE = re.compile(r'^\s*dwarf planet\b', re.I)
+IAU_DWARF_PLANETS = ('Ceres', 'Eris', 'Haumea', 'Makemake')
+
+
+def asteroid_is_dwarf(row, name):
+    """True when the corpus calls this body a dwarf planet.
+
+    It changes one word in the game -- the dossier, and the loader accepts it as a body type.
+    That is the whole reason it exists: a dossier that calls Eris an asteroid while calling
+    Pluto a planet is a lie the file can see. Pluto is not here and must never be; the
+    planetary file authors it, and the catalogue keys bodies by name."""
+    note = (row.get('size_page') or {}).get('type_note') or ''
+    return bool(DWARF_PLANET_NOTE.match(note)) or name in IAU_DWARF_PLANETS
+
+
+def geometric_albedo_fits(raw):
+    """({spectral class: pV}, {MPCORB dynamical class: pV}) fitted from the corpus's own
+    pairs of (stated size, H), by the inverse of the standard relation:
+        pV = (1329 / D_km)^2 * 10^(-2H/5)
+
+    Why fit rather than type: the ASTEROID_GEOMETRIC table below is a handbook's rounded
+    guess, and the rows that need it are precisely the ones no handbook measured. A median
+    over the rows that DO state both numbers is the corpus describing itself -- the same move
+    as cohort_median and corpus_phase_integral. Classes with one pair are left out, so a
+    single oddball cannot set a family's albedo, and a fitted pV outside 0.01-1.2 means the
+    size and the H are not describing the same body, so it is dropped rather than averaged.
+    """
+    import collections
+    pairs = collections.defaultdict(list)
+    rejected = 0
+    for row in raw:
+        h = asteroid_h_mag(row)
+        r, kind = asteroid_radius_m(row)          # no pv -> no H-derived sizing
+        if h is None or not r or kind == 'H x fitted albedo':
+            continue
+        d_km = 2.0 * r / 1000.0
+        if d_km <= 0.0:
+            continue
+        p = (1329.0 / d_km) ** 2 * 10.0 ** (-2.0 * h / 5.0)
+        if not 0.01 <= p <= 1.2:
+            rejected += 1
+            continue
+        cell = row.get('spectral_type')
+        stated = cell.get('value') if isinstance(cell, dict) else cell
+        if stated:
+            # keyed the same way the lookup below will ask -- but only when the row states
+            # one, or the 250 rows with no class would set the C-class albedo by vote.
+            pairs[('cls', asteroid_class(row))].append(p)
+        oc = asteroid_orbit_class(row)
+        if oc:
+            pairs[('orb', oc)].append(p)
+    fits = {}
+    for key, vals in pairs.items():
+        if len(vals) >= 2:
+            vals = sorted(vals)
+            fits[key] = vals[len(vals) // 2]
+    return fits, rejected
+
+
+def invent_asteroid_radius_m(name, sections, cohort_median, global_median):
+    """[m] The 120 rows the corpus gives a rail for and NOTHING else.
+
+    Not a magnitude derivation -- there is no magnitude row either, so there is nothing on
+    the left-hand side of that formula. The rule is the cohort: a rock is the size of the
+    other rocks in the section the page put it in (retrograde, inclined, brightest...),
+    which is the corpus describing its own population rather than me picking a number. If
+    none of its sections has a sized member, the whole set's median stands in."""
+    med = cohort_median.get(next((s for s in sections if s in cohort_median), ''), None)
+    return (med if med is not None else global_median), 'INVENTED cohort median'
+
+
+def invent_asteroid_density(cls):
+    """[kg/m^3] The row states a spectral class, not a density, so the class is the rule
+    and the number is ours. Only the mass estimate depends on it -- but that is what a
+    player's descent profile depends on, so one flat 2000 for a metal rock and a coal one
+    (#764) is the thing this replaces."""
+    return ASTEROID_DENSITY.get(cls, ASTEROID_DENSITY[ASTEROID_CLASS_DEFAULT])
+
+
+def invent_asteroid_albedo(cls, q):
+    """[Bond] Same rule as the satellites (#749): a class-typical GEOMETRIC albedo times
+    the phase integral this corpus implies for itself. INVENTED, and says so."""
+    return ASTEROID_GEOMETRIC.get(cls, ASTEROID_GEOMETRIC[ASTEROID_CLASS_DEFAULT]) * q
+
+
+def asteroid_surface(a):
+    """The surface block: palette and albedo by class, relief scaled to the body.
+
+    This deliberately does NOT reuse rock(), whose 50 m floor is right for a 300 m moon and
+    absurd on this set's smallest row (a 3-4 m object): 50 m of relief on a 2 m radius is
+    25 of the radius. Fraction-of-radius, floored at 1 m. #763 is the ticket that replaces
+    "one heuristic for every small body" with something that knows about craters."""
+    r = a['radius_m']
+    amp = min(0.25 * r, max(min(500.0, 0.15 * r), min(1.0, 0.5 * r)))
+    c1, c2 = ASTEROID_COLORS.get(a['cls'], ASTEROID_COLORS[ASTEROID_CLASS_DEFAULT])
+    surface = {'amplitude': amp, 'palette': [[0.0, c1], [1.0, c2]]}
+    surface['albedo'] = a['albedo']
+    surface['albedo_src'] = a['albedo_src']
+    return surface
+
+
+def load_asteroids(q, existing_names, verbose=True):
+    """[rows] The 419 minor-planet rows turned into what build_asteroid wants, tiered and
+    inventoried. `q` is the corpus's own phase integral, shared with the satellites so one
+    number converts geometric to Bond albedo across the whole file."""
+    with open(ASTEROIDS_JSON) as f:
+        raw = json.load(f)['bodies']
+    assert raw, 'asteroids.json is empty'
+    # Pluto is a PLANET in this file -- WGCCRE Table 3, its own pole rows, its moon system.
+    # The corpus's own list carries a row for it too, and the collision pass below would
+    # "solve" that by renaming it (134340) Pluto, which is not a second world but the same
+    # one spelled twice. parse.py drops the row; this is the invariant that keeps it dropped.
+    assert not any(r['name'] == 'Pluto' for r in raw), \
+        'Pluto must not be in the minor-planet corpus: the planetary file already authors it'
+
+    # The albedo fits come before anything that sizes a row: a row that states no size is
+    # sized from its absolute magnitude, and that arithmetic needs an albedo. Fitting pV from
+    # the rows that state BOTH a size and an H is what makes the arithmetic the corpus's own
+    # rather than a handbook's; the medians come out along composition (carbonaceous ~0.05,
+    # stony ~0.2, icy ~0.7) and along distance.
+    fits, fit_rejected = geometric_albedo_fits(raw)
+
+    def pv_guess(row):
+        """[geometric albedo] The pV to convert this row's H into a radius: the corpus's own
+        median for its stated spectral class, else for its MPCORB dynamical class, else the
+        typed handbook table. It is a guess about a family, never about this body, which is
+        why a row that states a size gets its OWN pV back out of (size, H) further down."""
+        cell = row.get('spectral_type')
+        stated = cell.get('value') if isinstance(cell, dict) else cell
+        return ((fits.get(('cls', asteroid_class(row))) if stated else None)
+                or fits.get(('orb', asteroid_orbit_class(row)))
+                or ASTEROID_GEOMETRIC.get(asteroid_class(row),
+                                          ASTEROID_GEOMETRIC[ASTEROID_CLASS_DEFAULT]))
+
+    # Cohort medians FIRST: the invention for the size-less rows reads them, and they have
+    # to be measured from the rows that DO state a size, not typed. Keyed by ROW INDEX, not
+    # by name: the collision pass below renames (52) Europa to '(52) Europa', and a
+    # name-keyed table would lose the renamed rows' stated sizes and invent cohort medians
+    # for bodies NASA measured with radar.
+    sized = {}
+    for idx, row in enumerate(raw):
+        r, kind = asteroid_radius_m(row, pv_guess(row))
+        if r:
+            sized[idx] = (r, kind)
+    by_section = {}
+    for idx, row in enumerate(raw):
+        hit = sized.get(idx)
+        if not hit:
+            continue
+        for sec in (row.get('sections') or []):
+            by_section.setdefault(sec, []).append(hit[0])
+    cohort_median = {s: sorted(v)[len(v) // 2] for s, v in sorted(by_section.items())}
+    all_r = sorted(v for v, _ in sized.values())
+    global_median = all_r[len(all_r) // 2] if all_r else 0.0
+
+    rows, invented_radius, invented_mass, invented_albedo = [], 0, 0, 0
+    rail_tally = {}
+    derived_albedos = 0
+    for idx, row in enumerate(raw):
+        name = row['name']
+        number = row.get('number')
+        parent = ASTEROID_MOON_PARENTS.get(name, 'Sun')
+        if name in existing_names:
+            # Real collision, not a hypothetical: asteroid (52) Europa and (9) Metis share
+            # a name with Jupiter's moons, and the catalogue keys bodies by name (so do
+            # saves, src/save.h). The number the data already carries disambiguates it.
+            assert number, '%s: collides with a body already in the file and has no ' \
+                           'number to disambiguate it' % name
+            name = '(%s) %s' % (number, name)
+            assert name not in existing_names, '%s: still collides' % name
+
+        r, kind = sized.get(idx, (None, None))
+        if r is None:
+            r, kind = invent_asteroid_radius_m(name, row.get('sections') or [],
+                                               cohort_median, global_median)
+            invented_radius += 1
+        assert r and r > 0.0, '%s: no radius, stated or invented' % name
+
+        cls_raw = row.get('spectral_type')
+        cls = (cls_raw.get('value') if isinstance(cls_raw, dict) else cls_raw) or ''
+        cls = re.split(r'[/\s]', str(cls))[0]        # 'C/B' -> 'C': the leading class
+        cls = cls if cls in ASTEROID_COLORS else ASTEROID_CLASS_DEFAULT
+
+        mass = asteroid_num(row.get('mass_kg'))
+        if mass is None:
+            mass = invent_asteroid_density(cls) * (4.0 / 3.0) * math.pi * r ** 3
+            invented_mass += 1
+
+        # The albedo. Stated by a handful of rows; for the rest a body with BOTH a stated
+        # size and a stated H still answers for itself, because that pair implies a pV
+        # through the same formula that sized it (pV = (1329/D)^2 10^(-2H/5)). That is not a
+        # guess about a family -- it is this body's own brightness divided by its own disk --
+        # so it is labelled DERIVED, not INVENTED, and it keeps Eris' frost and a C-type coal
+        # apart instead of flattening both to a class table.
+        p_geo = asteroid_num(row.get('albedo_pV'))
+        p_src = 'stated'
+        if p_geo is None and kind not in ('INVENTED cohort median', 'H x fitted albedo'):
+            h = asteroid_h_mag(row)
+            if h is not None:
+                p_try = (1329.0 / (2.0 * r / 1000.0)) ** 2 * 10.0 ** (-2.0 * h / 5.0)
+                # 0.02 floor: the darkest known surfaces (D-type, ~0.03) sit just above it
+                # and an out-of-band pV means the size and the magnitude are describing
+                # different objects -- a mis-join, which must fall through to the class rule.
+                if 0.02 <= p_try <= 1.2:
+                    p_geo, p_src = p_try, 'DERIVED from %s + H %.2f' % (kind, h)
+                    derived_albedos += 1
+        if p_geo is not None:
+            albedo = p_geo * q
+            albedo_src = '%s: pV %.3f x q %.3f' % (p_src, p_geo, q)
+        else:
+            albedo = invent_asteroid_albedo(cls, q)
+            albedo_src = 'INVENTED: %s-class geometric x q %.3f' % (cls, q)
+            invented_albedo += 1
+        assert 0.0 <= albedo < 1.0, '%s: albedo %g is not a Bond albedo' % (name, albedo)
+
+        rot_h = asteroid_num(row.get('rotation_period_h')) or \
+                asteroid_num(row.get('wiki_rotation_h'))
+
+        o = row_orbit(row)
+        if o is not None:
+            key = 'SBDB' if o is row.get('sbdb') else 'MPCORB'
+            rail_tally[key] = rail_tally.get(key, 0) + 1
+        rail = None
+        if o:
+            e = float(o['e'])
+            assert 0.0 <= e < 1.0, '%s: e %g is not an elliptical orbit' % (name, e)
+            n_deg_d = asteroid_num(o.get('mean_motion_deg_d'))
+            if not n_deg_d:
+                per_d = asteroid_num(o.get('period_d'))
+                n_deg_d = (360.0 / per_d) if per_d else None
+            assert n_deg_d, '%s: no mean motion and no period' % name
+            epoch = asteroid_num(o.get('epoch_jd')) or CATALOGUE_EPOCH_JD
+            M0 = ((asteroid_num(o.get('mean_anom_deg')) or 0.0)
+                  + n_deg_d * (CATALOGUE_EPOCH_JD - epoch)) * D2R
+            rail = dict(w=n_deg_d * D2R / DAY, e=e,
+                        i=(asteroid_num(o.get('i_deg')) or 0.0) * D2R,
+                        raan=(asteroid_num(o.get('node_deg')) or 0.0) * D2R,
+                        omega=(asteroid_num(o.get('argperi_deg')) or 0.0) * D2R,
+                        nu0=true_anomaly_kepler(M0, e))
+
+        rows.append(dict(name=name, raw_name=row['name'], display=name, parent=parent,
+                         radius_m=r, radius_src=kind,
+                         mass_kg=mass, cls=cls, albedo=albedo, albedo_src=albedo_src,
+                         rot_s=(rot_h * HR if rot_h else None), rail=rail,
+                         sections=row.get('sections') or [], idx=idx,
+                         dwarf=asteroid_is_dwarf(row, row['name']),
+                         measured=bool(kind in MEASURED_SIZE_KINDS
+                                       or asteroid_num(row.get('mass_kg')) is not None),
+                         named=bool(row.get('number')
+                                    or (name and not name[0].isdigit()))))
+
+    # The bottom rung of the ladder is CURATED, not a size threshold. With 419 rows the old
+    # "visited or 100 km across" rule let every mined 100+ km Kuiper object walk in -- 123 of
+    # 419, so the smallest file was 30% of the biggest and the ladder had no bottom rung left
+    # to climb. What makes a body stand in for its category is that the corpus already sorts
+    # them: `sections` ARE the categories, and the biggest member of a category is the one a
+    # player would name if asked for it. So the smallest variant is: every body a spacecraft
+    # has flown to, every dwarf planet, and the CATEGORY_DEPTH biggest members of each
+    # category. The deeper rungs stay what they were -- measured size or mass, then anything
+    # with a number or a name -- so the ladder reads ~50 / 210 / 291 / 419.
+    #
+    # LADDER_CATEGORIES is the sampling list, and it deliberately leaves out the sections that
+    # say where a row came from rather than what it is ('size_page') and the axis buckets that
+    # re-sort bodies already filed under another category ('coorbital_close' -- its members are
+    # in 'coorbital' too). Ranking is per category by radius, so a category's rank-1 body is
+    # inside every deeper cut and the tiers nest by construction.
+    CATEGORY_DEPTH = 2
+    LADDER_CATEGORIES = {'brightest', 'largest', 'massive', 'landmark', 'inclined',
+                         'retrograde', 'fast_rot', 'slow_rot', 'comets', 'bright',
+                         'sungrazer', 'coorbital', 'high_i', 'hungaria',
+                         'phocaea', 'trojan', 'kuiper'}
+    # Two sections are hand-picked lists rather than populations to sample: the flight-proven
+    # destinations, and the famous co-orbitals (2020 CD3 and 2024 PT5 are in the corpus
+    # BECAUSE we chose them, so ranking that category by size would pick our deliberately
+    # added minimoons back OUT of the smallest file by the opposite criterion).
+    LADDER_ALWAYS = {'visited', 'coorbital_famed'}
+    rank = {}
+    for sec in sorted(LADDER_CATEGORIES):
+        pool = sorted((a for a in rows if sec in a['sections']),
+                      key=lambda a: (-a['radius_m'], a['name']))
+        for i, a in enumerate(pool, start=1):
+            rank[a['name']] = min(rank.get(a['name'], 9999), i)
+    core = [a for a in rows
+            if a['dwarf'] or (LADDER_ALWAYS & set(a['sections']))
+            or rank.get(a['name'], 9999) <= CATEGORY_DEPTH]
+    core_names = {a['name'] for a in core}
+    meas = core_names | {a['name'] for a in rows if a['measured']}
+    named = meas | {a['name'] for a in rows if a['named']}
+    for a in rows:
+        a['core'], a['measured'], a['named'] = (a['name'] in core_names,
+                                                a['name'] in meas, a['name'] in named)
+    # The invariant the four files depend on. A moon whose parent this variant does not
+    # emit is a load-time throw, so the parents of the two asteroid moons must be core.
+    assert core_names <= meas <= named <= {a['name'] for a in rows}, \
+        'asteroid tiers must nest: core subset measured subset named subset full'
+    for a in rows:
+        if a['parent'] != 'Sun':
+            parent = next((p for p in rows if p['name'] == a['parent']), None)
+            assert parent and parent['core'], \
+                '%s: its parent %s is not in the core tier, so a variant could emit the ' \
+                'moon without the world it orbits' % (a['name'], a['parent'])
+            # No rail row at all for these two: a circular orbit at 6 parent radii, which
+            # is where Dactyl actually sits (Lucy measured ~6 Ida radii), and the PERIOD
+            # is not invented -- Kepler III out of that distance and the parent's mass.
+            if a['rail'] is None:
+                a['rail'] = invented_moon_rail(a['name'], parent)
+
+    # ... and the rows that are heliocentric but state no orbit anywhere (2010 EQ169's own
+    # page: "orbit is not well-known"). Cohort median again, so the rule that sizes these
+    # bodies places them too.
+    rail_by_section = {}
+    for a in rows:
+        if a['rail'] is None or (a['rail'] or {}).get('invented') or a['parent'] != 'Sun':
+            continue
+        o = next((r for r in raw if r['name'] == a['raw_name']), None)
+        el = row_orbit(o) if o else None
+        if not el:
+            continue
+        for sec in a['sections']:
+            rail_by_section.setdefault(sec, []).append(
+                (float(el['a_au']), float(el['e']), float(el.get('i_deg') or 0.0)))
+    for a in rows:
+        if a['rail'] is not None or a['parent'] != 'Sun':
+            continue
+        a['rail'] = invented_heliocentric_rail(a['name'], a['sections'], rail_by_section)
+
+    assert all(a['rail'] for a in rows), \
+        'every asteroid row needs a rail, stated or invented: %s' % \
+        [a['name'] for a in rows if not a['rail']]
+
+    if verbose:
+        print('asteroids: %d rows from %s' % (len(rows), os.path.relpath(ASTEROIDS_JSON, ROOT)))
+        print('  tiers  core %d  measured %d  named %d  full %d'
+              % (len(core_names), len(meas), len(named), len(rows)))
+        # Which body stands in for which category is a judgement, so it gets printed rather
+        # than buried in a set comprehension. 4 per line, because 19 categories is one long
+        # line otherwise.
+        reps = []
+        for sec in sorted(LADDER_CATEGORIES):
+            pool = sorted((a for a in rows if sec in a['sections']),
+                          key=lambda a: (-a['radius_m'], a['name']))[:CATEGORY_DEPTH]
+            if pool:
+                reps.append('%s: %s' % (sec, ' '.join(a['name'] for a in pool)))
+        for i in range(0, len(reps), 4):
+            print('  reps  %s' % '  |  '.join(reps[i:i + 4]))
+        print('  type   dwarf planet %d (%s)'
+              % (sum(1 for a in rows if a['dwarf']),
+                 ' '.join(a['name'] for a in rows if a['dwarf'])))
+        print('  rails  stated %d  INVENTED %d (the two asteroid moons, and any row whose '
+              'page states no orbit)'
+              % (sum(1 for a in rows if not (a['rail'] or {}).get('invented')),
+                 sum(1 for a in rows if (a['rail'] or {}).get('invented'))))
+        # Which source actually places a body matters now that two do: SBDB for the rows the
+        # wiki page quoted, MPCORB for the 160 the mining rules found.
+        print('         %s' % '  '.join('%s %d' % kv for kv in sorted(rail_tally.items())))
+        kinds = {}
+        for a in rows:
+            kinds[a['radius_src']] = kinds.get(a['radius_src'], 0) + 1
+        print('  radius stated %d  INVENTED %d  [%s]'
+              % (len(sized), invented_radius,
+                 ', '.join('%s %d' % kv for kv in sorted(kinds.items(),
+                                                         key=lambda kv: -kv[1]))))
+        print('         cohort medians: %s'
+              % ', '.join('%s %s' % (s, fmt_km(m)) for s, m in cohort_median.items()))
+        print('  mass   stated %d  INVENTED by spectral class (%s)'
+              % (len(rows) - invented_mass,
+                 ' '.join('%s %g' % (c, ASTEROID_DENSITY[c]) for c in
+                          sorted(set(a['cls'] for a in rows)))))
+        # pV three ways: a page states it, the body's own (size, H) implies it, or the class
+        # table stands in. The middle one is new and is what most of the mined rows have.
+        print('  albedo stated pV %d  DERIVED from size+H %d  INVENTED by class %d'
+              % (len(rows) - invented_albedo - derived_albedos, derived_albedos,
+                 invented_albedo))
+        print('         pV fitted from the corpus (>= 2 rows): %d  [%s]'
+              % (len(fits), ' '.join('%s:%s %.3f' % (k[0][0], k[1], v)
+                                     for k, v in sorted(fits.items(), key=lambda kv: str(kv[0])))))
+        print('         rejected (size and H disagree): %d' % fit_rejected)
+        print('  spin   stated %d  none authored %d (the loader leaves those unspun, as '
+              'the irregular moons)'
+              % (sum(1 for a in rows if a['rot_s']), sum(1 for a in rows if not a['rot_s'])))
+    return rows
+
+
+def fmt_km(m):
+    return ('%.3g km' % (m / 1000.0)) if m >= 1000 else ('%.0f m' % m)
+
+
+def invented_moon_rail(name, parent_row):
+    """[rail] The two asteroid moons the pages never place. See load_asteroids: the
+    DISTANCE is the invention (6 parent radii, anchored on the one such orbit that has
+    been measured), the mean motion follows from it under Kepler III."""
+    a = 6.0 * parent_row['radius_m']
+    n = math.sqrt(G * parent_row['mass_kg'] / (a ** 3))
+    assert a > parent_row['radius_m'] * 1.5, '%s: invented orbit inside its parent' % name
+    rail = dict(w=n, e=0.0, i=0.0, raan=0.0, omega=0.0, nu0=phase0(name, 'anomaly'))
+    rail['invented'] = 'circular at 6 parent radii (%s); period from Kepler III' % fmt_km(a)
+    return rail
+
+
+def invented_heliocentric_rail(name, sections, rail_by_section):
+    """[rail] The rows that state no orbit anywhere -- 2010 EQ169's page says so outright
+    ("orbit is not well-known") and SBDB has nothing to say either.
+
+    Cohort median again: the same rule that sizes these bodies places them, so one rule
+    rather than two kinds of guess. The angles are the reproducible spread this file
+    already draws where no epoch orientation is stated (#141), and the mean motion follows
+    from the invented axis under Kepler III rather than being picked."""
+    pool = next((rail_by_section[s] for s in sections if s in rail_by_section), None)
+    assert pool, '%s: no cohort with a stated orbit to place it by' % name
+    a_au = sorted(p[0] for p in pool)[len(pool) // 2]
+    e    = sorted(p[1] for p in pool)[len(pool) // 2]
+    i    = sorted(p[2] for p in pool)[len(pool) // 2]
+    assert 0.0 < a_au and 0.0 <= e < 1.0, '%s: cohort rail makes no sense' % name
+    a = a_au * AU
+    rail = dict(w=math.sqrt(G * SUN_MASS / a ** 3), e=e, i=i * D2R,
+                raan=phase0(name, 'node'), omega=phase0(name, 'peri'),
+                nu0=phase0(name, 'anomaly'))
+    rail['invented'] = 'cohort median: a %.2f AU, e %.2f, i %.1f deg' % (a_au, e, i)
+    return rail
+
+
+def build_asteroid(a, by, home):
+    """One asteroid (or asteroid moon) as a game body: heliocentric like a planet, airless
+    rock like a moon, and the same transfer/science stamps as both."""
+    rail = a['rail']
+    assert rail, '%s: no rail' % a['name']
+    data = dict(radius_m=a['radius_m'], mass_kg=a['mass_kg'],
+                w=rail['w'], e=rail['e'], omega=rail['omega'], i=rail['i'],
+                raan=rail['raan'], nu0=rail['nu0'], rot_s=a['rot_s'])
+    if a['parent'] != 'Sun':
+        type_ = 'moon'
+    else:
+        # A dwarf planet draws exactly like an asteroid and is indistinguishable from one in
+        # every law the engine applies. It is in the file because the DOSSIER says so: the
+        # dossier already calls Pluto a planet, and calling Eris an asteroid next to it is a
+        # contradiction a player can see. src/system.cpp:BodyType::DwarfPlanet.
+        type_ = 'dwarf_planet' if a['dwarf'] else 'asteroid'
+    return make_body(a['name'], type_, a['parent'], data, seed=2000 + a['idx'],
+                     surface=asteroid_surface(a),
+                     parent_body=by.get(a['parent']), home_body=home)
+
+
 def _comparable(doc):
     """Copy without the derived science fields (sci_dist.py re-stamps them,
     so they must not count as source drift here)."""
@@ -2840,7 +3546,7 @@ def _comparable(doc):
     return out
 
 
-def emit(base_bodies, moons, pred, out_path, label, sheets, dry=False):
+def emit(base_bodies, moons, pred, out_path, label, sheets, dry=False, asteroids=None):
     # #724 rung D: NO body in this file may author an air-follow knob. The value is invented
     # (no source says how far an air follows its ground), and this file's standing is that its
     # numbers come from the fact sheets -- utils/gen_systems.py:KSP_AIR_FOLLOW is where that
@@ -2869,6 +3575,21 @@ def emit(base_bodies, moons, pred, out_path, label, sheets, dry=False):
                                  sat_sheets=sat_sheet))
         by[m['name']] = bodies[-1]
         n += 1
+    # Asteroids, on the SAME predicate: their rows carry the same 'measured'/'named' flags
+    # and main() folds the core tier into the same name set, so one cut list selects both
+    # corpora -- which is what keeps the four files one ladder rather than two ladders that
+    # happen to share a filename prefix. Heliocentric ones first: an asteroid moon needs
+    # its parent already in `by`, exactly as a moon needs its planet.
+    n_ast = 0
+    for a in sorted(asteroids or [], key=lambda a: a['parent'] != 'Sun'):
+        if not pred(a):
+            continue
+        if a['parent'] not in by:
+            raise SystemExit("asteroid '%s' orbits '%s', which this variant does not emit"
+                             % (a['name'], a['parent']))
+        bodies.append(build_asteroid(a, by, home))
+        by[a['name']] = bodies[-1]
+        n_ast += 1
     # The moons get the same scrape-side rule quietly (#708) -- and today it compares
     # NOTHING, because no satellite parser in this file reads a gravity row (they take a
     # mass and a radius), so check_scraped_gravity skips every moon. It stays wired so
@@ -2961,8 +3682,8 @@ def emit(base_bodies, moons, pred, out_path, label, sheets, dry=False):
     with open(out_path, 'w') as f:
         json.dump(doc, f, indent=2)
         f.write('\n')
-    print('wrote %-32s  %3d bodies (%3d moons)%s  [%s]' %
-          (out_path, len(bodies), n,
+    print('wrote %-32s  %3d bodies (%3d moons, %3d asteroids)%s  [%s]' %
+          (out_path, len(bodies), n, n_ast,
            ('  (%d skipped: no orbit data)' % skipped) if skipped else '', label))
     return n
 
@@ -3077,9 +3798,19 @@ def main():
             'Callisto', 'Mimas', 'Enceladus', 'Tethys', 'Dione', 'Rhea',
             'Iapetus', 'Titan', 'Miranda', 'Ariel', 'Umbriel', 'Titania',
             'Oberon', 'Triton', 'Charon'}
+    # The second corpus. Its tiers are built to nest with the moon tiers (load_asteroids
+    # asserts it), and its core tier joins the SAME name set below, so one cut list selects
+    # both corpora in every variant -- which is what makes the four files one ladder.
+    q, _ = corpus_phase_integral(verbose=False)
+    asteroids = load_asteroids(q, {b['name'] for b in base_bodies} | {m['name'] for m in moons})
+    core |= {a['name'] for a in asteroids if a['core']}
+    print()
     targets = [
+        # emit() keys its verbose prints off label.startswith('core'), so the label must
+        # keep that prefix. The count is the tier's, not a typed constant: it used to say
+        # (21), which was the moon count from before the asteroid corpus had tiers at all.
         (lambda m: m['name'] in core,
-         os.path.join(OUT, 'solar_system.json'), 'core (21)'),
+         os.path.join(OUT, 'solar_system.json'), 'core (%d names)' % len(core)),
         (lambda m: m['measured'],
          os.path.join(OUT, 'solar_system_measured.json'), 'measured mass'),
         (lambda m: m['named'],
@@ -3090,7 +3821,8 @@ def main():
     if args.check:
         ok = True
         for pred, path, label in targets:
-            doc = emit(base_bodies, moons, pred, path, label, fact_sheets, dry=True)
+            doc = emit(base_bodies, moons, pred, path, label, fact_sheets, dry=True,
+                       asteroids=asteroids)
             with open(path) as f:
                 committed = json.load(f)
             same = _comparable(committed) == _comparable(doc)
@@ -3115,7 +3847,7 @@ def main():
             ok = ok and good
         return 0 if ok else 1
     for pred, path, label in targets:
-        emit(base_bodies, moons, pred, path, label, fact_sheets)
+        emit(base_bodies, moons, pred, path, label, fact_sheets, asteroids=asteroids)
 
     # ---- verification table for the 'named' set ----
     # hill = the PRE-lift law value; the game's SOI is

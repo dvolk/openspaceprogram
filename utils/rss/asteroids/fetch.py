@@ -13,10 +13,26 @@ Sources (also in urls.txt):
   https://ssd-api.jpl.nasa.gov/sbdb.api?sstr=<obj>&discovery=1
       -> raw/sbdb/<slug>.json             (orbital elements at an epoch, spkid, orbit
          class, discovery block -- the rail data the wiki table does not carry)
+  https://minorplanetcenter.net/Extended_Files/mpcorb_extended.json.gz
+      -> raw/mpcorb/mpcorb_extended.json.gz  (1.58M orbits WITH absolute magnitude H,
+         the uncertainty parameter U, arc/opposition counts and a dynamical class.
+         NOT COMMITTED -- 175 MB; the extract lands in asteroids.json. See mporb.py.)
+  https://en.wikipedia.org/wiki/List_of_Solar_System_objects_by_size
+      -> raw/objects_by_size.html         (stated radius + mass per body, split by
+         class, for the bodies the exceptional list leaves size-less: the dwarf
+         planets, the big TNOs, the Trojans, the centaurs. See sizes.py.)
+  https://en.wikipedia.org/wiki/List_of_trans-Neptunian_objects
+      -> raw/tno_list.html                (~1050 rows of D (km) plus a, e, i, q, Q --
+         the Kuiper belt population, which the other four sources size almost not at
+         all). See sizes.tno_rows().
 
 JPL's SBDB API has NO physical parameters (probe: ?phys_par=1 returns an error
 object), so the two sources are complementary rather than redundant -- and neither
 one alone can build a body. See parse.py's report for what is still missing.
+
+MPCORB's own header asks that the datafile be redistributed with its header and with
+attribution to the Minor Planet Center. We commit only a per-row extract of orbital
+facts, and every consumer of it says where it came from.
 """
 import argparse
 import json
@@ -29,6 +45,7 @@ import urllib.parse
 import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import mporb  # noqa: E402  -- knows where the MPCORB cache lives
 import parse  # noqa: E402  -- the offline parser, reused here to list what to fetch
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -36,6 +53,9 @@ RAW = parse.RAW
 SBDB_DIR = parse.SBDB_DIR
 
 WIKI_URL = "https://en.wikipedia.org/wiki/List_of_exceptional_asteroids"
+SIZES_URL = "https://en.wikipedia.org/wiki/List_of_Solar_System_objects_by_size"
+TNO_URL = "https://en.wikipedia.org/wiki/List_of_trans-Neptunian_objects"
+MPCORB_URL = "https://minorplanetcenter.net/Extended_Files/mpcorb_extended.json.gz"
 SBDB_URL = "https://ssd-api.jpl.nasa.gov/sbdb.api"
 # JPL's SSD-API terms of use ask for a User-Agent that says who is calling.
 USER_AGENT = "openspaceprogram-rss/1.0 (game world data; https://git.oxfordfun.com/dvolk/openspaceprogram)"
@@ -67,6 +87,20 @@ def fetch_wiki(refresh):
     body, got = get(WIKI_URL, parse.WIKI_HTML, refresh)
     print("%s %s (%d bytes)" % ("fetched" if got else "cached ", WIKI_URL, len(body)))
     return body.decode("utf-8", "replace")
+
+
+def fetch_size_tables(refresh):
+    """The two wiki tables that carry a SIZE for bodies the first page leaves blank."""
+    for url, path in ((SIZES_URL, parse.SIZES_HTML), (TNO_URL, parse.TNO_HTML)):
+        body, got = get(url, path, refresh)
+        print("%s %s (%d bytes)" % ("fetched" if got else "cached ", url, len(body)))
+
+
+def fetch_mpcorb(refresh):
+    """The 175 MB MPCORB extended JSON. Cached, gitignored, and only read by mporb.py,
+    which streams it -- nothing else in the tree ever holds it in memory."""
+    body, got = get(MPCORB_URL, mporb.MPCORB_GZ, refresh)
+    print("%s %s (%d bytes)" % ("fetched" if got else "cached ", MPCORB_URL, len(body)))
 
 
 def sbdb_candidates(query):
@@ -147,6 +181,10 @@ def main():
     ap.add_argument("--limit", type=int, metavar="N",
                     help="fetch at most N SBDB records")
     ap.add_argument("--skip-sbdb", action="store_true", help="only the wiki page")
+    ap.add_argument("--skip-sizes", action="store_true",
+                    help="skip the two size tables (objects-by-size, TNO list)")
+    ap.add_argument("--skip-mporb", action="store_true",
+                    help="skip the 175 MB MPCORB download")
     ap.add_argument("--list", action="store_true",
                     help="print the object list and exit (no SBDB calls)")
     args = ap.parse_args()
@@ -159,6 +197,11 @@ def main():
         for o in objs:
             print("%-28s %s" % (o["query"], ",".join(o["sections"])))
         return 0
+
+    if not args.skip_sizes:
+        fetch_size_tables(args.refresh)
+    if not args.skip_mporb:
+        fetch_mporb(args.refresh)
     if args.skip_sbdb:
         return 0
 

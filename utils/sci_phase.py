@@ -19,6 +19,14 @@
 # (gen_systems.py overrides), not in post-generation JSON edits.
 #
 # The planner-side twin of this (multi-rev solutions in the game) is #136.
+#
+# INCLINED CO-ORBITALS (#177). A Hohmann is degenerate at equal SMA; it is NOT degenerate at
+# equal radius and different PLANE, and the real Solar System's Earth co-orbitals (2020 XL5,
+# Kamo'oalewa) are exactly that -- a within 0.1% of Earth's and 8-14 deg off its plane. So the
+# longitude read below is parent-frame (option 1 of that issue), and the tilt a hop has to
+# buy, 2 v sin(di/2) at a node crossing, is priced by sci_dist._sibling_leg_dv using
+# plane_angle_rad. Both terms, because the drift alone would price a 15-deg-tilted hop
+# cheaper than a flat one.
 import math
 
 PHASING_DRIFT_PERIODS = 1.0
@@ -37,40 +45,72 @@ def is_co_orbital(a1, a2, rel_tol=CO_ORBITAL_REL_TOL):
 
 
 def orbit_angle_rad(body):
-    """Epoch rail LONGITUDE [rad], X-Z plane, y up. Two branches, and they are
-    NOT in the same frame (#177): `arg_peri + true_anomaly0` is the angle in
-    the body's OWN rail plane, i.e. before planeOrient(orb_incl, lon_asc_node),
-    while an authored `pos` is read as atan2(-z, x) in the PARENT's frame. They
-    agree only when the body's plane is the parent's (incl = raan = 0), which is
-    true of every co-orbital pair this module prices. Falls back to +X (0)."""
+    """Epoch rail LONGITUDE [rad], X-Z plane, y up, measured in the PARENT's frame.
+
+    #177 left this returning two different things: `arg_peri + true_anomaly0` is the angle
+    in the body's OWN rail plane (measured from that body's ascending node), while an
+    authored `pos` is read as atan2(-z, x) in the PARENT's frame. Option 1 of that issue --
+    apply the plane before returning -- is what this does now, because the real Solar System
+    ships inclined co-orbitals (2020 XL5 and Kamo'oalewa: a within 0.1% of Earth's and
+    13.9 / 7.8 deg off its plane), so the precondition the assert used to guard cannot hold.
+
+    The rotation mirrors the loader rather than a textbook: pos_at_elements puts the body at
+    railAz(0) * (cos phi, 0, -sin phi) with phi = arg_peri + true_anomaly (orbit.h:497) and
+    planeOrient(incl, raan) = railAz(raan) * Rx(incl) carries the tilt (system.cpp:383-398),
+    so the parent-frame longitude is
+        atan2( sin(raan) cos(phi) + cos(raan) cos(incl) sin(phi),
+               cos(raan) cos(phi) - sin(raan) cos(incl) sin(phi) )
+    which reduces to phi exactly when incl and raan are zero -- every pair this module priced
+    before, so no shipped number moves."""
     inertial = body.get("inertial") or {}
     if "true_anomaly0" in inertial:
-        return float(inertial.get("arg_peri") or 0.0) \
-            + float(inertial["true_anomaly0"])
+        phi = float(inertial.get("arg_peri") or 0.0) + float(inertial["true_anomaly0"])
+        incl = float(inertial.get("orb_incl") or 0.0)
+        raan = float(inertial.get("lon_asc_node") or 0.0)
+        if incl == 0.0 and raan == 0.0:
+            return phi
+        x = math.cos(raan) * math.cos(phi) - math.sin(raan) * math.cos(incl) * math.sin(phi)
+        z = -math.sin(raan) * math.cos(phi) - math.cos(raan) * math.cos(incl) * math.sin(phi)
+        return math.atan2(-z, x)
     pos = inertial.get("pos")
     if not isinstance(pos, list) or len(pos) < 3:
         return 0.0
     return math.atan2(-float(pos[2]), float(pos[0]))
 
 
+def orbit_normal_rad(body):
+    """[unit vector] The orbit plane's normal in the PARENT's frame, +Y for a body that
+    authors no plane angles (the flat plane, which is what the loader assumes too).
+
+    Mirrors planeOrient(incl, raan) * +Y: railAz(raan) applied to Rx(incl)'s +Y, giving
+    (sin raan sin incl, cos incl, cos raan sin incl)."""
+    inertial = body.get("inertial") or {}
+    incl = float(inertial.get("orb_incl") or 0.0)
+    raan = float(inertial.get("lon_asc_node") or 0.0)
+    si, ci = math.sin(incl), math.cos(incl)
+    return (math.sin(raan) * si, ci, math.cos(raan) * si)
+
+
+def plane_angle_rad(b1, b2):
+    """[rad] The angle between two bodies' ORBITAL PLANES (0-180 deg): the angle between
+    their normals, which is the tilt a hop between them has to buy and is NOT the same number
+    as their inclination difference (two orbits at i = 60 deg with nodes 180 deg apart are
+    120 deg apart). This is the quantity the co-orbital plane-change cost wants; the
+    along-track gap it drifts around is phase_gap_rad."""
+    n1, n2 = orbit_normal_rad(b1), orbit_normal_rad(b2)
+    d = sum(a * b for a, b in zip(n1, n2))
+    return math.acos(max(-1.0, min(1.0, d)))
+
+
 def phase_gap_rad(b1, b2):
-    """Shorter epoch angle [rad] between two bodies of the same parent
+    """Shorter epoch longitude angle [rad] between two bodies of the same parent
     (drift either way; the short arc is the cheap one).
 
-    Only meaningful when the two bodies share an orbital plane: as #177
-    documents, orbit_angle_rad returns the body's OWN rail-plane angle for an
-    authored-elements body and a parent-frame longitude for a pos-authored
-    one, so differencing bodies on different planes yields a plausible wrong
-    separation -- and so a plausible wrong dv. Asserted, not assumed."""
-    i1 = b1.get("inertial") or {}
-    i2 = b2.get("inertial") or {}
-    incl1, incl2 = i1.get("orb_incl", 0.0), i2.get("orb_incl", 0.0)
-    raan1, raan2 = i1.get("lon_asc_node", 0.0), i2.get("lon_asc_node", 0.0)
-    assert abs(incl1 - incl2) < 1e-12 and abs(raan1 - raan2) < 1e-12, \
-        ("phase_gap_rad: %s and %s are on different planes (incl %.6f/%.6f, "
-         "lon_asc_node %.6f/%.6f); the rail-angle difference is not their "
-         "separation (see #177)"
-         % (b1["name"], b2["name"], incl1, incl2, raan1, raan2))
+    Both readings are parent-frame now (#177 option 1), so this is defined for inclined
+    bodies: what a phasing burn sweeps is the along-track longitude gap, and a longitude is a
+    parent-frame quantity. It is a PROJECTION for a tilted pair -- the 3-D separation also
+    has an out-of-plane part -- and that part is what sci_dist._sibling_leg_dv prices as a
+    plane change, so the pair of terms together covers what the gap alone cannot."""
     d = abs(orbit_angle_rad(b1) - orbit_angle_rad(b2)) % (2.0 * math.pi)
     return min(d, 2.0 * math.pi - d)
 
@@ -118,19 +158,34 @@ if __name__ == "__main__":
         "arg_peri": 0.2617993877991494, "true_anomaly0": 3.140508989974855}}
     assert abs(orbit_angle_rad(moho)
                - (0.2617993877991494 + 3.140508989974855)) < 1e-12
-    # The coplanar precondition must be loud. Two bodies with equal SMAs on
-    # different planes would otherwise return a plausible wrong gap, and so a
-    # plausible wrong dv (#177). b_pos authors no plane angles at all, so it
-    # stands in for the flat plane.
-    for off_name, off_inertial in (("lon_asc_node", {"lon_asc_node": 0.3}),
-                                   ("orb_incl", {"orb_incl": 0.2})):
-        b_off = {"name": "Off", "inertial": {"orb_ang_speed": w,
-                   "true_anomaly0": 1.0}}
-        b_off["inertial"].update(off_inertial)
-        raised = False
-        try:
-            phase_gap_rad(b_off, b_pos)
-        except AssertionError:
-            raised = True
-        assert raised, "phase_gap_rad accepted a different %s" % off_name
+    # #177 option 1, the inclined case: an elements-authored body's longitude is measured
+    # in the PARENT's frame, so the rail angle and the parent angle are DIFFERENT numbers
+    # and the difference is the plane. Hand-checked: incl 60 deg, raan 0, rail longitude
+    # 45 deg sits at (cos45, 0, -cos60*sin45) after the tilt, so the parent longitude is
+    # atan2(0.3536, 0.7071) = 26.565 deg. Before this fix the function returned 45 deg,
+    # and differencing that against a coplanar body's longitude was the silent wrong dv.
+    tilt = {"name": "Tilt", "inertial": {"orb_ang_speed": w, "arg_peri": 0.0,
+              "true_anomaly0": math.radians(45.0), "orb_incl": math.radians(60.0)}}
+    want = math.atan2(0.5 * math.sin(math.radians(45.0)), math.cos(math.radians(45.0)))
+    assert abs(orbit_angle_rad(tilt) - want) < 1e-12, orbit_angle_rad(tilt)
+    assert abs(math.degrees(orbit_angle_rad(tilt)) - 26.56505) < 1e-4
+    # On the ascending node the rail longitude is 0, so the parent longitude IS the node
+    # longitude -- the frame difference #177 measured on Minmus (89.57 local against 167.56
+    # parent, exactly its 78.0 deg node).
+    node = {"name": "Node", "inertial": {"orb_incl": 0.1047, "lon_asc_node": 1.3614,
+              "arg_peri": 0.0, "true_anomaly0": 0.0}}
+    assert abs(orbit_angle_rad(node) - 1.3614) < 1e-12
+    # The PLANE angle is between normals, so it is not the inclination difference: two 60
+    # deg orbits whose nodes are 180 deg apart are 120 deg apart. This is what the
+    # co-orbital plane-change cost reads, and a coplanar pair -- every pair shipped before
+    # the real Earth co-orbitals -- reads exactly 0, so no existing number moves.
+    n0 = {"name": "n0", "inertial": {"orb_incl": math.radians(60.0), "lon_asc_node": 0.0}}
+    n180 = {"name": "n180", "inertial": {"orb_incl": math.radians(60.0),
+              "lon_asc_node": math.pi}}
+    assert abs(math.degrees(plane_angle_rad(n0, n180)) - 120.0) < 1e-9
+    assert abs(math.degrees(plane_angle_rad(n0, {"name": "F", "inertial": {}})) - 60.0) < 1e-9
+    assert plane_angle_rad(tilt, tilt) < 1e-9
+    # And the gap the drift sweeps is now defined across planes instead of throwing: Tilt at
+    # 26.565 deg against b_pos at -120.091 deg is the 146.656 deg short arc.
+    assert abs(math.degrees(phase_gap_rad(tilt, b_pos)) - 146.656) < 1e-3
     print("sci_phase self-test ok: 60deg/1T drift = %.1f m/s" % got)

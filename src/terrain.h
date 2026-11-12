@@ -98,6 +98,15 @@ enum class BodyType : unsigned char {
     Planet,   // default
     Star,     // light source; frame-tree root (System::root)
     Moon,     // orbits a planet
+    /* Orbits the star and is authored exactly like a planet -- the type says what the
+       body IS, which the dossier has to say, and nothing about how it moves. "Small" is
+       the point of the name, not a rule the loader enforces. */
+    Asteroid,
+    /* Also orbits the star, and is round under its own gravity: Ceres, Pluto, Eris.
+       Rendered exactly like an asteroid (airless rock), so this exists for the one thing
+       the other types exist for -- the dossier must not call Eris an asteroid while it
+       calls Pluto a planet. */
+    DwarfPlanet,
 };
 
 struct TerrainBody {

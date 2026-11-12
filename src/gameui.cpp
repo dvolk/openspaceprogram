@@ -6703,7 +6703,10 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
 
     head("body");
     line("type", b.isStar() ? "star"
-               : (b.type == BodyType::Moon ? "moon" : "planet"));
+               : (b.type == BodyType::Moon ? "moon"
+                  : (b.type == BodyType::Asteroid ? "asteroid"
+                     : (b.type == BodyType::DwarfPlanet ? "dwarf planet"
+                        : "planet"))));
     line("radius", fmt_dist((double)b.radius, v, sizeof v));
     line("mass", fmt_mass((double)b.mass, v, sizeof v));
     line("surface gravity", fmt_accel(b.g, v, sizeof v));
