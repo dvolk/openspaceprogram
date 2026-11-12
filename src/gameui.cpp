@@ -192,10 +192,32 @@ static void drawOrbitThroughBody(ImDrawList *dl, const OrbitMap &map,
     map.drawOrbit(dl, cpts_f, col, thickness, /*closed=*/true, /*start=*/0);
 }
 
-// How far the quiet rails sit from the canvas (see quietRgba): #22 on the black
-// Tracking map, #31 on the dark theme, #CE on the light one. One knob for both map
+// How far the quiet rails sit from the canvas (see quietRgba): #11 on the black
+// Tracking map, #20 on the dark theme, #E0 on the light one. One knob for both map
 // windows; the live look is what sets it.
-static constexpr float kMinorQuiet = 0.133f;
+static constexpr float kMinorQuiet = 0.067f;
+
+// Map text is COLLECTED and drawn after every line in the window, because the rails
+// are submitted in body order: without this, body N+1's rail paints across body N's
+// name, and the ship's own orbit and the transfer leg land on top of every name in
+// the system. Text is copied into the arena, so a caller may pass a temporary
+// (vessel display names come back by value).
+struct MapLabelPass {
+    struct Item { ImVec2 pos; ImU32 col; uint16_t off; };
+    std::vector<Item> items;
+    std::vector<char> arena;
+    void add(const ImVec2 &pos, ImU32 col, const char *text) {
+        const uint16_t off = (uint16_t)arena.size();
+        for(const char *p = text; *p; ++p) { arena.push_back(*p); }
+        arena.push_back('\0');
+        assert(arena.size() < 0xFFFFu);   // Item::off is uint16_t
+        items.push_back({pos, col, off});
+    }
+    void flush(ImDrawList *dl) {
+        for(const Item &it : items) { dl->AddText(it.pos, it.col, arena.data() + it.off); }
+        items.clear();
+    }
+};
 
 // --- Flight map legend (mode 0) -------------------------------------------------
 // Legend glyph shapes. kRing draws the same circle as the map's AN/DN markers, so the
@@ -242,13 +264,15 @@ static int legendRowsFor(float avail_w) {
 // what makes the cache hit), then rotated/translated into the focus's frame.
 // LOD skips parents under 10 px SoI and orbits whose apoapsis disc misses the view.
 // `col_minor` draws asteroid and comet rails only: see the note in the loop.
+// Labels go to `labels` rather than straight to the draw list: the caller flushes them
+// after the ship's orbit and the transfer leg, so nothing draws over a name.
 static void drawSystemBodyOrbits(Game &g, TerrainBody *focus,
                                  const OrbitMap &map, ImDrawList *dl,
                                  const MapViewRect &view, double map_scale,
                                  TerrainBody *sel_body,
                                  ImU32 col_child, ImU32 col_minor,
                                  ImU32 col_sel, ImU32 ink,
-                                 ImU32 soi_col) {
+                                 ImU32 soi_col, MapLabelPass &labels) {
     std::vector<TerrainBody *> &planets = g.sys.bodies;
     // The star has no parent, so the loop below skips it: draw its disk + label here.
     if(TerrainBody *sun = g.sys.root; sun && sun != focus && sun->frame) {
@@ -260,8 +284,8 @@ static void drawSystemBodyOrbits(Game &g, TerrainBody *focus,
                 ImGui::GetColorU32(ImVec4(1.0f, 0.85f, 0.45f, 1.0f));
             map.drawBody(dl, sun_f, sun->radius, col_sun, 4.0f);
             if(view.contains(sun_px.x, sun_px.y, sun_r_px + 16.0f)) {
-                dl->AddText(ImVec2(sun_px.x + 6.0f, sun_px.y - sun_r_px - 12.0f),
-                            ink, sun->name.c_str());
+                labels.add(ImVec2(sun_px.x + 6.0f, sun_px.y - sun_r_px - 12.0f),
+                           ink, sun->name.c_str());
             }
         }
     }
@@ -317,9 +341,9 @@ static void drawSystemBodyOrbits(Game &g, TerrainBody *focus,
         }
         if(view.contains(body_px.x, body_px.y, body_r_px + 16.0f)) {
             const float label_dx = 6.0f, label_gap = 12.0f;
-            dl->AddText(ImVec2(body_px.x + label_dx,
-                               body_px.y - body_r_px - label_gap),
-                        ink, b->name.c_str());
+            labels.add(ImVec2(body_px.x + label_dx,
+                              body_px.y - body_r_px - label_gap),
+                       ink, b->name.c_str());
         }
         if(b->frame->soi > 0.0) {
             const float soi_px = (float)(b->frame->soi / map_scale);
@@ -4454,12 +4478,18 @@ void drawUIMap(Game &g) {
             proj.drawRing(dl, center, soi_m, col, 1.0f);
         };
 
+        /* Everything the map draws is clipped to the map rect. The legend and the plane
+           combo sit ABOVE this in the same window, and an unclipped rail -- a 400 AU
+           comet needle reaches everywhere -- painted straight over them, which is also
+           why the two control rows need no opaque backing of their own. */
+        MapLabelPass labels;
+        dl->PushClipRect(p0, ImVec2(p0.x + map_w, p0.y + map_h), true);
         // Drawn before the ship's orbit so the ship sits on top.
         {
             const MapViewRect view{p0.x, p0.y, p0.x + map_w, p0.y + map_h};
             drawSystemBodyOrbits(g, focus, proj, dl, view, map_scale,
                                  sel_body, col_child, col_minor, col_sel, ink,
-                                 soi_col);
+                                 soi_col, labels);
         }
         // The focus body's own SOI -- the gravitational regime the ship is inside.
         draw_soi(glm::dvec3(0.0, 0.0, 0.0), focus->frame->soi, soi_col);
@@ -4521,8 +4551,8 @@ void drawUIMap(Game &g) {
                 dl->AddCircleFilled(tpx, 3.0f, col_vessel);
                 // Label offset from the marker (px): +x right, -y up.
                 const float label_dx = 6.0f, label_dy = 14.0f;
-                dl->AddText(ImVec2(tpx.x + label_dx, tpx.y - label_dy),
-                            col_vessel, s->displayName().c_str());
+                labels.add(ImVec2(tpx.x + label_dx, tpx.y - label_dy),
+                           col_vessel, s->displayName().c_str());
             }
         }
 
@@ -4543,9 +4573,14 @@ void drawUIMap(Game &g) {
             snprintf(xfer_label, sizeof(xfer_label), "%s  %.0f m/s",
                      xfer.target.name.c_str(), sol.total_dv);
             const ImVec2 apx = proj.px(arrival);
-            dl->AddText(ImVec2(apx.x + 5.0f, apx.y + 4.0f), col_xfer,
-                        xfer_label);
+            labels.add(ImVec2(apx.x + 5.0f, apx.y + 4.0f), col_xfer,
+                       xfer_label);
         }
+
+        // Names last: every line in the window is down by now, so no rail, SOI ring or
+        // transfer leg can cross a name.
+        labels.flush(dl);
+        dl->PopClipRect();
     });
 }
 
@@ -6545,6 +6580,10 @@ void drawTrackingMap(Game &g) {
             proj.drawRing(dl, center, soi_m, col, 1.0f);
         };
 
+        // Clipped to the viewport, and labels deferred to the end, exactly as in the
+        // flight map: a comet needle reaches every corner of this window.
+        MapLabelPass labels;
+        dl->PushClipRect(p0, ImVec2(p0.x + mapW, p0.y + mapH), true);
         // Drawn before the ship's orbit so the ship sits on top.
         {
             const MapViewRect view{p0.x, p0.y, p0.x + mapW, p0.y + mapH};
@@ -6552,7 +6591,7 @@ void drawTrackingMap(Game &g) {
             drawDebrisBelts(g, focus, proj, dl, view, map_scale);
             drawSystemBodyOrbits(g, focus, proj, dl, view, map_scale,
                                  sel_body, col_child, col_minor, col_sel, ink,
-                                 soi_col);
+                                 soi_col, labels);
         }
         // The focus body's own SOI -- the gravitational regime in play.
         draw_soi(glm::dvec3(0.0, 0.0, 0.0), focus->frame->soi, soi_col);
@@ -6619,10 +6658,14 @@ void drawTrackingMap(Game &g) {
                 dl->AddCircleFilled(tpx, 3.0f, col_vessel);
                 // Label offset from the marker (px): +x right, -y up.
                 const float label_dx = 6.0f, label_dy = 14.0f;
-                dl->AddText(ImVec2(tpx.x + label_dx, tpx.y - label_dy),
-                            col_vessel, s->displayName().c_str());
+                labels.add(ImVec2(tpx.x + label_dx, tpx.y - label_dy),
+                           col_vessel, s->displayName().c_str());
             }
         }
+
+        // Names last: every line in the window is down by now.
+        labels.flush(dl);
+        dl->PopClipRect();
 
         if(!ship) {
             ImGui::Text("No ships yet -- launch one from the VAB.");
