@@ -192,30 +192,37 @@ static void drawOrbitThroughBody(ImDrawList *dl, const OrbitMap &map,
     map.drawOrbit(dl, cpts_f, col, thickness, /*closed=*/true, /*start=*/0);
 }
 
-// How far the quiet rails sit from the canvas (see quietRgba): #11 on the black
-// Tracking map, #20 on the dark theme, #E0 on the light one. One knob for both map
-// windows; the live look is what sets it.
-static constexpr float kMinorQuiet = 0.067f;
+// How far the quiet rails sit from the canvas (see quietRgba): #17 on the black
+// Tracking map, #26 on the dark theme's 0.06 canvas, #D9 on the light style's 0.94.
+// One knob for both map windows; the live look is what sets it. Halfway between the
+// first #22 attempt and the #11 the user asked for: at #11 a 1 px antialiased line is
+// at the perceptibility floor, and at #22 the map still read as a thicket.
+static constexpr float kMinorQuiet = 0.090f;
 
 // Map text is COLLECTED and drawn after every line in the window, because the rails
 // are submitted in body order: without this, body N+1's rail paints across body N's
 // name, and the ship's own orbit and the transfer leg land on top of every name in
-// the system. Text is copied into the arena, so a caller may pass a temporary
-// (vessel display names come back by value).
+// the system. Text is copied into the arena because the flush happens long after the
+// call -- the transfer label is a stack buffer in an inner scope. (Body and vessel
+// names outlive the frame, but one rule for every label is cheaper than checking which
+// is which.)
 struct MapLabelPass {
     struct Item { ImVec2 pos; ImU32 col; uint16_t off; };
     std::vector<Item> items;
     std::vector<char> arena;
     void add(const ImVec2 &pos, ImU32 col, const char *text) {
+        const size_t len = std::strlen(text);
+        // Item::off is uint16_t: drop the name rather than wrap it into another one.
+        // In practice ~7,000 labels would be needed and the corpus ships 670.
+        if(arena.size() + len + 1 > 0xFFFFu) { return; }
         const uint16_t off = (uint16_t)arena.size();
-        for(const char *p = text; *p; ++p) { arena.push_back(*p); }
-        arena.push_back('\0');
-        assert(arena.size() < 0xFFFFu);   // Item::off is uint16_t
+        arena.insert(arena.end(), text, text + len + 1);   // the NUL travels too
         items.push_back({pos, col, off});
     }
     void flush(ImDrawList *dl) {
         for(const Item &it : items) { dl->AddText(it.pos, it.col, arena.data() + it.off); }
         items.clear();
+        arena.clear();     // capacity is what is reused; the callers keep one per window
     }
 };
 
@@ -237,6 +244,9 @@ static const struct { const char *label; LegSwatch kind; } kMapLegend[] = {
     { "DN",      kLegRing },
 };
 constexpr size_t kMapLegendN = sizeof(kMapLegend) / sizeof(kMapLegend[0]);
+// leg_col[] in drawUIMap is bound to this table by ORDER alone, so a new entry with no
+// palette slot would silently draw a black swatch. Tripwire it instead.
+static_assert(kMapLegendN == 8, "add the matching colour to leg_col in drawUIMap");
 
 // imgui does NOT wrap a SameLine row -- it lays items past the work rect and the
 // window clips them -- so the legend's width has to be known before drawing: the map
@@ -259,6 +269,24 @@ static int legendRowsFor(float avail_w) {
     }
     return rows;
 }
+
+// One visible body's map geometry, computed once per frame. The rails then draw in two
+// passes -- quiet first, bright second -- and the discs, rings and names come after
+// both, so the pass order is what the eye needs instead of catalogue order.
+struct BodyRail {
+    const std::vector<glm::dvec3> *pts;   // this body's orbit_caches entry (stable:
+                                          // std::map, and each cache is sampled once)
+    glm::dmat3 O;                          // parent -> focus
+    glm::dvec3 P;                          // parent in the focus's frame
+    glm::dvec3 cpos_p;                     // body in the parent's frame (rail start)
+    glm::dvec3 cpos_f;                     // body in the focus's frame
+    ImVec2 body_px;
+    const char *name;                      // b->name, alive all frame
+    double radius, soi;
+    float body_r_px;
+    bool faint;      // asteroid/comet rail: quiet, and drawn under the others
+    bool selected;   // the transfer target: bright, and never culled
+};
 
 // Sampled from each rail's IMMUTABLE epoch state (not the live rail -- that is
 // what makes the cache hit), then rotated/translated into the focus's frame.
@@ -284,11 +312,15 @@ static void drawSystemBodyOrbits(Game &g, TerrainBody *focus,
                 ImGui::GetColorU32(ImVec4(1.0f, 0.85f, 0.45f, 1.0f));
             map.drawBody(dl, sun_f, sun->radius, col_sun, 4.0f);
             if(view.contains(sun_px.x, sun_px.y, sun_r_px + 16.0f)) {
-                labels.add(ImVec2(sun_px.x + 6.0f, sun_px.y - sun_r_px - 12.0f),
+                const float above = sun_px.y - sun_r_px - 12.0f;
+                labels.add(ImVec2(sun_px.x + 6.0f,
+                                  above < view.t ? sun_px.y + sun_r_px + 4.0f : above),
                            ink, sun->name.c_str());
             }
         }
     }
+    static thread_local std::vector<BodyRail> rails;
+    rails.clear();
     for(auto *b : planets) {
         Frame *parent = (b->frame && b->frame->parent) ? b->frame->parent : nullptr;
         const double mu_c = b->frame ? b->frame->parent_mu : 0.0;
@@ -319,36 +351,57 @@ static void drawSystemBodyOrbits(Game &g, TerrainBody *focus,
         const std::vector<glm::dvec3> &cpts_p =
             orbit_caches[(const void *)b].sample(epos_p, evel_p, mu_c, N);
         if(cpts_p.empty()) continue;
-        /* Asteroid and comet rails are BACKGROUND, so they draw a shade closer to the
-           canvas than the planets. This matters out of proportion for the near-parabolic
-           comets: the cull above is a disc of radius APOAPSIS, so a 410 AU ellipse can
-           never miss the view and C/1811 F1 draws a full near-radial needle across a 2 AU
-           transfer map, at i 105 deg where nothing else the player follows lives. The dots,
-           rings and labels stay put -- a body you can fly to should still be findable --
-           and the body the transfer plan is pointed at keeps the bright line. */
         const bool minor = (b->type == BodyType::Asteroid
                             || b->type == BodyType::Comet);
-        const ImU32 ccol = selected ? col_sel : col_child;
-        const ImU32 lcol = selected ? col_sel : (minor ? col_minor : col_child);
-        drawOrbitThroughBody(dl, map, cpts_p, O, P, cpos_p, lcol,
-                             selected ? 2.0f : 1.0f);
-        // Disk at the body's TRUE radius, floored so it stays visible zoomed out.
         const float min_r = selected ? 5.0f : 3.0f;
-        const float body_r_px = map.bodyRadiusPx(b->radius, min_r);
-        map.drawBody(dl, cpos_f, b->radius, ccol, min_r);
-        if(selected) {
-            dl->AddCircle(body_px, body_r_px + 4.0f, ccol, 0, 1.0f);
+        rails.push_back({&cpts_p, O, P, cpos_p, cpos_f, body_px, b->name.c_str(),
+                         b->radius, b->frame->soi,
+                         map.bodyRadiusPx(b->radius, min_r),
+                         /*faint=*/ minor && !selected, selected});
+    }
+    /* Asteroid and comet rails are BACKGROUND, so they draw a shade closer to the
+       canvas than the planets. This matters out of proportion for the near-parabolic
+       comets: the cull above is a disc of radius APOAPSIS, so a 410 AU ellipse can
+       never miss the view and C/1811 F1 draws a full near-radial needle across a 2 AU
+       transfer map, at i 105 deg where nothing else the player follows lives. The dots,
+       rings and labels stay put -- a body you can fly to should still be findable --
+       and the body the transfer plan is pointed at keeps the bright line.
+       The faint rails also go DOWN FIRST: where a quiet needle crosses a planet's
+       rail the two lines are the same width, so last-drawn faint lines read as gaps
+       in the planet's orbit. Order fixes that without dimming either. */
+    for(const BodyRail &r : rails) {
+        if(r.faint) {
+            drawOrbitThroughBody(dl, map, *r.pts, r.O, r.P, r.cpos_p,
+                                 col_minor, 1.0f);
         }
-        if(view.contains(body_px.x, body_px.y, body_r_px + 16.0f)) {
+    }
+    for(const BodyRail &r : rails) {
+        if(r.faint) { continue; }
+        drawOrbitThroughBody(dl, map, *r.pts, r.O, r.P, r.cpos_p,
+                             r.selected ? col_sel : col_child,
+                             r.selected ? 2.0f : 1.0f);
+    }
+    for(const BodyRail &r : rails) {
+        const ImU32 ccol = r.selected ? col_sel : col_child;
+        // Disk at the body's TRUE radius, floored so it stays visible zoomed out.
+        map.drawBody(dl, r.cpos_f, r.radius, ccol, r.selected ? 5.0f : 3.0f);
+        if(r.selected) {
+            dl->AddCircle(r.body_px, r.body_r_px + 4.0f, ccol, 0, 1.0f);
+        }
+        if(view.contains(r.body_px.x, r.body_px.y, r.body_r_px + 16.0f)) {
             const float label_dx = 6.0f, label_gap = 12.0f;
-            labels.add(ImVec2(body_px.x + label_dx,
-                              body_px.y - body_r_px - label_gap),
-                       ink, b->name.c_str());
+            const float above = r.body_px.y - r.body_r_px - label_gap;
+            // The map is clipped to its rect, so a name with no room above the top edge
+            // drops below the dot instead of being cut -- same fit rule as the Surface
+            // Map's site labels.
+            const float ty = (above < view.t)
+                                 ? r.body_px.y + r.body_r_px + 4.0f : above;
+            labels.add(ImVec2(r.body_px.x + label_dx, ty), ink, r.name);
         }
-        if(b->frame->soi > 0.0) {
-            const float soi_px = (float)(b->frame->soi / map_scale);
+        if(r.soi > 0.0) {
+            const float soi_px = (float)(r.soi / map_scale);
             if(soi_px >= 1.0f && soi_px <= 4000.0f) {
-                map.drawRing(dl, cpos_f, b->frame->soi, soi_col, 1.0f);
+                map.drawRing(dl, r.cpos_f, r.soi, soi_col, 1.0f);
             }
         }
     }
@@ -4271,11 +4324,19 @@ void drawUIMap(Game &g) {
         const float isp = ImGui::GetStyle().ItemSpacing.y;
         const float legend_h = std::max(16.0f, ImGui::GetTextLineHeight());
         // Controls sit ABOVE the map so they stay visible when the window is short.
-        // The legend row wraps, so reserve the rows it actually needs (see kMapLegend).
-        const int leg_rows = (map_mode == 0) ? legendRowsFor(avail_w) : 1;
+        // The legend row wraps, so reserve the rows it actually needs (see kMapLegend)
+        // -- but not more than the window can carry. The window is user-resizable and a
+        // narrow one can want more rows than it is tall; that would leave map_h at 0 and
+        // ##mapnav dead, so imgui clips the overflow instead.
+        const float row_h = legend_h + isp;
+        const float widget_h = ImGui::GetFrameHeight() + isp;
+        int leg_rows = 1;
+        if(map_mode == 0) {
+            const int room = std::max(1, (int)((avail_h - widget_h) / row_h));
+            leg_rows = std::min(legendRowsFor(avail_w), room);
+        }
         const float controls_h = (map_mode == 0)
-            ? (legend_h + isp) * leg_rows
-              + (ImGui::GetFrameHeight() + isp)
+            ? row_h * leg_rows + widget_h
             : 0.0f;
         const float map_w = std::max(0.0f, avail_w);
         const float map_h = std::max(0.0f, avail_h - controls_h);
@@ -4482,15 +4543,17 @@ void drawUIMap(Game &g) {
            combo sit ABOVE this in the same window, and an unclipped rail -- a 400 AU
            comet needle reaches everywhere -- painted straight over them, which is also
            why the two control rows need no opaque backing of their own. */
-        MapLabelPass labels;
+        // Reused across frames (flush() empties it); cleared here too so a partial
+        // frame can never leave a name for the next one.
+        static thread_local MapLabelPass labels;
+        labels.items.clear();
+        labels.arena.clear();
+        const MapViewRect view{p0.x, p0.y, p0.x + map_w, p0.y + map_h};
         dl->PushClipRect(p0, ImVec2(p0.x + map_w, p0.y + map_h), true);
         // Drawn before the ship's orbit so the ship sits on top.
-        {
-            const MapViewRect view{p0.x, p0.y, p0.x + map_w, p0.y + map_h};
-            drawSystemBodyOrbits(g, focus, proj, dl, view, map_scale,
-                                 sel_body, col_child, col_minor, col_sel, ink,
-                                 soi_col, labels);
-        }
+        drawSystemBodyOrbits(g, focus, proj, dl, view, map_scale,
+                             sel_body, col_child, col_minor, col_sel, ink,
+                             soi_col, labels);
         // The focus body's own SOI -- the gravitational regime the ship is inside.
         draw_soi(glm::dvec3(0.0, 0.0, 0.0), focus->frame->soi, soi_col);
         // The near-body (rotating-frame) shell -- drives the science orbit cut and the
@@ -4551,7 +4614,11 @@ void drawUIMap(Game &g) {
                 dl->AddCircleFilled(tpx, 3.0f, col_vessel);
                 // Label offset from the marker (px): +x right, -y up.
                 const float label_dx = 6.0f, label_dy = 14.0f;
-                labels.add(ImVec2(tpx.x + label_dx, tpx.y - label_dy),
+                // The map clips, so a name with no room above the marker drops below it
+                // instead of being cut (as on the Surface Map).
+                const float above = tpx.y - label_dy;
+                labels.add(ImVec2(tpx.x + label_dx,
+                                  above < view.t ? tpx.y + 8.0f : above),
                            col_vessel, s->displayName().c_str());
             }
         }
@@ -4573,8 +4640,11 @@ void drawUIMap(Game &g) {
             snprintf(xfer_label, sizeof(xfer_label), "%s  %.0f m/s",
                      xfer.target.name.c_str(), sol.total_dv);
             const ImVec2 apx = proj.px(arrival);
-            labels.add(ImVec2(apx.x + 5.0f, apx.y + 4.0f), col_xfer,
-                       xfer_label);
+            // Below-right of the arrival dot, or above it if the map's bottom edge bites.
+            const float below = apx.y + 4.0f;
+            labels.add(ImVec2(apx.x + 5.0f,
+                              below + 12.0f > view.b ? apx.y - 16.0f : below),
+                       col_xfer, xfer_label);
         }
 
         // Names last: every line in the window is down by now, so no rail, SOI ring or
@@ -6580,19 +6650,21 @@ void drawTrackingMap(Game &g) {
             proj.drawRing(dl, center, soi_m, col, 1.0f);
         };
 
-        // Clipped to the viewport, and labels deferred to the end, exactly as in the
-        // flight map: a comet needle reaches every corner of this window.
-        MapLabelPass labels;
+        // Clipped to the viewport and labels deferred to the end, exactly as in the
+        // flight map. This window IS the viewport, so the clip matches what imgui
+        // already clips a window to -- it is here so the two map windows behave the
+        // same way, and so a future control row inside this one cannot be painted over.
+        static thread_local MapLabelPass labels;
+        labels.items.clear();
+        labels.arena.clear();
+        const MapViewRect view{p0.x, p0.y, p0.x + mapW, p0.y + mapH};
         dl->PushClipRect(p0, ImVec2(p0.x + mapW, p0.y + mapH), true);
         // Drawn before the ship's orbit so the ship sits on top.
-        {
-            const MapViewRect view{p0.x, p0.y, p0.x + mapW, p0.y + mapH};
-            // Belts go down first: orbits, bodies and labels should read through them.
-            drawDebrisBelts(g, focus, proj, dl, view, map_scale);
-            drawSystemBodyOrbits(g, focus, proj, dl, view, map_scale,
-                                 sel_body, col_child, col_minor, col_sel, ink,
-                                 soi_col, labels);
-        }
+        // Belts go down first: orbits and bodies read through them, names come last.
+        drawDebrisBelts(g, focus, proj, dl, view, map_scale);
+        drawSystemBodyOrbits(g, focus, proj, dl, view, map_scale,
+                             sel_body, col_child, col_minor, col_sel, ink,
+                             soi_col, labels);
         // The focus body's own SOI -- the gravitational regime in play.
         draw_soi(glm::dvec3(0.0, 0.0, 0.0), focus->frame->soi, soi_col);
         draw_soi(glm::dvec3(0.0, 0.0, 0.0), focus->rot_frame->soi, shell_col);
@@ -6658,7 +6730,11 @@ void drawTrackingMap(Game &g) {
                 dl->AddCircleFilled(tpx, 3.0f, col_vessel);
                 // Label offset from the marker (px): +x right, -y up.
                 const float label_dx = 6.0f, label_dy = 14.0f;
-                labels.add(ImVec2(tpx.x + label_dx, tpx.y - label_dy),
+                // The map clips, so a name with no room above the marker drops below it
+                // instead of being cut (as on the Surface Map).
+                const float above = tpx.y - label_dy;
+                labels.add(ImVec2(tpx.x + label_dx,
+                                  above < view.t ? tpx.y + 8.0f : above),
                            col_vessel, s->displayName().c_str());
             }
         }

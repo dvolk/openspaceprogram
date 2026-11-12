@@ -157,12 +157,13 @@ inline ImU32 contrastingColor(const ImVec4 &bg,
 // A gray `v` of luminance OFF THE CANVAS, always away from it: bg + v on a dark
 // canvas, bg - v on a light one, so a quiet rail is equally quiet on either theme --
 // a hardcoded dark gray vanishes on the light style. The canvases this game actually
-// draws on are 0.00 (the Tracking map pushes black), 0.06 (the dark theme's WindowBg)
-// and 0.94 (the light style), so v = 0.133 reads #22, #31 and #CE -- the same offset,
-// not the same gray. Same Rec. 709 test on gamma-encoded style values as
-// contrastingColor(), and the same fiction in the flight map's chrome-less mode 2,
-// where the rails sit on the 3D scene. Returns an ImVec4 instead of packing it, so the
-// caller's GetColorU32 applies style.Alpha as it does for every other map colour.
+// draws on are 0.00 (the Tracking map pushes black, and the Classic style's WindowBg),
+// 0.06 (the dark theme) and 0.94 (the light style), so the v that gameui.cpp calls
+// kMinorQuiet lands on one gray per canvas -- the same offset, not the same gray. Same
+// Rec. 709 test on gamma-encoded style values as contrastingColor(), and the same
+// fiction in the flight map's chrome-less mode 2, where the rails sit on the 3D scene.
+// Returns an ImVec4 instead of packing it, so the caller's GetColorU32 applies
+// style.Alpha as it does for every other map colour.
 inline ImVec4 quietRgba(const ImVec4 &bg, float v) {
     assert(v >= 0.0f);
     const float lum = 0.2126f * bg.x + 0.7152f * bg.y + 0.0722f * bg.z;
