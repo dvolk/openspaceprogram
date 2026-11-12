@@ -192,6 +192,52 @@ static void drawOrbitThroughBody(ImDrawList *dl, const OrbitMap &map,
     map.drawOrbit(dl, cpts_f, col, thickness, /*closed=*/true, /*start=*/0);
 }
 
+// How far the quiet rails sit from the canvas (see quietRgba): #22 on the black
+// Tracking map, #31 on the dark theme, #CE on the light one. One knob for both map
+// windows; the live look is what sets it.
+static constexpr float kMinorQuiet = 0.133f;
+
+// --- Flight map legend (mode 0) -------------------------------------------------
+// Legend glyph shapes. kRing draws the same circle as the map's AN/DN markers, so the
+// legend is not describing a shape the map never draws.
+enum LegSwatch : unsigned char { kLegRect, kLegDot, kLegRing };
+static constexpr float kLegSwatchPx = 10.0f;
+// Draw order. The colours live with the window palette, resolved by index below, so
+// the row width (which decides wrapping) and the drawing cannot drift apart.
+static const struct { const char *label; LegSwatch kind; } kMapLegend[] = {
+    { "you",     kLegRect },
+    { "ships",   kLegRect },
+    { "xfer",    kLegRect },
+    { "bodies",  kLegRect },
+    { "minor",   kLegRect },
+    { "apsides", kLegDot },
+    { "AN",      kLegRing },
+    { "DN",      kLegRing },
+};
+constexpr size_t kMapLegendN = sizeof(kMapLegend) / sizeof(kMapLegend[0]);
+
+// imgui does NOT wrap a SameLine row -- it lays items past the work rect and the
+// window clips them -- so the legend's width has to be known before drawing: the map
+// reserves exactly the rows the legend needs. An unmeasured row loses AN/DN at font
+// size 17 or DPI scale ~1.1.
+static float legendItemW(const char *label) {
+    // Swatch, the gap before its text, the text, and the gap the NEXT SameLine item
+    // gets. Counting one spacing instead of two put AN 14 px outside the window at
+    // --font-size 20.
+    return kLegSwatchPx + 2.0f * ImGui::GetStyle().ItemSpacing.x
+         + ImGui::CalcTextSize(label).x;
+}
+static int legendRowsFor(float avail_w) {
+    int rows = 1;
+    float row_w = 0.0f;
+    for(const auto &e : kMapLegend) {
+        const float w = legendItemW(e.label);
+        if(row_w + w > avail_w) { ++rows; row_w = 0.0f; }
+        row_w += w;
+    }
+    return rows;
+}
+
 // Sampled from each rail's IMMUTABLE epoch state (not the live rail -- that is
 // what makes the cache hit), then rotated/translated into the focus's frame.
 // LOD skips parents under 10 px SoI and orbits whose apoapsis disc misses the view.
@@ -4201,8 +4247,10 @@ void drawUIMap(Game &g) {
         const float isp = ImGui::GetStyle().ItemSpacing.y;
         const float legend_h = std::max(16.0f, ImGui::GetTextLineHeight());
         // Controls sit ABOVE the map so they stay visible when the window is short.
+        // The legend row wraps, so reserve the rows it actually needs (see kMapLegend).
+        const int leg_rows = (map_mode == 0) ? legendRowsFor(avail_w) : 1;
         const float controls_h = (map_mode == 0)
-            ? (legend_h + isp)
+            ? (legend_h + isp) * leg_rows
               + (ImGui::GetFrameHeight() + isp)
             : 0.0f;
         const float map_w = std::max(0.0f, avail_w);
@@ -4273,9 +4321,9 @@ void drawUIMap(Game &g) {
         const ImU32 col_xfer  = ImGui::GetColorU32(ImVec4(0.35f, 0.55f, 1.00f, 1.0f));
         const ImU32 col_vessel = ImGui::GetColorU32(ImVec4(1.00f, 0.62f, 0.22f, 1.0f));
         const ImU32 col_child = ImGui::GetColorU32(ImVec4(0.55f, 0.55f, 0.55f, 1.0f));
-        // Asteroid and comet rails: #222 on the black map, #DDD on a light theme
-        // (see drawSystemBodyOrbits).
-        const ImU32 col_minor = quietColor(bg, 0.133f);
+        // Asteroid and comet rails: one offset off whichever canvas this window
+        // draws on (see drawSystemBodyOrbits).
+        const ImU32 col_minor = ImGui::GetColorU32(quietRgba(bg, kMinorQuiet));
         const ImU32 col_body  = ink;
         const ImU32 col_sel   = ImGui::GetColorU32(ImVec4(0.90f, 0.90f, 0.90f, 1.0f));
         const ImU32 soi_col   = ImGui::GetColorU32(ImVec4(0.50f, 0.50f, 0.50f, 0.30f));
@@ -4288,40 +4336,43 @@ void drawUIMap(Game &g) {
 
         // Controls (mode 0 only), pinned ABOVE the map so they stay on a short window.
         if(map_mode == 0) {
-            enum Swatch : unsigned char { kRect, kDot, kRing };
-            auto legend = [&](const char *label, ImU32 col, Swatch kind) {
+            auto legend = [&](const char *label, ImU32 col, LegSwatch kind) {
                 const ImVec2 p = ImGui::GetCursorScreenPos();
-                const float s = 10.0f;
-                if(kind == kDot) {
-                    dl->AddCircleFilled(ImVec2(p.x + 5.0f, p.y + 8.0f), 4.0f, col);
-                } else if(kind == kRing) {
+                const float half = kLegSwatchPx * 0.5f;
+                if(kind == kLegDot) {
+                    dl->AddCircleFilled(ImVec2(p.x + half, p.y + 8.0f), 4.0f, col);
+                } else if(kind == kLegRing) {
                     // Same glyph as the map's AN/DN markers, so the legend is not
                     // describing a shape the map never draws.
-                    dl->AddCircle(ImVec2(p.x + 5.0f, p.y + 8.0f), 4.0f, col, 0, 1.5f);
+                    dl->AddCircle(ImVec2(p.x + half, p.y + 8.0f), 4.0f, col, 0, 1.5f);
                 } else {
                     dl->AddRectFilled(ImVec2(p.x, p.y + 3.0f),
-                                     ImVec2(p.x + s, p.y + 13.0f), col);
+                                     ImVec2(p.x + kLegSwatchPx, p.y + 13.0f), col);
                 }
-                ImGui::Dummy(ImVec2(s, 16.0f));
+                ImGui::Dummy(ImVec2(kLegSwatchPx, 16.0f));
                 ImGui::SameLine();
                 ImGui::TextUnformatted(label);
             };
-            legend("you", col_ship, kRect);
-            ImGui::SameLine();
-            legend("ships", col_vessel, kRect);
-            ImGui::SameLine();
-            legend("xfer", col_xfer, kRect);
-            ImGui::SameLine();
-            legend("bodies", col_child, kRect);
-            ImGui::SameLine();
-            // Name the quiet rails, or the faint gray reads as a rendering bug.
-            legend("minor", col_minor, kRect);
-            ImGui::SameLine();
-            legend("apsides", col_apsis, kDot);
-            ImGui::SameLine();
-            legend("AN", ImGui::GetColorU32(kColNodeAn), kRing);
-            ImGui::SameLine();
-            legend("DN", ImGui::GetColorU32(kColNodeDn), kRing);
+            // kMapLegend order, palette first: "minor" names the quiet rails, or the
+            // faint gray reads as a rendering bug.
+            const ImU32 leg_col[kMapLegendN] = {
+                col_ship, col_vessel, col_xfer, col_child, col_minor, col_apsis,
+                ImGui::GetColorU32(kColNodeAn), ImGui::GetColorU32(kColNodeDn)
+            };
+            // avail_w is GetContentRegionAvail() taken at this same cursor, so measure
+            // the row from here -- the cursor starts at WindowPadding, not 0, and an
+            // un-normalised test wraps one item early.
+            const float row_x0 = ImGui::GetCursorPosX();
+            for(size_t i = 0; i < kMapLegendN; i++) {
+                // The live cursor, not an accumulator: imgui's own spacing is the truth,
+                // so the width estimate only has to be conservative for the row count.
+                if(i && ImGui::GetCursorPosX() - row_x0
+                          + legendItemW(kMapLegend[i].label) > avail_w) {
+                    ImGui::NewLine();
+                }
+                legend(kMapLegend[i].label, leg_col[i], kMapLegend[i].kind);
+                if(i + 1 < kMapLegendN) { ImGui::SameLine(); }
+            }
             // Map plane (half-width) + reset view.
             /* The fourth slot orients the map into the TARGET window's target
                orbit, so the map's dihedral is the plane change to it. It needs a
@@ -6471,9 +6522,9 @@ void drawTrackingMap(Game &g) {
         const ImU32 col_apsis = col_ship;  // periapsis / apoapsis: part of your orbit
         const ImU32 col_vessel = ImGui::GetColorU32(ImVec4(1.00f, 0.62f, 0.22f, 1.0f));
         const ImU32 col_child = ImGui::GetColorU32(ImVec4(0.55f, 0.55f, 0.55f, 1.0f));
-        // Asteroid and comet rails: #222 on the black map, #DDD on a light theme
-        // (see drawSystemBodyOrbits).
-        const ImU32 col_minor = quietColor(bg, 0.133f);
+        // Asteroid and comet rails: one offset off whichever canvas this window
+        // draws on (see drawSystemBodyOrbits).
+        const ImU32 col_minor = ImGui::GetColorU32(quietRgba(bg, kMinorQuiet));
         const ImU32 col_body  = ink;
         const ImU32 col_sel   = ImGui::GetColorU32(ImVec4(0.90f, 0.90f, 0.90f, 1.0f));
         const ImU32 soi_col   = ImGui::GetColorU32(ImVec4(0.50f, 0.50f, 0.50f, 0.30f));

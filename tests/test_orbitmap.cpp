@@ -406,38 +406,40 @@ int main() {
         }
     }
 
-    // quietColor(): the map's quiet rail gray, measured OFF THE CANVAS rather than
-    // hardcoded -- #22 on the black Tracking map, #DD on a light style. The pair is the
-    // point: a fixed dark gray would vanish on the light theme.
+    // quietRgba(): the map's quiet rail gray, measured OFF THE CANVAS rather than
+    // hardcoded, so it stays quiet on either theme. The three canvases pinned below are
+    // the ones this game actually draws on: pure black (the Tracking map pushes it),
+    // 0.06 (the dark theme's WindowBg) and 0.94 (the light style) -- which is why they
+    // read #22, #31 and #CE rather than one gray.
     {
-        const auto gray = [](ImU32 c) { return (double)(c & 0xFF); };   // R==G==B here
-        const ImVec4 black(0.0f, 0.0f, 0.0f, 1.0f);
-        const ImVec4 white(1.0f, 1.0f, 1.0f, 1.0f);
-        expect_close(gray(quietColor(black, 0.133f)), 34.0, 1.0,
-                     "quietColor: the map's gray on black is #22");
-        expect_close(gray(quietColor(white, 0.133f)), 221.0, 1.0,
-                     "quietColor: the same call on white is #DD, not a vanishing #22");
-        // Invariant behind those numbers: the quiet rail sits closer to the canvas than
-        // the 0.55 body gray does, whichever canvas that is.
-        const double body = 140.0;   // GetColorU32(0.55) rounds to 140
-        if(fabs(gray(quietColor(black, 0.133f)) - 0.0) >= fabs(body - 0.0)) {
-            std::puts("FAIL quietColor: not quieter than the body gray on black");
+        auto check = [&](const ImVec4 &bg, double want, const char *what) {
+            const ImVec4 q = quietRgba(bg, 0.133f);
+            expect_close(q.x, want, 1e-3, what);
+            expect_close(q.y, want, 1e-3, what);   // every channel: a swap must fail
+            expect_close(q.z, want, 1e-3, what);
+            expect_close(q.w, 1.0, 1e-3, what);    // GetColorU32 owns the alpha
+        };
+        check(ImVec4(0.00f, 0.00f, 0.00f, 1.0f), 0.133,
+              "quietRgba: #22 on the black Tracking map");
+        check(ImVec4(0.06f, 0.06f, 0.06f, 1.0f), 0.193,
+              "quietRgba: #31 on the dark theme's canvas");
+        check(ImVec4(0.94f, 0.94f, 0.94f, 1.0f), 0.807,
+              "quietRgba: #CE on the light style, not a vanishing #22");
+        // The ordering the change is about: quieter than the 0.55 planet rails, i.e.
+        // closer to the canvas, whichever canvas that is.
+        if(quietRgba(ImVec4(0.00f, 0.00f, 0.00f, 1.0f), 0.133f).x >= 0.55f) {
+            std::puts("FAIL quietRgba: not quieter than the planet rails on a dark canvas");
             ++g_failures;
         }
-        if(fabs(gray(quietColor(white, 0.133f)) - 255.0) >= fabs(body - 255.0)) {
-            std::puts("FAIL quietColor: not quieter than the body gray on white");
+        if(quietRgba(ImVec4(0.94f, 0.94f, 0.94f, 1.0f), 0.133f).x <= 0.55f) {
+            std::puts("FAIL quietRgba: not quieter than the planet rails on a light canvas");
             ++g_failures;
         }
-        // The canvas's own alpha (0.94 in the default theme) must not leak into a line
-        // drawn on it.
-        const ImU32 tinted = quietColor(ImVec4(0.06f, 0.06f, 0.06f, 0.94f), 0.133f);
-        expect_close(double((tinted >> 24) & 0xFF), 255.0, 1.0,
-                     "quietColor: output must be opaque");
-        // A huge offset clamps instead of wrapping to bright.
-        expect_close(gray(quietColor(black, 5.0f)), 255.0, 1.0,
-                     "quietColor: clamps toward white");
-        expect_close(gray(quietColor(white, 5.0f)), 0.0, 1.0,
-                     "quietColor: clamps toward black");
+        // A huge offset clamps instead of wrapping around to bright.
+        expect_close(quietRgba(ImVec4(0.0f, 0.0f, 0.0f, 1.0f), 5.0f).x, 1.0, 1e-3,
+                     "quietRgba: clamps toward white");
+        expect_close(quietRgba(ImVec4(1.0f, 1.0f, 1.0f, 1.0f), 5.0f).x, 0.0, 1e-3,
+                     "quietRgba: clamps toward black");
     }
 
     if(g_failures == 0) {

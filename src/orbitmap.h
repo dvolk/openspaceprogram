@@ -2,6 +2,7 @@
 // orbitmap.h -- orthographic top-down projection + drawing for the orbital map.
 // Drops the out-of-plane component, so inclined orbits look squashed.
 
+#include <cassert>
 #include <cmath>
 
 #include <glm/glm.hpp>
@@ -153,20 +154,22 @@ inline ImU32 contrastingColor(const ImVec4 &bg,
                    ((g & 0xFF) << 8) | (r & 0xFF));
 }
 
-// A gray `v` of luminance OFF THE CANVAS, always away from it: 0.133 is #222 on the
-// black Tracking map and #DDD on a light style, so a quiet rail is equally quiet on
-// either theme -- a hardcoded dark gray would vanish on the light one. Keeps the
-// canvas's hue, so a tinted theme gets a tinted quiet rather than flat gray.
-// Always opaque: the canvas alpha belongs to the window, not to a line drawn on it.
-// Packed by hand like contrastingColor(), so this stays usable in the link-free test.
-inline ImU32 quietColor(const ImVec4 &bg, float v) {
+// A gray `v` of luminance OFF THE CANVAS, always away from it: bg + v on a dark
+// canvas, bg - v on a light one, so a quiet rail is equally quiet on either theme --
+// a hardcoded dark gray vanishes on the light style. The canvases this game actually
+// draws on are 0.00 (the Tracking map pushes black), 0.06 (the dark theme's WindowBg)
+// and 0.94 (the light style), so v = 0.133 reads #22, #31 and #CE -- the same offset,
+// not the same gray. Same Rec. 709 test on gamma-encoded style values as
+// contrastingColor(), and the same fiction in the flight map's chrome-less mode 2,
+// where the rails sit on the 3D scene. Returns an ImVec4 instead of packing it, so the
+// caller's GetColorU32 applies style.Alpha as it does for every other map colour.
+inline ImVec4 quietRgba(const ImVec4 &bg, float v) {
+    assert(v >= 0.0f);
     const float lum = 0.2126f * bg.x + 0.7152f * bg.y + 0.0722f * bg.z;
     const float d = (lum > 0.5f) ? -v : v;   // away from the canvas: down on light, up on dark
     const auto ch = [d](float c) {
         const float x = c + d;
-        return (int)(255.0f * (x < 0.0f ? 0.0f : (x > 1.0f ? 1.0f : x)) + 0.5f);
+        return x < 0.0f ? 0.0f : (x > 1.0f ? 1.0f : x);
     };
-    const int r = ch(bg.x), g = ch(bg.y), b = ch(bg.z);
-    return (ImU32)((0xFFu << 24) | ((b & 0xFF) << 16) |
-                   ((g & 0xFF) << 8) | (r & 0xFF));
+    return ImVec4(ch(bg.x), ch(bg.y), ch(bg.z), 1.0f);
 }
