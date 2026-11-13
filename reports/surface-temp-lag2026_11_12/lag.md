@@ -1,4 +1,4 @@
-# Surface temperature: what the field does NOT do yet (lag, and four other missing effects)
+# Surface temperature: what the field does NOT do yet (lag, and eight other missing effects)
 
 Snapshot of `src/groundtemp.h` / `utils/ground_model.py` as of `081ac4ab` (2026-11-12). Companion to
 `reports/surface-temp2026_11_12/surface-temp.md`, which describes what the model *does*. This one is
@@ -27,8 +27,9 @@ even share. Nothing in the chain has a time constant, and `groundtemp.h` already
 
 Three consequences worth naming, because they are what a player would notice:
 
-1. **The hot spot sits exactly under the star.** The maximum of the field is at the subsolar point,
-   to the pixel. On Earth the hottest ground is at local noon; in reality it is mid-afternoon.
+1. **The hot spot sits exactly under the star.** The maximum of the model is the subsolar point -- as
+   closely as a 0.70 deg sample can put it (see item 3). In the model, Earth's hottest ground is at
+   local noon; in reality it is mid-afternoon.
 2. **The whole night hemisphere is one isotherm.** Anywhere `cos_inc = 0` answers exactly
    `T0 * f^(1/4)`. Measured for the shipped files:
 
@@ -46,15 +47,19 @@ Three consequences worth naming, because they are what a player would notice:
 
    So there is no *pre-dawn minimum* -- the coldest moment is anywhere in the night, equally -- and
    no cold-trap credit for a permanently shadowed pole: it reads the same as the anti-solar point.
-3. **The terminator is a cliff.** At the day edge (`cos_inc -> 0+`) the gradient along longitude is
-   `T0 (1-f) f^(-3/4)` kelvin per radian. Measured on the shipped numbers: **Earth 0.36 K per degree**
-   of longitude, **Kerbin 0.36**, **the Moon 117 K per degree**. The air worlds look smooth because
-   their `f` is near 1; the airless ones have a wall where the day begins. Real regolith conducts
-   across that band and would soften it -- but note that the map cannot *show* the wall as it stands:
-   the bake defaults to `--surfmap-n 512` (`cli.h:139`), so a pixel is 0.70 deg of longitude, and the
-   Moon's 117 K per degree puts **~82 K inside a single sample**. Where the cliff is concerned the
-   picture is an alias, not a measurement -- which matters for any claim about how much a smoothing
-   kernel would change what the player sees.
+3. **The terminator is a cliff -- and the cliff is not the defect it looks like.** At the day edge
+   (`cos_inc -> 0+`) the gradient along longitude is `T0 (1-f) f^(-3/4)` kelvin per radian. Measured on
+   the shipped numbers: **Earth 0.36 K per degree** of longitude, **Kerbin 0.36** (both `T0 288`,
+   `f 0.9323`), **the Moon 117 K per degree** (`T0 276.50`, `f 0.01394`). The air worlds look smooth
+   because their `f` is near 1. Do not expect a smoothing kernel to fix the airless case, though:
+   lateral conduction in regolith is negligible (the diurnal skin depth is centimetres), and the outside
+   review quotes measured airless eclipse cooling of 390 K to about 150 K within an hour -- **half a
+   degree of lunar longitude**, far steeper than our 117 K per degree. (That figure is the review's, not
+   one I re-derived here; quote it in-game only with a source.) So our cliff is *gentler* than the real
+   thing, not sharper. What the real world has and we do not is **vertical** storage, the distribution
+   of slopes and boulders across a pixel, and the sun's half-degree disk. Also note the map cannot
+   *show* any of this as it stands: the bake defaults to `--surfmap-n 512` (`cli.h:139`), so a pixel is
+   0.70 deg of longitude and the Moon's 117 K per degree already puts **~82 K inside a single sample**.
 
 ## 2. The user's instinct, in physics terms
 
@@ -97,11 +102,20 @@ that tilts Earth's hot spot 23 degrees swings Kerbin's a full quarter-turn. So t
 real decision, not formatting: hours are what a fact sheet says, a fraction of the day is what the
 physics rotates. (Section 4 adds that the quarter-turn is not reachable anyway.)
 
-On Titan and Venus the *angle* is negligible -- `phi = atan(omega tau)`, and a slow world simply does
-not sweep far during a given `tau`. That is not the same as the effect being small: ten degrees on
-Venus is 78 hours of afternoon. "Slow rotator, so ignore it" is only a statement about what the map
-looks like, and it is the wrong reason; the right reason to leave those bodies alone is that we would
-be inventing the `tau` along with the knob.
+On Titan and Venus the *angle* looks negligible -- `phi = atan(omega tau)`, and a slow world does not
+sweep far during a given `tau`. That reasoning is weaker than it looks: `omega tau` is a product, and
+those two bodies have radiative time constants that are enormous precisely because their atmospheres
+are, so `omega tau` is not obviously small and their tiny observed day/night range is the atmosphere's
+damping, not a smeared-out afternoon. Ten degrees on Venus is 78 hours of afternoon. So the honest
+reason to leave Titan and Venus alone is not "slow rotator" but "we would have to invent the `tau` as
+well as the knob" -- and if a body's `tau` is big enough that `omega tau >> 1`, its temperature has
+stopped tracking the sun at all, which is a different picture than a lagging one.
+
+One direction to fix before writing it down anywhere: "the afternoon hot spot moves east" is true for a
+prograde spinner. Venus's authored `axial_tilt` of 177.4 deg makes it rotate retrograde, so its hot
+spot advances **westward** along the surface. Any readout or hot-spot marker needs the sign to come
+from the rotation rate's direction (or from the subsolar longitude's rate of change), not from the word
+"east".
 
 One mismatch to keep honest between this section and the next. The equation above is a heat balance in
 `T`, and its linearisation gives `tau_th = C / (4 eps sigma T0^3)` -- which with a fixed areal `C`
@@ -117,7 +131,9 @@ inferior one, but not the one this section derived. Say which is being authored 
 ## 3. Do NOT derive the lag from `f`
 
 Tempting, because `f` is already a damping knob and one knob is better than two. It does not work.
-Reading `f` as the diurnal gain (`gain = 1 - f`) and inverting the linear response gives
+The reading to test -- and it is worth stating how unmotivated it is: `f` is authored as the even share
+of *emission*, not as a filter gain, so this is a strawman built only to be knocked down -- takes
+`gain = 1 - f` and inverts the linear response for a phase:
 
 ```
 phi = arcsin( sqrt(2f - f^2) )        (equivalently arccos(1 - f))
@@ -218,6 +234,12 @@ about the parts of that sentence that are easy to get wrong.
   away". A 60 deg lag -- **one Kerbin hour** -- needs `tau ~ 3.05 rad`, which halves the day-side peak
   forcing (`K*g` 0.500) and lifts the night floor by 3 K. `K*g`'s peak is below 1 for every nonzero
   `tau`, so the day end always drops.
+- **If you author hours, invert the peak numerically.** `phi = atan(omega tau)` is the *sinusoid* answer
+  and it overstates the lag, because the forcing here is a half-rectified cosine and sunrise is a step:
+  at `tau = 0.4245` the true peak sits at 22.5 deg where `atan` says 23.0, and at `tau = 3` at 59.8 deg
+  where `atan` says 71.6. So "I want a 1.5 h lag" is a bisection on the closed form -- monotonic in
+  `tau`, so ~10 steps is plenty -- and near the saturation end that inversion goes nearly flat, which is
+  the previous bullet wearing different clothes.
 - Free with the phase: the **coldest moment stops being a whole hemisphere.** With `tau` nonzero the
   cycle has one minimum, sitting at sunrise (`min(K*g)` at -90.0 deg for `tau = 0.1`, drifting into
   the morning as the filter slows: -88.7 deg at `tau = 1`, -80.9 deg at `tau = 3`). Section 1's item 2
@@ -254,6 +276,15 @@ about the parts of that sentence that are easy to get wrong.
   orbit, or a `tau` changed mid-flight produces no transient. If eclipse response ever matters, that
   is a stateful field -- a different model, not a longer kernel.
 
+- **Decide what `T` *is* before authoring a lag into it.** This field is a radiative **skin**
+  temperature -- it is what `cos_inc` and `sigma T^4` describe, and `groundtemp.h` is careful that it
+  is not an air temperature. A bare ground skin peaks around 12:30 to 13:30 local; the 14:00 to 15:00
+  maximum everyone quotes is the 2 m **air** maximum, which sits later because the air is heated *from*
+  the ground. So the "~1.5 h" figure used throughout this report is an air figure, and a skin `tau`
+  should be smaller than it. The same mixing runs the other way in item 5.1 (an air lapse applied to
+  the ground) and in the corpus itself: Earth's 283-293 K pair is an air pair (#738's territory). One
+  field, one quantity, and the row should name which.
+
 What to author, if anything: Earth at ~1.5 h (23 deg) is an `INVENTED:` analogue reading we would have
 to say so about, and at that `tau` the day end moves 1.3 K -- below what any readout can defend.
 **Kerbin is the one that matters for play**, and its answer is bounded rather than obvious: its 5.99 h
@@ -277,10 +308,16 @@ Filed as **#794**.
    to say which is meant. And rung D
    (`AtmosphereParams::air_follow`) already pulls the air toward the ground under a hull, so a ground
    anchored at altitude plus a coupled air can count the column twice: fix the order -- ground
-   anchored at terrain height, air follows it -- and pin it with a test. Data hook: none needed -- the
-   lapse and the terrain amplitude are both already authored. Filed as **#821**, because unlike the
-   rest of this list it is wrong *today*: on Kerbin the authored profile puts the air at the tallest
-   summit ~27 K under the datum, and the ground there still reads the sea-level swing.
+   anchored at terrain height, air follows it -- and pin it with a test. Two more things the fix has to
+   carry: a **clamp** (extrapolating one layer's lapse upward is unbounded -- the review's example is
+   Olympus Mons at 22 km times 6.5 K/km, which is 143 K of cooling and not what any real summit does),
+   and an ocean mask, because the sea surface *is* the datum and should not be lapsed at all. And
+   "no invented physics" oversells it a little: the environmental lapse is not the dry adiabatic one,
+   and a surface lapse is not the free-air lapse, so applying the air's number to the ground is a
+   proxy with its own error. Data hook: none needed -- the lapse and the terrain amplitude are both
+   already authored. Filed as **#821**, because unlike the rest of this list it is wrong *today*: on
+   Kerbin the authored profile puts the air at the tallest summit ~27 K under the datum, and the ground
+   there still reads the sea-level swing.
 2. **Cold traps.** Because the night hemisphere is one isotherm, a permanently shadowed polar crater
    reads the same as the anti-solar point, and the Moon's 95 K floor applies everywhere in night. The
    shipped numbers for that floor are worth seeing: at Earth's pole the field reads **283.0 K at the
@@ -291,30 +328,44 @@ Filed as **#794**.
    linear: inside a permanently shadowed region the *forcing* is identically zero -- `g == 0` at every
    phase -- so any convolution of it is still zero, and the region reads whatever the floor says. The
    missing piece is the forcing: a horizon / self-shadow query against the baked heightfield, so that
-   `g` goes to zero where the rim blocks the star. With `g` right, a seasonal average is a sensible
-   second step (it damps what little light does arrive) and an annual-mean floor keeps the crater from
-   reading 0 K. Cost lands at paint time, when the heightfield is already in memory; nothing at
-   readout time.
+   `g` goes to zero where the rim blocks the star. The same per-pixel normal gives **slope and aspect**
+   for free, which the field ignores completely today -- an equator-facing and a pole-facing slope at
+   the same latitude read the same temperature, and the map has the heightfield to tell better. With
+   `g` right, a seasonal average is a sensible second step (it damps what little light does arrive), and
+   the floor is then a real quantity rather than the night share: geothermal heat flux plus infra-red
+   re-radiation off the sunlit rim is what keeps a real permanently shadowed region tens of kelvin above
+   the 0 K a bare radiative balance would hand it (the review's mechanism list -- we author neither
+   number). Cost lands at paint time, when the heightfield is already in memory; nothing at readout
+   time.
 3. **Internal heat in the anchor.** Jupiter's dossier prints `level - airless mean +55.1 K` and the
    label says "greenhouse" while the mechanism is internal heat (the giant radiates more than it
    absorbs; #738 already objects to the word). An authored `internal_flux_W_m2` added inside the
-   fourth root -- `T0^4 = (1-A) S / 4 sigma + F_int / sigma` -- names the mechanism instead of leaving
-   a gap that invites a greenhouse reading. Before that formula is trusted, though, notice that **`T0`
-   in this corpus is not one quantity.** Earth's anchor 288.0 K is an air datum that already contains
-   the unmodelled greenhouse -- the atlas weighs it against `black-body temp 255.1 K` and prints the
-   difference as a `greenhouse gap +32.9 K` row -- while the Moon's 276.5 K was *solved* from its
-   95-390 K pair (`ground_model.pair_solve`), making it an emission equivalent rather than a measured
-   mean. A flux added inside that root therefore means a different thing on every body unless the row
-   says which level it prices. And Jupiter's +55.1 K is the difference between a stated level
-   temperature and an airless mean -- for a giant that is mostly the drop from the emission level to
-   the 1-bar level, a **lapse** -- so on a body that has an authored profile, a `F_int` term and that
-   profile both describe the same heat and the giant pays for it twice. The knob is still worth
-   having; the row has to name its level. Data hook: the corpus states emitted-vs-absorbed for the
-   giants; the small moons' heat flow is stated in some fact sheets.
+   fourth root -- balancing absorbed light and internal flow against what a grey surface emits,
+   `T0^4 = ((1-A) S / 4 + F_int) / (eps sigma)` -- names the mechanism instead of leaving a gap that
+   invites a greenhouse reading. Note the `eps`: section 2 introduced an emissivity and this corpus
+   has none anywhere, so adding a flux term quietly forces a decision about it (with `eps = 1` the
+   formula above is the familiar one, and the anchor today absorbs `eps` into itself).
+   Before that formula is trusted, though, notice that **`T0` in this corpus is not one quantity.**
+   Earth's anchor 288.0 K is an air datum that already contains the unmodelled greenhouse -- the atlas
+   weighs it against `black-body temp 255.1 K` and prints the difference as a `greenhouse gap +32.9 K`
+   row -- while the Moon's 276.5 K was *solved* from its 95-390 K pair (`ground_model.pair_solve`),
+   making it an emission equivalent rather than a measured mean. A flux added inside that root
+   therefore means a different thing on every body unless the row says which level it prices. And
+   Jupiter's +55.1 K is not all internal heat: the file authors a level temperature of 165.0 K, while
+   the review quotes an equilibrium near 110 K and an effective temperature near 124 K -- so internal
+   heat buys on the order of 14 K of that 55 and the rest is **depth**, the drop from the emission
+   level down to the 1-bar level. Renaming the row "internal heat" would swap one wrong mechanism
+   label for another. On a body with an authored profile the double-count is real: `F_int` and the
+   profile describe the same heat. The knob is still worth having; the row has to name its level.
+   Data hook: the corpus states emitted-vs-absorbed for the giants; the small moons' heat flow is
+   stated in some fact sheets.
 4. **Seasonal phase lag.** Earth's hottest weeks lag the solstice by a month; that is the same causal
-   kernel over orbital phase instead of rotation phase. It also implies the anchor machinery has to
-   integrate over a year, which the sim can do. Speculative, but the formulation in section 4 covers
-   it without new ideas -- only a second `tau` in days.
+   kernel over orbital phase instead of rotation phase. Same unit discipline as section 4: a year is
+   `2 pi` of *that* phase, so the seasonal `tau` is a fraction of a year, and hours/days are a derived
+   authoring unit with its own conversion line. It also implies the anchor machinery has to integrate
+   over a year, which the sim can do. Speculative, and at these `tau` (a few percent of a year) the
+   wrap-mass correction of section 4 is a rounding detail rather than a bug -- which is only true
+   because the period is so much longer than the time constant.
 5. **Sublimation thermostats.** A night side capped at the frost point of a volatile the air states
    (CO2 on Mars near 148 K, water where humid) would flatten the coldest end realistically. Needs a
    volatiles/reservoir model; note the coincidence that Mars's air table already steps to 148.0 K at
@@ -330,6 +381,12 @@ Filed as **#794**.
 7. **Air-side transport.** The rung D coupling is pointwise: air follows the ground *under* the hull.
    A hull downwind of a hot region feels nothing of it. Fixing that needs an advected state field,
    which is the heat-as-a-mechanic question #728 is parked on, not a knob.
+8. **Albedo that knows what is there.** Albedo is one authored number per body and enters only the
+   rung 3 derived anchor (`solar.h:derivedBlackbody_K`), so it changes no painted pixel: the map's ice
+   and its rock absorb alike, and a melting cap costs nothing in temperature. Cheapest honest hook: the
+   sea/ice information the map already uses to paint with. Watch the anchor though -- a spatially
+   varying albedo moves the derived `T0` per pixel, and with it the body's mean, which is the same
+   area-weighting problem as item 6.
 
 ## 6. What I would do next, in order
 
@@ -338,22 +395,28 @@ Filed as **#794**.
    (`Gamma` -> `tau_th`, a new scraped column), and the rule for a body that has both `f` and `tau` --
    refit `f`, because two amplitude knobs against one published pair is overdetermined. Writing that
    down is cheap; retrofitting it after three bodies carry a `tau` is not.
-2. Land the kernel inert, with an explicit `tau == 0` branch so the identity is real rather than
+2. Prototype it in the painter before landing any machinery: a temporary lag applied where
+   `surfmap.h:237` already computes its cosine, driven by a CLI knob, and paint Earth, Kerbin and the
+   Moon. This is the only step that can show whether the effect is worth its plumbing, and it costs
+   nothing that has to be untangled later -- the central guarantee turned out to be conditional, so see
+   the picture before committing an API to it. Expectation to check against, not hope: a 23 deg lag
+   moves Earth's day end 1.3 K (nobody will see it), while on Kerbin 60 deg -- one hour of its dial --
+   halves the day-side peak forcing and lifts the night floor a few kelvin. If the painted Kerbin does
+   not behave like that, the closed form or the wiring is wrong, and that is the check.
+3. Land the kernel inert, with an explicit `tau == 0` branch so the identity is real rather than
    asymptotic, and with the test stated correctly: the **cos(lat)-weighted sphere average of the
    lagged field over a full rotation** still equals `T0^4`. Pin the phase against the closed form the
    same way `tmp/lagcheck4_20261113.py` pins it -- closed form against a relaxation -- because the
    first attempt at that arithmetic was quietly 3 deg wrong. Nothing visible moves.
-3. In the same change, put the atlas's swing row and the surface map's legend behind the lagged helper
+4. In the same change, put the atlas's swing row and the surface map's legend behind the lagged helper
    (`gameui.cpp:7436`, `surfmap.h:208`). They print `cos_inc = 0` and `1` today, so the moment a
    `tau` exists anywhere they print extremes the field cannot reach -- and that is the failure mode
    where the map and its own legend disagree in front of the player.
-4. Paint Earth and Kerbin with a candidate `tau` and *look at them* (ask the user, per project habit)
-   before authoring anything. Expectation to check against, not hope: at a 23 deg lag Earth's day end
-   moves 1.3 K, which no readout will notice; the interesting case is Kerbin, where one hour of the
-   dial is 60 deg and that costs half the day-side peak forcing.
 5. Fix the elevation gap (item 5.1) first among the other effects -- it is an anchor bug more than a
-   missing law, needs no invented physics, and is what a player sees wrong on the map today. Then cold
-   traps (5.2), which need a horizon/self-shadow query rather than any kernel; keep them filed
-   separately so nobody implements the lag and thinks the poles came with it.
+   missing law, needs no invented physics, and is what a player sees wrong on the map today. While that
+   anchor is open, look at the polar winter floor too (5.2's 283 K at the solstice): it is the same
+   knob leaking a global average into a place, and one change can at least make the readout honest
+   about it. Then cold traps proper, which need a horizon/self-shadow query rather than any kernel;
+   keep them filed separately so nobody implements the lag and thinks the poles came with it.
 6. File the internal-heat row (5.3) against #738's greenhouse wording, with the level named -- it is
    the one place the dossier currently implies a mechanism the data does not support.
