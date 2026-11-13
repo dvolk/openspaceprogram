@@ -737,12 +737,14 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                and the reason is a units trap: the fact page that states "the daily max lands at
                14:00" invites a reader to author the hours, and any range permissive enough to
                call itself generous lets 14 through as if it were a lag.
-               What the bound actually costs, measured on an equatorial row rather than asserted:
-               at tau = 2 pi the lagged row still swings 17 % of the forcing's peak-to-trough, and
-               the peak lag saturates at atan(2 pi) = 81 deg of phase -- 5.4 h on a 24 h day. So a
-               page stating a 14:00 peak is comfortably inside (tau ~ 0.6) and one stating 18:00 is
-               inexpressible at ANY allowed tau. If a real body ever needs that, the number to
-               revisit is this bound, not the law. Absent = no lag (the sentinel), NOT a default. */
+               What the bound actually costs, measured rather than asserted: at tau = 2 pi an
+               equatorial row still swings 17 % of the forcing's peak-to-trough and its peak sits
+               66 deg east of noon; no allowed row anywhere lags more than atan(2 pi) = 81 deg of
+               phase -- that ceiling belongs to a polar-day row, where the forcing never breaks --
+               which is 5.4 h on a 24 h day. So a page stating a 14:00 peak is comfortably inside
+               (tau ~ 0.6) and one stating 18:00 is inexpressible at ANY allowed tau. If a real
+               body ever needs that, the number to revisit is this bound, not the law.
+               Absent = no lag (the sentinel), NOT a default. */
             if(sv.contains("lag_tau")) {
                 if(!sv["lag_tau"].is_number()) {
                     throw std::runtime_error("system: '" + body->name

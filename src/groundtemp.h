@@ -111,9 +111,13 @@ inline double groundTemperature(double anchor_K, double even_share, double cos_i
    law uses as g(h) = max(a + b cos h, 0), with a = sin lat sin dec and b = cos lat cos dec.
    "EAST positive, growing with time" is a convention, not a fact about the maths: it holds here
    because this engine encodes a retrograde body as a tilt past pi/2 with a non-negative
-   rot_ang_speed, so a surface point's longitude always increases. tests/test_groundtemp.cpp pins
-   the SPATIAL half of it -- a + b cos h against the equirect directions -- but only the map wiring
-   can pin the temporal half, and a flipped sign is invisible in a picture.
+   rot_ang_speed (system.cpp refuses a negative one), so a surface point's longitude always
+   increases. tests/test_groundtemp.cpp pins the SPATIAL half -- a + b cos h against the equirect
+   directions, so the phase angle cannot be defined against a sphere the engine does not use. That
+   pin is blind to a sign flip because cos h is even in h; the RK4 cross-check is not, and a flipped
+   `h` inside this header dies to it. What nothing here can pin is the TEMPORAL half -- that h
+   grows with time -- which only the map wiring can do, and a flipped sign there puts the hottest
+   ground on the evening side of the wrong hemisphere.
    The lagged skin is the periodic steady state of
 
        tau dy/dh + y = g(h),      tau in PHASE RADIANS (one rotation = 2 pi)
@@ -131,7 +135,9 @@ inline double groundTemperature(double anchor_K, double even_share, double cos_i
    lag would break the exactness that makes T0 an anchor rather than a fudge term. Average the
    equation over one rotation: the derivative term averages to zero (a periodic function has zero
    mean derivative), so <y> = <g> for EVERY tau. The forcing's sphere mean is still 1/4, so
-   <T^4> = T0^4 exactly as before. The lag moves the swing around; it cannot change its size.
+   <T^4> = T0^4 exactly as before. The lag moves the swing around and flattens its SHAPE -- the
+   row's own peak-to-trough is 0.74 of the forcing's at tau 1 and 0.17 at tau 2 pi -- but the
+   POWER the surface radiates on average is exactly what it was.
    tests/test_groundtemp.cpp pins this on the sphere, cos(lat)-weighted over a full rotation.
 
    THE CLOSED FORM (no time stepping, no sample table). With the lit arc |h| <= h0,
@@ -161,12 +167,13 @@ inline double groundTemperature(double anchor_K, double even_share, double cos_i
    Small tau then behaves rather than exploding: C -> 0, N -> kset, hom_rise -> -crise, and the
    row answers the forcing itself.
 
-   WHAT THIS IS STILL *NOT*. It is a phase shift, not thermal inertia: it does not damp the
-   swing's AMPLITUDE the way a regolith skin does (that stays the job of the authored even share,
-   which is why the two trade against each other and a body that authors tau needs its f re-fit),
-   and it is not heat flow, not a subsurface profile, not a weather system. It is one authored
-   number on the skin the law already has, and the field it produces is still a radiative skin --
-   sigma T^4 -- not a measured air temperature.
+   WHAT THIS IS STILL *NOT*. It is authored as a PHASE shift, not as thermal inertia. A first-order
+   low-pass does flatten this row's peak-to-trough (0.74 of the forcing's at tau 1, 0.17 at
+   tau 2 pi), but nothing here prices that flattening: the amplitude a fact page implies belongs to
+   the authored even share, which is why the two trade against each other and a body that authors
+   tau needs its f re-fit. It is not heat flow, not a subsurface profile, not a weather system. It
+   is one authored number on the skin the law already has, and the field it produces is still a
+   radiative skin -- sigma T^4 -- not a measured air temperature.
 
    Feeding this to groundTemperature() is deliberate: y is a unit-mass positive filter of g, and
    g <= max(a + b) = cos(lat - dec) <= 1, so y stays in [0,1] and lands in the same currency as
@@ -176,7 +183,8 @@ inline double groundTemperature(double anchor_K, double even_share, double cos_i
 
 /* One latitude's lagged answer, built once per latitude and evaluated per longitude (#802's
    hoists are what make this affordable on a map bake: everything that varies only with latitude
-   -- a, b, the terminator, the two exponential constants -- is resolved in the builder). */
+   -- a, b, the terminator, the three exponential constants, 1/(1+tau^2) -- is resolved in the
+   builder, and at() is what runs once per map column). */
 struct GroundLagRow {
     enum Mode : unsigned char {
         kInstant = 0,     // tau absent or 0: the unlagged forcing (today's ground)
@@ -206,24 +214,34 @@ struct GroundLagRow {
         const double w = std::remainder(h, 2.0 * std::numbers::pi);   // [-pi, pi]
         if(mode == kPolarNight) { return 0.0; }
         if(mode == kInstant)    { return std::max(a + b * std::cos(w), 0.0); }
+        double v;
         if(mode == kPolarDay) {
             // The forcing never breaks, so this is the smooth answer and its peak sits exactly
             // atan(tau) of phase east of noon -- the only case where atan(omega tau) is the whole
             // story, which is why tests/test_groundtemp.cpp pins it there and nowhere else.
-            return a + b * (std::cos(w) + tau * std::sin(w)) * inv_den;
-        }
-        // The particular solution is only needed where there IS a day; a night column pays for
-        // two transcendentals and a divide otherwise, and this bake calls it per column.
-        if(w >= 0.0 && w <= h0) {
+            v = a + b * (std::cos(w) + tau * std::sin(w)) * inv_den;
+        } else if(w >= 0.0 && w <= h0) {
+            // The particular solution is only needed where there IS a day; a night column pays
+            // for two transcendentals and a divide otherwise, and this bake calls it per column.
             const double yp = a + b * (std::cos(w) + tau * std::sin(w)) * inv_den;
-            return yp + hom_noon * std::exp(-w / tau);
-        }
-        if(w < 0.0 && w >= -h0) {
+            v = yp + hom_noon * std::exp(-w / tau);
+        } else if(w < 0.0 && w >= -h0) {
             const double yp = a + b * (std::cos(w) + tau * std::sin(w)) * inv_den;
-            return yp + hom_rise * std::exp(-(w + h0) / tau);
+            v = yp + hom_rise * std::exp(-(w + h0) / tau);
+        } else {
+            const double hn = (w > 0.0) ? w : w + 2.0 * std::numbers::pi;  // since sunset
+            v = night_at_sunset * std::exp(-(hn - h0) / tau);
         }
-        const double hn = (w > 0.0) ? w : w + 2.0 * std::numbers::pi;  // since sunset
-        return night_at_sunset * std::exp(-(hn - h0) / tau);
+        /* Round-off, and the reason the low end gets a clamp while the high end does not. Within
+           ~1e-8 rad of a row that is dark for the whole rotation, h0 collapses towards 0 and the
+           homogeneous terms cancel the particular solution to the last place: measured
+           -1.4e-17 at tau 0.42, -2.8e-17 at tau 1, -1.7e-11 at tau 1e6. groundTemperature()
+           ASSERTS its argument is >= 0 -- unlike its 1.0 + 1e-9 ceiling -- so a hair under zero
+           aborts the game instead of painting a dark column. Measured worst overshoot above 1
+           over a lat x dec x tau grid out to tau 1e6 is exactly +0.0, so only this side needs
+           the clamp. tests/test_groundtemp.cpp sweeps for a negative column and reddens if this
+           line goes away. */
+        return v > 0.0 ? v : 0.0;
     }
 };
 
@@ -243,9 +261,13 @@ inline GroundLagRow groundLagRow(double lat, double dec, double tau) {
     /* The sentinel is a legal argument on purpose: a bake walks the whole system and passes the
        field it finds, and "nobody authored a lag" answers the instantaneous row rather than
        costing every caller a pre-check. Any OTHER negative -- or a NaN -- is a bug upstream, and
-       the ceiling is the same kind of guard: measured, the row starts returning NEGATIVE shares
-       near tau 1e16 and answers NaN past ~1e18, so a caller that lands there has a unit bug, not
-       a slowly-turning world. */
+       the ceiling is the same kind of guard. What the ceiling is NOT is a physics statement: the
+       closed form keeps working far past one rotation. Measured with the asserts off, the row's
+       wiggle is pure round-off past ~1e7 (and the worst |double - long double| disagreement
+       anywhere below that is 1.3e-11 absolute, so no tau in (2 pi, 1e6] answers plausible-but-
+       wrong); the bare arithmetic starts going NEGATIVE near 1e16 -- the clamp in at() hides that
+       -- and past ~1e17 every column answers NaN. A caller that lands in that neighbourhood has a
+       unit bug, not a slowly-turning world. */
     assert(tau == kLagTauUnauthored || (tau >= 0.0 && tau <= 1e6));
     GroundLagRow r;
     r.a = std::sin(lat) * std::sin(dec);

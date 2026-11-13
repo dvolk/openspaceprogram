@@ -342,9 +342,9 @@ int main() {
        exact atan(tau)), a polar-night row, a tau of about a map pixel and a half at 512 columns,
        a tau longer than a rotation. Tolerance is the relaxation's own grid error at n = 4000,
        not the closed form's -- measured against a form verified by an independent derivation:
-       1e-8 or better on every case except tau = 0.02, where dh is a thirteenth of the time
-       constant and the answer lands 1.2e-6 off. So the tightest margin here is 8x, not the three
-       decades the other seven rows have. */
+       six of the eight rows agree to 1e-8, the tau 0.42 row to 6.3e-8, and tau = 0.02 to 1.2e-6,
+       because there dh is a thirteenth of the time constant. Against the 1e-5 gate that is a
+       margin of 8x, which is thinner than it looks: the relaxation is the imprecise half. */
     struct LagCase { double lat_deg, dec_deg, tau; const char *why; };
     const LagCase kCases[] = {
         {  20.0,  -23.44, 0.42, "temperate winter hemisphere" },
@@ -368,12 +368,65 @@ int main() {
             const double h = (double)k * 2.0 * std::numbers::pi / (double)n;
             const double got = r.at(h), want = yv[(size_t)k];
             if(std::fabs(got - want) > worst) { worst = std::fabs(got - want); worst_h = h; }
-            CHECK_TRUE(got >= -1e-12 && got <= 1.0 + 1e-12,
+            /* Exact bounds, no slack: this is the value handed to groundTemperature()'s cos_inc,
+               which ASSERTS [0, 1 + 1e-9] on its way to a fourth root. A column 1e-17 under zero
+               aborts the game, and a shared 1e-12 tolerance here is exactly how that stays hidden
+               -- see the polar-boundary sweep below. */
+            CHECK_TRUE(got >= 0.0 && got <= 1.0,
                        "the lagged forcing stays a share: it feeds the same law as cos_inc");
         }
         CHECK_TRUE(worst < 1e-5, ("closed form matches the relaxation (" + std::string(c.why)
                                   + ")").c_str());
         if(worst >= 1e-5) { printf("       worst %.3e at h=%.1f deg\n", worst, worst_h * 180.0 / std::numbers::pi); }
+    }
+
+    /* THE POLAR BOUNDARY IS WHERE THE SHARE GOES NEGATIVE, and this is the test that keeps the
+       clamp in at(). lat 60 / dec -30 sits exactly on the terminator between "some night" and
+       "dark all rotation" (a = -b), so jittering the latitude by a rad's worth of rounding puts
+       h0 at ~1e-8 instead of 0: the homogeneous terms then cancel the particular solution to the
+       last place and the raw arithmetic lands under zero. Unclamped, that measured -1.4e-17 at
+       tau 0.42, -2.8e-17 at tau 1 and -1.7e-11 at tau 1e6 -- too small to see in a picture (a
+       fourth root of it is sub-millikelvin) and exactly enough to trip groundTemperature()'s
+       `cos_inc >= 0.0` assert, which aborts the game. So the sweep calls the real consumer. */
+    {
+        const double dec = -30.0 * std::numbers::pi / 180.0;
+        const double jitters[] = { -1e-6, -1e-8, -1e-9, 0.0, 1e-9, 1e-8, 1e-6 };
+        const double taus[] = { 0.42, 1.0, 3.0, 2.0 * std::numbers::pi, 1e6 };
+        int cols = 0;
+        for(double tau : taus) {
+            for(double dj : jitters) {
+                const GroundLagRow r = groundLagRow(60.0 * std::numbers::pi / 180.0 + dj, dec, tau);
+                for(int k = 0; k < 1440; k++) {
+                    const double h = (double)k * 2.0 * std::numbers::pi / 1440.0;
+                    const double v = r.at(h);
+                    CHECK_TRUE(std::isfinite(v) && v >= 0.0 && v <= 1.0,
+                               "a row on the polar boundary still answers a share");
+                    ++cols;
+                    // The consumer itself, with its assert live.
+                    groundTemperature(288.0, 0.0, v);
+                }
+            }
+        }
+        CHECK_TRUE(cols > 30000, "the polar-boundary sweep walked a real grid");
+    }
+
+    /* A row copied between structs must answer the same numbers. Cheap, and it pins that the
+       answer lives entirely in the fields -- a sweep that builds a row per latitude and copies it
+       into a per-column struct (which is how #802's hoisting wants to work) cannot acquire a
+       cache, a reference, or a half-initialized mode. */
+    {
+        const GroundLagRow src_row = groundLagRow(20.0 * std::numbers::pi / 180.0,
+                                                 -23.44 * std::numbers::pi / 180.0, 0.42);
+        GroundLagRow copy = src_row;
+        bool same = true;
+        for(int k = 0; k < 20; k++) {
+            const double h = (double)k * 2.0 * std::numbers::pi / 20.0;
+            if(copy.at(h) != src_row.at(h)) { same = false; }
+        }
+        CHECK_TRUE(same, "a copied row is the same row, bit for bit");
+        // And the guard the copy exists to catch: a kDayNight row whose tau got zeroed in transit.
+        // (Not checked here -- it asserts, and this suite has no death-test harness. The assert is
+        // in at(); a debug build on a real sweep would stop rather than paint -nan.)
     }
 
     /* THE ANCHOR SURVIVES THE LAG, which is the claim the header makes out loud. Averaging the
