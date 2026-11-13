@@ -1,0 +1,28 @@
+# The alt= knob's ceiling used to be one line at 102 km -- the near-body shell -- while
+# the shipped scenarios place circular beds far above it every day (high-orbit at
+# r = 1110000 m, inertial-orbit at 727500 m). The shell is only a real boundary for a bed
+# that READS THE AIR: outside it a bed is not in the body's rotating frame, and a wind
+# term builds its east/north basis off the spin frame. A bed that only orbits owes one
+# thing: the circle has to be about THIS body, which holds up to the body's own sphere of
+# influence (#818). 200 km is the height a player reaches for when watching rendezvous --
+# high enough to be off the shell, low enough to still be Kerbin's.
+#
+# The frame named on the Spawn line is the whole point: the hull did not get quietly
+# dropped into the rotating frame at a nonsense radius, it went where a radius of 800 km
+# lives -- the inertial frame, exactly as inertial-orbit and high-orbit do.
+NAME startship-alt-above-the-shell-rides-the-inertial-frame
+CLAIM --startship alt=<metres> on an orbit bed places the hull above the body's near-body shell in the body's own inertial frame, at exactly the asked radius, still circling that body.
+KIND invariant
+ARGS --timeout 6 --orbit-log --orbit-interval 0.5 --startship racer,res/ships/racer.json,Kerbin,rot-orbit,alt=200000
+FORBID error:
+FORBID refused
+FORBID assert
+# The echo of the ask, the radius it produced (600 km + 200 km) and the frame that
+# radius lives in.
+CHECK re.search(r"Spawn 'rot-orbit' around Kerbin: frame 'Kerbin \(inertial\)'.* r = 800000 m,.*alt 200000 m asked", out)
+# The sim's own elements, not the echo: a circle at the asked height, and staying there.
+CHECK len(orbit) >= 2
+CHECK abs(first(orbit)["peri_asl"] - 200000.0) < 2000.0
+CHECK abs(first(orbit)["apo_asl"] - 200000.0) < 2000.0
+CHECK all(o["peri_asl"] > 195000.0 and o["apo_asl"] < 205000.0 for o in orbit)
+LIMIT 60

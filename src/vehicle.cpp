@@ -582,8 +582,10 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
            caller is changing. Nothing downstream changes: the speed follows from r as it
            always did, and a load-keyed bed's airspeed follows from the air AT r, so an ask
            above a body's air top is refused by that block ("needs air") rather than by a
-           new rule here. build_start_vehicles has already refused a height at or outside
-           the shell, so the bed stays in the body's own frame. */
+           new rule here. build_start_vehicles has already kept the ask inside the region
+           this body places beds in -- inside the shell for a bed that reads the air, inside
+           the SOI for one that only orbits (#818) -- so resolve_frame_by_soi below lands
+           the bed on this body's frame, rotating or inertial as the height says. */
         const bool alt_asked = place != nullptr && place->altAsked();
         const double alt = alt_asked
                          ? place->alt_m
@@ -1105,12 +1107,10 @@ Vehicle *build_start_vehicles(Game &g, const std::vector<DebugStartShip> &entrie
         /* An asked ALTITUDE belongs to a bed that has one, and the same two beds are
            refused as the map point is: a pad bed's height is the ground under its site,
            and an ellipse bed's height is two apsides, so one number cannot place it.
-           Then the height itself, between the relief it would fly through and the shell
-           that holds it. The ceiling is the body's near-body shell -- the same ceiling
-           the scenario's alt_frac is a fraction OF: a bed outside it leaves the body's
-           ROTATING frame, and a flying bed's wind term asserts that frame (spawn_vehicle).
-           Both numbers print, because the player's next question is "how high/low can I
-           ask". Metres are formatted as doubles: parseNumber takes any finite value, and
+           Then the height itself, between the relief it would fly through and the
+           boundary of the region this body places beds in -- which is two boundaries, and
+           both print their number, because the player's next question is "how high/low can
+           I ask". Metres are formatted as doubles: parseNumber takes any finite value, and
            casting one to long long to print it is UB and reads as a negative height. */
         if(!std::isnan(fe.alt_m)) {
             if(sc->on_pad) {
@@ -1137,16 +1137,35 @@ Vehicle *build_start_vehicles(Game &g, const std::vector<DebugStartShip> &entrie
                                          + " so a circular bed there flies through the"
                                          + " mountains -- ask above the peaks");
             }
+            /* Two ceilings, because past the shell a bed asks two different questions.
+               One that READS THE AIR -- its height comes from the air top, or its speed
+               from the air's density -- has to stay inside the near-body shell: outside it
+               the bed is not in the body's ROTATING frame, and a wind term builds its
+               east/north basis off the spin frame (spawn_vehicle's isRotFrame).
+               One that only ORBITS owes one thing: the circle must be about THIS body,
+               which holds up to the body's own SOI. inertial-orbit and high-orbit already
+               sit between the shell and it; a player who asks for a height out there is
+               doing the same thing on purpose (#818), and the engine has a working answer
+               -- resolve_frame_by_soi takes the bed to the inertial frame and the speed
+               follows from r as it always did. Past the SOI the circle belongs to another
+               body and the spawn speed would come from the wrong mu, so it is refused. */
             const double shell = hb->rot_frame->soi - hb->seaLevelRadius();
-            if(!(fe.alt_m < shell)) {
-                snprintf(edge, sizeof edge, "%.0f", shell);
+            const double soi = hb->frame->soi - hb->seaLevelRadius();
+            const bool reads_air = sc->atmo_frac || sc->speed_load > 0.0;
+            const double ceiling = reads_air ? shell : soi;
+            if(!(fe.alt_m < ceiling)) {
+                snprintf(edge, sizeof edge, "%.0f", ceiling);
+                const char *region = reads_air ? "near-body shell" : "sphere of influence";
+                const std::string why = reads_air
+                    ? std::string("above it the bed leaves ") + hb->name
+                      + "'s rotating frame (inertial-orbit/high-orbit are the beds that"
+                        " leave it on purpose)"
+                    : std::string("a circle out there is not about ") + hb->name
+                      + ", so its spawn speed would come from another body's gravity";
                 throw std::runtime_error("start ships: entry " + std::to_string(i)
                                          + ": alt " + want + " m is outside " + hb->name
-                                         + "'s near-body shell, which ends " + edge
-                                         + " m above sea level -- above it the bed leaves"
-                                         + " " + hb->name + "'s rotating frame"
-                                         + " (inertial-orbit/high-orbit are the beds that"
-                                         + " leave it on purpose)");
+                                         + "'s " + region + ", which ends " + edge
+                                         + " m above sea level -- " + why);
             }
         }
         Vehicle *v = place_vehicle(g, fe.ship, fe.name, hb, sc, site);

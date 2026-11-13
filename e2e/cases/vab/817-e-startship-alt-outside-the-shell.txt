@@ -1,18 +1,20 @@
-# The knob's ceiling is the body's near-body shell -- the same ceiling a scenario's
-# alt_frac is a fraction of, and the reason it exists: outside it a bed is not in the
-# body's ROTATING frame, and a flying bed's wind term asserts that frame
-# (spawn_vehicle's isRotFrame). So alt= is refused rather than quietly handing the hull
-# to the inertial frame, where the scenario the player named does not mean what it says.
+# The SHELL ceiling -- which since #818 belongs to a bed that READS THE AIR, and is no
+# longer the ceiling for one that only orbits. Outside rot_frame->soi a bed is not in the
+# body's ROTATING frame, and a wind term builds its east/north basis off the spin frame
+# (spawn_vehicle's isRotFrame), while the height such a bed authors is a fraction of the
+# air top. So flying-* beds are refused past the shell rather than quietly handed to the
+# inertial frame, where the scenario the player named does not mean what it says.
 # The beds that leave the rotating frame on purpose -- inertial-orbit, high-orbit -- are
-# named in the message, because the player's next question is "then how do I get there".
+# named in the message, because the player's next question is "then how do I get there",
+# and for an orbit bed the answer is now: ask anyway, that is legal.
 # The shell number is not pinned: it is derived per body (rot_frame->soi off the sea
 # radius), and content moves.
 NAME startship-alt-outside-the-shell
-CLAIM An altitude past the body's near-body shell is refused by name, with the shell's height printed, instead of placing the bed in another frame.
+CLAIM An altitude past the body's near-body shell is refused, by a bed that reads the air, with the shell's height printed instead of placing the bed in another frame.
 KIND invariant
-ARGS --timeout 4 --startship racer,res/ships/racer.json,Kerbin,rot-orbit,alt=150000
+ARGS --timeout 4 --startship racer,res/ships/racer.json,Kerbin,flying-slow,alt=150000
 EXPECT error: start ships: entry 0: alt 150000 m is outside Kerbin's near-body shell, which ends
 EXIT 1
-FORBID Spawn 'rot-orbit'
+FORBID Spawn 'flying-slow'
 FORBID assert
 LIMIT 60

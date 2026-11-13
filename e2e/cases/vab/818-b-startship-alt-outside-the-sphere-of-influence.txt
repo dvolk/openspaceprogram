@@ -1,0 +1,18 @@
+# The other ceiling (#818): a bed that only orbits may be asked as high as the body's own
+# sphere of influence, and no higher. Past it the circle is not about that body at all --
+# spawn_vehicle's circular speed comes from home's mu, so a hull placed there starts with a
+# speed for the wrong gravity and resolve_frame_by_soi hands it to whoever owns the
+# distance. Refusing by name, with the SOI's own height printed, beats a ship that drifts
+# oddly for reasons nobody can see.
+#
+# The height is not pinned (inertialSoi is derived from the parent's mass, and the body
+# file moves); the shape of the answer is: which boundary, what it ends at, and why.
+NAME startship-alt-outside-the-sphere-of-influence
+CLAIM An altitude past the body's sphere of influence is refused by name, with the SOI's height printed, instead of placing a hull whose speed comes from another body's gravity.
+KIND invariant
+ARGS --timeout 4 --startship racer,res/ships/racer.json,Kerbin,rot-orbit,alt=90000000
+EXPECT error: start ships: entry 0: alt 90000000 m is outside Kerbin's sphere of influence, which ends
+EXIT 1
+FORBID Spawn 'rot-orbit'
+FORBID assert
+LIMIT 60
