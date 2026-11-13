@@ -183,13 +183,19 @@ void surfmapCompute(Game &g) {
            of authored rows, so running it twice is nothing next to that. */
         std::vector<float> elevs;
         double rlo = 0.0, rhi = 0.0;
+        /* The grid's trig, once for every pass below (#802). Each pass visits every column of
+           every row, so the equirect grid needs w + h transcendental evaluations in total, not
+           w*h per pass; equirect.h owns both spellings and the directions that come from these
+           tables are bit-for-bit the ones equirectDirAt(i, j, w, h) builds, which is why the
+           golden pins in e2e/render/745 are a check on this change rather than a re-baseline. */
+        const EquirectTrig trig = equirectTrig(w, h);
         if(want_wind && wl.ok) {
             elevs.resize(npx);
             double elo = 1e300, ehi = -1e300;
             for(int j = 0; j < h; j++) {
                 for(int i = 0; i < w; i++) {
                     const double e = (double)terrainHeight(
-                        (glm::vec3)equirectDirAt(i, j, w, h), tp) - sea_r;
+                        (glm::vec3)equirectDirAt(trig, i, j), tp) - sea_r;
                     elevs[(size_t)j * w + i] = (float)e;
                     if(e < elo) { elo = e; }
                     if(e > ehi) { ehi = e; }
@@ -200,7 +206,7 @@ void surfmapCompute(Game &g) {
 
         for(int j = 0; j < h; j++) {
             for(int i = 0; i < w; i++) {
-                const glm::dvec3 d = equirectDirAt(i, j, w, h);
+                const glm::dvec3 d = equirectDirAt(trig, i, j);
                 glm::vec3 c;                 // the base pixel's colour
                 if(want_temp && tl.ok) {                    /* The SAME cosine the terminator overlay uses, through the SAME law the
                        dossier and the solar log use -- nothing is invented at the pixel. */
@@ -342,7 +348,7 @@ void surfmapCompute(Game &g) {
             const double ca = std::cos(ha), sa = std::sin(ha);
             for(int j : use_j) {
                 for(int i = stride / 2; i < w; i += stride) {
-                    const glm::dvec3 d = equirectDirAt(i, j, w, h);
+                    const glm::dvec3 d = equirectDirAt(trig, i, j);
                     const double elev = (double)elevs[(size_t)j * w + i];   // sampled once, above
                     double lon_deg = 0.0, lat_deg = 0.0;
                     equirectLonLatDeg(d, lon_deg, lat_deg);

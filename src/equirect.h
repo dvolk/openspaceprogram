@@ -27,6 +27,7 @@
 #include <cmath>
 #include <limits>
 #include <numbers>
+#include <vector>
 
 #include <glm/glm.hpp>
 
@@ -141,4 +142,51 @@ inline glm::dvec3 equirectDirAt(int i, int j, int w, int h) {
     const double lat = std::numbers::pi * 0.5
                      - std::numbers::pi * (double)j / (double)(h - 1);
     return equirectDir(lon, lat);
+}
+
+/* The same grid's trig, paid for once per COLUMN and once per ROW instead of once per
+   pixel (#802). A full-map sweep walks every column of every row, so `lon` repeats one
+   cycle and `lat` is constant along a row: at --surfmap-n 1024 that is 524,288 sincos
+   pairs to say w + h = 1,536 things.
+   The tables live HERE rather than in whichever sweep wants them, because "column i is lon
+   2pi*i/w, row j is lat pi/2 - pi*j/(h-1)" is this file's law -- a sweep with its own
+   hoisted tables would be a second spelling free to drift, which is what the comment at the
+   top of this file forbids. The directions below are BIT-FOR-BIT the ones equirectDirAt
+   builds: same expressions, evaluated earlier. Pinned in tests/test_surfmap.cpp. */
+struct EquirectTrig {
+    std::vector<double> cos_lon, sin_lon;   // [w], indexed by column
+    std::vector<double> cos_lat, sin_lat;   // [h], indexed by row
+};
+
+inline EquirectTrig equirectTrig(int w, int h) {
+    assert(w >= 2 && h >= 2);
+    EquirectTrig t;
+    t.cos_lon.resize((size_t)w);
+    t.sin_lon.resize((size_t)w);
+    t.cos_lat.resize((size_t)h);
+    t.sin_lat.resize((size_t)h);
+    for(int i = 0; i < w; i++) {
+        const double lon = 2.0 * std::numbers::pi * (double)i / (double)w;
+        t.cos_lon[(size_t)i] = std::cos(lon);
+        t.sin_lon[(size_t)i] = std::sin(lon);
+    }
+    for(int j = 0; j < h; j++) {
+        const double lat = std::numbers::pi * 0.5
+                         - std::numbers::pi * (double)j / (double)(h - 1);
+        t.cos_lat[(size_t)j] = std::cos(lat);
+        t.sin_lat[(size_t)j] = std::sin(lat);
+    }
+    return t;
+}
+
+/* equirectDirAt for a grid whose trig is already in hand: same direction, no
+   transcendentals. Bounds asserted rather than assumed -- the tables carry their own w and
+   h, so a caller that built them for a different bake would otherwise read past them
+   instead of failing the way the (i, j, w, h) form fails. */
+inline glm::dvec3 equirectDirAt(const EquirectTrig &t, int i, int j) {
+    assert(i >= 0 && i < (int)t.cos_lon.size()
+       && j >= 0 && j < (int)t.cos_lat.size());
+    const double cl = t.cos_lat[(size_t)j];
+    return glm::dvec3(cl * t.cos_lon[(size_t)i], t.sin_lat[(size_t)j],
+                      -cl * t.sin_lon[(size_t)i]);
 }

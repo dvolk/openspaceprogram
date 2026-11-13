@@ -614,6 +614,22 @@ int main() {
         check(near_v(d, glm::dvec3(std::cos(lat), std::sin(lat), 0), 1e-9),
               "dir: latitude at row 1");
     }
+    {
+        /* The hoisted per-row/per-column trig (#802) is the SAME grid, not an approximation
+           of it. The sweep takes this form for speed, so the speed had better not be bought
+           with pixels: every index pair has to give the bits equirectDirAt(i, j, w, h) gave
+           before, exactly. If this ever fails, the perf change is a re-baseline. */
+        const EquirectTrig t = equirectTrig(w, h);
+        bool exact = (int)t.cos_lon.size() == w && (int)t.cos_lat.size() == h;
+        for(int j = 0; j < h && exact; j++) {
+            for(int i = 0; i < w && exact; i++) {
+                const glm::dvec3 a = equirectDirAt(i, j, w, h);
+                const glm::dvec3 b = equirectDirAt(t, i, j);
+                exact = a.x == b.x && a.y == b.y && a.z == b.z;
+            }
+        }
+        check(exact, "trig tables: bit-for-bit the same direction at every pixel");
+    }
 
     // 2. equirectLonLat: the inverse (render.cpp's atan2(x, z), asin(y),
     //    with lon unwrapped to [0, 2pi)).

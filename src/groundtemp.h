@@ -84,7 +84,11 @@ inline double groundTemperature(double anchor_K, double even_share, double cos_i
     assert(cos_inc >= 0.0 && cos_inc <= 1.0 + 1e-9);
     const double c = std::min(1.0, std::max(0.0, cos_inc));
     const double shape = even_share + (1.0 - even_share) * 4.0 * c;
-    return anchor_K * std::pow(shape, 0.25);
+    /* The quarter root is two square roots, not a general pow (#802): this is the law's
+       hottest call -- once per pixel of a map bake -- and `shape` is positive and bounded in
+       [f, 4 - 3f] by the asserts above, so there is no edge case for pow to guard. Same law,
+       and tests/test_groundtemp.cpp keeps the 4^(1/4) end pinned either way. */
+    return anchor_K * std::sqrt(std::sqrt(shape));
 }
 
 /* [K] The air at one altitude when the air nearest the ground is allowed to follow the
