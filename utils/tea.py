@@ -71,6 +71,22 @@ Usage:
                            and state only -- --title/--body takes one; --body
                            wins over a pipe and says so, it does not swallow it)
   utils/tea.py labels            (the repo's label list, names and ids)
+  utils/tea.py ci [--limit N] [--branch B] [--sha SHA] [--jobs] [--wait SECS]
+                       (the workflow runs a push produced: id, branch, sha, how it
+                        ended, and --jobs the jobs and steps behind it. A run answers
+                        status -- whether a runner still holds it -- and conclusion,
+                        which is the verdict, so "green" means done + success. --sha
+                        picks the run for a commit; --wait polls (3s apart, never past
+                        600s) until every returned run has completed, and a wait that
+                        runs out is a stderr note with the current state, not an error)
+  utils/tea.py ci-log [--run N] [--job NAME] [--step NAME] [--grep RE]
+                          [--tail N] [--full]
+                       (the text a job printed. --run defaults to the newest run and
+                        says so on stderr; a run's jobs are listed by 'ci --jobs'.
+                        --step slices one step out of the ::group:: markers, --grep
+                        filters lines, and the answer is the LAST --tail matching lines
+                        (60) plus how many there were -- a failure is at the end of a
+                        log, and --full is there when you want the whole thing)
 
 Labels within one name group ("Priority/") are exclusive on this server, so
 `edit N --labels Priority/High` on an issue that holds Priority/Low moves the
@@ -80,15 +96,18 @@ instead of a coin flip.
 """
 
 import argparse
+import io
 import json
 import os
 import re
 import subprocess
 import sys
+import time
 import traceback
 import urllib.error
 import urllib.parse
 import urllib.request
+import zipfile
 
 # The network is the thing that hangs. No request is allowed to wait forever:
 # a hung caller learns nothing, and on a write it cannot even tell whether the
@@ -206,6 +225,23 @@ class Tracker:
         if status not in want:
             fail(f"{method} {path} -> HTTP {status}: {_why(body)}")
         return body, headers
+
+    def raw(self, method, path, params=None, want=(200,)):
+        """One API call whose answer is bytes, not JSON -- the action log
+        endpoints. Same timeout and error discipline as call(); a caller that
+        cannot say what it got is worse than one that fails."""
+        url = f"{self.base}/api/v1{path}"
+        if params:
+            url += "?" + urllib.parse.urlencode(params)
+        req = urllib.request.Request(url, method=method,
+                                    headers={"Authorization": f"token {self.token}"})
+        try:
+            with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT) as resp:
+                return resp.status, resp.read(), _hdr(resp.headers)
+        except urllib.error.HTTPError as e:
+            return e.code, e.read(), _hdr(e.headers)
+        except (urllib.error.URLError, TimeoutError, OSError) as e:
+            fail(f"{method} {path} got no answer ({e})")
 
     def repo_path(self, rest=""):
         return f"/repos/{self.owner}/{self.repo}{rest}"
@@ -347,6 +383,24 @@ def check_page(n):
     n = int(n)
     if n < 1:
         raise argparse.ArgumentTypeError("--page must be >= 1")
+    return n
+
+
+def check_ci_wait(n):
+    n = int(n)
+    if n < 1:
+        raise argparse.ArgumentTypeError("--wait must be at least 1 second")
+    if n > CI_WAIT_MAX:
+        raise argparse.ArgumentTypeError(
+            f"--wait cannot be past {CI_WAIT_MAX}s -- this polls with a deadline "
+            f"rather than holding a caller open forever; ask again after")
+    return n
+
+
+def check_tail(n):
+    n = int(n)
+    if n < 1:
+        raise argparse.ArgumentTypeError("--tail must be at least 1 line")
     return n
 
 
@@ -1042,6 +1096,208 @@ def cmd_labels(args):
                       for n, l in sorted(labels.by_name().items())]))
 
 
+# ---- workflow runs ------------------------------------------------------------
+# The actions API answers a different shape from the issue one: a run is mostly
+# urls and actor metadata, `status` says whether a runner is still on it and
+# `conclusion` says how it ended -- and the two are different fields, so "is it
+# green" needs both. These helpers narrow a run to what answers "did my push go
+# green, and if not what did it print".
+CI_RUN_FIELDS = ("id", "status", "conclusion", "event", "display_title", "path",
+                 "head_sha", "head_branch", "run_number", "run_attempt",
+                 "created_at", "started_at", "completed_at", "updated_at",
+                 "html_url")
+CI_DONE = "completed"        # the only run status that means "a runner let go of it"
+CI_POLL_SECS = 3
+CI_WAIT_MAX = 600            # a bounded wait; nothing here may hang forever
+CI_LOG_WINDOW = 60           # lines of a job log returned without --full
+
+
+def run_out(d):
+    out = {k: d.get(k) for k in CI_RUN_FIELDS}
+    # An unfinished run answers "" for conclusion, which next to a verdict word
+    # would read like a verdict of its own.
+    out["conclusion"] = out.get("conclusion") or None
+    out["done"] = out.get("status") == CI_DONE
+    return out
+
+
+def job_out(d):
+    return {"id": d.get("id"), "name": d.get("name"),
+            "status": d.get("status"), "conclusion": d.get("conclusion") or None,
+            "started_at": d.get("started_at"), "completed_at": d.get("completed_at"),
+            "html_url": d.get("html_url"),
+            "steps": [{"number": s.get("number"), "name": s.get("name"),
+                       "status": s.get("status"),
+                       "conclusion": s.get("conclusion") or None}
+                      for s in (d.get("steps") or [])]}
+
+
+def list_runs(tracker, params):
+    body, headers = tracker.api("GET", tracker.repo_path("/actions/runs"), params)
+    return body.get("workflow_runs") or [], total_count(headers)
+
+
+def cmd_ci(args):
+    tracker = Tracker()
+    params = {"per_page": args.limit, "page": 1}
+    if args.branch:
+        params["branch"] = args.branch
+    deadline = time.monotonic() + args.wait if args.wait else None
+    waited = 0.0
+    while True:
+        runs, total = list_runs(tracker, params)
+        # head_sha is filtered here rather than by the server because a pushed
+        # sha has no query parameter that reaches it: the list answers newest
+        # first, which is exactly when the run you are chasing does not exist yet.
+        if args.sha:
+            runs = [r for r in runs
+                    if str(r.get("head_sha") or "").startswith(args.sha)]
+        if not args.wait:
+            break
+        if runs and all(r.get("status") == CI_DONE for r in runs):
+            break
+        if time.monotonic() >= deadline:
+            note(f"waited {args.wait}s for {'a run for ' + args.sha if args.sha else 'the run(s)'} "
+                 f"to complete and it did not -- this is the state as of now, not "
+                 f"a failure")
+            break
+        time.sleep(CI_POLL_SECS)
+        waited += CI_POLL_SECS
+    if args.sha and not runs:
+        note(f"no run in the newest {args.limit} carries sha {args.sha}"
+             + (f" (the server says there are {total} runs total)" if total else "")
+             + " -- raise --limit, or the push may not have triggered a workflow")
+    out = [run_out(r) for r in runs]
+    if args.jobs:
+        for view, r in zip(out, runs):
+            body, _ = tracker.api("GET",
+                                  tracker.repo_path(f"/actions/runs/{r.get('id')}/jobs"))
+            view["jobs"] = [job_out(j) for j in (body.get("jobs") or [])]
+    print(json.dumps({"runs": out, "total": total, "waited_secs": waited or None}))
+
+
+_LOG_TS = re.compile(r"^\d{4}-\d{2}-\d{2}T[\d:.]+Z\s+")
+
+
+def _log_body(line):
+    """A log line with the runner's timestamp peeled off. Every line of a Gitea
+    job log is `<iso8601>Z <text>`, so a control marker is never at column 0 --
+    matching ::group:: against the raw line finds nothing (measured)."""
+    return _LOG_TS.sub("", line.strip(), count=1)
+
+
+def _step_span(lines, want):
+    """Where one step's output lives in a job log.
+
+    A job log is a flat list of timestamped lines with ::group:: / ::endgroup::
+    markers, and the group named after a step holds ONLY its env lines: the
+    command's own output follows after that group closes. Measured on run 13:
+    the "Run make test-gen" group is lines 86-89 and the 600-plus lines of build
+    output sit past it. So a step's region runs from its top-level group start to
+    the next top-level group start (nested groups belong to the step they are
+    inside), not to the matching ::endgroup::.
+    Returns (start, end) exclusive of the header, or (None, the names available).
+    """
+    marker = "::group::"
+    bodies = [_log_body(l) for l in lines]
+    depth = 0
+    tops = []                     # (line index, group name) at depth 1
+    for i, b in enumerate(bodies):
+        if b.startswith(marker):
+            if depth == 0:
+                tops.append((i, b[len(marker):]))
+            depth += 1
+        elif b.startswith("::endgroup::"):
+            depth -= 1
+    exact = [(i, n) for i, n in tops if n == want]
+    if not exact:
+        fold = want.casefold()
+        exact = [(i, n) for i, n in tops if fold in n.casefold()]
+    if not exact:
+        return None, [n for _, n in tops]
+    start = exact[0][0]
+    after = [i for i, _ in tops if i > start]
+    return start + 1, (after[0] if after else len(lines))
+
+
+def _log_text(raw, what):
+    """A job log as text. Measured on this server the job endpoint answers
+    text/plain and the run endpoint answers a zip of one file per job, so both
+    shapes are accepted rather than betting on the one that is true today."""
+    if raw[:2] == b"PK":
+        try:
+            zf = zipfile.ZipFile(io.BytesIO(raw))
+        except zipfile.BadZipFile as e:
+            fail(f"{what} came back with a zip magic that is not a zip: {e}")
+        names = zf.namelist()
+        if not names:
+            fail(f"{what} came back as an empty zip")
+        note(f"{what} came back as a zip ({len(names)} entries) -- decoding "
+             f"{names[0]!r}")
+        return zf.read(names[0]).decode("utf-8", "replace")
+    return raw.decode("utf-8", "replace")
+
+
+def cmd_ci_log(args):
+    tracker = Tracker()
+    run_id = args.run
+    if run_id is None:
+        runs, _ = list_runs(tracker, {"per_page": 1, "page": 1})
+        if not runs:
+            fail("this repo has no workflow runs, so there is no log to read")
+        r = runs[0]
+        run_id = r.get("id")
+        note(f"no --run given: reading run {run_id} "
+             f"({r.get('head_branch')}@{(r.get('head_sha') or '')[:8]}, "
+             f"{r.get('status')}/{r.get('conclusion') or '-'})")
+    body, _ = tracker.api("GET", tracker.repo_path(f"/actions/runs/{run_id}/jobs"))
+    jobs = body.get("jobs") or []
+    if not jobs:
+        fail(f"run {run_id} has no jobs -- is that run id right? "
+             f"(utils/tea.py ci lists the recent ones)")
+    if args.job:
+        fold = args.job.casefold()
+        chosen = [j for j in jobs if str(j.get("id")) == args.job] or \
+                 [j for j in jobs if (j.get("name") or "").casefold() == fold] or \
+                 [j for j in jobs if fold in (j.get("name") or "").casefold()]
+        if not chosen:
+            fail(f"no job {args.job!r} in run {run_id}; it has "
+                 f"{[j.get('name') for j in jobs]}")
+        jobs = chosen
+    rx = None
+    if args.grep:
+        try:
+            rx = re.compile(args.grep)
+        except re.error as e:
+            fail(f"--grep is not a valid regex: {e}")
+    out = {"run": run_id, "jobs": []}
+    for j in jobs:
+        status, raw, _hdrs = tracker.raw(
+            "GET", tracker.repo_path(f"/actions/jobs/{j.get('id')}/logs"))
+        if status != 200:
+            fail(f"job {j.get('id')} log -> HTTP {status}: {_why(_json_or_none(raw))}")
+        lines = _log_text(raw, f"job {j.get('id')}").splitlines()
+        entry = {"job_id": j.get("id"), "name": j.get("name"),
+                 "status": j.get("status"), "conclusion": j.get("conclusion") or None,
+                 "log_lines_total": len(lines), "log_bytes": len(raw)}
+        if args.step:
+            a, b = _step_span(lines, args.step)
+            if a is None:
+                fail(f"no step {args.step!r} in job {j.get('name')!r}; its steps "
+                     f"are {b[:20]}")
+            entry["step"] = args.step
+            lines = lines[a:b]
+        if rx is not None:
+            lines = [l for l in lines if rx.search(l)]
+        if not args.full and len(lines) > args.tail:
+            kind = "matching" if rx is not None else ("step" if args.step else "log")
+            entry["window"] = f"last {args.tail} of {len(lines)} {kind} lines"
+            lines = lines[-args.tail:]
+        entry["lines"] = lines
+        out["jobs"].append(entry)
+    print(json.dumps(out))
+
+
 class JsonParser(argparse.ArgumentParser):
     """argparse would print usage on stderr and exit 2; keep the one contract
     this wrapper has with its callers: every failure is a JSON object."""
@@ -1099,6 +1355,28 @@ def main():
 
     lb = sp.add_parser("labels", help="the repo's labels, with ids")
     lb.set_defaults(fn=cmd_labels)
+
+    ci = sp.add_parser("ci", help="recent workflow runs and how they ended")
+    ci.add_argument("--limit", type=check_limit, default=5)
+    ci.add_argument("--branch", help="only runs on this branch")
+    ci.add_argument("--sha", help="only runs whose commit starts with this sha")
+    ci.add_argument("--jobs", action="store_true",
+                    help="include each run's jobs and their steps")
+    ci.add_argument("--wait", type=check_ci_wait, default=0,
+                    help="poll until every returned run has completed, up to N seconds")
+    ci.set_defaults(fn=cmd_ci)
+
+    cl = sp.add_parser("ci-log", help="a job's log as text lines")
+    cl.add_argument("--run", type=check_index,
+                    help="run id (default: the newest run)")
+    cl.add_argument("--job", help="job id or (sub)name; default: every job of the run")
+    cl.add_argument("--step", help="only this step's lines, by ::group:: marker")
+    cl.add_argument("--grep", help="keep lines matching this regex")
+    cl.add_argument("--tail", type=check_tail, default=CI_LOG_WINDOW,
+                    help="cap the lines returned (default %(default)s)")
+    cl.add_argument("--full", action="store_true",
+                    help="return every line, not the last --tail of them")
+    cl.set_defaults(fn=cmd_ci_log)
 
     args = p.parse_args()
     if args.cmd == "close" or args.cmd == "open":
