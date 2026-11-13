@@ -447,6 +447,11 @@ void Game::dropVehicleRefs(Vehicle *v) {
        but a Vehicle allocated later can land on v's block and read back as
        "same ship", which silently skips the refit a focus change owes us. */
     if(map.fit_ship == v) { map.fit_ship = nullptr; }
+    /* The ship-view snapshot stamps itself with the hull it describes, and that
+       stamp is the ONLY test syncShipView makes -- so a stale one skips the re-take
+       and the map fits a dead hull's conic. Same aliasing hazard as map.fit_ship
+       above, one line to close (#810). */
+    if(hud.view.ship == v) { hud.view.ship = nullptr; }
 }
 
 /* The one door from the Guidance window's fields to a flying mission: a Go click

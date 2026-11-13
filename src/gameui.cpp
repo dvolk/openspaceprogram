@@ -4357,8 +4357,12 @@ static void drawMapNodes(OrbitMap &map, ImDrawList *dl, const OrbitElements &o,
 static void fitMapView(MapState &m, TerrainBody &body, const ShipView *view,
                        bool force = false) {
     Vehicle *ship = view ? view->ship : nullptr;
-    // The elements being fitted must describe an orbit around the body the
-    // caller is framing, or the two maps' focus and snapshot can drift apart.
+    /* The elements being fitted must describe an orbit around the body the caller is
+       framing, or the two maps' focus and snapshot can drift apart. Note what this
+       does NOT catch: m_parent is read live, so the right hull with a conic sampled
+       before its own SOI re-home passes silently. That half is safe by phase -- every
+       setSoi/switchFrames caller runs in the update pass, before the snapshot is
+       re-taken -- not by this check (#810). */
     assert(!ship || ship->m_parent == &body);
     if(!force) {
         if(m.fit_body == &body && m.fit_ship == ship) { return; }
@@ -4425,8 +4429,10 @@ void drawUIMap(Game &g) {
         }
         /* The focus, fitted before the trajectory sampling below reads map_scale
            for its extent. A ship that changed SOI, or a switch to another ship,
-           arrives at a zoom that fits what is actually being looked at. */
-        TerrainBody *focus = ship->m_parent;
+           arrives at a zoom that fits what is actually being looked at. With no
+           ship -- retired mid-frame, or a new game before its first launch -- frame
+           home, which is what the Tracking copy of this window already does (#810). */
+        TerrainBody *focus = ship ? ship->m_parent : g.home;
         fitMapView(g.map, *focus, &g.hud.view);
         const float avail_w = ImGui::GetContentRegionAvail().x;
         const float avail_h = ImGui::GetContentRegionAvail().y;
@@ -6602,11 +6608,12 @@ void drawTrackingShipList(Game &g) {
 }
 
 void drawTrackingMap(Game &g) {
-    /* The snapshot read below belongs to the hull the STATE pass saw, and the Tracking
-       Ship List can hand the scene another hull mid-pass. Re-take it here instead of
-       trusting the order of the two windows in trackingDrawUi: fitMapView pairs a body
-       with a conic, and the two must describe the same orbit (#810 -- the guard
-       drawUIMap got for #235, which this entry point never had). */
+    /* fitMapView below pairs a body with the conic in g.hud.view, and that snapshot
+       carries the stamp of the hull the STATE pass saw. Nothing trips it today: this
+       window draws first in trackingDrawUi, and a row click lands in the sync atop
+       drawUIReadouts or in next frame's refresh. The call is here so that order stops
+       being load-bearing -- re-take the snapshot before pairing it (#810; drawUIMap
+       has carried one since #235). */
     syncShipView(g);
     TransferPlanner &planner = g.xferPlanner;
     Vehicle *ship = g.ship;
