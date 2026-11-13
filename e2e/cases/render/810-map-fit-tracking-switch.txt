@@ -11,9 +11,8 @@
 #
 # Teeth (both mutations run by hand, neither shipped): swap the two trackingDrawUi
 # statements with the guard left IN -> still PASS, the order has stopped mattering.
-# Same swap AND delete the syncShipView call -> exit -6 on
-#   osp: src/gameui.cpp:4362: void fitMapView(MapState&, TerrainBody&, const ShipView*,
-#   bool): Assertion `!ship || ship->m_parent == &body' failed.
+# Same swap AND delete the syncShipView call -> exit -6 on fitMapView's assert
+#   Assertion `!ship || ship->m_parent == &body' failed
 # and the Mun fit never prints. The shipped order hides that hazard: the map draws
 # first, so a stale snapshot only ever lasts one frame. ("Assertion" is already in
 # run.py's DEFAULT_FORBID, so it needs no line here.)
