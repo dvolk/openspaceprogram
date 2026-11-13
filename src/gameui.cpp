@@ -1442,8 +1442,13 @@ void drawUIReadouts(Game &g) {
            than on valid alone -- the map draws its leg under this same test.
            Skipping it shows the new target's label over the old target's
            numbers for one frame, which puts the capture node a whole body
-           radius off (#405). */
-        if(!xfer.valid || xfer.target != planner.xfer_sel) {
+           radius off (#405).
+           The SUBJECT is half of the identity too (#809): a plan is a pair of
+           states, so a block that names the hull you are looking at must not
+           print the dv of the hull you left. Nothing should get here mismatched
+           -- select_vehicle drops the solve -- but printing nothing beats
+           printing a number nobody could burn. */
+        if(!xfer.valid || xfer.target != planner.xfer_sel || xfer.subject != g.ship) {
             ImGui::Text("No transfer solution for this target / ToF.");
             return;
         }
@@ -4733,8 +4738,14 @@ void drawUIMap(Game &g) {
            IDENTITY it was computed for, so pairing it with the live selection
            needs no row at all: clicking "none" clears the selection and the pair
            stops matching in the same frame -- which is where the old index
-           pairing read xferTargets[-1] (#392). */
-        if(xfer.valid && xfer.target == planner.xfer_sel) {
+           pairing read xferTargets[-1] (#392).
+           And it belongs to the hull it was solved FROM: this line draws the leg
+           out of the CURRENT map position using the solve's departure velocity,
+           so a subject mismatch is a leg from one hull's place along another
+           hull's burn (#809). The windows paint before the map, so a switch made
+           in the imgui pass lands here with the solve still the old one --
+           select_vehicle drops it so this test never has to draw that. */
+        if(xfer.valid && xfer.target == planner.xfer_sel && xfer.subject == g.ship) {
             const TransferSolution &sol = xfer.sol;
             // Even-in-anomaly (not uniform-in-time) so the leg draws with an even outline.
             std::vector<glm::dvec3> xfer_pts =

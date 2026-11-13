@@ -412,6 +412,13 @@ void Game::dropVehicleRefs(Vehicle *v) {
        its row looked up on demand, "the row is gone" is exactly what "v was the
        target" means, and no index has to be remembered alongside (#392). */
     eraseShipTargetRows(xferPlanner.xferTargets, v);
+    /* v may also have been the hull a plan was solved FROM. The solve's subject
+       stamp is an identity only, so leaving it behind lets a Vehicle allocated
+       later land on v's block and read back as "same hull, still fresh" -- the
+       same reason ascent_ship and map.fit_ship are nulled below. */
+    if(xferPlanner.xfer.subject == v) {
+        xferPlanner.dropSolve();
+    }
     /* The empty check gates the toast: an empty identity resolves to null too,
        and with no target there is nothing lost to report (xfer.valid is only
        ever set where a row resolved, so there is no solve to invalidate). */
@@ -423,8 +430,7 @@ void Game::dropVehicleRefs(Vehicle *v) {
            freed at the sweep. */
         toast("Transfer target %s is gone", v->displayName().c_str());
         xferPlanner.xfer_sel = TargetRef();
-        xferPlanner.xfer.valid = false;
-        xferPlanner.xfer.burn_dir = glm::dvec3(0.0);
+        xferPlanner.dropSolve();
     }
     if(kerbal == v) { kerbal = nullptr; }
     if(lastShip == v) { lastShip = nullptr; }
@@ -1621,6 +1627,15 @@ void Game::select_vehicle(Vehicle *v) {
     }
     v->leaveRails();
     ship = v;
+    /* A plan belongs to the hull it was solved FROM as much as to its target
+       (#809), so it does not survive this line. Clearing it here rather than
+       waiting for the planner's next update matters because of frame phase: a
+       Ship List click runs inside the imgui pass, and the orbital map is painted
+       AFTER the windows, so a plan left standing at this point is drawn from the
+       NEW hull's position using the OLD hull's departure velocity for the rest of
+       the frame. The map's arc, its arrival label and the TARGET block all read
+       that pair. */
+    xferPlanner.dropSolve();
     // The thrust latch is per-active-ship: a new ship starts with thrust released.
     thrust_latched = false;
     if(time_accel >= kRailsWarp) {

@@ -159,6 +159,10 @@ PLANE_RE = re.compile(
 )
 XFER_RE = re.compile(
     r"\[xferlog\]\s+t=([\d.]+)s\s+target=\"([^\"]*)\"\s+"
+    # The hull the plan was solved FROM (#809). The line used to name only the
+    # target, so a plan belonging to a hull the player had left behind was
+    # indistinguishable in the log from one they were actually looking at.
+    r"ship=\"([^\"]*)\"\s+"
     r"dv_dep=([-\d.e+]+) m/s\s+dv_cap=([-\d.e+]+) m/s\s+total=([-\d.e+]+) m/s\s+"
     r"tof=([-\d.e+]+) s\s+v_inf=([-\d.e+]+) m/s\s+"
     # r_cap is the capture periapsis RADIUS around the target, r_cap_asl the
@@ -932,10 +936,12 @@ def parse_toast(out):
 def parse_xfer(out):
     rows = []
     for m in XFER_RE.finditer(out):
-        (t, target, dv_dep, dv_cap, total, tof, v_inf, r_cap, r_cap_asl,
+        (t, target, ship, dv_dep, dv_cap, total, tof, v_inf, r_cap, r_cap_asl,
          bx, by, bz, retro, rev) = m.groups()
         rows.append({
             "t": float(t), "target": target,
+            # The subject: whose journey this is (#809).
+            "ship": ship,
             "dv_dep": float(dv_dep), "dv_cap": float(dv_cap),
             "total": float(total), "tof": float(tof),
             "v_inf": float(v_inf),

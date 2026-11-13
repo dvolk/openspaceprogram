@@ -205,8 +205,7 @@ void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
     if(g->ship == nullptr) {
         // No active ship: drop any stale target / plan (orbit-view boot).
         xfer_sel = TargetRef();
-        xfer.valid = false;
-        xfer.burn_dir = glm::dvec3(0.0);
+        dropSolve();
         pc_period = 0.0;
         return;
     }
@@ -263,25 +262,19 @@ void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
 
     const XferTarget *t = target();
     if(t == nullptr) {
-        xfer.valid = false;
-        xfer.burn_dir = glm::dvec3(0.0);
-        // Forget which target the solve belongs to too: xfer.frame only
-        // advances while a target is set, so re-picking the SAME target would
-        // clear no dirty term and leave the solution blank for up to 30 frames.
-        xfer.target = TargetRef();
-        xfer.ship = nullptr;
+        /* dropSolve(), not just valid=false: xfer.frame only advances while a
+           target is set, so re-picking the SAME target would clear no dirty term
+           and leave the solution blank for up to 30 frames. */
+        dropSolve();
     } else if(!xfer_compute) {
         /* A target is also just something to look at: its orbit is on the map
            and its plane is one of the map's planes. With planning off nothing
            solves, so the HUD burn marker, the map arc and the window's solution
-           block all go quiet together -- and an unstamped xfer.target means a
+           block all go quiet together -- and unstamped solve identities mean a
            stale solution cannot be drawn for a frame on the way back, nor a
-           solve be skipped on the way forward (that term is what makes it
+           solve be skipped on the way forward (those terms are what make it
            dirty). */
-        xfer.valid = false;
-        xfer.burn_dir = glm::dvec3(0.0);
-        xfer.target = TargetRef();
-        xfer.ship = nullptr;
+        dropSolve();
         // The target's own period still feeds the porkchop range sliders, which
         // describe the target rather than a plan. Same 30-frame cadence as a
         // live solve: a scalar the sliders read is not worth a state lift on
@@ -326,7 +319,7 @@ void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
                 xfer.burn_dir = glm::dvec3(0.0);
             }
             xfer.target = xfer_sel;
-            xfer.ship = g->ship;
+            xfer.subject = g->ship;
             xfer.auto_tof = xfer_auto;
             xfer.tof_log = xfer_tof_log;
             xfer.solved_frame = xfer.frame;
@@ -337,6 +330,14 @@ void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
     if(g->args.xfer_log && t != nullptr && xfer_compute) {
         if(g->logDue(kGateXfer, g->logClockMs(), g->orbit_log_interval_ms)) {
             const char *tn = t->name;
+            /* A drawn or logged plan always belongs to the hull in control
+               (#809): the solve stamps the subject and the subject term makes a
+               change dirty on the spot, and whoever retires or swaps a hull drops
+               the solve rather than waiting for the refresh tick. Assert it here,
+               where the plan is printed with the hull's own name next to it -- the
+               line used to name only the target, which is how a plan for the hull
+               you left could travel through a log unnoticed. */
+            assert(!xfer.valid || xfer.subject == g->ship);
             if(xfer.valid) {
                 /* r_cap is the capture periapsis RADIUS around the target and
                    r_cap_asl the same point as a HEIGHT above its sea level
@@ -349,19 +350,19 @@ void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
                                            xfer.sol.r_cap - t->body->seaLevelRadius());
                     assert(n > 0 && n < (int)sizeof cap_s);
                 }
-                printf("[xferlog] t=%.1fs target=\"%s\" dv_dep=%.6g m/s "
+                printf("[xferlog] t=%.1fs target=\"%s\" ship=\"%s\" dv_dep=%.6g m/s "
                        "dv_cap=%.6g m/s total=%.6g m/s tof=%.6g s "
                        "v_inf=%.6g m/s%s "
                        "burn=[%.4f %.4f %.4f] retrograde=%d rev=%d\n",
-                       g->time, tn, xfer.sol.dv_departure,
+                       g->time, tn, g->ship->displayName().c_str(), xfer.sol.dv_departure,
                        xfer.sol.dv_capture, xfer.sol.total_dv,
                        xfer.sol.tof, xfer.sol.v_inf, cap_s,
                        xfer.burn_dir.x, xfer.burn_dir.y,
                        xfer.burn_dir.z, xfer.sol.retrograde ? 1 : 0,
                        xfer.sol.revolutions);
             } else {
-                printf("[xferlog] t=%.1fs target=\"%s\" no-solution\n",
-                       g->time, tn);
+                printf("[xferlog] t=%.1fs target=\"%s\" ship=\"%s\" no-solution\n",
+                       g->time, tn, g->ship->displayName().c_str());
             }
             fflush(stdout);
         }
@@ -382,12 +383,24 @@ void TransferPlanner::dropTargets() {
     xfer_sel = TargetRef();
 }
 
+void TransferPlanner::dropSolve() {
+    xfer.valid = false;
+    xfer.burn_dir = glm::dvec3(0.0);
+    // Both identities go, not just the flag: a stamp left behind is what lets a
+    // plan be read as current when the thing it was solved against changed
+    // (#809), and -- with xfer.frame frozen while no target is set -- a stamp
+    // left behind is also what lets a re-pick of the SAME target find nothing to
+    // mark dirty and stay blank for a whole refresh tick.
+    xfer.target = TargetRef();
+    xfer.subject = nullptr;
+}
+
 void TransferPlanner::invalidateClockState() {
     // Clock jump or system swap: everything stamped against the old world is
     // stale. Clearing xferTargets also frees the old system's pointers.
     clearPorkchopPlan();
     pc.valid = false;
-    xfer.valid = false;
+    dropSolve();
     dropTargets();
     /* Deliberately NOT pc_in_flight. A sweep that is queued or running still
        owes its continuation, and that continuation is the only other place the

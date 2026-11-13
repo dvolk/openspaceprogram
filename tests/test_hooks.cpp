@@ -205,7 +205,7 @@ static void test_solve_is_stale() {
        the 30-frame refresh makes it self-heal, which is exactly why it hid. */
     TransferPlanner::Solve s;
     s.target = TargetRef{"Mun", false};
-    s.ship = fakeV(1);
+    s.subject = fakeV(1);
     s.auto_tof = true;
     s.tof_log = 3.0;
     s.solved_frame = 100;
@@ -219,7 +219,7 @@ static void test_solve_is_stale() {
     // And the subject never having been stamped (a solve with no hull on record)
     // must not read as fresh, or clearing it would freeze a stale plan.
     TransferPlanner::Solve bare = s;
-    bare.ship = nullptr;
+    bare.subject = nullptr;
     CHECK(solve_is_stale(bare, sel, fakeV(1), true, 3.0, 101));
     // The target identity, including its kind: "Mun" the moon is not "Mun" the
     // vessel, and a gone/empty selection answers for nothing.
@@ -229,9 +229,17 @@ static void test_solve_is_stale() {
     // The ToF knobs: auto <-> pinned, and a pinned ToF the slider moved.
     CHECK(solve_is_stale(s, sel, fakeV(1), false, 3.0, 101));
     CHECK(solve_is_stale(s, sel, fakeV(1), true, 3.5, 101));
-    // A slider that has not really moved (float epsilon) is NOT a re-solve: the
-    // plan would otherwise be thrown away on every frame the window is open.
+    // Below the tolerance is NOT a re-solve: the term exists so a ToF that some
+    // caller re-derives in double cannot throw the plan away every frame. Note
+    // what it is NOT: the window holds a float, so an untouched slider echoes the
+    // stamped value bit for bit and a moved one shifts by ~1e-7 at least -- in
+    // play this term never fires on its own. (And a NaN would read as "unchanged"
+    // through it; neither ToF writer can produce one, both take log10 of a valid
+    // solution's ToF.)
     CHECK(!solve_is_stale(s, sel, fakeV(1), true, 3.0 + 1e-13, 129));
+    // What this binary CANNOT pin: that update() passes the LIVE hull rather than
+    // the stamp. That wiring is what e2e transfer-plan-follows-the-active-ship
+    // pins, because [xferlog] now prints both the subject and the plan's numbers.
 }
 
 int main() {

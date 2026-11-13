@@ -80,6 +80,16 @@ public:
     // Drop a "Send best" plan and restore the prior ToF mode. No-op if none.
     void clearPorkchopPlan();
 
+    /* Forget the cached plan -- and its two identity stamps -- without touching
+       the selection or the player's knobs. A plan is a pair of states, so it
+       dies when either half does: whoever drops the active hull (a switch, a
+       retirement, a load) or the world it was solved in calls this rather than
+       trusting the 30-frame refresh to notice. Clearing the stamps rather than
+       only `valid` is what makes the next update() re-solve instead of waiting
+       for the tick, and it is what stops a plan stamped for a hull that no
+       longer exists from reading as the current one. */
+    void dropSolve();
+
     // Clock jump or system swap: drop every stamp against the old world.
     void invalidateClockState();
 
@@ -142,8 +152,12 @@ public:
            vessels that orbits the same body kept the old plan for up to 30 frames
            -- the map drew the NEW ship's position with the OLD ship's departure
            velocity, and the TARGET block printed a dv belonging to the hull you
-           left. A plan is a pair of states, not a target. */
-        Vehicle *ship = nullptr;
+           left. A plan is a pair of states, not a target.
+           IDENTITY ONLY, never dereference: like every other Vehicle* the planner
+           holds, this can outlive the hull, so whoever retires or replaces a hull
+           drops the solve through dropSolve() rather than leaving the stamp to be
+           "same address, still fresh" for a hull allocated later. */
+        Vehicle *subject = nullptr;
         bool auto_tof = true;
         double tof_log = -1.0;
         int frame = 0;          // per-frame counter while a target is set
@@ -278,13 +292,18 @@ inline void eraseShipTargetRows(std::vector<TransferPlanner::XferTarget> &rows,
    been in this set since #276, but the SUBJECT hull never was, so switching to
    another of your own vessels around the same body kept drawing the plan (and the
    burn billboard built from it) for the hull you left, for up to 30 frames.
-   `frame - solved_frame` is a refresh tick, not a staleness claim: a plan nothing
-   changed still re-solves, because both orbits move under it. */
+   The IDENTITY terms (target, subject) dirty on the spot; `frame - solved_frame`
+   is a refresh tick, not a staleness claim: a plan nothing changed still
+   re-solves, because both orbits move under it. The ToF tolerance is the one the
+   window always had: its source is a float, so in play the term fires on a real
+   slider move (a float ULP is ~2.4e-7, far above this) and never on noise.
+   Every new term has to be added in three places -- the stamp, this signature and
+   the call site -- which is why the set lives here rather than inline. */
 inline bool solve_is_stale(const TransferPlanner::Solve &s, const TargetRef &sel,
                            const Vehicle *subject, bool auto_tof, double tof_log,
                            int frame) {
     return s.target != sel
-        || s.ship != subject
+        || s.subject != subject
         || s.auto_tof != auto_tof
         || std::fabs(s.tof_log - tof_log) > 1e-12
         || frame - s.solved_frame >= 30;
