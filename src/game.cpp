@@ -1038,7 +1038,11 @@ bool Game::openRecorder(Uint32 now_ms) {
 
     const std::time_t now = std::time(nullptr);
     std::tm tm {};
+#if defined(_WIN32)
+    gmtime_s(&tm, &now);  // mingw/MSVC Annex K; args reversed vs gmtime_r
+#else
     gmtime_r(&now, &tm);
+#endif
     char stamp[32];
     std::strftime(stamp, sizeof stamp, "%Y%m%d_%H%M%S", &tm);
 
