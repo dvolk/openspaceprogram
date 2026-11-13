@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 335 |
+| `invariant` | a behaviour or a player route the game must keep | 336 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 48 |
 | `harness` | CLI/test-engine plumbing, not game spec | 15 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **402** |
+| | **total** | **403** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -364,7 +364,7 @@ judgement. Select by number, name or path, e.g.
 | `ui/748-hold-the-job-runner-and-read-a-window-mid-bake.txt` | invariant | --hold-jobs keeps a posted surface-map bake unpublished, so a --ui-list inside the span reads the window mid-sweep: the cursor line dashes its ground number as (rebaking) instead of quoting a number for the body it just switched to, and the number lands after the release. |
 | `ui/768-systems-window-shuts-the-nozzles.txt` | golden | The Systems window's Thrust vectoring checkbox drops the live gimballed rating in --steering-log from 129710 N m to 0 while the window keeps printing 129710 N m beside the now-off switch, and says nothing about the engines being gone. |
 
-## render (70)
+## render (71)
 
 | case | kind | pins |
 |---|---|---|
@@ -438,6 +438,7 @@ judgement. Select by number, name or path, e.g.
 | `render/769-the-surface-map-draws-the-wind.txt` | invariant | --surfmap-map wind paints the air's speed and direction over the ground: Earth prints the speeds it actually drew between the ends its file states, the Moon refuses for want of air, Pluto refuses because its authored air has no wind rows, and the cursor reads the number under it. |
 | `render/772-a-real-world-winds-its-bands.txt` | invariant | A shipped body whose wind table has many latitude bands draws one arrow row per band, one whose table has too few draws the uniform grid instead, and each prints which plan drew it and how many rows and cells that produced. |
 | `render/786-the-shipped-corpus-flies-comets-and-calls-them-comets.txt` | invariant | The default corpus authors seven comets, the dossier calls each one a comet rather than an asteroid or a planet, each is named by its MPC designation, and the designation rule is what keeps 252P/LINEAR from being a second body called LINEAR. |
+| `render/810-map-fit-tracking-switch.txt` | invariant | The Tracking Station map fits the newly selected hull's body and orbit. |
 
 ## harness (16)
 

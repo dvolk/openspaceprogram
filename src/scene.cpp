@@ -80,7 +80,8 @@ void spaceCenterDrawUi(Game &g) {
 void noPaint(Game &) {}
 
 // The map is the scene's identity (force it open); the ship list's "Back"/"Fly"
-// are the navigation.
+// are the navigation. The list also switches the active hull, and neither order is
+// load-bearing: drawTrackingMap re-takes the ship snapshot before it fits (#810).
 void trackingDrawUi(Game &g) {
     setWinOpen(W_TrackingMap, true);
     drawTrackingMap(g);

@@ -6602,6 +6602,12 @@ void drawTrackingShipList(Game &g) {
 }
 
 void drawTrackingMap(Game &g) {
+    /* The snapshot read below belongs to the hull the STATE pass saw, and the Tracking
+       Ship List can hand the scene another hull mid-pass. Re-take it here instead of
+       trusting the order of the two windows in trackingDrawUi: fitMapView pairs a body
+       with a conic, and the two must describe the same orbit (#810 -- the guard
+       drawUIMap got for #235, which this entry point never had). */
+    syncShipView(g);
     TransferPlanner &planner = g.xferPlanner;
     Vehicle *ship = g.ship;
     OrbitElements &o = g.hud.view.o;

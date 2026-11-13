@@ -1,0 +1,32 @@
+# The Tracking map pairs a BODY with the conic in g.hud.view, and that snapshot belongs
+# to the hull the state pass saw -- not the hull the Tracking Ship List just selected.
+# drawTrackingMap re-takes it (syncShipView) like drawUIMap does (#810), so the pairing
+# cannot straddle two vessels no matter what order trackingDrawUi draws its windows in.
+#
+# Teeth (both mutations run by hand, neither shipped): with the two
+# drawTrackingMap/drawTrackingShipList lines in scene.cpp swapped and the guard left IN,
+# this still passes -- the order has stopped mattering. With the same swap AND the
+# syncShipView call deleted it dies on:
+#   osp: src/gameui.cpp:4362: void fitMapView(MapState&, TerrainBody&, const ShipView*,
+#   bool): Assertion `!ship || ship->m_parent == &body' failed.
+# exit -6, and the Mun fit never prints. The shipped order hides that hazard: the map
+# draws first, so a stale snapshot only ever lasts one frame. ("Assertion" is already in
+# run.py's DEFAULT_FORBID, so it needs no line here.)
+#
+# The fit numbers are case 352's pair -- same two beds, so the same orbits: 727500 m is
+# Kerbin's 600 km radius plus 1.25 x its shell edge (max(100 km, 1.2 x 85 km air top) =
+# 102 km, #682), and 325000 m is the Mun's 200 km radius plus 1.25 x its 100 km floor.
+# Deliberately matched WITHOUT the "-> m/px" tail: the Tracking map is edge-to-edge, so
+# its metres-per-pixel is not the flight window's.
+NAME map-fit-tracking-switch
+CLAIM The Tracking Station map fits the newly selected hull's body and orbit.
+KIND invariant
+ARGS --timeout 6 --time-accel 1 --startship racer,res/ships/racer.json,Kerbin,inertial-orbit
+ARGS --startship probe,res/ships/racer.json,Mun,inertial-orbit
+ARGS --sim-press 1000,0,ESCAPE
+ARGS --ui-click 2000,"Game Menu/Tracking Station"
+ARGS --ui-click 3000,"Tracking Ship List/probe"
+EXPECT Active ship 2 of 2: probe
+CHECK re.search(r"\[mapfit\] Kerbin: body 600000 m, fit 727500 m", out)
+CHECK re.search(r"\[mapfit\] Mun: body 200000 m, fit 325000 m", out)
+FORBID error:
