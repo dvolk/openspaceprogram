@@ -1,0 +1,46 @@
+# A transfer plan belongs to a PAIR -- the subject hull and the target -- but the
+# planner's dirty set only ever remembered the target (#809). Switch to another of
+# your own vessels around the same body and the plan survived for up to 30 frames:
+# the map drew the NEW hull's position with the OLD hull's departure velocity, the
+# burn billboard pointed along that, and the TARGET window printed a dv belonging
+# to the hull you left. Nothing asserted and the 30-frame refresh made it self-heal,
+# which is why it hid.
+#
+# How the leak is made visible at all: the [xferlog] rows do not say whose plan they
+# are, but the [orbitlog] rows describe the ACTIVE hull, so the jump in r from the
+# pad hull's ~6.0e5 m to high-orbit transporter's ~1.7e6 m puts the switch on the
+# same clock as the plan rows. The stale window is 30 frames, about 0.5 s, so the
+# log has to sample FASTER than that -- at --orbit-interval 0.5 the window is one
+# sample wide and the old plan usually heals before the sample lands, which is how
+# this hid from a case written that way (measured, not guessed).
+NAME transfer-plan-follows-the-active-ship
+CLAIM With a transfer target held, switching the active ship gives the new hull its own plan instead of keeping the one solved for the hull that was left behind.
+KIND invariant
+ARGS --startships e2e/fixtures/startships.json --timeout 12
+ARGS --orbit-log --xfer-log --orbit-interval 0.2 --transfer-target Mun
+ARGS --ui-click 2500,"Windows/Ship List"
+ARGS --ui-click 3000,"Ship List/transporter"
+EXPECT Active ship 5 of 8: transporter
+FORBID error:
+CHECK len(xfer) >= 6
+CHECK all(r["target"] == "Mun" for r in xfer)
+# The switch really happened: some orbit row describes an orbit, not the pad.
+CHECK any(o["r"] > 1.0e6 for o in orbit)
+# racer sits on the pad and transporter already holds 1110 km, so the same Mun
+# target is not remotely the same journey -- a launch out of a gravity well
+# versus an escape from an orbit already held -- and the switch is the only thing
+# that moves between them. Margins are wide because the numbers ride the phasing
+# search and the body files; the gap between the journeys does not.
+CHECK any(r["total"] > 3000 for r in xfer)
+CHECK any(r["total"] < 1500 for r in xfer)
+CHECK any(r["rev"] == 0 for r in xfer) and any(r["rev"] >= 1 for r in xfer)
+# THE regression: from the sample that first sees the new hull's orbit, every plan
+# row must be the new hull's. The stale window is ~2 samples wide here, so a plan
+# still solved for the hull that was left behind lands in this range; the fix
+# re-solves on the very frame the selection changes, so it never does.
+CHECK all(r["total"] < 1500 for r in xfer if r["t"] >= min(o["t"] for o in orbit if o["r"] > 1.0e6))
+# And nothing before the switch can already be the new hull's plan. One sample of
+# slack, because the click is scheduled on the wall clock and a sample can land on
+# either side of the frame that switched.
+CHECK all(r["total"] > 3000 for r in xfer if r["t"] < min(o["t"] for o in orbit if o["r"] > 1.0e6) - 0.2)
+LIMIT 60

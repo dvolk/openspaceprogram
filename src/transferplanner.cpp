@@ -269,6 +269,7 @@ void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
         // advances while a target is set, so re-picking the SAME target would
         // clear no dirty term and leave the solution blank for up to 30 frames.
         xfer.target = TargetRef();
+        xfer.ship = nullptr;
     } else if(!xfer_compute) {
         /* A target is also just something to look at: its orbit is on the map
            and its plane is one of the map's planes. With planning off nothing
@@ -280,6 +281,7 @@ void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
         xfer.valid = false;
         xfer.burn_dir = glm::dvec3(0.0);
         xfer.target = TargetRef();
+        xfer.ship = nullptr;
         // The target's own period still feeds the porkchop range sliders, which
         // describe the target rather than a plan. Same 30-frame cadence as a
         // live solve: a scalar the sliders read is not worth a state lift on
@@ -292,10 +294,8 @@ void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
         }
     } else {
         xfer.frame++;
-        const bool dirty = xfer.target != xfer_sel
-            || xfer.auto_tof != xfer_auto
-            || std::fabs(xfer.tof_log - xfer_tof_log) > 1e-12
-            || xfer.frame - xfer.solved_frame >= 30;
+        const bool dirty = solve_is_stale(xfer, xfer_sel, g->ship, xfer_auto,
+                                          xfer_tof_log, xfer.frame);
         if(dirty) {
             const InertialShip s1 = shipInertial(*g, com, vel);
             const InertialTarget d = targetInertial(*t, s1.inertial);
@@ -326,6 +326,7 @@ void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
                 xfer.burn_dir = glm::dvec3(0.0);
             }
             xfer.target = xfer_sel;
+            xfer.ship = g->ship;
             xfer.auto_tof = xfer_auto;
             xfer.tof_log = xfer_tof_log;
             xfer.solved_frame = xfer.frame;

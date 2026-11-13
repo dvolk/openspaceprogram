@@ -131,12 +131,19 @@ public:
     bool isTarget(const XferTarget &t) const;
     bool xfer_auto = true;                     // auto min-dv ToF vs pinned
     float xfer_tof_log = (float)std::log10(3600.0); // log10(s), the pinned ToF
-    struct {
+    struct Solve {
         TargetRef target;     // the target the solve was computed FOR (the
                               // solve's owner: xfer.valid can outlive the
                               // selection by a frame, so compare this with the
                               // live selection instead of trusting valid alone
                               // -- and never use it to index the list)
+        /* And the SUBJECT it was computed from (#809). The target has always been
+           in the dirty set; the ship was not, so switching to another of your
+           vessels that orbits the same body kept the old plan for up to 30 frames
+           -- the map drew the NEW ship's position with the OLD ship's departure
+           velocity, and the TARGET block printed a dv belonging to the hull you
+           left. A plan is a pair of states, not a target. */
+        Vehicle *ship = nullptr;
         bool auto_tof = true;
         double tof_log = -1.0;
         int frame = 0;          // per-frame counter while a target is set
@@ -263,4 +270,22 @@ inline void eraseShipTargetRows(std::vector<TransferPlanner::XferTarget> &rows,
     std::erase_if(rows, [v](const TransferPlanner::XferTarget &t) {
         return t.ship == v;
     });
+}
+
+/* Is the cached solve still the answer for what the player is looking at? Out of
+   update() as a pure function so the dirty SET can be pinned without a Game
+   (tests/test_hooks.cpp) -- which is how #809 got caught: the target identity has
+   been in this set since #276, but the SUBJECT hull never was, so switching to
+   another of your own vessels around the same body kept drawing the plan (and the
+   burn billboard built from it) for the hull you left, for up to 30 frames.
+   `frame - solved_frame` is a refresh tick, not a staleness claim: a plan nothing
+   changed still re-solves, because both orbits move under it. */
+inline bool solve_is_stale(const TransferPlanner::Solve &s, const TargetRef &sel,
+                           const Vehicle *subject, bool auto_tof, double tof_log,
+                           int frame) {
+    return s.target != sel
+        || s.ship != subject
+        || s.auto_tof != auto_tof
+        || std::fabs(s.tof_log - tof_log) > 1e-12
+        || frame - s.solved_frame >= 30;
 }

@@ -21,6 +21,10 @@
 //        vessel may share a name, and retiring one must not retarget the other
 //        (was case 243 / --select-target; issue #392).
 //
+//   transferplanner.h solve_is_stale -- what makes a cached transfer plan
+//        re-solve: the target identity, the SUBJECT hull (#809), the ToF knobs
+//        and the 30-frame refresh tick.
+//
 //   question.h dropPendingQuestion / answerPendingQuestion -- a teardown drops
 //        the card (was case 258 / --switch-system), and the card closes before
 //        onAnswer runs so the callback may open the next one (was case 265 /
@@ -191,6 +195,45 @@ static void test_answer_noop_without_card() {
     CHECK(q == nullptr);
 }
 
+static void test_solve_is_stale() {
+    /* #809. A transfer plan belongs to a PAIR: the subject hull and the target.
+       The target identity has been in the dirty set since #276; the subject was
+       never in it, so switching to another of your own vessels around the same
+       body kept the old plan -- the map arc, the burn billboard and the TARGET
+       window's dv -- for up to 30 frames, drawn from the NEW hull's position with
+       the OLD hull's departure velocity. Nothing asserts, nothing crashes, and
+       the 30-frame refresh makes it self-heal, which is exactly why it hid. */
+    TransferPlanner::Solve s;
+    s.target = TargetRef{"Mun", false};
+    s.ship = fakeV(1);
+    s.auto_tof = true;
+    s.tof_log = 3.0;
+    s.solved_frame = 100;
+    const TargetRef sel{"Mun", false};
+    // Nothing the player can see changed, and the refresh tick is not due.
+    CHECK(!solve_is_stale(s, sel, fakeV(1), true, 3.0, 129));
+    // The tick still re-solves a plan nothing touched: both orbits move under it.
+    CHECK(solve_is_stale(s, sel, fakeV(1), true, 3.0, 130));
+    // The subject term -- the bug itself. Same target, same knobs, new hull.
+    CHECK(solve_is_stale(s, sel, fakeV(2), true, 3.0, 101));
+    // And the subject never having been stamped (a solve with no hull on record)
+    // must not read as fresh, or clearing it would freeze a stale plan.
+    TransferPlanner::Solve bare = s;
+    bare.ship = nullptr;
+    CHECK(solve_is_stale(bare, sel, fakeV(1), true, 3.0, 101));
+    // The target identity, including its kind: "Mun" the moon is not "Mun" the
+    // vessel, and a gone/empty selection answers for nothing.
+    CHECK(solve_is_stale(s, TargetRef{"Minmus", false}, fakeV(1), true, 3.0, 101));
+    CHECK(solve_is_stale(s, TargetRef{"Mun", true}, fakeV(1), true, 3.0, 101));
+    CHECK(solve_is_stale(s, TargetRef{}, fakeV(1), true, 3.0, 101));
+    // The ToF knobs: auto <-> pinned, and a pinned ToF the slider moved.
+    CHECK(solve_is_stale(s, sel, fakeV(1), false, 3.0, 101));
+    CHECK(solve_is_stale(s, sel, fakeV(1), true, 3.5, 101));
+    // A slider that has not really moved (float epsilon) is NOT a re-solve: the
+    // plan would otherwise be thrown away on every frame the window is open.
+    CHECK(!solve_is_stale(s, sel, fakeV(1), true, 3.0 + 1e-13, 129));
+}
+
 int main() {
     test_prune_drops_stale();
     test_prune_keeps_valid();
@@ -199,6 +242,7 @@ int main() {
     test_problem_empty_seat_and_ok();
     test_erase_rows();
     test_target_identity();
+    test_solve_is_stale();
     test_drop_question();
     test_answer_closes_first();
     test_answer_noop_without_card();
