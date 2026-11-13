@@ -76,9 +76,11 @@ Usage:
                         ended, and --jobs the jobs and steps behind it. A run answers
                         status -- whether a runner still holds it -- and conclusion,
                         which is the verdict, so "green" means done + success. --sha
-                        picks the run for a commit; --wait polls (3s apart, never past
-                        600s) until every returned run has completed, and a wait that
-                        runs out is a stderr note with the current state, not an error)
+                        picks the run for a commit; --wait polls (3s apart, at least
+                        one interval and never past 600s) until every returned run has
+                        completed, and a wait that runs out is a stderr note with the
+                        current state, not an error. --jobs costs one request per run,
+                        so past 10 runs it describes the newest 10 and says so)
   utils/tea.py ci-log [--run N] [--job NAME] [--step NAME] [--grep RE]
                           [--tail N] [--full]
                        (the text a job printed. --run defaults to the newest run and
@@ -398,8 +400,11 @@ def check_ci_limit(n):
 
 def check_ci_wait(n):
     n = int(n)
-    if n < 1:
-        raise argparse.ArgumentTypeError("--wait must be at least 1 second")
+    if n < CI_POLL_SECS:
+        # A budget shorter than one interval cannot poll, so it would answer the
+        # question the caller already had before asking.
+        raise argparse.ArgumentTypeError(
+            f"--wait needs at least one poll interval ({CI_POLL_SECS}s)")
     if n > CI_WAIT_MAX:
         raise argparse.ArgumentTypeError(
             f"--wait cannot be past {CI_WAIT_MAX}s -- this polls with a deadline "
@@ -1120,8 +1125,18 @@ CI_DONE = "completed"        # the only run status that means "a runner let go o
 CI_POLL_SECS = 3
 CI_WAIT_MAX = 600            # a bounded wait; nothing here may hang forever
 CI_LOG_WINDOW = 60           # lines of a job log returned without --full
-CI_PAGE_ASK = 15             # per_page we request; this endpoint ignores it (walk_runs)
-_ci_page_note = False        # the per_page-is-ignored note is said once per process
+CI_JOBS_MAX = 10             # --jobs costs one GET per run; nothing here may hang
+_ci_walk_notes = set()       # walk-level notes are said once per process, not per poll
+
+
+def _walk_note(kind, text):
+    """A note about how the run list behaves, said once per process. --wait
+    re-walks every few seconds and these notes carry counts that would otherwise
+    print a new variant of the same complaint on every poll."""
+    if kind in _ci_walk_notes:
+        return
+    _ci_walk_notes.add(kind)
+    note(text)
 
 
 def _when(v):
@@ -1157,64 +1172,88 @@ def job_out(d):
 
 def list_runs(tracker, params):
     body, headers = tracker.api("GET", tracker.repo_path("/actions/runs"), params)
+    if not isinstance(body, dict):
+        # Every other list reader in this file says so when the shape moves;
+        # betting on one key of one shape is how a wrapper starts lying.
+        fail(f"the run list came back {type(body).__name__}, not an object")
     return body.get("workflow_runs") or [], total_count(headers)
 
 
 def walk_runs(tracker, limit, branch):
     """Runs newest first, up to `limit` of them.
 
-    Measured 2026-11-13 with 18 runs in the repo: this endpoint ignores per_page
-    outright -- per_page=1 still answers all 18 on page 1 and nothing on page 2.
-    So --limit is honoured here by trimming, never by the server, and anything
-    that trusted paging would miss a --sha older than page 1. The loop still
-    pages, because a server that starts honouring per_page would otherwise
-    silently shorten the answer, and it stops on a page that brings nothing new
-    rather than spinning or duplicating rows.
+    Measured 2026-11-13: this endpoint ignores per_page -- any value, or none at
+    all, answers the whole history on page 1 and nothing on page 2 -- so --limit
+    can only ever be honoured here, by trimming. Paging is kept regardless,
+    because the day this server starts honouring per_page is the day a
+    single-page read silently stops reaching older runs.
     """
-    global _ci_page_note
-    runs, page, total, seen, ran_dry = [], 1, None, set(), False
-    while len(runs) < limit:
-        params = {"per_page": min(limit, CI_PAGE_ASK), "page": page}
+    runs, page, total, seen, dups, ran_dry = [], 1, None, set(), 0, False
+    while len(runs) < limit and page <= LS_MAX_PAGES:
+        params = {"per_page": min(limit, SERVER_PAGE_CAP), "page": page}
         if branch:
             params["branch"] = branch
         got, t = list_runs(tracker, params)
         if total is None:
             total = t
-        fresh = [r for r in got if r.get("id") not in seen]
+        # Keyed by id, and a row WITHOUT an id is kept rather than deduped: every
+        # keyless row would key to None and be thrown away as a repeat of the last.
+        fresh = []
+        for r in got:
+            rid = r.get("id")
+            if rid is None:
+                fresh.append(r)
+            elif rid not in seen:
+                seen.add(rid)
+                fresh.append(r)
+            else:
+                dups += 1
         if not fresh:
-            # Either the history ends here, or the server ignores `page` as well
-            # and repeated what we already hold. Nothing past this point is
-            # reachable by asking harder.
+            # Either the history ends here, or the server ignores `page` too and
+            # handed back rows we already hold. Asking harder cannot reach more.
             ran_dry = True
             break
-        if page == 1 and len(got) > params["per_page"] and not _ci_page_note:
-            # Said once per process, not once per poll: --wait walks this every
-            # few seconds and a note that repeats is noise, not information.
-            _ci_page_note = True
-            trimmed = "; trimming to the --limit asked for" if len(got) > limit else ""
-            note(f"the actions endpoint answered {len(got)} runs when asked for "
-                 f"{params['per_page']} -- it ignores per_page{trimmed}")
-        seen.update(r.get("id") for r in fresh)
+        if page == 1 and len(got) > params["per_page"]:
+            _walk_note("per_page",
+                       f"the actions endpoint answered {len(got)} runs when asked "
+                       f"for {params['per_page']} -- it ignores per_page"
+                       + ("; trimming to the --limit asked for" if len(got) > limit
+                          else ""))
         runs.extend(fresh)
-        if len(runs) >= limit:
-            break
         page += 1
+    if dups:
+        # Same as the issue list: if rows repeat, say how many, do not just drop
+        # them and leave the caller wondering where the rest went.
+        _walk_note("repeats", f"{dups} run(s) were answered on more than one page "
+                              f"-- listed once each")
     if ran_dry and total is not None and len(runs) < total:
-        # The endpoint said there were more than it let us read, so a --sha
-        # filter over this list could answer "no such run" for a run that exists.
-        # Only worth saying when the walk ran dry: stopping at --limit is the
-        # caller's choice, not a short list.
-        note(f"the actions endpoint ran dry at {len(runs)} runs though it says "
-             f"{total} exist -- this list may be short")
+        # The endpoint counted more than it let us read, so a --sha filter over
+        # this list could answer "no such run" for a run that exists.
+        _walk_note("ran_dry", f"the actions endpoint ran dry at {len(runs)} runs "
+                              f"though it says {total} exist -- this list may be "
+                              f"short")
+    # The walk stops for exactly one of three reasons; if it ever stops for a
+    # fourth, the ran_dry note above starts lying about short lists.
+    assert ran_dry or len(runs) >= limit or page > LS_MAX_PAGES
     return runs[:limit], total
+
+
+def run_jobs(tracker, run_id):
+    """The jobs behind a run, shape-checked the way the run list is: one call
+    site here and in ci-log, and neither gets to bet that the body is an object."""
+    body, _ = tracker.api("GET", tracker.repo_path(f"/actions/runs/{run_id}/jobs"))
+    if not isinstance(body, dict):
+        fail(f"run {run_id}'s jobs came back {type(body).__name__}, not an object")
+    return body.get("jobs") or []
 
 
 def cmd_ci(args):
     tracker = Tracker()
-    deadline = time.monotonic() + args.wait if args.wait else None
-    waited = 0.0
+    started = time.monotonic()
+    deadline = started + args.wait if args.wait else None
     while True:
-        runs, total = walk_runs(tracker, args.limit, args.branch)
+        read_runs, total = walk_runs(tracker, args.limit, args.branch)
+        runs = read_runs
         # head_sha is filtered here rather than by the server because a pushed
         # sha has no query parameter that reaches it: the list answers newest
         # first, which is exactly when the run you are chasing does not exist yet.
@@ -1225,25 +1264,43 @@ def cmd_ci(args):
             break
         if runs and all(r.get("status") == CI_DONE for r in runs):
             break
-        if time.monotonic() >= deadline:
+        # The deadline is checked before sleeping, not after: checking after lets
+        # a poll start at N-epsilon and the whole command run to N + CI_POLL_SECS,
+        # past the bound the --help text promises.
+        if time.monotonic() + CI_POLL_SECS > deadline:
             subject = (f"a run for {args.sha} to appear" if args.sha and not runs
                        else "the run(s) to complete")
-            note(f"waited {args.wait}s for {subject} and it did not -- this is the "
-                 f"state as of now, not a failure")
+            note(f"waited {round(time.monotonic() - started, 1)}s for {subject} and "
+                 f"it did not -- this is the state as of now, not a failure")
             break
         time.sleep(CI_POLL_SECS)
-        waited += CI_POLL_SECS
-    if args.sha and not runs:
-        note(f"no run in the newest {args.limit} carries sha {args.sha}"
-             + (f" (the server says there are {total} runs total)" if total else "")
-             + " -- raise --limit, or the push may not have triggered a workflow")
+    if not runs:
+        # The count quoted here is what was actually searched, not what --limit
+        # asked for: the two differ exactly when the endpoint ran dry, and the
+        # advice has to differ with them.
+        if args.sha:
+            note(f"no run among the {len(read_runs)} the actions endpoint let us "
+                 f"read carries sha {args.sha}"
+                 + (f" (it says there are {total} runs in all)" if total else "")
+                 + (" -- the list ran dry there, so raising --limit will not help"
+                    if len(read_runs) < args.limit
+                    else " -- raise --limit, or the push may not have triggered a "
+                         "workflow"))
+        elif args.branch:
+            seen = sorted({str(r.get("head_branch")) for r in read_runs
+                           if r.get("head_branch")})
+            note(f"no run among the {len(read_runs)} newest carries branch "
+                 f"{args.branch!r}"
+                 + (f"; those runs carry {', '.join(seen)}" if seen else ""))
     out = [run_out(r) for r in runs]
     if args.jobs:
-        for view, r in zip(out, runs):
-            body, _ = tracker.api("GET",
-                                  tracker.repo_path(f"/actions/runs/{r.get('id')}/jobs"))
-            view["jobs"] = [job_out(j) for j in (body.get("jobs") or [])]
-    print(json.dumps({"runs": out, "total": total, "waited_secs": waited or None}))
+        if len(out) > CI_JOBS_MAX:
+            note(f"--jobs describes the newest {CI_JOBS_MAX} of these {len(out)} "
+                 f"runs -- it costs one request per run; narrow --limit for the rest")
+        for view, r in zip(out[:CI_JOBS_MAX], runs[:CI_JOBS_MAX]):
+            view["jobs"] = [job_out(j) for j in run_jobs(tracker, r.get("id"))]
+    waited = round(time.monotonic() - started, 1) if args.wait else None
+    print(json.dumps({"runs": out, "total": total, "waited_secs": waited}))
 
 
 _LOG_TS = re.compile(r"^\d{4}-\d{2}-\d{2}T[\d:.]+Z\s+")
@@ -1278,7 +1335,10 @@ def _step_span(lines, want):
                 tops.append((i, b[len(marker):]))
             depth += 1
         elif b.startswith("::endgroup::"):
-            depth -= 1
+            # Clamped: a truncated log that closes a group it never opened would
+            # take depth negative, after which no top-level group is ever seen
+            # again and the error message lists a truncated set of step names.
+            depth = max(0, depth - 1)
     exact = [(i, n) for i, n in tops if n == want]
     if not exact:
         fold = want.casefold()
@@ -1304,7 +1364,14 @@ def _log_text(raw, what):
             fail(f"{what} came back as an empty zip")
         note(f"{what} came back as a zip ({len(names)} entries) -- decoding "
              f"{names[0]!r}")
-        return zf.read(names[0]).decode("utf-8", "replace")
+        try:
+            blob = zf.read(names[0])
+        except (RuntimeError, NotImplementedError, zipfile.BadZipFile) as e:
+            # An encrypted entry raises RuntimeError and an unsupported method
+            # NotImplementedError. Both are the server's choice, so they answer
+            # as errors here instead of escaping as a traceback.
+            fail(f"{what}'s entry {names[0]!r} could not be read: {e}")
+        return blob.decode("utf-8", "replace")
     return raw.decode("utf-8", "replace")
 
 
@@ -1312,6 +1379,9 @@ def cmd_ci_log(args):
     tracker = Tracker()
     run_id = args.run
     if run_id is None:
+        # per_page=1 is a request, not a bound: this endpoint ignores it, so the
+        # whole history arrives and we use one row of it. Nothing on this server
+        # can bound the fetch, which is worth knowing before the run list grows.
         runs, _ = list_runs(tracker, {"per_page": 1, "page": 1})
         if not runs:
             fail("this repo has no workflow runs, so there is no log to read")
@@ -1320,8 +1390,7 @@ def cmd_ci_log(args):
         note(f"no --run given: reading run {run_id} "
              f"({r.get('head_branch')}@{(r.get('head_sha') or '')[:8]}, "
              f"{r.get('status')}/{r.get('conclusion') or '-'})")
-    body, _ = tracker.api("GET", tracker.repo_path(f"/actions/runs/{run_id}/jobs"))
-    jobs = body.get("jobs") or []
+    jobs = run_jobs(tracker, run_id)
     if not jobs:
         fail(f"run {run_id} has no jobs -- is that run id right? "
              f"(utils/tea.py ci lists the recent ones)")
