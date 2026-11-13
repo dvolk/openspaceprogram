@@ -1110,6 +1110,7 @@ CI_DONE = "completed"        # the only run status that means "a runner let go o
 CI_POLL_SECS = 3
 CI_WAIT_MAX = 600            # a bounded wait; nothing here may hang forever
 CI_LOG_WINDOW = 60           # lines of a job log returned without --full
+CI_SERVER_PAGE = 15          # measured: this endpoint answers 15 whatever per_page says
 
 
 def run_out(d):
@@ -1137,15 +1138,41 @@ def list_runs(tracker, params):
     return body.get("workflow_runs") or [], total_count(headers)
 
 
+def walk_runs(tracker, limit, branch):
+    """Runs newest first, up to `limit` of them.
+
+    Measured on this server: the actions endpoint answers 15 runs whatever
+    per_page asks for, so --limit is not something the server honours -- it is
+    walked page by page here, and the answer is trimmed to what was asked for. A
+    page that stops making progress ends the walk rather than spinning on it.
+    """
+    runs, page, total = [], 1, None
+    while len(runs) < limit:
+        params = {"per_page": min(limit, CI_SERVER_PAGE), "page": page}
+        if branch:
+            params["branch"] = branch
+        got, t = list_runs(tracker, params)
+        if total is None:
+            total = t
+        if not got:
+            break
+        if page == 1 and len(got) > params["per_page"]:
+            note(f"the actions endpoint answered {len(got)} runs when asked for "
+                 f"{params['per_page']} -- it fixes its own page size; trimming "
+                 f"to the --limit asked for")
+        runs.extend(got)
+        if len(runs) >= limit:
+            break
+        page += 1
+    return runs[:limit], total
+
+
 def cmd_ci(args):
     tracker = Tracker()
-    params = {"per_page": args.limit, "page": 1}
-    if args.branch:
-        params["branch"] = args.branch
     deadline = time.monotonic() + args.wait if args.wait else None
     waited = 0.0
     while True:
-        runs, total = list_runs(tracker, params)
+        runs, total = walk_runs(tracker, args.limit, args.branch)
         # head_sha is filtered here rather than by the server because a pushed
         # sha has no query parameter that reaches it: the list answers newest
         # first, which is exactly when the run you are chasing does not exist yet.
