@@ -1,0 +1,16 @@
+# A load-keyed bed (flying-trim, #693) flies at the airspeed that puts its authored
+# lift load into the field, so it needs air AT the height it flies at. Before alt=, a
+# fraction could never walk it out of the air; now the player can, and the throw that
+# notices lives in spawn_vehicle -- which runs inside Game::settleVehicles, OUTSIDE
+# main's try. So the CLI aborts (exit 134, "terminate called after throwing") instead of
+# printing an error. The door is bed_refusal, which both front doors already ask (#291);
+# the altitude belongs in that question, not in one caller's private check.
+NAME startship-alt-with-no-air-there
+CLAIM Asking a load-keyed bed to fly above the air is refused at boot with the body and the height named -- not an abort.
+KIND invariant
+ARGS --timeout 4 --startship racer,res/ships/racer.json,Kerbin,flying-trim,alt=86000
+EXPECT error: start ships: ship entry 0: bed 'flying-trim' needs air, and Kerbin has none at 86000 m -- pick a lower alt, or a bed that flies without air
+EXIT 1
+FORBID terminate called
+FORBID Spawn 'flying-trim'
+LIMIT 60

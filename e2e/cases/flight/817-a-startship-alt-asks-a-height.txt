@@ -1,0 +1,37 @@
+# A scenario bed asks for a fraction, so a measurement can only ever be made at
+# whatever height the fraction implies (#817): the ceiling question could not be asked
+# at 84 km without inventing a scenario. alt= is the missing knob -- metres above mean
+# sea level, on a circular bed, overriding that fraction.
+# This point is not arbitrary. It is 1 km under Kerbin's authored air top, where the
+# player coasting to apoapsis felt drag they did not expect (#816).
+# The proof comes from the sim's own elements, not from the Spawn line's echo of what
+# was typed -- although the echo is pinned too, because a knob that is silently ignored
+# is worse than one that errors.
+NAME startship-alt-asks-a-height
+CLAIM --startship alt=<metres> opens a circular bed at exactly that altitude above sea level -- not the scenario's fraction -- with the air the profile has there, and says so on the Spawn line.
+KIND invariant
+ARGS --timeout 6 --orbit-log --drag-log --orbit-interval 0.5 --startship racer,res/ships/racer.json,Kerbin,flying-high,alt=84000
+FORBID error:
+FORBID refused
+# The echo of the ask, next to the radius it produced: 600 km + 84 km.
+CHECK re.search(r"Spawn 'flying-high' around Kerbin.* r = 684000 m,.*alt 84000 m asked", out)
+# And the sim agrees: the bed opened there, with the whole orbit at it (a circular bed
+# has no other height to hide at). flying-high on its own sits at 0.5 x Kerbin's 85 km
+# top, so r = 642500 m -- 41.5 km lower than this.
+CHECK len(orbit) >= 2
+CHECK abs(first(orbit)["peri_asl"] - 84000.0) < 100.0
+CHECK abs(first(orbit)["apo_asl"] - 84000.0) < 100.0
+# Loose on purpose: an untrimmed hull sinks, and a tighter band here would fail the
+# next time a hull or a column moves rather than when the knob breaks.
+CHECK all(o["peri_asl"] > 82000.0 and o["apo_asl"] < 85000.0 for o in orbit)
+# Air at the asked height, from the drag law itself. NOT vacuum is the claim: that is
+# all #816 needed to ask, and pinning the shipped figure (4.268e-5 kg/m^3 here, ~283 N
+# on the racer at orbital speed) would make a knob case break every time the column is
+# tuned. The number itself is recorded on #816. What IS pinned is that the reading
+# follows the column: as the untrimmed hull sinks, the air thickens. (The log's own
+# p=RHO RT identity is unpinnable here -- p prints as "3" Pa at this altitude.)
+CHECK len(drag) >= 2
+CHECK all(d["rho"] > 1e-6 and d["F"] > 0.0 for d in drag)
+CHECK last(drag)["rho"] > first(drag)["rho"]
+CHECK all(first(drag)["alt_asl"] >= d["alt_asl"] for d in drag)
+LIMIT 60

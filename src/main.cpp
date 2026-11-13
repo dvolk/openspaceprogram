@@ -185,12 +185,17 @@ static bool parseNumber(const std::string &s, double &val) {
 
 /* Split "name,def,body,scenario" plus any number of OPTIONAL fields: either the old
    bare pad id (every e2e ARGS line and the README spell it that way, so it stays) or
-   named k=v pairs -- site=, lat=, lon=. Named because with three optional things a
+   named k=v pairs -- site=, lat=, lon=, alt=. Named because with four optional things a
    positional fifth, sixth, ... field is a guessing game, and a typo like latt= has to
    refuse rather than become a pad id.
    lat/lon are degrees and place an AIR bed over that map point (SpawnPlace,
    vehicle.h): both or neither, lat in [-90, 90] like a world_buildings entry, lon any
-   finite angle (it wraps). False + `err` naming what is wrong. */
+   finite angle (it wraps). alt is METRES ABOVE MEAN SEA LEVEL -- the datum every log's
+   alt_asl and every map's "atmosphere top" speak -- not a fraction, and it re-heights a
+   circular bed wherever the scenario got its height from. Only its own sign is checked
+   here: whether the bed and the body can take that height is answered where the body is
+   known (build_start_vehicles), so that message can name the shell it must sit under.
+   False + `err` naming what is wrong. */
 static bool splitStartship(const std::string &spec, DebugStartShip &out,
                            std::string &err) {
     std::vector<std::string> f;
@@ -201,7 +206,7 @@ static bool splitStartship(const std::string &spec, DebugStartShip &out,
     }
     f.push_back(cur);
     if(f.size() < 4) {
-        err = "expected name,def,body,scenario[,site][,lat=..,lon=..]";
+        err = "expected name,def,body,scenario[,site][,lat=..,lon=..][,alt=..]";
         return false;
     }
     for(size_t k = 0; k < 4; k++) {
@@ -214,7 +219,7 @@ static bool splitStartship(const std::string &spec, DebugStartShip &out,
     out.ship = f[1];
     out.body = f[2];
     out.scenario = f[3];
-    bool got_site = false, got_lat = false, got_lon = false;
+    bool got_site = false, got_lat = false, got_lon = false, got_alt = false;
     for(size_t k = 4; k < f.size(); k++) {
         const std::string &fld = f[k];
         const std::string at = "field " + std::to_string(k + 1) + " '" + fld + "': ";
@@ -261,9 +266,27 @@ static bool splitStartship(const std::string &spec, DebugStartShip &out,
                 out.lon_deg = wrapLonDeg(num);
             }
             got = true;
+        } else if(key == "alt") {
+            // Metres, not a fraction: a fraction of WHAT (the shell? the air top?) is a
+            // second law, and the one the bed already uses. Metres ASL is what the logs
+            // and the maps print, so the number asked is the number to check the run
+            // against. Above the air top is legal (a bed in vacuum is a question #816 is
+            // about); below the datum is not -- the sea is not an altitude.
+            if(got_alt) { err = at + "\"alt\" given twice"; return false; }
+            if(!parseNumber(val, num)) {
+                err = at + '"' + key + "\" is not a number";
+                return false;
+            }
+            if(num <= 0.0) {
+                err = at + "\"alt\" is in metres above mean sea level, so it must be "
+                           "positive (not a fraction, and not underground)";
+                return false;
+            }
+            out.alt_m = num;
+            got_alt = true;
         } else {
             err = at + "unknown optional field \"" + key
-                  + "\" (known: site, lat, lon)";
+                  + "\" (known: site, lat, lon, alt)";
             return false;
         }
     }

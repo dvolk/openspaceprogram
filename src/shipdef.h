@@ -986,7 +986,11 @@ bool kerbalDefConsistent(const ShipDef &def);
    `lat_deg`/`lon_deg` are an optional surface coordinate to place an AIR spawn
    over -- same names, same convention (equirect.h) as a world_buildings entry.
    Either both are given or neither; the CLI refuses a half pair, so a NaN here
-   means the parse skipped validation. */
+   means the parse skipped validation. `alt_m` is an optional altitude [m above
+   mean sea level] for a CIRCULAR bed, overriding whatever height the scenario
+   authors (its fraction of the shell or the air top, or a pinned radius); it is
+   refused on a pad bed, whose height is the ground's, and on an ellipse bed,
+   which asks for its two apsides instead. */
 struct DebugStartShip {
     std::string ship;      // ship def path
     std::string name;      // display name
@@ -995,6 +999,7 @@ struct DebugStartShip {
     std::string site;      // pad id ("" = the body's default site)
     double lat_deg = kNoCoord;
     double lon_deg = kNoCoord;
+    double alt_m = kNoCoord;
 };
 
 // The parsed "ships" array.

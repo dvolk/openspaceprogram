@@ -365,14 +365,29 @@ const ScenarioDef *scenario_by_name(const std::string &name) {
                              + "' (available: " + avail + ")");
 }
 
-std::string bed_refusal(const ScenarioDef &sc, const TerrainBody &home) {
+std::string bed_refusal(const ScenarioDef &sc, const TerrainBody &home, double alt_m) {
     /* A load-keyed bed (#693) asks for an airspeed, so it needs air to fly in. The
        predicate is the aero pass's own `physical()`, not `top() > 0`: a body may author a
        render-only rim (an `height` with no density profile, which the loader allows on
        purpose), which has a top and no air at all. */
-    if(sc.speed_load > 0.0 && !home.surface.atmosphere.physical()) {
-        return "bed '" + std::string(sc.name) + "' needs air, and " + home.name
-             + " has none -- pick a bed that does";
+    if(sc.speed_load > 0.0) {
+        if(!home.surface.atmosphere.physical()) {
+            return "bed '" + std::string(sc.name) + "' needs air, and " + home.name
+                 + " has none -- pick a bed that does";
+        }
+        /* An asked altitude (#817) can walk such a bed out of the air on a body that HAS
+           air, just none up there. Ask it here, at the door, with the body and the height
+           both known: spawn_vehicle's matching throw is a backstop that cannot be caught
+           -- apply_scenarios runs inside Game::settleVehicles, outside main's try -- so
+           past this door it aborts the process instead of printing an error. */
+        if(!std::isnan(alt_m)
+           && airDensity(dragAtm(home.surface.atmosphere, home), alt_m) < kRhoFloor) {
+            char h[32];
+            snprintf(h, sizeof h, "%.0f", alt_m);
+            return "bed '" + std::string(sc.name) + "' needs air, and " + home.name
+                 + " has none at " + h + " m -- pick a lower alt, or a bed that flies "
+                 "without air";
+        }
     }
     return "";
 }
@@ -506,8 +521,9 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
 
     /* An abs_r bed pins an ABSOLUTE radius, meaningful only about the body it was
        authored for: elsewhere the ship lands outside that SOI with a speed from the
-       wrong mu. */
-    if(sc.abs_r > 0.0 && sys.root != home) {
+       wrong mu. An asked altitude replaces the pin outright (build_start_vehicles keeps
+       the two from fighting), so the warning about a radius nothing reads is skipped. */
+    if(sc.abs_r > 0.0 && sys.root != home && !(place != nullptr && place->altAsked())) {
         printf("warning: scenario '%s' pins r = %.4g m, which is not an orbit "
                "about %s (the system root is %s): the ship will not be in %s's "
                "frame and its spawn speed comes from the wrong mu\n",
@@ -518,15 +534,19 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
     const glm::dvec3 center = home->frame->root_pos;
     glm::dvec3 shipWorldPos, velWorld;
     /* A placed bed echoes its coordinate and the plane tilt it cost on the Spawn
-       line. Empty = no placement asked for, so no existing bed's line changes. */
+       line. Empty = no placement asked for, so no existing bed's line changes.
+       alt_txt is the same idea for an asked altitude (#817): the bed's name says which
+       scenario ran, and only this says the height is not the one that scenario authors. */
     char place_txt[96] = "";
+    char alt_txt[48] = "";
     double place_tilt = 0.0;
 
     if(sc.ell_phase >= 0) {
         /* An ellipse bed has AUTHORED apsides, in the world X-Z plane; rotating it to
-           a map point would move periapsis off the direction the bed is defined by.
-           build_start_vehicles refuses lat/lon on one, so reaching here is a bug. */
-        assert(place == nullptr || !place->asked());
+           a map point would move periapsis off the direction the bed is defined by, and
+           one altitude cannot place it at all. build_start_vehicles refuses lat/lon and
+           alt on one, so reaching here is a bug. */
+        assert(place == nullptr || (!place->asked() && !place->altAsked()));
         // Ellipse in the equatorial plane (world X-Z), prograde like the circular
         // beds: periapsis along +Z, apsides are root-frame directions.
         /* The bed apsides are authored ABOVE MEAN SEA LEVEL (#404), so they
@@ -556,10 +576,21 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
         const double sea_r = home->seaLevelRadius();
         const double top = home->surface.atmosphere.top();
         const double shell = home->rot_frame->soi - sea_r;
-        const double alt = (sc.atmo_frac && top > 0.0)
-                         ? sc.alt_frac * top
-                         : sc.alt_frac * shell;
-        const double r = sc.abs_r > 0.0 ? sc.abs_r : sea_r + alt;
+        /* An asked altitude (alt= / "alt_m", SpawnPlace) replaces the height this bed
+           authors, whichever source that height came from -- a fraction of the air top, a
+           fraction of the shell, or a pinned radius -- because the height IS what the
+           caller is changing. Nothing downstream changes: the speed follows from r as it
+           always did, and a load-keyed bed's airspeed follows from the air AT r, so an ask
+           above a body's air top is refused by that block ("needs air") rather than by a
+           new rule here. build_start_vehicles has already refused a height at or outside
+           the shell, so the bed stays in the body's own frame. */
+        const bool alt_asked = place != nullptr && place->altAsked();
+        const double alt = alt_asked
+                         ? place->alt_m
+                         : ((sc.atmo_frac && top > 0.0)
+                          ? sc.alt_frac * top
+                          : sc.alt_frac * shell);
+        const double r = (!alt_asked && sc.abs_r > 0.0) ? sc.abs_r : sea_r + alt;
         /* Which plane the bed's orbit sits in, in the home frame's axes. A polar bed
            sits over the GEOGRAPHIC pole (#174) -- the frame's +Y is the RAIL plane's
            normal, off the spin axis by the axial tilt. An -eq bed (#182) hangs off
@@ -616,6 +647,11 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
                trig above used. */
             snprintf(place_txt, sizeof place_txt, ", place lat %+.3f lon %.3f, plane %.1f deg",
                      place->lat_deg, place->lon_deg, place_tilt);
+        }
+        if(alt_asked) {
+            /* Which height the r on this line came from: the scenario named at the front
+               still reads "flying-high", and 84 km is not flying-high's 0.6 x top. */
+            snprintf(alt_txt, sizeof alt_txt, ", alt %.0f m asked", place->alt_m);
         }
         shipWorldPos = center + rhat * r;
         velWorld = speed * vhat;
@@ -778,7 +814,7 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
                      glm::length(air));
         }
     }
-    printf("Spawn '%s' around %s: frame '%s' @ world (%.0f, %.0f, %.0f), r = %.0f m, |v| = %.1f m/s%s%s\n",
+    printf("Spawn '%s' around %s: frame '%s' @ world (%.0f, %.0f, %.0f), r = %.0f m, |v| = %.1f m/s%s%s%s\n",
            sc.name, home->name.c_str(), frame->name.c_str(),
            shipWorldPos.x, shipWorldPos.y, shipWorldPos.z,
            glm::length(shipWorldPos - center),
@@ -787,7 +823,7 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
               one velWorld carries (which on Kerbin still has the body's 177 m/s of
               co-rotation in it). */
            (sc.speed_frac > 0.0 || sc.speed_load > 0.0) ? glm::length(vel) : glm::length(velWorld),
-           air_txt, place_txt);
+           air_txt, place_txt, alt_txt);
 }
 
 /* Ships sharing a (body, scenario) orbit bed are pushed this far apart along the
@@ -1015,7 +1051,7 @@ Vehicle *build_start_vehicles(Game &g, const std::vector<DebugStartShip> &entrie
         /* Ask at the door: a wrong bed/body pairing prints as a start-ship error and the
            run exits 1, rather than arriving as spawn_vehicle's throw escaping as an
            abort. That throw stays as the backstop for any path past this. */
-        if(const std::string why = bed_refusal(*sc, *hb); !why.empty()) {
+        if(const std::string why = bed_refusal(*sc, *hb, fe.alt_m); !why.empty()) {
             throw std::runtime_error("start ships: ship entry " + std::to_string(i)
                                      + ": " + why);
         }
@@ -1066,11 +1102,59 @@ Vehicle *build_start_vehicles(Game &g, const std::vector<DebugStartShip> &entrie
                                          + " a flying-* bed)");
             }
         }
+        /* An asked ALTITUDE belongs to a bed that has one, and the same two beds are
+           refused as the map point is: a pad bed's height is the ground under its site,
+           and an ellipse bed's height is two apsides, so one number cannot place it.
+           Then the height itself, between the relief it would fly through and the shell
+           that holds it. The ceiling is the body's near-body shell -- the same ceiling
+           the scenario's alt_frac is a fraction OF: a bed outside it leaves the body's
+           ROTATING frame, and a flying bed's wind term asserts that frame (spawn_vehicle).
+           Both numbers print, because the player's next question is "how high/low can I
+           ask". Metres are formatted as doubles: parseNumber takes any finite value, and
+           casting one to long long to print it is UB and reads as a negative height. */
+        if(!std::isnan(fe.alt_m)) {
+            if(sc->on_pad) {
+                throw std::runtime_error("start ships: entry " + std::to_string(i)
+                                         + ": alt places an air bed, but '" + fe.scenario
+                                         + "' stands on a pad -- its height is the ground"
+                                         + " under its site");
+            }
+            if(sc->ell_phase >= 0) {
+                throw std::runtime_error("start ships: entry " + std::to_string(i)
+                                         + ": alt is one height, but '" + fe.scenario
+                                         + "' authors two (peri_alt/apo_alt): ask a"
+                                         + " circular bed instead -- rot-orbit,"
+                                         + " inertial-orbit, high-orbit or a flying-* bed");
+            }
+            char want[32], edge[32];
+            snprintf(want, sizeof want, "%.0f", fe.alt_m);
+            const double relief = hb->surface.authoredPeak();
+            if(fe.alt_m < relief) {
+                snprintf(edge, sizeof edge, "%.0f", relief);
+                throw std::runtime_error("start ships: entry " + std::to_string(i)
+                                         + ": alt " + want + " m is under " + hb->name
+                                         + "'s relief (" + edge + " m above the datum),"
+                                         + " so a circular bed there flies through the"
+                                         + " mountains -- ask above the peaks");
+            }
+            const double shell = hb->rot_frame->soi - hb->seaLevelRadius();
+            if(!(fe.alt_m < shell)) {
+                snprintf(edge, sizeof edge, "%.0f", shell);
+                throw std::runtime_error("start ships: entry " + std::to_string(i)
+                                         + ": alt " + want + " m is outside " + hb->name
+                                         + "'s near-body shell, which ends " + edge
+                                         + " m above sea level -- above it the bed leaves"
+                                         + " " + hb->name + "'s rotating frame"
+                                         + " (inertial-orbit/high-orbit are the beds that"
+                                         + " leave it on purpose)");
+            }
+        }
         Vehicle *v = place_vehicle(g, fe.ship, fe.name, hb, sc, site);
-        /* The pair rides on the hull to spawn_vehicle, whose caller is
+        /* The asks ride on the hull to spawn_vehicle, whose caller is
            apply_scenarios -- see SpawnPlace. */
         v->place.lat_deg = fe.lat_deg;
         v->place.lon_deg = fe.lon_deg;
+        v->place.alt_m = fe.alt_m;
         spawn_crew(v, g.sys);
         if(first == nullptr) { first = v; }
     }

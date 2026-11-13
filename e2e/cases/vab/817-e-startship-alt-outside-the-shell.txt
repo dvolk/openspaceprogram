@@ -1,0 +1,18 @@
+# The knob's ceiling is the body's near-body shell -- the same ceiling a scenario's
+# alt_frac is a fraction of, and the reason it exists: outside it a bed is not in the
+# body's ROTATING frame, and a flying bed's wind term asserts that frame
+# (spawn_vehicle's isRotFrame). So alt= is refused rather than quietly handing the hull
+# to the inertial frame, where the scenario the player named does not mean what it says.
+# The beds that leave the rotating frame on purpose -- inertial-orbit, high-orbit -- are
+# named in the message, because the player's next question is "then how do I get there".
+# The shell number is not pinned: it is derived per body (rot_frame->soi off the sea
+# radius), and content moves.
+NAME startship-alt-outside-the-shell
+CLAIM An altitude past the body's near-body shell is refused by name, with the shell's height printed, instead of placing the bed in another frame.
+KIND invariant
+ARGS --timeout 4 --startship racer,res/ships/racer.json,Kerbin,rot-orbit,alt=150000
+EXPECT error: start ships: entry 0: alt 150000 m is outside Kerbin's near-body shell, which ends
+EXIT 1
+FORBID Spawn 'rot-orbit'
+FORBID assert
+LIMIT 60

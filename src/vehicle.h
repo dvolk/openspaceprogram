@@ -141,9 +141,9 @@ enum RailEnd {
 
 struct ScenarioDef;
 
-/* An optional map point for an AIR bed: a --startship entry may ask where in the
-   world its spawn sits. Both or neither; kNoCoord in either slot means "not asked"
-   and is tested with isnan(), never with == (a half pair is a parse bug, asserted).
+/* What a start ship asked about its AIR bed's place: a map point (lat/lon) and/or an
+   altitude. Both or neither for the pair; kNoCoord in any slot means "not asked" and is
+   tested with isnan(), never with == (a half pair is a parse bug, asserted).
    Degrees, the same pair and the same convention as a world_buildings pad entry:
    equirect.h is the game's ONE (lat,lon) -> direction law and it speaks the body's
    ROTATING frame, so the point means "here on the map, now", not "here in the rail
@@ -151,11 +151,22 @@ struct ScenarioDef;
    so its circle passes over the point, and carries its own velocity direction with
    it (bedTurnTo) -- the heading stays prograde in the tilted plane, it is not a
    ground bearing. A ground bed already HAS a place -- the pad site's lat/lon -- so an
-   on_pad entry refuses the pair rather than overriding a building. */
+   on_pad entry refuses the pair rather than overriding a building.
+   `alt_m` [m above mean sea level, the datum every spawn log's alt_asl speaks] replaces
+   the height the scenario authors -- its fraction of the near-body shell, of the air top
+   (atmo_frac), or its pinned abs_r -- because the asked number is the one the caller
+   measured, and the bed's own height is what they are changing. It takes the SAME law as
+   the fraction it replaces: the bed stays circular, so its speed follows from the radius
+   (and a load-keyed bed's airspeed from the air AT that height, which is why asking
+   above a body's air top refuses there rather than here). build_start_vehicles refuses it
+   on a pad bed (the ground sets that height) and on an ellipse bed (which authors two
+   apsides, so one number cannot place it). */
 struct SpawnPlace {
     double lat_deg = kNoCoord;
     double lon_deg = kNoCoord;
+    double alt_m = kNoCoord;
     bool asked() const { return !std::isnan(lat_deg); }
+    bool altAsked() const { return !std::isnan(alt_m); }
 };
 
 class Vehicle {
@@ -2167,8 +2178,12 @@ const ScenarioDef *scenario_by_name(const std::string &name);
    Two front doors ask it: the --startship entry parse and the VAB launch. Both must ask
    BEFORE anything is built or placed, because the alternative is a throw from
    spawn_vehicle arriving in an imgui handler -- a SIGABRT and a lost game (#291) -- or
-   escaping the CLI as an abort rather than an `error:` line. */
-std::string bed_refusal(const ScenarioDef &sc, const TerrainBody &home);
+   escaping the CLI as an abort rather than an `error:` line.
+   `alt_m` is the altitude an air bed was asked for (#817), kNoCoord when the bed takes
+   the height its scenario authors: a load-keyed bed needs air AT the height it flies at,
+   so the asked number belongs in the question rather than in one door only. */
+std::string bed_refusal(const ScenarioDef &sc, const TerrainBody &home,
+                        double alt_m = kNoCoord);
 
 // Enumerate the scenario table (the VAB dropdown); index < scenario_count().
 size_t scenario_count();

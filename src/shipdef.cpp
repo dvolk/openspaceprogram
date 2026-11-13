@@ -2242,7 +2242,7 @@ DebugStartShips loadDebugStartShips(const char *path) {
            asking for nothing, and the ship would fly to the bed's own place while
            the Spawn line printed no placement at all -- the exact typo splitStartship
            (main.cpp) refuses on the command line. */
-        static const char *const kOptional[] = {"site", "lat_deg", "lon_deg"};
+        static const char *const kOptional[] = {"site", "lat_deg", "lon_deg", "alt_m"};
         for(const auto &kv : ev.items()) {
             bool known = false;
             for(const char *const field : kStartShipFields) {
@@ -2256,7 +2256,7 @@ DebugStartShips loadDebugStartShips(const char *path) {
                                          + std::to_string(i) + " of " + path
                                          + ": unknown field \"" + kv.key() + "\" (known:"
                                          + " ship, name, body, scenario, site,"
-                                         + " lat_deg, lon_deg)");
+                                         + " lat_deg, lon_deg, alt_m)");
             }
         }
         e.ship = ev["ship"].get<std::string>();
@@ -2309,6 +2309,27 @@ DebugStartShips loadDebugStartShips(const char *path) {
             // echo use the same number (wrapLonDeg, equirect.h -- same [0, 2pi)
             // unwrapping as equirectLonLat).
             e.lon_deg = wrapLonDeg(val[1]);
+        }
+        /* An optional altitude for a CIRCULAR bed (SpawnPlace::alt_m, vehicle.h), in the
+           metres the logs and maps speak: 84000 means 84 km above mean sea level, the
+           same number --drag-log prints as alt_asl and the system panel prints under
+           "atmosphere top". Not a fraction -- of what would be a second law. Whether the
+           BED can take the height is answered where the scenario and body are known
+           (build_start_vehicles), which is what lets that refusal name the shell. */
+        if(ev.contains("alt_m")) {
+            const nlohmann::json &cv = ev["alt_m"];
+            if(!cv.is_number() || !std::isfinite(cv.get<double>())) {
+                throw std::runtime_error(std::string("start ships: entry ")
+                                         + std::to_string(i) + " of " + path
+                                         + ": \"alt_m\" must be a number");
+            }
+            if(cv.get<double>() <= 0.0) {
+                throw std::runtime_error(std::string("start ships: entry ")
+                                         + std::to_string(i) + " of " + path
+                                         + ": \"alt_m\" is in metres above mean sea level,"
+                                         + " so it must be positive");
+            }
+            e.alt_m = cv.get<double>();
         }
         list.ships.push_back(e);
     }

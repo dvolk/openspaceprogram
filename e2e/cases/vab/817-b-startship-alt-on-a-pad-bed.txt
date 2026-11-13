@@ -1,0 +1,17 @@
+# alt= is one height over an air bed (build_start_vehicles, src/vehicle.cpp), so it
+# has no meaning on the two beds that don't have one. A pad's height is the ground
+# under its site; an ellipse authors two heights at once (peri_alt/apo_alt) and a
+# circular speed that goes with them. Accepting alt= there would either quietly
+# discard the scenario or invent a third bed, and the player would read a bed that
+# never happened.
+# Same shape as the pad-id-on-an-orbit-bed refusal (#191): name the field, name the
+# scenario, exit nonzero, never launch.
+NAME startship-alt-on-a-pad-bed
+CLAIM alt= on a bed that has no altitude of its own is refused at boot, by name, instead of being ignored.
+KIND invariant
+ARGS --timeout 4 --startship racer,res/ships/racer.json,Kerbin,pad,alt=84000
+EXPECT error: start ships: entry 0: alt places an air bed, but 'pad' stands on a pad -- its height is the ground under its site
+EXIT 1
+FORBID [vab] launched
+FORBID alt 84000 m asked
+LIMIT 60

@@ -1,0 +1,17 @@
+# A circular bed at 50 m above the datum on a body with 2500 m of mountains is not a low
+# orbit, it is a collision course -- and the sim does not even say so: it flies the hull
+# through the relief at orbital speed with alt_agl going negative (#817's probe read
+# -69 m on Mun). alt= made this reachable: every authored bed sits at 0.1 x top or
+# 0.1 x shell, far above any peak.
+# The number compared is the authored relief, the same estimate the loader's cloud-deck
+# check uses (terrain.h), not the measured max_height -- that is only applied once the
+# root geoms attach, which is after this door. The ask and the body are pinned; the
+# relief figure is not, because it is authored content that may be retuned.
+NAME startship-alt-under-the-relief
+CLAIM Asking a circular bed under a body's mountains is refused at boot instead of spawning a hull that flies through the ground.
+KIND invariant
+ARGS --timeout 4 --startship racer,res/ships/racer.json,Mun,rot-orbit,alt=50
+EXPECT error: start ships: entry 0: alt 50 m is under Mun's relief
+EXIT 1
+FORBID Spawn 'rot-orbit'
+LIMIT 60
