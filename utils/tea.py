@@ -1114,11 +1114,21 @@ CI_SERVER_PAGE = 15          # measured: this endpoint answers 15 whatever per_p
 _ci_page_note = False        # the page-size note is said once per process
 
 
+def _when(v):
+    """A run's or job's time as a date, or None when it has not happened.
+    Measured on run 17 mid-flight: an unfinished run answers
+    1970-01-01T00:00:00Z for completed_at, which reads like a date the run
+    owns; Go's own zero is 0001-01-01T00:00:00Z."""
+    return None if (not v or v in ("1970-01-01T00:00:00Z", "0001-01-01T00:00:00Z")) else v
+
+
 def run_out(d):
     out = {k: d.get(k) for k in CI_RUN_FIELDS}
     # An unfinished run answers "" for conclusion, which next to a verdict word
     # would read like a verdict of its own.
     out["conclusion"] = out.get("conclusion") or None
+    for k in ("created_at", "started_at", "completed_at", "updated_at"):
+        out[k] = _when(out.get(k))
     out["done"] = out.get("status") == CI_DONE
     return out
 
@@ -1126,7 +1136,8 @@ def run_out(d):
 def job_out(d):
     return {"id": d.get("id"), "name": d.get("name"),
             "status": d.get("status"), "conclusion": d.get("conclusion") or None,
-            "started_at": d.get("started_at"), "completed_at": d.get("completed_at"),
+            "started_at": _when(d.get("started_at")),
+            "completed_at": _when(d.get("completed_at")),
             "html_url": d.get("html_url"),
             "steps": [{"number": s.get("number"), "name": s.get("name"),
                        "status": s.get("status"),
