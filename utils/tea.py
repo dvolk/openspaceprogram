@@ -1111,6 +1111,7 @@ CI_POLL_SECS = 3
 CI_WAIT_MAX = 600            # a bounded wait; nothing here may hang forever
 CI_LOG_WINDOW = 60           # lines of a job log returned without --full
 CI_SERVER_PAGE = 15          # measured: this endpoint answers 15 whatever per_page says
+_ci_page_note = False        # the page-size note is said once per process
 
 
 def run_out(d):
@@ -1146,6 +1147,7 @@ def walk_runs(tracker, limit, branch):
     walked page by page here, and the answer is trimmed to what was asked for. A
     page that stops making progress ends the walk rather than spinning on it.
     """
+    global _ci_page_note
     runs, page, total = [], 1, None
     while len(runs) < limit:
         params = {"per_page": min(limit, CI_SERVER_PAGE), "page": page}
@@ -1156,7 +1158,10 @@ def walk_runs(tracker, limit, branch):
             total = t
         if not got:
             break
-        if page == 1 and len(got) > params["per_page"]:
+        if page == 1 and len(got) > params["per_page"] and not _ci_page_note:
+            # Said once per process, not once per poll: --wait walks this every
+            # few seconds and a note that repeats is noise, not information.
+            _ci_page_note = True
             note(f"the actions endpoint answered {len(got)} runs when asked for "
                  f"{params['per_page']} -- it fixes its own page size; trimming "
                  f"to the --limit asked for")
@@ -1184,9 +1189,10 @@ def cmd_ci(args):
         if runs and all(r.get("status") == CI_DONE for r in runs):
             break
         if time.monotonic() >= deadline:
-            note(f"waited {args.wait}s for {'a run for ' + args.sha if args.sha else 'the run(s)'} "
-                 f"to complete and it did not -- this is the state as of now, not "
-                 f"a failure")
+            subject = (f"a run for {args.sha} to appear" if args.sha and not runs
+                       else "the run(s) to complete")
+            note(f"waited {args.wait}s for {subject} and it did not -- this is the "
+                 f"state as of now, not a failure")
             break
         time.sleep(CI_POLL_SECS)
         waited += CI_POLL_SECS
