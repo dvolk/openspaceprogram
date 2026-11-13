@@ -199,6 +199,12 @@ static void drawOrbitThroughBody(ImDrawList *dl, const OrbitMap &map,
 // at the perceptibility floor, and at #22 the map still read as a thicket.
 static constexpr float kMinorQuiet = 0.090f;
 
+// On-screen radius (px) at which a body stops being a dot that a name can read across
+// and becomes a shape the name would disappear into. Glyph height is ~12 px, so a disc
+// this wide can hide a whole word; below it the worst a dot costs a name is a few px of
+// one glyph, which is why small dots only block the names that do not outrank them.
+constexpr float kDiscBlocksNamesPx = 10.0f;
+
 // Which name wins a contested patch of map (lower wins): the plan the player is making
 // first, then the bodies they plan AROUND, then the body they are orbiting, then the
 // rest of the catalogue by type, rocks last. Same catalogue weight the rails use for
@@ -256,8 +262,8 @@ struct MapLabelPass {
     std::vector<MapLabelCand> blocked;
     // Opaque body discs, held back so the orbit lines go DOWN first. A body is solid
     // and nearer than any line crossing it, so a rail drawn over the sun reads as a
-    // gap in the sun. Submitted in the order the bodies are walked, which is what
-    // keeps a nearer disc over a further one.
+    // gap in the sun. The catalogue is walked star -> planets -> moons and the focus is
+    // queued last, which is the order they must land in.
     struct Disc { ImVec2 at; float r_px; ImU32 col; };
     std::vector<Disc> discs;
 
@@ -272,8 +278,10 @@ struct MapLabelPass {
         items.push_back({{dot, ImGui::CalcTextSize(text), r_px, prio}, col, off});
     }
     // A marker that is not itself a label candidate. `prio` is the tier it belongs to:
-    // a name may cross a marker only when it outranks that marker (LabelGrid::freeBox).
-    void block(const ImVec2 &dot, float r_px, unsigned char prio = 0) {
+    // a name may cross a marker only when it outranks that marker (LabelGrid::freeBox),
+    // and tier 0 blocks every name on the map -- for the solid shapes text would vanish
+    // into, not the dots it can read across. No default: every call site says which.
+    void block(const ImVec2 &dot, float r_px, unsigned char prio) {
         blocked.push_back({ dot, ImVec2(0.0f, 0.0f), r_px, prio });
     }
     void disc(const ImVec2 &at, float r_px, ImU32 col) {
@@ -292,8 +300,13 @@ struct MapLabelPass {
     void flush(ImDrawList *dl, const MapViewRect &view, const ImVec2 &focus) {
         assert(discs.empty() && "map discs must be flushed before the names");
         const ImVec4 rect(view.l, view.t, view.r, view.b);
+        // kLabelTarget: the transfer note and the target's name get the map's other
+        // side rather than disappearing off its edge. Everything below that tier is
+        // dropped when its one slot does not fit.
         for(const MapLabelPlaced &p : placeMapLabels(items, blocked, rect, focus,
-                                                     kMaxMapLabels)) {
+                                                     kMaxMapLabels,
+                                                     1.0f, 4.0f, 32.0f,
+                                                     kLabelTarget)) {
             const Item &it = items[(size_t)p.cand];
             dl->AddText(p.at, it.col, arena.data() + it.off);
         }
@@ -389,6 +402,9 @@ static void drawSystemBodyOrbits(Game &g, TerrainBody *focus,
             // Held back with the other body discs: the sun is solid, so the 670 rails
             // that cross it must go under it, not across it.
             labels.disc(sun_px, sun_r_px, col_sun);
+            // Nothing is written on the star, whatever tier the name is: near-white ink
+            // on pale yellow is unreadable.
+            labels.block(sun_px, sun_r_px, 0);
             if(view.contains(sun_px.x, sun_px.y, sun_r_px)) {
                 labels.add(sun_px, sun_r_px, ink, sun->name.c_str(), kLabelStar);
             }
@@ -396,6 +412,7 @@ static void drawSystemBodyOrbits(Game &g, TerrainBody *focus,
     }
     static thread_local std::vector<BodyRail> rails;
     rails.clear();
+    bool focus_rail = false;
     for(auto *b : planets) {
         Frame *parent = (b->frame && b->frame->parent) ? b->frame->parent : nullptr;
         const double mu_c = b->frame ? b->frame->parent_mu : 0.0;
@@ -429,6 +446,7 @@ static void drawSystemBodyOrbits(Game &g, TerrainBody *focus,
         const bool minor = (b->type == BodyType::Asteroid
                             || b->type == BodyType::Comet);
         const float min_r = selected ? 5.0f : 3.0f;
+        if(b == focus) { focus_rail = true; }
         rails.push_back({&cpts_p, O, P, cpos_p, cpos_f, body_px, b->name.c_str(),
                          b->radius, b->frame->soi,
                          map.bodyRadiusPx(b->radius, min_r),
@@ -463,6 +481,11 @@ static void drawSystemBodyOrbits(Game &g, TerrainBody *focus,
         // Queued, not drawn: the rails of every body in the catalogue are down by now,
         // and a disc sitting on top of them is what makes a body look solid.
         labels.disc(r.body_px, r.body_r_px, ccol);
+        // A dot blocks only the names that do not outrank it (its own tier above). A
+        // shape this big is not a dot: ink-on-grey text across it is unreadable, so it
+        // blocks every name. At planning zooms every body is a floored 3-5 px dot, so
+        // this only bites on the close views that have room to spare anyway.
+        if(r.body_r_px >= kDiscBlocksNamesPx) { labels.block(r.body_px, r.body_r_px, 0); }
         if(r.selected) {
             dl->AddCircle(r.body_px, r.body_r_px + 4.0f, ccol, 0, 1.0f);
         }
@@ -477,6 +500,14 @@ static void drawSystemBodyOrbits(Game &g, TerrainBody *focus,
                 map.drawRing(dl, r.cpos_f, r.soi, soi_col, 1.0f);
             }
         }
+    }
+    // A focus with no rail never got a name from the loop above -- the star has no
+    // parent, and a body whose SOI is under 10 px is LOD-cut. The map is centred on it,
+    // so the one body the player is orbiting would be the only unlabelled thing on it.
+    if(focus && focus->frame && !focus_rail) {
+        labels.add(map.px(glm::dvec3(0.0, 0.0, 0.0)),
+                   map.bodyRadiusPx(focus->radius, 4.0f),
+                   ink, focus->name.c_str(), kLabelFocus);
     }
 }
 
@@ -4642,11 +4673,14 @@ void drawUIMap(Game &g) {
         }
         // closed=true for the ellipse; false for the open arc (a chord would close it).
         proj.drawOrbit(dl, *traj_pts, col_ship, 1.0f, closed);
-        labels.disc(focus_px, proj.bodyRadiusPx(focus->radius, 3.0f), col_body);
-        labels.block(focus_px, proj.bodyRadiusPx(focus->radius, 3.0f));
+        const float focus_r_px = proj.bodyRadiusPx(focus->radius, 3.0f);
+        labels.disc(focus_px, focus_r_px, col_body);
+        // Tier 0: the focus is drawn in ink, so a name across it is ink on ink.
+        labels.block(focus_px, focus_r_px, 0);
         /* The lines end here: every body disc -- the star, every planet in the
-           catalogue, and the focus under the ship's own conic -- lands as one solid
-           layer, and the markers and names drawn below it stay legible. */
+           catalogue, and the focus, which now covers the ship's own conic the way it
+           covers every other line -- lands as one solid layer, and the markers and
+           names drawn after it stay legible. */
         labels.flushDiscs(dl);
         const ImVec2 ship_px = proj.px(orbit_pos);
         dl->AddLine(focus_px, ship_px, ink, 1.0f);
@@ -6745,8 +6779,10 @@ void drawTrackingMap(Game &g) {
         // The ship's conic is a line, so it belongs under the body discs exactly as the
         // flight map's does; its markers are drawn on top of the discs below.
         if(ship) { proj.drawOrbit(dl, *traj_pts, col_ship, 1.0f, closed); }
-        labels.disc(focus_px, proj.bodyRadiusPx(focus->radius, 3.0f), col_body);
-        labels.block(focus_px, proj.bodyRadiusPx(focus->radius, 3.0f));
+        const float focus_r_px = proj.bodyRadiusPx(focus->radius, 3.0f);
+        labels.disc(focus_px, focus_r_px, col_body);
+        // Tier 0: the focus is drawn in ink, so a name across it is ink on ink.
+        labels.block(focus_px, focus_r_px, 0);
         // The lines end here (see the flight map): every body disc lands as one solid
         // layer under the markers and names.
         labels.flushDiscs(dl);

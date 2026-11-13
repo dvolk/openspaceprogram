@@ -685,6 +685,43 @@ int main() {
                 std::printf("FAIL placeMapLabels: an off-map name claimed space\n");
                 ++g_failures;
             }
+            // A NaN marker is not placed either. The clip test is written in the
+            // negated form for exactly this: every NaN comparison is false, so the
+            // obvious "is it outside?" spelling would let a NaN name through and print
+            // it nowhere at the cost of every name near it.
+            std::vector<Lbl> nan = {
+                { { ImVec2(NAN, NAN), ImVec2(30.0f, 12.0f), 3.0f, 4 } } };
+            if(!placeMapLabels(nan, none, view, centre, 160).empty()) {
+                std::printf("FAIL placeMapLabels: a NaN marker drew a name\n");
+                ++g_failures;
+            }
+        }
+
+        // The plan is the exception (#813 review): the transfer note and the target's
+        // name are how the player flies, so at the edge they take the map's other side
+        // instead of vanishing. Everything below that tier is still dropped.
+        {
+            const std::vector<Lbl> at_edge = {
+                { { ImVec2(395.0f, 150.0f), ImVec2(30.0f, 12.0f), 3.0f, 4 } },   // planet
+                { { ImVec2(395.0f, 200.0f), ImVec2(30.0f, 12.0f), 4.0f, 0 } }    // xfer
+            };
+            // Same marker, no exception: gone.
+            if(!placeMapLabels(at_edge, none, view, centre, 160, 1.0f, 4.0f, 32.0f,
+                               255).empty()) {
+                std::printf("FAIL placeMapLabels: must_fit_tier 255 kept an edge name\n");
+                ++g_failures;
+            }
+            const auto placed = placeMapLabels(at_edge, none, view, centre, 160,
+                                               1.0f, 4.0f, 32.0f, 1);
+            if(placed.size() != 1 || placed[0].cand != 1) {
+                std::printf("FAIL placeMapLabels: at the edge the transfer note was "
+                            "dropped too (%zu placed)\n", placed.size());
+                ++g_failures;
+            } else if(placed[0].at.x >= 395.0f) {
+                std::printf("FAIL placeMapLabels: the transfer note stayed on its "
+                            "off-map outward side\n");
+                ++g_failures;
+            }
         }
     }
 

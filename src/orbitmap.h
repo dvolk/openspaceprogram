@@ -189,11 +189,15 @@ struct MapLabelCand {
 };
 struct MapLabelPlaced { int cand; ImVec2 at; };   // index into items; top-left to draw at
 
+// Pass this as placeMapLabels()'s must_fit_tier for the pure drop rule: no name gets a
+// second side. It is outside every real tier, which are 0..9 in gameui.cpp.
+constexpr unsigned char kMapLabelNoBackup = 255;
+
 // The four slots around a marker; index order is right, left, below, above, and which
-// of them a name may USE is mapLabelOrder()'s call. The vertical slots start clear of
-// the horizontal row, not just clear of the marker: a 12 px name centred on the dot
-// reaches 6 px below it, so a below slot measured only from the marker would sit on top
-// of the right-hand name.
+// of them a name may USE is mapLabelSlot()'s call -- plus mapLabelOpposite()'s, for the
+// two names too important to lose. The vertical slots start clear of the horizontal row,
+// not just clear of the marker: a 12 px name centred on the dot reaches 6 px below it,
+// so a below slot measured only from the marker would sit on top of the right-hand name.
 inline void mapLabelSlots(const MapLabelCand &c, float pad, ImVec2 out[4]) {
     const float g = c.r_px + pad;
     out[0] = ImVec2(c.dot.x + g,              c.dot.y - c.size.y * 0.5f);
@@ -221,6 +225,10 @@ inline int mapLabelSlot(const MapLabelCand &c, const ImVec2 &focus) {
     if(std::fabs(dx) >= std::fabs(dy)) { return dx >= 0.0f ? 0 : 1; }  // right / left
     return dy >= 0.0f ? 2 : 3;           // below / above
 }
+
+// The near-side slot of the same axis. Only mapLabelBackup() ever uses it, for a name
+// the map cannot afford to lose and whose outward slot the clip rect would cut.
+inline int mapLabelOpposite(int slot) { return slot ^ 1; }   // right<->left, below<->above
 
 // Only one name may sit on a patch of map, and a name may not sit on a marker that is
 // as important as itself: candidates claim space in priority order -- whole, inside
@@ -308,6 +316,9 @@ private:
     std::vector<Node> nodes_;     // one node per (box, cell) pair
 };
 
+// `must_fit_tier` is the one exception to "dropped": a candidate at or below that
+// priority gets the opposite side of its dot when the outward slot falls off the map.
+// Pass 255 (the default) for the pure drop rule.
 template <class Item>
 inline std::vector<MapLabelPlaced> placeMapLabels(const std::vector<Item> &items,
                                                   const std::vector<MapLabelCand> &blocks,
@@ -315,7 +326,8 @@ inline std::vector<MapLabelPlaced> placeMapLabels(const std::vector<Item> &items
                                                   const ImVec2 &focus,
                                                   size_t max_drawn,
                                                   float gap = 1.0f, float pad = 4.0f,
-                                                  float cell = 32.0f) {
+                                                  float cell = 32.0f,
+                                                  unsigned char must_fit_tier = 255) {
     // Index order: the caller's items stay where they are because the result indexes
     // them. stable_sort keeps bodies in catalogue order inside a priority tier, so
     // which name wins a contest does not chatter between frames as bodies drift.
@@ -347,18 +359,38 @@ inline std::vector<MapLabelPlaced> placeMapLabels(const std::vector<Item> &items
         if(out.size() >= max_drawn) { break; }
         const MapLabelCand &c = items[(size_t)idx].cand;
         mapLabelSlots(c, pad, slot);
-        const ImVec2 &p = slot[mapLabelSlot(c, focus)];
-        const ImVec4 box(p.x - gap, p.y - gap,
-                         p.x + c.size.x + gap, p.y + c.size.y + gap);
+        int chosen = mapLabelSlot(c, focus);
         // A name the window's clip rect would cut must not claim space -- it would cost
-        // the map a name that fits. (A body near the edge keeps its dot and loses its
-        // name: mapLabelSlot gives it one place, and this is the whole of the rule.)
-        if(box.x < view.x || box.z > view.z || box.y < view.y || box.w > view.w) {
+        // the map a name that fits. The test is written in the negated form so a NaN
+        // marker fails it too: every NaN comparison is false, which would otherwise
+        // print a name at NaN.
+        // (A body near the edge keeps its dot and loses its name: mapLabelSlot gives it
+        // one place, and that is the whole of the rule for everything but the plan.)
+        ImVec4 box(slot[chosen].x - gap, slot[chosen].y - gap,
+                   slot[chosen].x + c.size.x + gap,
+                   slot[chosen].y + c.size.y + gap);
+        const bool fits = (box.x >= view.x && box.z <= view.z &&
+                           box.y >= view.y && box.w <= view.w);
+        if(!fits && must_fit_tier != kMapLabelNoBackup && c.prio <= must_fit_tier) {
+            // A name the player needs in order to fly -- the transfer leg's arrival
+            // note, the target's name -- gets its near side rather than disappearing.
+            // The outward slot is off the map here, so the near side is where the room
+            // is by construction. This is a move, and it is the one place the rule
+            // allows it: it happens only within a name's width of the border, where
+            // there is nothing else on screen to anchor the eye, and never mid-map
+            // where #813's flip was distracting.
+            chosen = mapLabelOpposite(chosen);
+            box = ImVec4(slot[chosen].x - gap, slot[chosen].y - gap,
+                         slot[chosen].x + c.size.x + gap,
+                         slot[chosen].y + c.size.y + gap);
+            if(!(box.x >= view.x && box.z <= view.z &&
+                 box.y >= view.y && box.w <= view.w)) { continue; }
+        } else if(!fits) {
             continue;
         }
         if(!grid.freeBox(box, c.prio)) { continue; }
         grid.claimName(box);
-        out.push_back({idx, p});
+        out.push_back({idx, slot[chosen]});
     }
     return out;
 }
