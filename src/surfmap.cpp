@@ -152,8 +152,10 @@ void surfmapCompute(Game &g) {
            Duna the unweighted mean came out kelvin below the anchor the model provably
            conserves, purely from the projection -- 8 K under its old 0.300 swing, 3 K under the
            0.708 it carries now (e2e/render/745 re-measures it, because the offset is a function
-           of the swing and a stale number here would be a lie with a decimal point on it). cos(lat) is the xz length of the unit
-           direction, so the weight is free. min/max stay unweighted -- extremes, not means. */
+           of the swing and a stale number here would be a lie with a decimal point on it). The
+           weight is cos(lat), which is one of the grid's per-row table values (EquirectTrig,
+           #802) rather than something the pixel recomputes, so it costs nothing. min/max stay
+           unweighted -- extremes, not means. */
         double tmin = 1e30, tmax = -1e30, tsum = 0.0, t4sum = 0.0, tw = 0.0;
         /* Wind stats, same shape and the same area weighting (cos lat) as the temperature
            block above: what the sweep actually painted, so the log can show the ground's reach
@@ -185,9 +187,11 @@ void surfmapCompute(Game &g) {
         double rlo = 0.0, rhi = 0.0;
         /* The grid's trig, once for every pass below (#802). Each pass visits every column of
            every row, so the equirect grid needs w + h transcendental evaluations in total, not
-           w*h per pass; equirect.h owns both spellings and the directions that come from these
-           tables are bit-for-bit the ones equirectDirAt(i, j, w, h) builds, which is why the
-           golden pins in e2e/render/745 are a check on this change rather than a re-baseline. */
+           w*h per pass; equirect.h owns both spellings. The bit-for-bit guard on this is
+           tests/test_surfmap.cpp, which compares the two spellings at every index of several
+           grids -- e2e/render/745 checks this picture's aggregates (its coldest pixel against
+           the night end, the cos(lat)-weighted T^4 mean against the anchor) at 0.02..0.05 K,
+           which is ~10^11 ulps of slack and would not notice a re-baseline. */
         const EquirectTrig trig = equirectTrig(w, h);
         if(want_wind && wl.ok) {
             elevs.resize(npx);
@@ -221,7 +225,7 @@ void surfmapCompute(Game &g) {
                     c = glm::vec3(r / 255.0f, gg / 255.0f, bb / 255.0f);
                     if(T < tmin) { tmin = T; }
                     if(T > tmax) { tmax = T; }
-                    const double cw = std::sqrt(d.x * d.x + d.z * d.z);   // cos(latitude)
+                    const double cw = trig.cos_lat[(size_t)j];   // cos(latitude)
                     tw += cw;
                     tsum += cw * T;
                     t4sum += cw * T * T * T * T;
@@ -248,7 +252,7 @@ void surfmapCompute(Game &g) {
                     c = glm::vec3(r / 255.0f, gg / 255.0f, bb / 255.0f);
                     if(spd < wmin) { wmin = spd; }
                     if(spd > wmax) { wmax = spd; }
-                    const double cw = std::sqrt(d.x * d.x + d.z * d.z);   // cos(latitude)
+                    const double cw = trig.cos_lat[(size_t)j];   // cos(latitude)
                     wwt += cw;
                     wsum += cw * spd;
                 } else if(want_field) {
@@ -354,7 +358,7 @@ void surfmapCompute(Game &g) {
                     equirectLonLatDeg(d, lon_deg, lat_deg);
                     const glm::dvec3 wv = windAt(wl.rows, elev, lat_deg, lon_deg);
                     const double spd = std::hypot(wv.x, wv.y);   // the arrow is a ground vector
-                    const double cl = std::sqrt(d.x * d.x + d.z * d.z);   // cos(latitude)
+                    const double cl = trig.cos_lat[(size_t)j];   // cos(latitude)
                     const glm::dvec2 pv = surfmapWindPixelVec(wv.x, wv.y, cl);
                     const double pvl = glm::length(pv);
                     const double t01 = surfmapWindT01(spd, rlo, rhi);

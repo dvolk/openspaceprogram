@@ -134,8 +134,12 @@ inline void equirectPixel(float lon, float lat, int w, int h,
       * (float)(h - 1);
 }
 
-// Pixel (i, j) -> unit direction on a w x h poles-on-rows map (the
-// grid sample at i, j -- NOT the pixel centre).
+/* Pixel (i, j) -> unit direction on a w x h poles-on-rows map (the grid sample at i, j --
+   NOT the pixel centre). Two spellings of one lookup, on purpose: this one derives lon/lat
+   from the indices, and is the reference the tables below are pinned against as well as what
+   a one-off lookup wants; the EquirectTrig overload answers the same question with no
+   transcendental, which is what a full-map sweep wants. Nothing in src/ calls this form any
+   more -- every sweep builds tables -- so the tests are what keep it from drifting. */
 inline glm::dvec3 equirectDirAt(int i, int j, int w, int h) {
     assert(w >= 2 && h >= 2);
     const double lon = 2.0 * std::numbers::pi * (double)i / (double)w;
@@ -152,7 +156,11 @@ inline glm::dvec3 equirectDirAt(int i, int j, int w, int h) {
    2pi*i/w, row j is lat pi/2 - pi*j/(h-1)" is this file's law -- a sweep with its own
    hoisted tables would be a second spelling free to drift, which is what the comment at the
    top of this file forbids. The directions below are BIT-FOR-BIT the ones equirectDirAt
-   builds: same expressions, evaluated earlier. Pinned in tests/test_surfmap.cpp. */
+   builds: same expressions, evaluated earlier. Pinned in tests/test_surfmap.cpp.
+   POLES-ON-ROWS only -- the layout at the top of this file whose first and last rows are the
+   poles. A tileable bake that samples pixel CENTRES (cloud coverage, terrain.cpp) scales v
+   by H instead of h-1, so it wants its own tables; do not hand it these and let the matching
+   w/h do the thinking. */
 struct EquirectTrig {
     std::vector<double> cos_lon, sin_lon;   // [w], indexed by column
     std::vector<double> cos_lat, sin_lat;   // [h], indexed by row
@@ -182,7 +190,11 @@ inline EquirectTrig equirectTrig(int w, int h) {
 /* equirectDirAt for a grid whose trig is already in hand: same direction, no
    transcendentals. Bounds asserted rather than assumed -- the tables carry their own w and
    h, so a caller that built them for a different bake would otherwise read past them
-   instead of failing the way the (i, j, w, h) form fails. */
+   instead of failing the way the (i, j, w, h) form fails. The assert is load-bearing in a
+   way that form's is not: past-the-end vector indexing answers a plausible heap neighbour,
+   i.e. silently wrong pixels rather than a crash, and the (i, j, w, h) form has no indexing
+   to get wrong at all. No build configuration here defines NDEBUG today, so the debug builds
+   that would catch it are the ones we run. */
 inline glm::dvec3 equirectDirAt(const EquirectTrig &t, int i, int j) {
     assert(i >= 0 && i < (int)t.cos_lon.size()
        && j >= 0 && j < (int)t.cos_lat.size());

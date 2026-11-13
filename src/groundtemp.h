@@ -85,9 +85,15 @@ inline double groundTemperature(double anchor_K, double even_share, double cos_i
     const double c = std::min(1.0, std::max(0.0, cos_inc));
     const double shape = even_share + (1.0 - even_share) * 4.0 * c;
     /* The quarter root is two square roots, not a general pow (#802): this is the law's
-       hottest call -- once per pixel of a map bake -- and `shape` is positive and bounded in
-       [f, 4 - 3f] by the asserts above, so there is no edge case for pow to guard. Same law,
-       and tests/test_groundtemp.cpp keeps the 4^(1/4) end pinned either way. */
+       hottest call -- once per pixel of a map bake -- and the asserts above leave `shape` in
+       [0, 4 - 3f + eps] (f = 0 at midnight is exactly 0, and cos_inc's 1e-9 tolerance rides
+       along), so there is no domain case for pow to guard.
+       NOT bit-for-bit pow, and it would be dishonest to imply otherwise: measured across the
+       reachable (f, cos_inc) domain, ~12 % of arguments land 1 ulp apart. That is ~6e-14 K --
+       it cannot move a ramp byte, a dossier row, or one of the 1e-6..1e-12 pins this header
+       shares with utils/ground_model.py, which still writes ** 0.25. The two spellings of
+       this law (#636) have never agreed to the bit and still do not: what is shared is the
+       LAW. */
     return anchor_K * std::sqrt(std::sqrt(shape));
 }
 

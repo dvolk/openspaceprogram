@@ -603,15 +603,17 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
     app.add_option("--surfmap-n", args.surfmap_n,
                    "Surface map width in pixels (height = surfmap-n / 2); "
                    "default 512. The sweep costs w*h, so each doubling of this "
-                   "quadruples it: measured on the map thread on Earth, the "
-                   "ground picture is 28 / 101 / 392 ms at 256 / 512 / 1024. A "
-                   "temperature bake is an order cheaper (single ms up to ~23 ms "
-                   "at 1024, down from ~35 before #802 hoisted the grid's trig) "
-                   "because it evaluates a field rather than casting "
-                   "terrain, and its own doubling is softer than x4 while the "
-                   "fixed costs still dominate. The printed sweep_ms= says what "
-                   "any bake took. 512 rather than 256 because the wind arrows "
-                   "scale with the grid stride: at 256 their heads are ~2 px");
+                   "quadruples it: measured on the map thread on Earth at 256 / "
+                   "512 / 1024, the ground picture is ~31 / 111 / 449 ms and the "
+                   "wind picture ~28 / 103 / 404 ms -- wind is NOT the cheap one, "
+                   "it casts the same terrain noise and then strokes arrows over "
+                   "it. A temperature bake is 15-20x cheaper (~2 / 7 / 23 ms; "
+                   "~35 ms at 1024 before #802 hoisted the grid's trig) because "
+                   "it evaluates a field rather than casting terrain. All three "
+                   "move ~15 % with machine load, so treat these as the shape "
+                   "rather than the number: sweep_ms= says what a bake took. 512 "
+                   "rather than 256 because the wind arrows scale with the grid "
+                   "stride: at 256 their heads are ~2 px");
     app.add_flag("--surfmap-noshade", args.surfmap_noshade,
                  "Skip the terminator (day/night shading) when computing the "
                  "surface map (the window's 'Sun shading' box does the same "

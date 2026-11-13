@@ -618,14 +618,26 @@ int main() {
         /* The hoisted per-row/per-column trig (#802) is the SAME grid, not an approximation
            of it. The sweep takes this form for speed, so the speed had better not be bought
            with pixels: every index pair has to give the bits equirectDirAt(i, j, w, h) gave
-           before, exactly. If this ever fails, the perf change is a re-baseline. */
-        const EquirectTrig t = equirectTrig(w, h);
-        bool exact = (int)t.cos_lon.size() == w && (int)t.cos_lat.size() == h;
-        for(int j = 0; j < h && exact; j++) {
-            for(int i = 0; i < w && exact; i++) {
-                const glm::dvec3 a = equirectDirAt(i, j, w, h);
-                const glm::dvec3 b = equirectDirAt(t, i, j);
-                exact = a.x == b.x && a.y == b.y && a.z == b.z;
+           before, exactly -- hence == and not near_v, which here would make the check
+           vacuous. Several grids rather than the one 16x8 this file otherwise uses: the two
+           spellings divide by w and by h-1 in different places, so an even width, an odd one,
+           the 2x2 degenerate and a real bake size are different paths through it. If this
+           ever fails, the perf change has become a re-baseline. */
+        const int kGrids[][2] = { {2, 2}, {3, 2}, {16, 8}, {17, 8}, {26, 13},
+                                  {255, 127}, {512, 256} };
+        bool exact = true;
+        for(auto &g : kGrids) {
+            const EquirectTrig t = equirectTrig(g[0], g[1]);
+            if((int)t.cos_lon.size() != g[0] || (int)t.cos_lat.size() != g[1]) {
+                exact = false;   // the tables are not the grid they were asked for
+                continue;
+            }
+            for(int j = 0; j < g[1] && exact; j++) {
+                for(int i = 0; i < g[0] && exact; i++) {
+                    const glm::dvec3 a = equirectDirAt(i, j, g[0], g[1]);
+                    const glm::dvec3 b = equirectDirAt(t, i, j);
+                    exact = a.x == b.x && a.y == b.y && a.z == b.z;
+                }
             }
         }
         check(exact, "trig tables: bit-for-bit the same direction at every pixel");
