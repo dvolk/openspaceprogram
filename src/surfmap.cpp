@@ -157,6 +157,10 @@ void surfmapCompute(Game &g) {
            #802) rather than something the pixel recomputes, so it costs nothing. min/max stay
            unweighted -- extremes, not means. */
         double tmin = 1e30, tmax = -1e30, tsum = 0.0, t4sum = 0.0, tw = 0.0;
+        /* The T^4 mean of the SAME field with the relief term taken back off (#793), which is the
+           accumulator the anchor theorem owns: <T^4> = anchor^4 is a statement about the datum
+           ground, and it has to stay checkable now that the painted field is not that field. */
+        double t4sum_datum = 0.0;
         /* Wind stats, same shape and the same area weighting (cos lat) as the temperature
            block above: what the sweep actually painted, so the log can show the ground's reach
            against the table's ends rather than assuming they meet. */
@@ -185,6 +189,11 @@ void surfmapCompute(Game &g) {
            of authored rows, so running it twice is nothing next to that. */
         std::vector<float> elevs;
         double rlo = 0.0, rhi = 0.0;
+        /* The temperature ramp's ends, and what the relief term actually cost this picture.
+           Zero-savings case: a body with no profile gradient keeps tl.lo_K/tl.hi_K and never
+           samples a height for the sake of a zero. */
+        double trlo = 0.0, trhi = 0.0;
+        double rel_at_lo = 0.0, rel_at_hi = 0.0;
         /* The grid's trig, once for every pass below (#802). Each pass visits every column of
            every row, so the equirect grid needs w + h transcendental evaluations in total, not
            w*h per pass; equirect.h owns both spellings. The bit-for-bit guard on this is
@@ -193,9 +202,14 @@ void surfmapCompute(Game &g) {
            the night end, the cos(lat)-weighted T^4 mean against the anchor) at 0.02..0.05 K,
            which is ~10^11 ulps of slack and would not notice a re-baseline. */
         const EquirectTrig trig = equirectTrig(w, h);
-        if(want_wind && wl.ok) {
+        /* #793 added a second reason to want this grid: a relief-aware ground. The two uses share
+           one pass because terrainHeight() -- the noise -- is the expensive half of the whole
+           sweep, and a pixel that needs its height twice pays for it once. */
+        const bool want_elev = (want_wind && wl.ok) || (want_temp && tl.ok && tl.relief);
+        double elo = 0.0, ehi = 0.0;
+        if(want_elev) {
             elevs.resize(npx);
-            double elo = 1e300, ehi = -1e300;
+            elo = 1e300; ehi = -1e300;
             for(int j = 0; j < h; j++) {
                 for(int i = 0; i < w; i++) {
                     const double e = (double)terrainHeight(
@@ -205,7 +219,12 @@ void surfmapCompute(Game &g) {
                     if(e > ehi) { ehi = e; }
                 }
             }
-            windRampEnds(wl.rows, elo, ehi, rlo, rhi);
+            if(want_wind && wl.ok) { windRampEnds(wl.rows, elo, ehi, rlo, rhi); }
+            if(want_temp && tl.ok) {
+                tempRampEnds(tl, elo, ehi, trlo, trhi);
+                rel_at_lo = tl.relief_K(elo);  // 0 at or below the datum (drag.h's flat column)
+                rel_at_hi = tl.relief_K(ehi);  // <= 0: the cost lives at the top
+            }
         }
 
         for(int j = 0; j < h; j++) {
@@ -214,12 +233,14 @@ void surfmapCompute(Game &g) {
                 glm::vec3 c;                 // the base pixel's colour
                 if(want_temp && tl.ok) {                    /* The SAME cosine the terminator overlay uses, through the SAME law the
                        dossier and the solar log use -- nothing is invented at the pixel. */
-                    const double T = surfmapGroundT(tl.anchor_K, tl.knob, d, sun_dir);
-                    // Ramp span = the model's own ends. With no swing lo == hi, so the span
-                    // is 0 and every pixel takes the midpoint: one honest flat colour rather
-                    // than a gradient the eye invents.
-                    const double t01 = (tl.hi_K > tl.lo_K)
-                        ? (T - tl.lo_K) / (tl.hi_K - tl.lo_K) : 0.5;
+                    const double elev = want_elev ? (double)elevs[(size_t)j * w + i] : 0.0;
+                    const double off = tl.relief_K(elev);   // 0.0 whenever relief is off
+                    const double T = surfmapGroundT(tl.anchor_K, tl.knob, d, sun_dir, off);
+                    // Ramp span: the model's ends moved to the ground the sweep is colouring
+                    // (tempRampEnds above), which with relief off IS the model's ends. With no
+                    // swing lo == hi, so the span is 0 and every pixel takes the midpoint: one
+                    // honest flat colour rather than a gradient the eye invents.
+                    const double t01 = (trhi > trlo) ? (T - trlo) / (trhi - trlo) : 0.5;
                     unsigned char r = 0, gg = 0, bb = 0;
                     surfmapRamp(t01, r, gg, bb);
                     c = glm::vec3(r / 255.0f, gg / 255.0f, bb / 255.0f);
@@ -229,6 +250,16 @@ void surfmapCompute(Game &g) {
                     tw += cw;
                     tsum += cw * T;
                     t4sum += cw * T * T * T * T;
+                    /* The same mean with the relief term taken back off (#793). The anchor theorem
+                       is about the datum field, so this is the accumulator that must land on the
+                       anchor; temp_mean4 is allowed to sit below it, and the log prints both so
+                       the gap is a measurement rather than a drift nobody named. */
+                    if(off != 0.0) {
+                        const double Td = T - off;
+                        t4sum_datum += cw * Td * Td * Td * Td;
+                    } else {
+                        t4sum_datum += cw * T * T * T * T;
+                    }
                 } else if(want_wind && wl.ok) {
                     /* The scalar half of the field: how fast the air moves OVER THIS PIXEL.
                        The altitude windAt() wants is this pixel's ground elevation above the
@@ -428,11 +459,18 @@ void surfmapCompute(Game &g) {
                        for the DERIVED rung: the map prices it on the body's LIVE rail and the
                        atlas on its mean orbit, so on an eccentric world the two anchors differ
                        by the rail's own spread, and the row says which one it printed (#687). */
-                    printf(" temp=[%.2f %.2f %.2f] temp_ends=[%.2f %.2f] "
-                           "temp_mean4=%.2f anchor=%.2f anchor_src=\"%s\"",
-                           tmin, tsum / tw, tmax, tl.lo_K, tl.hi_K,
-                           std::pow(t4sum / tw, 0.25), tl.anchor_K,
-                           tl.legend.c_str());
+                    printf(" temp=[%.2f %.2f %.2f] temp_ends=[%.2f %.2f] temp_ramp=[%.2f %.2f]",
+                           tmin, tsum / tw, tmax, tl.lo_K, tl.hi_K, trlo, trhi);
+                    /* #793, only when there IS relief to price: the grounds this grid actually
+                       sampled [m above the datum] and what the profile charges at each end (K).
+                       This is the number that says a map's cold end is a mountain and not a longer
+                       night. */
+                    if(tl.relief) {
+                        printf(" relief=[%.0f %.0f %.2f %.2f]", elo, ehi, rel_at_lo, rel_at_hi);
+                    }
+                    printf(" temp_mean4=%.2f datum_mean4=%.2f anchor=%.2f anchor_src=\"%s\"",
+                           std::pow(t4sum / tw, 0.25), std::pow(t4sum_datum / tw, 0.25),
+                           tl.anchor_K, tl.legend.c_str());
                 } else {
                     printf(" temp=- note=\"%s\"", tl.legend.c_str());
                 }

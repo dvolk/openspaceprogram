@@ -2303,11 +2303,20 @@ void drawUIReadouts(Game &g) {
                 if(!sm_bake_here) {
                     snprintf(gt_s, sizeof gt_s, "  ground - (rebaking)");
                 } else if(g.surfmap.temp_ok && g.surfmap.baked_sun_valid) {
+                    /* #793: the kelvin beside a pixel now knows the ground under it, so the
+                       `elev` this same line prints and the temperature next to it are one place
+                       instead of two. Same caveat the wind row below carries: the sweep asked with
+                       the FLOAT elevation it stored for the pixel's centre, while the cursor asks
+                       with the live terrain height at the exact point under the mouse -- over a
+                       ridge those differ by tens of metres, and a steep slope is where the number
+                       can outrun the swatch. The profile behind both is one profile, and
+                       Surface::relief_K is the one predicate deciding it exists at all. */
                     snprintf(gt_s, sizeof gt_s, "  ground %+.1f C",
                              celsiusOf(surfmapGroundT(g.surfmap.temp_anchor_K,
                                                       g.surfmap.temp_knob,
                                                       glm::dvec3(dir),
-                                                      g.surfmap.baked_sun_dir)));
+                                                      g.surfmap.baked_sun_dir,
+                                                      sm_body->surface.relief_K(sm_elev))));
                 } else {
                     // Which absence, in three words: a bare dash would merge "this world has no
                     // ground" and "nobody stated a swing" back into one (#726). The full
@@ -7449,8 +7458,30 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
                      groundTemperature(anchor, f, 0.0),
                      groundTemperature(anchor, f, 1.0));
             line(giant ? "level swing" : "ground swing", v);
+            /* #793: where relief is live, the anchor is a DATUM statement -- the ground at this
+               body's sea level, which the two ends above swing around, and NOT the coldest ground
+               the map paints. Saying so in the label is the same rule #552 pinned for
+               `air temp (sea level)`; where there is no height term to speak of (no air, an
+               isothermal column, a banded giant) the label stays plain, because there the datum IS
+               the whole answer and a parenthetical would claim a distinction the file has not
+               drawn. */
+            const bool relief_here = b.surface.reliefOn();
             fmtRow(v, sizeof v, "%.1f K", anchor);
-            line(giant ? "level anchor" : "ground anchor", v);
+            line(giant ? "level anchor"
+                       : (relief_here ? "ground anchor (sea level)" : "ground anchor"), v);
+            /* What that same law reads at the top of this world's relief: the offset the map's
+               cold end and the cursor's kelvin both carry, next to the height it is priced at.
+               The height is the pair the terrain block above already prints -- measured once the
+               heavy pass has built the heightfield, the authored estimate until then -- so the two
+               blocks cannot state two different mountains. */
+            if(relief_here) {
+                const double peak = b.ready ? (double)b.surface.max_height
+                                            : (double)b.surface.authoredPeak();
+                char hv[32];
+                fmtRow(v, sizeof v, "%+.1f K at %s", b.surface.relief_K(peak),
+                       fmt_dist(peak, hv, sizeof hv));
+                line("ground at peak", v);
+            }
         } else {
             line(giant ? "level swing" : "ground swing", "-");
         }

@@ -65,15 +65,15 @@ CHECK (lambda e: float(re.search(r"sunlight \(mean orbit\)\s+([\d.]+) W/m2", e).
 #    (day/T0)^4 + 3 (night/T0)^4 = 4. Band 0.02 on the sum: each end prints to 0.1 K.
 #    Kerbin's knob prints beside the anchor precisely so this is checkable by eye -- 0.932 is
 #    Earth's, READ from solar_system.json through KSP_ANALOGUE, not retyped here (#636).
-CHECK (lambda k: abs((float(re.search(r"to ([\d.]+) K", k).group(1)) / float(re.search(r"ground anchor\s+([\d.]+) K", k).group(1))) ** 4 + 3.0 * (float(re.search(r"ground swing\s+([\d.]+) to", k).group(1)) / float(re.search(r"ground anchor\s+([\d.]+) K", k).group(1))) ** 4 - 4.0) < 0.02)(re.search(r"\[atlas\] Kerbin weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+CHECK (lambda k: abs((float(re.search(r"to ([\d.]+) K", k).group(1)) / float(re.search(r"ground anchor(?: \(sea level\))?\s+([\d.]+) K", k).group(1))) ** 4 + 3.0 * (float(re.search(r"ground swing\s+([\d.]+) to", k).group(1)) / float(re.search(r"ground anchor(?: \(sea level\))?\s+([\d.]+) K", k).group(1))) ** 4 - 4.0) < 0.02)(re.search(r"\[atlas\] Kerbin weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
 # 7. #749: EVERY BORROWED KNOB NAMES THE WORLD IT CAME FROM, and the row that used to pin a
 #    refusal now pins the borrowing. Duna's wiki pair is not a pair -- its max IS its mean, so
 #    nothing here fits it (#742); its 0.708 is Mars's, and Mars's own is the least-squares fit
 #    to a pair its stated mean contradicts (184-242 K implies a mean of ~203 K; its sheet says
 #    214 K). Moho takes Mercury's airless floor -- and says so TWO hops deep: "via Mercury,
 #    defaulted there". Both rows are our arithmetic, and both say so beside the ends.
-CHECK (lambda d: re.search(r"ground swing\s+19[67]\.[0-9] to 25[01]\.[0-9] K", d) and re.search(r"ground anchor\s+214\.[0-9] K", d))(re.search(r"\[atlas\] Duna weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
-CHECK (lambda m: re.search(r"ground swing\s+151\.0 to 620\.0 K", m) and re.search(r"ground anchor\s+439\.[0-9] K", m))(re.search(r"\[atlas\] Moho weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+CHECK (lambda d: re.search(r"ground swing\s+19[67]\.[0-9] to 25[01]\.[0-9] K", d) and re.search(r"ground anchor(?: \(sea level\))?\s+214\.[0-9] K", d))(re.search(r"\[atlas\] Duna weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+CHECK (lambda m: re.search(r"ground swing\s+151\.0 to 620\.0 K", m) and re.search(r"ground anchor(?: \(sea level\))?\s+439\.[0-9] K", m))(re.search(r"\[atlas\] Moho weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
 #    And Jool, which used to be this file's one swing DASH. The dash came from a `bands` test
 #    in the generators that refused to price a cloud deck; the surface-temp plan of
 #    2026_11_12 deleted it on purpose, because this file authors a banded world's surface AT

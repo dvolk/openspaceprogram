@@ -1,5 +1,5 @@
 NAME 745-the-surface-map-prices-every-pixel-it-draws
-CLAIM The Surface Map can be drawn as the ground's temperature instead of its albedo, and the picture closes on the numbers the model claims: its coldest pixel IS the night end the atlas prints, and the area-weighted mean taken in T^4 comes back to the anchor.
+CLAIM The Surface Map can be drawn as the ground's temperature instead of its albedo, and the picture closes on the numbers the model claims: its coldest pixel IS the night end standing on the highest ground that world has, and the area-weighted mean taken in T^4 comes back to the anchor once the height term is taken back off.
 KIND invariant
 # The temperature field (#724 rungs C/D) had no consumer until now, and a map is the one that
 # can be checked against arithmetic. Duna is the subject, deliberately:
@@ -32,17 +32,35 @@ CHECK abs(last(surfmap)["temp_ends"][0] - 197.01) < 0.05
 CHECK abs(last(surfmap)["temp_ends"][1] - 251.45) < 0.05
 # What the sweep actually painted: the night end is reached across a whole hemisphere, so the
 # coldest pixel sits ON it; the subsolar end is a single point, so the grid only approaches it
-# (a 256x128 grid lands within hundredths of a kelvin).
-CHECK abs(last(surfmap)["temp"][0] - last(surfmap)["temp_ends"][0]) < 0.02
-CHECK last(surfmap)["temp"][2] <= last(surfmap)["temp_ends"][1] + 1e-9
-CHECK last(surfmap)["temp"][2] > last(surfmap)["temp_ends"][1] - 0.05
+# (a 256x128 grid lands within hundredths of a kelvin). Pinned against temp_ramp -- the span the
+# PICTURE runs over, which since #793 is the law's ends moved by the ground's own height, and on
+# a relief-free world is exactly temp_ends.
+CHECK abs(last(surfmap)["temp"][0] - last(surfmap)["temp_ramp"][0]) < 0.02
+CHECK last(surfmap)["temp"][2] <= last(surfmap)["temp_ramp"][1] + 1e-9
+CHECK last(surfmap)["temp"][2] > last(surfmap)["temp_ramp"][1] - 0.05
 CHECK last(surfmap)["temp"][0] < last(surfmap)["temp"][1]
 CHECK last(surfmap)["temp"][1] < last(surfmap)["temp"][2]
-# THE closure: mean in T^4, written back as a temperature, is the anchor. Off by 0.03 K at
+# #793: the cold end is no longer the law's night end -- it is that night end standing on this
+# body's highest ground. relief= prints the floor and ceiling the grid actually coloured (m above
+# the sea-level datum) and what the body's own profile is worth at each, so the closure is
+# arithmetic rather than a number to admire. The hot end does NOT move: Duna's lowest ground sits
+# BELOW its datum, where the term is 0 by drag.h's flat sub-datum column.
+CHECK last(surfmap)["relief"] is not None
+CHECK last(surfmap)["relief"][0] < 0.0 < last(surfmap)["relief"][1]
+CHECK last(surfmap)["relief"][2] == 0.0 and last(surfmap)["relief"][3] < -5.0
+CHECK abs(last(surfmap)["temp_ramp"][0] - (last(surfmap)["temp_ends"][0] + last(surfmap)["relief"][3])) < 0.02
+CHECK abs(last(surfmap)["temp_ramp"][1] - last(surfmap)["temp_ends"][1]) < 1e-9
+# THE closure: mean in T^4, written back as a temperature, is the anchor -- for the RELIEF-FREE
+# field, which is the one the anchor theorem belongs to. Off by 0.03 K at
 # this resolution (the grid's own discretization of cos(lat)); 3.1 K off if the weighting goes
 # -- re-measured with cw = 1.0 for this file's 0.708 swing, and 8 K under the 0.300 swing this
 # body used to carry, which is itself the reason the offset is quoted rather than assumed.
-CHECK abs(last(surfmap)["temp_mean4"] - last(surfmap)["anchor"]) < 0.05
+CHECK abs(last(surfmap)["datum_mean4"] - last(surfmap)["anchor"]) < 0.05
+# The gap the height term opens stays a printed number with a named cause instead of a fudge
+# folded back into the anchor (src/groundtemp.h states why): the mean of a lapse over real
+# terrain is not zero, because the sea sits at the datum and the land stands above it.
+CHECK last(surfmap)["temp_mean4"] < last(surfmap)["datum_mean4"]
+CHECK last(surfmap)["datum_mean4"] - last(surfmap)["temp_mean4"] < 3.0
 # The terminator overlay still bakes under a temperature map (the box is universal), and the
 # sea belongs to the other picture.
 CHECK last(surfmap)["shade"] == "on"

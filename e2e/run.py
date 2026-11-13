@@ -188,7 +188,13 @@ SURFMAP_RE = re.compile(
     r"shaded=(?:\[([-\d.]+) ([-\d.]+) ([-\d.]+)\]|-)\s+shade=(on|off)\s+"
     r"ocean=(on|off)\s+sites=(\d+)"
     r"(?:\s+temp=\[([-\d.]+) ([-\d.]+) ([-\d.]+)\]\s+temp_ends=\[([-\d.]+) ([-\d.]+)\]\s+"
-    r"temp_mean4=([-\d.]+)\s+anchor=([-\d.]+))?"
+    r"temp_ramp=\[([-\d.]+) ([-\d.]+)\]\s+"
+    # #793: the ground's height, present only where the body's own air profile lapses. The two
+    # floors/ceilings are the elevations this grid actually coloured (m above the sea-level datum)
+    # and the two kelvin figures are what the profile is worth there -- so a case can tie the
+    # picture's cold end to a named mountain instead of trusting temp_ramp's arithmetic.
+    r"(?:relief=\[([-\d.]+) ([-\d.]+) ([-\d.]+) ([-\d.]+)\]\s+)?"
+    r"temp_mean4=([-\d.]+)\s+datum_mean4=([-\d.]+)\s+anchor=([-\d.]+))?"
     r"(?:\s+temp=-\s+note=\"([^\"]*)\")?"
     # #769: the wind map's tail. wind= is what the sweep painted over this body's GROUND,
     # wind_ends= what its file states at its rows, wind_ramp= the span the picture's colours
@@ -978,7 +984,8 @@ def parse_surfmap(out):
     rows = []
     for m in SURFMAP_RE.finditer(out):
         (t, body, w, h, mtype, level, ar, ag, ab, sr, sg, sb, shade, ocean,
-         sites, tmin, tmean, tmax, elo, ehi, mean4, anchor, note,
+         sites, tmin, tmean, tmax, elo, ehi, trlo, trhi,
+         rel_lo, rel_hi, rel_off_lo, rel_off_hi, mean4, datum4, anchor, note,
          wmin, wmean, wmax, welo, wehi, wrlo, wrhi, wrows, wcells,
          wbands, warrowrows, wrowsfrom, wnote) = m.groups()
         trip = lambda a, b, c: None if a is None else (float(a), float(b), float(c))
@@ -992,11 +999,21 @@ def parse_surfmap(out):
             "albedo": trip(ar, ag, ab),
             "shaded": trip(sr, sg, sb),
             "shade": shade, "ocean": ocean, "sites": int(sites),
-            # The sweep's own temperatures: what it painted, the ends the ramp spans, the
-            # area-weighted mean taken in T^4, and the anchor it must come back to.
+            # The sweep's own temperatures: what it painted, the ends the LAW states at the
+            # datum, the ends the PICTURE runs over, the area-weighted mean taken in T^4 both
+            # with and without the height term, and the anchor the relief-free mean comes back
+            # to exactly (#793: with relief on, temp_mean4 sits BELOW the anchor by the mean of
+            # the lapse over real terrain -- a measured ~1 K on Duna -- which is why the identity
+            # pin belongs on datum_mean4 and the gap stays a number a reader can see).
             "temp": trip(tmin, tmean, tmax),
             "temp_ends": (float(elo), float(ehi)) if elo is not None else None,
+            "temp_ramp": (float(trlo), float(trhi)) if trlo is not None else None,
+            # [floor m, ceiling m, K at the floor, K at the ceiling] -- only on a body whose air
+            # profile lapses; None where the ground has no height term at all.
+            "relief": (float(rel_lo), float(rel_hi), float(rel_off_lo), float(rel_off_hi))
+                      if rel_lo is not None else None,
             "temp_mean4": None if mean4 is None else float(mean4),
+            "datum_mean4": None if datum4 is None else float(datum4),
             "anchor": None if anchor is None else float(anchor),
             "note": note,
             # #769: the wind map. "wind" is what the sweep painted over the ground (min, the

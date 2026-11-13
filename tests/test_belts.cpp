@@ -500,6 +500,35 @@ int main() {
             check(mun != nullptr && albedoAuthored(mun->surface.bond_albedo)
                       && mun->surface.albedo_src.find("converted") == std::string::npos,
                   "a borrowed READING does not claim to be a conversion");
+            /* #793: the ground's height term, across every world the game actually ships. It is
+               the FILE's own lapse times the FILE's own relief, so a body with a lot of both could
+               in principle ask for a negative-kelvin summit -- which is not a cold mountain, it is
+               two authored numbers that do not fit together (src/groundtemp.h asserts it, and the
+               asserts are live in the release build, so a bake would abort in front of a player).
+               Walking the corpus here means the file reddens in `make test`. The gate matters as
+               much as the number: a banded giant and a rim-only air (Io, Triton) must answer 0.0,
+               because their dossiers state the anchor as the whole answer and a height term would
+               contradict them. */
+            // The enclosing lambda's `sys` is const and `sol` is not, so the list is spelled.
+            for(const System *S : std::vector<const System *>{ &sys, &sol }) {
+                for(const TerrainBody *b : S->bodies) {
+                    const double peak = (double)b->surface.authoredPeak();
+                    if(!b->surface.reliefOn()) {
+                        check(b->surface.relief_K(peak) == 0.0
+                                  && b->surface.relief_K(1.0e6) == 0.0,
+                              (b->name + ": no height term, so no summit effect").c_str());
+                        continue;
+                    }
+                    const double off = b->surface.relief_K(peak);
+                    check(peak > 0.0 && off < 0.0,
+                          (b->name + ": a body whose air lapses has SOME relief effect").c_str());
+                    check(off > -90.0,
+                          (b->name + ": lapse x relief stays a climate statement, not a "
+                                    "colours-implode").c_str());
+                    std::printf("  relief %-9s peak %6.0f m -> %+.1f K at the summit\n",
+                                b->name.c_str(), peak, off);
+                }
+            }
             /* Jool used to be the one world that refused its knob. It no longer does: a banded
                world's surface IS its 1 bar level, so it takes the same DEFAULT air-mass rule as
                Jupiter, Saturn, Uranus and Neptune. What still has to be true is that the file

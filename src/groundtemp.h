@@ -98,6 +98,51 @@ inline double groundTemperature(double anchor_K, double even_share, double cos_i
     return anchor_K * std::sqrt(std::sqrt(shape));
 }
 
+/* [K] The same ground at a site that STANDS at a height. `profile_offset_K` is
+   terragen.h:airProfileOffset_K at that height: 0 at the sea-level datum, negative above it
+   wherever the body's own air profile lapses, 0 for a body with no physical air or no relief.
+   #793 is this call: the map's cursor has printed `elev -2.2 km` next to a temperature that did
+   not care, while the same file states 6.5 K/km (Earth, to 11 km) and 4 K/km (Mars, to 16.5).
+
+   WHY AN OFFSET OUTSIDE THE BRACKET RATHER THAN A TERM INSIDE IT. The bracket is the star: the
+   anchor theorem -- <T^4> over the sphere is exactly anchor^4 -- comes from that bracket averaging
+   to 1, and a height is not a cosine. It does not swing with the star and it is not 0 at midnight,
+   so folding it in would break the identity while dressing as insolation. Sitting outside the
+   fourth root keeps both claims readable: the anchor is the ground AT THE DATUM, and a summit is
+   that ground less what the file's own lapse says the height costs.
+
+   WHAT THAT COSTS, PRINTED RATHER THAN FOLDED AWAY. The relief term's mean over real terrain is
+   NOT zero: on Earth the oceans sit at the datum and the land stands above it, so a relief-aware
+   map's T^4 mean lands below the anchor (measured in the sweep's --surfmap-log, which prints
+   `datum_mean4=` next to `temp_mean4=` so the identity stays visible and the gap is a number a
+   reader can see). NOT folding it back into the anchor is deliberate: the correction would need
+   the mean of a procedural heightfield -- not authored data -- and it would break the chain every
+   anchor provenance in this repo prints (a stated ground, else the air's datum, else a derived
+   black-body: groundAnchor_K below). A printed ~1-2 K mean shift with a named cause beats an
+   unfalsifiable fudge.
+
+   WHAT IT DOES NOT DO. It moves both ends together, so the SWING is untouched: this does not make
+   a summit's noon hotter or its midnight colder, and high ground really does run a wider day than
+   the coast, which this model still does not say. It is not buoyancy, not pressure, not a
+   subsurface, and it changes no air temperature -- the air already had this lapse (drag.h), which
+   is why rung D must NOT also apply it to the AIR. It does apply it to the ground there, at the
+   GROUND's elevation: `profile_offset_K` is what the profile says at the height of the terrain,
+   never at the height of the hull asking (vehicle.cpp and tick.cpp both sample the terrain under
+   the hull for it). */
+inline double groundTemperatureAt(double anchor_K, double even_share, double cos_inc,
+                                  double profile_offset_K) {
+    assert(std::isfinite(profile_offset_K));
+    const double T = groundTemperature(anchor_K, even_share, cos_inc) + profile_offset_K;
+    /* A ground BELOW 0 K is not a cold place, it is authored data that does not fit: a lapse times
+       a terrain height larger than the anchor's own night end. 0 K itself stays legal because the
+       bare law already answers it -- even_share 0 at midnight makes `shape` exactly 0, which is a
+       reading a file can hold (Venus states a diurnal range of about zero), not a bug.
+       tests/test_groundtemp.cpp walks every shipped body's peak height against this, so a file that
+       does not fit reddens there rather than painting a black mountain. */
+    assert(T >= 0.0);
+    return T;
+}
+
 /* ---------------------------------------------------------------------------------------------
    #794: THE SAME LAW WITH THE SKIN ALLOWED TO LAG THE LIGHT.
 
@@ -337,12 +382,28 @@ inline double followWeight(double p_at, double p_sea_level) {
    rock's own night end (even_share 0 at midnight, pinned in tests/test_groundtemp.cpp). That
    last one is the reason the composition lives here instead of at the call site: a
    loader-legal pair of knobs (even_share 0.0 and air_follow 0.5) would otherwise hand
-   followAirTemperature's assert a 0 K ground and abort the game over night. */
+   followAirTemperature's assert a 0 K ground and abort the game over night.
+   `relief_K` is the GROUND's own height term (#793): Surface::relief_K at the height this hull
+   stands -- or flies -- at above the body's datum. It goes on the ground and NOT on the air,
+   because the air term is already a profile: the lapse is in profile_T by construction, and
+   putting it on both sides is the double count #793's ordering note warns about. What it buys
+   is worth the one argument. Before it, `ground_T - profile_T` carried the whole profile offset
+   as extra warming: on the Kerbin cruise bed the profile answers 233.92 K against a 288.15 K
+   datum (vehicle.cpp measures prof_T 233.92 with air_T 239.66 at w = 0.33), so 54.23 K of the
+   coupling term up there was nothing but the height -- an amount the SAME term at the datum does
+   not have, which is why aloft air was being pulled harder than any ground could pull it. After
+   it, aloft and on the coast couple by the same (law - datum profile), so high ground stops
+   inventing warmth; and for a landed hull, which is where the weight w is nearest 1, `alt` IS
+   the elevation of the ground under it, so the term is exact rather than a proxy. In flight over
+   ground this pass does not sample, the height used is the hull's own, which errs by the relief
+   under it on a term already weighted down by the column's thinning -- the cheaper side of a
+   choice that would otherwise need a terrain query every substep. */
 inline double coupledAirTemperature(double profile_T, double anchor_K, double even_share,
-                                    double follow, double w, double cos_inc) {
+                                    double follow, double w, double cos_inc,
+                                    double relief_K) {
     if(!(profile_T > 0.0) || !followActive(follow) || !(w > 0.0)
        || !evenShareAuthored(even_share) || !(anchor_K > 0.0)) { return profile_T; }
-    const double ground_T = groundTemperature(anchor_K, even_share, cos_inc);
+    const double ground_T = groundTemperatureAt(anchor_K, even_share, cos_inc, relief_K);
     if(!(ground_T > 0.0)) { return profile_T; }
     return followAirTemperature(profile_T, ground_T, follow, w);
 }

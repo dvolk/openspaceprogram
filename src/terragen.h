@@ -333,6 +333,51 @@ inline double airDatum_K(const AtmosphereParams &at) {
     return at.layers.front().base_T;
 }
 
+/* [K] What this body's OWN authored profile says the air is worth at `alt` [m above the sea-level
+   datum], measured against that profile's value AT the datum: 0 at the datum, negative above it
+   wherever the air lapses, 0 when there is nothing to lapse. #793: ground does not sit at the
+   datum. Earth's file states -0.00648878 K/m holding to 11 km and Mars's -0.004 K/m to 16.5 km,
+   so an 8 km summit sits ~52 K under its coast and a 5 km one ~20 K -- numbers the files already
+   state, read at the height the ground actually stands at, not a gradient anyone invents. They are
+   environmental lapses (6.5 and 4 K/km) rather than dry-adiabatic (9.8), which is why this is
+   authored data and not a model of convection.
+   The two edges take the air's own conventions (drag.h:airTemperature):
+     - at or below the datum the answer is 0. There the column is FLAT at the datum's values, so a
+       sea bed or a dry valley reads the datum's air; extrapolating level 0's lapse downward would
+       put the warmest air in the game under the sea floor, which is the exact thing drag.h refuses
+       for the pressure half of the same column (#245).
+     - above the air's top the value HOLDS at the top. airTemperature() answers 0.0 K up there
+       because that is a statement about DENSITY -- there is no air -- and adding a temperature of
+       zero to a ground is a different statement. A 22 km volcano on a profile that stops at
+       16.5 km gets the 16.5 km figure, not a free 143 K.
+   No sorting and no seam hunt: atmo.h:resolveAtmoLevels already refuses a table whose levels do
+   not rise strictly, whose first level is not based at alt 0, whose temperature steps at a seam,
+   or whose T walks through zero inside a level, so the level covering `alt` is simply the last one
+   based at or below it. A lapse is K per unit of this SAME height coordinate, so nothing converts.
+   A layerless exponential column answers 0, and that is the right answer rather than a gap: drag.h
+   gives such a column ONE temperature (g H M / R), so its file states no gradient with height. */
+inline double airProfileOffset_K(const std::vector<AtmoLayer> &L, double top_m, double alt_m) {
+    // The !(x > 0.0) shape on purpose (angmath.h): a NaN altitude answers 0 rather than walking
+    // into the lapse and out the other side as a NaN ground temperature.
+    if(L.empty() || !(alt_m > 0.0)) { return 0.0; }
+    double a = alt_m;
+    if(top_m > 0.0 && a > top_m) { a = top_m; }
+    size_t i = 0;
+    while(i + 1 < L.size() && L[i + 1].base_alt <= a) { i++; }
+    const double at = levelTemperature(L[i], a), datum = levelTemperature(L[0], 0.0);
+    assert(std::isfinite(at) && std::isfinite(datum));
+    return at - datum;
+}
+
+/* The same, gated on the air being PHYSICAL. An atmosphere object that only paints a limb (Io,
+   Triton) has no column to lapse through, so a relief term is not available for it -- the same
+   gate surfmap.h:windLayerFor uses for the same reason, and the same reason the dossier says
+   "none (rim only)". */
+inline double airProfileOffset_K(const AtmosphereParams &at, double alt_m) {
+    if(!at.physical()) { return 0.0; }
+    return airProfileOffset_K(at.layers, at.top(), alt_m);
+}
+
 struct Surface {
     float amplitude = 2500.0f;   // [m] tallest relief above the base radius
     int octaves = 9;             // noise octaves: continents 0..5, mountains 2..N-1
@@ -369,6 +414,29 @@ struct Surface {
             return heightmap->maxMetres() + std::max(0.0f, detail_amplitude);
         }
         return amplitude;
+    }
+
+    /* Does this ground have a height term in the temperature law at all (#793)? True when the body
+       has a PHYSICAL air whose profile actually lapses, and is not a banded giant -- whose "ground"
+       is the 1 bar level and whose relief terrainHeightFade flattens to the datum sphere anyway.
+       One predicate so the map sweep, its cursor, the underfoot readout and a hull's air coupling
+       cannot each spell the gate a little differently. An airless body answers FALSE, which is the
+       right physics rather than a gap: nothing in its file states a gradient with height, so its
+       summit reads what its coast reads. */
+    bool reliefOn() const {
+        if(bands || !atmosphere.physical()) { return false; }
+        for(const AtmoLayer &L : atmosphere.layers) {
+            if(L.lapse != 0.0) { return true; }
+        }
+        return false;
+    }
+
+    /* [K] The #793 relief term for ground standing `asl` [m above this body's sea-level datum]:
+       what this body's own air profile is worth there against its value at the datum
+       (airProfileOffset_K above), or 0.0 when reliefOn() says there is no height term to speak of.
+       At or below the datum it is 0, so a sea reads its datum instead of a warmer floor. */
+    double relief_K(double asl_m) const {
+        return reliefOn() ? airProfileOffset_K(atmosphere, asl_m) : 0.0;
     }
     /* Per-body noise orientation (load_system from "seed"). A rotation, not an
        additive offset: offsetting the sample point tiles the surface in lattice

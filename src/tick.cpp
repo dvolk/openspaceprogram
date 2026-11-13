@@ -761,9 +761,24 @@ void tick(Game &g) {
                     : 0.0;
                 if(anchor > 0.0 && sky.valid
                    && evenShareAuthored(over->surface.even_share)) {
+                    /* #793: this ground stands at a height, and the body's own profile says what
+                       that costs. The height is the GROUND's elevation under the hull, sampled the
+                       same way the HUD's AGL and the aero pass sample it -- NOT the hull's own
+                       altitude. A hull on the ground makes the two identical, but `flying-trim`
+                       and every cruise altitude do not: cooling the reading by the lapse to the
+                       hull's height would print the air's temperature and call it underfoot, and
+                       would take back, in the ground term, the very lapse the profile column
+                       already carries. Not `lastDragAlt` either: the aero pass leaves 0 there for
+                       a hull on rails (and for a body with no physical air), while this column
+                       recomputes for a rails hull too -- a 0 read as a measurement is the exact
+                       thing #687 exists to forbid. */
+                    const double underfoot_elev
+                        = (double)over->GetTerrainHeight(glm::normalize(g.ship->comPos()))
+                          - over->seaLevelRadius();
                     snprintf(surf_s, sizeof surf_s, "%.2f",
-                             groundTemperature(anchor, over->surface.even_share,
-                                               sky.cos_inc));
+                             groundTemperatureAt(anchor, over->surface.even_share,
+                                                 sky.cos_inc,
+                                                 over->surface.relief_K(underfoot_elev)));
                 } else {
                     snprintf(surf_s, sizeof surf_s, "-");
                 }

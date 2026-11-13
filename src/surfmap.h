@@ -149,7 +149,29 @@ inline void surfmapRamp(double t, unsigned char &r, unsigned char &g, unsigned c
 struct TempLayer {
     bool ok = false;
     double anchor_K = 0.0, knob = kEvenShareUnauthored;
-    double lo_K = 0.0, hi_K = 0.0;      // the model's own night / day ends
+    /* [K] The model's own night / day ends AT THE DATUM. These are the two figures the atlas
+       prints as `ground swing` and the log prints as temp_ends=, and they are relief-free on
+       purpose: they are the law's ends, tied to the anchor and the knob by an identity a case
+       checks (e2e science/724). The PICTURE's ends, which include relief, are temp_ramp= and come
+       from the sweep, which is the only place that knows the ground's reach (#769 set this
+       precedent for the wind ramp). */
+    double lo_K = 0.0, hi_K = 0.0;
+    /* #793: the body's OWN air profile, copied for the worker exactly like WindLayer copies the
+       wind rows -- the worker gets numbers and tables, never body pointers. The ground's height is
+       read against this, so a map pixel's temperature and the kelvin beside it price the same
+       mountain the same way (#687). */
+    std::vector<AtmoLayer> profile;
+    double air_top = 0.0;
+    /* Is relief worth anything here at all? False for no physical air and for a profile that never
+       lapses (an isothermal column has no height term), which is also the answer for an airless
+       body -- and it is what lets the sweep skip sampling a heightfield it would only multiply by
+       zero. */
+    bool relief = false;
+    /* [K] The relief term for one ground elevation [m above the sea-level datum]. ONE spelling,
+       used by the sweep, the cursor and the tests. */
+    double relief_K(double elev_asl) const {
+        return relief ? airProfileOffset_K(profile, air_top, elev_asl) : 0.0;
+    }
     /* The sentence for --surfmap-log: the anchor's PROVENANCE when the layer paints (printed
        as anchor_src=, "the air's datum", "derived: sun + albedo" -- #722's rule that
        a computed figure announces itself at the readout), and the REASON it does not when it
@@ -207,8 +229,37 @@ inline TempLayer tempLayerFor(const Surface &s, double derived_bb, bool has_sun)
     if(tl.ok) {
         tl.lo_K = groundTemperature(tl.anchor_K, tl.knob, 0.0);
         tl.hi_K = groundTemperature(tl.anchor_K, tl.knob, 1.0);
+        /* #793: the profile this body's ground stands in. Copied for the worker (numbers and
+           tables, never body pointers), and gated by Surface::reliefOn() so the sweep does not
+           sample a heightfield for a term that would be zero: no physical air (the limb-only rims
+           of Io and Triton), a column that never lapses, or a banded giant. */
+        tl.relief = s.reliefOn();
+        if(tl.relief) {
+            tl.profile = s.atmosphere.layers;
+            tl.air_top = s.atmosphere.top();
+        }
     }
     return tl;
+}
+
+/* [K] The temperature ramp's ends for one body's GROUND (#793): the law's two ends moved by what
+   the profile says at the highest and lowest ground the sweep will colour. Same shape as
+   windRampEnds (#769), for the same reason -- a span that does not cover what the picture can
+   paint puts pixels off the end of the palette, and a relief-aware field can reach BELOW the
+   analytic night end by lapse x height: Earth's 6.5 K/km against 8 km of relief is 52 K, so half
+   the palette would paint nothing.
+   The extremes are analytic, not sampled: the coldest pixel is the night end standing on the
+   highest ground, the hottest is the day end on the lowest, because the relief term does not
+   depend on the star. relief_K clamps below the datum to 0 (drag.h's flat sub-datum column), so
+   on a body whose lowest ground is under the sea level the hot end is the analytic one. */
+inline void tempRampEnds(const TempLayer &tl, double elev_lo, double elev_hi,
+                         double &ramp_lo_K, double &ramp_hi_K) {
+    assert(elev_lo <= elev_hi);
+    ramp_lo_K = tl.lo_K + tl.relief_K(elev_hi);
+    ramp_hi_K = tl.hi_K + tl.relief_K(elev_lo);
+    // >= 0, not > 0: a body that authors even_share 0 has a 0 K night end from the bare law, and
+    // the sweep divides by (hi - lo) only when the two differ. A NEGATIVE end is the data guard.
+    assert(ramp_lo_K <= ramp_hi_K && ramp_lo_K >= 0.0);
 }
 
 /* [K] The temperature the map paints in ONE direction: the same arithmetic the sweep runs per
@@ -227,14 +278,18 @@ inline TempLayer tempLayerFor(const Surface &s, double derived_bb, bool has_sun)
    groundTemperature's cos_inc assert. A zero-length vector stays zero: no bearing to normalise,
    and the floor's night end is the honest answer for it. Only the unit test feeds a direction
    that is deliberately off the sphere -- the sweep (equirectDirAt) and the baked sun
-   (starFromBody) are unit by construction. */
+   (starFromBody) are unit by construction.
+   `relief_K` is TempLayer::relief_K at this point's elevation above the datum (#793): the number
+   beside a pixel has to be that pixel's number, so the cursor passes the same term the sweep used
+   for the pixel under it, and a caller that has no height to offer passes 0.0 -- the datum, which
+   is what every map before #793 painted. */
 inline double surfmapGroundT(double anchor_K, double even_share, glm::dvec3 dir,
-                             glm::dvec3 sun_dir) {
+                             glm::dvec3 sun_dir, double relief_K) {
     const double dir_len2 = glm::dot(dir, dir);    // length2 would need glm/gtx/norm.hpp
     if(dir_len2 > 0.0) { dir *= 1.0 / std::sqrt(dir_len2); }
     const double sun_len2 = glm::dot(sun_dir, sun_dir);
     if(sun_len2 > 0.0) { sun_dir *= 1.0 / std::sqrt(sun_len2); }
-    return groundTemperature(anchor_K, even_share, cosIncidence(dir, sun_dir));
+    return groundTemperatureAt(anchor_K, even_share, cosIncidence(dir, sun_dir), relief_K);
 }
 
 /* What the WIND layer can do for a body (#769), decided once per bake on the main thread for

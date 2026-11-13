@@ -223,17 +223,44 @@ int main() {
        legal to author. Handing that 0 K to followAirTemperature's assert would abort the game
        over a night sky, so coupledAirTemperature() answers the profile instead. Nothing else
        in the battery composes the two knobs, which is why this pin is here. */
-    CHECK_NEAR(coupledAirTemperature(233.90, 214.81, 0.0, 0.5, 0.33, 0.0), 233.90, 0.0,
+    CHECK_NEAR(coupledAirTemperature(233.90, 214.81, 0.0, 0.5, 0.33, 0.0, 0.0), 233.90, 0.0,
                "a bare rock's night has no ground temperature to follow: the profile stands");
-    CHECK_NEAR(coupledAirTemperature(233.90, 214.81, 0.30, 0.5, 0.33, 1.0),
+    CHECK_NEAR(coupledAirTemperature(233.90, 214.81, 0.30, 0.5, 0.33, 1.0, 0.0),
                233.90 + 0.5 * 0.33 * (214.81 * std::pow(3.1, 0.25) - 233.90), 1e-9,
                "the composed call is the blend, with the ground from the anchor and cosine");
-    CHECK_NEAR(coupledAirTemperature(233.90, 214.81, 0.30, kFollowUnauthored, 0.33, 1.0),
+    CHECK_NEAR(coupledAirTemperature(233.90, 214.81, 0.30, kFollowUnauthored, 0.33, 1.0, 0.0),
                233.90, 0.0, "no knob: the profile stands, and nothing is asserted about it");
-    CHECK_NEAR(coupledAirTemperature(233.90, 214.81, 0.30, 0.5, 0.0, 1.0),
+    CHECK_NEAR(coupledAirTemperature(233.90, 214.81, 0.30, 0.5, 0.0, 1.0, 0.0),
                233.90, 0.0, "no weight (vacuum or above the top): the profile stands");
-    CHECK_NEAR(coupledAirTemperature(0.0, 214.81, 0.30, 0.5, 0.33, 1.0),
+    CHECK_NEAR(coupledAirTemperature(0.0, 214.81, 0.30, 0.5, 0.33, 1.0, 0.0),
                0.0, 0.0, "no air at all answers no temperature");
+    /* #793: the height term belongs on the GROUND, and it is the GROUND's height -- the elevation
+       of the terrain, not the hull's altitude above the datum. The air side already carries the
+       profile (drag.h), so it takes nothing; that is the double count worth avoiding. The hull's
+       own height is a DIFFERENT mistake, pinned at the bottom of this block so the rejected shape
+       stays next to the chosen one: cool the "ground" by the lapse up to the hull and it becomes a
+       fictitious surface at flight level, the lapse cancels out of the blend, and the real ground
+       below stops being a heat source exactly where a cruise hull is asking about it. */
+    {
+        const double datum = 288.15, summit = -31.9, f = 0.5, k = 0.5, w = 0.33;
+        const double law = groundTemperature(datum, f, 1.0);
+        CHECK_NEAR(coupledAirTemperature(datum, datum, f, k, w, 1.0, summit),
+                   datum + k * w * (law + summit - datum), 1e-12,
+                   "the blend is the blend, with the ground standing at its own elevation");
+        const double coast = coupledAirTemperature(datum, datum, f, k, w, 1.0, 0.0);
+        const double over_summit = coupledAirTemperature(datum, datum, f, k, w, 1.0, summit);
+        CHECK_TRUE(over_summit < coast,
+                   "air above a summit is coupled LESS than air above a coast: the heat source "
+                   "under it is colder");
+        CHECK_NEAR(coast - over_summit, k * w * -summit, 1e-12,
+                   "and by exactly the follow knob times the weight times the lapse at that height");
+        const double prof_at_summit = datum + summit;
+        CHECK_NEAR(coupledAirTemperature(prof_at_summit, datum, f, k, w, 1.0, summit)
+                       - prof_at_summit,
+                   coast - datum, 1e-12,
+                   "giving the ground the HULL's height instead cancels the lapse out of the "
+                   "blend, which is the shape vehicle.cpp and tick.cpp refuse");
+    }
     CHECK_NEAR(followWeight(101325.0, 101325.0), 1.0, 0.0,
                "the weight is fail-closed: a fraction that is not a number answers none");
     CHECK_NEAR(followWeight(kThermalUnauthored, 101325.0), 0.0, 0.0,

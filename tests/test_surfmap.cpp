@@ -265,13 +265,13 @@ static void cursorTemperature() {
     const glm::dvec3 sun(1.0, 0.0, 0.0);
 
     // Under the star: the day end the atlas prints.
-    check(near_d(surfmapGroundT(anchor, knob, sun, sun), duna.hi_K, 1e-9),
+    check(near_d(surfmapGroundT(anchor, knob, sun, sun, 0.0), duna.hi_K, 1e-9),
           "the point under the star reads the map's day end");
     // Antipodal to it, and anywhere on the terminator: the night end. The law has no night/day
     // distinction past cos = 0, and a cursor on the seam must not invent one.
-    check(near_d(surfmapGroundT(anchor, knob, -sun, sun), duna.lo_K, 1e-9),
+    check(near_d(surfmapGroundT(anchor, knob, -sun, sun, 0.0), duna.lo_K, 1e-9),
           "the antipode reads the night end");
-    check(near_d(surfmapGroundT(anchor, knob, glm::dvec3(0.0, 0.0, 1.0), sun), duna.lo_K, 1e-9),
+    check(near_d(surfmapGroundT(anchor, knob, glm::dvec3(0.0, 0.0, 1.0), sun, 0.0), duna.lo_K, 1e-9),
           "the terminator reads the night end too");
     // A direction NOT on the unit sphere cannot read hotter than the map's own day end. This is
     // the ceiling only: it passed under the OLD spelling too, which clamped the DOT PRODUCT and
@@ -279,13 +279,13 @@ static void cursorTemperature() {
     // the star came back as the subsolar one, 80 deg came back as 59. The pair below is what the
     // clamp could not see: off the star, a longer or shorter vector must read the SAME place,
     // because a direction is a bearing and its length is not part of where it points.
-    check(surfmapGroundT(anchor, knob, 3.0 * sun, sun) <= duna.hi_K + 1e-9,
+    check(surfmapGroundT(anchor, knob, 3.0 * sun, sun, 0.0) <= duna.hi_K + 1e-9,
           "an un-normalised direction cannot read hotter than the picture's day end");
     const glm::dvec3 off = glm::normalize(glm::dvec3(std::cos(1.4), 0.0, std::sin(1.4)));
-    const double off_T = surfmapGroundT(anchor, knob, off, sun);
-    check(near_d(surfmapGroundT(anchor, knob, 3.0 * off, sun), off_T, 1e-9),
+    const double off_T = surfmapGroundT(anchor, knob, off, sun, 0.0);
+    check(near_d(surfmapGroundT(anchor, knob, 3.0 * off, sun, 0.0), off_T, 1e-9),
           "a longer direction off the star is the same place, not a hotter one");
-    check(near_d(surfmapGroundT(anchor, knob, 0.4 * off, sun), off_T, 1e-9),
+    check(near_d(surfmapGroundT(anchor, knob, 0.4 * off, sun, 0.0), off_T, 1e-9),
           "and so is a shorter one");
     // Three places a third of a turn apart on the equator: at least one is in night and at
     // least one is lit, whatever the star's bearing -- which is why an e2e case could ask for
@@ -294,12 +294,99 @@ static void cursorTemperature() {
     double t[3];
     for(int k = 0; k < 3; k++) {
         const double a = k * 2.0 * std::numbers::pi / 3.0;
-        t[k] = surfmapGroundT(anchor, knob, glm::dvec3(std::cos(a), 0.0, std::sin(a)), sun);
+        t[k] = surfmapGroundT(anchor, knob, glm::dvec3(std::cos(a), 0.0, std::sin(a)), sun, 0.0);
     }
     const double lo = std::min(std::min(t[0], t[1]), t[2]);
     const double hi = std::max(std::max(t[0], t[1]), t[2]);
     check(near_d(lo, duna.lo_K, 1e-9), "of three places 120 deg apart, the coldest is in night");
     check(hi > lo + 1.0, "and the warmest is lit by more than rounding");
+}
+
+/* #793: the ground's OWN height. Every file already states how fast its air cools with height
+   (Earth -0.0065 K/m to 11 km, Mars -0.004 to 16.5), yet the ground law priced every pixel at the
+   sea-level datum, so a summit read as warm as a beach. What belongs HERE is what neither the
+   window nor the sweep can check: the term's SHAPE (additive, outside the fourth-power bracket),
+   its edges (0 at and below the datum, holding above the air's top), the gate (which worlds have a
+   height term at all), and the span the sweep colours with. A full bake of it -- the map's cold
+   end moving -- is e2e render/745's job. */
+static Surface makeEarthish() {
+    Surface e;
+    e.atmosphere.enabled = true;
+    // A profile needs a density to be PHYSICAL (terragen.h:physical()), not just a table: Io and
+    // Triton ship layers-less rims, and the gate that keeps them relief-free is this one.
+    e.atmosphere.sea_level_density = 1.225;
+    AtmoLayer trop;
+    trop.base_alt = 0.0; trop.base_T = 288.15; trop.lapse = -0.00648878;
+    AtmoLayer strat;
+    // Continuous with the troposphere at the seam, because atmo.h:resolveAtmoLevels refuses a
+    // table that steps there -- and airProfileOffset_K picks its level by base altitude, so a
+    // hand-authored step here would be a file the loader would have rejected.
+    strat.base_alt = 11000.0; strat.base_T = 216.77; strat.lapse = 0.001;
+    e.atmosphere.layers.push_back(trop);
+    e.atmosphere.layers.push_back(strat);
+    e.atmosphere.height = 60000.0;
+    e.even_share = 0.300;
+    return e;
+}
+
+static void groundRelief() {
+    const Surface earth = makeEarthish();
+    check(earth.reliefOn(), "a body whose air lapses has a height term");
+    check(earth.relief_K(0.0) == 0.0, "the datum is the datum: a coast pays no height term");
+    check(earth.relief_K(-4000.0) == 0.0,
+          "a sea bed reads the datum's air, not level 0's lapse run backwards into the hottest "
+          "ground in the game (drag.h's flat sub-datum column, #245)");
+    check(near_d(earth.relief_K(8000.0), -0.00648878 * 8000.0, 1e-9),
+          "an 8 km summit costs exactly the file's own lapse times its height");
+    check(earth.relief_K(11000.0) < earth.relief_K(8000.0),
+          "and it is still colder across the seam into the next level");
+    check(near_d(earth.relief_K(9.0e6), earth.relief_K(earth.atmosphere.top()), 1e-9),
+          "above the air's top the term HOLDS at the top: airTemperature's 0 K up there is a "
+          "statement about density, and a 22 km volcano on a 16.5 km profile does not get a "
+          "free 143 K");
+
+    // ---- which worlds have one at all ---------------------------------------
+    check(!makeDuna().reliefOn(), "a column that never lapses states no gradient, so no term");
+    Surface bare;
+    bare.even_share = 0.3;
+    check(!bare.reliefOn(), "airless: a summit reads what its coast reads, for free");
+    Surface giant = makeEarthish();
+    giant.bands = true;
+    check(!giant.reliefOn(), "a banded giant has no ground to raise");
+    check(Surface{}.relief_K(9000.0) == 0.0, "and asking anyway answers 0 rather than a NaN");
+
+    // ---- the SHAPE, which is the design decision ----------------------------
+    const TempLayer tl = tempLayerFor(makeEarthish(), 0.0, true);
+    check(tl.relief, "a relief-aware layer carries the profile, exactly as a wind layer carries "
+                     "its rows: numbers and tables to the worker, never body pointers");
+    const glm::dvec3 sun(1.0, 0.0, 0.0);
+    const double climb = earth.relief_K(8000.0);
+    const double coast = surfmapGroundT(tl.anchor_K, tl.knob, sun, sun, 0.0);
+    const double summit = surfmapGroundT(tl.anchor_K, tl.knob, sun, sun, climb);
+    check(near_d(summit, coast + climb, 1e-9),
+          "the height term is ADDITIVE: the fourth-power bracket is insolation, and a mountain "
+          "is not more sunlight");
+    check(summit < coast - 50.0, "so the same place at 8 km reads more than 50 K colder");
+    check(near_d(tl.lo_K, groundTemperature(tl.anchor_K, tl.knob, 0.0), 1e-9)
+             && near_d(tl.hi_K, groundTemperature(tl.anchor_K, tl.knob, 1.0), 1e-9),
+          "the layer's own ends stay relief-free: they are the law's ends, which the identity "
+          "e2e science/724 checks against the anchor");
+
+    // ---- the span the sweep colours with (#769's precedent for the wind ramp) -
+    double rlo = 0.0, rhi = 0.0;
+    tempRampEnds(tl, 0.0, 8848.0, rlo, rhi);
+    check(near_d(rlo, tl.lo_K + earth.relief_K(8848.0), 1e-9),
+          "the cold end is the law's night end standing on the highest ground");
+    check(near_d(rhi, tl.hi_K, 1e-9),
+          "the hot end does not move, because the lowest ground IS the datum and the term is 0 there");
+    check(rlo > 0.0 && rhi > rlo,
+          "and a relief-aware palette still spans positive kelvin -- the assert in tempRampEnds "
+          "is a data guard, not a live abort");
+    // Off the datum the sweep's pixel and the cursor's kelvin are ONE call (surfmapGroundT), so
+    // a colour and the number beside it cannot drift apart; pinned above for the datum case.
+    check(near_d(surfmapGroundT(tl.anchor_K, tl.knob, sun, sun, climb),
+                 tl.hi_K + climb, 1e-9),
+          "under the star at 8 km: the day end minus the climb, same term as the cold end");
 }
 
 /* #769: the wind map. Same division of labour as mapLayers() -- the window builds its combo
@@ -845,6 +932,7 @@ int main() {
 
     mapLayers();
     cursorTemperature();
+    groundRelief();
     windLayers();
 
     if(g_failures == 0) {
