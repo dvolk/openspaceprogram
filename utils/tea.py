@@ -386,6 +386,16 @@ def check_page(n):
     return n
 
 
+def check_ci_limit(n):
+    """`ci --limit`. Not bound by SERVER_PAGE_CAP: the actions endpoint ignores
+    per_page (walk_runs), so the answer is bounded by how many runs the repo has,
+    not by this number -- and `ci` has no --all to be sent to instead."""
+    n = int(n)
+    if n < 1:
+        raise argparse.ArgumentTypeError("--limit must be >= 1")
+    return n
+
+
 def check_ci_wait(n):
     n = int(n)
     if n < 1:
@@ -1110,8 +1120,8 @@ CI_DONE = "completed"        # the only run status that means "a runner let go o
 CI_POLL_SECS = 3
 CI_WAIT_MAX = 600            # a bounded wait; nothing here may hang forever
 CI_LOG_WINDOW = 60           # lines of a job log returned without --full
-CI_SERVER_PAGE = 15          # measured: this endpoint answers 15 whatever per_page says
-_ci_page_note = False        # the page-size note is said once per process
+CI_PAGE_ASK = 15             # per_page we request; this endpoint ignores it (walk_runs)
+_ci_page_note = False        # the per_page-is-ignored note is said once per process
 
 
 def _when(v):
@@ -1153,33 +1163,49 @@ def list_runs(tracker, params):
 def walk_runs(tracker, limit, branch):
     """Runs newest first, up to `limit` of them.
 
-    Measured on this server: the actions endpoint answers 15 runs whatever
-    per_page asks for, so --limit is not something the server honours -- it is
-    walked page by page here, and the answer is trimmed to what was asked for. A
-    page that stops making progress ends the walk rather than spinning on it.
+    Measured 2026-11-13 with 18 runs in the repo: this endpoint ignores per_page
+    outright -- per_page=1 still answers all 18 on page 1 and nothing on page 2.
+    So --limit is honoured here by trimming, never by the server, and anything
+    that trusted paging would miss a --sha older than page 1. The loop still
+    pages, because a server that starts honouring per_page would otherwise
+    silently shorten the answer, and it stops on a page that brings nothing new
+    rather than spinning or duplicating rows.
     """
     global _ci_page_note
-    runs, page, total = [], 1, None
+    runs, page, total, seen, ran_dry = [], 1, None, set(), False
     while len(runs) < limit:
-        params = {"per_page": min(limit, CI_SERVER_PAGE), "page": page}
+        params = {"per_page": min(limit, CI_PAGE_ASK), "page": page}
         if branch:
             params["branch"] = branch
         got, t = list_runs(tracker, params)
         if total is None:
             total = t
-        if not got:
+        fresh = [r for r in got if r.get("id") not in seen]
+        if not fresh:
+            # Either the history ends here, or the server ignores `page` as well
+            # and repeated what we already hold. Nothing past this point is
+            # reachable by asking harder.
+            ran_dry = True
             break
         if page == 1 and len(got) > params["per_page"] and not _ci_page_note:
             # Said once per process, not once per poll: --wait walks this every
             # few seconds and a note that repeats is noise, not information.
             _ci_page_note = True
+            trimmed = "; trimming to the --limit asked for" if len(got) > limit else ""
             note(f"the actions endpoint answered {len(got)} runs when asked for "
-                 f"{params['per_page']} -- it fixes its own page size; trimming "
-                 f"to the --limit asked for")
-        runs.extend(got)
+                 f"{params['per_page']} -- it ignores per_page{trimmed}")
+        seen.update(r.get("id") for r in fresh)
+        runs.extend(fresh)
         if len(runs) >= limit:
             break
         page += 1
+    if ran_dry and total is not None and len(runs) < total:
+        # The endpoint said there were more than it let us read, so a --sha
+        # filter over this list could answer "no such run" for a run that exists.
+        # Only worth saying when the walk ran dry: stopping at --limit is the
+        # caller's choice, not a short list.
+        note(f"the actions endpoint ran dry at {len(runs)} runs though it says "
+             f"{total} exist -- this list may be short")
     return runs[:limit], total
 
 
@@ -1401,7 +1427,8 @@ def main():
     lb.set_defaults(fn=cmd_labels)
 
     ci = sp.add_parser("ci", help="recent workflow runs and how they ended")
-    ci.add_argument("--limit", type=check_limit, default=5)
+    ci.add_argument("--limit", type=check_ci_limit, default=5,
+                    help="how many newest runs to return (default %(default)s)")
     ci.add_argument("--branch", help="only runs on this branch")
     ci.add_argument("--sha", help="only runs whose commit starts with this sha")
     ci.add_argument("--jobs", action="store_true",
