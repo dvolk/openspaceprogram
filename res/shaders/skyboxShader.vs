@@ -15,4 +15,4 @@ void main()
     // bodies are painted over it, not occluded by a depth tie.
     gl_Position = vec4(pos.xy, 0.0, pos.w);
     texcoord0 = position;
-}  
+}

@@ -1,0 +1,36 @@
+# The CI runner for this forge is a small box, while the game's middleware submodules are
+# 590 MB between them. So this workflow compiles NOTHING and fetches no submodules: it
+# runs `make test-gen`, which depends on `make lint`. That is the whole guard set needing
+# only the stdlib -- hygiene, file size, JSON parseability and secret shapes
+# (utils/ci_lint.py), then the generator pins that keep res/systems/*.json honest, #682's
+# atmosphere band, and the e2e index plus the case-file schema. Measured: ~1.5 s of work.
+#
+# Nothing heavier belongs here. `make test` builds every translation unit against SDL3,
+# bullet and assimp, and the e2e battery boots the game with GL -- those need a bigger
+# runner, not a longer timeout.
+#
+# Keep this job short on purpose: its container image is pulled on first use and disk is
+# the scarce thing on that box. Hardware details and the runner's executor options belong
+# on the ticket, not in a public tree.
+#
+# Debugging note, learned the hard way: if this job ever fails inside checkout with a 403
+# whose body is the front proxy's own error page rather than an answer from the forge, the
+# runner's docker bridge range has come off the front proxy's IP allow-list -- the job
+# container reaches the forge from that range, not from the host. #819 has the repro.
+name: lint
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  gates:
+    name: no-compiler gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      # One gate step: test-gen takes lint as a prerequisite, so the log shows both and
+      # nothing runs twice.
+      - run: make test-gen

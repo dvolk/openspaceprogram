@@ -653,8 +653,19 @@ test: test-gen test-parts $(addprefix $(TESTDIR)/,$(TESTS))
 #              would have deleted the part from the catalog. They run here and
 #              in CI; on a box without the modules they are reported as
 #              skipped instead of quietly vanishing (#220).
+
+# The gates that cost no compiler: hygiene, file size, JSON parseability, secret shapes,
+# and a byte-compile pass over the python tooling. The Actions job runs exactly this --
+# a rule that only lives in a workflow is a rule nobody can reproduce when it fails them.
+# utils/ci_lint.py carries what each gate is for and, more importantly, what it skips.
+.PHONY: lint
+lint:
+	python3 utils/ci_lint.py --self-test
+	python3 utils/ci_lint.py
+	python3 -m compileall -q utils e2e
+
 .PHONY: test-gen
-test-gen:
+test-gen: lint
 	python3 utils/sci_phase.py
 	python3 utils/sci_dist.py --self-test
 	python3 utils/sci_dist.py --check res/systems/*.json

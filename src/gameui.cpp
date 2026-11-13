@@ -4494,7 +4494,7 @@ void drawUIMap(Game &g) {
                 }
             }
         }
-    
+
         // The map plane -- a normal in the focus's inertial frame; OrbitMap derives an
         // in-plane basis from it.
         glm::dvec3 plane_n, plane_x;
@@ -4662,7 +4662,7 @@ void drawUIMap(Game &g) {
         // The near-body (rotating-frame) shell -- drives the science orbit cut and the
         // surface-frame flip.
         draw_soi(glm::dvec3(0.0, 0.0, 0.0), focus->rot_frame->soi, shell_col);
-    
+
         // The atmosphere top (top() in meters above sea level) as a blue disk under the
         // orbit line, with the same min-pixel floor as the body disk.
         // top() is metres above MEAN SEA, so the disk starts at the datum (#406).
