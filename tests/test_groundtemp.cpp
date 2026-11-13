@@ -18,7 +18,9 @@
 #include <cstring>
 #include <numbers>
 #include <string>
+#include <vector>
 
+#include "equirect.h"
 #include "groundtemp.h"
 
 static int g_failures = 0;
@@ -242,6 +244,270 @@ int main() {
                "absence is not a number, and not 1.0 either");
     CHECK_TRUE(evenShareAuthored(0.0), "a bare-rock f of exactly 0 is authored data");
     CHECK_TRUE(evenShareAuthored(1.0), "Venus's stated no-range is authored data");
+    /* And NO default: the consumers dash rather than choosing a fallback. An earlier
+       evenShareOrDefault() returned 1.0 for absence, which printed a constant hot ground
+       under a midnight sun -- least defensible exactly where the body is airless -- and made
+       Mercury look like Venus. There is no pin for a default, because there is no default:
+       a body without a knob has no underfoot reading, which is what the readout tests and
+       the '#' columns in --solar-log show. */
+
+    /* ---- #794: the lag, pinned against a spelling that does not know it --------------
+       The header answers the periodic steady state of  tau y' + y = max(a + b cos h, 0)
+       in closed form. The only honest way to check a closed form is to relax the same ODE
+       with a method that shares no line of its algebra: fixed-step RK4, started from an
+       arbitrary value, iterated over many rotations until the transient dies. Everything
+       below is that comparison, plus the identities the closed form is supposed to satisfy
+       for reasons the solver does not use. */
+
+    /* tau absent or 0 IS today's ground: the unlagged forcing, bit for bit, in both modes.
+       (Not the geometry's dot product -- that is a different spelling of the same quantity
+       and never agreed to the bit, #636. Nothing wires this into a picture yet, so a shipped
+       map cannot move.) */
+    {
+        const double lat = 0.413, dec = -0.405;
+        for(double tau : { 0.0, kLagTauUnauthored }) {
+            const GroundLagRow r = groundLagRow(lat, dec, tau);
+            CHECK_INT(r.mode, GroundLagRow::kInstant, "no lag authored: the row is instantaneous");
+            for(int k = -25; k <= 25; k++) {
+                const double h = 0.25 * (double)k;      // deliberately outside [-pi,pi] sometimes
+                const double w = std::remainder(h, 2.0 * std::numbers::pi);
+                CHECK_TRUE(r.at(h) == std::max(r.a + r.b * std::cos(w), 0.0),
+                           "tau 0 answers the unlagged forcing exactly, and wraps its input");
+            }
+        }
+    }
+
+    /* a, b and h pinned against the engine's own sphere. Everything above and below works in
+       (a, b, h), and the map will build h from a column's longitude minus the sun's subsolar
+       longitude -- both of which come from equirect.h, and neither of which the relaxation
+       harness touches (it feeds a and b directly). So a flipped sign or a lat/lon swap there moves
+       the hot spot WEST and every lag test still passes. This is the pin that ties the convention
+       to the geometry the ground law already uses: the dot product today's cosine comes from, and
+       a + b cos h, are the same number at the same place and instant. */
+    {
+        const double places[][2] = { {0.0, 0.0}, {0.61, 2.2}, {-1.1, -0.7},
+                                     {1.5, -3.0}, {-1.553, 3.13}, {0.3, -1.9} };
+        const double suns[][2] = { {0.0, 0.0}, {-0.409, 1.9}, {0.409, -2.6},
+                                   {1.3, 0.4}, {-1.5, 3.1} };
+        for(const double (&pl)[2] : places) {
+            for(const double (&su)[2] : suns) {
+                const double lat = pl[0], lon = pl[1], dec = su[0], lon_ss = su[1];
+                const double dot = glm::dot(equirectDir(lon, lat), equirectDir(lon_ss, dec));
+                const double a = std::sin(lat) * std::sin(dec);
+                const double b = std::cos(lat) * std::cos(dec);
+                CHECK_NEAR(std::max(dot, 0.0), std::max(a + b * std::cos(lon - lon_ss), 0.0),
+                           1e-9, "the lag's forcing IS the geometry's cosine at the same place");
+            }
+        }
+    }
+
+    /* The relaxation. Returns the y sampled on n steps of one rotation after `turns` passes. */
+    auto relax = [](double a, double b, double tau, int n, int turns,
+                    std::vector<double> &out) {
+        const auto g = [&](double h) { return std::max(a + b * std::cos(h), 0.0); };
+        const auto f = [&](double h, double y) { return (g(h) - y) / tau; };
+        const double dh = 2.0 * std::numbers::pi / (double)n;
+        /* Seeded away from equilibrium on purpose. Seeding at g(0) makes the polar-night case a
+           comparison of zero against zero (its g is zero everywhere), and weakens the transient
+           decay the turns exist to exercise. */
+        double y = 0.5;
+        for(int t = 0; t < turns; t++) {
+            for(int k = 0; k < n; k++) {
+                const double h = (double)k * dh;
+                const double k1 = f(h, y), k2 = f(h + dh * 0.5, y + dh * k1 * 0.5);
+                const double k3 = f(h + dh * 0.5, y + dh * k2 * 0.5);
+                const double k4 = f(h + dh, y + dh * k3);
+                y += dh * (k1 + 2.0 * k2 + 2.0 * k3 + k4) / 6.0;
+            }
+        }
+        /* Record one turn CONTINUING from the converged value. Restarting the recording pass at
+           g(0) -- which is what this looked like at first -- re-adds the transient the turns above
+           just spent 200 rotations removing, and the "closed form is wrong by 0.3" that follows is
+           entirely the harness. out[k] is y at h = k * dh. */
+        out.assign((size_t)n, 0.0);
+        out[0] = y;
+        for(int k = 0; k < n - 1; k++) {
+            const double h = (double)k * dh;
+            const double k1 = f(h, y), k2 = f(h + dh * 0.5, y + dh * k1 * 0.5);
+            const double k3 = f(h + dh * 0.5, y + dh * k2 * 0.5);
+            const double k4 = f(h + dh, y + dh * k3);
+            y += dh * (k1 + 2.0 * k2 + 2.0 * k3 + k4) / 6.0;
+            out[(size_t)k + 1] = y;
+        }
+    };
+
+    /* Cases chosen for the ways a lag solver goes wrong, not for coverage: a tilted star (the
+       asymmetric terminators that broke my first attempt's sunset/sunrise constants), a row
+       whose day is most of a rotation, a polar-day row (smooth forcing, so the peak lag is the
+       exact atan(tau)), a polar-night row, a tau of about a map pixel and a half at 512 columns,
+       a tau longer than a rotation. Tolerance is the relaxation's own grid error at n = 4000,
+       not the closed form's -- measured against a form verified by an independent derivation:
+       1e-8 or better on every case except tau = 0.02, where dh is a thirteenth of the time
+       constant and the answer lands 1.2e-6 off. So the tightest margin here is 8x, not the three
+       decades the other seven rows have. */
+    struct LagCase { double lat_deg, dec_deg, tau; const char *why; };
+    const LagCase kCases[] = {
+        {  20.0,  -23.44, 0.42, "temperate winter hemisphere" },
+        {  60.0,  -23.44, 3.00, "high latitude, short day, long lag" },
+        {  60.0,   23.44, 3.00, "same latitude, summer: the arc is the other way round" },
+        {   0.0,    0.00, 1.00, "equinox: the symmetric shortcut is exact ONLY here" },
+        {  80.0,   23.44, 1.00, "polar day" },
+        {  80.0,  -23.44, 1.00, "polar night" },
+        {  35.0,  -12.00, 0.02, "tau well under one map pixel" },
+        {  35.0,  -12.00, 8.00, "tau longer than a rotation" },
+    };
+    std::vector<double> yv;
+    for(const LagCase &c : kCases) {
+        const double lat = c.lat_deg * std::numbers::pi / 180.0;
+        const double dec = c.dec_deg * std::numbers::pi / 180.0;
+        const GroundLagRow r = groundLagRow(lat, dec, c.tau);
+        const int n = 4000, turns = 200;
+        relax(r.a, r.b, c.tau, n, turns, yv);
+        double worst = 0.0, worst_h = 0.0;
+        for(int k = 0; k < n; k++) {
+            const double h = (double)k * 2.0 * std::numbers::pi / (double)n;
+            const double got = r.at(h), want = yv[(size_t)k];
+            if(std::fabs(got - want) > worst) { worst = std::fabs(got - want); worst_h = h; }
+            CHECK_TRUE(got >= -1e-12 && got <= 1.0 + 1e-12,
+                       "the lagged forcing stays a share: it feeds the same law as cos_inc");
+        }
+        CHECK_TRUE(worst < 1e-5, ("closed form matches the relaxation (" + std::string(c.why)
+                                  + ")").c_str());
+        if(worst >= 1e-5) { printf("       worst %.3e at h=%.1f deg\n", worst, worst_h * 180.0 / std::numbers::pi); }
+    }
+
+    /* THE ANCHOR SURVIVES THE LAG, which is the claim the header makes out loud. Averaging the
+       ODE over a rotation kills the derivative, so the phase mean of y equals the phase mean of
+       the forcing for every tau -- and the sphere mean of that forcing is 1/4, which is what
+       makes T0 an anchor rather than a fitted number. Pinned per row and on the sphere. */
+    for(double tau : { 0.42, 1.0, 3.0 }) {
+        double sphere = 0.0, wsum = 0.0;
+        const int nl = 361, np = 720;
+        for(int j = 0; j < nl; j++) {
+            const double lat = -std::numbers::pi / 2 + std::numbers::pi * (double)j / (double)(nl - 1);
+            const GroundLagRow r = groundLagRow(lat, -23.44 * std::numbers::pi / 180.0, tau);
+            double pm = 0.0;
+            for(int k = 0; k < np; k++) { pm += r.at((double)k * 2.0 * std::numbers::pi / (double)np); }
+            pm /= (double)np;
+            double gm = 0.0;
+            for(int k = 0; k < np; k++) {
+                gm += std::max(r.a + r.b * std::cos((double)k * 2.0 * std::numbers::pi / (double)np), 0.0);
+            }
+            gm /= (double)np;
+            /* Absolute, not relative: these means run from ~1e-5 on a winter polar row to 0.4 in
+               the summer one, and a relative tolerance on a number that is already essentially
+               zero asks the quadrature to be exact. Measured worst gap 1.9e-6. */
+            CHECK_TRUE(std::fabs(pm - gm) < 1e-5,
+                       "the phase mean of the lagged ground equals the forcing's");
+            sphere += std::cos(lat) * pm;
+            wsum += std::cos(lat);
+        }
+        /* Measured at these grids: the two phase means agree to 1.9e-6 absolute and the sphere to
+           2.8e-7, and neither gap depends on tau -- both are pure quadrature of the same kinked
+           forcing, which is the shape of evidence that the identity is exact and the grid is not. */
+        CHECK_NEAR(sphere / wsum, 0.25, 1e-4,
+                   "and the sphere still radiates exactly the power the star delivers");
+    }
+
+    /* Sign convention and the physical shape: east-positive hour angle means the hot spot rides
+       EAST of noon (a body turning west-to-east carries the warm meridian past the star first),
+       and the coldest moment of a rotation is in the MORNING -- after sunrise, before noon --
+       not at local midnight. That is where a real weather station's minimum sits, and it is not
+       obvious: the skin is still losing heat for a while after the star clears the horizon. */
+    {
+        const double lat = 20.0 * std::numbers::pi / 180.0;
+        const double dec = -23.44 * std::numbers::pi / 180.0;
+        for(double tau : { 0.42, 1.0, 3.0 }) {
+            const GroundLagRow r = groundLagRow(lat, dec, tau);
+            const int np = 7200;
+            double hmax = 0.0, vmax = -1.0, hmin = 0.0, vmin = 2.0;
+            for(int k = 0; k < np; k++) {
+                const double h = std::remainder((double)k * 2.0 * std::numbers::pi / (double)np,
+                                                2.0 * std::numbers::pi);
+                const double v = r.at(h);
+                if(v > vmax) { vmax = v; hmax = h; }
+                if(v < vmin) { vmin = v; hmin = h; }
+            }
+            CHECK_TRUE(hmax > 0.0, "the day's peak sits east of the subsolar meridian");
+            CHECK_TRUE(hmin > -r.h0 && hmin < 0.0,
+                       "the rotation's minimum is between sunrise and noon, never at midnight");
+            CHECK_TRUE(hmax < std::atan(tau),
+                       "the peak lag stays under atan(tau): the night break pulls it in");
+        }
+        /* A polar-day row has no terminator to break the forcing, so there -- and only there --
+           the peak lag IS exactly atan(tau). Measured: 45.00 deg at tau 1, 26.55 at tau 0.5. */
+        for(double tau : { 0.5, 1.0, 2.0 }) {
+            const GroundLagRow pd = groundLagRow(80.0 * std::numbers::pi / 180.0,
+                                                 23.44 * std::numbers::pi / 180.0, tau);
+            CHECK_INT(pd.mode, GroundLagRow::kPolarDay, "80N under a 23.4 tilt is lit all rotation");
+            double hmax = 0.0, vmax = -1.0;
+            for(int k = 0; k < 20000; k++) {
+                const double h = std::remainder((double)k * 2.0 * std::numbers::pi / 20000.0,
+                                                2.0 * std::numbers::pi);
+                const double v = pd.at(h);
+                if(v > vmax) { vmax = v; hmax = h; }
+            }
+            CHECK_NEAR(hmax, std::atan(tau), 1e-3, "a smooth forcing lags by exactly atan(tau)");
+        }
+    }
+
+    /* h0 answers "where does this latitude's sun rise and set" in EVERY mode, because the
+       follow-up reads it for the terminator and any day-length row. Filling it only in the
+       day/night branch leaves a 0.0 that looks like "no day arc" on a row that is lit all
+       rotation -- and on an unlagged row, whose real day arc is 1.12 rad at lat 45. */
+    {
+        const double pi = std::numbers::pi, d2r = pi / 180.0;
+        CHECK_NEAR(groundLagRow(80.0 * d2r, 23.44 * d2r, 1.0).h0, pi, 1e-9,
+                   "a polar-day row's day arc is the whole rotation");
+        CHECK_NEAR(groundLagRow(80.0 * d2r, -23.44 * d2r, 1.0).h0, 0.0, 0.0,
+                   "a polar-night row's is nothing");
+        const GroundLagRow un = groundLagRow(45.0 * d2r, -23.44 * d2r, 0.0);
+        CHECK_NEAR(un.h0, std::acos(-un.a / un.b), 1e-9,
+                   "an unlagged row knows its own day arc too");
+        /* dec at the pole: b collapses to 0, which must land on a polar mode rather than an acos
+           of -a/0. This is also the edge the lat/dec range assert is written for. */
+        const GroundLagRow pole = groundLagRow(30.0 * d2r, 0.5 * pi, 1.0);
+        CHECK_INT(pole.mode, GroundLagRow::kPolarDay, "a star over the pole lights that hemisphere");
+        CHECK_NEAR(pole.h0, pi, 1e-9, "and its rows know it");
+        CHECK_TRUE(std::isfinite(pole.at(0.7)) && pole.at(0.7) >= 0.0 && pole.at(0.7) <= 1.0,
+                   "the polar answer stays a share");
+    }
+
+    /* The landmine, twice over. The obvious spelling forms e^{+h0/tau}, which overflows a double
+       once h0/tau exceeds ~709 -- but the smarter-looking fold, x * e^{-(h0-h)/tau}, does NOT
+       overflow and is silently a different function (x^2 e^{h/tau}), so it fails without ever
+       tripping an assert or producing a NaN. Both are pinned here: finite and in range at a tau
+       no real body would use, and equal to the unlagged forcing as tau goes to zero. */
+    for(double tau : { 1e-3, 1e-2, 3e-3, 1e-6 }) {
+        for(double lat_deg : { -85.0, 0.0, 45.0, 85.0 }) {
+            const GroundLagRow r = groundLagRow(lat_deg * std::numbers::pi / 180.0,
+                                                -23.44 * std::numbers::pi / 180.0, tau);
+            for(int k = 0; k < 36; k++) {
+                const double v = r.at((double)k * 0.175);
+                CHECK_TRUE(std::isfinite(v) && v >= 0.0 && v <= 1.0,
+                           "a legal tiny tau never produces a NaN or a share out of range");
+            }
+        }
+    }
+
+    /* And a small tau really is the instantaneous answer: the guard above has to be harmless,
+       not merely finite. */
+    {
+        const double lat = 0.6, dec = -0.3;
+        const GroundLagRow tiny = groundLagRow(lat, dec, 1e-4);
+        double worst = 0.0;
+        for(int k = 0; k < 720; k++) {
+            const double h = (double)k * 2.0 * std::numbers::pi / 720.0;
+            const double w = std::remainder(h, 2.0 * std::numbers::pi);
+            worst = std::max(worst, std::fabs(tiny.at(h) - std::max(tiny.a + tiny.b * std::cos(w), 0.0)));
+        }
+        CHECK_TRUE(worst < 1e-3, "a tau under a pixel is the unlagged ground, not merely not-NaN");
+    }
+
+    CHECK_TRUE(!lagTauAuthored(kLagTauUnauthored),
+               "a body nobody priced has no lag, and that is not a stated 0");
+    CHECK_TRUE(lagTauAuthored(0.0) && !lagTauActive(0.0),
+               "a stated 0 is a fact and asks for no work -- the pair is one answer");
     /* And NO default: the consumers dash rather than choosing a fallback. An earlier
        evenShareOrDefault() returned 1.0 for absence, which printed a constant hot ground
        under a midnight sun -- least defensible exactly where the body is airless -- and made

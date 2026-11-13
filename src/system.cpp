@@ -733,6 +733,45 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                                          + "': surface.even_share_src explains a knob that "
                                            "surface.even_share does not author");
             }
+            /* #794: the ground's phase lag, in RADIANS OF PHASE. The upper bound is one rotation
+               and the reason is a units trap: the fact page that states "the daily max lands at
+               14:00" invites a reader to author the hours, and any range permissive enough to
+               call itself generous lets 14 through as if it were a lag.
+               What the bound actually costs, measured on an equatorial row rather than asserted:
+               at tau = 2 pi the lagged row still swings 17 % of the forcing's peak-to-trough, and
+               the peak lag saturates at atan(2 pi) = 81 deg of phase -- 5.4 h on a 24 h day. So a
+               page stating a 14:00 peak is comfortably inside (tau ~ 0.6) and one stating 18:00 is
+               inexpressible at ANY allowed tau. If a real body ever needs that, the number to
+               revisit is this bound, not the law. Absent = no lag (the sentinel), NOT a default. */
+            if(sv.contains("lag_tau")) {
+                if(!sv["lag_tau"].is_number()) {
+                    throw std::runtime_error("system: '" + body->name
+                                             + "': \"surface.lag_tau\" must be a number"
+                                               " [radians of phase, 0..2pi]");
+                }
+                const double lt = sv["lag_tau"].get<double>();
+                if(!std::isfinite(lt) || lt < 0.0 || lt > 2.0 * std::numbers::pi) {
+                    throw std::runtime_error("system: '" + body->name
+                                             + "': \"surface.lag_tau\"="
+                                             + std::to_string(lt)
+                                             + " must be in [0, 2pi] radians of phase (not"
+                                               " hours -- convert with the body's mean solar"
+                                               " day)");
+                }
+                s.lag_tau = lt;
+            }
+            if(sv.contains("lag_tau_src")) {
+                if(!sv["lag_tau_src"].is_string()) {
+                    throw std::runtime_error("system: '" + body->name
+                                             + "': \"surface.lag_tau_src\" must be a string");
+                }
+                s.lag_tau_src = sv["lag_tau_src"].get<std::string>();
+            }
+            if(!s.lag_tau_src.empty() && !lagTauAuthored(s.lag_tau)) {
+                throw std::runtime_error("system: '" + body->name
+                                         + "': surface.lag_tau_src explains a knob that "
+                                           "surface.lag_tau does not author");
+            }
             if(sv.contains("sea_level")) {
                 if(!sv["sea_level"].is_number()) {
                     throw std::runtime_error("system: '" + body->name

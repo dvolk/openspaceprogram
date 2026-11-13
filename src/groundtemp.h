@@ -61,6 +61,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
+#include <numbers>
 #include <string>
 
 #include "authored.h"   // kEvenShareUnauthored, kThermalUnauthored + the authored?() pairs
@@ -95,6 +96,181 @@ inline double groundTemperature(double anchor_K, double even_share, double cos_i
        this law (#636) have never agreed to the bit and still do not: what is shared is the
        LAW. */
     return anchor_K * std::sqrt(std::sqrt(shape));
+}
+
+/* ---------------------------------------------------------------------------------------------
+   #794: THE SAME LAW WITH THE SKIN ALLOWED TO LAG THE LIGHT.
+
+   The law above is INSTANTANEOUS: the ground answers the star's cosine at the same instant, so
+   the hottest place on a map is always due south/north of the subsolar point and the coldest is
+   local midnight. Real surfaces peak in the afternoon and bottom out after sunrise -- which is
+   what this lets the model say, for one authored number.
+
+   THE EQUATION. Along a latitude, write the star's hour angle as `h` (longitude measured from
+   the subsolar meridian, EAST positive, so h grows with time), and the forcing the instantaneous
+   law uses as g(h) = max(a + b cos h, 0), with a = sin lat sin dec and b = cos lat cos dec.
+   "EAST positive, growing with time" is a convention, not a fact about the maths: it holds here
+   because this engine encodes a retrograde body as a tilt past pi/2 with a non-negative
+   rot_ang_speed, so a surface point's longitude always increases. tests/test_groundtemp.cpp pins
+   the SPATIAL half of it -- a + b cos h against the equirect directions -- but only the map wiring
+   can pin the temporal half, and a flipped sign is invisible in a picture.
+   The lagged skin is the periodic steady state of
+
+       tau dy/dh + y = g(h),      tau in PHASE RADIANS (one rotation = 2 pi)
+
+   which is the usual tau_time dT/dt = ... read against phase instead of seconds, i.e.
+   tau_phase = tau_time * omega_solar. The ANSWER inside a row does not care how fast the body
+   turns -- but the authored number is precisely the thing that does, so the same ground on a body
+   spinning twice as fast has half the phase lag. A generator pricing tau from a stated afternoon
+   peak therefore converts with that body's MEASURED mean solar day (system.h:measureSolarDay),
+   never the sidereal rotation, and the substitution quietly assumes dh/dt is constant over the
+   lag's memory -- true on a circular orbit, slightly false on an eccentric one, where the subsolar
+   longitude rate drifts over the year.
+
+   WHY THE ANCHOR STILL HOLDS -- and this is the part worth stating, because it looked like the
+   lag would break the exactness that makes T0 an anchor rather than a fudge term. Average the
+   equation over one rotation: the derivative term averages to zero (a periodic function has zero
+   mean derivative), so <y> = <g> for EVERY tau. The forcing's sphere mean is still 1/4, so
+   <T^4> = T0^4 exactly as before. The lag moves the swing around; it cannot change its size.
+   tests/test_groundtemp.cpp pins this on the sphere, cos(lat)-weighted over a full rotation.
+
+   THE CLOSED FORM (no time stepping, no sample table). With the lit arc |h| <= h0,
+   h0 = acos(-a/b), and yp(h) = a + b(cos h + tau sin h)/(1 + tau^2) the particular solution
+   (so tau yp' + yp = a + b cos h exactly):
+       lit    y = yp(h) + C e^{-h/tau}
+       night  y = N e^{-(h_n - h0)/tau},     h_n = phase since sunset, in [h0, 2 pi - h0]
+   with kset = yp(h0) and crise = yp(-h0) -- the particular solution at SUNSET and at SUNRISE,
+   tau(a*tau +/- b sin h0)/(1 + tau^2). NOTE the +/-: the two ends of the day arc are NOT
+   symmetric once dec != 0, and the symmetric shortcut b*tau*sin(h0)/(1+tau^2) -- which is what
+   one writes down first -- is exact only at equinox. That error hides at dec 0, shows up as a
+   step at the terminator everywhere else, and puts heat where the model has none; the RK4
+   cross-check in tests/test_groundtemp.cpp is what caught it.
+
+   NUMERICS, and the trap that cost a rewrite. Continuity at both terminators fixes C:
+       x = e^{-h0/tau},  z = e^{-(2 pi - h0)/tau},  u = e^{-(2 pi - 2 h0)/tau},  q = x*z
+       C = (kset z - crise x) / (1 - q)      N = kset + C x
+   and every exponential in the builder has a non-positive argument. The lit term does not:
+   on the morning half h is negative, so e^{-h/tau} has a POSITIVE exponent reaching e^{+h0/tau},
+   which overflows once h0/tau > ~709. Folding it as x * e^{-(h0 - h)/tau} to dodge that -- the
+   obvious move, and my first attempt -- is simply a different function (x^2 e^{h/tau}); it breaks
+   continuity at sunrise by 0.3-0.5 of a share, which is tens of kelvin on an airless body and it
+   does not trip an assert. So the term is anchored at whichever terminator it is read from:
+       hom_noon = C                                (its value at h = 0)
+       hom_rise = (kset u - crise) / (1 - q)       (= C e^{+h0/tau}, never forming e^{+h0/tau})
+   and each half of the day evaluates from its own anchor, again with non-positive exponents.
+   Small tau then behaves rather than exploding: C -> 0, N -> kset, hom_rise -> -crise, and the
+   row answers the forcing itself.
+
+   WHAT THIS IS STILL *NOT*. It is a phase shift, not thermal inertia: it does not damp the
+   swing's AMPLITUDE the way a regolith skin does (that stays the job of the authored even share,
+   which is why the two trade against each other and a body that authors tau needs its f re-fit),
+   and it is not heat flow, not a subsurface profile, not a weather system. It is one authored
+   number on the skin the law already has, and the field it produces is still a radiative skin --
+   sigma T^4 -- not a measured air temperature.
+
+   Feeding this to groundTemperature() is deliberate: y is a unit-mass positive filter of g, and
+   g <= max(a + b) = cos(lat - dec) <= 1, so y stays in [0,1] and lands in the same currency as
+   cos_inc. Its parameter is still named cos_inc; a lagged value is not a cosine, and this is the
+   sentence that says so.
+   --------------------------------------------------------------------------------------------- */
+
+/* One latitude's lagged answer, built once per latitude and evaluated per longitude (#802's
+   hoists are what make this affordable on a map bake: everything that varies only with latitude
+   -- a, b, the terminator, the two exponential constants -- is resolved in the builder). */
+struct GroundLagRow {
+    enum Mode : unsigned char {
+        kInstant = 0,     // tau absent or 0: the unlagged forcing (today's ground)
+        kDayNight = 1,    // an arc of day and an arc of night
+        kPolarDay = 2,    // lit for the whole rotation
+        kPolarNight = 3   // dark for the whole rotation
+    };
+    Mode mode = kInstant;
+    double tau = 0.0;      // [phase rad]
+    double a = 0.0;        // forcing g(h) = a + b cos h
+    double b = 0.0;
+    double h0 = 0.0;
+    /* [rad] Half the day arc: |h| <= h0 is lit. Filled in EVERY mode -- pi for a row lit all
+       rotation, 0 for one dark all rotation, acos(-a/b) in between -- because the follow-up wants
+       to read it as "where this latitude's sun rises and sets", and a field that means something
+       in only one of four modes is a bug waiting to be drawn. */
+    double inv_den = 1.0;  // 1/(1 + tau^2), hoisted: at() runs once per map column
+    double hom_noon = 0.0; // the lit arc's homogeneous term at h = 0
+    double hom_rise = 0.0; // ... at sunrise (h = -h0), so e^{+h0/tau} is never formed
+    double night_at_sunset = 0.0;  // the night decay's value AT sunset (continuous with the day)
+
+    /* [1] The lagged forcing at hour angle `h` [rad, any real -- wrapped here]. */
+    double at(double h) const {
+        /* A row is not meant to be assembled by hand, but a sweep will copy these fields between
+           structs, and a kDayNight row with tau 0 answers -nan rather than failing. */
+        assert(mode != kDayNight || (tau > 0.0 && std::isfinite(tau)));
+        const double w = std::remainder(h, 2.0 * std::numbers::pi);   // [-pi, pi]
+        if(mode == kPolarNight) { return 0.0; }
+        if(mode == kInstant)    { return std::max(a + b * std::cos(w), 0.0); }
+        if(mode == kPolarDay) {
+            // The forcing never breaks, so this is the smooth answer and its peak sits exactly
+            // atan(tau) of phase east of noon -- the only case where atan(omega tau) is the whole
+            // story, which is why tests/test_groundtemp.cpp pins it there and nowhere else.
+            return a + b * (std::cos(w) + tau * std::sin(w)) * inv_den;
+        }
+        // The particular solution is only needed where there IS a day; a night column pays for
+        // two transcendentals and a divide otherwise, and this bake calls it per column.
+        if(w >= 0.0 && w <= h0) {
+            const double yp = a + b * (std::cos(w) + tau * std::sin(w)) * inv_den;
+            return yp + hom_noon * std::exp(-w / tau);
+        }
+        if(w < 0.0 && w >= -h0) {
+            const double yp = a + b * (std::cos(w) + tau * std::sin(w)) * inv_den;
+            return yp + hom_rise * std::exp(-(w + h0) / tau);
+        }
+        const double hn = (w > 0.0) ? w : w + 2.0 * std::numbers::pi;  // since sunset
+        return night_at_sunset * std::exp(-(hn - h0) / tau);
+    }
+};
+
+/* [1] Build one latitude's row. `lat` and `dec` are RADIANS within [-pi/2, pi/2] (dec = the
+   star's declination in the body's own frame, the same quantity the map's equirect grid already
+   knows; a retrograde world's tilt past pi/2 is folded by the latitude that geometry returns, so
+   the bound holds for every shipped body). `tau` is the authored lag in phase radians or
+   kLagTauUnauthored; either non-positive answer takes the kInstant branch, which is the unlagged
+   forcing and therefore cannot change a picture. */
+inline GroundLagRow groundLagRow(double lat, double dec, double tau) {
+    assert(std::isfinite(lat) && std::isfinite(dec));
+    /* Handing DEGREES to a radians function is the exact mistake this knob exists to catch, and
+       unasserted it answers a plausible-looking row: groundLagRow(45.0, -23.44, .42) is quietly a
+       "polar day". Same doctrine as groundTemperature() asserting its cosine. */
+    assert(std::fabs(lat) <= 0.5 * std::numbers::pi + 1e-9
+           && std::fabs(dec) <= 0.5 * std::numbers::pi + 1e-9);
+    /* The sentinel is a legal argument on purpose: a bake walks the whole system and passes the
+       field it finds, and "nobody authored a lag" answers the instantaneous row rather than
+       costing every caller a pre-check. Any OTHER negative -- or a NaN -- is a bug upstream, and
+       the ceiling is the same kind of guard: measured, the row starts returning NEGATIVE shares
+       near tau 1e16 and answers NaN past ~1e18, so a caller that lands there has a unit bug, not
+       a slowly-turning world. */
+    assert(tau == kLagTauUnauthored || (tau >= 0.0 && tau <= 1e6));
+    GroundLagRow r;
+    r.a = std::sin(lat) * std::sin(dec);
+    r.b = std::cos(lat) * std::cos(dec);
+    r.h0 = (r.a >= r.b) ? std::numbers::pi
+         : (r.a <= -r.b) ? 0.0 : std::acos(-r.a / r.b);
+    if(!lagTauActive(tau)) { return r; }
+    r.tau = tau;
+    r.inv_den = 1.0 / (1.0 + tau * tau);
+    if(r.a >= r.b) { r.mode = GroundLagRow::kPolarDay; return r; }
+    if(r.a <= -r.b) { r.mode = GroundLagRow::kPolarNight; return r; }
+    r.mode = GroundLagRow::kDayNight;
+    const double kset = tau * (r.a * tau + r.b * std::sin(r.h0)) * r.inv_den;   // yp at sunset
+    const double crise = tau * (r.a * tau - r.b * std::sin(r.h0)) * r.inv_den;  // ... at sunrise
+    const double x = std::exp(-r.h0 / tau);
+    const double z = std::exp(-(2.0 * std::numbers::pi - r.h0) / tau);
+    const double u = std::exp(-2.0 * (std::numbers::pi - r.h0) / tau);
+    const double both = 1.0 - x * z;
+    assert(both > 0.0);     // x*z = e^{-2 pi/tau}; see the tau ceiling on the argument above
+    r.hom_noon = (kset * z - crise * x) / both;
+    r.hom_rise = (kset * u - crise) / both;
+    r.night_at_sunset = kset + r.hom_noon * x;
+    assert(std::isfinite(r.hom_noon) && std::isfinite(r.hom_rise)
+           && std::isfinite(r.night_at_sunset));
+    return r;
 }
 
 /* [K] The air at one altitude when the air nearest the ground is allowed to follow the

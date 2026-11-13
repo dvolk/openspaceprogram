@@ -52,6 +52,24 @@ inline bool thermalAuthored(double t_K) { return t_K > 0.0; }
 inline constexpr double kEvenShareUnauthored = -1.0;
 inline bool evenShareAuthored(double f) { return f >= 0.0; }
 
+/* [phase radians] How far the ground's temperature lags the star's light (#794): the angle the
+   body turns through while the skin catches up, so 0 is instantaneous and one rotation is 2*pi.
+   Absence means NO lag, which -- unlike the knobs above -- is not a reading the file lacks but
+   the state the game has always run in, exactly as kFollowUnauthored means "no coupling". It is
+   still a negative sentinel so a stated 0.0 ("this ground peaks at noon, and that is a fact")
+   cannot be confused with nobody saying anything.
+   The loader bounds it at one rotation, and that bound is load-bearing against a units mistake:
+   a page that states its daily max at 14:00 invites someone to author `14`, which is hours, not
+   radians -- and hours would land inside any range that lets a lag be a lag.
+   Hours are NOT the unit here, and a readout that wants them converts with the body's MEASURED
+   mean solar day (system.h:measureSolarDay), never the sidereal rotation. */
+inline constexpr double kLagTauUnauthored = -1.0;
+inline bool lagTauAuthored(double t) { return t >= 0.0; }
+/* Whether any work follows. The sentinel and a stated 0.0 both answer "the ground tracks the
+   light", and the pair is one fact (#636); the readout asks the other question -- did the file
+   state a lag at all -- and dashes on !lagTauAuthored. */
+inline bool lagTauActive(double t) { return t > 0.0; }
+
 /* [1] How far the air nearest the ground is allowed to follow the ground's temperature
    (#724 rung D, drag.h/groundtemp.h). Absence means NO coupling -- the air keeps its authored
    profile -- which is both the conservative default and the state that keeps every existing

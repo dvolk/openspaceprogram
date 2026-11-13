@@ -427,6 +427,18 @@ struct Surface {
        dossier is where a reader decides whether to trust it (#687: a figure and its provenance
        travel together or one of them goes stale). */
     std::string even_share_src;
+    /* #794: the ground's PHASE LAG -- how far the skin's temperature trails the star's light,
+       in radians of phase (one rotation = 2 pi), NOT hours. Absent means no lag, which is the
+       instantaneous ground every shipped body has always had; a stated 0.0 says the same thing
+       as a FACT ("this world peaks at noon") and is legal. The law and the closed form are
+       src/groundtemp.h. Nothing in the shipped files authors one yet, so nothing is visible:
+       the value is here so the corpus's fact page, when it prices one, lands somewhere that
+       says what its unit is (system.cpp refuses anything over one rotation, which is what
+       catches someone authoring "14" for a 14:00 afternoon peak). */
+    double lag_tau = kLagTauUnauthored;
+    /* Where that lag came from, in the generator's own words ("from the stated afternoon peak",
+       "via Gamma = 50 TSI m^-2 K^-1 s^-1/2"). Same rule as the three above (#687). */
+    std::string lag_tau_src;
     AtmosphereParams atmosphere; // optional rim; enabled => the JSON block exists
     CloudParams clouds;          // optional deck; enabled => body has clouds
     std::vector<RingParams> rings;  // optional; flat annuli in the equator

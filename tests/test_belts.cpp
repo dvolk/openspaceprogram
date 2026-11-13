@@ -358,6 +358,66 @@ int main() {
         j["bodies"][1]["surface"]["even_share_src"] = "DEFAULT airless floor";
         expect_reject(j, "provenance with no knob rejected", "even_share_src");
     }
+    /* #794: the phase lag's own guards. Nothing in the shipped files authors one yet, so the
+       field is inert -- which makes the loader the only thing that can get this wrong, and the
+       mistake it exists to catch is a unit one. A fact page that says "the daily max lands at
+       14:00" invites someone to author 14, and 14 radians is a legal-looking number. */
+    {
+        nlohmann::json j = read_json("res/systems/old_system.json");
+        j["bodies"][1]["surface"]["lag_tau"] = 14.0;      // hours, not radians of phase
+        expect_reject(j, "a lag quoted in hours is refused, not silently applied",
+                      "must be in [0, 2pi]");
+    }
+    {
+        nlohmann::json j = read_json("res/systems/old_system.json");
+        j["bodies"][1]["surface"]["lag_tau"] = -1.0;      // the C++ sentinel, pasted into JSON
+        expect_reject(j, "a file cannot author its own absence", "must be in [0, 2pi]");
+    }
+    {
+        nlohmann::json j = read_json("res/systems/old_system.json");
+        j["bodies"][1]["surface"]["lag_tau"] = "1 rad";
+        expect_reject(j, "the lag itself must be a number",
+                      "\"surface.lag_tau\" must be a number");
+    }
+    {
+        nlohmann::json j = read_json("res/systems/old_system.json");
+        j["bodies"][1]["surface"]["lag_tau"] = 1.0;
+        j["bodies"][1]["surface"]["lag_tau_src"] = 3.0;
+        expect_reject(j, "numeric lag provenance rejected",
+                      "\"surface.lag_tau_src\" must be a string");
+    }
+    {
+        nlohmann::json j = read_json("res/systems/old_system.json");
+        j["bodies"][1]["surface"]["lag_tau_src"] = "via Earth";
+        expect_reject(j, "lag provenance with no lag rejected",
+                      "explains a knob that surface.lag_tau does not author");
+    }
+    {
+        /* And the positive half: the knob reaches the struct, INCLUDING a stated zero. A loader
+           that quietly dropped a 0.0 (`if(lt > 0.0) s.lag_tau = lt;`) would pass every rejection
+           above while erasing the one distinction authored.h makes a point of -- that "this world
+           peaks at noon" is a fact, and is not the same statement as nobody saying anything. */
+        nlohmann::json j = read_json("res/systems/old_system.json");
+        j["bodies"][1]["surface"]["lag_tau"] = 1.0;
+        j["bodies"][1]["surface"]["lag_tau_src"] = "test fixture";
+        j["bodies"][2]["surface"]["lag_tau"] = 0.0;
+        expect_loaded(j, "an authored lag reaches the body", [&](const System &sys) {
+            const TerrainBody *b = sys.bodies[1];
+            check(lagTauAuthored(b->surface.lag_tau) && b->surface.lag_tau == 1.0,
+                  "surface.lag_tau lands as authored");
+            check(b->surface.lag_tau_src == "test fixture", "and its provenance travels with it");
+            const TerrainBody *z = sys.bodies[2];
+            check(lagTauAuthored(z->surface.lag_tau) && z->surface.lag_tau == 0.0,
+                  "a stated zero stays a stated zero");
+            check(z->surface.lag_tau_src.empty(), "and needs no provenance to be legal");
+            bool others_dash = true;
+            for(size_t i = 0; i < sys.bodies.size(); i++) {
+                if(i == 1 || i == 2) { continue; }
+                if(lagTauAuthored(sys.bodies[i]->surface.lag_tau)) { others_dash = false; }
+            }
+            check(others_dash, "a body nobody priced carries no lag, and not a 0.0 either");
+        });
+    }
     {
         /* The claim that matters is about the SHIPPED file, so it is pinned against the
            shipped file: the defaults are in it, they are named, and every world the file gives
