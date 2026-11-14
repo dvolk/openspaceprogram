@@ -1161,6 +1161,62 @@ int main() {
         }
     }
 
+    /* 7b. The cloud bake's OWN layout tables (#825). The deck is baked on the TILEABLE
+       layout -- pixel centres, v scaled by H -- not the poles-on-rows grid the surface map
+       uses, and its UV has to keep matching cloudShader.vs. Being handed the OTHER layout is a
+       half-pixel slide of the whole cover that no log would show, and a perf rewrite is exactly
+       the change that silently re-baselines pixels, so the hoisted tables are pinned bit-for-bit
+       to the per-pixel spelling they replaced. (Not because the deck could show one ulp -- the
+       coverage map is R8 -- but because there is nothing else watching.) The formulas are
+       re-spelled inline below so this stays an independent reference rather than a call to the
+       thing it pins -- the same trade the #802 pin makes for the other layout, which sweeps
+       every index of its grids too. */
+    {
+        const int kDeck[][2] = { {4, 2}, {7, 3}, {64, 32},
+                                 {kCloudBakeW, kCloudBakeH} };
+        bool exact = true;
+        for(auto &d : kDeck) {
+            const int W = d[0], H = d[1];
+            const EquirectTrigCentres t = equirectTrigCentres(W);
+            if((int)t.cos_lon.size() != W || (int)t.sin_lon.size() != W) {
+                exact = false;   // not the grid it was asked for
+                continue;
+            }
+            /* EVERY pixel of the shipped deck: measured, the full 2,097,152 comparisons cost
+               ~11 ms, which is not worth trading coverage of a column for. */
+            for(int j = 0; j < H; j++) {
+                /* The row's trig computed once, the way the bake computes it -- equirectDir
+                   below derives cos/sin from the same latitude itself, so what is being
+                   compared is the same bits arriving from a table instead of a register. */
+                const float lat = (0.5f - ((float)j + 0.5f) / (float)H)
+                                * (float)std::numbers::pi;
+                const float cl = std::cos(lat), sl = std::sin(lat);
+                for(int i = 0; i < W; i++) {
+                    const float lon = ((float)i + 0.5f) / (float)W
+                                    * 2.0f * (float)std::numbers::pi;
+                    const glm::vec3 a = equirectDir(lon, lat);
+                    const glm::vec3 b = equirectDirAt(t, i, cl, sl);
+                    if(a.x != b.x || a.y != b.y || a.z != b.z) { exact = false; }
+                }
+            }
+            /* The row angles never reach the loop above's tables -- the bake hands the row's
+               cos/sin in from its own arithmetic -- so they are pinned here against the inline
+               spelling rather than trusting the header to agree with itself. A centres grid has
+               NO pole row: row 0 sits a half-row south of north and the last row a half-row
+               north of south. If the centre law ever became the poles-on-rows law (row 0 IS the
+               pole), the first clause fires; if only the table builder drifted, the pixel loop
+               above does. */
+            const float pi_f = (float)std::numbers::pi;
+            const float north = (0.5f - 0.5f / (float)H) * pi_f;
+            const float south = (0.5f - ((float)H - 0.5f) / (float)H) * pi_f;
+            if(equirectCentreLat(0, H) != north
+               || equirectCentreLat(H - 1, H) != south) { exact = false; }
+            if(!(equirectCentreLat(0, H) < pi_f * 0.5f)
+               || !(equirectCentreLat(H - 1, H) > -pi_f * 0.5f)) { exact = false; }
+        }
+        check(exact, "cloud bake: centre tables bit-for-bit the per-pixel bake, no pole rows");
+    }
+
     // 8. Heightmap column round-trip (the layout Heightmap::sample uses).
     //    A synthetic 4x3 grid: sample(equirectDir(lon, lat)) at the grid
     //    points must read that cell exactly (bilinear is exact there).

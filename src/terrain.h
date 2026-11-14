@@ -5,6 +5,8 @@
 #pragma once
 
 #include <numbers>
+#include <chrono>
+#include <cstdio>
 #include <memory>
 #include <set>
 #include <string>
@@ -374,26 +376,45 @@ struct TerrainBody {
         // The bake layout MUST match the deck shader's UV (cloudShader.vs)
         // and equirect.h: u = lon/2pi (lon 0 at the LEFT edge), v north to
         // south, pixel centres.
-        const int W = 2048, H = 1024;
+        const int W = kCloudBakeW, H = kCloudBakeH;
         // Snapshots for the worker (job.h: no game state, GL or imgui).
         const glm::mat3 rot = surface.seed_rot;
         const CloudParams cp = surface.clouds;
         Texture *tex = clouds->texture;
         const std::string label = std::string("Clouds (") + name + ")";
-        jobs.post(label, [tex, rot, cp, W, H]() -> std::function<void()> {
+        jobs.post(label, [tex, rot, cp, label, W, H]() -> std::function<void()> {
             std::vector<unsigned char> px((size_t)W * H);
+            /* #825: the deck's own layout tables from equirect.h -- tileable, pixel centres,
+               float like the bake. equirectDir(lon, lat) ran FOUR transcendentals per pixel, so
+               the loop was 8,388,608 of them to say 2048 + 1024 things: the distinct longitudes
+               rebuilt at every one of 2,097,152 pixels, and the latitude pair recomputed W
+               times down each row. The ROW's cos/sin stay computed here, once per row,
+               rather than in a table: equirectTrigCentres has no lat table because a tabled
+               one measured never faster, while the column table buys ~13%
+               (equirect.h's comment carries the numbers and the noise).
+               Bit-for-bit the per-pixel spellings this replaced -- pinned in
+               tests/test_surfmap.cpp, because a half-pixel slide here is a deck that
+               no longer matches cloudShader.vs.
+               And the number the ticket asked for: the map bake prints sweep_ms=, so the deck
+               prints bake_ms= -- otherwise the loop stays the one big bake whose cost is only
+               knowable from a scratch bench. The noise in cloudCover is most of it, which is
+               what a follow-up has to measure against. Printed off the main thread, once per
+               cloudy body per bake; printf is what job.cpp's own error path uses. */
+            const EquirectTrigCentres trig = equirectTrigCentres(W);
+            const auto t_bake0 = std::chrono::steady_clock::now();
             for(int py = 0; py < H; py++) {
-                const float lat = (0.5f - (py + 0.5f) / (float)H)
-                                  * (float)std::numbers::pi;
+                const float lat = equirectCentreLat(py, H);
+                const float cl = std::cos(lat), sl = std::sin(lat);
                 for(int pxi = 0; pxi < W; pxi++) {
-                    const float lon = ((pxi + 0.5f) / (float)W)
-                                      * 2.0f * (float)std::numbers::pi;
-                    const glm::vec3 dir = equirectDir(lon, lat);
+                    const glm::vec3 dir = equirectDirAt(trig, pxi, cl, sl);
                     px[(size_t)py * W + pxi] =
                         (unsigned char)(cloudCover(dir, rot, cp) * 255.0f
                                         + 0.5f);
                 }
             }
+            const double bake_ms = std::chrono::duration<double, std::milli>(
+                std::chrono::steady_clock::now() - t_bake0).count();
+            printf("%s: %dx%d bake_ms=%.1f\n", label.c_str(), W, H, bake_ms);
             // Main-thread continuation: upload into the texture the deck
             // already draws (shared_ptr: std::function needs copyable captures).
             std::shared_ptr<std::vector<unsigned char> > ppx =

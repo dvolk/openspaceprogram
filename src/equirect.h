@@ -272,3 +272,76 @@ inline EquirectTrig equirectTrig(int w, int h) {
     }
     return t;
 }
+
+/* The TILEABLE layout at the top of this file, spelled once (#825): pixel CENTRES, with v
+   scaled by H, so row 0 sits a half-row south of the north pole and no row is a pole. That is
+   the layout the cloud coverage deck is baked on, and its UV has to keep matching
+   cloudShader.vs, so the parametrisation belongs here and not in the bake.
+   A separate TYPE rather than a flag on EquirectTrig: the two layouts answer DIFFERENT
+   directions for the same (i, j) -- a poles-on-rows row 0 is the pole, a centres row 0 is not
+   -- and handing the deck the wrong table would slide it half a pixel with nothing to see in
+   the log. Making the caller name the layout is the cheapest way to make that impossible.
+   FLOAT because the bake and the shader are float (the coverage map itself is R8, so the tables
+   are not the last rounding anyway): double tables would add a second rounding between the
+   noise and what the deck draws. */
+struct EquirectTrigCentres {
+    std::vector<float> cos_lon, sin_lon;   // [W], the column's centre
+};
+
+/* The centre formulas themselves, spelled once -- this is what the tileable grid IS. */
+inline float equirectCentreLon(int i, int W) {
+    assert(W >= 1 && i >= 0 && i < W);
+    return ((float)i + 0.5f) / (float)W * 2.0f * (float)std::numbers::pi;
+}
+
+inline float equirectCentreLat(int j, int H) {
+    assert(H >= 1 && j >= 0 && j < H);
+    return (0.5f - ((float)j + 0.5f) / (float)H) * (float)std::numbers::pi;
+}
+
+/* The column trig, once per COLUMN. There is deliberately NO per-row table, and that is a
+   measurement rather than an oversight (tmp/825_bench4.cpp, project flags; the ranges are what
+   four reps spread over, so read them as a few percent, not as digits). At the shipped
+   kCloudBakeW x kCloudBakeH deck:
+     per-pixel lon trig (what the bake did)        213-226 ms
+     this column table, row trig computed per row  185-193 ms   <- shipped, ~13% under
+   A per-row lat table on top of that is never faster: 184-196 ms in one build of that arm and
+   213-237 ms in another (the arm swings with codegen; the conclusion does not). Kept in
+   registers the row's cos/sin are free; re-read from memory per row they cost exactly what the
+   saved sincos bought. Asserts cost nothing here -- the same binary built -DNDEBUG lands in the
+   same band, and reading the tables through the accessor measures the same as raw pointer
+   indexing.
+   What the ~13% must not be confused with: with cloudCover removed the whole loop runs in under
+   2 ms, so the FBM noise in cloudCover is the ~200 ms half of this bake. That is the part worth
+   attacking next, and the bake's own bake_ms= print (terrain.h) is where to watch it. */
+inline EquirectTrigCentres equirectTrigCentres(int W) {
+    assert(W >= 1);
+    EquirectTrigCentres t;
+    t.cos_lon.resize((size_t)W);
+    t.sin_lon.resize((size_t)W);
+    for(int i = 0; i < W; i++) {
+        const float lon = equirectCentreLon(i, W);
+        t.cos_lon[(size_t)i] = std::cos(lon);
+        t.sin_lon[(size_t)i] = std::sin(lon);
+    }
+    return t;
+}
+
+/* equirectDir(lon, lat) at a centre-sampled column, with the ROW's cos/sin latitude handed in
+   (see above: that is the shape the bake measures fast). Bit-for-bit equirectDir at the same
+   centre, pinned in tests/test_surfmap.cpp -- not because the deck could show a one-ulp
+   difference (the coverage map is R8, and the mip-filtered shell averages 255 steps anyway),
+   but because a perf rewrite is exactly the change that silently re-baselines pixels, and a
+   half-pixel slide against cloudShader.vs is a bug no log would show.
+   Bounds asserted like the other overload: past-the-end vector indexing answers a plausible
+   heap neighbour. The handed row trig is asserted unit-length for a narrower reason: cos_lat and
+   sin_lat are two bare floats, so handing this the row's INDICES compiles clean and paints a
+   non-unit direction; cl*cl+sl*sl is 1 to within float rounding, and catching a swapped pair is
+   out of reach -- that one is what the pin is for. */
+inline glm::vec3 equirectDirAt(const EquirectTrigCentres &t, int i,
+                               float cos_lat, float sin_lat) {
+    assert(i >= 0 && i < (int)t.cos_lon.size());
+    assert(std::fabs(cos_lat * cos_lat + sin_lat * sin_lat - 1.0f) < 1e-4f);
+    return glm::vec3(cos_lat * t.cos_lon[(size_t)i], sin_lat,
+                     -cos_lat * t.sin_lon[(size_t)i]);
+}

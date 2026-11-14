@@ -218,6 +218,13 @@ struct CloudParams {
     float drift = 0.0f;       // [pattern units/s] wind: pattern creep vs ground
 };
 
+/* The coverage deck's bake size, named (#825): baked once per cloudy body into an R8
+   equirectangular map, so this is the finest cover the deck can ever show -- --cloud-mesh
+   changes the shell's tessellation, never this. It lives next to the params rather than in the
+   bake because equirect.h's centre tables and tests/test_surfmap.cpp both have to speak this
+   grid; a literal left behind in the pin silently stops covering the shipped deck. */
+inline constexpr int kCloudBakeW = 2048, kCloudBakeH = 1024;
+
 /* One ring band ("surface.rings"): a flat annulus in the equatorial plane.
    inner/outer [m] from the body centre; thickness [m] is visual-only. */
 struct RingParams {
