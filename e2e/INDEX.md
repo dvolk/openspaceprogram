@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 347 |
+| `invariant` | a behaviour or a player route the game must keep | 348 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 48 |
 | `harness` | CLI/test-engine plumbing, not game spec | 15 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **414** |
+| | **total** | **415** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -161,7 +161,7 @@ judgement. Select by number, name or path, e.g.
 | `crew/394-spent-pool-kerbal-refused.txt` | invariant | A kerbal spawned on a spent pad pool is refused, not minted off the def. |
 | `crew/547-walking-kerbal-suit-mass-overflow-refused.txt` | invariant | A saved kerbal whose suit contents add up to more mass than the game can store is refused, not stood up as a NaN-inertia Body. |
 
-## science (29)
+## science (30)
 
 | case | kind | pins |
 |---|---|---|
@@ -194,6 +194,7 @@ judgement. Select by number, name or path, e.g.
 | `science/829-a-lagged-worlds-air-follows-the-ground-the-map-paints.txt` | invariant | On a world that authored a ground phase lag, the flight log's underfoot kelvin is the lagged ground -- the one the surface map paints -- and the air a hull flies through couples to that same number rather than to this instant's cosine. |
 | `science/829-b-world-nobody-gave-a-lag-still-answers-this-instant.txt` | invariant | A world with no phase lag authored answers its ground from this instant's cosine to the last printed digit, in the flight log and in the air under a hull alike, so making the lagged readers agree is a branch and not a change to every world. |
 | `science/830-the-dossier-carries-the-lag-beside-the-swing-it-modifies.txt` | invariant | A world the shipped catalogue gives a ground phase lag says so in the same block as the swing it bends -- the knob in radians of phase, how far past its sun its hottest ground can sit, and the measured solar day that converts the two -- while the swing itself stays the law's two ends, so the identity that ties those ends still closes, AND the block prints what the lag leaves: an equator-at-equinox pair strictly inside the law's ends and narrowing as the knob grows. |
+| `science/840-a-lagged-summit-prices-the-forcing-its-own-world-wears.txt` | invariant | On a world that authors both a phase lag and a height term, the atlas's summit row is the temperature pair that world's sea-level equator actually wears at that epoch, moved down by the lapse -- not the law's two ends moved down, which on AltoFrio read 97.2 to 319.9 K against a Surface Map painting 99.19 to 316.53: a summit colder than the coldest pixel and hotter than the hottest one. |
 
 ## vab (42)
 

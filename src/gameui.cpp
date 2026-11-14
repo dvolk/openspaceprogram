@@ -7544,6 +7544,11 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
                order one and step 0.0087 rad, parts per 100,000 of the forcing, far under the
                tenth of a kelvin this row prints. If a future body ever makes that claim false,
                720 is the knob to raise, and science/830's narrowing-with-tau pin reddens first. */
+            /* The forcing pair this world's rows actually answer. 0.0 and 1.0 -- the law's own
+               ends -- unless a lag is active, in which case the sampled pair computed below.
+               Only the rows that claim what a PLACE WEARS read this; `ground swing` above keeps
+               0.0/1.0 because #724/#735's identity closes on the law, not on the weather. */
+            double worn_ylo = 0.0, worn_yhi = 1.0;
             if(lagTauActive(b.surface.lag_tau)) {
                 assert(!giant);   // the loader refuses a lag on a banded world (system.cpp)
                 const GroundLagRow row = groundLagRow(0.0, 0.0, b.surface.lag_tau);
@@ -7562,6 +7567,16 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
                          groundTemperature(anchor, f, ylo),
                          groundTemperature(anchor, f, yhi));
                 line("ground at equator", v);
+                /* #840: the summit row below owes the world the same favour it just got here.
+                   Pricing the LAW at a mountaintop -- which is what it did until now -- prints
+                   two kelvin pairs on one body where one of them has been spent twice: on
+                   AltoFrio, `ground at peak 97.2 to 319.9 K` beside a map that paints 106.05 to
+                   314.06 and a lag row that already said a fifth of that swing is gone. The law
+                   ends stay where they are (the swing row and #724/#735's identity need them);
+                   what the summit row prints is this pair shifted by the height term, which is a
+                   place the body has AND a forcing the body answers. */
+                worn_ylo = ylo;
+                worn_yhi = yhi;
             }
             /* #793: where relief is live, the anchor is a DATUM statement -- the ground at this
                body's sea level, which the two ends above swing around, and NOT the coldest ground
@@ -7587,10 +7602,32 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
                 const double peak = (double)b.surface.authoredPeak();
                 const double off = b.surface.relief_K(peak);
                 char hv[32];
-                fmtRow(v, sizeof v, "%.1f to %.1f K at %s",
-                         groundTemperature(anchor, f, 0.0) + off,
-                         groundTemperature(anchor, f, 1.0) + off,
-                         fmt_dist(peak, hv, sizeof hv));
+                /* #840: a lagged world does not wear the law's ends, so its summit cannot be
+                   priced from them. Until now this row did exactly that -- groundTemperature at
+                   forcing 0 and 1 plus the lapse -- which on AltoFrio printed 97.2 to 319.9 K
+                   beside a map painting 99.19 to 316.53 and a lag row that had just said a
+                   fifth of that swing is gone. Neither number belongs to a pixel, and the cold
+                   one is the very pairing the sweep refuses for its palette: "the darkest light
+                   on the tallest mountain" invents a place (surfmap.cpp, #794). So the summit
+                   takes the same worn pair the equator row uses and shifts it by the height
+                   term, and its value says which world it is answering -- the epoch travels with
+                   the forcing pair, so it gets named too (#793's datum rule). An unlagged body
+                   has no lag to wait for, so its arithmetic and its text stay exactly as they
+                   were. Nothing in res/systems/ksp_system.json reaches the lagged branch yet:
+                   none of its seven lagged bodies authors a lapsing column, so all seven print
+                   no summit row at all. The fixtures do (lag_playground's AltoFrio), and
+                   science/840 pins the pair against that body's own Surface Map. */
+                if(lagTauActive(b.surface.lag_tau)) {
+                    fmtRow(v, sizeof v, "%.1f to %.1f K at %s (equinox, after its lag)",
+                             groundTemperature(anchor, f, worn_ylo) + off,
+                             groundTemperature(anchor, f, worn_yhi) + off,
+                             fmt_dist(peak, hv, sizeof hv));
+                } else {
+                    fmtRow(v, sizeof v, "%.1f to %.1f K at %s",
+                             groundTemperature(anchor, f, 0.0) + off,
+                             groundTemperature(anchor, f, 1.0) + off,
+                             fmt_dist(peak, hv, sizeof hv));
+                }
                 line("ground at peak", v);
             }
         } else {

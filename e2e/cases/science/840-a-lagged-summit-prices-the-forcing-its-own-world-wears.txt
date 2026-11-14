@@ -1,0 +1,64 @@
+NAME 840-a-lagged-summit-prices-the-forcing-its-own-world-wears
+CLAIM On a world that authors both a phase lag and a height term, the atlas's summit row is the temperature pair that world's sea-level equator actually wears at that epoch, moved down by the lapse -- not the law's two ends moved down, which on AltoFrio read 97.2 to 319.9 K against a Surface Map painting 99.19 to 316.53: a summit colder than the coldest pixel and hotter than the hottest one.
+KIND invariant
+# #840. AltoFrio (res/systems/lag_playground.json) authors lag_tau 1.0 AND an air that lapses, so
+# it is the only world in the tree that has both knobs -- and in the shipped catalogue that is no
+# world at all: none of ksp_system.json's seven lagged bodies authors a lapsing column, so Dres,
+# Vall, Tylo, Bop, Pol, Minmus and Ike print no summit row. That is how this survived #794: the
+# row predates the lag, and nothing read the two together.
+#
+# What the row printed until now is the LAW at a mountaintop -- groundTemperature at forcing 0 and
+# 1, plus relief_K(peak) -- which pairs the darkest light with the tallest ground. src/surfmap.cpp
+# refuses exactly that pairing for its palette ("invents a place": on a lagged world the minimum
+# forcing lives in the dark polar rows, and whether a mountain stands in one is a fact about
+# noise), then let the dossier print it as a reading. science/830's `ground at equator` row had
+# just said a fifth of that swing never arrives, so the block contradicted itself in print.
+#
+# Two of this case's legs are the bug's own signature, and both bite:
+#   containment (CHECK 4): the bug's 97.2 sits 2.0 K BELOW the coldest pixel of the first bake and
+#     its 319.9 sits 3.4 K ABOVE the hottest, so either leg reddens. The fixed pair sits inside by
+#     ~30 K and ~18 K, which is structure rather than luck: the hot gap IS the height term (16.3 K
+#     at AltoFrio's authored peak, a shade more where the bake's epoch is not quite equinox) and
+#     the cold gap is what the lag already took (31.9 K) less the difference between the authored
+#     peak and the grid's tallest sampled ground (2.0 K). The floor below is 10 K -- half the
+#     smallest structural gap, and three times the overshoot this ticket is about.
+#   the shift itself (CHECK 5, 6): one height term, star-independent, so BOTH ends move by the same
+#     number and that number is the file's own lapse at the printed peak -- read back out of the
+#     bake's relief= column, which is the profile measured on the grid.
+#
+# The unlagged path is NOT re-pinned here: science/724 pins Earth's `ground at peak 240.6 to
+# 259.2 K at 6.5 km` verbatim, and that row's arithmetic and text are untouched -- CHECK 7 keeps
+# the new prose on the lagged branch only.
+ARGS --timeout 14 --time-accel 100 --system res/systems/lag_playground.json --atlas-dump 4000
+ARGS --surfmap-log --surfmap-n 256 --surfmap-body AltoFrio --surfmap-map temperature
+ARGS --sim-press 3000,0,M,7000,0,M
+# Bakes first, because every engine cross-check below is all() over surfmap, which an empty list
+# answers TRUE -- a renamed keybinding would delete this case's point while leaving its prose pins
+# green (the same trap science/830 documents).
+CHECK len(surfmap) == 2
+CHECK all(r["body"] == "AltoFrio" and r["map"] == "temperature" and abs(r["lag_tau"] - 1.0) < 1e-9 for r in surfmap)
+# THE ROW, at the digit. 145.4 to 314.1 K is the sea-level pair above it; 2.5 km is authoredPeak(),
+# the one height the atlas names everywhere (tests/test_belts.cpp prices the same peak).
+CHECK re.search(r"ground at peak\s+129\.2 to 297\.8 K at 2\.5 km \(equinox, after its lag\)", re.search(r"\[atlas\] AltoFrio weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+# CONTAINMENT: no number on this row may live outside the picture. Both bakes of the season are
+# asked to hold it, because the grid's extremes move with the declination (99.19/101.06 K cold,
+# 316.53/315.93 K hot) and the old row missed on both ends at every instant.
+CHECK (lambda pk: all(pk[0] > r["temp"][0] + 10.0 and pk[1] < r["temp"][2] - 10.0 for r in surfmap))((lambda m: (float(m.group(1)), float(m.group(2))))(re.search(r"\[atlas\] AltoFrio weight=.*?ground at peak\s+([\d.]+) to ([\d.]+) K", out, re.S)))
+# ONE HEIGHT TERM, star-independent: the summit pair is the sea-level pair shifted, so the two
+# ends move together and the span is what the equator wears, unchanged.
+CHECK (lambda eq, pk: eq[0] - pk[0] > 0.0 and eq[1] - pk[1] > 0.0 and abs((eq[0] - pk[0]) - (eq[1] - pk[1])) < 0.2 and abs((eq[1] - eq[0]) - (pk[1] - pk[0])) < 0.2)((lambda m: (float(m.group(1)), float(m.group(2))))(re.search(r"\[atlas\] AltoFrio weight=.*?ground at equator\s+([\d.]+) to ([\d.]+) K", out, re.S)), (lambda m: (float(m.group(1)), float(m.group(2))))(re.search(r"\[atlas\] AltoFrio weight=.*?ground at peak\s+([\d.]+) to ([\d.]+) K", out, re.S)))
+# ... AND THAT SHIFT IS THE FILE'S OWN LAPSE at the printed peak: relief=[floor, ceiling, K at the
+# floor, K at the ceiling] is the profile measured on the grid (-0.0065 K/m x 2201 m = -14.31 K),
+# and the dossier pays it at authoredPeak() rather than at the grid's tallest sampled ground, so
+# the ratio is the whole difference: 145.4 - 129.2 = 16.2 against -14.31 x 2500/2201 = -16.25.
+# Tolerance 1.0 K covers the half-decimal the row prints and the printed "2.5 km" standing for a
+# height rounded to two significant digits.
+CHECK (lambda sh, hm: all(abs(sh + r["relief"][3] * (float(hm.group(1)) * (1000.0 if hm.group(2) == "km" else 1.0)) / r["relief"][1]) < 1.0 for r in surfmap))(float(re.search(r"\[atlas\] AltoFrio weight=.*?ground at equator\s+([\d.]+)", out, re.S).group(1)) - float(re.search(r"\[atlas\] AltoFrio weight=.*?ground at peak\s+([\d.]+)", out, re.S).group(1)), re.search(r"ground at peak\s+[\d.]+ to [\d.]+ K at ([\d.]+) (km|m)", out))
+# THE PROSE BELONGS TO THE KNOB: a summit row says "after its lag" exactly where the block prices
+# an ACTIVE lag (a dashed one, or a stated 0.0 that leaves the ends alone, must not claim a lag it
+# does not have). Over every block in the dump, so a shipped body that ever gets both knobs is
+# covered by the same leg.
+CHECK all((("after its lag" in b) == ((lambda m: m is not None and float(m.group(1)) > 0.0)(re.search(r"(?:ground|level) lag\s+([-\d.]+) rad", b)))) for b in re.split(r"\n(?=\[atlas\] \w+ weight=)", out) if "ground at peak" in b)
+FORBID ground at peak 97.2
+FORBID ground at peak 319.9
+FORBID error:
