@@ -134,6 +134,24 @@ inline void equirectPixel(float lon, float lat, int w, int h,
       * (float)(h - 1);
 }
 
+/* Row j's latitude on a w x h poles-on-rows grid [rad]. Spelled once because both grid
+   lookups below need it and the #802 pin in tests/test_surfmap.cpp compares their bits.
+   The SOUTH endpoint is pinned rather than computed: pi*(h-1)/(h-1) is not pi, so the
+   computed last row lands a hair off -pi/2 -- BELOW at 538 of the row counts up to 8192
+   (h=14 the first), ABOVE at 545 (h=12 the first), exact at the other 7108. A hair below
+   makes cos come out NEGATIVE, which mirrors the whole row's direction to the antipodal
+   meridian and makes its cos(lat) area weight negative; a hair above leaves the sign alone
+   but reads a cos 8x the pole's true 6.123e-17. Either way the inverse of that latitude
+   lands a fraction past row h-1, so equirectPixel hands back an off-the-end row fraction
+   (#844; the widths --surfmap-n accepts: 266 of 4081, 28 the first). The north end needs no
+   pin: j == 0 multiplies by zero, so pi/2 - 0 is exactly pi/2 -- verified for every h in
+   2..8192, and checked in the test anyway. */
+inline double equirectRowLat(int j, int h) {
+    assert(h >= 2 && j >= 0 && j < h);
+    if(j == h - 1) { return -std::numbers::pi * 0.5; }
+    return std::numbers::pi * 0.5 - std::numbers::pi * (double)j / (double)(h - 1);
+}
+
 /* Pixel (i, j) -> unit direction on a w x h poles-on-rows map (the grid sample at i, j --
    NOT the pixel centre). Two spellings of one lookup, on purpose: this one derives lon/lat
    from the indices, and is the reference the tables below are pinned against as well as what
@@ -143,8 +161,7 @@ inline void equirectPixel(float lon, float lat, int w, int h,
 inline glm::dvec3 equirectDirAt(int i, int j, int w, int h) {
     assert(w >= 2 && h >= 2);
     const double lon = 2.0 * std::numbers::pi * (double)i / (double)w;
-    const double lat = std::numbers::pi * 0.5
-                     - std::numbers::pi * (double)j / (double)(h - 1);
+    const double lat = equirectRowLat(j, h);
     return equirectDir(lon, lat);
 }
 
@@ -187,12 +204,13 @@ struct EquirectTrig {
          move: a pixel within ~1e-13 deg of an authored longitude band edge picks the other
          band, where before which band it picked depended on the row. Only
          res/systems/wind_playground.json authors a longitude band (its edges are 0 and 300).
-       - The LAST row is worse than an ulp, and the table is the fix rather than the victim:
-         lat = pi/2 - pi*(h-1)/(h-1) is not exactly -pi/2, and at 266 of the 4081 widths
-         --surfmap-n accepts, 28 the first, cos_lat[h-1] rounds NEGATIVE. That row's direction
-         then points at the antipodal meridian, so the per-pixel inverse answers a longitude
-         exactly 180 deg off the column's. The table never inherits it; the row's own
-         DIRECTION is still wrong, which is issue #844.
+       - The LAST row used to be worse than an ulp, and that is what equirectRowLat's pinned
+         south endpoint is for: pi/2 - pi*(h-1)/(h-1) is not exactly -pi/2, and at 266 of the
+         4081 widths --surfmap-n accepts (28 the first; the row count h is what decides it) it
+         landed a hair below, so cos_lat[h-1] came out negative, the row's direction pointed
+         at the antipodal meridian, and the per-pixel inverse answered a longitude exactly
+         180 deg off the column's (#844). With the endpoint pinned the envelope above covers
+         every row.
        Pinned in tests/test_surfmap.cpp. */
     std::vector<double> lon_deg, lat_deg;
 };
@@ -243,8 +261,7 @@ inline EquirectTrig equirectTrig(int w, int h) {
         t.lon_deg[(size_t)i] = ld;
     }
     for(int j = 0; j < h; j++) {
-        const double lat = std::numbers::pi * 0.5
-                         - std::numbers::pi * (double)j / (double)(h - 1);
+        const double lat = equirectRowLat(j, h);
         t.lat[(size_t)j] = lat;
         t.cos_lat[(size_t)j] = std::cos(lat);
         t.sin_lat[(size_t)j] = std::sin(lat);

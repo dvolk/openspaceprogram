@@ -877,10 +877,13 @@ int main() {
            before, exactly -- hence == and not near_v, which here would make the check
            vacuous. Several grids rather than the one 16x8 this file otherwise uses: the two
            spellings divide by w and by h-1 in different places, so an even width, an odd one,
-           the 2x2 degenerate and a real bake size are different paths through it. If this
-           ever fails, the perf change has become a re-baseline. */
+           the 2x2 degenerate and a real bake size are different paths through it. {28, 14}
+           is here because h=14 is the first row count whose computed south latitude misses
+           -pi/2 (#844): if the pin ever survives in one spelling but not the other, this is
+           the grid that says so. If this ever fails, the perf change has become a
+           re-baseline. */
         const int kGrids[][2] = { {2, 2}, {3, 2}, {16, 8}, {17, 8}, {26, 13},
-                                  {255, 127}, {512, 256} };
+                                  {255, 127}, {512, 256}, {28, 14} };
         bool exact = true;
         for(auto &g : kGrids) {
             const EquirectTrig t = equirectTrig(g[0], g[1]);
@@ -898,8 +901,15 @@ int main() {
                        built from t.lat and an hour angle built from t.lon are the latitude and
                        longitude this picture is actually coloured at. */
                     const double lon = 2.0 * std::numbers::pi * (double)i / (double)g[0];
-                    const double lt = std::numbers::pi * 0.5
-                                    - std::numbers::pi * (double)j / (double)(g[1] - 1);
+                    /* Re-spelled here rather than calling equirectRowLat(), so this stays an
+                       independent reference and not a tautology -- including its pinned south
+                       endpoint, which is part of the law now (#844: the computed
+                       pi*(h-1)/(h-1) is not pi, and the row that lands under -pi/2 gets a
+                       negative cos and a mirrored direction). */
+                    const double lt = (j == g[1] - 1)
+                                    ? -std::numbers::pi * 0.5
+                                    : std::numbers::pi * 0.5
+                                      - std::numbers::pi * (double)j / (double)(g[1] - 1);
                     if(t.lon[i] != lon || t.lat[j] != lt) { exact = false; }
                     if(std::cos(t.lon[i]) != t.cos_lon[i]
                        || std::sin(t.lat[j]) != t.sin_lat[j]) { exact = false; }
@@ -915,34 +925,26 @@ int main() {
            the one-off inverse ask the SAME question of the same grid.
            LATITUDE is bit-for-bit the per-pixel inverse at every pixel: that half runs
            through the direction's y, and y is the row's sin_lat in every column. Not an
-           empirical accident -- both spellings evaluate asinUnit on the same bits -- so it
-           holds on the row below too, where the longitude does not.
-           LONGITUDE parts company with the per-pixel inverse in two different ways, and
-           conflating them would hide the second:
-           - Interior rows: an ulp or two, at 6-7% of pixels (worst 5.684e-14 deg at
-             1024x512). The inverse scales BOTH atan2 arguments by the row's cos(lat), and
-             scaling two doubles rounds differently per row, so the old per-pixel spelling
-             answered the same column differently in different rows. The table makes a column
-             one answer; equirect.h says what a band edge inside the envelope means. Pinned
-             as an envelope 18x the worst gap seen.
-           - The LAST row: exactly 180 deg, not an ulp, for the grids whose
-             cos(pi/2 - pi*(h-1)/(h-1)) rounds NEGATIVE -- 266 of the 4081 widths
-             --surfmap-n accepts, 28 the first. There the row's DIRECTION points at the
-             antipodal meridian, so it is the per-pixel inverse that asks about the wrong
-             side of the body (issue #844); the table takes the column's own longitude
-             whichever way the row points. Pinning it as "nothing or a clean 180" is what
-             keeps a future degrees bug from arriving dressed as that known flaw.
-           {28, 14} and {1440, 720} are in the list because they trip the negative south cos;
-           the rest are the degenerate, odd and real-bake shapes the pin above insists on. */
+           empirical accident -- both spellings evaluate asinUnit on the same bits.
+           LONGITUDE is not, and the whole gap is an ulp or two -- interior rows AND the south
+           row, since #844 pinned that endpoint. 6-7% of pixels sit that far from their
+           column's number (worst 5.684e-14 deg at 1024x512), because the inverse scales BOTH
+           atan2 arguments by the row's cos(lat) and scaling two doubles rounds differently per
+           row. That is one column answered differently in different rows, which is what the
+           table ends; equirect.h says what a band edge inside the envelope means. Pinned at
+           1e-12 deg, 18x the worst gap seen.
+           The south row used to be a different story: a computed pi/2 - pi*(h-1)/(h-1) lands
+           below -pi/2 at some heights, its cos comes out NEGATIVE, the row's direction points
+           at the antipodal meridian and the inverse answers exactly 180 deg off. {28, 14} and
+           {1440, 720} stay in the list as the shapes that used to trip it; the endpoint check
+           below is what keeps that from coming back. */
         const int kGrids[][2] = { {2, 2}, {3, 2}, {16, 8}, {17, 8}, {26, 13},
                                   {255, 127}, {512, 256}, {1024, 512},
                                   {28, 14}, {1440, 720} };
         bool lat_exact = true;
         bool sizes_ok = true;
-        double worst_lon = 0.0;        // interior rows, vs the column's table entry
-        bool south_strange = false;    // a south-row gap that is neither 0 nor 180
-        bool south_flip_without_bad_cos = false;
-        int grids_with_bad_south_cos = 0;
+        bool poles_pinned = true;    // rows 0 and h-1 really are the poles
+        double worst_lon = 0.0;
         for(auto &g : kGrids) {
             const int w = g[0], h = g[1];
             const EquirectTrig t = equirectTrig(w, h);
@@ -950,39 +952,36 @@ int main() {
                 sizes_ok = false;   // the tables are not the grid they were asked for
                 continue;
             }
-            const bool bad_south = t.cos_lat[(size_t)h - 1] < 0.0;
-            if(bad_south) { grids_with_bad_south_cos++; }
+            /* By value, not by construction, and at BOTH ends: a grid that misses the pin
+               reads a latitude a hair off -pi/2 (a hair UNDER means a negative cos and a
+               mirrored row, #844), and the north end is exact only by argument. == on t.lat
+               compares the pinned constant; the trig that comes out of it gets a tolerance,
+               because sin(-pi/2) == -1 and (pi/2)*(180/pi) == 90 are libm courtesies rather
+               than laws. */
+            if(t.lat[0] != std::numbers::pi * 0.5
+               || t.lat[(size_t)h - 1] != -std::numbers::pi * 0.5) { poles_pinned = false; }
+            if(t.cos_lat[0] <= 0.0 || t.cos_lat[(size_t)h - 1] <= 0.0) { poles_pinned = false; }
+            if(!near_d(t.sin_lat[0], 1.0, 1e-12)
+               || !near_d(t.sin_lat[(size_t)h - 1], -1.0, 1e-12)
+               || !near_d(t.lat_deg[0], 90.0, 1e-12)
+               || !near_d(t.lat_deg[(size_t)h - 1], -90.0, 1e-12)) { poles_pinned = false; }
             for(int j = 0; j < h; j++) {
                 for(int i = 0; i < w; i++) {
                     double lo = 0.0, la = 0.0;
                     equirectLonLatDeg(equirectDirAt(t, i, j), lo, la);
                     if(la != t.lat_deg[(size_t)j]) { lat_exact = false; }
                     const double gap = std::fabs(lo - t.lon_deg[(size_t)i]);
-                    if(j < h - 1) {
-                        if(gap > worst_lon) { worst_lon = gap; }
-                        continue;
-                    }
-                    /* The last row. A gap of 180 means the row's own direction is mirrored
-                       (#844) and both numbers are still the grid's law; anything else is a
-                       degrees bug. */
-                    const bool agrees = gap <= 1e-12;
-                    const bool flipped = std::fabs(gap - 180.0) <= 1e-12;
-                    if(!agrees && !flipped) { south_strange = true; }
-                    if(flipped && !bad_south) { south_flip_without_bad_cos = true; }
+                    if(gap > worst_lon) { worst_lon = gap; }
                 }
             }
         }
         check(lat_exact, "degrees tables: latitude bit-for-bit the per-pixel inverse");
         check(sizes_ok, "degrees tables: one entry per column and per row");
-        check(worst_lon <= 1e-12, "degrees tables: interior longitude within 1e-12 deg of it");
-        check(!south_strange, "degrees tables: a south-row gap is nothing or a clean 180 deg");
-        check(!south_flip_without_bad_cos,
-              "degrees tables: only a negative south cos flips it (#844)");
-        check(grids_with_bad_south_cos >= 1,
-              "degrees tables: the list still covers a grid with a negative south cos");
-        std::printf("test_surfmap: lon_deg worst interior gap against the per-pixel inverse:"
-                    " %.3e deg (%d of %d grids have a negative south cos)\n",
-                    worst_lon, grids_with_bad_south_cos, (int)(sizeof(kGrids) / sizeof(kGrids[0])));
+        check(worst_lon <= 1e-12, "degrees tables: longitude within 1e-12 deg of it");
+        check(poles_pinned, "degrees tables: both end rows are the poles, cos and all (#844)");
+        std::printf("test_surfmap: lon_deg worst gap against the per-pixel inverse:"
+                    " %.3e deg over %d grids\n",
+                    worst_lon, (int)(sizeof(kGrids) / sizeof(kGrids[0])));
     }
 
     // 2. equirectLonLat: the inverse (render.cpp's atan2(x, z), asin(y),

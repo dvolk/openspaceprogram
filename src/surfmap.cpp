@@ -260,6 +260,10 @@ void surfmapCompute(Game &g) {
            comment in equirect.h says why that is the dangerous failure). */
         assert((int)trig.cos_lon.size() == w && (int)trig.cos_lat.size() == h
                && (int)trig.lon_deg.size() == w && (int)trig.lat_deg.size() == h);
+        /* cos(lat) is both a row's area weight and the horizontal scale of that row's
+           directions, so a non-positive one anywhere is a grid bug to fail on rather than
+           average over -- the south row used to be one (#844). O(h), once per bake. */
+        for(int j = 0; j < h; j++) { assert(trig.cos_lat[(size_t)j] > 0.0); }
         /* #793 added a second reason to want this grid: a relief-aware ground. The two uses share
            one pass because terrainHeight() -- the noise -- is the expensive half of the whole
            sweep, and a pixel that needs its height twice pays for it once. */
