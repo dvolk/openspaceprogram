@@ -1,5 +1,5 @@
 NAME 830-the-dossier-carries-the-lag-beside-the-swing-it-modifies
-CLAIM A world the shipped catalogue gives a ground phase lag says so in the same block as the swing it bends -- the knob in radians of phase, how far past its sun its hottest ground can sit, and the measured solar day that converts the two -- while the swing itself stays the law's two ends, so the identity that ties those ends still closes AND the afternoon the surface map measures lands inside the bound the dossier claims.
+CLAIM A world the shipped catalogue gives a ground phase lag says so in the same block as the swing it bends -- the knob in radians of phase, how far past its sun its hottest ground can sit, and the measured solar day that converts the two -- while the swing itself stays the law's two ends, so the identity that ties those ends still closes, AND the block prints what the lag leaves: an equator-at-equinox pair strictly inside the law's ends and narrowing as the knob grows.
 KIND invariant
 ARGS --timeout 14 --time-accel 100 --system res/systems/ksp_system.json --atlas-dump 4000
 ARGS --surfmap-log --surfmap-n 128 --surfmap-body Dres --surfmap-map temperature
@@ -90,4 +90,23 @@ CHECK (lambda jb: re.search(r"level lag\s+-", jb) is not None and "ground lag" n
 #     row. Same rounding-aware tolerance science/724 derives (the dossier prints tenths, and the
 #     fourth powers multiply that half-decimal).
 CHECK all(abs((float(d) / float(a)) ** 4 + 3.0 * (float(n) / float(a)) ** 4 - 4.0) < 1.6 / float(a) for (n, d), a in zip(re.findall(r"ground swing\s+([\d.]+) to ([\d.]+) K", out), re.findall(r"ground anchor(?: \(sea level\))?\s+([\d.]+) K", out)))
+# 12. WHAT THE LAG LEAVES (#836). The swing row is the LAW's pair, and CHECK 11 keeps it that
+#     way; a lagged row never reaches it. `ground at equator, equinox` prices one named epoch --
+#     the same question for every world -- through the very groundLagRow + groundTemperature the
+#     Surface Map sweeps, at this dossier's mean-rail anchor, which is the anchor the tau was
+#     priced at. Three claims, all of them the row's reason to exist:
+#       (a) it appears exactly once per ACTIVE lag row, and never beside a dashed one -- an
+#           unlagged world's ends are the swing row above to the digit, so printing them twice
+#           (or dashing a pair the law does force) both lose the plot;
+#       (b) it sits STRICTLY inside the swing above it on both ends -- the cold end rises and the
+#           hot end falls, which is what a filter does to a forcing and what no other row says;
+#       (c) it narrows as tau grows. Measured over the seven shipped taus (Ike 0.2902 -> Vall
+#           2.0185), the span as a fraction of its own swing runs 0.986, 0.970, 0.957, 0.920,
+#           0.716, 0.658, 0.400 -- strictly decreasing, tracking the filter's own 1/sqrt(1+tau^2)
+#           (0.960, 0.921, 0.902, 0.866, 0.716, 0.672, 0.444) through the fourth root. This is
+#           the half of the damping story the degrees column cannot show: a phase is a WHERE and
+#           this is the HOW MUCH.
+CHECK len(re.findall(r"ground swing\s+([\d.]+) to ([\d.]+) K\s*\n\s*\[atlas\]\s+ground lag\s+([\d.]+) rad of phase[^\n]*\n\s*\[atlas\]\s+ground at equator, equinox\s+([\d.]+) to ([\d.]+) K", out)) == len(re.findall(r"(?:ground|level) lag\s+[\d.]+ rad", out))
+CHECK all(float(m.group(4)) > float(m.group(1)) and float(m.group(5)) < float(m.group(2)) and (float(m.group(5)) - float(m.group(4))) < (float(m.group(2)) - float(m.group(1))) for m in re.finditer(r"ground swing\s+([\d.]+) to ([\d.]+) K\s*\n\s*\[atlas\]\s+ground lag\s+([\d.]+) rad of phase[^\n]*\n\s*\[atlas\]\s+ground at equator, equinox\s+([\d.]+) to ([\d.]+) K", out))
+CHECK (lambda ts: len(ts) >= 3 and all(a[1] > b[1] for a in ts for b in ts if a[0] < b[0]))([(float(m.group(3)), (float(m.group(5)) - float(m.group(4))) / (float(m.group(2)) - float(m.group(1)))) for m in re.finditer(r"ground swing\s+([\d.]+) to ([\d.]+) K\s*\n\s*\[atlas\]\s+ground lag\s+([\d.]+) rad of phase[^\n]*\n\s*\[atlas\]\s+ground at equator, equinox\s+([\d.]+) to ([\d.]+) K", out)])
 FORBID error:

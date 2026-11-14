@@ -7513,6 +7513,42 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
             } else {
                 line(giant ? "level lag" : "ground lag", "-");
             }
+            /* #836: what that law LEAVES once the lag has spent part of the swing. The two
+               kelvin of `ground swing` above are the LAW's ends -- pinned by #724/#735's
+               identity, and nothing here moves them -- but a lagged row never reaches them: the
+               same first-order filter that carries the phase flattens the row too (groundtemp.h:
+               peak-to-trough 0.74 of the forcing at tau 1, 0.17 at tau 2 pi). The Surface Map
+               measures this over the whole sphere and prints it as `temp_ramp=`; the atlas
+               cannot bake a map to fill one row, so it prices ONE named epoch -- the equator at
+               equinox, the same question for every world and the widest day/night row a world
+               has -- through the same groundLagRow + groundTemperature the map calls, at THIS
+               dossier's mean-rail anchor, which is the anchor the tau itself was priced at
+               (utils/ground_model.py:lag_phase), so the two rows agree by construction rather
+               than by luck.
+               PRESENT ONLY WHERE A LAG IS ACTIVE: a world that authored none has ends equal to
+               the swing row above to the digit, so a dash there would be #793's labelled colour
+               the world never wears all over again, and a print would be a second copy of a row
+               the player just read.
+               Sampling, not solving: a day/night row's peak sits somewhere inside its lit arc
+               and the closed form does not say where, so this walks 720 hour angles. Steps of
+               0.5 deg leave under 0.01 K of curvature error at every tau the corpus authors, and
+               the row prints %.1f. */
+            if(lagTauActive(b.surface.lag_tau)) {
+                const GroundLagRow row = groundLagRow(0.0, 0.0, b.surface.lag_tau);
+                double ylo = 1e300, yhi = -1e300;
+                for(int k = 0; k < 720; k++) {
+                    const double y = row.at(2.0 * std::numbers::pi * k / 720.0);
+                    if(y < ylo) { ylo = y; }
+                    if(y > yhi) { yhi = y; }
+                }
+                /* The same box the map sweep asserts: a unit-mass filter of a forcing that
+                   never exceeds 1 stays in [0,1]; outside it the closed form went wrong. */
+                assert(ylo >= 0.0 && yhi <= 1.0 + 1e-9);
+                fmtRow(v, sizeof v, "%.1f to %.1f K (the swing above, after its lag)",
+                         groundTemperature(anchor, f, ylo),
+                         groundTemperature(anchor, f, yhi));
+                line("ground at equator, equinox", v);
+            }
             /* #793: where relief is live, the anchor is a DATUM statement -- the ground at this
                body's sea level, which the two ends above swing around, and NOT the coldest ground
                the map paints. Saying so in the label is the same rule #552 pinned for
