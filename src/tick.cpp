@@ -786,9 +786,35 @@ void tick(Game &g) {
                     const double underfoot_elev
                         = (double)over->GetTerrainHeight(glm::normalize(here))
                           - over->seaLevelRadius();
+                    /* #829: this column and the surface map are the same ground, so they answer
+                       with the same light. A world that authored a phase lag paints a hot spot
+                       hours east of noon; asking here for THIS instant's cosine answered 38.6 K
+                       hotter than the pixel under the same point at noon, and 77 K colder at hour
+                       angle +80 (measured at tau 1, anchor 240, f 0.05) -- one instant, two ground
+                       temperatures, and the flight log is the one a player trusts.
+                       The lag is a function of LONGITUDE, so the pair goes into the body's
+                       spinning axes, and it goes there the same way the map and the aero pass get
+                       there: `here` is the height sample above, already rotated, and starFromBody
+                       wants ROOT positions and hands back rotating axes. NOT
+                       `over->frame->GetOrientRelTo(over->rot_frame)`, which takes a vector in
+                       `frame`'s own axes: fed root axes it drops the rail's orientation and prices
+                       a different TIME OF DAY while every other column in this row stays put
+                       (+5.4 K on an inclined copy of the lag fixture). Taking the star from the
+                       body's centre rather than from this hull also puts the log, the map and the
+                       air on one subsolar point instead of two a body radius apart.
+                       Frame-invariant quantities stay untouched: with no authored tau this is
+                       `sky.cos_inc`, the same bit pattern as before, which is why no flight
+                       golden moves. */
+                    const bool lag = lagTauActive(over->surface.lag_tau);
+                    const double forcing = lag
+                        ? groundForcingLagged(
+                              over->surface.lag_tau, glm::normalize(here),
+                              starFromBody(over->frame->root_pos, star,
+                                           over->rot_frame->root_orient).to_sun)
+                        : sky.cos_inc;
                     snprintf(surf_s, sizeof surf_s, "%.2f",
                              groundTemperatureAt(anchor, over->surface.even_share,
-                                                 sky.cos_inc,
+                                                 forcing,
                                                  over->surface.relief_K(underfoot_elev)));
                 } else {
                     snprintf(surf_s, sizeof surf_s, "-");

@@ -328,6 +328,62 @@ int main() {
         }
     }
 
+    /* groundForcingLagged(): the one call every non-map reader makes (#829). Two things to pin,
+       and neither is the row maths the relaxation below already covers.
+       (1) It hands back THAT place's row value: a caller holding a zenith and a star, not a
+           latitude and an hour angle, gets the same number the sweep paints.
+       (2) FRAMES. A spin-frame map is a rotation about the POLE, so it carries the place and the
+           noon together and leaves the hour angle -- and therefore the answer -- alone. That is
+           what makes the step safe to take, and its mirror is the bug: leave ONE of the pair in
+           the other axes and the hour angle moves by the whole spin. The cosine a call site
+           already holds is blind to both, because the dot is frame-invariant; the hour angle is
+           the half that says whether it is afternoon. */
+    {
+        const double tau = 1.0;
+        // {lat, lon} and {dec, subsolar lon} -- the row's own arguments, not equirectDir's
+        // (lon, lat). The calls below swap them on purpose, which is the easy mistake to make.
+        const double places[][2] = { {0.0, 0.0}, {0.61, 2.2}, {-1.1, -0.7}, {-1.553, 3.13} };
+        const double suns[][2] = { {0.0, 0.0}, {-0.409, 1.9}, {0.409, -2.6}, {-1.5, 3.1} };
+        for(const double (&pl)[2] : places) {
+            for(const double (&su)[2] : suns) {
+                const glm::dvec3 z = equirectDir(pl[1], pl[0]);
+                const glm::dvec3 sun = equirectDir(su[1], su[0]);
+                const double y = groundForcingLagged(tau, z, sun);
+                CHECK_TRUE(y >= 0.0 && y <= 1.0 + 1e-12,
+                           "the forcing a caller gets is a share of the same law");
+                CHECK_NEAR(y, groundLagRow(pl[0], su[0], tau).at(pl[1] - su[1]), 1e-12,
+                           "one place and one instant answers that place's row");
+                // An un-normalised bearing is the same place (a direction is a bearing).
+                CHECK_NEAR(groundForcingLagged(tau, 3.7 * z, 0.2 * sun), y, 1e-12,
+                           "and lengths do not reach it");
+                for(double phi : { 0.3, 1.7, -2.9 }) {
+                    /* A spin about the POLE, and the pole is +Y here (equirect.h: north is +Y),
+                       which is easy to get wrong in a test that means to prove a frame rule. */
+                    const double c = std::cos(phi), s = std::sin(phi);
+                    const glm::dmat3 spin(c, 0.0, -s, 0.0, 1.0, 0.0, s, 0.0, c);
+                    CHECK_NEAR(groundForcingLagged(tau, spin * z, spin * sun), y, 1e-9,
+                               "a spin-axis rotation of the pair is the same afternoon");
+                }
+            }
+        }
+        /* ...and the failure the frame paragraph exists to prevent: ONE of the pair left in the
+           other axes. Spin the zenith and not the star (or the star and not the zenith) and the
+           hour angle moves by that spin -- which is a different time of day at the same place,
+           and the biggest error in this file. The cosine the call sites already hold would not
+           notice: it is the same dot product either way. */
+        {
+            const glm::dvec3 z = equirectDir(0.3, 0.2);          // lon, lat
+            const glm::dvec3 sun = equirectDir(1.1, 0.1);
+            const double y = groundForcingLagged(tau, z, sun);
+            const double c = std::cos(1.7), s = std::sin(1.7);
+            const glm::dmat3 spin(c, 0.0, -s, 0.0, 1.0, 0.0, s, 0.0, c);
+            CHECK_TRUE(std::fabs(groundForcingLagged(tau, spin * z, sun) - y) > 0.05,
+                       "a zenith left in the other frame is a different time of day");
+            CHECK_TRUE(std::fabs(groundForcingLagged(tau, z, spin * sun) - y) > 0.05,
+                       "and so is a star left there");
+        }
+    }
+
     /* The relaxation. Returns the y sampled on n steps of one rotation after `turns` passes. */
     auto relax = [](double a, double b, double tau, int n, int turns,
                     std::vector<double> &out) {

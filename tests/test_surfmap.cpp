@@ -8,6 +8,7 @@
 // detection. Links no imgui / Bullet / GL.
 
 #include "equirect.h"
+#include "insolation.h"   // subsolarLonLat: the same noon the sweep and the cursor price with
 #include "surfmap.h"
 #include "terragen.h"
 
@@ -516,8 +517,14 @@ static void groundLag() {
     check(thi > tlo + 10.0, "and the palette is not degenerate: this body's swing is wide");
 
     // ---- the cursor and the sweep are one spelling ----
+    /* #829 took the cursor off a surfmap.h helper of its own and onto groundtemp.h's
+       groundForcingLagged(), the same call the --solar-log column and the air under a hull now
+       make. What this pins is that the call answers the row: same place, same hour angle, same
+       height term, to the last bit. A cursor priced from a different spelling is a number that
+       does not match the colour beside it. */
     const double clim = -12.0;
-    check(near_d(surfmapGroundTLag(anchor, knob, tau, 20.0 * d2r, 100.0 * d2r, sun, clim),
+    const glm::dvec3 at = equirectDir(100.0 * d2r, 20.0 * d2r);   // lon 100, lat 20
+    check(near_d(groundTemperatureAt(anchor, knob, groundForcingLagged(tau, at, sun), clim),
                  groundTemperatureAt(anchor, knob,
                                      groundLagRow(20.0 * d2r, sdec, tau).at(100.0 * d2r - slon),
                                      clim),
@@ -526,11 +533,29 @@ static void groundLag() {
           "same height term");
     // And it is NOT the unlagged answer -- a lagged map read through surfmapGroundT would print a
     // noon kelvin under an afternoon colour. Pinned on a place where the two differ loudly.
-    const double unlagged = surfmapGroundT(anchor, knob, equirectDir(40.0 * d2r, 0.0), sun, 0.0);
-    const double lagged = surfmapGroundTLag(anchor, knob, tau, 0.0, 40.0 * d2r, sun, 0.0);
+    const glm::dvec3 dawn = equirectDir(40.0 * d2r, 0.0);         // lon 40, lat 0: sunrise there
+    const double unlagged = surfmapGroundT(anchor, knob, dawn, sun, 0.0);
+    const double lagged = groundTemperatureAt(anchor, knob,
+                                              groundForcingLagged(tau, dawn, sun), 0.0);
     check(lagged > unlagged + 5.0,
           "at an hour angle the lag has already paid for, the lagged ground is warmer than the "
           "instantaneous one -- so a cursor that forgot the lag would be measurably wrong");
+    /* The other half of #829: the two readers that used to ignore tau hold a cosine they measured
+       for a frame-invariant reason (the dot does not care which axes it is read in). This says
+       the shared helper agrees with that cosine when there is nothing to lag, which is what lets
+       both call sites keep the plain cosine for an unlagged world instead of paying for a row --
+       and it is the pin that says the rotating-frame step the lag needs is the ONLY thing the lag
+       changes about the pair. */
+    double worst_flat = 0.0;
+    for(int latdeg = -80; latdeg <= 80; latdeg += 10) {
+        for(int londeg = 0; londeg < 360; londeg += 15) {
+            const glm::dvec3 z = equirectDir(londeg * d2r, latdeg * d2r);
+            worst_flat = std::max(worst_flat, std::fabs(groundForcingLagged(1e-9, z, sun)
+                                                        - cosIncidence(z, sun)));
+        }
+    }
+    check(worst_flat < 1e-6,
+          "at tau -> 0 the shared forcing IS that cosine: the lag adds a phase, not a new cosine");
 }
 
 /* #769: the wind map. Same division of labour as mapLayers() -- the window builds its combo

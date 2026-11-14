@@ -3272,18 +3272,35 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
                distinction for AGL). And the sample is gated on the body having a height term at
                all, so a world whose air never lapses pays nothing for the zero. */
             double ground_relief = 0.0;
-            if(m_parent->surface.reliefOn()) {
-                const glm::dvec3 here = (frame == m_parent->rot_frame)
+            /* The place under this hull, in the axes the body's geography lives in. Both the
+               height term and #829's lagged forcing need it, and neither is worth a second
+               spelling of the same map. */
+            const auto here_rot = [&]() {
+                return (frame == m_parent->rot_frame)
                     ? glm::dvec3(com)
                     : glm::dvec3(frame->GetOrientRelTo(m_parent->rot_frame)
                                  * glm::dvec3(com));
+            };
+            if(m_parent->surface.reliefOn()) {
                 ground_relief = m_parent->surface.relief_K(
-                    (double)m_parent->GetTerrainHeight(glm::normalize(here))
+                    (double)m_parent->GetTerrainHeight(glm::normalize(here_rot()))
                     - m_parent->seaLevelRadius());
             }
+            /* #829: on a world that authored a phase lag, the ground this air leans on is the
+               lagged one -- the same number the surface map paints and the flight log prints.
+               Answering it with this instant's cosine while the map solves the lag gives one
+               instant two ground temperatures (measured at tau 1: 38.6 K apart due noon, 77 K at
+               hour angle +80, where the ground under a hull is the WARMER one because its
+               afternoon has not finished radiating; in the morning the split runs the other way).
+               The coupling takes a FORCING, not a cosine, so the signature does not move; and
+               where a file states no tau this stays `sky.cos_inc`, bit for bit. */
+            const double forcing = lagTauActive(m_parent->surface.lag_tau)
+                ? groundForcingLagged(m_parent->surface.lag_tau, here_rot(),
+                                      sv_rot.to_sun)
+                : sky.cos_inc;
             const double coupled = coupledAirTemperature(
                 lastAirT, anchor, m_parent->surface.even_share,
-                atm.air_follow, w, sky.cos_inc, ground_relief);
+                atm.air_follow, w, forcing, ground_relief);
             if(coupled != lastAirT) {
                 lastAirT = coupled;
                 /* The Mach number this pass divides by comes from the SAME temperature the

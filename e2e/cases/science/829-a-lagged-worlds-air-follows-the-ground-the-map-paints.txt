@@ -1,0 +1,59 @@
+NAME 829-a-lagged-worlds-air-follows-the-ground-the-map-paints
+CLAIM On a world that authored a ground phase lag, the flight log's underfoot kelvin is the lagged ground -- the one the surface map paints -- and the air a hull flies through couples to that same number rather than to this instant's cosine.
+KIND invariant
+ARGS --system res/systems/lag_playground.json --timeout 5 --solar-log --startship v,res/ships/skiff.json,Sultry,flying-cruise --time-accel 10
+# #829. Sultry and Balmy are one pair: anchor 240 K, even share 0.05, air_follow 0.350, a flat
+# profile (no lapse, so no height term for a case to chase), and one authored difference -- Sultry
+# states lag_tau 1.0 and Balmy states nothing. What the log prints under a hull therefore differs
+# by the lag alone.
+#
+# Until #829 only the map consulted tau. tick.cpp's `underfoot_T=` and vehicle.cpp's air coupling
+# both asked with `SkyAtZenith::cos_inc`, which is frame-invariant and therefore blind to the half
+# of the question a lag lives in: the HOUR ANGLE. Measured on this body, the log's ground answered
+# 331.7 K at a sun 71 deg up while the lagged ground -- the number the same world's map paints --
+# answers 278.4 K. One instant, two ground temperatures, 53 K apart, and the flight log was the
+# confident one.
+#
+# The window is a morning: the sun climbs 71.2 -> 71.8 deg over the rows. A lagged morning ground
+# has not caught up with its light, so it sits BELOW the instantaneous law; the same world's
+# afternoon sits above it (the 794 map cases pin that half as peak_deg east of the subsolar
+# meridian, and tests/test_groundtemp.cpp and tests/test_surfmap.cpp pin the row itself). Pinning
+# the sun's trend in the same rows is what makes "below" a direction rather than a difference
+# that happens to be negative.
+#
+# 1. THE ROW IS ONE WORLD: the log's four air columns close on the log's own ground column.
+#    air_T, prof_T, w and follow are the aero pass's measurements (src/tick.cpp prints them
+#    rather than recomputing), so the residual below is print rounding -- worst measured here
+#    0.0051 K, band 0.02 for the same reason science/724 carries one. Which term sets the band:
+#    air_T and prof_T print at %.2f (0.005 K each, and prof_T is multiplied by (1 - follow*w)),
+#    while follow at %.3f and w at %.4f are exact for these authored values -- a knob authored
+#    0.3456 instead would spend 0.02 K of the band on its own printing, so do not tighten this.
+#    This is the pin that reddens a HALF fix: a map that lags while the air does not, or an
+#    underfoot column that lags while the coupling does not, leaves the row describing two airs.
+#    It is also the FRAME pin. Sultry's rail carries orb_incl 0.5 / lon_asc_node 0.9, so the log
+#    has to reach the body's spinning axes the way the map and the aero pass do; solving the lag
+#    from a root-axes pair through frame->GetOrientRelTo() instead drops the rail's orientation,
+#    moves underfoot_T by +5.4 K, and opens a 0.6 K hole right here -- three orders above the
+#    band, on a row where nothing else in the log changes.
+CHECK len(solar) >= 4
+CHECK all(abs(d["air_T"] - (d["prof_T"] + d["follow"] * d["w"] * (d["underfoot_T"] - d["prof_T"]))) < 0.02 for d in solar)
+# 2. THE GROUND UNDER THIS HULL IS NOT THIS INSTANT'S COSINE. Repriced from the row's own light
+#    columns (flat/flux is the cosine the log already measured), the law's answer is 331.7 K and
+#    the column says 278.4. Band -40 against a measured -53.3.
+CHECK all(d["underfoot_T"] - 240.0 * (0.05 + 0.95 * 4.0 * max(0.0, d["flat"] / d["flux"])) ** 0.25 < -40.0 for d in solar)
+# 3. ...AND THE SUN IS NEARLY OVERHEAD WHILE THAT HAPPENS, so the disagreement is not a terminator
+#    artefact: this is noon-adjacent light, where the two readings used to be furthest apart.
+CHECK all(d["flat"] / d["flux"] > 0.9 for d in solar)
+CHECK all(d["elev"] > 60.0 for d in solar)
+# 4. THE SUN IS RISING ACROSS THE WINDOW: the sign of check 2 belongs to a morning.
+CHECK all(b["elev"] > a["elev"] for a, b in zip(solar, solar[1:]))
+# 5. THE AIR IS WARMED BY THE COLDER GROUND, NOT BY THE LAW'S HOT ONE. This is vehicle.cpp's
+#    half priced on its own, so it reddens if NEITHER reader lags: the coupling measured here is
+#    7.69..8.43 K, and the same row fed with the unlagged 331.7 K ground prices 13.7 K. A case
+#    that only checked check 1 would stay green with the bug in both places.
+CHECK all(5.0 < d["air_T"] - d["prof_T"] < 10.0 for d in solar)
+FORBID air_T=-
+FORBID underfoot_T=-
+FORBID follow=-
+FORBID prof_T=-
+FORBID error:

@@ -17,7 +17,6 @@
 #include "groundtemp.h"   // the temperature layer's law, and the anchor's rungs
 #include "terragen.h"     // Surface: the data the layer decides from
 #include "solar.h"        // cosIncidence: the law's ONE floored cosine (#724)
-#include "insolation.h"   // subsolarLonLat: the ONE reading of "where this body's noon is"
 
 #include "equirect.h"
 
@@ -311,29 +310,6 @@ inline double surfmapGroundT(double anchor_K, double even_share, glm::dvec3 dir,
     const double sun_len2 = glm::dot(sun_dir, sun_dir);
     if(sun_len2 > 0.0) { sun_dir *= 1.0 / std::sqrt(sun_len2); }
     return groundTemperatureAt(anchor_K, even_share, cosIncidence(dir, sun_dir), relief_K);
-}
-
-/* [K] One pixel of a LAGGED temperature picture, for a caller that has one place to price
-   (#794). The sweep builds one GroundLagRow per latitude and must not pay for this; the window's
-   cursor, once a frame, can. Same law and same relief term as surfmapGroundT above, so the lag is
-   the only thing that differs -- which matters because the number beside a pixel has to be THAT
-   pixel's number, and a lagged map read out through the unlagged helper prints the kelvin of a
-   world the picture is not showing.
-   The pivot -- where this body's noon is -- comes from insolation.h's subsolarLonLat, the same
-   reading the calendar's solar row takes, so a lagged picture's afternoon and the lat/lon the
-   cursor prints are one coordinate system rather than two that happen to agree (#636). */
-inline double surfmapGroundTLag(double anchor_K, double even_share, double tau,
-                                double lat, double lon, glm::dvec3 sun_dir,
-                                double relief_K) {
-    assert(lagTauActive(tau));
-    double lon_ss = 0.0, dec = 0.0;
-    subsolarLonLat(sun_dir, lon_ss, dec);
-    const GroundLagRow row = groundLagRow(lat, dec, tau);
-    /* The lagged share is not a cosine and is not clamped to one here: groundtemp.h feeds it to
-       the same law precisely because a unit-mass positive filter of a forcing that never exceeds
-       1 stays in [0,1]. groundTemperature's own assert is what catches it if that ever stops
-       being true. */
-    return groundTemperatureAt(anchor_K, even_share, row.at(lon - lon_ss), relief_K);
 }
 
 /* What the WIND layer can do for a body (#769), decided once per bake on the main thread for

@@ -19,6 +19,20 @@
     "easiest to get wrong, because the darkest light and the tallest ground are not the same place",
     "on a lagged world -- and a palette priced from the two extremes separately leaves colours in",
     "the legend that no pixel ever wears.",
+    "Balmy and Sultry are a second pair for the other readers of the ground: a hull flying in air",
+    "that follows its ground (#724 rung D). Both author air_follow, both have a flat profile -- no",
+    "lapse, so no height term anywhere -- and only Sultry authors lag_tau. They share one rail",
+    "(0.00015 rad/s, 0.9 rad apart on it) and one 21,549 s spin, which makes their SOLAR day",
+    "44,375 s -- the orbital rate is about half the spin rate, so the star walks round a little",
+    "slower than the ground turns. One radian of phase is 7,064 s of that day, and a case window of",
+    "~50 s of sim never sees it elapse; it does not need to. At tau 1 the lag alone is worth 53 K",
+    "with the sun 71 deg up, so one instant carries the whole disagreement. What the close rail",
+    "buys is light (1.81e6 W/m2) and an air shell thick enough for a cruise bed to sit in.",
+    "Sultry's rail is also inclined (orb_incl 0.5, lon_asc_node 0.9) while Balmy's is flat. That",
+    "is the frame pin: the log has to solve the lag in the body's SPINNING axes, and the wrong way",
+    "to get there is invisible on a rail whose orientation is the identity -- measured +5.4 K on",
+    "Sultry's underfoot column, and a 0.6 K break in the row's own air closure, against 0.00 K on",
+    "Balmy. It also gives the lagged one a real declination, so its day arc is not the flat 180.",
     "Tilt: 0.05 rad on the pair, which means a near-zero season -- the declination stays within",
     "about 1e-5 rad of the equator for the whole window a case runs, so the tilted-star branch of",
     "the row model is NOT what those two cases exercise. AltoFrio carries a real 23.44 deg AND a",
@@ -129,7 +143,93 @@
             {"alt": 0.0, "T": 288.0, "lapse": -0.0065},
             {"alt": 20000.0, "T": 158.0, "lapse": 0.0}
           ],
-          "_relief_comment": "The 6.5 K/km is Earth's, chosen because it is the value the #793 relief tests already reason about. It is NOT this body's climate: with a 240 K anchor the ground is far colder than the 288 K this layer's datum states, and the fixture does not care -- relief enters as a height term outside the fourth-power bracket, so the profile's own base temperature never meets the ground's. The 70 km top is NOT Earth's 85 km either: on 0.98 m/s^2 this profile is down to 10 Pa by ~75 km, and #682's check refuses a shell whose ceiling floats in vacuum."
+          "_relief_comment": "The 6.5 K/km is Earth's, chosen because it is the value the #793 relief tests already reason about. It is NOT this body's climate: with a 240 K anchor the ground is far colder than the 288 K this layer's datum states, and the fixture does not care -- relief enters as a height term outside the fourth-power bracket, so the profile's own base temperature never meets the ground's. The 70 km top is NOT Earth's 85 km either: on the 9.81 m/s^2 this mass and radius pull with, this profile is down to 10 Pa by ~75 km, and #682's check refuses a shell whose ceiling floats in vacuum."
+        }
+      }
+    },
+    {
+      "name": "Balmy",
+      "type": "planet",
+      "orbits": "Sun",
+      "radius": 600000,
+      "mass": 5.2915793e+22,
+      "seed": 14,
+      "has_sea": false,
+      "inertial": {"pos": [0, 0, -374000000], "orb_ang_speed": 0.00015, "arg_peri": 0.0, "true_anomaly0": 1.0},
+      "rotating": {"rot_ang_speed": 0.0002915709030370688, "axial_tilt": 0.05},
+      "transfer_dv": 5200.0,
+      "science_mult": 1.5,
+      "surface": {
+        "temperature": 240.0,
+        "temperature_src": "INVENTED: the fixture's stated ground again, so the anchor stays off the rail even with an air on the body",
+        "even_share": 0.05,
+        "even_share_src": "INVENTED: the same near-bare-rock knob as the pair, so the two bodies' swings are one swing",
+        "_air_comment": [
+          "The air is here for #724 rung D: with air_follow authored, the kelvin a hull flies",
+          "through is the profile moved toward the ground under it, which is the coupling the",
+          "flight log's own air_T / prof_T / w / follow columns close on.",
+          "No lapse on purpose. A profile that cools with height gives the ground a height term",
+          "(#793), and then the log's underfoot_T carries a term a case cannot reprice from the",
+          "row -- it would have to know the terrain under the hull. With a flat profile the",
+          "coupling's ground is anchor-plus-forcing and nothing else, so the arithmetic in the",
+          "case is the arithmetic in the law.",
+          "The 210 K datum sits BELOW this body's 240 K anchor so the ground is the warmer of the",
+          "two by day and the air reads above its profile. It is not a climate claim."
+        ],
+        "atmosphere": {
+          "color": [0.85, 0.78, 0.65],
+          "thickness": 20000,
+          "power": 4.0,
+          "intensity": 0.7,
+          "sea_level_pressure": 101325.0,
+          "height": 70000.0,
+          "air_follow": 0.35,
+          "_air_follow_comment": "0.350 is the same value Kerbin carries (#724 rung D), so the two bodies' coupling has one strength. Not a _src key: the loader reads provenance for temperature, albedo, even_share and lag_tau only, so a note here is a note and nothing refuses a stale one.",
+          "composition": [
+            {"gas": "N2", "fraction": 0.78},
+            {"gas": "O2", "fraction": 0.21}
+          ],
+          "layers": [
+            {"alt": 0.0, "T": 210.0, "lapse": 0.0}
+          ]
+        }
+      }
+    },
+    {
+      "name": "Sultry",
+      "type": "planet",
+      "orbits": "Sun",
+      "radius": 600000,
+      "mass": 5.2915793e+22,
+      "seed": 15,
+      "has_sea": false,
+      "inertial": {"pos": [0, 0, -374000000], "orb_ang_speed": 0.00015, "arg_peri": 0.0, "true_anomaly0": 1.9, "orb_incl": 0.5, "lon_asc_node": 0.9},
+      "rotating": {"rot_ang_speed": 0.0002915709030370688, "axial_tilt": 0.05},
+      "transfer_dv": 5200.0,
+      "science_mult": 1.5,
+      "surface": {
+        "temperature": 240.0,
+        "temperature_src": "INVENTED: Balmy's anchor, so the two bodies differ by their lag and nothing else",
+        "even_share": 0.05,
+        "even_share_src": "INVENTED: Balmy's knob, same reason",
+        "lag_tau": 1.0,
+        "lag_tau_src": "INVENTED: one radian of phase, as Afternoon's. In TIME this body pays 1 / 1.4157e-4 = 7,064 s of a 44,375 s solar day, which no ~50 s case window can watch elapse -- the disagreement shows up as 53 K at one instant with the sun 71 deg up, not as a lagged afternoon in the rows.",
+        "atmosphere": {
+          "color": [0.85, 0.78, 0.65],
+          "thickness": 20000,
+          "power": 4.0,
+          "intensity": 0.7,
+          "sea_level_pressure": 101325.0,
+          "height": 70000.0,
+          "air_follow": 0.35,
+          "_air_follow_comment": "Balmy's 0.350, deliberately identical: the only difference between the two bodies' flight logs is the lag.",
+          "composition": [
+            {"gas": "N2", "fraction": 0.78},
+            {"gas": "O2", "fraction": 0.21}
+          ],
+          "layers": [
+            {"alt": 0.0, "T": 210.0, "lapse": 0.0}
+          ]
         }
       }
     }

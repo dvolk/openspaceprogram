@@ -2317,9 +2317,11 @@ void drawUIReadouts(Game &g) {
                        difference between the two calls below. */
                     const double relief = sm_body->surface.relief_K(sm_elev);
                     const double gt = lagTauActive(g.surfmap.temp_lag_tau)
-                        ? surfmapGroundTLag(g.surfmap.temp_anchor_K, g.surfmap.temp_knob,
-                                            g.surfmap.temp_lag_tau, lat, lon,
-                                            g.surfmap.baked_sun_dir, relief)
+                        ? groundTemperatureAt(g.surfmap.temp_anchor_K, g.surfmap.temp_knob,
+                                              groundForcingLagged(g.surfmap.temp_lag_tau,
+                                                                  glm::dvec3(dir),
+                                                                  g.surfmap.baked_sun_dir),
+                                              relief)
                         : surfmapGroundT(g.surfmap.temp_anchor_K, g.surfmap.temp_knob,
                                          glm::dvec3(dir), g.surfmap.baked_sun_dir, relief);
                     snprintf(gt_s, sizeof gt_s, "  ground %+.1f C", celsiusOf(gt));

@@ -1,0 +1,41 @@
+NAME 829-b-world-nobody-gave-a-lag-still-answers-this-instant
+CLAIM A world with no phase lag authored answers its ground from this instant's cosine to the last printed digit, in the flight log and in the air under a hull alike, so making the lagged readers agree is a branch and not a change to every world.
+KIND invariant
+ARGS --system res/systems/lag_playground.json --timeout 5 --solar-log --startship v,res/ships/skiff.json,Balmy,flying-cruise --time-accel 10
+# #829's control. Balmy is Sultry's twin: same 240 K anchor, same 0.05 even share, same 0.350
+# air_follow, same flat 210 K profile, same 600 km radius, same mass, same spin, same orbital rate.
+# What it does NOT carry is `lag_tau` -- the SENTINEL rather than a 0.0 someone wrote (authored.h)
+# -- and it rides the rail flat where Sultry's is inclined, which is what makes Sultry's closure a
+# frame pin and this one a plain control. Absence has to keep answering the instantaneous law,
+# because that is what every world in the shipped corpus does today and what every flight golden in
+# this repo was measured against.
+#
+# Both readers now branch on lagTauActive(): an authored lag goes through groundtemp.h's
+# groundForcingLagged(), anything else keeps the `SkyAtZenith::cos_inc` it already measured, bit
+# for bit. This case is the half of the pair that says the branch did not leak.
+#
+# The window is an afternoon -- the sun sets through 57.1 -> 56.6 deg -- the mirror of Sultry's
+# rising one, and it puts the ground at the top of its swing rather than near a terminator.
+#
+# 1. THE LOG'S AIR COLUMNS CLOSE ON THE LOG'S GROUND COLUMN, as they do for every body with a
+#    follow knob (worst residual here 0.0106 K; band 0.02 like science/724's). The band is print
+#    rounding on air_T and prof_T at %.2f -- follow (0.350) and w print exactly for these values.
+CHECK len(solar) >= 4
+CHECK all(abs(d["air_T"] - (d["prof_T"] + d["follow"] * d["w"] * (d["underfoot_T"] - d["prof_T"]))) < 0.02 for d in solar)
+# 2. THE GROUND IS THE LAW AT THIS INSTANT, not a row solved over a rotation: 240 * (f + (1-f)*4
+#    * cos_inc)^0.25 with cos_inc taken from this row's own flat/flux. Measured |difference| 0.00
+#    K on all five rows -- the two printed columns agree to their last digit.
+CHECK all(abs(d["underfoot_T"] - 240.0 * (0.05 + 0.95 * 4.0 * max(0.0, d["flat"] / d["flux"])) ** 0.25) < 0.02 for d in solar)
+# 3. THE SUN IS SETTING ACROSS THE WINDOW, so this is an afternoon reading and not a dawn one.
+CHECK all(b["elev"] < a["elev"] for a, b in zip(solar, solar[1:]))
+CHECK all(d["elev"] > 50.0 for d in solar)
+# 4. THE COUPLING RUNS AT THE FULL STRENGTH THE LIGHT PRICES: 12.60..13.62 K here. Sultry's same
+#    instrument reads 7.7..8.4 K, because its ground has not caught up with its morning sun. The
+#    pair of numbers is the point -- a world that stopped answering its light would have to say so
+#    somewhere, and this is where it says it does not.
+CHECK all(12.0 < d["air_T"] - d["prof_T"] < 14.0 for d in solar)
+FORBID air_T=-
+FORBID underfoot_T=-
+FORBID follow=-
+FORBID prof_T=-
+FORBID error:

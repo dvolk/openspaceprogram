@@ -64,7 +64,11 @@
 #include <numbers>
 #include <string>
 
+#include <glm/glm.hpp>
+
 #include "authored.h"   // kEvenShareUnauthored, kThermalUnauthored + the authored?() pairs
+#include "equirect.h"   // equirectLonLat: the rotating-frame (lon, lat) a phase lag is measured in
+#include "insolation.h" // subsolarLonLat: the ONE reading of "where this body's noon is"
 
 /* Absence for the knob is spelled in src/authored.h (kEvenShareUnauthored,
    evenShareAuthored) beside the albedo and temperature sentinels, because the three share one
@@ -225,15 +229,19 @@ inline double groundTemperatureAt(double anchor_K, double even_share, double cos
    cos_inc. Its parameter is still named cos_inc; a lagged value is not a cosine, and this is the
    sentence that says so.
 
-   WHO READS IT, AND WHO DOES NOT (yet). Two places do: the surface-map sweep (surfmap.cpp's
-   lagged pre-pass) and that map's cursor (surfmap.h's surfmapGroundTLag). Two others take the
-   SAME anchor, knob and height term and do not consult tau at all -- tick.cpp's --solar-log
-   `underfoot_T=` and vehicle.cpp's air coupling through coupledAirTemperature() below, both fed
-   with the instantaneous cos_inc. On the lag fixture's tau-1 world that is a 39 K disagreement
-   due noon (297.6 K on the map, 336.2 K in the flight log) and the reverse by 77 K at an hour
-   angle of +80. No shipped body authors a tau, so nothing on screen contradicts itself today; the
-   day one does, that split is the thing to fix, and it is filed as an issue rather than left
-   implied by a comment.
+   WHO READS IT. Four places ask for a FORCING and they all consult tau now: the surface-map sweep
+   (surfmap.cpp's lagged pre-pass), that map's cursor (gameui.cpp), tick.cpp's --solar-log
+   `underfoot_T=` and vehicle.cpp's air coupling through coupledAirTemperature() below. The last
+   two used to take the SAME anchor, knob and height term with the instantaneous cos_inc, which
+   made one instant answer two ground temperatures -- 39 K apart due noon (297.6 K on the map,
+   336.2 K in the flight log) and the reverse by 77 K at an hour angle of +80 on a tau-1 world.
+   That was #829; the readers now share groundForcingLagged() below, so the air's forcing and a
+   pixel's colour are one quantity. Where a body authors no tau every one of them still uses the
+   plain cosine it measured, unchanged.
+   A fifth place still prices the law at cos_inc 0.0 and 1.0 -- the atlas's `ground swing` row --
+   and that one is deliberately NOT lagged: its two ends are what the one knob forces, which is
+   what keeps #724/#735's identity closing. A lagged body's dossier therefore states a swing its
+   map cannot reach; that contradiction is #830, not an oversight to fix by lagging the extremes.
    --------------------------------------------------------------------------------------------- */
 
 /* One latitude's lagged answer, built once per latitude and evaluated per longitude (#802's
@@ -348,6 +356,48 @@ inline GroundLagRow groundLagRow(double lat, double dec, double tau) {
     assert(std::isfinite(r.hom_noon) && std::isfinite(r.hom_rise)
            && std::isfinite(r.night_at_sunset));
     return r;
+}
+
+/* [1] The forcing the ground law is fed at ONE place and ONE instant, for a body that authored a
+   phase lag (#829). The map's sweep builds a row per latitude and evaluates it once per column;
+   every other reader -- the --solar-log underfoot column, the air under a hull -- has a single
+   place to price, and this is that one call. It exists because the alternative is three callers
+   each spelling "hour angle" slightly differently, which is exactly how a lagged world ends up
+   answering two different temperatures at one instant (and did: #829).
+
+   FRAMES, because that is where this goes wrong. BOTH directions must be in the body's ROTATING
+   frame: (lon, lat) live there (equirect.h says so), and so does the meridian a lag is measured
+   from. A root-axes pair -- what a hull position and a SunSample usually hand you -- gives the
+   SAME cosine, because the dot is frame-invariant, and a completely different HOUR ANGLE, which
+   is the half that decides whether it is afternoon. Two ways in, and they take different inputs:
+   `starFromBody()` wants ROOT positions and hands back rotating axes;
+   `frame->GetOrientRelTo(rot_frame)` wants a vector already in `frame`'s own axes -- it applies
+   transpose(rot.orient), NOT transpose(rot.root_orient), so running a root-axes pair through it
+   silently drops that frame's rail orientation. On a rail that authors orb_incl or lon_asc_node
+   this is a wrong TIME OF DAY while every other column in the row stays put: measured +5.4 K on an
+   inclined copy of the lag fixture, and it breaks the flight log's own air closure. Both call
+   sites below take the root-axes route.
+
+   Normalises, because a direction is a bearing and equirectLonLat()'s asin() wants a unit
+   vector; the noon half goes through insolation.h's subsolarLonLat(), which is the same reading
+   the calendar's solar row and the map sweep take. Asserts an AUTHORED lag: a caller with no tau
+   should pass the cosine it already measured (`SkyAtZenith::cos_inc`), which agrees with what the
+   kInstant row answers to about 1e-12 K -- indistinguishable, but not bit-identical, because a
+   row builds a + b cos h while cosIncidence() takes a dot product. Free to keep, and cheaper than
+   building a row nobody needs.
+   COST, for the day a shipped body authors a tau: this builds a whole row (an acos, three
+   exponentials, a divide) for ONE place at ONE instant, which is what a window cursor and a
+   flight log want and what a map sweep must NOT do -- surfmap.cpp hoists one row per latitude
+   (#802). A per-substep caller would want the same trick. */
+inline double groundForcingLagged(double tau, glm::dvec3 zenith, glm::dvec3 to_sun) {
+    assert(lagTauActive(tau));
+    const double zl2 = glm::dot(zenith, zenith);
+    assert(zl2 > 0.0);   // no vertical: the caller dashes the column
+    zenith *= 1.0 / std::sqrt(zl2);
+    double lon = 0.0, lat = 0.0, lon_ss = 0.0, dec = 0.0;
+    equirectLonLat(zenith, lon, lat);          // the place, in the grid the map paints
+    subsolarLonLat(to_sun, lon_ss, dec);       // ... and this instant's noon (asserts a star)
+    return groundLagRow(lat, dec, tau).at(lon - lon_ss);
 }
 
 /* [K] The air at one altitude when the air nearest the ground is allowed to follow the
