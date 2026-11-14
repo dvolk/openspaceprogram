@@ -262,8 +262,11 @@ inline double groundTemperatureAt(double anchor_K, double even_share, double cos
    plain cosine it measured, unchanged.
    A fifth place still prices the law at cos_inc 0.0 and 1.0 -- the atlas's `ground swing` row --
    and that one is deliberately NOT lagged: its two ends are what the one knob forces, which is
-   what keeps #724/#735's identity closing. A lagged body's dossier therefore states a swing its
-   map cannot reach; that contradiction is #830, not an oversight to fix by lagging the extremes.
+   what keeps #724/#735's identity closing. What a lagged dossier does instead is say the lag is
+   there (#830): a `ground lag 1.103 rad of phase (a 1.70 h response; day 09:40:25)` row beside
+   the swing, dashed when the file states nothing. So a player reading Dres gets the law's pair
+   (53.6 to 220.0 K), the knob that keeps the map from painting its hot end (190.40 K), and the
+   day the angle was measured against -- without the two numbers being merged into one.
    --------------------------------------------------------------------------------------------- */
 
 /* One latitude's lagged answer, built once per latitude and evaluated per longitude (#802's

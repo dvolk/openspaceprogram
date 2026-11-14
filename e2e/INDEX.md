@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 344 |
+| `invariant` | a behaviour or a player route the game must keep | 345 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 48 |
 | `harness` | CLI/test-engine plumbing, not game spec | 15 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **411** |
+| | **total** | **412** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -161,7 +161,7 @@ judgement. Select by number, name or path, e.g.
 | `crew/394-spent-pool-kerbal-refused.txt` | invariant | A kerbal spawned on a spent pad pool is refused, not minted off the def. |
 | `crew/547-walking-kerbal-suit-mass-overflow-refused.txt` | invariant | A saved kerbal whose suit contents add up to more mass than the game can store is refused, not stood up as a NaN-inertia Body. |
 
-## science (28)
+## science (29)
 
 | case | kind | pins |
 |---|---|---|
@@ -193,6 +193,7 @@ judgement. Select by number, name or path, e.g.
 | `science/744-solar-log-dashes-what-a-railed-hull-stopped-measuring.txt` | invariant | --solar-log prints numbered air_T / prof_T / w / follow for a hull standing live in Kerbin's air and dashes all four once a warp freezes it on rails, while underfoot_T keeps its number and keeps swinging. |
 | `science/829-a-lagged-worlds-air-follows-the-ground-the-map-paints.txt` | invariant | On a world that authored a ground phase lag, the flight log's underfoot kelvin is the lagged ground -- the one the surface map paints -- and the air a hull flies through couples to that same number rather than to this instant's cosine. |
 | `science/829-b-world-nobody-gave-a-lag-still-answers-this-instant.txt` | invariant | A world with no phase lag authored answers its ground from this instant's cosine to the last printed digit, in the flight log and in the air under a hull alike, so making the lagged readers agree is a branch and not a change to every world. |
+| `science/830-the-dossier-carries-the-lag-beside-the-swing-it-modifies.txt` | invariant | A shipped world that authored a ground phase lag says so in the same block as its swing -- the knob in radians of phase, its response time in hours, and the measured solar day that converts the two -- while the swing itself stays the law's two ends, so the identity that ties them still closes and it is the READER who is told which of the two numbers the map cannot paint. |
 
 ## vab (42)
 

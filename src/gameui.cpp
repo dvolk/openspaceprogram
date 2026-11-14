@@ -7466,6 +7466,40 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
                      groundTemperature(anchor, f, 0.0),
                      groundTemperature(anchor, f, 1.0));
             line(giant ? "level swing" : "ground swing", v);
+            /* #830: the third knob of this law, printed beside the swing it modifies. The two
+               kelvin above are the LAW's ends -- one anchor and one even share force both, and
+               #724/#735's identity `(day/T0)^4 + 3 (night/T0)^4 = 4` is pinned against them --
+               so they stay exactly as they are. But a body that authored a phase lag never
+               paints its hot end: Dres measures a 205.6 K law end against a 190.4 K palette
+               (e2e render/794-b). A reader handed only the swing cannot tell which of those two
+               numbers the world actually wears, which is #793's "a labelled colour the world
+               never wears" wearing a dossier's clothes.
+               The angle is radians of PHASE as authored, plus the same angle in this body's
+               MEASURED mean solar day (b.cal.solar_day_seconds, from measureSolarDay) -- never
+               the sidereal rotation, which is the exact trap that makes an author type
+               `lag_tau: 14` meaning 14:00 (authored.h). Absence dashes; a stated 0.0 prints the
+               zero it claims (#727). */
+            if(lagTauAuthored(b.surface.lag_tau)) {
+                const double sd = b.cal.solar_day_seconds;
+                char dv[32];
+                if(sd > 0.0) {
+                    /* The hours are the RESPONSE TIME (tau_phase / omega_solar), which is what a
+                       tau is in seconds -- NOT how late the peak lands, which is atan(tau) of
+                       phase and, on a day/night row, a few degrees inside that (the map's
+                       peak_deg= column measures it; Dres measures +42.6 deg, 1.14 h). Naming it
+                       keeps the two apart in the one line a player reads. */
+                    fmtRow(v, sizeof v, "%.3f rad of phase (a %.2f h response; day %s)",
+                             b.surface.lag_tau,
+                             b.surface.lag_tau / (2.0 * std::numbers::pi) * sd / 3600.0,
+                             fmt_time(sd, dv, sizeof dv));
+                } else {
+                    fmtRow(v, sizeof v, "%.3f rad of phase (no day to convert against)",
+                             b.surface.lag_tau);
+                }
+                line(giant ? "level lag" : "ground lag", v);
+            } else {
+                line(giant ? "level lag" : "ground lag", "-");
+            }
             /* #793: where relief is live, the anchor is a DATUM statement -- the ground at this
                body's sea level, which the two ends above swing around, and NOT the coldest ground
                the map paints. Saying so in the label is the same rule #552 pinned for
