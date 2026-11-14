@@ -253,6 +253,13 @@ void surfmapCompute(Game &g) {
            the night end, the cos(lat)-weighted T^4 mean against the anchor) at 0.02..0.05 K,
            which is ~10^11 ulps of slack and would not notice a re-baseline. */
         const EquirectTrig trig = equirectTrig(w, h);
+        /* The wind sites index these tables by (i, j) themselves instead of going through
+           equirectDirAt, which asserts the bounds on every read. So the "the tables are the
+           grid this bake asked for" invariant is asserted once here, for free, rather than
+           per pixel -- a mismatch would otherwise read a plausible heap neighbour (#802's
+           comment in equirect.h says why that is the dangerous failure). */
+        assert((int)trig.cos_lon.size() == w && (int)trig.cos_lat.size() == h
+               && (int)trig.lon_deg.size() == w && (int)trig.lat_deg.size() == h);
         /* #793 added a second reason to want this grid: a relief-aware ground. The two uses share
            one pass because terrainHeight() -- the noise -- is the expensive half of the whole
            sweep, and a pixel that needs its height twice pays for it once. */
@@ -447,9 +454,13 @@ void surfmapCompute(Game &g) {
                        a vector field (#769). And since #767 the pixel's own place matters too:
                        a row can answer for one band of the body and not this pixel. */
                     const double elev = (double)(*elevs)[(size_t)j * w + i] - sea_r;
-                    double lon_deg = 0.0, lat_deg = 0.0;
-                    equirectLonLatDeg(d, lon_deg, lat_deg);
-                    const glm::dvec3 wv = windAt(wl.rows, elev, lat_deg, lon_deg);
+                    /* #824: the pixel's place is the grid's own -- one row of latitude, one
+                       column of longitude -- so it is read from the table rather than recovered
+                       per pixel with asin + atan2 + fmod. See EquirectTrig's lon_deg/lat_deg
+                       for why the latitude is bit-for-bit and what the longitude changes. */
+                    const glm::dvec3 wv = windAt(wl.rows, elev,
+                                                 trig.lat_deg[(size_t)j],
+                                                 trig.lon_deg[(size_t)i]);
                     /* The picture is a HORIZONTAL field: the arrows point along the ground and
                        the colour says how fast the air crosses it. The rising component (#767)
                        is deliberately not folded into the speed -- a cm/s downdraft painted as
@@ -587,11 +598,12 @@ void surfmapCompute(Game &g) {
             const double ca = std::cos(ha), sa = std::sin(ha);
             for(int j : use_j) {
                 for(int i = stride / 2; i < w; i += stride) {
-                    const glm::dvec3 d = equirectDirAt(trig, i, j);
                     const double elev = (double)(*elevs)[(size_t)j * w + i] - sea_r;  // sampled once
-                    double lon_deg = 0.0, lat_deg = 0.0;
-                    equirectLonLatDeg(d, lon_deg, lat_deg);
-                    const glm::dvec3 wv = windAt(wl.rows, elev, lat_deg, lon_deg);
+                    /* #824: the grid's own place, read from the tables -- as the scalar pass
+                       above does, and for the same reason. */
+                    const glm::dvec3 wv = windAt(wl.rows, elev,
+                                                 trig.lat_deg[(size_t)j],
+                                                 trig.lon_deg[(size_t)i]);
                     const double spd = std::hypot(wv.x, wv.y);   // the arrow is a ground vector
                     const double cl = trig.cos_lat[(size_t)j];   // cos(latitude)
                     const glm::dvec2 pv = surfmapWindPixelVec(wv.x, wv.y, cl);

@@ -908,6 +908,82 @@ int main() {
         }
         check(exact, "trig tables: bit-for-bit the same directions and angles at every pixel");
     }
+    {
+        /* The DEGREES tables (#824), which a place-keyed sweep (windAt) reads instead of
+           recovering a lat/lon per pixel with asin + atan2 + fmod. Pinned per pixel rather
+           than by trusting the builder, because the claim being made is that the sweep and
+           the one-off inverse ask the SAME question of the same grid.
+           LATITUDE is bit-for-bit the per-pixel inverse at every pixel: that half runs
+           through the direction's y, and y is the row's sin_lat in every column. Not an
+           empirical accident -- both spellings evaluate asinUnit on the same bits -- so it
+           holds on the row below too, where the longitude does not.
+           LONGITUDE parts company with the per-pixel inverse in two different ways, and
+           conflating them would hide the second:
+           - Interior rows: an ulp or two, at 6-7% of pixels (worst 5.684e-14 deg at
+             1024x512). The inverse scales BOTH atan2 arguments by the row's cos(lat), and
+             scaling two doubles rounds differently per row, so the old per-pixel spelling
+             answered the same column differently in different rows. The table makes a column
+             one answer; equirect.h says what a band edge inside the envelope means. Pinned
+             as an envelope 18x the worst gap seen.
+           - The LAST row: exactly 180 deg, not an ulp, for the grids whose
+             cos(pi/2 - pi*(h-1)/(h-1)) rounds NEGATIVE -- 266 of the 4081 widths
+             --surfmap-n accepts, 28 the first. There the row's DIRECTION points at the
+             antipodal meridian, so it is the per-pixel inverse that asks about the wrong
+             side of the body (issue #844); the table takes the column's own longitude
+             whichever way the row points. Pinning it as "nothing or a clean 180" is what
+             keeps a future degrees bug from arriving dressed as that known flaw.
+           {28, 14} and {1440, 720} are in the list because they trip the negative south cos;
+           the rest are the degenerate, odd and real-bake shapes the pin above insists on. */
+        const int kGrids[][2] = { {2, 2}, {3, 2}, {16, 8}, {17, 8}, {26, 13},
+                                  {255, 127}, {512, 256}, {1024, 512},
+                                  {28, 14}, {1440, 720} };
+        bool lat_exact = true;
+        bool sizes_ok = true;
+        double worst_lon = 0.0;        // interior rows, vs the column's table entry
+        bool south_strange = false;    // a south-row gap that is neither 0 nor 180
+        bool south_flip_without_bad_cos = false;
+        int grids_with_bad_south_cos = 0;
+        for(auto &g : kGrids) {
+            const int w = g[0], h = g[1];
+            const EquirectTrig t = equirectTrig(w, h);
+            if((int)t.lon_deg.size() != w || (int)t.lat_deg.size() != h) {
+                sizes_ok = false;   // the tables are not the grid they were asked for
+                continue;
+            }
+            const bool bad_south = t.cos_lat[(size_t)h - 1] < 0.0;
+            if(bad_south) { grids_with_bad_south_cos++; }
+            for(int j = 0; j < h; j++) {
+                for(int i = 0; i < w; i++) {
+                    double lo = 0.0, la = 0.0;
+                    equirectLonLatDeg(equirectDirAt(t, i, j), lo, la);
+                    if(la != t.lat_deg[(size_t)j]) { lat_exact = false; }
+                    const double gap = std::fabs(lo - t.lon_deg[(size_t)i]);
+                    if(j < h - 1) {
+                        if(gap > worst_lon) { worst_lon = gap; }
+                        continue;
+                    }
+                    /* The last row. A gap of 180 means the row's own direction is mirrored
+                       (#844) and both numbers are still the grid's law; anything else is a
+                       degrees bug. */
+                    const bool agrees = gap <= 1e-12;
+                    const bool flipped = std::fabs(gap - 180.0) <= 1e-12;
+                    if(!agrees && !flipped) { south_strange = true; }
+                    if(flipped && !bad_south) { south_flip_without_bad_cos = true; }
+                }
+            }
+        }
+        check(lat_exact, "degrees tables: latitude bit-for-bit the per-pixel inverse");
+        check(sizes_ok, "degrees tables: one entry per column and per row");
+        check(worst_lon <= 1e-12, "degrees tables: interior longitude within 1e-12 deg of it");
+        check(!south_strange, "degrees tables: a south-row gap is nothing or a clean 180 deg");
+        check(!south_flip_without_bad_cos,
+              "degrees tables: only a negative south cos flips it (#844)");
+        check(grids_with_bad_south_cos >= 1,
+              "degrees tables: the list still covers a grid with a negative south cos");
+        std::printf("test_surfmap: lon_deg worst interior gap against the per-pixel inverse:"
+                    " %.3e deg (%d of %d grids have a negative south cos)\n",
+                    worst_lon, grids_with_bad_south_cos, (int)(sizeof(kGrids) / sizeof(kGrids[0])));
+    }
 
     // 2. equirectLonLat: the inverse (render.cpp's atan2(x, z), asin(y),
     //    with lon unwrapped to [0, 2pi)).

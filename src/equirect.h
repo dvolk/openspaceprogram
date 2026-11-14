@@ -170,7 +170,54 @@ struct EquirectTrig {
        same expressions equirectDirAt above uses, so a lag cannot be defined against a grid the
        engine does not paint (the spatial half of what tests/test_surfmap.cpp pins). */
     std::vector<double> lon, lat;
+    /* [deg] The same grid's PLACES in the degrees spelling an authored table is keyed by
+       (#824, and #767's wind bands): longitude per COLUMN, latitude per ROW. A sweep that
+       asks a place-keyed question per pixel (windAt) needs these, and paying asin + atan2 +
+       fmod per pixel for two numbers that take w + h evaluations is the mistake #802 removed
+       on the forward side. Both are built by running equirectLonLatDeg on this file's own
+       forward law, so a table entry is that law read at a place -- the one spelling a
+       one-off inverse (the aero path reads a hull's place at src/vehicle.cpp:504) agrees with.
+       lat_deg is BIT-FOR-BIT what the per-pixel inverse answers at every pixel: that half
+       runs through the direction's y, and y is the row's sin_lat in every column. lon_deg is
+       NOT, and the gap is worth knowing before it is read as noise:
+       - Interior rows: 6-7% of pixels sit an ulp or two off their column's own number, worst
+         5.684e-14 deg. Both atan2 arguments carry the row's cos(lat), and scaling two doubles
+         rounds differently per row -- so the OLD per-pixel spelling answered the SAME COLUMN
+         DIFFERENTLY IN DIFFERENT ROWS. The table makes a column one answer. What that can
+         move: a pixel within ~1e-13 deg of an authored longitude band edge picks the other
+         band, where before which band it picked depended on the row. Only
+         res/systems/wind_playground.json authors a longitude band (its edges are 0 and 300).
+       - The LAST row is worse than an ulp, and the table is the fix rather than the victim:
+         lat = pi/2 - pi*(h-1)/(h-1) is not exactly -pi/2, and at 266 of the 4081 widths
+         --surfmap-n accepts, 28 the first, cos_lat[h-1] rounds NEGATIVE. That row's direction
+         then points at the antipodal meridian, so the per-pixel inverse answers a longitude
+         exactly 180 deg off the column's. The table never inherits it; the row's own
+         DIRECTION is still wrong, which is issue #844.
+       Pinned in tests/test_surfmap.cpp. */
+    std::vector<double> lon_deg, lat_deg;
 };
+
+/* equirectDirAt for a grid whose trig is already in hand: same direction, no
+   transcendentals. Bounds asserted rather than assumed -- the tables carry their own w and
+   h, so a caller that built them for a different bake would otherwise read past them
+   instead of failing the way the (i, j, w, h) form fails. The assert is load-bearing in a
+   way that form's is not: past-the-end vector indexing answers a plausible heap neighbour,
+   i.e. silently wrong pixels rather than a crash, and the (i, j, w, h) form has no indexing
+   to get wrong at all. No build configuration here defines NDEBUG today, so the debug builds
+   that would catch it are the ones we run.
+
+   Defined ABOVE equirectTrig because that builder calls it: the per-row degrees table is
+   built by inverting this function's column-0 direction, so the latitude a wind row is keyed
+   by is literally the latitude the sweep paints that row at. Row j's cos_lat/sin_lat are
+   filled just before the call and every lon table entry is filled, so the asserts hold while
+   the grid is still under construction. */
+inline glm::dvec3 equirectDirAt(const EquirectTrig &t, int i, int j) {
+    assert(i >= 0 && i < (int)t.cos_lon.size()
+       && j >= 0 && j < (int)t.cos_lat.size());
+    const double cl = t.cos_lat[(size_t)j];
+    return glm::dvec3(cl * t.cos_lon[(size_t)i], t.sin_lat[(size_t)j],
+                      -cl * t.sin_lon[(size_t)i]);
+}
 
 inline EquirectTrig equirectTrig(int w, int h) {
     assert(w >= 2 && h >= 2);
@@ -181,11 +228,19 @@ inline EquirectTrig equirectTrig(int w, int h) {
     t.sin_lat.resize((size_t)h);
     t.lon.resize((size_t)w);
     t.lat.resize((size_t)h);
+    t.lon_deg.resize((size_t)w);
+    t.lat_deg.resize((size_t)h);
     for(int i = 0; i < w; i++) {
         const double lon = 2.0 * std::numbers::pi * (double)i / (double)w;
         t.lon[(size_t)i] = lon;
         t.cos_lon[(size_t)i] = std::cos(lon);
         t.sin_lon[(size_t)i] = std::sin(lon);
+        /* The column's OWN place: the forward law at lat 0, inverted. w evaluations of
+           cos/sin more than reading the entries back, against w*h pixels that stop paying
+           for it. */
+        double ld = 0.0, ad = 0.0;
+        equirectLonLatDeg(equirectDir(lon, 0.0), ld, ad);
+        t.lon_deg[(size_t)i] = ld;
     }
     for(int j = 0; j < h; j++) {
         const double lat = std::numbers::pi * 0.5
@@ -193,22 +248,10 @@ inline EquirectTrig equirectTrig(int w, int h) {
         t.lat[(size_t)j] = lat;
         t.cos_lat[(size_t)j] = std::cos(lat);
         t.sin_lat[(size_t)j] = std::sin(lat);
+        /* The row's OWN place: this grid's column 0, by the same function a pixel uses. */
+        double ld = 0.0, ad = 0.0;
+        equirectLonLatDeg(equirectDirAt(t, 0, j), ld, ad);
+        t.lat_deg[(size_t)j] = ad;
     }
     return t;
-}
-
-/* equirectDirAt for a grid whose trig is already in hand: same direction, no
-   transcendentals. Bounds asserted rather than assumed -- the tables carry their own w and
-   h, so a caller that built them for a different bake would otherwise read past them
-   instead of failing the way the (i, j, w, h) form fails. The assert is load-bearing in a
-   way that form's is not: past-the-end vector indexing answers a plausible heap neighbour,
-   i.e. silently wrong pixels rather than a crash, and the (i, j, w, h) form has no indexing
-   to get wrong at all. No build configuration here defines NDEBUG today, so the debug builds
-   that would catch it are the ones we run. */
-inline glm::dvec3 equirectDirAt(const EquirectTrig &t, int i, int j) {
-    assert(i >= 0 && i < (int)t.cos_lon.size()
-       && j >= 0 && j < (int)t.cos_lat.size());
-    const double cl = t.cos_lat[(size_t)j];
-    return glm::dvec3(cl * t.cos_lon[(size_t)i], t.sin_lat[(size_t)j],
-                      -cl * t.sin_lon[(size_t)i]);
 }
