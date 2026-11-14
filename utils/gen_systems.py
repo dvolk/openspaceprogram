@@ -36,8 +36,10 @@ from atmo_units import (resolve_layer_heights, anchor_sea_level_pressure,
 # system and the catalogue cannot grow two different weathers (#636).
 from ground_model import (fit_even_share, even_share_air_note, ground_anchor,
                           night_T, calibration_from_fitted, default_even_share,
-                          SRC_PAIR_NIGHT, SRC_PAIR_DAY, SRC_PAIR_BOTH,
-                          invent_missing_albedos, AIR_FOLLOW)
+                          SRC_PAIR_NIGHT, SRC_PAIR_DAY, SRC_PAIR_BOTH, SRC_PAIR_LEAST,
+                          invent_missing_albedos, AIR_FOLLOW,
+                          lag_phase, lag_effect, GAMMA_REGOLITH, LAG_AUTHOR_FLOOR,
+                          LAG_BORROW_DAMP_FLOOR, SRC_LAG_THERMAL)
 
 TWOPI = 2.0 * math.pi
 G = 6.674e-11
@@ -963,22 +965,35 @@ def solar_reference_even_shares():
     return val, src, p
 
 
-def mean_orbit_to_star(body, by_name):
-    """The MEAN orbit of the nearest ancestor of `body` that orbits the star, the way
-    atlasDossier() picks it: a moon reads its PLANET's rail, because its own distance to
-    the sun swings over its month and no single figure there is honest."""
+def star_orbiting_descendant(body, by_name):
+    """The body on this chain that ORBITS THE STAR directly -- for a moon, its planet. Spelled
+    once because two passes need the same walk and the walk is the part that decides a moon reads
+    its PLANET's sky, not its own month: the Sun's apparent rate over a moon's horizon is the
+    planet's year rate (the Moon turns once in 27.3 days and its sun moves once in 29.5), and a
+    moon locked to its planet still has a day."""
     cur = body
     while cur.get("orbits"):
         par = by_name.get(cur["orbits"])
         assert par, "body %s orbits %r, which this system does not have" % (
             cur["name"], cur["orbits"])
         if par.get("type") == "star":
-            n = (cur.get("inertial") or {}).get("orb_ang_speed") or 0.0
-            if n <= 0.0 or par.get("mass", 0.0) <= 0.0:
-                return None, None
-            return semimajor_axis(G * par["mass"], n), cur["name"]
+            return cur
         cur = par
-    return None, None
+    return None
+
+
+def mean_orbit_to_star(body, by_name):
+    """The MEAN orbit of the nearest ancestor of `body` that orbits the star, the way
+    atlasDossier() picks it: a moon reads its PLANET's rail, because its own distance to
+    the sun swings over its month and no single figure there is honest."""
+    cur = star_orbiting_descendant(body, by_name)
+    if cur is None:
+        return None, None
+    par = by_name[cur["orbits"]]
+    n = (cur.get("inertial") or {}).get("orb_ang_speed") or 0.0
+    if n <= 0.0 or par.get("mass", 0.0) <= 0.0:
+        return None, None
+    return semimajor_axis(G * par["mass"], n), cur["name"]
 
 def author_ksp_albedos(obj):
     """#735: put a Bond albedo on the shipped bodies, and print what it costs them.
@@ -1455,6 +1470,197 @@ def author_ksp_diurnal_defaults(obj):
                  ('\n%20s%s' % ('', note)) if note else ''))
 
 
+# ---------------------------------------------------------------------------------------------
+# #794 step 5: author the ground's PHASE LAG on the bodies the thermal parameter says want one.
+#
+# src/groundtemp.h solves a lag; ground_model.py:lag_phase prices one. This is the session that
+# decides which shipped files carry the knob, and the audit in tests/test_belts.cpp used to say
+# "no shipped body authors a lag yet" precisely so this could be a decision rather than a corpus
+# edit slipping in sideways.
+#
+# WHAT GETS ONE. Airless bodies only. The derivation is a radiating skin in vacuum, and under a
+# sky the surface is not what sets the ground's day -- the column is, and this corpus prices
+# columns with `even_share` and `air_follow`, not with a skin depth. So every body with an
+# atmosphere block is skipped out loud, and if one ever wants a lag it wants a different law.
+#
+# WHY THESE AND NOT EVERY BODY. One Gamma -- lunar regolith, the only thermal-inertia figure the
+# corpus has any claim to -- applied by the formula, which is what makes it a sweep instead of a
+# guess per body: Dres (priced at its mean-orbit 156 K under a 9.7 h day) comes out at 1.10 rad and
+# comes out of it at Moho (440 K, 740 h day) at 0.006. The floor is LAG_AUTHOR_FLOOR, and a body
+# under it is printed with its number rather than kept invisible, so the next person can see what
+# raising the floor would buy. The anchor theorem means authoring costs nothing in energy: <T^4>
+# stays the anchor exactly.
+#
+# WHAT GETS REFUSED, and this part is not mechanics. A phase lag also DAMPS the diurnal swing,
+# and `even_share` is the knob this corpus already uses to pay for flattening, so authoring tau
+# beside a share that was FITTED off some world's day/night pair risks charging the same damping
+# twice. That is a RULE now, not a name on a list (#794 step 5 review): the share travels with
+# even_share_src saying how it was priced, and the reference corpus's own taus are read from that
+# file with this same formula (reference_ground_lags below).
+#
+# A share that came from the DEFAULT airless floor is safe -- and it is worth saying why, because
+# the first cut of this comment had the premise backwards. That floor is not an unmeasured plug:
+# it is CALIBRATED from the Moon's SOLVED pair (ground_model.py:calibration_from_fitted), and this
+# same formula puts the Moon at tau 0.023, damping 0.9997 -- so the pair the floor was fitted on
+# contains no diurnal damping that a lag could be double-charging. Dres, Ike and Tylo carry that
+# number and get a lag; Moho, Gilly and Mun carry it and are refused by the floor instead.
+#
+# What is NOT safe is a share fitted on a world this formula calls slow. Pluto's 0.4308 is
+# "solved from a stated range" on a body at tau 40.5 (damping 0.025) -- a bare skin that slow
+# keeps no diurnal cycle at all, so that f is doing an atmosphere's spreading wearing a rock's
+# clothes -- and Eeloo carries exactly that number ("via Pluto"), so the rule refuses it. Same
+# verdict the hand check reached, now derived: if a refit moves Pluto's pair, this refusal moves
+# with it, and a second slow analogue would be caught without anyone noticing by hand.
+def reference_ground_lags():
+    """{name: (tau, damping)} for the REFERENCE corpus, priced by the same formula this file
+    applies to KSP. Read rather than authored -- solar_system.json keeps its unlagged ground and
+    this pass does not touch it -- because the question being asked is about a number that file
+    already owns: how much of a borrowed even share is diurnal damping, which depends on how fast
+    the world it was fitted on turns. Loading and pricing the whole catalogue costs milliseconds
+    and keeps the judgement derived instead of retyped (#636/#687)."""
+    import json as _json
+    path = os.path.join(ROOT, "res", "systems", "solar_system.json")
+    with open(path) as f:
+        obj = _json.load(f)
+    by_name = {b["name"]: b for b in obj["bodies"]}
+    star = next(b for b in obj["bodies"] if b.get("type") == "star")
+    sT = (star.get("surface") or {}).get("temperature") or 0.0
+    assert sT > 0.0, "the reference star states no surface temperature; there is no light to price against"
+    lum = 4.0 * math.pi * star["radius"] ** 2 * SIGMA_SB * sT ** 4
+    out = {}
+    for b in obj["bodies"]:
+        if b.get("type") == "star":
+            continue
+        priced = price_ground_lag(b, by_name, lum)
+        if priced is not None:
+            tau, _T0, _ws, _why = priced
+            out[b["name"]] = (tau, lag_effect(tau)[0])
+    return out
+
+
+def share_lag_conflict(name, surf, ref_lag):
+    """Why this body's even share may already be paying for the flattening a phase lag would buy,
+    or None when it plainly is not. Keyed on the share's own provenance string, because that is
+    the only place the file says whether the number is a measurement or a rule:
+      * fitted HERE (SRC_PAIR_*): the pair is that world's own stated day and night, whatever
+        physics brought them together, so a lag on top is the same flattening billed twice;
+      * borrowed from an analogue whose fit was used ("via X", not "via X, defaulted"): judge the
+        analogue -- if this formula leaves it damped below LAG_BORROW_DAMP_FLOOR, its pair cannot
+        be a bare rock's rotation, so the share carries a claim this body would then repeat;
+      * a DEFAULT rule (the airless floor, the air-mass rule) or a borrow that DEFAULTED: no
+        measurement of a slow world in it, so no double count. Note the airless floor IS a
+        measurement -- of the Moon, a world at tau 0.023 -- which is exactly why it is safe."""
+    src = surf.get("even_share_src") or ""
+    share = surf.get("even_share")
+    if share is None:
+        return None
+    if src in (SRC_PAIR_NIGHT, SRC_PAIR_DAY, SRC_PAIR_BOTH, SRC_PAIR_LEAST):
+        return ("its even share %.4f was fitted from THIS body's stated pair (%s), which is the "
+                "real world's day and night whatever brought them together; a lag laid on top "
+                "bills the same flattening twice" % (share, src))
+    if src.startswith("via ") and not src.endswith(", defaulted"):
+        analogue = src[4:]
+        rl = ref_lag.get(analogue)
+        if rl is None:
+            return None
+        tau_a, damp_a = rl
+        if damp_a >= LAG_BORROW_DAMP_FLOOR:
+            return None
+        return ("its even share %.4f is %s's SOLVED pair, and this same formula puts %s at tau "
+                "%.1f (damping %.3f) -- a bare skin that slow keeps no diurnal cycle at all, so "
+                "that share is doing an atmosphere's spreading, not a rock's rotation. A tau of "
+                "this body's own on top bills the flattening twice; the fix is to re-solve this "
+                "swing or borrow an analogue the formula leaves undamped"
+                % (share, analogue, analogue, tau_a, damp_a))
+    return None
+
+
+def price_ground_lag(body, by_name, lum):
+    """(tau [phase rad], anchor_K, omega_solar [rad/s], why) for one body, or None when it has no
+    spin and no orbit to make a day. Shared by the KSP pass and the reference corpus so the two
+    cannot drift apart -- the refusal rule below judges an analogue by the same arithmetic it uses
+    on a body it is about to author.
+
+    omega_solar is the STAR's apparent rate over this horizon, which is the rate a phase lag is
+    measured against and is NOT the body's own orbital rate when the body is a moon: the Moon turns
+    once in 27.3 days and its sun moves once in 29.5, because the pair orbits the star (see
+    star_orbiting_descendant). Reading a moon's own rate instead would say "synchronous, tau 0" and
+    leave every Jool moon with an instantaneous map.
+    Both spin and orbit are scalars in these files, so this is the COPLANAR reading |rot - w_year|.
+    A body tilted past ~0.4 rad wants rot * cos(tilt) along the orbit normal instead, which moves
+    tau by 5 % on Bop (the most tilted of the seven authored) and by 27 % on Eeloo, whose 2.14 rad
+    tilt is retrograde. Not fixed here because the correction needs a spin axis these files do not
+    author; filed as an issue."""
+    rot = (body.get("rotating") or {}).get("rot_ang_speed")
+    kid = star_orbiting_descendant(body, by_name)
+    if rot is None or kid is None:
+        return None
+    w_year = (kid.get("inertial") or {}).get("orb_ang_speed") or 0.0
+    ws = abs(rot - w_year)
+    if ws <= 0.0:
+        return None, None, None, "star-synchronous: the sun stands still in this sky"
+    a_star, _rail = mean_orbit_to_star(body, by_name)
+    flux = (lum / (4.0 * math.pi * a_star * a_star)) if a_star else 0.0
+    albedo = (body.get("surface") or {}).get("albedo")
+    derived = (blackbody_temperature(flux, albedo)
+               if (flux and albedo is not None) else 0.0)
+    T0, why = ground_anchor(body, derived)
+    if T0 is None:
+        return None, None, None, "no anchor: the swing row already dashes here"
+    return lag_phase(GAMMA_REGOLITH, ws, T0), T0, ws, why
+
+
+def author_ksp_ground_lag(obj):
+    """#794 step 5: write surface.lag_tau (and its provenance) on the airless bodies whose
+    thermal parameter clears the floor, and print the sweep for the ones that do not."""
+    by_name = {b["name"]: b for b in obj["bodies"]}
+    star = next(b for b in obj["bodies"] if b.get("type") == "star")
+    sT = (star.get("surface") or {}).get("temperature") or 0.0
+    assert sT > 0.0, "author_ksp_ground_lag() must run after author_star_temperature()"
+    lum = 4.0 * math.pi * star["radius"] ** 2 * SIGMA_SB * sT ** 4
+    ref_lag = reference_ground_lags()
+    authored = declined = 0
+    for body in obj["bodies"]:
+        if body.get("type") == "star":
+            continue
+        name = body["name"]
+        surf = body.get("surface") or {}
+        assert surf.get("lag_tau") is None, (
+            "%s: something already authored a phase lag; this pass owns the knob" % name)
+        priced = price_ground_lag(body, by_name, lum)
+        if priced is None:
+            print('  lag       %-8s none  (no spin, or nothing to orbit)' % name)
+            continue
+        tau, T0, ws, why = priced
+        if tau is None:
+            print('  lag       %-8s none  (%s)' % (name, why))
+            continue
+        damp, peak = lag_effect(tau)
+        day = TWOPI / ws
+        if surf.get("atmosphere"):
+            print('  lag       %-8s skip  (air: this is a bare radiating skin, not a surface '
+                  'under a column; tau would be %.2f)' % (name, tau))
+            continue
+        if tau < LAG_AUTHOR_FLOOR:
+            print('  lag       %-8s below floor  (tau %.3f: peak %+.1f deg after noon, '
+                  'damping %.3f, solar day %.2f h at %.1f K)'
+                  % (name, tau, peak, damp, day / 3600.0, T0))
+            continue
+        conflict = share_lag_conflict(name, surf, ref_lag)
+        if conflict:
+            declined += 1
+            print('  lag       %-8s DECLINED  (tau %.2f) -- %s' % (name, tau, conflict))
+            continue
+        surf["lag_tau"] = tau
+        surf["lag_tau_src"] = SRC_LAG_THERMAL
+        authored += 1
+        print('  lag       %-8s tau %.6f  (peak %+.1f deg after noon, damping %.3f, '
+              'solar day %.2f h, anchor %.1f K)'
+              % (name, tau, peak, damp, day / 3600.0, T0))
+    print('  lag       %d authored, %d declined by provenance, floor %.2f rad of phase'
+          % (authored, declined, LAG_AUTHOR_FLOOR))
+
+
 def main():
     ap = argparse.ArgumentParser(
         description="Generate res/systems/{old,ksp}_system.json, or --check "
@@ -1513,6 +1719,9 @@ def main():
     # ... and the ground's swing, which reads the airs the line above just authored.
     author_ksp_diurnal(ksp)
     author_ksp_diurnal_defaults(ksp)
+    # #794 step 5 after the swings: this pass reads the anchor the passes above settled and
+    # refuses to author a phase lag onto a swing that already carries one (KSP_LAG_DECLINED).
+    author_ksp_ground_lag(ksp)
     author_ksp_air_follow(ksp)
     # Last of the air passes: a wind column is authored on top of a profile the passes above
     # have already settled, and "trop" reads that profile's own tropopause.

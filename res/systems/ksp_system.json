@@ -542,7 +542,9 @@
         "albedo": 0.6813950481608377,
         "albedo_src": "via Enceladus, converted",
         "even_share": 0.013935832091621402,
-        "even_share_src": "via Enceladus, defaulted"
+        "even_share_src": "via Enceladus, defaulted",
+        "lag_tau": 0.4243042685346705,
+        "lag_tau_src": "DERIVED: thermal parameter (INVENTED Gamma 50)"
       },
       "inertial": {
         "orb_ang_speed": 5.832285484117015e-06,
@@ -816,7 +818,9 @@
         "albedo": 0.11,
         "albedo_src": "via Moon",
         "even_share": 0.013935832091621402,
-        "even_share_src": "via Moon"
+        "even_share_src": "via Moon",
+        "lag_tau": 0.29019781130665917,
+        "lag_tau_src": "DERIVED: thermal parameter (INVENTED Gamma 50)"
       },
       "inertial": {
         "orb_ang_speed": 9.590013900271049e-05,
@@ -865,7 +869,9 @@
         "albedo": 0.11,
         "albedo_src": "via Moon",
         "even_share": 0.013935832091621402,
-        "even_share_src": "via Moon"
+        "even_share_src": "via Moon",
+        "lag_tau": 1.1030374825618534,
+        "lag_tau_src": "DERIVED: thermal parameter (INVENTED Gamma 50)"
       },
       "inertial": {
         "orb_ang_speed": 1.3119197047763653e-07,
@@ -1165,7 +1171,9 @@
         "albedo": 0.4633486327493697,
         "albedo_src": "via Europa, converted",
         "even_share": 0.013935832091621402,
-        "even_share_src": "via Europa, defaulted"
+        "even_share_src": "via Europa, defaulted",
+        "lag_tau": 2.0185061962765665,
+        "lag_tau_src": "DERIVED: thermal parameter (INVENTED Gamma 50)"
       },
       "inertial": {
         "orb_ang_speed": 5.9296590354840286e-05,
@@ -1211,7 +1219,9 @@
         "albedo": 0.11,
         "albedo_src": "via Moon",
         "even_share": 0.013935832091621402,
-        "even_share_src": "via Moon"
+        "even_share_src": "via Moon",
+        "lag_tau": 0.9761566804779316,
+        "lag_tau_src": "DERIVED: thermal parameter (INVENTED Gamma 50)"
       },
       "inertial": {
         "orb_ang_speed": 2.9648015378856705e-05,
@@ -1259,7 +1269,9 @@
         "albedo": 0.04769765337125865,
         "albedo_src": "via Phobos, converted",
         "even_share": 0.013935832091621402,
-        "even_share_src": "via Phobos, defaulted"
+        "even_share_src": "via Phobos, defaulted",
+        "lag_tau": 0.577934676490593,
+        "lag_tau_src": "DERIVED: thermal parameter (INVENTED Gamma 50)"
       },
       "inertial": {
         "orb_ang_speed": 1.1539218609089665e-05,
@@ -1309,7 +1321,9 @@
         "albedo": 0.12946505915055917,
         "albedo_src": "via Callisto, converted",
         "even_share": 0.013935832091621402,
-        "even_share_src": "via Callisto, defaulted"
+        "even_share_src": "via Callisto, defaulted",
+        "lag_tau": 0.47950747955950207,
+        "lag_tau_src": "DERIVED: thermal parameter (INVENTED Gamma 50)"
       },
       "inertial": {
         "orb_ang_speed": 6.966586547754677e-06,

@@ -1,0 +1,56 @@
+NAME 794-b-shipped-world-lags-its-star-and-says-so
+CLAIM A world the shipped catalogue now gives a phase lag paints its hottest ground a fifth of a day after noon, its picture stops reaching the hot end of its own law, and the sphere still radiates exactly what the star delivers.
+KIND invariant
+ARGS --timeout 14 --time-accel 100 --system res/systems/ksp_system.json
+ARGS --surfmap-log --surfmap-n 256 --surfmap-body Dres --surfmap-map temperature
+ARGS --sim-press 3000,0,M,7000,0,M,11000,0,M
+# #794 step 5, measured on a file players load rather than on a fixture. utils/ground_model.py's
+# thermal parameter -- one lunar-regolith Gamma against this body's own solar day and anchor --
+# priced Dres at 1.103 rad of phase, and utils/gen_systems.py wrote that into ksp_system.json
+# beside the provenance saying the Gamma is invented. Dres is the most affected of the seven bodies
+# the pass authors: 146 K under a 9.7 h day, so the skin's inertia outruns the radiation that would
+# otherwise pin it to this instant's light -- 4 sigma T^3 at Dres's 145.8 K anchor is twenty times
+# weaker than at Moho's 401.3 K -- and its hottest ground stands well east of its star. Moho, the
+# case beside this one, prices 0.006 rad from the same formula and is left unauthored.
+#
+# WHY A SHIPPED BODY AND NOT A FIXTURE: every number here hangs off a DERIVED anchor, so the rail,
+# the albedo and the star all have to agree with each other for the row to close. The
+# lag_playground cases pin the wiring; this pins the corpus.
+#
+# 1. THE KNOB REACHES THE SWEEP, in radians of phase as authored (1.1030374825618534 in
+#    res/systems/ksp_system.json; the log prints four decimals).
+CHECK all(abs(r["lag_tau"] - 1.1030) < 1e-3 for r in surfmap)
+CHECK all(r["body"] == "Dres" and r["map"] == "temperature" for r in surfmap)
+# 2. THE HOTTEST GROUND IS AFTERNOON. atan(1.103) = 47.8 deg is the closed form's POLAR-DAY answer;
+#    a day/night row peaks inside it -- the floored cosine's harmonics and the terminator-anchored
+#    homogeneous term pull the equatorial maximum back to 42.8 deg, and the engine measures +42.6
+#    on this 256-column grid, which is one column of that. A mirrored hour angle would read -42.
+CHECK all(40.0 < r["peak_deg"] < 46.0 for r in surfmap)
+#    ... and it is a PHASE relationship, not a longitude someone painted at: the subsolar meridian
+#    walks ~8 deg of the grid between these bakes while the peak holds its angle to it.
+CHECK (lambda rs: max(r["peak_deg"] for r in rs) - min(r["peak_deg"] for r in rs) < 1.5)(surfmap)
+CHECK (lambda rs: rs[-1]["sun_lon"] < rs[0]["sun_lon"] - 5.0)(surfmap)
+# 3. THE PICTURE NO LONGER REACHES ITS OWN LAW. temp_ends= is still 50.09 to 205.63 K -- one knob
+#    and an anchor force both, and #724/#735's identity lives on those ends, so authoring a lag is
+#    NOT allowed to move them. What moved is what the grid can paint: 190.40 K, 15 K short of the
+#    hot end. The ramp follows the grid (#745/#769/#793's closure), so no pixel is coloured with a
+#    temperature this surface never has. That the dossier still QUOTES the unreachable end is
+#    #830 -- now visible in a shipped file instead of only in a fixture.
+CHECK all(r["temp_ramp"][1] < r["temp_ends"][1] - 10.0 for r in surfmap)
+CHECK all(abs(r["temp"][2] - r["temp_ramp"][1]) < 1e-9 for r in surfmap)
+CHECK all(abs(r["temp"][0] - r["temp_ramp"][0]) < 1e-9 for r in surfmap)
+#    The COLD end is untouched, and it is worth naming WHICH PIXELS it belongs to, because they are
+#    not the nights: 50.09 K is anchor * f^(1/4), reached only by Dres's permanently dark polar rows
+#    (0.09 % of the sphere), where groundLagRow's forcing is exactly zero at ANY tau and the decay
+#    has all the time in the world. An actual night here bottoms far above that -- near 89 K at the
+#    equator -- because the skin's response time is ~2 h against ~4.8 h of darkness and it never
+#    finishes paying the day back. That retained heat is the other half of what the peak costs:
+#    this row's own peak-to-trough is 0.70 of the forcing's.
+CHECK all(r["temp_ends"][0] == r["temp_ramp"][0] for r in surfmap)
+# 4. THE ANCHOR THEOREM, on a shipped body with a DERIVED anchor: averaging the lag ODE over one
+#    rotation kills the derivative term, so <T^4> comes back to the anchor at the printed digit --
+#    145.79 K against 145.79 K at all three instants. Authoring a phase lag costs no power, which
+#    is the claim that lets it be one knob rather than a second temperature to fit.
+CHECK all(abs(r["datum_mean4"] - r["anchor"]) < 0.05 for r in surfmap)
+FORBID lag_tau=-
+FORBID error:

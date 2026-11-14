@@ -43,7 +43,7 @@ import math
 import re
 import sys
 
-from atmo_units import semimajor_axis   # the loader's rail, spelled once (#636)
+from atmo_units import semimajor_axis, SIGMA_SB   # the loader's rail and sigma, spelled once (#636)
 
 G = 6.674e-11      # m^3/kg/s^2 -- the same literal both generators and the loader use
 
@@ -558,6 +558,108 @@ def anchor_note(stated_T0, derived_T0):
             % derived_T0)
 
 
+# ---------------------------------------------------------------------------------------------
+# #794 step 5: authoring the ground's PHASE LAG, priced by one material number.
+#
+# src/groundtemp.h solves what a lag DOES (the periodic closed form, its anchor theorem, its
+# damping); this is the part that says what to WRITE in a file. The knob is radians of phase, so
+# the same ground wants a different number on each world: a response time in seconds has to be
+# multiplied by that world's own solar rate. Guessing per body does not scale to 1500 of them,
+# and a guess cannot be re-derived when someone fixes a rotation period.
+#
+# THE DERIVATION, in three steps, all standard.
+#   1. Linearise the skin's radiation. A layer of areal heat capacity C [J m^-2 K^-1] under a
+#      star radiating eps sigma T^4 relaxes toward its anchor in
+#          tau_time = C / (4 eps sigma T0^3)
+#      seconds -- the derivative of sigma T^4 at T0, which is why the response time is so much
+#      longer on a cold world: 4 sigma T^3 at 100 K is a twenty-seventh of what it is at 300 K.
+#   2. How deep does one rotation reach? The skin depth of a body driven at frequency omega is
+#      sqrt(2 alpha / omega), and C = rho cp d. Writing Gamma = sqrt(rho cp kappa) for the
+#      THERMAL INERTIA -- one measured figure a fact page can state, where rho, cp and kappa are
+#      three it never does -- collapses that to C = sqrt(2) Gamma / sqrt(omega).
+#   3. Author it in the unit the loader wants: tau_phase = omega tau_time, so
+#          tau_phase = Gamma sqrt(2 omega_solar) / (4 eps sigma T0^3)
+#      which is the classical thermal parameter -- not merely up to a factor: measured against
+#      this law's own airless day end T_ss = 4^(1/4) T0, the group above IS Gamma sqrt(omega) /
+#      (eps sigma T_ss^3) exactly, because sqrt(2) * 4^(3/4) / 4 = 1. Its limits are the ones the
+#      field already agrees on, and they are the reason this is worth a formula rather than a
+#      table:
+#        * omega_solar 0 -> tau 0. A body star-synchronous has a sun that does not move, so a
+#          diurnal lag is inert and the honest authored value is no value at all.
+#        * it grows as 1/T0^3: cold and fast is where a lag lives (Dres, priced at its mean-orbit
+#          156 K under a 9.7 h day, 48 deg), hot and slow is where it does not (Moho, 440 K under
+#          a 740 h day, 0.3 deg).
+#        * ONE dial buys both flattening and shift: the FILTER's damping is 1/sqrt(1 + tau^2) and
+#          its peak sits atan(tau) after noon. Read those as what they are -- exact for a polar-day
+#          row, a few per cent off for a day/night row, where the floored cosine and the
+#          terminator-anchored homogeneous term add harmonics (Dres measures 0.70 where the filter
+#          says 0.67, and 42.6 deg where it says 47.8; groundtemp.h quotes both). The point that
+#          survives is the LOCK: a body cannot be smoothed without also being dragged into the
+#          afternoon, and the flattening a fact page implies is what `even_share` was already
+#          carrying. gen_systems.py:share_lag_conflict refuses to author onto a share that was
+#          fitted off a slow world for exactly this reason.
+#
+# One caveat about the model rather than the number: a semi-infinite skin does not answer as a
+# first-order filter -- its gain keeps falling as omega^-1/2 and its phase stays near 45 deg. This
+# prices the thermal PARAMETER and hands it to a one-pole row, which is one knob on a law the game
+# already runs, not a subsurface model. #636's one-quantity rule, said out loud.
+#
+# eps stays 1.0 and is not a knob: src/groundtemp.h radiates sigma T^4 with no emissivity term
+# anywhere, so inventing one here would be minting a second surface law (#636).
+#
+# [W m^-2 K^-1 s^-0.5] Lunar regolith, the measured figure (Apollo's surface readings, and the
+# value asteroid beaming fits land in the same decade for bare rock). ONE value for every airless
+# body this repo authors, deliberately: the corpus has no thermal-inertia measurement for any of
+# them, so a per-body Gamma would be three digits of invention per world dressed as data. It is
+# INVENTED and its provenance string says so in the file, beside the number it priced.
+GAMMA_REGOLITH = 50.0
+
+# [rad] Below this, do not author. The criterion is the DAMPING the invented Gamma cannot
+# resolve: 0.2 rad flattens the diurnal swing by 2 %, a factor five inside the +/-factor-2 error
+# bar on Gamma itself, while every authored knob costs a file line, a provenance string and an
+# audit entry. Be honest about what the floor does NOT buy back: at 0.2 rad the peak has already
+# moved 11 deg of phase, which is ~8 columns of a 256-wide map, so declining Gilly (0.137 rad,
+# 7.8 deg) and the Mun (0.105, 6.0 deg) leaves those worlds painted closer to noon than this
+# formula thinks they are. That is the smaller error of the two, and it is a chosen one.
+LAG_AUTHOR_FLOOR = 0.2
+
+# [damping] A borrowed even share is only safe to pair with a phase lag if the world it was
+# fitted on is one this formula leaves mostly undamped. Below this the share is not a bare rock's
+# day/night pair -- gen_systems.py:share_lag_conflict refuses the borrow rather than billing the
+# same flattening twice. 0.5 puts Pluto (0.025) and Triton (0.072) on the refuse side and the
+# Moon (0.9997), Mercury (1.0000) and Callisto (0.9296) on the safe one.
+LAG_BORROW_DAMP_FLOOR = 0.5
+
+# These strings go into the system files (surface.lag_tau_src) and the atlas prints one beside
+# the knob, so short, the same rule as SRC_AIRLESS.
+SRC_LAG_THERMAL = 'DERIVED: thermal parameter (INVENTED Gamma 50)'
+
+
+def lag_phase(gamma_si, omega_solar_s, anchor_K):
+    """[rad of phase] How far a world's ground lags its star, from the thermal parameter above.
+
+    0.0 means "no lag worth authoring", which covers a star-synchronous body (its sun stands
+    still) and a hot slow one. It is NOT the absence: src/authored.h's kLagTauUnauthored stays
+    the only absence in the game, and a generator that computes 0.0 writes no key."""
+    assert anchor_K > 0.0 and math.isfinite(anchor_K), (
+        'a phase lag needs an anchor to be a fraction of: %s' % anchor_K)
+    assert gamma_si > 0.0 and math.isfinite(gamma_si), 'thermal inertia must be positive'
+    if omega_solar_s <= 0.0:
+        return 0.0
+    return gamma_si * math.sqrt(2.0 * omega_solar_s) / (4.0 * SIGMA_SB * anchor_K ** 3)
+
+
+def lag_effect(tau):
+    """[(damping, peak_deg after noon)] What an authored tau buys, for the printed verdict.
+
+    The row's own low-pass, not a second model: a first-order filter driven at the forcing's
+    frequency answers with amplitude 1/sqrt(1 + tau^2) and phase atan(tau). tests and the
+    generator's table both quote these, so they live beside the formula rather than in prose."""
+    if tau <= 0.0:
+        return 1.0, 0.0
+    return 1.0 / math.sqrt(1.0 + tau * tau), math.degrees(math.atan(tau))
+
+
 def _self_test():
     bad = 0
 
@@ -723,6 +825,29 @@ def _self_test():
           "a damped surface under the same sky says nothing")
     check(even_share_air_note("Mun", 0.0, None) == "",
           "no air, no note")
+
+    # ---- #794 step 5: the phase lag the generators author ---------------------------------
+    # The scaling laws the whole authoring pass stands on. A cold world's radiative damping is
+    # weak, so a colder anchor MUST lengthen the response by the CUBE of the temperature; twice
+    # the solar rate is sqrt(2), not 2 (a deeper skin at a slower drive). A derivation with a
+    # stray omega, or sigma applied twice, breaks these long before it breaks a shipped number.
+    t_cold = lag_phase(GAMMA_REGOLITH, 2e-4, 156.0)
+    check(abs(lag_phase(GAMMA_REGOLITH, 2e-4, 312.0) - t_cold / 8.0) < 1e-12,
+          "the lag scales 1/T0^3 -- the derivative of sigma T^4")
+    check(abs(lag_phase(GAMMA_REGOLITH, 4e-4, 156.0) - t_cold * math.sqrt(2.0)) < 1e-12,
+          "and sqrt(omega) -- the skin depth, not the response time alone")
+    check(lag_phase(GAMMA_REGOLITH, 0.0, 156.0) == 0.0,
+          "a star-synchronous world lags nothing: its sun stands still")
+    # The number Dres is authored with, pinned so a silent factor slip cannot ride into a
+    # shipped file. Dres: 156.0 K anchor (derived), a 34,825 s solar day the wiki states.
+    dres = lag_phase(GAMMA_REGOLITH, 2.0 * math.pi / 34825.305, 156.0)
+    check(1.05 < dres < 1.15, "the lunar figure on Dres is ~1.1 rad, got %.3f" % dres)
+    damp, peak = lag_effect(dres)
+    check(abs(damp - 1.0 / math.sqrt(1.0 + dres * dres)) < 1e-15 and 45.0 < peak < 50.0,
+          "one knob buys damping AND the afternoon: %.2f, %.1f deg" % (damp, peak))
+    d1, p1 = lag_effect(1.0)
+    check(abs(d1 - 1.0 / math.sqrt(2.0)) < 1e-15 and abs(p1 - 45.0) < 1e-9,
+          "at tau 1 the row is down to 1/sqrt(2) with its peak 45 deg after noon")
     print("ground_model self-test: %s" % ("OK" if bad == 0 else "%d FAILURES" % bad))
     return 1 if bad else 0
 

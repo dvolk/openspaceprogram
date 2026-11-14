@@ -256,9 +256,12 @@ void surfmapCompute(Game &g) {
            stands. Measured on a lapse-bearing scratch body, that pairing left 8.0 K of palette no
            pixel could reach (temp=[107.19 ...] against temp_ramp=[99.18 ...]), which is the #793
            bug wearing the new knob's clothes: a labelled colour the world never wears.
-           It runs ONLY for a body that authored a tau. With none -- every shipped body today --
-           the sweep stays the single pass it always was, so nothing that has ever been painted
-           moves by one bit. */
+           It runs ONLY for a body that authored a tau -- seven in ksp_system.json, and no body
+           in the four solar corpora, which the pricing pass has not looked at yet. Everywhere
+           else the sweep stays the single pass it always was, so nothing that has ever been
+           painted moves by one bit. Measured at --surfmap-n 2048, the pre-pass costs nothing
+           worth naming (Dres 98.2 ms against Moho's 102.3 ms, unlagged): the row is solved once
+           per latitude band, not once per pixel. */
         const bool lag = want_temp && tl.ok && lagTauActive(tl.lag_tau) && has_sun;
         /* has_sun is part of the gate, not decoration: the row model needs a declination, and a
            body with no star has none. Such a body takes the unlagged path, whose floored cosine
@@ -580,15 +583,17 @@ void surfmapCompute(Game &g) {
                     printf(" temp=[%.2f %.2f %.2f] temp_ends=[%.2f %.2f] temp_ramp=[%.2f %.2f]",
                            tmin, tsum / tw, tmax, tl.lo_K, tl.hi_K, trlo, trhi);
                     /* #794, on every temperature map. `lag_tau` is the authored knob in phase
-                       radians and DASHES when no file stated one (#727: an absence, not a zero),
-                       which is the state every shipped body is in. `peak_deg` is where the
-                       picture's hottest pixel actually sits -- degrees east of the subsolar
-                       meridian of this bake -- so the claim "the hot spot is under the star" is a
-                       number a case can hold the engine to, and the sign of it is the temporal
-                       half of the hour-angle convention that the law's own tests cannot see (a
-                       flipped h mirrors the pattern rather than moving it). `sun_lon` is that
-                       meridian in the grid's own coordinates, so two bakes at two instants can be
-                       compared in absolute longitude instead of only against each other.
+                       radians and DASHES when no file stated one (#727: an absence, not a zero)
+                       -- which is what the four solar corpora and everything under
+                       LAG_AUTHOR_FLOOR print, and what the ksp case beside this one checks a
+                       number against. `peak_deg` is where the picture's hottest pixel actually
+                       sits -- degrees east of the subsolar meridian of this bake -- so the claim
+                       "the hot spot is under the star" is a number a case can hold the engine
+                       to, and the sign of it is the temporal half of the hour-angle convention
+                       that the law's own tests cannot see (a flipped h mirrors the pattern
+                       rather than moving it). `sun_lon` is that meridian in the grid's own
+                       coordinates, so two bakes at two instants can be compared in absolute
+                       longitude instead of only against each other.
                        Both dash when the question has no answer: no star means no meridian, and a
                        picture with NO span at all -- no relief, and an even share that flattens the
                        field -- has its "hottest pixel" decided by scan order rather than by physics,

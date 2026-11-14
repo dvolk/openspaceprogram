@@ -1,0 +1,36 @@
+NAME 794-c-a-shipped-world-the-pass-left-unlagged-peaks-at-noon
+CLAIM The same instrument on a shipped world the thermal-parameter pass left WITHOUT a phase lag answers this instant's light: its hottest ground sits under the star, its picture reaches both of its law's ends, and the sweep says there is no knob by printing a dash rather than a 0.0 someone typed.
+KIND invariant
+ARGS --timeout 8 --time-accel 100 --system res/systems/ksp_system.json
+ARGS --surfmap-log --surfmap-n 256 --surfmap-body Moho --surfmap-map temperature
+ARGS --sim-press 3000,0,M,7000,0,M
+# #794 step 5's control, on the body the pass measured and REFUSED. utils/gen_systems.py prints
+# Moho at tau 0.006 -- a 740 h solar day at a 401 K anchor, where 4 sigma T^3 radiates twenty times
+# faster than on Dres and a skin that responds in under an hour has nothing to catch up with.
+# Under LAG_AUTHOR_FLOOR the pass writes no key, so Moho keeps the sentinel and the map keeps the
+# instantaneous cosine it has always used. That is the half of the ticket that keeps 1500 bodies
+# unmoved while the sweep looks at every one of them.
+#
+# 1. NO KNOB, NOT A ZERO. The log dashes lag_tau, which the harness reads as None; a stated 0.0
+#    ("this ground peaks at noon, and that is a fact") is a different claim and would print a
+#    number. Absence stays visible (#726/#727's law, authored.h's sentinel).
+CHECK all(r["lag_tau"] is None for r in surfmap)
+CHECK all(r["body"] == "Moho" and r["map"] == "temperature" for r in surfmap)
+# 2. THE HOTTEST GROUND IS UNDER THE STAR: +0.05 deg measured. The residual is where a broad
+#    maximum falls on a 256-column grid, not a lag -- so the band is degrees, not a decimal.
+CHECK all(-2.0 < r["peak_deg"] < 2.0 for r in surfmap)
+# 3. AND THE PICTURE REACHES BOTH ENDS OF ITS LAW, to the printed digit (566.02 K hot, 137.88 K
+#    cold). Moho has no air, so Surface::reliefOn() is off and the picture's ramp is the law's ends
+#    verbatim -- surfmap.cpp's assert after the grid pass pins that equality when neither relief nor
+#    a lag moves it, and this is that assert seen from outside. The grid's hottest pixel lands
+#    within a hundredth below it (566.01) because a broad maximum straddles column centres; the
+#    slack is that, not a lag. Dres, the case beside this one, misses the hot end by 15 K instead
+#    -- which is the point of the pair, since nothing else about the two rows differs in kind.
+CHECK all(abs(r["temp_ramp"][1] - r["temp_ends"][1]) < 1e-9 for r in surfmap)
+CHECK all(abs(r["temp_ramp"][0] - r["temp_ends"][0]) < 1e-9 for r in surfmap)
+CHECK all(abs(r["temp"][2] - r["temp_ramp"][1]) < 0.05 for r in surfmap)
+CHECK all(r["temp"][2] <= r["temp_ramp"][1] + 1e-9 for r in surfmap)
+# 4. THE ANCHOR MEANS THE SAME THING ON BOTH WORLDS: the derived black-body the light and this
+#    albedo imply, printed as the sweep's T^4 mean to the hundredth (401.29 against 401.29).
+CHECK all(abs(r["datum_mean4"] - r["anchor"]) < 0.05 for r in surfmap)
+FORBID error:

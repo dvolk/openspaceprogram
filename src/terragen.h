@@ -497,15 +497,19 @@ struct Surface {
     std::string even_share_src;
     /* #794: the ground's PHASE LAG -- how far the skin's temperature trails the star's light,
        in radians of phase (one rotation = 2 pi), NOT hours. Absent means no lag, which is the
-       instantaneous ground every shipped body has always had; a stated 0.0 says the same thing
+       instantaneous ground every unlagged body has always had; a stated 0.0 says the same thing
        as a FACT ("this world peaks at noon") and is legal. The law and the closed form are
-       src/groundtemp.h. Nothing in the shipped files authors one yet, so nothing is visible:
-       the value is here so the corpus's fact page, when it prices one, lands somewhere that
-       says what its unit is (system.cpp refuses anything over one rotation, which is what
-       catches someone authoring "14" for a 14:00 afternoon peak). */
+       src/groundtemp.h. Seven airless bodies in ksp_system.json carry one now, priced by one
+       invented thermal inertia (utils/gen_systems.py:author_ksp_ground_lag), so this is a live
+       number in a world players load rather than a placeholder: Dres paints its hottest ground
+       42 deg east of its star. The loader refuses anything past authored.h's kLagTauMaxPhase
+       and requires lag_tau_src beside any active tau, which is what catches someone authoring
+       "14" for a 14:00 afternoon peak. */
     double lag_tau = kLagTauUnauthored;
-    /* Where that lag came from, in the generator's own words ("from the stated afternoon peak",
-       "via Gamma = 50 TSI m^-2 K^-1 s^-1/2"). Same rule as the three above (#687). */
+    /* Where that lag came from, in the generator's own words ("DERIVED: thermal parameter
+       (INVENTED Gamma 50)", "INVENTED: one radian of PHASE"). Same rule as the knob above
+       (#687), and unconditional here because the UNIT is what a reader cannot recover from a
+       bare number: 1.0 is a fifth of a turn on one world and a twelfth on another. */
     std::string lag_tau_src;
     AtmosphereParams atmosphere; // optional rim; enabled => the JSON block exists
     CloudParams clouds;          // optional deck; enabled => body has clouds

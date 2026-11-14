@@ -58,12 +58,37 @@ inline bool evenShareAuthored(double f) { return f >= 0.0; }
    the state the game has always run in, exactly as kFollowUnauthored means "no coupling". It is
    still a negative sentinel so a stated 0.0 ("this ground peaks at noon, and that is a fact")
    cannot be confused with nobody saying anything.
-   The loader bounds it at one rotation, and that bound is load-bearing against a units mistake:
-   a page that states its daily max at 14:00 invites someone to author `14`, which is hours, not
-   radians -- and hours would land inside any range that lets a lag be a lag.
+   The loader bounds it (kLagTauMaxPhase below), and that bound is load-bearing against a units
+   mistake: a page that states its daily max at 14:00 invites someone to author `14`, which is
+   hours, not radians -- and hours would land inside any range that lets a lag be a lag.
    Hours are NOT the unit here, and a readout that wants them converts with the body's MEASURED
-   mean solar day (system.h:measureSolarDay), never the sidereal rotation. */
+   mean solar day (system.h:measureSolarDay), never the sidereal rotation.
+
+   THE BOUND, and why it moved (#794 step 5). It used to be one rotation, on the theory that a
+   lag past a full turn is inexpressible -- true of the PEAK (atan(tau) tops out at 90 deg and
+   sits at 81 deg by tau = 2 pi) but false of the FLATTENING, which keeps buying: the row's own
+   peak-to-trough is 17 % of the forcing's at tau = 2 pi and 9 % at tau = 11.5 (measured off the
+   solved row, not the filter's 1/sqrt(1 + tau^2), which reads a few per cent lower -- see
+   groundtemp.h for the difference), which is what a cold fast world's thermal parameter actually
+   asks for (Eeloo, 78 K under a 5.4 h day, prices 11.5 rad). The closed form is stable and
+   tested out to kLagTauRowCeil below, so the old bound was capping the physics rather than the
+   numerics.
+   THE PROVENANCE RULE, unconditional (#794 step 5 review). An authored lag that is ACTIVE
+   (tau > 0) must carry lag_tau_src. The first cut required the sentence only past one rotation,
+   which left the half that actually looked like a mistake walking free: `lag_tau: 5` -- someone
+   dividing a stated 14:00 by the wrong thing -- loads inside the numeric range and answers a
+   +64 deg afternoon. Requiring provenance for EVERY authored lag costs nothing (all seven the
+   generator writes and all three in lag_playground.json already carry one) and makes the unit
+   unassumable rather than merely suspicious when it is large. A stated 0.0 stays exempt: it
+   claims no response time, only that this ground peaks at noon. */
 inline constexpr double kLagTauUnauthored = -1.0;
+inline constexpr double kLagTauMaxPhase = 1e4;
+/* [phase rad] What groundtemp.h's closed form is ASSERTED against -- the numerics, not a claim
+   about worlds. It sits above the authored bound on purpose: the loader should be the one that
+   says no, in a message that names the unit, rather than a row asserting on a file. */
+inline constexpr double kLagTauRowCeil = 1e6;
+static_assert(kLagTauMaxPhase <= kLagTauRowCeil,
+              "the loader would accept a tau the row refuses to solve");
 inline bool lagTauAuthored(double t) { return t >= 0.0; }
 /* Whether any work follows. The sentinel and a stated 0.0 both answer "the ground tracks the
    light", and the pair is one fact (#636); the readout asks the other question -- did the file

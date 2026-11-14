@@ -216,13 +216,35 @@ inline double groundTemperatureAt(double anchor_K, double even_share, double cos
    Small tau then behaves rather than exploding: C -> 0, N -> kset, hom_rise -> -crise, and the
    row answers the forcing itself.
 
-   WHAT THIS IS STILL *NOT*. It is authored as a PHASE shift, not as thermal inertia. A first-order
-   low-pass does flatten this row's peak-to-trough (0.74 of the forcing's at tau 1, 0.17 at
-   tau 2 pi), but nothing here prices that flattening: the amplitude a fact page implies belongs to
-   the authored even share, which is why the two trade against each other and a body that authors
-   tau needs its f re-fit. It is not heat flow, not a subsurface profile, not a weather system. It
-   is one authored number on the skin the law already has, and the field it produces is still a
-   radiative skin -- sigma T^4 -- not a measured air temperature.
+   WHERE THE NUMBER COMES FROM (#794 step 5). Seven airless bodies in ksp_system.json carry a tau
+   now -- Vall and Dres at the top, Ike at the bottom; utils/gen_systems.py's sweep prints all
+   seven, and tests/test_belts.cpp pins which they are. What priced them
+   (utils/ground_model.py:lag_phase) IS a thermal-inertia estimate:
+   Gamma * sqrt(2 omega_solar) / (4 sigma T0^3), the classical thermal parameter, with one lunar
+   regolith Gamma for every body and an INVENTED marker in the file because no source this corpus
+   reads states a thermal inertia. So the NUMBER is inertia even though the law above it stays a
+   first-order filter. The scaling is what makes it a sweep instead of a guess per body: the 1/T0^3
+   term is why Dres lags 48 deg of phase and Moho, at 440 K under a 740 h sun, lags 0.3 deg and
+   gets no key at all. Note the anchor the pricing used -- the body's MEAN orbit -- while the row
+   above runs on this instant's rail: on an eccentric world the two differ (#735), and since tau
+   goes as 1/T0^3, Dres's 156.0 K at the mean rail and 145.8 K at the epoch the map bakes make its
+   authored 1.103 rad read nearer 1.35 rad down there. That is one quantity at two rails, not two
+   numbers to reconcile.
+
+   WHAT THIS IS STILL *NOT*. The model prices the flattening and the shift as ONE dial: the
+   filter's damping is 1/sqrt(1 + tau^2) and its peak sits atan(tau) after noon, so a body cannot
+   be smoothed without being dragged into the afternoon. That coupling is why the pass REFUSES
+   Eeloo: its even share is Pluto's SOLVED pair (0.4308, "via Pluto"), and the same formula puts
+   Pluto at tau 40 -- where no bare skin keeps a diurnal cycle at all, so that share is doing an
+   atmosphere's spreading, and a lag laid on top of it charges the same flattening twice. The
+   floor most of the lagged bodies carry (0.0139) is safe by the same test rather than by being a
+   plug: it is calibrated from the Moon's solved pair, and this formula puts the Moon at tau 0.02,
+   so what that pair states is spreading and nothing that a tau could bill again. Worlds WITH air
+   are skipped outright: a column is not a radiating skin, and their afternoon belongs to whatever
+   eventually replaces even_share (#728).
+   It is not heat flow, not a subsurface profile, not a weather system. It is one authored number
+   on the skin the law already has, and the field it produces is still a radiative skin --
+   sigma T^4 -- not a measured air temperature.
 
    Feeding this to groundTemperature() is deliberate: y is a unit-mass positive filter of g, and
    g <= max(a + b) = cos(lat - dec) <= 1, so y stays in [0,1] and lands in the same currency as
@@ -331,7 +353,7 @@ inline GroundLagRow groundLagRow(double lat, double dec, double tau) {
        wrong); the bare arithmetic starts going NEGATIVE near 1e16 -- the clamp in at() hides that
        -- and past ~1e17 every column answers NaN. A caller that lands in that neighbourhood has a
        unit bug, not a slowly-turning world. */
-    assert(tau == kLagTauUnauthored || (tau >= 0.0 && tau <= 1e6));
+    assert(tau == kLagTauUnauthored || (tau >= 0.0 && tau <= kLagTauRowCeil));
     GroundLagRow r;
     r.a = std::sin(lat) * std::sin(dec);
     r.b = std::cos(lat) * std::cos(dec);

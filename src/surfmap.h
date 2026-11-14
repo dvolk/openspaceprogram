@@ -152,10 +152,10 @@ struct TempLayer {
     double anchor_K = 0.0, knob = kEvenShareUnauthored;
     /* [phase rad] #794: how far this body's ground lags its star, as authored
        (Surface::lag_tau). The sentinel and a stated 0.0 both mean "the ground tracks the light",
-       which is what every shipped body does today; only lagTauActive() makes the sweep trade its
-       per-pixel cosine for a lagged row. It rides on the layer because the picture and the
-       number beside it are one decision: a map painted with a lag and read out without one is
-       #793's mistake pointed the other way. */
+       which is what every body in the four solar corpora does; seven ksp bodies trade their
+       per-pixel cosine for a lagged row through lagTauActive(). It rides on the layer because
+       the picture and the number beside it are one decision: a map painted with a lag and read
+       out without one is #793's mistake pointed the other way. */
     double lag_tau = kLagTauUnauthored;
     /* [K] The model's own night / day ends AT THE DATUM. These are the two figures the atlas
        prints as `ground swing` and the log prints as temp_ends=, and they are relief-free on

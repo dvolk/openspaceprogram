@@ -733,32 +733,32 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                                          + "': surface.even_share_src explains a knob that "
                                            "surface.even_share does not author");
             }
-            /* #794: the ground's phase lag, in RADIANS OF PHASE. The upper bound is one rotation
-               and the reason is a units trap: the fact page that states "the daily max lands at
-               14:00" invites a reader to author the hours, and any range permissive enough to
-               call itself generous lets 14 through as if it were a lag.
-               What the bound actually costs, measured rather than asserted: at tau = 2 pi an
-               equatorial row still swings 17 % of the forcing's peak-to-trough and its peak sits
-               66 deg east of noon; no allowed row anywhere lags more than atan(2 pi) = 81 deg of
-               phase -- that ceiling belongs to a polar-day row, where the forcing never breaks --
-               which is 5.4 h on a 24 h day. So a page stating a 14:00 peak is comfortably inside
-               (tau ~ 0.6) and one stating 18:00 is inexpressible at ANY allowed tau. If a real
-               body ever needs that, the number to revisit is this bound, not the law.
-               Absent = no lag (the sentinel), NOT a default. */
+            /* #794: the ground's phase lag, in RADIANS OF PHASE, bounded by authored.h's
+               kLagTauMaxPhase -- and authored.h says why that bound moved off one rotation, in
+               measured numbers: at tau = 2 pi an equatorial row still swings 17 % of the
+               forcing's peak-to-trough with its peak 66 deg east of noon, while the row's own
+               flattening keeps buying past that (9 % at tau 11.5), which is what a cold fast
+               world's thermal parameter asks for. The peak never exceeds atan(tau), so no row
+               anywhere lags more than a quarter turn.
+               The units trap the old bound guarded -- a page stating "the daily max lands at
+               14:00" inviting someone to author the 14 -- is now guarded outright: every ACTIVE
+               lag must carry lag_tau_src, whatever its size, and authored.h carries the reason
+               the threshold version was not enough. Absent = no lag (the sentinel),
+               NOT a default. */
             if(sv.contains("lag_tau")) {
                 if(!sv["lag_tau"].is_number()) {
                     throw std::runtime_error("system: '" + body->name
                                              + "': \"surface.lag_tau\" must be a number"
-                                               " [radians of phase, 0..2pi]");
+                                               " [radians of phase]");
                 }
                 const double lt = sv["lag_tau"].get<double>();
-                if(!std::isfinite(lt) || lt < 0.0 || lt > 2.0 * std::numbers::pi) {
+                if(!std::isfinite(lt) || lt < 0.0 || lt > kLagTauMaxPhase) {
                     throw std::runtime_error("system: '" + body->name
                                              + "': \"surface.lag_tau\"="
                                              + std::to_string(lt)
-                                             + " must be in [0, 2pi] radians of phase (not"
-                                               " hours -- convert with the body's mean solar"
-                                               " day)");
+                                             + " must be in [0, " + std::to_string(kLagTauMaxPhase)
+                                             + "] radians of phase (not hours -- convert with the"
+                                               " body's mean solar day)");
                 }
                 s.lag_tau = lt;
             }
@@ -773,6 +773,18 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                 throw std::runtime_error("system: '" + body->name
                                          + "': surface.lag_tau_src explains a knob that "
                                            "surface.lag_tau does not author");
+            }
+            /* The units guard authored.h describes, applied to every authored lag rather than
+               only to the ones past one rotation: radians of phase is not a unit any fact page
+               states, and a typed `14` -- or a mistyped `5` -- is inside the numeric range and
+               would answer an afternoon nobody claimed. The sentence is cheap and its absence
+               is loud. A stated 0.0 is exempt: it says this ground peaks at noon, which is a
+               shape claim, not a response time. */
+            if(lagTauActive(s.lag_tau) && s.lag_tau_src.empty()) {
+                throw std::runtime_error("system: '" + body->name
+                                         + "': a surface.lag_tau needs surface.lag_tau_src --"
+                                           " radians of phase is not a unit a fact page states,"
+                                           " and typed hours look exactly like one");
             }
             if(sv.contains("sea_level")) {
                 if(!sv["sea_level"].is_number()) {

@@ -106,7 +106,7 @@
         "even_share": 0.05,
         "even_share_src": "INVENTED: same knob as Meridian's -- the lag and the even share both set amplitude, so a lagged body needs its f re-fit before it ships for real (#794 step 5)",
         "lag_tau": 1.0,
-        "lag_tau_src": "INVENTED: one radian of PHASE (not hours, and the loader refuses anything outside [0, 2pi] so a file cannot author a day here). In time it is tau / the synodic rate = 1 / 2.9115e-4 = 3435 s against this body's 21580 s solar day -- about ONE SIXTH of a day, not a third; an author who scales tau from a stated 'peak at 14:00' should read that ratio, not guess. It puts the hottest ground ~40 deg east of the subsolar meridian and lifts the night floor, which is what the case pins."
+        "lag_tau_src": "INVENTED: one radian of PHASE (not hours; the loader takes any tau up to authored.h's kLagTauMaxPhase but demands a lag_tau_src beside every active one, which is what stops a file quietly authoring a day here). In time it is tau / the synodic rate = 1 / 2.9115e-4 = 3435 s against this body's 21580 s solar day -- about ONE SIXTH of a day, not a third; an author who scales tau from a stated 'peak at 14:00' should read that ratio, not guess. It puts the hottest ground ~40 deg east of the subsolar meridian and lifts the night floor, which is what the case pins."
       }
     },
     {

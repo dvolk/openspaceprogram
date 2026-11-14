@@ -28,6 +28,7 @@
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -145,21 +146,67 @@ int main() {
         const std::string path = "res/systems/" + slug + ".json";
         const std::vector<BeltParams> belts = load_belts(path);
         check(belts.size() == 2, ("two belts: " + slug).c_str());
-        /* #794: no SHIPPED file authors a ground phase lag yet. The lag's WIRING is live -- the
-           sweep, its palette and the cursor all read the knob -- so what is worth walking here is
-           the FILES: the day a body authors one, every picture of it stops peaking under the star
-           and its even share needs re-fitting against the same daily swing, and that trade is a
-           deliberate authoring session (the ticket's step 5), not something a corpus edit should
-           slip in sideways. Reading the raw JSON rather than the loaded System covers all five
-           corpora here; the System objects this test builds are only two of them, and a check
-           that misses three is a check that says "clean" about the ones nobody looks at. The
-           fixture that DOES author a tau is res/systems/lag_playground.json, not in this list. */
+        /* #794 step 5: the shipped corpus authors ground phase lags now -- ksp_system only, and
+           only where utils/ground_model.py's thermal parameter says the flattening and the
+           afternoon are worth a knob. The audit still reads the FILES rather than a loaded
+           System, for the same reason it always did: a body gaining a tau is a physics decision
+           (its map stops peaking under the star, and its dossier's `ground swing` row starts
+           quoting ends the map can no longer reach -- #830), and it should arrive as an edit to
+           this list, not as a quiet generator change. The four solar corpora stay unlagged
+           because make_solar_system.py has not run the pass yet: that is a decision on the
+           ticket, and if one of them grows a tau first, this is where it reddens. */
         {
+            // Name -> the tau the pass prices for it. Four decimals inside a 1e-3 window: the
+            // digits themselves are already pinned exactly by `gen_systems.py --check`, which
+            // regenerates the file from the formula, so this audit's job is the ROSTER -- which
+            // bodies carry the knob at all, and what travels beside it. A tighter epsilon here
+            // would only make a harmless refit of an anchor redder than a wrong world.
+            const std::map<std::string, double> lagged = {
+                {"Minmus", 0.4243}, {"Ike", 0.2902}, {"Dres", 1.1030}, {"Vall", 2.0185},
+                {"Tylo", 0.9762},   {"Bop", 0.5779},  {"Pol", 0.4795},
+            };
             const nlohmann::json doc = read_json(path.c_str());
+            size_t seen = 0;
             for(const nlohmann::json &b : doc.value("bodies", nlohmann::json::array())) {
-                check(!b.value("surface", nlohmann::json::object()).contains("lag_tau"),
-                      (slug + "/" + b.value("name", "?")
-                       + ": no shipped body authors a phase lag yet").c_str());
+                const nlohmann::json sv = b.value("surface", nlohmann::json::object());
+                const std::string name = b.value("name", "?");
+                const auto it = slug == "ksp_system" ? lagged.find(name) : lagged.end();
+                if(it == lagged.end()) {
+                    check(!sv.contains("lag_tau"),
+                          (slug + "/" + name + ": a phase lag nobody priced in the audit").c_str());
+                    continue;
+                }
+                ++seen;
+                const double tau = sv.value("lag_tau", -1.0);
+                check(tau > 0.0 && tau <= kLagTauMaxPhase,
+                      (slug + "/" + name + ": an authored lag reaches the file").c_str());
+                check(std::fabs(tau - it->second) < 1e-3,
+                      (slug + "/" + name + ": the authored tau is what the thermal parameter"
+                       " prices").c_str());
+                check(!sv.contains("atmosphere"),
+                      (slug + "/" + name + ": a lag was authored under a sky, and the skin"
+                       " derivation does not apply there").c_str());
+                /* The lag and the even share are one surface law, and the pass's refusal rule
+                   reads the share's provenance before it writes a tau (share_lag_conflict). A
+                   lagged body with no share of record would be a body whose flattening was
+                   decided by nobody -- so the audit asks that the other half of the pair is
+                   there and named too. */
+                check(sv.value("even_share", -1.0) >= 0.0 && sv.contains("even_share_src"),
+                      (slug + "/" + name + ": a lagged body carries its even share and says"
+                       " where it came from").c_str());
+                /* The Gamma is INVENTED -- no source in this corpus states a thermal inertia --
+                   and the file has to say so next to the number it priced, the same discipline
+                   a DERIVED anchor carries (#722). A provenance string that could go quiet is a
+                   promise the loader would stop keeping. */
+                const std::string src = sv.value("lag_tau_src", "");
+                check(src.find("INVENTED") != std::string::npos,
+                      (slug + "/" + name + ": the invented Gamma announces itself in the"
+                       " file").c_str());
+            }
+            if(slug == "ksp_system") {
+                check(seen == lagged.size(),
+                      (slug + ": every body the audit names carries its lag ("
+                       + std::to_string(seen) + "/" + std::to_string(lagged.size()) + ")").c_str());
             }
         }
         if(belts.size() != 2) { continue; }
@@ -375,20 +422,50 @@ int main() {
         j["bodies"][1]["surface"]["even_share_src"] = "DEFAULT airless floor";
         expect_reject(j, "provenance with no knob rejected", "even_share_src");
     }
-    /* #794: the phase lag's own guards. Nothing in the shipped files authors one yet, so the
-       field is inert -- which makes the loader the only thing that can get this wrong, and the
-       mistake it exists to catch is a unit one. A fact page that says "the daily max lands at
-       14:00" invites someone to author 14, and 14 radians is a legal-looking number. */
+    /* #794: the phase lag's own guards. Seven shipped bodies author one now, so the loader is the
+       only thing standing between a units mistake and a world a player loads -- and the mistake it
+       exists to catch is a unit one. A fact page that says "the daily max lands at 14:00" invites
+       someone to author 14, and 14 radians is a legal-looking number. */
     {
         nlohmann::json j = read_json("res/systems/old_system.json");
         j["bodies"][1]["surface"]["lag_tau"] = 14.0;      // hours, not radians of phase
-        expect_reject(j, "a lag quoted in hours is refused, not silently applied",
-                      "must be in [0, 2pi]");
+        expect_reject(j, "a lag longer than its own day has to say where it came from",
+                      "needs surface.lag_tau_src");
+    }
+    {
+        /* The provenance rule is unconditional (#794 step 5 review). The first cut asked for the
+           sentence only past one rotation, which left the number that actually looks like a
+           mistake walking free: 5.0 is a stated afternoon divided by the wrong thing, and it would
+           have painted a +64 deg peak with nobody on record claiming it. */
+        nlohmann::json j = read_json("res/systems/old_system.json");
+        j["bodies"][1]["surface"]["lag_tau"] = 5.0;
+        expect_reject(j, "an unexplained lag fails whatever its size",
+                      "needs surface.lag_tau_src");
+    }
+    {
+        /* The numeric bound moved off one rotation (#794 step 5: a cold fast world's thermal
+           parameter asks for more, and the row is tested to kLagTauRowCeil), so 14 rad is no
+           longer the number that fails -- it is the ABSENCE of a sentence that fails. With a
+           sentence it loads, because the loader's job is the range and the units claim, not a
+           physics veto. */
+        nlohmann::json j = read_json("res/systems/old_system.json");
+        j["bodies"][1]["surface"]["lag_tau"] = 14.0;
+        j["bodies"][1]["surface"]["lag_tau_src"] = "test fixture, past one rotation";
+        expect_loaded(j, "a lag past one rotation loads once it is explained",
+                      [&](const System &sys) {
+            check(sys.bodies[1]->surface.lag_tau == 14.0,
+                  "tau past 2pi is inexpressible no more");
+        });
+    }
+    {
+        nlohmann::json j = read_json("res/systems/old_system.json");
+        j["bodies"][1]["surface"]["lag_tau"] = 1e9;
+        expect_reject(j, "the range still refuses nonsense", "radians of phase");
     }
     {
         nlohmann::json j = read_json("res/systems/old_system.json");
         j["bodies"][1]["surface"]["lag_tau"] = -1.0;      // the C++ sentinel, pasted into JSON
-        expect_reject(j, "a file cannot author its own absence", "must be in [0, 2pi]");
+        expect_reject(j, "a file cannot author its own absence", "radians of phase");
     }
     {
         nlohmann::json j = read_json("res/systems/old_system.json");
