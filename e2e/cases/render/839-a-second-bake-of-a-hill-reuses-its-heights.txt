@@ -1,31 +1,37 @@
 NAME 839-a-second-bake-of-a-hill-reuses-its-heights
-CLAIM Baking the same world at the same size twice samples the ground's height ONCE: the second picture reports the same floor, ceiling and lapse cost as the first, paints a field that still moves with the season, and costs a small fraction of the first bake's sweep_ms -- while a world with no heights to sample says so with a dash instead of either answer.
+CLAIM Baking the same world at the same size twice samples the ground's height ONCE: the second picture reports the same floor, ceiling and lapse cost as the first, paints a field that still moves with the season, and costs a small fraction of the first bake's sweep_ms.
 KIND invariant
 # #839. A temperature map on a world whose air lapses needs a height at every pixel, and
-# terrainHeight() is noise: measured on this fixture, the height pass is 17x the rest of the bake
-# put together (AltoFrio 118 ms against Meridian's 6.4 ms at 512; 1684 ms against 99 ms at 2048).
-# The ground does not move between bakes, so re-sampling it for the temperature picture of a hill
-# the sweep has already measured -- or for the same hill under a different knob -- was the whole
-# 17x. SurfmapState now keeps one grid (body name + w + h) and hands it to the next bake as const.
+# terrainHeight() is noise: a relief world costs ~17x what the same bake costs on a flat one
+# (src/cli.h's table: AltoFrio 110 ms at 512 against Meridian's 6.4 ms, and 1914 ms against
+# 98.9 ms at 2048). The ground does not move between bakes, so re-sampling it for the temperature
+# picture of a hill the sweep has already measured -- or for the same hill under a different
+# knob -- was the whole 17x. SurfmapState now keeps one grid (body name + w + h) and hands it to
+# the next bake as const.
 #
 # What a cache can get wrong is exactly what the legs below hold:
 #   SEQUENCE (CHECK 3): the first bake samples, the next two reuse. If the key ever stops
 #     matching, this goes red instead of the win quietly disappearing -- a speedup nobody can
 #     observe is a speedup that regresses.
-#   THE GRID TRAVELS WHOLE (CHECK 4): elo/ehi are not recomputed from the grid on a hit, they are
-#     carried with it, because the palette ends are priced from them. A hit that forgot them paints
-#     the same ground on a different scale -- temp_ramp moves while the pixels do not. So relief=
-#     (floor, ceiling, K at each) must be IDENTICAL on all three rows, to the printed digit.
-#     MEASURED at 1024: relief=[-539 2209 0.00 -14.36] on all three.
-#   THE PICTURE IS NOT FROZEN (CHECK 5): caching heights must not cache the KELVIN. The sim is
+#   THE GRID TRAVELS WHOLE (CHECK 4 and 5): elo/ehi are not recomputed from the grid on a hit,
+#     they are carried with it, because the palette ends are priced from them. A hit that forgot
+#     them paints the same ground on a different scale -- temp_ramp moves while the pixels do not.
+#     So relief= (floor, ceiling, K at each) must be IDENTICAL on all three rows, to the printed
+#     digit, and a row that printed no relief at all must not compare equal to nothing.
+#     relief=[-539 2209 0.00 -14.36] on all three, digit-for-digit in every recording of this
+#     case -- unlike the kelvin below, heights do not depend on the instant.
+#   THE PICTURE IS NOT FROZEN (CHECK 6): caching heights must not cache the KELVIN. The sim is
 #     accelerated here so the three bakes sit at different instants of AltoFrio's 1047 s year, and
-#     the painted extremes move (99.13/316.54, 100.79/316.04, 103.42/314.39 K at 1024).
-#   THE WIN IS REAL (CHECK 6): sweep_ms drops from 474.9 to 26.4 and 21.8 -- 18x and 22x. The
-#     floor is 5x, which is a third of the smallest measured ratio: a timing pin this loose cannot
-#     break on a loaded machine, and it still cannot survive the pass running again.
+#     the extremes move (coldest pixel 99-103 K, hottest 314-317 K across recordings). Pinned as
+#     DISTINCTNESS rather than as numbers on purpose: --sim-press keys to wall-clock ms, so the
+#     instants -- and their kelvin -- land a fraction of a second apart between runs.
+#   THE WIN IS REAL (CHECK 7): the sampling bake costs 428-481 ms and the two reuse bakes 22-26
+#     ms, so 17x-22x. The floor is 5x: a third of the smallest ratio seen, loose enough never to
+#     break on a loaded machine and still nowhere near surviving the height pass running again.
 ARGS --timeout 22 --time-accel 100 --system res/systems/lag_playground.json
 ARGS --surfmap-log --surfmap-n 1024 --surfmap-body AltoFrio --surfmap-map temperature
 ARGS --sim-press 3000,0,M,7000,0,M,11000,0,M
+EXPECT [surfmap]
 CHECK len(surfmap) == 3
 CHECK all(r["body"] == "AltoFrio" and r["map"] == "temperature" and r["w"] == 1024 for r in surfmap)
 CHECK [r["elev_cache"] for r in surfmap] == ["miss", "hit", "hit"]

@@ -438,15 +438,16 @@ struct SurfmapState {
     bool valid = false;
     int rev = 0;
     /* #839: the heights the last bake sampled, kept for the next one. terrainHeight() is noise,
-       and it is the expensive half of a temperature or wind sweep -- 17x the rest of the bake
-       together (AltoFrio: 118 ms against Meridian's 6.4 ms at 512; 1.68 s against 99 ms at
-       2048). The ground does not move between bakes, and the map re-bakes on every chooser
-       change, so without this the same 2M noise samples are thrown away and recomputed for a
-       picture of the same hill from a different knob.
+       and it is the expensive half of a temperature or wind sweep -- ~17x what the same bake
+       costs on a flat world (src/cli.h's table: AltoFrio 110 ms at 512 against Meridian's
+       6.4 ms, and 1914 ms against 98.9 ms at 2048). The ground does not move between bakes, and
+       the map re-bakes on every chooser change, so without this the same 2M noise samples are
+       thrown away and recomputed for a picture of the same hill from a different knob.
        One slot, not a table: the win is the re-bake, and a grid per body is 33 MB at the 4096
        ceiling the #831 guard allows -- times the 659-body list of #797, which is not a cache but
        a leak with good manners. So the next relief bake replaces it, and the miss it costs is
-       one bake per body switch.
+       one bake per body switch. Two grids are alive at the busiest moment, not one: this slot
+       plus the grid a second in-flight bake is sampling.
        Keyed by NAME rather than by a body pointer on purpose: a TerrainBody can be freed and a
        different one land on the same address, which is exactly the trap #296 records for the
        identity-only readers. A name cannot do that, and resetForNewWorld below clears the slot

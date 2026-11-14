@@ -120,8 +120,9 @@ void surfmapCompute(Game &g) {
     const bool want_elev = (want_wind && wl.ok) || (want_temp && tl.ok && tl.relief);
     /* #839: the heights the previous bake sampled, if they were for this body at this size.
        The ground does not move between bakes and terrainHeight() is the expensive half of the
-       whole sweep (17x everything else together: AltoFrio 118 ms against Meridian's 6.4 ms at
-       512), so re-sampling it for a temperature picture of the hill the ground picture already
+       whole sweep (the cli.h table: AltoFrio 110 / 481 / 1914 ms at 512 / 1024 / 2048 against
+       Meridian's 6.4 / 98.9 ms at 512 / 2048 -- a relief world costs ~17x a flat one), so
+       re-sampling it for a temperature picture of the hill the ground picture already
        measured -- or for the same hill under a different knob -- is the 17x, not the law.
        A shared_ptr copy out, an immutable grid in, and the slot is only ever read or written
        here and in the continuation: no lock, and a job still running holds its own grid while
@@ -706,9 +707,10 @@ void surfmapCompute(Game &g) {
             /* #839: whether this bake SAMPLED the ground's heights or reused the previous bake's
                grid for the same body at the same size. It goes here, after every tail and before
                sweep_ms=, for the same reason sweep_ms= does: the harness reads the tails by
-               position, so a column in the middle hides them. `-` when the picture needed no
-               heights at all (a ground or cloud map, or a temperature map on an air whose profile
-               does not lapse), which is an absent question rather than a miss. */
+               position, so a column in the middle hides them. `-` is an absent QUESTION rather
+               than a miss: the picture needs no height GRID -- a ground or ground+ocean sweep
+               (whose sea test still samples the noise per pixel, which is #841's question), or a
+               temperature map on an air whose profile does not lapse. */
             printf(" elev_cache=%s", want_elev ? (elev_hit ? "hit" : "miss") : "-");
             printf(" sweep_ms=%.1f\n", sweep_ms);
             fflush(stdout);
@@ -775,9 +777,10 @@ void surfmapCompute(Game &g) {
             g.surfmap.wind_block = want_wind ? wl.block : std::string();
             /* #839: the heights this bake sampled join the slot, so the next bake of this body at
                this size paints from them instead of asking the noise 2M more times. Only a bake
-               that SAMPLED publishes: a hit holds the grid that is already there, and republishing
-               it would be a copy of 33 MB to change nothing. elo/ehi travel with it because the
-               palette ends are priced from them, not recomputed from the grid.
+               that SAMPLED publishes: a hit holds the grid that is already there, and
+               republishing it would be a shared-pointer assignment that changes nothing.
+               elo/ehi travel with it because the palette ends are priced from them, not
+               recomputed from the grid.
                Publish AFTER the epoch check above: a map for a world that no longer exists must
                not leave its hills in the slot for the next one to paint. */
             if(elev_mine) {
