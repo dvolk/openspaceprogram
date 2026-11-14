@@ -25,7 +25,7 @@
 # (kRailsWarp = 11). --sim-steps rather than --timeout: the pins below count rows and
 # measure a swing, and a wall-clock cutoff lands on a different tick on a slower machine.
 NAME 744-solar-log-dashes-what-a-railed-hull-stopped-measuring
-CLAIM --solar-log prints numbered air_T / prof_T / w / follow for a hull standing live in Kerbin's air and dashes all four once a warp freezes it on rails, while underfoot_T keeps its number and keeps swinging.
+CLAIM --solar-log prints numbered air_T / prof_T / w / follow for a hull standing live in Kerbin's air and dashes all four once a warp freezes it on rails, while underfoot_T keeps its number and keeps swinging and the file's own swing column keeps the single number it read off the world.
 KIND invariant
 ARGS --solar-log --sim-steps 720
 ARGS --startship v,res/ships/skiff.json,Kerbin,pad
@@ -55,5 +55,16 @@ CHECK all(285.0 < d["air_T"] < 295.0 and 0.9 < d["w"] < 1.0 for d in solar if d[
 # row against 297.99 K at the last railed one, with the sun 11 deg higher.
 CHECK all(d["underfoot_T"] is not None for d in solar)
 CHECK (lambda r: max(x["underfoot_T"] for x in r if x["air_T"] is None) - min(x["underfoot_T"] for x in r if x["air_T"] is not None) > 1.0)(solar)
+# The gate's remit is exactly those four. What the FILE states is not a measurement and does
+# not stop existing at kRailsWarp: Kerbin's swing is authored, so it prints on every row --
+# the same number live and railed, because it is read off the world, not left over from the
+# last substep. #837's lag column is gated by the SAME predicate (law_here, tick.cpp), never
+# onRails, so this is the pin that keeps that whole family out of the rails gate: an edit that
+# slipped `&& !onRails` onto law_here takes the swing down mid-run and reddens here. Kerbin
+# authors a share but no tau, so its lag dashes on both sides of the freeze -- which is the
+# #727 absence, not a rails artefact, and is why the last CHECK here wants None everywhere.
+CHECK all(d["swing"] is not None for d in solar)
+CHECK len(set(d["swing"] for d in solar)) == 1
+CHECK all(d["lag"] is None for d in solar)
 # And the ground the row stands on never changed body: this is one hull on one pad.
 CHECK all(d["body"] == "Kerbin" and d["star"] == "Kerbol" for d in solar)

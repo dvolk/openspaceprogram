@@ -891,12 +891,28 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                `lag_tau` as the only way that number can land on a giant -- and the map WOULD
                honour it (surfmap.h's tempLayerFor lets a banded world paint a temperature at
                the 1 bar level), so the failure is silent: a dossier row calling a column's
-               phantom lag `level lag`. Refuse it; a giant's weather lag wants its own law. */
-            if(s.bands && lagTauActive(s.lag_tau)) {
+               phantom lag `level lag`. Refuse it; a giant's weather lag wants its own law.
+               Checked against lagTauAuthored, not lagTauActive: a STATED 0.0 on a giant is
+               the loudest version of the same claim -- "this level peaks at noon" -- and the
+               sentinel test is what separates absence from a reading (#727), not a licence to
+               author the reading on a world with no surface. */
+            if(s.bands && lagTauAuthored(s.lag_tau)) {
                 throw std::runtime_error("system: '" + body->name
                                          + "': \"surface.lag_tau\" on a banded world -- a"
                                            " column is not a radiating skin, so this lag has"
                                            " nothing to slow. Drop the lag or drop \"bands\"");
+            }
+            /* And a lag needs the law it slows. lag_tau is the response knob of the SAME
+               one-knob law that even_share prices (groundtemp.h), so with no share there is
+               nothing for it to act on: the Surface Map refuses the layer, the air coupling
+               refuses, and the atlas prints no thermal block at all -- while --solar-log
+               (#837) would still print the number. A knob no reader of the game can observe
+               is exactly the silence those readouts exist to close. */
+            if(lagTauAuthored(s.lag_tau) && !evenShareAuthored(s.even_share)) {
+                throw std::runtime_error("system: '" + body->name
+                                         + "': a \"surface.lag_tau\" needs a"
+                                           " \"surface.even_share\" -- radians of phase slow"
+                                           " the day/night law, and this body states none");
             }
             if(sv.contains("band_count") && sv["band_count"].is_number_integer()) {
                 s.band_count = std::max(1, sv["band_count"].get<int>());

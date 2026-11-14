@@ -269,9 +269,10 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                  "profile it started from (prof_T), the weight the column supplies "
                  "(w) and the authored coupling (follow) -- those four are the "
                  "aero pass's own measured numbers, so the row closes as "
-                 "air_T = prof_T + follow*w*(underfoot_T - prof_T). Columns dash "
-                 "for what a world does not state, and for a hull on rails, which "
-                 "feels no air. "
+                 "air_T = prof_T + follow*w*(underfoot_T - prof_T). A column dashes "
+                 "for what a world does not state; only those four air columns also "
+                 "dash for a hull on rails, which stops measuring its air (#744), "
+                 "while the authored knobs keep printing through a warp. "
                  "Top-of-atmosphere -- no air dims the sun anywhere in the game.");
 
     app.add_option("--timeout", args.timeout_seconds,

@@ -7033,10 +7033,14 @@ static int fmtRow(char *buf, size_t n, const char *fmt, ...) {
 
 
 void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
-    /* v carries the longest row in the dossier -- an anchor's named rung plus the swing's
-       provenance -- and snprintf would truncate that silently, which is the worst way to lose
-       a fact a test is pinning. */
-    char v[96], w[64];
+    /* v carries the longest row in the dossier, and fmtRow below ASSERTS rather than
+       truncating -- losing a fact a test pins is the worst failure this function can have, and
+       a silent snprintf truncation is how it would look. The longest value today is the #830
+       `ground lag` row (89 chars at Pol: `0.4795 rad of phase (hottest ground up to 25.6 deg /
+       17.98 h past noon; day 10d 12:42:22)`), and both its angle and its day grow with what a
+       hand-authored file can ask for (a tau near kLagTauMaxPhase and a slow rotator), so the
+       room is deliberate rather than measured to the last byte. */
+    char v[128], w[64];
     auto line = [&](const char *label, const char *value) {
         f.push_back(AtlasFact{ label, value, false });
     };
@@ -7496,7 +7500,7 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
                        measureSolarDay does fall back to the sidereal period when there is no sun
                        in range or the sun never sweeps the hull (a star-synchronous body); the
                        pricing pass refuses a lag on either, so the fallback never reaches here. */
-                    const double phase_deg = std::atan(b.surface.lag_tau) * 180.0 / std::numbers::pi;
+                    const double phase_deg = glm::degrees(std::atan(b.surface.lag_tau));
                     fmtRow(v, sizeof v, "%.4f rad of phase (hottest ground up to %.1f deg / %.2f h past noon; day %s)",
                              b.surface.lag_tau, phase_deg,
                              phase_deg / 360.0 * sd / 3600.0,

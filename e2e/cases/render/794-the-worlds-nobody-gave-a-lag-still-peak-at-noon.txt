@@ -40,5 +40,8 @@ CHECK (lambda rs: -20.0 < rs[-1]["sun_lon"] - rs[0]["sun_lon"] < -5.0)(surfmap)
 # The anchor identity, unchanged by the machinery: an unlagged airless world's T^4 mean closes on
 # its anchor at every instant.
 CHECK all(abs(r["datum_mean4"] - r["anchor"]) < 0.05 for r in surfmap)
-FORBID lag_tau=[0-9]
+# Neither fixture authors a tau, so the bake must not print one. A CHECK, not a FORBID:
+# FORBID matches literal substrings, so the `lag_tau=[0-9]` this replaces could never have
+# fired -- and e2e/run.py now refuses a regex-shaped EXPECT/FORBID where the case is parsed.
+CHECK len(re.findall(r"lag_tau=[0-9]", out)) == 0
 FORBID error:

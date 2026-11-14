@@ -665,6 +665,31 @@ def check_check_shapes(exprs, case_path):
                              "ALWAYS true: %s" % (name, why, expr[:60]))
 
 
+# EXPECT and FORBID are substring tests (`s in out` above), never patterns. That is
+# deliberate -- the game's stdout is the spec, and a substring is a fact -- but it
+# leaves a trap: a line written as a regex is not wrong-shaped, it is simply DEAD.
+# #830's review found five shipped FORBIDs of that kind (`ground lag\s+0\.000 rad`,
+# `lag_tau=[0-9]`), each of them green over the very thing it meant to forbid. A
+# backslash in stdout text is essentially never real output, and a bracket group
+# spelling a character class (not a literal like "[v0]" or "temp_ramp=[0.00 0.00]")
+# is likewise a pattern wearing literal clothes.
+REGEX_SHAPED_RE = re.compile(
+    r"\\[sSwWdDb.+*?|{}]|[()]\*|\[[\da-zA-Z]*-[\da-zA-Z]*\]|\[\\[dsw]\]"
+)
+
+
+def check_literal_shapes(expect, forbid, case_path):
+    name = os.path.basename(case_path)
+    for key, texts in (("EXPECT", expect), ("FORBID", forbid)):
+        for text in texts:
+            if REGEX_SHAPED_RE.search(text):
+                raise ValueError(
+                    "%s: %s is a literal substring, not a regex -- this line can "
+                    "never match. Write the exact text, or move the pattern into a "
+                    "CHECK (re.search / re.findall). Offending line: %s"
+                    % (name, key, text[:80]))
+
+
 def parse_cases(path):
     name = os.path.basename(path)
     claim = ""
@@ -776,6 +801,7 @@ def parse_cases(path):
                                  for p in FIXTURE_PATH_RE.findall(text))
     check_fixture_paths(fixture_paths, path, missing_ok)
     check_check_shapes(check, path)
+    check_literal_shapes(expect, forbid, path)
     if not claim:
         raise ValueError("%s: no CLAIM (one sentence: what does this pin?)"
                          % os.path.basename(path))
@@ -2207,14 +2233,38 @@ def self_test():
             fails.append("CHECK %r reported %r" % (expr, got))
         if want is not None and (got is None or want not in got):
             fails.append("CHECK %r reported %r, wanted %r" % (expr, got, want))
+
+    # EXPECT/FORBID are substring tests, so a line written as a regex is a DEAD pin.
+    # Refusing it at parse time is only worth anything if the refusal itself is pinned:
+    # the shapes that must be refused, and the literals that must NOT be (a save-format
+    # marker like "[v0]" and a printed pair like "temp_ramp=[0.00 0.00]" are real stdout,
+    # and a guard that reddens those gets switched off rather than obeyed).
+    for want_refused, expect_txt, forbid_txt in (
+            (True, "", r"ground lag\s+0\.000 rad"),
+            (True, "", "lag_tau=[0-9]"),
+            (True, r"Loaded game from (\w+)", ""),
+            (False, "", "lag=0.0000"),
+            (False, "Loaded game from e2e/fixtures/save_name_clash (active: Ash) [v0]",
+             "temp_ramp=[0.00 0.00]")):
+        try:
+            check_literal_shapes([expect_txt] if expect_txt else [],
+                                 [forbid_txt] if forbid_txt else [],
+                                 "self_test_case.txt")
+            if want_refused:
+                fails.append("regex-shaped FORBID %r was accepted" % (forbid_txt,))
+        except ValueError:
+            if not want_refused:
+                fails.append("literal %r was refused as regex-shaped"
+                             % (forbid_txt or expect_txt,))
     if fails:
         for f in fails:
             print("SELF-TEST FAIL: %s" % f)
         return 1
     print("e2e runner self-test ok: dead-shape CHECKs (tuple, container, "
-          "uncalled lambda) refused at parse and eval; re.search, walrus, "
-          "comprehension and immediately-called lambda CHECKs accepted; "
-          "CHECK failed/raised wording intact")
+          "uncalled lambda) refused at parse and eval; regex-shaped EXPECT/FORBID "
+          "refused at parse while literal text containing brackets stays legal; "
+          "re.search, walrus, comprehension and immediately-called lambda CHECKs "
+          "accepted; CHECK failed/raised wording intact")
     return 0
 
 

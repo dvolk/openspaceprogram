@@ -82,8 +82,12 @@ CHECK len(re.findall(r"level swing\s+([\d.]+) to", out)) == 4
 CHECK len(re.findall(r"(?:ground|level) swing\s+-", out)) == 0
 # A dash must never arrive as a zero. 0.0 K of night would be a reading, and a 0.000 knob
 # would be bare rock; both are numbers this file declines to invent (#727).
-FORBID ground swing\s+0\.0 to
-FORBID even share 0\.000, anchor
+# These two used to be FORBID lines written as regexes -- `FORBID ground swing\s+0\.0 to`.
+# FORBID is a literal substring test (`s in out`), so neither could ever have matched: a
+# dead pin is worse than no pin, because it reads like a guard. They are CHECKs now, and
+# e2e/run.py refuses a regex-shaped EXPECT/FORBID at parse time (#830's review found five).
+CHECK len(re.findall(r"ground swing\s+0\.0 to", out)) == 0
+CHECK len(re.findall(r"even share 0\.000, anchor", out)) == 0
 # THE OTHER HALF OF #749, READ OUT. Mars used to be the case that pinned a refusal: its pair
 # was refused, so --solar-log dashed the underfoot column. Now the pair has a knob, so the
 # column prints, and what is pinned is that it prints INSIDE the model's own ends rather than

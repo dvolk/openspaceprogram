@@ -451,6 +451,7 @@ int main() {
         nlohmann::json j = read_json("res/systems/old_system.json");
         j["bodies"][1]["surface"]["lag_tau"] = 14.0;
         j["bodies"][1]["surface"]["lag_tau_src"] = "test fixture, past one rotation";
+        j["bodies"][1]["surface"]["even_share"] = 0.05;
         expect_loaded(j, "a lag past one rotation loads once it is explained",
                       [&](const System &sys) {
             check(sys.bodies[1]->surface.lag_tau == 14.0,
@@ -486,6 +487,28 @@ int main() {
                       "on a banded world");
     }
     {
+        /* The zero matters: `lagTauActive` (tau > 0) would let a STATED 0.0 onto a giant, and
+           the dossier would print the loudest version of the same phantom -- "this level peaks
+           at noon", a claim about a world with no surface to peak on. The rule is about
+           authored, not about nonzero. */
+        nlohmann::json j = read_json("res/systems/old_system.json");
+        j["bodies"][1]["surface"]["bands"] = true;
+        j["bodies"][1]["surface"]["lag_tau"] = 0.0;
+        expect_reject(j, "a banded world cannot author a zero lag either",
+                      "on a banded world");
+    }
+    {
+        /* And a lag needs the law it slows. lag_tau is the response knob of the one-knob law
+           that even_share prices, so on a body that states no share it acts on nothing: the
+           map, the air coupling and the atlas all refuse the block, while --solar-log would
+           still print the number. A file may not carry a knob no readout can show. */
+        nlohmann::json j = read_json("res/systems/old_system.json");
+        j["bodies"][1]["surface"]["lag_tau"] = 1.0;
+        j["bodies"][1]["surface"]["lag_tau_src"] = "test fixture, no share to slow it";
+        expect_reject(j, "a lag with no even share has nothing to lag",
+                      "needs a \"surface.even_share\"");
+    }
+    {
         nlohmann::json j = read_json("res/systems/old_system.json");
         j["bodies"][1]["surface"]["lag_tau"] = 1.0;
         j["bodies"][1]["surface"]["lag_tau_src"] = 3.0;
@@ -506,7 +529,9 @@ int main() {
         nlohmann::json j = read_json("res/systems/old_system.json");
         j["bodies"][1]["surface"]["lag_tau"] = 1.0;
         j["bodies"][1]["surface"]["lag_tau_src"] = "test fixture";
+        j["bodies"][1]["surface"]["even_share"] = 0.05;
         j["bodies"][2]["surface"]["lag_tau"] = 0.0;
+        j["bodies"][2]["surface"]["even_share"] = 0.05;
         expect_loaded(j, "an authored lag reaches the body", [&](const System &sys) {
             const TerrainBody *b = sys.bodies[1];
             check(lagTauAuthored(b->surface.lag_tau) && b->surface.lag_tau == 1.0,

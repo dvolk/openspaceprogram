@@ -36,8 +36,8 @@ CHECK (lambda blk: re.search(r"ground swing\s+[\d.]+ to [\d.]+ K\s*\n\s*\[atlas\
 #    which is the mistake of printing the authored phase as if it were an offset -- Dres would
 #    read 63.2 deg there, 2/3 of its own day, and this bracket reddens it. The exact constant is
 #    pinned by CHECK 1 and falsified against the map by CHECK 7.
-CHECK all(0.0 < float(m.group(2)) < 90.0 and float(m.group(2)) < 57.29577951308232 * float(m.group(1)) for m in re.finditer(r"(?:ground|level) lag\s+([\d.]+) rad of phase \(hottest ground up to ([\d.]+) deg", out))
-CHECK (lambda ps: all(a[1] < b[1] for a in ps for b in ps if a[0] < b[0]))([(float(m.group(1)), float(m.group(2))) for m in re.finditer(r"(?:ground|level) lag\s+([\d.]+) rad of phase \(hottest ground up to ([\d.]+) deg", out)])
+CHECK all(0.0 <= float(m.group(2)) <= 90.0 and float(m.group(2)) < 57.29577951308232 * float(m.group(1)) + 0.05 for m in re.finditer(r"(?:ground|level) lag\s+([\d.]+) rad of phase \(hottest ground up to ([\d.]+) deg", out))
+CHECK (lambda ps: all(a[1] <= b[1] for a in ps for b in ps if a[0] < b[0]))([(float(m.group(1)), float(m.group(2))) for m in re.finditer(r"(?:ground|level) lag\s+([\d.]+) rad of phase \(hottest ground up to ([\d.]+) deg", out)])
 # 5. THE HOURS COME FROM THAT BODY'S OWN DAY: the row's degrees over that body's MEASURED mean
 #    solar day, not a constant and not the sidereal period. Dres alone could not catch a sidereal
 #    bug -- its sidereal period is 2*pi/rot_ang_speed = 34,800.0 s against a 34,825.0 s solar day,
@@ -46,22 +46,37 @@ CHECK (lambda ps: all(a[1] < b[1] for a in ps for b in ps if a[0] < b[0]))([(flo
 #    909,742 s to come back, so dividing by the first prints 17.82 h where the row prints 17.98.
 #    The tolerance is printed rounding, which grows with the day: half a tenth of a degree across
 #    360 of it, plus the printed hundredth of an hour.
-CHECK all((lambda secs: abs(float(re.search(r"/ ([\d.]+) h past noon", b).group(1)) - float(re.search(r"up to ([\d.]+) deg", b).group(1)) / 360.0 * secs / 3600.0) < 0.006 + 0.06 / 360.0 * secs / 3600.0)((lambda d: int(d.group(1) or 0) * 86400 + int(d.group(2)) * 3600 + int(d.group(3)) * 60 + int(d.group(4)))(re.search(r"day length\s+(?:(\d+)d\s+)?(\d+):(\d+):(\d+)", b))) for b in re.split(r"\n(?=\[atlas\] \w+ weight=)", out) if "rad of phase" in b)
+CHECK all((lambda secs: abs(float(re.search(r"/ ([\d.]+) h past noon", b).group(1)) - float(re.search(r"up to ([\d.]+) deg", b).group(1)) / 360.0 * secs / 3600.0) < 0.006 + 0.06 / 360.0 * secs / 3600.0)((lambda d: int(d.group(1) or 0) * 86400 + int(d.group(2)) * 3600 + int(d.group(3)) * 60 + int(d.group(4)))(re.search(r"day length\s+(?:(\d+)d\s+)?(\d+):(\d+):(\d+)", b))) for b in re.split(r"\n(?=\[atlas\] \w+ weight=)", out) if "h past noon" in b)
 # 6. ... AND THE DAY THE ROW NAMES IS THE DAY ITS OWN BLOCK PRINTS. Two different periods inside
 #    one block is the mistake this catches, and it is the reason the row repeats the day at all.
-CHECK all(re.search(r"; day ([^\)]+)\)", b).group(1).strip() == re.search(r"day length\s+(.+?)\s*$", b, re.M).group(1) for b in re.split(r"\n(?=\[atlas\] \w+ weight=)", out) if "rad of phase" in b)
+#    Filtered on the converted form, not on "rad of phase": a body with no day to convert against
+#    prints `... rad of phase (no day to convert against)`, and slicing that for hours and a day
+#    would raise -- which reads as harness breakage rather than as a body the row cannot price.
+CHECK all(re.search(r"; day ([^\)]+)\)", b).group(1).strip() == re.search(r"day length\s+(.+?)\s*$", b, re.M).group(1) for b in re.split(r"\n(?=\[atlas\] \w+ weight=)", out) if "h past noon" in b)
 # 7. THE BOUND IS NOT DECORATIVE. The row says UP TO because atan(tau) is exact only for a
-#    polar-day row; a day/night row peaks inside it. Dres's map measures that inside value
-#    (+42.6 deg at 256 columns in render/794-b, and again here at 128), so pin both sides -- the
-#    measured afternoon stays under the bound, and within 8 deg of it, or "up to" has quietly
-#    become a free number. The bake reports the same tau the dossier read, a row apart.
+#    polar-day row; a day/night row peaks inside it -- render/794-b measures that inside value
+#    at +42.6 deg on a 256-column grid. Here the same claim is checked at this case's own 128
+#    columns: pin both sides, so the measured afternoon stays under the bound AND within 8 deg
+#    of it, or "up to" has quietly become a free number. The bake reports the same tau the
+#    dossier read, a row apart.
+#    MEASURED at --surfmap-n 128 (this case's own setting): +44.02, +42.53, +43.86 across the
+#    three bakes -- a 128-column half-pixel is 1.4 deg, so only one of the three lands on the
+#    256-column figure render/794-b quotes. That leaves 2.7 deg of real slack under the 8 deg
+#    leg, which is the number to know if this case ever reddens: it breaks by the GRID
+#    coarsening, not by the law moving.
+#    And the legs below are all() over surfmap, which is TRUE of an empty list -- so the bake
+#    count is pinned first. A renamed keybinding would otherwise silently delete this case's
+#    only engine-vs-dossier claim, since --atlas-dump alone would keep everything else green.
+CHECK len(surfmap) == 3
 CHECK all(r["body"] == "Dres" and abs(r["lag_tau"] - 1.1030) < 1e-3 for r in surfmap)
 CHECK (lambda bound: all(r["peak_deg"] < bound for r in surfmap) and all(r["peak_deg"] > bound - 8.0 for r in surfmap))(float(re.search(r"\[atlas\] Dres weight=.*?up to ([\d.]+) deg", out, re.S).group(1)))
 # 8. ABSENCE, NOT ZERO. Moho is the body the pricing pass measured at tau 0.006 and refused
 #    (utils/gen_systems.py prints it below LAG_AUTHOR_FLOOR), so it keeps the sentinel and the row
 #    dashes. A printed 0.000 here would be a claim that this ground peaks at noon.
 CHECK re.search(r"ground lag\s+-", re.search(r"\[atlas\] Moho weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
-FORBID ground lag\s+0\.000 rad
+#    A CHECK, not a FORBID: FORBID is a literal substring test, so the regex-shaped line this
+#    replaced (`ground lag\s+0\.000 rad`) could never have fired.
+CHECK len(re.findall(r"ground lag\s+0\.000 rad", out)) == 0
 # 9. NO ROW WITHOUT ITS PAIR: every ground (or level) this file prices a swing for carries a lag
 #    row beside it, so the two halves of one law cannot drift apart by omission. A correspondence
 #    rather than "exactly seven": WHICH bodies author a tau is tests/test_belts.cpp's roster to

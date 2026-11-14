@@ -1646,8 +1646,8 @@ def author_ksp_ground_lag(obj):
                   'under a column; tau would be %.2f)' % (name, tau))
             continue
         if tau < LAG_AUTHOR_FLOOR:
-            print('  lag       %-8s below floor  (tau %.3f: peak %+.1f deg after noon, '
-                  'damping %.3f, solar day %.2f h at %.1f K)'
+            print('  lag       %-8s below floor  (tau %.3f: peak up to %+.1f deg after noon -- '
+                  'atan(tau), so a polar-day figure; damping %.3f, solar day %.2f h at %.1f K)'
                   % (name, tau, peak, damp, day / 3600.0, T0))
             continue
         conflict = share_lag_conflict(name, surf, ref_lag)
@@ -1658,8 +1658,9 @@ def author_ksp_ground_lag(obj):
         surf["lag_tau"] = tau
         surf["lag_tau_src"] = SRC_LAG_THERMAL
         authored += 1
-        print('  lag       %-8s tau %.6f  (peak %+.1f deg after noon, damping %.3f, '
-              'solar day %.2f h, anchor %.1f K)'
+        print('  lag       %-8s tau %.6f  (peak up to %+.1f deg after noon -- that is '
+              'atan(tau), exact for a polar-day row and an upper bound elsewhere; damping '
+              '%.3f, solar day %.2f h, anchor %.1f K)'
               % (name, tau, peak, damp, day / 3600.0, T0))
     print('  lag       %d authored, %d declined by provenance, floor %.2f rad of phase'
           % (authored, declined, LAG_AUTHOR_FLOOR))

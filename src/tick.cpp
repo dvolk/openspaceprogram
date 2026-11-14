@@ -819,7 +819,15 @@ void tick(Game &g) {
                 } else {
                     snprintf(surf_s, sizeof surf_s, "-");
                 }
-                if(ground_here && evenShareAuthored(over->surface.even_share)) {
+                /* The two knobs of this law gate together. A lag is the RESPONSE of the
+                   day/night law that the share prices, so a row printing `lag=1.0000` while
+                   `swing=-` and `underfoot_T=-` would advertise a knob the engine refuses to
+                   use -- and that is exactly what this column first did (src/system.cpp now
+                   refuses a lag on a body that states no share, so this is the readout half of
+                   the same rule, and it stays true if that refusal ever moves). */
+                const bool law_here = ground_here
+                                    && evenShareAuthored(over->surface.even_share);
+                if(law_here) {
                     snprintf(swing_s, sizeof swing_s, "%.3f", over->surface.even_share);
                 } else {
                     snprintf(swing_s, sizeof swing_s, "-");
@@ -832,8 +840,11 @@ void tick(Game &g) {
                    0.0000 -- "this ground peaks at noon" is a reading, not an absence (#727).
                    Radians of phase, four decimals, the unit the file authors and the precision
                    --surfmap-log and --atlas-dump print; hours would be a second unit for one
-                   knob, and the atlas row is where the readable form lives. */
-                if(ground_here && lagTauAuthored(over->surface.lag_tau)) {
+                   knob, and the atlas row is where the readable form lives.
+                   NOT gated by onRails, unlike the four air columns below: those are stale
+                   MEASUREMENTS from the last live substep, while this is read off the file the
+                   same way `swing` and the recomputed `underfoot_T` are. */
+                if(law_here && lagTauAuthored(over->surface.lag_tau)) {
                     snprintf(lag_s, sizeof lag_s, "%.4f", over->surface.lag_tau);
                 } else {
                     snprintf(lag_s, sizeof lag_s, "-");

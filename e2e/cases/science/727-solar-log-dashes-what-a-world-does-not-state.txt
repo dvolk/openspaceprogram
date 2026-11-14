@@ -1,5 +1,5 @@
 NAME 727-solar-log-dashes-what-a-world-does-not-state
-CLAIM On Belts -- a world in the wind playground, which the file gives an atmosphere and no facts at all -- --solar-log still reads the star, and prints a DASH rather than a zero for the albedo, the black-body column, the ground, the swing and the air, because nothing in this system states any of them for it.
+CLAIM On Belts -- a world in the wind playground, which the file gives an atmosphere and no facts at all -- --solar-log still reads the star, and prints a DASH rather than a zero for the albedo, the black-body column, the ground, the swing, the lag and the air, because nothing in this system states any of them for it.
 KIND invariant
 # The other half of #727, and the only thing standing between #726 and a silent
 # regression: an ABSENT reading must render as absent. If someone "fixes" a dash by
@@ -38,7 +38,11 @@ CHECK all(d["ground_T"] is None for d in solar)
 # #749 priced swings wherever a ground could be anchored -- an albedo, or a stated mean, is an
 # anchor. Here there is neither, so the swing row must dash with the rest: a knob with no
 # anchor would otherwise be the file inventing a day for a world it refuses to give a colour.
-CHECK all(d["underfoot_T"] is None and d["swing"] is None for d in solar)
+# The lag column (#837) is gated by the same predicate as the swing, so it dashes here for the
+# same reason: Belts states no share, so it can state no phase either. Printing lag=0.0000 for
+# a file that says nothing would invent a reading -- the confusion #794 pinned in the surfmap,
+# now pinned in this column.
+CHECK all(d["underfoot_T"] is None and d["swing"] is None and d["lag"] is None for d in solar)
 CHECK all(d["air_T"] is None and d["prof_T"] is None and d["follow"] is None for d in solar)
 CHECK all(d["flux"] is not None and 600.0 < d["flux"] < 660.0 for d in solar)
 # Belts has an authored atmosphere but the hull is nowhere near it, so nothing dims the plate:

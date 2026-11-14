@@ -39,7 +39,7 @@ CHECK all(12.0 < d["air_T"] - d["prof_T"] < 14.0 for d in solar)
 #    infer it from why the numbers came out different. A 0.0000 here would be a CLAIM -- this
 #    world's ground peaks at noon -- that its file never made (#727, and authored.h's sentinel).
 CHECK all(d["lag"] is None for d in solar)
-FORBID lag=0\.0000
+FORBID lag=0.0000
 FORBID air_T=-
 FORBID underfoot_T=-
 FORBID follow=-
