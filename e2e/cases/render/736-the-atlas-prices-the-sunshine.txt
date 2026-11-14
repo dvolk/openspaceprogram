@@ -49,7 +49,11 @@ CHECK re.search(r"surface temp \(photosphere\)\s+[\d.]+ K\s*\n\s*\[atlas\]   lum
 #    a slow rotator whose mean sits above the airless mean) print too. A moon's light is still
 #    labelled for the rail it was taken from -- its own distance to the sun swings over its
 #    month, so no single figure for the moon itself is honest.
-CHECK re.search(r"sunlight \(parent's orbit\)\s+[\d.]+ W/m2\s*\n\s*\[atlas\]   bond albedo\s+0\.110\s*\n\s*\[atlas\]   black-body temp\s+270\.3 K[^\n]*\n\s*\[atlas\]   surface temp\s+276\.5 K[^\n]*\n\s*\[atlas\]   greenhouse gap\s+\+6\.2 K[^\n]*\n\s*\[atlas\]   ground swing\s+95\.0 to 390\.0 K[^\n]*\n\s*\[atlas\]   ground anchor\s+276\.5 K", re.search(r"\[atlas\] Moon weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+#    The chain below spans the `ground lag` row #830 added, and that is deliberate: this is the
+#    one place the dossier's row ORDER is pinned (swing, then lag, then anchor -- the lag sits
+#    beside the swing it modifies, which is the whole claim of that ticket). A moon of this file
+#    is unlagged, so the row dashes here rather than printing a number nobody priced.
+CHECK re.search(r"sunlight \(parent's orbit\)\s+[\d.]+ W/m2\s*\n\s*\[atlas\]   bond albedo\s+0\.110\s*\n\s*\[atlas\]   black-body temp\s+270\.3 K[^\n]*\n\s*\[atlas\]   surface temp\s+276\.5 K[^\n]*\n\s*\[atlas\]   greenhouse gap\s+\+6\.2 K[^\n]*\n\s*\[atlas\]   ground swing\s+95\.0 to 390\.0 K[^\n]*\n\s*\[atlas\]   ground lag\s+-[^\n]*\n\s*\[atlas\]   ground anchor\s+276\.5 K", re.search(r"\[atlas\] Moon weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
 # 5b. AND A SATELLITE THAT COULD NOT ANSWER UNTIL THE CORPUS WAS ASKED TWICE. The satellite
 #     pages state a VISUAL GEOMETRICAL albedo (Europa's row in utils/rss/html/joviansatfact.html:
 #     0.68) and no Bond albedo, and (1-A)S/4 needs the Bond one -- #736 filed that as a gap
@@ -90,8 +94,10 @@ CHECK re.search(r"bond albedo\s+0\.150\s*\n\s*\[atlas\]   black-body temp\s+86\.
 #    around the 165.0 K the file states for the 1 bar level. Same knob, same arithmetic, as the
 #    rocky bodies' ground swing row -- it just has to be labelled for a level rather than a
 #    sea floor, which is what the two labels above are for. science/735 pins the same pair for
-#    Jool.
-CHECK re.search(r"black-body temp\s+109\.9 K[^\n]*\n\s*\[atlas\]   temp at 1 bar\s+165\.0 K[^\n]*\n\s*\[atlas\]   level - airless mean\s+\+55\.1 K[^\n]*\n\s*\[atlas\]   level swing\s+162\.0 to 173\.1 K[^\n]*\n\s*\[atlas\]   level anchor\s+165\.0 K", re.search(r"\[atlas\] Jupiter weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+#    Jool. The `level lag -` the chain now crosses is a RULE rather than a gap: system.cpp
+#    refuses surface.lag_tau on a banded world (groundtemp.h -- a column is not a radiating
+#    skin), so a giant's lag row can only ever dash.
+CHECK re.search(r"black-body temp\s+109\.9 K[^\n]*\n\s*\[atlas\]   temp at 1 bar\s+165\.0 K[^\n]*\n\s*\[atlas\]   level - airless mean\s+\+55\.1 K[^\n]*\n\s*\[atlas\]   level swing\s+162\.0 to 173\.1 K[^\n]*\n\s*\[atlas\]   level lag\s+-[^\n]*\n\s*\[atlas\]   level anchor\s+165\.0 K", re.search(r"\[atlas\] Jupiter weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
 CHECK not re.search(r"greenhouse gap|surface temp", re.search(r"\[atlas\] Jupiter weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
 #    And --solar-log agrees rather than contradicting it: a hull in a giant's air prints its
 #    light columns (an albedo and an airless mean are as meaningful for a giant as for a rock)

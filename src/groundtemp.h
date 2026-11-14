@@ -263,10 +263,13 @@ inline double groundTemperatureAt(double anchor_K, double even_share, double cos
    A fifth place still prices the law at cos_inc 0.0 and 1.0 -- the atlas's `ground swing` row --
    and that one is deliberately NOT lagged: its two ends are what the one knob forces, which is
    what keeps #724/#735's identity closing. What a lagged dossier does instead is say the lag is
-   there (#830): a `ground lag 1.103 rad of phase (a 1.70 h response; day 09:40:25)` row beside
-   the swing, dashed when the file states nothing. So a player reading Dres gets the law's pair
-   (53.6 to 220.0 K), the knob that keeps the map from painting its hot end (190.40 K), and the
-   day the angle was measured against -- without the two numbers being merged into one.
+   there (#830): a `ground lag` row beside the swing, dashed when the file states nothing -- Dres
+   reads `1.1030 rad of phase (hottest ground up to 47.8 deg / 1.28 h past noon; day 09:40:25)`.
+   "up to", because atan(tau) is exact only for a polar-day row and a day/night row peaks inside
+   it (that same body's map measures peak_deg= +42.6). A player then gets the law's pair (53.6 to
+   220.0 K), the knob that keeps the map from painting its hot end, and how late that end sits --
+   without the law's span and the paintable one being merged. A banded world cannot author a tau
+   at all (system.cpp refuses: a column is not a radiating skin), so `level lag` only ever dashes.
    --------------------------------------------------------------------------------------------- */
 
 /* One latitude's lagged answer, built once per latitude and evaluated per longitude (#802's

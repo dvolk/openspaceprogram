@@ -885,6 +885,19 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
             }
             s.detail_amplitude = sv.value("detail_amplitude", s.detail_amplitude);
             s.bands = sv.value("bands", false);
+            /* A banded world has no radiating skin, so a lag there has nothing to slow.
+               groundtemp.h's pricing rule already skips air worlds outright and
+               utils/gen_systems.py refuses to hand one a tau, which leaves a hand-authored
+               `lag_tau` as the only way that number can land on a giant -- and the map WOULD
+               honour it (surfmap.h's tempLayerFor lets a banded world paint a temperature at
+               the 1 bar level), so the failure is silent: a dossier row calling a column's
+               phantom lag `level lag`. Refuse it; a giant's weather lag wants its own law. */
+            if(s.bands && lagTauActive(s.lag_tau)) {
+                throw std::runtime_error("system: '" + body->name
+                                         + "': \"surface.lag_tau\" on a banded world -- a"
+                                           " column is not a radiating skin, so this lag has"
+                                           " nothing to slow. Drop the lag or drop \"bands\"");
+            }
             if(sv.contains("band_count") && sv["band_count"].is_number_integer()) {
                 s.band_count = std::max(1, sv["band_count"].get<int>());
             }

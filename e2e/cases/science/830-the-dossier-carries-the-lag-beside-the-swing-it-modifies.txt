@@ -1,7 +1,9 @@
 NAME 830-the-dossier-carries-the-lag-beside-the-swing-it-modifies
-CLAIM A shipped world that authored a ground phase lag says so in the same block as its swing -- the knob in radians of phase, its response time in hours, and the measured solar day that converts the two -- while the swing itself stays the law's two ends, so the identity that ties them still closes and it is the READER who is told which of the two numbers the map cannot paint.
+CLAIM A world the shipped catalogue gives a ground phase lag says so in the same block as the swing it bends -- the knob in radians of phase, how far past its sun its hottest ground can sit, and the measured solar day that converts the two -- while the swing itself stays the law's two ends, so the identity that ties those ends still closes AND the afternoon the surface map measures lands inside the bound the dossier claims.
 KIND invariant
-ARGS --timeout 8 --system res/systems/ksp_system.json --atlas-dump 4000
+ARGS --timeout 14 --time-accel 100 --system res/systems/ksp_system.json --atlas-dump 4000
+ARGS --surfmap-log --surfmap-n 128 --surfmap-body Dres --surfmap-map temperature
+ARGS --sim-press 3000,0,M,7000,0,M,11000,0,M
 # #830. Before this row, Dres's dossier and Moho's were byte-identical in their thermal block
 # except for their kelvin, while Dres's map paints its hottest ground 42 deg east of its star and
 # stops 15 K short of its own law's hot end. The fix is an EXTRA row, not a changed one: the two
@@ -11,35 +13,66 @@ ARGS --timeout 8 --system res/systems/ksp_system.json --atlas-dump 4000
 #
 # 1. THE ROW, on the most-lagged body in the shipped file (res/systems/ksp_system.json:
 #    lag_tau 1.1030374825618534). Radians first because that is the unit the file authors --
-#    authored.h's whole argument about someone typing `14` for a 14:00 afternoon peak.
-CHECK re.search(r"ground lag\s+1\.103 rad of phase \(a 1\.70 h response; day 09:40:25\)", re.search(r"\[atlas\] Dres weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+#    authored.h's whole argument about someone typing `14` for a 14:00 afternoon peak -- at four
+#    decimals, the same precision --surfmap-log's lag_tau= prints. Then the quantity a player can
+#    check by looking at the map: how far past the sun the hottest ground sits.
+CHECK re.search(r"ground lag\s+1\.1030 rad of phase \(hottest ground up to 47\.8 deg / 1\.28 h past noon; day 09:40:25\)", re.search(r"\[atlas\] Dres weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
 # 2. THE SWING DID NOT MOVE. 53.6 to 220.0 K is still the law's pair at this body's MEAN-orbit
-#    anchor of 156.0 K, and it is still wider than what the world wears: the map at Dres's
-#    apoapsis start paints 50.09 to 190.40 K (render/794-b, where temp_ends= prints the same
-#    205.63 K law end and temp_ramp= prints the 190.40 K the palette can reach). The dossier's
-#    number is the law; the new row is the reason they differ.
+#    anchor of 156.0 K. It is wider than what the world wears at its hot end -- the map at Dres's
+#    epoch rail paints 50.09 to 190.40 K (render/794-b: temp_ends= prints that rail's 205.63 K
+#    law end, temp_ramp= the 190.40 K the palette can reach) -- and NARROWER at its cold end,
+#    because 50.09 K belongs to permanently dark polar rows, which the law's cos_inc 0.0 end
+#    (53.6 K) never reaches. Neither span is wrong; the new row says why they differ.
 CHECK re.search(r"ground swing\s+53\.6 to 220\.0 K", re.search(r"\[atlas\] Dres weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
-# 3. THE HOURS ARE THE RESPONSE TIME (tau / omega_solar), and they are converted with this body's
-#    MEASURED mean solar day -- the same figure its `day length` row prints, never the sidereal
-#    rotation. Recomputing one printed number from the other two is the check that catches the
-#    wrong day being used: a sidereal Dres day is 34,816 s, so it would not move the tenth here,
-#    but on the slow-spinning bodies in this file (Pol: a 10d 12h day, 19.29 h of response) the
-#    two differ by minutes.
-CHECK (lambda lg, dy: abs(float(lg.group(2)) - float(lg.group(1)) / (2.0 * 3.14159265358979) * (int(dy.group(1)) * 3600 + int(dy.group(2)) * 60 + int(dy.group(3))) / 3600.0) < 0.01)(re.search(r"ground lag\s+([\d.]+) rad of phase \(a ([\d.]+) h response; day (\d+):(\d+):(\d+)\)", re.search(r"\[atlas\] Dres weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0)), re.search(r"day length\s+(\d+):(\d+):(\d+)", re.search(r"\[atlas\] Dres weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0)))
-# 4. ABSENCE, NOT ZERO. Moho is the body the pricing pass measured at tau 0.006 and refused
+# 3. BESIDE, not merely present. "The row carries the lag beside the swing it modifies" is the
+#    claim, and render/736 shows how fragile that adjacency is: adding this row broke two of that
+#    case's row chains, which is why 736 now crosses the lag row on purpose. This pins the order
+#    for a file players actually load.
+CHECK (lambda blk: re.search(r"ground swing\s+[\d.]+ to [\d.]+ K\s*\n\s*\[atlas\]\s+ground lag\s+[\d.]", blk) is not None)(re.search(r"\[atlas\] Dres weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+# 4. THE DEGREES BEHAVE LIKE atan(tau). The harness empties __builtins__ so a case file cannot
+#    reach open or exec, which also locks out math -- so this is the three arithmetic
+#    consequences of atan, not atan: every phase is under a quarter turn, a bigger knob always
+#    means a later afternoon, and the degrees never exceed the radians themselves (atan(x) < x),
+#    which is the mistake of printing the authored phase as if it were an offset -- Dres would
+#    read 63.2 deg there, 2/3 of its own day, and this bracket reddens it. The exact constant is
+#    pinned by CHECK 1 and falsified against the map by CHECK 7.
+CHECK all(0.0 < float(m.group(2)) < 90.0 and float(m.group(2)) < 57.29577951308232 * float(m.group(1)) for m in re.finditer(r"(?:ground|level) lag\s+([\d.]+) rad of phase \(hottest ground up to ([\d.]+) deg", out))
+CHECK (lambda ps: all(a[1] < b[1] for a in ps for b in ps if a[0] < b[0]))([(float(m.group(1)), float(m.group(2))) for m in re.finditer(r"(?:ground|level) lag\s+([\d.]+) rad of phase \(hottest ground up to ([\d.]+) deg", out)])
+# 5. THE HOURS COME FROM THAT BODY'S OWN DAY: the row's degrees over that body's MEASURED mean
+#    solar day, not a constant and not the sidereal period. Dres alone could not catch a sidereal
+#    bug -- its sidereal period is 2*pi/rot_ang_speed = 34,800.0 s against a 34,825.0 s solar day,
+#    a 0.001 h difference no band this wide separates -- so the check runs over EVERY lagged body.
+#    Pol is the one that bites: tidally locked to Jool, it spins in 901,903 s but its sun takes
+#    909,742 s to come back, so dividing by the first prints 17.82 h where the row prints 17.98.
+#    The tolerance is printed rounding, which grows with the day: half a tenth of a degree across
+#    360 of it, plus the printed hundredth of an hour.
+CHECK all((lambda secs: abs(float(re.search(r"/ ([\d.]+) h past noon", b).group(1)) - float(re.search(r"up to ([\d.]+) deg", b).group(1)) / 360.0 * secs / 3600.0) < 0.006 + 0.06 / 360.0 * secs / 3600.0)((lambda d: int(d.group(1) or 0) * 86400 + int(d.group(2)) * 3600 + int(d.group(3)) * 60 + int(d.group(4)))(re.search(r"day length\s+(?:(\d+)d\s+)?(\d+):(\d+):(\d+)", b))) for b in re.split(r"\n(?=\[atlas\] \w+ weight=)", out) if "rad of phase" in b)
+# 6. ... AND THE DAY THE ROW NAMES IS THE DAY ITS OWN BLOCK PRINTS. Two different periods inside
+#    one block is the mistake this catches, and it is the reason the row repeats the day at all.
+CHECK all(re.search(r"; day ([^\)]+)\)", b).group(1).strip() == re.search(r"day length\s+(.+?)\s*$", b, re.M).group(1) for b in re.split(r"\n(?=\[atlas\] \w+ weight=)", out) if "rad of phase" in b)
+# 7. THE BOUND IS NOT DECORATIVE. The row says UP TO because atan(tau) is exact only for a
+#    polar-day row; a day/night row peaks inside it. Dres's map measures that inside value
+#    (+42.6 deg at 256 columns in render/794-b, and again here at 128), so pin both sides -- the
+#    measured afternoon stays under the bound, and within 8 deg of it, or "up to" has quietly
+#    become a free number. The bake reports the same tau the dossier read, a row apart.
+CHECK all(r["body"] == "Dres" and abs(r["lag_tau"] - 1.1030) < 1e-3 for r in surfmap)
+CHECK (lambda bound: all(r["peak_deg"] < bound for r in surfmap) and all(r["peak_deg"] > bound - 8.0 for r in surfmap))(float(re.search(r"\[atlas\] Dres weight=.*?up to ([\d.]+) deg", out, re.S).group(1)))
+# 8. ABSENCE, NOT ZERO. Moho is the body the pricing pass measured at tau 0.006 and refused
 #    (utils/gen_systems.py prints it below LAG_AUTHOR_FLOOR), so it keeps the sentinel and the row
 #    dashes. A printed 0.000 here would be a claim that this ground peaks at noon.
 CHECK re.search(r"ground lag\s+-", re.search(r"\[atlas\] Moho weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
 FORBID ground lag\s+0\.000 rad
-# 5. WHO HAS ONE: exactly the seven the pass authored, and every ground that prices a swing gets
-#    a lag row beside it -- the two columns are one law, so they cannot drift apart by omission.
-CHECK len(re.findall(r"ground lag\s+[\d.]+ rad", out)) == 7
-CHECK len(re.findall(r"ground lag\s+-", out)) == len(re.findall(r"ground swing\s+[\d.]+ to", out)) - 7
-# 6. A banded world gets the banded WORD (it has no ground to lag), so the row cannot read as a
-#    sea floor nobody can find. Jool is skipped by the pass anyway -- air is not a radiating skin.
+# 9. NO ROW WITHOUT ITS PAIR: every ground (or level) this file prices a swing for carries a lag
+#    row beside it, so the two halves of one law cannot drift apart by omission. A correspondence
+#    rather than "exactly seven": WHICH bodies author a tau is tests/test_belts.cpp's roster to
+#    pin, and a bare seven stays green when one body trades places with another.
+CHECK len(re.findall(r"(?:ground|level) lag", out)) == len(re.findall(r"(?:ground|level) swing", out))
+# 10. A banded world gets the banded WORD (it has no ground to lag), so the row cannot read as a
+#     sea floor nobody can find. And it can only ever dash now: src/system.cpp refuses a
+#     surface.lag_tau on a body with surface.bands, because a column is not a radiating skin.
 CHECK (lambda jb: re.search(r"level lag\s+-", jb) is not None and "ground lag" not in jb)(re.search(r"\[atlas\] Jool weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
-# 7. THE IDENTITY, over every swing this file printed -- the guard that the new row is an extra
-#    row. Same rounding-aware tolerance science/724 derives (the dossier prints tenths, and the
-#    fourth powers multiply that half-decimal).
+# 11. THE IDENTITY, over every swing this file printed -- the guard that the new row is an extra
+#     row. Same rounding-aware tolerance science/724 derives (the dossier prints tenths, and the
+#     fourth powers multiply that half-decimal).
 CHECK all(abs((float(d) / float(a)) ** 4 + 3.0 * (float(n) / float(a)) ** 4 - 4.0) < 1.6 / float(a) for (n, d), a in zip(re.findall(r"ground swing\s+([\d.]+) to ([\d.]+) K", out), re.findall(r"ground anchor(?: \(sea level\))?\s+([\d.]+) K", out)))
 FORBID error:

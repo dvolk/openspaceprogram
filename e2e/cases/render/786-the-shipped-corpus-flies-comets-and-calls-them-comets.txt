@@ -12,10 +12,13 @@ ARGS --system res/systems/solar_system.json --timeout 6 --atlas-dump 4000
 # 1. SEVEN, AND EACH ONE SAYS SO. A count rather than seven EXPECTs: the number is the roster,
 #    and a comet that loads but types as "planet" (the ternary-chain default this replaced) is
 #    the failure mode -- the count moves and every type row beside it disagrees.
+#    Counted through \s+ rather than a literal gap: #793 widened the dossier's label column to
+#    fit `ground anchor (sea level)`, and these two CHECKs had been pinning the old padding, so
+#    they sat red from that commit onward. The roster is the claim here; the column width is not.
 EXPECT [atlas] 1P/Halley weight=
 EXPECT [atlas] 252P/LINEAR weight=
-CHECK out.count("[atlas]   type                   comet") == 7
-CHECK out.count("[atlas]   type                   planet") == 9
+CHECK len(re.findall(r"\[atlas\]\s+type\s+comet", out)) == 7
+CHECK len(re.findall(r"\[atlas\]\s+type\s+planet", out)) == 9
 # 2. THE HANDLE IS THE DESIGNATION, NOT THE NICKNAME. The deeper corpora already ship a body
 #    called LINEAR -- asteroid 118401, a MAIN-belt comet at a 3.20 AU and e 0.19 -- while
 #    252P/LINEAR is a Jupiter-family comet at a 3.05 AU and e 0.67. Names are keys here (the

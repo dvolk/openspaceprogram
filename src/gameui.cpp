@@ -7470,30 +7470,39 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
                kelvin above are the LAW's ends -- one anchor and one even share force both, and
                #724/#735's identity `(day/T0)^4 + 3 (night/T0)^4 = 4` is pinned against them --
                so they stay exactly as they are. But a body that authored a phase lag never
-               paints its hot end: Dres measures a 205.6 K law end against a 190.4 K palette
-               (e2e render/794-b). A reader handed only the swing cannot tell which of those two
+               paints its hot end: at the map's epoch rail Dres measures a 205.6 K law end against
+               a 190.4 K palette (e2e render/794-b; the row above is the MEAN orbit, which is why
+               its end reads 220.0). A reader handed only the swing cannot tell which of those two
                numbers the world actually wears, which is #793's "a labelled colour the world
                never wears" wearing a dossier's clothes.
-               The angle is radians of PHASE as authored, plus the same angle in this body's
-               MEASURED mean solar day (b.cal.solar_day_seconds, from measureSolarDay) -- never
-               the sidereal rotation, which is the exact trap that makes an author type
-               `lag_tau: 14` meaning 14:00 (authored.h). Absence dashes; a stated 0.0 prints the
-               zero it claims (#727). */
+               The angle is radians of PHASE as authored (four decimals, the same precision the
+               Surface Map's `lag_tau=` prints), then what that angle DOES to the ground: how far
+               past its sun the hottest ground sits. Absence dashes; a stated 0.0 prints the zero
+               it claims (#727). */
             if(lagTauAuthored(b.surface.lag_tau)) {
                 const double sd = b.cal.solar_day_seconds;
                 char dv[32];
                 if(sd > 0.0) {
-                    /* The hours are the RESPONSE TIME (tau_phase / omega_solar), which is what a
-                       tau is in seconds -- NOT how late the peak lands, which is atan(tau) of
-                       phase and, on a day/night row, a few degrees inside that (the map's
-                       peak_deg= column measures it; Dres measures +42.6 deg, 1.14 h). Naming it
-                       keeps the two apart in the one line a player reads. */
-                    fmtRow(v, sizeof v, "%.3f rad of phase (a %.2f h response; day %s)",
-                             b.surface.lag_tau,
-                             b.surface.lag_tau / (2.0 * std::numbers::pi) * sd / 3600.0,
+                    /* atan(tau) is the phase the ground carries, and it is an UPPER bound on what
+                       the map shows: a polar-day row lags exactly that much, a day/night row less
+                       (Dres: atan = 47.8 deg, the row's measured peak_deg= is +42.6). Hence "up
+                       to". What this row does NOT print is tau's own time constant, phase / omega
+                       -- 1.70 h at Dres, 1.5x the 1.15 h the player can measure on the map, and
+                       hours invite the reading "this ground peaks 1.70 h after noon" that the row
+                       would then be lying about.
+                       The day is the MEASURED mean solar day (b.cal.solar_day_seconds from
+                       measureSolarDay), never b.cal.rot_ang_speed's sidereal period -- the exact
+                       trap that makes an author type `lag_tau: 14` meaning 14:00 (authored.h).
+                       measureSolarDay does fall back to the sidereal period when there is no sun
+                       in range or the sun never sweeps the hull (a star-synchronous body); the
+                       pricing pass refuses a lag on either, so the fallback never reaches here. */
+                    const double phase_deg = std::atan(b.surface.lag_tau) * 180.0 / std::numbers::pi;
+                    fmtRow(v, sizeof v, "%.4f rad of phase (hottest ground up to %.1f deg / %.2f h past noon; day %s)",
+                             b.surface.lag_tau, phase_deg,
+                             phase_deg / 360.0 * sd / 3600.0,
                              fmt_time(sd, dv, sizeof dv));
                 } else {
-                    fmtRow(v, sizeof v, "%.3f rad of phase (no day to convert against)",
+                    fmtRow(v, sizeof v, "%.4f rad of phase (no day to convert against)",
                              b.surface.lag_tau);
                 }
                 line(giant ? "level lag" : "ground lag", v);

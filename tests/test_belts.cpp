@@ -474,6 +474,18 @@ int main() {
                       "\"surface.lag_tau\" must be a number");
     }
     {
+        /* A banded world has no radiating skin (groundtemp.h), so a lag there is a knob with
+           nothing to slow -- and the map would honour it anyway, so the dossier would print a
+           `level lag` for a phantom. The pricing pass already refuses to author one; this is
+           the same rule at the door, for the hand-authored file. */
+        nlohmann::json j = read_json("res/systems/old_system.json");
+        j["bodies"][1]["surface"]["bands"] = true;
+        j["bodies"][1]["surface"]["lag_tau"] = 1.0;
+        j["bodies"][1]["surface"]["lag_tau_src"] = "test fixture on a gas giant";
+        expect_reject(j, "a banded world cannot author a ground lag",
+                      "on a banded world");
+    }
+    {
         nlohmann::json j = read_json("res/systems/old_system.json");
         j["bodies"][1]["surface"]["lag_tau"] = 1.0;
         j["bodies"][1]["surface"]["lag_tau_src"] = 3.0;
