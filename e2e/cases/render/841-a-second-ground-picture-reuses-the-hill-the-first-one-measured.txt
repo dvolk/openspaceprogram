@@ -1,33 +1,40 @@
 NAME 841-a-second-ground-picture-reuses-the-hill-the-first-one-measured
-CLAIM The ground picture samples the ground's height ONCE per pixel and keeps the grid it sampled: a re-bake of the same world at the same size says elev_cache=hit, paints the same base colours digit-for-digit, and costs a small fraction of the first bake's sweep_ms.
+CLAIM The ground picture samples the ground's height ONCE per pixel and keeps the grid it sampled: a re-bake of the same world at the same size says elev_cache=hit, prints the same base-colour means digit-for-digit, and costs a small fraction of the first bake's sweep_ms.
 KIND invariant
 # #841, the half #839 left out. A temperature map on a lapse-bearing world already reused its
 # height grid, but a GROUND picture -- the default picture, the one a player sees first and
-# re-requests on every body switch, level change and M -- did not: it sampled the noise inside
+# re-requests on every body switch, level change and M -- sampled the noise inside
 # terrainSurfaceColor for its palette band, and on ground+ocean sampled it AGAIN per pixel for the
 # sea test, then threw both away. So the picture with the cheapest law was the most expensive
-# bake, and its own cache column lied slightly by printing a dash: "needs no height grid", when
-# what it needed was the height itself, twice.
+# bake, and its own cache column printed a dash: "the picture reads no height", when what it read
+# was the height itself, twice.
 #
-# The two halves of the fix, and the legs that hold each:
-#   ONE SAMPLE PER PIXEL (CHECK 3): the sweep hands the height it measured to terrainSurfaceColorH
-#     and to the under-sea test. Measured at --surfmap-n 2048 on AltoFrio, ground+ocean went
-#     2675.6 -> 1945.4 ms on the FIRST bake, because that bake stopped sampling twice.
-#   THE GRID IS SHARED (CHECK 2 and 4): the ground picture now asks for the #839 slot, so the
-#     second bake of the same body at the same size samples nothing at all. Measured here at 1024:
-#     497-500 ms sampling, then 38-43 ms (12x); at 2048, ground+ocean 1945 ms then a 154.5 ms hit,
-#     and plain ground 2124.6 ms then 279.5 ms. The floor is 5x, the same margin #839's case uses:
-#     loose on a loaded box, nowhere near surviving the height pass running again.
-#   THE PICTURE DID NOT MOVE (CHECK 3, and the digit-for-digit albedo equality in CHECK 5): the
-#     grid stores the float terrainHeight() ANSWERED, not an above-datum elevation re-added to the
-#     datum afterwards. That is deliberate -- reconstructing an absolute height rounds twice, and
-#     the sea test and the palette both key on that float, so a hit could have moved a coastline
-#     or a palette band relative to a miss. albedo=[0.1697 0.2934 0.7280] is the picture this body
-#     painted before the change as well, so the pin is "same colours", not just "same as itself".
-#   WHAT STILL PRINTS A DASH (checked by render/23, which bakes plain ground and pins `miss`): only
-#     a picture that reads no height at all -- a banded body's colour comes from its band table, a
-#     refused field paints flat grey, and a temperature map whose air does not lapse has no relief
-#     term to price.
+# What each leg below holds (numbering follows the CHECKs in order):
+#   THE GRID IS SHARED (CHECK 3 and CHECK 6): the ground picture now asks for the #839 slot, so a
+#     second bake of the same body at the same size takes no height sample at all. Measured here
+#     at 1024: 443-500 ms sampling, then 38-43 ms (11x-12x). At 2048, ground+ocean 1945 ms then a
+#     154.5 ms hit and plain ground 2124.6 ms then 279.5 ms. CHECK 6's floor is 5x -- a third of
+#     the smallest ratio seen, the same margin #839's case uses: loose on a loaded box, nowhere
+#     near surviving the height pass running again.
+#   THE PICTURE DID NOT MOVE (CHECK 4): the grid stores the float terrainHeight() ANSWERED, not an
+#     above-datum elevation added back to the datum afterwards. That is deliberate --
+#     reconstructing an absolute height rounds twice, and both the sea test and the palette key on
+#     that float, so a hit could otherwise have moved a coastline or a palette band relative to a
+#     miss. Be honest about what CHECK 4 sees: `albedo` is the mean of 524288 pixels printed to 4
+#     decimals, so this is an aggregate, not a per-pixel diff. The per-pixel claim was checked by
+#     hand instead -- every printed column of every [surfmap] row for ground, ground+ocean,
+#     temperature and wind at 1024 is byte-identical before and after the change except elev_cache=
+#     and sweep_ms= -- and the value that hand-diff pinned is albedo=[0.1697 0.2934 0.7280], which
+#     is what the run below prints too. It is NOT pinned as a number on purpose: it moves with the
+#     bake size (at 2048 the same body prints 0.2933 in the green channel) and with any retune of
+#     the fixture, and an invariant that reddens when someone edits a mountain is the wrong kind of
+#     red.
+#   ONE SAMPLE PER PIXEL ON THE FIRST BAKE: pinned by NO leg here, and said so rather than
+#     implied. It is a manual measurement -- at 2048, ground+ocean's first bake went 2675.6 ->
+#     1945.4 ms once the sea test stopped sampling a second time. A case could not pin it without
+#     comparing against a binary that no longer exists.
+#   WHAT STILL PRINTS A DASH: render/23-surfmap pins the column for a plain ground bake (miss);
+#     the dash now belongs to a banded body, a refused field and a non-lapsing air.
 #
 # AltoFrio is the body to price because it has relief and needs no air for the ground picture;
 # Meridian is the flat control in src/cli.h's table, and the ratio there is already ~1x, so the
@@ -40,7 +47,6 @@ CHECK len(surfmap) == 3
 CHECK all(r["body"] == "AltoFrio" and r["map"] == "ground+ocean" and r["w"] == 1024 and r["ocean"] == "on" for r in surfmap)
 CHECK [r["elev_cache"] for r in surfmap] == ["miss", "hit", "hit"]
 CHECK all(r["albedo"] == surfmap[0]["albedo"] for r in surfmap[1:])
-CHECK surfmap[0]["albedo"] == (0.1697, 0.2934, 0.7280)
 # sweep_ms= is the log's own cost column and is not parsed into the row dict, so it is read off
 # the line: three numbers, the first one the sampling bake.
 CHECK (lambda ms: len(ms) == 3 and float(ms[0]) > 5.0 * float(ms[1]) and float(ms[0]) > 5.0 * float(ms[2]))(re.findall(r"sweep_ms=([\d.]+)", out))

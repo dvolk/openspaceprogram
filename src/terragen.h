@@ -800,11 +800,10 @@ inline glm::vec3 terrainSurfaceColorH(const glm::vec3& p, const TerrainParams& t
     return color;
 }
 
-/* Same picture, measuring its own height. A banded body's colour never reads one, so
-   nothing is sampled for it. */
+/* Same picture, measuring its own height. Nothing is wasted on a banded body:
+   terrainHeightFade answers its datum radius before it touches the noise. */
 inline glm::vec3 terrainSurfaceColor(const glm::vec3& p, const TerrainParams& t,
                                      float jitter_scale = -1.0f) {
-    if (t.surface.bands) { return terrainSurfaceColorH(p, t, t.radius, jitter_scale); }
     return terrainSurfaceColorH(p, t, terrainHeight(p, t), jitter_scale);
 }
 

@@ -232,8 +232,9 @@ SURFMAP_RE = re.compile(
     # #839: did THIS bake sample the ground's heights, or reuse the previous bake's grid for the
     # same body at the same size? The column prints after every tail (just before sweep_ms=),
     # because the tails above are positional and a column in the middle hides them -- the same
-    # reason sweep_ms= sits last. `-` is an absent QUESTION, not a miss: a ground or cloud
-    # picture, or a temperature map on an air whose profile does not lapse, needs no heights.
+    # reason sweep_ms= sits last. `-` is an absent QUESTION, not a miss: the picture reads no
+    # height at all, which since #841 means a banded body (band table, not noise), a refused
+    # field, or a temperature map on air whose profile does not lapse.
     # This group is deliberately NOT optional: every row carries the column, so a row that lost
     # it stops matching here (the case goes red for a missing bake) instead of reading as a row
     # that never had one. anchor_src= is #687's provenance, which no case reads; it is spelled
@@ -1108,9 +1109,12 @@ def parse_surfmap(out):
             "anchor": None if anchor is None else float(anchor),
             "note": note,
             # #839: 'hit' = this bake painted from the heights an earlier bake sampled for this
-            # body at this size; 'miss' = it sampled them itself; '-' = the picture needs no
-            # heights at all. A string, not None-or-bool: the three states are different news and
-            # a bare False would merge "no heights needed" into "heights re-sampled".
+            # body at this size; 'miss' = it sampled them itself; '-' = the picture reads no
+            # height at all (a banded body's colour comes from its band table, a refused field
+            # paints flat grey, a temperature map on air whose profile does not lapse has no
+            # relief term to price). Ground and ground+ocean print hit/miss since #841. A string,
+            # not None-or-bool: the three states are different news and a bare False would merge
+            # "no heights needed" into "heights re-sampled".
             "elev_cache": elev_cache,
             # #769: the wind map. "wind" is what the sweep painted over the ground (min, the
             # cos-lat weighted mean, max); "wind_ends" is what the body's file states at its

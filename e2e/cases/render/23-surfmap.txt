@@ -14,9 +14,9 @@ CHECK all(s <= a + 1e-9 for s, a in zip(last(surfmap)["shaded"], last(surfmap)["
 CHECK any(s < a for s, a in zip(last(surfmap)["shaded"], last(surfmap)["albedo"]))
 # #839/#841: a ground picture colours from the ground's height (its palette band, plus the sea
 # test when the map asks for one), so it asks the cache -- and here it asks for the first time in
-# the run, so `miss`. A dash is an absent QUESTION, and only two shapes print it now: a banded
-# body, whose colour comes from a band table and never reads a height, and a refused field, which
-# paints flat grey instead of the ground. Pinned here because this is the run shape that prints
-# the first of them.
+# the run, so `miss`. Three shapes still print a dash, and none of them is this run: a banded
+# body, whose colour comes from a band table and never reads a height; a refused field, which
+# paints flat grey instead of the ground; and a temperature map on air whose profile does not
+# lapse. This case is the one that pins the column for a plain ground bake.
 CHECK last(surfmap)["elev_cache"] == "miss"
 FORBID error:

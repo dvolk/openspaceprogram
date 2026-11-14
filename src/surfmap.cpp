@@ -120,10 +120,14 @@ void surfmapCompute(Game &g) {
        #841 adds the GROUND picture itself. It has always sampled the height -- once inside
        terrainSurfaceColor for the palette, and again per pixel for the under-sea test -- so it
        was the one picture paying the noise twice and caching nothing, while a temperature bake
-       of the same hill reused its grid. Asking for the grid here costs nothing new on a miss
-       (the pass below samples once either way) and buys back a whole sampling pass on a hit.
-       A banded body is excluded because its colour never reads a height at all:
-       terrainSurfaceColorH answers from the band table. */
+       of the same hill reused its grid. Asking for the grid costs no extra SAMPLE on a miss (the
+       height was already being sampled once per pixel) -- what is new is a 4-byte-per-pixel store
+       and its min/max -- and it buys back a whole sampling pass on a hit.
+       A banded body is excluded because its colour answers from the band table. That also drops
+       the under-sea test for a banded body that authors a datum, which is authorable and shipped
+       nowhere: terrainHeight answers a giant's datum radius, so the old test was true in every
+       direction and its ground+ocean picture was one flat sphere in sea_color. Painting its
+       bands instead is the deliberate choice here. */
     const bool want_elev = (want_wind && wl.ok) || (want_temp && tl.ok && tl.relief)
                         || (!want_field && !tp.surface.bands);
     /* #839: the heights the previous bake sampled, if they were for this body at this size.
@@ -272,7 +276,14 @@ void surfmapCompute(Game &g) {
                            in the same place -- the colour pass below compares this value to
                            sea_r and feeds it to the palette, and re-deriving an absolute height
                            from a stored above-datum float would round twice and could move a
-                           coastline or a palette band between a hit and a miss. */
+                           coastline or a palette band between a hit and a miss.
+                           The cost of that choice is honest to name: the relief and wind readers
+                           now subtract in double from a float sitting near the body's radius, so
+                           their elevation is quantised at THAT float's ulp (0.0625 m at 600 km)
+                           rather than at the ulp of a small above-datum number. Through relief_K
+                           that is ~3e-4 K and through the ramp ~1e-7 of a stop -- under every
+                           printed digit, and the floor/ceiling they price are unaffected because
+                           both are computed in double from this same value. */
                         const float hgt = terrainHeight(
                             (glm::vec3)equirectDirAt(trig, i, j), tp);
                         (*grid)[(size_t)j * w + i] = hgt;
@@ -461,16 +472,19 @@ void surfmapCompute(Game &g) {
                        same way -- and the two refusals say WHICH absence in the log's note= and
                        on the cursor row, not here (#726). */
                     c = glm::vec3(0.34f, 0.34f, 0.34f);
-                } else if(elevs != nullptr) {
+                } else if(want_elev) {
                     /* Ocean map on and at/below sea level: flat sea covers the floor
                        (same coverage as the 3D ocean shell, and the same predicate as
                        a Flat-sea body's painted sea_color floor -- issue #193).
                        #841: the height the grid pass already measured does both jobs. The sea
                        test is a comparison against the same hoisted datum the grid's floor and
                        ceiling were taken from, and the palette reads the very float
-                       terrainSurfaceColor would have sampled for this direction, so the picture
-                       is bit-for-bit what it was -- at one noise sample per pixel instead of
-                       two, and zero on a cache hit. */
+                       terrainSurfaceColor would have sampled for this direction -- the same
+                       direction table, the same captured params, the same jitter expression -- so
+                       this picture is bit-for-bit what it was, at one height sample per pixel
+                       instead of two, and NO height sample at all on a cache hit (the colour
+                       jitter still runs per pixel). elevs is non-null exactly when want_elev is,
+                       and the assert below the grid pass says so. */
                     const float hgt = (*elevs)[(size_t)j * w + i];
                     const bool under_sea = ocean && tp.surface.has_sea
                         && (double)hgt <= sea_r;
@@ -478,8 +492,9 @@ void surfmapCompute(Game &g) {
                         ? tp.surface.sea_color
                         : terrainSurfaceColorH((glm::vec3)d, tp, hgt);
                 } else {
-                    // Only a banded body reaches here: its colour comes from the band table and
-                    // never reads a height, so there is no sample to hand over.
+                    // Only a banded body reaches here (see want_elev above): its colour comes
+                    // from the band table and never reads a height, so there is no sample to
+                    // hand over.
                     c = terrainSurfaceColor((glm::vec3)d, tp);
                 }
                 unsigned char *q = &px[((size_t)j * w + i) * 4];

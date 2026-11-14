@@ -438,8 +438,8 @@ struct SurfmapState {
     bool valid = false;
     int rev = 0;
     /* #839: the heights the last bake sampled, kept for the next one. terrainHeight() is noise,
-       and it is the expensive half of a temperature or wind sweep -- ~17x what the same bake
-       costs on a flat world (src/cli.h's table: AltoFrio 110 ms at 512 against Meridian's
+       and it is the expensive half of a temperature, wind or ground sweep -- ~17x what the same
+       bake costs on a flat world (src/cli.h's table: AltoFrio 110 ms at 512 against Meridian's
        6.4 ms, and 1914 ms against 98.9 ms at 2048). The ground does not move between bakes, and
        the map re-bakes on every chooser change, so without this the same 2M noise samples are
        thrown away and recomputed for a picture of the same hill from a different knob.
@@ -447,9 +447,9 @@ struct SurfmapState {
        the noise twice a pixel (palette plus sea test) and caching nothing.
        One slot, not a table: the win is the re-bake, and a grid per body is 33 MB at the 4096
        ceiling the #831 guard allows -- times the 659-body list of #797, which is not a cache but
-       a leak with good manners. So the next relief bake replaces it, and the miss it costs is
-       one bake per body switch. Two grids are alive at the busiest moment, not one: this slot
-       plus the grid a second in-flight bake is sampling.
+       a leak with good manners. So the next bake of a different body or size replaces it, and the
+       miss it costs is one bake per body switch. Two grids are alive at the busiest moment, not
+       one: this slot plus the grid a second in-flight bake is sampling.
        Keyed by NAME rather than by a body pointer on purpose: a TerrainBody can be freed and a
        different one land on the same address, which is exactly the trap #296 records for the
        identity-only readers. A name cannot do that, and resetForNewWorld below clears the slot
@@ -463,10 +463,12 @@ struct SurfmapState {
     /* Shared rather than owned outright by the slot: a bake still running keeps its own reference
        while the slot moves on to the next body, and what it reads is const, so nothing can
        repaint a hill under a sweep that already measured it. */
-    std::shared_ptr<const std::vector<float> > elev_grid;   // [elev_w * elev_h], m from the centre
-    /* Above DATUM, unlike the grid itself: these are what the palettes are priced from, and the
-       grid deliberately stores the float terrainHeight() answered so a cached bake and a fresh
-       one are the same number in the same place (#841). Every reader subtracts sea_r. */
+    /* The float terrainHeight() ANSWERED, m from the body centre (#841). Storing the sample
+       itself rather than an above-datum elevation is what makes a hit and a miss the same number
+       in the same place: a reader that wants an elevation subtracts sea_r itself. */
+    std::shared_ptr<const std::vector<float> > elev_grid;   // [elev_w * elev_h]
+    /* Already ABOVE DATUM (grid value minus sea_r), which is what the temperature and wind ramps
+       are priced from -- do not subtract again. */
     double elev_lo = 0.0, elev_hi = 0.0;
     // Jobs posted but not landed (the window shows "mapping ...").
     int in_flight = 0;

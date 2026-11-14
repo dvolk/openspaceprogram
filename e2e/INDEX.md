@@ -452,7 +452,7 @@ judgement. Select by number, name or path, e.g.
 | `render/831-a-surfmap-asked-wider-than-it-can-resolve-says-so.txt` | invariant | --surfmap-n past the ceiling is refused at parse time with the cost that ceiling stands for, and nothing is baked -- rather than booting a run whose bake reads as a hang. |
 | `render/831-b-surfmap-asked-smaller-than-its-grid-says-so.txt` | invariant | --surfmap-n under the map's own 16-column floor is refused at parse rather than quietly baking at 16 and reporting a picture the player did not ask for. |
 | `render/839-a-second-bake-of-a-hill-reuses-its-heights.txt` | invariant | Baking the same world at the same size twice samples the ground's height ONCE: the second picture reports the same floor, ceiling and lapse cost as the first, paints a field that still moves with the season, and costs a small fraction of the first bake's sweep_ms. |
-| `render/841-a-second-ground-picture-reuses-the-hill-the-first-one-measured.txt` | invariant | The ground picture samples the ground's height ONCE per pixel and keeps the grid it sampled: a re-bake of the same world at the same size says elev_cache=hit, paints the same base colours digit-for-digit, and costs a small fraction of the first bake's sweep_ms. |
+| `render/841-a-second-ground-picture-reuses-the-hill-the-first-one-measured.txt` | invariant | The ground picture samples the ground's height ONCE per pixel and keeps the grid it sampled: a re-bake of the same world at the same size says elev_cache=hit, prints the same base-colour means digit-for-digit, and costs a small fraction of the first bake's sweep_ms. |
 
 ## harness (16)
 
