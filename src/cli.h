@@ -259,3 +259,20 @@ inline unsigned gateIntervalMs(double seconds) {
     if(seconds > kIntervalCeilingS) { seconds = kIntervalCeilingS; }
     return (unsigned)(seconds * 1000.0);
 }
+
+/* --surfmap-n's band (#831). One knob sets both of the map's costs and both are
+   quadratic in it: a bake sweeps w*h pixels, and a temperature sweep holds four
+   w*h-sized grids at once (elevation, the lagged kelvin of #794, the RGBA picture,
+   the terminator overlay). Measured on the lag fixture -- AltoFrio, one temperature
+   bake, sweep_ms= and peak resident:
+     n      512    1024    2048    4096     8192
+     ms     110     481    1914    7476    29633
+     MB     148     150     158     254      638
+   The ceiling is the RESOLUTION law rather than the memory one: 4096 columns is
+   already 0.088 deg each, resampling a sphere this picture cannot resolve finer,
+   and 8192 spends half a minute of the map thread and ~1 GB of buffers to buy
+   nothing new to see. Refuse at the gate like the interval knobs (#673) rather
+   than looking like a hang; surfmap.cpp's own max(16, n) / max(8, h) stays as the
+   invariant for the live map, which cannot be asked for a size this way. */
+inline constexpr int kSurfmapNCeiling = 4096;
+inline constexpr int kSurfmapNFloor = 16;

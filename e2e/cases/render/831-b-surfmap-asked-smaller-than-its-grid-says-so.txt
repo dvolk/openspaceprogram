@@ -1,0 +1,16 @@
+NAME 831-b-surfmap-asked-smaller-than-its-grid-says-so
+CLAIM --surfmap-n under the map's own 16-column floor is refused at parse rather than quietly baking at 16 and reporting a picture the player did not ask for.
+KIND invariant
+# The other end of #831, and the less visible one. surfmap.cpp clamps the ask
+# (w = max(16, n), h = max(8, w/2)), so --surfmap-n 4 has always produced a 16x8 map while
+# the log line printed the size it actually painted -- a silent substitution. A clamp is the
+# right invariant for the LIVE map, which never takes a size from a command line; it is the
+# wrong answer to a typed request, which deserves to hear that its number cannot be honoured.
+#
+# One case per end: multiple ARGS lines in a case file concatenate into ONE argv, so a second
+# --surfmap-n in the same file would just override the first.
+ARGS --timeout 8 --system res/systems/lag_playground.json --surfmap-log --surfmap-n 4 --surfmap-body AltoFrio --surfmap-map temperature
+EXPECT error: --surfmap-n 4 is under the map's floor of 16 columns
+EXIT 1
+CHECK len(re.findall(r"\[surfmap\]", out)) == 0
+LIMIT 60

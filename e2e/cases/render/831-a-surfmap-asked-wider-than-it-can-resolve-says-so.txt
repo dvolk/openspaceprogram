@@ -1,0 +1,19 @@
+NAME 831-a-surfmap-asked-wider-than-it-can-resolve-says-so
+CLAIM --surfmap-n past the ceiling is refused at parse time with the cost that ceiling stands for, and nothing is baked -- rather than booting a run whose bake reads as a hang.
+KIND invariant
+# #831. A temperature bake holds four w*h-sized grids at once (elevation, the lagged kelvin
+# of #794, the RGBA picture, the terminator overlay) and sweeps w*h pixels, so one knob sets
+# both costs and both are quadratic in it. Measured on this fixture (AltoFrio, one bake,
+# sweep_ms= / peak resident): 110 ms / 148 MB at 512, 1914 ms / 158 MB at 2048, 7476 ms /
+# 254 MB at 4096, 29633 ms / 638 MB at 8192 -- and the ticket's repro at 8192 was a run that
+# looked like it had stopped answering. The ceiling is a resolution law, not a memory guard:
+# at 4096 a column is 0.088 deg of a sphere this picture only resamples.
+#
+# The project refuses nonsense at the gate (the --orbit-interval ceilings, #673), so this is
+# the same shape. The pin is the message plus EXIT 1 plus no [surfmap] row: a clamp that let
+# the run start and painted anyway would leave a bake line behind.
+ARGS --timeout 8 --system res/systems/lag_playground.json --surfmap-log --surfmap-n 8192 --surfmap-body AltoFrio --surfmap-map temperature
+EXPECT error: --surfmap-n 8192 is past the 4096 columns this map resolves
+EXIT 1
+CHECK len(re.findall(r"\[surfmap\]", out)) == 0
+LIMIT 60

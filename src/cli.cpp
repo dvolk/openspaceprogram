@@ -618,7 +618,10 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "move ~15 % with machine load, so treat these as the shape "
                    "rather than the number: sweep_ms= says what a bake took. 512 "
                    "rather than 256 because the wind arrows scale with the grid "
-                   "stride: at 256 their heads are ~2 px");
+                   "stride: at 256 their heads are ~2 px. Refused outside "
+                   "16..4096 (#831): past 4096 a column is 0.088 deg of a sphere "
+                   "this picture only resamples, and an 8192-wide bake costs half "
+                   "a minute and ~1 GB for nothing finer to see");
     app.add_flag("--surfmap-noshade", args.surfmap_noshade,
                  "Skip the terminator (day/night shading) when computing the "
                  "surface map (the window's 'Sun shading' box does the same "
@@ -1153,6 +1156,31 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
            asking for it asks for them too -- a knob that silently does nothing
            is how you end up A/B-ing two identical runs. */
         if(args.perf_gpu) { args.perf = true; }
+    }
+
+    /* The surface map's size (#831). One knob sets both of its costs and both are
+       quadratic in it, so an absurd value is not a slower map -- it is a bake that
+       looks like a hang (measured: sweep_ms= 7.5 s at 4096, 29.6 s at 8192, with the
+       four w*h grids pushing the run to 638 MB there). cli.h kSurfmapN* carries the
+       table and the resolution law: past 4096 a column is 0.088 deg of a sphere this
+       picture only resamples. Refuse at the gate like the interval knobs (#673);
+       surfmap.cpp's max(16, n) stays as the invariant for the live map, which never
+       takes a size from here. */
+    if(args.surfmap_n > kSurfmapNCeiling) {
+        printf("error: --surfmap-n %d is past the %d columns this map resolves; a bake "
+               "costs w*h (sweep_ms= measures 7.5 s at %d and 29.6 s at %d), and finer "
+               "than 0.088 deg per column resamples the same sphere\n",
+               args.surfmap_n, kSurfmapNCeiling, kSurfmapNCeiling, 2 * kSurfmapNCeiling);
+        *exit_code = 1;
+        return false;
+    }
+    if(args.surfmap_n < kSurfmapNFloor) {
+        printf("error: --surfmap-n %d is under the map's floor of %d columns; "
+               "2:1 equirectangular, so the smallest grid the sweep paints is "
+               "%dx%d\n", args.surfmap_n, kSurfmapNFloor,
+               kSurfmapNFloor, kSurfmapNFloor / 2);
+        *exit_code = 1;
+        return false;
     }
 
     if(!sim_press.empty()) {

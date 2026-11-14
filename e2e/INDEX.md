@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 345 |
+| `invariant` | a behaviour or a player route the game must keep | 347 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 48 |
 | `harness` | CLI/test-engine plumbing, not game spec | 15 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **412** |
+| | **total** | **414** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -367,7 +367,7 @@ judgement. Select by number, name or path, e.g.
 | `ui/748-hold-the-job-runner-and-read-a-window-mid-bake.txt` | invariant | --hold-jobs keeps a posted surface-map bake unpublished, so a --ui-list inside the span reads the window mid-sweep: the cursor line dashes its ground number as (rebaking) instead of quoting a number for the body it just switched to, and the number lands after the release. |
 | `ui/768-systems-window-shuts-the-nozzles.txt` | golden | The Systems window's Thrust vectoring checkbox drops the live gimballed rating in --steering-log from 129710 N m to 0 while the window keeps printing 129710 N m beside the now-off switch, and says nothing about the engines being gone. |
 
-## render (77)
+## render (79)
 
 | case | kind | pins |
 |---|---|---|
@@ -448,6 +448,8 @@ judgement. Select by number, name or path, e.g.
 | `render/794-the-ground-lags-its-star-and-the-map-says-so.txt` | invariant | A body that authors surface.lag_tau paints its hottest ground AFTERNOON rather than under the star, its palette moves inside the law's own ends so the picture still reaches both of them, and the anchor the swing is anchored to does not move at all -- and the hot spot rides with the sun as the sim runs, rather than being pasted to a longitude. |
 | `render/794-the-worlds-nobody-gave-a-lag-still-peak-at-noon.txt` | invariant | A body whose file states no lag is untouched by the lag machinery: the log DASHES its knob rather than printing a zero, its palette is exactly the law's two ends, its hottest pixel is under the star to within half a pixel column, and the picture reaches that day end -- while the sun itself walks across the grid between bakes, so the noon hot spot is proved to follow the star rather than to sit at a fixed longitude. |
 | `render/810-map-fit-tracking-switch.txt` | invariant | The Tracking Station map fits the newly selected hull's body and orbit. |
+| `render/831-a-surfmap-asked-wider-than-it-can-resolve-says-so.txt` | invariant | --surfmap-n past the ceiling is refused at parse time with the cost that ceiling stands for, and nothing is baked -- rather than booting a run whose bake reads as a hang. |
+| `render/831-b-surfmap-asked-smaller-than-its-grid-says-so.txt` | invariant | --surfmap-n under the map's own 16-column floor is refused at parse rather than quietly baking at 16 and reporting a picture the player did not ask for. |
 
 ## harness (16)
 
