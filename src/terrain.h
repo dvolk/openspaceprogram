@@ -22,6 +22,7 @@
 #include "frame.h"
 #include "calendar.h"
 #include "job.h"
+#include "buildingorbit.h"   // orbital-building pose/attitude (pure math)
 
 class btRigidBody;
 
@@ -729,6 +730,24 @@ public:
     /* Unassigned kerbals standing here (part.h: suit Parts, owned). Launch
        takes one into a seat; recover puts them back. Empty for non-home pads. */
     std::vector<Part *> crew;
+
+    /* ORBITAL building (space dock / station): the pose is DRIVEN from a Kepler
+       orbit each tick, expressed in the body's INERTIAL frame -- never a force
+       response. Surface pads leave orbital=false and keep the static dir/height
+       pose. posePos/poseOrient hold the current pose in poseFrame(); tickPose
+       refreshes them (a pure function of the clock, so loads/warp reproduce it). */
+    bool orbital = false;
+    glm::dvec3 epochPos = glm::dvec3(0.0);   // orbit state at t=0, inertial frame
+    glm::dvec3 epochVel = glm::dvec3(0.0);
+    double orbMu = 0.0;                      // the body's gravitational parameter
+    buildingorbit::Mode attMode = buildingorbit::Mode::BodyFixed;
+    glm::dvec3 spinAxis = glm::dvec3(0.0, 1.0, 0.0);  // local axis
+    double spinRate = 0.0;                   // rad/s about spinAxis
+    glm::dvec3 posePos = glm::dvec3(0.0);    // current pose, in poseFrame()
+    glm::dmat3 poseOrient = glm::dmat3(1.0);
+    bool live = false;                       // orbital: collider in the world now?
+    void tickPose(double time);              // orbital: propagate + set body pose
+    Frame *poseFrame() const;                // inertial if orbital, else spin frame
 
     /* Owns `crew` raw: copying would duplicate the pointers and free each suit
        twice. The destructor also suppresses implicit moves, so a copy is what a

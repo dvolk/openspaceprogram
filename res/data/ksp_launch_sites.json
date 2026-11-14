@@ -29,6 +29,25 @@
       ]
     },
     {
+      "id": "kerbin_station",
+      "type": "station",
+      "display_name": "Kerbin station",
+      "body": "Kerbin",
+      "orbit": { "alt_m": 400000, "inc_deg": 51.6, "raan_deg": 0, "phase_deg": 0 },
+      "attitude": "body-fixed",
+      "spin": { "rate_deg_s": 2.0, "axis": [0, 0, 1] },
+      "flags": [ "ORBITAL" ]
+    },
+    {
+      "id": "kerbin_dock",
+      "type": "spacedock",
+      "display_name": "Kerbin space dock",
+      "body": "Kerbin",
+      "orbit": { "alt_m": 300000, "inc_deg": 0, "raan_deg": 0, "phase_deg": 90 },
+      "attitude": "body-fixed",
+      "flags": [ "ORBITAL", "VAB_LAUNCH_PAD" ]
+    },
+    {
       "id": "moho_pad",
       "type": "space_port",
       "display_name": "Moho pad",

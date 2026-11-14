@@ -26,7 +26,7 @@ def main():
     strut.apply_translation([0, 0, STRUT_TOP - STRUT / 2])
     gear = trimesh.util.concatenate([wheel, strut])
     dst = os.path.join(REPO_ROOT, "res", "meshes", "gear.obj")
-    gear.export(dst)
+    gear.export(dst, include_normals=True)
     print("%s: wheel R=%.2f axle X, strut top Z=%.2f, extents %s"
           % (dst, R, STRUT_TOP, np.round(gear.extents, 3)))
 

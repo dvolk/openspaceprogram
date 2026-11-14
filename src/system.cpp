@@ -377,26 +377,9 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
     // Instances only; place_world_buildings (buildings.h) makes them pads.
     sys.world_buildings = parse_world_buildings_all(doc, path);
 
-    // Rail longitude a -> R_Y(+a): local +X at longitude +a, measured as
-    // atan2(-z, x) about the parent inertial +Y -- the sky embedding's ecliptic
-    // longitude (rail = (x_ecl, z_ecl, -y_ecl), a proper rotation). Prograde
-    // motion sweeps it UP, so authored angles go in un-negated (#146).
-    auto railAz = [](double a) {
-        const double c = std::cos(a), s = std::sin(a);
-        return glm::dmat3(glm::dvec3(c, 0.0, -s),
-                          glm::dvec3(0.0, 1.0, 0.0),
-                          glm::dvec3(s, 0.0, c));
-    };
-
-    // railAz(raan) * R_X(incl): the orbital plane from the authored pair --
-    // frame +X on the ascending node at ecliptic longitude raan, frame +Y the
-    // orbit normal at (raan - 90 deg, 90 deg - incl) (#147).
-    auto planeOrient = [&railAz](double incl, double raan) {
-        const double ci = std::cos(incl), si = std::sin(incl);
-        return railAz(raan) * glm::dmat3(glm::dvec3(1.0, 0.0, 0.0),
-                                         glm::dvec3(0.0, ci, si),
-                                         glm::dvec3(0.0, -si, ci));
-    };
+    // railAz / planeOrient (the rail-longitude and orbital-plane rotations)
+    // live in orbit.h now -- shared with orbital buildings. Convention notes
+    // there (#146, #147).
 
     // --- pass 1: create every body and its frames --------------------------
     for(size_t i = 0; i < bodies.size(); i++) {

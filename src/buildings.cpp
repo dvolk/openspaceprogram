@@ -114,21 +114,79 @@ static std::vector<WorldBuilding> parse_building_array(const nlohmann::json &arr
                 throw std::runtime_error(ctx + "duplicate id '" + w.id + "'");
             }
         }
-        if(!ev.contains("lat_deg") || !ev["lat_deg"].is_number()
-           || !ev.contains("lon_deg") || !ev["lon_deg"].is_number()
-           || !std::isfinite(ev["lat_deg"].get<double>())
-           || !std::isfinite(ev["lon_deg"].get<double>())) {
-            throw std::runtime_error(ctx + "needs finite numeric \"lat_deg\"/\"lon_deg\"");
-        }
-        w.lat_deg = ev["lat_deg"].get<double>();
-        // Kept as authored -- a pad file may write lon -44 or 316 for the same
-        // meridian, and which one it wrote is what the dossier echoes. dir() below
-        // takes it through cos/sin, so the pair is equivalent either way; the
-        // finite check above is what keeps a huge value from becoming a NaN
-        // direction down the line.
-        w.lon_deg = ev["lon_deg"].get<double>();
-        if(w.lat_deg < -90.0 || w.lat_deg > 90.0) {
-            throw std::runtime_error(ctx + "\"lat_deg\" must be in [-90, 90]");
+        if(ev.contains("orbit")) {
+            /* Orbital placement (a space dock / station): a circular-orbit
+               authoring form that becomes a full Kepler state at placement.
+               Mutually exclusive with the surface lat/lon below. */
+            if(ev.contains("lat_deg") || ev.contains("lon_deg")) {
+                throw std::runtime_error(ctx + "an orbital building must not also "
+                                              "author \"lat_deg\"/\"lon_deg\"");
+            }
+            const nlohmann::json &ov = ev["orbit"];
+            w.orbital = true;
+            if(!ov.contains("alt_m") || !ov["alt_m"].is_number()
+               || !std::isfinite(ov["alt_m"].get<double>())
+               || ov["alt_m"].get<double>() <= 0.0) {
+                throw std::runtime_error(ctx + "orbit needs a positive finite \"alt_m\"");
+            }
+            w.orb_alt_m = ov["alt_m"].get<double>();
+            // Optional numeric fields with the same contextual errors as the
+            // surface path (a bare .value() would throw a type_error without the
+            // file+field on a non-numeric value).
+            auto optNum = [&](const nlohmann::json &obj, const char *key) -> double {
+                if(!obj.contains(key)) { return 0.0; }
+                if(!obj[key].is_number() || !std::isfinite(obj[key].get<double>())) {
+                    throw std::runtime_error(ctx + std::string("\"") + key
+                                             + "\" must be a finite number");
+                }
+                return obj[key].get<double>();
+            };
+            w.orb_inc_deg = optNum(ov, "inc_deg");
+            w.orb_raan_deg = optNum(ov, "raan_deg");
+            w.orb_phase_deg = optNum(ov, "phase_deg");
+            if(ev.contains("attitude") && !ev["attitude"].is_string()) {
+                throw std::runtime_error(ctx + "\"attitude\" must be a string");
+            }
+            w.att_mode = ev.value("attitude", std::string("body-fixed"));
+            if(w.att_mode != "body-fixed" && w.att_mode != "sky-fixed") {
+                throw std::runtime_error(ctx + "\"attitude\" must be \"body-fixed\" "
+                                              "or \"sky-fixed\"");
+            }
+            if(ev.contains("spin")) {
+                const nlohmann::json &sv = ev["spin"];
+                w.spin_rate_deg_s = optNum(sv, "rate_deg_s");
+                if(sv.contains("axis")) {
+                    const nlohmann::json &av = sv["axis"];
+                    if(!av.is_array() || av.size() != 3
+                       || !av[0].is_number() || !av[1].is_number()
+                       || !av[2].is_number()) {
+                        throw std::runtime_error(ctx + "spin.axis must be [x, y, z] numbers");
+                    }
+                    w.spin_axis = glm::dvec3(av[0].get<double>(), av[1].get<double>(),
+                                             av[2].get<double>());
+                    if(glm::length(w.spin_axis) < 1e-9) {
+                        throw std::runtime_error(ctx + "spin.axis must be nonzero");
+                    }
+                    w.spin_axis = glm::normalize(w.spin_axis);
+                }
+            }
+        } else {
+            if(!ev.contains("lat_deg") || !ev["lat_deg"].is_number()
+               || !ev.contains("lon_deg") || !ev["lon_deg"].is_number()
+               || !std::isfinite(ev["lat_deg"].get<double>())
+               || !std::isfinite(ev["lon_deg"].get<double>())) {
+                throw std::runtime_error(ctx + "needs finite numeric \"lat_deg\"/\"lon_deg\"");
+            }
+            w.lat_deg = ev["lat_deg"].get<double>();
+            // Kept as authored -- a pad file may write lon -44 or 316 for the same
+            // meridian, and which one it wrote is what the dossier echoes. dir() below
+            // takes it through cos/sin, so the pair is equivalent either way; the
+            // finite check above is what keeps a huge value from becoming a NaN
+            // direction down the line.
+            w.lon_deg = ev["lon_deg"].get<double>();
+            if(w.lat_deg < -90.0 || w.lat_deg > 90.0) {
+                throw std::runtime_error(ctx + "\"lat_deg\" must be in [-90, 90]");
+            }
         }
         w.height_m = 5.0;
         w.heading_deg = 0.0;
@@ -288,7 +346,6 @@ void place_world_buildings(System &sys, const BuildingsCatalog &cat,
     for(const WorldBuilding &w : sys.world_buildings) {
         const BuildingDef *def = cat.find(w.type);   // validated above
         TerrainBody *hb = sys.find(w.body);          // validated above
-        const glm::dvec3 up = w.dir();
         Mesh *m = get_mesh(std::string("res/") + def->mesh);
         Texture *t = get_texture(std::string("res/") + def->texture);
         StaticBuilding *sp = new StaticBuilding;
@@ -298,11 +355,41 @@ void place_world_buildings(System &sys, const BuildingsCatalog &cat,
         sp->id = w.id;
         sp->display_name = w.label(cat);
         sp->flags = w.flags;
-        sp->dir = up;
-        sp->height_m = w.height_m;
-        sp->heading_deg = w.heading_deg;
-        const double heading = w.heading_deg * std::numbers::pi / 180.0;
-        setPosRot(sp->body, sp->origin(), buildingOrient(up, heading));
+        if(w.orbital) {
+            /* A space dock / station: a driven pose on a Kepler orbit, in the
+               body's inertial frame. The circular authoring form becomes a full
+               epoch state here; the engine propagates it each tick. */
+            sp->orbital = true;
+            const double d2r = std::numbers::pi / 180.0;
+            const double r = hb->seaLevelRadius() + w.orb_alt_m;
+            if(!buildingorbit::circularEpochState(r, w.orb_inc_deg * d2r,
+                    w.orb_raan_deg * d2r, w.orb_phase_deg * d2r, hb->mu,
+                    sp->epochPos, sp->epochVel)) {
+                throw std::runtime_error("buildings: bad orbit for '" + w.id + "'");
+            }
+            sp->orbMu = hb->mu;
+            sp->attMode = (w.att_mode == "sky-fixed")
+                        ? buildingorbit::Mode::SkyFixed : buildingorbit::Mode::BodyFixed;
+            sp->spinAxis = w.spin_axis;
+            sp->spinRate = w.spin_rate_deg_s * d2r;
+            // Immovable scenery: a mass-0 STATIC collider whose pose we drive each
+            // tick (a ship bounces off; the building never moves). Out of the world
+            // until the proximity gate adds it; drawn regardless. We deliberately
+            // do NOT MakeKinematic here: a teleported kinematic body did not block
+            // the ship in this Bullet build (see the docking follow-up issue) --
+            // static is the simple v1 answer for scenery you collide with.
+            RemoveBody(sp->body);
+            sp->tickPose(0.0);
+        } else {
+            const glm::dvec3 up = w.dir();
+            sp->dir = up;
+            sp->height_m = w.height_m;
+            sp->heading_deg = w.heading_deg;
+            const double heading = w.heading_deg * std::numbers::pi / 180.0;
+            sp->posePos = sp->origin();
+            sp->poseOrient = buildingOrient(up, heading);
+            setPosRot(sp->body, sp->posePos, sp->poseOrient);
+        }
         hb->pads.push_back(sp);
     }
 }

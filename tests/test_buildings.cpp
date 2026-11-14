@@ -187,6 +187,89 @@ int main() {
         CHECK(expect_throw([&]() { parse_world_buildings(doc, "mem"); }));
     }
 
+    // --- orbital instance parse ------------------------------------------
+    {
+        nlohmann::json doc = nlohmann::json::parse(R"({
+            "world_buildings": [
+                {"id": "st", "type": "station", "body": "Kerbin",
+                 "orbit": {"alt_m": 400000, "inc_deg": 51.6, "raan_deg": 10,
+                           "phase_deg": 90},
+                 "attitude": "body-fixed",
+                 "spin": {"rate_deg_s": 2.0, "axis": [0, 0, 1]},
+                 "flags": ["ORBITAL"]}
+            ]})");
+        std::vector<WorldBuilding> ws = parse_world_buildings(doc, "mem");
+        CHECK(ws.size() == 1);
+        CHECK(ws[0].orbital);
+        CHECK(ws[0].orb_alt_m == 400000.0);
+        CHECK(ws[0].orb_inc_deg == 51.6);
+        CHECK(ws[0].orb_phase_deg == 90.0);
+        CHECK(ws[0].att_mode == "body-fixed");
+        CHECK(ws[0].spin_rate_deg_s == 2.0);
+        CHECK(vnear(ws[0].spin_axis, glm::dvec3(0, 0, 1)));
+    }
+    {
+        // defaults: attitude body-fixed, no spin, inc/raan/phase 0
+        nlohmann::json doc = nlohmann::json::parse(R"({
+            "world_buildings": [
+                {"id": "st", "type": "station", "body": "Kerbin",
+                 "orbit": {"alt_m": 300000}}
+            ]})");
+        std::vector<WorldBuilding> ws = parse_world_buildings(doc, "mem");
+        CHECK(ws.size() == 1 && ws[0].orbital);
+        CHECK(ws[0].att_mode == "body-fixed");
+        CHECK(ws[0].spin_rate_deg_s == 0.0);
+        CHECK(ws[0].orb_inc_deg == 0.0);
+    }
+    {   // orbital XOR surface lat/lon
+        nlohmann::json doc = nlohmann::json::parse(R"({
+            "world_buildings": [
+                {"id": "st", "type": "station", "body": "Kerbin",
+                 "orbit": {"alt_m": 300000}, "lat_deg": 0, "lon_deg": 0}
+            ]})");
+        CHECK(expect_throw([&]() { parse_world_buildings(doc, "mem"); }));
+    }
+    {   // missing alt_m
+        nlohmann::json doc = nlohmann::json::parse(R"({
+            "world_buildings": [
+                {"id": "st", "type": "station", "body": "Kerbin", "orbit": {}}
+            ]})");
+        CHECK(expect_throw([&]() { parse_world_buildings(doc, "mem"); }));
+    }
+    {   // non-positive alt_m
+        nlohmann::json doc = nlohmann::json::parse(R"({
+            "world_buildings": [
+                {"id": "st", "type": "station", "body": "Kerbin",
+                 "orbit": {"alt_m": -5}}
+            ]})");
+        CHECK(expect_throw([&]() { parse_world_buildings(doc, "mem"); }));
+    }
+    {   // bad attitude
+        nlohmann::json doc = nlohmann::json::parse(R"({
+            "world_buildings": [
+                {"id": "st", "type": "station", "body": "Kerbin",
+                 "orbit": {"alt_m": 300000}, "attitude": "sideways"}
+            ]})");
+        CHECK(expect_throw([&]() { parse_world_buildings(doc, "mem"); }));
+    }
+    {   // zero spin axis
+        nlohmann::json doc = nlohmann::json::parse(R"({
+            "world_buildings": [
+                {"id": "st", "type": "station", "body": "Kerbin",
+                 "orbit": {"alt_m": 300000},
+                 "spin": {"rate_deg_s": 1, "axis": [0, 0, 0]}}
+            ]})");
+        CHECK(expect_throw([&]() { parse_world_buildings(doc, "mem"); }));
+    }
+    {   // non-numeric angle: a contextual runtime_error, not a json type_error
+        nlohmann::json doc = nlohmann::json::parse(R"({
+            "world_buildings": [
+                {"id": "st", "type": "station", "body": "Kerbin",
+                 "orbit": {"alt_m": 300000, "inc_deg": "lots"}}
+            ]})");
+        CHECK(expect_throw([&]() { parse_world_buildings(doc, "mem"); }));
+    }
+
     // --- world_buildings_files: named fragments merge in ------------------
     {
         // The shipped Earth table reaches the solar systems, and the merge
@@ -361,12 +444,12 @@ int main() {
         if(logical.find("solar_system") != std::string::npos) {
             CHECK(sys.world_buildings.size() >= 15);
         }
-        // The fictional systems name a site fragment too (#226): 4 Kerbol
-        // sites (pad, runway, Moho, Duna) + its inline pole pad, 1 Eerbon site
-        // + its own. Exact counts so a fragment that stops loading is a
-        // failure, not a smaller pass.
+        // The fictional systems name a site fragment too (#226): 6 Kerbol
+        // sites (pad, runway, station, dock, Moho, Duna) + its inline pole pad,
+        // 1 Eerbon site + its own. Exact counts so a fragment that stops loading
+        // is a failure, not a smaller pass.
         if(logical == "res/systems/ksp_system.json") {
-            CHECK(sys.world_buildings.size() == 5);
+            CHECK(sys.world_buildings.size() == 7);
         }
         if(logical == "res/systems/old_system.json") {
             CHECK(sys.world_buildings.size() == 2);
@@ -396,8 +479,10 @@ int main() {
                the far side of the planet, and nothing else watches it. The
                pole pad is the interesting case -- cos(90 deg) is ~6e-17, not
                0, so its longitude survives atan2 and lands back where it was
-               authored rather than at an arbitrary meridian. */
-            {
+               authored rather than at an arbitrary meridian.
+               Orbital buildings have no surface lat/lon: skip the projection
+               and the deck-grounding check for them. */
+            if(!w.orbital) {
                 double rlon, rlat;
                 equirectLonLat(w.dir(), rlon, rlat);
                 const double rlat_deg = rlat * 180.0 / std::numbers::pi;
@@ -419,7 +504,7 @@ int main() {
                 }
             }
             // ... and the deck it puts on that body reaches the ground
-            if(wb != nullptr) { check_pad_grounding(logical, w, wb); }
+            if(!w.orbital && wb != nullptr) { check_pad_grounding(logical, w, wb); }
         }
         /* A body's DEFAULT site is the first VAB_LAUNCH_PAD ON THAT BODY
            (find_launch_site filters by body, and so does the VAB dropdown),
@@ -466,6 +551,9 @@ int main() {
                 const WorldBuilding &a = sys.world_buildings[i];
                 const WorldBuilding &b = sys.world_buildings[k];
                 if(a.body != b.body) { continue; }
+                // Orbital buildings have no surface dir; their separation is an
+                // orbit question, not a deck-overlap one.
+                if(a.orbital || b.orbital) { continue; }
                 TerrainBody *wb = sys.find(a.body);
                 if(wb == nullptr) { continue; }
                 // Chord x radius: over these separations it is the arc to

@@ -489,6 +489,19 @@ void setPosRot(Body *b, glm::dvec3 pos, glm::dmat3 rot)
     getRigidBody(b)->proceedToTransform(t);
 }
 
+/* Mark a mass-0 body kinematic: we drive its pose, it pushes dynamic bodies,
+   and nothing pushes it. UNUSED in v1 -- orbital buildings are STATIC colliders
+   (a teleported kinematic body did not block the ship in this Bullet build).
+   Reserved for the docking follow-up (#848), where the station must impart its
+   orbital motion to an attached ship. Do NOT switch the buildings to this
+   without fixing that pass-through first. */
+void MakeKinematic(Body *body) {
+    btRigidBody *rb = getRigidBody(body);
+    rb->setCollisionFlags(rb->getCollisionFlags()
+                          | btCollisionObject::CF_KINEMATIC_OBJECT);
+    rb->setActivationState(DISABLE_DEACTIVATION);
+}
+
 
 
 // TODO this seems like it would be useful

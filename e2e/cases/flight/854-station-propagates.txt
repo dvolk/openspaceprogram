@@ -1,0 +1,15 @@
+NAME station-propagates
+CLAIM Orbital buildings drive along their Kepler orbits (radius holds, position advances).
+KIND invariant
+ARGS --time-accel 10 --startship racer,res/ships/racer.json,Kerbin,pad
+ARGS --timeout 20 --dbg-log --orbit-interval 1.0
+EXPECT [bldg]
+# Both orbital buildings report a driven pose.
+CHECK len([b for b in bldg if b["id"]=="kerbin_station"]) >= 3
+CHECK len([b for b in bldg if b["id"]=="kerbin_dock"]) >= 3
+# Circular orbits hold their radius: station at sea level + 400 km, dock + 300 km.
+CHECK all(abs(b["r"] - 1000000) < 100 for b in bldg if b["id"]=="kerbin_station")
+CHECK all(abs(b["r"] - 900000) < 100 for b in bldg if b["id"]=="kerbin_dock")
+# They actually move: the summed per-axis position spread over the run is large.
+CHECK sum(max(b["pos"][i] for b in bldg if b["id"]=="kerbin_station") - min(b["pos"][i] for b in bldg if b["id"]=="kerbin_station") for i in (0,1,2)) > 1000
+FORBID error:

@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 354 |
+| `invariant` | a behaviour or a player route the game must keep | 358 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 48 |
 | `harness` | CLI/test-engine plumbing, not game spec | 15 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **421** |
+| | **total** | **425** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -18,7 +18,7 @@ paces a run: how much e2e a change deserves is the caller's
 judgement. Select by number, name or path, e.g.
 `python3 e2e/run.py save/172 262`.
 
-## flight (111)
+## flight (115)
 
 | case | kind | pins |
 |---|---|---|
@@ -133,6 +133,10 @@ judgement. Select by number, name or path, e.g.
 | `flight/851-runway-takeoff.txt` | invariant | A geared plane rolls down the runway under thrust and lifts off. |
 | `flight/852-runway-brakes.txt` | invariant | A rolling plane stops when the brakes are applied. |
 | `flight/853-runway-steer.txt` | invariant | Nose-wheel steering bends the ground track while taxiing. |
+| `flight/854-station-propagates.txt` | invariant | Orbital buildings drive along their Kepler orbits (radius holds, position advances). |
+| `flight/855-dock-spawn-coorbit.txt` | invariant | A ship spawned from a space dock inherits its orbit and stays nearby, not drifting away. |
+| `flight/856-orbital-gate-immovable.txt` | invariant | An orbital collider is live only near the ship, and the station stays on its orbit. |
+| `flight/857-dock-present-while-paused.txt` | invariant | A space dock is positioned beside the ship at spawn even while the game is paused. |
 
 ## crew (26)
 

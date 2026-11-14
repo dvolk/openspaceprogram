@@ -145,6 +145,13 @@ DBG_RE = re.compile(
     r"\[dbg\]\s+t=([\d.]+)s\s+pos=\[([-\d.]+) ([-\d.]+) ([-\d.]+)\]\s+"
     r"alt=([-\d.]+) m\s+vel=\[([-\d.]+) ([-\d.]+) ([-\d.]+)\]\s+\|v\|=([-\d.]+) m/s"
 )
+# --dbg-log's orbital buildings (src/tick.cpp): each driven pose in the body's
+# inertial frame, so a CHECK can pin that a station actually propagates (r stays
+# on its conic, pos advances) rather than sitting still.
+BLDG_RE = re.compile(
+    r"\[bldg\]\s+t=([\d.]+)s\s+id=(\S+)\s+pos=\[([-\d.]+) ([-\d.]+) ([-\d.]+)\]\s+"
+    r"r=([-\d.]+) m\s+live=(\d)"
+)
 # --plane-log (render.cpp drawOrbitPlane): the two plane normals the orbital-plane
 # overlay drew, in the RENDER frame, plus the dihedral between them and the
 # prograde / normal flight markers as placed, so a marker that leaves the plane
@@ -932,6 +939,18 @@ def parse_dbg(out):
             "t": float(t), "pos": (float(px), float(py), float(pz)),
             "alt": float(alt), "vel": (float(vx), float(vy), float(vz)),
             "v": float(v),
+        })
+    return rows
+
+
+def parse_bldg(out):
+    rows = []
+    for m in BLDG_RE.finditer(out):
+        (t, bid, px, py, pz, r, live) = m.groups()
+        rows.append({
+            "t": float(t), "id": bid,
+            "pos": (float(px), float(py), float(pz)), "r": float(r),
+            "live": int(live),
         })
     return rows
 
@@ -1865,6 +1884,7 @@ def run_case(case):
     world = out[cut:] if cut >= 0 else out
     orbit = parse_orbit(world)
     dbg = parse_dbg(world)
+    bldg = parse_bldg(world)
     xfer = parse_xfer(world)
     porkchop = parse_porkchop(world)
     surfmap = parse_surfmap(world)
@@ -1901,7 +1921,7 @@ def run_case(case):
     for trace in sorted(glob.glob(os.path.join(data_dir, "flights", "*.log"))):
         rec.extend(parse_rec_file(trace))
     ns = {
-        "out": out, "orbit": orbit, "dbg": dbg, "xfer": xfer,
+        "out": out, "orbit": orbit, "dbg": dbg, "bldg": bldg, "xfer": xfer,
         "porkchop": porkchop, "surfmap": surfmap, "solar": solar, "att": att, "ascent": ascent, "eva": eva,
         "fuel": fuel, "drainlog": drainlog, "power": power, "dv": dv, "mass": mass,
         "drag": drag, "shake": shake,

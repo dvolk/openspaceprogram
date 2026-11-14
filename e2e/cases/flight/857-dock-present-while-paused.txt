@@ -1,0 +1,13 @@
+NAME dock-present-while-paused
+CLAIM A space dock is positioned beside the ship at spawn even while the game is paused.
+KIND invariant
+ARGS --time-accel 0 --startship racer,res/ships/racer.json,Kerbin,pad,site=kerbin_dock
+ARGS --timeout 4 --dbg-log --orbit-interval 0.5
+EXPECT [bldg]
+EXPECT [dbg]
+# The sim never advances (time_accel 0), yet the dock must already be driven to
+# the spawn time: its collider live and the ship right beside it. Before the fix
+# the pose was only driven inside the unpaused tick, so the dock was invisible.
+CHECK [b for b in bldg if b["id"]=="kerbin_dock"][-1]["live"] == 1
+CHECK sum((dbg[-1]["pos"][i] - [x for x in bldg if x["id"]=="kerbin_dock"][-1]["pos"][i])**2 for i in (0,1,2)) < 40000
+FORBID error:

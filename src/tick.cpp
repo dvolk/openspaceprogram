@@ -241,6 +241,53 @@ void tick(Game &g) {
            that rewinds g.time cannot corrupt it (--sim-steps exit report). */
         g.sim_seconds_ran += g.dt * g.time_accel;
 
+        // Orbital buildings ride the clock even while PAUSED: the pose is a pure
+        // f(time), so driving it here (outside the time_accel gate) keeps a dock
+        // placed at the current time the moment a ship spawns beside it, rather
+        // than only appearing once the sim unpauses. Idempotent when frozen.
+        for(TerrainBody *b : g.sys.bodies) {
+            for(StaticBuilding *p : b->pads) {
+                if(p->orbital) { p->tickPose(g.time); }
+            }
+        }
+        // Proximity gate: an orbital building's collider is in the world only
+        // while the active ship is near -- immovable scenery the rest of the
+        // time. This is what keeps a city of them affordable. Runs paused too,
+        // so a ship spawned beside a dock has its collider right away.
+        if(g.ship != nullptr) {
+            for(TerrainBody *b : g.sys.bodies) {
+                for(StaticBuilding *p : b->pads) {
+                    if(!p->orbital) { continue; }
+                    glm::dvec3 sp, sv;
+                    g.ship->comStateIn(p->poseFrame(), sp, sv);
+                    const double d = glm::length(sp - p->posePos);
+                    if(!p->live && d < g.args.prox_fly_on) {
+                        AddPhysicsBody(p->body);
+                        p->live = true;
+                    } else if(p->live && d > g.args.prox_fly_off) {
+                        RemoveBody(p->body);
+                        p->live = false;
+                    }
+                }
+            }
+        }
+        // --dbg-log: each orbital building's driven pose (inertial frame), so a
+        // test can pin that it propagates along its conic. Outside the pause gate
+        // so a paused spawn is observable too.
+        if(g.args.dbg_log
+           && g.logDue(kGateBldg, g.logClockMs(), g.orbit_log_interval_ms)) {
+            for(TerrainBody *b : g.sys.bodies) {
+                for(StaticBuilding *p : b->pads) {
+                    if(!p->orbital) { continue; }
+                    printf("[bldg] t=%.1fs id=%s pos=[%.1f %.1f %.1f] r=%.1f m "
+                           "live=%d\n",
+                           g.time, p->id.c_str(), p->posePos.x, p->posePos.y,
+                           p->posePos.z, glm::length(p->posePos), p->live ? 1 : 0);
+                }
+            }
+            fflush(stdout);
+        }
+
         if(g.time_accel != 0) {
             /* No re-snapshot here. updateDocking() retires the absorbed ship at
                the end of a step, but retiring takes it out of the live list

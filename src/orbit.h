@@ -506,3 +506,23 @@ inline bool railStateFromElements(double a, double e,
     vel = vr * rhat + vt * glm::cross(glm::dvec3(0.0, 1.0, 0.0), rhat);
     return true;
 }
+
+/* Rotation by `a` about +Y in the rail convention: rail longitude is
+   atan2(-z, x) and prograde motion sweeps it UP, so authored angles go in
+   un-negated (#146). The ONE spelling, shared by the system loader and orbital
+   buildings. */
+inline glm::dmat3 railAz(double a) {
+    const double c = std::cos(a), s = std::sin(a);
+    return glm::dmat3(glm::dvec3(c, 0.0, -s),
+                      glm::dvec3(0.0, 1.0, 0.0),
+                      glm::dvec3(s, 0.0, c));
+}
+
+/* railAz(raan) * R_X(incl): the orbital plane from the authored pair -- +X on
+   the ascending node at longitude raan, +Y the orbit normal (#147). */
+inline glm::dmat3 planeOrient(double incl, double raan) {
+    const double ci = std::cos(incl), si = std::sin(incl);
+    return railAz(raan) * glm::dmat3(glm::dvec3(1.0, 0.0, 0.0),
+                                     glm::dvec3(0.0, ci, si),
+                                     glm::dvec3(0.0, -si, ci));
+}

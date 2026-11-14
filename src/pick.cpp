@@ -226,6 +226,9 @@ std::string flightAimAtPart(Game &g, const std::string &shipName,
 Vehicle *findPadOccupant(const StaticBuilding *site,
                          const std::vector<Vehicle *> &vehicles) {
     if(site == nullptr || site->parent == nullptr) { return nullptr; }
+    // "One deck, one ship" is a surface-pad rule; an orbital dock has no deck to
+    // occupy (its origin() reads terrain, meaningless in orbit).
+    if(site->orbital) { return nullptr; }
     TerrainBody *hb = site->parent;
     const glm::dmat3 deck = buildingOrient(
         site->dir, site->heading_deg * std::numbers::pi / 180.0);

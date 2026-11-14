@@ -1,0 +1,13 @@
+NAME dock-spawn-coorbit
+CLAIM A ship spawned from a space dock inherits its orbit and stays nearby, not drifting away.
+KIND invariant
+ARGS --time-accel 1 --startship racer,res/ships/racer.json,Kerbin,pad,site=kerbin_dock
+ARGS --timeout 20 --dbg-log --orbit-interval 1.0
+EXPECT [dbg]
+EXPECT [bldg]
+# Spawned clear of the dock hull and co-orbiting: the ship-to-dock distance stays
+# bounded (a ship that did NOT inherit the dock's velocity would fall away fast).
+# [dbg] and [bldg] fire on the same clock, so the last rows are the same instant.
+CHECK sum((dbg[-1]["pos"][i] - [x for x in bldg if x["id"]=="kerbin_dock"][-1]["pos"][i])**2 for i in (0,1,2)) < 40000
+CHECK sum((dbg[-1]["pos"][i] - [x for x in bldg if x["id"]=="kerbin_dock"][-1]["pos"][i])**2 for i in (0,1,2)) > 100
+FORBID error:

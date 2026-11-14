@@ -974,7 +974,9 @@ Vehicle *place_vehicle_def(Game &g, const ShipDef &def, const std::string &defPa
     v->frame = hb->rot_frame;
     /* Pad ships take the site pose verbatim: no per-slot offset (deliberate --
        whether an occupied pad is a problem is a gameplay decision, not
-       placement arithmetic). Non-pad scenarios only need a staging pose. */
+       placement arithmetic). Non-pad scenarios only need a staging pose. For an
+       ORBITAL site this base is only a staging point (origin() reads terrain at a
+       default dir); the orbital branch below re-places the ship in orbit. */
     const glm::dvec3 base = (sc->on_pad && site != nullptr)
         ? site->origin()
         : pad_dir * ((double)hb->GetTerrainHeight(glm::vec3(pad_dir)) + 5.0);
@@ -1027,6 +1029,32 @@ Vehicle *place_vehicle_def(Game &g, const ShipDef &def, const std::string &defPa
         delete minted;
         assert(suit->kerbal != nullptr && suit->kerbal->id != 0);
         assert(v->name.empty());   // the profile owns the walker's name
+    }
+    /* An ORBITAL site (a space dock) spawns the ship alongside it: at the dock's
+       driven pose plus a clear offset, inheriting the dock's orbital velocity, in
+       the body's inertial frame. This is not a surface rest -- there is no ground
+       to support against, and starting at rest would drop the ship onto a very
+       different orbit. (Same velocity 50 m away is a *slightly* different conic,
+       so the ship drifts slowly relative to the dock -- fine for a spawn; true
+       station-keeping is a follow-up.) */
+    if(site != nullptr && site->orbital) {
+        Frame *inertial = hb->frame->getNonRotFrame();
+        // One propagation gives both the pose anchor and the velocity to inherit.
+        glm::dvec3 dpos, dvel;
+        propagateKepler(site->epochPos, site->epochVel, site->orbMu, g.time,
+                        dpos, dvel);
+        const glm::dmat3 dorient = buildingorbit::orientAt(
+            site->attMode, dpos, dvel, site->spinAxis, site->spinRate, g.time);
+        // Clear of the hull along the dock's local -Z (for a body-fixed dock,
+        // away from the planet: the ship spawns "above" the dock, nose toward it).
+        // A dock-mouth spawn point + pose authored per instance is a refinement.
+        const glm::dvec3 spawnPos = dpos + dorient * glm::dvec3(0.0, 0.0, -50.0);
+        v->frame = inertial;
+        setPosRot(v->hull, spawnPos, dorient);
+        v->setVelocity(dvel);
+        v->setSoi(inertial, g.time);
+        vehicles.push_back(v);
+        return v;
     }
     v->setVelocity(glm::dvec3(0, 0, 0));
     // Re-home: starts the flight journal. Then the list adopts it.

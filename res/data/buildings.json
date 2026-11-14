@@ -11,6 +11,18 @@
       "display_name": "Runway",
       "mesh": "meshes/runway.obj",
       "texture": "textures/runway.png"
+    },
+    {
+      "name": "station",
+      "display_name": "Space station",
+      "mesh": "meshes/station.obj",
+      "texture": "textures/station.png"
+    },
+    {
+      "name": "spacedock",
+      "display_name": "Space dock",
+      "mesh": "meshes/spacedock.obj",
+      "texture": "textures/spacedock.png"
     }
   ]
 }

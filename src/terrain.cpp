@@ -61,19 +61,41 @@ glm::dvec3 StaticBuilding::origin() const {
     return dir * (h + height_m);
 }
 
+Frame *StaticBuilding::poseFrame() const {
+    // A surface pad's pose is in the spin frame; an orbital building's is in the
+    // body's inertial frame (where its Kepler conic lives).
+    return orbital ? parent->frame->getNonRotFrame() : parent->frame->getRotFrame();
+}
+
+void StaticBuilding::tickPose(double time) {
+    if(!orbital) { return; }
+    const buildingorbit::Pose p = buildingorbit::poseAt(
+        epochPos, epochVel, orbMu, attMode, spinAxis, spinRate, time);
+    posePos = p.pos;
+    poseOrient = p.orient;
+    // Drive the collider to the same pose the draw uses (a pure function of the
+    // clock). Whether it is in the world is the proximity gate's call.
+    setPosRot(body, posePos, poseOrient);
+}
+
 void StaticBuilding::Draw(const Camera *camera, const TerrainBody *current,
                           Frame *renderFrame) {
-    if(current == parent) {
-        const Frame *posFrame = parent->frame->getRotFrame();
-        const float shadow = ComputeTerrainShadow(parent, posFrame,
-                                                  GetPosition(body), sun);
-        // Stays defined if the pad's body were ever the star.
-        const glm::dvec3 pad_root =
-            posFrame->root_orient * GetPosition(body) + posFrame->root_pos;
-        glm::vec3 sunlightVec =
-            glm::vec3(TerrainBody::LightDirFrom(pad_root, sun, renderFrame));
-        body->Draw(camera, sunlightVec, shadow);
-    }
+    if(current != parent) { return; }
+    Frame *pf = poseFrame();
+    const float shadow = ComputeTerrainShadow(parent, pf, posePos, sun);
+    // Stays defined if the pad's body were ever the star.
+    const glm::dvec3 pad_root = pf->root_orient * posePos + pf->root_pos;
+    glm::vec3 sunlightVec =
+        glm::vec3(TerrainBody::LightDirFrom(pad_root, sun, renderFrame));
+    // Transform the pose from poseFrame into the render frame. Without this a
+    // pad is spin-stale when the ship's frame differs from the pad's (#847) --
+    // and an orbital building (inertial) would draw in the wrong place entirely.
+    const glm::dmat3 O = pf->GetOrientRelTo(renderFrame);
+    const glm::dvec3 t = pf->GetPositionRelTo(renderFrame) + O * posePos;
+    const glm::dmat4 model = glm::translate(glm::dmat4(1.0), t)
+                           * glm::dmat4(O * poseOrient);
+    DrawModelAt(camera, body->mesh, body->shader, body->texture, model,
+                sunlightVec, shadow);
 }
 
 GeoPatch::~GeoPatch() {

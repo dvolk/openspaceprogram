@@ -1,0 +1,13 @@
+NAME orbital-gate-immovable
+CLAIM An orbital collider is live only near the ship, and the station stays on its orbit.
+KIND invariant
+ARGS --time-accel 1 --startship racer,res/ships/racer.json,Kerbin,pad,site=kerbin_dock
+ARGS --timeout 15 --dbg-log --orbit-interval 1.0
+EXPECT [bldg]
+# The ship spawns 50 m from the dock, so the dock's proximity gate is engaged;
+# the station is on a different orbit far away, so its gate stays closed.
+CHECK [b for b in bldg if b["id"]=="kerbin_dock"][-1]["live"] == 1
+CHECK [b for b in bldg if b["id"]=="kerbin_station"][-1]["live"] == 0
+# Immovable scenery: the station holds its circular orbit exactly, ship or no ship.
+CHECK all(abs(b["r"] - 1000000) < 1 for b in bldg if b["id"]=="kerbin_station")
+FORBID error:

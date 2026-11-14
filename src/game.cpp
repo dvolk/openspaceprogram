@@ -2050,9 +2050,11 @@ void Game::updateProximity() {
         if(s->onRails && r_on > 0.0 && d < r_on) {
             s->releaseControl();   // no armed commands once it's live
             s->leaveRails();
-            /* Re-express the woken ship in its SOI's rotating frame NOW, while
-               the transforms are still at last tick's epoch (this runs before
-               UpdateOrbitRails). Later would rotate a stale rail_pos. */
+            /* Re-express the woken ship NOW, while the transforms are still at
+               last tick's epoch (this runs before UpdateOrbitRails); later would
+               rotate a stale rail_pos. switchFrames drops it into the SOI's
+               rotating frame only INSIDE the atmosphere shell -- above the shell
+               the rotating frame's SOI ends and the ship stays inertial. */
             s->switchFrames(time);
             if(args.prox_log) { printf("[prox] t=%.3f %s ENGAGED at %.1f m (< %.1f m, %s)\n",
                                        time, s->displayName().c_str(), d, r_on,

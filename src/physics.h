@@ -84,6 +84,9 @@ void SetAngVelocity(Body *body, glm::dvec3 vel);
    so linear and angular velocity survive the teleport untouched. Clear them
    explicitly if that is what you want. */
 void setPosRot(Body *body, glm::dvec3 pos, glm::dmat3 rot);
+/* Mark a mass-0 body kinematic (driven pose, immovable). Unused in v1 (orbital
+   buildings are static); reserved for the docking follow-up #848. */
+void MakeKinematic(Body *body);
 
 glm::dvec3 GetPosition(Body *body);
 glm::dvec3 GetVelocity(Body *body);

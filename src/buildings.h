@@ -52,6 +52,21 @@ struct WorldBuilding {
     double heading_deg = 0.0; // spin about local up
     std::vector<std::string> flags;
 
+    /* Orbital placement (a space dock / station): mutually exclusive with the
+       surface lat/lon above. The circular spec is authoring sugar -- it becomes
+       a full epoch state the engine propagates as a Kepler conic (buildingorbit.h).
+       Angles in DEGREES here, like lat/lon. */
+    bool orbital = false;
+    double orb_alt_m = 0.0;      // circular altitude above sea level
+    double orb_inc_deg = 0.0;    // inclination
+    double orb_raan_deg = 0.0;   // longitude of the ascending node
+    double orb_phase_deg = 0.0;  // true anomaly at t = 0
+    /* Attitude: "body-fixed" (nadir-pointing, tracks the orbit) or "sky-fixed"
+       (constant inertial). An optional spin rides on top about a LOCAL axis. */
+    std::string att_mode = "body-fixed";
+    double spin_rate_deg_s = 0.0;
+    glm::dvec3 spin_axis = glm::dvec3(0.0, 1.0, 0.0);
+
     bool hasFlag(const std::string &f) const;
     // display_name, else the catalog label, else the type.
     std::string label(const BuildingsCatalog &cat) const;
