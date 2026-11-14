@@ -245,7 +245,12 @@ SOLAR_RE = re.compile(
     # Absent is a dash rather than a number: an unpriced knob has no default (groundtemp.h),
     # so a body whose source states no night/day pair prints '-' and a CHECK must ask for
     # None, exactly like the albedo column above.
-    r"\s+underfoot_T=([-\d.]+|-) K\s+swing=([-\d.]+|-)\s+air_T=([-\d.]+|-) K"
+    r"\s+underfoot_T=([-\d.]+|-) K\s+swing=([-\d.]+|-)\s+lag=([-\d.]+|-)"
+    r"\s+air_T=([-\d.]+|-) K"
+    # #837: lag is the third knob of the same law, and the row's underfoot_T is a LAGGED
+    # answer whenever it is a number. Dash = the file states no lag (NOT a stated zero, which
+    # prints 0.0000 and means "this ground peaks at noon"); same rule as the dossier's
+    # `ground lag` row (#830) and the surfmap log's lag_tau=.
     # #724 rung D: the profile's own temperature at this altitude and the weight the column
     # supplies, so the row closes as arithmetic (air_T = prof_T + follow * w * (underfoot_T -
     # prof_T)) instead of being admired. Both dash with the air they describe.
@@ -1092,7 +1097,7 @@ def parse_solar(out):
     rows = []
     for m in SOLAR_RE.finditer(out):
         (t, star, dist, flux, elev, flat, body, albedo, ground_t, bb_t,
-         underfoot_t, swing, air_t, prof_t, wgt, follow) = m.groups()
+         underfoot_t, swing, lag, air_t, prof_t, wgt, follow) = m.groups()
         num = lambda s: None if s == "-" else float(s)
         rows.append({
             "t": float(t), "star": star, "body": body,
@@ -1100,6 +1105,9 @@ def parse_solar(out):
             "flat": num(flat), "albedo": num(albedo),
             "ground_T": num(ground_t), "bb_T": num(bb_t),
             "underfoot_T": num(underfoot_t), "swing": num(swing),
+            # #837: radians of phase, the authored knob behind a lagged underfoot_T. None is
+            # the file stating nothing; 0.0 is a stated noon peak.
+            "lag": num(lag),
             # MEASURED at the hull (vehicle.cpp's lastAirT), not recomputed for the log.
             "air_T": num(air_t), "prof_T": num(prof_t), "w": num(wgt),
             "follow": num(follow),

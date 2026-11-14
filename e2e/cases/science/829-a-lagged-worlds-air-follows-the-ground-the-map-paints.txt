@@ -52,6 +52,13 @@ CHECK all(b["elev"] > a["elev"] for a, b in zip(solar, solar[1:]))
 #    7.69..8.43 K, and the same row fed with the unlagged 331.7 K ground prices 13.7 K. A case
 #    that only checked check 1 would stay green with the bug in both places.
 CHECK all(5.0 < d["air_T"] - d["prof_T"] < 10.0 for d in solar)
+# 6. ... AND THE ROW NAMES THE KNOB IT IS RUNNING ON (#837). Everything above is a LAGGED
+#    ground, and until this column the log said so only by being wrong in a particular way.
+#    Four decimals like --surfmap-log's lag_tau= and the dossier's `ground lag` row (#830):
+#    one knob, one spelling. Radians of phase, not hours -- hours belong to the atlas row,
+#    where the body's own day is printed beside them to convert against.
+CHECK all(d["lag"] == 1.0 for d in solar)
+FORBID lag=-
 FORBID air_T=-
 FORBID underfoot_T=-
 FORBID follow=-

@@ -34,6 +34,12 @@ CHECK all(d["elev"] > 50.0 for d in solar)
 #    pair of numbers is the point -- a world that stopped answering its light would have to say so
 #    somewhere, and this is where it says it does not.
 CHECK all(12.0 < d["air_T"] - d["prof_T"] < 14.0 for d in solar)
+# 5. THE OTHER HALF OF #837 IS THIS DASH. Sultry's rows print lag=1.0000 and Balmy's print
+#    lag=-, so the log answers "is this ground lagged?" itself rather than leaving a reader to
+#    infer it from why the numbers came out different. A 0.0000 here would be a CLAIM -- this
+#    world's ground peaks at noon -- that its file never made (#727, and authored.h's sentinel).
+CHECK all(d["lag"] is None for d in solar)
+FORBID lag=0\.0000
 FORBID air_T=-
 FORBID underfoot_T=-
 FORBID follow=-

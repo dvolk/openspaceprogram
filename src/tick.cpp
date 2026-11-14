@@ -725,7 +725,7 @@ void tick(Game &g) {
                                               : kAlbedoUnauthored;
                 const double groundT = ground_here ? over->surface.temperature
                                                 : kThermalUnauthored;
-                char alb_s[24], gt_s[24], bb_s[24], surf_s[24], swing_s[24];
+                char alb_s[24], gt_s[24], bb_s[24], surf_s[24], swing_s[24], lag_s[24];
                 /* bb_T needs BOTH the albedo and a live star sample: printing 0.00 K
                    for "no sun in range" is exactly the 0-pretending-to-be-a-reading
                    this block refuses elsewhere. */
@@ -824,6 +824,20 @@ void tick(Game &g) {
                 } else {
                     snprintf(swing_s, sizeof swing_s, "-");
                 }
+                /* #837: the third knob of the same law, printed beside the swing it modifies.
+                   `underfoot_T` above is a LAGGED answer whenever a tau is authored (that is
+                   #829), so a row that shows the number and not the knob asks the reader to
+                   already know it. Same authored/unauthored rule as the dossier's `ground lag`
+                   row (#830): a dash means the file states nothing, and a stated 0.0 prints
+                   0.0000 -- "this ground peaks at noon" is a reading, not an absence (#727).
+                   Radians of phase, four decimals, the unit the file authors and the precision
+                   --surfmap-log and --atlas-dump print; hours would be a second unit for one
+                   knob, and the atlas row is where the readable form lives. */
+                if(ground_here && lagTauAuthored(over->surface.lag_tau)) {
+                    snprintf(lag_s, sizeof lag_s, "%.4f", over->surface.lag_tau);
+                } else {
+                    snprintf(lag_s, sizeof lag_s, "-");
+                }
                 /* air_T / prof_T / w / follow are MEASURED, not recomputed here: they are
                    the aero pass's own lastAirT, lastAirProfileT and lastAirP, the same
                    numbers its Mach number divides by (vehicle.cpp). Recomputing any of them
@@ -860,13 +874,13 @@ void tick(Game &g) {
                 printf("[solar] t=%.1fs star=\"%s\" dist=%s m flux=%s W/m2 "
                        "elev=%s deg flat=%s W/m2 body=\"%s\" albedo=%s "
                        "ground_T=%s K bb_T=%s K underfoot_T=%s K swing=%s "
-                       "air_T=%s K prof_T=%s K w=%s follow=%s\n",
+                       "lag=%s air_T=%s K prof_T=%s K w=%s follow=%s\n",
                        g.time,
                        g.sun ? g.sun->name.c_str() : "(none)",
                        dist_s, flux_s, elev_s, flat_s,
                        g.ship->m_parent ? g.ship->m_parent->name.c_str()
                                         : "(none)",
-                       alb_s, gt_s, bb_s, surf_s, swing_s, air_s, prof_s, w_s,
+                       alb_s, gt_s, bb_s, surf_s, swing_s, lag_s, air_s, prof_s, w_s,
                        follow_s);            }
         }
 
