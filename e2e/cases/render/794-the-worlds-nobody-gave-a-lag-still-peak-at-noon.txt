@@ -1,0 +1,42 @@
+NAME 794-the-worlds-nobody-gave-a-lag-still-peak-at-noon
+CLAIM A body whose file states no lag is untouched by the lag machinery: the log DASHES its knob rather than printing a zero, its palette is exactly the law's two ends, its hottest pixel is under the star to within half a pixel column, and the picture reaches that day end -- while the sun itself walks across the grid between bakes, so the noon hot spot is proved to follow the star rather than to sit at a fixed longitude.
+KIND invariant
+# The control for the case beside it, and the same half of the convention read from the other
+# direction. Meridian is Afternoon with ONE key missing: same rail family, same stated anchor,
+# same even share, same rotation, no surface.lag_tau. Whatever these rows show different from that
+# body's, the lag is the only cause -- and whatever they show the same, the machinery did not
+# touch them.
+#
+# This is also the guard on #727's rule in a new place: an authored-absent knob must print as an
+# absence. Printing `lag_tau=0.0000` for a file that says nothing would invent a reading ("this
+# world's ground peaks at noon, and someone measured it"), which is the exact confusion the
+# sentinel exists to keep apart from a stated zero.
+ARGS --timeout 14 --time-accel 100 --system res/systems/lag_playground.json
+ARGS --surfmap-log --surfmap-n 256 --surfmap-body Meridian --surfmap-map temperature
+ARGS --sim-press 3000,0,M,7000,0,M,11000,0,M
+CHECK len(surfmap) == 3
+CHECK all(r["body"] == "Meridian" and r["map"] == "temperature" for r in surfmap)
+CHECK all(r["lag_tau"] is None for r in surfmap)
+# Nothing moved the palette: no relief (the fixture is airless) and no lag, so the picture runs
+# over exactly the law's ends -- the invariant surfmap.cpp asserts, and the one the #793 review
+# found being violated by a seeded zero on every airless world in the game.
+CHECK all(r["relief"] is None for r in surfmap)
+CHECK all(abs(r["temp_ramp"][0] - r["temp_ends"][0]) < 1e-9 and abs(r["temp_ramp"][1] - r["temp_ends"][1]) < 1e-9 for r in surfmap)
+# And the picture REACHES both ends of it, hot one included -- 336.18 K, the day end the anchor and
+# the knob force. This is what a lagged world stops doing, so it has to be pinned where it still
+# happens; otherwise "the ramp spans the picture" would be true of a picture that never gets warm.
+CHECK all(abs(r["temp"][2] - r["temp_ends"][1]) < 0.05 for r in surfmap)
+CHECK all(abs(r["temp"][0] - r["temp_ends"][0]) < 1e-9 for r in surfmap)
+# The hot spot sits under the star: half a column at this bake size is 0.7 deg, and the measured
+# spread across three instants is a fifth of a degree.
+CHECK all(abs(r["peak_deg"]) < 1.0 for r in surfmap)
+# The star really does move under this window: the subsolar meridian walks several degrees between
+# the first and last bake while the peak stays on it. Together with the lagged case's +41 deg, that
+# is the pair that pins the hour-angle sign -- one body's hottest ground is on the meridian, the
+# other's is an afternoon away, and both of them follow the sun.
+CHECK (lambda rs: min(abs(rs[-1]["sun_lon"] - rs[0]["sun_lon"]), 360.0 - abs(rs[-1]["sun_lon"] - rs[0]["sun_lon"])) > 5.0)(surfmap)
+# The anchor identity, unchanged by the machinery: an unlagged airless world's T^4 mean closes on
+# its anchor at every instant.
+CHECK all(abs(r["datum_mean4"] - r["anchor"]) < 0.05 for r in surfmap)
+FORBID lag_tau=[0-9]
+FORBID error:

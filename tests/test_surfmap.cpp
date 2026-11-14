@@ -329,6 +329,18 @@ static Surface makeEarthish() {
     return e;
 }
 
+/* #794: a body that AUTHORS a lag, shaped like the lag_playground.json fixture -- a STATED anchor
+   (so no rail enters the numbers), a near-bare-rock knob (so the swing is wide and the lag is
+   tens of kelvin rather than a rounding hair), no air (so relief cannot be mistaken for the lag),
+   and one radian of phase. */
+static Surface makeLagged() {
+    Surface s;
+    s.temperature = 240.0;
+    s.even_share = 0.05;
+    s.lag_tau = 1.0;
+    return s;
+}
+
 static void groundRelief() {
     const Surface earth = makeEarthish();
     check(earth.reliefOn(), "a body whose air lapses has a height term");
@@ -387,6 +399,137 @@ static void groundRelief() {
     check(near_d(surfmapGroundT(tl.anchor_K, tl.knob, sun, sun, climb),
                  tl.hi_K + climb, 1e-9),
           "under the star at 8 km: the day end minus the climb, same term as the cold end");
+}
+
+/* #794: the skin allowed to lag the light. The law itself -- groundtemp.h's closed form, its
+   endpoint constants, its anchor theorem -- has its own battery in tests/test_groundtemp.cpp, RK4
+   cross-check and all. What belongs HERE is the wiring that header cannot see: that the hour angle
+   a row is evaluated at is THIS grid's longitude less the star's subsolar meridian, and that the
+   palette the sweep colours with spans what a lagged field can actually paint. A flipped sign in
+   that wiring mirrors the picture instead of shifting it, and nothing about a still frame of the
+   law alone would notice -- cos h is even in h. */
+static void groundLag() {
+    const double anchor = 240.0, knob = 0.05, tau = 1.0;   // the lag_playground fixture
+    const double d2r = std::numbers::pi / 180.0;
+
+    // ---- the hour angle is the grid's own longitude less the star's meridian ----
+    // tau 0 answers the FORCING itself, so this is the one place the lag's coordinate system is
+    // pinned against solar.h's cosine of two real directions: same latitude, same longitude, same
+    // star. It catches a row built from the wrong declination, a lon/lat convention flipped
+    // (equirect.h's lon +90 = -Z is easy to get backwards), and a subsolar point read from the
+    // wrong frame.
+    const double dec_deg = -20.0, lon_ss_deg = 130.0;
+    const glm::dvec3 sun = equirectDir(lon_ss_deg * d2r, dec_deg * d2r);
+    double slon = 0.0, sdec = 0.0;
+    sunPhaseRot(sun, slon, sdec);
+    check(near_d(sdec, dec_deg * d2r, 1e-12), "sunPhaseRot reads the star's declination");
+    check(near_d(slon, lon_ss_deg * d2r, 1e-12), "and its subsolar longitude");
+    // An un-normalised sun vector is the same noon: a direction is a bearing.
+    double rlsl = 0.0, rsdc = 0.0;
+    sunPhaseRot(4.0 * sun, rlsl, rsdc);
+    check(near_d(rlsl, slon, 1e-12) && near_d(rsdc, sdec, 1e-12),
+          "and reads it off a direction of any length");
+
+    double worst = 0.0;
+    for(int latdeg = -80; latdeg <= 80; latdeg += 10) {
+        const double lat = latdeg * d2r;
+        const GroundLagRow flat = groundLagRow(lat, sdec, 0.0);
+        for(int londeg = 0; londeg < 360; londeg += 15) {
+            const double lon = londeg * d2r;
+            const double via_row = flat.at(lon - slon);
+            const double via_dot = cosIncidence(equirectDir(lon, lat), sun);
+            worst = std::max(worst, std::fabs(via_row - via_dot));
+        }
+    }
+    check(worst < 1e-12,
+          "a lag-free row at (lon - lon_ss) IS solar.h's incidence at that place (#794's "
+          "coordinate system, pinned against the sphere the engine actually paints)");
+
+    // ---- the peak sits EAST of noon, and only because of the lag ----
+    // Same row, tau 0 against tau 1: the forcing's own peak is due noon (the hot spot sits under
+    // the star, which is the complaint #794 exists to fix), and the lagged field's peak has to
+    // move EAST -- the sign of that is the temporal half of the convention, and a mirror image
+    // would score perfectly on every other test in this file.
+    struct RowScan { double peak_h_deg; double lo, hi; };
+    auto scan = [&](double lat, double t) {
+        const GroundLagRow row = groundLagRow(lat, sdec, t);
+        double lo = 1e30, hi = -1e30, peak_h = 0.0;
+        for(int k = 0; k < 720; k++) {
+            const double h = -std::numbers::pi + (double)k * std::numbers::pi / 360.0;
+            const double y = row.at(h);
+            if(y < lo) { lo = y; }
+            if(y > hi) { hi = y; peak_h = h; }
+        }
+        return RowScan{ std::remainder(peak_h, 2.0 * std::numbers::pi) / d2r, lo, hi };
+    };
+    const RowScan now = scan(0.0, 0.0);
+    const RowScan later = scan(0.0, tau);
+    check(std::fabs(now.peak_h_deg) < 0.5, "with no lag the hottest ground is due noon");
+    check(later.peak_h_deg > 20.0 && later.peak_h_deg < 60.0,
+          "a lag of one radian puts it in the afternoon, east of the star");
+    check(later.hi < now.hi && later.hi > 0.0,
+          "and pays for the shift with amplitude: the row's peak share falls");
+    check(scan(0.0, 2.0 * std::numbers::pi).lo > now.lo,
+          "at a lag of a whole rotation the night floor RISES too -- the legend lie is two-sided, "
+          "so a palette priced from the law's 0 and 1 misses both ends");
+
+    // ---- the palette spans what a lagged picture can paint ----
+    const Surface lag_surf = makeLagged();
+    const TempLayer tl = tempLayerFor(lag_surf, 0.0, true);
+    check(near_d(tl.lag_tau, tau, 1e-12),
+          "the layer carries the authored knob to the sweep (and to the cursor, which has to read "
+          "the same world the pixels came from)");
+    check(tl.lo_K == groundTemperature(anchor, knob, 0.0)
+              && tl.hi_K == groundTemperature(anchor, knob, 1.0),
+          "the LAW's ends stay the law's: they are what the one knob forces, which is the row "
+          "e2e science/724 checks -- the picture is allowed to stop reaching them, the identity "
+          "is not allowed to move with the palette");
+
+    const RowScan grid = scan(0.0, tl.lag_tau);
+    double rlo = 0.0, rhi = 0.0;
+    tempLagRampEnds(tl, grid.lo, grid.hi, 0.0, 0.0, rlo, rhi);
+    check(rlo > 0.0 && rhi > rlo, "a lagged palette is still a span");
+    check(rhi < tl.hi_K, "its hot end sits INSIDE the law's day end -- that is the #794 flattening, "
+                         "and the reason temp_ramp= is not temp_ends= for a lagged body");
+    check(rlo >= tl.lo_K, "and its cold end inside the law's night end");
+    /* The picture, everywhere, inside the palette -- the containment the whole ramp business
+       exists for (#745, #769, #793): a pixel outside it clamps to a colour that lies. The ramp is
+       built from the extremes of THIS grid, exactly the way the sweep builds it, and the check is
+       the same grid's pixels: the pair together is the claim, not either half alone. */
+    double ylo = 1e30, yhi = -1e30, tlo = 1e30, thi = -1e30;
+    for(int latdeg = -85; latdeg <= 85; latdeg += 5) {
+        const GroundLagRow row = groundLagRow(latdeg * d2r, sdec, tl.lag_tau);
+        for(int londeg = 0; londeg < 360; londeg += 3) {
+            const double y = row.at(londeg * d2r - slon);
+            if(y < ylo) { ylo = y; }
+            if(y > yhi) { yhi = y; }
+            const double T = groundTemperatureAt(anchor, knob, y, 0.0);
+            if(T < tlo) { tlo = T; }
+            if(T > thi) { thi = T; }
+        }
+    }
+    double glo = 0.0, ghi = 0.0;
+    tempLagRampEnds(tl, ylo, yhi, 0.0, 0.0, glo, ghi);
+    check(tlo >= glo && thi <= ghi,
+          "no pixel of a lagged sweep falls off the end of its palette");
+    check(thi > glo + 10.0, "and that palette is not degenerate: this body's swing is wide");
+
+    // ---- the cursor and the sweep are one spelling ----
+    const double clim = -12.0;
+    check(near_d(surfmapGroundTLag(anchor, knob, tau, 20.0 * d2r, 100.0 * d2r, sun, clim),
+                 groundTemperatureAt(anchor, knob,
+                                     groundLagRow(20.0 * d2r, sdec, tau).at(100.0 * d2r - slon),
+                                     clim),
+                 0.0),
+          "the number beside a lagged pixel IS that pixel's number: same row, same hour angle, "
+          "same height term");
+    // And it is NOT the unlagged answer -- a lagged map read through surfmapGroundT would print a
+    // noon kelvin under an afternoon colour. Pinned on a place where the two differ loudly.
+    const double unlagged = surfmapGroundT(anchor, knob, equirectDir(40.0 * d2r, 0.0), sun, 0.0);
+    const double lagged = surfmapGroundTLag(anchor, knob, tau, 0.0, 40.0 * d2r, sun, 0.0);
+    check(lagged > unlagged + 5.0,
+          "at an hour angle the lag has already paid for, the lagged ground is warmer than the "
+          "instantaneous one -- so a cursor that forgot the lag would be measurably wrong");
 }
 
 /* #769: the wind map. Same division of labour as mapLayers() -- the window builds its combo
@@ -724,10 +867,20 @@ int main() {
                     const glm::dvec3 a = equirectDirAt(i, j, g[0], g[1]);
                     const glm::dvec3 b = equirectDirAt(t, i, j);
                     exact = a.x == b.x && a.y == b.y && a.z == b.z;
+                    /* The ANGLES are table entries too, and they are the same expressions --
+                       not a second derivation the lag (#794) is free to disagree with. A row
+                       built from t.lat and an hour angle built from t.lon are the latitude and
+                       longitude this picture is actually coloured at. */
+                    const double lon = 2.0 * std::numbers::pi * (double)i / (double)g[0];
+                    const double lt = std::numbers::pi * 0.5
+                                    - std::numbers::pi * (double)j / (double)(g[1] - 1);
+                    if(t.lon[i] != lon || t.lat[j] != lt) { exact = false; }
+                    if(std::cos(t.lon[i]) != t.cos_lon[i]
+                       || std::sin(t.lat[j]) != t.sin_lat[j]) { exact = false; }
                 }
             }
         }
-        check(exact, "trig tables: bit-for-bit the same direction at every pixel");
+        check(exact, "trig tables: bit-for-bit the same directions and angles at every pixel");
     }
 
     // 2. equirectLonLat: the inverse (render.cpp's atan2(x, z), asin(y),
@@ -933,6 +1086,7 @@ int main() {
     mapLayers();
     cursorTemperature();
     groundRelief();
+    groundLag();
     windLayers();
 
     if(g_failures == 0) {

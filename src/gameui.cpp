@@ -2310,13 +2310,19 @@ void drawUIReadouts(Game &g) {
                        with the live terrain height at the exact point under the mouse -- over a
                        ridge those differ by tens of metres, and a steep slope is where the number
                        can outrun the swatch. The profile behind both is one profile, and
-                       Surface::relief_K is the one predicate deciding it exists at all. */
-                    snprintf(gt_s, sizeof gt_s, "  ground %+.1f C",
-                             celsiusOf(surfmapGroundT(g.surfmap.temp_anchor_K,
-                                                      g.surfmap.temp_knob,
-                                                      glm::dvec3(dir),
-                                                      g.surfmap.baked_sun_dir,
-                                                      sm_body->surface.relief_K(sm_elev))));
+                       Surface::relief_K is the one predicate deciding it exists at all.
+                       #794 adds the other half of "that pixel's number": if the bake painted a
+                       LAGGED ground, the cursor has to lag too, or a picture whose hot spot sits
+                       three hours past noon gets read as if it peaked at noon. The lag is the only
+                       difference between the two calls below. */
+                    const double relief = sm_body->surface.relief_K(sm_elev);
+                    const double gt = lagTauActive(g.surfmap.temp_lag_tau)
+                        ? surfmapGroundTLag(g.surfmap.temp_anchor_K, g.surfmap.temp_knob,
+                                            g.surfmap.temp_lag_tau, lat, lon,
+                                            g.surfmap.baked_sun_dir, relief)
+                        : surfmapGroundT(g.surfmap.temp_anchor_K, g.surfmap.temp_knob,
+                                         glm::dvec3(dir), g.surfmap.baked_sun_dir, relief);
+                    snprintf(gt_s, sizeof gt_s, "  ground %+.1f C", celsiusOf(gt));
                 } else {
                     // Which absence, in three words: a bare dash would merge "this world has no
                     // ground" and "nobody stated a swing" back into one (#726). The full

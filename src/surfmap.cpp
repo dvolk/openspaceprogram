@@ -157,6 +157,13 @@ void surfmapCompute(Game &g) {
            #802) rather than something the pixel recomputes, so it costs nothing. min/max stay
            unweighted -- extremes, not means. */
         double tmin = 1e30, tmax = -1e30, tsum = 0.0, t4sum = 0.0, tw = 0.0;
+        /* [deg] Hour angle of the hottest pixel, east of the picture's subsolar meridian (#794).
+           With no lag the model's answer for this is 0, so the number is a check on the geometry;
+           with one it IS the feature -- and its SIGN is what no still picture of the law alone can
+           check, because a flipped hour angle mirrors the pattern instead of moving it. On a body
+           with relief this is the PAINTED peak, which the ground's own warmth can pull away from
+           noon; --surfmap-log's relief= column says when that is possible. */
+        double peak_deg = 0.0;
         /* The T^4 mean of the SAME field with the relief term taken back off (#793), which is the
            accumulator the anchor theorem owns: <T^4> = anchor^4 is a statement about the datum
            ground, and it has to stay checkable now that the painted field is not that field. */
@@ -230,14 +237,56 @@ void surfmapCompute(Game &g) {
                 rel_at_hi = tl.relief_K(ehi);  // <= 0: the cost lives at the top
             }
         }
+        /* #794: a body whose ground LAGS its star needs its LIGHT before it needs its colour.
+           A lag is a filter along longitude, so the picture's hot end is no longer the law's day
+           end and its palette cannot be priced from cos_inc 0 and 1; and the per-pixel answer is
+           no longer a cosine at all. So: one GroundLagRow per latitude (its terminator, its
+           endpoint constants and 1/(1+tau^2) are all latitude-only), one at() per column, and the
+           values kept -- the colour pass below re-reads this instead of paying for the
+           transcendentals twice.
+           It runs ONLY for a body that authored a tau. With none -- every shipped body today --
+           the sweep stays the single pass it always was, so nothing that has ever been painted
+           moves by one bit. */
+        const bool lag = want_temp && tl.ok && lagTauActive(tl.lag_tau);
+        std::vector<float> forcing;
+        double sun_lon = 0.0, sun_dec = 0.0, ylo = 0.0, yhi = 0.0;
         if(want_temp && tl.ok) {
-            /* A relief-free body MUST paint exactly the law's span: that is the #793 bug this
-               line now stands guard over -- the ends were seeded with 0, so every airless world
-               came out `temp_ramp=[0.00 0.00]` and its whole sphere took the midpoint colour,
-               on the one path no e2e case baked. With relief on, the ramp is allowed to move
-               (the lowest ground need not reach the datum), but it must still be a span. */
+            /* Where the baked picture's noon is. Read for every temperature map, lagged or not:
+               the log prints it, and `peak_deg` below is an hour angle against it. */
+            sunPhaseRot(sun_dir, sun_lon, sun_dec);
+        }
+        if(lag) {
+            forcing.resize(npx);
+            ylo = 1e30; yhi = -1e30;
+            for(int j = 0; j < h; j++) {
+                /* trig.lat is the grid's own row angle -- the same expression equirectDirAt
+                   builds from -- so the row the picture paints is defined against the picture
+                   rather than against a latitude the sweep only approximates. */
+                const GroundLagRow row = groundLagRow(trig.lat[(size_t)j], sun_dec, tl.lag_tau);
+                for(int i = 0; i < w; i++) {
+                    const double y = row.at(trig.lon[(size_t)i] - sun_lon);
+                    forcing[(size_t)j * w + i] = (float)y;
+                    if(y < ylo) { ylo = y; }
+                    if(y > yhi) { yhi = y; }
+                }
+            }
+            /* A unit-mass positive filter of a forcing that never exceeds 1 stays in [0,1]. Out
+               of that box is the closed form going wrong, not a bright day. */
+            assert(yhi >= ylo && ylo >= 0.0 && yhi <= 1.0 + 1e-9);
+        }
+        if(want_temp && tl.ok) {
+            if(lag) {
+                /* The palette spans what this grid can actually paint, measured above -- same
+                   doctrine as the wind ramp (#769) and the relief ends (#793). */
+                tempLagRampEnds(tl, ylo, yhi, elo, ehi, trlo, trhi);
+            }
             assert(trhi >= trlo);
-            assert(tl.relief || (trlo == tl.lo_K && trhi == tl.hi_K));
+            /* A body with NEITHER a height term NOR a lag MUST paint exactly the law's span: that
+               is the #793 bug this line stands guard over -- the ends were seeded with 0, so every
+               airless world came out `temp_ramp=[0.00 0.00]` and its whole sphere took the midpoint
+               colour, on the one path no e2e case baked. Relief moves the ends by the ground's
+               reach; a lag moves them inward. Either way they must still be a span. */
+            assert(tl.relief || lag || (trlo == tl.lo_K && trhi == tl.hi_K));
         }
 
         for(int j = 0; j < h; j++) {
@@ -248,19 +297,34 @@ void surfmapCompute(Game &g) {
                        dossier and the solar log use -- nothing is invented at the pixel. */
                     const double elev = want_elev ? (double)elevs[(size_t)j * w + i] : 0.0;
                     const double off = tl.relief_K(elev);   // 0.0 whenever relief is off
-                    const double T = surfmapGroundT(tl.anchor_K, tl.knob, d, sun_dir, off);
+                    /* A lagged body reads the light measured in the pass above; an unlagged one
+                       reads solar.h's cosine of the direction, exactly as it always has. Both then
+                       go through groundTemperatureAt, so the lag is the ONLY difference between
+                       the two paths -- and the cursor readout in gameui.cpp takes the same pair,
+                       which is what keeps a colour and the kelvin beside it one world. */
+                    const double T = lag
+                        ? groundTemperatureAt(tl.anchor_K, tl.knob,
+                                              (double)forcing[(size_t)j * w + i], off)
+                        : surfmapGroundT(tl.anchor_K, tl.knob, d, sun_dir, off);
                     // Ramp span: the model's ends moved to the ground the sweep is colouring
-                    // (tempRampEnds above), which with relief off IS the model's ends. Only a
-                    // body with no swing at all AND no relief has lo == hi, and then the span is
-                    // 0 and every pixel takes the midpoint: one honest flat colour rather than a
-                    // gradient the eye invents (#726's "no swing" is that state, and the assert
-                    // above keeps the relief-free case from reaching it by accident).
+                    // (tempRampEnds above) and, for a lagged body, to the light this grid can
+                    // actually reach (tempLagRampEnds). Only a body with no swing at all -- no
+                    // relief, no lag, and an even share that flattens the field -- has lo == hi,
+                    // and then the span is 0 and every pixel takes the midpoint: one honest flat
+                    // colour rather than a gradient the eye invents (#726's "no swing" is that
+                    // state, and the assert above keeps a relief-free body from reaching it by
+                    // accident).
                     const double t01 = (trhi > trlo) ? (T - trlo) / (trhi - trlo) : 0.5;
                     unsigned char r = 0, gg = 0, bb = 0;
                     surfmapRamp(t01, r, gg, bb);
                     c = glm::vec3(r / 255.0f, gg / 255.0f, bb / 255.0f);
                     if(T < tmin) { tmin = T; }
-                    if(T > tmax) { tmax = T; }
+                    if(T > tmax) {
+                        tmax = T;
+                        peak_deg = std::remainder(trig.lon[(size_t)i] - sun_lon,
+                                                  2.0 * std::numbers::pi) * 180.0
+                               / std::numbers::pi;
+                    }
                     const double cw = trig.cos_lat[(size_t)j];   // cos(latitude)
                     tw += cw;
                     tsum += cw * T;
@@ -476,6 +540,24 @@ void surfmapCompute(Game &g) {
                        by the rail's own spread, and the row says which one it printed (#687). */
                     printf(" temp=[%.2f %.2f %.2f] temp_ends=[%.2f %.2f] temp_ramp=[%.2f %.2f]",
                            tmin, tsum / tw, tmax, tl.lo_K, tl.hi_K, trlo, trhi);
+                    /* #794, on every temperature map. `lag_tau` is the authored knob in phase
+                       radians and DASHES when no file stated one (#727: an absence, not a zero),
+                       which is the state every shipped body is in. `peak_deg` is where the
+                       picture's hottest pixel actually sits -- degrees east of the subsolar
+                       meridian of this bake -- so the claim "the hot spot is under the star" is a
+                       number a case can hold the engine to, and the sign of it is the temporal
+                       half of the hour-angle convention that the law's own tests cannot see (a
+                       flipped h mirrors the pattern rather than moving it). `sun_lon` is that
+                       meridian in the grid's own coordinates, so two bakes at two instants can be
+                       compared in absolute longitude instead of only against each other. */
+                    char lag_s[16];
+                    if(lagTauAuthored(tl.lag_tau)) {
+                        snprintf(lag_s, sizeof lag_s, "%.4f", tl.lag_tau);
+                    } else {
+                        snprintf(lag_s, sizeof lag_s, "-");
+                    }
+                    printf(" lag_tau=%s peak_deg=%+.2f sun_lon=%.2f",
+                           lag_s, peak_deg, sun_lon * 180.0 / std::numbers::pi);
                     /* #793, only when there IS relief to price: the grounds this grid actually
                        sampled [m above the datum] and what the profile charges at each end (K).
                        This is the number that says a map's cold end is a mountain and not a longer
@@ -569,6 +651,10 @@ void surfmapCompute(Game &g) {
             g.surfmap.temp_ok = have_t;
             g.surfmap.temp_anchor_K = have_t ? tl.anchor_K : 0.0;
             g.surfmap.temp_knob = have_t ? tl.knob : kEvenShareUnauthored;
+            /* ... and the lag those pixels were painted with (#794). The cursor's kelvin has to
+               be the colour's kelvin: a lagged picture read through the unlagged law answers a
+               noon question about an afternoon picture. */
+            g.surfmap.temp_lag_tau = have_t ? tl.lag_tau : kLagTauUnauthored;
             g.surfmap.temp_block = want_temp ? tl.block : std::string();
             /* The wind, published the same way and for the same reason: the cursor's m/s has to
                be the number THIS picture's pixels were coloured from, so it reads the profile

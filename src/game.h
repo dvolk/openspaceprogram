@@ -409,6 +409,11 @@ struct SurfmapState {
     bool temp_ok = false;
     double temp_anchor_K = 0.0;
     double temp_knob = kEvenShareUnauthored;
+    /* [phase rad] ... and the lag those pixels were painted with (#794), same trio and same
+       reason: the cursor's kelvin is meant to BE the colour under the mouse, and a lagged picture
+       read through the unlagged cosine prints a number the picture never painted. The sentinel
+       means the bake tracked the light -- what every shipped body does until a file authors a tau. */
+    double temp_lag_tau = kLagTauUnauthored;
     /* The star direction these pixels were baked with. The cursor readout needs it: the number
        beside a pixel has to be THAT pixel's number, so it is the bake's sun, not the sim's sun
        now -- the map is a snapshot and the frames move underneath it (#687: measured or

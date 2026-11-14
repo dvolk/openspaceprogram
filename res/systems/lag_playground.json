@@ -1,0 +1,84 @@
+{
+  "home": "Meridian",
+  "soi_law": "hill",
+  "epoch_year": 2026,
+  "skybox": "res/skybox/v1",
+  "_comment": [
+    "An e2e fixture for #794 (the ground's phase lag), not a world anyone plays.",
+    "Two bodies, identical in every way the ground law reads -- same stated anchor, same",
+    "even share, same rotation, same rail -- except that one of them authors surface.lag_tau.",
+    "That pairing is the point: the difference in their pictures can only be the lag.",
+    "The anchor is STATED rather than derived from the rail, so the temperature numbers are",
+    "independent of where the body sits, and a case can hold the sweep to arithmetic.",
+    "Nothing in the shipped corpus authors a lag: until a real body gets one, every world on",
+    "screen still tracks the light exactly (tau absent = the sentinel = the unlagged law)."
+  ],
+  "world_buildings": [
+    {
+      "id": "lag_pad",
+      "type": "space_port",
+      "display_name": "Noon pad",
+      "body": "Meridian",
+      "lat_deg": 0.0,
+      "lon_deg": 0.0,
+      "height_m": 5.0,
+      "heading_deg": 0.0,
+      "flags": ["VAB_LAUNCH_PAD"]
+    }
+  ],
+  "bodies": [
+    {
+      "name": "Sun",
+      "type": "star",
+      "radius": 261600000,
+      "mass": 1.757e+28,
+      "seed": 0,
+      "has_sea": false,
+      "inertial": {"soi": 1e+18, "pos": [0, 0, 0], "orb_ang_speed": 0.0},
+      "transfer_dv": 0.0,
+      "science_mult": 2.0,
+      "surface": {"temperature": 2838.1}
+    },
+    {
+      "name": "Meridian",
+      "type": "planet",
+      "orbits": "Sun",
+      "radius": 600000,
+      "mass": 5.2915793e+22,
+      "seed": 11,
+      "has_sea": false,
+      "inertial": {"pos": [0, 0, -20000000000], "orb_ang_speed": 3.828e-07},
+      "rotating": {"rot_ang_speed": 0.0002915709030370688, "axial_tilt": 0.05},
+      "transfer_dv": 0.0,
+      "science_mult": 1.0,
+      "surface": {
+        "temperature": 240.0,
+        "temperature_src": "INVENTED: a fixture's stated ground, so the anchor sits on the STATED rung and no rail enters the numbers",
+        "even_share": 0.05,
+        "even_share_src": "INVENTED: near-bare-rock knob (the airless swing is wide on purpose, so a lag moves the picture by tens of kelvin rather than by a rounding hair)",
+        "_lag_comment": "No lag_tau here on purpose: this body is the control. Absence is the sentinel, not a 0.0 a file wrote."
+      }
+    },
+    {
+      "name": "Afternoon",
+      "type": "planet",
+      "orbits": "Sun",
+      "radius": 600000,
+      "mass": 5.2915793e+22,
+      "seed": 12,
+      "has_sea": false,
+      "inertial": {"pos": [0, 0, -18000000000], "orb_ang_speed": 4.2e-07},
+      "rotating": {"rot_ang_speed": 0.0002915709030370688, "axial_tilt": 0.05},
+      "transfer_dv": 4200.0,
+      "science_mult": 1.5,
+      "surface": {
+        "temperature": 240.0,
+        "temperature_src": "INVENTED: same as Meridian's, so the two bodies' swings start from one anchor",
+        "even_share": 0.05,
+        "even_share_src": "INVENTED: same knob as Meridian's -- the lag and the even share both set amplitude, so a lagged body needs its f re-fit before it ships for real (#794 step 5)",
+        "lag_tau": 1.0,
+        "lag_tau_src": "INVENTED: one radian of PHASE (not hours) -- at this body's rotation that is about a third of its day. It puts the hottest ground ~40 deg east of the subsolar meridian and lifts the night floor, which is what the case pins."
+      }
+    }
+  ]
+}

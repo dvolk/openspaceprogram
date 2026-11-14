@@ -513,6 +513,15 @@ int main() {
             for(const System *S : std::vector<const System *>{ &sys, &sol }) {
                 for(const TerrainBody *b : S->bodies) {
                     const double peak = (double)b->surface.authoredPeak();
+                    /* #794: the lag WIRING is live -- the sweep, its palette and the cursor all
+                       read the knob -- so what this walks is the FILES. Not one of them authors a
+                       phase lag yet, which is why no shipped picture moved when the law landed
+                       and why a player has never seen an afternoon hot spot. The first body to
+                       author one changes this check on purpose, together with the even-share
+                       re-fit a lag forces (the two knobs trade against the same daily swing). The
+                       fixture that does exercise the wiring is res/systems/lag_playground.json. */
+                    check(!lagTauAuthored(b->surface.lag_tau),
+                          (b->name + ": no shipped body authors a phase lag yet").c_str());
                     if(!b->surface.reliefOn()) {
                         check(b->surface.relief_K(peak) == 0.0
                                   && b->surface.relief_K(1.0e6) == 0.0,

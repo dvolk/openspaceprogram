@@ -189,6 +189,17 @@ SURFMAP_RE = re.compile(
     r"ocean=(on|off)\s+sites=(\d+)"
     r"(?:\s+temp=\[([-\d.]+) ([-\d.]+) ([-\d.]+)\]\s+temp_ends=\[([-\d.]+) ([-\d.]+)\]\s+"
     r"temp_ramp=\[([-\d.]+) ([-\d.]+)\]\s+"
+    # #794: the authored phase lag, printed DASHED when no file states one (an absence, never a
+    # zero), and where the picture's hottest pixel actually sits. peak_deg is degrees EAST of
+    # this bake's subsolar meridian; sun_lon is that meridian in the grid's own degrees. Together
+    # they hold the ENGINE to what the law alone cannot show: with no lag the hot spot is under
+    # the star, with a lag it is in the afternoon, and as the sim advances the pattern rides with
+    # the sun instead of being pasted to a longitude. A flipped hour angle MIRRORS the picture
+    # rather than shifting it, and every other number in the row would still look plausible.
+    # peak_deg is printed with %+.2f, so its sign is ALWAYS there: a class of [-\d.]+ would eat
+    # a leading '-' and choke on a '+', which is the trap this file's other parsers already
+    # document above -- and it only bites on rows where the peak happens to sit west of noon.
+    r"lag_tau=([-\d.]+)\s+peak_deg=([-+\d.]+)\s+sun_lon=([-\d.]+)\s+"
     # #793: the ground's height, present only where the body's own air profile lapses. The two
     # floors/ceilings are the elevations this grid actually coloured (m above the sea-level datum)
     # and the two kelvin figures are what the profile is worth there -- so a case can tie the
@@ -985,9 +996,29 @@ def parse_surfmap(out):
     for m in SURFMAP_RE.finditer(out):
         (t, body, w, h, mtype, level, ar, ag, ab, sr, sg, sb, shade, ocean,
          sites, tmin, tmean, tmax, elo, ehi, trlo, trhi,
+         lag_tau, peak_deg, sun_lon,
          rel_lo, rel_hi, rel_off_lo, rel_off_hi, mean4, datum4, anchor, note,
          wmin, wmean, wmax, welo, wehi, wrlo, wrhi, wrows, wcells,
          wbands, warrowrows, wrowsfrom, wnote) = m.groups()
+        # A temperature row that carries neither its numbers nor a reason is a MALFORMED row,
+        # not a ground row: the whole temp tail is optional in the regex (a ground row has no
+        # such tail at all), so a regression that mangles only those columns would otherwise
+        # turn every temperature row into a ground row and cases that do not assert
+        # `temp is not None` would read it as normal. Fail loudly instead (#727's law needs a
+        # harness that can tell an absence from a mangled reading) -- and fail HERE, before the
+        # dict below converts those groups: converting first turned a mangled row into a
+        # TypeError from float(None), which says nothing about which column went missing.
+        if mtype == "temperature" and tmin is None and note is None:
+            raise ValueError(
+                "surfmap row claims map=temperature but carries neither temp= nor note=: "
+                + m.group(0))
+        # Same law for the wind map (#769): "wind" is a picture the world either can or cannot
+        # draw, and a row that says it drew one while printing neither its numbers nor a reason
+        # is a mangled row, not a refusal.
+        if mtype == "wind" and wmin is None and wnote is None:
+            raise ValueError(
+                "surfmap row claims map=wind but carries neither wind= nor note=: "
+                + m.group(0))
         trip = lambda a, b, c: None if a is None else (float(a), float(b), float(c))
         rows.append({
             "t": float(t), "body": body,
@@ -1008,6 +1039,15 @@ def parse_surfmap(out):
             "temp": trip(tmin, tmean, tmax),
             "temp_ends": (float(elo), float(ehi)) if elo is not None else None,
             "temp_ramp": (float(trlo), float(trhi)) if trlo is not None else None,
+            # #794: the authored phase lag in radians -- None when the file states none, which is
+            # an ABSENCE and not a lag of zero (both answer the unlagged law, but only one of them
+            # was written down). peak_deg is where the sweep's hottest pixel sits, east of this
+            # bake's subsolar meridian; sun_lon is that meridian itself. The pair is the engine's
+            # side of the hour-angle convention: the sign of peak_deg is what no unit test of the
+            # law can see, because cos h is even in h.
+            "lag_tau": None if lag_tau == "-" else float(lag_tau),
+            "peak_deg": None if peak_deg is None else float(peak_deg),
+            "sun_lon": None if sun_lon is None else float(sun_lon),
             # [floor m, ceiling m, K at the floor, K at the ceiling] -- only on a body whose air
             # profile lapses; None where the ground has no height term at all.
             "relief": (float(rel_lo), float(rel_hi), float(rel_off_lo), float(rel_off_hi))

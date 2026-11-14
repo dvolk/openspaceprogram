@@ -1,0 +1,67 @@
+NAME 794-the-ground-lags-its-star-and-the-map-says-so
+CLAIM A body that authors surface.lag_tau paints its hottest ground AFTERNOON rather than under the star, its palette moves inside the law's own ends so the picture still reaches both of them, and the anchor the swing is anchored to does not move at all -- and the hot spot rides with the sun as the sim runs, rather than being pasted to a longitude.
+KIND invariant
+# #794's map wiring. The law (groundtemp.h's periodic closed form) has its own battery and an RK4
+# cross-check; what lives here is the part only the ENGINE can answer -- that the hour angle the row
+# is evaluated at is this grid's longitude less the baked star's subsolar meridian, and that the
+# palette tracks a field the law's 0-and-1 extremes no longer bound.
+#
+# The subject is the lag_playground fixture: an airless world with a STATED anchor (240 K) and a
+# near-bare-rock even share (0.05), so the swing is wide and a lag moves the picture by tens of
+# kelvin instead of a rounding hair. A stated anchor matters: it keeps every number below free of
+# the rail, so the pins are exact rather than bounded by an orbit. Its twin in the same file,
+# Meridian, differs by ONE key -- no lag_tau -- and is pinned in the case beside this one.
+#
+# Three bakes, three instants: the M key asks the engine for a fresh sweep, and --time-accel 100
+# walks the sim ~800 s between the first and the last, which is ~14 deg of this body's turn. No UI
+# window is needed -- --surfmap-log drives the same bake the panel does, and the fixture has no
+# ship, so there is no menu to click.
+ARGS --timeout 14 --time-accel 100 --system res/systems/lag_playground.json
+ARGS --surfmap-log --surfmap-n 256 --surfmap-body Afternoon --surfmap-map temperature
+ARGS --sim-press 3000,0,M,7000,0,M,11000,0,M
+CHECK len(surfmap) == 3
+CHECK all(r["body"] == "Afternoon" and r["map"] == "temperature" for r in surfmap)
+# The knob reaches the sweep, in the unit the file authors it in -- radians of PHASE, not hours.
+CHECK all(abs(r["lag_tau"] - 1.0) < 1e-9 for r in surfmap)
+# The LAW's ends are still the law's: one knob and an anchor force both, and the identity that
+# says so still closes. This is the row science/724 checks, and authoring a lag is NOT allowed to
+# move it -- what moves is what the picture can reach, which is a separate number. The slack is
+# 724's own: the ends are PRINTED to two decimals, and the hot end's fourth power turns a
+# half-hundredth of a kelvin into a few ten-thousandths of the sum.
+CHECK all(abs((r["temp_ends"][1] / r["anchor"]) ** 4 + 3.0 * (r["temp_ends"][0] / r["anchor"]) ** 4 - 4.0) < 1.6 / r["anchor"] for r in surfmap)
+# ... and the PICTURE stops reaching the hot one. Measured 314.1 K against a law's day end of
+# 336.2 K at tau 1: a first-order low-pass pays for its phase shift with amplitude. A palette
+# priced from the law's ends -- which is what this file printed before #794 -- leaves the top 22 K
+# of the ramp unpaintable, so the whole world sits below the colour it is labelled with.
+CHECK all(r["temp_ramp"][1] < r["temp_ends"][1] - 15.0 for r in surfmap)
+CHECK all(r["temp_ramp"][0] >= r["temp_ends"][0] - 1e-9 for r in surfmap)
+# The palette now spans what the grid paints, at BOTH ends: the sweep's own extremes are the ramp's
+# extremes, so no pixel clamps to a colour that lies. This is the #745/#769/#793 closure, and for a
+# lagged body it is only true because the ramp is measured from the grid rather than assumed.
+CHECK all(abs(r["temp"][2] - r["temp_ramp"][1]) < 1e-9 for r in surfmap)
+CHECK all(abs(r["temp"][0] - r["temp_ramp"][0]) < 1e-9 for r in surfmap)
+# THE HEADLINE: the anchor theorem survives the lag. Averaging the ODE over a rotation kills the
+# derivative term, so <y> = <g> and the sphere's T^4 mean comes back to the authored anchor for
+# EVERY tau. Measured to the hundredth at three instants: this is the claim that lets a phase lag
+# be one knob rather than a new temperature to fit.
+CHECK all(abs(r["datum_mean4"] - r["anchor"]) < 0.05 for r in surfmap)
+CHECK all(r["temp"][0] < r["temp"][1] < r["temp"][2] for r in surfmap)
+# THE CONVENTION, which nothing else in the tree can see. The lagged peak sits EAST of the subsolar
+# meridian -- about 41 deg at one radian of phase on an airless world (the closed form's own
+# nonlinear day arc pulls it inside atan(tau) = 45 deg). Flip the sign of h anywhere in the wiring
+# and this reads -41: the picture mirrors, every number above still passes, and the world's weather
+# runs backwards in a way no still frame of the law would reveal.
+CHECK all(30.0 < r["peak_deg"] < 50.0 for r in surfmap)
+# And it rides WITH the sun. Between the first and last bake the subsolar meridian walks ~10 deg of
+# the grid (the body turns under a fixed star), while the peak keeps the same hour angle -- so the
+# afternoon is a phase relationship, not a longitude someone painted at. A bake that ignored the
+# star's position, or solved the lag in inertial angle, drifts peak_deg by tens of degrees here.
+CHECK (lambda rs: min(abs(rs[-1]["sun_lon"] - rs[0]["sun_lon"]), 360.0 - abs(rs[-1]["sun_lon"] - rs[0]["sun_lon"])) > 5.0)(surfmap)
+CHECK (lambda rs: max(r["peak_deg"] for r in rs) - min(r["peak_deg"] for r in rs) < 2.0)(surfmap)
+# A lagged body's cold end is allowed to stay put: at tau 1 the night decay dies out long before
+# sunrise over most of the globe, so the analytic night end is still painted somewhere (near
+# perpetual night at high latitudes). At tau of a whole rotation it RISES -- pinned as a unit test
+# on the row model, tests/test_surfmap.cpp, because it wants a knob no file ships.
+FORBID lag_tau=-
+FORBID temp=[0.00
+FORBID error:

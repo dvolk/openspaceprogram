@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 337 |
+| `invariant` | a behaviour or a player route the game must keep | 339 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 48 |
 | `harness` | CLI/test-engine plumbing, not game spec | 15 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **404** |
+| | **total** | **406** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -364,7 +364,7 @@ judgement. Select by number, name or path, e.g.
 | `ui/748-hold-the-job-runner-and-read-a-window-mid-bake.txt` | invariant | --hold-jobs keeps a posted surface-map bake unpublished, so a --ui-list inside the span reads the window mid-sweep: the cursor line dashes its ground number as (rebaking) instead of quoting a number for the body it just switched to, and the number lands after the release. |
 | `ui/768-systems-window-shuts-the-nozzles.txt` | golden | The Systems window's Thrust vectoring checkbox drops the live gimballed rating in --steering-log from 129710 N m to 0 while the window keeps printing 129710 N m beside the now-off switch, and says nothing about the engines being gone. |
 
-## render (72)
+## render (74)
 
 | case | kind | pins |
 |---|---|---|
@@ -439,6 +439,8 @@ judgement. Select by number, name or path, e.g.
 | `render/769-the-surface-map-draws-the-wind.txt` | invariant | --surfmap-map wind paints the air's speed and direction over the ground: Earth prints the speeds it actually drew between the ends its file states, the Moon refuses for want of air, Pluto refuses because its authored air has no wind rows, and the cursor reads the number under it. |
 | `render/772-a-real-world-winds-its-bands.txt` | invariant | A shipped body whose wind table has many latitude bands draws one arrow row per band, one whose table has too few draws the uniform grid instead, and each prints which plan drew it and how many rows and cells that produced. |
 | `render/786-the-shipped-corpus-flies-comets-and-calls-them-comets.txt` | invariant | The default corpus authors seven comets, the dossier calls each one a comet rather than an asteroid or a planet, each is named by its MPC designation, and the designation rule is what keeps 252P/LINEAR from being a second body called LINEAR. |
+| `render/794-the-ground-lags-its-star-and-the-map-says-so.txt` | invariant | A body that authors surface.lag_tau paints its hottest ground AFTERNOON rather than under the star, its palette moves inside the law's own ends so the picture still reaches both of them, and the anchor the swing is anchored to does not move at all -- and the hot spot rides with the sun as the sim runs, rather than being pasted to a longitude. |
+| `render/794-the-worlds-nobody-gave-a-lag-still-peak-at-noon.txt` | invariant | A body whose file states no lag is untouched by the lag machinery: the log DASHES its knob rather than printing a zero, its palette is exactly the law's two ends, its hottest pixel is under the star to within half a pixel column, and the picture reaches that day end -- while the sun itself walks across the grid between bakes, so the noon hot spot is proved to follow the star rather than to sit at a fixed longitude. |
 | `render/810-map-fit-tracking-switch.txt` | invariant | The Tracking Station map fits the newly selected hull's body and orbit. |
 
 ## harness (16)

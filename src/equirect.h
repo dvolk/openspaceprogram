@@ -164,6 +164,12 @@ inline glm::dvec3 equirectDirAt(int i, int j, int w, int h) {
 struct EquirectTrig {
     std::vector<double> cos_lon, sin_lon;   // [w], indexed by column
     std::vector<double> cos_lat, sin_lat;   // [h], indexed by row
+    /* [rad] The grid's OWN angles, not only their trig. A sweep that just colours pixels never
+       reads these; the lagged ground (#794) does -- its hour angle is `lon - lon_ss` and its row
+       is built from the latitude. They live here rather than in that sweep because these are the
+       same expressions equirectDirAt above uses, so a lag cannot be defined against a grid the
+       engine does not paint (the spatial half of what tests/test_surfmap.cpp pins). */
+    std::vector<double> lon, lat;
 };
 
 inline EquirectTrig equirectTrig(int w, int h) {
@@ -173,14 +179,18 @@ inline EquirectTrig equirectTrig(int w, int h) {
     t.sin_lon.resize((size_t)w);
     t.cos_lat.resize((size_t)h);
     t.sin_lat.resize((size_t)h);
+    t.lon.resize((size_t)w);
+    t.lat.resize((size_t)h);
     for(int i = 0; i < w; i++) {
         const double lon = 2.0 * std::numbers::pi * (double)i / (double)w;
+        t.lon[(size_t)i] = lon;
         t.cos_lon[(size_t)i] = std::cos(lon);
         t.sin_lon[(size_t)i] = std::sin(lon);
     }
     for(int j = 0; j < h; j++) {
         const double lat = std::numbers::pi * 0.5
                          - std::numbers::pi * (double)j / (double)(h - 1);
+        t.lat[(size_t)j] = lat;
         t.cos_lat[(size_t)j] = std::cos(lat);
         t.sin_lat[(size_t)j] = std::sin(lat);
     }
