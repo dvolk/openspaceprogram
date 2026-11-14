@@ -3293,7 +3293,13 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
                hour angle +80, where the ground under a hull is the WARMER one because its
                afternoon has not finished radiating; in the morning the split runs the other way).
                The coupling takes a FORCING, not a cosine, so the signature does not move; and
-               where a file states no tau this stays `sky.cos_inc`, bit for bit. */
+               where a file states no tau this stays `sky.cos_inc`, bit for bit.
+               Worth saying because it is luck rather than design: every body that authors a tau
+               today is airless (utils/gen_systems.py skips airs outright), so this branch and the
+               `followActive(atm.air_follow)` gate above have never run together on a shipped
+               world. If an air world ever gains a lag -- #728's question, not this one -- the
+               ground this column leans on becomes a lagged skin, and which of the two should win
+               is undecided. */
             const double forcing = lagTauActive(m_parent->surface.lag_tau)
                 ? groundForcingLagged(m_parent->surface.lag_tau, here_rot(),
                                       sv_rot.to_sun)
