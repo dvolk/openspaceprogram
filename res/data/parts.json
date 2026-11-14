@@ -1437,6 +1437,76 @@
       "drag_backward": 1.2
     },
     {
+      "name": "gear",
+      "type": "gear",
+      "display_name": "Landing Gear (0.7m)",
+      "mesh": "meshes/gear.obj",
+      "texture": "textures/gear.png",
+      "mass": 30.0,
+      "radius": 0.35,
+      "height": 1.0,
+      "wheel_radius": 0.35,
+      "wheel_travel": 0.4,
+      "wheel_spring": 25000.0,
+      "wheel_damp": 3000.0,
+      "wheel_steer": 0.0,
+      "nodes": [
+        {
+          "id": "srf",
+          "pos": [
+            0.0,
+            0.0,
+            0.65
+          ],
+          "dir": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "surface": true
+        }
+      ],
+      "drag": 0.7,
+      "drag_forward": 0.8,
+      "drag_side": 0.9,
+      "drag_backward": 0.9
+    },
+    {
+      "name": "gear_nose",
+      "type": "gear",
+      "display_name": "Landing Gear (0.7m)",
+      "mesh": "meshes/gear.obj",
+      "texture": "textures/gear.png",
+      "mass": 30.0,
+      "radius": 0.35,
+      "height": 1.0,
+      "wheel_radius": 0.35,
+      "wheel_travel": 0.4,
+      "wheel_spring": 25000.0,
+      "wheel_damp": 3000.0,
+      "wheel_steer": 20.0,
+      "nodes": [
+        {
+          "id": "srf",
+          "pos": [
+            0.0,
+            0.0,
+            0.65
+          ],
+          "dir": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "surface": true
+        }
+      ],
+      "drag": 0.7,
+      "drag_forward": 0.8,
+      "drag_side": 0.9,
+      "drag_backward": 0.9
+    },
+    {
       "name": "fuel_link",
       "type": "fuel_link",
       "display_name": "Fuel Link",

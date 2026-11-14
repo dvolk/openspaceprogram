@@ -177,6 +177,9 @@ DRAG_CD = {
     # not here), so it gets its own Cd family rather than nose_cap's.
     "chute":          {"drag": 0.9, "drag_forward": 0.6, "drag_side": 0.9,
                        "drag_backward": 1.2},
+    # landing gear: a small bluff body tucked under the hull (a wheel + strut).
+    "gear":           {"drag": 0.7, "drag_forward": 0.8, "drag_side": 0.9,
+                       "drag_backward": 0.9},
 }
 
 # Per-part Cd overrides on top of the type's family: rcs_box is a flush cube
@@ -293,6 +296,11 @@ PARTS = [
     ("aileron_r0.8h0.7", "aileron",        "meshes/fin_r0.8h0.7.obj",            "textures/aileron.png"),
     # the parachute rides the nose-cap hull; the canopy is an overlay mesh
     ("chute",            "chute",          "meshes/nose_cap.obj",                 "textures/nose_cap.png"),
+    # landing gear (utils/gen_gear.py): a wheel on a strut, surface-mounted under
+    # the hull. The ground law (src/wheel.h) rolls it; one size for v1. gear_nose
+    # is the same wheel with steering (the nose wheel); the mains stay fixed.
+    ("gear",             "gear",           "meshes/gear.obj",                     "textures/gear.png"),
+    ("gear_nose",        "gear",           "meshes/gear.obj",                     "textures/gear.png"),
     ("fuel_link",        "fuel_link",      None,                           None),
 ]
 
@@ -365,8 +373,22 @@ EXTRA_FIELDS = {
     "chute":             {"mass": 150.0, "chute_area": 25.0,
                           "chute_mesh": "meshes/chute_canopy.obj",
                           "chute_texture": "textures/chute.png"},
+    # gear: mass + suspension declared (one size for v1). wheel_radius is derived
+    # from the mesh in generate(). The surface node is the strut top (+Z), so the
+    # wheel hangs below the belly it is bolted to; the rolling direction is the
+    # part's +Y (src/wheel.h). Spring sized so a ~2.4 kN main-wheel load compresses
+    # ~0.1 m of the 0.4 m travel, leaving the hull clear of the deck's collision
+    # margins (reports/runway-wheels2026_11_14).
+    "gear":              {"mass": 30.0, "wheel_travel": 0.4, "wheel_spring": 25000.0,
+                          "wheel_damp": 3000.0, "wheel_steer": 0.0,
+                          "nodes": [{"id": "srf", "pos": [0.0, 0.0, 0.65],
+                                     "dir": [0.0, 0.0, 1.0], "surface": True}]},
     "fuel_link":         {"fuel_link": True},
 }
+
+# The nose wheel is the same gear with steering authority (deg); the mains are
+# fixed. Same mesh, same suspension -- only wheel_steer differs.
+EXTRA_FIELDS["gear_nose"] = dict(EXTRA_FIELDS["gear"], wheel_steer=20.0)
 
 # every overlay-art path in the table must name its own asset directory
 for _n, _f in EXTRA_FIELDS.items():
@@ -475,6 +497,7 @@ DISPLAY_BASE = {
     "elevator":       "Elevator",
     "aileron":        "Aileron",
     "chute":          "Parachute",
+    "gear":           "Landing Gear",
     "fuel_link":      "Fuel Link",
 }
 
@@ -597,6 +620,13 @@ def generate(name, ptype, mesh, texture):
         e["mass"] = clean(EXTRA_FIELDS[name]["mass"])
         e["radius"] = radius
         e["height"] = height
+    elif ptype == "gear":
+        # mass + suspension declared (EXTRA_FIELDS); the wheel radius is the
+        # mesh's half across-axle extent (the wheel's diameter lies along Y).
+        e["mass"] = clean(EXTRA_FIELDS[name]["mass"])
+        e["radius"] = radius
+        e["height"] = height
+        e["wheel_radius"] = clean(extents[1] / 2.0)
     elif ptype == "battery":
         active = volume * BATTERY_ACTIVE_DENSITY
         dry = volume * BATTERY_DRY_DENSITY

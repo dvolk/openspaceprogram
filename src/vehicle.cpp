@@ -27,6 +27,7 @@
 #include "equirect.h"  // equirectDir: the game's ONE (lat,lon) -> direction law
 #include "gimbal.h"    // the engine-gimbal law (gimbalDir / gimbalStep)
 #include "rcs.h"       // the RCS nozzle allocator (rcsAllocate)
+#include "wheel.h"     // the landing-gear ground law (wheel::force)
 #include "constants.h" // kSoiMargin, kShipGround*, kTerrainBand
 
 /* One rigid body per part, welded parent-first in the def's construction order.
@@ -181,22 +182,31 @@ void build_ship_structure(Vehicle *ship, const ShipDef &def, Shader *partsshader
 
 void build_ship(Vehicle *ship, const ShipDef &def, Shader *partsshader,
                        const glm::dvec3 &base, const glm::dmat3 &orient,
-                       double supportMargin)
+                       double supportMargin, const glm::dvec3 &supportUp)
 {
     build_ship_structure(ship, def, partsshader);
     ship->init();  // seed the tanks full (a pad ship lifts off with a full load)
     /* Pad placement: the inflated hull bottom just touches the pad top plus the
-       support's margin. Measure it off the part HULL AABBs (getAabb inflates by each
-       part's own margin), not the nominal catalog radius/height. */
+       support's margin, measured along the LOCAL VERTICAL -- not the ship's own
+       axis, which is only "up" for a vertical rocket (#846). Work in frame S:
+       upS is the vertical expressed there, and each part's hull AABB contributes
+       its lowest corner along upS (getAabb already inflates by the part margin). */
+    const glm::dvec3 upS = glm::transpose(orient) * supportUp;
     double lowest = 1e30;
     for(size_t i = 0; i < ship->parts.size(); i++) {
         const Part *p = ship->parts[i];
         btVector3 lo, hi;
         p->body->shape->getAabb(Vehicle::toBt(p->localPos, p->localRot), lo, hi);
-        lowest = std::min(lowest, (double)lo.getZ());
+        // AABB support along upS: per axis, the lo corner when upS points that
+        // way, else hi -- the min of dot(corner, upS) over the eight corners.
+        const double s =
+              (upS.x > 0.0 ? lo.getX() : hi.getX()) * upS.x
+            + (upS.y > 0.0 ? lo.getY() : hi.getY()) * upS.y
+            + (upS.z > 0.0 ? lo.getZ() : hi.getZ()) * upS.z;
+        lowest = std::min(lowest, s);
     }
     assert(lowest < 1e30 && "build_ship: a built ship has no parts to measure");
-    const glm::dvec3 shift = glm::dvec3(0.0, 0.0, supportMargin - lowest);
+    const glm::dvec3 shift = upS * (supportMargin - lowest);
     ship->placeShip(base + orient * shift, orient);
     ship->enterWorld();
 }
@@ -900,6 +910,15 @@ Vehicle *place_vehicle_def(Game &g, const ShipDef &def, const std::string &defPa
         }
         pad_dir = site->dir;
         pad_orient = buildingOrient(pad_dir, site->heading_deg * std::numbers::pi / 180.0);
+        /* A RUNWAY site stands the hull nose-along-the-deck, wings level,
+           whatever the def says: the deck's long axis is the building's local
+           +X (the mesh is authored that way), and faceAlong rolls +Y up so the
+           wings are level. It is the pitch-90 attitude below, forced by the
+           SITE rather than authored per def -- a plane launches horizontal
+           without an "attitude" block. Def attitude is ignored on a runway. */
+        if(site->hasFlag("RUNWAY")) {
+            pad_orient = faceAlong(pad_orient * glm::dvec3(1.0, 0.0, 0.0), pad_dir);
+        }
         /* A def may tilt the airframe off the local vertical (ShipDef::attitude,
            #461): the site only ever adds a yaw, so every hull -- wings included --
            stands on its tail and the wings lift sideways up the whole climb.
@@ -909,7 +928,7 @@ Vehicle *place_vehicle_def(Game &g, const ShipDef &def, const std::string &defPa
            heading is (#460). Pitch 0 keeps the pad pose exactly as it was,
            including that pick -- with the nose ON the vertical there is no roll
            left to solve for. */
-        if(def.has_attitude) {
+        else if(def.has_attitude) {
             const double pitch = glm::radians(def.attitude_pitch);
             const glm::dmat3 site_basis = buildingOrient(
                 pad_dir,
@@ -966,11 +985,14 @@ Vehicle *place_vehicle_def(Game &g, const ShipDef &def, const std::string &defPa
     /* build_ship throws on a data bug (an unreadable mesh, a bad fuel link) and
        v is in no list yet, so nothing else would free it. */
     try {
-        build_ship(v, def, g.partsshader, base, pad_orient, supportMargin);
+        build_ship(v, def, g.partsshader, base, pad_orient, supportMargin, pad_dir);
     } catch(...) {
         delete v;
         throw;
     }
+    // A fresh ship holds still on its gear; the player releases with the brakes
+    // key. Harmless on a wheel-less hull (the ground pass is a no-op there).
+    v->brakesOn = true;
     /* A walker takes its suit from the home pad pool (part.h: a kerbal is a
        Part at one place). The minted def suit is replaced by the pooled one.
        A kerbal IS a roster entry (crew.h: the roster is the cast), so a spent
@@ -1457,6 +1479,7 @@ void Vehicle::rebuildCompound() {
         aeroSilParts.clear();
         aeroSil.clear();
         aeroGeomValid = false;
+        gearParts.clear();
         return;
     }
 
@@ -1677,6 +1700,16 @@ void Vehicle::refreshAeroGeom() {
     aeroGeomValid = true;
     aeroSil.invalidate();
     groupLiftingSystems();
+    groupGearParts();
+}
+
+/* The hull's gear wheels, in part order. Rebuilt on a geometry change (the same
+   fingerprint the aero cache rides); the ground pass only reads. */
+void Vehicle::groupGearParts() {
+    gearParts.clear();
+    for(Part *p : parts) {
+        if(p->isGearWheel()) { gearParts.push_back(p); }
+    }
 }
 
 /* #556: which panels are one wing. The law is drag.h::classifyLiftingSystems; this
@@ -4220,6 +4253,81 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
         ApplyTorque(hull, -glm::cross(dcom, ftotal));
     }
     return lastAeroForce;
+}
+
+/* The ground reaction on the gear wheels (src/wheel.h). Per wheel: ray down the
+   strut axis to the contact (analytic terrain fall-through when the ray misses,
+   the EVA two-source pattern), then the spring + tire force applied at the patch.
+   A no-op for a wheel-less hull. Forces accumulate on the one body like aero and
+   thrust; nothing integrates until physics_tick. */
+void Vehicle::applyGroundForces(double h) {
+    (void)h;
+    if(gearParts.empty() || hull == nullptr || !hullInWorld()) { return; }
+    const glm::dvec3 com = get_center_of_mass();
+    const glm::dvec3 vel = GetVelocity(hull);
+    const glm::dvec3 omega = GetAngVelocity(hull);
+    for(Part *p : gearParts) {
+        const PartDef &d = *p->def;
+        glm::dvec3 axle; glm::dmat3 pRot;
+        partWorldPose(p, axle, pRot);
+        const double R = d.wheel_radius, T = d.wheel_travel;
+        // The suspension compresses along the strut (part +Z); the ray follows it.
+        const glm::dvec3 down = -(pRot * glm::dvec3(0.0, 0.0, 1.0));
+        const double reach = R + T + 0.2;   // a little slop past full extension
+        glm::dvec3 hit, n;
+        double dist;
+        if(groundRay(axle, axle + down * reach, hit, n, hull)) {
+            dist = glm::length(hit - axle);
+            n = glm::normalize(n);
+        } else if(m_parent != nullptr) {
+            // Collision meshes only exist at max-LOD leaves; the analytic ground
+            // is the fall-through for the gaps, offset by the terrain margin so it
+            // agrees with the height a ray hits the collision mesh at. Note the
+            // 0.5 m terrain margin is taller than the gear travel, so on raw
+            // terrain the suspension bottoms out and the wheel hulls ride as bump
+            // stops -- a runway deck (0.1 m margin) is the rolling surface.
+            const glm::dvec3 radial = glm::normalize(axle);
+            dist = glm::length(axle)
+                 - ((double)m_parent->GetTerrainHeight(glm::vec3(radial)) + terrainMargin());
+            n = radial;
+            hit = axle - n * dist;
+        } else {
+            continue;
+        }
+        const double compression = std::clamp((R + T) - dist, 0.0, T);
+        if(compression <= 0.0) { continue; }   // airborne: no force
+        // Rolling direction: the part's +Y laid into the ground plane. (Nose-wheel
+        // steer turns this about the normal in stage 3.)
+        const glm::dvec3 f0 = pRot * glm::dvec3(0.0, 1.0, 0.0);
+        glm::dvec3 f = f0 - n * glm::dot(f0, n);
+        if(glm::length2(f) < 1e-9) { continue; }
+        f = glm::normalize(f);
+        // Nose-wheel steer: turn the rolling direction about the ground normal by
+        // the yaw demand (the same stick the attitude law reads), fading out with
+        // speed so it cannot flip the plane at rotation. Only wheels authored with
+        // wheel_steer turn; the mains keep rolling straight.
+        if(d.wheel_steer > 0.0) {
+            const double taper = std::clamp(1.0 - glm::length(vel) / 35.0, 0.0, 1.0);
+            // +stick[2] is yaw right; rotAbout(up, +a, nose) turns the nose toward
+            // up x nose = right, the same way the yaw torque does, so wheel and
+            // rudder agree instead of scrubbing against each other.
+            const double steer = stick[2] * glm::radians(d.wheel_steer) * taper;
+            f = rotAbout(n, steer, f);
+        }
+        const glm::dvec3 rel = hit - com;
+        wheel::Input in;
+        in.compression  = compression;
+        in.compressRate = -glm::dot(vel + glm::cross(omega, axle - com), n);
+        in.spring       = d.wheel_spring;
+        in.damp         = d.wheel_damp;
+        in.normal       = n;
+        in.forward      = f;
+        in.contactVel   = vel + glm::cross(omega, rel);
+        in.brake        = brakesOn ? 1.0 : 0.0;
+        const glm::dvec3 F = wheel::force(in);
+        ApplyForce(hull, rel, F);
+        if(recordForceVecs) { lastForceVecs.push_back({ rel, F, kForceGround }); }
+    }
 }
 
 void Vehicle::applyControlForces(double h) {

@@ -16,6 +16,7 @@
 #include <utility>   // std::pair
 
 #include "body.h"      // Body
+#include "constants.h" // kShipGroundSpeed (the brakes-on-load rest gate)
 #include "datadir.h"   // writeJson (the atomic JSON write, #304)
 #include "eva.h"       // Kerbal
 #include "game.h"      // Game, Scene
@@ -1085,6 +1086,9 @@ Vehicle *buildShipFromSaveParts(Game &g, const LoadWorld &w, const SaveShip &s,
     v->setVelocity(s.pose.vel);
     SetAngVelocity(v->hull, s.pose.angvel);
     v->setThrottle(s.throttle);
+    // Brakes are transient (not saved): a loaded ship holds still only if it was
+    // nearly at rest, so a save taken mid-takeoff-roll does not reload locked.
+    v->brakesOn = glm::length(s.pose.vel) < kShipGroundSpeed;
     /* A SlewFree latch belongs to a mission law, and no law survives a load --
        Game::clearEphemeralState drops it (#612) -- so restoring the latch would
        give the hull a steering target with nothing behind it: it turns forever
@@ -1158,8 +1162,10 @@ Kerbal *buildKerbalFromSave(Game &g, const LoadWorld &w, const SaveShip &s) {
     /* build_ship can throw with parts attached; k is not in the load's
        `built` list yet, so the rollback would not free it. */
     try {
-        // base 0 + no pad lift: the saved pose is applied below
-        build_ship(k, def, g.partsshader, glm::dvec3(0.0), glm::dmat3(1.0), 0.0);
+        // base 0 + no pad lift: the saved pose is applied below. Identity orient,
+        // so the support vertical is frame S's own +Z (the pose is re-placed anyway).
+        build_ship(k, def, g.partsshader, glm::dvec3(0.0), glm::dmat3(1.0), 0.0,
+                   glm::dvec3(0.0, 0.0, 1.0));
     } catch(...) {
         delete k;
         throw;

@@ -287,7 +287,12 @@ int main() {
             d.meshHalfSpan(hx, hy);
             // 1%: parts.json stores the generated 0.5625 as 0.562.
             CHECK(std::fabs(std::max(hx, hy) - d.radius) <= 0.01 * d.radius);
-            CHECK(std::fabs(d.meshHalfLength() - d.height / 2.0) <= 0.01 * d.height);
+            // Gear is authored off-centre -- the strut rises +Z to the mount face
+            // while the wheel hangs below -- so its mesh half-length is not half
+            // its height. This centering pin is for stack-axis bodies, not gear.
+            if(!d.isGearWheel()) {
+                CHECK(std::fabs(d.meshHalfLength() - d.height / 2.0) <= 0.01 * d.height);
+            }
             /* meshHalfSpan() symmetrises the box about the part origin because
                the origin IS the stack axis. A mesh modelled off-centre would get
                the larger half-span on both sides and place a child on the far
@@ -301,7 +306,9 @@ int main() {
                outside the mesh, so fail on that rather than ship a child floating
                off its own tip. */
             const Node *srf = d.findSurfaceNode();
-            if(srf != nullptr) {
+            // Gear authors its own surface node at the strut top (+Z), not the
+            // synthesized -X side, so the -X pin is for the synthesized nodes only.
+            if(srf != nullptr && !d.isGearWheel()) {
                 CHECK(std::fabs(std::fabs(srf->pos.x) - std::fabs(d.mesh_min.x)) <= 1e-3);
             }
         }
@@ -553,6 +560,74 @@ int main() {
         CHECK(expect_throw_saying([&]{ load_parts_catalog(nostall); },
                                   "a lifting surface needs \"stall_angle\""));
         std::remove(nostall);
+    }
+
+    /* Landing gear (src/wheel.h): wheel_radius > 0 makes a gear wheel, and the
+       suspension must come with it -- a wheel with no spring is a rigid stub.
+       The shipped gear is pinned too, so a catalog that lost the field would
+       ship a plane that cannot roll. */
+    {
+        const PartDef *gear = cat.find("gear");
+        CHECK(gear != nullptr);
+        if(gear != nullptr) {
+            CHECK(gear->isGearWheel());
+            CHECK(gear->wheel_radius > 0.0);
+            CHECK(gear->wheel_spring > 0.0 && gear->wheel_travel > 0.0);
+            const Node *gsrf = gear->findSurfaceNode();
+            CHECK(gsrf != nullptr);   // mounts strut-top, not the -X side
+            if(gsrf != nullptr) {
+                CHECK(gsrf->pos.z > 0.0);                 // up the strut
+                CHECK(std::fabs(gsrf->dir.z - 1.0) < 1e-9);
+            }
+        }
+        // A reaction wheel is NOT landing gear (the two predicates must not mix).
+        const PartDef *rw = cat.find("reaction_wheel");
+        CHECK(rw != nullptr && !rw->isGearWheel());
+
+        const char *ok = "/tmp/test_shipload_gear.json";
+        std::ofstream o(ok);
+        o << "{ \"parts\": [ { \"name\": \"g\", \"type\": \"gear\", \"mesh\": \"a.obj\", "
+             "\"texture\": \"a.png\", \"mass\": 30.0, \"wheel_radius\": 0.35, "
+             "\"wheel_travel\": 0.4, \"wheel_spring\": 25000, \"wheel_damp\": 3000, "
+             "\"wheel_steer\": 15 } ] }";
+        o.close();
+        PartsCatalog gc = load_parts_catalog(ok);
+        const PartDef *g = gc.find("g");
+        CHECK(g != nullptr && g->isGearWheel());
+        if(g != nullptr) {
+            CHECK(g->wheel_radius == 0.35);
+            CHECK(g->wheel_steer == 15.0);
+        }
+        std::remove(ok);
+        // A wheel with no spring is refused, not loaded as a rigid stub.
+        const char *nospring = "/tmp/test_shipload_gear_nospring.json";
+        std::ofstream ns2(nospring);
+        ns2 << "{ \"parts\": [ { \"name\": \"g\", \"type\": \"gear\", \"mesh\": \"a.obj\", "
+               "\"texture\": \"a.png\", \"mass\": 30.0, \"wheel_radius\": 0.35, "
+               "\"wheel_travel\": 0.4 } ] }";
+        ns2.close();
+        CHECK(expect_throw_saying([&]{ load_parts_catalog(nospring); },
+                                  "\"wheel_radius\" > 0 requires"));
+        std::remove(nospring);
+        // A negative radius is a typo, not a wheel.
+        const char *neg = "/tmp/test_shipload_gear_neg.json";
+        std::ofstream ng(neg);
+        ng << "{ \"parts\": [ { \"name\": \"g\", \"type\": \"gear\", \"mesh\": \"a.obj\", "
+              "\"texture\": \"a.png\", \"mass\": 30.0, \"wheel_radius\": -0.35 } ] }";
+        ng.close();
+        CHECK(expect_throw_saying([&]{ load_parts_catalog(neg); },
+                                  "wheel fields must be >= 0"));
+        std::remove(neg);
+        // Steer is gated like its siblings: negative is a typo, > 90 deg absurd.
+        const char *steer = "/tmp/test_shipload_gear_steer.json";
+        std::ofstream st(steer);
+        st << "{ \"parts\": [ { \"name\": \"g\", \"type\": \"gear\", \"mesh\": \"a.obj\", "
+              "\"texture\": \"a.png\", \"mass\": 30.0, \"wheel_radius\": 0.35, "
+              "\"wheel_travel\": 0.4, \"wheel_spring\": 25000, \"wheel_steer\": -5 } ] }";
+        st.close();
+        CHECK(expect_throw_saying([&]{ load_parts_catalog(steer); },
+                                  "wheel fields must be >= 0"));
+        std::remove(steer);
     }
 
     /* A drum pays for its own electricity (#596). "torque" > 0 makes a part a wheel

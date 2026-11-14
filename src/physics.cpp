@@ -356,6 +356,32 @@ bool PhysicsEngine::BodyInContact(Body *body) {
     return cb.any;
 }
 
+/* Closest ray hit, ignoring one body (a wheel's own hull). */
+struct GroundRayCallback : public btCollisionWorld::ClosestRayResultCallback {
+    const btCollisionObject *skip;
+    GroundRayCallback(const btVector3 &from, const btVector3 &to,
+                      const btCollisionObject *s)
+        : ClosestRayResultCallback(from, to), skip(s) {}
+    bool needsCollision(btBroadphaseProxy *proxy) const override {
+        if(proxy->m_clientObject == skip) { return false; }
+        return ClosestRayResultCallback::needsCollision(proxy);
+    }
+};
+
+bool PhysicsEngine::groundRay(const glm::dvec3 &from, const glm::dvec3 &to,
+                              glm::dvec3 &hit, glm::dvec3 &normal,
+                              const Body *skip) {
+    const btVector3 f(from.x, from.y, from.z), t(to.x, to.y, to.z);
+    GroundRayCallback cb(f, t, skip != nullptr ? skip->btBody : nullptr);
+    dynamicsWorld->rayTest(f, t, cb);
+    if(!cb.hasHit()) { return false; }
+    const btVector3 &hp = cb.m_hitPointWorld;
+    const btVector3 &hn = cb.m_hitNormalWorld;
+    hit = glm::dvec3(hp.getX(), hp.getY(), hp.getZ());
+    normal = glm::dvec3(hn.getX(), hn.getY(), hn.getZ());
+    return true;
+}
+
 
 
 void PhysicsEngine::RemoveBody(Body *body) {
@@ -475,6 +501,11 @@ void setPosRot(Body *b, glm::dvec3 pos, glm::dmat3 rot)
 
 bool BodyInContact(Body *body) {
     return physics->BodyInContact(body);
+}
+
+bool groundRay(const glm::dvec3 &from, const glm::dvec3 &to,
+               glm::dvec3 &hit, glm::dvec3 &normal, const Body *skip) {
+    return physics->groundRay(from, to, hit, normal, skip);
 }
 
 

@@ -335,6 +335,9 @@ void tick(Game &g) {
                        deadbeat attitude law, where it rings. */
                     s->applyControlForces(h);
                     s->applyAeroForce(h, g.sun);
+                    // Gear ground reaction (a no-op without wheels). Same fresh
+                    // pose/velocity as aero; physics_tick below integrates it.
+                    s->applyGroundForces(h);
                 }
                 physics_tick(h);
                 if(g.args.debug_accel) {

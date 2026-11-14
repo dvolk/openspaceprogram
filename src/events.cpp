@@ -409,6 +409,11 @@ void flightKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
         printf("Thrust latch: off (manual thrust)\n");
         g.toast("Thrust latch off");
     }
+    // Gear brakes latch on the active ship (transient, like the thrust latch).
+    if(slotFired(Slot::Brakes, ksc, kmod, g.binds) && !repeat && g.ship != nullptr) {
+        g.ship->brakesOn = !g.ship->brakesOn;
+        g.toast("Brakes %s", g.ship->brakesOn ? "on" : "off");
+    }
 }
 
 /* Fixed scancodes (editor-local). An imgui text field owns the keyboard. */

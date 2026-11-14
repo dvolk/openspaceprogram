@@ -207,6 +207,9 @@ struct Part {
        the free oxidizer). Dead in vacuum. */
     bool isJet() const { return isThruster() && def->jet; }
     bool isWheel() const { return def != nullptr && def->torque > 0.0; }
+    // Landing gear, NOT a reaction wheel (isWheel above is torque). The ground
+    // law (Vehicle::applyGroundForces) rolls these on the surface.
+    bool isGearWheel() const { return def != nullptr && def->isGearWheel(); }
     bool isRcs() const { return def != nullptr && def->rcs_thrust > 0.0; }
     bool isDecoupler() const { return def != nullptr && def->decoupler; }
     bool isDockingPort() const { return def != nullptr && def->docking_port; }

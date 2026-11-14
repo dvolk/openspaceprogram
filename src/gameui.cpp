@@ -3091,6 +3091,11 @@ void drawUIReadouts(Game &g) {
         /* "Throttle", not "Thrust Util": the engine command value R/F ramp (0..1), not a
            utilisation ratio. */
         ImGui::Text("Throttle: %.0f%%", ship->throttle() * 100);
+        if(!ship->gearParts.empty()) {
+            const auto &bb = g.binds.perSlot[(size_t)Slot::Brakes];
+            ImGui::Text("Brakes: %s (%s)", ship->brakesOn ? "on" : "off",
+                        bb.empty() ? "?" : bindLabel(bb[0]).c_str());
+        }
         /* Produced / available, the same current-over-full shape as the TWR row
            below it (#400): a coasting ship reads 0.00 here and 49984.00 there, which
            is what tells a builder the engine is fine and the throttle is not. */
@@ -4922,6 +4927,7 @@ static ImU32 forceKindColor(int kind) {
            a third thing rather than as a paler shade of the hull's drag. */
         case Vehicle::kForceSurfDrag: return IM_COL32(190, 190, 190, 230);
         case Vehicle::kForceThrust: return IM_COL32(255, 165, 40, 235);
+        case Vehicle::kForceGround: return IM_COL32(180, 120, 60, 235);
         default:
             assert(!"unknown force overlay kind");
             return IM_COL32(255, 255, 255, 230);
@@ -4937,6 +4943,7 @@ static const char *forceKindName(int kind) {
         case Vehicle::kForceInduced: return "induced drag (at the surface)";
         case Vehicle::kForceSurfDrag: return "surface form drag (at the surface)";
         case Vehicle::kForceThrust: return "thrust";
+        case Vehicle::kForceGround: return "ground (wheel)";
         default:                   return "?";
     }
 }

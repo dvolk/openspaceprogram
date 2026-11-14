@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 350 |
+| `invariant` | a behaviour or a player route the game must keep | 354 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 48 |
 | `harness` | CLI/test-engine plumbing, not game spec | 15 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **417** |
+| | **total** | **421** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -18,7 +18,7 @@ paces a run: how much e2e a change deserves is the caller's
 judgement. Select by number, name or path, e.g.
 `python3 e2e/run.py save/172 262`.
 
-## flight (107)
+## flight (111)
 
 | case | kind | pins |
 |---|---|---|
@@ -129,6 +129,10 @@ judgement. Select by number, name or path, e.g.
 | `flight/809-transfer-plan-follows-the-active-ship.txt` | invariant | With a transfer target held, every plan the game prints belongs to the hull in control -- including the frames right after switching to another of your own vessels. |
 | `flight/817-a-startship-alt-asks-a-height.txt` | invariant | --startship alt=<metres> opens a circular bed at exactly that altitude above sea level -- not the scenario's fraction -- with the air the profile has there, and says so on the Spawn line. |
 | `flight/818-a-startship-alt-above-the-shell-rides-the-inertial-frame.txt` | invariant | --startship alt=<metres> on an orbit bed places the hull above the body's near-body shell in the body's own inertial frame, at exactly the asked radius, still circling that body. |
+| `flight/850-runway-rest.txt` | invariant | A geared plane spawns wings-level on the runway and rests on its wheels without sinking or sliding. |
+| `flight/851-runway-takeoff.txt` | invariant | A geared plane rolls down the runway under thrust and lifts off. |
+| `flight/852-runway-brakes.txt` | invariant | A rolling plane stops when the brakes are applied. |
+| `flight/853-runway-steer.txt` | invariant | Nose-wheel steering bends the ground track while taxiing. |
 
 ## crew (26)
 

@@ -35,6 +35,8 @@ public:
        RemoveBody). */
     void AddBody(Body *body);
     bool BodyInContact(Body *body);
+    bool groundRay(const glm::dvec3 &from, const glm::dvec3 &to,
+                   glm::dvec3 &hit, glm::dvec3 &normal, const Body *skip);
     void Draw(const Camera * camera);
 
 private:
@@ -91,6 +93,13 @@ glm::dmat3 GetOrient(Body *body);
 /* True when the body touches anything in the current world state (the
    EVA grounded check). */
 bool BodyInContact(Body *body);
+
+/* Cast a ray from `from` to `to` through the collision world (terrain mesh,
+   buildings, hulls). True on a hit, writing the hit point and surface normal.
+   `skip` is excluded -- a wheel does not ray onto its own hull. The hit is the
+   margin-inflated surface (the same one collision rests on). */
+bool groundRay(const glm::dvec3 &from, const glm::dvec3 &to,
+               glm::dvec3 &hit, glm::dvec3 &normal, const Body *skip);
 
 void debug_draw(const Camera * camera);
 

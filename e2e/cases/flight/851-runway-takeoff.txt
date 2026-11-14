@@ -1,0 +1,14 @@
+NAME runway-takeoff
+CLAIM A geared plane rolls down the runway under thrust and lifts off.
+KIND invariant
+ARGS --time-accel 1 --startship skiffgear,res/ships/skiff_gear.json,Kerbin,pad,site=ksc_runway
+ARGS --timeout 14 --dbg-log --orbit-interval 0.5
+# Brakes are on at spawn; release them (O) before the roll.
+ARGS --sim-press 500,0,O
+ARGS --sim-press 1000,12000,T
+EXPECT [dbg]
+# Ground speed (dbg v, not the drag log's airspeed) builds to flying speed...
+CHECK max(d["v"] for d in dbg) > 40
+# ...and the hull leaves the deck and climbs away.
+CHECK last(dbg)["alt"] - first(dbg)["alt"] > 20
+FORBID error:

@@ -30,7 +30,9 @@ PartDef::PartDef()
       drag(0.0), drag_forward(0.0), drag_side(0.0), drag_backward(0.0),
       lift_area(0.0), cl(0.0), stall_angle(0.0),
       control_area(0.0), control_axis(ControlAxis::Pitch), cl_control(0.0),
-      max_deflection(0.0), chute_area(0.0) {
+      max_deflection(0.0), chute_area(0.0),
+      wheel_radius(0.0), wheel_travel(0.0), wheel_spring(0.0), wheel_damp(0.0),
+      wheel_steer(0.0) {
     capacity.resize((int)ResourceType::Num, 0.0);
     propellant_rate.resize((int)ResourceType::Num, 0.0);
 }
@@ -779,6 +781,26 @@ PartsCatalog load_parts_catalog(const char *path) {
                                           "\"chute_mesh\"/\"chute_texture\"");
         }
 
+        /* Landing gear (src/wheel.h). wheel_radius > 0 makes a gear wheel; the
+           suspension must then be authored -- a wheel with no spring is a rigid
+           stub that would hammer the hull. */
+        d.wheel_radius = optNumber(pv, "wheel_radius", 0.0, ctx, "m");
+        d.wheel_travel = optNumber(pv, "wheel_travel", 0.0, ctx, "m");
+        d.wheel_spring = optNumber(pv, "wheel_spring", 0.0, ctx, "N/m");
+        d.wheel_damp   = optNumber(pv, "wheel_damp", 0.0, ctx, "N s/m");
+        d.wheel_steer  = optNumber(pv, "wheel_steer", 0.0, ctx, "deg");
+        if(d.wheel_radius < 0.0 || d.wheel_travel < 0.0 || d.wheel_spring < 0.0
+           || d.wheel_damp < 0.0 || d.wheel_steer < 0.0) {
+            throw std::runtime_error(ctx + "wheel fields must be >= 0");
+        }
+        if(d.wheel_steer > 90.0) {
+            throw std::runtime_error(ctx + "\"wheel_steer\" must be <= 90 (deg)");
+        }
+        if(d.wheel_radius > 0.0 && (d.wheel_travel <= 0.0 || d.wheel_spring <= 0.0)) {
+            throw std::runtime_error(ctx + "\"wheel_radius\" > 0 requires "
+                                          "\"wheel_travel\" and \"wheel_spring\" > 0");
+        }
+
         /* An explicit "nodes" array wins; fuel links get none. */
         if(!d.fuel_link) {
             if(pv.contains("nodes")) {
@@ -799,6 +821,9 @@ PartsCatalog load_parts_catalog(const char *path) {
                     }
                     nd.pos = parse_vec3(nv, "pos", ctx + "node \"" + nd.id + "\": ");
                     nd.dir = parse_vec3(nv, "dir", ctx + "node \"" + nd.id + "\": ");
+                    // An authored node can be the surface-attach node (landing
+                    // gear mounts strut-top, not on the synthesized -X side).
+                    nd.surface = nv.value("surface", false);
                     const double len = glm::length(nd.dir);
                     if(len < 1e-9) {
                         throw std::runtime_error(ctx + "node \"" + nd.id

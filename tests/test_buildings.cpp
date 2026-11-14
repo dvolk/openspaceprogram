@@ -70,13 +70,16 @@ static nlohmann::json read_json(const char *path) {
    down through whatever the relief does across the rest of the footprint.
    Pinned so a terrain-noise tweak or a moved pad cannot leave a corner of the
    deck floating over a dip, or bury the deck inside a hill (a pad ship would
-   spawn in the ground). Footprint and depth are res/meshes/space_port.obj --
-   a 12-vertex box with its top face exactly at the building origin
-   (x -12.99..12.99, y -41.11..15.00, z -10.00..0.00); re-derive from the
-   OBJ's v lines if that mesh changes. */
+   spawn in the ground). Footprint and depth are the building mesh's box, top
+   face at the origin: space_port.obj is x -12.99..12.99, y -41.11..15.00,
+   z -10..0; runway.obj (utils/gen_runway.py) is x +-450, y +-15, z -4..0.
+   Re-derive from the OBJ's v lines if a mesh changes. */
 static void check_pad_grounding(const std::string &logical,
                                 const WorldBuilding &w, TerrainBody *hb) {
-    const double halfX = 13.0, yMin = -41.0, yMax = 15.0, slabDepth = 10.0;
+    double halfX = 13.0, yMin = -41.0, yMax = 15.0, slabDepth = 10.0;
+    if(w.type == "runway") {
+        halfX = 450.0; yMin = -15.0; yMax = 15.0; slabDepth = 4.0;
+    }
     const glm::dvec3 up = w.dir();
     const glm::dvec3 org = up * (w.height_m
                                  + (double)hb->GetTerrainHeight(glm::vec3(up)));
@@ -358,11 +361,12 @@ int main() {
         if(logical.find("solar_system") != std::string::npos) {
             CHECK(sys.world_buildings.size() >= 15);
         }
-        // The fictional systems name a site fragment too (#226): 3 Kerbol
-        // sites + its inline pole pad, 1 Eerbon site + its own. Exact counts
-        // so a fragment that stops loading is a failure, not a smaller pass.
+        // The fictional systems name a site fragment too (#226): 4 Kerbol
+        // sites (pad, runway, Moho, Duna) + its inline pole pad, 1 Eerbon site
+        // + its own. Exact counts so a fragment that stops loading is a
+        // failure, not a smaller pass.
         if(logical == "res/systems/ksp_system.json") {
-            CHECK(sys.world_buildings.size() == 4);
+            CHECK(sys.world_buildings.size() == 5);
         }
         if(logical == "res/systems/old_system.json") {
             CHECK(sys.world_buildings.size() == 2);

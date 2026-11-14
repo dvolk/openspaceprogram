@@ -1,0 +1,16 @@
+NAME runway-steer
+CLAIM Nose-wheel steering bends the ground track while taxiing.
+KIND invariant
+ARGS --time-accel 1 --startship skiffgear,res/ships/skiff_gear.json,Kerbin,pad,site=ksc_runway
+ARGS --timeout 9 --dbg-log --orbit-interval 0.5
+# Release spawn brakes, taxi up to speed, then hold yaw so the nose wheel steers.
+ARGS --sim-press 500,0,O
+ARGS --sim-press 1000,2000,T
+ARGS --sim-press 3000,3000,D
+EXPECT [dbg]
+CHECK max(d["v"] for d in dbg) > 8
+# The track bends RIGHT (D = yaw right): world +Y is the ship's right at this
+# site, so the lateral velocity must grow POSITIVE, not just bend either way.
+# Pins the steer sign against the yaw convention (a flipped sign scrubs left).
+CHECK max(d["vel"][1] for d in dbg) > 2
+FORBID error:

@@ -1,0 +1,16 @@
+NAME runway-rest
+CLAIM A geared plane spawns wings-level on the runway and rests on its wheels without sinking or sliding.
+KIND invariant
+ARGS --time-accel 1 --startship skiffgear,res/ships/skiff_gear.json,Kerbin,pad,site=ksc_runway
+ARGS --timeout 6 --dbg-log --drag-log --orbit-interval 0.5
+EXPECT [dbg]
+EXPECT [drag]
+# Wings level on the deck: the RUNWAY site forces the horizontal pose (#846's
+# support fix rests it on the gear), and the gear holds it level rather than
+# letting it tip onto a wingtip the way a gearless hull does.
+CHECK min(d["up"] for d in drag) > 0.9
+# Resting on the wheels: no free-fall sink and no slide. The tire law is viscous
+# (no static stiction in v1), so a tiny creep is allowed -- brakes hold it in 852.
+CHECK max(d["alt"] for d in dbg) - min(d["alt"] for d in dbg) < 0.3
+CHECK all(d["v"] < 0.5 for d in dbg)
+FORBID error:

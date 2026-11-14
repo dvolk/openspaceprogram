@@ -63,6 +63,9 @@ void KeyBindings::resetDefaults() {
     add(Slot::KillRot,       SDL_SCANCODE_X);
     add(Slot::ThrottleUp,    SDL_SCANCODE_R);
     add(Slot::ThrottleDown,  SDL_SCANCODE_F);
+    // Brakes: B is retrograde slew, so a free plain key (sim-press carries no
+    // modifiers, which rules out a Shift+B chord for the e2e).
+    add(Slot::Brakes,        SDL_SCANCODE_O);
     // A burn should not require opening a window and clicking a button mid-flight.
     add(Slot::SlewPrograde,  SDL_SCANCODE_Z);
     add(Slot::SlewRetrograde,SDL_SCANCODE_B);
@@ -177,6 +180,7 @@ const char *slotName(Slot s) {
         case Slot::RollRight:      return "roll_right";
         case Slot::Thrust:         return "thrust";
         case Slot::ThrustLatch:    return "thrust_latch";
+        case Slot::Brakes:         return "brakes";
         case Slot::KillRot:        return "kill_rot";
         case Slot::ThrottleUp:     return "throttle_up";
         case Slot::ThrottleDown:   return "throttle_down";
@@ -256,6 +260,7 @@ const char *slotLabel(Slot s) {
         case Slot::RollRight:      return "Roll right";
         case Slot::Thrust:         return "Thrust";
         case Slot::ThrustLatch:    return "Thrust latch (hold thrust)";
+        case Slot::Brakes:         return "Brakes";
         case Slot::KillRot:        return "Kill rotation";
         case Slot::ThrottleUp:     return "Throttle up";
         case Slot::ThrottleDown:   return "Throttle down";
@@ -306,7 +311,7 @@ SlotGroup slotGroup(Slot s) {
         case Slot::PitchUp: case Slot::PitchDown:
         case Slot::YawLeft: case Slot::YawRight:
         case Slot::RollLeft: case Slot::RollRight:
-        case Slot::Thrust: case Slot::ThrustLatch: case Slot::KillRot:
+        case Slot::Thrust: case Slot::ThrustLatch: case Slot::Brakes: case Slot::KillRot:
         case Slot::ThrottleUp: case Slot::ThrottleDown:
         case Slot::SlewPrograde: case Slot::SlewRetrograde:
         case Slot::RcsForward: case Slot::RcsBack:

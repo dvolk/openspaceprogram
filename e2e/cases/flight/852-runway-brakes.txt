@@ -1,0 +1,13 @@
+NAME runway-brakes
+CLAIM A rolling plane stops when the brakes are applied.
+KIND invariant
+ARGS --time-accel 1 --startship skiffgear,res/ships/skiff_gear.json,Kerbin,pad,site=ksc_runway
+ARGS --timeout 12 --dbg-log --orbit-interval 0.5
+# Brakes are on at spawn: release (O), roll up under thrust, then brake (O) again.
+ARGS --sim-press 500,0,O
+ARGS --sim-press 1000,3000,T
+ARGS --sim-press 4500,0,O
+EXPECT [dbg]
+CHECK max(d["v"] for d in dbg) > 20
+CHECK last(dbg)["v"] < 2
+FORBID error:

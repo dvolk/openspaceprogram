@@ -57,6 +57,7 @@ enum class Slot {
     RollRight,
     Thrust,
     ThrustLatch,   // latch thrust to fire (toggle; a plain thrust release)
+    Brakes,        // toggle the gear brakes (latching; B is retrograde slew)
     KillRot,
     ThrottleUp,
     ThrottleDown,

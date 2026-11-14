@@ -5,6 +5,12 @@
       "display_name": "Space port",
       "mesh": "meshes/space_port.obj",
       "texture": "textures/space_port.png"
+    },
+    {
+      "name": "runway",
+      "display_name": "Runway",
+      "mesh": "meshes/runway.obj",
+      "texture": "textures/runway.png"
     }
   ]
 }

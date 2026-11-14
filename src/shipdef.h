@@ -484,6 +484,19 @@ struct PartDef {
         return d.height / 2.0 + 0.75 * side;
     }
 
+    /* LANDING GEAR: a wheel that rolls on the ground. wheel_radius > 0 makes this
+       a gear wheel; the ground law (src/wheel.h, Vehicle::applyGroundForces) reads
+       these. This is NOT a reaction wheel -- isWheel() above is torque. Part frame
+       convention: axle along X, rolling direction +Y, mount strut up +Z, origin at
+       the axle centre. */
+    double wheel_radius;   // m; > 0 -> a gear wheel
+    double wheel_travel;   // m, suspension travel
+    double wheel_spring;   // N/m, suspension stiffness
+    double wheel_damp;     // N s/m, suspension damping
+    double wheel_steer;    // deg, max nose-wheel deflection (0 = fixed)
+
+    bool isGearWheel() const { return wheel_radius > 0.0; }
+
     PartDef();
 
     /* The human-readable name: display_name, else the machine id (catalogs that

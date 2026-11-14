@@ -1,5 +1,5 @@
 {
-  "note": "A world_buildings fragment (src/buildings.cpp): res/systems/ksp_system.json names it under \"world_buildings_files\" and the loader merges these entries into its own \"world_buildings\". Hand-authored -- utils/gen_systems.py emits only the reference, never this table, so regenerating the system JSON cannot clobber a coordinate; tests/test_buildings.cpp pins what reaches the game. lat_deg/lon_deg are DEGREES, lon east-positive, in the BODY's own equirect frame (equirect.h), so the same numbers on two bodies are the same place on each of them. Each BODY's default site is the first VAB_LAUNCH_PAD for that body (find_launch_site filters by body), and merged fragments come before a system's inline world_buildings -- so this table picks Kerbin's, Moho's and Duna's defaults, and the polar pad is deliberately NOT here (it is inline in the system JSON, and ahead of these entries it would become Kerbin's default). moho_pad and duna_pad sit at Kerbin's coordinates: placeholders so off-world launches are reachable, not placed against any survey.",
+  "note": "A world_buildings fragment (src/buildings.cpp): res/systems/ksp_system.json names it under \"world_buildings_files\" and the loader merges these entries into its own \"world_buildings\". Hand-authored -- utils/gen_systems.py emits only the reference, never this table, so regenerating the system JSON cannot clobber a coordinate; tests/test_buildings.cpp pins what reaches the game. lat_deg/lon_deg are DEGREES, lon east-positive, in the BODY's own equirect frame (equirect.h), so the same numbers on two bodies are the same place on each of them. Each BODY's default site is the first VAB_LAUNCH_PAD for that body (find_launch_site filters by body), and merged fragments come before a system's inline world_buildings -- so this table picks Kerbin's, Moho's and Duna's defaults, and the polar pad is deliberately NOT here (it is inline in the system JSON, and ahead of these entries it would become Kerbin's default). moho_pad and duna_pad sit at Kerbin's coordinates: placeholders so off-world launches are reachable, not placed against any survey. ksc_runway IS placed against a survey (tmp/runway_probe.cpp, reports/runway-wheels2026_11_14): a 900x30 m footprint with 0.56 m of relief, 2.7 km from the pad. It carries VAB_LAUNCH_PAD so the picker/map/recovery see it, plus RUNWAY which selects the horizontal spawn pose; it sits AFTER main_space_port so the default site is unchanged. heading_deg spins the mesh's long axis (local +X); at this site faceAlong's axis pick lands X=east, so heading 5 deg matches the survey's east-based azimuth -- at another site that correspondence can flip (the spawn reads the actual building basis, so ship and mesh always agree).",
   "world_buildings": [
     {
       "id": "main_space_port",
@@ -12,6 +12,20 @@
       "heading_deg": 0.0,
       "flags": [
         "VAB_LAUNCH_PAD"
+      ]
+    },
+    {
+      "id": "ksc_runway",
+      "type": "runway",
+      "display_name": "KSC runway",
+      "body": "Kerbin",
+      "lat_deg": 0.34377,
+      "lon_deg": 270.03819,
+      "height_m": 0.5,
+      "heading_deg": 5.0,
+      "flags": [
+        "VAB_LAUNCH_PAD",
+        "RUNWAY"
       ]
     },
     {

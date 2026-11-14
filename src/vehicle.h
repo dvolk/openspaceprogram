@@ -277,6 +277,12 @@ public:
     std::vector<LiftingSystem> aeroSystems;
     void groupLiftingSystems();
 
+    /* LANDING GEAR: the hull's gear wheels (Part::isGearWheel), rebuilt with the
+       geometry cache so staging/docking re-group for free; the ground pass only
+       reads. Empty for a wheel-less hull, which makes applyGroundForces a no-op. */
+    std::vector<Part*> gearParts;
+    void groupGearParts();
+
     /* Per-substep scratch for the induced bill (#556): the lift each surface made,
        held until every surface has contributed, because the price is the SYSTEM's
        CL^2/(pi e AR) and the system's CL needs the whole sum. One reused vector --
@@ -1580,6 +1586,15 @@ public:
     /* The armed control forces, per SUBSTEP. The EVA kerbal overrides (eva.h). */
     virtual void applyControlForces(double h);
 
+    /* The ground reaction on the gear wheels, per SUBSTEP (src/wheel.h). A no-op
+       for a wheel-less hull. Runs beside the aero pass; nothing integrates until
+       physics_tick, so it reads the same fresh pose and velocity the aero does. */
+    void applyGroundForces(double h);
+
+    /* Brakes: transient input state (like throttle), not saved. The spawn/load
+       path sets it; the B key toggles it (stage 3). */
+    bool brakesOn = false;
+
     /* THE FRAME THE CONTROLS, THE ATTITUDE LAWS AND THE AERO PASS SPEAK (#571):
        the root part -- the pitch/yaw/roll axes the stick drives, the TVC disk's
        normal, the nose the autopilot aligns, the frame AoA and beta are measured
@@ -1733,8 +1748,8 @@ public:
        weathervane is coming from. */
     static constexpr int kForceThrust = 0, kForceRcs = 1, kForceDrag = 2,
                          kForceLift = 3, kForceChute = 4, kForceCtrl = 5,
-                         kForceInduced = 6, kForceSurfDrag = 7;
-    static constexpr int kForceKindCount = 8;
+                         kForceInduced = 6, kForceSurfDrag = 7, kForceGround = 8;
+    static constexpr int kForceKindCount = 9;
     std::vector<ForceVec> lastForceVecs;
     bool recordForceVecs = false;
     /* #485: record each surface's own alpha/q (Part::aeroAlphaDeg, aeroQ). The
@@ -2087,10 +2102,13 @@ void build_ship_structure(Vehicle *ship, const ShipDef &def, Shader *partsshader
 
 /* Build a def on a pad: parts, full tanks, the inflated hull bottom on the pad
    top, into the world. `supportMargin` (m) is the surface's collision margin at
-   `base`, plus the ship's; 0 if the caller re-places. */
+   `base`, plus the ship's; 0 if the caller re-places. `supportUp` is the local
+   vertical the hull rests against -- the hull's lowest point ALONG THAT
+   direction lands on base + margin, so a tilted or horizontal hull rests on
+   the right corner (#846), not on its own axis's lowest. */
 void build_ship(Vehicle *ship, const ShipDef &def, Shader *partsshader,
                 const glm::dvec3 &base, const glm::dmat3 &orient,
-                double supportMargin);
+                double supportMargin, const glm::dvec3 &supportUp);
 
 /* Starting scenario (a CLI choice). Pad beds are set up in main; orbit beds are
    circular about the home body; ellipse-* and escape-* set their own apsides

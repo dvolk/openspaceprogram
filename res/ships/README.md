@@ -4,8 +4,10 @@ Every aero case used to be re-baselined after every law change, which means the 
 was pinning incidents instead of a design. This file is the design. A law change is
 judged against these numbers, not against last week's. History: `git log`, tickets.
 
-All flight beds start in the air (`flying-cruise` / `flying-slow`, `--sim-steps`), so
-there is no takeoff constraint: no wheels, no runway, no thrust-to-weight floor.
+The aero beds start in the air (`flying-cruise` / `flying-slow`, `--sim-steps`), so they
+carry no takeoff constraint: no wheels, no thrust-to-weight floor. Ground starts are a
+separate route now -- a `RUNWAY` site stands a hull horizontal on its gear
+(`skiff_gear.json`, `site=ksc_runway`, e2e `flight/850..853`); see "Landing gear" below.
 
 ## The ship: skiff (the template)
 
@@ -181,6 +183,38 @@ should be built from this recipe and get its own row here.
    -- four lifting systems before #570, four after.
 5. **Section**: profile cd 0.010 (smooth), not 0.03 (the old faceted plate).
 6. Then measure and pin: L/D, cruise speed, static margin, stall margin.
+
+## Landing gear (the ground route)
+
+`skiff_gear.json` is the skiff plus a tricycle gear: a `gear_nose` under the pod and a
+`gear` pair under the tank. The ground law is `src/wheel.h` (a spring-damper along the
+contact normal plus a friction-circle tire force), applied per substep at each wheel's
+contact patch by `Vehicle::applyGroundForces` -- the same one-body force applier as aero
+and thrust, so staging/docking/save all work unchanged. What the mount has to get right:
+
+- **The part frame is fixed**: axle along X, rolling direction +Y, strut up +Z, origin at
+  the axle. The surface node is authored at the strut top (`+Z`), so the gear hangs below
+  the belly it is bolted to. The `angle` shorthand clocks it about the parent's stack axis
+  (`270` = belly); the rolling direction then lands along the nose, which is what the law
+  reads. A gear mounted with its rolling axis across the nose scrubs sideways instead of
+  rolling.
+- **Mains slightly behind the COM, nose wheel forward.** The skiff's mains sit at tank
+  `z: -0.3` (aft of the COM) and the nose wheel at pod `z: +0.5`. Behind-the-COM mains let
+  the nose rotate up at speed; mains ahead of it pin the nose down. The stance is narrow
+  (the tank is 0.8 m across) -- fine for a first hull, widen it on the wings for a heavier
+  one.
+- **Only the nose wheel steers** (`gear_nose`, `wheel_steer: 20`); the mains are fixed
+  (`gear`, `wheel_steer: 0`). Steering reads the same yaw stick as the attitude law and
+  fades out by ~35 m/s so it cannot flip the hull at rotation.
+- **Brakes are on at spawn** and toggle with `O` (B is retrograde slew). They are transient
+  -- not saved; a load brakes only a near-static ship. The tire law is viscous (no static
+  stiction), so an unbraked parked hull creeps a little; brakes hold it.
+- **The suspension must clear the collision margins.** A hull and the deck each carry a
+  margin (0.1 m default) that sum to the visible gap, and the wheel ray hits the
+  margin-inflated deck. Size `wheel_travel - static_compression` above that sum
+  (~0.25 m) or the wheel's own hull rides the deck and friction 4.0 scrubs the hull to a
+  stop. The shipped gear: travel 0.4 m, spring 25 kN/m, ~0.1 m static compression on a
+  main. e2e `flight/850` (rest), `851` (takeoff), `852` (brakes), `853` (steer) pin it.
 
 ## What the envelope cases taught
 
