@@ -91,22 +91,28 @@ CHECK (lambda jb: re.search(r"level lag\s+-", jb) is not None and "ground lag" n
 #     fourth powers multiply that half-decimal).
 CHECK all(abs((float(d) / float(a)) ** 4 + 3.0 * (float(n) / float(a)) ** 4 - 4.0) < 1.6 / float(a) for (n, d), a in zip(re.findall(r"ground swing\s+([\d.]+) to ([\d.]+) K", out), re.findall(r"ground anchor(?: \(sea level\))?\s+([\d.]+) K", out)))
 # 12. WHAT THE LAG LEAVES (#836). The swing row is the LAW's pair, and CHECK 11 keeps it that
-#     way; a lagged row never reaches it. `ground at equator, equinox` prices one named epoch --
-#     the same question for every world -- through the very groundLagRow + groundTemperature the
-#     Surface Map sweeps, at this dossier's mean-rail anchor, which is the anchor the tau was
-#     priced at. Three claims, all of them the row's reason to exist:
-#       (a) it appears exactly once per ACTIVE lag row, and never beside a dashed one -- an
-#           unlagged world's ends are the swing row above to the digit, so printing them twice
-#           (or dashing a pair the law does force) both lose the plot;
-#       (b) it sits STRICTLY inside the swing above it on both ends -- the cold end rises and the
-#           hot end falls, which is what a filter does to a forcing and what no other row says;
+#     way; a lagged DAY/NIGHT row never reaches it (a latitude dark for the whole rotation does,
+#     which is why this row names its latitude instead of claiming the sphere). `ground at
+#     equator` prices one named epoch -- equinox, sea level -- through the very groundLagRow +
+#     groundTemperature the Surface Map sweeps, at this dossier's mean-rail anchor, which is the
+#     anchor the tau was priced at. Three claims, and each is the row's reason to exist:
+#       (a) exactly one per ACTIVE lag row, and never beside a dashed one or a STATED 0.0 (that
+#           prints `0.0000 rad` and leaves the ends alone, so a count of every `rad` line would
+#           demand a row the engine rightly refuses to duplicate);
+#       (b) the hot end strictly under the law's hot end, and the span strictly narrower than
+#           the swing above it. NOT the cold end: Ike's rises only 0.028 K in truth -- 75.2 to
+#           75.3 as printed -- so a strict `>` there is a pin on the rounding of one body's rail,
+#           and at tau <= 0.2 the printed pair IS the swing row. The narrowing is the claim, and
+#           the bodies it runs on are the shipped seven (smallest tau 0.2902); a hand-authored
+#           0.05 in this file would print the swing twice rather than redden this leg.
 #       (c) it narrows as tau grows. Measured over the seven shipped taus (Ike 0.2902 -> Vall
 #           2.0185), the span as a fraction of its own swing runs 0.986, 0.970, 0.957, 0.920,
-#           0.716, 0.658, 0.400 -- strictly decreasing, tracking the filter's own 1/sqrt(1+tau^2)
-#           (0.960, 0.921, 0.902, 0.866, 0.716, 0.672, 0.444) through the fourth root. This is
-#           the half of the damping story the degrees column cannot show: a phase is a WHERE and
-#           this is the HOW MUCH.
-CHECK len(re.findall(r"ground swing\s+([\d.]+) to ([\d.]+) K\s*\n\s*\[atlas\]\s+ground lag\s+([\d.]+) rad of phase[^\n]*\n\s*\[atlas\]\s+ground at equator, equinox\s+([\d.]+) to ([\d.]+) K", out)) == len(re.findall(r"(?:ground|level) lag\s+[\d.]+ rad", out))
-CHECK all(float(m.group(4)) > float(m.group(1)) and float(m.group(5)) < float(m.group(2)) and (float(m.group(5)) - float(m.group(4))) < (float(m.group(2)) - float(m.group(1))) for m in re.finditer(r"ground swing\s+([\d.]+) to ([\d.]+) K\s*\n\s*\[atlas\]\s+ground lag\s+([\d.]+) rad of phase[^\n]*\n\s*\[atlas\]\s+ground at equator, equinox\s+([\d.]+) to ([\d.]+) K", out))
-CHECK (lambda ts: len(ts) >= 3 and all(a[1] > b[1] for a in ts for b in ts if a[0] < b[0]))([(float(m.group(3)), (float(m.group(5)) - float(m.group(4))) / (float(m.group(2)) - float(m.group(1)))) for m in re.finditer(r"ground swing\s+([\d.]+) to ([\d.]+) K\s*\n\s*\[atlas\]\s+ground lag\s+([\d.]+) rad of phase[^\n]*\n\s*\[atlas\]\s+ground at equator, equinox\s+([\d.]+) to ([\d.]+) K", out)])
+#           0.716, 0.658, 0.400 -- strictly decreasing. Beside it, the filter's own amplitude
+#           1/sqrt(1+tau^2) is 0.960, 0.921, 0.902, 0.866, 0.716, 0.672, 0.444: the same shape,
+#           and NOT the same numbers -- kelvin goes through a fourth root, so the two agree at
+#           Tylo by coincidence and Vall's pair is flatter than the factor. A phase is a WHERE;
+#           this is the HOW MUCH, and neither column above can show it.
+CHECK len(re.findall(r"ground swing\s+([\d.]+) to ([\d.]+) K\s*\n\s*\[atlas\]\s+ground lag\s+([\d.]+) rad of phase[^\n]*\n\s*\[atlas\]\s+ground at equator\s+([\d.]+) to ([\d.]+) K", out)) == len([m for m in re.finditer(r"(?:ground|level) lag\s+([\d.]+) rad", out) if float(m.group(1)) > 0.0])
+CHECK all(float(m.group(5)) < float(m.group(2)) and (float(m.group(5)) - float(m.group(4))) < (float(m.group(2)) - float(m.group(1))) and float(m.group(4)) >= float(m.group(1)) for m in re.finditer(r"ground swing\s+([\d.]+) to ([\d.]+) K\s*\n\s*\[atlas\]\s+ground lag\s+([\d.]+) rad of phase[^\n]*\n\s*\[atlas\]\s+ground at equator\s+([\d.]+) to ([\d.]+) K", out))
+CHECK (lambda ts: len(ts) >= 3 and all(a[1] > b[1] for a in ts for b in ts if a[0] < b[0]))([(float(m.group(3)), (float(m.group(5)) - float(m.group(4))) / (float(m.group(2)) - float(m.group(1)))) for m in re.finditer(r"ground swing\s+([\d.]+) to ([\d.]+) K\s*\n\s*\[atlas\]\s+ground lag\s+([\d.]+) rad of phase[^\n]*\n\s*\[atlas\]\s+ground at equator\s+([\d.]+) to ([\d.]+) K", out)])
 FORBID error:

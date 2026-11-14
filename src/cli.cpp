@@ -621,7 +621,7 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "stride: at 256 their heads are ~2 px. Refused outside "
                    "16..4096 (#831): past 4096 a column is 0.088 deg of a sphere "
                    "this picture only resamples, and an 8192-wide bake costs half "
-                   "a minute and ~1 GB for nothing finer to see");
+                   "a minute and 0.6 GB for nothing finer to see");
     app.add_flag("--surfmap-noshade", args.surfmap_noshade,
                  "Skip the terminator (day/night shading) when computing the "
                  "surface map (the window's 'Sun shading' box does the same "

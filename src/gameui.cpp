@@ -7515,25 +7515,37 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
             }
             /* #836: what that law LEAVES once the lag has spent part of the swing. The two
                kelvin of `ground swing` above are the LAW's ends -- pinned by #724/#735's
-               identity, and nothing here moves them -- but a lagged row never reaches them: the
-               same first-order filter that carries the phase flattens the row too (groundtemp.h:
-               peak-to-trough 0.74 of the forcing at tau 1, 0.17 at tau 2 pi). The Surface Map
-               measures this over the whole sphere and prints it as `temp_ramp=`; the atlas
-               cannot bake a map to fill one row, so it prices ONE named epoch -- the equator at
-               equinox, the same question for every world and the widest day/night row a world
-               has -- through the same groundLagRow + groundTemperature the map calls, at THIS
-               dossier's mean-rail anchor, which is the anchor the tau itself was priced at
-               (utils/ground_model.py:lag_phase), so the two rows agree by construction rather
-               than by luck.
-               PRESENT ONLY WHERE A LAG IS ACTIVE: a world that authored none has ends equal to
-               the swing row above to the digit, so a dash there would be #793's labelled colour
-               the world never wears all over again, and a print would be a second copy of a row
-               the player just read.
+               identity, and nothing here moves them -- but a DAY/NIGHT row never reaches them:
+               the same first-order filter that carries the phase flattens the row too
+               (groundtemp.h: peak-to-trough 0.74 of the forcing at tau 1, 0.17 at tau 2 pi).
+               A latitude that is dark for the whole rotation is the exception and the row says
+               so by what it prints: groundLagRow's kPolarNight branch answers 0 for every tau,
+               so the coldest ground on a lagged world can be the law's cold end after all
+               (Dres's map paints 50.09 K against this block's 53.6 K law end, and the map's
+               hot end 190.40 against 205.63). That is why this row prices ONE latitude rather
+               than claiming the sphere: the Surface Map measures the sphere as `temp_ramp=` and
+               the atlas cannot bake a map to fill one line.
+               The named epoch is the equator at equinox -- the widest day/night row a world
+               has, and the same question for every world -- priced by the very groundLagRow +
+               groundTemperature the map sweeps, at this dossier's mean-rail anchor, which is
+               the anchor utils/ground_model.py:lag_phase priced the tau at. So it is the map's
+               arithmetic rather than a second model of it.
+               SEA LEVEL, said out loud in the value: the map adds Surface::relief_K per pixel
+               and this row does not, because the equator's own height is procedural rather than
+               authored, so a summit's pair is this one colder by what `ground at peak` prints.
+               PRESENT ONLY WHERE A LAG IS ACTIVE (tau > 0): a world that authored none has ends
+               equal to the swing row above to the digit, and a stated 0.0 says the same thing,
+               so printing them again is a second copy of a row the player just read. A banded
+               giant cannot reach this branch at all -- src/system.cpp refuses a lag there -- so
+               the label needs no `level` twin.
                Sampling, not solving: a day/night row's peak sits somewhere inside its lit arc
-               and the closed form does not say where, so this walks 720 hour angles. Steps of
-               0.5 deg leave under 0.01 K of curvature error at every tau the corpus authors, and
-               the row prints %.1f. */
+               and the closed form does not say where, so this walks 720 hour angles. A step of
+               0.5 deg misses a smooth maximum by at most |y''| * step^2 / 2 -- with y'' of
+               order one and step 0.0087 rad, parts per 100,000 of the forcing, far under the
+               tenth of a kelvin this row prints. If a future body ever makes that claim false,
+               720 is the knob to raise, and science/830's narrowing-with-tau pin reddens first. */
             if(lagTauActive(b.surface.lag_tau)) {
+                assert(!giant);   // the loader refuses a lag on a banded world (system.cpp)
                 const GroundLagRow row = groundLagRow(0.0, 0.0, b.surface.lag_tau);
                 double ylo = 1e300, yhi = -1e300;
                 for(int k = 0; k < 720; k++) {
@@ -7544,10 +7556,12 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
                 /* The same box the map sweep asserts: a unit-mass filter of a forcing that
                    never exceeds 1 stays in [0,1]; outside it the closed form went wrong. */
                 assert(ylo >= 0.0 && yhi <= 1.0 + 1e-9);
-                fmtRow(v, sizeof v, "%.1f to %.1f K (the swing above, after its lag)",
+                fmtRow(v, sizeof v,
+                         "%.1f to %.1f K (equinox at sea level; what the lag leaves of the "
+                         "swing above)",
                          groundTemperature(anchor, f, ylo),
                          groundTemperature(anchor, f, yhi));
-                line("ground at equator, equinox", v);
+                line("ground at equator", v);
             }
             /* #793: where relief is live, the anchor is a DATUM statement -- the ground at this
                body's sea level, which the two ends above swing around, and NOT the coldest ground

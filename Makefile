@@ -746,12 +746,14 @@ e2e-all: all
 # The atlas-dossier slice (#838): every case that asks for --atlas-dump reads the same
 # atlasDossier() rows, so inserting, renaming or re-padding one Science-tab row can break
 # all of them at once -- that is exactly how two went red unseen behind #793 and #830.
+# The pattern is anchored to an ARGS line: several cases discuss --atlas-dump in their
+# commentary without passing it, and a prose match would run a case that proves nothing.
 # CI cannot boot the game (lint.yml compiles NOTHING), so this is the local version of
 # that gate: named, cheap (~2 min), and nothing to remember after a UI-row change.
-E2E_DOSSIER = $(shell grep -rl -- --atlas-dump e2e/cases | sed -e 's#^e2e/cases/##' -e 's#\.txt$$##')
+E2E_DOSSIER = $(shell grep -rl '^ARGS.*--atlas-dump' e2e/cases | sed -e 's#^e2e/cases/##' -e 's#\.txt$$##')
 .PHONY: e2e-dossier
 e2e-dossier: all
-	@test -n "$(E2E_DOSSIER)" || { echo 'e2e-dossier: no case passes --atlas-dump.'; exit 1; }
+	@test -n "$(E2E_DOSSIER)" || { echo 'e2e-dossier: no case asks for --atlas-dump.'; exit 1; }
 	python3 e2e/index.py --check
 	python3 e2e/run.py $(E2E_DOSSIER) $(E2E_JOBS) --game $(BINDIR)/$(TARGET)
 

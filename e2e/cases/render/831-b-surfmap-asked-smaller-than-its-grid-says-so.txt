@@ -3,13 +3,17 @@ CLAIM --surfmap-n under the map's own 16-column floor is refused at parse rather
 KIND invariant
 # The other end of #831, and the less visible one. surfmap.cpp clamps the ask
 # (w = max(16, n), h = max(8, w/2)), so --surfmap-n 4 has always produced a 16x8 map while
-# the log line printed the size it actually painted -- a silent substitution. A clamp is the
-# right invariant for the LIVE map, which never takes a size from a command line; it is the
-# wrong answer to a typed request, which deserves to hear that its number cannot be honoured.
+# the log line printed the size it actually painted -- a silent substitution. The clamp is the
+# right invariant for the sweep itself (the live Surface Map window offers a body, a picture
+# type and a level, but no size box, so every bake reads the CLI's number through the same
+# args field); it is the wrong answer to a TYPED request, which deserves to hear that its
+# number cannot be honoured.
 #
 # One case per end: multiple ARGS lines in a case file concatenate into ONE argv, so a second
-# --surfmap-n in the same file would just override the first.
+# --surfmap-n in the same file would just override the first. The M press is what makes the
+# no-[surfmap] leg mean anything: nothing bakes unless the map is asked for.
 ARGS --timeout 8 --system res/systems/lag_playground.json --surfmap-log --surfmap-n 4 --surfmap-body AltoFrio --surfmap-map temperature
+ARGS --sim-press 3000,0,M
 EXPECT error: --surfmap-n 4 is under the map's floor of 16 columns
 EXIT 1
 CHECK len(re.findall(r"\[surfmap\]", out)) == 0

@@ -10,9 +10,13 @@ KIND invariant
 # at 4096 a column is 0.088 deg of a sphere this picture only resamples.
 #
 # The project refuses nonsense at the gate (the --orbit-interval ceilings, #673), so this is
-# the same shape. The pin is the message plus EXIT 1 plus no [surfmap] row: a clamp that let
-# the run start and painted anyway would leave a bake line behind.
+# the same shape. The pin is the message plus EXIT 1 plus no [surfmap] row -- and the M press
+# is what makes that third leg mean anything: a bake only happens when the map is asked for, so
+# without it the CHECK passes whether the guard exists or not (measured: a refused run prints
+# zero [surfmap] lines, and the same command at --surfmap-n 512 with --sim-press 3000,0,M
+# prints one). With the press in, a clamp that let the run start would paint and leave its line.
 ARGS --timeout 8 --system res/systems/lag_playground.json --surfmap-log --surfmap-n 8192 --surfmap-body AltoFrio --surfmap-map temperature
+ARGS --sim-press 3000,0,M
 EXPECT error: --surfmap-n 8192 is past the 4096 columns this map resolves
 EXIT 1
 CHECK len(re.findall(r"\[surfmap\]", out)) == 0
