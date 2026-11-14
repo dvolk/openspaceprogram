@@ -20,7 +20,10 @@ CHECK re.search(r"ground anchor(?: \(sea level\))?\s+288\.0 K", re.search(r"\[at
 # by the lapse x peak (283.0 - 42.4 = 240.6, 301.6 - 42.4 = 259.2): the height does not widen the
 # swing, it shifts it, which is the whole claim of #793 in one pair of rows.
 CHECK re.search(r"ground anchor \(sea level\)\s+288\.0 K", re.search(r"\[atlas\] Earth weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
-CHECK re.search(r"ground at peak\s+240\.6 to 259\.2 K at 6\.5 km", re.search(r"\[atlas\] Earth weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+# END-ANCHORED, and that is deliberate (#840): Earth is the only UNLAGGED summit row the battery
+# pins, so it is also the only place that can catch the lagged row's "(equinox, after its lag)"
+# creeping onto a world with no lag to wait for. An unanchored needle passes either way.
+CHECK re.search(r"ground at peak\s+240\.6 to 259\.2 K at 6\.5 km(?=\n)", re.search(r"\[atlas\] Earth weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
 # The Moon: its page states a PAIR (95-390 K at the lunar equator) and no mean, so the anchor
 # is solved from the pair and the row says so (surface.temperature_src: "SOLVED from the stated
 # range 95.00-390.00 K, not a stated mean"). Both ends come back EXACT now, which is a strictly

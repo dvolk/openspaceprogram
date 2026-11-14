@@ -7567,14 +7567,7 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
                          groundTemperature(anchor, f, ylo),
                          groundTemperature(anchor, f, yhi));
                 line("ground at equator", v);
-                /* #840: the summit row below owes the world the same favour it just got here.
-                   Pricing the LAW at a mountaintop -- which is what it did until now -- prints
-                   two kelvin pairs on one body where one of them has been spent twice: on
-                   AltoFrio, `ground at peak 97.2 to 319.9 K` beside a map that paints 106.05 to
-                   314.06 and a lag row that already said a fifth of that swing is gone. The law
-                   ends stay where they are (the swing row and #724/#735's identity need them);
-                   what the summit row prints is this pair shifted by the height term, which is a
-                   place the body has AND a forcing the body answers. */
+                /* #840: the summit row further down reads this pair too; the reason lives there. */
                 worn_ylo = ylo;
                 worn_yhi = yhi;
             }
@@ -7601,33 +7594,36 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
             if(relief_here) {
                 const double peak = (double)b.surface.authoredPeak();
                 const double off = b.surface.relief_K(peak);
+                const bool lagged = lagTauActive(b.surface.lag_tau);
                 char hv[32];
                 /* #840: a lagged world does not wear the law's ends, so its summit cannot be
                    priced from them. Until now this row did exactly that -- groundTemperature at
                    forcing 0 and 1 plus the lapse -- which on AltoFrio printed 97.2 to 319.9 K
                    beside a map painting 99.19 to 316.53 and a lag row that had just said a
-                   fifth of that swing is gone. Neither number belongs to a pixel, and the cold
-                   one is the very pairing the sweep refuses for its palette: "the darkest light
-                   on the tallest mountain" invents a place (surfmap.cpp, #794). So the summit
-                   takes the same worn pair the equator row uses and shifts it by the height
-                   term, and its value says which world it is answering -- the epoch travels with
-                   the forcing pair, so it gets named too (#793's datum rule). An unlagged body
-                   has no lag to wait for, so its arithmetic and its text stay exactly as they
-                   were. Nothing in res/systems/ksp_system.json reaches the lagged branch yet:
-                   none of its seven lagged bodies authors a lapsing column, so all seven print
-                   no summit row at all. The fixtures do (lag_playground's AltoFrio), and
-                   science/840 pins the pair against that body's own Surface Map. */
-                if(lagTauActive(b.surface.lag_tau)) {
-                    fmtRow(v, sizeof v, "%.1f to %.1f K at %s (equinox, after its lag)",
-                             groundTemperature(anchor, f, worn_ylo) + off,
-                             groundTemperature(anchor, f, worn_yhi) + off,
-                             fmt_dist(peak, hv, sizeof hv));
-                } else {
-                    fmtRow(v, sizeof v, "%.1f to %.1f K at %s",
-                             groundTemperature(anchor, f, 0.0) + off,
-                             groundTemperature(anchor, f, 1.0) + off,
-                             fmt_dist(peak, hv, sizeof hv));
-                }
+                   quarter of that swing is gone (222.7 K of swing, 168.7 K of it left). Neither
+                   printed number belongs to a pixel, and the cold one is the very pairing the
+                   sweep refuses for its palette: "the darkest light on the tallest mountain"
+                   invents a place (surfmap.cpp, #794). So the summit takes the worn pair the
+                   equator row samples and shifts it by the height term -- one star-independent
+                   term, so both ends move together and the span stays the sea-level span.
+                   Its value names the epoch, which travels with the forcing pair (#793's datum
+                   rule); it does NOT name the latitude, because authoredPeak() is one height
+                   body-wide while the pair is the equator's, so this is the tallest ground
+                   standing in the equator's weather. That half-fiction predates this row (the
+                   height was always one height), and a per-season or per-latitude answer is
+                   #835's question, not this row's.
+                   An unlagged body has no lag to wait for: worn_ylo/worn_yhi are exactly 0.0 and
+                   1.0 there, so its arithmetic and its text are bit-identical to what they were
+                   (science/724's Earth row still reads 240.6 to 259.2 K at 6.5 km). Nothing in
+                   res/systems/ksp_system.json reaches the lagged path yet -- none of its seven
+                   lagged bodies authors a lapsing column, so all seven print no summit row at
+                   all -- so the pin is a fixture: science/840 against AltoFrio's own Surface Map. */
+                fmtRow(v, sizeof v,
+                         lagged ? "%.1f to %.1f K at %s (equinox, after its lag)"
+                                : "%.1f to %.1f K at %s",
+                         groundTemperature(anchor, f, worn_ylo) + off,
+                         groundTemperature(anchor, f, worn_yhi) + off,
+                         fmt_dist(peak, hv, sizeof hv));
                 line("ground at peak", v);
             }
         } else {
