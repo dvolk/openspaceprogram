@@ -19,7 +19,12 @@ ARGS --ui-click 5900,"##Combo_00/ground+ocean"
 ARGS --ui-click 8200,"Surface Map/Map"
 ARGS --ui-click 8900,"##Combo_00/temperature"
 ARGS --sim-mouse 9000,0,900,560,0
-ARGS --ui-list 9600
+# The dump trails the last type pick by 1.7 s, not 0.7 s: a re-bake is a worker job, and under
+# parallel load its publication lands 1.1-1.9 s after the post (#826 measured that spread on the
+# wind case). Every row below needs the PUBLISHED picture -- ##smnav and the cursor readout are
+# drawn only once it exists -- so 9600 was a bet on an unloaded box. --timeout 14 keeps 3.4 s
+# after the dump.
+ARGS --ui-list 10600
 CHECK len(surfmap) >= 4
 # Every row names its own picture and its level, so a stale buffer can never be read as a new
 # one (the log's `map=` is the published baked_type, not whatever the combo is set to).

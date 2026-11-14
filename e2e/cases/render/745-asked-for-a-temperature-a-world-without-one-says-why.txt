@@ -25,7 +25,11 @@ ARGS --surfmap-log --surfmap-n 64 --surfmap-body Moon --surfmap-map temperature
 ARGS --sim-press 3000,0,M
 ARGS --ui-click 4000,"Windows/Surface Map"
 ARGS --sim-mouse 5000,0,900,560,0
-ARGS --ui-list 5600
+# 6.6 s, not 5.6 s: the M press posts the bake at 3.0 s and a worker job's publication lands
+# 1.1-1.9 s later under parallel load (#826), so a 2.6 s gap was still a bet on an unloaded box.
+# This case asserts EXACTLY one cursor row, which is the shape that fails loudest when the dump
+# arrives mid-bake -- the window draws "Mapping the surface ..." and no readout at all.
+ARGS --ui-list 6600
 CHECK len(surfmap) >= 1
 CHECK last(surfmap)["body"] == "Moon"
 CHECK last(surfmap)["map"] == "temperature" and last(surfmap)["level"] == "ground"

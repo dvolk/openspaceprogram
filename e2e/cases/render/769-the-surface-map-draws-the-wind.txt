@@ -43,14 +43,17 @@
 # takes its "Mapping the surface ..." path: the log for a failing run shows Body/Refresh/Map/Level
 # with Refresh, Map and Level marked disabled and NO ##smnav row, and the Earth [surfmap] line
 # printing AFTER the dump. A window with no published picture draws no cursor row at all, so the
-# row list held one entry -- the 7.0 s placeholder -- and the legs indexed a dash. Two fixes, both
-# about WHERE the read happens: the dump moved to 4.2 s and a second dump follows at 4.8 s, and
-# the legs ask for the live rows rather than the first row, so a bake that lands a beat late
-# shifts WHICH dump answers, not whether one does. The mouse is sent twice for the same reason
-# (ImGui keeps its position, so this is insurance against a hover that lands before the window
-# exists rather than the fix itself). What is still pinned exactly as before: at least one cursor
-# row must carry a real wind reading, every such reading must sit inside the span the sweep
-# painted, and the LAST cursor row -- taken with the Body popup over the map -- must be dashes.
+# row list held one entry -- the placeholder from the late dump -- and the legs indexed a dash.
+# Two fixes, both about WHERE the read happens: the dump moved to 4.2 s and a second follows at
+# 4.8 s, and the legs ask for the rows that carry a reading rather than for row 0 and row 1, so a
+# bake that lands a beat late shifts WHICH dump answers, not whether one does. Size of the bet,
+# measured across the 769 logs kept under tmp/e2e/runs: the sweep itself is 5-6 ms and the Earth
+# row printed before the first dump in 28 of 33 recordings; the five late ones printed between
+# the 3.2 s dump and the 4.0 s click, so the worker was 1.1-1.9 s behind the post. The first dump
+# now has ~0.8 s of headroom over that worst case and the second ~2.8 s. The mouse is NOT part of
+# the fix -- ImGui keeps its position, so the one motion at 2.6 s is still live at both dumps and
+# a second would do nothing. (A click does park the pointer off-window; that is what makes the
+# LATE dump read dashes, together with the Body popup covering the map.)
 NAME the-surface-map-draws-the-wind
 CLAIM --surfmap-map wind paints the air's speed and direction over the ground: Earth prints the speeds it actually drew between the ends its file states, the Moon refuses for want of air, Pluto refuses because its authored air has no wind rows, and the cursor reads the number under it.
 KIND invariant
@@ -59,7 +62,6 @@ ARGS --startship v,res/ships/skiff_trim.json,Earth,pad
 ARGS --surfmap-log --surfmap-n 128 --surfmap-map wind --surfmap-body Earth
 ARGS --ui-click 2000,"Windows/Surface Map"
 ARGS --sim-mouse 2600,0,700,420,0
-ARGS --sim-mouse 3600,0,700,420,0
 ARGS --ui-list 4200
 ARGS --ui-list 4800
 ARGS --ui-click 5400,"Surface Map/Body"
@@ -103,22 +105,31 @@ CHECK (lambda m: m["wind"] is None and m["wind_ends"] is None and m["wind_cells"
 CHECK (lambda p, m: p["wind"] is None and "no wind" in p["wind_note"] and p["wind_note"] != m["wind_note"])([r for r in surfmap if r["body"] == "Pluto"][-1], [r for r in surfmap if r["body"] == "Moon"][-1])
 # THE NUMBER UNDER THE CURSOR is that pixel's number. The mouse parks over 1.4 km of ground at
 # lat +46 rather than over the sea, deliberately: over the ocean the datum row answers exactly
-# 5.0 m/s, which is the bottom of the painted range, so a readout wired to the hull's altitude
-# or one printing the datum row verbatim would pass there forever. On a mountain the profile
-# answers ~9.6 m/s, strictly INSIDE the range the same sweep painted, and that is what catches
-# the wrong-altitude wiring. The direction is NAMED in the same eight-word vocabulary the
-# Surface window's Wind: row uses -- not an angle, so the two windows describe one wind. The
-# label may also carry a trailing ` site: ...`, so the wind segment is searched for rather than
-# anchored to the end of the line: a launch marker drifting under the cursor must not break what
-# this pins.
+# 5.0 m/s, which is the bottom of the painted range, so a readout printing the datum row verbatim
+# would pass there forever. The direction is NAMED in the same eight-word vocabulary the Surface
+# window's Wind: row uses -- not an angle, so the two windows describe one wind. The label may
+# also carry a trailing ` site: ...`, so the wind segment is searched for rather than anchored to
+# the end of the line: a launch marker drifting under the cursor must not break what this pins.
 # (#826: "the cursor row" is not one row across two dumps, and the first dump can arrive before
-# the opening bake lands -- so these scan the rows that carry a wind reading and require at least
-# one. That asks the same question with a looser finger on the clock: a run where the map never
-# draws a readable number still has no live row and still fails.)
-CHECK (lambda live: len(live) >= 1 and re.search(r"wind [0-9.]+ m/s (east|north-east|north|north-west|west|south-west|south|south-east|calm)", live[0]["label"]) is not None)([r for r in uilist if r["window"] == "Surface Map" and r["label"].startswith("cursor: lat") and " wind " in r["label"]])
-CHECK (lambda live, w: len(live) >= 1 and all(w[0] < float(re.search(r"wind ([-+]?[0-9.]+) m/s", r["label"]).group(1)) < w[2] for r in live))([r for r in uilist if r["window"] == "Surface Map" and r["label"].startswith("cursor: lat") and " wind " in r["label"]], [r for r in surfmap if r["body"] == "Earth"][-1]["wind"])
-# And the cursor leaves the map when the mouse does (here: over the Body popup). Dashed, not a
-# stale reading of the last map pixel. LAST rather than index 1: with two pre-popup dumps the
-# placeholder is whatever comes after them, and it is the last thing the window says about a
-# cursor it no longer has.
-CHECK (lambda cur: cur[-1]["label"] == "cursor: lat --  lon --  elev --")([r for r in uilist if r["window"] == "Surface Map" and r["label"].startswith("cursor:")])
+# the opening bake lands -- so these scan the cursor rows that carry a READING and require at
+# least one. "Carry a reading" is the filter, not "mentions wind": the dashed forms the window
+# prints for a rebake and for a refusal -- "wind - (rebaking)", "wind - (no air ...)" (gameui.cpp)
+# -- both contain " wind " and would enter the set, and then the speed leg dies on a None match,
+# which is the broken-harness-looking failure this case is supposed to stop producing. A run where
+# the map never draws a number has no row in the set and leg one says so.)
+CHECK (lambda live: len(live) >= 1 and all(re.search(r"wind [0-9.]+ m/s (east|north-east|north|north-west|west|south-west|south|south-east|calm)", r["label"]) is not None for r in live))([r for r in uilist if r["window"] == "Surface Map" and r["label"].startswith("cursor: lat") and re.search(r"wind [0-9.]+ m/s ", r["label"])])
+CHECK (lambda live, w: live and all(w[0] < float(re.search(r"wind ([-+]?[0-9.]+) m/s", r["label"]).group(1)) < w[2] for r in live))([r for r in uilist if r["window"] == "Surface Map" and r["label"].startswith("cursor: lat") and re.search(r"wind [0-9.]+ m/s ", r["label"])], [r for r in surfmap if r["body"] == "Earth"][-1]["wind"])
+# Being INSIDE the painted span is not enough to prove the cursor asked about the pixel: the file
+# states 5 m/s at the datum and 40 m/s at the 11 km deck, the span this sweep painted runs to
+# 22.97, and the ship's pad sits on ~0.5 km of ground, where the same profile answers ~6.5 m/s --
+# strictly inside, so a readout wired to the hull's altitude passes the leg above. The cursor's
+# pixel is 1.4 km, where it answers 9.6. This band is 0.94-1.9 km of ground, so it separates the
+# two wirings instead of merely disliking the extremes.
+CHECK (lambda live: live and all(8.0 < float(re.search(r"wind ([-+]?[0-9.]+) m/s", r["label"]).group(1)) < 11.0 for r in live))([r for r in uilist if r["window"] == "Surface Map" and r["label"].startswith("cursor: lat") and re.search(r"wind [0-9.]+ m/s ", r["label"])])
+# And the cursor leaves the map when the mouse does -- here, when the Body click and the wheel
+# scroll park the pointer off the window (the popup covering the map is a second, sufficient
+# cause). Dashed, not a stale reading of the last map pixel. LAST rather than index 1, and
+# stamped >= 7.0 s so the dashes must come from the late dump: two pre-popup dumps can put the
+# placeholder anywhere in the list, and "the last row is a dash" alone would also be satisfied by
+# a run where the late dump drew nothing at all.
+CHECK (lambda cur: cur[-1]["t"] >= 7.0 and cur[-1]["label"] == "cursor: lat --  lon --  elev --")([r for r in uilist if r["window"] == "Surface Map" and r["label"].startswith("cursor:")])
