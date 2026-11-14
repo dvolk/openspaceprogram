@@ -44,6 +44,11 @@ CHECK all(abs(r["temp"][0] - r["temp_ramp"][0]) < 1e-9 for r in surfmap)
 # derivative term, so <y> = <g> and the sphere's T^4 mean comes back to the authored anchor for
 # EVERY tau. Measured to the hundredth at three instants: this is the claim that lets a phase lag
 # be one knob rather than a new temperature to fit.
+# The 0.05 K slack belongs to the BAKE, not to the theorem: the theorem is exact and the grid mean
+# is a quadrature of it. Measured datum_mean4 against the 240.00 anchor at successive bake sizes:
+# 240.97 at n=16, 240.21 at n=32, 240.05 at n=64, 240.01 at n=128, 240.00 at n=256 -- poles carry
+# the error and a coarse grid weights them badly. Halve the bake and this line reddens for a
+# reason that has nothing to do with the lag, so the slack is written down rather than assumed.
 CHECK all(abs(r["datum_mean4"] - r["anchor"]) < 0.05 for r in surfmap)
 CHECK all(r["temp"][0] < r["temp"][1] < r["temp"][2] for r in surfmap)
 # THE CONVENTION, which nothing else in the tree can see. The lagged peak sits EAST of the subsolar
@@ -52,12 +57,22 @@ CHECK all(r["temp"][0] < r["temp"][1] < r["temp"][2] for r in surfmap)
 # and this reads -41: the picture mirrors, every number above still passes, and the world's weather
 # runs backwards in a way no still frame of the law would reveal.
 CHECK all(30.0 < r["peak_deg"] < 50.0 for r in surfmap)
-# And it rides WITH the sun. Between the first and last bake the subsolar meridian walks ~10 deg of
-# the grid (the body turns under a fixed star), while the peak keeps the same hour angle -- so the
-# afternoon is a phase relationship, not a longitude someone painted at. A bake that ignored the
-# star's position, or solved the lag in inertial angle, drifts peak_deg by tens of degrees here.
-CHECK (lambda rs: min(abs(rs[-1]["sun_lon"] - rs[0]["sun_lon"]), 360.0 - abs(rs[-1]["sun_lon"] - rs[0]["sun_lon"])) > 5.0)(surfmap)
-CHECK (lambda rs: max(r["peak_deg"] for r in rs) - min(r["peak_deg"] for r in rs) < 2.0)(surfmap)
+# And it rides WITH the sun -- and on WHICH SIDE, which is the half a mirrored wiring keeps.
+# The subsolar meridian walks ~13 deg of the grid between the first and last bake (the body turns
+# under a nearly fixed star at this epoch), and it walks DOWNWARD in the grid's own longitude:
+# that sign is a fact about this engine's rotation, not about the lag wiring, so pinning it next
+# to peak_deg > 0 pins the pair's handedness. A single flipped hour angle reads -41 here; a
+# CONSISTENT double flip (forcing at sun_lon - lon AND peak printed as sun_lon - lon) keeps every
+# other number and is what this line is for -- the world's afternoon would run backwards and the
+# star would appear to rise in the west.
+CHECK (lambda rs: -20.0 < rs[-1]["sun_lon"] - rs[0]["sun_lon"] < -5.0)(surfmap)
+# The afternoon keeps the same hour angle while the star moves under it, so it is a phase
+# relationship rather than a longitude someone painted at. The bound is in GRID COLUMNS (1.5 of
+# them at this bake = 2.1 deg), because the residual spread is quantization of where a broad
+# maximum falls, not a property of the lag: on a seasonal body the peak itself legitimately moves
+# a couple of degrees as the declination changes (the case on AltoFrio pins that), so a tolerance
+# tighter than a column and a half here is a tolerance on the fixture's near-zero season.
+CHECK (lambda rs: max(r["peak_deg"] for r in rs) - min(r["peak_deg"] for r in rs) < 1.5 * (360.0 / rs[0]["w"]))(surfmap)
 # A lagged body's cold end is allowed to stay put: at tau 1 the night decay dies out long before
 # sunrise over most of the globe, so the analytic night end is still painted somewhere (near
 # perpetual night at high latitudes). At tau of a whole rotation it RISES -- pinned as a unit test

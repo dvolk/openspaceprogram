@@ -145,6 +145,23 @@ int main() {
         const std::string path = "res/systems/" + slug + ".json";
         const std::vector<BeltParams> belts = load_belts(path);
         check(belts.size() == 2, ("two belts: " + slug).c_str());
+        /* #794: no SHIPPED file authors a ground phase lag yet. The lag's WIRING is live -- the
+           sweep, its palette and the cursor all read the knob -- so what is worth walking here is
+           the FILES: the day a body authors one, every picture of it stops peaking under the star
+           and its even share needs re-fitting against the same daily swing, and that trade is a
+           deliberate authoring session (the ticket's step 5), not something a corpus edit should
+           slip in sideways. Reading the raw JSON rather than the loaded System covers all five
+           corpora here; the System objects this test builds are only two of them, and a check
+           that misses three is a check that says "clean" about the ones nobody looks at. The
+           fixture that DOES author a tau is res/systems/lag_playground.json, not in this list. */
+        {
+            const nlohmann::json doc = read_json(path.c_str());
+            for(const nlohmann::json &b : doc.value("bodies", nlohmann::json::array())) {
+                check(!b.value("surface", nlohmann::json::object()).contains("lag_tau"),
+                      (slug + "/" + b.value("name", "?")
+                       + ": no shipped body authors a phase lag yet").c_str());
+            }
+        }
         if(belts.size() != 2) { continue; }
         check(belts[0].name == "asteroid belt", ("inner band named: " + slug).c_str());
         check(belts[1].name == "Kuiper belt", ("outer band named: " + slug).c_str());
@@ -513,15 +530,6 @@ int main() {
             for(const System *S : std::vector<const System *>{ &sys, &sol }) {
                 for(const TerrainBody *b : S->bodies) {
                     const double peak = (double)b->surface.authoredPeak();
-                    /* #794: the lag WIRING is live -- the sweep, its palette and the cursor all
-                       read the knob -- so what this walks is the FILES. Not one of them authors a
-                       phase lag yet, which is why no shipped picture moved when the law landed
-                       and why a player has never seen an afternoon hot spot. The first body to
-                       author one changes this check on purpose, together with the even-share
-                       re-fit a lag forces (the two knobs trade against the same daily swing). The
-                       fixture that does exercise the wiring is res/systems/lag_playground.json. */
-                    check(!lagTauAuthored(b->surface.lag_tau),
-                          (b->name + ": no shipped body authors a phase lag yet").c_str());
                     if(!b->surface.reliefOn()) {
                         check(b->surface.relief_K(peak) == 0.0
                                   && b->surface.relief_K(1.0e6) == 0.0,

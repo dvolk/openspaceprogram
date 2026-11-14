@@ -224,6 +224,16 @@ inline double groundTemperatureAt(double anchor_K, double even_share, double cos
    g <= max(a + b) = cos(lat - dec) <= 1, so y stays in [0,1] and lands in the same currency as
    cos_inc. Its parameter is still named cos_inc; a lagged value is not a cosine, and this is the
    sentence that says so.
+
+   WHO READS IT, AND WHO DOES NOT (yet). Two places do: the surface-map sweep (surfmap.cpp's
+   lagged pre-pass) and that map's cursor (surfmap.h's surfmapGroundTLag). Two others take the
+   SAME anchor, knob and height term and do not consult tau at all -- tick.cpp's --solar-log
+   `underfoot_T=` and vehicle.cpp's air coupling through coupledAirTemperature() below, both fed
+   with the instantaneous cos_inc. On the lag fixture's tau-1 world that is a 39 K disagreement
+   due noon (297.6 K on the map, 336.2 K in the flight log) and the reverse by 77 K at an hour
+   angle of +80. No shipped body authors a tau, so nothing on screen contradicts itself today; the
+   day one does, that split is the thing to fix, and it is filed as an issue rather than left
+   implied by a comment.
    --------------------------------------------------------------------------------------------- */
 
 /* One latitude's lagged answer, built once per latitude and evaluated per longitude (#802's

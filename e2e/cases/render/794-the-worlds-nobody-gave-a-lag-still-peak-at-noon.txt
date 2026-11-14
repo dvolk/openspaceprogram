@@ -30,11 +30,13 @@ CHECK all(abs(r["temp"][0] - r["temp_ends"][0]) < 1e-9 for r in surfmap)
 # The hot spot sits under the star: half a column at this bake size is 0.7 deg, and the measured
 # spread across three instants is a fifth of a degree.
 CHECK all(abs(r["peak_deg"]) < 1.0 for r in surfmap)
-# The star really does move under this window: the subsolar meridian walks several degrees between
-# the first and last bake while the peak stays on it. Together with the lagged case's +41 deg, that
-# is the pair that pins the hour-angle sign -- one body's hottest ground is on the meridian, the
-# other's is an afternoon away, and both of them follow the sun.
-CHECK (lambda rs: min(abs(rs[-1]["sun_lon"] - rs[0]["sun_lon"]), 360.0 - abs(rs[-1]["sun_lon"] - rs[0]["sun_lon"])) > 5.0)(surfmap)
+# The star really does move under this window, and it moves the way this engine's rotation says it
+# must: the subsolar meridian walks DOWNWARD in the grid's longitude (measured 261.52 -> 251.51
+# over the three bakes) while the peak stays on it. The sign is pinned here as well as in the
+# lagged case because it is a fact about the frame, not about the lag -- and read together with
+# that case's +41 deg it is the pair that fixes handedness: one body's hottest ground is on the
+# meridian, the other's is an afternoon away, and both of them follow the sun.
+CHECK (lambda rs: -20.0 < rs[-1]["sun_lon"] - rs[0]["sun_lon"] < -5.0)(surfmap)
 # The anchor identity, unchanged by the machinery: an unlagged airless world's T^4 mean closes on
 # its anchor at every instant.
 CHECK all(abs(r["datum_mean4"] - r["anchor"]) < 0.05 for r in surfmap)

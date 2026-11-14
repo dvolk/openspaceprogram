@@ -421,12 +421,12 @@ static void groundLag() {
     const double dec_deg = -20.0, lon_ss_deg = 130.0;
     const glm::dvec3 sun = equirectDir(lon_ss_deg * d2r, dec_deg * d2r);
     double slon = 0.0, sdec = 0.0;
-    sunPhaseRot(sun, slon, sdec);
-    check(near_d(sdec, dec_deg * d2r, 1e-12), "sunPhaseRot reads the star's declination");
+    subsolarLonLat(sun, slon, sdec);
+    check(near_d(sdec, dec_deg * d2r, 1e-12), "subsolarLonLat reads the star's declination");
     check(near_d(slon, lon_ss_deg * d2r, 1e-12), "and its subsolar longitude");
     // An un-normalised sun vector is the same noon: a direction is a bearing.
     double rlsl = 0.0, rsdc = 0.0;
-    sunPhaseRot(4.0 * sun, rlsl, rsdc);
+    subsolarLonLat(4.0 * sun, rlsl, rsdc);
     check(near_d(rlsl, slon, 1e-12) && near_d(rsdc, sdec, 1e-12),
           "and reads it off a direction of any length");
 
@@ -485,17 +485,15 @@ static void groundLag() {
           "e2e science/724 checks -- the picture is allowed to stop reaching them, the identity "
           "is not allowed to move with the palette");
 
-    const RowScan grid = scan(0.0, tl.lag_tau);
-    double rlo = 0.0, rhi = 0.0;
-    tempLagRampEnds(tl, grid.lo, grid.hi, 0.0, 0.0, rlo, rhi);
-    check(rlo > 0.0 && rhi > rlo, "a lagged palette is still a span");
-    check(rhi < tl.hi_K, "its hot end sits INSIDE the law's day end -- that is the #794 flattening, "
-                         "and the reason temp_ramp= is not temp_ends= for a lagged body");
-    check(rlo >= tl.lo_K, "and its cold end inside the law's night end");
-    /* The picture, everywhere, inside the palette -- the containment the whole ramp business
-       exists for (#745, #769, #793): a pixel outside it clamps to a colour that lies. The ramp is
-       built from the extremes of THIS grid, exactly the way the sweep builds it, and the check is
-       the same grid's pixels: the pair together is the claim, not either half alone. */
+    /* ---- what a lagged picture can actually paint ----
+       The sweep no longer PAIRS the extremes ("the darkest light standing on the tallest ground")
+       to price a lagged palette; it measures the field. The pairing over-spans, because a lagged
+       world's darkest forcing lives in its dark polar rows and its tallest ground does not: on a
+       lapse-bearing scratch body that left 8.0 K of palette no pixel could reach
+       (temp=[107.19 ...] against temp_ramp=[99.18 ...]), which is the #793 bug in the new knob's
+       clothes. The reach itself is a sweep property and lives in e2e
+       render/794-a-lagged-world-with-mountains-still-prices-its-ends; what belongs HERE is what
+       the field is bounded by, which the sweep's own assert leans on. */
     double ylo = 1e30, yhi = -1e30, tlo = 1e30, thi = -1e30;
     for(int latdeg = -85; latdeg <= 85; latdeg += 5) {
         const GroundLagRow row = groundLagRow(latdeg * d2r, sdec, tl.lag_tau);
@@ -508,11 +506,14 @@ static void groundLag() {
             if(T > thi) { thi = T; }
         }
     }
-    double glo = 0.0, ghi = 0.0;
-    tempLagRampEnds(tl, ylo, yhi, 0.0, 0.0, glo, ghi);
-    check(tlo >= glo && thi <= ghi,
-          "no pixel of a lagged sweep falls off the end of its palette");
-    check(thi > glo + 10.0, "and that palette is not degenerate: this body's swing is wide");
+    check(ylo >= 0.0 && yhi <= 1.0 + 1e-9,
+          "a lagged forcing stays inside the box the law is defined on -- the assert the sweep "
+          "puts on its own pre-pass is for the wiring, not for the maths");
+    check(thi < tl.hi_K, "the hottest paintable pixel sits INSIDE the law's day end -- that is the "
+                         "#794 flattening, and the reason temp_ramp= is not temp_ends= for a "
+                         "lagged body");
+    check(tlo >= tl.lo_K, "and the coldest sits inside the law's night end");
+    check(thi > tlo + 10.0, "and the palette is not degenerate: this body's swing is wide");
 
     // ---- the cursor and the sweep are one spelling ----
     const double clim = -12.0;

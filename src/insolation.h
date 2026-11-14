@@ -91,9 +91,21 @@ inline StarFromBody starFromBody(const glm::dvec3 &body_root,
    season law written against this sentence needs revisiting. Requires a valid sv: the
    callers above branch on validity to decide what to dash, and answering (0, 0) here would
    report a real place -- the equator at the prime meridian -- for a body with no star. */
+inline void subsolarLonLat(const glm::dvec3 &to_sun, double &lon, double &lat) {
+    /* The reading, not the frame arithmetic: a direction is a bearing, so it gets
+       normalised here rather than at every caller (surfmap.h keeps its own sun vector
+       unit by construction, but a caller that hand-filled the struct may not). */
+    const double l2 = glm::dot(to_sun, to_sun);
+    assert(l2 > 0.0);   // a zero direction has no bearing; the caller dashes instead
+    glm::dvec3 d = to_sun;
+    d *= 1.0 / std::sqrt(l2);
+    equirectLonLat(d, lon, lat);
+    assert(std::isfinite(lon) && std::isfinite(lat));
+}
+
 inline void subsolarLonLat(const StarFromBody &sv, double &lon, double &lat) {
     assert(sv.valid);
-    equirectLonLat(sv.to_sun, lon, lat);
+    subsolarLonLat(sv.to_sun, lon, lat);
 }
 
 /* What the star's light does at one zenith: the cosine a flat plate collects and the

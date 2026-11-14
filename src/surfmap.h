@@ -17,6 +17,7 @@
 #include "groundtemp.h"   // the temperature layer's law, and the anchor's rungs
 #include "terragen.h"     // Surface: the data the layer decides from
 #include "solar.h"        // cosIncidence: the law's ONE floored cosine (#724)
+#include "insolation.h"   // subsolarLonLat: the ONE reading of "where this body's noon is"
 
 #include "equirect.h"
 
@@ -269,6 +270,12 @@ inline TempLayer tempLayerFor(const Surface &s, double derived_bb, bool has_sun)
 inline void tempRampEnds(const TempLayer &tl, double elev_lo, double elev_hi,
                          double &ramp_lo_K, double &ramp_hi_K) {
     assert(elev_lo <= elev_hi);
+    /* The pairing above assumes it: the coldest reachable pixel is the night end on the HIGHEST
+       ground, which is only true if the profile never gets warmer as the ground rises. Every
+       shipped lapse is negative below its first inversion and terrainHeightFade keeps ground
+       under the layer tops, so it holds -- but the sweep's containment assert reads the same way,
+       and an authored positive-lapse layer near the datum would make both wrong at once. */
+    assert(tl.relief_K(elev_hi) <= tl.relief_K(elev_lo));
     ramp_lo_K = tl.lo_K + tl.relief_K(elev_hi);
     ramp_hi_K = tl.hi_K + tl.relief_K(elev_lo);
     // >= 0, not > 0: a body that authors even_share 0 has a 0 K night end from the bare law, and
@@ -306,59 +313,27 @@ inline double surfmapGroundT(double anchor_K, double even_share, glm::dvec3 dir,
     return groundTemperatureAt(anchor_K, even_share, cosIncidence(dir, sun_dir), relief_K);
 }
 
-/* [rad, rad] Where this body's NOON sits on the equirect grid: the subsolar longitude and the
-   star's declination, read from the same rotating-frame direction the terminator was baked with.
-   The lag's hour angle is `lon - lon_ss`, so this is the one spelling of that pair; it goes
-   through equirect.h's inverse rather than a fresh atan2/asin so the point a lagged picture calls
-   noon and the lat/lon the cursor prints are one coordinate system (#636). Normalised because a
-   direction is a bearing: same reasoning as surfmapGroundT below, and the sweep's own sun vector
-   is unit by construction. */
-inline void sunPhaseRot(glm::dvec3 sun_dir, double &lon_ss, double &dec) {
-    const double l2 = glm::dot(sun_dir, sun_dir);
-    if(l2 > 0.0) { sun_dir *= 1.0 / std::sqrt(l2); }
-    equirectLonLat(sun_dir, lon_ss, dec);
-    assert(std::isfinite(lon_ss) && std::isfinite(dec));
-}
-
 /* [K] One pixel of a LAGGED temperature picture, for a caller that has one place to price
    (#794). The sweep builds one GroundLagRow per latitude and must not pay for this; the window's
    cursor, once a frame, can. Same law and same relief term as surfmapGroundT above, so the lag is
    the only thing that differs -- which matters because the number beside a pixel has to be THAT
    pixel's number, and a lagged map read out through the unlagged helper prints the kelvin of a
-   world the picture is not showing. */
+   world the picture is not showing.
+   The pivot -- where this body's noon is -- comes from insolation.h's subsolarLonLat, the same
+   reading the calendar's solar row takes, so a lagged picture's afternoon and the lat/lon the
+   cursor prints are one coordinate system rather than two that happen to agree (#636). */
 inline double surfmapGroundTLag(double anchor_K, double even_share, double tau,
                                 double lat, double lon, glm::dvec3 sun_dir,
                                 double relief_K) {
     assert(lagTauActive(tau));
     double lon_ss = 0.0, dec = 0.0;
-    sunPhaseRot(sun_dir, lon_ss, dec);
+    subsolarLonLat(sun_dir, lon_ss, dec);
     const GroundLagRow row = groundLagRow(lat, dec, tau);
     /* The lagged share is not a cosine and is not clamped to one here: groundtemp.h feeds it to
        the same law precisely because a unit-mass positive filter of a forcing that never exceeds
        1 stays in [0,1]. groundTemperature's own assert is what catches it if that ever stops
        being true. */
     return groundTemperatureAt(anchor_K, even_share, row.at(lon - lon_ss), relief_K);
-}
-
-/* [K] The temperature ramp's ends for a LAGGED picture (#794). Same shape as tempRampEnds -- the
-   star's contribution and the ground's contribution priced separately and added -- but the star's
-   ends come from the forcing extremes the SWEEP measured over its own grid rather than from 0 and
-   1. Sampled rather than solved for the same reason #769 prices a wind ramp from the ground's
-   floor and ceiling instead of from the file's rows: the ramp must span what THIS picture can
-   paint, and the sweep is the only place that knows its geometry. A lag pulls both ends inward
-   (it is a first-order low-pass: the row's peak-to-trough is 0.74 of the forcing's at tau 1), so
-   the law's own ends stay in the log as temp_ends= and in the atlas as `ground swing` -- the
-   picture simply no longer reaches them, and now says so instead of lying about its palette.
-   The forcing extremes arrive as measured over the grid, so they are already inside [0,1]; the
-   assert is for the caller wiring, not for the maths. */
-inline void tempLagRampEnds(const TempLayer &tl, double forcing_lo, double forcing_hi,
-                            double elev_lo, double elev_hi,
-                            double &ramp_lo_K, double &ramp_hi_K) {
-    assert(forcing_lo <= forcing_hi && forcing_lo >= 0.0 && forcing_hi <= 1.0 + 1e-9);
-    assert(lagTauActive(tl.lag_tau));
-    ramp_lo_K = groundTemperatureAt(tl.anchor_K, tl.knob, forcing_lo, tl.relief_K(elev_hi));
-    ramp_hi_K = groundTemperatureAt(tl.anchor_K, tl.knob, forcing_hi, tl.relief_K(elev_lo));
-    assert(ramp_lo_K <= ramp_hi_K && ramp_lo_K >= 0.0);
 }
 
 /* What the WIND layer can do for a body (#769), decided once per bake on the main thread for

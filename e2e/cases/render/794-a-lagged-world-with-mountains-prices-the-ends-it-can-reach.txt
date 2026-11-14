@@ -1,0 +1,78 @@
+NAME 794-a-lagged-world-with-mountains-prices-the-ends-it-can-reach
+CLAIM On a body that authors BOTH a phase lag and a height term, the palette is measured from the field the sweep actually paints: it reaches its own cold end and its own hot end exactly, it sits below the law's night end where the mountains are and inside the law's day end where the lag is, and the pairing the sweep refused to use -- coldest light standing on tallest ground -- would have promised colours no pixel ever wears.
+KIND invariant
+# The two lag cases either side of this one are airless, so their palette has one knob in it.
+# This one is the interesting half of #794's step 2: AltoFrio authors lag_tau AND an air that
+# lapses, so its palette has to price mountains and a lag at the same time, and the two ways of
+# doing that differ by more than rounding.
+#
+# The tempting way is the one #793 already used: take the star's contribution and the ground's
+# contribution separately and add them -- the darkest light the grid can see, at the tallest ground
+# the grid can see. For an unlagged world that pairing is exact, because the height term does not
+# depend on the star: some pixel really is both night and high. For a LAGGED world the two extremes
+# are not co-located: a lagged world's darkest forcing lives in its dark polar rows, and whether a
+# mountain stands in one of them is a fact about noise, not about the law. Measured before the fix,
+# that pairing put the palette's cold end at 99.18 K (the law's 113.49 K night end less the 14.31 K
+# the profile charges at a 2201 m summit) at EVERY instant, while the coldest pixel the world
+# painted was 107.19 K at this body's near-equinox epoch and 101.06 / 103.44 K at two of its
+# seasonal ones: 0 to 8 K of legend that no pixel ever wears -- exactly the #793 bug (a picture
+# labelled with a span it does not have) wearing the new knob's clothes.
+#
+# So the sweep measures: it solves the lag per pixel, folds the height term in there, and takes the
+# palette from what came out. CHECK 7 is that claim -- the picture's extremes ARE its ramp's
+# extremes, to the last printed digit, at every instant of a season. CHECK 8 is the other half: the
+# pairing would have been too cold by up to 4.3 K at some instants, so the two are not agreeing by
+# accident.
+#
+# AltoFrio also carries a real 23.44 deg tilt on a 1047 s year, so the three bakes sit at different
+# declinations and the tilted star's asymmetric day arc is driven end to end -- the kset/crise
+# endpoints of the row model, not the atan(tau) textbook shift. That is why peak_deg moves here by
+# degrees (measured +42.1, +46.8, +41.3) where the airless pair's case pins it to under a column:
+# and note that WHERE the broad maximum of a noisy field falls is itself sensitive, which is why
+# this case pins the peak's neighbourhood and its motion rather than its value.
+ARGS --timeout 14 --time-accel 100 --system res/systems/lag_playground.json
+ARGS --surfmap-log --surfmap-n 256 --surfmap-body AltoFrio --surfmap-map temperature
+ARGS --sim-press 3000,0,M,7000,0,M,11000,0,M
+CHECK len(surfmap) == 3
+CHECK all(r["body"] == "AltoFrio" and r["map"] == "temperature" for r in surfmap)
+CHECK all(abs(r["lag_tau"] - 1.0) < 1e-9 for r in surfmap)
+# The height term is live, and it is the FILE's own lapse times the tallest ground the grid
+# sampled: -0.0065 K/m over 2201 m = -14.31 K. The datum end is 0.00 exactly -- a coast pays no
+# height term (drag.h's flat sub-datum column), so a negative floor there would mean the profile
+# was being run backwards below sea level.
+CHECK all(r["relief"] is not None and r["relief"][2] == 0.0 for r in surfmap)
+CHECK all(abs(r["relief"][3] + 0.0065 * r["relief"][1]) < 0.05 for r in surfmap)
+# Both knobs move the palette, in OPPOSITE directions from opposite ends: the mountains push the
+# cold end below the law's night end (99.19 against 113.49), the lag pulls the hot end inside the
+# law's day end (316.53 against 336.18).
+CHECK all(r["temp_ramp"][0] < r["temp_ends"][0] - 5.0 for r in surfmap)
+CHECK all(r["temp_ramp"][1] < r["temp_ends"][1] - 15.0 for r in surfmap)
+# THE CLAIM: the picture reaches both ends of its own palette, exactly, at every instant. The lag
+# path's ends are measured off the field the colour pass reads, so this is the same numbers twice
+# rather than two paths that round differently -- and it is what the separate-extremes pairing
+# breaks, which is why it is pinned on the body that has both knobs instead of the airless pair.
+CHECK all(abs(r["temp"][0] - r["temp_ramp"][0]) < 1e-9 and abs(r["temp"][2] - r["temp_ramp"][1]) < 1e-9 for r in surfmap)
+# ... and the pairing this sweep refused is not the same answer: the law's night end on the tallest
+# ground is a place the world visits only sometimes, and at some instants its real coldest pixel
+# sits several kelvin above it (measured +0.01, +1.9, +4.3 across this season). Never BELOW it --
+# that bound still holds, and it is what the containment assert in surfmap.cpp leans on.
+CHECK all(r["temp"][0] - (r["temp_ends"][0] + r["relief"][3]) > -0.05 for r in surfmap)
+CHECK (lambda rs: max(r["temp"][0] - (r["temp_ends"][0] + r["relief"][3]) for r in rs) > 1.5)(surfmap)
+# A season is really passing: the subsolar meridian leaps more than 125 deg of longitude between
+# bakes (12.8 -> 140.2 -> 270.9), and with it the declination changes, which moves WHERE the
+# afternoon peak sits -- 42.1, 46.8, 41.3 deg here, a spread of degrees rather than the airless
+# pair's sub-degree one. The peak stays east of the star at every point of the year.
+CHECK (lambda rs: max(abs(b["sun_lon"] - a["sun_lon"]) for a, b in zip(rs, rs[1:])) > 50.0)(surfmap)
+CHECK (lambda rs: max(r["peak_deg"] for r in rs) - min(r["peak_deg"] for r in rs) > 1.0)(surfmap)
+CHECK all(20.0 < r["peak_deg"] < 60.0 for r in surfmap)
+CHECK all(r["temp"][0] < r["temp"][1] < r["temp"][2] for r in surfmap)
+# The anchor theorem with a height term on the body: the relief-free (datum) T^4 mean still lands
+# on the authored 240.00, while the mean of what the ground ACTUALLY is sits ~1.5 K under it -- the
+# lapse averaged over real terrain, printed as its own column in #793 so the gap is a measurement
+# rather than a drift nobody named.
+CHECK all(abs(r["datum_mean4"] - r["anchor"]) < 0.05 for r in surfmap)
+CHECK all(r["temp_mean4"] < r["datum_mean4"] - 0.5 for r in surfmap)
+FORBID lag_tau=-
+FORBID temp=[0.00
+FORBID relief=[0 0
+FORBID error:

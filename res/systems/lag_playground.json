@@ -5,11 +5,26 @@
   "skybox": "res/skybox/v1",
   "_comment": [
     "An e2e fixture for #794 (the ground's phase lag), not a world anyone plays.",
-    "Two bodies, identical in every way the ground law reads -- same stated anchor, same",
-    "even share, same rotation, same rail -- except that one of them authors surface.lag_tau.",
-    "That pairing is the point: the difference in their pictures can only be the lag.",
-    "The anchor is STATED rather than derived from the rail, so the temperature numbers are",
-    "independent of where the body sits, and a case can hold the sweep to arithmetic.",
+    "Three bodies. Meridian and Afternoon are the pair: what the printed temperature columns read",
+    "is their surface block -- the stated anchor, the even share, and the absence or presence of",
+    "lag_tau -- and on those columns exactly one key differs, so the difference between their",
+    "pictures can only be the lag. Their RAILS are not identical (different distance, different",
+    "orbital rate, different seed), and that is harmless only because the anchor is STATED rather",
+    "than derived from the orbit: no printed kelvin reads the rail, so a case pins arithmetic",
+    "instead of bounding an orbit.",
+    "That stated anchor is the whole trick. A derived anchor puts the sun's distance into every",
+    "number and the case would be pinning where a body happens to sit, not what its ground does.",
+    "AltoFrio is the same knob on a body that ALSO has a height term: an air that lapses, so its",
+    "palette has to price mountains and a lag at once. That pairing is where a lagged palette is",
+    "easiest to get wrong, because the darkest light and the tallest ground are not the same place",
+    "on a lagged world -- and a palette priced from the two extremes separately leaves colours in",
+    "the legend that no pixel ever wears.",
+    "Tilt: 0.05 rad on the pair, which means a near-zero season -- the declination stays within",
+    "about 1e-5 rad of the equator for the whole window a case runs, so the tilted-star branch of",
+    "the row model is NOT what those two cases exercise. AltoFrio carries a real 23.44 deg AND a",
+    "deliberately short 1047 s year, so a case that runs ~1100 s of sim around it watches the",
+    "declination sweep a whole season: that is where the tilted star's asymmetric day arc (the",
+    "kset/crise endpoints that are NOT the atan(tau) textbook shift) gets driven end to end.",
     "Nothing in the shipped corpus authors a lag: until a real body gets one, every world on",
     "screen still tracks the light exactly (tau absent = the sentinel = the unlagged law)."
   ],
@@ -77,7 +92,45 @@
         "even_share": 0.05,
         "even_share_src": "INVENTED: same knob as Meridian's -- the lag and the even share both set amplitude, so a lagged body needs its f re-fit before it ships for real (#794 step 5)",
         "lag_tau": 1.0,
-        "lag_tau_src": "INVENTED: one radian of PHASE (not hours) -- at this body's rotation that is about a third of its day. It puts the hottest ground ~40 deg east of the subsolar meridian and lifts the night floor, which is what the case pins."
+        "lag_tau_src": "INVENTED: one radian of PHASE (not hours, and the loader refuses anything outside [0, 2pi] so a file cannot author a day here). In time it is tau / the synodic rate = 1 / 2.9115e-4 = 3435 s against this body's 21580 s solar day -- about ONE SIXTH of a day, not a third; an author who scales tau from a stated 'peak at 14:00' should read that ratio, not guess. It puts the hottest ground ~40 deg east of the subsolar meridian and lifts the night floor, which is what the case pins."
+      }
+    },
+    {
+      "name": "AltoFrio",
+      "type": "planet",
+      "orbits": "Sun",
+      "radius": 600000,
+      "mass": 5.2915793e+22,
+      "seed": 13,
+      "has_sea": true,
+      "inertial": {"pos": [0, 0, -16000000000], "orb_ang_speed": 0.006},
+      "rotating": {"rot_ang_speed": 0.0002915709030370688, "axial_tilt": 0.40910517666747087},
+      "transfer_dv": 5200.0,
+      "science_mult": 1.5,
+      "surface": {
+        "temperature": 240.0,
+        "temperature_src": "INVENTED: the fixture's stated ground again, so the anchor stays off the rail even with an air on the body",
+        "even_share": 0.05,
+        "even_share_src": "INVENTED: same near-bare-rock knob as the pair, so the lag's effect on the palette is the same size here and the ONLY new thing is a height term",
+        "lag_tau": 1.0,
+        "lag_tau_src": "INVENTED: same one radian of phase as Afternoon's -- this body exists to ask what happens when that knob meets a lapse profile, not to try a second lag value",
+        "atmosphere": {
+          "color": [0.85, 0.78, 0.65],
+          "thickness": 20000,
+          "power": 4.0,
+          "intensity": 0.7,
+          "sea_level_pressure": 101325.0,
+          "height": 70000.0,
+          "composition": [
+            {"gas": "N2", "fraction": 0.78},
+            {"gas": "O2", "fraction": 0.21}
+          ],
+          "layers": [
+            {"alt": 0.0, "T": 288.0, "lapse": -0.0065},
+            {"alt": 20000.0, "T": 158.0, "lapse": 0.0}
+          ],
+          "_relief_comment": "The 6.5 K/km is Earth's, chosen because it is the value the #793 relief tests already reason about. It is NOT this body's climate: with a 240 K anchor the ground is far colder than the 288 K this layer's datum states, and the fixture does not care -- relief enters as a height term outside the fourth-power bracket, so the profile's own base temperature never meets the ground's. The 70 km top is NOT Earth's 85 km either: on 0.98 m/s^2 this profile is down to 10 Pa by ~75 km, and #682's check refuses a shell whose ceiling floats in vacuum."
+        }
       }
     }
   ]

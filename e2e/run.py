@@ -1020,6 +1020,9 @@ def parse_surfmap(out):
                 "surfmap row claims map=wind but carries neither wind= nor note=: "
                 + m.group(0))
         trip = lambda a, b, c: None if a is None else (float(a), float(b), float(c))
+        # A column that printed '-' is an ABSENCE, the same as one the row never printed: both
+        # read as None, and neither is a 0.0 that a CHECK could mistake for a measurement (#727).
+        dash_s = lambda s: None if s is None or s == "-" else float(s)
         rows.append({
             "t": float(t), "body": body,
             "w": int(w), "h": int(h),
@@ -1045,9 +1048,14 @@ def parse_surfmap(out):
             # bake's subsolar meridian; sun_lon is that meridian itself. The pair is the engine's
             # side of the hour-angle convention: the sign of peak_deg is what no unit test of the
             # law can see, because cos h is even in h.
-            "lag_tau": None if lag_tau == "-" else float(lag_tau),
-            "peak_deg": None if peak_deg is None else float(peak_deg),
-            "sun_lon": None if sun_lon is None else float(sun_lon),
+            # All three dash, and for different reasons: no lag authored, no span to have a hottest
+            # pixel in (an even share of 1 paints one flat field, and naming its maximum would be
+            # naming the first pixel the loop reached), and no star to have a meridian from. A
+            # dash is read as None here rather than handed to float(), which would answer with a
+            # TypeError that says nothing about which column it choked on.
+            "lag_tau": dash_s(lag_tau),
+            "peak_deg": dash_s(peak_deg),
+            "sun_lon": dash_s(sun_lon),
             # [floor m, ceiling m, K at the floor, K at the ceiling] -- only on a body whose air
             # profile lapses; None where the ground has no height term at all.
             "relief": (float(rel_lo), float(rel_hi), float(rel_off_lo), float(rel_off_hi))
@@ -1074,23 +1082,6 @@ def parse_surfmap(out):
             "wind_rows_from": wrowsfrom,
             "wind_note": wnote,
         })
-        # A temperature row that carries neither its numbers nor a reason is a MALFORMED row,
-        # not a ground row: the whole temp tail is optional in the regex (a ground row has no
-        # such tail at all), so a regression that mangles only those columns would otherwise
-        # turn every temperature row into a ground row and cases that do not assert
-        # `temp is not None` would read it as normal. Fail loudly instead (#727's law needs a
-        # harness that can tell an absence from a mangled reading).
-        if mtype == "temperature" and tmin is None and note is None:
-            raise ValueError(
-                "surfmap row claims map=temperature but carries neither temp= nor note=: "
-                + m.group(0))
-        # Same law for the wind map (#769): "wind" is a picture the world either can or cannot
-        # draw, and a row that says it drew one while printing neither its numbers nor a reason
-        # is a mangled row, not a refusal.
-        if mtype == "wind" and wmin is None and wnote is None:
-            raise ValueError(
-                "surfmap row claims map=wind but carries neither wind= nor note=: "
-                + m.group(0))
     return rows
 
 
