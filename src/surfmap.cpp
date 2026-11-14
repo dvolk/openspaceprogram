@@ -116,8 +116,16 @@ void surfmapCompute(Game &g) {
     /* Does this picture need the ground's HEIGHT at all? Decided here, on the main thread,
        because #839's cache lookup is main-thread work too and both must agree about it: a wind
        map needs the heights the arrows stand on, and a temperature map needs them only where the
-       air profile actually lapses (tl.relief). The worker takes the answer, never the question. */
-    const bool want_elev = (want_wind && wl.ok) || (want_temp && tl.ok && tl.relief);
+       air profile actually lapses (tl.relief). The worker takes the answer, never the question.
+       #841 adds the GROUND picture itself. It has always sampled the height -- once inside
+       terrainSurfaceColor for the palette, and again per pixel for the under-sea test -- so it
+       was the one picture paying the noise twice and caching nothing, while a temperature bake
+       of the same hill reused its grid. Asking for the grid here costs nothing new on a miss
+       (the pass below samples once either way) and buys back a whole sampling pass on a hit.
+       A banded body is excluded because its colour never reads a height at all:
+       terrainSurfaceColorH answers from the band table. */
+    const bool want_elev = (want_wind && wl.ok) || (want_temp && tl.ok && tl.relief)
+                        || (!want_field && !tp.surface.bands);
     /* #839: the heights the previous bake sampled, if they were for this body at this size.
        The ground does not move between bakes and terrainHeight() is the expensive half of the
        whole sweep (the cli.h table: AltoFrio 110 / 481 / 1914 ms at 512 / 1024 / 2048 against
@@ -258,9 +266,17 @@ void surfmapCompute(Game &g) {
                 elo = 1e300; ehi = -1e300;
                 for(int j = 0; j < h; j++) {
                     for(int i = 0; i < w; i++) {
-                        const double e = (double)terrainHeight(
-                            (glm::vec3)equirectDirAt(trig, i, j), tp) - sea_r;
-                        (*grid)[(size_t)j * w + i] = (float)e;
+                        /* #841: the grid stores the height the sampler ANSWERS (m from the body
+                           centre), not the elevation above the datum. Every reader subtracts the
+                           datum itself, so a cached grid and a fresh sampling are the same float
+                           in the same place -- the colour pass below compares this value to
+                           sea_r and feeds it to the palette, and re-deriving an absolute height
+                           from a stored above-datum float would round twice and could move a
+                           coastline or a palette band between a hit and a miss. */
+                        const float hgt = terrainHeight(
+                            (glm::vec3)equirectDirAt(trig, i, j), tp);
+                        (*grid)[(size_t)j * w + i] = hgt;
+                        const double e = (double)hgt - sea_r;
                         if(e < elo) { elo = e; }
                         if(e > ehi) { ehi = e; }
                     }
@@ -331,7 +347,8 @@ void surfmapCompute(Game &g) {
                     const double y = row.at(trig.lon[(size_t)i] - sun_lon);
                     if(y < ylo) { ylo = y; }
                     if(y > yhi) { yhi = y; }
-                    const double off = tl.relief_K(want_elev ? (double)(*elevs)[idx] : 0.0);
+                    const double off = tl.relief_K(want_elev ? (double)(*elevs)[idx] - sea_r
+                                                             : 0.0);
                     const float T = (float)groundTemperatureAt(tl.anchor_K, tl.knob, y, off);
                     tlag[idx] = T;
                     /* Extremes taken from the STORED value, so the ramp's ends are bit-for-bit
@@ -366,7 +383,8 @@ void surfmapCompute(Game &g) {
                 glm::vec3 c;                 // the base pixel's colour
                 if(want_temp && tl.ok) {                    /* The SAME cosine the terminator overlay uses, through the SAME law the
                        dossier and the solar log use -- nothing is invented at the pixel. */
-                    const double elev = want_elev ? (double)(*elevs)[(size_t)j * w + i] : 0.0;
+                    const double elev = want_elev ? (double)(*elevs)[(size_t)j * w + i] - sea_r
+                                                  : 0.0;
                     const double off = tl.relief_K(elev);   // 0.0 whenever relief is off
                     /* A lagged body reads the kelvin the pass above solved; an unlagged one
                        reads solar.h's cosine of the direction, exactly as it always has. Both go
@@ -417,7 +435,7 @@ void surfmapCompute(Game &g) {
                        of the ridge above it. The arrows go on afterwards; a scalar alone is not
                        a vector field (#769). And since #767 the pixel's own place matters too:
                        a row can answer for one band of the body and not this pixel. */
-                    const double elev = (double)(*elevs)[(size_t)j * w + i];
+                    const double elev = (double)(*elevs)[(size_t)j * w + i] - sea_r;
                     double lon_deg = 0.0, lat_deg = 0.0;
                     equirectLonLatDeg(d, lon_deg, lat_deg);
                     const glm::dvec3 wv = windAt(wl.rows, elev, lat_deg, lon_deg);
@@ -443,15 +461,26 @@ void surfmapCompute(Game &g) {
                        same way -- and the two refusals say WHICH absence in the log's note= and
                        on the cursor row, not here (#726). */
                     c = glm::vec3(0.34f, 0.34f, 0.34f);
-                } else {
-                    // Ocean map on and at/below sea level: flat sea covers the floor
-                    // (same coverage as the 3D ocean shell, and the same predicate as
-                    // a Flat-sea body's painted sea_color floor -- issue #193).
+                } else if(elevs != nullptr) {
+                    /* Ocean map on and at/below sea level: flat sea covers the floor
+                       (same coverage as the 3D ocean shell, and the same predicate as
+                       a Flat-sea body's painted sea_color floor -- issue #193).
+                       #841: the height the grid pass already measured does both jobs. The sea
+                       test is a comparison against the same hoisted datum the grid's floor and
+                       ceiling were taken from, and the palette reads the very float
+                       terrainSurfaceColor would have sampled for this direction, so the picture
+                       is bit-for-bit what it was -- at one noise sample per pixel instead of
+                       two, and zero on a cache hit. */
+                    const float hgt = (*elevs)[(size_t)j * w + i];
                     const bool under_sea = ocean && tp.surface.has_sea
-                        && terrainHeight((glm::vec3)d, tp) <= sea_r;
+                        && (double)hgt <= sea_r;
                     c = under_sea
                         ? tp.surface.sea_color
-                        : terrainSurfaceColor((glm::vec3)d, tp);
+                        : terrainSurfaceColorH((glm::vec3)d, tp, hgt);
+                } else {
+                    // Only a banded body reaches here: its colour comes from the band table and
+                    // never reads a height, so there is no sample to hand over.
+                    c = terrainSurfaceColor((glm::vec3)d, tp);
                 }
                 unsigned char *q = &px[((size_t)j * w + i) * 4];
                 q[0] = (unsigned char)(std::min(1.0f, c.r) * 255.0f + 0.5f);
@@ -544,7 +573,7 @@ void surfmapCompute(Game &g) {
             for(int j : use_j) {
                 for(int i = stride / 2; i < w; i += stride) {
                     const glm::dvec3 d = equirectDirAt(trig, i, j);
-                    const double elev = (double)(*elevs)[(size_t)j * w + i];   // sampled once, above
+                    const double elev = (double)(*elevs)[(size_t)j * w + i] - sea_r;  // sampled once
                     double lon_deg = 0.0, lat_deg = 0.0;
                     equirectLonLatDeg(d, lon_deg, lat_deg);
                     const glm::dvec3 wv = windAt(wl.rows, elev, lat_deg, lon_deg);
@@ -708,9 +737,11 @@ void surfmapCompute(Game &g) {
                grid for the same body at the same size. It goes here, after every tail and before
                sweep_ms=, for the same reason sweep_ms= does: the harness reads the tails by
                position, so a column in the middle hides them. `-` is an absent QUESTION rather
-               than a miss: the picture needs no height GRID -- a ground or ground+ocean sweep
-               (whose sea test still samples the noise per pixel, which is #841's question), or a
-               temperature map on an air whose profile does not lapse. */
+               than a miss: the picture reads no height at all -- a banded body's colour comes
+               from its band table, a refused field paints flat grey instead of the ground, and a
+               temperature map on air whose profile does not lapse has no relief term to price.
+               #841 moved the ground and ground+ocean pictures OUT of that list: their palette and
+               their sea test now read one sample per pixel, cached like any other picture. */
             printf(" elev_cache=%s", want_elev ? (elev_hit ? "hit" : "miss") : "-");
             printf(" sweep_ms=%.1f\n", sweep_ms);
             fflush(stdout);

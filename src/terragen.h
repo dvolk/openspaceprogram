@@ -746,9 +746,14 @@ inline float terrainHeight(const glm::vec3& p, const TerrainParams& t) {
    per-vertex color the grid bakes, so the 2-D surface map matches the render.
    Height is FULL detail even on coarse grids (a fade would shift palette bands
    between LOD depths); only the color JITTER is band-limited, being spatial
-   detail (jitter_scale <= 0 = the full speckle, i.e. the surface map). */
-inline glm::vec3 terrainSurfaceColor(const glm::vec3& p, const TerrainParams& t,
-                                     float jitter_scale = -1.0f) {
+   detail (jitter_scale <= 0 = the full speckle, i.e. the surface map).
+   The H spelling takes the height the caller already measured, which is what the
+   surface map does (#841): the height is noise and the colour is a lookup, so a
+   sweep that samples once per pixel and colours from that sample paints exactly
+   what spelling out the sample here would paint -- the argument MUST be what
+   terrainHeight(p, t) answers, since the sea test and the palette both key on it. */
+inline glm::vec3 terrainSurfaceColorH(const glm::vec3& p, const TerrainParams& t,
+                                      float height, float jitter_scale = -1.0f) {
     const Surface &s = t.surface;
     if (s.bands) {
         COLOUR cb = s.BandColor(p);
@@ -759,8 +764,6 @@ inline glm::vec3 terrainSurfaceColor(const glm::vec3& p, const TerrainParams& t,
                                                brightness);
         return color;
     }
-
-    const float height = terrainHeight(p, t);
 
     // color jitter so wide palette bands don't look flat
     if (jitter_scale <= 0.0f) {
@@ -795,6 +798,14 @@ inline glm::vec3 terrainSurfaceColor(const glm::vec3& p, const TerrainParams& t,
         color = s.sea_color;
     }
     return color;
+}
+
+/* Same picture, measuring its own height. A banded body's colour never reads one, so
+   nothing is sampled for it. */
+inline glm::vec3 terrainSurfaceColor(const glm::vec3& p, const TerrainParams& t,
+                                     float jitter_scale = -1.0f) {
+    if (t.surface.bands) { return terrainSurfaceColorH(p, t, t.radius, jitter_scale); }
+    return terrainSurfaceColorH(p, t, terrainHeight(p, t), jitter_scale);
 }
 
 // ---------------------------------------------------------------------------

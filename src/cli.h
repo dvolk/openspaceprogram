@@ -278,10 +278,13 @@ inline unsigned gateIntervalMs(double seconds) {
    solve (#839). Price a ceiling against the body that hurts.
    Since #839 that 17x is paid ONCE per body and size rather than once per bake: the
    sweep keeps the grid it sampled, and the next bake of that body at that size paints
-   from it (AltoFrio at 1024: 474.9 ms sampling, then 26.4 and 21.8). The table above
-   still prices the ceiling, because every LARGER size is a miss by definition -- the
-   knob is what a player moves when they want finer ground, and that first bake is
-   what they feel.
+   from it (AltoFrio at 1024: 474.9 ms sampling, then 26.4 and 21.8). #841 brought the
+   GROUND picture inside the same slot: it had been sampling the noise once per pixel for
+   its palette and -- on ground+ocean -- again for the sea test, while caching nothing.
+   AltoFrio at 2048: ground+ocean 2675.6 -> 1945.4 ms and then a 154.5 ms hit; ground
+   2124.6 and then 279.5. The table above still prices the ceiling, because every LARGER
+   size is a miss by definition -- the knob is what a player moves when they want finer
+   ground, and that first bake is what they feel.
    Refuse at the gate like the interval knobs (#673) rather than looking like a
    hang, and refuse whether or not a bake is ever asked for: the Surface Map
    window offers a body, a picture type and a level but NO size box, so

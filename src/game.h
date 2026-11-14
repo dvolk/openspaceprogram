@@ -443,6 +443,8 @@ struct SurfmapState {
        6.4 ms, and 1914 ms against 98.9 ms at 2048). The ground does not move between bakes, and
        the map re-bakes on every chooser change, so without this the same 2M noise samples are
        thrown away and recomputed for a picture of the same hill from a different knob.
+       #841 widened the readers to the ground picture itself, which was the one picture paying
+       the noise twice a pixel (palette plus sea test) and caching nothing.
        One slot, not a table: the win is the re-bake, and a grid per body is 33 MB at the 4096
        ceiling the #831 guard allows -- times the 659-body list of #797, which is not a cache but
        a leak with good manners. So the next relief bake replaces it, and the miss it costs is
@@ -461,8 +463,11 @@ struct SurfmapState {
     /* Shared rather than owned outright by the slot: a bake still running keeps its own reference
        while the slot moves on to the next body, and what it reads is const, so nothing can
        repaint a hill under a sweep that already measured it. */
-    std::shared_ptr<const std::vector<float> > elev_grid;   // [elev_w * elev_h], m above datum
-    double elev_lo = 0.0, elev_hi = 0.0;   // min/max of the grid, same units
+    std::shared_ptr<const std::vector<float> > elev_grid;   // [elev_w * elev_h], m from the centre
+    /* Above DATUM, unlike the grid itself: these are what the palettes are priced from, and the
+       grid deliberately stores the float terrainHeight() answered so a cached bake and a fresh
+       one are the same number in the same place (#841). Every reader subtracts sea_r. */
+    double elev_lo = 0.0, elev_hi = 0.0;
     // Jobs posted but not landed (the window shows "mapping ...").
     int in_flight = 0;
     // M: one-shot compute request (events.cpp sets, the state pass consumes).

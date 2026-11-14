@@ -12,7 +12,11 @@ CHECK last(surfmap)["shade"] == "on"
 CHECK all(0.0 <= c <= 1.0 for c in last(surfmap)["albedo"])
 CHECK all(s <= a + 1e-9 for s, a in zip(last(surfmap)["shaded"], last(surfmap)["albedo"]))
 CHECK any(s < a for s, a in zip(last(surfmap)["shaded"], last(surfmap)["albedo"]))
-# #839: a ground picture colours from biomes, not from heights, so the cache column answers with a
-# dash -- an absent question, not a miss. Pinned here because this is the run shape that prints it.
-CHECK last(surfmap)["elev_cache"] == "-"
+# #839/#841: a ground picture colours from the ground's height (its palette band, plus the sea
+# test when the map asks for one), so it asks the cache -- and here it asks for the first time in
+# the run, so `miss`. A dash is an absent QUESTION, and only two shapes print it now: a banded
+# body, whose colour comes from a band table and never reads a height, and a refused field, which
+# paints flat grey instead of the ground. Pinned here because this is the run shape that prints
+# the first of them.
+CHECK last(surfmap)["elev_cache"] == "miss"
 FORBID error:
