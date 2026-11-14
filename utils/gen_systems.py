@@ -1586,11 +1586,15 @@ def price_ground_lag(body, by_name, lum):
     once in 27.3 days and its sun moves once in 29.5, because the pair orbits the star (see
     star_orbiting_descendant). Reading a moon's own rate instead would say "synchronous, tau 0" and
     leave every Jool moon with an instantaneous map.
-    Both spin and orbit are scalars in these files, so this is the COPLANAR reading |rot - w_year|.
-    A body tilted past ~0.4 rad wants rot * cos(tilt) along the orbit normal instead, which moves
-    tau by 5 % on Bop (the most tilted of the seven authored) and by 27 % on Eeloo, whose 2.14 rad
-    tilt is retrograde. Not fixed here because the correction needs a spin axis these files do not
-    author; filed as an issue."""
+    Both spin and orbit are scalars in these files, so |rot - w_year| is the PROGRADE reading. Past
+    90 deg of tilt the orbit term adds instead of subtracting -- Venus spins retrograde and its sun
+    closes in 116.75 d, SHORTER than its 243 d sidereal day -- and Eeloo's 2.14 rad tilt is that
+    side of the line. The correction is negligible here (w_year is 1.2e-4 of the spin, so tau moves
+    0.01 %), and obliquity itself does not enter the MEAN solar rate at all: a tilted world's sun
+    still walks its longitude at rot -/+ w_year; what tilt changes is the declination and therefore
+    which latitudes have a day at all, and the row answers those with its polar branches. Filed
+    separately as the open question it is: one tau per body on a world whose seasons are its latitude.
+    """
     rot = (body.get("rotating") or {}).get("rot_ang_speed")
     kid = star_orbiting_descendant(body, by_name)
     if rot is None or kid is None:
