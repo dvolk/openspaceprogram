@@ -15,10 +15,12 @@ CHECK re.search(r"ground swing\s+283\.0 to 30[01]\.[0-9] K", re.search(r"\[atlas
 CHECK re.search(r"ground anchor(?: \(sea level\))?\s+288\.0 K", re.search(r"\[atlas\] Earth weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
 # #793: on a world whose air lapses, that anchor is a SEA-LEVEL statement, and the label says so.
 # 288.0 K is the coast; it is not the world's average ground and it is not what the Surface Map's
-# coldest pixel costs. The row after it prices the same law at the top of the measured relief, so
-# the dossier cannot quietly imply that one number covers a 7 km mountain.
+# coldest pixel costs. The row after it prices the same law at the top of the authored relief, so
+# the dossier cannot quietly imply that one number covers a 7 km mountain. Both ends move together
+# by the lapse x peak (283.0 - 42.4 = 240.6, 301.6 - 42.4 = 259.2): the height does not widen the
+# swing, it shifts it, which is the whole claim of #793 in one pair of rows.
 CHECK re.search(r"ground anchor \(sea level\)\s+288\.0 K", re.search(r"\[atlas\] Earth weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
-CHECK re.search(r"ground at peak\s+-44\.5 K at ", re.search(r"\[atlas\] Earth weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+CHECK re.search(r"ground at peak\s+240\.6 to 259\.2 K at 6\.5 km", re.search(r"\[atlas\] Earth weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
 # The Moon: its page states a PAIR (95-390 K at the lunar equator) and no mean, so the anchor
 # is solved from the pair and the row says so (surface.temperature_src: "SOLVED from the stated
 # range 95.00-390.00 K, not a stated mean"). Both ends come back EXACT now, which is a strictly

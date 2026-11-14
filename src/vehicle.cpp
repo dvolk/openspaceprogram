@@ -3258,21 +3258,32 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
                                                  airDatum_K(atm), 0.0);
             const double w = followWeight(lastAirP, atm.sea_level_pressure);
             /* #793: the height term goes on the GROUND, and the height is the GROUND's -- the
-               elevation of the terrain under this hull, sampled the way the HUD's AGL and the
-               aero pass sample it, not this pass's own `alt`. The distinction is what keeps the
-               law honest at cruise: cooling the ground by the lapse up to the hull's altitude
-               would make the "ground" a fictitious surface at flight level, so the coupling
-               would fade to nothing exactly where the real ground below is still a heat source.
-               It also leaves the air side alone, which is the double count worth avoiding: the
-               lapse is already inside lastAirT (groundtemp.h:coupledAirTemperature spells out
-               both halves). One full-detail terrain sample per hull per aero pass, the same call
-               render.cpp makes for AGL. */
-            const double ground_elev
-                = (double)m_parent->GetTerrainHeight(glm::normalize(com))
-                  - m_parent->seaLevelRadius();
+               elevation of the terrain under this hull, not this pass's own `alt`. The difference
+               is what keeps the law honest at cruise: cooling the ground by the lapse up to the
+               hull's altitude would make the "ground" a fictitious surface at flight level, so the
+               coupling would fade to nothing exactly where the real ground below is still a heat
+               source. It also leaves the air side alone, which is the double count worth avoiding:
+               the lapse is already inside lastAirT (groundtemp.h:coupledAirTemperature spells out
+               both halves).
+               The DIRECTION is in the body's rotating frame, not this hull's: the assertion at the
+               top of this pass allows an inertial frame (a railed hull), and GetTerrainHeight
+               answers for a point on the body (terrain.h) -- asking with inertial coordinates reads
+               the ground at a longitude the body has spun away from (render.cpp:139 makes the same
+               distinction for AGL). And the sample is gated on the body having a height term at
+               all, so a world whose air never lapses pays nothing for the zero. */
+            double ground_relief = 0.0;
+            if(m_parent->surface.reliefOn()) {
+                const glm::dvec3 here = (frame == m_parent->rot_frame)
+                    ? glm::dvec3(com)
+                    : glm::dvec3(frame->GetOrientRelTo(m_parent->rot_frame)
+                                 * glm::dvec3(com));
+                ground_relief = m_parent->surface.relief_K(
+                    (double)m_parent->GetTerrainHeight(glm::normalize(here))
+                    - m_parent->seaLevelRadius());
+            }
             const double coupled = coupledAirTemperature(
                 lastAirT, anchor, m_parent->surface.even_share,
-                atm.air_follow, w, sky.cos_inc, m_parent->surface.relief_K(ground_elev));
+                atm.air_follow, w, sky.cos_inc, ground_relief);
             if(coupled != lastAirT) {
                 lastAirT = coupled;
                 /* The Mach number this pass divides by comes from the SAME temperature the

@@ -7469,17 +7469,23 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
             fmtRow(v, sizeof v, "%.1f K", anchor);
             line(giant ? "level anchor"
                        : (relief_here ? "ground anchor (sea level)" : "ground anchor"), v);
-            /* What that same law reads at the top of this world's relief: the offset the map's
-               cold end and the cursor's kelvin both carry, next to the height it is priced at.
-               The height is the pair the terrain block above already prints -- measured once the
-               heavy pass has built the heightfield, the authored estimate until then -- so the two
-               blocks cannot state two different mountains. */
+            /* The same law at the top of this world's relief: a TEMPERATURE pair, not a delta.
+               The row above is a swing, so `-44.5 K` printed against it reads as a reading of the
+               summit -- and it was a delta, the height term alone, which is a number no player can
+               use without adding the row above in their head.
+               The height is authoredPeak(), one height everywhere: the corpus test
+               (tests/test_belts.cpp) prices the same peak, and it is a place the body actually has.
+               max_height, which this row used at first, is a 1.05x SHELL BOUND (terrain.h) that no
+               point on the body reaches -- it priced a "summit" 400 m above Earth's highest ground
+               and disagreed with the test that was supposed to guard it. */
             if(relief_here) {
-                const double peak = b.ready ? (double)b.surface.max_height
-                                            : (double)b.surface.authoredPeak();
+                const double peak = (double)b.surface.authoredPeak();
+                const double off = b.surface.relief_K(peak);
                 char hv[32];
-                fmtRow(v, sizeof v, "%+.1f K at %s", b.surface.relief_K(peak),
-                       fmt_dist(peak, hv, sizeof hv));
+                fmtRow(v, sizeof v, "%.1f to %.1f K at %s",
+                         groundTemperature(anchor, f, 0.0) + off,
+                         groundTemperature(anchor, f, 1.0) + off,
+                         fmt_dist(peak, hv, sizeof hv));
                 line("ground at peak", v);
             }
         } else {
@@ -7736,9 +7742,11 @@ void dumpAtlas(Game &g) {
                r.rawName.c_str(), r.valueWord.c_str(), r.dv, r.discovered);
         for(const AtlasFact &fa : r.facts) {
             if(fa.header) { printf("[atlas]   [%s]\n", fa.label.c_str()); }
-            // 22 wide: "air temp (isothermal)" is 21 chars, and a label that overflows
-            // its column pushes only its own value out of line.
-            else { printf("[atlas]   %-22s %s\n", fa.label.c_str(),
+            // 26 wide: the longest label is now "ground anchor (sea level)" at 25 (#793), which
+            // overflowed the old 22 and pushed its own value -- and only its own -- four columns
+            // out of line. The column is a column: bump it rather than shorten a label that is
+            // the whole point of the row.
+            else { printf("[atlas]   %-26s %s\n", fa.label.c_str(),
                                             fa.value.c_str()); }
         }
     }

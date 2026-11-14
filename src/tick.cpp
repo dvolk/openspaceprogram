@@ -771,9 +771,20 @@ void tick(Game &g) {
                        already carries. Not `lastDragAlt` either: the aero pass leaves 0 there for
                        a hull on rails (and for a body with no physical air), while this column
                        recomputes for a rails hull too -- a 0 read as a measurement is the exact
-                       thing #687 exists to forbid. */
+                       thing #687 exists to forbid.
+                       The DIRECTION is the body's rotating frame, which is exactly the case this
+                       column exists for: a railed hull's coordinates are its inertial node's, and
+                       the terrain has spun underneath since the epoch (render.cpp:139's note on
+                       AGL). Asking with them reads a height a few thousand kilometres of
+                       longitude away. */
+                    glm::dvec3 here = glm::dvec3(g.ship->comPos());
+                    if(!g.ship->frame->isRotFrame()
+                       && g.ship->frame->hasRotFrame()) {
+                        here = g.ship->frame->GetOrientRelTo(g.ship->frame->getRotFrame())
+                             * here;
+                    }
                     const double underfoot_elev
-                        = (double)over->GetTerrainHeight(glm::normalize(g.ship->comPos()))
+                        = (double)over->GetTerrainHeight(glm::normalize(here))
                           - over->seaLevelRadius();
                     snprintf(surf_s, sizeof surf_s, "%.2f",
                              groundTemperatureAt(anchor, over->surface.even_share,

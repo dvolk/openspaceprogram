@@ -109,7 +109,8 @@ inline int surfMapTypeFromName(const std::string &want) {
    FLAT (a body with no swing paints one honest colour, not a gradient the eye invents).
    Endpoints and the "does not stall" property are pinned in tests/test_surfmap.cpp. The two
    temperatures the ends stand for are NOT on this window -- a row there costs the map its own
-   aspect ratio -- they are --surfmap-log's temp_ends= and the atlas' `ground swing` row, and
+   aspect ratio -- they are --surfmap-log's temp_ramp= and the atlas' `ground swing` row (the
+   law's ends at the datum) / `ground at peak` row (the same law where the relief puts it), and
    what the window does print is the value at the point under the cursor. */
 inline void surfmapRamp(double t, unsigned char &r, unsigned char &g, unsigned char &b) {
     struct Stop { double t; unsigned char r, g, b; };
@@ -168,7 +169,9 @@ struct TempLayer {
        zero. */
     bool relief = false;
     /* [K] The relief term for one ground elevation [m above the sea-level datum]. ONE spelling,
-       used by the sweep, the cursor and the tests. */
+       used by the sweep and the tests: the worker gets this copy of the profile, while the cursor
+       and the other readouts go through Surface::relief_K (same arithmetic, one copy of the air in
+       the body). */
     double relief_K(double elev_asl) const {
         return relief ? airProfileOffset_K(profile, air_top, elev_asl) : 0.0;
     }

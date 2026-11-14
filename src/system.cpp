@@ -1524,6 +1524,34 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                         " stratified, and keep no warming level's lapse aimed at the"
                         " body's own gravity falloff (atmo.h:resolveAtmoLevels)");
                 }
+                /* #793: the ground's height term is THIS profile read at the terrain's
+                   elevation, so a file whose relief asks for more than the ground's own night
+                   end makes the law answer a negative kelvin at the summit. That is not a cold
+                   mountain, it is two authored numbers that do not fit -- a 0 K night end
+                   cannot carry any relief at all, and `even_share: 0` is legal (`Venus 1.000`
+                   is its mirror image). The readouts assert this while baking, so refuse it
+                   here by name rather than aborting in front of a player on the first pixel.
+                   Only the two rungs that need no star are checked: a derived black-body
+                   anchor is priced at the bake, and every body that can reach that rung has no
+                   air and therefore no relief. */
+                if(s.reliefOn() && evenShareAuthored(s.even_share)) {
+                    const double anchor = groundAnchor_K(s.temperature,
+                                                         airDatum_K(s.atmosphere), 0.0);
+                    if(anchor > 0.0) {
+                        const double peak = (double)s.authoredPeak();
+                        const double night = groundTemperature(anchor, s.even_share, 0.0);
+                        const double off = s.relief_K(peak);
+                        if(night + off < 0.0) {
+                            throw std::runtime_error(
+                                "system: " + body->name + ": surface relief asks for "
+                                + std::to_string(off) + " K at its "
+                                + std::to_string(peak) + " m peak, which is deeper than the"
+                                " ground's own night end (" + std::to_string(night)
+                                + " K) -- a summit would read below 0 K. Lower"
+                                " surface.amplitude, or state a larger surface.even_share");
+                        }
+                    }
+                }
             }
             if(sv.contains("clouds")) {
                 expectObjectBlock(sv["clouds"], body->name, "surface.clouds");

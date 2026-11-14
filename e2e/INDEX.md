@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 336 |
+| `invariant` | a behaviour or a player route the game must keep | 337 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 48 |
 | `harness` | CLI/test-engine plumbing, not game spec | 15 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **403** |
+| | **total** | **404** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -364,7 +364,7 @@ judgement. Select by number, name or path, e.g.
 | `ui/748-hold-the-job-runner-and-read-a-window-mid-bake.txt` | invariant | --hold-jobs keeps a posted surface-map bake unpublished, so a --ui-list inside the span reads the window mid-sweep: the cursor line dashes its ground number as (rebaking) instead of quoting a number for the body it just switched to, and the number lands after the release. |
 | `ui/768-systems-window-shuts-the-nozzles.txt` | golden | The Systems window's Thrust vectoring checkbox drops the live gimballed rating in --steering-log from 129710 N m to 0 while the window keeps printing 129710 N m beside the now-off switch, and says nothing about the engines being gone. |
 
-## render (71)
+## render (72)
 
 | case | kind | pins |
 |---|---|---|
@@ -430,6 +430,7 @@ judgement. Select by number, name or path, e.g.
 | `render/676-perf-rows-no-paint.txt` | invariant | A --no-paint run says so in its [perf] rows: the 3D pass reads 0 while the passes that still ran do not. |
 | `render/717-dossier-says-the-air-moves.txt` | invariant | A body's dossier prints a row per authored wind level, with the altitude, the speed and the compass direction the air moves -- and the latitude band when its table has one -- while a body with no authored wind prints none. |
 | `render/736-the-atlas-prices-the-sunshine.txt` | invariant | Every dossier in this file answers the sun -- the light at that body's orbit, the albedo the body authors, the temperature those two imply, the surface temperature the file authors, and the gap between them -- and the rows are ONE arithmetic rather than five independent printings: the black-body follows from the sunlight and albedo rows beside it, the gap follows from the black-body and the surface row, each body's sunlight follows from the star's own luminosity row and that body's semi-major axis, and a satellite whose page states the WRONG KIND of albedo says so beside the converted number. |
+| `render/745-an-airless-world-still-paints-its-whole-range.txt` | invariant | A temperature map of a world with no air still paints its real span, and its log says so: no relief column, the ramp exactly the law's ends, and a picture that is not one flat colour. |
 | `render/745-asked-for-a-temperature-a-world-without-one-says-why.txt` | invariant | Ask the Surface Map for a temperature this world cannot support and it dashes the temperature columns and names the reason -- a flat grey field and a sentence, not a colour nobody priced. |
 | `render/745-the-surface-map-prices-every-pixel-it-draws.txt` | invariant | The Surface Map can be drawn as the ground's temperature instead of its albedo, and the picture closes on the numbers the model claims: its coldest pixel IS the night end standing on the highest ground that world has, and the area-weighted mean taken in T^4 comes back to the anchor once the height term is taken back off. |
 | `render/745-the-surface-maps-chooser-actually-changes-the-picture.txt` | invariant | The Surface Map's Map combo switches what the sweep paints -- ground, ground+ocean, temperature -- each row says which picture it is, and switching re-bakes without a second keypress. |

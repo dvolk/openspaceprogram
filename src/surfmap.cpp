@@ -190,9 +190,13 @@ void surfmapCompute(Game &g) {
         std::vector<float> elevs;
         double rlo = 0.0, rhi = 0.0;
         /* The temperature ramp's ends, and what the relief term actually cost this picture.
-           Zero-savings case: a body with no profile gradient keeps tl.lo_K/tl.hi_K and never
-           samples a height for the sake of a zero. */
-        double trlo = 0.0, trhi = 0.0;
+           Seeded with the LAW's ends, not 0: a body with no profile gradient never samples a height
+           for the sake of a zero, and it must still paint its real span. Seeding 0 there was a
+           live bug -- every airless world came out `temp_ramp=[0.00 0.00]`, so `trhi > trlo` was
+           false for every pixel and the whole sphere took the midpoint colour while the cursor
+           printed real kelvin (Moho: temp=[137.88 295.67 565.97], one flat green). The invariant
+           below the grid pass is what stops it coming back. */
+        double trlo = tl.lo_K, trhi = tl.hi_K;
         double rel_at_lo = 0.0, rel_at_hi = 0.0;
         /* The grid's trig, once for every pass below (#802). Each pass visits every column of
            every row, so the equirect grid needs w + h transcendental evaluations in total, not
@@ -226,6 +230,15 @@ void surfmapCompute(Game &g) {
                 rel_at_hi = tl.relief_K(ehi);  // <= 0: the cost lives at the top
             }
         }
+        if(want_temp && tl.ok) {
+            /* A relief-free body MUST paint exactly the law's span: that is the #793 bug this
+               line now stands guard over -- the ends were seeded with 0, so every airless world
+               came out `temp_ramp=[0.00 0.00]` and its whole sphere took the midpoint colour,
+               on the one path no e2e case baked. With relief on, the ramp is allowed to move
+               (the lowest ground need not reach the datum), but it must still be a span. */
+            assert(trhi >= trlo);
+            assert(tl.relief || (trlo == tl.lo_K && trhi == tl.hi_K));
+        }
 
         for(int j = 0; j < h; j++) {
             for(int i = 0; i < w; i++) {
@@ -237,9 +250,11 @@ void surfmapCompute(Game &g) {
                     const double off = tl.relief_K(elev);   // 0.0 whenever relief is off
                     const double T = surfmapGroundT(tl.anchor_K, tl.knob, d, sun_dir, off);
                     // Ramp span: the model's ends moved to the ground the sweep is colouring
-                    // (tempRampEnds above), which with relief off IS the model's ends. With no
-                    // swing lo == hi, so the span is 0 and every pixel takes the midpoint: one
-                    // honest flat colour rather than a gradient the eye invents.
+                    // (tempRampEnds above), which with relief off IS the model's ends. Only a
+                    // body with no swing at all AND no relief has lo == hi, and then the span is
+                    // 0 and every pixel takes the midpoint: one honest flat colour rather than a
+                    // gradient the eye invents (#726's "no swing" is that state, and the assert
+                    // above keeps the relief-free case from reaching it by accident).
                     const double t01 = (trhi > trlo) ? (T - trlo) / (trhi - trlo) : 0.5;
                     unsigned char r = 0, gg = 0, bb = 0;
                     surfmapRamp(t01, r, gg, bb);

@@ -1,0 +1,33 @@
+NAME 745-an-airless-world-still-paints-its-whole-range
+CLAIM A temperature map of a world with no air still paints its real span, and its log says so: no relief column, the ramp exactly the law's ends, and a picture that is not one flat colour.
+KIND invariant
+# #793's own regression, found by review rather than by me: the sweep's ramp ends were seeded
+# with 0 and only filled for a body with a height term, so EVERY airless world baked one flat
+# colour -- `temp_ramp=[0.00 0.00]` while `temp=` still reported 137.9..566.0 K and the cursor
+# printed real kelvin. The colour/number agreement the whole change rests on broke exactly
+# where nobody looked, because every case that baked a temperature map used a body with air.
+#
+# Moho is the subject: airless (no physical atmosphere, so reliefOn() is false), and its swing
+# is wide enough (f 0.4936) that a flat picture and a real one are hundreds of kelvin apart. The
+# two ramp pins are the bug: before the fix both read 0.00.
+ARGS --timeout 10 --time-accel 1 --system res/systems/ksp_system.json
+ARGS --surfmap-log --surfmap-n 128 --surfmap-body Moho --surfmap-map temperature
+ARGS --sim-press 3000,0,M
+CHECK len(surfmap) >= 1
+CHECK last(surfmap)["body"] == "Moho"
+CHECK last(surfmap)["map"] == "temperature"
+# No height term, and the log says so by printing no column at all (not by printing zeros).
+CHECK last(surfmap)["relief"] is None
+CHECK abs(last(surfmap)["temp_ramp"][0] - last(surfmap)["temp_ends"][0]) < 1e-9
+CHECK abs(last(surfmap)["temp_ramp"][1] - last(surfmap)["temp_ends"][1]) < 1e-9
+# A real span, not the midpoint: the night end is a hemisphere and the subsolar point is a
+# point, so a 128x64 grid reaches the cold end and approaches the hot one.
+CHECK last(surfmap)["temp"][2] - last(surfmap)["temp"][0] > 300.0
+CHECK abs(last(surfmap)["temp"][0] - last(surfmap)["temp_ramp"][0]) < 0.02
+# The two accumulators coincide when there is no height term to take back off, and both close on
+# the derived black-body anchor -- the identity with nothing to say about relief.
+CHECK abs(last(surfmap)["temp_mean4"] - last(surfmap)["datum_mean4"]) < 0.005
+CHECK abs(last(surfmap)["datum_mean4"] - last(surfmap)["anchor"]) < 0.05
+FORBID temp_ramp=[0.00 0.00]
+FORBID relief=[
+FORBID error:
