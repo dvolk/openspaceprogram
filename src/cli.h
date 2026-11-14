@@ -276,6 +276,12 @@ inline unsigned gateIntervalMs(double seconds) {
    2048, so a world with mountains costs ~17x what a flat one does per pixel --
    the elevation grid the lapse rate needs is the expensive half, not the kelvin
    solve (#839). Price a ceiling against the body that hurts.
+   Since #839 that 17x is paid ONCE per body and size rather than once per bake: the
+   sweep keeps the grid it sampled, and the next bake of that body at that size paints
+   from it (AltoFrio at 1024: 474.9 ms sampling, then 26.4 and 21.8). The table above
+   still prices the ceiling, because every LARGER size is a miss by definition -- the
+   knob is what a player moves when they want finer ground, and that first bake is
+   what they feel.
    Refuse at the gate like the interval knobs (#673) rather than looking like a
    hang, and refuse whether or not a bake is ever asked for: the Surface Map
    window offers a body, a picture type and a level but NO size box, so

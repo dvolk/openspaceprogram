@@ -437,6 +437,31 @@ struct SurfmapState {
     std::string wind_block;
     bool valid = false;
     int rev = 0;
+    /* #839: the heights the last bake sampled, kept for the next one. terrainHeight() is noise,
+       and it is the expensive half of a temperature or wind sweep -- 17x the rest of the bake
+       together (AltoFrio: 118 ms against Meridian's 6.4 ms at 512; 1.68 s against 99 ms at
+       2048). The ground does not move between bakes, and the map re-bakes on every chooser
+       change, so without this the same 2M noise samples are thrown away and recomputed for a
+       picture of the same hill from a different knob.
+       One slot, not a table: the win is the re-bake, and a grid per body is 33 MB at the 4096
+       ceiling the #831 guard allows -- times the 659-body list of #797, which is not a cache but
+       a leak with good manners. So the next relief bake replaces it, and the miss it costs is
+       one bake per body switch.
+       Keyed by NAME rather than by a body pointer on purpose: a TerrainBody can be freed and a
+       different one land on the same address, which is exactly the trap #296 records for the
+       identity-only readers. A name cannot do that, and resetForNewWorld below clears the slot
+       at every world swap anyway.
+       Main-thread-only: read in surfmapCompute before the job posts, published by the job's
+       continuation, which is also main-thread (JobRunner::poll). The worker gets an immutable
+       shared_ptr or nothing at all, so there is no lock and no race. */
+    int elev_w = 0;
+    int elev_h = 0;
+    std::string elev_name;
+    /* Shared rather than owned outright by the slot: a bake still running keeps its own reference
+       while the slot moves on to the next body, and what it reads is const, so nothing can
+       repaint a hill under a sweep that already measured it. */
+    std::shared_ptr<const std::vector<float> > elev_grid;   // [elev_w * elev_h], m above datum
+    double elev_lo = 0.0, elev_hi = 0.0;   // min/max of the grid, same units
     // Jobs posted but not landed (the window shows "mapping ...").
     int in_flight = 0;
     // M: one-shot compute request (events.cpp sets, the state pass consumes).
@@ -465,7 +490,13 @@ struct SurfmapState {
        setTime(0.0) for that knob, so nothing invalidates the cache -- kept a map
        that was valid, correctly named and baked for the game that had just
        ended, and the window's auto-rebake (gameui.cpp) cannot fire while
-       valid && body_name still matches the body on screen. */
+       valid && body_name still matches the body on screen.
+
+       The #839 elevation slot is deliberately NOT a survivor, not even across a
+       same-system teardown that keeps the TerrainBody objects: the grid is a
+       sampling of a grid SIZE as much as of a body, a load can change what the
+       knob means, and 33 MB is worth recomputing once per world rather than
+       reasoning about. */
     void resetForNewWorld() {
         SurfmapState fresh;
         fresh.body = body;

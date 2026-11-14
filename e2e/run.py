@@ -229,6 +229,18 @@ SURFMAP_RE = re.compile(
     r"wind_rows=(\d+)\s+wind_cells=(\d+)"
     r"\s+wind_bands=(\d+)\s+wind_arrow_rows=(\d+)\s+wind_rows_from=(grid|bands))?"
     r"(?:\s+wind=-\s+note=\"([^\"]*)\")?"
+    # #839: did THIS bake sample the ground's heights, or reuse the previous bake's grid for the
+    # same body at the same size? The column prints after every tail (just before sweep_ms=),
+    # because the tails above are positional and a column in the middle hides them -- the same
+    # reason sweep_ms= sits last. `-` is an absent QUESTION, not a miss: a ground or cloud
+    # picture, or a temperature map on an air whose profile does not lapse, needs no heights.
+    # This group is deliberately NOT optional: every row carries the column, so a row that lost
+    # it stops matching here (the case goes red for a missing bake) instead of reading as a row
+    # that never had one. anchor_src= is #687's provenance, which no case reads; it is spelled
+    # out only so the match can reach past it -- the temp tail ends at anchor= and the provenance
+    # sits between that and this column.
+    r"(?:\s+anchor_src=\"[^\"]*\")?"
+    r"\s+elev_cache=(hit|miss|-)"
 )
 # --solar-log (src/cli.cpp's flag, printed by the kGateSolar block in tick.cpp): the
 # star as the world states it, and the ground under the hull as the world states it.
@@ -1030,7 +1042,7 @@ def parse_surfmap(out):
          lag_tau, peak_deg, sun_lon,
          rel_lo, rel_hi, rel_off_lo, rel_off_hi, mean4, datum4, anchor, note,
          wmin, wmean, wmax, welo, wehi, wrlo, wrhi, wrows, wcells,
-         wbands, warrowrows, wrowsfrom, wnote) = m.groups()
+         wbands, warrowrows, wrowsfrom, wnote, elev_cache) = m.groups()
         # A temperature row that carries neither its numbers nor a reason is a MALFORMED row,
         # not a ground row: the whole temp tail is optional in the regex (a ground row has no
         # such tail at all), so a regression that mangles only those columns would otherwise
@@ -1095,6 +1107,11 @@ def parse_surfmap(out):
             "datum_mean4": None if datum4 is None else float(datum4),
             "anchor": None if anchor is None else float(anchor),
             "note": note,
+            # #839: 'hit' = this bake painted from the heights an earlier bake sampled for this
+            # body at this size; 'miss' = it sampled them itself; '-' = the picture needs no
+            # heights at all. A string, not None-or-bool: the three states are different news and
+            # a bare False would merge "no heights needed" into "heights re-sampled".
+            "elev_cache": elev_cache,
             # #769: the wind map. "wind" is what the sweep painted over the ground (min, the
             # cos-lat weighted mean, max); "wind_ends" is what the body's file states at its
             # rows; "wind_ramp" is the span the PICTURE runs over, priced from the ground's own

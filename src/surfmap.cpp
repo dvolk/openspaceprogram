@@ -113,6 +113,27 @@ void surfmapCompute(Game &g) {
     }
     const bool log = g.args.surfmap_log;
     const std::string body_name = body->name;
+    /* Does this picture need the ground's HEIGHT at all? Decided here, on the main thread,
+       because #839's cache lookup is main-thread work too and both must agree about it: a wind
+       map needs the heights the arrows stand on, and a temperature map needs them only where the
+       air profile actually lapses (tl.relief). The worker takes the answer, never the question. */
+    const bool want_elev = (want_wind && wl.ok) || (want_temp && tl.ok && tl.relief);
+    /* #839: the heights the previous bake sampled, if they were for this body at this size.
+       The ground does not move between bakes and terrainHeight() is the expensive half of the
+       whole sweep (17x everything else together: AltoFrio 118 ms against Meridian's 6.4 ms at
+       512), so re-sampling it for a temperature picture of the hill the ground picture already
+       measured -- or for the same hill under a different knob -- is the 17x, not the law.
+       A shared_ptr copy out, an immutable grid in, and the slot is only ever read or written
+       here and in the continuation: no lock, and a job still running holds its own grid while
+       the slot moves on. Keyed by name (see SurfmapState's #839 block for why not a pointer). */
+    std::shared_ptr<const std::vector<float> > elev_hit;
+    double elev_hit_lo = 0.0, elev_hit_hi = 0.0;
+    if(want_elev && g.surfmap.elev_grid && g.surfmap.elev_w == w && g.surfmap.elev_h == h
+       && g.surfmap.elev_name == body_name) {
+        elev_hit = g.surfmap.elev_grid;
+        elev_hit_lo = g.surfmap.elev_lo;
+        elev_hit_hi = g.surfmap.elev_hi;
+    }
     const double t_now = g.time;
     const int epoch = g.cache_epoch;      // drop the map if the world changes
 
@@ -122,7 +143,8 @@ void surfmapCompute(Game &g) {
     // the non-copyable Game).
     g.jobs.post("Surface map", [&g, tp, sea_r, sun_dir, w, h, baked, has_sun, ocean,
                                 type, level = g.surfmap.level, want_temp, tl,
-                                want_wind, wl, want_field,
+                                want_wind, wl, want_field, want_elev,
+                                elev_hit, elev_hit_lo, elev_hit_hi,
                                 log, n_sites, body_name, t_now, epoch]()
                 -> std::function<void()> {
         // Worker: build the pixel buffers (pure). shared_ptr because the
@@ -193,8 +215,13 @@ void surfmapCompute(Game &g) {
            Storing them costs 4 bytes a pixel and buys the sweep back the work: terrainHeight()
            -- the expensive half, it is noise -- then runs exactly once per pixel, and the arrow
            pass below reads this grid instead of re-sampling. windAt() is a scan over a handful
-           of authored rows, so running it twice is nothing next to that. */
-        std::vector<float> elevs;
+           of authored rows, so running it twice is nothing next to that.
+           Since #839 the grid may not be THIS bake's at all: `elev_hit` is the previous bake's
+           sampling of the same body at the same size, handed over as const. `elev_mine` is what
+           this bake sampled and is the only thing the continuation publishes, so a hit never
+           republishes and a miss publishes exactly once. */
+        std::shared_ptr<std::vector<float> > elev_mine;
+        const std::vector<float> *elevs = nullptr;   // whichever grid this bake reads
         double rlo = 0.0, rhi = 0.0;
         /* The temperature ramp's ends, and what the relief term actually cost this picture.
            Seeded with the LAW's ends, not 0: a body with no profile gradient never samples a height
@@ -216,20 +243,31 @@ void surfmapCompute(Game &g) {
         /* #793 added a second reason to want this grid: a relief-aware ground. The two uses share
            one pass because terrainHeight() -- the noise -- is the expensive half of the whole
            sweep, and a pixel that needs its height twice pays for it once. */
-        const bool want_elev = (want_wind && wl.ok) || (want_temp && tl.ok && tl.relief);
         double elo = 0.0, ehi = 0.0;
         if(want_elev) {
-            elevs.resize(npx);
-            elo = 1e300; ehi = -1e300;
-            for(int j = 0; j < h; j++) {
-                for(int i = 0; i < w; i++) {
-                    const double e = (double)terrainHeight(
-                        (glm::vec3)equirectDirAt(trig, i, j), tp) - sea_r;
-                    elevs[(size_t)j * w + i] = (float)e;
-                    if(e < elo) { elo = e; }
-                    if(e > ehi) { ehi = e; }
+            if(elev_hit) {
+                /* #839: some earlier bake sampled this body at this size. The floor and ceiling
+                   travel WITH the grid, because the palette ends are priced from them just below
+                   -- a hit that forgot them would paint the same ground on a different scale. */
+                elevs = elev_hit.get();
+                elo = elev_hit_lo; ehi = elev_hit_hi;
+            } else {
+                auto grid = std::make_shared<std::vector<float> >();
+                grid->resize(npx);
+                elo = 1e300; ehi = -1e300;
+                for(int j = 0; j < h; j++) {
+                    for(int i = 0; i < w; i++) {
+                        const double e = (double)terrainHeight(
+                            (glm::vec3)equirectDirAt(trig, i, j), tp) - sea_r;
+                        (*grid)[(size_t)j * w + i] = (float)e;
+                        if(e < elo) { elo = e; }
+                        if(e > ehi) { ehi = e; }
+                    }
                 }
+                elev_mine = grid;
+                elevs = grid.get();
             }
+            assert(elevs != nullptr && (size_t)elevs->size() == npx);
             if(want_wind && wl.ok) { windRampEnds(wl.rows, elo, ehi, rlo, rhi); }
             if(want_temp && tl.ok) {
                 /* Computed for every relief-bearing body, lagged or not: it is the law's span
@@ -292,7 +330,7 @@ void surfmapCompute(Game &g) {
                     const double y = row.at(trig.lon[(size_t)i] - sun_lon);
                     if(y < ylo) { ylo = y; }
                     if(y > yhi) { yhi = y; }
-                    const double off = tl.relief_K(want_elev ? (double)elevs[idx] : 0.0);
+                    const double off = tl.relief_K(want_elev ? (double)(*elevs)[idx] : 0.0);
                     const float T = (float)groundTemperatureAt(tl.anchor_K, tl.knob, y, off);
                     tlag[idx] = T;
                     /* Extremes taken from the STORED value, so the ramp's ends are bit-for-bit
@@ -327,7 +365,7 @@ void surfmapCompute(Game &g) {
                 glm::vec3 c;                 // the base pixel's colour
                 if(want_temp && tl.ok) {                    /* The SAME cosine the terminator overlay uses, through the SAME law the
                        dossier and the solar log use -- nothing is invented at the pixel. */
-                    const double elev = want_elev ? (double)elevs[(size_t)j * w + i] : 0.0;
+                    const double elev = want_elev ? (double)(*elevs)[(size_t)j * w + i] : 0.0;
                     const double off = tl.relief_K(elev);   // 0.0 whenever relief is off
                     /* A lagged body reads the kelvin the pass above solved; an unlagged one
                        reads solar.h's cosine of the direction, exactly as it always has. Both go
@@ -378,7 +416,7 @@ void surfmapCompute(Game &g) {
                        of the ridge above it. The arrows go on afterwards; a scalar alone is not
                        a vector field (#769). And since #767 the pixel's own place matters too:
                        a row can answer for one band of the body and not this pixel. */
-                    const double elev = (double)elevs[(size_t)j * w + i];
+                    const double elev = (double)(*elevs)[(size_t)j * w + i];
                     double lon_deg = 0.0, lat_deg = 0.0;
                     equirectLonLatDeg(d, lon_deg, lat_deg);
                     const glm::dvec3 wv = windAt(wl.rows, elev, lat_deg, lon_deg);
@@ -505,7 +543,7 @@ void surfmapCompute(Game &g) {
             for(int j : use_j) {
                 for(int i = stride / 2; i < w; i += stride) {
                     const glm::dvec3 d = equirectDirAt(trig, i, j);
-                    const double elev = (double)elevs[(size_t)j * w + i];   // sampled once, above
+                    const double elev = (double)(*elevs)[(size_t)j * w + i];   // sampled once, above
                     double lon_deg = 0.0, lat_deg = 0.0;
                     equirectLonLatDeg(d, lon_deg, lat_deg);
                     const glm::dvec3 wv = windAt(wl.rows, elev, lat_deg, lon_deg);
@@ -665,6 +703,13 @@ void surfmapCompute(Game &g) {
                     printf(" wind=- note=\"%s\"", wl.legend.c_str());
                 }
             }
+            /* #839: whether this bake SAMPLED the ground's heights or reused the previous bake's
+               grid for the same body at the same size. It goes here, after every tail and before
+               sweep_ms=, for the same reason sweep_ms= does: the harness reads the tails by
+               position, so a column in the middle hides them. `-` when the picture needed no
+               heights at all (a ground or cloud map, or a temperature map on an air whose profile
+               does not lapse), which is an absent question rather than a miss. */
+            printf(" elev_cache=%s", want_elev ? (elev_hit ? "hit" : "miss") : "-");
             printf(" sweep_ms=%.1f\n", sweep_ms);
             fflush(stdout);
         }
@@ -678,6 +723,7 @@ void surfmapCompute(Game &g) {
         return [&g, ppx, pshpx, w, h, body_name, type, level, want_temp, tl, want_wind, wl,
                 sun_dir, has_sun, t_now,
                 have_t = (want_temp && tl.ok),
+                elev_mine, elo_pub = elo, ehi_pub = ehi,
                 epoch]() {
             // Epoch bumped after we posted: this map is for the old world.
             // Drop it -- quit-to-title, a new game and a same-system load never
@@ -727,6 +773,21 @@ void surfmapCompute(Game &g) {
             g.surfmap.wind_ok = want_wind && wl.ok;
             g.surfmap.wind_rows = (want_wind && wl.ok) ? wl.rows : std::vector<WindLevel>();
             g.surfmap.wind_block = want_wind ? wl.block : std::string();
+            /* #839: the heights this bake sampled join the slot, so the next bake of this body at
+               this size paints from them instead of asking the noise 2M more times. Only a bake
+               that SAMPLED publishes: a hit holds the grid that is already there, and republishing
+               it would be a copy of 33 MB to change nothing. elo/ehi travel with it because the
+               palette ends are priced from them, not recomputed from the grid.
+               Publish AFTER the epoch check above: a map for a world that no longer exists must
+               not leave its hills in the slot for the next one to paint. */
+            if(elev_mine) {
+                g.surfmap.elev_grid = elev_mine;
+                g.surfmap.elev_w = w;
+                g.surfmap.elev_h = h;
+                g.surfmap.elev_name = body_name;
+                g.surfmap.elev_lo = elo_pub;
+                g.surfmap.elev_hi = ehi_pub;
+            }
             g.surfmap.valid = true;
             g.surfmap.rev++;
             if(g.surfmap.in_flight > 0) { g.surfmap.in_flight--; }
