@@ -271,7 +271,12 @@ inline unsigned gateIntervalMs(double seconds) {
    The ceiling is the RESOLUTION law rather than the memory one: 4096 columns is
    already 0.088 deg each, resampling a sphere this picture cannot resolve finer,
    and 8192 spends half a minute of the map thread and ~1 GB of buffers to buy
-   nothing new to see. Refuse at the gate like the interval knobs (#673) rather
+   nothing new to see. The table is the RELIEF case, and that is deliberate: the
+   same bake on the flat control (Meridian, no relief) is 6.4 / 98.9 ms at 512 /
+   2048, so a world with mountains costs ~17x what a flat one does per pixel --
+   the elevation grid the lapse rate needs is the expensive half, not the kelvin
+   solve (#839). Price a ceiling against the body that hurts.
+   Refuse at the gate like the interval knobs (#673) rather
    than looking like a hang; surfmap.cpp's own max(16, n) / max(8, h) stays as the
    invariant for the live map, which cannot be asked for a size this way. */
 inline constexpr int kSurfmapNCeiling = 4096;
