@@ -35,6 +35,22 @@
 # Why the Moon needs --ui-scroll: the Body popup shows nine rows and the Moon is the eleventh
 # body in the file. NOTCHES is negative to go down, and two is enough -- four scrolls past it
 # and the click reports a miss, which is the failure mode worth knowing about here.
+#
+# #826: the cursor legs used to read the FIRST cursor row of a single dump taken at 3.2 s, and
+# that went flaky the moment a second game was running beside this one -- 2 of 3 runs with
+# --jobs 3, never alone. The dump was the problem, not the mouse. The window is open by then and
+# its toolbar is on screen, but the opening bake's job has not been collected yet, so the window
+# takes its "Mapping the surface ..." path: the log for a failing run shows Body/Refresh/Map/Level
+# with Refresh, Map and Level marked disabled and NO ##smnav row, and the Earth [surfmap] line
+# printing AFTER the dump. A window with no published picture draws no cursor row at all, so the
+# row list held one entry -- the 7.0 s placeholder -- and the legs indexed a dash. Two fixes, both
+# about WHERE the read happens: the dump moved to 4.2 s and a second dump follows at 4.8 s, and
+# the legs ask for the live rows rather than the first row, so a bake that lands a beat late
+# shifts WHICH dump answers, not whether one does. The mouse is sent twice for the same reason
+# (ImGui keeps its position, so this is insurance against a hover that lands before the window
+# exists rather than the fix itself). What is still pinned exactly as before: at least one cursor
+# row must carry a real wind reading, every such reading must sit inside the span the sweep
+# painted, and the LAST cursor row -- taken with the Body popup over the map -- must be dashes.
 NAME the-surface-map-draws-the-wind
 CLAIM --surfmap-map wind paints the air's speed and direction over the ground: Earth prints the speeds it actually drew between the ends its file states, the Moon refuses for want of air, Pluto refuses because its authored air has no wind rows, and the cursor reads the number under it.
 KIND invariant
@@ -43,14 +59,16 @@ ARGS --startship v,res/ships/skiff_trim.json,Earth,pad
 ARGS --surfmap-log --surfmap-n 128 --surfmap-map wind --surfmap-body Earth
 ARGS --ui-click 2000,"Windows/Surface Map"
 ARGS --sim-mouse 2600,0,700,420,0
-ARGS --ui-list 3200
-ARGS --ui-click 4000,"Surface Map/Body"
-ARGS --ui-scroll 4400,"##Combo_00",-2
-ARGS --ui-click 5000,"##Combo_00/Moon"
-ARGS --ui-click 6200,"Surface Map/Body"
-ARGS --ui-scroll 6600,"##Combo_00",1
-ARGS --ui-list 7000
-ARGS --ui-click 7400,"##Combo_00/Pluto"
+ARGS --sim-mouse 3600,0,700,420,0
+ARGS --ui-list 4200
+ARGS --ui-list 4800
+ARGS --ui-click 5400,"Surface Map/Body"
+ARGS --ui-scroll 5800,"##Combo_00",-2
+ARGS --ui-click 6400,"##Combo_00/Moon"
+ARGS --ui-click 7400,"Surface Map/Body"
+ARGS --ui-scroll 7800,"##Combo_00",1
+ARGS --ui-list 8200
+ARGS --ui-click 8600,"##Combo_00/Pluto"
 FORBID FAILED
 FORBID error:
 # Three bodies, one run, every row naming its own picture -- a stale buffer under a new label
@@ -93,8 +111,14 @@ CHECK (lambda p, m: p["wind"] is None and "no wind" in p["wind_note"] and p["win
 # label may also carry a trailing ` site: ...`, so the wind segment is searched for rather than
 # anchored to the end of the line: a launch marker drifting under the cursor must not break what
 # this pins.
-CHECK (lambda c: " wind " in c["label"] and re.search(r"wind [0-9.]+ m/s (east|north-east|north|north-west|west|south-west|south|south-east|calm)", c["label"]) is not None)([r for r in uilist if r["window"] == "Surface Map" and r["label"].startswith("cursor:")][0])
-CHECK (lambda c, w: w[0] < float(re.search(r"wind ([-+]?[0-9.]+) m/s", c["label"]).group(1)) < w[2])([r for r in uilist if r["window"] == "Surface Map" and r["label"].startswith("cursor:")][0], [r for r in surfmap if r["body"] == "Earth"][-1]["wind"])
+# (#826: "the cursor row" is not one row across two dumps, and the first dump can arrive before
+# the opening bake lands -- so these scan the rows that carry a wind reading and require at least
+# one. That asks the same question with a looser finger on the clock: a run where the map never
+# draws a readable number still has no live row and still fails.)
+CHECK (lambda live: len(live) >= 1 and re.search(r"wind [0-9.]+ m/s (east|north-east|north|north-west|west|south-west|south|south-east|calm)", live[0]["label"]) is not None)([r for r in uilist if r["window"] == "Surface Map" and r["label"].startswith("cursor: lat") and " wind " in r["label"]])
+CHECK (lambda live, w: len(live) >= 1 and all(w[0] < float(re.search(r"wind ([-+]?[0-9.]+) m/s", r["label"]).group(1)) < w[2] for r in live))([r for r in uilist if r["window"] == "Surface Map" and r["label"].startswith("cursor: lat") and " wind " in r["label"]], [r for r in surfmap if r["body"] == "Earth"][-1]["wind"])
 # And the cursor leaves the map when the mouse does (here: over the Body popup). Dashed, not a
-# stale reading of the last map pixel.
-CHECK [r for r in uilist if r["window"] == "Surface Map" and r["label"].startswith("cursor:")][1]["label"] == "cursor: lat --  lon --  elev --"
+# stale reading of the last map pixel. LAST rather than index 1: with two pre-popup dumps the
+# placeholder is whatever comes after them, and it is the last thing the window says about a
+# cursor it no longer has.
+CHECK (lambda cur: cur[-1]["label"] == "cursor: lat --  lon --  elev --")([r for r in uilist if r["window"] == "Surface Map" and r["label"].startswith("cursor:")])
