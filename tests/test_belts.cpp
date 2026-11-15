@@ -288,12 +288,14 @@ int main() {
         expect_reject(j, "string radius rejected", "numeric \"inner\"");
     }
     {   // the r1/r2 spelling: a plausible typo, and it must not load as a
-        // zero-radius band
+        // zero-radius band. #771 moved which message wins: the key whitelist runs
+        // before the "needs numeric inner" check, so an author reads which key is
+        // wrong rather than which one is missing.
         nlohmann::json j = read_json("res/systems/old_system.json");
         j["belts"] = nlohmann::json::array(
             { { { "name", "asteroid belt" }, { "r1", 2.856e10 },
                 { "r2", 4.488e10 } } });
-        expect_reject(j, "r1-r2 spelling rejected", "numeric \"inner\"");
+        expect_reject(j, "r1-r2 spelling rejected", "is not a key this loader reads");
     }
     {
         nlohmann::json j = read_json("res/systems/old_system.json");

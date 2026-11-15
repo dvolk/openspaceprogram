@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
+#include <cstring>
 #include <limits>
 #include <numbers>
 #include <cstdio>
@@ -190,6 +191,166 @@ static void expectArrayBlock(const nlohmann::json &v, const std::string &body,
     refuseBlockShape(v, body, key, "array");
 }
 
+/* The KEY whitelist #760 decision 1 asked for, in the shape the wind rows already use
+   (#688). A key this loader never reads is a key that does nothing, and the likeliest
+   way to write one is a typo: `"surace"` costs a world its sea, air, palette and clouds,
+   `"rotaiting"` gives it a day that never ends, `"inertia"` parks it on its parent, and
+   every one of those loads green. Absent is an author's choice; PRESENT-and-unread is a
+   typo, so it refuses, naming the body, the key path and the keys that ARE read -- and
+   when the block is written one level off (`"atmosphere"` beside `surface` instead of
+   under it) the same table says which level does read it. An author's COMMENT key starts
+   with `_` (the shipped files carry `_comment`, `_air_comment`, `_lag_comment`,
+   `_air_follow_comment`, `_relief_comment`) and stays free at every level.
+   One table rather than a list per call site, so "not legal HERE" can name the level
+   where it IS legal without a second copy of every key. Adding a key means adding it
+   here and reading it below; both are needed, and that is the point. */
+static const char *const kRootKeys[]
+    = { "bodies", "home", "soi_law", "skybox", "belts", "world_buildings",
+        "world_buildings_files", "epoch_year", "epoch_utc", "note" };
+static const char *const kBeltKeys[] = { "name", "inner", "outer" };
+static const char *const kBodyKeys[]
+    = { "name", "type", "radius", "mass", "science_mult", "transfer_dv", "seed",
+        "has_sea", "orbits", "surface", "inertial", "rotating" };
+static const char *const kSurfaceKeys[]
+    = { "amplitude", "octaves", "persistence", "frequency", "detail_amplitude",
+        "heightmap", "palette", "sea_level", "sea_color", "ocean", "bands",
+        "band_count", "temperature", "temperature_src", "albedo", "albedo_src",
+        "even_share", "even_share_src", "lag_tau", "lag_tau_src", "atmosphere",
+        "clouds", "rings" };
+static const char *const kAtmoKeys[]
+    = { "color", "thickness", "power", "intensity", "sea_level_pressure",
+        "scale_height", "height", "air_follow", "composition", "layers", "wind",
+        "wind_gen" };
+static const char *const kGasKeys[] = { "gas", "fraction" };
+static const char *const kLayerKeys[] = { "alt", "lapse", "T" };
+static const char *const kCloudKeys[] = { "color", "height", "coverage", "freq",
+                                          "drift" };
+static const char *const kRingKeys[] = { "name", "inner", "outer", "thickness",
+                                         "albedo", "opacity" };
+static const char *const kInertialKeys[]
+    = { "soi", "pos", "orb_incl", "lon_asc_node", "arg_peri", "true_anomaly0",
+        "ecc", "orb_ang_speed", "incl_ref" };
+static const char *const kRotatingKeys[] = { "rot_ang_speed", "axial_tilt",
+                                             "tilt_azimuth", "spin_phase0" };
+
+struct KeyLevel {
+    const char *path;                 // how the message names this level
+    const char *const *keys;
+    size_t n;
+};
+static const KeyLevel kRootLevel{ "<file>", kRootKeys, std::size(kRootKeys) };
+static const KeyLevel kBeltLevel{ "belts entry", kBeltKeys, std::size(kBeltKeys) };
+static const KeyLevel kBodyLevel{ "body", kBodyKeys, std::size(kBodyKeys) };
+static const KeyLevel kSurfaceLevel{ "surface", kSurfaceKeys,
+                                     std::size(kSurfaceKeys) };
+static const KeyLevel kAtmoLevel{ "surface.atmosphere", kAtmoKeys,
+                                  std::size(kAtmoKeys) };
+static const KeyLevel kGasLevel{ "surface.atmosphere.composition entry", kGasKeys,
+                                 std::size(kGasKeys) };
+static const KeyLevel kLayerLevel{ "surface.atmosphere.layers entry", kLayerKeys,
+                                   std::size(kLayerKeys) };
+static const KeyLevel kCloudLevel{ "surface.clouds", kCloudKeys,
+                                   std::size(kCloudKeys) };
+static const KeyLevel kRingLevel{ "surface.rings entry", kRingKeys,
+                                  std::size(kRingKeys) };
+static const KeyLevel kInertialLevel{ "inertial", kInertialKeys,
+                                      std::size(kInertialKeys) };
+static const KeyLevel kRotatingLevel{ "rotating", kRotatingKeys,
+                                      std::size(kRotatingKeys) };
+static const KeyLevel *const kAllLevels[] = {
+    &kRootLevel, &kBeltLevel, &kBodyLevel, &kSurfaceLevel, &kAtmoLevel,
+    &kGasLevel, &kLayerLevel, &kCloudLevel, &kRingLevel, &kInertialLevel,
+    &kRotatingLevel,
+};
+
+/* Levenshtein, unrolled over a fixed row: these are short author-written words and the
+   cap keeps the helper allocation-free. Only "within two keystrokes" is worth quoting. */
+static size_t keyDistance(const std::string &a, const std::string &b) {
+    constexpr size_t kCap = 40;
+    if(a.size() > kCap || b.size() > kCap) { return kCap + 1; }
+    size_t prev[kCap + 1], cur[kCap + 1];
+    for(size_t j = 0; j <= b.size(); j++) { prev[j] = j; }
+    for(size_t i = 1; i <= a.size(); i++) {
+        cur[0] = i;
+        for(size_t j = 1; j <= b.size(); j++) {
+            const size_t sub = prev[j - 1] + (a[i - 1] == b[j - 1] ? 0 : 1);
+            cur[j] = std::min(std::min(prev[j] + 1, cur[j - 1] + 1), sub);
+        }
+        for(size_t j = 0; j <= b.size(); j++) { prev[j] = cur[j]; }
+    }
+    return prev[b.size()];
+}
+
+static std::string keyList(const KeyLevel &lvl) {
+    std::string out;
+    for(size_t i = 0; i < lvl.n; i++) {
+        if(i) { out += ", "; }
+        out += lvl.keys[i];
+    }
+    return out;
+}
+
+static void expectKnownKeys(const nlohmann::json &o, const KeyLevel &lvl,
+                            const std::string &who) {
+    for(const auto &kv : o.items()) {
+        const std::string &k = kv.key();
+        if(!k.empty() && k[0] == '_') { continue; }
+        bool known = false;
+        for(size_t i = 0; i < lvl.n; i++) {
+            if(k == lvl.keys[i]) { known = true; break; }
+        }
+        if(known) { continue; }
+        /* A key that is legal SOMEWHERE else is a misplaced block, not a misspelling, and
+           "(known: ...)" alone would make an author hunt the nesting. Where several levels
+           read a key, quote the DEEPEST one: "clouds" is legal at both surface and
+           surface.clouds, and the second is the sentence an author of a deck needs. */
+        std::string elsewhere;
+        for(const KeyLevel *other : kAllLevels) {
+            if(other == &lvl) { continue; }
+            for(size_t i = 0; i < other->n; i++) {
+                if(k == other->keys[i] && elsewhere.size() < std::strlen(other->path)) {
+                    elsewhere = other->path;
+                    break;
+                }
+            }
+        }
+        if(!elsewhere.empty()) {
+            throw std::runtime_error("system: '" + who + "': \"" + k + "\" belongs under "
+                                     + elsewhere + ", not " + lvl.path + " (#771)");
+        }
+        std::string guess;
+        size_t best = 3;
+        for(size_t i = 0; i < lvl.n; i++) {
+            const size_t d = keyDistance(k, lvl.keys[i]);
+            if(d < best) { best = d; guess = lvl.keys[i]; }
+        }
+        throw std::runtime_error("system: '" + who + "': \"" + k + "\" under " + lvl.path
+                                 + " is not a key this loader reads (known: "
+                                 + keyList(lvl) + ")"
+                                 + (guess.empty() ? std::string()
+                                                  : " -- did you mean \"" + guess + "\"?")
+                                 + " (#771)");
+    }
+}
+
+/* A BLOCK with no rows at all, for the two blocks that SET THEIR OWN `enabled` flag
+   before reading anything. #762 made a wrong-TYPED block refuse; `{}` passes that check
+   and still changes the world: `"atmosphere": {}` gives a sky shell with no air behind it
+   (#726's rim-without-air shape) and `"clouds": {}` a deck painted from defaults, so for
+   these two the file's `{}` is NOT the author's "no" and the message has to say which of
+   the two was meant. `surface`, `inertial` and `rotating` are deliberately NOT refused:
+   with no rows they land on exactly the values an absent block lands on, and absent is an
+   author's choice by the rule above -- so `{}` there is untidy rather than a lie. */
+static void expectBlockRows(const nlohmann::json &o, const std::string &who,
+                            const char *path, const char *rows) {
+    if(!o.empty()) { return; }
+    throw std::runtime_error("system: '" + who + "': \"" + path
+                             + "\" is an empty block -- it configures nothing, and"
+                               " deleting the key is not the same as writing it. Delete"
+                               " the key to leave the block out, or author "
+                             + rows + " (#771)");
+}
+
 /* A numeric LEAF inside one of those blocks. Absent stays the default; present-but-not-a-
    number used to die inside nlohmann with "type must be number, but is string", which
    names no body and no key -- the #515 complaint. The clouds and rings lambdas below
@@ -293,6 +454,7 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
        || doc["bodies"].empty()) {
         throw std::runtime_error(std::string("system: no bodies in ") + path);
     }
+    expectKnownKeys(doc, kRootLevel, path);
     const nlohmann::json &bodies = doc["bodies"];
     const std::string home_name = doc.value("home", std::string(""));
 
@@ -357,6 +519,7 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
             }
             BeltParams bp;
             bp.name = bv["name"].get<std::string>();
+            expectKnownKeys(bv, kBeltLevel, bp.name);
             if(!bv.contains("inner") || !bv["inner"].is_number()
                || !bv.contains("outer") || !bv["outer"].is_number()) {
                 throw std::runtime_error("system: belt '" + bp.name
@@ -550,8 +713,9 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
            `n *= pow(n / ref_height, t.surface.power)`, so there is nothing to re-author.
            Refusing rather than ignoring is the same policy as
            atmosphere.sea_level_density below (#739): a retired key is worse than an
-           unknown one, because a reader trusts it. #760 decision 1 is whether every body
-           key gets a whitelist instead of these one-off refusals. */
+           unknown one, because a reader trusts it. The unknown-key whitelist (#771) nets
+           every level now, so a retired key is listed by hand only to buy this dated
+           message. */
         if(bv.contains("power_scaler")) {
             throw std::runtime_error("system: '" + body->name + "': \"power_scaler\""
                                      " is not a body key any more -- it scaled the"
@@ -559,6 +723,9 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                                      " rewritten. Delete the row; surface.amplitude and"
                                      " surface.octaves are what shape terrain now (#723)");
         }
+        /* Every OTHER body key: the whitelist (#771), run after the two retired rows above
+           so those keep their longer, dated messages. */
+        expectKnownKeys(bv, kBodyLevel, body->name);
 
         if(bv.contains("surface")) {
             expectObjectBlock(bv["surface"], body->name, "surface");
@@ -576,6 +743,7 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                                          " surface.amplitude / surface.octaves are what"
                                          " shape terrain (#723)");
             }
+            expectKnownKeys(sv, kSurfaceLevel, body->name);
             s.amplitude   = sv.value("amplitude", s.amplitude);
             /* A COUNT with a hard ceiling, so it is checked rather than defaulted: the
                height model resolves ~13 octaves on the deepest mesh cell it can build, and
@@ -925,6 +1093,11 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
             if(sv.contains("atmosphere")) {
                 expectObjectBlock(sv["atmosphere"], body->name, "surface.atmosphere");
                 const nlohmann::json &av = sv["atmosphere"];
+                /* `{}` is not the author's "no" here: it sets `enabled` and leaves a rim
+                   with no air behind it -- the shape #726 exists to keep apart. */
+                expectBlockRows(av, body->name, "surface.atmosphere",
+                                "a profile -- sea_level_pressure with scale_height, or a"
+                                " layers table");
                 s.atmosphere.enabled = true;
                 if(av.contains("color") && av["color"].is_array()
                    && av["color"].size() >= 3) {
@@ -1029,6 +1202,7 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                                 " entry " + std::to_string(gi) + " must be an object"
                                 " of { gas, fraction }");
                         }
+                        expectKnownKeys(gm, kGasLevel, body->name);
                         /* Checked rather than read with .value(): a mistyped entry
                            ({"gas": 5}, {"fraction": "0.5"}) would otherwise throw
                            nlohmann's type_error out of load_system with a message that
@@ -1105,6 +1279,7 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                                 "system: " + body->name + ": atmosphere.layers"
                                 " entries must be objects");
                         }
+                        expectKnownKeys(lv, kLayerLevel, body->name);
                         AtmoLayer L;
                         L.base_alt = lv.value("alt", 0.0);
                         L.base_T = lv.value("T", 0.0);
@@ -1395,9 +1570,9 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                 }
                 /* A mistyped WIND key is the quiet kind of typo: "windgen" or "wind_gene"
                    loads as a body with no generator, flies with the column unbanded, and
-                   says nothing. The atmosphere block as a whole has no unknown-key net --
-                   its keys are many and several are optional -- so police just the wind
-                   family, which is where the silence is expensive. */
+                   says nothing. The atmosphere block now has a whole-block unknown-key net
+                   (#771, just below); this one stays because it names the wind FAMILY rather
+                   than every key, which is the sentence an author of a wind row wants. */
                 for(const auto &kv : av.items()) {
                     const std::string k = kv.key();
                     if(k.rfind("wind", 0) == 0 && k != "wind" && k != "wind_gen") {
@@ -1407,6 +1582,10 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                               " rows) and \"wind_gen\" (the generator over them)");
                     }
                 }
+                /* The rest of the block's keys. Run here, after the retired rows above
+                   (sea_level_density #739, molar_mass/gamma #630, heights #690) and after
+                   the wind family, so each keeps its own dated message. */
+                expectKnownKeys(av, kAtmoLevel, body->name);
                 /* THE ANCHOR (#739). p0 is authored; rho0 -- the number airDensity,
                    airPressure's equation of state and the dossier all read -- is what
                    it implies through the gas and this sphere's g.
@@ -1580,6 +1759,11 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
             if(sv.contains("clouds")) {
                 expectObjectBlock(sv["clouds"], body->name, "surface.clouds");
                 const nlohmann::json &cv = sv["clouds"];
+                /* `{}` sets `enabled` and paints a deck the file never asked for. */
+                expectBlockRows(cv, body->name, "surface.clouds",
+                                "at least coverage (and height, if it is not at the"
+                                " default)");
+                expectKnownKeys(cv, kCloudLevel, body->name);
                 s.clouds.enabled = true;
                 if(cv.contains("color") && cv["color"].is_array()
                    && cv["color"].size() >= 3) {
@@ -1630,6 +1814,7 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                         throw std::runtime_error("system: '" + body->name + "'" + at
                                                  + " must be an object");
                     }
+                    expectKnownKeys(rv, kRingLevel, body->name);
                     RingParams rp;
                     if(rv.contains("name") && !rv["name"].is_string()) {
                         throw std::runtime_error("system: '" + body->name + "'" + at
@@ -1737,6 +1922,7 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
         if(bv.contains("inertial")) {
             expectObjectBlock(bv["inertial"], body->name, "inertial");
             const nlohmann::json &in = bv["inertial"];
+            expectKnownKeys(in, kInertialLevel, body->name);
             f->soi = numLeaf(in, "soi", body->name, "inertial", 1e6);
             /* A pos that is present but not exactly 3 numbers used to be SKIPPED: the
                body sat at its parent's origin and nothing said so, which is the same
@@ -1825,6 +2011,7 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
         if(bv.contains("rotating")) {
             expectObjectBlock(bv["rotating"], body->name, "rotating");
             const nlohmann::json &rot = bv["rotating"];
+            expectKnownKeys(rot, kRotatingLevel, body->name);
             rf->rot_ang_speed = numLeaf(rot, "rot_ang_speed", body->name,
                                   "rotating", 0.0);
             // Same policy as orb_ang_speed: the SPIN sense lives in axial_tilt

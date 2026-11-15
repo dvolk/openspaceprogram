@@ -1707,14 +1707,88 @@ static void check_body_claims() {
        surface.atmosphere (the rim's Fresnel falloff), so the positive control below
        pins it. The loader refuses six retired keys by hand -- `g` (#708),
        atmosphere.sea_level_density (#739), molar_mass/gamma (#630), atmosphere.heights
-       (#690) and these two (#723); #760 decision 1 is whether every body key gets a
-       whitelist instead. */
+       (#690) and these two (#723); everything else at every level falls to the key
+       whitelist below (#771), so a retired key is hand-listed only to buy its own
+       dated message. */
     expect_refuses("power_scaler_retired", bpatched("Mun", [](nlohmann::json &bv) {
                        bv["power_scaler"] = 3;
                    }), "power_scaler\" is not a body key any more");
     expect_refuses("surface_power_retired", bpatched("Mun", [](nlohmann::json &bv) {
                        bv["surface"]["power"] = 3;
                    }), "\"power\" is not a surface key any more");
+
+    /* THE KEY WHITELIST (#771). #762 refuses a block of the wrong SHAPE; this refuses a
+       KEY the loader never reads, which is the same silent deletion wearing a typo
+       instead of a wrong type: `"surace"` costs a world its sea, air, palette and deck,
+       `"rotaiting"` gives it a day that never ends, `"inertia"` parks a moon on its
+       parent, and all three load green without this. Each message names the body, the
+       key, and the keys that ARE read; one or two keystrokes from a real key gets the
+       guess, and a block written at the wrong nesting is told where it belongs. */
+    expect_refuses("body_surace", bpatched("Kerbin", [](nlohmann::json &bv) {
+                       bv["surace"] = bv["surface"];
+                       bv.erase("surface");
+                   }), "\"surace\" under body is not a key this loader reads");
+    expect_refuses("body_surace_guess", bpatched("Kerbin", [](nlohmann::json &bv) {
+                       bv["surace"] = bv["surface"];
+                       bv.erase("surface");
+                   }), "did you mean \"surface\"?");
+    expect_refuses("surface_atmoshpere",
+                   bpatched("Kerbin", [](nlohmann::json &bv) {
+                       bv["surface"]["atmoshpere"] = bv["surface"]["atmosphere"];
+                       bv["surface"].erase("atmosphere");
+                   }), "\"atmoshpere\" under surface is not a key");
+    expect_refuses("rotating_typo", bpatched("Kerbin", [](nlohmann::json &bv) {
+                       bv["rotaiting"] = bv["rotating"];
+                       bv.erase("rotating");
+                   }), "\"rotaiting\" under body is not a key this loader reads");
+    expect_refuses("inertial_typo", bpatched("Mun", [](nlohmann::json &bv) {
+                       bv["inertia"] = bv["inertial"];
+                       bv.erase("inertial");
+                   }), "did you mean \"inertial\"?");
+    /* One level off is a different mistake from a misspelling, so it gets its own
+       sentence: the key IS read, just not here. */
+    expect_refuses("atmosphere_at_body", bpatched("Mun", [](nlohmann::json &bv) {
+                       bv["atmosphere"] = nlohmann::json{
+                           {"sea_level_pressure", 1000.0}};
+                   }), "\"atmosphere\" belongs under surface, not body");
+    expect_refuses("clouds_in_atmosphere", bpatched("Kerbin", [](nlohmann::json &bv) {
+                       bv["surface"]["atmosphere"]["clouds"]
+                           = nlohmann::json{{"coverage", 0.5}};
+                   }), "\"clouds\" belongs under surface, not surface.atmosphere");
+    expect_refuses("rings_at_body", bpatched("Jool", [](nlohmann::json &bv) {
+                       bv["rings"] = nlohmann::json::array(
+                           { nlohmann::json{{"inner", 1.2e5}, {"outer", 1.5e5}} });
+                   }), "\"rings\" belongs under surface, not body");
+    // Inside the tables, where a row's field name is typed by hand the most.
+    expect_refuses("gas_typo", bpatched("Kerbin", [](nlohmann::json &bv) {
+                       bv["surface"]["atmosphere"]["composition"]
+                           = nlohmann::json::array({ nlohmann::json{
+                                 {"gas", "CO2"}, {"fractionn", 1.0}} });
+                   }), "\"fractionn\" under surface.atmosphere.composition entry"
+                       " is not a key this loader reads");
+    expect_refuses("layer_typo", bpatched("Kerbin", [](nlohmann::json &bv) {
+                       bv["surface"]["atmosphere"]["layers"]
+                           = nlohmann::json::array({ nlohmann::json{
+                                 {"alt", 0.0}, {"Tm", 288.0}, {"lapse", -0.006}} });
+                   }), "\"Tm\" under surface.atmosphere.layers entry is not a key");
+    /* An empty BLOCK. `{}` clears #762's shape check and still moves the world, but only
+       where the block sets its own `enabled` before reading: an atmosphere with no rows
+       is a sky shell with no air behind it (#726), a clouds block with no rows is a deck
+       painted from defaults. Those two refuse. The frame blocks and `surface` do NOT:
+       with no rows they land on exactly the values an absent block lands on, and absent
+       is the author's choice -- the legal controls below pin both halves. */
+    expect_refuses("atmosphere_empty", bpatched("Kerbin", [](nlohmann::json &bv) {
+                       bv["surface"]["atmosphere"] = nlohmann::json::object();
+                   }), "\"surface.atmosphere\" is an empty block");
+    expect_refuses("clouds_empty", bpatched("Kerbin", [](nlohmann::json &bv) {
+                       bv["surface"]["clouds"] = nlohmann::json::object();
+                   }), "\"surface.clouds\" is an empty block");
+    {
+        nlohmann::json j = base;
+        j["bodys"] = j["bodies"];
+        expect_refuses("root_typo", j.dump(),
+                       "\"bodys\" under <file> is not a key this loader reads");
+    }
 
     /* The datum every altitude in the game measures from (terragen.h
        TerrainParams::seaLevelRadius). A basin below the datum is legitimate and stays;
@@ -1898,6 +1972,8 @@ static void check_body_claims() {
         { "legal_no_rings", "Jool" },       // an absent rings array
         { "legal_no_inertial", "Mun" },     // an absent inertial block
         { "legal_no_surface", "Mun" },      // an absent surface block, the airless case
+        { "legal_comment_keys", "Kerbin" }, // an author's "_" note at two levels
+        { "legal_empty_frames", "Mun" },    // inertial/rotating with NO rows (#771)
     };
     for(const MustLoad &m : legal) {
         const std::string path = std::string("tmp/test_scenarios_body_")
@@ -1929,6 +2005,13 @@ static void check_body_claims() {
                 bv.erase("inertial");
             } else if(what == "legal_no_surface") {
                 bv.erase("surface");
+            } else if(what == "legal_comment_keys") {
+                bv["surface"]["_lag_comment"] = "solved from the night/day pair";
+                bv["surface"]["atmosphere"]["_air_follow_comment"]
+                    = "coupled to the ground, not the profile";
+            } else if(what == "legal_empty_frames") {
+                bv["inertial"] = nlohmann::json::object();
+                bv["rotating"] = nlohmann::json::object();
             } else {
                 bv["surface"]["clouds"]["coverage"] = 0.25;
                 bv["surface"]["clouds"]["freq"] = 8.5;
@@ -1996,6 +2079,23 @@ static void check_body_claims() {
             if(std::string(m.label) == "legal_no_inertial"
                && !(b->frame && b->frame->pos == glm::dvec3(0, 0, 0)
                     && b->frame->orb_ang_speed == 0.0 && b->frame->soi != 1e6)) {
+                bad++;
+            }
+            /* #771's other half: an empty inertial / rotating block must read EXACTLY
+               like an absent one, because that equivalence is why the loader does not
+               refuse it. The rail rate and the frame origin are the two rows that a
+               stub block could have set, and the spin rate is the day itself. */
+            if(std::string(m.label) == "legal_empty_frames"
+               && !(b->frame && b->frame->pos == glm::dvec3(0, 0, 0)
+                    && b->frame->orb_ang_speed == 0.0
+                    && b->rot_frame && b->rot_frame->rot_ang_speed == 0.0)) {
+                bad++;
+            }
+            /* The author-comment keys are notes, not rows: they load, and they must not
+               reach the body as anything. Kerbin's air still has its column. */
+            if(std::string(m.label) == "legal_comment_keys"
+               && !(b->surface.atmosphere.enabled
+                    && !b->surface.atmosphere.wind.empty())) {
                 bad++;
             }
             if(bad) {
