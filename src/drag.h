@@ -375,8 +375,10 @@ inline AeroFrame aeroFrame(const glm::dvec3 &v_rel,
     f.beta  = std::atan2(dr, dn);
     /* |dn, dr| is the flow's projection onto the nose-right plane, as a fraction of
        the flow itself: sin of its angle off up. Under that cone the pair (dn, dr) is
-       the flow's own noise, so beta has no answer even when v is large. */
-    const double cond = std::sin(kBetaIllCondDeg * std::numbers::pi_v<double> / 180.0);
+       the flow's own noise, so beta has no answer even when v is large. The sin is
+       folded in constants.h:kBetaIllCondSin -- this scope runs per hull per substep --
+       and test_drag.cpp pins the literal against the degree constant. */
+    const double cond = kBetaIllCondSin;
     f.betaValid = (dn * dn + dr * dr) >= (cond * v) * (cond * v);
     f.valid = true;
     return f;

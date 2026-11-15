@@ -1049,9 +1049,10 @@ void tick(Game &g) {
                    sweep there opposes a rotation whatever the sign; the sign decides
                    the OTHER half -- hull drag acting at an angle of attack restores
                    the nose only with cp behind, and diverges it with cp ahead
-                   (#454). Printed last, like Beta, so parsers hold. Dashed on the
-                   same test as AoA/Beta: 0.00 is also what a cp exactly over the COM
-                   prints, and a --drag-cd 0 pass has no lever worth quoting. */
+                   (#454). Printed last, like Beta, so parsers hold. Dashed on the same
+                   test as AoA (Beta dashes on a stricter one of its own, #787): 0.00 is
+                   also what a cp exactly over the COM prints, and a --drag-cd 0 pass has
+                   no lever worth quoting. */
                 if(g.ship->lastDragAlphaValid) {
                     printf(" CpL=%.2f m", g.ship->lastCpLever);
                 } else {
@@ -1072,7 +1073,7 @@ void tick(Game &g) {
                    the ratio would be 0/0, and quoting 0.00 there would claim a margin
                    exactly at the COM, which is a different statement. SM is the only
                    SIGNED field on this line, on purpose: its sign is the payload. Both
-                   dash together on the same test as AoA/Beta/CpL, so a winged ship in
+                   dash together on the same test as AoA/CpL, so a winged ship in
                    vacuum does not print the same numbers as a ship with no wings. */
                 if(g.ship->lastDragAlphaValid) {
                     printf(" CLa=%.2f m2/rad", g.ship->lastLiftSlope);
@@ -1184,7 +1185,7 @@ void tick(Game &g) {
                    measures). res/ships/README.md's skiff L/D of 8.6 was built off the raw
                    bills AND off the pre-#699 lift sum, so it is stale on both counts;
                    which ratio it should lead with is still #694's open call.
-                   Dashed on the same test as AoA/Beta/CpL, whenever the air is PUSHING the
+                   Dashed on the same test as AoA/CpL, whenever the air is PUSHING the
                    hull rather than holding it back (a negative denominator makes the ratio
                    meaningless, not large), and whenever the along-flow half is under a
                    thousandth of the force -- a ratio there is four digits, and that is not

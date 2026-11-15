@@ -154,8 +154,16 @@ inline constexpr double kAoAFlowFloor = 0.1;
    chart refuses the direction and answers exactly (#463), so a noisy beta there
    costs nothing but a misleading number.
    Where: drag.h::aeroFrame (AeroFrame::betaValid), the SURFACE window's Beta row and
-   [surfinfo] beta=, --drag-log's Beta=. */
+   [surfinfo] beta=, --drag-log's Beta=, and the flight log's beta= column, which
+   carries the dash as a NaN through recorder.h (fed at tick.cpp). */
 inline constexpr double kBetaIllCondDeg = 1.0;
+
+/* sin(kBetaIllCondDeg), folded once. aeroFrame runs per hull per substep and the sin
+   used to be computed there on every call, the same scope that stopped folding
+   180 / M_PI inline (vehicle.cpp). C++20 has no constexpr sin, so the number is written
+   out and tests/test_drag.cpp pins it against std::sin of the degree constant above:
+   changing one without the other reddens a test. */
+inline constexpr double kBetaIllCondSin = 0.01745240643728351;
 
 // -- science situations -------------------------------------------------------
 

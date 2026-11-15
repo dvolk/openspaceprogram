@@ -2623,8 +2623,9 @@ void drawUIReadouts(Game &g) {
                level), so the two differ by ~16 deg for the same plane flying dead on the
                air and both are right -- which is exactly why this row is a
                reference-frame diagnostic and not a flight readout. Dashed when there is
-               no air or no flow with a direction: the same kAoAFlowFloor rule as AoA and
-               Beta, because a parked hull's ~1e-4 m/s of jitter has no heading. */
+               no air or no flow with a direction: the same kAoAFlowFloor rule as AoA
+               (Beta's test is stricter still -- a flow can have a heading and no yaw,
+               #787), because a parked hull's ~1e-4 m/s of jitter has no heading. */
             if(view.air_dir_valid) {
                 uiText("Prg (air): %.2f", glm::degrees(glm::angle(facing_dir, view.air_dir)));
                 uiText("Rtg (air): %.2f", glm::degrees(glm::angle(facing_dir, -view.air_dir)));

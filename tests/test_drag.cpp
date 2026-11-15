@@ -913,6 +913,11 @@ static void test_aeroFrame() {
            silhouette cache and the pilot both need it, and it is not noise. These
            flows lean off up toward the RIGHT wing, which is what makes beta large. */
         const double off = kBetaIllCondDeg * M_PI / 180.0;
+        /* aeroFrame() compares against a folded sin rather than calling std::sin per
+           substep (constants.h:kBetaIllCondSin). A written-out literal needs a pin, or it
+           is a second copy of the constant that nothing watches. */
+        CHECK_NEAR(kBetaIllCondSin, std::sin(off), 1e-15,
+                   "kBetaIllCondSin is sin(kBetaIllCondDeg), not a stale literal");
         const AeroFrame inside = aeroFrame(
             glm::dvec3(300.0 * std::sin(0.5 * off), 300.0 * std::cos(0.5 * off), 0.0),
             right, up, nose);
@@ -4069,10 +4074,10 @@ static void test_wind_generate() {
        cannot see the catalogue: test_drag links only the code it tests, so there is no
        load_system() here to read a body's spin from. What the three pick is the regime the law
        cares about -- rotation irrelevant (Ro ~ 11), rotation absolute (Ro ~ 0.0016), and the
-       in-between where the belt count still fits inside the row budget (Ro ~ 0.02) -- at the
-       order of magnitude a slow rock, a gas giant and an Earth-sized world turn at. They used
-       to be spelled inline six times under the names venus / jup / earth, which claimed a
-       coupling nothing here watches.
+       in-between where the Rhines scale asks for a belt count the 64-row budget can still hold
+       (Ro ~ 0.046, 6 belts) -- at the order of magnitude a slow rock, a gas giant and an
+       Earth-sized world turn at. They used to be spelled inline six times under the names
+       venus / jup / earth, which claimed a coupling nothing here watches.
        The shipped figures ARE watched, elsewhere: `python3 utils/make_solar_system.py --check`
        prints Ro, the Rhines scale and the asked belt count for every world with air (Venus
        Ro 27.6 and 0 belts, Jupiter 0.0061 and 18, Uranus 0.0487 and 6), and e2e render/717
@@ -4118,6 +4123,8 @@ static void test_wind_generate() {
        rather than pinning only where it starts and where it ends. */
     WindGenInfo mid;
     const auto midRows = windGenerate(col, kMidSpin, kMidR, 7ull, mid);
+    CHECK_NEAR(mid.ro, 0.045662, 1e-5, "an Earth-slow rotator's Rossby number -- the regime the"
+                                       " prose above names, pinned so the prose cannot drift");
     CHECK_TRUE(mid.asked == 6 && !mid.clamped && mid.bands == 13,
                "an Earth-slow rotator gets exactly the count the Rhines scale asked for");
     CHECK_NEAR(std::abs(windAt(midRows, 11000.0, 42.0, 0.0).x),

@@ -3504,9 +3504,11 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
        and that flow lies in the pitch plane, broadside to the nose, where the flow's
        projection onto the nose-right plane collapses and atan2(right, nose) is left
        resolving the integrator's 1e-5 m/s of jitter: -93, -160, +86 deg in three
-       samples, next to an AoA that never moved. Everything that PRINTS beta asks
+       samples, next to an AoA that never moved. Every READOUT that prints beta asks
        this question; nothing that bills a force does, because the forces take their
-       angle from the flow vector itself rather than from this pair. */
+       angle from the flow vector itself rather than from this pair. The OSP_SHIP_DUMP
+       frame dump below is the one exception, and it prints the raw frame on purpose --
+       it is the dump you read to see what the flag was hiding. */
     lastDragBetaValid = lastDragAlphaValid && fr.betaValid;
     const glm::dvec3 vhat    = vrel / std::sqrt(v2);
     // The flow in S: area and dots are rotation-invariant, so rotate the flow, not the verts.

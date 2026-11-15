@@ -513,10 +513,13 @@ TERRAIN_RE = re.compile(
 )
 # aoa prints "-" (no value) outside an atmosphere or at rest in air, so it gets
 # its own alternative rather than a wider character class that would eat the "-".
-# beta (#450) dashes on exactly the same test -- the same AeroFrame pair, the same
-# flow floor -- and sits next to aoa in the line because they are one reading.
+# beta (#450) sits next to aoa in the line because they are one AeroFrame reading, but
+# since #787 it dashes on a STRICTER test: the flow must also project onto the hull's
+# nose-right plane (constants.h:kBetaIllCondDeg), so a row can carry aoa and dash beta --
+# a flow straight up a hull's mast. Nothing may select rows on beta being present and
+# then be satisfied by selecting none; a case that does so says so explicitly.
 # aprg (#498) is the Game Debug window's Prg (air): nose to AIR-relative prograde. It
-# dashes on the same flow floor again (no air, or a flow with no direction), and the
+# dashes on the same flow floor as aoa (no air, or a flow with no direction), and the
 # pair aprg/[orbinfo] prg is the gap between flying through the air and flying the
 # orbit.
 # cla/sm (#499) are the SURFACE window's stability pair: cla dashes with aoa (no
@@ -1376,8 +1379,9 @@ def parse_surf(out):
             "aprg": float(aprg) if aprg is not None else None,
             # None when the ship had no air-relative flow to have an angle to.
             "aoa": float(aoa) if aoa is not None else None,
-            # #450: beta is the yaw-plane half of the same AeroFrame pair, so it
-            # goes None on exactly the same test as aoa.
+            # #450: beta is the yaw-plane half of the same AeroFrame pair, and since #787
+            # it goes None on a STRICTER test than aoa -- the flow needs a yaw, not just a
+            # direction -- so a row with aoa can still dash beta.
             "beta": float(beta) if beta is not None else None,
             # #717: the frame split, as numbers. hs above is speed over the GROUND;
             # tas is |airRelativeVel|, the speed the aero law bills. They differ by the

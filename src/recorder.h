@@ -31,16 +31,18 @@ inline const char *recChannels() {
 
 // The dash rules come from where a number comes from, not from how sure the pass
 // sounded (#560):
-//   * aoa/beta/cpl/ind wait for a flow worth reading (lastDragAlphaValid, #560) and
-//     T/p/a/mach wait for air, because drag.h answers 0.0 wherever there is no air
-//     and that is not a temperature to record (00db083).
+//   * aoa/cpl/ind wait for a flow worth reading (lastDragAlphaValid, #560); beta waits for
+//     a flow whose YAW is worth reading (lastDragBetaValid, #787), which is the stricter
+//     test -- a flow up a hull's mast gives AoA -90 and no yaw at all. T/p/a/mach wait for
+//     air, because drag.h answers 0.0 wherever there is no air and that is not a
+//     temperature to record (00db083).
 //   * The frame group -- alt_agl, the three speeds, lat/lon, pitch/roll/hdg -- waits
 //     for a snapshot that describes THIS hull. An unfilled ShipView reads zeros
 //     (#235), and a 0 in a log gets treated as a measurement, which is the same
 //     mistake kAoAFlowFloor exists to stop.
 //   * A 0 elsewhere is a reading and stays printed: a parked chute IS 0 m2, a
 //     coasting hull IS 0 m/s2, a hull with no rocket HAS 0 m/s.
-// A NaN in a RecSample field means "dash this column"; only the twelve above are
+// A NaN in a RecSample field means "dash this column"; only the channels named above are
 // ever NaN on purpose, so a plain channel keeps printing whatever was published --
 // if that is a NaN, the trace should show it rather than hide it.
 struct RecSample {
