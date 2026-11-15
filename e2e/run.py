@@ -604,9 +604,10 @@ FUEL_LINK_PAIR_RE = re.compile(r"g?(\d+)->g?(\d+)")
 # needs it: (namespace name, the regex that reads it, what that regex was fed). These
 # patterns are POSITIONAL, so a column inserted mid-line by a printer -- which is a normal,
 # reasonable thing for the game to do -- matches nothing, the list comes back empty, and
-# `all(...)` over an empty list is TRUE. That has now bitten twice (SURFMAP_RE, SOLAR_RE),
-# each time looking like a passing case. A parser whose regex does not start with a `[tag]`
-# is skipped by the guard rather than guessed at.
+# `all(...)` over an empty list is TRUE. That has now bitten twice (SURFMAP_RE, SOLAR_RE);
+# both times the printer and the regex were fixed in the same commit, and what caught it was
+# a case that COUNTS its rows. The near miss to guard against is the case that only walks
+# `all(...)`, which would have gone green reading nothing.
 ROW_PARSERS = [
     ("orbit", ORBIT_RE, "world"), ("ascent", ASCENT_RE, "world"),
     ("mapb", MAP_RE, "world"), ("dbg", DBG_RE, "world"), ("bldg", BLDG_RE, "world"),
@@ -623,9 +624,25 @@ ROW_PARSERS = [
 
 def line_tag(rx):
     """The '[tag]' a parser's regex starts with, or None when it does not start with one
-    (the item-level regexes like CTRL_ITEM_RE read inside a line, not a line of their own)."""
+    (an item-level regex reads inside a line, not a line of its own -- none of those live in
+    ROW_PARSERS, so today every entry has a tag; the None path is for one that does not)."""
     m = re.match(r'\[([a-z]+)\]', rx.pattern.replace("\\[", "[").replace("\\]", "]"))
     return None if m is None else "[%s]" % m.group(1)
+
+
+# A tag is not a row. The same tags also carry NOTES, and no parser above can read them:
+# "[solar] WARNING: ..." (system.cpp:2459,2481), "[mapdump] no active ship, nothing to dump"
+# (gameui.cpp:7969), "[porkchop] ... no-solution", "[xferlog] ... no-solution" and
+# "[porkchop] sweep FAILED" (transferplanner.cpp:111,364,552), "[scene] ... push refused" and
+# "... pop refused" (scene.cpp:221,250). The empty-list guard counts printed rows, so it must
+# not count these: a case whose list is legitimately empty would be told its regex and the
+# printer disagree, and a wrong diagnosis costs more than no guard at all.
+NOTE_WORDS = re.compile(r"\b(WARNING|FAILED|refused|no-solution|no active ship)\b")
+# A CHECK's own string literals, masked before a parser name is looked for in the expression.
+# "orbit" inside `last(cam)["mode"] == "orbit"`, `[mass]` inside a case's own regex and
+# "Drag power" on a wing card all name a parser's word without that case walking the list --
+# and a drift in the parser would land its diagnosis on the wrong case.
+LIT_STR_RE = re.compile(r"\"[^\"]*\"|'[^']*'")
 
 # A repo-relative fixture path a case names, resolved against the repo root (the
 # game runs with cwd=REPO_ROOT). One shape for every place a path can appear:
@@ -2011,10 +2028,14 @@ def run_case(case):
         tag = line_tag(rx)
         if tag is None:
             continue
-        if not any(re.search(r"\b%s\b" % name, expr) for expr in case["check"]):
+        # The name has to appear as an identifier, not inside a quoted string: a case that
+        # pins "[mass]" inside its own regex, or compares a camera mode to "orbit", never
+        # walks those lists (see LIT_STR_RE).
+        if not any(re.search(r"\b%s\b" % name, LIT_STR_RE.sub('""', expr))
+                   for expr in case["check"]):
             continue
         printed = sum(1 for ln in (out if fed == "out" else world).splitlines()
-                      if ln.startswith(tag))
+                      if ln.startswith(tag) and not NOTE_WORDS.search(ln))
         if printed:
             diag.append("%s: %s printed %d line(s) and the %s parser read 0 -- this file's "
                         "regex and the game's printer disagree, so every CHECK on %s is "

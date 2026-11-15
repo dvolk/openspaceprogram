@@ -9,7 +9,9 @@ ARGS --timeout 4 --startship racer,res/ships/racer.json,Kerbin,pad,moon_pad
 # The pad LIST is pinned only up to its first entry, for the same reason as save/264's
 # building catalog: the runway and the orbital dock each added a Kerbin site and re-cut this
 # literal on their own, while the refusal -- the claim here -- never changed. Pinning the lead
-# entry keeps the list non-empty and in catalog order, which is the part worth holding.
+# entry keeps the list non-empty and in the order the body lists its pads, which is the part
+# worth holding. (Not the same order as save/264's, despite the shared shape: that one walks
+# the building catalog, while vehicle.cpp builds `available:` from the body's own pads.)
 EXPECT error: start ships: entry 0: 'moon_pad' is not a launch pad on Kerbin (available: main_space_port,
 EXIT 1
 FORBID [vab] launched

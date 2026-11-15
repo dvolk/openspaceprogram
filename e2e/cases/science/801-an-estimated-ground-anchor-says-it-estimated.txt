@@ -27,18 +27,23 @@ KIND invariant
 ARGS --system res/systems/solar_system.json --timeout 4 --atlas-dump 2500
 ARGS --solar-log --startship v,res/ships/skiff_trim.json,Io,high-orbit
 
+# A body's dossier block runs to the NEXT `[atlas] ... weight=` header -- and the boundary is
+# `[^\n]* weight=` rather than `\w+ weight=` because 19 of the 92 headers in this system carry
+# names `\w+` cannot read ("2000 WH10", "1P/Halley", "C/1965 S1 (Ikeya-Seki)"). A boundary that
+# misses one swallows the following body's rows into this block, which is how an assertion about
+# Io could pass off a neighbour.
 # The derived case: Io has no stated ground and no air, so its anchor is the black-body, and
 # the row says so in the map's words rather than leaving the equality with `black-body temp`
 # three rows up as the hint.
-CHECK re.search(r"ground anchor\s+106\.4 K\s+\(DERIVED: sun \+ albedo\)", re.search(r"\[atlas\] Io weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+CHECK re.search(r"ground anchor\s+106\.4 K\s+\(DERIVED: sun \+ albedo\)", re.search(r"\[atlas\] Io weight=.*?(?=\[atlas\][^\n]* weight=|\Z)", out, re.S).group(0))
 # A mean SOLVED from a range credits its range, not a source that never gave a mean: rung 1
 # alone would call 276.5 K a stated ground temperature.
-CHECK re.search(r"ground anchor\s+276\.5 K\s+\(SOLVED from the stated range 95\.00-390\.00 K, not a stated mean\)", re.search(r"\[atlas\] Moon weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+CHECK re.search(r"ground anchor\s+276\.5 K\s+\(SOLVED from the stated range 95\.00-390\.00 K, not a stated mean\)", re.search(r"\[atlas\] Moon weight=.*?(?=\[atlas\][^\n]* weight=|\Z)", out, re.S).group(0))
 # END-ANCHORED, deliberately: the silence is the claim, so a marker creeping onto a world a
 # source DOES state has to go red. Earth states 288 K; Jupiter's 1-bar level is stated too, and
 # a banded world keeps its own word ("level anchor") with no parenthetical either.
-CHECK re.search(r"ground anchor \(sea level\)  288\.0 K$", re.search(r"\[atlas\] Earth weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0), re.M)
-CHECK re.search(r"level anchor\s+165\.0 K$", re.search(r"\[atlas\] Jupiter weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0), re.M)
+CHECK re.search(r"ground anchor \(sea level\)  288\.0 K$", re.search(r"\[atlas\] Earth weight=.*?(?=\[atlas\][^\n]* weight=|\Z)", out, re.S).group(0), re.M)
+CHECK re.search(r"level anchor\s+165\.0 K$", re.search(r"\[atlas\] Jupiter weight=.*?(?=\[atlas\][^\n]* weight=|\Z)", out, re.S).group(0), re.M)
 # The scale of it, read back off the dossier rather than quoted from the generator that made
 # the file: this shipped system prints 91 anchors, 81 of them rung 3, and the two SOLVED means
 # are the Moon's and Pluto's. A count that goes stale when the corpus grows is worth the red --
@@ -55,4 +60,4 @@ CHECK all(d["underfoot_src"] == "DERIVED: sun + albedo" for d in solar)
 CHECK all(d["underfoot_T"] is not None and d["ground_T"] is None for d in solar)
 # ONE spelling, two readouts (#636): the words in the log are the words in Io's dossier row,
 # so they cannot drift into "estimated" here and "modelled" there.
-CHECK all(("(%s)" % d["underfoot_src"]) in re.search(r"\[atlas\] Io weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0) for d in solar)
+CHECK all(("(%s)" % d["underfoot_src"]) in re.search(r"\[atlas\] Io weight=.*?(?=\[atlas\][^\n]* weight=|\Z)", out, re.S).group(0) for d in solar)

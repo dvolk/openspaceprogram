@@ -801,10 +801,29 @@ FACT_WIND_LABEL = 'wind speeds'
 # way.
 _NUM = r'(?<![\d,.])(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?'
 WIND_MPS = re.compile(r'(' + _NUM + r')\s*m/s')
-# Anything that reads as a number sitting where a speed belongs, whether or not this file
-# can parse it. Compared against _NUM whole (below) it separates "the page states no
-# speed" from "the page states one I cannot read", which #854 is about.
-WIND_MPS_TOKEN = re.compile(r'([0-9.,]+)\s*m/s')
+# A run of digits sitting where a speed belongs, whether or not this file can read it.
+# Compared against _NUM WHOLE (below) it separates "the page states no speed" from "the
+# page states one I cannot read", which #854 is about. The whitespace alternative is what
+# catches a SPACE-grouped separator: "Up to 1 000 m/s" otherwise hands WIND_MPS the trailing
+# "000", which is not "no ceiling" but a ceiling of 0 m/s -- worse than the mis-grouped comma
+# this net already catches, because every authored row then argues against it while the sheet
+# looks legible. It excludes newlines so two numbers on adjacent lines cannot be glued into
+# one. No dash is allowed between the runs on purpose: "2-7 / 5-10 / 17-30 m/s" is the
+# corpus's own range spelling, its top IS readable, and flagging it would be crying wolf.
+# A run may START with a separator, which is how ".5 m/s" -- a speed written without a
+# leading zero, refused by _NUM's lookbehind -- still gets named here.
+_TOKRUN = r'[0-9.,]*[0-9]'
+# Two runs are ONE number when only whitespace or a spaced comma sits between them: that is
+# how a scrape mangles "1,000" into "1 000" or "1, 000", and both would otherwise hand
+# WIND_MPS the trailing group. A comma glued to digits is already inside a run. The cost is
+# that a list-shaped line ("10, 20 m/s") gets named too -- acceptable here, because this
+# guard weighs ONE ceiling and cannot read a list either.
+_TOKSEP = r'(?:[^\S\r\n]*,[^\S\r\n]*|[^\S\r\n]+)'
+WIND_MPS_TOKEN = re.compile(r'(' + _TOKRUN + r'(?:' + _TOKSEP + _TOKRUN + r')*)\s*m/s')
+# Scientific notation is the other spelling whose digits _NUM reads from the wrong end: in
+# "1.2e3 m/s" no digits-and-separators run names 1200, so the bare alternative picks up the
+# "3" of the exponent. This file cannot read that number either way, so it joins the same net.
+WIND_MPS_EXP = re.compile(r'([0-9][0-9.,]*[eE][-+]?[0-9]+)\s*m/s')
 _NUM_FULL = re.compile(_NUM)
 
 
@@ -872,12 +891,14 @@ def parse_wind_text(text):
     """One wind line's text -> {'max', 'text', 'latbands', 'lat_words', 'bad_numbers'},
     with max None when the line states no speed. Split out of fact_wind so
     self_test_fact_wind can feed it spellings no cached page uses yet: the shipped corpus
-    is not the only thing that has to keep working. `bad_numbers` holds every run of
-    digits/commas/dots sitting where a speed belongs that _NUM cannot read WHOLE -- the
-    page clearly states a speed and this file cannot turn it into one. #779 taught _NUM to
-    refuse a mis-grouped separator instead of returning a suffix of it; that refusal is
-    only honest if someone sees it, since a sheet with no ceiling looks exactly like a page
-    that stated none."""
+    is not the only thing that has to keep working. `bad_numbers` holds every spelling
+    sitting where a speed belongs that this file cannot turn into one: a run of
+    digits/commas/dots that _NUM cannot read WHOLE (a mis-grouped separator), a run split
+    by a space (a space-grouped thousands separator, whose trailing group alone _NUM would
+    happily read as 0), or an exponent (1.2e3). The page clearly states a speed either way.
+    #779 taught _NUM to refuse a mis-grouped separator instead of returning a suffix of it;
+    that refusal is only honest if someone sees it, since a sheet with no ceiling looks
+    exactly like a page that stated none."""
     vals = [_num(v) for v in WIND_MPS.findall(text)]
     lat = []
     for m in WIND_MPS_LAT.finditer(text):
@@ -887,8 +908,9 @@ def parse_wind_text(text):
             lat.append((_num(m.group(1)), '-', _lat(m.group(4)), _lat(m.group(5))))
     return {'max': max(vals) if vals else None, 'text': text, 'latbands': lat,
             'lat_words': sorted(set(w.lower() for w in WIND_LAT_WORDS.findall(text))),
-            'bad_numbers': [tk for tk in WIND_MPS_TOKEN.findall(text)
-                            if not _NUM_FULL.fullmatch(tk)]}
+            'bad_numbers': ([tk for tk in WIND_MPS_TOKEN.findall(text)
+                             if not _NUM_FULL.fullmatch(tk)]
+                            + WIND_MPS_EXP.findall(text))}
 
 
 def fact_wind(page):
@@ -952,9 +974,14 @@ def check_fact_wind(planets, verbose=True, parsed=None, sheets=None):
         # page named wind but gave no number, so there is no ceiling to weigh but there
         # ARE words to weigh (a page that never names wind prints "none" beside it).
         # "unparsed" is the fourth, and the only one that means this TOOL is broken: the
-        # page wrote a speed whose digits this file cannot read (#854).
+        # page wrote a speed whose digits this file cannot read (#854). When the line has
+        # BOTH a readable number and an unreadable one, say both -- a printed ceiling with
+        # no mark beside it is how a wrong ceiling looks legible.
         if sheet.get('max') is not None:
-            sheet_txt = '%g m/s  %s' % (sheet['max'], quote)
+            sheet_txt = ('%g m/s +unparsed(%s)  %s'
+                         % (sheet['max'], ','.join(sheet['bad_numbers']), quote)
+                         if sheet.get('bad_numbers')
+                         else '%g m/s  %s' % (sheet['max'], quote))
         elif sheet.get('bad_numbers'):
             sheet_txt = 'unparsed %s  %s' % (','.join(sheet['bad_numbers']), quote)
         elif sheet:
@@ -966,19 +993,26 @@ def check_fact_wind(planets, verbose=True, parsed=None, sheets=None):
                        ('%g m/s, %d rows%s'
                         % (top, len(comps), ' [%s]' % gen if gen else ''))
                        if comps else 'none'))
-        # The page wrote digits where a speed belongs and _NUM could not read them whole,
-        # so there is no ceiling to weigh -- and the rows below go unweighed. That has to
-        # be louder than an empty sheet, not shaped like one: #779 stopped this pattern
-        # returning the last digits of "1,23" as a ceiling, which is correct but leaves a
-        # mis-scraped page reading as "the page bounds nothing". A parse failure is a
-        # failure of THIS file, so it fails the check rather than printing quietly beside
-        # a waiver (#854).
+        # The page wrote digits where a speed belongs and _NUM could not read them whole.
+        # That has to be louder than an empty sheet, not shaped like one: #779 stopped this
+        # pattern returning the last digits of "1,23" as a ceiling, which is correct but
+        # leaves a mis-scraped page reading as "the page bounds nothing". A parse failure is
+        # a failure of THIS file, so it fails the check rather than printing quietly beside
+        # a waiver (#854). The sentence has to match which half broke, though: with a ceiling
+        # in hand the rows are NOT unweighed -- they are weighed against a ceiling that may
+        # have silently dropped the bigger number on the line, which is the shape that sends
+        # someone to edit res/systems/*.json when the bug is in the pattern.
         if sheet.get('bad_numbers'):
-            bad.append('%s: %s states a wind speed this file cannot parse (%s in "%s") --'
-                       ' the sheet gives no ceiling, so this body\'s rows are unweighed.'
+            if sheet.get('max') is None:
+                harm = ('the sheet gives no ceiling, so this body\'s rows are unweighed')
+            else:
+                harm = ('the %g m/s it did read may be the smaller number on the line, so '
+                        'the rows below are weighed against a page that could legally hold '
+                        'a bigger one' % sheet['max'])
+            bad.append('%s: %s states a wind speed this file cannot parse (%s in "%s") -- %s.'
                        ' Fix the number\'s grouping or teach _NUM the spelling; do not add'
                        ' a waiver, which would weigh nothing'
-                       % (name, page, ', '.join(sheet['bad_numbers']), sheet['text']))
+                       % (name, page, ', '.join(sheet['bad_numbers']), sheet['text'], harm))
         # A GENERATED column is still bounded by this guard, for a reason worth stating:
         # windGenerate scales every belt by amp <= 1 and the equatorial belt carries the
         # anchors' own values, so the widest wind in the emitted table IS the column's top
@@ -1257,6 +1291,52 @@ def self_test_fact_wind():
     whole = parse_wind_text('Up to 1,000 m/s')
     if whole['max'] != 1000.0 or whole['bad_numbers']:
         fails.append('a correctly grouped 1,000 m/s stopped reading whole: %r' % (whole,))
+    # And the corpus's own range spelling must stay clean: the token net deliberately refuses
+    # to bridge a dash, because "2-7 / 5-10 / 17-30 m/s" states its top legibly and a guard
+    # that flags it is a guard people learn to ignore.
+    ranged = parse_wind_text('Seasonal: 2-7 / 5-10 / 17-30 m/s')
+    if ranged['max'] != 30.0 or ranged['bad_numbers']:
+        fails.append('the corpus\'s dash-range spelling stopped reading clean: %r'
+                     % (ranged,))
+    # The two spellings whose digits _NUM reads from the wrong END. Unlike the mangled ones
+    # these come back WITH a ceiling -- a space-grouped "1 000" reads as 0 m/s, "1.2e3" as
+    # 3 m/s -- so the guard would argue every authored row against a number the page never
+    # wrote, while the sheet printed legibly. What makes them failures is the net beside the
+    # parse, so this probe asserts the net names them and the check goes red.
+    wrong_end = [('Up to 1 000 m/s', 'a space-grouped thousands separator'),
+                 ('Up to 1, 000 m/s', 'a comma-grouped speed with a space after the comma'),
+                 ('Up to 1 234 m/s near the pole', 'a space-grouped four-digit speed'),
+                 ('Up to 1.2e3 m/s', 'a speed written in scientific notation')]
+    for text, why in wrong_end:
+        got = parse_wind_text(text)
+        if not got['bad_numbers']:
+            fails.append('%s parsed as %r with no unreadable spelling named: %r'
+                         % (why, got['max'], got))
+        bad = check_fact_wind([('invented-fact.html', 'Windy', 1.0,
+                                {'atmosphere': {'wind': rows}}, 0.0)],
+                              verbose=False,
+                              sheets={'invented-fact.html': got})
+        if not any('cannot parse' in m for m in bad):
+            fails.append('%s passed the sheet guard unseen: %r (%s)' % (why, bad, text))
+        # The sentence must match what happened. A ceiling IS in hand here, so claiming the
+        # rows went unweighed sends the reader to the wrong file -- the rows were weighed,
+        # against a ceiling that may be the smaller number on the line.
+        unweighed = [m for m in bad if 'cannot parse' in m and 'unweighed' in m]
+        if unweighed and got['max'] is not None:
+            fails.append('%s reported as unweighed though the sheet read %r: %s'
+                         % (why, got['max'], unweighed[0]))
+    # One legible number and one unreadable on the same line: the ceiling is used, and the
+    # failure has to say so rather than announce an empty sheet.
+    both = parse_wind_text('Up to 1,000 m/s (up to 1,23 m/s near the poles)')
+    if both['max'] != 1000.0 or both['bad_numbers'] != ['1,23']:
+        fails.append('a legible ceiling beside an unreadable number parsed as %r' % (both,))
+    bad = check_fact_wind([('invented-fact.html', 'Windy', 1.0,
+                            {'atmosphere': {'wind': rows}}, 0.0)],
+                          verbose=False,
+                          sheets={'invented-fact.html': both})
+    if not any('may be the smaller number' in m for m in bad):
+        fails.append('a ceiling read past an unreadable number was not called a short one: '
+                     '%r' % (bad,))
     # A page that names wind and states NO number anywhere. A first version of fact_wind
     # returned {} the moment it found no speed, throwing the words away with the number --
     # which made the loud half of #779 go quiet at exactly the sheets least able to answer
