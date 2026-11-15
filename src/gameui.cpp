@@ -80,15 +80,6 @@ unsigned int ramp_color(float t) {
 }
 } // namespace
 
-/* Resource labels, in ResourceType order. Three windows list resources (the
-   ship HUD's bars, a flight part window, the VAB part window) and they all say
-   the same substance names, so they say them from here. The units come from
-   Vehicle::resourceUnit, next to the short log names. */
-static const char *resNames[(int)ResourceType::Num] = {
-    "Hydrogen", "LOX", "Electric charge", "Oxygen", "Water", "Food",
-    "Hydrazine", "Jet fuel"
-};
-
 /* The part card's physical lines, shared by flight's part windows and the VAB's:
    how big it is and what it does (a wheel, a jet, a rocket). Mass and contents
    stay with each caller -- flight reads the live Part (crew, burned fuel), the
@@ -3530,7 +3521,7 @@ void drawUIReadouts(Game &g) {
                 cap += p->capacityOf((int)r);
             }
             if(cap <= 0) { continue; }
-            ImGui::ProgressBar((float)(cur / cap), ImVec2(-1, 0), resNames[(int)r]);
+            ImGui::ProgressBar((float)(cur / cap), ImVec2(-1, 0), resourceLabel(r));
         }
     });
 }
@@ -3798,11 +3789,11 @@ void drawPartWindows(Game &g) {
             drawPartPhysique(*def);
             for(int r = 0; r < (int)ResourceType::Num; r++) {
                 if(def->capacity[(size_t)r] <= 0.0) { continue; }
-                ImGui::Text("%s: %.1f%s/%.1f%s", resNames[r],
+                ImGui::Text("%s: %.1f%s/%.1f%s", resourceLabel((ResourceType)r),
                             ship->parts[part]->resources.current[r],
-                            Vehicle::resourceUnit(r),
+                            resourceUnit((ResourceType)r),
                             def->capacity[r],
-                            Vehicle::resourceUnit(r));
+                            resourceUnit((ResourceType)r));
             }
             // --- aerodynamic surface (this part lifts, steers, or both) --------
             /* #497: the angle-of-attack row belongs to EVERY surface with one, not
@@ -5875,7 +5866,7 @@ void drawVabPartWindow(Game &g) {
            is stored energy, so it rides neither number. */
         double carried = 0.0;
         for(int r = 0; r < (int)ResourceType::Num; r++) {
-            if(r == (int)ResourceType::EC) { continue; }
+            if(!resourceHasMass((ResourceType)r)) { continue; }
             carried += def.capacity[r];
         }
         uiText("Mass: %.3fkg + %.3fkg at launch", def.mass, carried);
@@ -5883,7 +5874,7 @@ void drawVabPartWindow(Game &g) {
         for(int r = 0; r < (int)ResourceType::Num; r++) {
             if(def.capacity[r] <= 0.0) { continue; }
             uiText("Carries %.1f%s %s", def.capacity[r],
-                   Vehicle::resourceUnit(r), resNames[r]);
+                   resourceUnit((ResourceType)r), resourceLabel((ResourceType)r));
         }
         if(def.crew_capacity > 0) {
             ImGui::Separator();

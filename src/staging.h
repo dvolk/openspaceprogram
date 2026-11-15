@@ -49,7 +49,7 @@ double partPropellantMass(const PartDef &def, const bool *burn);
 inline double partDryMass(const PartDef &def, const bool *burn) {
     double m = def.mass;
     for(size_t r = 0; r < def.capacity.size(); r++) {
-        if(r == (size_t)ResourceType::EC) { continue; }  // energy, no mass
+        if(!resourceHasMass((ResourceType)r)) { continue; }
         if(burn[r]) { continue; }                        // burnable: sp.fuel
         m += (double)def.capacity[r];
     }

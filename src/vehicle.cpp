@@ -4955,25 +4955,6 @@ void Vehicle::tq_log(double time) {
     fflush(stdout);
 }
 
-const char * Vehicle::resourceName(int r) {
-    switch((ResourceType)r) {
-        case ResourceType::Hydrogen:  return "H2";
-        case ResourceType::LOX:       return "LOX";
-        case ResourceType::EC:        return "EC";
-        case ResourceType::Oxygen:    return "O2";
-        case ResourceType::Water:     return "H2O";
-        case ResourceType::Food:      return "food";
-        case ResourceType::Hydrazine: return "N2H4";
-        case ResourceType::JetFuel:   return "JF";
-        case ResourceType::Num:       break;   /* count, not a resource */
-    }
-    return "?";
-}
-
-const char * Vehicle::resourceUnit(int r) {
-    return (ResourceType)r == ResourceType::EC ? "Wh" : "kg";
-}
-
 void Vehicle::fuel_log(double time) {
     // distinct group ids, ascending
     std::vector<int> groups;
@@ -5013,7 +4994,7 @@ void Vehicle::fuel_log(double time) {
                 cap += p->def->capacity[r];
                 tankCur.push_back(p->resources.current[r]);
             }
-            printf("%s:%.1f/%.1f[", resourceName(r), cur, cap);
+            printf("%s:%.1f/%.1f[", resourceShort((ResourceType)r), cur, cap);
             for(size_t ti = 0; ti < tankCur.size(); ti++) {
                 if(ti > 0) { printf(","); }
                 printf("%.1f", tankCur[ti]);
@@ -5049,7 +5030,7 @@ std::map<int, double> Vehicle::groupFuelMasses() const {
         if(p->fuelGroup < 0 || !p->isTank()) { continue; }
         double &total = cur[p->fuelGroup];   // 0.0 for a group that is now empty
         for(int r = 0; r < (int)ResourceType::Num; r++) {
-            if(r == (int)ResourceType::EC) { continue; }   // energy (Wh), no mass
+            if(!resourceHasMass((ResourceType)r)) { continue; }
             total += p->resources.current[r];
         }
     }

@@ -45,18 +45,18 @@ const PartDef *PartsCatalog::find(const std::string &name) const {
 }
 
 static int resource_index_from_string(const std::string &s, const std::string &ctx) {
-    if(s == "hydrogen") { return (int)ResourceType::Hydrogen; }
-    if(s == "lox") { return (int)ResourceType::LOX; }
-    if(s == "ec") { return (int)ResourceType::EC; }
-    if(s == "oxygen") { return (int)ResourceType::Oxygen; }
-    if(s == "water") { return (int)ResourceType::Water; }
-    if(s == "food") { return (int)ResourceType::Food; }
-    if(s == "hydrazine") { return (int)ResourceType::Hydrazine; }
-    if(s == "jetfuel") { return (int)ResourceType::JetFuel; }
+    /* The accepted keys are the table's fileKey column (#334), so the hint below
+       cannot list a spelling the parser never accepted. */
+    std::string expected;
+    for(int i = 0; i < (int)ResourceType::Num; i++) {
+        if(s == kResources[i].fileKey) { return i; }
+        expected += (i ? ", " : "");
+        expected += kResources[i].fileKey;
+    }
     // ctx already ends with ": " (both callers build it that way); a second colon
     // here read as "parts: x: : unknown resource" (#496 review).
-    throw std::runtime_error(ctx + "unknown resource '" + s
-                             + "' (expected: hydrogen, lox, ec, oxygen, water, food, hydrazine, jetfuel)");
+    throw std::runtime_error(ctx + "unknown resource '" + s + "' (expected: "
+                             + expected + ")");
 }
 
 /* One NUMBER, read so that the error names the file, the part and the field (#496).
@@ -575,9 +575,9 @@ PartsCatalog load_parts_catalog(const char *path) {
                    the typo worth reporting first. */
                 const int idx = resource_index_from_string(it.key(), ctx);
                 /* Same array, different unit: EC is watt-hours there, not kilograms
-                   (Vehicle::getPower sums it as Wh; partLoadMass skips it as "energy,
-                   no mass"), so the message cannot say kg for it. */
-                const char *unit = (idx == (int)ResourceType::EC) ? "Wh" : "kg";
+                   (Vehicle::getPower sums it as Wh; partLoadMass skips it because it
+                   has no mass), so the message cannot say kg for it. */
+                const char *unit = resourceUnit((ResourceType)idx);
                 const std::string what = std::string(ctx) + "\"capacity\" for '"
                                          + it.key() + "'";
                 const double amount = wantNumber(it.value(), what, unit);
@@ -2164,7 +2164,7 @@ bool save_ship_def(const BuildShip &bs, const char *path) {
 double partLoadMass(const PartDef &def) {
     double m = def.mass;
     for(size_t r = 0; r < def.capacity.size(); r++) {
-        if(r == (size_t)ResourceType::EC) { continue; }   // energy, no mass
+        if(!resourceHasMass((ResourceType)r)) { continue; }
         m += (double)def.capacity[r];
     }
     return m;

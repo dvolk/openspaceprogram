@@ -2616,11 +2616,16 @@ int main() {
                ("x: : unknown resource 'gold'"), and the ordering rule -- name before
                number -- only shows up when BOTH are wrong: with a good number, the
                old value-first order reaches the same unknown-resource sentence.
-               So the value is broken here too, and the needle must be the resource. */
+               So the value is broken here too, and the needle must be the resource.
+               The hint tail is pinned as well: #334 moved the accepted keys into
+               kResources (shipdef.h), so this is the row that says what that column
+               holds -- rename one and the loader's hint changes with it, which is
+               exactly what should wake someone up. Order is enum order. */
             { "{ \"parts\": [ { \"name\": \"x\", \"type\": \"command\", "
               "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
               "\"capacity\": { \"gold\": \"full\" } } ] }",
-              "parts: x in /tmp/test_shipload_numfield.json: unknown resource 'gold'" },
+              "parts: x in /tmp/test_shipload_numfield.json: unknown resource 'gold' "
+              "(expected: hydrogen, lox, ec, oxygen, water, food, hydrazine, jetfuel)" },
             { "{ \"parts\": [ { \"name\": \"x\", \"type\": \"engine\", "
               "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
               "\"propellant\": { \"loox\": -2 } } ] }",

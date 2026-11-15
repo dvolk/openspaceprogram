@@ -967,7 +967,7 @@ void vabOpenPartWindow(Game &g, int partIdx, int px, int py) {
        case has nothing to pin -- they are the ones #644 would put through
        uiText (#601). This line is the testable face of the dossier:
        what the window decided the part carries. Log-style short names, as
-       Vehicle::resourceName uses everywhere else stdout is the reader. */
+       --fuel-log prints them (kResources, shipdef.h #334). */
     char res[200];
     res[0] = '\0';
     size_t used = 0;
@@ -975,7 +975,8 @@ void vabOpenPartWindow(Game &g, int partIdx, int px, int py) {
         if(bp.def->capacity[r] <= 0.0) { continue; }
         const int n = snprintf(res + used, sizeof(res) - used, "%s%.1f%s %s",
                                used ? ", " : "", bp.def->capacity[r],
-                               Vehicle::resourceUnit(r), Vehicle::resourceName(r));
+                               resourceUnit((ResourceType)r),
+                               resourceShort((ResourceType)r));
         if(n < 0 || (size_t)n >= sizeof(res) - used) { break; }
         used += (size_t)n;
     }

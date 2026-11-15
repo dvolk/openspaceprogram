@@ -358,7 +358,7 @@ struct Part {
     double effectiveMass() const {
         double m = body->mass;
         for(int r = 0; r < (int)ResourceType::Num; r++) {
-            if(r == (int)ResourceType::EC) { continue; }   // energy, no mass
+            if(!resourceHasMass((ResourceType)r)) { continue; }
             m += resources.current[r];
         }
         for(Part *c : contents) { m += c->effectiveMass(); }

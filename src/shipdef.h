@@ -45,6 +45,52 @@ enum class ResourceType {
     Num
 };
 
+/* What each resource IS called, and whether it weighs anything -- one row per
+   ResourceType (#334). Four vocabularies survive on purpose -- a window's bar
+   says "Electric charge", --fuel-log says "EC", a quantity needs a unit, and a
+   .json file keys it as "ec" -- but they were four edits across three files, and
+   adding a ninth type meant half-remembering them. The count is checked at
+   compile time: an enum value with no row stops the build. 'fileKey' is the
+   spelling res/data/parts.json and res/ships/*.json already use, so it sits here
+   where changing it is obviously a save-format change rather than a rename.
+   hasMass is the same one-value-per-type fact Part::effectiveMass and the
+   "at launch" totals need: EC is stored energy, so it carries no weight. */
+struct ResourceInfo {
+    const char *label;      // what a window's row says
+    const char *unit;       // what a quantity of it is measured in
+    const char *shortName;  // what a log line says
+    const char *fileKey;    // what a .json part/ship file calls it
+    bool hasMass;
+};
+inline constexpr ResourceInfo kResources[] = {
+    {"Hydrogen",        "kg", "H2",   "hydrogen",  true},
+    {"LOX",             "kg", "LOX",  "lox",       true},
+    {"Electric charge", "Wh", "EC",   "ec",        false},
+    {"Oxygen",          "kg", "O2",   "oxygen",    true},
+    {"Water",           "kg", "H2O",  "water",     true},
+    {"Food",            "kg", "food", "food",      true},
+    {"Hydrazine",       "kg", "N2H4", "hydrazine", true},
+    {"Jet fuel",        "kg", "JF",   "jetfuel",   true},
+};
+static_assert(sizeof(kResources) / sizeof(kResources[0])
+              == (int)ResourceType::Num, "one spelling row per ResourceType");
+
+inline const char *resourceLabel(ResourceType t) {
+    return kResources[(int)t].label;
+}
+inline const char *resourceUnit(ResourceType t) {
+    return kResources[(int)t].unit;
+}
+inline const char *resourceShort(ResourceType t) {
+    return kResources[(int)t].shortName;
+}
+inline const char *resourceFileKey(ResourceType t) {
+    return kResources[(int)t].fileKey;
+}
+inline bool resourceHasMass(ResourceType t) {
+    return kResources[(int)t].hasMass;
+}
+
 /* Only what a part HOLDS. Capacity is not per-part state: nothing ever mutates
    it and the save format has no field for it, so it lives on the PartDef and
    Part::capacityOf() reads it (#383). Keeping a copy cost 64 bytes per part once
@@ -835,7 +881,7 @@ double partLoadMass(const PartDef &def);
 inline double partSavedMass(double dryMass, const std::vector<double> &fuel) {
     double m = dryMass;
     for(size_t r = 0; r < fuel.size() && r < (size_t)ResourceType::Num; r++) {
-        if(r == (size_t)ResourceType::EC) { continue; }
+        if(!resourceHasMass((ResourceType)r)) { continue; }
         m += fuel[r];
     }
     return m;
