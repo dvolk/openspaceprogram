@@ -1,0 +1,33 @@
+# [surfinfo]'s hdg= is a compass heading, and a compass has an east.
+# #713: updateShipView built its local-horizontal basis by hand as
+# cross(up, project((0,1,0), up)), which in this rotating frame points at DECREASING
+# longitude -- WEST -- so the one heading number the game has was mirrored east-west:
+# a hull flown east along lat 0 logged hdg=275.7 while its own lon grew from 0.0064
+# to 0.0284 deg. The fix routes it through equirect.h's equirectEast/equirectNorth,
+# the convention the map, the rails and the wind already share.
+# What is pinned here is the LAW, not the number: the heading's east half and the
+# longitude's direction must agree. The east case is what a mirror breaks; flight/573
+# tried pinning an absolute hdg and had to stop, because the absolute value belongs to
+# the spawn bed (it moved from 249.2 to 110.8 when the bed's epoch moved, while the
+# drift it was watching stayed at 0.197 deg). The helpers themselves -- including the
+# pole, where the old projection collapsed to the zero vector and normalize() handed
+# back NaN -- are pinned in tests/test_drag.cpp.
+NAME heading-points-where-the-hull-is-going
+CLAIM [surfinfo]'s hdg= is a compass heading in equirect.h's convention: a hull cruising east along the equator reads an EASTERLY heading while its own longitude grows, so the readout cannot be mirrored east-west.
+KIND invariant
+ARGS --time-accel 1 --timeout 4 --info-log --orbit-interval 1 --startship a,res/ships/racer.json,Kerbin,flying-cruise,lat=0,lon=0
+FORBID error:
+CHECK len(surf) >= 3
+# The hull is going east: its own longitude grows every row, with nothing steering it.
+CHECK all(s2["lon"] > s1["lon"] for s1, s2 in zip(surf[:-1], surf[1:]))
+# ... and the readout says east. Mirrored, these rows read 279.4, which is the western
+# half -- the whole bug in one inequality.
+CHECK all(0.0 < s["hdg"] < 180.0 for s in surf)
+# 60..120 is a wide net around the measured 80.60..80.61 deg (the bed aims the hull a
+# little south of due east because the wind pushes it). It is a band, not a point: a
+# bed retune must not redden a case that is only asking which half of the compass the
+# nose is in.
+CHECK all(60.0 < s["hdg"] < 120.0 for s in surf)
+# The heading is not spinning either: the spread across the run is what a mirrored or
+# pole-collapsed basis would disturb first.
+CHECK max(s["hdg"] for s in surf) - min(s["hdg"] for s in surf) < 1.0
