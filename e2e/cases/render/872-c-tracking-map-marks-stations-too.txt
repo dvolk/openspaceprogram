@@ -1,0 +1,23 @@
+# Both map windows mark the stations, not just the one you fly with (#872). The Tracking
+# Station is where a player looks for something to fly to, and its map is a separate call
+# site with its own focus rule (a body, not necessarily a ship's).
+#
+# Reaching it by scene shortcut and dumping there is what tells the two call sites apart:
+# drawn= is the count a map WINDOW stamped while drawing, so deleting the Tracking copy
+# leaves the stamp stale (-1) and this case reddens even though the flight-map case stays
+# green -- and the other way round for its sibling.
+NAME tracking-map-marks-the-stations-too
+CLAIM The Tracking Station's map marks each orbital station around its focus body, conic included.
+KIND invariant
+ARGS --time-accel 1 --timeout 5 --map-dump 3000 --dbg-log --orbit-interval 1.0
+ARGS --startship racer,res/ships/racer.json,Kerbin,pad
+ARGS --sim-press 1200,0,51
+EXPECT [scene] flight -> tracking (push)
+FORBID error:
+# Focus is the body, and only the driven stations are marks: the pads the ship is
+# sitting on stay the Surface Map's.
+CHECK set(m["id"] for m in mapbldg) == {"kerbin_dock", "kerbin_station"}
+CHECK not any(m["id"] == "main_space_port" for m in mapbldg)
+CHECK all(m["kind"] == "orbit" and m["focus"] == "Kerbin" for m in mapbldg)
+CHECK all(m["drawn"] >= 2 for m in mapbldg)
+CHECK all(m["pts"] >= 8 and abs(m["conic_r"] - m["r"]) < 1.0 for m in mapbldg)

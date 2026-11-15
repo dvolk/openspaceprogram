@@ -518,11 +518,14 @@ static void drawSystemBodyOrbits(Game &g, TerrainBody *focus,
    body's inertial node, which is the frame these maps project: the conic is the same
    64-point sample forever, so orbit_caches hits from the second frame onward -- the
    same trick the body rails above use. An air platform is held up by the atmosphere
-   and drifts with the wind, so there is no conic to draw: marker and name only. */
+   and drifts with the wind, so there is no conic to draw: marker and name only.
+   The buffer is reused between calls, so the reference is only good until the next
+   call -- all three callers use it inside one loop. */
 struct MapStationMark {
     const StaticBuilding *b;
     glm::dvec3 pos;                            // the focus's frame, i.e. map space
     const std::vector<glm::dvec3> *conic;      // null for an air platform
+    double conic_r = 0.0;                      // |conic[0]|, 0.0 with no conic
 };
 
 static const std::vector<MapStationMark> &collectMapStations(TerrainBody *focus) {
@@ -538,40 +541,62 @@ static const std::vector<MapStationMark> &collectMapStations(TerrainBody *focus)
         m.pos = ef->GetOrientRelTo(focus->frame) * b->posePos
               + ef->GetPositionRelTo(focus->frame);
         m.conic = nullptr;
-        if(b->orbital && focus->mu > 0.0) {
+        /* orbMu, not the focus's: orbMu is the mu the building's own pose is integrated
+           with (tickPose), so a map that ever showed two bodies' mu could not draw a
+           ring the station does not fly. */
+        if(b->orbital && b->orbMu > 0.0) {
             /* PoseFrame is the body's inertial node by construction, so the state lift
-               to the map frame is a rotation with no transport term. Asserted rather
-               than assumed: a driven building FRAME would need the stasis term, and its
-               own frame is not what carries the conic (frame.cpp never fills the rail
-               state for a driven frame). */
-            assert(ef == focus->frame->getNonRotFrame());
-            const glm::dvec3 epos = ef->GetOrientRelTo(focus->frame) * b->epochPos
-                                  + ef->GetPositionRelTo(focus->frame);
-            const glm::dvec3 evel = ef->GetOrientRelTo(focus->frame) * b->epochVel;
-            m.conic = &orbit_caches[(const void *)b].sample(epos, evel, focus->mu, 64);
+               to the map frame is a rotation with no transport term. Checked, not
+               asserted: this runs on a per-frame draw path with no NDEBUG build
+               (Makefile:46), and skipping one ring beats aborting mid-pan. A driven
+               building FRAME would need the stasis term, and its own frame never
+               carries the conic anyway (frame.cpp skips the Kepler branch there). */
+            if(ef == focus->frame->getNonRotFrame()) {
+                const glm::dvec3 epos = ef->GetOrientRelTo(focus->frame) * b->epochPos
+                                      + ef->GetPositionRelTo(focus->frame);
+                const glm::dvec3 evel = ef->GetOrientRelTo(focus->frame) * b->epochVel;
+                m.conic = &orbit_caches[(const void *)b].sample(epos, evel, b->orbMu, 64);
+                if(!m.conic->empty()) { m.conic_r = glm::length((*m.conic)[0]); }
+            }
         }
         marks.push_back(m);
     }
     return marks;
 }
 
+/* What the last map frame actually marked, for --map-dump to report (#872). Without
+   it the dump's rows would prove the maths only: delete the drawMapStations calls
+   below and every case stays green. Both windows write it -- whichever drew last
+   answers -- and the maps draw once per frame, so it is current at the hook. */
+static void stampMapStations(Game &g, int marked) {
+    g.map.station_marks = marked;
+    g.map.station_marks_t = g.time;
+}
+
 // Call after labels.flushDiscs(): these are markers, so they sit above the body discs.
-static void drawMapStations(TerrainBody *focus, const OrbitMap &map, ImDrawList *dl,
-                            const MapViewRect &view, double map_scale,
+static void drawMapStations(Game &g, TerrainBody *focus, const OrbitMap &map,
+                            ImDrawList *dl, const MapViewRect &view, double map_scale,
                             MapLabelPass &labels) {
     const ImU32 col = ImGui::GetColorU32(kStationRgba);
+    int marked = 0;
     for(const MapStationMark &m : collectMapStations(focus)) {
-        /* A 400 km ring is only a ring once it is a few pixels across; at a
-           system-wide zoom the same 64 points smear a hairline over the body's disc. */
+        /* One size gate for the ring AND the dot. A 400 km ring is only a ring once it
+           is a few pixels across; at a system-wide zoom the same 64 points smear a
+           hairline over the body's disc -- and an ungated 3 px dot lands inside the
+           focus disc, whose label pass then drops its name, leaving unexplained cyan
+           specks on the planet. */
         const double r_m = glm::length(m.pos);
-        if(m.conic && r_m / map_scale >= 4.0f) {
+        if(r_m / map_scale < 4.0f) { continue; }
+        if(m.conic) {
             map.drawOrbit(dl, *m.conic, col, 1.0f);
         }
         const ImVec2 px = map.px(m.pos);
         if(!view.contains(px.x, px.y, 3.0f)) { continue; }
         dl->AddCircleFilled(px, 3.0f, col);
         labels.add(px, 3.0f, col, m.b->display_name.c_str(), kLabelStation);
+        ++marked;
     }
+    stampMapStations(g, marked);
 }
 
 // Sim-clock calendar formatting (fmt_cal_time / fmt_cal_compact /
@@ -4902,7 +4927,7 @@ void drawUIMap(Game &g) {
 
         /* Stations around this body: an orbital platform's conic plus a marker, an air
            platform a marker only (#872). After the discs, with the other markers. */
-        drawMapStations(focus, proj, dl, view, map_scale, labels);
+        drawMapStations(g, focus, proj, dl, view, map_scale, labels);
 
         /* The solution belongs to the target the solve USED. xfer.target is the
            IDENTITY it was computed for, so pairing it with the live selection
@@ -7022,7 +7047,7 @@ void drawTrackingMap(Game &g) {
 
         /* Stations around the focus body, whether or not a ship is flying: the
            Tracking Station is where a player looks for a station to visit (#872). */
-        drawMapStations(focus, proj, dl, view, map_scale, labels);
+        drawMapStations(g, focus, proj, dl, view, map_scale, labels);
 
         // Names last: every line in the window is down by now.
         labels.flush(dl, view, focus_px);
@@ -8055,10 +8080,51 @@ void dumpAtlas(Game &g) {
     fflush(stdout);
 }
 
+/* The #872 half of --map-dump: what the map windows mark, and whether one actually
+   marked it this frame. The maps emit nothing else, so this is the only face a case
+   can pin. Rows carry the mark's pos AND the building's placement anchor in the same
+   frame: on a circular orbit the two radii are equal, so a radius check cannot tell a
+   live marker from one frozen at placement -- the distance between these can. */
+static void dumpMapStations(Game &g, TerrainBody *focus) {
+    /* Written by drawMapStations; the hook runs after the state pass, so a stamp from
+       this frame means a window marked them. drawn=-1 says no map window drew them at
+       all, which is the difference between "the maths would mark" and "the map marks". */
+    const bool fresh = g.time - g.map.station_marks_t < 0.5;
+    const int drawn = fresh ? g.map.station_marks : -1;
+    for(const MapStationMark &s : collectMapStations(focus)) {
+        /* An orbital building's epoch state IS its placement anchor and never moves, so
+           printing it next to pos says whether the mark rides the driven pose. An air
+           platform has no such anchor: its pose comes from the wind law, and epochPos
+           is not part of it -- printing (0,0,0) there would be a lie waiting to be
+           pinned. */
+        char anc[64] = "none";
+        if(s.b->orbital) {
+            Frame *ef = s.b->poseFrame();
+            if(ef) {
+                const glm::dvec3 a = ef->GetOrientRelTo(focus->frame) * s.b->epochPos
+                                   + ef->GetPositionRelTo(focus->frame);
+                snprintf(anc, sizeof anc, "%.0f,%.0f,%.0f", a.x, a.y, a.z);
+            }
+        }
+        printf("[mapbldg] t=%.1fs focus=%s id=%s kind=%s r=%.0f pts=%zu conic_r=%.0f "
+               "pos=%.0f,%.0f,%.0f anchor=%s drawn=%d\n",
+               g.time, focus->name.c_str(), s.b->id.c_str(),
+               s.b->orbital ? "orbit" : "air",       // the collector admits only these
+               glm::length(s.pos),
+               s.conic ? s.conic->size() : (size_t)0, s.conic_r,
+               s.pos.x, s.pos.y, s.pos.z, anc, drawn);
+    }
+}
+
 /* --map-dump MS: the basis each map plane slot produces for the active ship. The map is
    pure drawing, so a flipped e2 is invisible to every check but an eyeball (#181). */
 void dumpMapBasis(Game &g) {
     Vehicle *ship = g.ship;
+    /* Stations first, and through the same focus rule both map windows use
+       (ship ? ship->m_parent : g.home): the Tracking Station marks a station with no
+       ship flying, so a dump that insisted on a ship would report less than the screen
+       shows. */
+    dumpMapStations(g, ship ? ship->m_parent : g.home);
     if(!ship || !ship->m_parent || !ship->m_parent->frame) {
         // Say so: a silent no-op reads as "the map has no basis to report".
         printf("[mapdump] no active ship, nothing to dump\n");
@@ -8107,18 +8173,6 @@ void dumpMapBasis(Game &g) {
                g.time, refPlaneName(slot),
                m.n.x, m.n.y, m.n.z, m.e1.x, m.e1.y, m.e1.z,
                m.e2.x, m.e2.y, m.e2.z, sweep > 0.0 ? 1 : -1, an_s, dn_s);
-    }
-    /* #872: the stations this map would mark, through the same collector the two map
-       windows call, so the row cannot claim something the screen does not draw. This
-       is the only way a case can pin a marker at all -- the maps emit nothing
-       otherwise -- and pts=0 for an air platform is the point of the feature, not an
-       omission: a wind-riding platform has no conic. */
-    for(const MapStationMark &s : collectMapStations(ship->m_parent)) {
-        printf("[mapbldg] t=%.1fs focus=%s id=%s kind=%s r=%.0f pts=%zu\n",
-               g.time, ship->m_parent->name.c_str(), s.b->id.c_str(),
-               s.b->orbital ? "orbit" : (s.b->air ? "air" : "ground"),
-               glm::length(s.pos),
-               s.conic ? s.conic->size() : (size_t)0);
     }
     fflush(stdout);
 }

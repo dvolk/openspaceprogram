@@ -3,28 +3,40 @@
 # fixed lat/lon -- and until now nothing else drew them either: a station was
 # invisible on every map unless you had already flown into its bubble.
 #
-# The maps are pure imgui geometry, so nothing they draw is observable from the
-# log. --map-dump therefore prints the marks from the SAME collector both map
-# windows call (gameui.cpp collectMapStations): an orbital platform carries a
-# sampled conic plus a marker, and a surface pad appears nowhere at all.
+# The maps are pure imgui geometry, so nothing they draw is observable from the log.
+# --map-dump therefore reports the marks from the SAME collector both map windows call
+# (gameui.cpp collectMapStations) AND what a window actually marked that frame
+# (Game::map.station_marks): an orbital platform carries a sampled conic plus a marker,
+# and a surface pad appears nowhere at all.
 NAME orbital-station-on-the-map
 CLAIM The orbital/Tracking maps mark each orbital station around the focused body, conic included.
 KIND invariant
 ARGS --time-accel 1 --timeout 6 --map-dump 2500 --dbg-log --orbit-interval 1.0
 ARGS --startship racer,res/ships/racer.json,Kerbin,pad
 FORBID error:
-# Kerbin ships two stations and nothing else that is driven: the pads
-# (main_space_port, ksc_runway, polar pad) stay the Surface Map's business.
-CHECK len(mapbldg) == 2
+# Kerbin ships two stations and nothing else that is driven. The exact id set IS the
+# exclusion pin -- the pads (main_space_port, ksc_runway, the polar pad) stay the
+# Surface Map's business and must not leak onto these maps as dots.
 CHECK set(m["id"] for m in mapbldg) == {"kerbin_dock", "kerbin_station"}
+CHECK not any(m["id"] == "main_space_port" for m in mapbldg)
 CHECK all(m["kind"] == "orbit" and m["focus"] == "Kerbin" for m in mapbldg)
-# A conic, not just a dot: 64 samples on the station's own circle.
+# drawn is how many marks a map WINDOW drew this frame: delete the drawMapStations
+# calls and no window stamps it, so the stamp goes stale and reads -1. Without this the
+# rows would only prove the maths behind a mark, never that a map marks anything.
+CHECK all(m["drawn"] >= 2 for m in mapbldg)
+# A conic, not just a dot: 64 samples on the station's own circle, and that circle
+# passes through the marker -- an orbMu or epoch-state slip shows up as a ring the
+# mark does not sit on.
 CHECK all(m["pts"] >= 8 for m in mapbldg)
+CHECK all(abs(m["conic_r"] - m["r"]) < 1.0 for m in mapbldg)
 # And the marker sits on that circle at the authored altitude: 400 km and
 # 300 km over Kerbin's 600 km radius.
 CHECK all(abs(m["r"] - 1000000.0) < 1000 for m in mapbldg if m["id"] == "kerbin_station")
 CHECK all(abs(m["r"] - 900000.0) < 1000 for m in mapbldg if m["id"] == "kerbin_dock")
-# The mark is the station's live pose, not a stale placement: [bldg] reports the
-# same radius for the pose the physics drives.
-CHECK len(bldg) >= 2
-CHECK all(abs(m["r"] - b["r"]) < 1.0 for m in mapbldg for b in bldg if m["id"] == b["id"])
+# The mark rides the pose the physics drives, not the placement anchor. Radius cannot
+# pin that -- both radii are equal on a circular orbit -- so the distance between them
+# does: at t=2.6s a Kerbin station is ~4.8 km along its orbit from where it was placed.
+CHECK all(sum((p - a) ** 2 for p, a in zip(m["pos"], m["anchor"])) ** 0.5 > 2000.0 for m in mapbldg)
+# The same driven pose, from the physics side: the mark's radius matches the pose
+# tickPose reports for that station.
+CHECK all(any(b["id"] == m["id"] and abs(b["r"] - m["r"]) < 1.0 for b in bldg) for m in mapbldg)

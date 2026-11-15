@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 372 |
+| `invariant` | a behaviour or a player route the game must keep | 373 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 48 |
 | `harness` | CLI/test-engine plumbing, not game spec | 16 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **440** |
+| | **total** | **441** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -388,7 +388,7 @@ judgement. Select by number, name or path, e.g.
 | `ui/748-hold-the-job-runner-and-read-a-window-mid-bake.txt` | invariant | --hold-jobs keeps a posted surface-map bake unpublished, so a --ui-list inside the span reads the window mid-sweep: the cursor line dashes its ground number as (rebaking) instead of quoting a number for the body it just switched to, and the number lands after the release. |
 | `ui/768-systems-window-shuts-the-nozzles.txt` | golden | The Systems window's Thrust vectoring checkbox drops the live gimballed rating in --steering-log from 129710 N m to 0 while the window keeps printing 129710 N m beside the now-off switch, and says nothing about the engines being gone. |
 
-## render (83)
+## render (84)
 
 | case | kind | pins |
 |---|---|---|
@@ -474,6 +474,7 @@ judgement. Select by number, name or path, e.g.
 | `render/839-a-second-bake-of-a-hill-reuses-its-heights.txt` | invariant | Baking the same world at the same size twice samples the ground's height ONCE: the second picture reports the same floor, ceiling and lapse cost as the first, paints a field that still moves with the season, and costs a small fraction of the first bake's sweep_ms. |
 | `render/841-a-second-ground-picture-reuses-the-hill-the-first-one-measured.txt` | invariant | The ground picture samples the ground's height ONCE per pixel and keeps the grid it sampled: a re-bake of the same world at the same size says elev_cache=hit, prints the same base-colour means digit-for-digit, and costs a small fraction of the first bake's sweep_ms. |
 | `render/872-b-air-platform-mark-has-no-conic.txt` | invariant | The map marks a wind-riding platform as a point: marker, name, no orbit line. |
+| `render/872-c-tracking-map-marks-stations-too.txt` | invariant | The Tracking Station's map marks each orbital station around its focus body, conic included. |
 | `render/872-orbital-station-on-the-map.txt` | invariant | The orbital/Tracking maps mark each orbital station around the focused body, conic included. |
 
 ## harness (17)

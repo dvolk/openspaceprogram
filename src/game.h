@@ -352,6 +352,13 @@ struct MapState {
        then leaves their framing alone -- the fit is the opening view, and
        "Reset view" asks for it back. */
     bool posed = false;
+    /* How many station marks the last map frame drew, and when (#872). --map-dump
+       prints it so a case pins that a map window MARKS stations, not only that the
+       maths behind a mark is right: the dump itself could otherwise report marks no
+       window draws. Session state, and the two windows share this struct --
+       whichever map drew last answers, which is what a case looks at. */
+    int station_marks = 0;
+    double station_marks_t = -1.0;
 };
 
 /* Surface Map SESSION state (Game::surfmap), not save state: the pixels are

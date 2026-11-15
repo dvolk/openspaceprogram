@@ -190,7 +190,7 @@ struct MapLabelCand {
 struct MapLabelPlaced { int cand; ImVec2 at; };   // index into items; top-left to draw at
 
 // Pass this as placeMapLabels()'s must_fit_tier for the pure drop rule: no name gets a
-// second side. It is outside every real tier, which are 0..9 in gameui.cpp.
+// second side. It is outside every real tier, which are 0..10 in gameui.cpp.
 constexpr unsigned char kMapLabelNoBackup = 255;
 
 // The four slots around a marker; index order is right, left, below, above, and which
