@@ -384,13 +384,13 @@ static int printFleetReport(const Game &game, const GameArgs &args,
         }
         const BuildShip build = BuildShip::fromShipDef(def);
         const auto rows = computeStaging(build, home->g, args.exhaust_scale);
-        /* An all-inert burn mask: partDryMass then counts every resource except EC
-           as mass, which is exactly the wet figure (tanks full). */
-        bool inert[(int)ResourceType::Num] = {};
+        /* The wet figure (tanks full): dry mass plus every resource that weighs
+           something, which is exactly what partLoadMass sums (#334 -- the EC skip
+           lives in kResources, not in a local mask here). */
         double wet = 0.0, dv = 0.0;
         for(auto &p: build.parts) {
             if(p.def == nullptr) { continue; }
-            wet += partDryMass(*p.def, inert);
+            wet += partLoadMass(*p.def);
         }
         for(auto &r: rows) { dv += r.deltaV; }
         const double liftoff = rows.empty() ? 0.0 : rows.front().minTWR;

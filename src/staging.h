@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <cassert>
 #include <cstdint>
 #include <vector>
 
@@ -47,6 +48,7 @@ double partPropellantMass(const PartDef &def, const bool *burn);
 // Inert mass: PartDef::mass (dry, excludes propellant) plus every resource
 // not flagged burnable.
 inline double partDryMass(const PartDef &def, const bool *burn) {
+    assert(def.capacity.size() == (size_t)ResourceType::Num);  // the loop indexes kResources
     double m = def.mass;
     for(size_t r = 0; r < def.capacity.size(); r++) {
         if(!resourceHasMass((ResourceType)r)) { continue; }

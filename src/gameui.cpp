@@ -3509,11 +3509,23 @@ void drawUIReadouts(Game &g) {
     drawWin(g, W_Resources, [&] {
         // Aggregate across the active ship's parts; only types with capacity show.
         // Display order: fuels first, then life support (independent of enum order).
-        static const ResourceType resOrder[] = {
+        // This is the one resource list that a new type can miss SILENTLY -- the
+        // window would just never show it -- so it is checked against the enum.
+        static constexpr ResourceType resOrder[] = {
             ResourceType::Hydrogen, ResourceType::LOX, ResourceType::JetFuel,
             ResourceType::Hydrazine, ResourceType::EC, ResourceType::Oxygen,
             ResourceType::Water, ResourceType::Food
         };
+        static_assert(sizeof(resOrder) / sizeof(resOrder[0]) == (int)ResourceType::Num,
+                      "the Resources window must list every resource (#334)");
+        static_assert([] {
+            for(ResourceType a : resOrder) {
+                int seen = 0;
+                for(ResourceType b : resOrder) { if(a == b) { seen++; } }
+                if(seen != 1) { return false; }   // listed twice: one bar, no warning
+            }
+            return true;
+        }(), "the Resources window must list each resource once");
         for(ResourceType r : resOrder) {
             double cur = 0, cap = 0;
             for(Part *p : ship->parts) {
@@ -5862,13 +5874,10 @@ void drawVabPartWindow(Game &g) {
         /* def->mass is DRY (staging.h); the second number is everything the tanks
            hold at launch, because Vehicle::init tops every one up when it builds
            the ship. That is capacity, not what an engine would burn: a part
-           carrying something the game counts as inert load shows up here too. EC
-           is stored energy, so it rides neither number. */
-        double carried = 0.0;
-        for(int r = 0; r < (int)ResourceType::Num; r++) {
-            if(!resourceHasMass((ResourceType)r)) { continue; }
-            carried += def.capacity[r];
-        }
+           carrying something the game counts as inert load shows up here too.
+           partLoadMass is that sum -- the same one the loaders price, so this
+           window cannot drift from what the ship actually weighs at the pad. */
+        const double carried = partLoadMass(def) - def.mass;
         uiText("Mass: %.3fkg + %.3fkg at launch", def.mass, carried);
         drawPartPhysique(def);
         for(int r = 0; r < (int)ResourceType::Num; r++) {

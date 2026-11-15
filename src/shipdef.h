@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -48,48 +49,65 @@ enum class ResourceType {
 /* What each resource IS called, and whether it weighs anything -- one row per
    ResourceType (#334). Four vocabularies survive on purpose -- a window's bar
    says "Electric charge", --fuel-log says "EC", a quantity needs a unit, and a
-   .json file keys it as "ec" -- but they were four edits across three files, and
-   adding a ninth type meant half-remembering them. The count is checked at
-   compile time: an enum value with no row stops the build. 'fileKey' is the
-   spelling res/data/parts.json and res/ships/*.json already use, so it sits here
-   where changing it is obviously a save-format change rather than a rename.
-   hasMass is the same one-value-per-type fact Part::effectiveMass and the
-   "at launch" totals need: EC is stored energy, so it carries no weight. */
+   parts file keys it as "ec" -- but they were four edits across three files, and
+   adding a ninth type meant half-remembering them. The asserts below are what
+   make the table safe to edit: row count, enum order and distinct file keys are
+   all compile-time facts, so a row that is missing, inserted in the wrong place,
+   or sharing a key stops the build instead of quietly mislabelling every drum.
+   'fileKey' is the spelling res/data/parts.json uses (the only file that carries
+   these words; a save stores fuel as a positional array -- see save.h), so
+   changing one is a parts-catalog edit that the catalog's own loader reports.
+   hasMass is the other one-fact-per-type column: EC is stored energy, so it
+   carries no weight, and every mass sum now asks the table instead of naming EC. */
 struct ResourceInfo {
+    ResourceType type;      // which enum value this row describes
     const char *label;      // what a window's row says
     const char *unit;       // what a quantity of it is measured in
     const char *shortName;  // what a log line says
-    const char *fileKey;    // what a .json part/ship file calls it
+    const char *fileKey;    // what res/data/parts.json calls it
     bool hasMass;
 };
 inline constexpr ResourceInfo kResources[] = {
-    {"Hydrogen",        "kg", "H2",   "hydrogen",  true},
-    {"LOX",             "kg", "LOX",  "lox",       true},
-    {"Electric charge", "Wh", "EC",   "ec",        false},
-    {"Oxygen",          "kg", "O2",   "oxygen",    true},
-    {"Water",           "kg", "H2O",  "water",     true},
-    {"Food",            "kg", "food", "food",      true},
-    {"Hydrazine",       "kg", "N2H4", "hydrazine", true},
-    {"Jet fuel",        "kg", "JF",   "jetfuel",   true},
+    { ResourceType::Hydrogen,  "Hydrogen",        "kg", "H2",   "hydrogen",  true  },
+    { ResourceType::LOX,       "LOX",             "kg", "LOX",  "lox",       true  },
+    { ResourceType::EC,        "Electric charge", "Wh", "EC",   "ec",        false },
+    { ResourceType::Oxygen,    "Oxygen",          "kg", "O2",   "oxygen",    true  },
+    { ResourceType::Water,     "Water",           "kg", "H2O",  "water",     true  },
+    { ResourceType::Food,      "Food",            "kg", "food", "food",      true  },
+    { ResourceType::Hydrazine, "Hydrazine",       "kg", "N2H4", "hydrazine", true  },
+    { ResourceType::JetFuel,   "Jet fuel",        "kg", "JF",   "jetfuel",   true  },
 };
 static_assert(sizeof(kResources) / sizeof(kResources[0])
               == (int)ResourceType::Num, "one spelling row per ResourceType");
 
-inline const char *resourceLabel(ResourceType t) {
-    return kResources[(int)t].label;
+/* Counting rows is not enough: a row added in the wrong place shifts every name
+   AND the mass rule one type over (LOX would become massless), and two rows
+   sharing a file key make one type unparsable -- resource_index_from_string
+   takes the first match. Both are cheap to refuse. */
+static_assert([] {
+    for(int i = 0; i < (int)ResourceType::Num; i++) {
+        if(kResources[i].type != (ResourceType)i) { return false; }
+        for(int j = i + 1; j < (int)ResourceType::Num; j++) {
+            if(std::string_view(kResources[i].fileKey)
+               == std::string_view(kResources[j].fileKey)) { return false; }
+        }
+    }
+    return true;
+}(), "kResources rows must follow enum order, with a distinct fileKey each");
+
+/* Bounds-checked on purpose: Vehicle::resourceName used to answer "?" for a type
+   it did not know, and indexing off the end of the table is worse than a typo'd
+   label. */
+inline const ResourceInfo &resourceInfo(ResourceType t) {
+    const int i = (int)t;
+    assert(i >= 0 && i < (int)ResourceType::Num);
+    return kResources[i];
 }
-inline const char *resourceUnit(ResourceType t) {
-    return kResources[(int)t].unit;
-}
-inline const char *resourceShort(ResourceType t) {
-    return kResources[(int)t].shortName;
-}
-inline const char *resourceFileKey(ResourceType t) {
-    return kResources[(int)t].fileKey;
-}
-inline bool resourceHasMass(ResourceType t) {
-    return kResources[(int)t].hasMass;
-}
+inline const char *resourceLabel(ResourceType t) { return resourceInfo(t).label; }
+inline const char *resourceUnit(ResourceType t) { return resourceInfo(t).unit; }
+inline const char *resourceShort(ResourceType t) { return resourceInfo(t).shortName; }
+inline const char *resourceFileKey(ResourceType t) { return resourceInfo(t).fileKey; }
+inline bool resourceHasMass(ResourceType t) { return resourceInfo(t).hasMass; }
 
 /* Only what a part HOLDS. Capacity is not per-part state: nothing ever mutates
    it and the save format has no field for it, so it lives on the PartDef and

@@ -514,9 +514,15 @@ PartsCatalog load_parts_catalog(const char *path) {
                    Otherwise {"ec": -3} answers "must be >= 0 (kg/s)" about a key
                    that is not legal whatever its number is. */
                 const int idx = resource_index_from_string(it.key(), ctx);
-                if(idx == (int)ResourceType::EC) {
-                    throw std::runtime_error(ctx + "\"propellant\" cannot be EC "
-                                             "(energy in Wh, not a mass propellant)");
+                /* Not "is it EC" but "does it weigh anything": a thruster throws
+                   mass, so the massless row of kResources is what cannot be a
+                   propellant (#334). The wording stays EC's, since EC is the only
+                   massless type today and the only one an author can hit. */
+                if(!resourceHasMass((ResourceType)idx)) {
+                    throw std::runtime_error(ctx + "\"propellant\" cannot be "
+                                             + resourceShort((ResourceType)idx)
+                                             + " (energy in " + resourceUnit((ResourceType)idx)
+                                             + ", not a mass propellant)");
                 }
                 const std::string what = std::string(ctx) + "\"propellant\" rate for '"
                                          + it.key() + "'";
@@ -555,12 +561,14 @@ PartsCatalog load_parts_catalog(const char *path) {
         // propellant would make fan/ram thrust while burning nothing.
         if(d.jet) {
             if(d.propellant_rate[(int)ResourceType::JetFuel] <= 0.0) {
-                throw std::runtime_error(ctx + "\"jet\" propellant must include \"jetfuel\"");
+                throw std::runtime_error(ctx + "\"jet\" propellant must include \""
+                                         + resourceFileKey(ResourceType::JetFuel) + "\"");
             }
             for(int r = 0; r < (int)ResourceType::Num; r++) {
                 if(r != (int)ResourceType::JetFuel && d.propellant_rate[r] > 0.0) {
-                    throw std::runtime_error(ctx + "\"jet\" propellant must be ONLY "
-                                             "\"jetfuel\" (air is the free oxidizer)");
+                    throw std::runtime_error(ctx + "\"jet\" propellant must be ONLY \""
+                                             + resourceFileKey(ResourceType::JetFuel)
+                                             + "\" (air is the free oxidizer)");
                 }
             }
         }
@@ -2162,6 +2170,10 @@ bool save_ship_def(const BuildShip &bs, const char *path) {
 }
 
 double partLoadMass(const PartDef &def) {
+    /* The loop below runs to capacity.size() and asks the table by index, so a
+       def with more slots than the enum would read past the table. PartDef's own
+       constructor sizes it; this is the hand-built-defs case (tests). */
+    assert(def.capacity.size() == (size_t)ResourceType::Num);
     double m = def.mass;
     for(size_t r = 0; r < def.capacity.size(); r++) {
         if(!resourceHasMass((ResourceType)r)) { continue; }

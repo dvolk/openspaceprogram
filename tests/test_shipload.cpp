@@ -12,6 +12,7 @@
 
 #include "shipdef.h"
 #include "drag.h"   // #453: the per-part aero law, pinned against shipped poses
+#include "staging.h"  // partDryMass: the other mass sum that reads kResources (#334)
 
 #include <cmath>
 #include <cstdio>
@@ -698,6 +699,22 @@ int main() {
         CHECK(near(stray_pw.genW, 100.0));
         CHECK(near(stray_pw.storeWh, 500.0));
         CHECK(stray_pw.constW == 0.0);
+
+        /* The same watts on the mass side of the ledger (#334). hasMass is one
+           column of kResources, and partLoadMass is the sum the loaders price and
+           the VAB's "at launch" figure now shares -- so a battery's watt-hours
+           must weigh nothing in it, and partDryMass (staging's copy of the same
+           rule, with a burn mask over it) must agree. */
+        PartDef batt; batt.mass = 100.0;
+        batt.capacity[(int)ResourceType::EC] = 5000.0;
+        CHECK(near(partLoadMass(batt), 100.0));
+        bool no_burn[(int)ResourceType::Num] = {};
+        CHECK(near(partDryMass(batt, no_burn), 100.0));
+        batt.capacity[(int)ResourceType::Hydrazine] = 40.0;
+        CHECK(near(partLoadMass(batt), 140.0));      // the kg sitting next to it does weigh
+        bool hydrazine_burns[(int)ResourceType::Num] = {};
+        hydrazine_burns[(int)ResourceType::Hydrazine] = true;
+        CHECK(near(partDryMass(batt, hydrazine_burns), 100.0));   // burnable: fuel, not load
 
         ShipDef pt = load_ship_def("res/ships/power_test.json", cat);
         const BuildPower pw = buildPower(BuildShip::fromShipDef(pt));
