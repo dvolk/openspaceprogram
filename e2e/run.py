@@ -37,7 +37,11 @@ refusals; NOGLCHECK opts out of the GL drains for timing-sensitive cases.
 CHECK sees out and
 the parsed logs (orbit/dbg/att/eva/fuel/drainlog/power/dv/mass/drag/shake/cam/
 terrain/surf/xfer/porkchop/surfmap/solar/mapb/plane/slew/toast/scene) plus
-first/last/re. `rec` is the exception to "parse stdout": the flight recorder's
+first/last/re. Every row of a world-scoped log carries `ship`: the vessel that
+was active when the game printed the line, read from the game's own "Active ship
+N of M: NAME" marker, or None while the run has never switched; `shipswitch`
+lists those handoffs themselves, so a CHECK can name its ship instead of mixing
+two vessels' rows (#447). `rec` is the exception to "parse stdout": the flight recorder's
 trace is a FILE, so the harness reads it from the case's scratch --data-dir
 (flights/*.log, #662). The row lists parse stdout from the LAST "Loaded game from"
 line: a successful load
@@ -643,6 +647,82 @@ def dropped_nonfinite_rows(rx, printed):
     a number in them is spelled inf or nan (#408). Every row parser is anchored on its
     tag (line_tag), so match() asks the same question finditer does at that offset."""
     return [ln for ln in printed if rx.match(ln) is None and NONFINITE_RE.search(ln)]
+
+
+# Every log row describes the vessel that was ACTIVE when it printed, and the game says
+# who that is -- four spellings, all on their own line: the handoff (game.cpp:1671), the
+# handoff after a removal (:2500), the removal that left the choice alone (:2516, which
+# prints "(none)" when the game holds vessels and none of them is active), and the
+# removal that left nothing to control (:2509). A marker carries no timestamp, so a
+# row's own t= cannot say which side of a switch it fell on; line order can, and losing
+# it is what turned a ship-switch bug into an experiment (#447: a row at t=2.0s next to
+# a press at 2000 ms and a 0.25 s sampling interval).
+SHIP_SWITCH_RE = re.compile(
+    r"(?:Active ship \d+ of \d+: |Removed '[^']*'; active ship \d+ of \d+: )"
+    r"([^\n]*)"
+    r"|Removed '[^']*' \(active unchanged: (.*)\)"
+    r"|Removed '[^']*'; nothing left to control -- no active vessel")
+NO_VESSEL = ""
+
+
+def marker_name(m):
+    """The vessel a marker names -- whichever of its two shapes carried one. ''
+    (NO_VESSEL) for the shipless game and for 'active unchanged: (none)', which is
+    the same state in the game's own words. The third alternative's closing paren is
+    part of the pattern, not the name: a display name may hold a ')' itself."""
+    name = m.group(1) if m.group(1) is not None else m.group(2)
+    return NO_VESSEL if name is None or name.strip() == "(none)" else name.strip()
+
+
+def ship_segments(text):
+    """[(ship, chunk)] split at the active-ship markers, in line order. The marker
+    belongs to the vessel it names, so each chunk starts at its marker. `ship` is None
+    before the first marker: the run never switched, so those rows describe the ship it
+    started with, which is the ship the case chose."""
+    marks = list(SHIP_SWITCH_RE.finditer(text))
+    if not marks:
+        return [(None, text)]
+    parts = []
+    if marks[0].start():
+        parts.append((None, text[:marks[0].start()]))
+    for i, m in enumerate(marks):
+        end = marks[i + 1].start() if i + 1 < len(marks) else len(text)
+        parts.append((marker_name(m), text[m.start():end]))
+    return parts
+
+
+def parse_scoped(text, parser):
+    """Run a row parser over the log one vessel at a time so every dict row knows which
+    ship was active when the game printed it: row["ship"] (#447). Rows keep their line
+    order across the segments. A parser whose own line already names the ship -- [fuel],
+    [mass], [drainlog] all print ship= -- keeps that name, because the line is the more
+    precise source: it says which vessel the ROW is about, where the marker only says
+    which one was active. No row regex spans a line, so splitting at a marker boundary
+    cannot cut a row in half."""
+    rows = []
+    for ship, chunk in ship_segments(text):
+        for row in parser(chunk):
+            if isinstance(row, dict) and "ship" not in row:
+                row["ship"] = ship
+            rows.append(row)
+    return rows
+
+
+def parse_shipswitch(text):
+    """The markers themselves as rows, so a case can say how many handoffs happened and
+    to whom instead of regexing stdout. This is the only row list that is not a [tag]
+    table, so it is deliberately not in ROW_PARSERS: the printed-vs-read guards there
+    count lines that start with a tag."""
+    rows = []
+    for m in SHIP_SWITCH_RE.finditer(text):
+        line = m.group(0)
+        rows.append({
+            "name": marker_name(m),
+            "verb": ("switch" if line.startswith("Active ship") else
+                     "none" if "nothing left to control" in line else
+                     "unchanged" if "active unchanged" in line else "removed"),
+        })
+    return rows
 
 
 # A tag is not a row. The same tags also carry NOTES, and no parser above can read them:
@@ -2034,34 +2114,38 @@ def run_case(case):
     # comparing across that line and should say so.
     cut = out.rfind("Loaded game from ")
     world = out[cut:] if cut >= 0 else out
-    orbit = parse_orbit(world)
-    dbg = parse_dbg(world)
-    bldg = parse_bldg(world)
-    xfer = parse_xfer(world)
-    porkchop = parse_porkchop(world)
-    surfmap = parse_surfmap(world)
-    solar = parse_solar(world)
-    att = parse_att(world)
-    ascent = parse_ascent(world)
-    eva = parse_eva(world)
-    fuel = parse_fuel(world)
-    drainlog = parse_drainlog(world)
-    power = parse_power(world)
-    dv = parse_dv(world)
-    mass = parse_mass(world)
-    drag = parse_drag(world)
+    # The lists fed from `world` describe the vessel that was ACTIVE when the line
+    # printed, so parse_scoped stamps row["ship"] from the game's markers (#447);
+    # perf/toast/scene read the whole run and stay unattributed, as they already are.
+    orbit = parse_scoped(world, parse_orbit)
+    dbg = parse_scoped(world, parse_dbg)
+    bldg = parse_scoped(world, parse_bldg)
+    xfer = parse_scoped(world, parse_xfer)
+    porkchop = parse_scoped(world, parse_porkchop)
+    surfmap = parse_scoped(world, parse_surfmap)
+    solar = parse_scoped(world, parse_solar)
+    att = parse_scoped(world, parse_att)
+    ascent = parse_scoped(world, parse_ascent)
+    eva = parse_scoped(world, parse_eva)
+    fuel = parse_scoped(world, parse_fuel)
+    drainlog = parse_scoped(world, parse_drainlog)
+    power = parse_scoped(world, parse_power)
+    dv = parse_scoped(world, parse_dv)
+    mass = parse_scoped(world, parse_mass)
+    drag = parse_scoped(world, parse_drag)
     ctrl = parse_ctrl(world)
     surface = parse_surface(world)
     uilist = parse_uilist(world)
-    shake = parse_shake(world)
-    cam = parse_cam(world)
-    terrain = parse_terrain(world)
-    surf = parse_surf(world)
-    orbinfo = parse_orbinfo(world)
+    shake = parse_scoped(world, parse_shake)
+    cam = parse_scoped(world, parse_cam)
+    terrain = parse_scoped(world, parse_terrain)
+    surf = parse_scoped(world, parse_surf)
+    orbinfo = parse_scoped(world, parse_orbinfo)
     scene = parse_scene(out)
-    mapb = parse_mapb(world)
-    plane = parse_plane(world)
-    slew = parse_slew(world)
+    mapb = parse_scoped(world, parse_mapb)
+    plane = parse_scoped(world, parse_plane)
+    slew = parse_scoped(world, parse_slew)
+    shipswitch = parse_shipswitch(world)
     perf = parse_perf(out)
     toast = parse_toast(out)
     simreport = parse_sim_report(out)
@@ -2087,6 +2171,8 @@ def run_case(case):
         "cam": cam,
         "terrain": terrain,
         "surf": surf, "orbinfo": orbinfo, "mapb": mapb, "plane": plane, "slew": slew,
+        # The handoffs themselves: [{"verb": switch/removed/unchanged/none, "name": ...}].
+        "shipswitch": shipswitch,
         "perf": perf,
         "scene": scene,
         "toast": toast,
@@ -2556,6 +2642,46 @@ def self_test():
         if not NONFINITE_RE.search(word):
             fails.append("NONFINITE_RE missed %r" % word)
 
+    # #447: a row belongs to the ship that was ACTIVE when it printed, and the
+    # marker that says so carries no timestamp -- line order is the only evidence,
+    # and the old flat parse threw it away. Pinned on the four marker spellings,
+    # on the ordering across segments, and on [mass] keeping the name its own
+    # line prints.
+    log447 = "\n".join([
+        good_orb.replace("t=3.9s", "t=1.0s"),
+        "Active ship 2 of 8: tanker",
+        good_orb.replace("t=3.9s", "t=2.0s"),
+        "Removed 'racer'; active ship 1 of 7: hauler",
+        good_orb.replace("t=3.9s", "t=3.0s"),
+        "Removed 'hauler'; nothing left to control -- no active vessel",
+        good_orb.replace("t=3.9s", "t=4.0s"),
+    ])
+    rows447 = parse_scoped(log447, parse_orbinfo)
+    if [r.get("ship") for r in rows447] != [None, "tanker", "hauler", NO_VESSEL]:
+        fails.append("the ship each [orbinfo] row belongs to is wrong: %r"
+                     % [r.get("ship") for r in rows447])
+    if [r["t"] for r in rows447] != [1.0, 2.0, 3.0, 4.0]:
+        fails.append("parse_scoped lost the line order across ship segments")
+    if [r.get("ship") for r in parse_scoped(good_orb, parse_orbinfo)] != [None]:
+        fails.append("a run that never switched ships invented a handoff")
+    mass_line = '[mass] t=0.333s ship="stager" parts=7 mass=4235.86 kg ' \
+                 'hullmass=4235.86 kg railed=0'
+    if [r.get("ship") for r in parse_scoped("Active ship 3 of 3: tanker\n" + mass_line,
+                                            parse_mass)] != ["stager"]:
+        fails.append("the marker overwrote the ship [mass] printed for its own row")
+    if ([(s["verb"], s["name"]) for s in parse_shipswitch(log447)]
+            != [("switch", "tanker"), ("removed", "hauler"),
+                ("none", NO_VESSEL)]):
+        fails.append("the shipswitch rows do not describe the four markers")
+    if parse_shipswitch("Removed 'x' (active unchanged: (none))") != [
+            {"verb": "unchanged", "name": NO_VESSEL}]:
+        fails.append("'active unchanged: (none)' is the shipless game too")
+    if [s["name"] for s in parse_shipswitch(
+            "Removed 'x' (active unchanged: pod (2))")] != ["pod (2)"]:
+        fails.append("the marker's closing paren ate a display name's own paren")
+    if parse_shipswitch("[toast] Active ship: racer, warp 10x"):
+        fails.append("a toast that merely names the active ship read as a handoff")
+
     # EXPECT/FORBID are substring tests, so a line written as a regex is a DEAD pin.
     # Refusing it at parse time is only worth anything if the refusal itself is pinned:
     # the shapes that must be refused, and the literals that must NOT be (a save-format
@@ -2586,7 +2712,9 @@ def self_test():
           "uncalled lambda) refused at parse and eval; a CHECK whose all()/any() "
           "walked an empty input recorded as a note that cannot redden the case; a "
           "printed row dropped because its number reads inf/nan named, and the "
-          "node_r=nan row the parser does read left alone; regex-shaped EXPECT/FORBID "
+          "node_r=nan row the parser does read left alone; every world-scoped row "
+          "stamped with the vessel that was active when it printed, in line order, "
+          "and [mass]'s own ship= kept; regex-shaped EXPECT/FORBID "
           "refused at parse while literal text containing brackets stays legal; "
           "re.search, walrus, comprehension and immediately-called lambda CHECKs "
           "accepted; CHECK failed/raised wording intact")

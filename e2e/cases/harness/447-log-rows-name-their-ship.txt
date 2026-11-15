@@ -1,0 +1,36 @@
+# #447: a log row belongs to the ship that was ACTIVE when it printed, and the
+# game already says who that is, on a line of its own -- "Active ship 2 of 8:
+# tanker" (game.cpp:1671). What the runner used to lose is the line order: every
+# row went into one flat list, so a CHECK like all(s["sit"] == "landed" for s in
+# surf) weighed two vessels' rows as one. The marker carries no timestamp, so a
+# row's own t= cannot say which side of a handoff it fell on -- on #444 a press
+# at 2000 ms and a row at t=2.0s under a 0.25 s sampling interval were genuinely
+# ambiguous, and settling it took moving the press to 3000 ms instead of reading
+# the log. So the runner splits the log at the markers and stamps row["ship"],
+# and exposes the markers themselves as shipswitch.
+NAME log-rows-name-their-ship
+CLAIM Every log row says which vessel was active when it printed, so a CHECK can weigh one ship's rows instead of a list that changes vessel mid-run.
+KIND harness
+ARGS --startships e2e/fixtures/startships.json --time-accel 1 --timeout 6
+ARGS --info-log --orbit-interval 1
+# 2500 ms, not earlier: [surfinfo] samples every 1 s, so the handoff has to fall
+# after the second row for the case to have a "before" to weigh. (The exact
+# ambiguity #447 is about -- a press at 2000 ms and a row at t=2.0s -- is pinned
+# by the contiguity CHECK below, not by this margin.)
+ARGS --sim-press 2500,50,F6
+EXPECT Active ship 2 of 8: tanker
+FORBID error:
+CHECK len(shipswitch) == 1
+CHECK first(shipswitch)["verb"] == "switch"
+CHECK first(shipswitch)["name"] == "tanker"
+CHECK len(surf) >= 5
+# Before the handoff the rows belong to the ship the run started with. The runner
+# does not guess its name from --startships: None means "no handoff yet".
+CHECK first(surf)["ship"] is None
+CHECK last(surf)["ship"] == "tanker"
+# Line order survived the parse: once a row belongs to the new vessel, no later
+# row belongs to the old one. A flat parse cannot say this at all.
+CHECK all(s1["ship"] is None or s2["ship"] is not None for s1, s2 in zip(surf[:-1], surf[1:]))
+# The payoff: both sides of the handoff have rows of their own to weigh.
+CHECK len([s for s in surf if s["ship"] is None]) >= 2
+CHECK len([s for s in surf if s["ship"] == "tanker"]) >= 2
