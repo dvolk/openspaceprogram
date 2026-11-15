@@ -4065,32 +4065,50 @@ static void test_wind_profile() {
    bands, and the bands have to be a table the loader's own laws accept. */
 static void test_wind_generate() {
     const std::vector<WindLevel> col = { {0.0, 5.0, 0.0}, {11000.0, 40.0, 0.0} };
+    /* THREE REGIMES, typed once (#778). These are NOT the catalogue's numbers, and this test
+       cannot see the catalogue: test_drag links only the code it tests, so there is no
+       load_system() here to read a body's spin from. What the three pick is the regime the law
+       cares about -- rotation irrelevant (Ro ~ 11), rotation absolute (Ro ~ 0.0016), and the
+       in-between where the belt count still fits inside the row budget (Ro ~ 0.02) -- at the
+       order of magnitude a slow rock, a gas giant and an Earth-sized world turn at. They used
+       to be spelled inline six times under the names venus / jup / earth, which claimed a
+       coupling nothing here watches.
+       The shipped figures ARE watched, elsewhere: `python3 utils/make_solar_system.py --check`
+       prints Ro, the Rhines scale and the asked belt count for every world with air (Venus
+       Ro 27.6 and 0 belts, Jupiter 0.0061 and 18, Uranus 0.0487 and 6), and e2e render/717
+       pins Uranus' dossier row -- "rhines: Ro 0.0487, 6 belts per hemisphere, Rhines scale
+       13.6 deg" -- to the digit. A data pass that moves a spin reddens THERE; what is pinned
+       below is what the generator does with a Ro, not what a planet's day is. */
+    constexpr double kSlowSpin = 2.992e-7, kSlowR = 6.052e6;   // ~3e-7 rad/s at ~6e6 m
+    constexpr double kFastSpin = 1.759e-4, kFastR = 6.991e7;   // ~2e-4 rad/s at ~7e7 m
+    constexpr double kMidSpin = 7.3e-5, kMidR = 6.0e6;         // ~7e-5 rad/s at ~6e6 m
 
     /* A Venus-slow rotator gets NOTHING. Ro ~ 11 for this 40 m/s column (~28 at the 90 m/s
        the sheet reports) says rotation never constrains the flow, and the Rhines scale says
        the same thing in metres: ~205 deg, wider than a hemisphere, so the ask is zero belts.
        The published picture is what it is: one broad superrotating profile and no belts. A
-       generator that banded Venus anyway would be inventing structure the source denies. */
+       generator that banded a rotator that slow anyway would be inventing structure the
+       source denies. */
     WindGenInfo slow;
-    const auto venus = windGenerate(col, 2.992e-7, 6.052e6, 7ull, slow);
-    CHECK_NEAR(slow.ro, 11.0, 0.02, "Venus's Rossby number");
+    const auto slowRows = windGenerate(col, kSlowSpin, kSlowR, 7ull, slow);
+    CHECK_NEAR(slow.ro, 11.0, 0.02, "a Venus-slow rotator's Rossby number");
     CHECK_TRUE(slow.bands == 1, "a rotator that slow gets one band");
-    CHECK_TRUE(venus.size() == col.size(), "and the column comes back unchanged");
+    CHECK_TRUE(slowRows.size() == col.size(), "and the column comes back unchanged");
 
     /* A Jupiter-fast rotator gets belts. Ro ~ 0.0016 for this column, Rhines scale ~2.5 deg,
        so it asks for 36 belts per hemisphere -- more than the row budget can hold, which is
        the ONLY thing that trims it now the amplitude is normalized over the count. */
     WindGenInfo fast;
-    const auto jup = windGenerate(col, 1.759e-4, 6.991e7, 7ull, fast);
-    CHECK_NEAR(fast.ro, 0.00163, 0.02, "Jupiter's Rossby number");
+    const auto fastRows = windGenerate(col, kFastSpin, kFastR, 7ull, fast);
+    CHECK_NEAR(fast.ro, 0.00163, 0.02, "a Jupiter-fast rotator's Rossby number");
     CHECK_TRUE(fast.asked == 36, "the Rhines scale asks for 36 belts per hemisphere");
     CHECK_TRUE(fast.clamped && fast.bands == 31, "and the 64-row budget keeps 15, because a"
                                                  " faint belt is a WIDE belt, never a hole"
                                                  " in the coverage");
-    CHECK_TRUE(jup.size() == 62, "one row per anchor per band");
-    CHECK_TRUE(jup.size() <= kWindMaxRows, "and never past the loader's row cap, which is"
+    CHECK_TRUE(fastRows.size() == 62, "one row per anchor per band");
+    CHECK_TRUE(fastRows.size() <= kWindMaxRows, "and never past the loader's row cap, which is"
                                            " the aero path's linear-scan budget");
-    CHECK_NEAR(std::abs(windAt(jup, 11000.0, 89.5, 0.0).x), 40.0 * kWindGenFloor, 1e-12,
+    CHECK_NEAR(std::abs(windAt(fastRows, 11000.0, 89.5, 0.0).x), 40.0 * kWindGenFloor, 1e-12,
                "the poleward belt sits exactly on the amplitude floor whatever the count");
 
     /* The SHAPE of the span, not just its two ends. An Earth-slow body (Rhines ~13 deg,
@@ -4099,10 +4117,10 @@ static void test_wind_generate() {
        gives 0.55 there and a squared span 0.56, so this is what pins the decay as geometric
        rather than pinning only where it starts and where it ends. */
     WindGenInfo mid;
-    const auto earth = windGenerate(col, 7.3e-5, 6.0e6, 7ull, mid);
+    const auto midRows = windGenerate(col, kMidSpin, kMidR, 7ull, mid);
     CHECK_TRUE(mid.asked == 6 && !mid.clamped && mid.bands == 13,
                "an Earth-slow rotator gets exactly the count the Rhines scale asked for");
-    CHECK_NEAR(std::abs(windAt(earth, 11000.0, 42.0, 0.0).x),
+    CHECK_NEAR(std::abs(windAt(midRows, 11000.0, 42.0, 0.0).x),
                40.0 * std::sqrt(kWindGenFloor), 1e-9,
                "the halfway belt lands on the geometric middle of the span");
 
@@ -4113,7 +4131,7 @@ static void test_wind_generate() {
     double prev = 0.0;
     for(int i = 0; i <= 360; i++) {
         const double lat = -90.0 + i * 0.5;
-        const double e = windAt(jup, 6000.0, lat, 0.0).x;
+        const double e = windAt(fastRows, 6000.0, lat, 0.0).x;
         CHECK_TRUE(std::isfinite(e), "every latitude gets an answer");
         if(i > 0 && e * prev < 0.0) { ++flips; }
         prev = e;
@@ -4122,7 +4140,7 @@ static void test_wind_generate() {
        player: 31 bands along a meridian is 30 boundaries, and every one of them is a flip.
        A belt cancelled by some cap anywhere upstream shows up here as a missing flip. */
     CHECK_TRUE(flips == 30, "every band boundary flips the wind, and none of them is missing");
-    CHECK_NEAR(windAt(jup, 11000.0, 0.0, 0.0).x, 40.0, 0.0,
+    CHECK_NEAR(windAt(fastRows, 11000.0, 0.0, 0.0).x, 40.0, 0.0,
                "the equatorial band carries the anchor's own value");
 
     /* Mirror-symmetric: zonal winds are, and hemispheres that disagreed would be a bug
@@ -4130,25 +4148,25 @@ static void test_wind_generate() {
     bool mirror = true;
     for(int i = 0; i <= 60; i++) {
         const double lat = i * 1.5;
-        if(std::abs(windAt(jup, 6000.0, lat, 0.0).x
-                  - windAt(jup, 6000.0, -lat, 0.0).x) > 1e-9) { mirror = false; }
+        if(std::abs(windAt(fastRows, 6000.0, lat, 0.0).x
+                  - windAt(fastRows, 6000.0, -lat, 0.0).x) > 1e-9) { mirror = false; }
     }
     CHECK_TRUE(mirror, "north and south mirror each other");
 
     /* Deterministic: one seed, one belt layout, on every run and every platform -- the
        same reason the terrain generator is seeded (and why e2e can pin a world). */
     WindGenInfo again;
-    const auto dup = windGenerate(col, 1.759e-4, 6.991e7, 7ull, again);
-    bool same = dup.size() == jup.size();
-    for(size_t r = 0; r < jup.size() && r < dup.size(); r++) {
-        if(dup[r].lat0 != jup[r].lat0 || dup[r].east != jup[r].east) { same = false; }
+    const auto dup = windGenerate(col, kFastSpin, kFastR, 7ull, again);
+    bool same = dup.size() == fastRows.size();
+    for(size_t r = 0; r < fastRows.size() && r < dup.size(); r++) {
+        if(dup[r].lat0 != fastRows[r].lat0 || dup[r].east != fastRows[r].east) { same = false; }
     }
     CHECK_TRUE(same, "the same seed generates the same belts");
     WindGenInfo other;
-    const auto diff = windGenerate(col, 1.759e-4, 6.991e7, 8ull, other);
+    const auto diff = windGenerate(col, kFastSpin, kFastR, 8ull, other);
     bool moved = false;
-    for(size_t r = 0; r < jup.size() && r < diff.size(); r++) {
-        if(diff[r].lat0 != jup[r].lat0) { moved = true; }
+    for(size_t r = 0; r < fastRows.size() && r < diff.size(); r++) {
+        if(diff[r].lat0 != fastRows[r].lat0) { moved = true; }
     }
     CHECK_TRUE(moved, "a different seed moves the belts, so two bodies sharing a spin"
                       " do not get the same planet");
@@ -4161,7 +4179,7 @@ static void test_wind_generate() {
        straddles lat 0, where there is no antisymmetric answer to give. */
     const std::vector<WindLevel> cell = { {0.0, 40.0, 10.0, 0.02} };
     WindGenInfo cellgi;
-    const auto rows = windGenerate(cell, 1.759e-4, 6.991e7, 7ull, cellgi);
+    const auto rows = windGenerate(cell, kFastSpin, kFastR, 7ull, cellgi);
     bool per_component = true;
     for(double lat : {10.0, 25.0, 40.0, 55.0, 70.0, 85.0}) {
         const glm::dvec3 n = windAt(rows, 0.0, lat, 0.0);
@@ -4185,7 +4203,7 @@ static void test_wind_generate() {
        author never wrote -- and triple the table doing it. */
     const std::vector<WindLevel> calm = { {0.0, 0.0, 0.0, 0.02} };  // alt, east, north, up
     WindGenInfo calmgi;
-    const auto flat = windGenerate(calm, 7.3e-5, 6.0e6, 7ull, calmgi);
+    const auto flat = windGenerate(calm, kMidSpin, kMidR, 7ull, calmgi);
     CHECK_TRUE(calmgi.bands == 1 && flat.size() == 1, "a calm column comes back as authored");
     CHECK_TRUE(flat[0].lat0 == -90.0 && flat[0].lat1 == 90.0 && flat[0].up == 0.02,
                "and still answers for the whole body, unchanged");
@@ -4210,11 +4228,11 @@ static void test_wind_generate() {
     CHECK_TRUE(windGenSeed("Earthlike", 22.0) != windGenSeed("Earthlike", 23.0),
                "and the body seed still moves it");
     WindGenInfo twin;
-    const auto named = windGenerate(col, 1.759e-4, 6.991e7,
+    const auto named = windGenerate(col, kFastSpin, kFastR,
                                     windGenSeed("Slowpoke", 22.0), twin);
-    bool shifted = named.size() != jup.size();
-    for(size_t r = 0; !shifted && r < jup.size() && r < named.size(); r++) {
-        if(named[r].lat0 != jup[r].lat0) { shifted = true; }
+    bool shifted = named.size() != fastRows.size();
+    for(size_t r = 0; !shifted && r < fastRows.size() && r < named.size(); r++) {
+        if(named[r].lat0 != fastRows[r].lat0) { shifted = true; }
     }
     CHECK_TRUE(shifted, "so two bodies with one seed and one spin do not get one planet");
 }
