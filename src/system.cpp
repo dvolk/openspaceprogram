@@ -841,6 +841,31 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                                            " temperature that surface.temperature does not"
                                            " author");
             }
+            /* The provenance string is free text, and two readouts print it through FIXED
+               buffers that assert instead of truncating: atlasDossier's `char v[128]` under
+               "%.1f K  (%s)" and --solar-log's `char src_s[128]` under "\"%s\"". So the
+               bound lives here, where a refusal can name the field, instead of as an abort in
+               front of a player who authored a long sentence. 110 leaves both buffers room for
+               their wrapping at the widest number the loader admits (1e6 K prints 9 digits);
+               the longest shipped string is 106 chars (lag_playground.json).
+               A double quote is refused for the same kind of reason: --solar-log frames the
+               field with quotes and e2e/run.py reads it back as a quoted run, so one inside
+               the string takes the row -- and every CHECK on it -- away. */
+            if(s.temperature_src.size() > 110) {
+                throw std::runtime_error("system: '" + body->name
+                                         + "': \"surface.temperature_src\" is "
+                                         + std::to_string(s.temperature_src.size())
+                                         + " chars, over the 110 the readouts can print"
+                                           " (the dossier's value column and --solar-log's"
+                                           " quoted underfoot_src are fixed buffers that"
+                                           " assert rather than truncate)");
+            }
+            if(s.temperature_src.find('"') != std::string::npos) {
+                throw std::runtime_error("system: '" + body->name
+                                         + "': \"surface.temperature_src\" may not contain"
+                                           " a double quote -- --solar-log prints it inside"
+                                           " a quoted field");
+            }
             /* The JSON key is "albedo" and it is the BOND albedo (terragen.h).
                RingParams::albedo is a different thing -- a ring's visual brightness --
                and lives in a different block; the two must never be confused by a

@@ -424,6 +424,40 @@ int main() {
         j["bodies"][1]["surface"]["even_share_src"] = "DEFAULT airless floor";
         expect_reject(j, "provenance with no knob rejected", "even_share_src");
     }
+    /* #801 printed a hand-authored `temperature_src` through two FIXED buffers that ASSERT
+       rather than truncate -- atlasDossier's `char v[128]` under "%.1f K  (%s)", and
+       --solar-log's `char src_s[128]` under "\"%s\"". A provenance string is free text, so the
+       bound lives in the loader, where a refusal can name the field instead of aborting in
+       front of a player. 110 is above the longest shipped string (106, lag_playground.json)
+       and below what either wrapping needs at the widest number the loader admits.
+       The double-quote half is the same hazard one character wide: --solar-log frames the
+       field with quotes and e2e/run.py reads it back as one quoted run, so a quote INSIDE the
+       string drops the row -- and every CHECK walking that row's list with it. */
+    {
+        nlohmann::json j = read_json("res/systems/old_system.json");
+        j["bodies"][1]["surface"]["temperature"] = 260.0;
+        j["bodies"][1]["surface"]["temperature_src"] = std::string(111, 'x');
+        expect_reject(j, "provenance too long to print rejected",
+                      "\"surface.temperature_src\" is 111 chars");
+    }
+    {
+        nlohmann::json j = read_json("res/systems/old_system.json");
+        j["bodies"][1]["surface"]["temperature"] = 260.0;
+        j["bodies"][1]["surface"]["temperature_src"] = "SOLVED from a \"range\", not a mean";
+        expect_reject(j, "provenance carrying a double quote rejected",
+                      "may not contain a double quote");
+    }
+    {
+        /* A boundary, not a guess: the cap itself loads, verbatim. */
+        nlohmann::json j = read_json("res/systems/old_system.json");
+        j["bodies"][1]["surface"]["temperature"] = 260.0;
+        j["bodies"][1]["surface"]["temperature_src"] = std::string(110, 'x');
+        expect_loaded(j, "provenance at the cap loads", [&](const System &sys) {
+            check(sys.bodies.size() > 1
+                      && sys.bodies[1]->surface.temperature_src.size() == 110,
+                  "the 110-char provenance survives the load");
+        });
+    }
     /* #794: the phase lag's own guards. Seven shipped bodies author one now, so the loader is the
        only thing standing between a units mistake and a world a player loads -- and the mistake it
        exists to catch is a unit one. A fact page that says "the daily max lands at 14:00" invites

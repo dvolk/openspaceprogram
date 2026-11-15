@@ -7088,8 +7088,10 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
        `ground lag` row (89 chars at Pol: `0.4795 rad of phase (hottest ground up to 25.6 deg /
        17.98 h past noon; day 10d 12:42:22)`), and both its angle and its day grow with what a
        hand-authored file can ask for (a tau near kLagTauMaxPhase and a slow rotator), as does
-       the #801 provenance marker on `ground anchor` -- a file's `temperature_src` is free text
-       -- so the room is deliberate rather than measured to the last byte. */
+       the #801 provenance marker on `ground anchor` -- a file's `temperature_src` is free text,
+       bounded only where it loads (system.cpp refuses one over 110 chars, and one carrying a
+       double quote, which would also break --solar-log's quoted underfoot_src). So the room is
+       the gap between that cap and 128, deliberate rather than measured to the last byte. */
     char v[128], w[64];
     auto line = [&](const char *label, const char *value) {
         f.push_back(AtlasFact{ label, value, false });
@@ -7636,10 +7638,11 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
                albedo imply, and their `ground anchor` printed in the same typography as Earth's
                stated 288 K. So the anchor carries the map's own words (groundAnchorSource, so a
                mean SOLVED from a stated range credits the range rather than calling itself a
-               stated mean). A stated or air-datum anchor stays bare: naming the source on the
-               worlds where a source IS the answer costs width on every row to say something the
-               number already is, and silence about a sourced figure is not the confusion #722
-               is about. */
+               stated mean -- which is why the Moon's row, on rung 1, is not bare). What stays
+               bare is an anchor with nothing left to say: a stated ground whose file gives no
+               provenance string, or the datum of the air sitting on it. Naming the source on
+               those worlds costs width on every row to say something the number already is, and
+               silence about a sourced figure is not the confusion #722 is about. */
             const std::string anchorSrc
                 = (anchorRung == kAnchorDerived || !b.surface.temperature_src.empty())
                       ? groundAnchorSource(anchorRung, b.surface.temperature_src)

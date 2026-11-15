@@ -857,13 +857,15 @@ void tick(Game &g) {
                     ? groundAnchor_K(groundT, airDatum_K(over->surface.atmosphere), bb_here)
                     : 0.0;
                 /* #801: WHICH rung answered, named the way the Surface Map names it
-                   (`anchor_src=`, surfmap.h). `underfoot_T` is one of the two places the
-                   engine states a ground temperature, and for most of a generated system it
-                   is the rung-3 black-body -- sun + albedo, our arithmetic -- printed beside a
-                   `ground_T` that is the source's own reading. Without the rung the two read
-                   as the same kind of fact, which is what #722 refuses. The file's own
-                   provenance string wins when it carries one (a SOLVED-from-a-range mean is
-                   not a stated mean), so this is groundAnchorSource and not the rung alone. */
+                   (`anchor_src=`, surfmap.h). `underfoot_T` is one of three places the engine
+                   states a ground temperature -- the atlas dossier is the second, the Surface
+                   Map's cursor the third, and the cursor still prints no rung (#858) -- and for
+                   most of a generated system this one is the rung-3 black-body: sun + albedo,
+                   our arithmetic -- printed beside a `ground_T` that is the source's own
+                   reading. Without the rung the two read as the same kind of fact, which is
+                   what #722 refuses. The file's own provenance string wins when it carries one
+                   (a SOLVED-from-a-range mean is not a stated mean), so this is
+                   groundAnchorSource and not the rung alone. */
                 const GroundAnchorRung anchor_rung = ground_here
                     ? groundAnchorRung(groundT, airDatum_K(over->surface.atmosphere), bb_here)
                     : kAnchorNone;
@@ -872,9 +874,11 @@ void tick(Game &g) {
                       && evenShareAuthored(over->surface.even_share);
                 char src_s[128];
                 if(!underfoot_here) {
-                    // Dashes with the number it describes. A rung the row refuses to put a
-                    // temperature through would advertise an anchor while answering '-'
-                    // beside it -- the pairing the swing=/lag= gate below refuses.
+                    // Dashes with the number it describes: naming the rung of a ground this row
+                    // refuses to price would advertise an anchor over a '-'. It is NOT the same
+                    // gate as the swing=/lag= one further down, which asks only for a ground and
+                    // an authored knob -- a row missing its air or its anchor does print knobs
+                    // beside underfoot_T=-. What must never print is a source for no number.
                     snprintf(src_s, sizeof src_s, "-");
                 } else {
                     assert(anchor_rung != kAnchorNone);   // underfoot_here needs anchor > 0
