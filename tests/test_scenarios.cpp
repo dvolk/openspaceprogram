@@ -732,6 +732,28 @@ static void check_composition() {
         }
     }
 
+    /* The loader's guard that no summit reads below 0 K (#793), priced at the COLDEST relief
+       term in the terrain's reach rather than the term on the highest ground (#828 moved the
+       palette and left this guard behind). Kerbin's profile is rewritten to lapse to 1 km and
+       warm above it: the term is -6.5 K at that level base, and by the 4-5 km peak it is back
+       above -0.7 K. even_share 1e-8 puts the night end at anchor * 1e-8^0.25 = 2.9 K, so the
+       peak term fits inside it (which is why pricing the guard there let this file through)
+       and the mid-slope term does not: 2.9 - 6.5 = -3.6 K. That negative is what
+       surfmap.h:tempRampEnds asserts while baking, so a file that loads here aborts on the
+       first pixel of its own map. */
+    {
+        nlohmann::json j = base;
+        for(auto &bv : j["bodies"]) {
+            if(bv.value("name", std::string()) != "Kerbin") { continue; }
+            bv["surface"]["even_share"] = 1e-8;
+            bv["surface"]["atmosphere"]["layers"] = nlohmann::json::array({
+                nlohmann::json{{"alt", 0.0}, {"T", 288.0}, {"lapse", -0.0065}},
+                nlohmann::json{{"alt", 1000.0}, {"T", 281.5}, {"lapse", 0.002}},
+                nlohmann::json{{"alt", 20000.0}, {"T", 319.5}, {"lapse", 0.0}}});
+        }
+        expect_refuses("relief_mid_slope", j.dump(), "somewhere across its");
+    }
+
     // And what a body that says NOTHING gets: dry air, oxidizer included. Eve loses
     // its mix here, so it stops being a CO2 world and reads the default -- the same
     // default a hand-written two-line system gets.

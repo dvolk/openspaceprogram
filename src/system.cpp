@@ -1833,15 +1833,32 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                     if(anchor > 0.0) {
                         const double peak = (double)s.authoredPeak();
                         const double night = groundTemperature(anchor, s.even_share, 0.0);
-                        const double off = s.relief_K(peak);
-                        if(night + off < 0.0) {
+                        /* The COLDEST term anywhere in the terrain's reach, not the one on the
+                           highest ground. A warming level based below the peak puts that cold
+                           mid-slope, and the bake asserts against the colder number, so pricing
+                           this guard at the peak alone lets a file load and then abort on its
+                           first pixel -- which is the exact thing this guard exists to prevent
+                           (#828 fixed the palette, terragen.h:airProfileOffsetRange_K is the one
+                           kink sampling both readouts now use). Below the datum the term is 0 and
+                           relief_K(0) is 0, so [0, peak] answers the same interval whatever the
+                           noise's own floor turns out to be. */
+                        double off_lo = 0.0, off_hi = 0.0;
+                        airProfileOffsetRange_K(s.atmosphere.layers, s.atmosphere.top(),
+                                                0.0, peak, off_lo, off_hi);
+                        const double at_peak = s.relief_K(peak);
+                        if(night + off_lo < 0.0) {
                             throw std::runtime_error(
                                 "system: " + body->name + ": surface relief asks for "
-                                + std::to_string(off) + " K at its "
-                                + std::to_string(peak) + " m peak, which is deeper than the"
-                                " ground's own night end (" + std::to_string(night)
-                                + " K) -- a summit would read below 0 K. Lower"
-                                " surface.amplitude, or state a larger surface.even_share");
+                                + std::to_string(off_lo) + " K somewhere across its "
+                                + std::to_string(peak) + " m of ground"
+                                + (off_lo < at_peak
+                                       ? " (the coldest term sits mid-slope, under a warming"
+                                         " level; the peak itself asks for only "
+                                       + std::to_string(at_peak) + " K)"
+                                       : "")
+                                + ", which is deeper than the ground's own night end ("
+                                + std::to_string(night) + " K) -- a summit would read below 0 K."
+                                " Lower surface.amplitude, or state a larger surface.even_share");
                         }
                     }
                 }

@@ -692,24 +692,34 @@ int main() {
                     check(peak > 0.0 && off < 0.0,
                           (b->name + ": a body whose air lapses has SOME relief effect").c_str());
                     /* The invariant the readouts assert (#793), checked here so a file that does
-                       not fit reddens in `make test` instead of aborting a bake: the summit must
-                       stay above 0 K, which means the lapse at the peak cannot be deeper than the
-                       ground's own NIGHT END. Same rungs the loader checks (stated ground, else
-                       the air's datum); a derived black-body anchor needs the star, and every
-                       body that can reach that rung has no air, i.e. no relief. */
+                       not fit reddens in `make test` instead of aborting a bake: the ground must
+                       stay above 0 K wherever it stands, which means the DEEPEST relief term in
+                       the terrain's reach cannot be deeper than the ground's own NIGHT END -- not
+                       merely the term on its highest point (#828: a warming level based below the
+                       peak puts that cold mid-slope). Same rungs the loader checks (stated ground,
+                       else the air's datum), and the same kink sampling system.cpp refuses with,
+                       so this test and that refusal cannot price one world two ways. A derived
+                       black-body anchor needs the star, and every body that can reach that rung
+                       has no air, i.e. no relief. */
+                    double off_lo = 0.0, off_hi = 0.0;
+                    airProfileOffsetRange_K(b->surface.atmosphere.layers,
+                                            b->surface.atmosphere.top(), 0.0, peak,
+                                            off_lo, off_hi);
                     const double anchor = evenShareAuthored(b->surface.even_share)
                         ? groundAnchor_K(b->surface.temperature,
                                          airDatum_K(b->surface.atmosphere), 0.0)
                         : 0.0;
                     if(anchor > 0.0) {
                         const double night = groundTemperature(anchor, b->surface.even_share, 0.0);
-                        check(night + off >= 0.0,
+                        check(night + off_lo >= 0.0,
                               (b->name + ": the night end carries its own relief -- "
-                                        + std::to_string(night + off) + " K at the peak")
+                                        + std::to_string(night + off_lo)
+                                        + " K at its coldest term")
                                   .c_str());
                     }
-                    std::printf("  relief %-9s peak %6.0f m -> %+.1f K at the summit\n",
-                                b->name.c_str(), peak, off);
+                    std::printf("  relief %-9s peak %6.0f m -> %+.1f K at the summit,"
+                                " %+.1f/%+.1f K coldest/warmest\n",
+                                b->name.c_str(), peak, off, off_lo, off_hi);
                 }
             }
             /* Jool used to be the one world that refused its knob. It no longer does: a banded

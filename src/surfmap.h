@@ -256,42 +256,25 @@ inline TempLayer tempLayerFor(const Surface &s, double derived_bb, bool has_sun)
     return tl;
 }
 
-/* [K] The coldest and warmest relief term over the elevations the sweep colours (#828).
-   relief_K is PIECEWISE LINEAR in elevation -- one lapse per layer, clamped to 0 at or below
-   the datum, held flat above the air's top -- so its extremes on an interval can only sit at
-   the interval's two ends, at the datum, at the air top, or at a layer base in between.
-   Sampling those is exact and costs a handful of calls, which is why this does not walk the
-   grid to find them.
+/* [K] The coldest and warmest relief term over the elevations the sweep colours (#828); the
+   kink sampling itself is terragen.h:airProfileOffsetRange_K, which the loader's 0 K guard uses
+   too, so the palette and that guard cannot price one world two ways.
 
    It exists because the cheaper rule -- "the coldest term is the one on the highest ground" --
    is only true while every lapse under the terrain is negative. It holds for every shipped body:
-   the tallest ground either catalogue colours is ~2.2 km (Duna's relief=[-527 2195], measured in
-   e2e render/745) and the shallowest warming in either file begins at 20.7 km, so relief_terms
-   still reads exactly [-7.68 0.00] there and no shipped palette moved. But it is not a law. A
-   world authored with a warm layer below its own peak -- an inversion, a plateau under a
-   stratospheric deck -- has its coldest ground somewhere mid-slope, and pricing the palette
-   from the two ends opens the ramp below anything the law can reach: every colder pixel then
-   clamps to the ramp's first stop, which is a band of one colour where the numbers disagree.
-   That is #745's bug class again -- a colour that argues with a figure. */
+   the tallest ground any bake in the e2e logs reaches is 5.2 km (Earth's relief=[0 5188]; Kerbin
+   4152 m, Duna 2195 m) and the shallowest authored warming in either catalogue begins at 20.1 km
+   (Earth's level based at 20063 m), so relief_terms still reads exactly [-7.68 0.00] on Duna and
+   no shipped palette moved. But it is not a law. A world authored with a warm level below its own
+   peak -- an inversion, a plateau under a stratospheric deck -- has its coldest ground somewhere
+   mid-slope, and pricing the palette from the two ends opens the ramp below anything the law can
+   reach: every colder pixel then clamps to the ramp's first stop, which is a band of one colour
+   where the numbers disagree. That is #745's bug class again -- a colour that argues with a
+   figure. */
 inline void reliefRange_K(const TempLayer &tl, double elev_lo, double elev_hi,
                           double &rel_lo, double &rel_hi) {
-    assert(elev_lo <= elev_hi);
     if(!tl.relief) { rel_lo = rel_hi = 0.0; return; }
-    std::vector<double> at = {elev_lo, elev_hi};
-    // The kinks. The datum (the term clamps to 0 below it), the air top (it stops changing
-    // above it), and every layer base strictly inside the painted range.
-    if(elev_lo < 0.0 && elev_hi > 0.0) { at.push_back(0.0); }
-    if(tl.air_top > elev_lo && tl.air_top < elev_hi) { at.push_back(tl.air_top); }
-    for(const AtmoLayer &L : tl.profile) {
-        if(L.base_alt > elev_lo && L.base_alt < elev_hi) { at.push_back(L.base_alt); }
-    }
-    rel_lo = rel_hi = tl.relief_K(elev_lo);
-    for(const double e : at) {
-        const double r = tl.relief_K(e);
-        if(r < rel_lo) { rel_lo = r; }
-        if(r > rel_hi) { rel_hi = r; }
-    }
-    assert(rel_lo <= rel_hi);
+    airProfileOffsetRange_K(tl.profile, tl.air_top, elev_lo, elev_hi, rel_lo, rel_hi);
 }
 
 /* [K] The temperature ramp's ends for one body's GROUND (#793): the law's two ends moved by

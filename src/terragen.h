@@ -385,6 +385,40 @@ inline double airProfileOffset_K(const AtmosphereParams &at, double alt_m) {
     return airProfileOffset_K(at.layers, at.top(), alt_m);
 }
 
+/* [K] The coldest and warmest airProfileOffset_K takes anywhere in an elevation interval.
+   The term is PIECEWISE LINEAR -- one lapse per level, flat at or below the datum, held at
+   the value it reaches above the air's top -- so its extremes on [alt_lo, alt_hi] can only
+   sit at the two ends, at the datum, at the air top, or at a level base strictly inside.
+   Sampling those is exact and costs a handful of calls, which is why this does not walk a
+   grid to find them.
+
+   Why ask at all: the cheap rule -- "the coldest term is the one on the highest ground" --
+   holds only while every lapse under the terrain is negative. A world authored with a warm
+   level below its own peak (an inversion, a plateau under a stratospheric deck) has its
+   coldest ground mid-slope, and pricing anything from the peak alone is too generous by the
+   difference. Two readouts pay for that arithmetic and must agree: the map's palette
+   (surfmap.h:reliefRange_K, #828) and the loader's guard that a summit stay above 0 K
+   (system.cpp), which exists so a file that does not fit reddens while loading rather than
+   aborting an assert in front of a player on the first pixel of its map. */
+inline void airProfileOffsetRange_K(const std::vector<AtmoLayer> &L, double top_m,
+                                    double alt_lo, double alt_hi,
+                                    double &off_lo, double &off_hi) {
+    assert(alt_lo <= alt_hi);
+    off_lo = off_hi = airProfileOffset_K(L, top_m, alt_lo);
+    auto note = [&](double alt) {
+        const double off = airProfileOffset_K(L, top_m, alt);
+        if(off < off_lo) { off_lo = off; }
+        if(off > off_hi) { off_hi = off; }
+    };
+    note(alt_hi);                                            // both ends, always
+    if(alt_lo < 0.0 && alt_hi > 0.0) { note(0.0); }          // the term clamps to 0 here
+    if(top_m > alt_lo && top_m < alt_hi) { note(top_m); }    // and stops changing here
+    for(const AtmoLayer &Ly : L) {
+        if(Ly.base_alt > alt_lo && Ly.base_alt < alt_hi) { note(Ly.base_alt); }
+    }
+    assert(off_lo <= off_hi);
+}
+
 struct Surface {
     float amplitude = 2500.0f;   // [m] tallest relief above the base radius
     int octaves = 9;             // noise octaves: continents 0..5, mountains 2..N-1
