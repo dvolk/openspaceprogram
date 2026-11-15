@@ -1,0 +1,23 @@
+NAME cross-system-bubble-load
+CLAIM A save with a ship in a building's bubble loads from the title across systems.
+KIND invariant
+# The fixture is a skiff parked on the Venus platform (solar_system), saved
+# with a building-local pose. Booting the DEFAULT system (ksp) and loading it
+# from the title takes loadFrom's cross-system branch, which BUILDS the save
+# against the incoming system before installing it -- so the incoming
+# buildings must be placed before the build, or the bubble pose refuses
+# ("Venus does not carry", #850).
+SEED e2e/fixtures/save_platform saves/20260101_000000-platformgame/quicksave-00 1
+ARGS --timeout 10 --dbg-log --orbit-log --orbit-interval 1.0
+ARGS --ui-click 2000,"Title Menu/Load last save"
+EXPECT switched system -> res/systems/solar_system.json
+EXPECT [toast] Loaded platformgame / quicksave-00
+EXPECT [dbg]
+EXPECT [orbitlog]
+# Loaded paused, at rest on the deck in the platform's bubble.
+CHECK "bubble" in orbit[-1]["frame"]
+CHECK sum(p*p for p in dbg[-1]["pos"]) < 10000
+CHECK abs(dbg[-1]["v"]) < 1.0
+FORBID [load] refused
+FORBID Load failed
+FORBID error:

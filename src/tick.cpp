@@ -252,51 +252,11 @@ void tick(Game &g) {
         // ends exactly on g.time); driving here too would jump the deck a full
         // step ahead and the first substep would snap it back -- a shudder.
         if(g.time_accel == 0 || g.time_accel >= kRailsWarp) {
-            for(TerrainBody *b : g.sys.bodies) {
-                for(StaticBuilding *p : b->pads) {
-                    if(p->driven()) { p->tickPose(g.time); }
-                }
-            }
+            g.driveBuildingPoses();
         }
-        // Proximity gate: a driven building's collider is in the world only
-        // while a ship is near -- immovable scenery the rest of the time. This
-        // is what keeps a city of them affordable. Runs paused too, so a ship
-        // spawned beside one has its collider right away.
-        // ANY live ship, not just the active one: a ship parked on a balloon
-        // platform cannot rail (it is in the air), so switching away must not
-        // drop the deck out from under it. The active ship counts even on rails
-        // (it wakes in place); other railed ships need no collider.
-        for(TerrainBody *b : g.sys.bodies) {
-            for(StaticBuilding *p : b->pads) {
-                if(!p->driven()) { continue; }
-                double d = std::numeric_limits<double>::infinity();
-                for(Vehicle *s : g.vehicles) {
-                    if(s->onRails && s != g.ship) { continue; }
-                    glm::dvec3 sp, sv;
-                    s->comStateIn(p->poseFrame(), sp, sv);
-                    d = std::min(d, glm::length(sp - p->posePos));
-                }
-                if(!p->live && d < g.args.prox_fly_on) {
-                    AddPhysicsBody(p->body);
-                    p->live = true;
-                } else if(p->live && d > g.args.prox_fly_off) {
-                    RemoveBody(p->body);
-                    p->live = false;
-                }
-            }
-        }
-        // Settle the deck carry while PAUSED, against the frozen deck, so its
-        // offset is measured at rest. Otherwise the carry first engages on the
-        // first running substep against a deck that has already moved a substep
-        // and absorbs a v*h error -- a slight jump on the first unpause of a new
-        // game (later pause/unpause cycles reuse the stored offset, so they do
-        // not jump). h=0: no integration to pre-compensate. After the gate, so
-        // the deck collider is in the world for the engagement ray.
-        if(g.time_accel == 0) {
-            for(Vehicle *s : g.vehicles) {
-                if(!s->onRails) { s->tickDeckCarry(0.0); }
-            }
-        }
+        // Runs paused too, so a ship spawned beside a driven building has its
+        // collider right away (see Game::gateBuildingColliders).
+        g.gateBuildingColliders();
         if(g.time_accel != 0) {
             /* No re-snapshot here. updateDocking() retires the absorbed ship at
                the end of a step, but retiring takes it out of the live list
@@ -336,6 +296,8 @@ void tick(Game &g) {
                     const RailEnd e = s->railsTick(g.time, step);
                     if(e != RailEndNone && ended == nullptr) { end = e; ended = s; }
                 }
+                // A rail SoI hop can move the active ship's frame too.
+                g.syncWorldFrame();
                 if(ended != nullptr) {
                     /* Air and ground are not a conic: hand the ship back to
                        physics and stop the clock so the player flies the rest. */
@@ -355,6 +317,9 @@ void tick(Game &g) {
                 // Not on the rails-warp path: nothing burns there.
                 s->refreshCompound();
             }
+            // The Bullet world's static content rides the active ship's frame;
+            // re-express it before the substeps if that frame just changed.
+            g.syncWorldFrame();
 
             // Integrate the step in substeps, re-applying gravity + thrust +
             // rotation before EACH: Bullet clears forces at each step, and
@@ -365,15 +330,15 @@ void tick(Game &g) {
             const int n = substepCount(step);
             const double h = step / n;
             for (int i = 0; i < n; i++) {
-                // Driven buildings advance on the SUBSTEP clock, so a deck moves
-                // v*h per substep at any warp instead of teleporting v*step once
-                // per tick. A parked ship's tire grip needs continuous contact
-                // to steer it around the latitude circle; a 14 m teleport per
-                // tick at 10x bounced the gear and let the ship slide off.
-                // The substeps span [g.time-step, g.time]: the first continues
-                // from the previous tick's last substep, the last lands exactly
-                // on the clock the gate/log/draw read -- no lead, no boundary
-                // jump, smooth across pause and warp changes. Pure f(time).
+                // Driven buildings advance their POSE on the substep clock (the
+                // gate, [bldg] log and draw read posePos). A LIVE deck's collider
+                // does not move: it is static at its bubble origin (#850,
+                // writeColliderPose), so there is no per-tick teleport to bounce
+                // a parked ship. The substeps span [g.time-step, g.time]: the
+                // first continues from the previous tick's last substep, the
+                // last lands exactly on the clock the gate/log/draw read -- no
+                // lead, no boundary jump, smooth across pause and warp changes.
+                // Pure f(time).
                 const double tSub = g.time - step + (i + 1) * h;
                 for(TerrainBody *b : g.sys.bodies) {
                     for(StaticBuilding *p : b->pads) {
@@ -385,10 +350,6 @@ void tick(Game &g) {
                 // (and so feel no drag -- the known rails gap).
                 for(auto *s : vehicles) {
                     if(s->onRails) { continue; }
-                    // A ship carried by a moving deck is driven by it this
-                    // substep; the appliers below would only fight the carry.
-                    // Power still bills: a parked ship is not powered down.
-                    if(s->tickDeckCarry(h)) { s->powerTick(h); continue; }
                     // The F4 force overlay: one substep's worth, opened
                     // here -- the single boundary owner for every applier
                     // below, whichever order they run in.
@@ -578,7 +539,8 @@ void tick(Game &g) {
                    rated full throttle, current mass, atmosphere and all -- and g is
                    the body's pull at the hull's own radius. */
                 const double amax = g.ship->availableAccel();
-                const double r_hull = glm::length(g.ship->get_center_of_mass());
+                const double r_hull = glm::length(
+                    g.ship->posInBodyRot(g.ship->get_center_of_mass()));
                 const double g_pull = (r_hull > 1.0)
                     ? g.ship->m_parent->mu / (r_hull * r_hull) : 0.0;
                 printf("[ascent] t=%.1fs phase=%s lever=%.2f pitch=%.1f deg "
@@ -593,16 +555,10 @@ void tick(Game &g) {
             const Uint32 now_ms = g.logClockMs();
             if(g.logDue(kGateOrbit, now_ms, g.orbit_log_interval_ms)) {
                 const double mu = g.ship->m_parent->mu;
-                glm::dvec3 o_pos = g.ship->get_center_of_mass();
-                glm::dvec3 o_vel = g.ship->GetVel();
-                if(g.ship->frame->isRotFrame()) {
-                    Frame *inertial = g.ship->frame->getNonRotFrame();
-                    o_vel += g.ship->frame->GetStasisVelocity(o_pos);
-                    o_vel = g.ship->frame->GetOrientRelTo(inertial) * o_vel
-                          + g.ship->frame->GetVelocityRelTo(inertial);
-                    o_pos = g.ship->frame->GetOrientRelTo(inertial) * o_pos
-                          + g.ship->frame->GetPositionRelTo(inertial);
-                }
+                glm::dvec3 o_pos, o_vel;
+                /* One spelling of the lift to the body's inertial node, valid
+                   from the rot frame and from a building bubble alike (#850). */
+                g.ship->comStateIn(g.ship->m_parent->frame, o_pos, o_vel);
                 OrbitElements o = computeOrbitElements(o_pos, o_vel, mu);
                 /* Measured in the plane the orbit map shows, like the flight
                    readout (#171). lan/lpe trail the line so ORBIT_RE (e2e)
@@ -676,8 +632,13 @@ void tick(Game &g) {
             if(g.logDue(kGateDbg, now_ms, g.orbit_log_interval_ms)) {
                 glm::dvec3 p = g.ship->get_center_of_mass();
                 glm::dvec3 v = g.ship->GetVel();
-                double r = glm::length(p);
-                double alt = r - g.ship->m_parent->GetTerrainHeight(glm::normalize(p));
+                /* pos/vel stay frame-local (honest about the ship's frame);
+                   alt is body-AGL from the rot-frame position, so it reads the
+                   same whether the hull rides the rot frame or a building
+                   bubble (#850). */
+                const glm::dvec3 p_rot = g.ship->posInBodyRot(p);
+                double r = glm::length(p_rot);
+                double alt = r - g.ship->m_parent->GetTerrainHeight(glm::normalize(p_rot));
                 printf("[dbg] t=%.1fs pos=[%.1f %.1f %.1f] alt=%.1f m "
                        "vel=[%.2f %.2f %.2f] |v|=%.2f m/s\n",
                        g.time, p.x, p.y, p.z, alt, v.x, v.y, v.z,
@@ -905,12 +866,7 @@ void tick(Game &g) {
                        the terrain has spun underneath since the epoch (render.cpp:139's note on
                        AGL). Asking with them reads a height a few thousand kilometres of
                        longitude away. */
-                    glm::dvec3 here = glm::dvec3(g.ship->comPos());
-                    if(!g.ship->frame->isRotFrame()
-                       && g.ship->frame->hasRotFrame()) {
-                        here = g.ship->frame->GetOrientRelTo(g.ship->frame->getRotFrame())
-                             * here;
-                    }
+                    const glm::dvec3 here = g.ship->posInBodyRot(g.ship->comPos());
                     const double underfoot_elev
                         = (double)over->GetTerrainHeight(glm::normalize(here))
                           - over->seaLevelRadius();
@@ -1426,6 +1382,9 @@ void tick(Game &g) {
                 const glm::dvec3 p = k->get_center_of_mass();
                 const glm::dvec3 v = k->GetVel();
                 const glm::dvec3 face = k->partAxis(k->controller, 1);
+                /* alt is body-AGL from the rot-frame position, like [dbg]:
+                   |p| alone is the building distance in a bubble (#850). */
+                const glm::dvec3 p_rot = k->posInBodyRot(p);
                 // viewyaw=, not yaw=: [camlog] already uses yaw= for the camera
                 // azimuth, and the two are the other half of the same attitude
                 // law (#241). Ground rows print the offset anyway -- it is the
@@ -1437,8 +1396,8 @@ void tick(Game &g) {
                        g.time, (k->evaMode() == EVA_GROUND) ? "ground" : "space",
                        (int)k->evaGrounded(), p.x, p.y, p.z, v.x, v.y, v.z,
                        face.x, face.y, face.z,
-                       glm::length(p) - (double)k->m_parent->GetTerrainHeight(
-                           glm::vec3(glm::normalize(p))),
+                       glm::length(p_rot) - (double)k->m_parent->GetTerrainHeight(
+                           glm::vec3(glm::normalize(p_rot))),
                        k->viewYawOffset(), (int)k->rcsBurned(),
                        k->getMass());
                 fflush(stdout);

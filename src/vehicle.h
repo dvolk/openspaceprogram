@@ -1629,25 +1629,10 @@ public:
     void applyGroundForces(double h);
 
     /* Brakes: the parking latch. Spawn sets it, O toggles it, and it travels in
-       the save -- speed cannot re-derive it (a ship parked on a balloon platform
-       rides the wind at ~86 m/s in the rotating frame, yet is parked). */
+       the save as the player's control state. (A ship parked on a balloon
+       platform rests at v=0 in the building's bubble frame, #850 -- parking no
+       longer needs a special latch to be observable.) */
     bool brakesOn = false;
-
-    /* DECK CARRY (balloon platforms): a braked ship at rest relative to a MOVING
-       deck is carried by it -- pose and velocity driven from the deck each
-       substep (tickDeckCarry), so parking is exact at any warp. The suspension
-       bounces at warp-sized substeps (kMaxSubStep), and the deck is frictionless
-       (Bullet reads a static body as stationary), so tire grip alone cannot hold
-       a parked ship on a moving deck. Released by brakes off, throttle, or the
-       subclass's deckCarryRelease (a kerbal's walk/jump demand). Not saved: a
-       load re-engages from the persisted brakesOn and the rest state. */
-    Body *carriedBy = nullptr;
-    glm::dvec3 carryOffset = glm::dvec3(0.0);   // ship COM in the deck's frame
-    glm::dmat3 carryRot = glm::dmat3(1.0);      // ship orient relative to the deck
-    bool tickDeckCarry(double h);
-    // Move intent beyond brakes/thrust: RCS translation is a demand to move, so
-    // a braked ship firing RCS leaves the carry (the EVA subclass adds walk/jump).
-    virtual bool deckCarryRelease() const { return glm::dot(rcsDir, rcsDir) > 1e-18; }
 
     /* THE FRAME THE CONTROLS, THE ATTITUDE LAWS AND THE AERO PASS SPEAK (#571):
        the root part -- the pitch/yaw/roll axes the stick drives, the TVC disk's
@@ -2090,6 +2075,13 @@ public:
     /* The COM state in `inertial`, the frame node where the trajectory is a
        Kepler conic. */
     void comStateIn(Frame *inertial, glm::dvec3 &p, glm::dvec3 &v);
+
+    /* A point of this ship (frame coords) in the body's ROTATING frame -- the
+       axes terrain, wind and biomes live in. Identity when already there.
+       Works from ANY frame, including a building bubble (#850): altitude,
+       ground and air reads must go through this, not |com|, because a
+       bubble's origin is not the body centre. */
+    glm::dvec3 posInBodyRot(const glm::dvec3 &p) const;
 
     // COM separation in the universe (root) frame: frame-invariant.
     double distanceTo(Vehicle *o);

@@ -681,6 +681,10 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
     }
 
     Frame *frame = resolve_frame_by_soi(sys.root->frame, shipWorldPos);
+    /* A bed is body-centric: if the resolve landed inside a building bubble
+       (#850), step out to the body frame the bed's geometry assumes (the
+       windy-bed rot assert and the speed_load radius both read it). */
+    if(frame->building != nullptr) { frame = frame->parent; }
 
     // velWorld is RELATIVE to home in root-frame axes; the root-frame velocity is
     // that plus home's own root velocity. Then express both in the resolved frame.
@@ -930,10 +934,16 @@ Vehicle *place_vehicle_def(Game &g, const ShipDef &def, const std::string &defPa
            wings are level. It is the pitch-90 attitude below, forced by the
            SITE rather than authored per def -- a plane launches horizontal
            without an "attitude" block. Def attitude is ignored on a runway.
-           An AIR platform is a PAD, not a runway: it keeps the vertical pose
-           (ap.orient's +Z is up), so a rocket stands on its tail like on the
-           space pad. A per-ship orientation heuristic is a follow-up ticket. */
-        if(site->hasFlag("RUNWAY")) {
+           An AIR platform does the same for a ship with LANDING GEAR: a
+           tail-standing spaceplane is an unstable equilibrium -- it tips on
+           the first physics step (the old deck carry propped it up; #851 is
+           the general heuristic). On its gear it is stable. Gearless hulls
+           (rockets) keep the vertical pad pose, stable on their bells. */
+        bool has_gear = false;
+        for(const auto &sp : def.parts) {
+            if(sp.def != nullptr && sp.def->type == "gear") { has_gear = true; break; }
+        }
+        if(site->hasFlag("RUNWAY") || (site->air && has_gear)) {
             pad_orient = faceAlong(pad_orient * glm::dvec3(1.0, 0.0, 0.0), pad_dir);
         }
         /* A def may tilt the airframe off the local vertical (ShipDef::attitude,
@@ -1047,43 +1057,32 @@ Vehicle *place_vehicle_def(Game &g, const ShipDef &def, const std::string &defPa
         assert(suit->kerbal != nullptr && suit->kerbal->id != 0);
         assert(v->name.empty());   // the profile owns the walker's name
     }
-    /* An AIR site (a balloon platform) spawns the ship resting on the deck,
-       inheriting the WIND's velocity in the rotating frame: zero airspeed, so
-       the hull sits in still air while the platform carries it east. Unlike the
-       orbital case the ship is SUPPORTED -- build_ship already rested its gear
-       on the deck top -- so there is no re-placement, only the velocity. It
-       stays in the rotating frame: the platform floats inside the atmosphere
-       shell, where ships integrate (and can never rail). */
+    /* An AIR site (a balloon platform) spawns the ship resting on the deck, AT
+       REST in the platform's bubble (#850): the deck is static at the frame
+       origin, so parking is the pad case -- no wind velocity to inherit. The
+       hull was built at the deck's rot-frame pose; moveToFrame re-expresses it
+       into the bubble, then the velocity is zeroed IN the bubble (zeroing
+       before would transform a rot-rest velocity, which is the wind, not rest). */
     if(site != nullptr && site->air) {
-        v->setVelocity(windVelRot(*hb, hb->surface.atmosphere.wind,
-                                  v->get_center_of_mass()));
-        v->setSoi(hb->rot_frame, g.time);
+        assert(site->frame != nullptr);
+        v->moveToFrame(site->frame, g.time);
+        v->setVelocity(glm::dvec3(0.0));
         vehicles.push_back(v);
         return v;
     }
-    /* An ORBITAL site (a space dock) spawns the ship alongside it: at the dock's
-       driven pose plus a clear offset, inheriting the dock's orbital velocity, in
-       the body's inertial frame. This is not a surface rest -- there is no ground
-       to support against, and starting at rest would drop the ship onto a very
-       different orbit. (Same velocity 50 m away is a *slightly* different conic,
-       so the ship drifts slowly relative to the dock -- fine for a spawn; true
-       station-keeping is a follow-up.) */
+    /* An ORBITAL site (a space dock) spawns the ship alongside it, at rest in
+       the dock's bubble (#850): 50 m clear of the hull along the dock's local
+       -Z ("above" a body-fixed dock, nose toward it). The bubble axes ARE the
+       dock's attitude, so the pose is the offset and the identity. A ship at
+       rest off the dock drifts on the relative (Clohessy-Wiltshire) dynamics --
+       the same slow drift a co-orbiting conic gave; true station-keeping is
+       docking's job (#848). */
     if(site != nullptr && site->orbital) {
-        Frame *inertial = hb->frame->getNonRotFrame();
-        // One propagation gives both the pose anchor and the velocity to inherit.
-        glm::dvec3 dpos, dvel;
-        propagateKepler(site->epochPos, site->epochVel, site->orbMu, g.time,
-                        dpos, dvel);
-        const glm::dmat3 dorient = buildingorbit::orientAt(
-            site->attMode, dpos, dvel, site->spinAxis, site->spinRate, g.time);
-        // Clear of the hull along the dock's local -Z (for a body-fixed dock,
-        // away from the planet: the ship spawns "above" the dock, nose toward it).
-        // A dock-mouth spawn point + pose authored per instance is a refinement.
-        const glm::dvec3 spawnPos = dpos + dorient * glm::dvec3(0.0, 0.0, -50.0);
-        v->frame = inertial;
-        setPosRot(v->hull, spawnPos, dorient);
-        v->setVelocity(dvel);
-        v->setSoi(inertial, g.time);
+        assert(site->frame != nullptr);
+        v->frame = site->frame;   // bare write: the pose below is bubble-local
+        setPosRot(v->hull, glm::dvec3(0.0, 0.0, -50.0), glm::dmat3(1.0));
+        v->setVelocity(glm::dvec3(0.0));
+        v->setSoi(site->frame, g.time);
         vehicles.push_back(v);
         return v;
     }
@@ -2944,21 +2943,25 @@ glm::dvec3 Vehicle::applyGravity() {
         // effectiveMass: the force must carry the same mass as the COM and the inertia.
         const double m = p->effectiveMass();
         if(m == 0) { continue; }
-        const glm::dvec3 b1b2 = partPos(p);
+        const glm::dvec3 pp = partPos(p);
+        /* Gravity points at the BODY CENTRE: the frame origin for a body
+           frame, offset for a building frame (#850). The force lever stays
+           part-minus-COM -- it is about the hull, not the body. */
+        const glm::dvec3 b1b2 = pp - frame->gravity_center;
         const double m1m2 = m * parent_mass;
         const double invrsqr = 1.0 / glm::length2(b1b2);
         const double mag = G * m1m2 * invrsqr;
         const glm::dvec3 f = mag * sqrt(invrsqr) * -b1b2;
         /* Applied AT the part, not the COM: the lever delivers the tidal torque, the
            only legitimate external torque on a rigid ship. */
-        ApplyForce(hull, b1b2 - com, f);
+        ApplyForce(hull, pp - com, f);
         gf += f;
-        if(frame->isRotFrame()) {
-            // In rotating coordinates the ship additionally feels
-            // Coriolis + centrifugal (see GetFictitiousAccel in frame.h).
-            const glm::dvec3 a_fict = frame->GetFictitiousAccel(b1b2, partVel(p));
+        if(frame->isNonInertial()) {
+            // In non-inertial coordinates the ship additionally feels the
+            // frame terms (see GetFictitiousAccel in frame.h).
+            const glm::dvec3 a_fict = frame->GetFictitiousAccel(pp, partVel(p));
             const glm::dvec3 ff = m * a_fict;
-            ApplyForce(hull, b1b2 - com, ff);
+            ApplyForce(hull, pp - com, ff);
             ff_total += ff;
         }
     }
@@ -3141,7 +3144,10 @@ static bool comAirProfile(const TerrainBody *body, const glm::dvec3 &com,
    hull and the composition of the air that density belongs to are one question, and
    the jet gate needs both (#637). */
 bool Vehicle::airProfileAtCom(DragAtmosphere &atm, double &alt) const {
-    return comAirProfile(m_parent, comPos(), atm, alt);
+    /* The profile is a shell about the BODY CENTRE: read the radius in the
+       body's rot frame, not |com| -- a bubble frame's origin is the building,
+       metres from the hull, not the planet (#850). */
+    return comAirProfile(m_parent, posInBodyRot(comPos()), atm, alt);
 }
 
 double Vehicle::airDensityAtCom() const {
@@ -3203,24 +3209,29 @@ glm::dvec3 Vehicle::airRelativeVel(const glm::dvec3 &com) {
     }
     Frame *R = m_parent->rot_frame;
     const bool has_wind = m_parent->surface.atmosphere.has_wind();
-    if(frame->isRotFrame()) {
+    if(frame == R) {
         // com is already in the ground's axes; there is no co-rotation to subtract.
         return has_wind ? GetVel() - windVelRot(*m_parent,
                                                 m_parent->surface.atmosphere.wind, com)
                         : GetVel();
     }
-    const glm::dmat3 o = R->GetOrientRelTo(frame);   // rot -> this frame
-    glm::dvec3 v = GetVel() - glm::cross(o * R->omega(), com);
+    /* General case (#850): ship inertial velocity minus air inertial velocity,
+       in the ship's axes. The air co-rotates with the body and carries the
+       authored wind, both read at the ship's position in the ROT frame. This
+       covers the body's inertial frame AND a building bubble frame, whose
+       origin is not the body centre -- the shared-origin assert that used to
+       live here is exactly what a bubble breaks. For a body frame the two
+       root_vels cancel and this reduces to the old v - o*(omega x p + wind). */
+    const glm::dvec3 com_rot = frame->GetOrientRelTo(R) * com
+                             + frame->GetPositionRelTo(R);
+    glm::dvec3 v_air_rot = glm::cross(R->omega(), com_rot);
     if(has_wind) {
-        // The transpose below moves a point between a body's rail frame and its spin
-        // frame, which is only a rotation because the two frames share an origin (a
-        // rot frame's authored pos is 0, system.cpp). The co-rotation term above has
-        // always relied on the same fact; this is the first place that can say so.
-        assert(R->GetPositionRelTo(frame) == glm::dvec3(0.0));
-        v -= o * windVelRot(*m_parent, m_parent->surface.atmosphere.wind,
-                            glm::transpose(o) * com);
+        v_air_rot += windVelRot(*m_parent, m_parent->surface.atmosphere.wind, com_rot);
     }
-    return v;
+    const glm::dvec3 v_air_root = R->root_vel + R->root_orient * v_air_rot;
+    const glm::dvec3 v_ship_root = frame->root_vel
+        + frame->root_orient * (GetVel() + frame->GetStasisVelocity(com));
+    return glm::transpose(frame->root_orient) * (v_ship_root - v_air_root);
 }
 
 glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
@@ -3279,7 +3290,11 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
     }
 
     const glm::dvec3 com = comPos();
-    const double r = glm::length(com);
+    /* The air is a shell about the BODY CENTRE: the radius comes from the
+       body's rot frame, not |com| -- a bubble frame's origin is the building
+       (#850), where |com| would read metres and bill sea-level density. */
+    const glm::dvec3 com_rot = posInBodyRot(com);
+    const double r = glm::length(com_rot);
     if(r <= 0.0) { return lastAeroForce; }
     const double alt = r - m_parent->seaLevelRadius();
     lastDragAlt = alt;
@@ -3319,11 +3334,11 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
        && star->frame != nullptr && m_parent->frame != nullptr
        && m_parent->rot_frame != nullptr && lastAirT > 0.0
        && evenShareAuthored(m_parent->surface.even_share)) {
-        /* The cosine is only meaningful if the hull's axes are one of the two frames the
-           body's own geometry is expressed in. True today (m_parent is set wherever the
-           frame is), and worth an assert rather than a comment: a hull parented to one body
-           while riding another's frame would compute a sun over the wrong ground. */
-        assert(frame == m_parent->frame || frame == m_parent->rot_frame);
+        /* The cosine is only meaningful if the hull rides one of THIS body's
+           frames (inertial, rot, or a building bubble -- all carry body ==
+           m_parent). A hull parented to one body while riding another's frame
+           would compute a sun over the wrong ground. */
+        assert(frame->body == m_parent);
         /* Frames, the #97 pair. starFromBody() answers in the body's SPINNING axes (that is
            the frame a subsolar point lives in); `com` is in this hull's axes. The same map
            airRelativeVel uses for the co-rotation and the wind moves one into the other, and
@@ -3335,7 +3350,11 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
         StarFromBody sv;
         sv.to_sun = rot_to_S * sv_rot.to_sun;
         sv.valid = sv_rot.valid;
-        const SkyAtZenith sky = skyAtZenith(sv, com);
+        /* The zenith is the radial from the BODY CENTRE, moved into this
+           hull's axes -- normalize(com) only while the origin is the centre;
+           a bubble reads it through com_rot (#850). For body frames the two
+           spellings are the same vector. */
+        const SkyAtZenith sky = skyAtZenith(sv, rot_to_S * glm::normalize(com_rot));
         /* An invalid sky is NOT midnight. cos_inc = 0 is a READING -- a sky measured to be dark;
            an invalid one is "no measurement". Feeding it the 0 invents a specific insolation, and
            the invented amount is not one number: Kerbin's ground swings to a 283.16 K night end, so
@@ -3371,12 +3390,7 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
             /* The place under this hull, in the axes the body's geography lives in. Both the
                height term and #829's lagged forcing need it, and neither is worth a second
                spelling of the same map. */
-            const auto here_rot = [&]() {
-                return (frame == m_parent->rot_frame)
-                    ? glm::dvec3(com)
-                    : glm::dvec3(frame->GetOrientRelTo(m_parent->rot_frame)
-                                 * glm::dvec3(com));
-            };
+            const auto here_rot = [&]() { return com_rot; };
             if(m_parent->surface.reliefOn()) {
                 ground_relief = m_parent->surface.relief_K(
                     (double)m_parent->GetTerrainHeight(glm::normalize(here_rot()))
@@ -4329,81 +4343,6 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
     return lastAeroForce;
 }
 
-/* Deck carry (vehicle.h): drive a parked ship from the moving deck it rests on.
-   Returns true while carried -- the substep's force appliers are skipped, the
-   deck owns pose and velocity. The velocity is the deck's ANALYTIC rigid field
-   (surfaceVel + surfaceAngVel x r), exact for its pure motion at any substep.
-
-   Engagement lives here, not in applyGroundForces: that pass is a no-op for a
-   wheel-less hull, and a hull or a kerbal resting on the deck must carry too.
-   A ray just past the hull's bottom finds the deck; a stationary surface
-   (surfaceVel zero) never engages, so pads and runways keep their ordinary
-   ground laws. */
-bool Vehicle::tickDeckCarry(double h) {
-    if(carriedBy != nullptr) {
-        // Move intent: brakes off, an engine ACTUALLY firing this tick
-        // (isThrusting() -- the throttle lever defaults to 1.0 at spawn and
-        // availableThrust is only potential, so neither is intent, #849; brakes
-        // hold against a firing engine until released, exactly as on a pad), or
-        // the subclass's ask (a kerbal's walk/jump/RCS). A frame change or
-        // leaving the world also drops the carry: the deck pose is
-        // rotating-frame, wrong elsewhere.
-        if(!brakesOn || isThrusting() || deckCarryRelease()
-           || frame == nullptr || !frame->isRotFrame() || !hullInWorld()) {
-            carriedBy = nullptr;
-        } else {
-            const glm::dvec3 dp = GetPosition(carriedBy);
-            const glm::dmat3 dO = GetOrient(carriedBy);
-            const glm::dvec3 newPos = dp + dO * carryOffset;
-            // The deck's own velocity, analytically: translation plus the ENU
-            // basis's turn about the planet axis at the carried point. NOT a
-            // position finite-difference -- a difference would either cancel the
-            // motion (hull position) or spike across a pause/warp change (target
-            // history). This is exact at every h and every transition.
-            const glm::dvec3 vel = carriedBy->surfaceVel
-                                 + glm::cross(carriedBy->surfaceAngVel, newPos - dp);
-            // physics_tick integrates the hull forward by vel*h, but the STATIC
-            // deck is not integrated -- so aim the hull vel*h BEHIND the deck
-            // point and let the integration land it exactly on the deck. Without
-            // this the ship rides one substep ahead (v*h: ~0.5 m at 1x, ~5 m at
-            // 10x) and jumps relative to the deck whenever the warp changes h.
-            setPosRot(hull, newPos - vel * h, dO * carryRot);
-            SetVelocity(hull, vel);
-            SetAngVelocity(hull, carriedBy->surfaceAngVel);
-            return true;
-        }
-    }
-    if(!brakesOn || hull == nullptr || !hullInWorld()
-       || frame == nullptr || !frame->isRotFrame()) { return false; }
-    const glm::dvec3 com = get_center_of_mass();
-    const glm::dvec3 down = -glm::normalize(com);
-    /* Reach just past the hull's lowest point, not a fixed distance from the
-       COM: a fixed reach misses the deck under a tall upright rocket (COM many
-       metres up), leaving it with no grip on the frictionless deck. The hull's
-       AABB corner along down is its bottom; a ray a metre past that finds the
-       deck at any ship height, while a ship HOVERING above the deck still misses
-       (its bottom is high, so the short reach never gets there). */
-    btVector3 aabbLo, aabbHi;
-    hull->shape->getAabb(hull->btBody->getCenterOfMassTransform(), aabbLo, aabbHi);
-    const glm::dvec3 bottom((down.x > 0.0) ? aabbHi.getX() : aabbLo.getX(),
-                            (down.y > 0.0) ? aabbHi.getY() : aabbLo.getY(),
-                            (down.z > 0.0) ? aabbHi.getZ() : aabbLo.getZ());
-    const double reach = std::max(glm::dot(bottom - com, down) + 1.0, 1.0);
-    glm::dvec3 hit, n;
-    Body *ground = nullptr;
-    if(!groundRay(com, com + down * reach, hit, n, hull, &ground)
-       || ground == nullptr || glm::length2(ground->surfaceVel) < 1e-6) {
-        return false;
-    }
-    const glm::dvec3 vRel = GetVelocity(hull) - ground->surfaceVel;
-    if(glm::length2(vRel) > 1.0) { return false; }   // still sliding: tires own it
-    carriedBy = ground;
-    const glm::dmat3 dO = GetOrient(ground);
-    carryOffset = glm::transpose(dO) * (com - GetPosition(ground));
-    carryRot = glm::transpose(dO) * GetOrient(hull);
-    return false;   // engaged; the deck drives from the next substep
-}
-
 /* The ground reaction on the gear wheels (src/wheel.h). Per wheel: ray down the
    strut axis to the contact (analytic terrain fall-through when the ray misses,
    the EVA two-source pattern), then the spring + tire force applied at the patch.
@@ -4429,7 +4368,7 @@ void Vehicle::applyGroundForces(double h) {
         if(groundRay(axle, axle + down * reach, hit, n, hull, &ground)) {
             dist = glm::length(hit - axle);
             n = glm::normalize(n);
-        } else if(m_parent != nullptr) {
+        } else if(m_parent != nullptr && frame->building == nullptr) {
             // Collision meshes only exist at max-LOD leaves; the analytic ground
             // is the fall-through for the gaps, offset by the terrain margin so it
             // agrees with the height a ray hits the collision mesh at. Note the
@@ -4442,21 +4381,18 @@ void Vehicle::applyGroundForces(double h) {
             n = radial;
             hit = axle - n * dist;
         } else {
+            // In a building bubble a missed ray is AIRBORNE (off the deck
+            // edge): the planet's analytic surface is far below and reads
+            // nonsense in bubble coordinates (#850).
             continue;
         }
         const double compression = std::clamp((R + T) - dist, 0.0, T);
         if(compression <= 0.0) { continue; }   // airborne: no force
-        /* The ground itself may be moving: a balloon platform rides the wind, so
-           a ship parked on it has zero velocity RELATIVE to the deck while both
-           move at ~86 m/s in the rotating frame. Tire forces read that relative
-           velocity, or the brakes scrub a parked ship off the back of the deck.
-           surfaceVel is in the rotating frame -- the frame any ship touching an
-           air platform is in (it floats deep inside the atmosphere); terrain and
-           static scenery leave it zero. */
-        const glm::dvec3 vGround =
-            (ground != nullptr && frame->isRotFrame()) ? ground->surfaceVel
-                                                       : glm::dvec3(0.0);
-        const glm::dvec3 vRel = vel - vGround;
+        /* The ground is stationary in the ship's frame: terrain and pads are
+           static in the rot frame, and a balloon platform's deck is static in
+           its bubble -- the only frame a ship touching it can be in (#850).
+           Tire forces read the hull velocity directly. */
+        const glm::dvec3 vRel = vel;
         // Rolling direction: the part's +Y laid into the ground plane. (Nose-wheel
         // steer turns this about the normal in stage 3.)
         const glm::dvec3 f0 = pRot * glm::dvec3(0.0, 1.0, 0.0);
@@ -4997,11 +4933,12 @@ void Vehicle::tq_log(double time) {
     for(Part *p : parts) {
         const double m = p->effectiveMass();
         if(m == 0) { continue; }
-        const glm::dvec3 b1b2 = partPos(p);
+        const glm::dvec3 pp = partPos(p);
+        const glm::dvec3 b1b2 = pp - frame->gravity_center;   // matches applyGravity
         const double r2 = glm::length2(b1b2);
         F += G * m * parent_mass * (-b1b2) / (r2 * sqrt(r2));
-        if(frame->isRotFrame()) {
-            F += m * frame->GetFictitiousAccel(b1b2, partVel(p));
+        if(frame->isNonInertial()) {
+            F += m * frame->GetFictitiousAccel(pp, partVel(p));
         }
     }
     for(Part *p : parts) {
@@ -6212,7 +6149,7 @@ Vehicle::AttitudeAuthority Vehicle::attitudeAuthorityRows(bool switchesApply) {
     DragAtmosphere atm; double alt = 0.0;
     bool airAsked = false, airOk = false;
     const auto airProfile = [&]() {
-        if(!airAsked) { airAsked = true; airOk = comAirProfile(m_parent, com, atm, alt); }
+        if(!airAsked) { airAsked = true; airOk = comAirProfile(m_parent, posInBodyRot(com), atm, alt); }
         return airOk;
     };
     const auto airRho = [&]() {
@@ -6935,20 +6872,21 @@ void Vehicle::moveToFrame(Frame *newFrame, double t) {
 
     /* Angular velocity is the rotational analogue of the stasis terms: the hull stores
        the spin RELATIVE to its frame, in that frame's axes, so a switch adds the OLD
-       frame's omega, rotates into the new frame's axes and subtracts the NEW frame's.
-       Left alone, |w| survives but the spin re-axes. Identity when frame == newFrame,
-       so unlike the velocity it needs no reanchor gate. */
+       frame's TOTAL omega (own spin + ancestors', #850), rotates into the new frame's
+       axes and subtracts the NEW frame's. Left alone, |w| survives but the spin
+       re-axes. Identity when frame == newFrame, so unlike the velocity it needs no
+       reanchor gate. */
     const glm::dvec3 wOld = GetAngVelocity(hull);
-    SetAngVelocity(hull, forient * (wOld + frame->omega()) - newFrame->omega());
+    SetAngVelocity(hull, forient * (wOld + frame->omega_total) - newFrame->omega_total);
 
     /* Continuity tripwire, same shape as the pos/vel/attitude ones: an algebraic
        identity that fires only if the transform is wrong. */
     {
         const glm::dvec3 wNew = GetAngVelocity(hull);
-        const glm::dvec3 wiOld = frame->root_orient * (wOld + frame->omega());
-        const glm::dvec3 wiNew = newFrame->root_orient * (wNew + newFrame->omega());
-        const double wscale = glm::length(wiOld) + glm::length(frame->omega())
-                            + glm::length(newFrame->omega());
+        const glm::dvec3 wiOld = frame->root_orient * (wOld + frame->omega_total);
+        const glm::dvec3 wiNew = newFrame->root_orient * (wNew + newFrame->omega_total);
+        const double wscale = glm::length(wiOld) + glm::length(frame->omega_total)
+                            + glm::length(newFrame->omega_total);
         assert(glm::length(wiNew - wiOld) < 1e-9 * std::max(1.0, wscale));
     }
 
@@ -6959,8 +6897,16 @@ void Vehicle::moveToFrame(Frame *newFrame, double t) {
     setSoi(newFrame, t);
 }
 
+/* Entry/exit hysteresis scales with the SoI: the flat 10 km margin is right
+   for planets but eats a small building bubble whole -- a 10 km bubble would
+   need the ship at its CENTRE to enter (#850). A tenth of the radius keeps
+   the band proportionate; planets keep the old 10 km exactly. */
+static double soiMargin(const Frame *f) {
+    return std::min(kSoiMargin, f->soi / 10.0);
+}
+
 Frame *Vehicle::soiTarget(const glm::dvec3 &posInFrame, bool skipSameBody) {
-    if(glm::length(posInFrame) > frame->soi + kSoiMargin) {
+    if(glm::length(posInFrame) > frame->soi + soiMargin(frame)) {
         return frame->parent;   // nullptr at the system root: nowhere to go
     }
     Frame *best = nullptr;
@@ -6971,7 +6917,7 @@ Frame *Vehicle::soiTarget(const glm::dvec3 &posInFrame, bool skipSameBody) {
         const glm::dvec3 rel = frame->GetOrientRelTo(child) * posInFrame
                              + frame->GetPositionRelTo(child);
         const double dist = glm::length(rel);
-        if(dist < child->soi - kSoiMargin
+        if(dist < child->soi - soiMargin(child)
            && (best == nullptr || dist < bestDist)) {
             best = child;
             bestDist = dist;
@@ -6993,6 +6939,14 @@ void Vehicle::setSoi(Frame *newFrame, double t) {
 }
 
 void Vehicle::switchFrames(double t) {
+    /* Grounding pin (#850): a ship standing on a driven building's deck STAYS
+       in that building's frame even if a neighbour's bubble centre is nearer.
+       Releases the moment the ship leaves the deck or exceeds the ground
+       speed. This is a stay rule, not a target rule: arriving at the right
+       building from a neighbour's frame falls out of nearest-centre soiTarget
+       (a deck sits at its bubble's origin, so touching it means that centre
+       is the nearest). Authored frame_group clusters are the general fix. */
+    if(frame->building != nullptr && isGrounded()) { return; }
     if(Frame *target = soiTarget(get_center_of_mass(), false)) {
         moveToFrame(target, t);   // prints the switch with com/vel detail
     }
@@ -7016,6 +6970,15 @@ void Vehicle::comStateIn(Frame *inertial, glm::dvec3 &p, glm::dvec3 &v) {
         v = frame->GetOrientRelTo(inertial) * v + frame->GetVelocityRelTo(inertial);
         p = frame->GetOrientRelTo(inertial) * p + frame->GetPositionRelTo(inertial);
     }
+}
+
+glm::dvec3 Vehicle::posInBodyRot(const glm::dvec3 &p) const {
+    if(m_parent == nullptr || frame == nullptr) { return p; }
+    /* A body with no spin frame: its inertial node IS the body-centred axes
+       (origin at the centre), so radius reads stay correct there too. */
+    Frame *rot = m_parent->rot_frame ? m_parent->rot_frame : m_parent->frame;
+    if(frame == rot) { return p; }
+    return frame->GetOrientRelTo(rot) * p + frame->GetPositionRelTo(rot);
 }
 
 double Vehicle::distanceTo(Vehicle *o) {
@@ -7044,13 +7007,30 @@ bool Vehicle::inAtmosphere() {
     if(!atm.physical()) {
         return false;   // a visual-only rim is not a drag regime
     }
-    return glm::length(comPos()) - m_parent->seaLevelRadius() < atm.top();
+    /* Radius from the BODY CENTRE (rot-frame axes): a bubble frame's origin
+       is the building, not the planet (#850). */
+    return glm::length(posInBodyRot(comPos())) - m_parent->seaLevelRadius() < atm.top();
 }
 
 bool Vehicle::isGrounded() {
-    if(m_parent == nullptr || !frame->isRotFrame()) { return false; }
+    if(m_parent == nullptr) { return false; }
     if(glm::length(GetVel()) >= kShipGroundSpeed) { return false; }
     const glm::dvec3 com = get_center_of_mass();   // valid on rails too
+    if(frame->building != nullptr) {
+        /* In a building bubble the ground is the building (#850). An air
+           platform's deck is static at the frame origin: a ray down from the
+           COM finds it within the same band the terrain test uses. A station
+           is weightless -- "resting on" one is docking (#848), not landing.
+           The bubble never reaches the terrain (buildings.cpp validates), so
+           there is no terrain fallback here. */
+        if(!frame->building->air) { return false; }
+        glm::dvec3 hit, n;
+        Body *gb = nullptr;
+        return groundRay(com, com - glm::dvec3(0.0, 0.0, kShipGroundBand),
+                         hit, n, hull, &gb)
+            && gb == frame->building->body;
+    }
+    if(!frame->isRotFrame()) { return false; }
     const double r = glm::length(com);
     if(r <= 0.0) { return false; }
     const double alt = r - m_parent->GetTerrainHeight(glm::vec3(glm::normalize(com)));
@@ -7089,7 +7069,10 @@ bool Vehicle::goOnRails() {
     frameS(sPosPark, railRot);
 
     if(grounded) {
-        // Frozen: the pose is static in the rotating surface frame.
+        /* Frozen: the pose is static in the CURRENT frame -- the body's rot
+           frame for terrain, the building's bubble for a deck (#850). The
+           frame tree keeps driving that node at rails warp, so the parked
+           ship rides the building with no extra rail machinery. */
         rail_pos = com_frame;
         rail_vel = vel_frame;
         rail_orient = glm::dmat3(1.0);
@@ -7168,6 +7151,10 @@ RailEnd Vehicle::railAdvance(double t, const double step) {
     if(!onRails) { return RailEndNone; }
     if(railFrozen) { return RailEndNone; }
     assert(frame->body != nullptr);
+    /* A rail conic is Kepler about the frame origin: only an inertial body
+       node qualifies. A building bubble is frozen-or-exit (goOnRails), never
+       coasted in (#850). */
+    assert(glm::length(frame->omega_total) == 0.0);
     // The caller must hand us the instant the frame tree was last snapshotted at: the
     // conic advances by `step` but its RESULT composes with those transforms. Exact
     // equality holds because UpdateOrbitRails() gets this same g.time.

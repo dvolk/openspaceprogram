@@ -1,0 +1,24 @@
+NAME dock-bubble-rest
+CLAIM A ship spawned beside the space dock rides its SoI bubble: at rest relative to the dock, like a ship on a pad.
+KIND invariant
+ARGS --time-accel 1 --startship racer,res/ships/racer.json,Kerbin,pad,site=kerbin_dock
+ARGS --timeout 30 --dbg-log --orbit-log --orbit-interval 1.0
+EXPECT [dbg]
+EXPECT [orbitlog]
+EXPECT [bldg]
+# The dock's bubble captures the ship spawned 50 m off its mouth (#850): the
+# ship's frame IS the dock, so [dbg] reads dock-relative state -- metres and
+# cm/s, not the ~2.2 km/s of the inertial frame it used to spawn in.
+CHECK "bubble" in orbit[-1]["frame"]
+CHECK [b for b in bldg if b["id"]=="kerbin_dock"][-1]["live"] == 1
+# At rest relative to the dock. Not exactly zero: a ship 50 m off the dock is
+# on a slightly different conic, and the bubble's rotating (LVLH) frame shows
+# the Clohessy-Wiltshire drift -- O(n*offset) ~ 0.1 m/s. The bound is generous
+# against that and tight against a missed capture (km/s) or a fall (m/s^2*g).
+CHECK abs(dbg[-1]["v"]) < 0.3
+# Holds the spawn offset: 50 m plus a few metres of CW drift over 30 s -- not
+# falling toward Kerbin, not flying off. Bubble-local pos IS dock-relative.
+CHECK 100 < sum(p*p for p in dbg[-1]["pos"]) < 10000
+# Kerbin sea level 600 km + dock 300 km = 900 km radius.
+CHECK all(abs(o["r"] - 900000) < 2000 for o in orbit)
+FORBID error:

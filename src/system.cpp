@@ -30,9 +30,18 @@
 namespace {
 // Advance just the parent chain of `f` to time t (single-node
 // UpdateOrbitRails): the solar-day measure must not walk the whole forest.
+// The root_* composition below is the BODY-chain spelling: it omits the
+// parent-spin transport term Frame::UpdateRootRelative carries, which is
+// zero for every body frame (orbiting frames have inertial parents, rotating
+// frames sit at pos = 0). A building node goes through its own law (#850).
 void updateChain(Frame *f, double t) {
     if(f == nullptr) { return; }
     updateChain(f->parent, t);
+    if(f->driven_tick) {
+        f->driven_tick(f, t);
+        f->rail_time = t;
+        return;
+    }
     if(f->parent != nullptr && !f->rotating) {
         if(f->orb_ang_speed != 0) {
             propagateKepler(f->orbit_pos0, f->orbit_vel0, f->parent_mu,

@@ -16,7 +16,15 @@
 #define GLM_ENABLE_EXPERIMENTAL
 #include "frame.h"
 #include "orbit.h"
+#include "buildingorbit.h"
+#include "buildingair.h"
 #include <glm/gtx/transform.hpp>
+#include <glm/gtx/norm.hpp>
+
+/* The frame tests link frame.o alone: StaticBuilding is only ever a marker
+   pointer here, never dereferenced, so a stub definition stands in for the
+   real one (terrain.h) without dragging in the physics chain. */
+struct StaticBuilding {};
 
 static int g_failures = 0;
 static int g_checks = 0;
@@ -292,6 +300,7 @@ int main() {
         N->rotating = true;
         N->rot_ang_speed = 0.002;
         N->spin_axis = glm::dvec3(1, 0, 0);   // spin about X (90-deg axial tilt)
+        N->UpdateRootRelative();   // stasis reads omega_total, the tree clocks it
         const double w = N->rot_ang_speed;
         glm::dvec3 sv = N->GetStasisVelocity(glm::dvec3(0, 1, 0));
         CHECK_TRUE(dvec_close(sv, glm::dvec3(0, 0, w), 1e-9),
@@ -308,6 +317,7 @@ int main() {
         N->rotating = true;
         N->rot_ang_speed = 0.002;
         N->spin_axis = glm::dvec3(1, 0, 0);
+        N->UpdateRootRelative();   // fictitious reads omega_total
         const double w = N->rot_ang_speed;
         glm::dvec3 a = N->GetFictitiousAccel(glm::dvec3(0, 1, 0), glm::dvec3(0));
         CHECK_TRUE(dvec_close(a, glm::dvec3(0, w * w, 0), 1e-9),
@@ -685,6 +695,253 @@ int main() {
         // not made anything near home loose.
         CHECK_TRUE(1.16415322e-10 < kContinuityAbs,
                    "HEAD's same-body hullErr stays inside 1e-6");
+    }
+
+    // ---- #850: driven (building) frames -------------------------------------
+    // The tree gains a third level: a frame whose origin MOVES and whose axes
+    // turn with a building, under a body frame. These pins guard the three
+    // generalizations that makes necessary: total omega, the parent-spin
+    // transport in root_vel/root_accel, and the offset gravity centre.
+    {
+        printf("== #850 body-frame identities ==\n");
+        // The existing tree must not move: for every body frame the new
+        // quantities reduce to the old ones.
+        Frame *all[] = { sun, eerbon, eerbon_rot, moon, moon_rot };
+        for(Frame *f : all) {
+            CHECK_TRUE(dvec_close(f->omega_total, f->omega(), 1e-15),
+                       "body frame: omega_total == own omega");
+            CHECK_TRUE(glm::length(f->root_accel) == 0.0,
+                       "body frame: root_accel is zero (patched conics)");
+            CHECK_TRUE(glm::length(f->gravity_center) == 0.0,
+                       "body frame: gravity centre is the origin");
+            CHECK_TRUE(!f->isNonInertial() || f->rotating,
+                       "body frame: non-inertial iff rotating");
+        }
+
+        printf("== #850 two-spin composition ==\n");
+        // A driven node under the SPINNING eerbon_rot: the case the old
+        // two-level tree never had. The law supplies parent-axis state.
+        StaticBuilding stub;   // never dereferenced; marks the node driven
+        Frame *bub = new Frame;
+        bub->name = "platform bubble";
+        bub->parent = eerbon_rot;
+        bub->body = eerbon->body;
+        bub->rot_frame = eerbon_rot;
+        bub->building = &stub;
+        eerbon_rot->children.push_back(bub);
+
+        const glm::dvec3 p(6.0e6, 1.0e6, 2.0e6);      // parent-axis position
+        const glm::dvec3 v(30.0, -40.0, 50.0);        // parent-axis velocity
+        const glm::dvec3 a(-0.001, 0.002, -0.0005);   // parent-axis accel
+        const glm::dmat3 O = glm::dmat3(glm::rotate(0.7, glm::dvec3(0, 0, 1)));
+        const glm::dvec3 w_own(0.01, -0.02, 0.03);    // local-axis own spin
+        sun->UpdateOrbitRails(123.45);
+        bub->SetDrivenState(p, v, a, O, w_own);
+        bub->rail_time = 123.45;
+
+        const glm::dvec3 wp = eerbon_rot->omega_total;   // parent spin, local
+        // root_vel carries the parent-spin transport of the origin.
+        const glm::dvec3 want_vel = eerbon_rot->root_vel
+            + eerbon_rot->root_orient * (v + glm::cross(wp, p));
+        CHECK_TRUE(dvec_close(bub->root_vel, want_vel, 1e-8),
+                   "driven root_vel includes parent-spin transport");
+        // Without the transport term the answer is off by ~omega_p * |p| --
+        // kilometres per second here, not round-off.
+        const glm::dvec3 no_transport = eerbon_rot->root_vel
+            + eerbon_rot->root_orient * v;
+        CHECK_TRUE(glm::length(bub->root_vel - no_transport) > 1.0,
+                   "the transport term is load-bearing here, not round-off");
+        // Total omega = own + parent's, in local axes.
+        CHECK_TRUE(dvec_close(bub->omega_total,
+                              w_own + glm::transpose(O) * wp, 1e-12),
+                   "driven omega_total composes own + ancestor spin");
+        // root_accel: law + Coriolis/centrifugal transport of the origin.
+        const glm::dvec3 want_acc = eerbon_rot->root_accel
+            + eerbon_rot->root_orient * (a + 2.0 * glm::cross(wp, v)
+                + glm::cross(wp, glm::cross(wp, p)));
+        CHECK_TRUE(dvec_close(bub->root_accel, want_acc, 1e-12),
+                   "driven root_accel composes law + parent transport");
+        // The gravity centre is the BODY centre, in local axes.
+        CHECK_TRUE(dvec_close(bub->root_orient * bub->gravity_center + bub->root_pos,
+                              eerbon->root_pos, 1e-6),
+                   "gravity centre maps to the body centre in root space");
+        CHECK_TRUE(bub->isNonInertial(), "driven node is non-inertial");
+        CHECK_TRUE(bub->getNonRotFrame() == eerbon,
+                   "getNonRotFrame walks a bubble under rot to the body inertial");
+
+        // Point-velocity identity: a point at local (q, u) has the same root
+        // velocity composed through the node as through the parent directly.
+        const glm::dvec3 q(12.0, -7.0, 3.0), u(1.5, 2.5, -0.5);
+        const glm::dvec3 via_node = bub->root_vel
+            + bub->root_orient * (u + bub->GetStasisVelocity(q));
+        const glm::dvec3 via_parent = eerbon_rot->root_vel
+            + eerbon_rot->root_orient * (v + glm::cross(wp, p)
+                + O * (u + glm::cross(w_own, q)) + glm::cross(wp, O * q));
+        CHECK_TRUE(dvec_close(via_node, via_parent, 1e-8),
+                   "point velocity: node composition == parent composition");
+
+        // Switch algebra (moveToFrame's formulas) across the third level:
+        // root pos/vel/spin are invariant, both directions.
+        const auto switch_state = [&](Frame *from, Frame *to,
+                                        const glm::dvec3 &pf, const glm::dvec3 &vf,
+                                        const glm::dvec3 &wf,
+                                        glm::dvec3 &pt, glm::dvec3 &vt, glm::dvec3 &wt) {
+            const glm::dmat3 Fo = from->GetOrientRelTo(to);
+            pt = Fo * pf + from->GetPositionRelTo(to);
+            vt = Fo * (vf + from->GetStasisVelocity(pf))
+               + from->GetVelocityRelTo(to) - to->GetStasisVelocity(pt);
+            wt = Fo * (wf + from->omega_total) - to->omega_total;
+        };
+        const glm::dvec3 p0(25.0, 8.0, -4.0), v0(0.2, -0.1, 0.05), w0(0.01, 0.02, -0.01);
+        const glm::dvec3 root_p0 = bub->root_orient * p0 + bub->root_pos;
+        const glm::dvec3 root_v0 = bub->root_vel
+            + bub->root_orient * (v0 + bub->GetStasisVelocity(p0));
+        const glm::dvec3 root_w0 = bub->root_orient * (w0 + bub->omega_total);
+        glm::dvec3 p1, v1, w1, p2, v2, w2;
+        switch_state(bub, eerbon_rot, p0, v0, w0, p1, v1, w1);
+        switch_state(eerbon_rot, bub, p1, v1, w1, p2, v2, w2);
+        CHECK_TRUE(dvec_close(bub->root_orient * p2 + bub->root_pos, root_p0, 1e-7),
+                   "bubble->rot->bubble round trip preserves root position");
+        CHECK_TRUE(dvec_close(bub->root_vel
+                              + bub->root_orient * (v2 + bub->GetStasisVelocity(p2)),
+                              root_v0, 1e-7),
+                   "bubble->rot->bubble round trip preserves root velocity");
+        CHECK_TRUE(dvec_close(bub->root_orient * (w2 + bub->omega_total), root_w0, 1e-10),
+                   "bubble->rot->bubble round trip preserves root spin");
+        // And the one-way switch lands on the parent's own composition.
+        CHECK_TRUE(dvec_close(eerbon_rot->root_orient * p1 + eerbon_rot->root_pos,
+                              root_p0, 1e-7),
+                   "bubble->rot preserves root position");
+        CHECK_TRUE(dvec_close(eerbon_rot->root_vel
+                              + eerbon_rot->root_orient * (v1 + eerbon_rot->GetStasisVelocity(p1)),
+                              root_v0, 1e-7),
+                   "bubble->rot preserves root velocity");
+
+        eerbon_rot->children.pop_back();
+        delete bub;
+        sun->UpdateOrbitRails(123.45);
+    }
+
+    {
+        printf("== #850 orbital station: weightless at the origin ==\n");
+        // A body-fixed station on a circular orbit. A ship at rest at the
+        // frame origin feels gravity + fictitious = 0: the -A term cancels
+        // the body's pull. This is the pin that catches a missing transport
+        // or a wrong sign in GetFictitiousAccel.
+        const double mu = 3.2484e14;
+        const double r = 6.0518e6 + 400e3;
+        glm::dvec3 ep, ev;
+        CHECK_TRUE(buildingorbit::circularEpochState(r, 0.3, 0.2, 0.0, mu, ep, ev),
+                   "circular epoch state builds");
+        Frame *body = new Frame;   // inertial body node at the root
+        body->name = "body";
+        body->parent = sun;
+        body->pos = glm::dvec3(0);   // at the root: parent axes == root axes
+        body->orient = glm::dmat3(1.0);
+        sun->children.push_back(body);
+        StaticBuilding stub;
+        Frame *st = new Frame;
+        st->name = "station";
+        st->parent = body;
+        st->building = &stub;
+        st->rot_frame = nullptr;
+        body->children.push_back(st);
+        sun->UpdateOrbitRails(0.0);
+        const buildingorbit::State s = buildingorbit::stateAt(
+            ep, ev, mu, buildingorbit::Mode::BodyFixed, glm::dvec3(0, 0, 1), 0.0, 0.0);
+        st->SetDrivenState(s.pos, s.vel, s.accel, s.orient, s.omega_own);
+        CHECK_TRUE(st->getNonRotFrame() == body,
+                   "orbital bubble walks to the body inertial node");
+        // Ship at rest at the origin: gravity toward gravity_center + fict.
+        const glm::dvec3 gc = st->gravity_center;
+        const double gr = glm::length(gc);
+        const glm::dvec3 g_vec = (mu / (gr * gr)) * glm::normalize(gc);
+        const glm::dvec3 fict = st->GetFictitiousAccel(glm::dvec3(0.0), glm::dvec3(0.0));
+        CHECK_TRUE(glm::length(g_vec + fict) < 1e-9,
+                   "station origin: gravity + fictitious == 0 (weightless)");
+        CHECK_TRUE(glm::length(g_vec) > 7.0,
+                   "the gravity being cancelled is real (~8 m/s2), not zero");
+        // A ship 10 m off the origin feels only the tidal residue.
+        const glm::dvec3 q(10.0, 0.0, 0.0);
+        const glm::dvec3 gq = (mu / glm::length2(gc - q)) * glm::normalize(gc - q);
+        const glm::dvec3 fq = st->GetFictitiousAccel(q, glm::dvec3(0.0));
+        CHECK_TRUE(glm::length(gq + fq) < 1e-3,
+                   "10 m off the station: tidal residue only");
+        // Own spin is the orbit rate about local +Y (the LVLH normal).
+        const double n = std::sqrt(mu / (r * r * r));
+        CHECK_TRUE(dvec_close(st->omega_total, glm::dvec3(0.0, n, 0.0), 1e-12),
+                   "circular LVLH: total omega == n about local +Y");
+        body->children.clear();
+        sun->children.pop_back();
+        delete st; delete body;
+    }
+
+    {
+        printf("== #850 air platform: rest feels the planet's g ==\n");
+        // A wind-riding platform under a SPINNING body: the ship at rest on
+        // the deck feels essentially full gravity (the frame terms are the
+        // tiny centripetal/transport corrections), and the deck point's root
+        // velocity matches the law's own inertial velocity.
+        const double mu = 3.2484e14;
+        const double R = 6.0518e6;
+        const double alt = 56e3;
+        const double lat = 10.0 * M_PI / 180.0;
+        const double r = R + alt;
+        const double east = 86.29;
+        const double rate = buildingair::driftRate(east, r, lat);
+        Frame *body = new Frame;
+        body->name = "venus-like";
+        body->parent = sun;
+        body->pos = glm::dvec3(0);
+        body->orient = glm::dmat3(1.0);
+        sun->children.push_back(body);
+        Frame *rot = new Frame;
+        rot->name = "venus-like rot";
+        rot->parent = body;
+        rot->rotating = true;
+        rot->initial_orient = glm::dmat3(1.0);
+        rot->rot_ang_speed = 7.29e-5;   // fast spin: transport is visible
+        body->children.push_back(rot);
+        body->rot_frame = rot;
+        StaticBuilding stub;
+        Frame *pf = new Frame;
+        pf->name = "platform";
+        pf->parent = rot;
+        pf->building = &stub;
+        pf->rot_frame = rot;
+        rot->children.push_back(pf);
+        sun->UpdateOrbitRails(5000.0);
+        const buildingair::State s = buildingair::stateAt(
+            r, lat, 0.0, rate, M_PI, 5000.0);
+        pf->SetDrivenState(s.pos, s.vel, s.accel, s.orient, s.omega_own);
+        // Rest at the deck origin: net acceleration ~ g, downward (local -Z).
+        const glm::dvec3 gc = pf->gravity_center;
+        const double gr = glm::length(gc);
+        const glm::dvec3 g_vec = (mu / (gr * gr)) * glm::normalize(gc);
+        const glm::dvec3 fict = pf->GetFictitiousAccel(glm::dvec3(0.0), glm::dvec3(0.0));
+        const glm::dvec3 net = g_vec + fict;
+        const double g_expect = mu / (r * r);
+        /* The fast test spin lifts the apparent g by ~omega^2 r cos^2(lat)
+           (~0.03 m/s2 here) -- a real correction, so the band is 5 cm/s2. */
+        CHECK_NEAR(glm::length(net), g_expect, 0.05,
+                   "platform rest: |net accel| == local g within 5 cm/s2");
+        CHECK_TRUE(glm::dot(net, glm::dvec3(0.0, 0.0, 1.0)) < -8.0,
+                   "platform rest: net accel points down (local -Z)");
+        // The frame terms are corrections, not the story: |fict| << g.
+        CHECK_TRUE(glm::length(fict) < 0.06,
+                   "platform frame terms are tiny against g");
+        // The deck origin's root velocity equals the law's inertial velocity
+        // composed by hand through the spinning parent.
+        const glm::dvec3 want = rot->root_vel
+            + rot->root_orient * (s.vel + glm::cross(rot->omega_total, s.pos));
+        CHECK_TRUE(dvec_close(pf->root_vel, want, 1e-8),
+                   "platform root_vel == drift + co-rotation, composed");
+        CHECK_TRUE(glm::length(pf->root_vel) > east,
+                   "the co-rotation adds to the drift, not cancels it");
+        rot->children.clear();
+        body->children.clear();
+        sun->children.pop_back();
+        delete pf; delete rot; delete body;
     }
 
     // ---- summary ----

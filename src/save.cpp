@@ -465,6 +465,7 @@ SaveShip saveShipFromVehicle(Vehicle *v,
         assert(s.profile_id != 0 && "a walker wears no roster entry");
         s.pose.body = (v->m_parent != nullptr) ? v->m_parent->name : "";
         s.pose.rotating = v->frame->isRotFrame();
+        s.pose.building = (v->frame->building != nullptr) ? v->frame->building->id : "";
         v->frameS(s.pose.pos, s.pose.rot);
         s.pose.vel = v->GetVel();
         s.pose.angvel = GetAngVelocity(v->hull);
@@ -532,6 +533,7 @@ SaveShip saveShipFromVehicle(Vehicle *v,
     // the pose in the ship's CURRENT frame
     s.pose.body = (v->m_parent != nullptr) ? v->m_parent->name : "";
     s.pose.rotating = v->frame->isRotFrame();
+    s.pose.building = (v->frame->building != nullptr) ? v->frame->building->id : "";
     v->frameS(s.pose.pos, s.pose.rot);
     s.pose.vel = v->GetVel();
     s.pose.angvel = GetAngVelocity(v->hull);
@@ -590,6 +592,23 @@ static TerrainBody *resolveBody(const System &sys, const std::string &name,
                                  + "' that is not in this system");
     }
     return b;
+}
+
+/* The frame a saved pose is expressed in (#850): a building's bubble when the
+   pose names one, else the body's rot/inertial node. A building id the body no
+   longer carries is refused loudly, not dropped at the body centre -- the
+   #302 rule for references a save cannot resolve. */
+static Frame *resolvePoseFrame(TerrainBody *pb, const SavePose &pose,
+                               const std::string &who) {
+    if(pose.building.empty()) {
+        return pose.rotating ? pb->rot_frame : pb->frame;
+    }
+    for(StaticBuilding *sp : pb->pads) {
+        if(sp->id == pose.building && sp->frame != nullptr) { return sp->frame; }
+    }
+    throw std::runtime_error("load: " + who + " has a pose in building '"
+                             + pose.building + "' that " + pb->name
+                             + " does not carry");
 }
 
 /* What one saved part adds to the mass of the Body it hangs off: its def's dry
@@ -1081,14 +1100,15 @@ Vehicle *buildShipFromSaveParts(Game &g, const LoadWorld &w, const SaveShip &s,
     }
     TerrainBody *pb = s.pose.body.empty() ? v->home
                                           : resolveBody(w.sys, s.pose.body, who, "pose");
-    v->setSoi(s.pose.rotating ? pb->rot_frame : pb->frame, w.time);
+    v->setSoi(resolvePoseFrame(pb, s.pose, who), w.time);
 
     v->placeShip(s.pose.pos, s.pose.rot);
     v->setVelocity(s.pose.vel);
     SetAngVelocity(v->hull, s.pose.angvel);
     v->setThrottle(s.throttle);
-    // The latch travels: speed cannot re-derive it (a ship parked on a balloon
-    // platform rides the wind at ~86 m/s in the rotating frame, yet is parked).
+    // The latch travels as the player's control state. (Parking itself no
+    // longer depends on it: a ship parked on a platform rests at v=0 in the
+    // building's bubble frame, #850.)
     v->brakesOn = s.brakes_on;
     /* A SlewFree latch belongs to a mission law, and no law survives a load --
        Game::clearEphemeralState drops it (#612) -- so restoring the latch would
@@ -1206,7 +1226,7 @@ Kerbal *buildKerbalFromSave(Game &g, const LoadWorld &w, const SaveShip &s) {
         ? w.home
         : resolveBody(w.sys, s.pose.body, "saved kerbal '" + s.name + "'", "pose");
     k->home = body;
-    k->setSoi(s.pose.rotating ? body->rot_frame : body->frame, w.time);
+    k->setSoi(resolvePoseFrame(body, s.pose, "saved kerbal '" + s.name + "'"), w.time);
     k->placeShip(s.pose.pos, s.pose.rot);
     k->setVelocity(s.pose.vel);
     SetAngVelocity(k->hull, s.pose.angvel);
@@ -1543,7 +1563,23 @@ std::string preflightSave(const std::string &dir, const PartsCatalog &cat,
         try {
             if(!s.home.empty()) { resolveBody(sys, s.home, who, "home"); }
             if(!s.pose.body.empty()) {
-                resolveBody(sys, s.pose.body, who, "pose");
+                TerrainBody *pb = resolveBody(sys, s.pose.body, who, "pose");
+                /* A bubble pose names a building (#850). The incoming system's
+                   pads are not placed yet, so check the parsed instance list --
+                   the same reference the placement will instantiate. */
+                if(!s.pose.building.empty()) {
+                    bool found = false;
+                    for(const WorldBuilding &wb : sys.world_buildings) {
+                        if(wb.body == pb->name && wb.id == s.pose.building) {
+                            found = true;
+                            break;
+                        }
+                    }
+                    if(!found) {
+                        return who + " has a pose in building '" + s.pose.building
+                               + "' that " + pb->name + " does not carry";
+                    }
+                }
             }
         } catch(const std::exception &e) {
             return e.what();
@@ -1762,6 +1798,13 @@ void commitSaveWorld(Game &g, BuiltSave *bp, bool fleetAlreadyGone) {
     g.kerbal = nullptr;
     g.lastShip = nullptr;
     g.focusBody = 0;
+
+    /* Pose + gate the driven buildings at the loaded instant BEFORE the rails
+       branch: a ship saved frozen on a platform deck needs the deck in the
+       world for isGrounded to re-freeze it (#850). setTime clocked the frame
+       tree; this clocks the collider poses the gate measures against. */
+    g.driveBuildingPoses();
+    g.gateBuildingColliders();
 
     /* Phase 2: cross-references + world state. A dock INTENT naming a gone part
        stays lenient, unlike a dock SEAM (a dropped seam strands a real joint). */

@@ -230,6 +230,13 @@ static std::vector<WorldBuilding> parse_building_array(const nlohmann::json &arr
                 throw std::runtime_error(ctx + "\"lat_deg\" must be in [-90, 90]");
             }
         }
+        /* The SoI bubble of a driven building (#850); surface pads ignore it. */
+        if(ev.contains("bubble_km")) {
+            w.bubble_km = optNum(ev, "bubble_km");
+            if(w.bubble_km <= 0.0) {
+                throw std::runtime_error(ctx + "\"bubble_km\" must be positive");
+            }
+        }
         w.height_m = 5.0;
         w.heading_deg = 0.0;
         if(ev.contains("height_m")) {
@@ -388,6 +395,18 @@ void validate_world_buildings(const System &sys, const BuildingsCatalog &cat) {
                                          + w.body + "'s air top");
             }
         }
+        /* A driven building's bubble must stay clear of the terrain (#850):
+           inside the bubble the deck is the ground, and a bubble that reached
+           the surface would put two grounds in one frame. */
+        if(w.air || w.orbital) {
+            const double alt = w.air ? w.air_alt_m : w.orb_alt_m;
+            if(alt - w.bubble_km * 1000.0 <= hb->surface.max_height) {
+                throw std::runtime_error("buildings: '" + w.id + "' bubble (radius "
+                                         + std::to_string(w.bubble_km) + " km) reaches "
+                                         + w.body + "'s terrain -- raise the building "
+                                         "or shrink \"bubble_km\"");
+            }
+        }
         // Instance ids are per body, which is what the placement check below used
         // to compare against; nothing is placed yet, so compare against the list.
         for(const WorldBuilding &other : sys.world_buildings) {
@@ -399,12 +418,42 @@ void validate_world_buildings(const System &sys, const BuildingsCatalog &cat) {
     }
 }
 
+/* A driven building carries a frame node with a small SoI bubble (#850): a
+   ship inside rides the building's rest frame, landed like on a planet. The
+   node is a child of the pose frame (rot for air, inertial for orbital), and
+   the tree's own clock drives it through the pose law (StaticBuilding::tickFrame).
+   The building owns the node; ~StaticBuilding detaches it. */
+static void attach_bubble_frame(StaticBuilding *sp, TerrainBody *hb,
+                                const WorldBuilding &w) {
+    Frame *f = new Frame;
+    f->name = w.id + " (bubble)";
+    f->parent = sp->poseFrame();
+    f->body = hb;
+    f->rot_frame = hb->rot_frame;
+    f->building = sp;
+    f->soi = w.bubble_km * 1000.0;
+    f->driven_tick = [sp](Frame *, double t) { sp->tickFrame(t); };
+    f->parent->children.push_back(f);
+    sp->frame = f;
+    /* The tree is clocked at t=0 by load_system before placement; pre-fill the
+       node so a paused spawn beside the building sees a valid frame. */
+    sp->tickFrame(0.0);
+}
+
 void place_world_buildings(System &sys, const BuildingsCatalog &cat,
                            Shader *shader, TerrainBody *sun) {
     validate_world_buildings(sys, cat);
     for(const WorldBuilding &w : sys.world_buildings) {
         const BuildingDef *def = cat.find(w.type);   // validated above
         TerrainBody *hb = sys.find(w.body);          // validated above
+        /* Idempotent: a cross-system load places the incoming buildings BEFORE
+           building the save's ships (a bubble pose resolves against the pads),
+           and installSystem places again after the switch (#850). */
+        bool placed = false;
+        for(const StaticBuilding *p : hb->pads) {
+            if(p->id == w.id) { placed = true; break; }
+        }
+        if(placed) { continue; }
         Mesh *m = get_mesh(std::string("res/") + def->mesh);
         Texture *t = get_texture(std::string("res/") + def->texture);
         // The collider may be a subset of the visual (a balloon platform's
@@ -443,6 +492,7 @@ void place_world_buildings(System &sys, const BuildingsCatalog &cat,
             // static is the simple v1 answer for scenery you collide with.
             RemoveBody(sp->body);
             sp->tickPose(0.0);
+            attach_bubble_frame(sp, hb, w);
         } else if(w.air) {
             /* A balloon platform: rides the zonal wind at its anchor, in the
                body's ROTATING frame (where the wind is authored and an in-atmo
@@ -464,12 +514,15 @@ void place_world_buildings(System &sys, const BuildingsCatalog &cat,
             }
             sp->airEast = wv.x;
             sp->airDriftRate = buildingair::driftRate(wv.x, sp->airR, sp->airLat);
-            // Frictionless deck: the solver reads a static body as stationary,
-            // so hull friction would scrub a resting ship against the deck's
-            // wind-ride. Grip comes from the wheel/EVA laws (deck-relative).
-            SetFriction(sp->body, 0.0);
+            /* The deck keeps ordinary friction: a parked ship rides the
+               platform's bubble (#850), where the deck IS static, so the
+               solver's zero-velocity static body is the truth and friction
+               grips instead of scrubbing. (The old frictionless hack existed
+               for the pre-bubble world, where a parked ship moved at the wind
+               speed through the deck's frame.) */
             RemoveBody(sp->body);
             sp->tickPose(0.0);
+            attach_bubble_frame(sp, hb, w);
         } else {
             const glm::dvec3 up = w.dir();
             sp->dir = up;

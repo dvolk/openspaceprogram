@@ -3,15 +3,19 @@ CLAIM A tall gearless rocket stands vertical on the platform and rests rigidly, 
 KIND invariant
 ARGS --system res/systems/solar_system.json --time-accel 1
 ARGS --startship heavy,res/ships/heavy_one.json,Venus,pad,site=venus_cloud_platform
-ARGS --timeout 25 --dbg-log --orbit-interval 1.0
+ARGS --timeout 25 --dbg-log --orbit-log --orbit-interval 1.0
 EXPECT [dbg]
 EXPECT [bldg]
-# The deck carry must engage for a tall hull whose COM rides many metres above
-# the deck (the engagement ray reaches past the hull's bottom, not a fixed COM
-# distance). The ship rides the wind at ~86.29 m/s...
-CHECK abs(dbg[-1]["v"] - 86.29) < 1.0
-# ...and its offset from the deck is constant over the whole run: a rigid stand,
-# not a tip (COM height would drop) or a slide (offset would grow). The spread
-# of the ship-deck distance across all matched log instants stays under a metre.
-CHECK (lambda ds: max(ds) - min(ds) < 1.0)([sum((d["pos"][i] - b["pos"][i])**2 for i in (0,1,2))**0.5 for d in dbg for b in bldg if b["id"]=="venus_cloud_platform" and b["t"]==d["t"]])
+EXPECT [orbitlog]
+# In the platform's bubble (#850) the deck is static and the tall hull rests
+# on it like on a pad -- no carry, no wind to ride: frame-local speed ~0.
+CHECK "bubble" in orbit[-1]["frame"]
+CHECK abs(dbg[-1]["v"]) < 1.0
+# Rigid stand: [dbg] pos is bubble-local (deck origin at 0), so its spread
+# across the run IS the tip/slide measure -- a tipping rocket's COM height
+# drops, a sliding one's offset grows. Under a metre over the whole run.
+CHECK (lambda ps: max(ps) - min(ps) < 1.0)([sum(p*p for p in d["pos"])**0.5 for d in dbg])
+# Still at the float height, first row to last (body-centred radius,
+# frame-independent; [dbg] alt is AGL and Venus's relief is below datum here).
+CHECK all(abs(o["r"] - 6107800) < 100 for o in orbit)
 FORBID error:

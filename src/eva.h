@@ -96,13 +96,6 @@ public:
 
     bool isEva() const override { return true; }
 
-    /* A walking or jumping kerbal leaves the deck carry (vehicle.h); the base
-       already releases on RCS. The carry holds a PARKED suit. */
-    bool deckCarryRelease() const override {
-        return Vehicle::deckCarryRelease()
-            || glm::length2(walkDir) > 1e-9 || jumpRequested;
-    }
-
     /* The person's name lives on the roster profile the suit owns; this walker
        keeps no copy of it. Vehicle::name stays empty, so a stray rename cannot
        leave the walker and its seat disagreeing. */
@@ -117,11 +110,21 @@ public:
        deleting one IS boarding (Game::kerbalBoard). So a Kerbal is never
        contained and never railed for being aboard. */
 
-    // Capsule-center altitude above the analytic surface when standing at
-    // rest: half the suit plus the two collision margins that meet there.
-    double restAlt() const {
-        return parts[0]->def->height / 2.0 + hullMargin() + terrainMargin();
-    }
+    // Capsule-center altitude above the surface when standing at rest: half
+    // the suit plus the two collision margins that meet there. The surface's
+    // margin is the terrain's on the ground, the deck's own in a platform
+    // bubble (eva.cpp, #850).
+    double restAlt() const;
+
+    /* The ground under the suit (#850): in an air platform's bubble it is the
+       DECK -- local +Z up, deck top at z=0 by the authoring convention -- not
+       the planet far below. In a station bubble there is no down: weightless,
+       EVA_SPACE. Elsewhere the body's radial + analytic terrain, as always. */
+    bool onDeck() const;
+    bool inStationBubble() const;
+    bool overDeck() const;   // a ray down hits the deck (not off the edge)
+    glm::dvec3 groundUp() const;
+    double groundAltAt(const glm::dvec3 &pos) const;
 
     /* mode/grounded are per-tick state, so a rebuilt kerbal wears the
        constructor's "standing at the KSC" default until its first tick. A load

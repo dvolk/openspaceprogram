@@ -1,0 +1,21 @@
+NAME platform-parked-rails-warp
+CLAIM A ship parked on the platform rides rails warp frozen in the platform's frame while the platform drifts.
+KIND invariant
+ARGS --system res/systems/solar_system.json --time-accel 1000
+ARGS --startship skiff,res/ships/skiff_gear.json,Venus,pad,site=venus_cloud_platform
+ARGS --timeout 15 --dbg-log --orbit-log --orbit-interval 1.0
+EXPECT [dbg]
+EXPECT [orbitlog]
+EXPECT [bldg]
+# Boot parked: the deck is posed + gated before the rails check, so the spawn
+# is grounded and freezes in the bubble instead of clamping to 10x (#850).
+FORBID Rails warp refused
+CHECK "bubble" in orbit[-1]["frame"]
+# Frozen deck-local: the hull pose does not move in the bubble...
+CHECK abs(dbg[-1]["v"]) < 0.1
+CHECK sum(p*p for p in dbg[-1]["pos"]) < 10000
+# ...while the platform itself drifts with the wind: >100 km over the run.
+CHECK (lambda pl: sum((pl[-1]["pos"][i]-pl[0]["pos"][i])**2 for i in (0,1,2))**0.5 > 100000)([b for b in bldg if b["id"]=="venus_cloud_platform"])
+# Still at the float radius, first log row to last.
+CHECK all(abs(o["r"] - 6107800) < 100 for o in orbit)
+FORBID error:

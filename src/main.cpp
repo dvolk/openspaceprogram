@@ -1146,6 +1146,13 @@ int main(int argc, char **argv)
        -- the frozen mode), unless some ship is in the air, then clamp to the
        top physics warp. */
     if(time_accel >= kRailsWarp) {
+        /* Pose + gate the driven buildings, then capture the spawns into their
+           SoI frames: a ship spawned on a platform deck is grounded only once
+           it rides the deck's bubble at rest AND the deck is in the world
+           (#850). */
+        game.driveBuildingPoses();
+        game.gateBuildingColliders();
+        for(auto *s : game.vehicles) { s->switchFrames(game.time); }
         bool all_eligible = true;
         for(auto *s : game.vehicles) {
             if(!s->canRail()) {

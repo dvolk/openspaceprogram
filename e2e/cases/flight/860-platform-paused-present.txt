@@ -3,13 +3,18 @@ CLAIM The balloon platform is positioned beside the ship at spawn even while the
 KIND invariant
 ARGS --system res/systems/solar_system.json --time-accel 0
 ARGS --startship skiff,res/ships/skiff_gear.json,Venus,pad,site=venus_cloud_platform
-ARGS --timeout 4 --dbg-log --orbit-interval 0.5
+ARGS --timeout 4 --dbg-log --orbit-log --orbit-interval 0.5
 EXPECT [bldg]
 EXPECT [dbg]
+EXPECT [orbitlog]
 # The sim never advances (time_accel 0), yet the platform must already be
-# driven to the spawn time: collider live, ship resting on it. The pose drive
-# and gate run outside the pause gate for exactly this (the orbital dock's
-# paused-spawn fix, flight/857, applies to air platforms too).
+# driven to the spawn time: collider live, ship resting on it in the bubble
+# (#850). The pose drive and gate run outside the pause gate for exactly this
+# (the orbital dock's paused-spawn fix, flight/857, applies to air platforms too).
 CHECK [b for b in bldg if b["id"]=="venus_cloud_platform"][-1]["live"] == 1
-CHECK sum((dbg[-1]["pos"][i] - [b for b in bldg if b["id"]=="venus_cloud_platform"][-1]["pos"][i])**2 for i in (0,1,2)) < 625
+CHECK all(abs(b["r"] - 6107800) < 1 for b in bldg if b["id"]=="venus_cloud_platform")
+# The spawn lands IN the bubble, at rest on the deck: [dbg] is bubble-local.
+CHECK "bubble" in orbit[-1]["frame"]
+CHECK sum(p*p for p in dbg[-1]["pos"]) < 10000
+CHECK abs(dbg[-1]["v"]) < 1.0
 FORBID error:

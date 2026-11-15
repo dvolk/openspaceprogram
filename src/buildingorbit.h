@@ -8,6 +8,9 @@
 // warp hop reproduces the exact same pose -- the frame tree's own invariant.
 #pragma once
 
+#include <cassert>
+#include <cmath>
+
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -72,6 +75,40 @@ inline Pose poseAt(const glm::dvec3 &epochPos, const glm::dvec3 &epochVel, doubl
     glm::dvec3 p, v;
     propagateKepler(epochPos, epochVel, mu, t, p, v);
     return Pose{ p, orientAt(mode, p, v, spinAxisLocal, spinRate, t) };
+}
+
+/* The frame-node state (#850): pose plus the velocity, acceleration and own
+   spin the frame tree composes. pos/vel/accel in the body's INERTIAL frame
+   (the parent of an orbital building's node); omega_own in the building's
+   LOCAL axes. Pure f(t), like poseAt. */
+struct State {
+    glm::dvec3 pos, vel, accel;
+    glm::dmat3 orient;
+    glm::dvec3 omega_own;
+};
+
+inline State stateAt(const glm::dvec3 &epochPos, const glm::dvec3 &epochVel, double mu,
+                     Mode mode, const glm::dvec3 &spinAxisLocal, double spinRate, double t) {
+    glm::dvec3 p, v;
+    propagateKepler(epochPos, epochVel, mu, t, p, v);
+    const glm::dmat3 O = orientAt(mode, p, v, spinAxisLocal, spinRate, t);
+    const double r = glm::length(p);
+    /* Kepler acceleration: the -A term built from this is what makes a ship
+       at rest in the station's frame weightless. */
+    const glm::dvec3 a = -(mu / (r * r * r)) * p;
+    glm::dvec3 w(0.0);
+    if(mode == Mode::BodyFixed) {
+        /* LVLH tracks the orbit at the mean motion n about the orbit normal,
+           which is +Y in the LVLH axes lvlhOrient builds. Constant in local
+           axes ONLY for a circular orbit (eccentric theta-dot = h/r^2 varies
+           -- the Euler term this law does not carry); parse refuses the
+           combination, this asserts it. */
+        assert(std::abs(glm::dot(v, v) * r - mu) < 1e-6 * mu
+               && "body-fixed attitude needs a circular orbit (#850)");
+        w += glm::dvec3(0.0, std::sqrt(mu / (r * r * r)), 0.0);
+    }
+    if(spinRate != 0.0) { w += spinRate * spinAxisLocal; }
+    return State{ p, v, a, O, w };
 }
 
 } // namespace buildingorbit

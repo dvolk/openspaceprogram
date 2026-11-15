@@ -3,9 +3,10 @@ CLAIM The balloon platform drifts east at the authored wind speed, a pure functi
 KIND invariant
 ARGS --system res/systems/solar_system.json --time-accel 10
 ARGS --startship skiff,res/ships/skiff_gear.json,Venus,pad,site=venus_cloud_platform
-ARGS --timeout 20 --dbg-log --orbit-interval 2.0
+ARGS --timeout 20 --dbg-log --orbit-log --orbit-interval 2.0
 EXPECT [bldg]
 EXPECT [dbg]
+EXPECT [orbitlog]
 # 200 s of sim at 10x warp: the platform advances east ~86.29 m/s along its
 # latitude circle. A pose that only advanced with the physics tick -- or accumulated
 # phase -- would miss this.
@@ -17,9 +18,9 @@ EXPECT [dbg]
 # red by 0.34 m with nothing wrong in the engine (the step gaps it summed printed as
 # 20.2, 20.0, 20.2, 20.0, 20.1, 20.2, 20.2, 20.0, 20.0). One step is 20 s
 # (--orbit-interval 2.0 at 10x warp) over ~1730 m of travel, so its dt can still be
-# off by a tenth at each end: 1730/20.0 against 1730/20.1 is 0.43 m/s, which is why the
-# window is 0.75 and not 0.05. Measured across the nine steps: 86.15 to 86.65 m/s. The
-# arc's chord sag is 6e-6 m per step, so at this scale the geometry really is exact.
+# off by a tenth at each end: 1730/20.0 against 1730/20.1 is 0.43 m/s, which is why
+# the window is 0.75 and not 0.05. Measured across the nine steps: 86.15 to 86.65 m/s.
+# The arc's chord sag is 6e-6 m per step, so at this scale the geometry really is exact.
 CHECK (lambda pl: all(abs(sum((b["pos"][i]-a["pos"][i])**2 for i in (0,1,2))**0.5/(b["t"]-a["t"]) - 86.29) < 0.75 for a, b in zip(pl, pl[1:])))([b for b in bldg if b["id"]=="venus_cloud_platform"])
 # The steps to walk. Without this the CHECK above is `all()` over an empty zip if the
 # id ever changes -- the runner's row guard proves [bldg] lines were parsed, not that
@@ -28,6 +29,11 @@ CHECK len([b for b in bldg if b["id"]=="venus_cloud_platform"]) >= 9
 # East is -Z at lon 0 (equirect.h): the platform moves that way, and holds radius.
 CHECK [b for b in bldg if b["id"]=="venus_cloud_platform"][-1]["pos"][2] < [b for b in bldg if b["id"]=="venus_cloud_platform"][0]["pos"][2] - 1000
 CHECK all(abs(b["r"] - 6107800) < 1 for b in bldg if b["id"]=="venus_cloud_platform")
-# The ship rides along at warp too: still on the deck at the last instant.
-CHECK sum((dbg[-1]["pos"][i] - [b for b in bldg if b["id"]=="venus_cloud_platform"][-1]["pos"][i])**2 for i in (0,1,2)) < 625
+# The ship rides along at warp too: in the platform's bubble (#850) it is at
+# rest on the deck -- bubble-local pos bounded, frame-local speed ~0 -- while
+# the building itself drifts 1.7 km per log step above.
+CHECK "bubble" in orbit[-1]["frame"]
+CHECK sum(p*p for p in dbg[-1]["pos"]) < 10000
+CHECK abs(dbg[-1]["v"]) < 1.0
+CHECK all(abs(o["r"] - 6107800) < 100 for o in orbit)
 FORBID error:

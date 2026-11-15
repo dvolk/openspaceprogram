@@ -80,6 +80,13 @@ struct WorldBuilding {
     double air_lat_deg = 0.0;   // held; |lat| <= 85 (the drift divides by cos lat)
     double air_lon_deg = 0.0;   // anchor longitude at t = 0
 
+    /* The SoI bubble a DRIVEN building carries (#850): a frame node of this
+       radius rides the building's pose, so a ship inside is at rest relative
+       to it -- landed like on a planet. Must stay clear of the terrain
+       (validated). Surface pads get no node: they are already at rest in the
+       body's rot frame. */
+    double bubble_km = 10.0;
+
     bool hasFlag(const std::string &f) const;
     // display_name, else the catalog label, else the type.
     std::string label(const BuildingsCatalog &cat) const;

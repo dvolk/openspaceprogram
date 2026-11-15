@@ -1,0 +1,19 @@
+NAME platform-park-save-load
+CLAIM A ship parked on the platform saves its bubble-frame pose and loads back onto the deck.
+KIND invariant
+ARGS --system res/systems/solar_system.json --time-accel 1
+ARGS --startship skiff,res/ships/skiff_gear.json,Venus,pad,site=venus_cloud_platform
+ARGS --timeout 12 --dbg-log --orbit-log --orbit-interval 1.0
+ARGS --sim-press 3000,0,F5
+ARGS --sim-press 5000,0,F9
+ARGS --sim-press 6000,0,PERIOD
+EXPECT [dbg]
+EXPECT [orbitlog]
+# The writer records the bubble frame, not just body+rotating (#850).
+FILE saves/*/quicksave-00/ships/v0.json '"building"' "venus_cloud_platform"
+# After the load (paused) and unpause, the ship is back on the deck at rest.
+CHECK "bubble" in orbit[-1]["frame"]
+CHECK abs(dbg[-1]["v"]) < 1.0
+CHECK sum(p*p for p in dbg[-1]["pos"]) < 10000
+FORBID error:
+FORBID [load] refused

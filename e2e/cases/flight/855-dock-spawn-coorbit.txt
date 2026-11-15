@@ -1,13 +1,16 @@
 NAME dock-spawn-coorbit
-CLAIM A ship spawned from a space dock inherits its orbit and stays nearby, not drifting away.
+CLAIM A ship spawned from a space dock stays nearby, at rest in the dock's frame.
 KIND invariant
 ARGS --time-accel 1 --startship racer,res/ships/racer.json,Kerbin,pad,site=kerbin_dock
-ARGS --timeout 20 --dbg-log --orbit-interval 1.0
+ARGS --timeout 20 --dbg-log --orbit-log --orbit-interval 1.0
 EXPECT [dbg]
 EXPECT [bldg]
-# Spawned clear of the dock hull and co-orbiting: the ship-to-dock distance stays
-# bounded (a ship that did NOT inherit the dock's velocity would fall away fast).
-# [dbg] and [bldg] fire on the same clock, so the last rows are the same instant.
-CHECK sum((dbg[-1]["pos"][i] - [x for x in bldg if x["id"]=="kerbin_dock"][-1]["pos"][i])**2 for i in (0,1,2)) < 40000
-CHECK sum((dbg[-1]["pos"][i] - [x for x in bldg if x["id"]=="kerbin_dock"][-1]["pos"][i])**2 for i in (0,1,2)) > 100
+EXPECT [orbitlog]
+# The spawn rides the dock's bubble (#850): [dbg] is bubble-local, so a bounded
+# radius IS "still beside the dock" -- no cross-frame distance arithmetic. A
+# ship that did not join the dock's frame would read km/s here and fall away.
+CHECK "bubble" in orbit[-1]["frame"]
+CHECK sum(p*p for p in dbg[-1]["pos"]) < 40000
+CHECK sum(p*p for p in dbg[-1]["pos"]) > 100
+CHECK abs(dbg[-1]["v"]) < 0.5
 FORBID error:

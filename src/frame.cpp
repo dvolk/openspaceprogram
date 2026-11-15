@@ -1,3 +1,4 @@
+#include <cassert>
 #include <numbers>
 #include "frame.h"
 #include "orbit.h"
@@ -94,16 +95,69 @@ glm::dmat4 Frame::GetBodyDrawTransform(Frame *relTo)
 
 void Frame::UpdateRootRelative() {
     if(parent == NULL) {
+        omega_total = omega();
         return;
     }
 
     root_pos = parent->root_orient * orient * pos + parent->root_pos;
-    root_vel = parent->root_orient * orient * vel + parent->root_vel;
+    /* The origin rides the parent's spin too: a point at orient*pos in the
+       parent moves with omega_parent x (orient*pos). Zero for every body
+       frame (orbiting frames have inertial parents; rotating frames sit at
+       pos = 0), load-bearing for a building frame under a spinning body --
+       without it a bubble handoff is off by the parent's surface speed. */
+    root_vel = parent->root_vel
+             + parent->root_orient * (orient * vel
+                 + glm::cross(parent->omega_total, orient * pos));
     root_orient = parent->root_orient * orient;
+    omega_total = omega() + glm::transpose(orient) * parent->omega_total;
+    /* Body frames: patched conics -- the origin's own orbit is not felt, and
+       the origin IS the body centre. A frame parented UNDER a building bubble
+       would need the composed accel/centre instead; none exists yet, and the
+       driven branch recurses into children, so say so loudly (#850). */
+    assert(parent->building == nullptr
+           && "a frame under a building bubble must compose accel/gravity centre");
+    root_accel = glm::dvec3(0.0);
+    gravity_center = glm::dvec3(0.0);
+}
+
+void Frame::SetDrivenState(const glm::dvec3 &p_parent, const glm::dvec3 &v_parent,
+                           const glm::dvec3 &a_parent, const glm::dmat3 &orient_local,
+                           const glm::dvec3 &omega_own_local) {
+    assert(parent != nullptr);
+    orient = orient_local;
+    pos = glm::transpose(orient) * p_parent;
+    vel = glm::transpose(orient) * v_parent;
+    root_pos = parent->root_pos + parent->root_orient * p_parent;
+    root_vel = parent->root_vel
+             + parent->root_orient * (v_parent
+                 + glm::cross(parent->omega_total, p_parent));
+    root_orient = parent->root_orient * orient;
+    omega_total = omega_own_local + glm::transpose(orient) * parent->omega_total;
+    /* The origin's acceleration: the law's own, plus the parent-spin
+       transport of its relative motion (Coriolis + centrifugal). The parent
+       Euler term is zero: body spin rates are constant. */
+    root_accel = parent->root_accel
+               + parent->root_orient * (a_parent
+                   + 2.0 * glm::cross(parent->omega_total, v_parent)
+                   + glm::cross(parent->omega_total,
+                                glm::cross(parent->omega_total, p_parent)));
+    /* The parent is one of the body's own frames, origin at the body centre:
+       in local axes the centre sits at -pos. */
+    gravity_center = -pos;
 }
 
 void Frame::UpdateOrbitRails(double time) {
     rail_time = time;   // everything below, and every child, is f(time)
+    if(driven_tick) {
+        /* Building frame: the pose law (terrain.cpp) writes the state at this
+           instant through SetDrivenState. The walk is parent-first, so the
+           parent is already clocked. */
+        driven_tick(this, time);
+        for(Frame *child : children) {
+            child->UpdateOrbitRails(time);
+        }
+        return;
+    }
     if(parent != NULL and not rotating) {
         // Propagate the epoch state on the true Kepler conic. Absolute sim
         // time -- must NOT scale with the timestep, or the frame snaps when

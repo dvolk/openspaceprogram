@@ -1,0 +1,23 @@
+NAME platform-eva-stands
+CLAIM EVA from a ship parked on the platform puts the kerbal standing on the deck, and walking works.
+KIND invariant
+ARGS --system res/systems/solar_system.json --time-accel 1
+ARGS --startship racer,res/ships/racer.json,Venus,pad,site=venus_cloud_platform
+ARGS --timeout 14 --eva-log --orbit-interval 0.5
+ARGS --sim-mouse 2000,0,960,540,RMB
+ARGS --ui-click 3000,"racer > Capsule (2m)##0/EVA##eva0"
+ARGS --sim-press 6000,1500,W
+EXPECT EVA: 'Ash' out of 'racer' part 0
+EXPECT [evalog]
+# The walker steps out at the capsule's height (pad semantics), falls to the
+# deck and stands: bubble-local z ~ restAlt, ground mode -- not teleported a
+# planet away by a body-centric floor read (#850).
+CHECK all(e["mode"] == "ground" for e in eva if e["t"] > 5.0)
+CHECK all(abs(e["pos"][2]) < 5.0 for e in eva if e["t"] > 5.0)
+# Walking works on the deck: horizontal displacement while ground mode holds.
+CHECK (lambda es: (es[-1]["pos"][0]-es[0]["pos"][0])**2 + (es[-1]["pos"][1]-es[0]["pos"][1])**2 > 0.25)([e for e in eva if 6.0 < e["t"] < 8.0])
+# No bounce limit cycle: once settled, the standing height holds still (the
+# floor guard and the contact agree on the deck's margin, #850).
+CHECK (lambda zs: max(zs) - min(zs) < 0.3)([e["pos"][2] for e in eva if e["t"] > 10.0])
+CHECK abs(eva[-1]["vel"][2]) < 0.5
+FORBID error:

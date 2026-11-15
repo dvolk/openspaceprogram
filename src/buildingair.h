@@ -56,4 +56,32 @@ inline Pose poseAt(double r, double lat_rad, double lon0_deg, double rate,
     return Pose{ up * r, glm::dmat3(east, north, up) * spin, up };
 }
 
+/* The frame-node state (#850): pose plus the velocity, acceleration and own
+   spin the frame tree composes. pos/vel/accel in the body's ROTATING frame
+   (the parent of an air building's node, where the wind is authored);
+   omega_own in the building's LOCAL axes. Pure f(t), like poseAt. */
+struct State {
+    glm::dvec3 pos, vel, accel;
+    glm::dmat3 orient;
+    glm::dvec3 omega_own;
+};
+
+inline State stateAt(double r, double lat_rad, double lon0_deg, double rate,
+                     double heading_rad, double t) {
+    const Pose p = poseAt(r, lat_rad, lon0_deg, rate, heading_rad, t);
+    /* Drift velocity: east at rate * (r cos lat) -- the same wind the pose
+       law was sampled from, so ship and deck agree by construction. */
+    const glm::dvec3 vel = equirectEast(p.up) * (rate * r * std::cos(lat_rad));
+    /* Centripetal acceleration of the latitude circle, toward the planet
+       axis (equirect +Y). pos minus its axis component IS the cylindrical
+       radial, magnitude r cos lat -- no normalize needed. */
+    const glm::dvec3 axis(0.0, 1.0, 0.0);
+    const glm::dvec3 accel = -(rate * rate) * (p.pos - axis * glm::dot(p.pos, axis));
+    /* Own spin relative to the rotating frame: the drift rate about the
+       planet axis, in local axes. Constant there at fixed latitude -- the
+       ENU basis carries the axis at a fixed angle, so no Euler term. */
+    const glm::dvec3 omega_own = glm::transpose(p.orient) * (rate * axis);
+    return State{ p.pos, vel, accel, p.orient, omega_own };
+}
+
 } // namespace buildingair

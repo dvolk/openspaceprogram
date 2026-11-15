@@ -2657,7 +2657,8 @@ void drawUIReadouts(Game &g) {
     drawWin(g, W_Orbital, [&] {
         char dist_s[32];   // one buffer, reused line by line
         ImGui::Text("Bod: %s (%c)", ship->m_parent->name.c_str(),
-                    ship->frame->isRotFrame() ? 'R' : 'I');
+                    ship->frame->building ? 'B'
+                        : (ship->frame->isRotFrame() ? 'R' : 'I'));
         ImGui::Text("Vel: %.1fm/s", speed);
         /* Two datums in one window, on purpose: R and SMa are RADII from the
            focus (orbital elements), while ApA/PeA are HEIGHTS above the parent's

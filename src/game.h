@@ -874,6 +874,19 @@ struct Game {
     Kerbal *kerbal = nullptr;
     Vehicle *lastShip = nullptr;
 
+    /* The frame the ONE Bullet world's static content (terrain collision
+       leaves, building colliders) is expressed in: the active ship's frame,
+       synced by syncWorldFrame() whenever it changes (#850). Before this was
+       named, alignment held implicitly -- collision leaves exist only near
+       the ground, where any hull that can touch them rides the rot frame.
+       A building bubble breaks that: a ship can rest 56 km up in a frame
+       that is not the rot frame, so the world's frame is now explicit.
+       Other live hulls are NOT force-switched to it: contact implies frame
+       agreement (two hulls within contact distance resolve to the same SoI),
+       and a parked neighbour must keep its own bubble frame to stay frozen
+       on rails. nullptr = no active ship yet. */
+    Frame *worldFrame = nullptr;
+
     // --- part windows (pickAt opens one per right-clicked part) -----------
     std::vector<PartSel> part_sels;
 
@@ -1150,6 +1163,18 @@ struct Game {
     // False + keeps the accel if any ship is not rail-eligible.
     bool enter_rails_warp();
     void updateProximity();
+    /* Re-express the Bullet world's static content when the active ship's
+       frame changes (see worldFrame). Cheap no-op otherwise. */
+    void syncWorldFrame();
+    /* Drive every driven building's collider pose to the current instant
+       (pure f(time)). The tick calls this while paused / at rails warp; boot
+       and load-commit call it before the rails check, so a ship parked on a
+       deck finds its deck where the clock says it is. */
+    void driveBuildingPoses();
+    /* The proximity gate: a driven building's collider is in the world only
+       while a ship is near. Per tick, and once before the boot/commit rails
+       check so isGrounded can see the deck. */
+    void gateBuildingColliders();
     /* The active ship's port against every other live ship's port -- close, aligned
        and slow enough, merge. */
     void updateDocking();

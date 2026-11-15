@@ -2,6 +2,7 @@
 #include <numbers>
 #include "terrain.h"
 
+#include <algorithm>
 #include <array>
 #include <cassert>
 #include <cstdio>
@@ -12,6 +13,8 @@
 // type is needed here.
 #include "btcommon.h"
 #include "physics.h"
+
+#include <glm/gtc/quaternion.hpp>   // quat_cast: collision placement rotation
 
 #include "vehicle.h"   // Vehicle (Part::owner is a Vehicle*)
 #include "part.h"      // Part (complete type: ~StaticBuilding deletes parked suits)
@@ -53,6 +56,55 @@ StaticBuilding::~StaticBuilding() {
     // whatever its pockets hold, so ~Part frees the whole person.
     for(Part *p : crew) { delete p; }
     crew.clear();
+    if(frame != nullptr) {
+        // ~TerrainBody deletes pads BEFORE the body frames, so the parent is
+        // alive here; detach before freeing (#850).
+        if(frame->parent != nullptr) {
+            auto &ch = frame->parent->children;
+            ch.erase(std::remove(ch.begin(), ch.end(), frame), ch.end());
+        }
+        delete frame;
+        frame = nullptr;
+    }
+}
+
+/* ---- world-frame placement of collision content (#850) ------------------
+   Terrain leaves are baked at rot-frame anchors; the ONE Bullet world rides
+   the active ship's frame (Game::worldFrame). These place a leaf under the
+   rot -> world transform, at birth and on every world frame change. */
+
+static void placePatchCollision(GeoPatch *p, const glm::dmat3 &O, const glm::dvec3 &T) {
+    if(p == nullptr) { return; }
+    if(p->collision != nullptr) {
+        btTransform t;
+        t.setIdentity();
+        const glm::dvec3 pos = O * p->anchor + T;
+        t.setOrigin(btVector3(pos.x, pos.y, pos.z));
+        const glm::dquat q = glm::quat_cast(O);
+        t.setRotation(btQuaternion(q.x, q.y, q.z, q.w));
+        // The same pose-only teleport setPosRot uses.
+        p->collision->proceedToTransform(t);
+    }
+    for(int i = 0; i < 4; i++) { placePatchCollision(p->kids[i], O, T); }
+}
+
+void TerrainBody::collisionPlace(glm::dmat3 &O, glm::dvec3 &T) const {
+    Frame *to = worldFrame ? worldFrame : rot_frame;
+    if(rot_frame == nullptr || to == nullptr || to == rot_frame) {
+        O = glm::dmat3(1.0);
+        T = glm::dvec3(0.0);
+        return;
+    }
+    O = rot_frame->GetOrientRelTo(to);
+    T = rot_frame->GetPositionRelTo(to);
+}
+
+void TerrainBody::setWorldFrame(Frame *wf) {
+    if(wf == worldFrame) { return; }
+    worldFrame = wf;
+    glm::dmat3 O; glm::dvec3 T;
+    collisionPlace(O, T);
+    for(int i = 0; i < 6; i++) { placePatchCollision(patches[i], O, T); }
 }
 
 glm::dvec3 StaticBuilding::origin() const {
@@ -67,6 +119,26 @@ Frame *StaticBuilding::poseFrame() const {
     return orbital ? parent->frame->getNonRotFrame() : parent->frame->getRotFrame();
 }
 
+void StaticBuilding::writeColliderPose() {
+    /* The collider is in the world only while a live ship is near (the gate),
+       and a ship that can TOUCH the deck is inside the building's bubble --
+       the bubble is much larger than the deck. So a live deck is expressed in
+       the building's OWN frame: static at the origin, aligned with the hull
+       of the ship on it no matter where the ACTIVE ship is (#850). (The world
+       frame -- the active ship's -- serves the terrain leaves, which only a
+       camera-near ship can contact.) Writing the pose directly also avoids
+       composing posePos(tSub) with the frame's per-TICK snapshot, which would
+       jitter the deck by v*step within each tick and shake a parked ship off
+       at warp. */
+    if(live && frame != nullptr) {
+        setPosRot(body, glm::dvec3(0.0), glm::dmat3(1.0));
+        return;
+    }
+    /* Out of the world (or a pad with no bubble): keep the pose in poseFrame
+       coordinates, ready for the gate to add. */
+    setPosRot(body, posePos, poseOrient);
+}
+
 void StaticBuilding::tickPose(double time) {
     if(air) {
         // Wind-riding drift in the rotating frame, on the continuous ENU basis.
@@ -74,19 +146,11 @@ void StaticBuilding::tickPose(double time) {
             airR, airLat, airLon0, airDriftRate, airHeading, time);
         posePos = p.pos;
         poseOrient = p.orient;
-        setPosRot(body, posePos, poseOrient);
-        // The deck's own velocity, for the ground law: a ship parked here rides
-        // the wind WITH the deck, so tire forces must read zero relative speed.
-        body->surfaceVel = equirectEast(p.up) * airEast;
-        // The ENU basis turns about the planet axis (equirect Y) at the drift
-        // rate -- the deck's angular velocity, for the carry's off-origin points.
-        body->surfaceAngVel = glm::dvec3(0.0, airDriftRate, 0.0);
-        // The body stays STATIC and FRICTIONLESS (buildings.cpp): Bullet's
-        // solver maps every static body to one zero-velocity fixed body, so
-        // deck friction would scrub a resting hull against the wind-ride, and
-        // setting the body's velocity does not help. Grip on the deck comes
-        // from the wheel/EVA laws and the deck carry, which read surfaceVel.
-        // (Kinematic is #848's pass-through -- do not switch without fixing it.)
+        writeColliderPose();
+        // The body stays STATIC (buildings.cpp): in the bubble it is genuinely
+        // stationary, so the solver's zero-velocity static body is the truth
+        // and ordinary friction grips (#850). No surface velocity to report:
+        // a ship touching the deck rides the bubble, where the deck is at rest.
         return;
     }
     if(!orbital) { return; }
@@ -96,7 +160,25 @@ void StaticBuilding::tickPose(double time) {
     poseOrient = p.orient;
     // Drive the collider to the same pose the draw uses (a pure function of the
     // clock). Whether it is in the world is the proximity gate's call.
-    setPosRot(body, posePos, poseOrient);
+    writeColliderPose();
+}
+
+void StaticBuilding::tickFrame(double time) {
+    /* The bubble node rides the SAME pure law as the collider pose, through
+       the tree's clock (Frame::UpdateOrbitRails -> driven_tick). The law also
+       supplies the velocity/acceleration/spin the frame math composes (#850).
+       Per-tick snapshotting is enough: in the bubble the deck is STATIC, so
+       there is nothing to advance per substep. */
+    if(frame == nullptr) { return; }
+    if(air) {
+        const buildingair::State s = buildingair::stateAt(
+            airR, airLat, airLon0, airDriftRate, airHeading, time);
+        frame->SetDrivenState(s.pos, s.vel, s.accel, s.orient, s.omega_own);
+    } else if(orbital) {
+        const buildingorbit::State s = buildingorbit::stateAt(
+            epochPos, epochVel, orbMu, attMode, spinAxis, spinRate, time);
+        frame->SetDrivenState(s.pos, s.vel, s.accel, s.orient, s.omega_own);
+    }
 }
 
 void StaticBuilding::Draw(const Camera *camera, const TerrainBody *current,
@@ -221,6 +303,12 @@ GeoPatch::GeoPatch(TerrainBody *body, Shader *shader, int depth, glm::vec3 v0, g
     mesh = grid_mesh;   // owned by this patch
     if(has_collision == true) {
         collision = addTerrainCollision(grid_mesh, anchor);
+        /* A leaf born while the world rides another frame (a building bubble,
+           an inertial coast) is placed under that frame's transform, not the
+           rot anchor alone (#850). Identity in the common rot-frame case. */
+        glm::dmat3 O; glm::dvec3 T;
+        body->collisionPlace(O, T);
+        placePatchCollision(this, O, T);
     } else {
         collision = NULL;
     }

@@ -1272,6 +1272,11 @@ bool Game::loadFrom(const std::string &dir) {
             toast("Load failed: %s", why.c_str());
             return false;
         }
+        /* Place the incoming buildings BEFORE the build: a ship/kerbal saved
+           in a building's bubble resolves its frame against the pads (#850).
+           installSystem's placement is idempotent, so the switch does not
+           double-place. A refusal below frees them with newSys's bodies. */
+        place_world_buildings(newSys, buildings, partsshader, newSys.root);
         // buildSaveWorld reads the save's clock itself; time here is only a hint.
         LoadWorld w{ newSys, newSys.home, newSys.root, 0.0 };
         built = buildSaveWorld(*this, w, dir);
@@ -1466,6 +1471,7 @@ void Game::resetWorld() {
     ship = nullptr;
     kerbal = nullptr;
     lastShip = nullptr;
+    worldFrame = nullptr;   // the next world names its own (#850)
     /* The game's identity belongs to the game that just ended. Leaving gameId
        set meant a later quicksave wrote into the PREVIOUS game's saves/<id>/
        directory (#299). A new game claims a fresh one before it starts
@@ -1765,7 +1771,13 @@ void Game::kerbalEVA(Part *suit) {
        frame is co-rotating free fall. Computed BEFORE the seat is emptied,
        because it reads the capsule's live pose. */
     const glm::dvec3 capCom = ship->partPos(capPart);
-    const glm::dvec3 upDir = glm::normalize(capCom);
+    /* In a platform bubble the deck is the ground: local +Z up, deck top at
+       z=0 (#850). normalize(capCom) would point from the BUILDING, and the
+       terrain radius below would place the walker a planet away. */
+    const bool onDeck = ship->frame->building != nullptr
+                     && ship->frame->building->air;
+    const glm::dvec3 upDir = onDeck ? glm::dvec3(0.0, 0.0, 1.0)
+                                    : glm::normalize(capCom);
     const glm::dvec3 refs[3] = { {1,0,0}, {0,1,0}, {0,0,1} };
     int best = 0;
     for(int i = 1; i < 3; i++) {
@@ -1811,9 +1823,18 @@ void Game::kerbalEVA(Part *suit) {
     k->finalize();
 
     if(ship->isGrounded()) {
-        const double floorR = std::max(glm::length(capCom) - capDef->height / 2.0,
-            (double)ship->m_parent->GetTerrainHeight(glm::vec3(upDir)));
-        k->placeShipAtCom(upDir * (floorR + k->restAlt()) + tangent * offset, orient);
+        if(onDeck) {
+            /* Beside the capsule at its own height -- the pad semantics: the
+               walker steps out of the hatch, not down to the deck, and falls
+               to the deck like any EVA from a tall stack (#850). */
+            const double floorZ = capCom.z - capDef->height / 2.0;
+            k->placeShipAtCom(glm::dvec3(capCom.x, capCom.y, floorZ + k->restAlt())
+                              + tangent * offset, orient);
+        } else {
+            const double floorR = std::max(glm::length(capCom) - capDef->height / 2.0,
+                (double)ship->m_parent->GetTerrainHeight(glm::vec3(upDir)));
+            k->placeShipAtCom(upDir * (floorR + k->restAlt()) + tangent * offset, orient);
+        }
         k->setVelocity(glm::dvec3(0.0));
     } else {
         k->placeShipAtCom(capCom + tangent * offset, orient);
@@ -2028,6 +2049,59 @@ bool Game::enter_rails_warp() {
     // on the way out.
     thrust_latched = false;
     return true;
+}
+
+void Game::syncWorldFrame() {
+    if(ship == nullptr || ship->frame == nullptr) { return; }
+    if(ship->frame == worldFrame) { return; }
+    worldFrame = ship->frame;
+    /* Every body's static content moves to the new world frame -- including
+       bodies far from the ship: their (few, camera-gated) collision leaves
+       must sit in the same coordinates as everything else in the one world. */
+    for(TerrainBody *b : sys.bodies) {
+        b->setWorldFrame(worldFrame);
+    }
+}
+
+void Game::driveBuildingPoses() {
+    for(TerrainBody *b : sys.bodies) {
+        for(StaticBuilding *p : b->pads) {
+            if(p->driven()) { p->tickPose(time); }
+        }
+    }
+}
+
+void Game::gateBuildingColliders() {
+    /* Immovable scenery the rest of the time: this is what keeps a city of
+       them affordable. ANY live ship, not just the active one -- a ship
+       beside a platform that is not (yet) railed must not lose its deck when
+       the player switches away. The active ship counts even on rails (it
+       wakes in place); other railed ships need no collider: a frozen park
+       rides its building's frame, not the deck (#850). */
+    for(TerrainBody *b : sys.bodies) {
+        for(StaticBuilding *p : b->pads) {
+            if(!p->driven()) { continue; }
+            double d = std::numeric_limits<double>::infinity();
+            for(Vehicle *s : vehicles) {
+                if(s->onRails && s != ship) { continue; }
+                glm::dvec3 sp, sv;
+                s->comStateIn(p->poseFrame(), sp, sv);
+                d = std::min(d, glm::length(sp - p->posePos));
+            }
+            if(!p->live && d < args.prox_fly_on) {
+                /* Pose BEFORE adding: a live deck sits at its bubble origin,
+                   and Bullet's broadphase proxy is built from the transform
+                   at add time -- a teleport after the add stays invisible to
+                   rays until the first sim step (#850). */
+                p->live = true;
+                p->tickPose(time);
+                AddPhysicsBody(p->body);
+            } else if(p->live && d > args.prox_fly_off) {
+                RemoveBody(p->body);
+                p->live = false;
+            }
+        }
+    }
 }
 
 /* Proximity: keep the ships near the active one live, park the rest. The

@@ -28,18 +28,66 @@ static const double kYawRate     = 1.5;     // rad/s QE yaw about the view axis
 static const double kGroundBand  = 0.25;    // m above restAlt still "grounded"
 static const double kFloorDrop   = 0.4;     // m below restAlt -> snap back up
 
+bool Kerbal::onDeck() const {
+    return frame != nullptr && frame->building != nullptr && frame->building->air;
+}
+
+double Kerbal::restAlt() const {
+    /* The surface margin must be the one the contact actually uses: the
+       terrain's on the ground, the DECK's own effective margin in a platform
+       bubble. Reading terrainMargin there rests the suit a fraction of a
+       metre above the contact, and the floor guard fights the solver in a
+       bounce limit cycle (#850). Both helpers respect OSP_*_MARGIN. */
+    const double surf = onDeck() ? effectiveHullMargin(frame->building->body)
+                                 : terrainMargin();
+    return parts[0]->def->height / 2.0 + hullMargin() + surf;
+}
+
+bool Kerbal::inStationBubble() const {
+    return frame != nullptr && frame->building != nullptr && !frame->building->air;
+}
+
+glm::dvec3 Kerbal::groundUp() const {
+    if(onDeck()) { return glm::dvec3(0.0, 0.0, 1.0); }
+    return glm::normalize(comPos());
+}
+
+double Kerbal::groundAltAt(const glm::dvec3 &pos) const {
+    if(onDeck()) { return pos.z; }   // deck top authored at local z=0
+    return glm::length(pos)
+        - (double)m_parent->GetTerrainHeight(glm::vec3(glm::normalize(pos)));
+}
+
+bool Kerbal::overDeck() const {
+    /* True when a ray straight down from the suit hits the platform deck:
+       over the footprint, not off the edge. The target sits a little below
+       the deck plane so a standing suit always reaches it; a suit fallen
+       past it is off the deck and must keep falling -- the floor is the
+       deck, not an infinite plane at z=0 (#850). */
+    if(!onDeck()) { return false; }
+    const glm::dvec3 pos = comPos();
+    glm::dvec3 hit, n;
+    Body *gb = nullptr;
+    return groundRay(pos, glm::dvec3(pos.x, pos.y, -(kFloorDrop + 1.0)),
+                     hit, n, hull, &gb)
+        && gb == frame->building->body;
+}
+
 /* The analytic half of armInput's contact test, without the Bullet query:
    a hull freshly added by enterWorld has no manifolds to find, and the pose
-   already says everything. Terrain only -- a kerbal loaded standing on a
-   structure that rises above the analytic surface reads "space" until the first
-   tick's BodyInContact flips it back. */
+   already says everything. A kerbal loaded standing on a structure that rises
+   above the analytic surface reads "space" until the first tick's
+   BodyInContact flips it back -- except on a platform deck, whose bubble
+   knows its own floor (#850). */
 void Kerbal::settleContact() {
     assert(m_parent != nullptr && !parts.empty());
-    const glm::dvec3 pos = get_center_of_mass();
-    const glm::dvec3 radial = glm::normalize(pos);
-    const double alt = glm::length(pos)
-        - (double)m_parent->GetTerrainHeight(glm::vec3(radial));
-    grounded = alt < restAlt() + kGroundBand;
+    if(inStationBubble()) {
+        grounded = false;   // weightless: no deck to stand on (#850)
+        mode = EVA_SPACE;
+        return;
+    }
+    const double alt = groundAltAt(comPos());
+    grounded = alt < restAlt() + kGroundBand && (!onDeck() || overDeck());
     mode = grounded ? EVA_GROUND : EVA_SPACE;
 }
 
@@ -52,12 +100,12 @@ void Kerbal::armInput(Game &g, const SlotProbe &active) {
     const glm::dvec3 sright = evaScreenRight(fwd, up);
     camBasis = evaCamBasis(fwd, up);
 
-    const glm::dvec3 pos = get_center_of_mass();
-    const glm::dvec3 radial = glm::normalize(pos);
-    const double alt = glm::length(pos)
-        - (double)m_parent->GetTerrainHeight(glm::vec3(radial));
+    const glm::dvec3 radial = groundUp();
+    const double alt = groundAltAt(get_center_of_mass());
     const double rest = restAlt();
-    grounded = BodyInContact(hull) || alt < rest + kGroundBand;
+    grounded = !inStationBubble()
+        && (BodyInContact(hull)
+            || (alt < rest + kGroundBand && (!onDeck() || overDeck())));
     if(jumping) {
         /* Release once the jump's outward kick is spent. Releasing on
            contact-clear never fires for a hop that never leaves contact;
@@ -111,15 +159,23 @@ void Kerbal::armInput(Game &g, const SlotProbe &active) {
 void Kerbal::applyEva(double h) {
     Body *b = hull;
     const glm::dvec3 pos = partPos(controller);
-    const glm::dvec3 radial = glm::normalize(pos);
-    const double surfR = (double)m_parent->GetTerrainHeight(glm::vec3(radial));
+    const glm::dvec3 radial = groundUp();
     const double rest = restAlt();
 
     // Analytic floor guard: snap back to standing height where terrain meshes
-    // are not loaded (only without Bullet contact).
-    const double alt = glm::length(pos) - surfR;
-    if(alt < rest - kFloorDrop) {
-        placeShipAtCom(radial * (surfR + rest), partRot(controller));
+    // are not loaded. In a platform bubble the floor is the DECK, not an
+    // infinite plane at z=0: off the edge the suit keeps falling (#850). In a
+    // STATION bubble there is no floor -- weightless, and snapping would
+    // teleport the suit a planet away.
+    if(!inStationBubble() && groundAltAt(pos) < rest - kFloorDrop) {
+        if(onDeck()) {
+            if(!overDeck()) { return; }   // off the edge: free fall
+            placeShipAtCom(glm::dvec3(pos.x, pos.y, rest), partRot(controller));
+        } else {
+            placeShipAtCom(radial * ((double)m_parent->GetTerrainHeight(
+                                         glm::vec3(glm::normalize(pos))) + rest),
+                           partRot(controller));
+        }
         const glm::dvec3 v = partVel(controller);
         const double vr = glm::dot(v, radial);
         if(vr < 0.0) { SetVelocity(b, v - radial * vr); }
@@ -132,21 +188,10 @@ void Kerbal::applyEva(double h) {
             SetVelocity(b, partVel(controller) + radial * kJumpSpeed);
         }
         const glm::dvec3 v = partVel(controller);
-        /* The ground may be moving: a balloon platform rides the wind, so a
-           standing kerbal has ~86 m/s of frame velocity that is ZERO relative
-           to the deck. Walk relative to the deck, or the law scrubs the kerbal
-           off the back of it. A short ray finds the surface under the feet;
-           terrain has no Body and is stationary. (The feet are frictionless,
-           so this law is the kerbal's only horizontal grip -- on a pad it is
-           unchanged: surfaceVel is zero there.) */
-        glm::dvec3 vGround(0.0);
-        glm::dvec3 gHit, gN;
-        Body *gBody = nullptr;
-        if(groundRay(pos, pos - radial * (rest + 0.5), gHit, gN, hull, &gBody)
-           && gBody != nullptr && frame->isRotFrame()) {
-            vGround = gBody->surfaceVel;
-        }
-        const glm::dvec3 vh = evaOntoPlane(v - vGround, radial);
+        /* The ground is stationary in the kerbal's frame: terrain in the rot
+           frame, a platform deck in its bubble (#850). The feet are
+           frictionless, so this law is the kerbal's only horizontal grip. */
+        const glm::dvec3 vh = evaOntoPlane(v, radial);
         glm::dvec3 a = (walkDir * kWalkSpeed - vh) / h;
         const double amax = kWalkAccel;
         const double alen = glm::length(a);

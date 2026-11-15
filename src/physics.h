@@ -100,19 +100,14 @@ glm::dmat3 GetOrient(Body *body);
    EVA grounded check). */
 bool BodyInContact(Body *body);
 
-/* Override a body's Coulomb friction (the solver multiplies the pair's). The
-   balloon platform's deck is frictionless: Bullet's solver reads a STATIC
-   body as zero-velocity, so any friction would scrub a resting hull against
-   the deck's 86 m/s wind-ride. Grip on the deck comes from the wheel law and
-   the EVA walk law instead, both of which read the deck's surfaceVel. */
+/* Override a body's Coulomb friction (the solver multiplies the pair's). */
 void SetFriction(Body *b, double mu);
 
 /* Cast a ray from `from` to `to` through the collision world (terrain mesh,
    buildings, hulls). True on a hit, writing the hit point and surface normal.
    `skip` is excluded -- a wheel does not ray onto its own hull. The hit is the
    margin-inflated surface (the same one collision rests on). `hitBody` (optional)
-   receives the Body hit -- nullptr for terrain (no Body); the ground law reads
-   its surfaceVel to know a moving deck from a static one. */
+   receives the Body hit -- nullptr for terrain (no Body). */
 bool groundRay(const glm::dvec3 &from, const glm::dvec3 &to,
                glm::dvec3 &hit, glm::dvec3 &normal, const Body *skip,
                Body **hitBody = nullptr);

@@ -120,31 +120,28 @@ void updateShipView(Game &g) {
     vel = ship->GetVel();
 
     // The orbit conic lives in the body's INERTIAL (non-rotating) frame -- what
-    // the spawn/switching code targets.
+    // the spawn/switching code targets. comStateIn is the ONE spelling of the
+    // lift (stasis + origin motion), valid from the rot frame and from a
+    // building bubble alike (#850).
     orbit_pos = pos;
     orbit_vel = vel;
     marker_vel = vel;
-    if(ship->frame->isRotFrame() == true) {
-        Frame *inertial = ship->frame->getNonRotFrame();
-        const glm::dmat3 to_inertial = ship->frame->GetOrientRelTo(inertial);
-        orbit_vel += ship->frame->GetStasisVelocity(orbit_pos);
-        orbit_vel = to_inertial * orbit_vel + ship->frame->GetVelocityRelTo(inertial);
-        orbit_pos = to_inertial * orbit_pos + ship->frame->GetPositionRelTo(inertial);
+    Frame *bodyInertial = ship->m_parent->frame;
+    if(ship->frame != bodyInertial) {
+        ship->comStateIn(bodyInertial, orbit_pos, orbit_vel);
         // And back into this frame, so the flight markers can point along the
         // conic while being drawn in the frame they live in.
-        marker_vel = glm::transpose(to_inertial) * orbit_vel;
+        marker_vel = glm::transpose(ship->frame->GetOrientRelTo(bodyInertial))
+                   * orbit_vel;
     }
 
     // Surface-relative state: position/velocity in the ROTATING frame.
     surf_pos = pos;
     surf_vel = vel;
 
-    if(ship->frame->isRotFrame() == false and
-       ship->frame->hasRotFrame() == true) {
-        Frame *rot = ship->frame->getRotFrame();
-        surf_pos = ship->frame->GetOrientRelTo(rot) * pos;
-        surf_vel = ship->frame->GetOrientRelTo(rot) * vel
-                 - rot->GetStasisVelocity(surf_pos);
+    Frame *bodyRot = ship->m_parent->rot_frame;
+    if(bodyRot != nullptr && ship->frame != bodyRot) {
+        ship->comStateIn(bodyRot, surf_pos, surf_vel);
     }
 
     o = computeOrbitElements(orbit_pos, orbit_vel, mu);
@@ -388,7 +385,13 @@ void refreshWorld(Game &g) {
                 // North-up on the kerbal's radial, tangent plane from the WORLD
                 // axes: the frame's orient spins with the planet, and the
                 // kerbal's own axes would feed back into its attitude law.
-                const glm::dvec3 radial = glm::normalize(com);
+                // In a building bubble the radial from the frame ORIGIN is
+                // meaningless (the origin is the building, metres away, and
+                // the direction swings as the kerbal walks -- the camera
+                // rolls): use the bubble's +Z, the deck normal, as the stable
+                // up (#850).
+                const glm::dvec3 radial = (ship->frame->building != nullptr)
+                    ? glm::dvec3(0.0, 0.0, 1.0) : glm::normalize(com);
                 // Tangent "north": +Y, or +X near +/-Y so the projection never
                 // vanishes.
                 const glm::dvec3 ref_dir = (std::fabs(radial.y) > 0.9)
@@ -568,7 +571,8 @@ static void drawOrbitPlane(Game &g, const glm::dmat4 &VP) {
                    "n_orb=(%.6f,%.6f,%.6f) n_ref=(%.6f,%.6f,%.6f) "
                    "node=(%.6f,%.6f,%.6f) ticks=%s "
                    "prg=(%.6f,%.6f,%.6f) nrm=(%.6f,%.6f,%.6f)\n",
-                   g.time, ship->frame->isRotFrame() ? "rot" : "inertial",
+                   g.time, ship->frame->building ? "bubble"
+                         : (ship->frame->isRotFrame() ? "rot" : "inertial"),
                    refPlaneName(g.hud.view.ref_plane.mode), inc * 180.0 / std::numbers::pi,
                    n_orb.x, n_orb.y, n_orb.z, n_ref.x, n_ref.y, n_ref.z,
                    node.x, node.y, node.z, coplanar ? "-" : "drawn",

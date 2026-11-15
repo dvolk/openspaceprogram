@@ -120,10 +120,13 @@ struct SaveFuelLink {
 };
 
 // A ship's pose in its CURRENT SOI frame. `body` is the SOI body's name,
-// `rotating` whether that is the body's rotating surface frame.
+// `rotating` whether that is the body's rotating surface frame. `building`,
+// when set, is the id of the building whose SoI bubble frame the pose is in
+// (#850) -- it wins over `rotating`, and the pose is building-local.
 struct SavePose {
     std::string body;
     bool rotating = false;
+    std::string building;
     glm::dvec3 pos = glm::dvec3(0.0);
     glm::dmat3 rot = glm::dmat3(1.0);
     glm::dvec3 vel = glm::dvec3(0.0);
@@ -683,6 +686,7 @@ inline nlohmann::json savePoseToJson(const SavePose &p) {
     nlohmann::json j;
     j["body"]     = p.body;
     j["rotating"] = p.rotating;
+    if(!p.building.empty()) { j["building"] = p.building; }
     j["pos"]      = std::vector<double>({p.pos.x, p.pos.y, p.pos.z});
     j["rot"]      = mat3ToVec(p.rot);
     j["vel"]      = std::vector<double>({p.vel.x, p.vel.y, p.vel.z});
@@ -694,6 +698,7 @@ inline SavePose savePoseFromJson(const nlohmann::json &j) {
     SavePose p;
     if(j.contains("body") && j["body"].is_string()) { p.body = j["body"].get<std::string>(); }
     if(j.contains("rotating") && j["rotating"].is_boolean()) { p.rotating = j["rotating"].get<bool>(); }
+    if(j.contains("building") && j["building"].is_string()) { p.building = j["building"].get<std::string>(); }
     if(j.contains("pos") && j["pos"].is_array()) { p.pos = vec3FromJson(j["pos"]); }
     if(j.contains("rot") && j["rot"].is_array()) { p.rot = mat3FromVec(j["rot"]); }
     if(j.contains("vel") && j["vel"].is_array()) { p.vel = vec3FromJson(j["vel"]); }

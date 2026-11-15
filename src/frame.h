@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -8,6 +9,7 @@
 #include "orbit.h"
 
 struct TerrainBody;
+struct StaticBuilding;
 
 struct Frame {
     std::string name;
@@ -67,8 +69,47 @@ struct Frame {
     glm::dvec3 root_vel = glm::dvec3(0.0);
     glm::dmat3 root_orient = glm::dmat3(1.0);
 
+    /* Total angular velocity relative to the ROOT, in LOCAL axes: own spin
+       plus every ancestor's, composed in UpdateRootRelative. Equals omega()
+       for body frames (their ancestors are inertial); a building frame under
+       a spinning body carries both. Every stasis / angular-velocity /
+       fictitious reader uses THIS -- omega() alone is only the spin relative
+       to the parent, which was the whole story only while the tree was two
+       levels deep (#850). */
+    glm::dvec3 omega_total = glm::dvec3(0.0);
+    /* The origin's inertial acceleration, ROOT axes. Zero for body frames
+       (patched conics: the body's own orbit about its parent is not felt --
+       the same convention as gravity ignoring the sun). A building frame
+       carries its pose law's centripetal acceleration plus the parent-spin
+       transport; the -A term it feeds is what makes a ship at rest in an
+       orbital station's frame weightless. */
+    glm::dvec3 root_accel = glm::dvec3(0.0);
+    /* The body's centre in LOCAL axes. Zero for body frames (origin ==
+       centre); a building frame's gravity points HERE, not at the origin. */
+    glm::dvec3 gravity_center = glm::dvec3(0.0);
+
+    /* Non-null for a BUILDING frame (#850): the building whose pose law
+       drives this node. The node is a child of one of the body's own frames
+       (rot for air, inertial for orbital), body points at the parent body,
+       and rot_frame at the body's spin frame -- so getNonRotFrame() walks to
+       the body's inertial node and every body-centred consumer (conics,
+       terrain bands, the HUD) keeps working. */
+    StaticBuilding *building = nullptr;
+    /* The pose law hook, called by UpdateOrbitRails so a building clocks at
+       the tree's instant for EVERY caller. std::function keeps frame.cpp
+       free of terrain.cpp's dependency chain: the headless frame tests link
+       frame.o alone. Set iff building != nullptr. */
+    std::function<void(Frame *, double)> driven_tick;
+
     void UpdateRootRelative();
     void UpdateOrbitRails(double time);
+    /* Driven-frame state from the pose law, in PARENT axes (the law's own
+       output): compose root_* and the accumulated quantities. pos/vel are
+       stored in local axes for direct readers; root_* is authoritative.
+       The parent must already be clocked at the same instant. */
+    void SetDrivenState(const glm::dvec3 &p_parent, const glm::dvec3 &v_parent,
+                        const glm::dvec3 &a_parent, const glm::dmat3 &orient_local,
+                        const glm::dvec3 &omega_own_local);
 
     /* Origin state of THIS frame in relTo's OWN local axes. */
     glm::dvec3 GetVelocityRelTo(Frame *relTo);
@@ -81,12 +122,22 @@ struct Frame {
 
     bool isRotFrame() { return rotating; }
     bool hasRotFrame() { return rot_frame != nullptr; }
+    /* True when a ship in this frame needs fictitious forces: a body spin
+       frame, or a driven building frame -- which accelerates even when its
+       total omega is zero (a sky-fixed station is in free fall), so gating
+       on omega alone would be wrong. */
+    bool isNonInertial() const { return rotating || building != nullptr; }
     Frame *getNonRotFrame() {
         if(isRotFrame() == true) {
             return parent;
-        } else {
-            return this;
         }
+        if(building != nullptr) {
+            /* A building's parent is one of its body's own frames: walk to
+               the body's inertial node, so conic/band consumers lift state
+               about the BODY, not the building (#850). */
+            return parent->getNonRotFrame();
+        }
+        return this;
     }
 
     /* The body's spin frame. Returns `this` when it has none of its own. */
@@ -111,17 +162,28 @@ struct Frame {
     // Frame switching F -> N:
     //   v_N = O(F,N) * (v_F + stasis_F(p_F)) + Vrel(F,N) - stasis_N(p_N)
     // (old frame's stasis added, new frame's subtracted).
+    // The stasis uses the TOTAL omega: valid for a moving origin too, since
+    // root_vel already carries the origin's own motion (#850).
     glm::dvec3 GetStasisVelocity(const glm::dvec3& pos) {
-        return glm::cross(omega(), pos);
+        return glm::cross(omega_total, pos);
     }
 
-    // Fictitious (Coriolis + centrifugal) acceleration for a ship integrated
-    // IN this rotating frame so its INERTIAL trajectory stays a Kepler orbit:
-    //   v' = gravity - 2*omega x v - omega x (omega x p).
-    // Zero for non-rotating frames.
+    // Fictitious acceleration for a ship integrated IN this non-inertial
+    // frame so its INERTIAL trajectory stays physical:
+    //   a_fict = -A - 2*Omega x v - Omega x (Omega x p)
+    // with A the origin's inertial acceleration (root_accel, in local axes)
+    // and Omega the total spin. -A is what makes a ship at rest in an orbital
+    // station's frame weightless: the station's centripetal acceleration
+    // cancels gravity at the origin. For a body spin frame A = 0 and this is
+    // the old Coriolis + centrifugal pair. Zero for inertial frames.
+    // The Euler term (dOmega/dt x p) is absent: every driven pose law holds
+    // omega_total CONSTANT in local axes (circular LVLH, fixed-axis spin,
+    // zonal drift at fixed latitude). An eccentric body-fixed station would
+    // vary its orbit rate -- parse refuses that combination (#850).
     glm::dvec3 GetFictitiousAccel(const glm::dvec3 &pos, const glm::dvec3 &vel) {
-        const glm::dvec3 w = omega();
-        return -2.0 * glm::cross(w, vel) - glm::cross(w, glm::cross(w, pos));
+        const glm::dvec3 w = omega_total;
+        const glm::dvec3 a = glm::transpose(root_orient) * root_accel;
+        return -a - 2.0 * glm::cross(w, vel) - glm::cross(w, glm::cross(w, pos));
     }
 };
 

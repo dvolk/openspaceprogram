@@ -183,6 +183,16 @@ struct TerrainBody {
     // Owned; deleted unconditionally by ~TerrainBody.
     Frame *frame = nullptr;
     Frame *rot_frame = nullptr;
+    /* The frame this body's Bullet collision leaves are expressed in, set by
+       Game::syncWorldFrame (#850). nullptr = the rot frame (the historical
+       implicit default). Leaves are BAKED at rot-frame anchors; this is the
+       transform they are placed under, applied at birth and on every world
+       frame change. */
+    Frame *worldFrame = nullptr;
+    void setWorldFrame(Frame *wf);
+    /* rot -> world placement for a collision leaf: identity when the world
+       rides this body's rot frame. */
+    void collisionPlace(glm::dmat3 &O, glm::dvec3 &T) const;
     Calendar cal; // this body's day/year (from its spin + orbit rates)
     glm::dmat4 transform = glm::dmat4(1.0);
     glm::vec3 sunlightVec = glm::vec3(0.0f);   // written by Draw, once ready
@@ -763,6 +773,14 @@ public:
     bool driven() const { return orbital || air; }
     void tickPose(double time);              // driven: recompute + set body pose
     Frame *poseFrame() const;                // inertial if orbital, else spin frame
+    void writeColliderPose();                // live: static at own bubble origin (#850)
+
+    /* The building's SoI bubble frame (#850): a child of poseFrame() that
+       rides the pose, so a ship inside is at rest relative to the building.
+       OWNED here; ~StaticBuilding detaches it from the parent's children
+       (the body frames outlive their pads). nullptr for a surface pad. */
+    Frame *frame = nullptr;
+    void tickFrame(double time);             // drive the node from the pose law
 
     /* Owns `crew` raw: copying would duplicate the pointers and free each suit
        twice. The destructor also suppresses implicit moves, so a copy is what a

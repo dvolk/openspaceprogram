@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 364 |
+| `invariant` | a behaviour or a player route the game must keep | 369 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 48 |
 | `harness` | CLI/test-engine plumbing, not game spec | 15 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **431** |
+| | **total** | **436** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -18,7 +18,7 @@ paces a run: how much e2e a change deserves is the caller's
 judgement. Select by number, name or path, e.g.
 `python3 e2e/run.py save/172 262`.
 
-## flight (120)
+## flight (123)
 
 | case | kind | pins |
 |---|---|---|
@@ -134,16 +134,19 @@ judgement. Select by number, name or path, e.g.
 | `flight/852-runway-brakes.txt` | invariant | A rolling plane stops when the brakes are applied. |
 | `flight/853-runway-steer.txt` | invariant | Nose-wheel steering bends the ground track while taxiing. |
 | `flight/854-station-propagates.txt` | invariant | Orbital buildings drive along their Kepler orbits (radius holds, position advances). |
-| `flight/855-dock-spawn-coorbit.txt` | invariant | A ship spawned from a space dock inherits its orbit and stays nearby, not drifting away. |
+| `flight/855-dock-spawn-coorbit.txt` | invariant | A ship spawned from a space dock stays nearby, at rest in the dock's frame. |
 | `flight/856-orbital-gate-immovable.txt` | invariant | An orbital collider is live only near the ship, and the station stays on its orbit. |
 | `flight/857-dock-present-while-paused.txt` | invariant | A space dock is positioned beside the ship at spawn even while the game is paused. |
-| `flight/858-platform-spawn-rests.txt` | invariant | A ship spawned on the Venus balloon platform rests on the deck and rides the wind with it. |
+| `flight/858-platform-spawn-rests.txt` | invariant | A ship spawned on the Venus balloon platform rests on the deck, at rest in the platform's frame. |
 | `flight/859-platform-drifts.txt` | invariant | The balloon platform drifts east at the authored wind speed, a pure function of the clock. |
 | `flight/860-platform-paused-present.txt` | invariant | The balloon platform is positioned beside the ship at spawn even while the game is paused. |
-| `flight/861-parked-ship-keeps-deck.txt` | invariant | Switching away from a ship parked on the platform does not drop the deck out from under it. |
+| `flight/861-parked-ship-keeps-deck.txt` | invariant | Switching away parks a deck ship on rails in the platform's frame; switching back wakes it onto the deck. |
 | `flight/862-tall-ship-rests.txt` | invariant | A tall gearless rocket stands vertical on the platform and rests rigidly, not tips or slides. |
+| `flight/863-dock-bubble-rest.txt` | invariant | A ship spawned beside the space dock rides its SoI bubble: at rest relative to the dock, like a ship on a pad. |
+| `flight/864-platform-parked-rails-warp.txt` | invariant | A ship parked on the platform rides rails warp frozen in the platform's frame while the platform drifts. |
+| `flight/865-platform-park-save-load.txt` | invariant | A ship parked on the platform saves its bubble-frame pose and loads back onto the deck. |
 
-## crew (26)
+## crew (27)
 
 | case | kind | pins |
 |---|---|---|
@@ -173,6 +176,7 @@ judgement. Select by number, name or path, e.g.
 | `crew/271-recover-refused-walking.txt` | invariant | Recover is offered for a walking kerbal and refuses without tearing the game down. |
 | `crew/394-spent-pool-kerbal-refused.txt` | invariant | A kerbal spawned on a spent pad pool is refused, not minted off the def. |
 | `crew/547-walking-kerbal-suit-mass-overflow-refused.txt` | invariant | A saved kerbal whose suit contents add up to more mass than the game can store is refused, not stood up as a NaN-inertia Body. |
+| `crew/866-platform-eva-stands.txt` | invariant | EVA from a ship parked on the platform puts the kerbal standing on the deck, and walking works. |
 
 ## science (31)
 
@@ -257,7 +261,7 @@ judgement. Select by number, name or path, e.g.
 | `vab/817-e-startship-alt-outside-the-shell.txt` | invariant | An altitude past the body's near-body shell is refused, by a bed that reads the air, with the shell's height printed instead of placing the bed in another frame. |
 | `vab/818-b-startship-alt-outside-the-sphere-of-influence.txt` | invariant | An altitude past the body's sphere of influence is refused by name, with the SOI's height printed, instead of placing a hull whose speed comes from another body's gravity. |
 
-## save (57)
+## save (58)
 
 | case | kind | pins |
 |---|---|---|
@@ -318,6 +322,7 @@ judgement. Select by number, name or path, e.g.
 | `save/547-saved-ship-mass-overflow-refused.txt` | invariant | A save whose parts add up to more mass than the game can store is refused, not loaded as a NaN-inertia ship. |
 | `save/582-saved-ship-pose-spread-refused.txt` | invariant | A save whose parts sit so far apart that the game cannot form their inertia is refused, not loaded as a NaN-inertia ship. |
 | `save/612-ask-survives-a-round-trip.txt` | invariant | A saved Guidance ask loads back into the game and is written out again. |
+| `save/867-cross-system-bubble-load.txt` | invariant | A save with a ship in a building's bubble loads from the title across systems. |
 
 ## ui (58)
 
