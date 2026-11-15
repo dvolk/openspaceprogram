@@ -491,10 +491,13 @@ inline glm::dvec3 windAt(const std::vector<WindLevel> &W, double alt,
            answers inside itself at every altitude, and the wider column it overrides
            answers elsewhere. Comparing areas rather than picking nearest-below/above
            across everything is what stops a whole-sphere row sitting between a belt's
-           two rows from punching a sawtooth through the belt's own span. Rows of
-           EQUAL area that both cover the place are considered together -- the loader
-           cannot produce a meaningful difference between two same-sized bands over one
-           place, and refusing that case would cost an author more rules than it saves. */
+           two rows from punching a sawtooth through the belt's own span. This comparison
+           has exactly one tie shape: two DIFFERENT bands of equal area both covering the
+           place. There is no winner there -- neither clears the pair, so lo and hi can
+           come from different bands and the place is interpolated between rows that were
+           never written as one profile -- so the loader refuses that authoring rather
+           than shipping it here (#795), and the == below is exact because exact equality
+           is the case it promised to keep out. */
         const double area = windBandAreaDeg2(Wl);
         if(best > 0.0) {
             if(area > best) { continue; }

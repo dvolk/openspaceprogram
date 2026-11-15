@@ -1586,6 +1586,37 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                                     " alt or a disjoint band)");
                             }
                         }
+                        /* Two DIFFERENT bands of EQUAL size that overlap have no winner
+                           either (#795). atmo.h's lookup hands a place to the NARROWEST
+                           covering band, and its comparison is exact: a narrower row
+                           clears the pair, a wider one is skipped, an equal one is
+                           neither -- so both stay in play and the place gets an
+                           interpolation between two rows that were never written as one
+                           profile, which is the sawtooth the narrowness rule exists to
+                           kill. The size is a lat/lon product, so the tie is easy to hit
+                           by accident: a wide belt and a half-sphere column cost the same
+                           degrees. Same-band rows are exempt -- a profile rising through
+                           one band is what the merge is FOR, and the rule above keeps it
+                           strictly rising -- and the comparison is ==, not a tolerance,
+                           because exact equality is precisely the case the reader cannot
+                           order. */
+                        for(const WindLevel &P : s.atmosphere.wind) {
+                            if(windSameBand(P, W)) { continue; }
+                            if(!windBandsOverlap(P, W)) { continue; }
+                            if(windBandAreaDeg2(P) != windBandAreaDeg2(W)) { continue; }
+                            char wbuf[96], pbuf[96];
+                            std::snprintf(wbuf, sizeof wbuf, "lat[%g, %g) lon[%g, %g)",
+                                          W.lat0, W.lat1, W.lon0, W.lon1);
+                            std::snprintf(pbuf, sizeof pbuf, "lat[%g, %g) lon[%g, %g)",
+                                          P.lat0, P.lat1, P.lon0, P.lon1);
+                            throw std::runtime_error(
+                                "system: " + body->name + ": atmosphere.wind" + at
+                                + "band " + wbuf + " is the same size as the earlier"
+                                + " band " + pbuf + " and overlaps it, so neither is"
+                                + " narrower and nothing decides which one answers over"
+                                + " the overlap (make one smaller, or move one to a"
+                                + " disjoint band) (#795)");
+                        }
                         s.atmosphere.wind.push_back(W);
                     }
                     /* A generator row is a COLUMN. A body that hands wind_gen a row with

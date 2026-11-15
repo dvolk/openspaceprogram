@@ -951,6 +951,31 @@ static void check_wind() {
                        a["wind"] = rows({band(0.0, 1.0, 0.0, -90.0, 0.0),
                                          band(0.0, 2.0, 0.0, -30.0, 30.0)});
                    }).dump(), "same place at the same alt");
+    /* #795: two DIFFERENT bands of the SAME size that overlap. atmo.h's lookup picks the
+       narrowest covering band, and equal is neither narrower nor wider, so over the
+       overlap both rows stay in play and the place is interpolated between two rows that
+       were never written as one profile -- the sawtooth the narrowness rule exists to
+       kill. The sizes here are equal by different shapes (a hemisphere belt and a
+       half-sphere column, both 32400 deg^2), which is how an author stumbles into it. */
+    expect_refuses("wind_equal_area_overlap", patched("Kerbin", [&](nlohmann::json &a) {
+                       a["wind"] = rows({band(0.0, 10.0, 0.0, -90.0, 0.0),
+                                         nlohmann::json{{"alt", 20000.0}, {"east", 20.0},
+                                                        {"north", 0.0},
+                                                        {"lat", {-90.0, 90.0}},
+                                                        {"lon", {0.0, 180.0}}}});
+                   }).dump(), "same size as the earlier band");
+    // The two ways that pair is LEGAL, both of which the rule must spare: equal size but
+    // disjoint ground (two hemispheres, tiling the sphere), and overlapping ground where
+    // one band is genuinely narrower (the base column and its override -- the whole
+    // reason the merge exists).
+    expect_loads("wind_equal_area_disjoint", patched("Kerbin", [&](nlohmann::json &a) {
+                     a["wind"] = rows({band(0.0, 10.0, 0.0, -90.0, 0.0),
+                                       band(20000.0, 20.0, 0.0, 0.0, 90.0)});
+                 }).dump(), "Kerbin", 2);
+    expect_loads("wind_narrower_override", patched("Kerbin", [&](nlohmann::json &a) {
+                     a["wind"] = rows({row(0.0, 5.0, 0.0),
+                                       band(20000.0, 90.0, 0.0, -30.0, 30.0)});
+                 }).dump(), "Kerbin", 2);
     /* lon is a start plus an EASTWARD width, so a band across the antimeridian is one
        row rather than two -- and the pair still tiles the body. */
     expect_loads("wind_lon_crosses", patched("Kerbin", [&](nlohmann::json &a) {
