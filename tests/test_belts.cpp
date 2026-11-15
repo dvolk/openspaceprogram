@@ -500,6 +500,42 @@ int main() {
                       "on a banded world");
     }
     {
+        /* A SEA DATUM ON A BANDED WORLD (#843). A giant has no ground for a sea line to
+           stand above, and the four readers of such a datum disagree: the Surface Map says
+           "no sea, it's a giant" (#841), the 3-D ocean shell is built for any has_sea body
+           with no bands check, the atlas prints its sea row from surface.has_sea, and
+           biomeFromAltitude returns Biome::None for a banded body. One world, four
+           pictures -- so the combination refuses at the door, like the lag above. */
+        nlohmann::json j = read_json("res/systems/old_system.json");
+        j["bodies"][1]["surface"]["bands"] = true;
+        expect_reject(j, "a banded world cannot author a sea datum",
+                      "a sea datum");
+    }
+    {
+        /* The other spelling: the datum via surface.sea_level on a body that states no
+           has_sea of its own (Eerbon's flat-sea default must not sneak through). */
+        nlohmann::json j = read_json("res/systems/old_system.json");
+        j["bodies"][1]["has_sea"] = false;
+        j["bodies"][1]["surface"]["bands"] = true;
+        j["bodies"][1]["surface"]["sea_level"] = 0.0;
+        expect_reject(j, "a banded world cannot author a sea level",
+                      "a sea datum");
+    }
+    {
+        /* The positive half: a giant with no datum is the shipped shape, and it must load
+           with its bands. Refusing the datum-combination must not become "no world may be
+           banded", which is the same bug from the other side. */
+        nlohmann::json j = read_json("res/systems/old_system.json");
+        j["bodies"][1]["has_sea"] = false;
+        j["bodies"][1]["surface"].erase("atmosphere");
+        j["bodies"][1]["surface"]["bands"] = true;
+        expect_loaded(j, "a banded world with no datum loads", [&](const System &sys) {
+            const TerrainBody *b = sys.bodies.size() > 1 ? sys.bodies[1] : nullptr;
+            check(b && b->surface.bands, "the giant keeps its bands");
+            check(b && !b->surface.has_sea, "and no sea");
+        });
+    }
+    {
         /* And a lag needs the law it slows. lag_tau is the response knob of the one-knob law
            that even_share prices, so on a body that states no share it acts on nothing: the
            map, the air coupling and the atlas all refuse the block, while --solar-log would

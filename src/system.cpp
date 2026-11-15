@@ -1089,6 +1089,32 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                                            " \"surface.even_share\" -- radians of phase slow"
                                            " the day/night law, and this body states none");
             }
+            /* A SEA DATUM ON A BANDED WORLD (#843), refused for the same reason the lag
+               above is: a giant has no ground for a sea line to stand above. Nothing in
+               the shipped corpus authors it (no banded body sets has_sea / sea_level), so
+               this guards the hand-authored file rather than the catalogue -- and it is
+               worth the sentence because four readers disagree about what such a datum
+               MEANS, which is what makes the combination dangerous rather than merely
+               odd: the Surface Map says "no sea, it's a giant" (surfmap.cpp's want_elev,
+               #841), the 3-D ocean shell is built for any has_sea body with no bands
+               check (terrain.h), the atlas prints its sea row straight from
+               surface.has_sea, and biomeFromAltitude returns Biome::None for a banded
+               body before it ever looks at has_sea. One world, four pictures, and no
+               line in the file saying which one it asked for. Refusing at the load makes
+               the disagreement unreachable, which is cheaper than arbitrating four
+               readouts -- and the same policy the datum warning beside it already
+               states, which is gated on `!s.bands && s.has_sea` for exactly this
+               reason. */
+            if(s.bands && s.has_sea) {
+                throw std::runtime_error("system: '" + body->name
+                                         + "': a sea datum (\"has_sea\" or"
+                                           " \"surface.sea_level\") on a banded world --"
+                                           " a gas giant has no ground for a sea line to"
+                                           " stand above, and the map, the ocean shell,"
+                                           " the biome and the atlas each read it"
+                                           " differently. Drop the datum or drop"
+                                           " \"bands\" (#843)");
+            }
             if(sv.contains("band_count") && sv["band_count"].is_number_integer()) {
                 s.band_count = std::max(1, sv["band_count"].get<int>());
             }
