@@ -430,8 +430,10 @@ struct SurfmapState {
        cursor row and the same reason in reverse (#858): the dossier and --solar-log and
        --surfmap-log all say whether a ground temperature was stated, taken from the air's datum,
        derived from sunlight and albedo, or SOLVED from a range -- and the window was the readout
-       that printed the number alone, in the same typography for all four. Empty with temp_block
-       set, and vice versa. */
+       that printed the number alone, in the same typography for all four. Set exactly when
+       temp_ok is -- a word for a refused layer would name a number this decision does not print
+       -- and then temp_block is empty, so the cursor line carries one or the other. On a wind
+       bake neither is set at all. */
     std::string temp_rung;
     /* The wind profile these pixels were coloured from (#769), for the same reason the three
        fields above exist and no more: the cursor's "wind 32.0 m/s east" must be the number the

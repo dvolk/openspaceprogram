@@ -861,13 +861,12 @@ void tick(Game &g) {
                    states a ground temperature -- the atlas dossier is the second, the Surface
                    Map's cursor the third, which carries this same decision in ONE word
                    (`ground +30.7 C (DERIVED)`, #858) because a window line has no room for the
-                   phrase -- and for
-                   most of a generated system this one is the rung-3 black-body: sun + albedo,
-                   our arithmetic -- printed beside a `ground_T` that is the source's own
-                   reading. Without the rung the two read as the same kind of fact, which is
-                   what #722 refuses. The file's own provenance string wins when it carries one
-                   (a SOLVED-from-a-range mean is not a stated mean), so this is
-                   groundAnchorSource and not the rung alone. */
+                   phrase -- and for most of a generated system this one is the rung-3
+                   black-body: sun + albedo, our arithmetic -- printed beside a `ground_T` that
+                   is the source's own reading. Without the rung the two read as the same kind
+                   of fact, which is what #722 refuses. The file's own provenance string wins
+                   when it carries one (a SOLVED-from-a-range mean is not a stated mean), so
+                   this is groundAnchorSource and not the rung alone. */
                 const GroundAnchorRung anchor_rung = ground_here
                     ? groundAnchorRung(groundT, airDatum_K(over->surface.atmosphere), bb_here)
                     : kAnchorNone;

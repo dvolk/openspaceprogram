@@ -3,7 +3,7 @@
 mu, semimajor axis and the SOIs are derived by the loader: Kepler III for the orbit, and
 "soi_law": "hill" + the nesting lift for the spheres (src/bodylimits.h). No SOIs are emitted
 except the Sun's authored universe bound."""
-import re, math, json, os, sys, html as htmllib
+import re, math, json, os, sys, io, contextlib, html as htmllib
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from sci_dist import stamp_science_mults, stamp_transfer_dv, phase0
 # #690: the geopotential/geometric conversion for layer tables lives in ONE module that
@@ -879,7 +879,23 @@ WIND_LAT_WORDS = re.compile(r'(?i)\b(equatorward|poleward|latitude|equator|equat
 # edges against the published ones stops running while the sheet still prints a ceiling.
 # "Up to 150 m/s (3,0-60 degrees latitude)" is that case: a mis-grouped latitude, measured
 # identical before and after #854, and invisible either way until now.
+#
+# Two limits, both deliberate. The span must sit after "m/s", so a bound written elsewhere on
+# the page ("0-30 degrees latitude: up to 100 m/s") is still missed, and nested parens hide the
+# inner span (`([^()]*)` stops at the first ')'), so "(near the equator (0-60 degrees latitude))"
+# produces neither a band nor a refusal. Widening the capture to nest was tried and is WRONG:
+# a greedy version swallows Jupiter's and Saturn's two bands into ONE span and then flags the
+# shipped corpus. If a real page ever nests one, that page needs its own pin.
 WIND_LAT_SPAN = re.compile(r'm/s\s*\(([^()]*)\)')
+
+# What makes a captured span a LATITUDE rather than prose. Word boundaries on both ends, or
+# "later", "lateral" and "degenerate" read as a bound: the corpus dodges that today only because
+# its prose parens hold no digits ("(summer)", "(dust storm)", "(surface)"), and the failure mode
+# is not a quiet one -- a bogus bad_latbands aborts generation with advice that cannot be acted
+# on, since there was no bound to teach a pattern. Prose that DOES say "latitude" beside a digit
+# still flags; that residual is acceptable, because the page then really does bound its wind by
+# latitude somewhere this file read as nothing.
+WIND_LAT_WORD = re.compile(r'(?i)\b(?:lat|latitude|deg|degrees)\b')
 
 
 def describe_latband(b):
@@ -927,7 +943,7 @@ def parse_wind_text(text):
         if inner:
             read_spans.append(inner.group(1))
     spans = [s for s in WIND_LAT_SPAN.findall(text)
-             if re.search(r'\d', s) and re.search(r'(?i)\b(?:lat|deg)', s)]
+             if re.search(r'\d', s) and WIND_LAT_WORD.search(s)]
     return {'max': max(vals) if vals else None, 'text': text, 'latbands': lat,
             'lat_words': sorted(set(w.lower() for w in WIND_LAT_WORDS.findall(text))),
             'bad_numbers': ([tk for tk in WIND_MPS_TOKEN.findall(text)
@@ -948,7 +964,7 @@ def fact_wind(page):
     which made the loud half of #779 go quiet at exactly the sheets least able to answer
     it. Callers that need a ceiling ask for `max` and check it is not None.
     `bad_numbers` is the third state: the page DOES write a speed and this file cannot
-    read it (#854). `bad_latbands` is the fourth, one field over: the page DOES bound its
+    read it (#854). `bad_latbands` is its sibling one field over: the page DOES bound its
     wind by latitude and this file cannot put numbers on the bound, which reads as a page
     that bounds nothing (#855). See parse_wind_text.
     Jupiter and Saturn put the label on a line of its own and
@@ -1050,14 +1066,16 @@ def check_fact_wind(planets, verbose=True, parsed=None, sheets=None):
         # left to say where the page put the edge. Same rule as #854 -- a parse failure is a
         # failure of THIS file, so it fails the check rather than printing beside a waiver.
         if sheet.get('bad_latbands'):
+            harm = ('so the band edges of %s\'s rows were never weighed against the published'
+                    ' map' % name if comps else
+                    'and this body authors no wind rows for that map to weigh yet')
             bad.append('%s: %s bounds its wind by latitude ("%s") and this file read %d of'
-                       ' the %d such bounds on the line -- the unreadable one is not counted'
-                       ' as structure, so the band edges of %s\'s rows were never weighed'
-                       ' against the published map. Teach WIND_MPS_LAT the spelling; adding a'
+                       ' the %d such bounds the line offers -- the unreadable one is not'
+                       ' counted as structure, %s. Teach WIND_MPS_LAT the spelling; adding a'
                        ' waiver would weigh nothing'
                        % (name, page, '" "'.join(sheet['bad_latbands']),
                           len(sheet['latbands']),
-                          len(sheet['latbands']) + len(sheet['bad_latbands']), name))
+                          len(sheet['latbands']) + len(sheet['bad_latbands']), harm))
         # A GENERATED column is still bounded by this guard, for a reason worth stating:
         # windGenerate scales every belt by amp <= 1 and the equatorial belt carries the
         # anchors' own values, so the widest wind in the emitted table IS the column's top
@@ -1411,10 +1429,46 @@ def self_test_fact_wind():
                               sheets={'invented-fact.html': sheet})
         if not any('never weighed' in m for m in bad):
             fails.append('%s let banded rows through unweighed: %r' % (why, bad))
+    # The net's own false-positive class, found in review: a parenthetical whose prose merely
+    # starts with a word like "later" is not a latitude bound. Getting this wrong is not quiet
+    # either -- it aborts generation advising someone to teach a pattern a spelling that never
+    # existed. WIND_LAT_WORD's word boundaries are what this pins.
+    prose = parse_wind_text('Up to 100 m/s (see note 1 later)')
+    if prose['bad_latbands']:
+        fails.append('prose beside a speed read as a latitude bound: %r' % (prose,))
+    # The limitation, pinned rather than wished away: nested parens hide the inner span, so
+    # this shape yields neither band nor refusal. Widen WIND_LAT_SPAN and this line has to
+    # change on purpose -- the naive widening swallows Jupiter's two bands into one span.
+    nested = parse_wind_text('Up to 100 m/s (near the equator (0-30 degrees latitude))')
+    if nested['latbands'] or nested['bad_latbands']:
+        fails.append('the nested-paren limitation moved without the pattern being widened:'
+                     ' %r' % (nested,))
+    # A body with air and NO rows gets a sentence about having no rows, not one about the band
+    # edges of rows it does not have. Same failure, different harm.
+    bad = check_fact_wind([('invented-fact.html', 'Windy', 1.0,
+                            {'atmosphere': {'sea_level_pressure': 1.0}}, 0.0)],
+                          verbose=False, sheets={'invented-fact.html': blind})
+    if not any('no wind rows' in m for m in bad):
+        fails.append('a row-less body under an unreadable latitude bound was told about its'
+                     ' rows: %r' % (bad,))
+    # The printed sheet row, the only place the guard says it read LESS than the page when
+    # nobody is reading the failure list at the end.
+    marked = io.StringIO()
+    with contextlib.redirect_stdout(marked):
+        check_fact_wind([('invented-fact.html', 'Windy', 1.0,
+                          {'atmosphere': {'wind': rows}}, 0.0)],
+                        sheets={'invented-fact.html': blind})
+    if '+1 lat unread' not in marked.getvalue():
+        fails.append('the sheet row stopped marking an unread latitude bound: %r'
+                     % marked.getvalue())
     # And the shipped corpus under the new net. Jupiter and Saturn DO state two bands each, so
     # a flag beside either means the net is wrong rather than the page -- and a band that
-    # quietly stopped parsing means the scrape moved.
-    for page, want in (('jupiterfact.html', 2), ('saturnfact.html', 2)):
+    # quietly stopped parsing means the scrape moved. The rest are pinned at ZERO bands with
+    # nothing unreadable, which is the prose control on real pages rather than invented ones:
+    # Mars writes "(summer)", "(fall)", "(dust storm)" and Venus "(surface)" beside its speeds.
+    for page, want in (('jupiterfact.html', 2), ('saturnfact.html', 2),
+                       ('marsfact.html', 0), ('venusfact.html', 0), ('earthfact.html', 0),
+                       ('uranusfact.html', 0), ('neptunefact.html', 0)):
         sheet = fact_wind(page)
         if len(sheet.get('latbands') or []) != want or sheet.get('bad_latbands'):
             fails.append('%s should read %d latitude bands with nothing unreadable: %r'

@@ -2356,7 +2356,12 @@ void drawUIReadouts(Game &g) {
                     if(!g.surfmap.temp_rung.empty()) {
                         snprintf(rung_s, sizeof rung_s, " (%s)", g.surfmap.temp_rung.c_str());
                     }
-                    snprintf(gt_s, sizeof gt_s, "  ground %+.1f C%s", celsiusOf(gt), rung_s);
+                    const int gn = snprintf(gt_s, sizeof gt_s, "  ground %+.1f C%s",
+                                            celsiusOf(gt), rung_s);
+                    // Same reason as the wind row's assert below: a truncated line here would
+                    // drop the RUNG WORD and put a computed figure back into the plain
+                    // typography #858 exists to break. Unreachable at 5 bytes of word today.
+                    assert(gn > 0 && gn < (int)sizeof gt_s);
                 } else {
                     // Which absence, in three words: a bare dash would merge "this world has no
                     // ground" and "nobody stated a swing" back into one (#726). The full

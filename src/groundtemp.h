@@ -563,7 +563,11 @@ inline std::string groundAnchorSource(GroundAnchorRung r, const std::string &tem
    ("SOLVED from the stated range 95.00-390.00 K...", "INVENTED: ..."), so taking that word keeps
    a solved anchor from reading as a stated one at either length -- which is #722 running in the
    other direction, the reason groundAnchorSource exists at all. DERIVED stays capitals; a
-   computed figure has to look computed. */
+   computed figure has to look computed.
+   The marker cannot be handed to the wrong rung: system.cpp refuses a file that carries
+   temperature_src without an authored surface.temperature, so a SOLVED/INVENTED string always
+   sits on the stated rung. A provenance string that is neither marker (a hand-authored file)
+   falls back to the rung word, whose full sentence the dossier still prints. */
 inline const char *groundAnchorRungShort(GroundAnchorRung r,
                                          const std::string &temperature_src) {
     if(temperature_src.rfind("SOLVED", 0) == 0) { return "SOLVED"; }
