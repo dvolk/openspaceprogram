@@ -1130,6 +1130,72 @@ static void test_the_throttle_setpoint_channel() {
     delete vac;
 }
 
+/*
+ * #849: THE FOUR THRUST READINGS, and which one answers "is this hull moving under
+ * power?". Three of the four say YES for a ship sitting parked on the pad with its
+ * engines off, and every movement-intent law that reads one of those three has released
+ * a ship that never asked to move -- most recently the balloon platform's deck carry
+ * (vehicle.cpp:4332). The trap is silent: the numbers look plausible.
+ *
+ * The rig is the one this file already uses, so the numbers are the same hand-checkable
+ * ones: pod 1000 kg + one 20000 N engine (5 kg/s x 4000 m/s) in vacuum, at spawn, with
+ * no key touched.
+ */
+static void test_the_four_thrust_readings() {
+    printf("== four thrust readings: only one knows a parked ship is parked (#849) ==\n");
+    ThrustRig r;
+    r.v = new Vehicle;
+    r.v->name = "parked";
+    Part *pod = mkRigPart(r.defs, "pod", 1000.0, 0.0, 0.0, 1);
+    r.v->setRoot(pod);
+    Part *eng = mkRigPart(r.defs, "engine", 100.0, 5.0, 4000.0, 1);
+    r.v->attachMode(eng, 0, AttachMode::Down, 0.0);
+    r.v->init();
+    TerrainBody *vac = mkPressureBody(0.0);
+    r.v->m_parent = vac;
+    r.v->placeShip(glm::dvec3(0.0, 0.0, 600000.0 + 1000.0), glm::dmat3(1.0));
+    Vehicle *v = r.v;
+
+    /* 1. the LEVER: a demand, and it DEFAULTS to 1.0 -- so a ship that has never seen a
+          key reads "full throttle" (the spawn behaviour #849 asks whether to change, not
+          changed here). */
+    CHECK_NEAR(v->throttle(), 1.0, 0.0, "the throttle lever starts at full");
+    /* 2. the POTENTIAL: non-zero for any live engine with fuel, firing or not. */
+    CHECK_NEAR(v->availableThrust(), 20000.0, 1e-9,
+               "the ignited stage could push 20000 N -- true, and useless as a move test");
+    /* 3. the RATING READ BACK: rated x lever x air. It never asks whether ApplyThrust
+          armed anything this tick, which is what its old "RIGHT NOW" comment claimed. */
+    CHECK_NEAR(v->producedThrust(), 20000.0, 1e-9,
+               "producedThrust reads the full burn on a ship that has never fired");
+    /* 4. the FIRED FLAG: the only honest answer, and it says parked. */
+    CHECK_TRUE(eng->armedThrust == 0.0f, "no part is armed this tick");
+    CHECK_TRUE(!v->isThrusting(), "and the hull can say it is not thrusting");
+
+    /* The other face: a firing hull. ApplyThrust is the only writer of this flag in the
+       game (vehicle.cpp:6009 / :6053), and it runs inside the tick loop's fuel path, which
+       needs a registered Bullet body -- test_fuel.cpp exercises that path with real
+       bodies. Here the flag is set the way ApplyThrust sets it, so the ACCESSOR and the
+       tick boundary are pinned: a reader must not confuse "a rating exists" with "the flag
+       is up". */
+    v->m_thrust = 1.0f;
+    CHECK_TRUE(v->isThrusting(), "the fired flag is what turns true during a burn");
+    CHECK_NEAR(v->producedThrust(), 20000.0, 1e-9,
+               "and the three other readings did not move a watt -- they cannot tell a"
+               " burn from a parked hull");
+
+    /* The tick boundary. clearThrust() drops the per-part arms and the key claim; the
+       tick loop (tick.cpp:57) is what clears the hull's fired flag beside them. A refactor
+       that cleared one and not the other leaves a law reading a half-cleared tick, so both
+       halves are pinned. */
+    v->clearThrust();
+    CHECK_TRUE(eng->armedThrust == 0.0f, "clearThrust() drops the per-part arms");
+    CHECK_TRUE(v->isThrusting(), "it does NOT drop the hull's fired flag");
+    v->m_thrust = 0.0f;
+    CHECK_TRUE(!v->isThrusting(), "the tick loop's own clear closes it");
+    delete v;
+    delete vac;
+}
+
 int main() {
     test_inertia_diag();
     printf("\n");
@@ -1147,6 +1213,8 @@ int main() {
     test_jet_last_grams();
     printf("\n");
     test_the_throttle_setpoint_channel();
+    printf("\n");
+    test_the_four_thrust_readings();
 
     printf("\n%d checks, %d failures\n", g_checks, g_failures);
     if(g_failures == 0) {

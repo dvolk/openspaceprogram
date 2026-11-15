@@ -2887,7 +2887,10 @@ int Vehicle::deployChutes(int stage) {
 int Vehicle::numStages() { return totalStages_; }
 
 double Vehicle::producedThrust() {
-    /* Actual thrust at the current throttle and air state (jets via jetThrust, drag.h). */
+    /* Rated thrust at the current throttle and air state (jets via jetThrust, drag.h) --
+       NOT a record of what fired. It never asks whether ApplyThrust armed a part this
+       tick, so a parked hull whose lever is still at its 1.0 default reads its full burn
+       here. isThrusting() (vehicle.h, #849) is the "did an engine fire" question. */
     const int as = activeStage();
     const double v_air = glm::length(airRelativeVel(get_center_of_mass()));
     DragAtmosphere atm; double alt = 0.0;
@@ -4326,13 +4329,14 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
    ground laws. */
 bool Vehicle::tickDeckCarry(double h) {
     if(carriedBy != nullptr) {
-        // Move intent: brakes off, an engine ACTUALLY firing this tick (m_thrust
-        // -- the throttle lever defaults to 1.0 at spawn and availableThrust is
-        // only potential, so neither is intent; brakes hold against a firing
-        // engine until released, exactly as on a pad), or the subclass's ask
-        // (a kerbal's walk/jump/RCS). A frame change or leaving the world also
-        // drops the carry: the deck pose is rotating-frame, wrong elsewhere.
-        if(!brakesOn || m_thrust != 0.0f || deckCarryRelease()
+        // Move intent: brakes off, an engine ACTUALLY firing this tick
+        // (isThrusting() -- the throttle lever defaults to 1.0 at spawn and
+        // availableThrust is only potential, so neither is intent, #849; brakes
+        // hold against a firing engine until released, exactly as on a pad), or
+        // the subclass's ask (a kerbal's walk/jump/RCS). A frame change or
+        // leaving the world also drops the carry: the deck pose is
+        // rotating-frame, wrong elsewhere.
+        if(!brakesOn || isThrusting() || deckCarryRelease()
            || frame == nullptr || !frame->isRotFrame() || !hullInWorld()) {
             carriedBy = nullptr;
         } else {

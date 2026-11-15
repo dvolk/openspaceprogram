@@ -206,7 +206,11 @@ public:
        a pad or already carry a placed world state. Read once, by apply_scenarios. */
     SpawnPlace place;
     TerrainBody *sun = nullptr; // the star (light source)
-    float m_thrust;
+    /* Per-tick "an engine fired" flag (ApplyThrust sets it; tick.cpp clears it). It has
+       to START at zero: nothing between a ship's construction and the first tick's clear
+       may read an indeterminate value through isThrusting() -- the deck carry and any
+       movement-intent law read it, and #849's test rig caught it reading garbage. */
+    float m_thrust = 0.0f;
 
     /* Mission journal (started by setSoi). Save-persisted: the load restores it
        before setSoi runs, so re-entering the same body is a no-op. */
@@ -1417,17 +1421,30 @@ public:
 
     int numStages();
 
-    /* THE THRUST NUMBERS, and why there is more than one (#400, #607).
-       producedThrust() is what the engines are doing RIGHT NOW: rated thrust times the
-       current throttle times the air state. Anything that COMMANDS the throttle and
-       then reads this back reads its own zero -- the prototype in
-       reports/autopilots2026_10_24 computed a_max from it while coasting, got 0.00 every
-       tick, took its own "coast" branch and never reignited (silent: a burn that never
-       happens, not a crash).
-       availableThrust() is what the ignited stage COULD do at full throttle, and
-       availableAccel() is that over the CURRENT mass: the a_max a throttle law, a
-       gravity turn or a landing predictor needs. It does not move with the throttle, so
-       a law can plan with it and act on the throttle without a feedback loop through its
+    /* THE THRUST NUMBERS, and why there is more than one (#400, #607, #849). There are
+       FOUR, and three of them say "yes" for a ship sitting parked on the pad with its
+       engines off, which is how the same bug has landed more than once:
+
+       1. throttle() / thruster_util -- the LEVER, 0..1. A demand, not an output, and it
+          DEFAULTS TO 1.0, so a freshly spawned ship reads full throttle with nothing
+          burning.
+       2. availableThrust() -- what the ignited stage COULD do at full throttle.
+          Potential. Non-zero for any live engine with fuel, firing or not.
+       3. producedThrust() -- rated thrust x the lever x the air state, summed over the
+          ignited stage. It is NOT "what the engines are doing right now": it never asks
+          whether an engine was armed this tick, so on a parked ship with the lever at its
+          default it is the same number as at full burn. Its older comment claimed
+          "RIGHT NOW" and #849 corrects it. Anything that COMMANDS the throttle and then
+          reads this back reads its own zero -- the prototype in
+          reports/autopilots2026_10_24 computed a_max from it while coasting, got 0.00
+          every tick, took its own "coast" branch and never reignited (silent: a burn that
+          never happens, not a crash).
+       4. isThrusting() below -- did an engine ACTUALLY FIRE this tick. The one honest
+          answer to "is this hull moving under power".
+
+       availableAccel() is availableThrust() over the CURRENT mass: the a_max a throttle
+       law, a gravity turn or a landing predictor needs. It does not move with the throttle,
+       so a law can plan with it and act on the throttle without a feedback loop through its
        own output. It does include the current air state and the stage gate, so "available"
        means available to THIS stage HERE -- a jet in vacuum says zero, and a jettisoned
        stage is not available at all. Neither of them has a direction, which is what
@@ -1435,6 +1452,18 @@ public:
     double producedThrust();
     double availableThrust();
     double availableAccel();
+    /* "Did an engine fire this tick?" -- the per-tick "fired" flag, set only inside
+       ApplyThrust, which only runs while the Thrust key is held or thrust is latched
+       (tick.cpp), and cleared at the top of every tick with the stick state.
+       GATE MOVEMENT INTENT ON THIS, never on the lever or the potential: a parking hold,
+       a deck carry, an autopilot handover or ground handling that reads "thrust is
+       available" releases on a parked ship (#849 -- the balloon-platform deck carry did
+       exactly that, letting go of a hull that had never asked to move). The trap is
+       silent because the other three numbers all look plausible.
+       This is per-TICK, so it must be read after ApplyThrust and before the next
+       clearThrust(), which is where the substep loop stands; the per-part armedThrust is
+       the same fact per engine (main.cpp reads it for the engine audio). */
+    bool isThrusting() const { return m_thrust != 0.0f; }
     /* How hard this ship can accelerate ALONG dir (m/s^2) at full throttle: the
        availableAccel() sum again, each engine weighted by how far its MOUNT and gimbal
        cone let it push along dir at all (#607).
@@ -1973,7 +2002,13 @@ protected:
        should send ShipCmd(ThrottleSet), because Command's door is also where a paused
        tick writes nothing. Nothing else, which is the point: a public field here is how
        a law's setpoint and the player's keys ended up writing the same float with
-       nobody able to tell which one won. */
+       nobody able to tell which one won.
+       IT STARTS AT 1.0, not 0: a freshly spawned hull reads full throttle while sitting
+       on the pad with nothing burning, so this is a demand and never an answer to "is
+       the ship moving under power" -- that one is isThrusting(), and #849 is the bug that
+       came from confusing the two. Whether the default should be 0 is its own decision
+       (it moves the spawn behaviour of every hull and the save format's meaning), so it
+       is not taken here. */
     float thruster_util = 1.0;
     /* Did a throttle KEY fire this tick? Per-tick intent, like stick[]: cleared by
        clearThrust() at the top of every tick and set by Command's ThrottleUp/Down.
