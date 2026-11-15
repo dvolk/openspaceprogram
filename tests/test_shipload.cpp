@@ -2699,6 +2699,148 @@ int main() {
             CHECK(expect_throw_saying([&](){ load_parts_catalog(bad); }, catcases[k].needle));
             std::remove(bad);
         }
+        /* #515: the STRING and BOOL neighbours of those number fields were left
+           hand-written, so "texture": 7 answered with nlohmann's
+           "type must be string, but is number" -- no file, no part, no field -- and
+           a non-object ENTRY ("parts": ["nope"]) died inside nlohmann with
+           type_error.306, which is not a std::runtime_error at all, so every caller
+           that catches our type saw an abort. expect_throw_saying only catches
+           std::runtime_error, so a case below that still leaks nlohmann takes the
+           test binary down instead of printing a FAIL: that is the point. */
+        {
+            const char *sf = "/tmp/test_shipload_strfield.json";
+            const struct { const char *body; const char *needle; } scases[] = {
+                { "{ \"parts\": [ \"nope\" ] }",
+                  "parts: entry 0 of /tmp/test_shipload_strfield.json"
+                  " must be an object, got string" },
+                { "{ \"parts\": [ { \"name\": 5 } ] }",
+                  "parts: entry 0 of /tmp/test_shipload_strfield.json:"
+                  " \"name\" must be a string, got number" },
+                { "{ \"parts\": [ { \"name\": \"x\", \"type\": \"command\", "
+                  "\"mesh\": \"a.obj\", \"texture\": 7, \"mass\": 1.0 } ] }",
+                  "parts: x in /tmp/test_shipload_strfield.json:"
+                  " \"texture\" must be a string, got number" },
+                { "{ \"parts\": [ { \"name\": \"x\", \"type\": \"command\", "
+                  "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
+                  "\"shroud\": \"s.obj\", \"shroud_texture\": false } ] }",
+                  "parts: x in /tmp/test_shipload_strfield.json:"
+                  " \"shroud_texture\" must be a string, got boolean" },
+                { "{ \"parts\": [ { \"name\": \"x\", \"type\": \"engine\", "
+                  "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
+                  "\"jet\": \"yes\" } ] }",
+                  "parts: x in /tmp/test_shipload_strfield.json:"
+                  " \"jet\" must be true or false, got string" },
+                { "{ \"parts\": [ { \"name\": \"x\", \"type\": \"command\", "
+                  "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
+                  "\"decoupler\": 1 } ] }",
+                  "parts: x in /tmp/test_shipload_strfield.json:"
+                  " \"decoupler\" must be true or false, got number" },
+                { "{ \"parts\": [ { \"name\": \"x\", \"type\": \"wing\", "
+                  "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
+                  "\"lift_area\": 1, \"stall_angle\": 0.35, "
+                  "\"control_axis\": [ \"roll\" ] } ] }",
+                  "parts: x in /tmp/test_shipload_strfield.json:"
+                  " \"control_axis\" must be a string, got array" },
+                { "{ \"parts\": [ { \"name\": \"x\", \"type\": \"command\", "
+                  "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
+                  "\"experiment_storage\": 4 } ] }",
+                  "parts: x in /tmp/test_shipload_strfield.json:"
+                  " \"experiment_storage\" must be a string, got number" },
+                // An authored empty string is still a refused VALUE, not "absent":
+                // the message quotes what was written.
+                { "{ \"parts\": [ { \"name\": \"x\", \"type\": \"command\", "
+                  "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
+                  "\"experiment_storage\": \"\" } ] }",
+                  "\"experiment_storage\" must be instrument/courier/container/none, got \"\"" },
+                { "{ \"parts\": [ { \"name\": \"x\", \"type\": \"command\", "
+                  "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
+                  "\"nodes\": [ \"port\" ] } ] }",
+                  "parts: x in /tmp/test_shipload_strfield.json:"
+                  " node 0 must be an object, got string" },
+                { "{ \"parts\": [ { \"name\": \"x\", \"type\": \"command\", "
+                  "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
+                  "\"nodes\": [ { \"id\": 1, \"pos\": [0,0,0], \"dir\": [0,0,1] } ] } ] }",
+                  "parts: x in /tmp/test_shipload_strfield.json: node 0:"
+                  " \"id\" must be a string, got number" },
+                { "{ \"parts\": [ { \"name\": \"x\", \"type\": \"command\", "
+                  "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
+                  "\"nodes\": [ { \"id\": \"a\", \"pos\": [0,0,0], \"dir\": [0,0,1], "
+                  "\"surface\": \"yes\" } ] } ] }",
+                  "parts: x in /tmp/test_shipload_strfield.json: node 0:"
+                  " \"surface\" must be true or false, got string" },
+                { "{ \"parts\": [ { \"name\": \"x\", \"fuel_link\": \"yes\" } ] }",
+                  "parts: x in /tmp/test_shipload_strfield.json:"
+                  " \"fuel_link\" must be true or false, got string" },
+            };
+            for(size_t k = 0; k < sizeof(scases) / sizeof(scases[0]); k++) {
+                std::ofstream f(sf);
+                f << scases[k].body;
+                f.close();
+                CHECK(expect_throw_saying([&](){ load_parts_catalog(sf); }, scases[k].needle));
+                std::remove(sf);
+            }
+            const struct { const char *body; const char *needle; } shcases[] = {
+                { "{ \"parts\": [ 5 ] }",
+                  "ship: part entry 0 of /tmp/test_shipload_strfield.json"
+                  " must be an object, got number" },
+                { "{ \"name\": 5, \"parts\": [ { \"part\": \"capsule\" } ] }",
+                  "ship: \"name\" in /tmp/test_shipload_strfield.json"
+                  " must be a string, got number" },
+                { "{ \"parts\": [ { \"part\": 5 } ] }",
+                  "ship: part entry 0 of /tmp/test_shipload_strfield.json:"
+                  " \"part\" must be a string, got number" },
+                { "{ \"parts\": [ { \"part\": \"capsule\", \"id\": 7 } ] }",
+                  "ship: part entry 0 of /tmp/test_shipload_strfield.json:"
+                  " \"id\" must be a string, got number" },
+                { "{ \"parts\": [ { \"part\": \"capsule\", \"id\": \"c\" }, "
+                  "{ \"part\": \"elevator_r0.8h0.7\", \"parent\": 5 } ] }",
+                  // Named by its AUTO id here: the entry has no "id" of its own, and
+                  // the loader derived one before reading "parent".
+                  "ship: part 'elevator_r0.8h0.7_1' in /tmp/test_shipload_strfield.json:"
+                  " \"parent\" must be a part id (string), got number" },
+                { "{ \"parts\": [ { \"part\": \"capsule\", \"id\": \"c\", "
+                  "\"attach\": 5 } ] }",
+                  "ship: part 'c' in /tmp/test_shipload_strfield.json:"
+                  " \"attach\" must be a string, got number" },
+                { "{ \"parts\": [ { \"part\": \"capsule\", \"id\": \"c\", "
+                  "\"parentNode\": 5 } ] }",
+                  "ship: part 'c' in /tmp/test_shipload_strfield.json:"
+                  " \"parentNode\" must be a string, got number" },
+                { "{ \"parts\": [ { \"part\": \"capsule\", \"id\": \"c\" }, "
+                  "{ \"part\": \"fuel_link\", \"id\": \"l\", \"from\": 5, "
+                  "\"to\": \"c\" } ] }",
+                  "ship: part 'l' in /tmp/test_shipload_strfield.json:"
+                  " \"from\" must be a string, got number" },
+            };
+            for(size_t k = 0; k < sizeof(shcases) / sizeof(shcases[0]); k++) {
+                std::ofstream f(sf);
+                f << shcases[k].body;
+                f.close();
+                CHECK(expect_throw_saying([&](){ load_ship_def(sf, cat); }, shcases[k].needle));
+                std::remove(sf);
+            }
+            /* And the good path is unchanged: a normal catalog entry and a normal
+               ship still load after the reads go through the helpers. */
+            {
+                std::ofstream f(sf);
+                f << "{ \"parts\": [ { \"name\": \"okstr\", \"type\": \"command\", "
+                     "\"mesh\": \"meshes/capsule.obj\", \"texture\": \"a.png\", "
+                     "\"mass\": 1.0, \"display_name\": \"Capsule\", "
+                     "\"decoupler\": false, \"nodes\": [ { \"id\": \"top\", "
+                     "\"pos\": [0,1,0], \"dir\": [0,1,0], \"surface\": true } ] } ] }";
+                f.close();
+                PartsCatalog oc = load_parts_catalog(sf);
+                const PartDef *od = oc.find("okstr");
+                CHECK(od != nullptr);
+                if(od != nullptr) {
+                    CHECK(od->display_name == "Capsule");
+                    CHECK(!od->decoupler);
+                    CHECK(od->findNode("top") != nullptr);
+                    CHECK(od->findNode("top")->surface);
+                }
+                std::remove(sf);
+            }
+        }
         /* #530: the catalog parser is JSON, so it cannot hand us an infinity -- but a
            legal 1e308 stored into a float IS one, and it then clears the >= 0 and
            total > 0 gates and turns every pro-rata fuel share into nan. Pin the storage

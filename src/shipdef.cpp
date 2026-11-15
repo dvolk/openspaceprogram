@@ -125,6 +125,50 @@ static int optInt(const nlohmann::json &pv, const char *key, int def,
     return (int)d;
 }
 
+/* The same two helpers for a STRING (#515). Before these, a typo in "texture" or
+   "part" answered with nlohmann's own complaint -- "type must be string, but is
+   number" -- which names no file, no part and no field, so the author hunts through
+   the whole file for a quote they already removed. "must be a string, got number"
+   carries the same information the number path carries. */
+static const std::string &wantString(const nlohmann::json &v, const std::string &what) {
+    if(!v.is_string()) {
+        throw std::runtime_error(what + " must be a string, got " + v.type_name());
+    }
+    return v.get_ref<const std::string &>();
+}
+
+static std::string optString(const nlohmann::json &pv, const char *key,
+                             const std::string &def, const std::string &ctx) {
+    if(!(pv.is_object() && pv.contains(key))) { return def; }
+    return wantString(pv.at(key), ctx + std::string("\"") + key + "\"");
+}
+
+/* And for a BOOL. The read used to be `const bool jet = pv["jet"]` /
+   pv["jet"].get<bool>(), so "jet": "yes" reached nlohmann, and "jet": 1 is exactly
+   the kind of thing an editor autocompletes. JSON has true and false; say so. */
+static bool optBool(const nlohmann::json &pv, const char *key, bool def,
+                    const std::string &ctx) {
+    if(!(pv.is_object() && pv.contains(key))) { return def; }
+    const nlohmann::json &v = pv.at(key);
+    if(!v.is_boolean()) {
+        throw std::runtime_error(ctx + std::string("\"") + key
+                                 + "\" must be true or false, got " + v.type_name());
+    }
+    return v.get<bool>();
+}
+
+/* The SHAPE of an entry, checked before any field of it is touched (#515).
+   {"parts": ["nope"]} used to die inside nlohmann with type_error.306 ("cannot use
+   value() with string"), which is not even a std::runtime_error -- so a caller that
+   only catches our exception type (the boot path does) saw an abort instead of a
+   sentence. Every field check below is worthless if the entry itself is not an
+   object. */
+static void wantEntryObject(const nlohmann::json &e, const std::string &what) {
+    if(!e.is_object()) {
+        throw std::runtime_error(what + " must be an object, got " + e.type_name());
+    }
+}
+
 static glm::dvec3 parse_vec3(const nlohmann::json &obj, const char *key,
                              const std::string &ctx) {
     if(!obj.contains(key) || !obj[key].is_array() || obj[key].size() != 3) {
@@ -308,9 +352,11 @@ PartsCatalog load_parts_catalog(const char *path) {
     const nlohmann::json &arr = doc["parts"];
     for(size_t i = 0; i < arr.size(); i++) {
         const nlohmann::json &pv = arr[i];
+        wantEntryObject(pv, "parts: entry " + std::to_string(i) + " of " + path);
 
         PartDef d;
-        d.name = pv.value("name", std::string(""));
+        d.name = optString(pv, "name", std::string(""),
+                           "parts: entry " + std::to_string(i) + " of " + path + ": ");
         if(d.name.empty()) {
             throw std::runtime_error(std::string("parts: entry ") + std::to_string(i)
                                      + " of " + path + ": missing \"name\"");
@@ -324,21 +370,21 @@ PartsCatalog load_parts_catalog(const char *path) {
             throw std::runtime_error(ctx + "duplicate part name");
         }
 
-        d.type = pv.value("type", std::string(""));
-        d.display_name = pv.value("display_name", std::string(""));
+        d.type = optString(pv, "type", std::string(""), ctx);
+        d.display_name = optString(pv, "display_name", std::string(""), ctx);
 
         // a marker entry: no geometry, so the mesh/mass/size validation is skipped
-        d.fuel_link = pv.value("fuel_link", false);
+        d.fuel_link = optBool(pv, "fuel_link", false, ctx);
 
         if(!d.fuel_link) {
-            d.mesh = pv.value("mesh", std::string(""));
-            d.texture = pv.value("texture", std::string(""));
+            d.mesh = optString(pv, "mesh", std::string(""), ctx);
+            d.texture = optString(pv, "texture", std::string(""), ctx);
             if(d.mesh.empty() || d.texture.empty()) {
                 throw std::runtime_error(ctx + "missing \"mesh\"/\"texture\"");
             }
             // all-or-nothing (a half-set is a catalog bug)
-            d.shroud = pv.value("shroud", std::string(""));
-            d.shroud_texture = pv.value("shroud_texture", std::string(""));
+            d.shroud = optString(pv, "shroud", std::string(""), ctx);
+            d.shroud_texture = optString(pv, "shroud_texture", std::string(""), ctx);
             if((d.shroud.empty()) != (d.shroud_texture.empty())) {
                 throw std::runtime_error(ctx
                                          + "\"shroud\" and \"shroud_texture\" must be set together");
@@ -492,9 +538,7 @@ PartsCatalog load_parts_catalog(const char *path) {
                                      + "\"propellant\" (total) and \"exhaust_velocity\" must be > 0");
         }
 
-        if(pv.contains("jet")) {
-            d.jet = pv["jet"].get<bool>();
-        }
+        d.jet = optBool(pv, "jet", d.jet, ctx);
         d.jet_fan_thrust = optNumber(pv, "jet_fan_thrust", 0.0, ctx, "N");
         if(d.jet_fan_thrust < 0.0) {
             throw std::runtime_error(ctx + "\"jet_fan_thrust\" must be >= 0 (N)");
@@ -586,12 +630,13 @@ PartsCatalog load_parts_catalog(const char *path) {
                                      + "\"inventory_capacity\" must be >= 0 (slots)");
         }
 
-        if(pv.contains("experiment_family")) {
-            d.experiment_family = pv["experiment_family"].get<std::string>();
-        }
+        d.experiment_family = optString(pv, "experiment_family", d.experiment_family, ctx);
 
         if(pv.contains("experiment_storage")) {
-            const std::string s = pv["experiment_storage"].get<std::string>();
+            /* wantString rather than optString: an authored "" is a value here, and
+               the refusal below already quotes it. */
+            const std::string s = wantString(pv.at("experiment_storage"),
+                                             ctx + "\"experiment_storage\"");
             if(s == "instrument")      { d.experiment_storage = ExpStorage::Instrument; }
             else if(s == "courier")    { d.experiment_storage = ExpStorage::Courier; }
             else if(s == "container")  { d.experiment_storage = ExpStorage::Container; }
@@ -603,21 +648,15 @@ PartsCatalog load_parts_catalog(const char *path) {
             }
         }
 
-        if(pv.contains("decoupler")) {
-            d.decoupler = pv["decoupler"].get<bool>();
-        }
+        d.decoupler = optBool(pv, "decoupler", d.decoupler, ctx);
 
         /* A decoupler is a fuel barrier by definition: force it, so a stale
            catalog regen cannot silently drop the flag. */
-        if(pv.contains("fuel_barrier")) {
-            d.fuel_barrier = pv["fuel_barrier"].get<bool>();
-        }
+        d.fuel_barrier = optBool(pv, "fuel_barrier", d.fuel_barrier, ctx);
         if(d.decoupler) { d.fuel_barrier = true; }
 
         // A docking port is a fuel barrier too (the ships' fuel systems meet there).
-        if(pv.contains("docking_port")) {
-            d.docking_port = pv["docking_port"].get<bool>();
-        }
+        d.docking_port = optBool(pv, "docking_port", d.docking_port, ctx);
         if(d.docking_port) { d.fuel_barrier = true; }
 
         /* hull_margin is a distance, and its ABSENT form is the sentinel -1 ("use
@@ -668,7 +707,7 @@ PartsCatalog load_parts_catalog(const char *path) {
             throw std::runtime_error(ctx + "\"control_area\" must be >= 0 (m^2)");
         }
         // An unknown axis is a load error, not a silent default.
-        const std::string axis = pv.value("control_axis", std::string("pitch"));
+        const std::string axis = optString(pv, "control_axis", std::string("pitch"), ctx);
         if(axis == "pitch")      { d.control_axis = ControlAxis::Pitch; }
         else if(axis == "yaw")   { d.control_axis = ControlAxis::Yaw; }
         else if(axis == "roll")  { d.control_axis = ControlAxis::Roll; }
@@ -770,8 +809,8 @@ PartsCatalog load_parts_catalog(const char *path) {
         if(d.chute_area < 0.0) {
             throw std::runtime_error(ctx + "\"chute_area\" must be >= 0 (m^2)");
         }
-        d.chute_mesh = pv.value("chute_mesh", std::string(""));
-        d.chute_texture = pv.value("chute_texture", std::string(""));
+        d.chute_mesh = optString(pv, "chute_mesh", std::string(""), ctx);
+        d.chute_texture = optString(pv, "chute_texture", std::string(""), ctx);
         if((d.chute_mesh.empty()) != (d.chute_texture.empty())) {
             throw std::runtime_error(ctx
                                      + "\"chute_mesh\" and \"chute_texture\" must be set together");
@@ -811,8 +850,9 @@ PartsCatalog load_parts_catalog(const char *path) {
                 for(size_t k = 0; k < na.size(); k++) {
                     const nlohmann::json &nv = na[k];
                     const std::string nctx = ctx + "node " + std::to_string(k) + ": ";
+                    wantEntryObject(nv, ctx + "node " + std::to_string(k));
                     Node nd;
-                    nd.id = nv.value("id", std::string(""));
+                    nd.id = optString(nv, "id", std::string(""), nctx);
                     if(nd.id.empty()) {
                         throw std::runtime_error(nctx + "missing \"id\"");
                     }
@@ -823,7 +863,7 @@ PartsCatalog load_parts_catalog(const char *path) {
                     nd.dir = parse_vec3(nv, "dir", ctx + "node \"" + nd.id + "\": ");
                     // An authored node can be the surface-attach node (landing
                     // gear mounts strut-top, not on the synthesized -X side).
-                    nd.surface = nv.value("surface", false);
+                    nd.surface = optBool(nv, "surface", false, nctx);
                     const double len = glm::length(nd.dir);
                     if(len < 1e-9) {
                         throw std::runtime_error(ctx + "node \"" + nd.id
@@ -871,7 +911,9 @@ ShipDef shipDefFromJson(const nlohmann::json &doc, const PartsCatalog &catalog,
     }
 
     ShipDef def;
-    def.name = doc.value("name", std::string(""));
+    if(doc.contains("name")) {
+        def.name = wantString(doc.at("name"), std::string("ship: \"name\" in ") + path);
+    }
     def.controller = -1;
     def.hull_margin = -1.0;
     if(doc.contains("hull_margin")) {
@@ -929,10 +971,13 @@ ShipDef shipDefFromJson(const nlohmann::json &doc, const PartsCatalog &catalog,
     std::map<std::string, int> autoCount;      // catalog name -> auto-id counter
     for(size_t i = 0; i < arr.size(); i++) {
         const nlohmann::json &pv = arr[i];
+        const std::string ectx = std::string("ship: part entry ") + std::to_string(i)
+                                 + " of " + path + ": ";
+        wantEntryObject(pv, "ship: part entry " + std::to_string(i) + " of " + path);
 
         ShipPart sp;
         sp.def = nullptr;
-        sp.part = pv.value("part", std::string(""));
+        sp.part = optString(pv, "part", std::string(""), ectx);
         if(sp.part.empty()) {
             throw std::runtime_error(std::string("ship: part entry ") + std::to_string(i)
                                      + " of " + path + ": missing \"part\"");
@@ -949,7 +994,7 @@ ShipDef shipDefFromJson(const nlohmann::json &doc, const PartsCatalog &catalog,
         }
 
         // Must be unique within the ship.
-        sp.id = pv.value("id", std::string(""));
+        sp.id = optString(pv, "id", std::string(""), ectx);
         if(sp.id.empty()) {
             int &n = autoCount[sp.part];
             n++;
@@ -971,7 +1016,8 @@ ShipDef shipDefFromJson(const nlohmann::json &doc, const PartsCatalog &catalog,
         if(pv.contains("parent")) {
             if(!pv["parent"].is_string()) {
                 throw std::runtime_error(pctx
-                                         + "\"parent\" must be a part id (string)");
+                                         + "\"parent\" must be a part id (string)"
+                                         + ", got " + pv["parent"].type_name());
             }
             std::string pid = pv["parent"].get<std::string>();
             std::map<std::string, size_t>::iterator it = idToIndex.find(pid);
@@ -1007,7 +1053,8 @@ ShipDef shipDefFromJson(const nlohmann::json &doc, const PartsCatalog &catalog,
         if(pv.contains("attach")) {
             if(!pv["attach"].is_string()) {
                 throw std::runtime_error(pctx
-                                         + "\"attach\" must be a string");
+                                         + "\"attach\" must be a string"
+                                         + ", got " + pv["attach"].type_name());
             }
             std::string m = pv["attach"].get<std::string>();
             if(m == "down") { sp.attach = AttachMode::Down; }
@@ -1033,8 +1080,8 @@ ShipDef shipDefFromJson(const nlohmann::json &doc, const PartsCatalog &catalog,
 
         /* Node ids and contacts are validated here so a typo is a load error,
            not a null deref in build_ship. */
-        sp.parentNode = pv.value("parentNode", std::string(""));
-        sp.childNode  = pv.value("childNode", std::string(""));
+        sp.parentNode = optString(pv, "parentNode", std::string(""), pctx);
+        sp.childNode  = optString(pv, "childNode", std::string(""), pctx);
         sp.roll          = optNumber(pv, "roll", 0.0, pctx, "deg");
         sp.contactPoint  = glm::dvec3(0.0);
         sp.contactNormal = glm::dvec3(0.0);
@@ -1181,8 +1228,8 @@ ShipDef shipDefFromJson(const nlohmann::json &doc, const PartsCatalog &catalog,
         /* A fuel link's from/to are required, distinct, and not its own id.
            parent/attach/angle/offset/stage are ignored. */
         if(sp.isFuelLink()) {
-            sp.from = pv.value("from", std::string(""));
-            sp.to = pv.value("to", std::string(""));
+            sp.from = optString(pv, "from", std::string(""), pctx);
+            sp.to = optString(pv, "to", std::string(""), pctx);
             if(sp.from.empty() || sp.to.empty()) {
                 throw std::runtime_error(pctx
                                          + "a fuel link needs \"from\" and \"to\"");
