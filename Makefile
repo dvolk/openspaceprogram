@@ -683,6 +683,10 @@ test-gen: lint
 	python3 utils/sci_phase.py
 	python3 utils/sci_dist.py --self-test
 	python3 utils/sci_dist.py --check res/systems/*.json
+# The diff both generators' --check runs (#725). Neither generator's own --check can
+# notice the shared compare going wrong -- each only weighs its own file against its
+# own output -- so the helper carries its own pins.
+	python3 utils/sysdiff.py
 	python3 utils/gen_systems.py --check
 	python3 utils/make_solar_system.py --check
 # The order here is safe but NOT independent: gen_systems.py reads the COMMITTED

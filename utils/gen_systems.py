@@ -40,6 +40,10 @@ from ground_model import (fit_even_share, even_share_air_note, ground_anchor,
                           invent_missing_albedos, AIR_FOLLOW,
                           lag_phase, lag_effect, GAMMA_REGOLITH, LAG_AUTHOR_FLOOR,
                           LAG_BORROW_DAMP_FLOOR, SRC_LAG_THERMAL)
+# #725: --check's diff and its failure output, shared with make_solar_system.py. One
+# generator used to print the leaf that moved and the other just "DRIFT <path>", so a
+# stale catalogue file looked exactly as big as a stale one-body edit.
+from sysdiff import diff_documents, report
 
 TWOPI = 2.0 * math.pi
 G = 6.674e-11
@@ -753,31 +757,6 @@ def write(obj, path):
         f.write(render(obj))
     print("wrote", path)
 
-def deep_diff(a, b, path, out):
-    """Value-level diff (a = committed, b = generated); numeric compare ignores float spelling.
-    science_mult / transfer_dv are INCLUDED: the committed JSON is generated
-    output, and off-model values (e.g. Shay's science_mult) are overrides in
-    this script -- so any JSON drift here is real drift and must fail."""
-    if isinstance(a, dict) and isinstance(b, dict):
-        for k in a:
-            p = f"{path}.{k}" if path else k
-            if k not in b:
-                out.append(f"{p}: in committed file, missing from generated ({a[k]!r})")
-            else:
-                deep_diff(a[k], b[k], p, out)
-        for k in b:
-            p = f"{path}.{k}" if path else k
-            if k not in a:
-                out.append(f"{p}: in generated, missing from committed file ({b[k]!r})")
-    elif isinstance(a, list) and isinstance(b, list):
-        if len(a) != len(b):
-            out.append(f"{path}: list length committed={len(a)} generated={len(b)}")
-        for i in range(min(len(a), len(b))):
-            deep_diff(a[i], b[i], f"{path}[{i}]", out)
-    else:
-        if a != b:
-            out.append(f"{path}: committed={a!r} generated={b!r}")
-
 def check(obj, path):
     import json as _json
     if not os.path.exists(path):
@@ -785,48 +764,18 @@ def check(obj, path):
         return False
     with open(path) as f:
         committed = _json.load(f)
-    out = []
-    # Whole-document compare, bodies excepted: this script is the source of
-    # truth for EVERY root key, so anything that differs is drift. It used to
-    # whitelist home/skybox/belts -- and a whitelist is exactly why the pads
-    # went unnoticed (#226): they were hand-edited inside generated output,
-    # so a regenerate dropped them and nothing compared them. Bodies are
-    # compared by name below instead, which reports a rename or a dropped
-    # body as itself rather than as a cascade of positional noise.
-    deep_diff({k: v for k, v in committed.items() if k != "bodies"},
-              {k: v for k, v in obj.items() if k != "bodies"}, "", out)
     # A reference to a missing fragment throws at load, so catch the typo here
     # where the message names the key rather than as a failed system load.
-    for name in obj.get("world_buildings_files", []):
-        if not os.path.exists(os.path.join(ROOT, name)):
-            out.append(f"world_buildings_files: '{name}' not found under {ROOT}")
-    cb = {x["name"]: x for x in committed.get("bodies", [])}
-    gb = {x["name"]: x for x in obj.get("bodies", [])}
-    for name in cb:
-        if name not in gb:
-            out.append(f"body {name}: in committed file, missing from generated")
-    for name in gb:
-        if name not in cb:
-            out.append(f"body {name}: in generated, missing from committed file")
-    # Order too: the array order is this script's to choose and it is the
-    # loader's bodies vector, so a hand-reorder of the JSON is drift as well.
-    cn = [x["name"] for x in committed.get("bodies", [])]
-    gn = [x["name"] for x in obj.get("bodies", [])]
-    if cn != gn and sorted(cn) == sorted(gn):
-        out.append("bodies: same names in a different order")
-    for name in cb:
-        if name in gb:
-            body_out = []
-            deep_diff(cb[name], gb[name], "", body_out)
-            for line in body_out:
-                out.append(f"{name}: {line}")
-    if out:
-        print(f"DRIFT   {path}:")
-        for line in out:
-            print(f"    {line}")
-        return False
-    print(f"OK      {path}")
-    return True
+    missing = [f"world_buildings_files: '{name}' not found under {ROOT}"
+               for name in obj.get("world_buildings_files", [])
+               if not os.path.exists(os.path.join(ROOT, name))]
+    # The document compare is shared with make_solar_system.py (#725): two
+    # generators printing two different failure shapes is how a stale file gets
+    # read as a small one. This script is the source of truth for EVERY root key
+    # -- the old whitelist of home/skybox/belts is why the hand-edited pads went
+    # unnoticed (#226) -- and science_mult/transfer_dv stay IN, because off-model
+    # values there are overrides authored in this script.
+    return report(path, diff_documents(committed, obj) + missing)
 
 def author_star_temperature(obj):
     """#687: a star's output is ONE authored number (surface.temperature) that every

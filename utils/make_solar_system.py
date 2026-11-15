@@ -23,6 +23,9 @@ from ground_model import (parse_diurnal_pair, parse_kelvin_range, fit_even_share
                           SRC_PAIR_NIGHT, SRC_PAIR_DAY, SRC_PAIR_BOTH,
                           pair_solve, pair_anchor_check, invent_missing_albedos,
                           ground_anchor, even_share_air_note)
+# #725: --check's diff and its failure output, shared with gen_systems.py so both
+# generators answer a stale file with the same words (and with the leaves that moved).
+from sysdiff import diff_documents, report
 
 G      = 6.674e-11      # m^3 / kg / s^2  (matches the loader's G)
 AU     = 1.496e11       # m
@@ -4473,7 +4476,6 @@ def main():
                        asteroids=minor_bodies)
             with open(path) as f:
                 committed = json.load(f)
-            same = _comparable(committed) == _comparable(doc)
             # That compare only checks the world_buildings_files REFERENCE;
             # a fragment that does not exist still matches it and throws at
             # load, so check the file behind it too (#226's trap).
@@ -4483,16 +4485,21 @@ def main():
             # committed file byte for byte, then throws at LOAD (terragen.h refuses to fall
             # back to noise). Only res/ paths -- a map outside res/ is player-fetched data
             # and its absence is not drift (#754).
-            missing += [b['surface']['heightmap'] for b in doc['bodies']
-                        if b.get('surface', {}).get('heightmap', '').startswith('res/')
-                        and not os.path.exists(os.path.join(ROOT,
-                                                            b['surface']['heightmap']))]
-            good = same and not missing
-            print(('OK      ' if good else 'DRIFT   ') + path)
-            for n in missing:
-                print('    world_buildings_files: %r not found under %s'
-                      % (n, ROOT))
-            ok = ok and good
+            missing_maps = [b['surface']['heightmap'] for b in doc['bodies']
+                            if b.get('surface', {}).get('heightmap', '').startswith('res/')
+                            and not os.path.exists(os.path.join(ROOT,
+                                                                b['surface']['heightmap']))]
+            # #725: this used to be one dict equality, so the whole message was
+            # "DRIFT   <path>" -- four of those read identically whether one key in
+            # one body moved or four hundred did, which made a partial regenerate
+            # look like a total one. gen_systems.py already printed the leaves; now
+            # both do, from one module.
+            diff = diff_documents(_comparable(committed), _comparable(doc))
+            diff += ["world_buildings_files: %r not found under %s" % (n, ROOT)
+                     for n in missing]
+            diff += ["heightmap: %r not found under %s" % (m, ROOT)
+                     for m in missing_maps]
+            ok = report(path, diff) and ok
         return 0 if ok else 1
     for pred, path, label in targets:
         emit(base_bodies, moons, pred, path, label, fact_sheets, asteroids=minor_bodies)
