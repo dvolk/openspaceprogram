@@ -88,6 +88,11 @@ CHECK min(d["v"] for d in drag if d["t"] >= 34.0) > 25.0
 # Pinned on the PITCH axis, because this run also kicks the rudder (Beta swings -7.3..5.4)
 # and an unpinned "any surface is well off neutral" would pass on that alone.
 CHECK all(0.30 < d["induced"] < 0.45 for d in drag if d.get("induced") is not None and d.get("beta") is not None and abs(d["beta"]) < 4.0 and d["t"] < 25.0)
+# Not vacuous (#653's trap, and #787 widened it): the two Beta windows in this case select
+# on Beta being a number, and Beta now dashes on a test of its own -- a flow can have a
+# heading and no yaw -- so a selection can shrink without any CHECK noticing. Measured in
+# this run: 24 rows before the kick, 11 in the settled tail.
+CHECK len([d for d in drag if d.get("beta") is not None and abs(d["beta"]) < 4.0 and d["t"] < 25.0]) >= 15
 # ... and on the OTHER side of the departure. The `t < 25.0` cutoff above stops at the
 # kick, which is also what would hide a drift in the half this run reaches after recovery:
 # the pre-kick band says nothing once the airframe has come back, and its rows would still
@@ -96,6 +101,7 @@ CHECK all(0.30 < d["induced"] < 0.45 for d in drag if d.get("induced") is not No
 # recovers" is pinned above on AoA and speed; this says it recovers TRIMMED, with the
 # trim download the tab has been paying all along still the one paying it.
 CHECK all(0.30 < d["induced"] < 0.42 for d in drag if d.get("induced") is not None and d.get("beta") is not None and abs(d["beta"]) < 4.0 and d["t"] >= 40.0)
+CHECK len([d for d in drag if d.get("beta") is not None and abs(d["beta"]) < 4.0 and d["t"] >= 40.0]) >= 6
 CHECK max(d["induced"] for d in drag if d.get("induced") is not None) > 0.75
 # Ld= (#694): the air's force SPLIT ABOUT THE FLOW -- its component perpendicular to the
 # air-relative flow over its component along it -- which is the ratio a glide ratio equals.

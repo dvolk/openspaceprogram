@@ -32,6 +32,10 @@ CHECK len(drag) >= 5
 # to lean over.
 CHECK all(d["up"] < 0.95 for d in drag if d["t"] >= 3.0)
 CHECK all(abs(d["beta"]) < 3.0 for d in drag if d.get("beta") is not None)
+# Not vacuous (#653): this selects on Beta being a number, and since #787 Beta dashes on a
+# test of its own -- a flow within a degree of the hull's up axis has no yaw to report --
+# so the filter could quietly narrow. This run prints Beta on all 8 rows.
+CHECK len([d for d in drag if d.get("beta") is not None]) >= 4
 # And it comes back: release the stick at t=3 s and the airframe still shows the same
 # bank from t=6 s on -- 0.88..0.89, no self-righting and no wheel levelling it either,
 # which is what a plane does. The band starts a second later than it did unwinded, for the
