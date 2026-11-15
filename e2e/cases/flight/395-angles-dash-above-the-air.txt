@@ -1,5 +1,5 @@
 NAME angles-dash-above-the-air
-CLAIM Every column the SURFACE window reads off the air dashes together where the hull has no air to read it from -- the angle of attack, the sideslip, the air-relative prograde, the air-relative speed and the stability pair -- on a body whose air and wind are fully authored, so a dash means "no flow HERE" and not "this body has no wind".
+CLAIM Every column the SURFACE window reads off the air dashes together where the hull has no air to read it from -- the angle of attack, the sideslip, the air-relative prograde, the air-relative speed, the stability pair and the wind -- on a body whose air and wind are fully authored, so a dash means "no flow HERE" and not "this body has no wind".
 KIND invariant
 ARGS --info-log --time-accel 1 --timeout 3 --startship racer,res/ships/racer.json,Kerbin,ellipse-apo --no-paint
 FORBID error:
@@ -27,7 +27,13 @@ CHECK all(abs(s["vs"]) < 5.0 for s in surf)
 # there -- which leaves the "no flow at all" half of the floor unexercised anywhere else in the
 # set. This case is that half, moved up where there really is no air, so a floor that stops
 # refusing (or starts refusing a real wind) reddens somewhere.
-# One thing on this line is NOT dashed and should be: wind_east=40 m/s, printed in vacuum
-# because the profile's last authored row (alt 11205 m) is read as holding forever. Filed as
-# #788; pinned here as it stands, so that fix reddens this row rather than passing unnoticed.
-CHECK all(s["wind_east"] == 40.0 for s in surf)
+# The wind used to be the one column on this line NOT dashed -- wind_east=40 m/s printed in
+# vacuum, because the profile's last authored row (alt 11205 m) was read as holding forever.
+# That was #788, and it is fixed: a wind is a property of the air, so the columns take the
+# air's own test (airDensity answers 0 at or above the body's air top, the same one that
+# dashes --drag-log's T=/p=/a=/Mach=). The pin is now the dash, and the reverse trap -- a gate
+# that dashes a wind INSIDE the air -- reddens flight/395, which pins these same columns as
+# 5.8 m/s numbers at the pad and climbing.
+CHECK all(s["wind_east"] is None for s in surf)
+CHECK all(s["wind_north"] is None for s in surf)
+CHECK all(s["wind_up"] is None for s in surf)

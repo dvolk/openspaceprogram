@@ -2852,8 +2852,13 @@ void drawUIReadouts(Game &g) {
            difference is the wind projected onto the hull's heading, and heading is Hdg's
            business). The rising component (#767) has no row of its own here: nothing in
            utils/rss/html publishes one, so every authored table answers 0, and a permanent
-           "up 0.0" on a ship's instrument is a decoration. [surfinfo] prints it anyway. */
-        if(b->surface.atmosphere.has_wind()) {
+           "up 0.0" on a ship's instrument is a decoration. [surfinfo] prints it anyway.
+           Gated on the air being HERE, not just on the body authoring wind (#788): the
+           table has no ceiling row, so this same line read "Wind: 40.0m/s E" at a hull
+           915 km above Kerbin's air top. A wind belongs to the air, and above the air
+           the honest answer is no row at all. */
+        if(b->surface.atmosphere.has_wind()
+           && airDensity(dragAtm(b->surface.atmosphere, *b), altAsl) > 0.0) {
             const glm::dvec3 wnd = windAt(b->surface.atmosphere.wind, altAsl,
                                           glm::degrees(latitude), glm::degrees(longitude));
             ImGui::Text("Wind: %.1fm/s %s", std::hypot(wnd.x, wnd.y),
@@ -3003,13 +3008,22 @@ void drawUIReadouts(Game &g) {
                a 0 there would read as "the air is calm", which is a claim the file
                never made. wind_up= (#767) is the same lookup's third component, along
                the local vertical: 0 in every table authored so far, and printed anyway
-               so a case can tell "no such axis" from "an axis that answers 0". */
+               so a case can tell "no such axis" from "an axis that answers 0".
+               #788: and dashed above the air, which is the other half of that same
+               honesty. A wind table's LAST row has no ceiling -- Kerbin's `alt 11000
+               -> 40 m/s` reads as "40 m/s, and above that forever" -- so a hull at
+               1000 km, 915 km clear of Kerbin's air top, printed a 40 m/s wind in
+               vacuum while every angle on the row correctly dashed. The wind is a
+               property of the air, so it takes the air's own test: airDensity
+               answers 0 at or above the body's air top, which is exactly what dashes
+               T=/p=/a=/Mach= on the [drag] line. */
             char tas_s[32], we_s[32], wn_s[32], wu_s[32];
             const int tas_n = view.air_dir_valid
                 ? snprintf(tas_s, sizeof tas_s, "%.6g m/s", glm::length(view.air_vel))
                 : snprintf(tas_s, sizeof tas_s, "-");
             assert(tas_n > 0 && tas_n < (int)sizeof tas_s);
-            if(b->surface.atmosphere.has_wind()) {
+            if(b->surface.atmosphere.has_wind()
+               && airDensity(dragAtm(b->surface.atmosphere, *b), altAsl) > 0.0) {
                 const glm::dvec3 wnd = windAt(b->surface.atmosphere.wind, altAsl,
                                               glm::degrees(latitude),
                                               glm::degrees(longitude));
