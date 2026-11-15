@@ -248,6 +248,10 @@ void surfmapCompute(Game &g) {
            below the grid pass is what stops it coming back. */
         double trlo = tl.lo_K, trhi = tl.hi_K;
         double rel_at_lo = 0.0, rel_at_hi = 0.0;
+        /* [K] The coldest and warmest relief term anywhere on this grid (#828) -- which is what
+           the ramp is priced from, and only equal to the two above when the profile gets no
+           warmer as the ground rises. */
+        double rel_term_lo = 0.0, rel_term_hi = 0.0;
         /* The grid's trig, once for every pass below (#802). Each pass visits every column of
            every row, so the equirect grid needs w + h transcendental evaluations in total, not
            w*h per pass; equirect.h owns both spellings. The bit-for-bit guard on this is
@@ -320,7 +324,8 @@ void surfmapCompute(Game &g) {
                    stand in the same place. */
                 tempRampEnds(tl, elo, ehi, trlo, trhi);
                 rel_at_lo = tl.relief_K(elo);  // 0 at or below the datum (drag.h's flat column)
-                rel_at_hi = tl.relief_K(ehi);  // <= 0: the cost lives at the top
+                rel_at_hi = tl.relief_K(ehi);  // <= 0 while the lapse is negative up there
+                reliefRange_K(tl, elo, ehi, rel_term_lo, rel_term_hi);
             }
         }
         /* #794: a body whose ground LAGS its star needs its LIGHT before it needs its colour.
@@ -534,11 +539,13 @@ void surfmapCompute(Game &g) {
         }
         if(want_temp && tl.ok) {
             /* THE RAMP SPANS THE PICTURE. Not a tautology on the lagged path: there the span is
-               measured and the pixels are painted from the same numbers, and on the relief path
-               it depends on relief_K() getting no warmer as the ground rises -- a monotonicity
-               tempRampEnds has always assumed and now says out loud. If this ever fires, a colour
-               on the legend is a colour no pixel wears (or a pixel clamps to one off the end of
-               its own scale), which is the #793/#769 bug class rather than a rounding argument.
+               measured and the pixels are painted from the same numbers. On the relief path it
+               holds because tempRampEnds prices from the extreme relief TERMS on the grid
+               (reliefRange_K, #828) rather than from the terms at the two elevation ends --
+               which is the same thing only while the profile cools with height all the way up
+               through the terrain. If this ever fires, a colour on the legend is a colour no
+               pixel wears (or a pixel clamps to one off the end of its own scale), which is the
+               #793/#769 bug class rather than a rounding argument.
                The slack is for the float the elevation grid and the lagged kelvin are stored in,
                not for the maths: 1e-3 K against a 4-digit print. */
             assert(tw > 0.0);
@@ -728,6 +735,12 @@ void surfmapCompute(Game &g) {
                        night. */
                     if(tl.relief) {
                         printf(" relief=[%.0f %.0f %.2f %.2f]", elo, ehi, rel_at_lo, rel_at_hi);
+                        /* The two terms the RAMP was actually priced from (#828). These match the
+                           pair above exactly while the profile cools with height all the way up
+                           through the terrain -- which is every shipped body -- and they are the
+                           column that shows when a world authors an inversion below its own peak
+                           and the two stop meaning the same thing. */
+                        printf(" relief_terms=[%.2f %.2f]", rel_term_lo, rel_term_hi);
                     }
                     printf(" temp_mean4=%.2f datum_mean4=%.2f anchor=%.2f anchor_src=\"%s\"",
                            std::pow(t4sum / tw, 0.25), std::pow(t4sum_datum / tw, 0.25),

@@ -400,6 +400,56 @@ static void groundRelief() {
     check(near_d(surfmapGroundT(tl.anchor_K, tl.knob, sun, sun, climb),
                  tl.hi_K + climb, 1e-9),
           "under the star at 8 km: the day end minus the climb, same term as the cold end");
+
+    /* #828: an inversion. The profile cools to a tropopause 8 km up and WARMS above it, and the
+       map reaches 12 km -- above the inversion but below the air's top. The coldest ground is
+       then at the tropopause, NOT at the highest pixel, which is what the old "cold end = the
+       high end's term" rule assumed. Hand-computable: 236 K at 8 km, +0.002 K/m above it, so
+       12 km is 244 K -- 8 K WARMER than the coldest column, and 44 K colder than the datum. */
+    TempLayer inv;
+    inv.ok = true;
+    inv.relief = true;
+    inv.lo_K = 100.0;
+    inv.hi_K = 300.0;
+    inv.air_top = 30000.0;
+    inv.profile = {AtmoLayer{0.0, 288.0, -0.0065, 101325.0}, AtmoLayer{8000.0, 236.0, 0.002, 0.0}};
+    {
+        double rl = 0.0, rh = 0.0;
+        reliefRange_K(inv, -500.0, 12000.0, rl, rh);
+        check(near_d(rl, -52.0, 1e-9),
+              "the coldest term is the TROPOPAUSE's, found by sampling the kink rather than the "
+              "elevation ends (-52 K at 8 km; the 12 km peak is 44 K)");
+        check(near_d(rh, 0.0, 1e-12),
+              "and the warmest is the datum: below it the term is clamped to 0, so a -500 m floor "
+              "cannot out-warm the coast");
+        double tl2 = 0.0, th2 = 0.0;
+        tempRampEnds(inv, -500.0, 12000.0, tl2, th2);
+        check(near_d(tl2, inv.lo_K + rl, 1e-9) && near_d(th2, inv.hi_K, 1e-9),
+              "the ramp's cold end follows that kink: 48 K, so the coldest painted pixel is a "
+              "colour rather than a clamp. Under the old rule this end was 56 K, and every pixel "
+              "between the tropopause and 12 km pinned to the palette's first colour");
+    }
+    {
+        // The monotone case is NOT a special case: the kinks sit at the interval ends, so the
+        // extremes are the two ends exactly as before. Nothing about Earth-like airs moved.
+        double rl = 0.0, rh = 0.0;
+        reliefRange_K(tl, 0.0, 8848.0, rl, rh);
+        check(near_d(rl, tl.relief_K(8848.0), 1e-9) && near_d(rh, tl.relief_K(0.0), 1e-9),
+              "a lapse that only cools gives its extremes at the interval's own ends");
+    }
+    {
+        // Above the air's top the term HOLDS at its value there (terragen.h), so a map that
+        // climbs off-world invents no new extreme out there -- and air_top is sampled as a kink
+        // rather than guessed at. Here the held term is -8 K: warmer than the tropopause, colder
+        // than the datum, so neither end of the ramp moves.
+        check(near_d(inv.relief_K(40000.0), inv.relief_K(30000.0), 1e-12),
+              "past air_top the term holds at its value there");
+        double rl = 0.0, rh = 0.0;
+        reliefRange_K(inv, -500.0, 40000.0, rl, rh);
+        check(near_d(rl, -52.0, 1e-9) && near_d(rh, 0.0, 1e-12),
+              "so the extremes over a map that reaches space are still the tropopause and the "
+              "datum, not the top of the map");
+    }
 }
 
 /* #794: the skin allowed to lag the light. The law itself -- groundtemp.h's closed form, its

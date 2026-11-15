@@ -42,6 +42,13 @@ CHECK all(abs(r["lag_tau"] - 1.0) < 1e-9 for r in surfmap)
 # was being run backwards below sea level.
 CHECK all(r["relief"] is not None and r["relief"][2] == 0.0 for r in surfmap)
 CHECK all(abs(r["relief"][3] + 0.0065 * r["relief"][1]) < 0.05 for r in surfmap)
+# #828: the palette is priced from the coldest and warmest term ANYWHERE in that floor..ceiling
+# span, printed beside the two above. This body's file cools all the way up to 20 km and holds
+# above it, so the extremes ARE its two ends -- which is the boring half of the claim, and the
+# half that used to be an assumption. Give a body a tropopause below its tallest mountain and the
+# cold term moves to the tropopause while relief[3] keeps naming the summit; the unit battery
+# (tests/test_surfmap.cpp) pins that case, this one pins that nothing shipped moved.
+CHECK all(r["relief_terms"] == (r["relief"][3], r["relief"][2]) for r in surfmap)
 # Both knobs move the palette, in OPPOSITE directions from opposite ends: the mountains push the
 # cold end below the law's night end (99.19 against 113.49), the lag pulls the hot end inside the
 # law's day end (316.53 against 336.18).

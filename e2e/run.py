@@ -211,7 +211,15 @@ SURFMAP_RE = re.compile(
     # floors/ceilings are the elevations this grid actually coloured (m above the sea-level datum)
     # and the two kelvin figures are what the profile is worth there -- so a case can tie the
     # picture's cold end to a named mountain instead of trusting temp_ramp's arithmetic.
-    r"(?:relief=\[([-\d.]+) ([-\d.]+) ([-\d.]+) ([-\d.]+)\]\s+)?"
+    # #828: relief_terms= is the coldest and warmest term ANYWHERE between those floors, which is
+    # what the palette is priced from. It equals the two figures left of it exactly when the
+    # profile never warms with height; on an inversion (a tropopause under a stratosphere, with
+    # terrain reaching past it) the coldest ground is the tropopause, not the summit, and the pair
+    # comes apart. Printing both is what lets a case see that difference instead of assuming it.
+    # In the SAME group as relief=, for the reason spelled out below at wind_: these tails are
+    # positional, and a row that printed one without the other is a broken row, not an old build.
+    r"(?:relief=\[([-\d.]+) ([-\d.]+) ([-\d.]+) ([-\d.]+)\]\s+"
+    r"relief_terms=\[([-\d.]+) ([-\d.]+)\]\s+)?"
     r"temp_mean4=([-\d.]+)\s+datum_mean4=([-\d.]+)\s+anchor=([-\d.]+))?"
     r"(?:\s+temp=-\s+note=\"([^\"]*)\")?"
     # #769: the wind map's tail. wind= is what the sweep painted over this body's GROUND,
@@ -1060,7 +1068,8 @@ def parse_surfmap(out):
         (t, body, w, h, mtype, level, ar, ag, ab, sr, sg, sb, shade, ocean,
          sites, tmin, tmean, tmax, elo, ehi, trlo, trhi,
          lag_tau, peak_deg, sun_lon,
-         rel_lo, rel_hi, rel_off_lo, rel_off_hi, mean4, datum4, anchor, note,
+         rel_lo, rel_hi, rel_off_lo, rel_off_hi, rel_term_lo, rel_term_hi,
+         mean4, datum4, anchor, note,
          wmin, wmean, wmax, welo, wehi, wrlo, wrhi, wrows, wcells,
          wbands, warrowrows, wrowsfrom, wnote, elev_cache) = m.groups()
         # A temperature row that carries neither its numbers nor a reason is a MALFORMED row,
@@ -1123,6 +1132,11 @@ def parse_surfmap(out):
             # profile lapses; None where the ground has no height term at all.
             "relief": (float(rel_lo), float(rel_hi), float(rel_off_lo), float(rel_off_hi))
                       if rel_lo is not None else None,
+            # #828: [coldest K, warmest K] over the whole floor..ceiling span, which is what the
+            # palette is actually priced from. Equal to relief[2:] reversed when the lapse never
+            # warms with height; a tropopause inside that span moves the cold end off the summit.
+            "relief_terms": (float(rel_term_lo), float(rel_term_hi))
+                            if rel_term_lo is not None else None,
             "temp_mean4": None if mean4 is None else float(mean4),
             "datum_mean4": None if datum4 is None else float(datum4),
             "anchor": None if anchor is None else float(anchor),

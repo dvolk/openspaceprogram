@@ -256,27 +256,61 @@ inline TempLayer tempLayerFor(const Surface &s, double derived_bb, bool has_sun)
     return tl;
 }
 
-/* [K] The temperature ramp's ends for one body's GROUND (#793): the law's two ends moved by what
-   the profile says at the highest and lowest ground the sweep will colour. Same shape as
-   windRampEnds (#769), for the same reason -- a span that does not cover what the picture can
-   paint puts pixels off the end of the palette, and a relief-aware field can reach BELOW the
-   analytic night end by lapse x height: Earth's 6.5 K/km against 8 km of relief is 52 K, so half
-   the palette would paint nothing.
-   The extremes are analytic, not sampled: the coldest pixel is the night end standing on the
-   highest ground, the hottest is the day end on the lowest, because the relief term does not
-   depend on the star. relief_K clamps below the datum to 0 (drag.h's flat sub-datum column), so
-   on a body whose lowest ground is under the sea level the hot end is the analytic one. */
+/* [K] The coldest and warmest relief term over the elevations the sweep colours (#828).
+   relief_K is PIECEWISE LINEAR in elevation -- one lapse per layer, clamped to 0 at or below
+   the datum, held flat above the air's top -- so its extremes on an interval can only sit at
+   the interval's two ends, at the datum, at the air top, or at a layer base in between.
+   Sampling those is exact and costs a handful of calls, which is why this does not walk the
+   grid to find them.
+
+   It exists because the cheaper rule -- "the coldest term is the one on the highest ground" --
+   is only true while every lapse under the terrain is negative. It holds for every shipped body:
+   the tallest ground either catalogue colours is ~2.2 km (Duna's relief=[-527 2195], measured in
+   e2e render/745) and the shallowest warming in either file begins at 20.7 km, so relief_terms
+   still reads exactly [-7.68 0.00] there and no shipped palette moved. But it is not a law. A
+   world authored with a warm layer below its own peak -- an inversion, a plateau under a
+   stratospheric deck -- has its coldest ground somewhere mid-slope, and pricing the palette
+   from the two ends opens the ramp below anything the law can reach: every colder pixel then
+   clamps to the ramp's first stop, which is a band of one colour where the numbers disagree.
+   That is #745's bug class again -- a colour that argues with a figure. */
+inline void reliefRange_K(const TempLayer &tl, double elev_lo, double elev_hi,
+                          double &rel_lo, double &rel_hi) {
+    assert(elev_lo <= elev_hi);
+    if(!tl.relief) { rel_lo = rel_hi = 0.0; return; }
+    std::vector<double> at = {elev_lo, elev_hi};
+    // The kinks. The datum (the term clamps to 0 below it), the air top (it stops changing
+    // above it), and every layer base strictly inside the painted range.
+    if(elev_lo < 0.0 && elev_hi > 0.0) { at.push_back(0.0); }
+    if(tl.air_top > elev_lo && tl.air_top < elev_hi) { at.push_back(tl.air_top); }
+    for(const AtmoLayer &L : tl.profile) {
+        if(L.base_alt > elev_lo && L.base_alt < elev_hi) { at.push_back(L.base_alt); }
+    }
+    rel_lo = rel_hi = tl.relief_K(elev_lo);
+    for(const double e : at) {
+        const double r = tl.relief_K(e);
+        if(r < rel_lo) { rel_lo = r; }
+        if(r > rel_hi) { rel_hi = r; }
+    }
+    assert(rel_lo <= rel_hi);
+}
+
+/* [K] The temperature ramp's ends for one body's GROUND (#793): the law's two ends moved by
+   what the profile charges across the highest and lowest ground the sweep will colour. Same
+   shape as windRampEnds (#769), for the same reason -- a span that does not cover what the
+   picture can paint puts pixels off the end of the palette, and a relief-aware field can reach
+   BELOW the analytic night end by lapse x height: Earth's 6.5 K/km against 8 km of relief is
+   52 K, so half the palette would paint nothing.
+   The coldest reachable pixel is the night end carrying the COLDMOST relief term anywhere on
+   the grid, and the hottest the day end carrying the warmest -- which the reliefRange_K call
+   below is for. relief_K clamps below the datum to 0 (drag.h's flat sub-datum column), so on a
+   body whose lowest ground is under the sea level the warm term is 0 and the hot end is the
+   analytic one. */
 inline void tempRampEnds(const TempLayer &tl, double elev_lo, double elev_hi,
                          double &ramp_lo_K, double &ramp_hi_K) {
-    assert(elev_lo <= elev_hi);
-    /* The pairing above assumes it: the coldest reachable pixel is the night end on the HIGHEST
-       ground, which is only true if the profile never gets warmer as the ground rises. Every
-       shipped lapse is negative below its first inversion and terrainHeightFade keeps ground
-       under the layer tops, so it holds -- but the sweep's containment assert reads the same way,
-       and an authored positive-lapse layer near the datum would make both wrong at once. */
-    assert(tl.relief_K(elev_hi) <= tl.relief_K(elev_lo));
-    ramp_lo_K = tl.lo_K + tl.relief_K(elev_hi);
-    ramp_hi_K = tl.hi_K + tl.relief_K(elev_lo);
+    double rel_lo = 0.0, rel_hi = 0.0;
+    reliefRange_K(tl, elev_lo, elev_hi, rel_lo, rel_hi);
+    ramp_lo_K = tl.lo_K + rel_lo;
+    ramp_hi_K = tl.hi_K + rel_hi;
     // >= 0, not > 0: a body that authors even_share 0 has a 0 K night end from the bare law, and
     // the sweep divides by (hi - lo) only when the two differ. A NEGATIVE end is the data guard.
     assert(ramp_lo_K <= ramp_hi_K && ramp_lo_K >= 0.0);
