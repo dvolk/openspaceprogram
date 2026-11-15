@@ -1129,6 +1129,20 @@ void tick(Game &g) {
                    one number per field: the window's "150.4 K (-122.8 C)" gloss is for
                    the human, and a parsed field takes one scale. Kelvin because that
                    is the scale the thermodynamics are linear in.
+                   T= and a= are the profile's ONLY where the body does not author
+                   air_follow. Where it does (#724 rung D), the aero pass warms this
+                   air toward the ground under the hull and recomputes the sound speed
+                   from it (vehicle.cpp: coupledAirTemperature / soundSpeedFromT), so
+                   T and a are that COUPLED pair while p and rho stay on the profile.
+                   The row therefore does not close as an ideal gas: the 8.5 km cruise
+                   bed prints T=239.6 p=33704 rho=0.50195, and p/(rho R) is 233.9 K --
+                   the profile, which is also what --solar-log prints as prof_T and what
+                   the thermometer gauge reads. The 5.7 K split is the coupling, not a
+                   stray variable, and the Mach below divides by the coupled a because
+                   that is the speed of sound the wave-drag bill pays by (#687). #783 is
+                   open on which half moves -- density onto the coupled air, or the
+                   readout back onto the profile -- so do not "fix" this printf to
+                   prof_T without it: that would undo #724's Mach silently.
                    Mach is over the AIR-relative speed at the COM -- NOT the |v|= this
                    line prints. On a spinning body the air itself moves (#97), so the
                    two differ, and the flow regime the ratio describes is the one the
