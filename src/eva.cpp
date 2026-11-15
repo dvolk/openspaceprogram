@@ -164,18 +164,17 @@ void Kerbal::applyEva(double h) {
 
     // Analytic floor guard: snap back to standing height where terrain meshes
     // are not loaded. In a platform bubble the floor is the DECK, not an
-    // infinite plane at z=0: off the edge the suit keeps falling (#850). In a
-    // STATION bubble there is no floor -- weightless, and snapping would
-    // teleport the suit a planet away.
-    if(!inStationBubble() && groundAltAt(pos) < rest - kFloorDrop) {
-        if(onDeck()) {
-            if(!overDeck()) { return; }   // off the edge: free fall
-            placeShipAtCom(glm::dvec3(pos.x, pos.y, rest), partRot(controller));
-        } else {
-            placeShipAtCom(radial * ((double)m_parent->GetTerrainHeight(
-                                         glm::vec3(glm::normalize(pos))) + rest),
-                           partRot(controller));
-        }
+    // infinite plane at z=0: off the edge the suit keeps falling, and the
+    // space-mode laws below MUST still run (an early return here killed RCS
+    // and camera-facing mid-fall, #850). In a STATION bubble there is no floor
+    // -- weightless, and snapping would teleport the suit a planet away.
+    if(!inStationBubble() && groundAltAt(pos) < rest - kFloorDrop
+       && (!onDeck() || overDeck())) {
+        const glm::dvec3 snap = onDeck()
+            ? glm::dvec3(pos.x, pos.y, rest)
+            : radial * ((double)m_parent->GetTerrainHeight(
+                            glm::vec3(glm::normalize(pos))) + rest);
+        placeShipAtCom(snap, partRot(controller));
         const glm::dvec3 v = partVel(controller);
         const double vr = glm::dot(v, radial);
         if(vr < 0.0) { SetVelocity(b, v - radial * vr); }

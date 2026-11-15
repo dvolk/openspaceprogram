@@ -176,7 +176,7 @@ judgement. Select by number, name or path, e.g.
 | `crew/271-recover-refused-walking.txt` | invariant | Recover is offered for a walking kerbal and refuses without tearing the game down. |
 | `crew/394-spent-pool-kerbal-refused.txt` | invariant | A kerbal spawned on a spent pad pool is refused, not minted off the def. |
 | `crew/547-walking-kerbal-suit-mass-overflow-refused.txt` | invariant | A saved kerbal whose suit contents add up to more mass than the game can store is refused, not stood up as a NaN-inertia Body. |
-| `crew/866-platform-eva-stands.txt` | invariant | EVA from a ship parked on the platform puts the kerbal standing on the deck, and walking works. |
+| `crew/866-platform-eva-stands.txt` | invariant | EVA on the platform: stand, walk, fall off the edge, and keep flying with RCS. |
 
 ## science (31)
 

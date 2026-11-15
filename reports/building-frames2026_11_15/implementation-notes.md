@@ -112,6 +112,17 @@ build; `installSystem`'s later placement is a no-op for them. Pinned by
 save/867 (fixture save_platform, title "Load last save" across systems);
 the EVA-kerbal variant verified manually too.
 
+## User-reported: dead controls after walking off the deck (fixed)
+
+The off-edge floor-guard fix above had an early `return` that exited
+`applyEva` entirely once the falling suit's z dropped below the snap
+threshold — skipping the SPACE-mode RCS and camera-facing laws every
+substep. The suit fell tumbling, deaf to W. The guard now only fires when
+actually over the deck (`!onDeck() || overDeck()` in the condition); off the
+edge it falls through to the mode laws. Verified: rcs=1 and a steady
+camera-facing attitude during the fall; crew/866 extended to walk off the
+edge and pin the burns.
+
 ## Verification
 
 - `make test`: 64 binaries green, including new headless frame pins
