@@ -1954,6 +1954,30 @@ static void check_body_claims() {
     expect_refuses("ecc_string", bpatched("Mun", [](nlohmann::json &bv) {
                        bv["inertial"]["ecc"] = "0.1";
                    }), "\"inertial.ecc\" is string, not a number");
+    /* The rest of the leaves, which #771 moved through the same two helpers. Before
+       this, `"amplitude": "1200"` died inside nlohmann with "type must be number, but
+       is string" -- a line naming no body, no key and no level, which is the whole
+       #515 complaint. A flag has the same shape: `"has_sea": "true"` is the kind of
+       edit a hand-authoring pass makes. */
+    expect_refuses("amplitude_string", bpatched("Mun", [](nlohmann::json &bv) {
+                       bv["surface"]["amplitude"] = "1200";
+                   }), "\"surface.amplitude\" is string, not a number");
+    expect_refuses("seed_string", bpatched("Mun", [](nlohmann::json &bv) {
+                       bv["seed"] = "7";
+                   }), "\"seed\" is string, not a number");
+    expect_refuses("has_sea_string", bpatched("Mun", [](nlohmann::json &bv) {
+                       bv["has_sea"] = "true";
+                   }), "\"has_sea\" is string, not true or false");
+    expect_refuses("bands_number", bpatched("Jool", [](nlohmann::json &bv) {
+                       bv["surface"]["bands"] = 1;
+                   }), "\"surface.bands\" is number, not true or false");
+    expect_refuses("thickness_string", bpatched("Kerbin", [](nlohmann::json &bv) {
+                       bv["surface"]["atmosphere"]["thickness"] = "30000";
+                   }), "\"surface.atmosphere.thickness\" is string, not a number");
+    expect_refuses("layer_T_string", bpatched("Kerbin", [](nlohmann::json &bv) {
+                       bv["surface"]["atmosphere"]["layers"] = nlohmann::json::array(
+                           { nlohmann::json{{"alt", 0.0}, {"T", "288.0"}} });
+                   }), "\"surface.atmosphere.layers.T\" is string, not a number");
 
     /* THE POSITIVE CONTROLS. Each of these is legal data, and must LOAD with the claim
        still attached -- a guard that quietly eats the legal half of its range is the

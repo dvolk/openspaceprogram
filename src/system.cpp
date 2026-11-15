@@ -354,18 +354,38 @@ static void expectBlockRows(const nlohmann::json &o, const std::string &who,
 /* A numeric LEAF inside one of those blocks. Absent stays the default; present-but-not-a-
    number used to die inside nlohmann with "type must be number, but is string", which
    names no body and no key -- the #515 complaint. The clouds and rings lambdas below
-   (cnum/rnum) already do this; the frame blocks predate them. */
+   (cnum/rnum) already do this; the frame blocks predate them, and #771's last fix idea
+   moved the surface, atmosphere and layer rows here too, so no leaf in the file can
+   escape with a message that names nothing. */
+static std::string leafPath(const std::string &path, const char *key) {
+    return path.empty() ? std::string(key) : path + "." + key;
+}
 static double numLeaf(const nlohmann::json &o, const char *key,
                       const std::string &body, const std::string &path,
                       double dflt) {
     if(!o.contains(key)) { return dflt; }
     const nlohmann::json &v = o[key];
     if(!v.is_number()) {
-        throw std::runtime_error("system: '" + body + "': \"" + path + "." + key
+        throw std::runtime_error("system: '" + body + "': \"" + leafPath(path, key)
                                  + "\" is " + std::string(v.type_name())
                                  + ", not a number (#515)");
     }
     return v.get<double>();
+}
+
+/* The same for a flag. `"has_sea": "true"` is the likeliest typo of this shape, and it
+   used to abort the load with a line that named neither the body nor the key. */
+static bool boolLeaf(const nlohmann::json &o, const char *key,
+                     const std::string &body, const std::string &path,
+                     bool dflt) {
+    if(!o.contains(key)) { return dflt; }
+    const nlohmann::json &v = o[key];
+    if(!v.is_boolean()) {
+        throw std::runtime_error("system: '" + body + "': \"" + leafPath(path, key)
+                                 + "\" is " + std::string(v.type_name())
+                                 + ", not true or false (#515)");
+    }
+    return v.get<bool>();
 }
 
 /* Do two wind rows' bands cover any place in common (#767)? Both axes are half-open
@@ -691,8 +711,8 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
             throw std::runtime_error("system: '" + body->name
                                      + "': science_mult must be finite and > 0");
         }
-        body->transfer_dv = bv.value("transfer_dv", 0.0);
-        body->seed         = bv.value("seed", 0.0);
+        body->transfer_dv = numLeaf(bv, "transfer_dv", body->name, "", 0.0);
+        body->seed         = numLeaf(bv, "seed", body->name, "", 0.0);
         /* Bound it, not just finiteness: the wind generator (#775) folds the seed into an
            integer hash, and llround of an out-of-range double is undefined rather than
            weird. Every shipped seed is a small whole number. */
@@ -703,7 +723,7 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
 
         /* Legacy flat fields act as defaults for the surface parameters. */
         Surface &s = body->surface;
-        s.has_sea = bv.value("has_sea", false);
+        s.has_sea = boolLeaf(bv, "has_sea", body->name, "", false);
         /* dd2f5c65 rewrote the height model from scratch and deleted the last two reads
            of the terrain height exponent: `s.power = bv.value("power_scaler", 3)` and
            `s.power = sv.value("power", s.power)`. The rows stayed in the files -- 539 in
@@ -744,7 +764,8 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                                          " shape terrain (#723)");
             }
             expectKnownKeys(sv, kSurfaceLevel, body->name);
-            s.amplitude   = sv.value("amplitude", s.amplitude);
+            s.amplitude   = numLeaf(sv, "amplitude", body->name, "surface",
+                                    s.amplitude);
             /* A COUNT with a hard ceiling, so it is checked rather than defaulted: the
                height model resolves ~13 octaves on the deepest mesh cell it can build, and
                octave ~90's noise scale (2^91) overflows the float simplex into NaN. Before
@@ -765,8 +786,10 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                 }
                 s.octaves = sv["octaves"].get<int>();
             }
-            s.persistence = sv.value("persistence", s.persistence);
-            s.frequency   = sv.value("frequency", s.frequency);
+            s.persistence = numLeaf(sv, "persistence", body->name, "surface",
+                                    s.persistence);
+            s.frequency   = numLeaf(sv, "frequency", body->name, "surface",
+                                    s.frequency);
             /* #687: the surface's thermal numbers, authored only where a source
                states them. PRESENT-but-silly is a data bug, not a fallback: a
                negative temperature is a typo that a T^4 would hide (the star would
@@ -1034,8 +1057,9 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                 s.heightmap = loadHeightmap(
                     resdir::path(sv["heightmap"].get<std::string>()));
             }
-            s.detail_amplitude = sv.value("detail_amplitude", s.detail_amplitude);
-            s.bands = sv.value("bands", false);
+            s.detail_amplitude = numLeaf(sv, "detail_amplitude", body->name, "surface",
+                                         s.detail_amplitude);
+            s.bands = boolLeaf(sv, "bands", body->name, "surface", false);
             /* A banded world has no radiating skin, so a lag there has nothing to slow.
                groundtemp.h's pricing rule already skips air worlds outright and
                utils/gen_systems.py refuses to hand one a tau, which leaves a hand-authored
@@ -1105,10 +1129,13 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                                                  "surface.atmosphere.color");
                 }
                 // thickness omitted => a visible rim at ~2% of the radius
-                s.atmosphere.thickness =
-                    av.value("thickness", (float)(body->radius * 0.02));
-                s.atmosphere.power = av.value("power", 3.0f);
-                s.atmosphere.intensity = av.value("intensity", 1.0f);
+                s.atmosphere.thickness = (float)numLeaf(av, "thickness", body->name,
+                                                        "surface.atmosphere",
+                                                        body->radius * 0.02);
+                s.atmosphere.power = (float)numLeaf(av, "power", body->name,
+                                                    "surface.atmosphere", 3.0);
+                s.atmosphere.intensity = (float)numLeaf(av, "intensity", body->name,
+                                                        "surface.atmosphere", 1.0);
                 // Physical drag (src/drag.h): both optional, 0 = no drag. A rim
                 // can exist without these, and vice versa.
                 /* #739: what a file AUTHORS about its air is the weight of the
@@ -1126,9 +1153,10 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                         " level 0's base_p, so density = p0 M / (R base_T).");
                 }
                 s.atmosphere.sea_level_pressure =
-                    av.value("sea_level_pressure", 0.0);
+                    numLeaf(av, "sea_level_pressure", body->name,
+                            "surface.atmosphere", 0.0);
                 s.atmosphere.scale_height =
-                    av.value("scale_height", 0.0);
+                    numLeaf(av, "scale_height", body->name, "surface.atmosphere", 0.0);
                 /* #724 rung D: "air_follow" [0,1] -- how far the air nearest the ground
                    follows the ground's temperature. Absent (the default) means no coupling:
                    the profile is exactly what the file authored, which is every body except
@@ -1136,7 +1164,8 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                    opposite claim -- "this air does not follow its ground" -- which is why the
                    sentinel is negative and the loader refuses to author it (#726). */
                 if(av.contains("air_follow")) {
-                    const double k = av["air_follow"].get<double>();
+                    const double k = numLeaf(av, "air_follow", body->name,
+                                             "surface.atmosphere", 0.0);
                     if(!std::isfinite(k) || k < 0.0 || k > 1.0) {
                         throw std::runtime_error("system: '" + body->name
                                                  + "': \"surface.atmosphere.air_follow\"="
@@ -1147,7 +1176,8 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                 }
                 // The hard top (above it: vacuum). 0 => top() derives
                 // scale_height * 10.
-                s.atmosphere.height = av.value("height", 0.0);
+                s.atmosphere.height = numLeaf(av, "height", body->name,
+                                              "surface.atmosphere", 0.0);
                 /* What the air is made of (#552 A4b, #630): "composition" as
                    [{"gas": "CO2", "fraction": 0.9532}, ...], by MOLE. The three
                    scalars the law reads -- molar_mass, gamma and oxidizer_share --
@@ -1281,9 +1311,12 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                         }
                         expectKnownKeys(lv, kLayerLevel, body->name);
                         AtmoLayer L;
-                        L.base_alt = lv.value("alt", 0.0);
-                        L.base_T = lv.value("T", 0.0);
-                        L.lapse = lv.value("lapse", 0.0);
+                        L.base_alt = numLeaf(lv, "alt", body->name,
+                                             "surface.atmosphere.layers", 0.0);
+                        L.base_T = numLeaf(lv, "T", body->name,
+                                           "surface.atmosphere.layers", 0.0);
+                        L.lapse = numLeaf(lv, "lapse", body->name,
+                                          "surface.atmosphere.layers", 0.0);
                         s.atmosphere.layers.push_back(L);
                     }
                 }
