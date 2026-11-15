@@ -14,7 +14,10 @@ CHECK LIMIT WRITE SEED FILE NOFILE EXIT. CLAIM is one sentence: what the case
 pins. A CHECK is ONE expression: a trailing comma makes it a tuple and a bare
 list/set/dict literal is truthy whatever it holds, so both are refused at parse
 time -- as is a CHECK that does not parse -- rather than passing quietly, which
-is how an assertion goes silently dead (#650). KIND says what sort of
+is how an assertion goes silently dead (#650). An `all()`/`any()` whose input was
+EMPTY prints a `#note` line beside the case -- `all([])` is true, so a filtered
+aggregate that matched no rows asserts nothing -- and does not redden it, because
+an empty filter can be exactly what the case means (#653). KIND says what sort of
 evidence it is -- invariant (behaviour or a
 player route), golden (tuned numbers or content tables: update deliberately),
 harness (CLI/test plumbing, not game spec) or canary (proves it boots). Both
@@ -1794,6 +1797,61 @@ def launch_env(game):
     return None
 
 
+# A CHECK whose all()/any() walked an EMPTY input asserts nothing: `all(r["charge"]
+# > 0 for r in power if r["kind"] == "warp")` stays true when the filter keeps no
+# rows at all, so a renamed log column or a typo in a row key silently deletes the
+# assertion and the case goes green doing it (#653). The harness cannot know
+# whether an empty filter WAS the point, so this records the fact instead of
+# reddening the case: the line prints beside the case and lands in summary.json's
+# diag with NOTE_PREFIX, and `passed` asks "is every diag line a note?".
+NOTE_PREFIX = "#note "
+_builtin_all, _builtin_any = all, any
+
+
+def recording_aggregates(vacuous):
+    """all/any for the CHECK namespace, counting how often they saw no rows.
+
+    Only the FIRST element is pulled out and tested by hand, so the builtin's
+    short-circuit survives: forcing the iterable to a list would evaluate rows a
+    passing CHECK never needed to reach, and a row that raises on element 7 would
+    turn a pass into "CHECK raised"."""
+    def rec_all(ip):
+        it = iter(ip)
+        try:
+            head = next(it)
+        except StopIteration:
+            vacuous.append("all()")
+            return True
+        if not head:
+            return False
+        return _builtin_all(it)
+
+    def rec_any(ip):
+        it = iter(ip)
+        try:
+            head = next(it)
+        except StopIteration:
+            vacuous.append("any()")
+            return False
+        if head:
+            return True
+        return _builtin_any(it)
+    return rec_all, rec_any
+
+
+def vacuous_note(what, expr):
+    """The note line for one vacuous aggregate (#653)."""
+    verdict = "true" if what == "all()" else "false"
+    return ("%sCHECK's %s walked an empty input, so it is vacuously %s and pins "
+            "nothing (#653): %s" % (NOTE_PREFIX, what, verdict, expr))
+
+
+def notes_only(diag):
+    """Is every diagnostic line a note? One expression, so nothing that counts
+    diagnostics gets to re-decide what a failure is."""
+    return all(line.startswith(NOTE_PREFIX) for line in diag)
+
+
 def check_verdict(expr, check_globals):
     """One CHECK: None when it passes, else the failure line to report. The
     tuple test is the #650 backstop for a tuple the case file does not spell
@@ -1992,6 +2050,9 @@ def run_case(case):
     rec = []
     for trace in sorted(glob.glob(os.path.join(data_dir, "flights", "*.log"))):
         rec.extend(parse_rec_file(trace))
+    # #653: the CHECK namespace's all/any count the times they saw no rows.
+    vacuous = []
+    rec_all, rec_any = recording_aggregates(vacuous)
     ns = {
         "out": out, "orbit": orbit, "dbg": dbg, "bldg": bldg, "xfer": xfer,
         "porkchop": porkchop, "surfmap": surfmap, "solar": solar, "att": att, "ascent": ascent, "eva": eva,
@@ -2010,7 +2071,7 @@ def run_case(case):
         # None unless the run printed its --timeout accounting (#402).
         "simreport": simreport,
         "first": first, "last": last,
-        "abs": abs, "len": len, "any": any, "all": all,
+        "abs": abs, "len": len, "any": rec_any, "all": rec_all,
         "max": max, "min": min, "float": float, "int": int, "zip": zip,
         "set": set, "sum": sum,
         "re": re,
@@ -2045,9 +2106,16 @@ def run_case(case):
     check_globals = dict(ns)
     check_globals["__builtins__"] = {}
     for expr in case["check"]:
+        del vacuous[:]
         line = check_verdict(expr, check_globals)
         if line is not None:
             diag.append(line)
+        # A vacuous aggregate is not a failure -- an empty filter may be exactly
+        # what the case means -- but a green case that asserts nothing is the
+        # thing worth seeing, so it prints beside the case and lands in
+        # summary.json (#653).
+        for what in vacuous:
+            diag.append(vacuous_note(what, expr))
 
     # 4) FILE / NOFILE: what the game wrote under its scratch --data-dir.
     # stdout cannot show a torn file, an orphan the sweep missed, or a saved
@@ -2080,7 +2148,7 @@ def run_case(case):
                         % (pattern, ", ".join(os.path.relpath(h, data_dir)
                                               for h in hits[:4])))
 
-    passed = (not diag)
+    passed = notes_only(diag)
     return passed, diag, out, duration
 
 
@@ -2372,6 +2440,51 @@ def self_test():
         if want is not None and (got is None or want not in got):
             fails.append("CHECK %r reported %r, wanted %r" % (expr, got, want))
 
+    # #653: an aggregate over a filter that kept nothing. `all([])` is True, so a
+    # CHECK like all(r["charge"] > 0 for r in power if r["kind"] == "warp") passes
+    # without looking at a row the moment the filter stops matching -- a renamed log
+    # column silently deletes the assertion. The harness records the emptiness as a
+    # NOTE (an empty filter can be the point) rather than reddening the case, so both
+    # halves need pinning: the recording, and that a note is not a failure.
+    vac = []
+    rec_all, rec_any = recording_aggregates(vac)
+    ns_rec = {"all": rec_all, "any": rec_any, "rows": [], "__builtins__": {}}
+    if check_verdict('all(r > 0 for r in rows if r > 5)', dict(ns_rec)) is not None:
+        fails.append("a vacuous all() CHECK reported a failure line")
+    if vac != ["all()"]:
+        fails.append("a vacuous all() recorded %r, wanted ['all()']" % (vac,))
+    del vac[:]
+    if check_verdict('any(r > 0 for r in rows)', dict(ns_rec)) is None:
+        fails.append("a vacuous any() CHECK passed")
+    if vac != ["any()"]:
+        fails.append("a vacuous any() recorded %r, wanted ['any()']" % (vac,))
+    note = vacuous_note("all()", 'all(r > 0 for r in rows)')
+    if not note.startswith(NOTE_PREFIX):
+        fails.append("the vacuous note is not marked, so it would fail the case")
+    if not notes_only([note]):
+        fails.append("notes_only() reddened a note-only diag")
+    if notes_only([note, "CHECK failed: 1 == 2"]):
+        fails.append("notes_only() let a real failure through")
+    if notes_only([]) is not True:
+        fails.append("notes_only([]) must pass -- a case with nothing to say is green")
+    # Builtin semantics survive: a falsy head answers False and the rest of the
+    # generator is never pulled. Forcing the iterable to a list -- the obvious way
+    # to count rows -- would evaluate rows a passing CHECK never needed, and turn a
+    # pass into "CHECK raised".
+    def _boom_after_false():
+        yield False
+        raise RuntimeError("pulled past the short-circuit")
+    def _boom_after_true():
+        yield True
+        raise RuntimeError("pulled past the short-circuit")
+    if rec_all(_boom_after_false()) is not False:
+        fails.append("recording all() lost the short-circuit")
+    if rec_any(_boom_after_true()) is not True:
+        fails.append("recording any() lost the short-circuit")
+    del vac[:]
+    if check_verdict('all(r > 0 for r in [1, 2])', dict(ns_rec)) is not None or vac:
+        fails.append("a non-empty aggregate was recorded as vacuous: %r" % (vac,))
+
     # EXPECT/FORBID are substring tests, so a line written as a regex is a DEAD pin.
     # Refusing it at parse time is only worth anything if the refusal itself is pinned:
     # the shapes that must be refused, and the literals that must NOT be (a save-format
@@ -2399,7 +2512,9 @@ def self_test():
             print("SELF-TEST FAIL: %s" % f)
         return 1
     print("e2e runner self-test ok: dead-shape CHECKs (tuple, container, "
-          "uncalled lambda) refused at parse and eval; regex-shaped EXPECT/FORBID "
+          "uncalled lambda) refused at parse and eval; a CHECK whose all()/any() "
+          "walked an empty input recorded as a note that cannot redden the case; "
+          "regex-shaped EXPECT/FORBID "
           "refused at parse while literal text containing brackets stays legal; "
           "re.search, walrus, comprehension and immediately-called lambda CHECKs "
           "accepted; CHECK failed/raised wording intact")
