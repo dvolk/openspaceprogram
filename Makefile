@@ -381,6 +381,11 @@ $(TESTDIR)/test_wheels: $(TESTDIR)/obj/test_wheels.o
 $(TESTDIR)/test_buildingorbit: $(TESTDIR)/obj/test_buildingorbit.o
 	$(CXX) -o $@ $^
 
+# buildingair.h: the air-relative (balloon platform) drift/pose math. Pure
+# math -- no Bullet, no GL (the same shape as test_buildingorbit).
+$(TESTDIR)/test_buildingair: $(TESTDIR)/obj/test_buildingair.o
+	$(CXX) -o $@ $^
+
 # angmath.h: the one acos(clamp) spelling, and the NaN law that makes a shared
 # spelling worth having (#622). Pure math again -- no Bullet, no GL.
 $(TESTDIR)/test_angmath: $(TESTDIR)/obj/test_angmath.o
@@ -600,7 +605,7 @@ $(TESTDIR)/test_cli: $(TESTDIR)/obj/test_cli.o $(TESTDIR)/obj/cli.o $(TESTDIR)/o
 $(TESTDIR)/test_orient: $(TESTDIR)/obj/test_orient.o $(BULLET3_OBJS)
 	$(CXX) -o $@ $^ $(TLIBS)
 
-TESTS = test_frames test_spawn test_attitude test_slew3d test_gimbal test_actuators test_wheels test_buildingorbit test_angmath test_inlinevec test_rcs test_thrust test_guidance test_fuel \
+TESTS = test_frames test_spawn test_attitude test_slew3d test_gimbal test_actuators test_wheels test_buildingorbit test_buildingair test_angmath test_inlinevec test_rcs test_thrust test_guidance test_fuel \
         test_power test_staging test_staging_dv test_dock test_authority test_aerosweep test_contain test_inertia test_inventory \
         test_suitdef \
         test_rotation test_shipload test_stability test_save test_crew test_roster test_calendar \

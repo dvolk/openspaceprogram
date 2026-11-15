@@ -23,6 +23,7 @@
 #include "calendar.h"
 #include "job.h"
 #include "buildingorbit.h"   // orbital-building pose/attitude (pure math)
+#include "buildingair.h"     // air-relative (balloon platform) drift/pose (pure math)
 
 class btRigidBody;
 
@@ -743,10 +744,24 @@ public:
     buildingorbit::Mode attMode = buildingorbit::Mode::BodyFixed;
     glm::dvec3 spinAxis = glm::dvec3(0.0, 1.0, 0.0);  // local axis
     double spinRate = 0.0;                   // rad/s about spinAxis
+    /* AIR-RELATIVE building (a balloon platform): the pose is DRIVEN by the
+       zonal wind drift in the body's ROTATING frame -- same pure-f(clock)
+       discipline as the orbital case, on the continuous ENU basis
+       (buildingair.h). Surface pads leave air=false too. */
+    bool air = false;
+    double airR = 0.0;          // sea-level radius + alt [m]
+    double airLat = 0.0;        // held latitude [rad]
+    double airLon0 = 0.0;       // anchor longitude at t=0 [deg]
+    double airDriftRate = 0.0;  // zonal drift [rad/s]
+    double airHeading = 0.0;    // deck heading about up [rad]
+    double airEast = 0.0;       // the sampled zonal wind [m/s] (the deck's speed)
+
     glm::dvec3 posePos = glm::dvec3(0.0);    // current pose, in poseFrame()
     glm::dmat3 poseOrient = glm::dmat3(1.0);
-    bool live = false;                       // orbital: collider in the world now?
-    void tickPose(double time);              // orbital: propagate + set body pose
+    bool live = false;                       // driven: collider in the world now?
+    // A driven pose (orbital or air) vs a static surface pad.
+    bool driven() const { return orbital || air; }
+    void tickPose(double time);              // driven: recompute + set body pose
     Frame *poseFrame() const;                // inertial if orbital, else spin frame
 
     /* Owns `crew` raw: copying would duplicate the pointers and free each suit

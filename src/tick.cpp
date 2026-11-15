@@ -1,8 +1,10 @@
 // tick.cpp -- the fixed-timestep logic tick (see tick.h).
 #include "tick.h"
 
+#include <algorithm>
 #include <cassert>
 #include <cstdio>
+#include <limits>
 
 #include "keys.h"                // Slot, SlotProbe (the command map)
 #include "angmath.h"             // acosUnit: the one acos(clamp) spelling (#622)
@@ -241,53 +243,60 @@ void tick(Game &g) {
            that rewinds g.time cannot corrupt it (--sim-steps exit report). */
         g.sim_seconds_ran += g.dt * g.time_accel;
 
-        // Orbital buildings ride the clock even while PAUSED: the pose is a pure
-        // f(time), so driving it here (outside the time_accel gate) keeps a dock
-        // placed at the current time the moment a ship spawns beside it, rather
-        // than only appearing once the sim unpauses. Idempotent when frozen.
+        // Driven buildings (orbital docks/stations, air platforms) ride the
+        // clock even while PAUSED: the pose is a pure f(time), so driving it
+        // here keeps a building placed at the current time the moment a ship
+        // spawns beside it, rather than only appearing once the sim unpauses.
+        // Rails warp (>= kRailsWarp) skips the substep loop too, so it drives
+        // here as well. While PHYSICS runs, the substep loop owns the pose (it
+        // ends exactly on g.time); driving here too would jump the deck a full
+        // step ahead and the first substep would snap it back -- a shudder.
+        if(g.time_accel == 0 || g.time_accel >= kRailsWarp) {
+            for(TerrainBody *b : g.sys.bodies) {
+                for(StaticBuilding *p : b->pads) {
+                    if(p->driven()) { p->tickPose(g.time); }
+                }
+            }
+        }
+        // Proximity gate: a driven building's collider is in the world only
+        // while a ship is near -- immovable scenery the rest of the time. This
+        // is what keeps a city of them affordable. Runs paused too, so a ship
+        // spawned beside one has its collider right away.
+        // ANY live ship, not just the active one: a ship parked on a balloon
+        // platform cannot rail (it is in the air), so switching away must not
+        // drop the deck out from under it. The active ship counts even on rails
+        // (it wakes in place); other railed ships need no collider.
         for(TerrainBody *b : g.sys.bodies) {
             for(StaticBuilding *p : b->pads) {
-                if(p->orbital) { p->tickPose(g.time); }
-            }
-        }
-        // Proximity gate: an orbital building's collider is in the world only
-        // while the active ship is near -- immovable scenery the rest of the
-        // time. This is what keeps a city of them affordable. Runs paused too,
-        // so a ship spawned beside a dock has its collider right away.
-        if(g.ship != nullptr) {
-            for(TerrainBody *b : g.sys.bodies) {
-                for(StaticBuilding *p : b->pads) {
-                    if(!p->orbital) { continue; }
+                if(!p->driven()) { continue; }
+                double d = std::numeric_limits<double>::infinity();
+                for(Vehicle *s : g.vehicles) {
+                    if(s->onRails && s != g.ship) { continue; }
                     glm::dvec3 sp, sv;
-                    g.ship->comStateIn(p->poseFrame(), sp, sv);
-                    const double d = glm::length(sp - p->posePos);
-                    if(!p->live && d < g.args.prox_fly_on) {
-                        AddPhysicsBody(p->body);
-                        p->live = true;
-                    } else if(p->live && d > g.args.prox_fly_off) {
-                        RemoveBody(p->body);
-                        p->live = false;
-                    }
+                    s->comStateIn(p->poseFrame(), sp, sv);
+                    d = std::min(d, glm::length(sp - p->posePos));
+                }
+                if(!p->live && d < g.args.prox_fly_on) {
+                    AddPhysicsBody(p->body);
+                    p->live = true;
+                } else if(p->live && d > g.args.prox_fly_off) {
+                    RemoveBody(p->body);
+                    p->live = false;
                 }
             }
         }
-        // --dbg-log: each orbital building's driven pose (inertial frame), so a
-        // test can pin that it propagates along its conic. Outside the pause gate
-        // so a paused spawn is observable too.
-        if(g.args.dbg_log
-           && g.logDue(kGateBldg, g.logClockMs(), g.orbit_log_interval_ms)) {
-            for(TerrainBody *b : g.sys.bodies) {
-                for(StaticBuilding *p : b->pads) {
-                    if(!p->orbital) { continue; }
-                    printf("[bldg] t=%.1fs id=%s pos=[%.1f %.1f %.1f] r=%.1f m "
-                           "live=%d\n",
-                           g.time, p->id.c_str(), p->posePos.x, p->posePos.y,
-                           p->posePos.z, glm::length(p->posePos), p->live ? 1 : 0);
-                }
+        // Settle the deck carry while PAUSED, against the frozen deck, so its
+        // offset is measured at rest. Otherwise the carry first engages on the
+        // first running substep against a deck that has already moved a substep
+        // and absorbs a v*h error -- a slight jump on the first unpause of a new
+        // game (later pause/unpause cycles reuse the stored offset, so they do
+        // not jump). h=0: no integration to pre-compensate. After the gate, so
+        // the deck collider is in the world for the engagement ray.
+        if(g.time_accel == 0) {
+            for(Vehicle *s : g.vehicles) {
+                if(!s->onRails) { s->tickDeckCarry(0.0); }
             }
-            fflush(stdout);
         }
-
         if(g.time_accel != 0) {
             /* No re-snapshot here. updateDocking() retires the absorbed ship at
                the end of a step, but retiring takes it out of the live list
@@ -356,11 +365,30 @@ void tick(Game &g) {
             const int n = substepCount(step);
             const double h = step / n;
             for (int i = 0; i < n; i++) {
+                // Driven buildings advance on the SUBSTEP clock, so a deck moves
+                // v*h per substep at any warp instead of teleporting v*step once
+                // per tick. A parked ship's tire grip needs continuous contact
+                // to steer it around the latitude circle; a 14 m teleport per
+                // tick at 10x bounced the gear and let the ship slide off.
+                // The substeps span [g.time-step, g.time]: the first continues
+                // from the previous tick's last substep, the last lands exactly
+                // on the clock the gate/log/draw read -- no lead, no boundary
+                // jump, smooth across pause and warp changes. Pure f(time).
+                const double tSub = g.time - step + (i + 1) * h;
+                for(TerrainBody *b : g.sys.bodies) {
+                    for(StaticBuilding *p : b->pads) {
+                        if(p->driven()) { p->tickPose(tSub); }
+                    }
+                }
                 // every NON-RAILED ship feels gravity + drag + control each
                 // substep; railed ships' conics already advanced in railsTick
                 // (and so feel no drag -- the known rails gap).
                 for(auto *s : vehicles) {
                     if(s->onRails) { continue; }
+                    // A ship carried by a moving deck is driven by it this
+                    // substep; the appliers below would only fight the carry.
+                    // Power still bills: a parked ship is not powered down.
+                    if(s->tickDeckCarry(h)) { s->powerTick(h); continue; }
                     // The F4 force overlay: one substep's worth, opened
                     // here -- the single boundary owner for every applier
                     // below, whichever order they run in.
@@ -413,6 +441,25 @@ void tick(Game &g) {
                 g.toast("SOI: now around %s, warp 1x",
                         g.ship->m_parent->name.c_str());
             }
+        }
+
+        // --dbg-log: each driven building's pose (in its poseFrame: inertial
+        // for orbital, rotating for air), so a test can pin that it propagates.
+        // AFTER the substeps so the pose is exactly at g.time (the substep loop
+        // ends on the clock); outside the pause gate so a paused spawn is
+        // observable too (the paused drive above posed it).
+        if(g.args.dbg_log
+           && g.logDue(kGateBldg, g.logClockMs(), g.orbit_log_interval_ms)) {
+            for(TerrainBody *b : g.sys.bodies) {
+                for(StaticBuilding *p : b->pads) {
+                    if(!p->driven()) { continue; }
+                    printf("[bldg] t=%.1fs id=%s pos=[%.1f %.1f %.1f] r=%.1f m "
+                           "live=%d\n",
+                           g.time, p->id.c_str(), p->posePos.x, p->posePos.y,
+                           p->posePos.z, glm::length(p->posePos), p->live ? 1 : 0);
+                }
+            }
+            fflush(stdout);
         }
 
         /* The periodic state logs. Wall-clock gated like --orbit-log below, and

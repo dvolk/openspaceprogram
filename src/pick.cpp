@@ -230,11 +230,22 @@ Vehicle *findPadOccupant(const StaticBuilding *site,
     // occupy (its origin() reads terrain, meaningless in orbit).
     if(site->orbital) { return nullptr; }
     TerrainBody *hb = site->parent;
-    const glm::dmat3 deck = buildingOrient(
-        site->dir, site->heading_deg * std::numbers::pi / 180.0);
-    const glm::dvec3 org = site->origin();   // pad centre, in the rotating frame
+    /* An air platform's deck is its DRIVEN pose -- origin()/dir are the anchor,
+       stale within the hour as it drifts. A surface pad keeps its static basis. */
+    const glm::dmat3 deck = site->air
+        ? site->poseOrient
+        : buildingOrient(site->dir, site->heading_deg * std::numbers::pi / 180.0);
+    const glm::dvec3 org = site->air ? site->posePos : site->origin();
+    // The grid spans the deck: an 18x60 m box for a surface pad, an 80 m box
+    // for the hex platform (40 m circumradius) -- a ship parked near a corner
+    // must register.
     static const double lat[] = { -9.0, 0.0, 9.0 };
     static const double along[] = { -30.0, -15.0, 0.0, 15.0, 30.0 };
+    static const double airGrid[] = { -40.0, -20.0, 0.0, 20.0, 40.0 };
+    const double *latP = site->air ? airGrid : lat;
+    const double *alongP = site->air ? airGrid : along;
+    const size_t nLat = site->air ? 5 : 3;
+    const size_t nAlong = 5;
     const double sink = 5.0;    // m below the deck rays start, so a ship settled
                                 // into the pad's contact slop still registers
     const double reach = 120.0;  // m above the deck a hit counts: taller than
@@ -261,10 +272,10 @@ Vehicle *findPadOccupant(const StaticBuilding *site,
         const glm::dmat3 O = rot->GetOrientRelTo(s->frame);
         const glm::dvec3 P = rot->GetPositionRelTo(s->frame);
         const btTransform hull = s->hull->btBody->getCenterOfMassTransform();
-        const glm::dvec3 up = O * site->dir;
-        for(size_t i = 0; i < sizeof(lat) / sizeof(lat[0]); i++) {
-            for(size_t k = 0; k < sizeof(along) / sizeof(along[0]); k++) {
-                PickRay ray{ O * (org + deck * glm::dvec3(lat[i], along[k], -sink)) + P,
+        const glm::dvec3 up = O * deck[2];
+        for(size_t i = 0; i < nLat; i++) {
+            for(size_t k = 0; k < nAlong; k++) {
+                PickRay ray{ O * (org + deck * glm::dvec3(latP[i], alongP[k], -sink)) + P,
                              up };
                 PickBodyHit hit;
                 for(int c = 0; c < cs->getNumChildShapes(); c++) {

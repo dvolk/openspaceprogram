@@ -1,0 +1,19 @@
+NAME platform-drifts
+CLAIM The balloon platform drifts east at the authored wind speed, a pure function of the clock.
+KIND invariant
+ARGS --system res/systems/solar_system.json --time-accel 10
+ARGS --startship skiff,res/ships/skiff_gear.json,Venus,pad,site=venus_cloud_platform
+ARGS --timeout 20 --dbg-log --orbit-interval 2.0
+EXPECT [bldg]
+EXPECT [dbg]
+# 200 s of sim at 10x warp: the platform advances east ~86.29 m/s along its
+# latitude circle. The chord between the first and last logged poses matches
+# east*dt (the arc's chord sag over 17 km is millimetres). A pose that only
+# advanced with the physics tick -- or accumulated phase -- would miss this.
+CHECK abs(sum(([b for b in bldg if b["id"]=="venus_cloud_platform"][-1]["pos"][i] - [b for b in bldg if b["id"]=="venus_cloud_platform"][0]["pos"][i])**2 for i in (0,1,2))**0.5 - 86.29 * ([b for b in bldg if b["id"]=="venus_cloud_platform"][-1]["t"] - [b for b in bldg if b["id"]=="venus_cloud_platform"][0]["t"])) < 5
+# East is -Z at lon 0 (equirect.h): the platform moves that way, and holds radius.
+CHECK [b for b in bldg if b["id"]=="venus_cloud_platform"][-1]["pos"][2] < [b for b in bldg if b["id"]=="venus_cloud_platform"][0]["pos"][2] - 1000
+CHECK all(abs(b["r"] - 6107800) < 1 for b in bldg if b["id"]=="venus_cloud_platform")
+# The ship rides along at warp too: still on the deck at the last instant.
+CHECK sum((dbg[-1]["pos"][i] - [b for b in bldg if b["id"]=="venus_cloud_platform"][-1]["pos"][i])**2 for i in (0,1,2)) < 625
+FORBID error:

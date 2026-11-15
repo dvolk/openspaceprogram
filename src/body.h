@@ -40,6 +40,18 @@ struct Body {
        (OSP_HULL_MARGIN / 0.1). */
     double hull_margin = -1.0;
 
+    /* The surface's own velocity, for the ground law (wheel.h): a balloon
+       platform rides the wind, so a ship parked on it has zero velocity
+       RELATIVE to the deck even though both move at ~86 m/s in the rotating
+       frame. Stored in the body's ROTATING frame -- the frame any ship touching
+       an air platform is in (the platform floats deep inside the atmosphere).
+       Static scenery and terrain leave it zero. surfaceAngVel is the deck's
+       rotation (the ENU basis turns about the planet axis at the drift rate);
+       the deck carry composes surfaceVel + surfaceAngVel x r for a point off
+       the deck origin. */
+    glm::dvec3 surfaceVel = glm::dvec3(0.0);
+    glm::dvec3 surfaceAngVel = glm::dvec3(0.0);
+
     /* The rigid body, or null. A ship PART has no rigid body of its own -- the
        ship is one body (Vehicle::hull) and the part is a child of its compound
        shape. Bodies that ARE simulated (a space pad) have one. */
@@ -96,7 +108,10 @@ struct Body {
     }
 };
 
-void RegisterPhysicsBody(Body *body, glm::vec3 pos, glm::vec3 rot);
+/* collisionMesh: hull THIS mesh instead of body->mesh (the visual one) -- a
+   balloon platform's deck collides, its balloons don't. nullptr = body->mesh. */
+void RegisterPhysicsBody(Body *body, glm::vec3 pos, glm::vec3 rot,
+                         Mesh *collisionMesh = nullptr);
 /* Build body->shape (the convex hull of its mesh) without a rigid body. */
 void BuildPartHull(Body *body);
 /* Pointer accessors (no complete Bullet type needed to assign or read). */
@@ -107,7 +122,8 @@ btRigidBody *getRigidBody(Body *b);
 void captureHullVerts(Body *body);
 
 Body *create_body(Mesh *mesh, Shader *shader, Texture *texture,
-                  float x, float y, float z, float mass);
+                  float x, float y, float z, float mass,
+                  Mesh *collisionMesh = nullptr);
 
 /* A ship part's Body: shared render assets + collision hull + mass, and
    NO rigid body -- the part is a child of the ship's compound. */

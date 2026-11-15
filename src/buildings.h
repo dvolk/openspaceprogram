@@ -26,6 +26,10 @@ struct BuildingDef {
     std::string display_name; // empty -> fall back to name
     std::string mesh;
     std::string texture;
+    /* Optional collision mesh, when the visual one must not hull: a balloon
+       platform's deck collides, its balloons don't (the hull of the whole
+       visual mesh would enclose the deck). Empty -> hull the visual mesh. */
+    std::string collision_mesh;
 
     const std::string &label() const {
         return display_name.empty() ? name : display_name;
@@ -66,6 +70,15 @@ struct WorldBuilding {
     std::string att_mode = "body-fixed";
     double spin_rate_deg_s = 0.0;
     glm::dvec3 spin_axis = glm::dvec3(0.0, 1.0, 0.0);
+
+    /* Air-relative placement (a balloon platform): mutually exclusive with
+       both the orbital spec and the surface lat/lon. Holds its lat/alt and
+       drifts east with the zonal wind sampled at the anchor (buildingair.h).
+       The body must have a physical atmosphere WITH a wind table. */
+    bool air = false;
+    double air_alt_m = 0.0;     // above the sea-level datum
+    double air_lat_deg = 0.0;   // held; |lat| <= 85 (the drift divides by cos lat)
+    double air_lon_deg = 0.0;   // anchor longitude at t = 0
 
     bool hasFlag(const std::string &f) const;
     // display_name, else the catalog label, else the type.

@@ -23,6 +23,13 @@
       "display_name": "Space dock",
       "mesh": "meshes/spacedock.obj",
       "texture": "textures/spacedock.png"
+    },
+    {
+      "name": "balloon_platform",
+      "display_name": "Balloon platform",
+      "mesh": "meshes/balloon_platform.obj",
+      "collision_mesh": "meshes/balloon_platform_deck.obj",
+      "texture": "textures/balloon_platform.png"
     }
   ]
 }

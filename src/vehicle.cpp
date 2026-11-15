@@ -899,6 +899,7 @@ Vehicle *place_vehicle_def(Game &g, const ShipDef &def, const std::string &defPa
     /* Pad scenarios stand on a world building (system JSON world_buildings). */
     glm::dvec3 pad_dir = glm::normalize(glm::dvec3(0.005, 0.005, 1.0));
     glm::dmat3 pad_orient = faceAlong(pad_dir);
+    glm::dvec3 air_base(0.0);   // air site: deck point from the pure law at g.time
     if(sc->on_pad) {
         if(site == nullptr) {
             site = find_launch_site(hb, "");
@@ -910,12 +911,28 @@ Vehicle *place_vehicle_def(Game &g, const ShipDef &def, const std::string &defPa
         }
         pad_dir = site->dir;
         pad_orient = buildingOrient(pad_dir, site->heading_deg * std::numbers::pi / 180.0);
+        if(site->air) {
+            /* An air platform's pose comes from the pure law at g.time, not the
+               stored pose: a load spawns before the first tick (the orbital
+               branch's discipline). The basis is the continuous ENU one --
+               buildingOrient's discrete faceAlong pick would snap as the
+               platform drifts (buildingair.h). The deck top is the pose origin. */
+            const buildingair::Pose ap = buildingair::poseAt(
+                site->airR, site->airLat, site->airLon0, site->airDriftRate,
+                site->airHeading, g.time);
+            pad_dir = ap.up;
+            pad_orient = ap.orient;
+            air_base = ap.pos;
+        }
         /* A RUNWAY site stands the hull nose-along-the-deck, wings level,
            whatever the def says: the deck's long axis is the building's local
            +X (the mesh is authored that way), and faceAlong rolls +Y up so the
            wings are level. It is the pitch-90 attitude below, forced by the
            SITE rather than authored per def -- a plane launches horizontal
-           without an "attitude" block. Def attitude is ignored on a runway. */
+           without an "attitude" block. Def attitude is ignored on a runway.
+           An AIR platform is a PAD, not a runway: it keeps the vertical pose
+           (ap.orient's +Z is up), so a rocket stands on its tail like on the
+           space pad. A per-ship orientation heuristic is a follow-up ticket. */
         if(site->hasFlag("RUNWAY")) {
             pad_orient = faceAlong(pad_orient * glm::dvec3(1.0, 0.0, 0.0), pad_dir);
         }
@@ -978,7 +995,7 @@ Vehicle *place_vehicle_def(Game &g, const ShipDef &def, const std::string &defPa
        ORBITAL site this base is only a staging point (origin() reads terrain at a
        default dir); the orbital branch below re-places the ship in orbit. */
     const glm::dvec3 base = (sc->on_pad && site != nullptr)
-        ? site->origin()
+        ? (site->air ? air_base : site->origin())
         : pad_dir * ((double)hb->GetTerrainHeight(glm::vec3(pad_dir)) + 5.0);
     // A pad is a static convex hull, so its own margin is what the ship's hull
     // margin meets; non-pad is repositioned by spawn_vehicle, so raw terrain.
@@ -1029,6 +1046,20 @@ Vehicle *place_vehicle_def(Game &g, const ShipDef &def, const std::string &defPa
         delete minted;
         assert(suit->kerbal != nullptr && suit->kerbal->id != 0);
         assert(v->name.empty());   // the profile owns the walker's name
+    }
+    /* An AIR site (a balloon platform) spawns the ship resting on the deck,
+       inheriting the WIND's velocity in the rotating frame: zero airspeed, so
+       the hull sits in still air while the platform carries it east. Unlike the
+       orbital case the ship is SUPPORTED -- build_ship already rested its gear
+       on the deck top -- so there is no re-placement, only the velocity. It
+       stays in the rotating frame: the platform floats inside the atmosphere
+       shell, where ships integrate (and can never rail). */
+    if(site != nullptr && site->air) {
+        v->setVelocity(windVelRot(*hb, hb->surface.atmosphere.wind,
+                                  v->get_center_of_mass()));
+        v->setSoi(hb->rot_frame, g.time);
+        vehicles.push_back(v);
+        return v;
     }
     /* An ORBITAL site (a space dock) spawns the ship alongside it: at the dock's
        driven pose plus a clear offset, inheriting the dock's orbital velocity, in
@@ -4283,6 +4314,80 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
     return lastAeroForce;
 }
 
+/* Deck carry (vehicle.h): drive a parked ship from the moving deck it rests on.
+   Returns true while carried -- the substep's force appliers are skipped, the
+   deck owns pose and velocity. The velocity is the deck's ANALYTIC rigid field
+   (surfaceVel + surfaceAngVel x r), exact for its pure motion at any substep.
+
+   Engagement lives here, not in applyGroundForces: that pass is a no-op for a
+   wheel-less hull, and a hull or a kerbal resting on the deck must carry too.
+   A ray just past the hull's bottom finds the deck; a stationary surface
+   (surfaceVel zero) never engages, so pads and runways keep their ordinary
+   ground laws. */
+bool Vehicle::tickDeckCarry(double h) {
+    if(carriedBy != nullptr) {
+        // Move intent: brakes off, an engine ACTUALLY firing this tick (m_thrust
+        // -- the throttle lever defaults to 1.0 at spawn and availableThrust is
+        // only potential, so neither is intent; brakes hold against a firing
+        // engine until released, exactly as on a pad), or the subclass's ask
+        // (a kerbal's walk/jump/RCS). A frame change or leaving the world also
+        // drops the carry: the deck pose is rotating-frame, wrong elsewhere.
+        if(!brakesOn || m_thrust != 0.0f || deckCarryRelease()
+           || frame == nullptr || !frame->isRotFrame() || !hullInWorld()) {
+            carriedBy = nullptr;
+        } else {
+            const glm::dvec3 dp = GetPosition(carriedBy);
+            const glm::dmat3 dO = GetOrient(carriedBy);
+            const glm::dvec3 newPos = dp + dO * carryOffset;
+            // The deck's own velocity, analytically: translation plus the ENU
+            // basis's turn about the planet axis at the carried point. NOT a
+            // position finite-difference -- a difference would either cancel the
+            // motion (hull position) or spike across a pause/warp change (target
+            // history). This is exact at every h and every transition.
+            const glm::dvec3 vel = carriedBy->surfaceVel
+                                 + glm::cross(carriedBy->surfaceAngVel, newPos - dp);
+            // physics_tick integrates the hull forward by vel*h, but the STATIC
+            // deck is not integrated -- so aim the hull vel*h BEHIND the deck
+            // point and let the integration land it exactly on the deck. Without
+            // this the ship rides one substep ahead (v*h: ~0.5 m at 1x, ~5 m at
+            // 10x) and jumps relative to the deck whenever the warp changes h.
+            setPosRot(hull, newPos - vel * h, dO * carryRot);
+            SetVelocity(hull, vel);
+            SetAngVelocity(hull, carriedBy->surfaceAngVel);
+            return true;
+        }
+    }
+    if(!brakesOn || hull == nullptr || !hullInWorld()
+       || frame == nullptr || !frame->isRotFrame()) { return false; }
+    const glm::dvec3 com = get_center_of_mass();
+    const glm::dvec3 down = -glm::normalize(com);
+    /* Reach just past the hull's lowest point, not a fixed distance from the
+       COM: a fixed reach misses the deck under a tall upright rocket (COM many
+       metres up), leaving it with no grip on the frictionless deck. The hull's
+       AABB corner along down is its bottom; a ray a metre past that finds the
+       deck at any ship height, while a ship HOVERING above the deck still misses
+       (its bottom is high, so the short reach never gets there). */
+    btVector3 aabbLo, aabbHi;
+    hull->shape->getAabb(hull->btBody->getCenterOfMassTransform(), aabbLo, aabbHi);
+    const glm::dvec3 bottom((down.x > 0.0) ? aabbHi.getX() : aabbLo.getX(),
+                            (down.y > 0.0) ? aabbHi.getY() : aabbLo.getY(),
+                            (down.z > 0.0) ? aabbHi.getZ() : aabbLo.getZ());
+    const double reach = std::max(glm::dot(bottom - com, down) + 1.0, 1.0);
+    glm::dvec3 hit, n;
+    Body *ground = nullptr;
+    if(!groundRay(com, com + down * reach, hit, n, hull, &ground)
+       || ground == nullptr || glm::length2(ground->surfaceVel) < 1e-6) {
+        return false;
+    }
+    const glm::dvec3 vRel = GetVelocity(hull) - ground->surfaceVel;
+    if(glm::length2(vRel) > 1.0) { return false; }   // still sliding: tires own it
+    carriedBy = ground;
+    const glm::dmat3 dO = GetOrient(ground);
+    carryOffset = glm::transpose(dO) * (com - GetPosition(ground));
+    carryRot = glm::transpose(dO) * GetOrient(hull);
+    return false;   // engaged; the deck drives from the next substep
+}
+
 /* The ground reaction on the gear wheels (src/wheel.h). Per wheel: ray down the
    strut axis to the contact (analytic terrain fall-through when the ray misses,
    the EVA two-source pattern), then the spring + tire force applied at the patch.
@@ -4303,8 +4408,9 @@ void Vehicle::applyGroundForces(double h) {
         const glm::dvec3 down = -(pRot * glm::dvec3(0.0, 0.0, 1.0));
         const double reach = R + T + 0.2;   // a little slop past full extension
         glm::dvec3 hit, n;
+        Body *ground = nullptr;
         double dist;
-        if(groundRay(axle, axle + down * reach, hit, n, hull)) {
+        if(groundRay(axle, axle + down * reach, hit, n, hull, &ground)) {
             dist = glm::length(hit - axle);
             n = glm::normalize(n);
         } else if(m_parent != nullptr) {
@@ -4324,6 +4430,17 @@ void Vehicle::applyGroundForces(double h) {
         }
         const double compression = std::clamp((R + T) - dist, 0.0, T);
         if(compression <= 0.0) { continue; }   // airborne: no force
+        /* The ground itself may be moving: a balloon platform rides the wind, so
+           a ship parked on it has zero velocity RELATIVE to the deck while both
+           move at ~86 m/s in the rotating frame. Tire forces read that relative
+           velocity, or the brakes scrub a parked ship off the back of the deck.
+           surfaceVel is in the rotating frame -- the frame any ship touching an
+           air platform is in (it floats deep inside the atmosphere); terrain and
+           static scenery leave it zero. */
+        const glm::dvec3 vGround =
+            (ground != nullptr && frame->isRotFrame()) ? ground->surfaceVel
+                                                       : glm::dvec3(0.0);
+        const glm::dvec3 vRel = vel - vGround;
         // Rolling direction: the part's +Y laid into the ground plane. (Nose-wheel
         // steer turns this about the normal in stage 3.)
         const glm::dvec3 f0 = pRot * glm::dvec3(0.0, 1.0, 0.0);
@@ -4333,9 +4450,10 @@ void Vehicle::applyGroundForces(double h) {
         // Nose-wheel steer: turn the rolling direction about the ground normal by
         // the yaw demand (the same stick the attitude law reads), fading out with
         // speed so it cannot flip the plane at rotation. Only wheels authored with
-        // wheel_steer turn; the mains keep rolling straight.
+        // wheel_steer turn; the mains keep rolling straight. Speed is relative to
+        // the deck, so taxiing on a moving platform steers like taxiing on a pad.
         if(d.wheel_steer > 0.0) {
-            const double taper = std::clamp(1.0 - glm::length(vel) / 35.0, 0.0, 1.0);
+            const double taper = std::clamp(1.0 - glm::length(vRel) / 35.0, 0.0, 1.0);
             // +stick[2] is yaw right; rotAbout(up, +a, nose) turns the nose toward
             // up x nose = right, the same way the yaw torque does, so wheel and
             // rudder agree instead of scrubbing against each other.
@@ -4345,12 +4463,12 @@ void Vehicle::applyGroundForces(double h) {
         const glm::dvec3 rel = hit - com;
         wheel::Input in;
         in.compression  = compression;
-        in.compressRate = -glm::dot(vel + glm::cross(omega, axle - com), n);
+        in.compressRate = -glm::dot(vRel + glm::cross(omega, axle - com), n);
         in.spring       = d.wheel_spring;
         in.damp         = d.wheel_damp;
         in.normal       = n;
         in.forward      = f;
-        in.contactVel   = vel + glm::cross(omega, rel);
+        in.contactVel   = vRel + glm::cross(omega, rel);
         in.brake        = brakesOn ? 1.0 : 0.0;
         const glm::dvec3 F = wheel::force(in);
         ApplyForce(hull, rel, F);

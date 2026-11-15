@@ -1591,9 +1591,26 @@ public:
        physics_tick, so it reads the same fresh pose and velocity the aero does. */
     void applyGroundForces(double h);
 
-    /* Brakes: transient input state (like throttle), not saved. The spawn/load
-       path sets it; the B key toggles it (stage 3). */
+    /* Brakes: the parking latch. Spawn sets it, O toggles it, and it travels in
+       the save -- speed cannot re-derive it (a ship parked on a balloon platform
+       rides the wind at ~86 m/s in the rotating frame, yet is parked). */
     bool brakesOn = false;
+
+    /* DECK CARRY (balloon platforms): a braked ship at rest relative to a MOVING
+       deck is carried by it -- pose and velocity driven from the deck each
+       substep (tickDeckCarry), so parking is exact at any warp. The suspension
+       bounces at warp-sized substeps (kMaxSubStep), and the deck is frictionless
+       (Bullet reads a static body as stationary), so tire grip alone cannot hold
+       a parked ship on a moving deck. Released by brakes off, throttle, or the
+       subclass's deckCarryRelease (a kerbal's walk/jump demand). Not saved: a
+       load re-engages from the persisted brakesOn and the rest state. */
+    Body *carriedBy = nullptr;
+    glm::dvec3 carryOffset = glm::dvec3(0.0);   // ship COM in the deck's frame
+    glm::dmat3 carryRot = glm::dmat3(1.0);      // ship orient relative to the deck
+    bool tickDeckCarry(double h);
+    // Move intent beyond brakes/thrust: RCS translation is a demand to move, so
+    // a braked ship firing RCS leaves the carry (the EVA subclass adds walk/jump).
+    virtual bool deckCarryRelease() const { return glm::dot(rcsDir, rcsDir) > 1e-18; }
 
     /* THE FRAME THE CONTROLS, THE ATTITUDE LAWS AND THE AERO PASS SPEAK (#571):
        the root part -- the pitch/yaw/roll axes the stick drives, the TVC disk's

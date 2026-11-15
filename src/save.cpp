@@ -16,7 +16,7 @@
 #include <utility>   // std::pair
 
 #include "body.h"      // Body
-#include "constants.h" // kShipGroundSpeed (the brakes-on-load rest gate)
+#include "constants.h" // kMaxStage (saved-stage validation)
 #include "datadir.h"   // writeJson (the atomic JSON write, #304)
 #include "eva.h"       // Kerbal
 #include "game.h"      // Game, Scene
@@ -542,6 +542,7 @@ SaveShip saveShipFromVehicle(Vehicle *v,
     s.total_stages = v->numStages();
     s.slew_request = (int)v->slewRequestMode();
     s.slew_free_dir = v->slewFreeDir();   // the aim travels with a SlewFree latch (#606)
+    s.brakes_on = v->brakesOn;
     s.wheels_enabled = v->wheels_enabled;
     s.surfaces_enabled = v->surfaces_enabled;
     s.rcs_attitude_enabled = v->rcs_attitude_enabled;   // #595
@@ -1086,9 +1087,9 @@ Vehicle *buildShipFromSaveParts(Game &g, const LoadWorld &w, const SaveShip &s,
     v->setVelocity(s.pose.vel);
     SetAngVelocity(v->hull, s.pose.angvel);
     v->setThrottle(s.throttle);
-    // Brakes are transient (not saved): a loaded ship holds still only if it was
-    // nearly at rest, so a save taken mid-takeoff-roll does not reload locked.
-    v->brakesOn = glm::length(s.pose.vel) < kShipGroundSpeed;
+    // The latch travels: speed cannot re-derive it (a ship parked on a balloon
+    // platform rides the wind at ~86 m/s in the rotating frame, yet is parked).
+    v->brakesOn = s.brakes_on;
     /* A SlewFree latch belongs to a mission law, and no law survives a load --
        Game::clearEphemeralState drops it (#612) -- so restoring the latch would
        give the hull a steering target with nothing behind it: it turns forever

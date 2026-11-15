@@ -132,7 +132,21 @@ void Kerbal::applyEva(double h) {
             SetVelocity(b, partVel(controller) + radial * kJumpSpeed);
         }
         const glm::dvec3 v = partVel(controller);
-        const glm::dvec3 vh = evaOntoPlane(v, radial);
+        /* The ground may be moving: a balloon platform rides the wind, so a
+           standing kerbal has ~86 m/s of frame velocity that is ZERO relative
+           to the deck. Walk relative to the deck, or the law scrubs the kerbal
+           off the back of it. A short ray finds the surface under the feet;
+           terrain has no Body and is stationary. (The feet are frictionless,
+           so this law is the kerbal's only horizontal grip -- on a pad it is
+           unchanged: surfaceVel is zero there.) */
+        glm::dvec3 vGround(0.0);
+        glm::dvec3 gHit, gN;
+        Body *gBody = nullptr;
+        if(groundRay(pos, pos - radial * (rest + 0.5), gHit, gN, hull, &gBody)
+           && gBody != nullptr && frame->isRotFrame()) {
+            vGround = gBody->surfaceVel;
+        }
+        const glm::dvec3 vh = evaOntoPlane(v - vGround, radial);
         glm::dvec3 a = (walkDir * kWalkSpeed - vh) / h;
         const double amax = kWalkAccel;
         const double alen = glm::length(a);

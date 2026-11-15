@@ -17,7 +17,8 @@
     }
   ],
   "world_buildings_files": [
-    "res/data/earth_launch_sites.json"
+    "res/data/earth_launch_sites.json",
+    "res/data/venus_launch_sites.json"
   ],
   "world_buildings": [
     {

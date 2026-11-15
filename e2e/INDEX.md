@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 358 |
+| `invariant` | a behaviour or a player route the game must keep | 363 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 48 |
 | `harness` | CLI/test-engine plumbing, not game spec | 15 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **425** |
+| | **total** | **430** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -18,7 +18,7 @@ paces a run: how much e2e a change deserves is the caller's
 judgement. Select by number, name or path, e.g.
 `python3 e2e/run.py save/172 262`.
 
-## flight (115)
+## flight (120)
 
 | case | kind | pins |
 |---|---|---|
@@ -137,6 +137,11 @@ judgement. Select by number, name or path, e.g.
 | `flight/855-dock-spawn-coorbit.txt` | invariant | A ship spawned from a space dock inherits its orbit and stays nearby, not drifting away. |
 | `flight/856-orbital-gate-immovable.txt` | invariant | An orbital collider is live only near the ship, and the station stays on its orbit. |
 | `flight/857-dock-present-while-paused.txt` | invariant | A space dock is positioned beside the ship at spawn even while the game is paused. |
+| `flight/858-platform-spawn-rests.txt` | invariant | A ship spawned on the Venus balloon platform rests on the deck and rides the wind with it. |
+| `flight/859-platform-drifts.txt` | invariant | The balloon platform drifts east at the authored wind speed, a pure function of the clock. |
+| `flight/860-platform-paused-present.txt` | invariant | The balloon platform is positioned beside the ship at spawn even while the game is paused. |
+| `flight/861-parked-ship-keeps-deck.txt` | invariant | Switching away from a ship parked on the platform does not drop the deck out from under it. |
+| `flight/862-tall-ship-rests.txt` | invariant | A tall gearless rocket stands vertical on the platform and rests rigidly, not tips or slides. |
 
 ## crew (26)
 

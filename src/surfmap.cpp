@@ -109,9 +109,10 @@ void surfmapCompute(Game &g) {
        mistyped flag name draws no sites and still compiles clean. */
     int n_sites = 0;
     for(const StaticBuilding *p : body->pads) {
-        // Orbital sites have no surface position; they belong on the orbital
-        // map, not as a pin here.
-        if(p->hasFlag("VAB_LAUNCH_PAD") && !p->orbital) { n_sites++; }
+        // Driven sites have no fixed surface position: orbital belongs on the
+        // orbital map, and an air platform's anchor drifts stale within the
+        // hour. Neither is a pin here.
+        if(p->hasFlag("VAB_LAUNCH_PAD") && !p->driven()) { n_sites++; }
     }
     const bool log = g.args.surfmap_log;
     const std::string body_name = body->name;

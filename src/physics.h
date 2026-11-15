@@ -22,8 +22,10 @@ public:
     ~PhysicsEngine();
 
     void tick(float timeStep);
-    void RegisterObject(Body *body, glm::vec3 pos, glm::vec3 rot);
-    void BuildHull(Body *body);
+    /* collisionMesh: hull this mesh instead of body->mesh (see body.h). */
+    void RegisterObject(Body *body, glm::vec3 pos, glm::vec3 rot,
+                        Mesh *collisionMesh = nullptr);
+    void BuildHull(Body *body, Mesh *collisionMesh = nullptr);
     /* Terrain patch collision: mesh verts are anchor-relative (terragen.h
        GridGeom), so the rigid body is placed at `anchor`. */
     btRigidBody *AddTerrainCollision(Mesh *mesh, const glm::dvec3 &anchor);
@@ -36,7 +38,8 @@ public:
     void AddBody(Body *body);
     bool BodyInContact(Body *body);
     bool groundRay(const glm::dvec3 &from, const glm::dvec3 &to,
-                   glm::dvec3 &hit, glm::dvec3 &normal, const Body *skip);
+                   glm::dvec3 &hit, glm::dvec3 &normal, const Body *skip,
+                   Body **hitBody = nullptr);
     void Draw(const Camera * camera);
 
 private:
@@ -97,12 +100,22 @@ glm::dmat3 GetOrient(Body *body);
    EVA grounded check). */
 bool BodyInContact(Body *body);
 
+/* Override a body's Coulomb friction (the solver multiplies the pair's). The
+   balloon platform's deck is frictionless: Bullet's solver reads a STATIC
+   body as zero-velocity, so any friction would scrub a resting hull against
+   the deck's 86 m/s wind-ride. Grip on the deck comes from the wheel law and
+   the EVA walk law instead, both of which read the deck's surfaceVel. */
+void SetFriction(Body *b, double mu);
+
 /* Cast a ray from `from` to `to` through the collision world (terrain mesh,
    buildings, hulls). True on a hit, writing the hit point and surface normal.
    `skip` is excluded -- a wheel does not ray onto its own hull. The hit is the
-   margin-inflated surface (the same one collision rests on). */
+   margin-inflated surface (the same one collision rests on). `hitBody` (optional)
+   receives the Body hit -- nullptr for terrain (no Body); the ground law reads
+   its surfaceVel to know a moving deck from a static one. */
 bool groundRay(const glm::dvec3 &from, const glm::dvec3 &to,
-               glm::dvec3 &hit, glm::dvec3 &normal, const Body *skip);
+               glm::dvec3 &hit, glm::dvec3 &normal, const Body *skip,
+               Body **hitBody = nullptr);
 
 void debug_draw(const Camera * camera);
 

@@ -1,0 +1,23 @@
+NAME platform-spawn-rests
+CLAIM A ship spawned on the Venus balloon platform rests on the deck and rides the wind with it.
+KIND invariant
+ARGS --system res/systems/solar_system.json --time-accel 1
+ARGS --startship skiff,res/ships/skiff_gear.json,Venus,pad,site=venus_cloud_platform
+ARGS --timeout 20 --dbg-log --orbit-interval 1.0
+EXPECT [dbg]
+EXPECT [bldg]
+# The deck's collider is gated in beside the ship, and the platform holds its
+# float radius (sea level 6051800 + 56000).
+CHECK [b for b in bldg if b["id"]=="venus_cloud_platform"][-1]["live"] == 1
+CHECK all(abs(b["r"] - 6107800) < 1 for b in bldg if b["id"]=="venus_cloud_platform")
+# The ship stays ON the deck: [dbg] and [bldg] are both in the rotating frame
+# here and fire on the same clock, so the last rows are one instant. A ship
+# that did not inherit the wind (or scrubbed against the moving deck) would
+# fall behind and off within seconds -- the distance would grow without bound.
+CHECK sum((dbg[-1]["pos"][i] - [b for b in bldg if b["id"]=="venus_cloud_platform"][-1]["pos"][i])**2 for i in (0,1,2)) < 625
+CHECK sum((dbg[0]["pos"][i] - [b for b in bldg if b["id"]=="venus_cloud_platform"][0]["pos"][i])**2 for i in (0,1,2)) < 625
+# Riding the wind: ~86.29 m/s east in the rotating frame (the probe's number),
+# at the float radius -- not falling.
+CHECK abs(dbg[-1]["v"] - 86.29) < 1.0
+CHECK abs(sum(p*p for p in dbg[-1]["pos"])**0.5 - 6107800) < 100
+FORBID error:

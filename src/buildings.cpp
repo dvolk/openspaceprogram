@@ -7,8 +7,9 @@
 #include <numbers>
 #include <stdexcept>
 
-#include "body.h"     // create_body
-#include "equirect.h" // equirectDir
+#include "body.h"        // create_body
+#include "buildingair.h" // air-relative drift rate
+#include "equirect.h"    // equirectDir
 #include "mesh.h"     // get_mesh
 #include "physics.h"  // setPosRot
 #include "resdir.h"   // resdir::path
@@ -62,6 +63,13 @@ BuildingsCatalog load_buildings_catalog(const char *path) {
         if(d.mesh.empty() || d.texture.empty()) {
             throw std::runtime_error(ctx + "missing \"mesh\"/\"texture\"");
         }
+        if(bv.contains("collision_mesh")) {
+            if(!bv["collision_mesh"].is_string()
+               || bv["collision_mesh"].get<std::string>().empty()) {
+                throw std::runtime_error(ctx + "\"collision_mesh\" must be a non-empty string");
+            }
+            d.collision_mesh = bv["collision_mesh"].get<std::string>();
+        }
         cat.buildings.push_back(d);
     }
     return cat;
@@ -114,13 +122,24 @@ static std::vector<WorldBuilding> parse_building_array(const nlohmann::json &arr
                 throw std::runtime_error(ctx + "duplicate id '" + w.id + "'");
             }
         }
+        // Optional numeric fields with contextual errors (a bare .value()
+        // would throw a type_error without the file+field on a non-numeric
+        // value). Shared by the orbital and air paths.
+        auto optNum = [&](const nlohmann::json &obj, const char *key) -> double {
+            if(!obj.contains(key)) { return 0.0; }
+            if(!obj[key].is_number() || !std::isfinite(obj[key].get<double>())) {
+                throw std::runtime_error(ctx + std::string("\"") + key
+                                         + "\" must be a finite number");
+            }
+            return obj[key].get<double>();
+        };
         if(ev.contains("orbit")) {
             /* Orbital placement (a space dock / station): a circular-orbit
                authoring form that becomes a full Kepler state at placement.
-               Mutually exclusive with the surface lat/lon below. */
-            if(ev.contains("lat_deg") || ev.contains("lon_deg")) {
+               Mutually exclusive with the air and surface forms below. */
+            if(ev.contains("lat_deg") || ev.contains("lon_deg") || ev.contains("air")) {
                 throw std::runtime_error(ctx + "an orbital building must not also "
-                                              "author \"lat_deg\"/\"lon_deg\"");
+                                              "author \"lat_deg\"/\"lon_deg\"/\"air\"");
             }
             const nlohmann::json &ov = ev["orbit"];
             w.orbital = true;
@@ -130,17 +149,6 @@ static std::vector<WorldBuilding> parse_building_array(const nlohmann::json &arr
                 throw std::runtime_error(ctx + "orbit needs a positive finite \"alt_m\"");
             }
             w.orb_alt_m = ov["alt_m"].get<double>();
-            // Optional numeric fields with the same contextual errors as the
-            // surface path (a bare .value() would throw a type_error without the
-            // file+field on a non-numeric value).
-            auto optNum = [&](const nlohmann::json &obj, const char *key) -> double {
-                if(!obj.contains(key)) { return 0.0; }
-                if(!obj[key].is_number() || !std::isfinite(obj[key].get<double>())) {
-                    throw std::runtime_error(ctx + std::string("\"") + key
-                                             + "\" must be a finite number");
-                }
-                return obj[key].get<double>();
-            };
             w.orb_inc_deg = optNum(ov, "inc_deg");
             w.orb_raan_deg = optNum(ov, "raan_deg");
             w.orb_phase_deg = optNum(ov, "phase_deg");
@@ -170,6 +178,40 @@ static std::vector<WorldBuilding> parse_building_array(const nlohmann::json &arr
                     w.spin_axis = glm::normalize(w.spin_axis);
                 }
             }
+        } else if(ev.contains("air")) {
+            /* Air-relative placement (a balloon platform): holds lat/alt and
+               drifts with the zonal wind (buildingair.h). Mutually exclusive
+               with the surface lat/lon; the body's atmosphere/wind check lives
+               in validate_world_buildings, where the body is in hand. */
+            if(ev.contains("lat_deg") || ev.contains("lon_deg")) {
+                throw std::runtime_error(ctx + "an air building must not also "
+                                              "author \"lat_deg\"/\"lon_deg\"");
+            }
+            if(ev.contains("attitude") || ev.contains("spin")) {
+                throw std::runtime_error(ctx + "\"attitude\"/\"spin\" are orbital-only; "
+                                              "an air platform holds its heading_deg");
+            }
+            const nlohmann::json &av = ev["air"];
+            w.air = true;
+            if(!av.contains("alt_m") || !av["alt_m"].is_number()
+               || !std::isfinite(av["alt_m"].get<double>())
+               || av["alt_m"].get<double>() <= 0.0) {
+                throw std::runtime_error(ctx + "air needs a positive finite \"alt_m\"");
+            }
+            w.air_alt_m = av["alt_m"].get<double>();
+            if(!av.contains("lat_deg")) {
+                throw std::runtime_error(ctx + "air needs a \"lat_deg\"");
+            }
+            w.air_lat_deg = optNum(av, "lat_deg");
+            // The drift rate divides by cos(lat): a polar platform is a
+            // singularity, refused rather than clamped.
+            if(w.air_lat_deg < -85.0 || w.air_lat_deg > 85.0) {
+                throw std::runtime_error(ctx + "air \"lat_deg\" must be in [-85, 85]");
+            }
+            if(!av.contains("lon_deg")) {
+                throw std::runtime_error(ctx + "air needs a \"lon_deg\"");
+            }
+            w.air_lon_deg = optNum(av, "lon_deg");
         } else {
             if(!ev.contains("lat_deg") || !ev["lat_deg"].is_number()
                || !ev.contains("lon_deg") || !ev["lon_deg"].is_number()
@@ -191,14 +233,15 @@ static std::vector<WorldBuilding> parse_building_array(const nlohmann::json &arr
         w.height_m = 5.0;
         w.heading_deg = 0.0;
         if(ev.contains("height_m")) {
-            if(!ev["height_m"].is_number()) {
-                throw std::runtime_error(ctx + "\"height_m\" must be a number");
+            if(!ev["height_m"].is_number() || !std::isfinite(ev["height_m"].get<double>())) {
+                throw std::runtime_error(ctx + "\"height_m\" must be a finite number");
             }
             w.height_m = ev["height_m"].get<double>();
         }
         if(ev.contains("heading_deg")) {
-            if(!ev["heading_deg"].is_number()) {
-                throw std::runtime_error(ctx + "\"heading_deg\" must be a number");
+            // Finite: heading drives the air pose, so a NaN here is a NaN pose.
+            if(!ev["heading_deg"].is_number() || !std::isfinite(ev["heading_deg"].get<double>())) {
+                throw std::runtime_error(ctx + "\"heading_deg\" must be a finite number");
             }
             w.heading_deg = ev["heading_deg"].get<double>();
         }
@@ -325,9 +368,25 @@ void validate_world_buildings(const System &sys, const BuildingsCatalog &cat) {
             throw std::runtime_error("buildings: '" + w.id + "' has unknown type '"
                                      + w.type + "' (catalog has: " + avail + ")");
         }
-        if(sys.find(w.body) == nullptr) {
+        TerrainBody *hb = sys.find(w.body);
+        if(hb == nullptr) {
             throw std::runtime_error("buildings: '" + w.id + "' names unknown body '"
                                      + w.body + "'");
+        }
+        /* An air platform needs air to float in AND a wind to ride: windAt
+           asserts a non-empty table, and a render-only rim is not a drag
+           regime. Checked here, pre-teardown (#302), not in placement. */
+        if(w.air) {
+            const AtmosphereParams &atm = hb->surface.atmosphere;
+            if(!atm.physical() || !atm.has_wind()) {
+                throw std::runtime_error("buildings: '" + w.id + "' is air-relative but "
+                                         + w.body + " has no wind-bearing atmosphere");
+            }
+            if(w.air_alt_m >= atm.top()) {
+                throw std::runtime_error("buildings: '" + w.id + "' floats at "
+                                         + std::to_string(w.air_alt_m) + " m, above "
+                                         + w.body + "'s air top");
+            }
         }
         // Instance ids are per body, which is what the placement check below used
         // to compare against; nothing is placed yet, so compare against the list.
@@ -348,8 +407,12 @@ void place_world_buildings(System &sys, const BuildingsCatalog &cat,
         TerrainBody *hb = sys.find(w.body);          // validated above
         Mesh *m = get_mesh(std::string("res/") + def->mesh);
         Texture *t = get_texture(std::string("res/") + def->texture);
+        // The collider may be a subset of the visual (a balloon platform's
+        // deck, not its balloons); empty -> hull the visual mesh as always.
+        Mesh *cm = def->collision_mesh.empty()
+                 ? nullptr : get_mesh(std::string("res/") + def->collision_mesh);
         StaticBuilding *sp = new StaticBuilding;
-        sp->body = create_body(m, shader, t, 0, 0, 0, 0);
+        sp->body = create_body(m, shader, t, 0, 0, 0, 0, cm);
         sp->parent = hb;
         sp->sun = sun;
         sp->id = w.id;
@@ -378,6 +441,33 @@ void place_world_buildings(System &sys, const BuildingsCatalog &cat,
             // do NOT MakeKinematic here: a teleported kinematic body did not block
             // the ship in this Bullet build (see the docking follow-up issue) --
             // static is the simple v1 answer for scenery you collide with.
+            RemoveBody(sp->body);
+            sp->tickPose(0.0);
+        } else if(w.air) {
+            /* A balloon platform: rides the zonal wind at its anchor, in the
+               body's ROTATING frame (where the wind is authored and an in-atmo
+               ship integrates). The drift rate is sampled ONCE here -- for a
+               steady zonal wind that is the exact advection (buildingair.h).
+               Immovable scenery like the orbital case: a mass-0 static
+               collider, out of the world until the proximity gate adds it. */
+            sp->air = true;
+            const double d2r = std::numbers::pi / 180.0;
+            sp->airR = hb->seaLevelRadius() + w.air_alt_m;
+            sp->airLat = w.air_lat_deg * d2r;
+            sp->airLon0 = w.air_lon_deg;
+            sp->airHeading = w.heading_deg * d2r;
+            const glm::dvec3 wv = windAt(hb->surface.atmosphere.wind, w.air_alt_m,
+                                         w.air_lat_deg, w.air_lon_deg);
+            if(std::fabs(wv.y) > 1e-9 || std::fabs(wv.z) > 1e-9) {
+                printf("warning: air building '%s': north/up wind ignored "
+                       "(v1 drifts with the zonal component only)\n", w.id.c_str());
+            }
+            sp->airEast = wv.x;
+            sp->airDriftRate = buildingair::driftRate(wv.x, sp->airR, sp->airLat);
+            // Frictionless deck: the solver reads a static body as stationary,
+            // so hull friction would scrub a resting ship against the deck's
+            // wind-ride. Grip comes from the wheel/EVA laws (deck-relative).
+            SetFriction(sp->body, 0.0);
             RemoveBody(sp->body);
             sp->tickPose(0.0);
         } else {

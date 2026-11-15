@@ -1,0 +1,14 @@
+{
+  "note": "A world_buildings fragment (src/buildings.cpp): res/systems/solar_system.json names it under \"world_buildings_files\". The cloud platform is an AIR-RELATIVE building: it holds lat 10 deg / 56 km and drifts east with Venus's superrotation (~86 m/s, a lap in ~5 days) -- buildingair.h, reports/air-buildings2026_11_14. 56 km is the shirt-sleeves band (27 C, 0.47 bar) just above the 55 km cloud deck. heading_deg 180 points the deck's +X (the spawn nose direction) west, into the wind. The deck top is the mesh origin; balloons and tethers are visual only (collision_mesh is the deck). First VAB_LAUNCH_PAD on Venus, so it is the body's default site; Earth's default is untouched (find_launch_site filters by body).",
+  "world_buildings": [
+    {
+      "id": "venus_cloud_platform",
+      "type": "balloon_platform",
+      "display_name": "Venus cloud platform",
+      "body": "Venus",
+      "air": { "alt_m": 56000, "lat_deg": 10.0, "lon_deg": 0.0 },
+      "heading_deg": 180.0,
+      "flags": [ "VAB_LAUNCH_PAD", "AIR_PLATFORM" ]
+    }
+  ]
+}

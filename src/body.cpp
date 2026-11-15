@@ -67,7 +67,7 @@ void setRigidBody(Body *b, btRigidBody *rb) { b->btBody = rb; }
 btRigidBody *getRigidBody(Body *b) { return b->btBody; }
 
 Body *create_body(Mesh *mesh, Shader *shader, Texture *texture,
-                  float x, float y, float z, float mass)
+                  float x, float y, float z, float mass, Mesh *collisionMesh)
 {
     Body *body = new Body;
     body->mesh = mesh;
@@ -75,7 +75,7 @@ Body *create_body(Mesh *mesh, Shader *shader, Texture *texture,
     body->texture = texture;
     body->mass = mass;
     glm::vec3 pos = glm::vec3(x, y, z);
-    RegisterPhysicsBody(body, pos, glm::vec3(0, 0, 0));
+    RegisterPhysicsBody(body, pos, glm::vec3(0, 0, 0), collisionMesh);
     return body;
 }
 

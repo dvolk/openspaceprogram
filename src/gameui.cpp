@@ -2161,9 +2161,11 @@ void drawUIReadouts(Game &g) {
         site_marks.reserve(sm_body->pads.size());
         for(const StaticBuilding *p : sm_body->pads) {
             if(!p->hasFlag("VAB_LAUNCH_PAD")) { continue; }
-            // Orbital sites have no surface lat/lon; a pin here would land on
-            // the default dir (the pole). They belong on the orbital map.
-            if(p->orbital) { continue; }
+            // Driven sites have no FIXED surface lat/lon: an orbital pin would
+            // land on the default dir (the pole), and an air platform's anchor
+            // goes stale within the hour as it drifts. Orbital belongs on the
+            // orbital map; a live air pin is a follow-up.
+            if(p->driven()) { continue; }
             double lon, lat;
             equirectLonLat(p->dir, lon, lat);
             site_marks.push_back({ map_px(lon, lat), &p->display_name });

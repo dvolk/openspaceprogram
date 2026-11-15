@@ -178,6 +178,11 @@ struct SaveShip {
        that restored the mode without its vector would leave the ship latched onto a
        direction it no longer has. */
     glm::dvec3 slew_free_dir = glm::dvec3(0.0);
+    /* The parking brake latch. It travels because speed cannot re-derive it: a
+       ship resting on a balloon platform moves with the wind (~86 m/s in the
+       rotating frame) yet is parked, and a runway ship can roll with brakes on.
+       Absent = on (every spawn starts braked). */
+    bool brakes_on = true;
     /* The wheels' enable mask (#425 D-2): a vessel that has been told not to spend
        its drums keeps that choice across a save, because it is a property of the
        vessel and not a control preference like the pilot-vs-SAS rule. Absent = on. */
@@ -782,6 +787,7 @@ inline nlohmann::json saveShipToJson(const SaveShip &s) {
         j["slew_free_dir"] = std::vector<double>({s.slew_free_dir.x, s.slew_free_dir.y,
                                                   s.slew_free_dir.z});
     }
+    j["brakes_on"] = s.brakes_on;
     j["wheels_enabled"] = s.wheels_enabled;
     j["surfaces_enabled"] = s.surfaces_enabled;
     j["rcs_attitude_enabled"] = s.rcs_attitude_enabled;   // #595
@@ -880,6 +886,7 @@ inline SaveShip saveShipFromJson(const nlohmann::json &j) {
     if(j.contains("total_stages") && j["total_stages"].is_number()) { s.total_stages = j["total_stages"].get<int>(); }
     if(j.contains("slew_request") && j["slew_request"].is_number()) { s.slew_request = j["slew_request"].get<int>(); }
     if(j.contains("slew_free_dir") && j["slew_free_dir"].is_array()) { s.slew_free_dir = vec3FromJson(j["slew_free_dir"]); }
+    if(j.contains("brakes_on") && j["brakes_on"].is_boolean()) { s.brakes_on = j["brakes_on"].get<bool>(); }
     if(j.contains("wheels_enabled") && j["wheels_enabled"].is_boolean()) { s.wheels_enabled = j["wheels_enabled"].get<bool>(); }
     if(j.contains("surfaces_enabled") && j["surfaces_enabled"].is_boolean()) { s.surfaces_enabled = j["surfaces_enabled"].get<bool>(); }
     if(j.contains("rcs_attitude_enabled") && j["rcs_attitude_enabled"].is_boolean()) { s.rcs_attitude_enabled = j["rcs_attitude_enabled"].get<bool>(); }

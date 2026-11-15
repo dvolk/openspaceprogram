@@ -3816,8 +3816,12 @@ def emit(base_bodies, moons, pred, out_path, label, sheets, dry=False, asteroids
            # the loader merges (src/buildings.cpp) -- so a coordinate has one
            # home instead of four copies, one per solar_system variant. The
            # merged list's first VAB_LAUNCH_PAD is the game's default site, so
-           # the table's order is deliberate: Baikonur.
-           'world_buildings_files': ['res/data/earth_launch_sites.json'],
+           # the table's order is deliberate: Baikonur. The Venus fragment
+           # carries the air-relative cloud platform (src/buildingair.h); it
+           # is Venus's own default -- Earth's is untouched, the lookup is
+           # per body.
+           'world_buildings_files': ['res/data/earth_launch_sites.json',
+                                     'res/data/venus_launch_sites.json'],
            # A second pad at the geographic north pole (flag POLAR_PAD),
            # where the flat-sea clamp puts the Arctic ice exactly at sea
            # level. Inline because it belongs to this system, not to the

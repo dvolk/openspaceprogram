@@ -247,12 +247,12 @@ btRigidBody *PhysicsEngine::AddTerrainCollision(Mesh *m,
 }
 
 void PhysicsEngine::RegisterObject(Body *body, glm::vec3 pos,
-                                   glm::vec3 rot)
+                                   glm::vec3 rot, Mesh *collisionMesh)
 {
     btTransform startTransform;
     startTransform.setIdentity();
 
-    BuildHull(body);
+    BuildHull(body, collisionMesh);
     btCollisionShape *hull = body->shape;
 
     startTransform.setOrigin(btVector3(pos.x, pos.y, pos.z));
@@ -274,14 +274,19 @@ void PhysicsEngine::RegisterObject(Body *body, glm::vec3 pos,
     rbInfo.m_friction = (btScalar)kDefaultHullFriction;
 
     btRigidBody *b = new btRigidBody(rbInfo);
+    // Back-pointer for ray queries (groundRay's hitBody): the collision object
+    // Bullet hands back is this rigid body, and the Body owns it.
+    b->setUserPointer(body);
 
     setRigidBody(body, b);
     dynamicsWorld->addRigidBody(b);
 }
 
-/* The convex hull of the body's mesh, stored on the Body (which owns it). */
-void PhysicsEngine::BuildHull(Body *body) {
-    Mesh *m = body->mesh;
+/* The convex hull of the body's mesh, stored on the Body (which owns it).
+   collisionMesh overrides the visual mesh: a balloon platform hulls its deck
+   only, so the balloons stay pass-through scenery. */
+void PhysicsEngine::BuildHull(Body *body, Mesh *collisionMesh) {
+    Mesh *m = collisionMesh != nullptr ? collisionMesh : body->mesh;
 
     assert(m->vs != NULL);
     assert(m->num_vertices >= 3);
@@ -370,7 +375,7 @@ struct GroundRayCallback : public btCollisionWorld::ClosestRayResultCallback {
 
 bool PhysicsEngine::groundRay(const glm::dvec3 &from, const glm::dvec3 &to,
                               glm::dvec3 &hit, glm::dvec3 &normal,
-                              const Body *skip) {
+                              const Body *skip, Body **hitBody) {
     const btVector3 f(from.x, from.y, from.z), t(to.x, to.y, to.z);
     GroundRayCallback cb(f, t, skip != nullptr ? skip->btBody : nullptr);
     dynamicsWorld->rayTest(f, t, cb);
@@ -379,6 +384,10 @@ bool PhysicsEngine::groundRay(const glm::dvec3 &from, const glm::dvec3 &to,
     const btVector3 &hn = cb.m_hitNormalWorld;
     hit = glm::dvec3(hp.getX(), hp.getY(), hp.getZ());
     normal = glm::dvec3(hn.getX(), hn.getY(), hn.getZ());
+    if(hitBody != nullptr) {
+        // RegisterObject sets the back-pointer; terrain bodies have none.
+        *hitBody = static_cast<Body *>(cb.m_collisionObject->getUserPointer());
+    }
     return true;
 }
 
@@ -400,9 +409,13 @@ void AddPhysicsBody(Body *body) {
     physics->AddBody(body);
 }
 
-void RegisterPhysicsBody(Body *body, glm::vec3 pos, glm::vec3 rot)
+void RegisterPhysicsBody(Body *body, glm::vec3 pos, glm::vec3 rot, Mesh *collisionMesh)
 {
-    physics->RegisterObject(body, pos, rot);
+    physics->RegisterObject(body, pos, rot, collisionMesh);
+}
+
+void SetFriction(Body *b, double mu) {
+    getRigidBody(b)->setFriction(mu);
 }
 
 
@@ -517,8 +530,9 @@ bool BodyInContact(Body *body) {
 }
 
 bool groundRay(const glm::dvec3 &from, const glm::dvec3 &to,
-               glm::dvec3 &hit, glm::dvec3 &normal, const Body *skip) {
-    return physics->groundRay(from, to, hit, normal, skip);
+               glm::dvec3 &hit, glm::dvec3 &normal, const Body *skip,
+               Body **hitBody) {
+    return physics->groundRay(from, to, hit, normal, skip, hitBody);
 }
 
 

@@ -270,6 +270,132 @@ int main() {
         CHECK(expect_throw([&]() { parse_world_buildings(doc, "mem"); }));
     }
 
+    // --- air instance parse (balloon platforms) ---------------------------
+    {
+        nlohmann::json doc = nlohmann::json::parse(R"({
+            "world_buildings": [
+                {"id": "bp", "type": "balloon_platform", "body": "Venus",
+                 "air": {"alt_m": 56000, "lat_deg": 10, "lon_deg": 0},
+                 "heading_deg": 180,
+                 "flags": ["VAB_LAUNCH_PAD", "AIR_PLATFORM"]}
+            ]})");
+        std::vector<WorldBuilding> ws = parse_world_buildings(doc, "mem");
+        CHECK(ws.size() == 1);
+        CHECK(ws[0].air && !ws[0].orbital);
+        CHECK(ws[0].air_alt_m == 56000.0);
+        CHECK(ws[0].air_lat_deg == 10.0);
+        CHECK(ws[0].air_lon_deg == 0.0);
+        CHECK(ws[0].heading_deg == 180.0);
+        CHECK(ws[0].hasFlag("AIR_PLATFORM"));
+    }
+    {   // air XOR surface lat/lon
+        nlohmann::json doc = nlohmann::json::parse(R"({
+            "world_buildings": [
+                {"id": "bp", "type": "balloon_platform", "body": "Venus",
+                 "air": {"alt_m": 56000, "lat_deg": 10, "lon_deg": 0},
+                 "lat_deg": 0, "lon_deg": 0}
+            ]})");
+        CHECK(expect_throw([&]() { parse_world_buildings(doc, "mem"); }));
+    }
+    {   // air XOR orbit
+        nlohmann::json doc = nlohmann::json::parse(R"({
+            "world_buildings": [
+                {"id": "bp", "type": "balloon_platform", "body": "Venus",
+                 "air": {"alt_m": 56000, "lat_deg": 10, "lon_deg": 0},
+                 "orbit": {"alt_m": 300000}}
+            ]})");
+        CHECK(expect_throw([&]() { parse_world_buildings(doc, "mem"); }));
+    }
+    {   // missing / non-positive alt_m
+        nlohmann::json doc = nlohmann::json::parse(R"({
+            "world_buildings": [
+                {"id": "bp", "type": "balloon_platform", "body": "Venus",
+                 "air": {"lat_deg": 10, "lon_deg": 0}}
+            ]})");
+        CHECK(expect_throw([&]() { parse_world_buildings(doc, "mem"); }));
+        nlohmann::json doc2 = nlohmann::json::parse(R"({
+            "world_buildings": [
+                {"id": "bp", "type": "balloon_platform", "body": "Venus",
+                 "air": {"alt_m": 0, "lat_deg": 10, "lon_deg": 0}}
+            ]})");
+        CHECK(expect_throw([&]() { parse_world_buildings(doc2, "mem"); }));
+    }
+    {   // missing lat_deg / lon_deg
+        nlohmann::json doc = nlohmann::json::parse(R"({
+            "world_buildings": [
+                {"id": "bp", "type": "balloon_platform", "body": "Venus",
+                 "air": {"alt_m": 56000, "lon_deg": 0}}
+            ]})");
+        CHECK(expect_throw([&]() { parse_world_buildings(doc, "mem"); }));
+        nlohmann::json doc2 = nlohmann::json::parse(R"({
+            "world_buildings": [
+                {"id": "bp", "type": "balloon_platform", "body": "Venus",
+                 "air": {"alt_m": 56000, "lat_deg": 10}}
+            ]})");
+        CHECK(expect_throw([&]() { parse_world_buildings(doc2, "mem"); }));
+    }
+    {   // polar platform: the drift divides by cos(lat), refused not clamped
+        nlohmann::json doc = nlohmann::json::parse(R"({
+            "world_buildings": [
+                {"id": "bp", "type": "balloon_platform", "body": "Venus",
+                 "air": {"alt_m": 56000, "lat_deg": 89, "lon_deg": 0}}
+            ]})");
+        CHECK(expect_throw([&]() { parse_world_buildings(doc, "mem"); }));
+    }
+    {   // non-numeric lat: contextual runtime_error, not a json type_error
+        nlohmann::json doc = nlohmann::json::parse(R"({
+            "world_buildings": [
+                {"id": "bp", "type": "balloon_platform", "body": "Venus",
+                 "air": {"alt_m": 56000, "lat_deg": "north", "lon_deg": 0}}
+            ]})");
+        CHECK(expect_throw([&]() { parse_world_buildings(doc, "mem"); }));
+    }
+    {   // attitude/spin are orbital-only; an air platform holds heading_deg
+        nlohmann::json doc = nlohmann::json::parse(R"({
+            "world_buildings": [
+                {"id": "bp", "type": "balloon_platform", "body": "Venus",
+                 "air": {"alt_m": 56000, "lat_deg": 10, "lon_deg": 0},
+                 "attitude": "body-fixed"}
+            ]})");
+        CHECK(expect_throw([&]() { parse_world_buildings(doc, "mem"); }));
+    }
+    {   // the catalog entry carries the deck-only collision mesh
+        const BuildingDef *bp = cat.find("balloon_platform");
+        CHECK(bp != nullptr);
+        if(bp != nullptr) {
+            CHECK(bp->collision_mesh == "meshes/balloon_platform_deck.obj");
+        }
+    }
+
+    // --- air placement validation (needs a real system's bodies) ----------
+    {
+        System sys = load_system("res/systems/solar_system.json", nullptr, nullptr);
+        auto airOn = [&](const char *body, double alt) {
+            WorldBuilding w;
+            w.id = "probe"; w.type = "balloon_platform"; w.body = body;
+            w.air = true; w.air_alt_m = alt;
+            w.air_lat_deg = 10.0; w.air_lon_deg = 0.0;
+            return w;
+        };
+        const std::vector<WorldBuilding> saved = sys.world_buildings;
+        // Venus has wind-bearing air up to 116 km: 56 km is a valid float.
+        sys.world_buildings = {airOn("Venus", 56000)};
+        bool ok = true;
+        try { validate_world_buildings(sys, cat); }
+        catch(const std::exception &) { ok = false; }
+        CHECK(ok);
+        // Above the air top: vacuum, nothing to float in.
+        sys.world_buildings = {airOn("Venus", 120000)};
+        CHECK(expect_throw([&]() { validate_world_buildings(sys, cat); }));
+        // The Moon has no atmosphere at all.
+        sys.world_buildings = {airOn("Moon", 56000)};
+        CHECK(expect_throw([&]() { validate_world_buildings(sys, cat); }));
+        // Pluto has physical air but NO wind table: windAt would assert.
+        sys.world_buildings = {airOn("Pluto", 5000)};
+        CHECK(expect_throw([&]() { validate_world_buildings(sys, cat); }));
+        sys.world_buildings = saved;
+    }
+
     // --- world_buildings_files: named fragments merge in ------------------
     {
         // The shipped Earth table reaches the solar systems, and the merge
@@ -480,9 +606,10 @@ int main() {
                pole pad is the interesting case -- cos(90 deg) is ~6e-17, not
                0, so its longitude survives atan2 and lands back where it was
                authored rather than at an arbitrary meridian.
-               Orbital buildings have no surface lat/lon: skip the projection
-               and the deck-grounding check for them. */
-            if(!w.orbital) {
+               Driven buildings (orbital, air) have no fixed surface lat/lon:
+               skip the projection and the deck-grounding check for them -- an
+               air entry carries lat/lon but floats 56 km up, not on the ground. */
+            if(!w.orbital && !w.air) {
                 double rlon, rlat;
                 equirectLonLat(w.dir(), rlon, rlat);
                 const double rlat_deg = rlat * 180.0 / std::numbers::pi;
@@ -504,7 +631,9 @@ int main() {
                 }
             }
             // ... and the deck it puts on that body reaches the ground
-            if(!w.orbital && wb != nullptr) { check_pad_grounding(logical, w, wb); }
+            if(!w.orbital && !w.air && wb != nullptr) {
+                check_pad_grounding(logical, w, wb);
+            }
         }
         /* A body's DEFAULT site is the first VAB_LAUNCH_PAD ON THAT BODY
            (find_launch_site filters by body, and so does the VAB dropdown),
@@ -551,9 +680,9 @@ int main() {
                 const WorldBuilding &a = sys.world_buildings[i];
                 const WorldBuilding &b = sys.world_buildings[k];
                 if(a.body != b.body) { continue; }
-                // Orbital buildings have no surface dir; their separation is an
-                // orbit question, not a deck-overlap one.
-                if(a.orbital || b.orbital) { continue; }
+                // Driven buildings have no fixed surface dir; their separation
+                // is an orbit/drift question, not a deck-overlap one.
+                if(a.orbital || b.orbital || a.air || b.air) { continue; }
                 TerrainBody *wb = sys.find(a.body);
                 if(wb == nullptr) { continue; }
                 // Chord x radius: over these separations it is the arc to

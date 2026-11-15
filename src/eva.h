@@ -96,6 +96,13 @@ public:
 
     bool isEva() const override { return true; }
 
+    /* A walking or jumping kerbal leaves the deck carry (vehicle.h); the base
+       already releases on RCS. The carry holds a PARKED suit. */
+    bool deckCarryRelease() const override {
+        return Vehicle::deckCarryRelease()
+            || glm::length2(walkDir) > 1e-9 || jumpRequested;
+    }
+
     /* The person's name lives on the roster profile the suit owns; this walker
        keeps no copy of it. Vehicle::name stays empty, so a stray rename cannot
        leave the walker and its seat disagreeing. */

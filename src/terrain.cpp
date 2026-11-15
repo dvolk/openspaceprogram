@@ -68,6 +68,27 @@ Frame *StaticBuilding::poseFrame() const {
 }
 
 void StaticBuilding::tickPose(double time) {
+    if(air) {
+        // Wind-riding drift in the rotating frame, on the continuous ENU basis.
+        const buildingair::Pose p = buildingair::poseAt(
+            airR, airLat, airLon0, airDriftRate, airHeading, time);
+        posePos = p.pos;
+        poseOrient = p.orient;
+        setPosRot(body, posePos, poseOrient);
+        // The deck's own velocity, for the ground law: a ship parked here rides
+        // the wind WITH the deck, so tire forces must read zero relative speed.
+        body->surfaceVel = equirectEast(p.up) * airEast;
+        // The ENU basis turns about the planet axis (equirect Y) at the drift
+        // rate -- the deck's angular velocity, for the carry's off-origin points.
+        body->surfaceAngVel = glm::dvec3(0.0, airDriftRate, 0.0);
+        // The body stays STATIC and FRICTIONLESS (buildings.cpp): Bullet's
+        // solver maps every static body to one zero-velocity fixed body, so
+        // deck friction would scrub a resting hull against the wind-ride, and
+        // setting the body's velocity does not help. Grip on the deck comes
+        // from the wheel/EVA laws and the deck carry, which read surfaceVel.
+        // (Kinematic is #848's pass-through -- do not switch without fixing it.)
+        return;
+    }
     if(!orbital) { return; }
     const buildingorbit::Pose p = buildingorbit::poseAt(
         epochPos, epochVel, orbMu, attMode, spinAxis, spinRate, time);

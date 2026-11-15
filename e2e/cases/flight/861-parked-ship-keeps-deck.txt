@@ -1,0 +1,18 @@
+NAME parked-ship-keeps-deck
+CLAIM Switching away from a ship parked on the platform does not drop the deck out from under it.
+KIND invariant
+# The FIRST startship is the active one: a racer on Earth's default pad. The
+# skiff on the Venus platform is parked -- in the air, so it can never rail
+# (canRail), and stays LIVE. The proximity gate must therefore key on ANY live
+# ship, not just the active one, or the platform's collider vanishes and the
+# parked ship falls through the deck.
+ARGS --system res/systems/solar_system.json --time-accel 1
+ARGS --startship ferry,res/ships/racer.json,Earth,pad
+ARGS --startship skiff,res/ships/skiff_gear.json,Venus,pad,site=venus_cloud_platform
+ARGS --timeout 15 --dbg-log --orbit-interval 1.0
+EXPECT [bldg]
+# Active ship is on Earth, ~100 million km away -- yet the platform's gate is
+# engaged by the parked live ship beside it.
+CHECK [b for b in bldg if b["id"]=="venus_cloud_platform"][-1]["live"] == 1
+CHECK all(b["live"] == 1 for b in bldg if b["id"]=="venus_cloud_platform")
+FORBID error:
