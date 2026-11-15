@@ -872,6 +872,15 @@ WIND_MPS_LAT = re.compile(r"(?i)up to (" + _NUM + r")\s*m/s\s*\(\s*(?:"
 WIND_LAT_WORDS = re.compile(r'(?i)\b(equatorward|poleward|latitude|equator|equatorial'
                             r'|polar|pole|hemisphere)s?\b')
 
+# A parenthesised span sitting where a band belongs: right after a speed, and carrying a
+# number plus "deg"/"lat". Compared against the bands WIND_MPS_LAT actually parsed (#855),
+# because a latitude this file cannot read does NOT shift a band edge -- the whole band fails
+# to parse, `latbands` comes back empty, and the block that weighs an authored file's band
+# edges against the published ones stops running while the sheet still prints a ceiling.
+# "Up to 150 m/s (3,0-60 degrees latitude)" is that case: a mis-grouped latitude, measured
+# identical before and after #854, and invisible either way until now.
+WIND_LAT_SPAN = re.compile(r'm/s\s*\(([^()]*)\)')
+
 
 def describe_latband(b):
     """One parsed latitude bound as a short phrase, for the refusal messages."""
@@ -888,8 +897,8 @@ def latband_edges(b):
 
 
 def parse_wind_text(text):
-    """One wind line's text -> {'max', 'text', 'latbands', 'lat_words', 'bad_numbers'},
-    with max None when the line states no speed. Split out of fact_wind so
+    """One wind line's text -> {'max', 'text', 'latbands', 'lat_words', 'bad_numbers',
+    'bad_latbands'}, with max None when the line states no speed. Split out of fact_wind so
     self_test_fact_wind can feed it spellings no cached page uses yet: the shipped corpus
     is not the only thing that has to keep working. `bad_numbers` holds every spelling
     sitting where a speed belongs that this file cannot turn into one: a run of
@@ -898,25 +907,39 @@ def parse_wind_text(text):
     happily read as 0), or an exponent (1.2e3). The page clearly states a speed either way.
     #779 taught _NUM to refuse a mis-grouped separator instead of returning a suffix of it;
     that refusal is only honest if someone sees it, since a sheet with no ceiling looks
-    exactly like a page that stated none."""
+    exactly like a page that stated none.
+    `bad_latbands` is the same argument one field over (#855). An empty `latbands` reads
+    like "this page bounds nothing by latitude", which is a lie when the page DOES and this
+    file simply could not put numbers on the bound: the block in check_fact_wind that weighs
+    an authored table's band edges against the published ones skips itself while the sheet
+    still prints a ceiling. WIND_LAT_SPAN finds the parenthesised spans sitting exactly where
+    WIND_MPS_LAT wants its paren; a span carrying a number and "lat"/"deg" that no parsed
+    band accounts for is one this file read as nothing, so it is named instead of quietly
+    weighing less."""
     vals = [_num(v) for v in WIND_MPS.findall(text)]
-    lat = []
+    lat, read_spans = [], []
     for m in WIND_MPS_LAT.finditer(text):
         if m.group(2):
             lat.append((_num(m.group(1)), m.group(2), _lat(m.group(3)), None))
         else:
             lat.append((_num(m.group(1)), '-', _lat(m.group(4)), _lat(m.group(5))))
+        inner = WIND_LAT_SPAN.search(m.group(0))
+        if inner:
+            read_spans.append(inner.group(1))
+    spans = [s for s in WIND_LAT_SPAN.findall(text)
+             if re.search(r'\d', s) and re.search(r'(?i)\b(?:lat|deg)', s)]
     return {'max': max(vals) if vals else None, 'text': text, 'latbands': lat,
             'lat_words': sorted(set(w.lower() for w in WIND_LAT_WORDS.findall(text))),
             'bad_numbers': ([tk for tk in WIND_MPS_TOKEN.findall(text)
                              if not _NUM_FULL.fullmatch(tk)]
-                            + WIND_MPS_EXP.findall(text))}
+                            + WIND_MPS_EXP.findall(text)),
+            'bad_latbands': [s for s in spans if s not in read_spans]}
 
 
 def fact_wind(page):
     """What a fact sheet states about wind: {'max': m/s, 'text': the page's own words,
     'latbands': [(speed, op, lat_lo, lat_hi), ...] possibly empty, 'lat_words': [...],
-    'bad_numbers': [...]}, or {} when it never names wind.
+    'bad_numbers': [...], 'bad_latbands': [...]}, or {} when it never names wind.
     `max` is None when the label is there and no speed follows it: the page declines to
     state a number. That is NOT the same as the page saying nothing -- it can still bound
     the wind by latitude in words ("light near the equator, strong at mid latitudes"),
@@ -925,7 +948,9 @@ def fact_wind(page):
     which made the loud half of #779 go quiet at exactly the sheets least able to answer
     it. Callers that need a ceiling ask for `max` and check it is not None.
     `bad_numbers` is the third state: the page DOES write a speed and this file cannot
-    read it (#854). See parse_wind_text.
+    read it (#854). `bad_latbands` is the fourth, one field over: the page DOES bound its
+    wind by latitude and this file cannot put numbers on the bound, which reads as a page
+    that bounds nothing (#855). See parse_wind_text.
     Jupiter and Saturn put the label on a line of its own and
     the two latitude bands under it, so lines keep being pulled in while they state a
     speed and are not a new labelled row. The raw text comes back because the printed
@@ -988,6 +1013,10 @@ def check_fact_wind(planets, verbose=True, parsed=None, sheets=None):
             sheet_txt = 'no m/s  %s' % quote
         else:
             sheet_txt = 'none'
+        if sheet.get('bad_latbands'):
+            # #855 in the printed row too: the failure text is only there when someone reads
+            # the list at the end, and the row is what shows a guard reading LESS than the page.
+            sheet_txt += '  +%d lat unread' % len(sheet['bad_latbands'])
         rows.append('%-9s sheet %-22s authors %s'
                     % (name, sheet_txt,
                        ('%g m/s, %d rows%s'
@@ -1013,6 +1042,22 @@ def check_fact_wind(planets, verbose=True, parsed=None, sheets=None):
                        ' Fix the number\'s grouping or teach _NUM the spelling; do not add'
                        ' a waiver, which would weigh nothing'
                        % (name, page, ', '.join(sheet['bad_numbers']), sheet['text'], harm))
+        # The same failure one field over (#855), and a quieter one: an unreadable SPEED
+        # changes what the guard weighs, while an unreadable LATITUDE deletes a whole band,
+        # so the band-edge weighing further down (`if sheet.get('latbands')`) skips itself and
+        # the sheet still prints a plausible ceiling beside it. That is how moving Jupiter's
+        # +/-30 deg split to +/-45 could go green: the rows stay under the top, and nothing is
+        # left to say where the page put the edge. Same rule as #854 -- a parse failure is a
+        # failure of THIS file, so it fails the check rather than printing beside a waiver.
+        if sheet.get('bad_latbands'):
+            bad.append('%s: %s bounds its wind by latitude ("%s") and this file read %d of'
+                       ' the %d such bounds on the line -- the unreadable one is not counted'
+                       ' as structure, so the band edges of %s\'s rows were never weighed'
+                       ' against the published map. Teach WIND_MPS_LAT the spelling; adding a'
+                       ' waiver would weigh nothing'
+                       % (name, page, '" "'.join(sheet['bad_latbands']),
+                          len(sheet['latbands']),
+                          len(sheet['latbands']) + len(sheet['bad_latbands']), name))
         # A GENERATED column is still bounded by this guard, for a reason worth stating:
         # windGenerate scales every belt by amp <= 1 and the equatorial belt carries the
         # anchors' own values, so the widest wind in the emitted table IS the column's top
@@ -1337,6 +1382,43 @@ def self_test_fact_wind():
     if not any('may be the smaller number' in m for m in bad):
         fails.append('a ceiling read past an unreadable number was not called a short one: '
                      '%r' % (bad,))
+    # #855: the same hole one field over, and a quieter one. A LATITUDE this file cannot read
+    # does not change a ceiling, it deletes a BAND -- and the band-edge weighing sits behind
+    # `if sheet.get('latbands')`, so it skips itself while the sheet still prints a legible
+    # speed. The shape that pays for it: an authored table moves Jupiter's +/-30 deg split to
+    # +/-45, every row stays under the published top, and the check stays green.
+    blind = parse_wind_text('Up to 150 m/s (3,0-60 degrees latitude)')
+    if blind['latbands'] or not blind['bad_latbands']:
+        fails.append('a mis-grouped latitude stopped being named as an unreadable bound: %r'
+                     % (blind,))
+    # The control, without which the probe above could pass by flagging EVERY parenthesised
+    # bound: the same band written legibly names nothing unreadable.
+    sighted = parse_wind_text('Up to 100 m/s (0-30 degrees latitude)'
+                              ' Up to 40 m/s (30-60 degrees latitude)')
+    if len(sighted['latbands']) != 2 or sighted['bad_latbands']:
+        fails.append('a legible pair of latitude bands parsed as %r' % (sighted,))
+    # Half-blind, which is where a real re-scrape lands: one band legible, one not. The good
+    # band still has to count as structure, and the bad one still has to be named.
+    half = parse_wind_text('Up to 100 m/s (0-30 degrees latitude)'
+                           ' Up to 40 m/s (3,0-60 degrees latitude)')
+    if len(half['latbands']) != 1 or len(half['bad_latbands']) != 1:
+        fails.append('one legible and one unreadable band parsed as %r' % (half,))
+    for sheet, why in ((blind, 'a whole latitude map this file reads as nothing'),
+                       (half, 'half a latitude map unreadable')):
+        bad = check_fact_wind([('invented-fact.html', 'Windy', 1.0,
+                                {'atmosphere': {'wind': rows}}, 0.0)],
+                              verbose=False,
+                              sheets={'invented-fact.html': sheet})
+        if not any('never weighed' in m for m in bad):
+            fails.append('%s let banded rows through unweighed: %r' % (why, bad))
+    # And the shipped corpus under the new net. Jupiter and Saturn DO state two bands each, so
+    # a flag beside either means the net is wrong rather than the page -- and a band that
+    # quietly stopped parsing means the scrape moved.
+    for page, want in (('jupiterfact.html', 2), ('saturnfact.html', 2)):
+        sheet = fact_wind(page)
+        if len(sheet.get('latbands') or []) != want or sheet.get('bad_latbands'):
+            fails.append('%s should read %d latitude bands with nothing unreadable: %r'
+                         % (page, want, sheet))
     # A page that names wind and states NO number anywhere. A first version of fact_wind
     # returned {} the moment it found no speed, throwing the words away with the number --
     # which made the loud half of #779 go quiet at exactly the sheets least able to answer
