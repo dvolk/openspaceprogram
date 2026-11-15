@@ -168,6 +168,15 @@ BLDG_RE = re.compile(
     r"\[bldg\]\s+t=([\d.]+)s\s+id=(\S+)\s+pos=\[([-\d.]+) ([-\d.]+) ([-\d.]+)\]\s+"
     r"r=([-\d.]+) m\s+live=(\d)"
 )
+# --map-dump's station marks (src/gameui.cpp, #872): the driven buildings the orbital
+# and Tracking maps would mark around the body they are centred on. The maps draw pure
+# imgui geometry, so this row is the only way a case can pin a marker at all -- and
+# pts=0 for an air platform is the feature, not a missing sample: a wind-riding
+# platform has no conic to draw.
+MAPBLDG_RE = re.compile(
+    r"\[mapbldg\]\s+t=([\d.]+)s\s+focus=(\S+)\s+id=(\S+)\s+kind=(\w+)\s+"
+    r"r=([-\d.]+)\s+pts=(\d+)"
+)
 # --plane-log (render.cpp drawOrbitPlane): the two plane normals the orbital-plane
 # overlay drew, in the RENDER frame, plus the dihedral between them and the
 # prograde / normal flight markers as placed, so a marker that leaves the plane
@@ -626,7 +635,8 @@ FUEL_LINK_PAIR_RE = re.compile(r"g?(\d+)->g?(\d+)")
 # `all(...)`, which would have gone green reading nothing.
 ROW_PARSERS = [
     ("orbit", ORBIT_RE, "world"), ("ascent", ASCENT_RE, "world"),
-    ("mapb", MAP_RE, "world"), ("dbg", DBG_RE, "world"), ("bldg", BLDG_RE, "world"),
+    ("mapb", MAP_RE, "world"), ("mapbldg", MAPBLDG_RE, "world"),
+    ("dbg", DBG_RE, "world"), ("bldg", BLDG_RE, "world"),
     ("plane", PLANE_RE, "world"), ("xfer", XFER_RE, "world"),
     ("porkchop", PORKCHOP_RE, "world"), ("surfmap", SURFMAP_RE, "world"),
     ("solar", SOLAR_RE, "world"), ("slew", SLEW_RE, "world"), ("perf", PERF_RE, "out"),
@@ -1129,6 +1139,17 @@ def parse_bldg(out):
             "t": float(t), "id": bid,
             "pos": (float(px), float(py), float(pz)), "r": float(r),
             "live": int(live),
+        })
+    return rows
+
+
+def parse_mapbldg(out):
+    rows = []
+    for m in MAPBLDG_RE.finditer(out):
+        (t, focus, bid, kind, r, pts) = m.groups()
+        rows.append({
+            "t": float(t), "focus": focus, "id": bid, "kind": kind,
+            "r": float(r), "pts": int(pts),
         })
     return rows
 
@@ -2241,6 +2262,7 @@ def run_case(case):
     orbinfo = parse_scoped(world, parse_orbinfo)
     scene = parse_scene(out)
     mapb = parse_scoped(world, parse_mapb)
+    mapbldg = parse_scoped(world, parse_mapbldg)
     plane = parse_scoped(world, parse_plane)
     slew = parse_scoped(world, parse_slew)
     shipswitch = parse_shipswitch(world)
@@ -2269,7 +2291,8 @@ def run_case(case):
         "uilist": uilist,
         "cam": cam,
         "terrain": terrain,
-        "surf": surf, "orbinfo": orbinfo, "mapb": mapb, "plane": plane, "slew": slew,
+        "surf": surf, "orbinfo": orbinfo, "mapb": mapb, "mapbldg": mapbldg,
+        "plane": plane, "slew": slew,
         # The handoffs themselves: [{"verb": switch/removed/unchanged/none, "name": ...}].
         "shipswitch": shipswitch,
         # Every scripted UI action the game admitted to, whole-run like toast/scene.

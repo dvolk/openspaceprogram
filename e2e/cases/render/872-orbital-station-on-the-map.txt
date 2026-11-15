@@ -1,0 +1,30 @@
+# An orbital station is somewhere the player can fly to, so it belongs on the
+# maps (#872). The Surface Map has always refused driven sites -- they have no
+# fixed lat/lon -- and until now nothing else drew them either: a station was
+# invisible on every map unless you had already flown into its bubble.
+#
+# The maps are pure imgui geometry, so nothing they draw is observable from the
+# log. --map-dump therefore prints the marks from the SAME collector both map
+# windows call (gameui.cpp collectMapStations): an orbital platform carries a
+# sampled conic plus a marker, and a surface pad appears nowhere at all.
+NAME orbital-station-on-the-map
+CLAIM The orbital/Tracking maps mark each orbital station around the focused body, conic included.
+KIND invariant
+ARGS --time-accel 1 --timeout 6 --map-dump 2500 --dbg-log --orbit-interval 1.0
+ARGS --startship racer,res/ships/racer.json,Kerbin,pad
+FORBID error:
+# Kerbin ships two stations and nothing else that is driven: the pads
+# (main_space_port, ksc_runway, polar pad) stay the Surface Map's business.
+CHECK len(mapbldg) == 2
+CHECK set(m["id"] for m in mapbldg) == {"kerbin_dock", "kerbin_station"}
+CHECK all(m["kind"] == "orbit" and m["focus"] == "Kerbin" for m in mapbldg)
+# A conic, not just a dot: 64 samples on the station's own circle.
+CHECK all(m["pts"] >= 8 for m in mapbldg)
+# And the marker sits on that circle at the authored altitude: 400 km and
+# 300 km over Kerbin's 600 km radius.
+CHECK all(abs(m["r"] - 1000000.0) < 1000 for m in mapbldg if m["id"] == "kerbin_station")
+CHECK all(abs(m["r"] - 900000.0) < 1000 for m in mapbldg if m["id"] == "kerbin_dock")
+# The mark is the station's live pose, not a stale placement: [bldg] reports the
+# same radius for the pose the physics drives.
+CHECK len(bldg) >= 2
+CHECK all(abs(m["r"] - b["r"]) < 1.0 for m in mapbldg for b in bldg if m["id"] == b["id"])

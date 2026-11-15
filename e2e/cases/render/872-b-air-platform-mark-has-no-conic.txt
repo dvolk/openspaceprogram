@@ -1,0 +1,25 @@
+# The Venus cloud platform rides the wind, so it has no orbit to draw (#872):
+# the map gives it a marker and a name and deliberately NO conic -- an ellipse
+# would promise a path the player could fly, and a balloon platform has none.
+#
+# A hull parked on the platform makes Venus the map's focus, which is the view
+# where the platform is the thing worth finding. The mark's radius is pinned
+# against the live pose [bldg] reports, so the map cannot mark a stale anchor:
+# the platform's own lat/lon anchor goes stale within the hour as it drifts,
+# which is why the Surface Map refuses it.
+NAME air-platform-mark-has-no-conic
+CLAIM The map marks a wind-riding platform as a point: marker, name, no orbit line.
+KIND invariant
+ARGS --system res/systems/solar_system.json --time-accel 1 --timeout 6
+ARGS --map-dump 2500 --dbg-log --orbit-interval 1.0
+ARGS --startship skiff,res/ships/skiff_gear.json,Venus,pad,site=venus_cloud_platform
+FORBID error:
+CHECK len(mapbldg) == 1
+CHECK mapbldg[0]["id"] == "venus_cloud_platform"
+CHECK mapbldg[0]["kind"] == "air"
+CHECK mapbldg[0]["focus"] == "Venus"
+# The point of the feature: pts=0 is not a missing sample, it is no conic.
+CHECK mapbldg[0]["pts"] == 0
+# The mark is the platform's live pose, not its authored anchor.
+CHECK len(bldg) >= 1
+CHECK all(abs(m["r"] - b["r"]) < 1.0 for m in mapbldg for b in bldg if m["id"] == b["id"])

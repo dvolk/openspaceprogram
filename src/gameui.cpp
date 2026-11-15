@@ -205,12 +205,13 @@ enum : unsigned char {
     kLabelTarget = 1,   // the body the plan points at
     kLabelFocus  = 2,   // the body this map is centred on: the one being orbited
     kLabelShip   = 3,   // another of the player's craft
-    kLabelStar   = 4,
-    kLabelPlanet = 5,
-    kLabelMoon   = 6,
-    kLabelDwarf  = 7,
-    kLabelComet  = 8,
-    kLabelRock   = 9,   // asteroids, and anything the catalogue adds later
+    kLabelStation= 4,   // an orbital or air platform: a place to fly TO (#872)
+    kLabelStar   = 5,
+    kLabelPlanet = 6,
+    kLabelMoon   = 7,
+    kLabelDwarf  = 8,
+    kLabelComet  = 9,
+    kLabelRock   = 10,  // asteroids, and anything the catalogue adds later
 };
 static unsigned char labelPriority(const TerrainBody *b, bool selected, bool focus) {
     if(selected) { return kLabelTarget; }
@@ -315,6 +316,7 @@ static constexpr float kLegSwatchPx = 10.0f;
 static const struct { const char *label; LegSwatch kind; } kMapLegend[] = {
     { "you",     kLegRect },
     { "ships",   kLegRect },
+    { "stations", kLegDot },
     { "xfer",    kLegRect },
     { "bodies",  kLegRect },
     { "minor",   kLegRect },
@@ -325,7 +327,11 @@ static const struct { const char *label; LegSwatch kind; } kMapLegend[] = {
 constexpr size_t kMapLegendN = sizeof(kMapLegend) / sizeof(kMapLegend[0]);
 // leg_col[] in drawUIMap is bound to this table by ORDER alone, so a new entry with no
 // palette slot would silently draw a black swatch. Tripwire it instead.
-static_assert(kMapLegendN == 8, "add the matching colour to leg_col in drawUIMap");
+static_assert(kMapLegendN == 9, "add the matching colour to leg_col in drawUIMap");
+
+// The station marker, shared by both map windows, the legend and the --map-dump row:
+// cyan, so it reads as neither your own conic (green) nor another hull (orange) (#872).
+static constexpr ImVec4 kStationRgba(0.35f, 0.78f, 0.86f, 1.0f);
 
 // imgui does NOT wrap a SameLine row -- it lays items past the work rect and the
 // window clips them -- so the legend's width has to be known before drawing: the map
@@ -499,6 +505,72 @@ static void drawSystemBodyOrbits(Game &g, TerrainBody *focus,
         labels.add(map.px(glm::dvec3(0.0, 0.0, 0.0)),
                    map.bodyRadiusPx(focus->radius, 4.0f),
                    ink, focus->name.c_str(), kLabelFocus);
+    }
+}
+
+/* The stations a map should mark: the DRIVEN buildings (orbital platforms, air
+   platforms) around the body the map is centred on (#872). The Surface Map pins sites
+   by lat/lon and refuses these two kinds, because a driven building has no fixed
+   place on the ground -- so this is where they belong.
+   One collector answers both map windows AND the --map-dump row, so what a case pins
+   and what the player sees cannot drift.
+   An orbital station's epoch state (terrain.h) is fixed at placement and lives in the
+   body's inertial node, which is the frame these maps project: the conic is the same
+   64-point sample forever, so orbit_caches hits from the second frame onward -- the
+   same trick the body rails above use. An air platform is held up by the atmosphere
+   and drifts with the wind, so there is no conic to draw: marker and name only. */
+struct MapStationMark {
+    const StaticBuilding *b;
+    glm::dvec3 pos;                            // the focus's frame, i.e. map space
+    const std::vector<glm::dvec3> *conic;      // null for an air platform
+};
+
+static const std::vector<MapStationMark> &collectMapStations(TerrainBody *focus) {
+    static thread_local std::vector<MapStationMark> marks;
+    marks.clear();
+    if(!focus || !focus->frame) { return marks; }
+    for(const StaticBuilding *b : focus->pads) {
+        if(!b || !b->driven()) { continue; }   // surface pads: the Surface Map's job
+        Frame *ef = b->poseFrame();            // orbital: inertial node; air: spin frame
+        if(!ef) { continue; }
+        MapStationMark m;
+        m.b = b;
+        m.pos = ef->GetOrientRelTo(focus->frame) * b->posePos
+              + ef->GetPositionRelTo(focus->frame);
+        m.conic = nullptr;
+        if(b->orbital && focus->mu > 0.0) {
+            /* PoseFrame is the body's inertial node by construction, so the state lift
+               to the map frame is a rotation with no transport term. Asserted rather
+               than assumed: a driven building FRAME would need the stasis term, and its
+               own frame is not what carries the conic (frame.cpp never fills the rail
+               state for a driven frame). */
+            assert(ef == focus->frame->getNonRotFrame());
+            const glm::dvec3 epos = ef->GetOrientRelTo(focus->frame) * b->epochPos
+                                  + ef->GetPositionRelTo(focus->frame);
+            const glm::dvec3 evel = ef->GetOrientRelTo(focus->frame) * b->epochVel;
+            m.conic = &orbit_caches[(const void *)b].sample(epos, evel, focus->mu, 64);
+        }
+        marks.push_back(m);
+    }
+    return marks;
+}
+
+// Call after labels.flushDiscs(): these are markers, so they sit above the body discs.
+static void drawMapStations(TerrainBody *focus, const OrbitMap &map, ImDrawList *dl,
+                            const MapViewRect &view, double map_scale,
+                            MapLabelPass &labels) {
+    const ImU32 col = ImGui::GetColorU32(kStationRgba);
+    for(const MapStationMark &m : collectMapStations(focus)) {
+        /* A 400 km ring is only a ring once it is a few pixels across; at a
+           system-wide zoom the same 64 points smear a hairline over the body's disc. */
+        const double r_m = glm::length(m.pos);
+        if(m.conic && r_m / map_scale >= 4.0f) {
+            map.drawOrbit(dl, *m.conic, col, 1.0f);
+        }
+        const ImVec2 px = map.px(m.pos);
+        if(!view.contains(px.x, px.y, 3.0f)) { continue; }
+        dl->AddCircleFilled(px, 3.0f, col);
+        labels.add(px, 3.0f, col, m.b->display_name.c_str(), kLabelStation);
     }
 }
 
@@ -2158,8 +2230,9 @@ void drawUIReadouts(Game &g) {
             if(!p->hasFlag("VAB_LAUNCH_PAD")) { continue; }
             // Driven sites have no FIXED surface lat/lon: an orbital pin would
             // land on the default dir (the pole), and an air platform's anchor
-            // goes stale within the hour as it drifts. Orbital belongs on the
-            // orbital map; a live air pin is a follow-up.
+            // goes stale within the hour as it drifts. Both are on the orbital
+            // and Tracking maps now (drawMapStations, #872); a live pin here is
+            // still a follow-up.
             if(p->driven()) { continue; }
             double lon, lat;
             equirectLonLat(p->dir, lon, lat);
@@ -4642,7 +4715,8 @@ void drawUIMap(Game &g) {
             // kMapLegend order, palette first: "minor" names the quiet rails, or the
             // faint gray reads as a rendering bug.
             const ImU32 leg_col[kMapLegendN] = {
-                col_ship, col_vessel, col_xfer, col_child, col_minor, col_apsis,
+                col_ship, col_vessel, ImGui::GetColorU32(kStationRgba),
+                col_xfer, col_child, col_minor, col_apsis,
                 ImGui::GetColorU32(kColNodeAn), ImGui::GetColorU32(kColNodeDn)
             };
             // avail_w is GetContentRegionAvail() taken at this same cursor, so measure
@@ -4825,6 +4899,10 @@ void drawUIMap(Game &g) {
                 labels.add(tpx, 3.0f, col_vessel, s->displayName().c_str(), kLabelShip);
             }
         }
+
+        /* Stations around this body: an orbital platform's conic plus a marker, an air
+           platform a marker only (#872). After the discs, with the other markers. */
+        drawMapStations(focus, proj, dl, view, map_scale, labels);
 
         /* The solution belongs to the target the solve USED. xfer.target is the
            IDENTITY it was computed for, so pairing it with the live selection
@@ -6942,6 +7020,10 @@ void drawTrackingMap(Game &g) {
             }
         }
 
+        /* Stations around the focus body, whether or not a ship is flying: the
+           Tracking Station is where a player looks for a station to visit (#872). */
+        drawMapStations(focus, proj, dl, view, map_scale, labels);
+
         // Names last: every line in the window is down by now.
         labels.flush(dl, view, focus_px);
         dl->PopClipRect();
@@ -8025,6 +8107,18 @@ void dumpMapBasis(Game &g) {
                g.time, refPlaneName(slot),
                m.n.x, m.n.y, m.n.z, m.e1.x, m.e1.y, m.e1.z,
                m.e2.x, m.e2.y, m.e2.z, sweep > 0.0 ? 1 : -1, an_s, dn_s);
+    }
+    /* #872: the stations this map would mark, through the same collector the two map
+       windows call, so the row cannot claim something the screen does not draw. This
+       is the only way a case can pin a marker at all -- the maps emit nothing
+       otherwise -- and pts=0 for an air platform is the point of the feature, not an
+       omission: a wind-riding platform has no conic. */
+    for(const MapStationMark &s : collectMapStations(ship->m_parent)) {
+        printf("[mapbldg] t=%.1fs focus=%s id=%s kind=%s r=%.0f pts=%zu\n",
+               g.time, ship->m_parent->name.c_str(), s.b->id.c_str(),
+               s.b->orbital ? "orbit" : (s.b->air ? "air" : "ground"),
+               glm::length(s.pos),
+               s.conic ? s.conic->size() : (size_t)0);
     }
     fflush(stdout);
 }
