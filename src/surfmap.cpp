@@ -686,8 +686,9 @@ void surfmapCompute(Game &g) {
                     /* anchor_src names which rung the anchor came from -- the same decision the
                        atlas' `ground anchor (...)` row and --solar-log's underfoot_src print
                        (#801), so a log line can be compared against either without guessing. The
-                       window's cursor is the readout that does NOT carry it: it has room for the
-                       three-word block reason and none for the rung (#858). It matters most
+                       window's cursor carries the SAME decision, in one word
+                       (`ground +30.7 C (DERIVED)`, #858): the line has room for a word and none
+                       for this sentence, which is why the sentence lives here. It matters most
                        for the DERIVED rung: the map prices it on the body's LIVE rail and the
                        atlas on its mean orbit, so on an eccentric world the two anchors differ
                        by the rail's own spread, and the row says which one it printed (#687). */
@@ -846,6 +847,12 @@ void surfmapCompute(Game &g) {
                noon question about an afternoon picture. */
             g.surfmap.temp_lag_tau = have_t ? tl.lag_tau : kLagTauUnauthored;
             g.surfmap.temp_block = want_temp ? tl.block : std::string();
+            /* ... and the word for the case that PAINTS (#858), which is the same decision read
+               from the other side: the cursor's number has to say whether it is a published
+               figure, the air's datum, our sun+albedo arithmetic, or a SOLVED range. Gated on
+               have_t with the anchor, since a rung word beside a refused layer would be naming
+               a number this decision does not print. */
+            g.surfmap.temp_rung = have_t ? tl.rung : std::string();
             /* The wind, published the same way and for the same reason: the cursor's m/s has to
                be the number THIS picture's pixels were coloured from, so it reads the profile
                that was baked, not the body now on screen. Copying the rows rather than a pointer

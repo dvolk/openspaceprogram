@@ -243,6 +243,33 @@ static void mapLayers() {
     check(tempLayerFor(moho, 0.0, true).block != tempLayerFor(minmus, 0.0, true).block,
           "the two refusals do not read alike on the cursor line");
 
+    /* The word for the case that PAINTS (#858), which is the same line one branch up: the cursor
+       prints `ground +30.7 C (DERIVED)` so that our arithmetic does not read like a published
+       figure. The dossier and both logs carried the rung long before the window did, and the
+       window is the readout a player actually looks at (#722). One word, never both: `rung` is
+       empty exactly where `block` is set. */
+    check(tk.rung == "stated", "a stated ground's cursor says stated");
+    check(td.rung == "air datum", "Duna's says it is the air's datum, not a surface reading");
+    check(tn.rung == "DERIVED", "a derived anchor says DERIVED in caps on the cursor too (#722)");
+    check(tb.rung == "stated", "a banded world gets its word as well -- the deck is stated, and"
+                               " WHICH level it is stays in the legend's longer sentence");
+    check(tempLayerFor(moho, 0.0, true).rung.empty()
+              && tempLayerFor(minmus, 0.0, true).rung.empty()
+              && tempLayerFor(makeDuna(), 0.0, false).rung.empty(),
+          "a refused layer prints no rung word -- a source for no number is what #726 refuses");
+    /* The file's own marker outranks the rung at cursor length too. The generators SOLVE an
+       anchor when a page states a range and no mean (utils/ground_model.py:pair_solve), and the
+       result lands in the SAME key a stated average uses -- so a cursor that read that key and
+       said "stated" would credit the corpus with a number it never stated. */
+    Surface solved = kerbin;
+    solved.temperature_src = "SOLVED from the stated range 95.00-390.00 K, not a stated mean";
+    check(tempLayerFor(solved, 0.0, true).rung == "SOLVED",
+          "a SOLVED anchor is not called stated on the cursor");
+    Surface invented = kerbin;
+    invented.temperature_src = "INVENTED: a fixture's stated ground, so no rail enters the numbers";
+    check(tempLayerFor(invented, 0.0, true).rung == "INVENTED",
+          "and an invented anchor says so in the file's own word");
+
     /* The fourth absence: no star. The whole field would be night, so the layer refuses rather
        than painting a picture in which everything is the cold end -- which is exactly what a
        naive "cos = 0 everywhere" fallback would do, and it would look like a frozen world. */

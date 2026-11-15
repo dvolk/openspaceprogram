@@ -2343,7 +2343,20 @@ void drawUIReadouts(Game &g) {
                                               relief)
                         : surfmapGroundT(g.surfmap.temp_anchor_K, g.surfmap.temp_knob,
                                          glm::dvec3(dir), g.surfmap.baked_sun_dir, relief);
-                    snprintf(gt_s, sizeof gt_s, "  ground %+.1f C", celsiusOf(gt));
+                    /* ... and the ONE WORD saying which rung priced it (#858). The dossier's
+                       `ground anchor  106.4 K  (DERIVED: sun + albedo)` row, --solar-log's
+                       underfoot_src= and --surfmap-log's anchor_src= have carried this since
+                       #801/#636; the cursor was the readout left printing the number bare, in
+                       the same typography for a published figure (Earth) and our own
+                       sun+albedo arithmetic (Io) -- which is the confusion #722 was filed
+                       about. It names the ANCHOR, not the sample: the number beside it is this
+                       pixel's temperature at this elevation under the bake's star, while the
+                       word is where the anchor those pixels were painted from came from. */
+                    char rung_s[24] = "";
+                    if(!g.surfmap.temp_rung.empty()) {
+                        snprintf(rung_s, sizeof rung_s, " (%s)", g.surfmap.temp_rung.c_str());
+                    }
+                    snprintf(gt_s, sizeof gt_s, "  ground %+.1f C%s", celsiusOf(gt), rung_s);
                 } else {
                     // Which absence, in three words: a bare dash would merge "this world has no
                     // ground" and "nobody stated a swing" back into one (#726). The full

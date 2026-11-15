@@ -196,6 +196,13 @@ struct TempLayer {
      different absences stay different states -- survives the trip to a cramped line. Empty when
      the layer paints. */
     std::string block;
+    /* And the mirror of that for the case that PAINTS (#858): the one word naming which rung the
+     anchor came from -- "stated" / "air datum" / "DERIVED", or the file's own leading marker
+     ("SOLVED", "INVENTED") when it carries a provenance string. Empty when `block` is not. The
+     cursor prints `ground +30.7 C (DERIVED)`, which is what makes our arithmetic read as our
+     arithmetic in the only readout that is not a log (#722); the full sentence stays in
+     --surfmap-log's anchor_src= and the atlas' `ground anchor (...)` row. */
+    std::string rung;
 };
 
 inline TempLayer tempLayerFor(const Surface &s, double derived_bb, bool has_sun) {
@@ -239,6 +246,10 @@ inline TempLayer tempLayerFor(const Surface &s, double derived_bb, bool has_sun)
             ? std::string("the 1 bar level, not a sea floor: ")
                   + groundAnchorSource(rung, s.temperature_src)
             : groundAnchorSource(rung, s.temperature_src);
+        // The cursor's ONE-WORD version of that sentence (#858), set in the branch that paints
+        // so `block` and `rung` can never both be non-empty: the line prints one or the other,
+        // and a row carrying both would be two decisions about one body.
+        tl.rung = groundAnchorRungShort(rung, s.temperature_src);
     }
     if(tl.ok) {
         tl.lo_K = groundTemperature(tl.anchor_K, tl.knob, 0.0);

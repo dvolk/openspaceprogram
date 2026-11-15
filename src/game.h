@@ -426,6 +426,13 @@ struct SurfmapState {
        (surfmap.h:TempLayer). A bare dash would merge the different absences back into one
        (#726). */
     std::string temp_block;
+    /* One word naming which RUNG priced the anchor these pixels were painted from, for the same
+       cursor row and the same reason in reverse (#858): the dossier and --solar-log and
+       --surfmap-log all say whether a ground temperature was stated, taken from the air's datum,
+       derived from sunlight and albedo, or SOLVED from a range -- and the window was the readout
+       that printed the number alone, in the same typography for all four. Empty with temp_block
+       set, and vice versa. */
+    std::string temp_rung;
     /* The wind profile these pixels were coloured from (#769), for the same reason the three
        fields above exist and no more: the cursor's "wind 32.0 m/s east" must be the number the
        picture under it was drawn with, so it reads the BAKED body's table rather than the body

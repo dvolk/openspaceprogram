@@ -195,6 +195,31 @@ int main() {
                "every rung has a word to show");
     CHECK_TRUE(std::strstr(groundAnchorRungName(kAnchorDerived), "DERIVED") != nullptr,
                "the derived rung's name says DERIVED in caps (#722)");
+    /* The CURSOR-length spelling (#858): the Surface Map's line has room for the three-word
+       refusal and none for the phrase above, so the same authority order has to survive being
+       said in one word. The file's own leading marker outranks the rung -- the generators write
+       "SOLVED from the stated range ..." and "INVENTED: ..." there, and a cursor that upgraded
+       a solved anchor to "stated" would credit the corpus with a mean it never stated. */
+    CHECK_TRUE(std::strcmp(groundAnchorRungShort(kAnchorStated, std::string()), "stated") == 0,
+               "a stated ground's one word is stated");
+    CHECK_TRUE(std::strcmp(groundAnchorRungShort(kAnchorAirDatum, std::string()), "air datum") == 0,
+               "the air datum's is air datum, not stated");
+    CHECK_TRUE(std::strcmp(groundAnchorRungShort(kAnchorDerived, std::string()), "DERIVED") == 0,
+               "and the derived one is still capitals at one word long (#722)");
+    CHECK_TRUE(groundAnchorRungShort(kAnchorNone, std::string())[0] == '\0',
+               "no anchor has no word, so the readout dashes instead");
+    CHECK_TRUE(std::strcmp(groundAnchorRungShort(kAnchorStated,
+               "SOLVED from the stated range 95.00-390.00 K, not a stated mean"),
+               "SOLVED") == 0,
+               "a SOLVED anchor keeps its own word at the cursor");
+    CHECK_TRUE(std::strcmp(groundAnchorRungShort(kAnchorStated,
+               "INVENTED: same as Meridian's, so the two bodies differ by their lag"),
+               "INVENTED") == 0,
+               "and an INVENTED anchor says so in the file's own word");
+    CHECK_TRUE(std::strcmp(groundAnchorRungShort(kAnchorStated, "Some agency's published mean"),
+                           "stated") == 0,
+               "a provenance string that is neither marker falls back to the rung, whose full"
+               " words the dossier still prints");
 
     /* ---- rung D: the air nearest the ground follows it (#724) ----------------------
        One authored number, one weight the column itself supplies. The pins below are the

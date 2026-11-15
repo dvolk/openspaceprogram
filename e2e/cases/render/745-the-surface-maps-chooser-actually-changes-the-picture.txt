@@ -59,9 +59,16 @@ CHECK (lambda r: r["Map"] < r["Level"] and r["Reset view"] < r["Map"] and r["Ref
 # alone would keep passing on a layout that spills out of the window (it did).
 CHECK (lambda row, nav: row["rect"][2] <= nav["rect"][2])([r for r in uilist if r["window"] == "Surface Map" and r["label"] == "Level"][0], [r for r in uilist if r["window"] == "Surface Map" and r["label"] == "##smnav"][0])
 # No legend line: the window is a fixed aspect ratio and a row there costs the map itself. The
-# kelvin live on the cursor line instead, and the anchor's provenance is the atlas' row.
+# kelvin live on the cursor line instead, and since #858 so does the ONE WORD naming which rung
+# priced them -- the full sentence is still the atlas' row and --surfmap-log's anchor_src=.
 CHECK len([r for r in uilist if r["window"] == "Surface Map" and r["label"].startswith("ground:")]) == 0
 CHECK len([r for r in uilist if r["window"] == "Surface Map" and r["label"].startswith("cursor:")]) == 1
+# #858: the cursor's number says where it came from. Kerbin's anchor is stated in the file
+# (`surface.temperature` 288.15 with no provenance string), so the line ends `(stated)` -- the
+# same decision --surfmap-log spells as anchor_src="stated ground temperature". Pinned at the end
+# of the label, because a word that only sometimes reaches the line is the bug this fixes: on Io
+# the rung is DERIVED, and a number in the same typography as Kerbin's is what #722 is about.
+CHECK (lambda row: re.search(r"ground [-+]?[\d.]+ C \(stated\)$", row["label"]) is not None)([r for r in uilist if r["window"] == "Surface Map" and r["label"].startswith("cursor:")][0])
 # THE NUMBER UNDER THE CURSOR belongs to the picture under the cursor: it must sit inside the
 # range that sweep actually painted (converted from the log's kelvin columns), so a readout
 # wired to the wrong anchor, the wrong knob, or the sim's live sun rather than the bake's sun

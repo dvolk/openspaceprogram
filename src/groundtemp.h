@@ -555,3 +555,23 @@ inline const char *groundAnchorRungName(GroundAnchorRung r) {
 inline std::string groundAnchorSource(GroundAnchorRung r, const std::string &temperature_src) {
     return temperature_src.empty() ? std::string(groundAnchorRungName(r)) : temperature_src;
 }
+
+/* The same source in the length a CURSOR row has (#858). The Surface Map's cursor carries a
+   three-word refusal already and has no room for the phrase above, so a ground it prices says
+   which rung priced it in one word. Same order of authority as groundAnchorSource: the file's
+   own words come first, and the generators write their marker as the FIRST word there
+   ("SOLVED from the stated range 95.00-390.00 K...", "INVENTED: ..."), so taking that word keeps
+   a solved anchor from reading as a stated one at either length -- which is #722 running in the
+   other direction, the reason groundAnchorSource exists at all. DERIVED stays capitals; a
+   computed figure has to look computed. */
+inline const char *groundAnchorRungShort(GroundAnchorRung r,
+                                         const std::string &temperature_src) {
+    if(temperature_src.rfind("SOLVED", 0) == 0) { return "SOLVED"; }
+    if(temperature_src.rfind("INVENTED", 0) == 0) { return "INVENTED"; }
+    switch(r) {
+        case kAnchorStated:   return "stated";
+        case kAnchorAirDatum: return "air datum";
+        case kAnchorDerived:  return "DERIVED";
+        default:               return "";
+    }
+}
