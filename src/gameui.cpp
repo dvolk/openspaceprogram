@@ -2022,17 +2022,21 @@ void drawUIReadouts(Game &g) {
             sm_pan.y += sm_io.MouseDelta.y;
         }
 
-        // map_px scales by the IMAGE size rather than equirectPixel's (h-1) texture rows
-        // -- deliberate: continuous screen coords keep the ship dot and the hover inverse
-        // consistent (they disagree with the colour sample by at most half a map row near
-        // the poles). Zoom/pan fold in here so every overlay tracks the view.
+        // map_px is the overlay law (equirect.h:equirectOverlayPixel), not equirectPixel's
+        // (h-1) texture rows -- deliberate: continuous screen coords keep the ship dot, the
+        // graticule, the site markers and the hover inverse consistent with each other. They
+        // disagree with the colour sample by at most half a map row, and that bound is now
+        // equirectOverlayGap(h) with a test behind it instead of this comment (#845).
+        // Zoom/pan fold in here so every overlay tracks the view.
         const ImVec4 sm_bg = ImGui::GetStyle().Colors[ImGuiCol_WindowBg];
         const ImU32 sm_ink = contrastingColor(sm_bg);
         const ImU32 sm_ship =
             ImGui::GetColorU32(ImVec4(0.20f, 0.80f, 0.40f, 1.0f));
         auto map_px = [&](double lon, double lat) {
-            const double u = lon / (2.0 * std::numbers::pi) * (double)sm_img_w * sm_scale;
-            const double v = (std::numbers::pi * 0.5 - lat) / std::numbers::pi * (double)sm_img_h * sm_scale;
+            double ou = 0.0, ov = 0.0;
+            equirectOverlayPixel(lon, lat, ou, ov);
+            const double u = ou * (double)sm_img_w * sm_scale;
+            const double v = ov * (double)sm_img_h * sm_scale;
             return ImVec2(sm_img_min.x + (float)u, sm_img_min.y + (float)v);
         };
 
@@ -2258,11 +2262,21 @@ void drawUIReadouts(Game &g) {
         const bool sm_on_map = sm_hover && sm_u >= 0.0 && sm_u <= 1.0
                             && sm_v >= 0.0 && sm_v <= 1.0;
         if(sm_on_map) {
-            // The hovered pixel inverts map_px. The unit direction feeds
-            // GetTerrainHeight straight -- the map is baked in the same rotating frame
-            // (equirect.h). "elev" is above SEA LEVEL, like the Surface window's ASL.
-            const double lon = sm_u * 2.0 * std::numbers::pi;
-            const double lat = std::numbers::pi * 0.5 - sm_v * std::numbers::pi;
+            /* The hovered point inverts map_px -- both halves of the overlay law, in
+               equirect.h now rather than written twice here (#845). The unit direction feeds
+               GetTerrainHeight straight: the map is baked in the same rotating frame
+               (equirect.h). "elev" is above SEA LEVEL, like the Surface window's ASL.
+               WHICH place this line answers (the ticket's third question, decided here): the
+               exact point under the mouse, not the centre of the pixel under it. The readout
+               names a lat/lon, and its elevation, wind and ground kelvin are that lat/lon's,
+               so the line is self-consistent and agrees with the dot the cursor is aiming at.
+               The colour underneath is a different sample -- up to half a row away, which is
+               equirectOverlayGap(h): 0.35 deg at the 512 default bake, 0.09 at 2048, and the
+               width of a published wind band is far wider (#781 caps the bake at 4096). The
+               alternative, quoting the bake's pixel centres, would agree with the swatch and
+               disagree with where the line says it is looking. */
+            double lon = 0.0, lat = 0.0;
+            equirectOverlayLonLat(sm_u, sm_v, lon, lat);
             const glm::vec3 dir = equirectDir(lon, lat);
             char elev_s[32];
             /* This point's height above the sea-level datum -- the coordinate the wind profile

@@ -134,6 +134,44 @@ inline void equirectPixel(float lon, float lat, int w, int h,
       * (float)(h - 1);
 }
 
+/* The map WINDOW's overlay layout, spelled once (#845). A baked picture is drawn edge to
+   edge of the image, so the overlay's denominators are the full counts and the answer is a
+   CONTINUOUS fraction of the image rather than a pixel index: (u, v) in [0,1], u = lon/2pi,
+   v = (pi/2 - lat)/pi. Everything the Surface Map draws over its bake -- the ship dot, the
+   graticule, the site markers, the hover inverse behind the `cursor:` line -- goes through
+   this pair, so those overlays agree with one another to the pixel and a zoom or pan moves
+   all of them together.
+   This is deliberately NOT the bake's law above, and NOT the tileable centre layout further
+   down: a marker on a screen is a different question from a sample in a grid. The cost of
+   choosing it is real and bounded: see equirectOverlayGap below. */
+inline void equirectOverlayPixel(double lon, double lat, double &u, double &v) {
+    u = lon / (2.0 * std::numbers::pi);
+    v = (std::numbers::pi * 0.5 - lat) / std::numbers::pi;
+}
+
+/* The inverse: a fraction of the drawn image -> the direction the overlay points at. The
+   caller decides whether the point is on the map at all (the window asks for u, v in [0,1]
+   before calling); nothing here clamps, so a panned-off mouse stays visibly off the map
+   rather than reading a wrapped coordinate. */
+inline void equirectOverlayLonLat(double u, double v, double &lon, double &lat) {
+    lon = u * 2.0 * std::numbers::pi;
+    lat = std::numbers::pi * 0.5 - v * std::numbers::pi;
+}
+
+/* [rad] The worst angular distance between the two laws: at the centre of the image row that
+   shows texel j, the overlay names pi/2 - (j + 0.5) pi / h while the bake put THAT texel's
+   direction at equirectRowLat(j, h) = pi/2 - j pi/(h-1). The difference is
+   (j - h/2 + 1/2) pi / (h (h-1)), zero on the equator's row and worst at the two ends, where
+   it is pi / (2h) -- half the image's own row pitch, and half the bake's row angle within a
+   factor h/(h-1). So the dot, the graticule and the cursor sit at most half a row away from
+   the colour under them: 0.35 deg at a 512-wide bake, 0.09 at 2048. Pinned over every row in
+   tests/test_surfmap.cpp, because gameui.cpp used to claim this bound in a comment that
+   nothing measured (#845). */
+inline double equirectOverlayGap(int h) {
+    assert(h >= 2);
+    return std::numbers::pi / (2.0 * (double)h);
+}
+
 /* Row j's latitude on a w x h poles-on-rows grid [rad]. Spelled once because both grid
    lookups below need it and the #802 pin in tests/test_surfmap.cpp compares their bits.
    The SOUTH endpoint is pinned rather than computed: pi*(h-1)/(h-1) is not pi, so the

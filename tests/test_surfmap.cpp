@@ -1121,6 +1121,55 @@ int main() {
         check(ok, "grid: pixel -> dir -> lonlat -> pixel is exact");
     }
 
+    /* 4c. The map window's OVERLAY law (#845): the Surface Map draws its ship dot, graticule,
+       site markers and cursor readout on a second law -- the whole globe stretched edge to edge
+       of the image, so the denominators are w and h rather than the bake's w and h-1. That is
+       a deliberate choice (a marker on a screen is not a sample in a grid), and it is now named
+       in equirect.h instead of written inline in gameui.cpp twice. What used to live there was
+       a claim -- "they disagree with the colour sample by at most half a map row" -- that
+       nothing measured. Measured here, over every row of every grid size the window can ask
+       for. */
+    {
+        // The two halves of the overlay law are exact inverses of each other.
+        bool exact = true;
+        for(double vv = 0.0; vv <= 1.0001 && exact; vv += 0.125) {
+            for(double uu = 0.0; uu <= 1.0001; uu += 0.2) {
+                double lon = 0.0, lat = 0.0, u2 = 0.0, v2 = 0.0;
+                equirectOverlayLonLat(uu, vv, lon, lat);
+                equirectOverlayPixel(lon, lat, u2, v2);
+                if(!near_d(u2, uu, 1e-12) || !near_d(v2, vv, 1e-12)) { exact = false; break; }
+            }
+        }
+        check(exact, "overlay: the window's forward and inverse halves are exact");
+
+        /* At the centre of the image row that shows texel j, the overlay names
+           pi/2 - (j + 0.5) pi / h while that texel's COLOUR stands at equirectRowLat(j, h).
+           The worst gap over a grid is equirectOverlayGap(h), and it must stay under half the
+           bake's own row angle -- the bound the window leans on. */
+        bool bounded = true;
+        for(const int hh : {16, 64, 128, 256, 512, 1024, 2048}) {
+            double worst = 0.0;
+            for(int j = 0; j < hh; j++) {
+                const double centre = ((double)j + 0.5) / (double)hh;
+                double lon = 0.0, lat = 0.0;
+                equirectOverlayLonLat(0.0, centre, lon, lat);
+                const double gap = std::abs(lat - equirectRowLat(j, hh));
+                if(gap > worst) { worst = gap; }
+            }
+            if(!near_d(worst, equirectOverlayGap(hh), 1e-12)
+               || worst > std::numbers::pi / (double)(hh - 1) * 0.5 + 1e-15) { bounded = false; }
+        }
+        check(bounded, "overlay: its worst offset from the bake's row centres is half a row");
+
+        // The figure a reader can feel: at the default bake width the dot sits a third of a
+        // degree off the colour under it; at 2048 wide, a tenth. Both under the width of a
+        // published wind band, which is the case that would actually show (#845).
+        const double r2d = 180.0 / std::numbers::pi;
+        check(std::abs(equirectOverlayGap(256) * r2d - 0.3516) < 1e-3
+                  && std::abs(equirectOverlayGap(1024) * r2d - 0.0879) < 1e-3,
+              "overlay: half a row is ~0.35 deg at the 512 default and ~0.09 at 2048");
+    }
+
     // 5. surfmapShade: the terminator's light factor.
     {
         const glm::dvec3 n(1, 0, 0);
