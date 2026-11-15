@@ -269,6 +269,28 @@ inline bool slugUsable(const std::string &s) {
     return true;
 }
 
+/* A GAME name -- the tail of a game dir under saves/, "<stamp>-<name>". A
+   blocklist rather than the slot whitelist on purpose: a game name may hold a
+   space or an accent ("Kerbin, year 2"), and only what actually breaks a
+   directory name gets refused.
+   It lives here and not beside the widget that typed it because of #269: the UI
+   checked what the player typed while find_slot/newGameDir concatenated whatever
+   the COMMAND LINE said, so the only guard sat on the friendly side of the two and
+   the file-writing side had none. The two helpers that turn a name into a path now
+   call these themselves, so a new caller cannot forget to. */
+inline bool gameNameUsable(const std::string &n) {
+    if(n.empty() || n == "." || n == "..") { return false; }
+    for(unsigned char c : n) {
+        if(c < 0x20 || c == 0x7f) { return false; }
+        switch(c) {
+            case '/': case '\\': case ':': case '*': case '?':
+            case '"': case '<': case '>': case '|':
+                return false;
+        }
+    }
+    return true;
+}
+
 struct SaveMeta {
     int format = kSaveFormat;
     std::string saved_at;    // wall-clock (human-readable; not parsed back)
@@ -1271,9 +1293,13 @@ inline std::string gameStamp(time_t t) {
 
 // A fresh <stamp>-<name> dir under base: the stamp bumps one second at a time
 // while the dir exists; "" if 60 bumps do not clear it.
+// A name that could escape base is refused here too (#269) -- this concatenates, so
+// it is where the rule has to live: the UI already whitelists what the player
+// typed, and that was the only check of the two that had one.
 inline std::string newGameDir(const std::string &base, const std::string &name,
                               time_t now = time(nullptr)) {
     namespace fs = std::filesystem;
+    if(!gameNameUsable(name)) { return ""; }
     for(int bump = 0; bump < 60; bump++) {
         const std::string dir = base + "/" + gameStamp(now + bump) + "-" + name;
         std::error_code ec;
@@ -1417,8 +1443,14 @@ inline const std::string kFixtureRoot = "e2e";
 
 // Resolve a bare slot name under base: base/<slot> (a legacy flat save)
 // first, then the UNIQUE base/<game>/<slot>. "" when missing or ambiguous.
+// "bare" is part of the contract, so it is enforced (#269): a slot that carries a
+// separator or a control character is not a name to look up but a path handed to
+// this function, and concatenating it walks out of base. A caller holding a PATH
+// never comes here -- main.cpp's --load uses it verbatim when <path>/save.json
+// exists -- so refusing costs nothing it was ever asked to do.
 inline std::string find_slot(const std::string &base, const std::string &slot) {
     namespace fs = std::filesystem;
+    if(!slugUsable(slot)) { return ""; }
     std::error_code ec;
     if(fs::exists(base + "/" + slot + "/save.json", ec)) {
         return base + "/" + slot;

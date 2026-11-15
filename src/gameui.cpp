@@ -5293,7 +5293,10 @@ void drawSpaceCenterTopBar(Game &g) {
 }
 
 // A save-slot name is a single directory under a game dir: whitelist to letters,
-// digits, - _ . so it can never carry a path separator or be a dot-name.
+// digits, - _ . so it can never carry a path separator or be a dot-name. STRICTER
+// than save.h's slugUsable on purpose (that is the floor every writer/reader of a
+// name enforces, #269; this is the UI refusing a slot name with a space in it
+// before the player has to type it again in the Load sheet's filter).
 static bool safeSlotName(const std::string &n) {
     if(n.empty() || n == "." || n == "..") { return false; }
     for(unsigned char c : n) {
@@ -5304,20 +5307,8 @@ static bool safeSlotName(const std::string &n) {
     return true;
 }
 
-// A game name is the tail of a game dir name under saves/ (<stamp>-<name>). Blocklist
-// instead of the slot whitelist: forbid only what breaks a dir name.
-static bool safeGameName(const std::string &n) {
-    if(n.empty() || n == "." || n == "..") { return false; }
-    for(unsigned char c : n) {
-        if(c < 0x20) { return false; }
-        switch(c) {
-            case '/': case '\\': case ':': case '*': case '?':
-            case '"': case '<': case '>': case '|':
-                return false;
-        }
-    }
-    return true;
-}
+// A game name is the tail of a game dir name under saves/ (<stamp>-<name>):
+// save.h's gameNameUsable, which newGameDir now applies to itself as well (#269).
 
 /* The New Game sheet's difficulty band. Narrower than the range --exhaust-scale
    and the save loader allow (0.5-5): past these the game stops being a game, and
@@ -5391,7 +5382,7 @@ void drawNewGame(Game &g) {
         ImGui::Text("Game name");
         ImGui::SetNextItemWidth(220);
         ImGui::InputText("##newgame_name", nameBuf, sizeof(nameBuf));
-        if(!safeGameName(nameBuf)) {
+        if(!gameNameUsable(nameBuf)) {
             ImGui::TextDisabled("(no / \\ : * ? \" < > | or control chars)");
         }
         ImGui::Spacing();
@@ -5423,7 +5414,7 @@ void drawNewGame(Game &g) {
         if(ImGui::Button("Start", ImVec2(120.0f, 0.0f))) {
             if(systems.empty()) {
                 g.toast("No systems in res/systems");
-            } else if(!safeGameName(nameBuf)) {
+            } else if(!gameNameUsable(nameBuf)) {
                 g.toast("Give the game a name (spaces are fine)");
             } else {
                 const std::string path =

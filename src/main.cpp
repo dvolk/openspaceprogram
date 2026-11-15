@@ -781,6 +781,17 @@ int main(int argc, char **argv)
         // path has no save.json.
         std::string load_dir = args.load_name;
         if(!std::filesystem::exists(load_dir + "/save.json")) {
+            /* A name that could not be a slot is said so rather than answered with
+               "no save named '../../x' under saves/" (#269): find_slot refuses it,
+               and the old wording implied the save might be there somewhere. A path
+               that EXISTS is still used verbatim above -- that is what --load's
+               help has always promised, and where the e2e fixtures live. */
+            if(!slugUsable(args.load_name)) {
+                printf("Load: '%s' is neither an existing save directory nor a "
+                       "slot name (a slot holds no path separator and no "
+                       "control characters)\n", args.load_name.c_str());
+                return 1;
+            }
             load_dir = find_slot(datadir::saves(), load_dir);
             if(load_dir.empty()) {
                 printf("Load: no save named '%s' under %s (or ambiguous "

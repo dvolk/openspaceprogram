@@ -1461,6 +1461,18 @@ int main() {
         CHECK(newGameDir(base, "game1", t) == base + "/20260929_174013-game1");
         // ...and a differently-named one may share the original second
         CHECK(newGameDir(base, "solar", t) == base + "/20260929_174012-solar");
+        /* #269: the name is concatenated into a directory path, so it is refused
+           HERE -- not only at the New Game widget, which was the one caller that
+           checked. A name carrying a separator names a dir outside base. */
+        CHECK(newGameDir(base, "../../evil", t).empty());
+        CHECK(newGameDir(base, "sub/game", t).empty());
+        CHECK(newGameDir(base, "/abs/path", t).empty());
+        CHECK(newGameDir(base, "", t).empty());
+        CHECK(newGameDir(base, ".", t).empty());
+        CHECK(newGameDir(base, "..", t).empty());
+        // A space is fine: this is a blocklist, not the slot whitelist.
+        CHECK(newGameDir(base, "Kerbin, year 2", t)
+              == base + "/20260929_174012-Kerbin, year 2");
         fs::remove_all(base);
     }
 
@@ -1502,7 +1514,46 @@ int main() {
         CHECK(find_slot(base, "save3") == base + "/My Career/save3");
         CHECK(find_slot(base, "save1").empty());   // two games hold it
         CHECK(find_slot(base, "missing").empty());
+        /* #269: find_slot resolves a NAME, so it refuses anything shaped like a
+           path instead of concatenating it. The hole was on the command-line side:
+           the UI checked what the player typed, --load checked nothing, and
+           `--load ../../somewhere` came back as a path under base that ISN'T. (The
+           write side of that -- --save/--resave/--reload -- has since left the CLI;
+           a caller holding a real path never reaches find_slot at all, main.cpp
+           uses it verbatim when <path>/save.json exists. These pins are the floor
+           staying put if such an option comes back.) */
+        CHECK(find_slot(base, "../save2").empty());
+        CHECK(find_slot(base, "20260101_100000-Career/save1").empty());
+        CHECK(find_slot(base, "/etc").empty());
+        CHECK(find_slot(base, "..").empty());
+        CHECK(find_slot(base, "save2/").empty());   // a trailing slash is not a name
+        CHECK(find_slot(base, "save\t2").empty());  // a control char ends a path at C
         fs::remove_all("tmp/test_save_games");
+    }
+
+    /* #269: the two name floors live in save.h, next to the helpers that turn a
+       name into a path, so a caller cannot skip them. A SLOT is one directory: the
+       whitelist-grade floor rejects separators and control characters. A GAME name
+       is a blocklist -- it may hold a space or a comma, and only what breaks a
+       directory name is refused. */
+    {
+        CHECK(slugUsable("v1"));
+        CHECK(slugUsable("quicksave.03"));
+        CHECK(!slugUsable("a/b"));
+        CHECK(!slugUsable("a\\b"));
+        CHECK(!slugUsable(std::string("save\t2")));
+        CHECK(!slugUsable(""));
+        CHECK(!slugUsable("."));
+        CHECK(!slugUsable(".."));
+        CHECK(gameNameUsable("Kerbin, year 2"));   // the blocklist is not a whitelist
+        CHECK(gameNameUsable("Eeloo"));
+        CHECK(!gameNameUsable("../../evil"));
+        CHECK(!gameNameUsable("a:b"));
+        CHECK(!gameNameUsable("a*b"));
+        CHECK(!gameNameUsable("a|b"));
+        CHECK(!gameNameUsable(std::string("a\nb")));
+        CHECK(!gameNameUsable(""));
+        CHECK(!gameNameUsable(".."));
     }
 
     /* list_games over MULTIPLE roots: the Load sheet's save locations (Game
