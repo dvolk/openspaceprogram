@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 363 |
+| `invariant` | a behaviour or a player route the game must keep | 364 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 48 |
 | `harness` | CLI/test-engine plumbing, not game spec | 15 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **430** |
+| | **total** | **431** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -174,7 +174,7 @@ judgement. Select by number, name or path, e.g.
 | `crew/394-spent-pool-kerbal-refused.txt` | invariant | A kerbal spawned on a spent pad pool is refused, not minted off the def. |
 | `crew/547-walking-kerbal-suit-mass-overflow-refused.txt` | invariant | A saved kerbal whose suit contents add up to more mass than the game can store is refused, not stood up as a NaN-inertia Body. |
 
-## science (30)
+## science (31)
 
 | case | kind | pins |
 |---|---|---|
@@ -204,6 +204,7 @@ judgement. Select by number, name or path, e.g.
 | `science/727-solar-log-weighs-the-star-against-the-ground.txt` | invariant | --solar-log reads the star and the authored ground off the same row, and its black-body column is the law in src/solar.h, not a decoration. |
 | `science/735-the-shipped-world-prices-its-sunshine.txt` | invariant | The system the player actually flies answers the sun for every body that has a surface: each prints the light at its orbit, its Bond albedo with the words saying where that albedo came from, and the airless mean the two imply; the rows are one arithmetic rather than three printings; every swing names the rule that priced it; and no world is left without one -- a banded world's swing is its 1 bar level's, and the atlas uses a different word to say so. |
 | `science/744-solar-log-dashes-what-a-railed-hull-stopped-measuring.txt` | invariant | --solar-log prints numbered air_T / prof_T / w / follow for a hull standing live in Kerbin's air and dashes all four once a warp freezes it on rails, while underfoot_T keeps its number and keeps swinging and the file's own swing column keeps the single number it read off the world. |
+| `science/801-an-estimated-ground-anchor-says-it-estimated.txt` | invariant | The dossier names the rung behind a world's ground anchor -- DERIVED: sun + albedo when nothing states one, the file's own words when a mean was solved from a stated range, nothing when a source states it -- and --solar-log carries the same words as underfoot_src beside the kelvin they describe. |
 | `science/829-a-lagged-worlds-air-follows-the-ground-the-map-paints.txt` | invariant | On a world that authored a ground phase lag, the flight log's underfoot kelvin is the lagged ground -- the one the surface map paints -- and the air a hull flies through couples to that same number rather than to this instant's cosine. |
 | `science/829-b-world-nobody-gave-a-lag-still-answers-this-instant.txt` | invariant | A world with no phase lag authored answers its ground from this instant's cosine to the last printed digit, in the flight log and in the air under a hull alike, so making the lagged readers agree is a branch and not a change to every world. |
 | `science/830-the-dossier-carries-the-lag-beside-the-swing-it-modifies.txt` | invariant | A world the shipped catalogue gives a ground phase lag says so in the same block as the swing it bends -- the knob in radians of phase, how far past its sun its hottest ground can sit, and the measured solar day that converts the two -- while the swing itself stays the law's two ends, so the identity that ties those ends still closes, AND the block prints what the lag leaves: an equator-at-equinox pair strictly inside the law's ends and narrowing as the knob grows. |

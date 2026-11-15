@@ -7087,8 +7087,9 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
        a silent snprintf truncation is how it would look. The longest value today is the #830
        `ground lag` row (89 chars at Pol: `0.4795 rad of phase (hottest ground up to 25.6 deg /
        17.98 h past noon; day 10d 12:42:22)`), and both its angle and its day grow with what a
-       hand-authored file can ask for (a tau near kLagTauMaxPhase and a slow rotator), so the
-       room is deliberate rather than measured to the last byte. */
+       hand-authored file can ask for (a tau near kLagTauMaxPhase and a slow rotator), as does
+       the #801 provenance marker on `ground anchor` -- a file's `temperature_src` is free text
+       -- so the room is deliberate rather than measured to the last byte. */
     char v[128], w[64];
     auto line = [&](const char *label, const char *value) {
         f.push_back(AtlasFact{ label, value, false });
@@ -7506,6 +7507,7 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
            anchor -- so what dashes is a body with no ground (the `bands` rows) or no anchor,
            and the words beside a printed swing say which rule priced it. */
         const double airT = airDatum_K(b.surface.atmosphere);
+        const GroundAnchorRung anchorRung = groundAnchorRung(b.surface.temperature, airT, bb);
         const double anchor = groundAnchor_K(b.surface.temperature, airT, bb);
         if(anchor > 0.0 && evenShareAuthored(b.surface.even_share)) {
             /* Values only (#759). The two ends, the anchor and the knob that ties them all
@@ -7628,7 +7630,25 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
                the whole answer and a parenthetical would claim a distinction the file has not
                drawn. */
             const bool relief_here = b.surface.reliefOn();
-            fmtRow(v, sizeof v, "%.1f K", anchor);
+            /* #801: #722's rule -- a computed figure announces itself at the readout -- was
+               obeyed by the Surface Map's legend and not by this row. In this file most worlds
+               fall past the air datum to rung 3, the black-body this star's light and their own
+               albedo imply, and their `ground anchor` printed in the same typography as Earth's
+               stated 288 K. So the anchor carries the map's own words (groundAnchorSource, so a
+               mean SOLVED from a stated range credits the range rather than calling itself a
+               stated mean). A stated or air-datum anchor stays bare: naming the source on the
+               worlds where a source IS the answer costs width on every row to say something the
+               number already is, and silence about a sourced figure is not the confusion #722
+               is about. */
+            const std::string anchorSrc
+                = (anchorRung == kAnchorDerived || !b.surface.temperature_src.empty())
+                      ? groundAnchorSource(anchorRung, b.surface.temperature_src)
+                      : std::string();
+            if(anchorSrc.empty()) {
+                fmtRow(v, sizeof v, "%.1f K", anchor);
+            } else {
+                fmtRow(v, sizeof v, "%.1f K  (%s)", anchor, anchorSrc.c_str());
+            }
             line(giant ? "level anchor"
                        : (relief_here ? "ground anchor (sea level)" : "ground anchor"), v);
             /* The same law at the top of this world's relief: a TEMPERATURE pair, not a delta.

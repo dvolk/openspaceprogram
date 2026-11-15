@@ -1,0 +1,58 @@
+# #722's rule is that a computed figure announces itself at the readout, and the Surface Map
+# has obeyed it since #636: its legend prints anchor_src= from groundAnchorSource(), which
+# says "stated ground temperature", "the air's datum" or "DERIVED: sun + albedo" -- and for a
+# mean SOLVED from a stated range it prints the file's own words instead, because calling THAT
+# a stated mean credits the corpus with a number it never stated.
+#
+# Two readouts did not obey it, and they are the two a player and a log reader look at (#801).
+# In this file, 81 of the 91 anchors the dossier prints fall past a stated ground and past the
+# air datum to rung 3 -- the black-body this star's light and the body's own albedo imply --
+# and they printed in the same typography as Earth's stated 288 K. --solar-log put
+# underfoot_T= beside ground_T=, one of them our arithmetic and one of them a source's
+# reading, with nothing between them to say which was which.
+#
+# So the rung now travels with the kelvin in both places, in groundAnchorSource's words -- one
+# spelling of the order, which is the point of #636. A stated or air-datum anchor stays bare:
+# labelling the worlds where a source IS the answer costs width on every row to say what the
+# number already is, and silence about a sourced figure is not the confusion #722 is about.
+#
+# Io is the fixture because it is the ticket's own example: no authored ground temperature, no
+# air to take a datum from, and a dossier that used to read
+#     black-body temp            106.4 K
+#     ground anchor              106.4 K
+# with the equality as the only hint that the second number comes from the first.
+NAME 801-an-estimated-ground-anchor-says-it-estimated
+CLAIM The dossier names the rung behind a world's ground anchor -- DERIVED: sun + albedo when nothing states one, the file's own words when a mean was solved from a stated range, nothing when a source states it -- and --solar-log carries the same words as underfoot_src beside the kelvin they describe.
+KIND invariant
+ARGS --system res/systems/solar_system.json --timeout 4 --atlas-dump 2500
+ARGS --solar-log --startship v,res/ships/skiff_trim.json,Io,high-orbit
+
+# The derived case: Io has no stated ground and no air, so its anchor is the black-body, and
+# the row says so in the map's words rather than leaving the equality with `black-body temp`
+# three rows up as the hint.
+CHECK re.search(r"ground anchor\s+106\.4 K\s+\(DERIVED: sun \+ albedo\)", re.search(r"\[atlas\] Io weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+# A mean SOLVED from a range credits its range, not a source that never gave a mean: rung 1
+# alone would call 276.5 K a stated ground temperature.
+CHECK re.search(r"ground anchor\s+276\.5 K\s+\(SOLVED from the stated range 95\.00-390\.00 K, not a stated mean\)", re.search(r"\[atlas\] Moon weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+# END-ANCHORED, deliberately: the silence is the claim, so a marker creeping onto a world a
+# source DOES state has to go red. Earth states 288 K; Jupiter's 1-bar level is stated too, and
+# a banded world keeps its own word ("level anchor") with no parenthetical either.
+CHECK re.search(r"ground anchor \(sea level\)  288\.0 K$", re.search(r"\[atlas\] Earth weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0), re.M)
+CHECK re.search(r"level anchor\s+165\.0 K$", re.search(r"\[atlas\] Jupiter weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0), re.M)
+# The scale of it, read back off the dossier rather than quoted from the generator that made
+# the file: this shipped system prints 91 anchors, 81 of them rung 3, and the two SOLVED means
+# are the Moon's and Pluto's. A count that goes stale when the corpus grows is worth the red --
+# same reasoning as science/724's row counts.
+CHECK len(re.findall(r"(?:ground|level) anchor(?: \(sea level\))?\s+[\d.]+ K", out)) == 91
+CHECK len(re.findall(r"(?:ground|level) anchor(?: \(sea level\))?\s+[\d.]+ K\s+\(DERIVED: sun \+ albedo\)", out)) == 81
+CHECK len(re.findall(r"(?:ground|level) anchor(?: \(sea level\))?\s+[\d.]+ K\s+\(SOLVED", out)) == 2
+# --solar-log: the pair the ticket cites. Io states no ground reading, so `ground_T=-` sits
+# beside a numbered underfoot_T, which is exactly the juxtaposition that needed naming. The
+# rows are counted so none of the all()s below can pass on an empty list.
+CHECK len(solar) >= 3
+CHECK all(d["body"] == "Io" for d in solar)
+CHECK all(d["underfoot_src"] == "DERIVED: sun + albedo" for d in solar)
+CHECK all(d["underfoot_T"] is not None and d["ground_T"] is None for d in solar)
+# ONE spelling, two readouts (#636): the words in the log are the words in Io's dossier row,
+# so they cannot drift into "estimated" here and "modelled" there.
+CHECK all(("(%s)" % d["underfoot_src"]) in re.search(r"\[atlas\] Io weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0) for d in solar)

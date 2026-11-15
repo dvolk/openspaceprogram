@@ -41,8 +41,9 @@ CHECK all(d["ground_T"] is None for d in solar)
 # The lag column (#837) is gated by the same predicate as the swing, so it dashes here for the
 # same reason: Belts states no share, so it can state no phase either. Printing lag=0.0000 for
 # a file that says nothing would invent a reading -- the confusion #794 pinned in the surfmap,
-# now pinned in this column.
-CHECK all(d["underfoot_T"] is None and d["swing"] is None and d["lag"] is None for d in solar)
+# now pinned in this column. #801's underfoot_src dashes with the kelvin it describes: a rung
+# the row refuses to put a temperature through would advertise an anchor over a dash.
+CHECK all(d["underfoot_T"] is None and d["underfoot_src"] is None and d["swing"] is None and d["lag"] is None for d in solar)
 CHECK all(d["air_T"] is None and d["prof_T"] is None and d["follow"] is None for d in solar)
 CHECK all(d["flux"] is not None and 600.0 < d["flux"] < 660.0 for d in solar)
 # Belts has an authored atmosphere but the hull is nowhere near it, so nothing dims the plate:

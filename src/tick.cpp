@@ -856,8 +856,34 @@ void tick(Game &g) {
                 const double anchor = ground_here
                     ? groundAnchor_K(groundT, airDatum_K(over->surface.atmosphere), bb_here)
                     : 0.0;
-                if(anchor > 0.0 && sky.valid
-                   && evenShareAuthored(over->surface.even_share)) {
+                /* #801: WHICH rung answered, named the way the Surface Map names it
+                   (`anchor_src=`, surfmap.h). `underfoot_T` is one of the two places the
+                   engine states a ground temperature, and for most of a generated system it
+                   is the rung-3 black-body -- sun + albedo, our arithmetic -- printed beside a
+                   `ground_T` that is the source's own reading. Without the rung the two read
+                   as the same kind of fact, which is what #722 refuses. The file's own
+                   provenance string wins when it carries one (a SOLVED-from-a-range mean is
+                   not a stated mean), so this is groundAnchorSource and not the rung alone. */
+                const GroundAnchorRung anchor_rung = ground_here
+                    ? groundAnchorRung(groundT, airDatum_K(over->surface.atmosphere), bb_here)
+                    : kAnchorNone;
+                const bool underfoot_here
+                    = anchor > 0.0 && sky.valid
+                      && evenShareAuthored(over->surface.even_share);
+                char src_s[128];
+                if(!underfoot_here) {
+                    // Dashes with the number it describes. A rung the row refuses to put a
+                    // temperature through would advertise an anchor while answering '-'
+                    // beside it -- the pairing the swing=/lag= gate below refuses.
+                    snprintf(src_s, sizeof src_s, "-");
+                } else {
+                    assert(anchor_rung != kAnchorNone);   // underfoot_here needs anchor > 0
+                    const std::string src
+                        = groundAnchorSource(anchor_rung, over->surface.temperature_src);
+                    const int want = snprintf(src_s, sizeof src_s, "\"%s\"", src.c_str());
+                    assert(want > 0 && want < (int)sizeof src_s);
+                }
+                if(underfoot_here) {
                     /* #793: this ground stands at a height, and the body's own profile says what
                        that costs. The height is the GROUND's elevation under the hull, sampled the
                        same way the HUD's AGL and the aero pass sample it -- NOT the hull's own
@@ -981,14 +1007,15 @@ void tick(Game &g) {
                 }
                 printf("[solar] t=%.1fs star=\"%s\" dist=%s m flux=%s W/m2 "
                        "elev=%s deg flat=%s W/m2 body=\"%s\" albedo=%s "
-                       "ground_T=%s K bb_T=%s K underfoot_T=%s K swing=%s "
+                       "ground_T=%s K bb_T=%s K underfoot_T=%s K underfoot_src=%s "
+                       "swing=%s "
                        "lag=%s air_T=%s K prof_T=%s K w=%s follow=%s\n",
                        g.time,
                        g.sun ? g.sun->name.c_str() : "(none)",
                        dist_s, flux_s, elev_s, flat_s,
                        g.ship->m_parent ? g.ship->m_parent->name.c_str()
                                         : "(none)",
-                       alb_s, gt_s, bb_s, surf_s, swing_s, lag_s, air_s, prof_s, w_s,
+                       alb_s, gt_s, bb_s, surf_s, src_s, swing_s, lag_s, air_s, prof_s, w_s,
                        follow_s);            }
         }
 

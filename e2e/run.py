@@ -273,7 +273,14 @@ SOLAR_RE = re.compile(
     # Absent is a dash rather than a number: an unpriced knob has no default (groundtemp.h),
     # so a body whose source states no night/day pair prints '-' and a CHECK must ask for
     # None, exactly like the albedo column above.
-    r"\s+underfoot_T=([-\d.]+|-) K\s+swing=([-\d.]+|-)\s+lag=([-\d.]+|-)"
+    r"\s+underfoot_T=([-\d.]+|-) K"
+    # #801: WHICH rung of the ground law priced that number -- "stated ground temperature",
+    # "the air's datum", "DERIVED: sun + albedo", or a file's own provenance string. It sits
+    # next to the kelvin it describes and dashes with it, and it is what tells a reader that
+    # on most of a generated system underfoot_T is our arithmetic and not a source's reading
+    # (science/801 counts how many anchors that is in the shipped file).
+    r"\s+underfoot_src=(\"[^\"]*\"|-)"
+    r"\s+swing=([-\d.]+|-)\s+lag=([-\d.]+|-)"
     r"\s+air_T=([-\d.]+|-) K"
     # #837: lag is the third knob of the same law, and the row's underfoot_T is a LAGGED
     # answer whenever it is a number. Dash = the file states no lag (NOT a stated zero, which
@@ -592,6 +599,33 @@ FUEL_GROUP_RE = re.compile(
 FUEL_RES_RE = re.compile(r"([A-Za-z0-9]+):([-\d.]+)/([-\d.]+)\[([^\]]*)\]")
 FUEL_LINK_RE = re.compile(r"links=(\S+)")
 FUEL_LINK_PAIR_RE = re.compile(r"g?(\d+)->g?(\d+)")
+
+# Every parser that turns ONE stdout tag into a list of rows, as the guard at the CHECKs
+# needs it: (namespace name, the regex that reads it, what that regex was fed). These
+# patterns are POSITIONAL, so a column inserted mid-line by a printer -- which is a normal,
+# reasonable thing for the game to do -- matches nothing, the list comes back empty, and
+# `all(...)` over an empty list is TRUE. That has now bitten twice (SURFMAP_RE, SOLAR_RE),
+# each time looking like a passing case. A parser whose regex does not start with a `[tag]`
+# is skipped by the guard rather than guessed at.
+ROW_PARSERS = [
+    ("orbit", ORBIT_RE, "world"), ("ascent", ASCENT_RE, "world"),
+    ("mapb", MAP_RE, "world"), ("dbg", DBG_RE, "world"), ("bldg", BLDG_RE, "world"),
+    ("plane", PLANE_RE, "world"), ("xfer", XFER_RE, "world"),
+    ("porkchop", PORKCHOP_RE, "world"), ("surfmap", SURFMAP_RE, "world"),
+    ("solar", SOLAR_RE, "world"), ("slew", SLEW_RE, "world"), ("perf", PERF_RE, "out"),
+    ("toast", TOAST_RE, "out"), ("att", ATT_RE, "world"), ("eva", EVA_RE, "world"),
+    ("drainlog", DRAINLOG_RE, "world"), ("power", POWER_RE, "world"), ("dv", DV_RE, "world"),
+    ("mass", MASS_RE, "world"), ("drag", DRAG_RE, "world"), ("shake", SHAKE_RE, "world"),
+    ("cam", CAM_RE, "world"), ("terrain", TERRAIN_RE, "world"), ("surf", SURF_RE, "world"),
+    ("orbinfo", ORBINFO_RE, "world"), ("scene", SCENE_RE, "out"), ("fuel", FUEL_RE, "world"),
+]
+
+
+def line_tag(rx):
+    """The '[tag]' a parser's regex starts with, or None when it does not start with one
+    (the item-level regexes like CTRL_ITEM_RE read inside a line, not a line of their own)."""
+    m = re.match(r'\[([a-z]+)\]', rx.pattern.replace("\\[", "[").replace("\\]", "]"))
+    return None if m is None else "[%s]" % m.group(1)
 
 # A repo-relative fixture path a case names, resolved against the repo root (the
 # game runs with cwd=REPO_ROOT). One shape for every place a path can appear:
@@ -1180,7 +1214,7 @@ def parse_solar(out):
     rows = []
     for m in SOLAR_RE.finditer(out):
         (t, star, dist, flux, elev, flat, body, albedo, ground_t, bb_t,
-         underfoot_t, swing, lag, air_t, prof_t, wgt, follow) = m.groups()
+         underfoot_t, underfoot_src, swing, lag, air_t, prof_t, wgt, follow) = m.groups()
         num = lambda s: None if s == "-" else float(s)
         rows.append({
             "t": float(t), "star": star, "body": body,
@@ -1188,6 +1222,9 @@ def parse_solar(out):
             "flat": num(flat), "albedo": num(albedo),
             "ground_T": num(ground_t), "bb_T": num(bb_t),
             "underfoot_T": num(underfoot_t), "swing": num(swing),
+            # #801: the rung in the printer's own words, quotes stripped; None when the row
+            # dashes, which is the same "the world states nothing" as the dash above.
+            "underfoot_src": None if underfoot_src == "-" else underfoot_src.strip('"'),
             # #837: radians of phase, the authored knob behind a lagged underfoot_T. None is
             # the file stating nothing; 0.0 is a stated noon peak.
             "lag": num(lag),
@@ -1961,6 +1998,27 @@ def run_case(case):
         "set": set, "sum": sum,
         "re": re,
     }
+    # 3b) A row list that came back EMPTY while the game clearly printed its tag is a
+    # disagreement between this file's regex and the game's printer, not a world with no rows.
+    # Every CHECK below walks such a list, so `all(...)` on it passes; the failure mode is a
+    # green case that asserts nothing (#653's vacuity, in its loudest guise: it also throws
+    # away rows a case did ask for). Only a case that names the list is held to it -- a run
+    # prints tags it was never asked about, and an unrelated `[toast]` must not become this
+    # case's failure.
+    for name, rx, fed in ROW_PARSERS:
+        if ns[name]:
+            continue
+        tag = line_tag(rx)
+        if tag is None:
+            continue
+        if not any(re.search(r"\b%s\b" % name, expr) for expr in case["check"]):
+            continue
+        printed = sum(1 for ln in (out if fed == "out" else world).splitlines()
+                      if ln.startswith(tag))
+        if printed:
+            diag.append("%s: %s printed %d line(s) and the %s parser read 0 -- this file's "
+                        "regex and the game's printer disagree, so every CHECK on %s is "
+                        "walking an empty list" % (name, tag, printed, name, name))
     # `ns` must be globals: free vars in a CHECK generator/comprehension
     # resolve against globals, not locals. Empty __builtins__ blocks open/exec.
     check_globals = dict(ns)
