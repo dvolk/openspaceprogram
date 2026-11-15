@@ -786,23 +786,81 @@ FACT_WIND_KNOWN = {
 # A range ("0 to 100 m/s", "2-7 m/s") and a ceiling ("Up to 150 m/s") all end the same
 # way, so one pattern reads the top of each, which is all a ceiling guard needs.
 FACT_WIND_LABEL = 'wind speeds'
-WIND_MPS = re.compile(r'(\d+(?:\.\d+)?)\s*m/s')
+# A number the way these pages write one. The thousands comma is not cosmetic: with the
+# old ([\d.]+) group, "Up to 1,000 m/s" matched only the "000", so the sheet's OWN ceiling
+# parsed as 0 m/s and every authored row looked over it (#779). Grouped as triples rather
+# than "digits and commas" so a stray "1,23" is not read as a thousands separator; the
+# sheet parser above (sheet_quantity) already strips separators the same way, which is why
+# the wind patterns were the odd ones out. The comma is stripped in _num rather than left
+# in the pattern because every reader of a match wants a float.
+_NUM = r'(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?'
+WIND_MPS = re.compile(r'(' + _NUM + r')\s*m/s')
+
+
+def _num(txt):
+    return float(txt.replace(',', ''))
+
+
 # Jupiter and Saturn do not state ONE wind: they state a ceiling PER LATITUDE BAND
 # ("Up to 150 m/s (<30 degrees latitude) Up to 40 m/s (>30 degrees latitude)"). That is
 # latitude structure -- and the thing a generated belt field (#775) would replace with
 # derived numbers. Named separately so the guard can tell "the page gave us a range" from
-# "the page gave us a map". This is a Jupiter/Saturn-shaped net, not a general one: it
-# matches "<speed> m/s (<op> <lat> degrees latitude)" and would miss "30-60 degrees
-# latitude", "near the equator", or a speed written with a thousands comma. Widening it is
-# worth doing when a sheet that phrased it another way starts mattering; self_test_fact_wind
-# below pins what this one catches, so a rewrite cannot silently lose the two it has.
-WIND_MPS_LAT = re.compile(r"(?i)up to ([\d.]+)\s*m/s\s*\(\s*([<>]=?)\s*([\d.]+)\s*"
-                          r"(?:degrees|deg)?\s*latitude\s*\)")
+# "the page gave us a map".
+# A band is (speed_mps, op, lat_lo, lat_hi): lat_hi is None for a comparison ("<30",
+# ">= 30") and a number for a range ("30-60"), which is how a page bounds a belt rather
+# than a hemisphere. #779 widened this past the one spelling Jupiter happens to use -- a
+# spaced operator ("( < 30 deg. latitude)"), an abbreviated "deg." with its period, an
+# en-dash range -- because a pattern shaped for one page goes quietly deaf at the next
+# scrape, and a guard that stops firing looks exactly like a guard that found nothing.
+WIND_MPS_LAT = re.compile(r"(?i)up to (" + _NUM + r")\s*m/s\s*\(\s*(?:"
+                          r"([<>]=?)\s*(" + _NUM + r")"
+                          r"|(" + _NUM + r")\s*[-\u2013]\s*(" + _NUM + r")"
+                          r")\s*(?:degrees|deg)?\.?\s*latitude\s*\)")
+
+# The loud half of #779. The parse above turns a stated bound into numbers it can weigh;
+# this only has to notice that the page bounded its wind by LATITUDE in words at all,
+# because the action -- do not let a generated field sit under a published map -- is the
+# same either way. Deliberately coarser, and deliberately aimed at the wind_gen refusal
+# alone: weighing a HAND-authored table against a bound this file cannot put numbers on
+# would need a waiver path that does not exist here, and the authored side is already
+# weighed whenever the page was legible.
+WIND_LAT_WORDS = re.compile(r'(?i)\b(latitude|equator|equatorial|polar|pole|hemisphere)s?\b')
+
+
+def describe_latband(b):
+    """One parsed latitude bound as a short phrase, for the refusal messages."""
+    speed, op, lo, hi = b
+    if hi is None:
+        return '%g m/s %s%g deg lat' % (speed, op, lo)
+    return '%g m/s %g-%g deg lat' % (speed, lo, hi)
+
+
+def latband_edges(b):
+    """The latitudes a parsed bound puts an edge at, which is what the authored-row
+    guard compares a file's own band edges against."""
+    return [b[2]] if b[3] is None else [b[2], b[3]]
+
+
+def parse_wind_text(text):
+    """One wind line's text -> {'max', 'text', 'latbands', 'lat_words'}, with max None
+    when the line states no speed. Split out of fact_wind so self_test_fact_wind can feed
+    it spellings no cached page uses yet: the shipped corpus is not the only thing that
+    has to keep working."""
+    vals = [_num(v) for v in WIND_MPS.findall(text)]
+    lat = []
+    for m in WIND_MPS_LAT.finditer(text):
+        if m.group(2):
+            lat.append((_num(m.group(1)), m.group(2), _num(m.group(3)), None))
+        else:
+            lat.append((_num(m.group(1)), '-', _num(m.group(4)), _num(m.group(5))))
+    return {'max': max(vals) if vals else None, 'text': text, 'latbands': lat,
+            'lat_words': sorted(set(w.lower() for w in WIND_LAT_WORDS.findall(text)))}
 
 
 def fact_wind(page):
     """What a fact sheet states about wind: {'max': m/s, 'text': the page's own words,
-    'latbands': [(speed, op, lat_deg), ...] possibly empty}, or {} when it states none.
+    'latbands': [(speed, op, lat_lo, lat_hi), ...] possibly empty, 'lat_words': [...]},
+    or {} when it states none.
     Jupiter and Saturn put the label on a line of its own and
     the two latitude bands under it, so lines keep being pulled in while they state a
     speed and are not a new labelled row. The raw text comes back because the printed
@@ -821,18 +879,16 @@ def fact_wind(page):
                 break
             text = (text + ' ' + t).strip()
             j += 1
-        vals = [float(v) for v in WIND_MPS.findall(text)]
-        if not vals:
+        found = parse_wind_text(text)
+        if found['max'] is None:
             # The label exists and no number follows it: the page declines to state a
             # speed. Not the same as stating zero.
             return {}
-        lat = [(float(m.group(1)), m.group(2), float(m.group(3)))
-               for m in WIND_MPS_LAT.finditer(text)]
-        return {'max': max(vals), 'text': text, 'latbands': lat}
+        return found
     return {}
 
 
-def check_fact_wind(planets, verbose=True, parsed=None):
+def check_fact_wind(planets, verbose=True, parsed=None, sheets=None):
     """Compare every authored wind row against the wind that body's fact sheet states.
     Returns the disagreements. Prints one line per body with air, including the bodies
     whose sheet states a wind and which author none -- a guard that prints only the
@@ -843,7 +899,9 @@ def check_fact_wind(planets, verbose=True, parsed=None):
         atmo = (surface or {}).get('atmosphere')
         if not atmo:
             continue
-        sheet = fact_wind(page)
+        # `sheets` lets a caller (the self-test below) hand over a wind line that is not in
+        # any cached page, so a spelling the corpus does not use yet can still be probed.
+        sheet = sheets[page] if sheets is not None and page in sheets else fact_wind(page)
         wind = atmo.get('wind') or []
         gen = atmo.get('wind_gen')
         comps = [(float(w['alt']), max(abs(w.get('east', 0.0)), abs(w.get('north', 0.0))))
@@ -863,13 +921,23 @@ def check_fact_wind(planets, verbose=True, parsed=None):
         # anchors' own values, so the widest wind in the emitted table IS the column's top
         # row, weighed here. What the ceiling cannot weigh is WHERE a speed lands, and a
         # sheet that bounds wind BY LATITUDE says more than a generated field may claim.
-        if gen and sheet.get('latbands'):
-            bad.append('%s: the sheet states wind per latitude band (%s) while the file'
-                       ' generates its own belts -- author the published bands (#767/#772),'
-                       ' because a generated field puts derived numbers inside a latitude'
-                       ' bound the page set'
-                       % (name, '; '.join('%g m/s %s%g deg lat' % b
-                                          for b in sheet['latbands'])))
+        # #779: the page can say that in two legibilities. With numbers, the bands come back
+        # parsed and the authored half of this guard can weigh a file against them; with
+        # words ("near the equator", "30-60 degrees latitude" in a shape the pattern does
+        # not know), it cannot -- but the refusal is the same, and the words case is exactly
+        # the one that used to go quiet at a re-scrape, because a guard that stops firing
+        # prints just like a guard that found nothing.
+        if gen and (sheet.get('latbands') or sheet.get('lat_words')):
+            if sheet.get('latbands'):
+                said = 'states wind per latitude band (%s)' % '; '.join(
+                    describe_latband(b) for b in sheet['latbands'])
+            else:
+                said = ('bounds wind by latitude in words this guard cannot put numbers on'
+                        ' (%s)' % ', '.join(sheet['lat_words']))
+            bad.append('%s: the sheet %s while the file generates its own belts -- author'
+                       ' the published bands (#767/#772/#779), because a generated field'
+                       ' puts derived numbers inside a latitude bound the page set: "%s"'
+                       % (name, said, quote))
         # #775's diagnostic, printed and never enforced: what the rotation-based scaling
         # says about the latitudinal structure this body's air can hold. The table on #775
         # shows it tracks Venus (no belts at all), Jupiter and Saturn and overpredicts Mars
@@ -923,12 +991,13 @@ def check_fact_wind(planets, verbose=True, parsed=None):
         # A whole-sphere row sharing a table with banded rows is legal: banding the deck and
         # leaving a high level global is authoring, not erasing.
         if sheet.get('latbands'):
-            pub = sorted(set(abs(b[2]) for b in sheet['latbands']))
+            pub = sorted(set(abs(edge) for b in sheet['latbands']
+                             for edge in latband_edges(b)))
             banded = [w for w in wind if w.get('lat') is not None]
             if not banded:
                 bad.append('%s: the sheet bounds wind BY LATITUDE (%s) while this file answers'
                            ' for the whole sphere -- author the published split (#767/#772)'
-                           % (name, '; '.join('%g m/s %s%g deg lat' % b
+                           % (name, '; '.join(describe_latband(b)
                                               for b in sheet['latbands'])))
             for w in banded:
                 for edge in (float(w['lat'][0]), float(w['lat'][1])):
@@ -1035,6 +1104,56 @@ def self_test_fact_wind():
                           verbose=False)
     if not any('bounds wind BY LATITUDE' in m for m in got):
         fails.append('a whole-sphere table under a banded sheet was not refused: %r' % (got,))
+    # #779: the spellings this guard used NOT to know. Both halves are probed, because a
+    # page can be legible enough to refuse a generated field and still not be legible
+    # enough to weigh a hand-authored one against it. None of these occurs in the cached
+    # corpus, so they go in through parse_wind_text and the `sheets` seam rather than a
+    # fixture page: the corpus is what ships today, the spellings are what a re-scrape may
+    # say, and the failure this pins is the guard going quietly deaf between the two.
+    spellings = [
+        ('Up to 150 m/s (30-60 degrees latitude)', 'a band written as a range',
+         150.0, [(150.0, '-', 30.0, 60.0)]),
+        ('Up to 40 m/s (< 30 deg. latitude)', 'a spaced operator and an abbreviated deg.',
+         40.0, [(40.0, '<', 30.0, None)]),
+        ('Up to 1,000 m/s (>30 degrees latitude)', 'a speed with a thousands comma',
+         1000.0, [(1000.0, '>', 30.0, None)]),
+        # The last one has no numbers to parse, so the coarse net is all there is -- which
+        # is why it is in the list at all: it is the shape that used to look like a sheet
+        # with no latitude structure.
+        ('Up to 50 m/s near the equator', 'latitude stated in words, no numbers at all',
+         50.0, []),
+    ]
+    for text, why, ceiling, bands in spellings:
+        got = parse_wind_text(text)
+        if got['max'] != ceiling:
+            fails.append('%s did not parse as a %g m/s ceiling: %r (%s)'
+                         % (why, ceiling, got, text))
+        if got['latbands'] != bands:
+            fails.append('%s did not parse as the latitude bounds it states (%s): %r (%s)'
+                         % (why, bands, got['latbands'], text))
+        if not got['lat_words']:
+            fails.append('%s lost the coarse latitude signal: %r (%s)' % (why, got, text))
+        # The comma case is the one that was actively wrong rather than merely blind: the
+        # old group read "1,000" as "000", so the page's ceiling came back as 0 m/s and
+        # every authored row on that body looked over it.
+        bad = check_fact_wind([('invented-fact.html', 'Windy', 1.0,
+                                {'atmosphere': {'wind': rows, 'wind_gen': 'rhines'}}, 0.0)],
+                              verbose=False,
+                              sheets={'invented-fact.html': got})
+        if not any('generates its own belts' in m for m in bad):
+            fails.append('a generated table under %s was not refused: %r (%s)'
+                         % (why, bad, text))
+    # ... and a page that bounds only SPEED still lets a generated field through, or the
+    # widened net is just refusing wind instead of reading sheets.
+    plain = parse_wind_text('0 to 100 m/s')
+    if plain['max'] != 100.0 or plain['latbands'] or plain['lat_words']:
+        fails.append('a bare range stopped reading as a bare range: %r' % (plain,))
+    bad = check_fact_wind([('invented-fact.html', 'Windy', 1.0,
+                            {'atmosphere': {'wind': rows, 'wind_gen': 'rhines'}}, 0.0)],
+                          verbose=False,
+                          sheets={'invented-fact.html': plain})
+    if any('latitude' in m for m in bad):
+        fails.append('a bare-range sheet refused a generated table: %r' % (bad,))
     return fails
 
 
