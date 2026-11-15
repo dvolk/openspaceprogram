@@ -17,7 +17,12 @@ time -- as is a CHECK that does not parse -- rather than passing quietly, which
 is how an assertion goes silently dead (#650). An `all()`/`any()` whose input was
 EMPTY prints a `#note` line beside the case -- `all([])` is true, so a filtered
 aggregate that matched no rows asserts nothing -- and does not redden it, because
-an empty filter can be exactly what the case means (#653). KIND says what sort of
+an empty filter can be exactly what the case means (#653). The other way a CHECK
+goes silently dead is a row that never reached the list: a number that blew up
+prints "inf"/"-nan", this file's number fields stop at those letters, and the
+whole line is dropped. A case that names a row list now fails with the offending
+line quoted when the game printed a line of that tag whose number reads inf or
+nan, which the parser could not read (#408). KIND says what sort of
 evidence it is -- invariant (behaviour or a
 player route), golden (tuned numbers or content tables: update deliberately),
 harness (CLI/test plumbing, not game spec) or canary (proves it boots). Both
@@ -633,6 +638,13 @@ def line_tag(rx):
     return None if m is None else "[%s]" % m.group(1)
 
 
+def dropped_nonfinite_rows(rx, printed):
+    """Of the lines the game printed for one parser, the ones it could not read because
+    a number in them is spelled inf or nan (#408). Every row parser is anchored on its
+    tag (line_tag), so match() asks the same question finditer does at that offset."""
+    return [ln for ln in printed if rx.match(ln) is None and NONFINITE_RE.search(ln)]
+
+
 # A tag is not a row. The same tags also carry NOTES, and no parser above can read them:
 # "[solar] WARNING: ..." (system.cpp:2459,2481), "[mapdump] no active ship, nothing to dump"
 # (gameui.cpp:7969), "[porkchop] ... no-solution", "[xferlog] ... no-solution" and
@@ -641,6 +653,16 @@ def line_tag(rx):
 # not count these: a case whose list is legitimately empty would be told its regex and the
 # printer disagree, and a wrong diagnosis costs more than no guard at all.
 NOTE_WORDS = re.compile(r"\b(WARNING|FAILED|refused|no-solution|no active ship)\b")
+# A number that blew up prints "inf" or "-nan", and every number field in the parsers
+# above is [-\d.e+]+ -- it takes the sign and stops at the letters, so the field never
+# closes and the whole row fails to match and disappears: len(<list>) comes up short,
+# last() is an older row, and the CHECKs assert about the rows that survived (#408).
+# Only a line the parser COULD NOT read is the finding here: [ascent] prints "nan" on
+# purpose for "no node yet" and its regex reads it, so that row is not dropped and not
+# named. The lookaround is not decoration -- "--info-log", "information" and "inflight"
+# merely start with these letters.
+NONFINITE_RE = re.compile(r"(?<![A-Za-z0-9_.])[-+]?(?:inf|nan)(?![A-Za-z0-9_])",
+                          re.IGNORECASE)
 # A CHECK's own string literals, masked before a parser name is looked for in the expression.
 # "orbit" inside `last(cam)["mode"] == "orbit"`, `[mass]` inside a case's own regex and
 # "Drag power" on a wing card all name a parser's word without that case walking the list --
@@ -2082,10 +2104,9 @@ def run_case(case):
     # green case that asserts nothing (#653's vacuity, in its loudest guise: it also throws
     # away rows a case did ask for). Only a case that names the list is held to it -- a run
     # prints tags it was never asked about, and an unrelated `[toast]` must not become this
-    # case's failure.
+    # case's failure. The loop's second half is the same disagreement when only SOME rows
+    # vanish, which the empty-list test cannot see; see #408 below.
     for name, rx, fed in ROW_PARSERS:
-        if ns[name]:
-            continue
         tag = line_tag(rx)
         if tag is None:
             continue
@@ -2095,12 +2116,30 @@ def run_case(case):
         if not any(re.search(r"\b%s\b" % name, LIT_STR_RE.sub('""', expr))
                    for expr in case["check"]):
             continue
-        printed = sum(1 for ln in (out if fed == "out" else world).splitlines()
-                      if ln.startswith(tag) and not NOTE_WORDS.search(ln))
-        if printed:
-            diag.append("%s: %s printed %d line(s) and the %s parser read 0 -- this file's "
-                        "regex and the game's printer disagree, so every CHECK on %s is "
-                        "walking an empty list" % (name, tag, printed, name, name))
+        printed = [ln for ln in (out if fed == "out" else world).splitlines()
+                   if ln.startswith(tag) and not NOTE_WORDS.search(ln)]
+        if not ns[name]:
+            if printed:
+                diag.append("%s: %s printed %d line(s) and the %s parser read 0 -- this "
+                            "file's regex and the game's printer disagree, so every CHECK "
+                            "on %s is walking an empty list"
+                            % (name, tag, len(printed), name, name))
+            continue
+        # The list came back non-empty, so the guard above is silent -- but rows can still
+        # be missing, and the shape that hides best is a number that blew up: the game
+        # prints "inf"/"-nan" where its own math ran out, this file's number fields stop at
+        # those letters, and the row is dropped rather than reported (#408). A CHECK over
+        # the surviving rows is then green over a world that produced a blow-up, and
+        # last(<list>) is an older row than the case thinks it is.
+        blown = dropped_nonfinite_rows(rx, printed)
+        for ln in blown[:2]:
+            diag.append("%s: the %s parser read %d of the %d %s lines the game printed -- "
+                        "the one below carries inf/nan, which this file's number fields do "
+                        "not match, so the row is gone and no CHECK ever sees the blow-up: "
+                        "%s" % (name, name, len(ns[name]), len(printed), tag, ln))
+        if len(blown) > 2:
+            diag.append("%s: ... %d more %s line(s) dropped for inf/nan (%d of %d printed)"
+                        % (name, len(blown) - 2, tag, len(blown), len(printed)))
     # `ns` must be globals: free vars in a CHECK generator/comprehension
     # resolve against globals, not locals. Empty __builtins__ blocks open/exec.
     check_globals = dict(ns)
@@ -2485,6 +2524,38 @@ def self_test():
     if check_verdict('all(r > 0 for r in [1, 2])', dict(ns_rec)) is not None or vac:
         fails.append("a non-empty aggregate was recorded as vacuous: %r" % (vac,))
 
+    # #408: a number that blew up prints "inf" or "-nan". This file reads numbers as
+    # [-\d.e+]+, which takes the sign and stops at the letters, so the field never
+    # closes and the WHOLE row is dropped -- the list comes back one short, last() is
+    # an older row, and every CHECK walks a world with no blow-up in it. Both halves
+    # are pinned with the real parsers on real printed lines: the row that vanishes
+    # gets named, and the field that spells nan ON PURPOSE does not.
+    good_orb = ('[orbinfo] t=3.9s body="Kerbin" vel=255.271 m/s r=608430 m '
+                'apo_r=608496 m apo_asl=8495.52 m apo_t=562.014 s peri_r=3368.87 m '
+                'peri_asl=-596631 m peri_t=279.145 s period=565.737 s inc=1.64213 deg '
+                'ecc=0.988988 sma=305932 m plane=equ lan=192.273 deg lpe=12.2813 deg '
+                'prg=8.48935 deg rtg=171.511 deg energy=-5.77233e+06 J/kg')
+    bad_orb = good_orb.replace("prg=8.48935", "prg=-nan").replace("rtg=171.511", "rtg=nan")
+    if ORBINFO_RE.match(good_orb) is None:
+        fails.append("the #408 pin's clean [orbinfo] line stopped matching ORBINFO_RE")
+    if dropped_nonfinite_rows(ORBINFO_RE, [good_orb, bad_orb]) != [bad_orb]:
+        fails.append("an [orbinfo] row carrying prg=-nan was not named as dropped")
+    asc_nan = ('[ascent] t=32.3s phase=pad lever=1.00 pitch=87.5 deg peri_asl=-250000 m '
+               'apo_asl=129.753 m inc_eq=0.286474 deg node_r=nan m accel=18.08 m/s2 '
+               'g=2.69 m/s2 why=""')
+    if ASCENT_RE.match(asc_nan) is None:
+        fails.append("the #408 pin's node_r=nan [ascent] line stopped matching ASCENT_RE")
+    if dropped_nonfinite_rows(ASCENT_RE, [asc_nan]):
+        fails.append("an [ascent] row the parser DOES read was reported as dropped")
+    # A word that merely starts with these letters is not a blow-up, and the two
+    # spellings glibc prints have to be caught however they sit in the line.
+    for word in ("--info-log", "information", "inflight", "nano.png", "format inf_"):
+        if NONFINITE_RE.search(word):
+            fails.append("NONFINITE_RE matched the word %r" % word)
+    for word in ("inf", "-nan", "INF", "prg=+nan deg", "eta=inf s", "hdg=nan,"):
+        if not NONFINITE_RE.search(word):
+            fails.append("NONFINITE_RE missed %r" % word)
+
     # EXPECT/FORBID are substring tests, so a line written as a regex is a DEAD pin.
     # Refusing it at parse time is only worth anything if the refusal itself is pinned:
     # the shapes that must be refused, and the literals that must NOT be (a save-format
@@ -2513,8 +2584,9 @@ def self_test():
         return 1
     print("e2e runner self-test ok: dead-shape CHECKs (tuple, container, "
           "uncalled lambda) refused at parse and eval; a CHECK whose all()/any() "
-          "walked an empty input recorded as a note that cannot redden the case; "
-          "regex-shaped EXPECT/FORBID "
+          "walked an empty input recorded as a note that cannot redden the case; a "
+          "printed row dropped because its number reads inf/nan named, and the "
+          "node_r=nan row the parser does read left alone; regex-shaped EXPECT/FORBID "
           "refused at parse while literal text containing brackets stays legal; "
           "re.search, walrus, comprehension and immediately-called lambda CHECKs "
           "accepted; CHECK failed/raised wording intact")
