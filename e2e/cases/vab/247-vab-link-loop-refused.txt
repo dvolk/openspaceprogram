@@ -64,6 +64,12 @@ CHECK re.search(r"\[vab\] fuel link fuel_link_\d+: rtank21 -> central_engine2", 
 CHECK re.search(r"\[vab\] launched 'heavy_two' \(23 parts\)", out)
 CHECK len(re.findall(r"\[vab\] fuel link refused", out)) == 1
 CHECK len(re.findall(r"\[vab\] link (?:src|dest) ", out)) == 4
+# The spurious MISMATCH above, pinned rather than left to a FORBID list: the
+# runner reddens a FAILED line a case did not ask for (#860). It is a known
+# artifact (#320) -- the button relabels itself between press and release -- and
+# the "link src" line proves the press landed. When #320's fix lands, this line
+# stops printing and this EXPECT is what tells us to delete it.
+EXPECT path="VAB/Add fuel link" FAILED MISMATCH nothing was hovered at release
 FORBID not found
 FORBID ambiguous
 FORBID disabled

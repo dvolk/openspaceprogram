@@ -53,7 +53,11 @@ narrows the list to one row, and the row + Load button do the rest. The load
 lands at 4s, so a case's own scripted events shift +5000ms and the clock
 resumes on the warp ladder (PERIOD presses) -- a load starts paused, where
 --time-accel used to hand a boot load its warp. e2e/convert_load_to_ui.py
-generates that preamble. ARGS tokenizes like a
+generates that preamble. The game reports every scripted --ui-click/--ui-type/
+--ui-scroll on stdout, and the runner holds a case to that report (#860): an
+action the game never mentioned fails the case, and so does a FAILED line the
+case did not pin -- an EXPECT that is a substring of the refusal is how a case
+says the refusal is the point. ARGS tokenizes like a
 shell, so a value may be quoted to carry spaces. SEED <fixture> <path-under-
 data-dir> [AGE_DAYS] stages an existing save into the case's scratch --data-dir.
 FILE <path-under-data-dir> [substring...] and NOFILE <path-under-data-dir>
@@ -764,6 +768,13 @@ FIXTURE_PATH_RE = re.compile(r"(?<![A-Za-z0-9_/-])(?:e2e|res)/[A-Za-z0-9_.\\/-]+
 # A case that pins a REFUSAL of a path deliberately has no such file. It opts out
 # of the existence check with a `# missing-ok: <path>` comment line.
 MISSING_OK_RE = re.compile(r"^#\s*missing-ok:\s*(\S+)")
+
+# The --ui-* flags that schedule an action, and the log tag the game reports that
+# action under (uiinput.cpp: the press at :481, the refusals at :182/:188, the
+# typed echo at :360). A case that schedules an action the game never reported did
+# not run the story its CHECKs weigh (#860), so the runner pairs them up.
+UI_ACTION_FLAGS = {"--ui-click": "uiclick", "--ui-scroll": "uiscroll",
+                   "--ui-type": "uitype"}
 
 
 def fixture_path(token):
@@ -1703,6 +1714,93 @@ def parse_uilist(out):
     return rows
 
 
+# The game reports every scripted UI action on stdout: one line when it lands
+# ("... window=\"W\" label=\"L\" at=x,y pressed"), one when it refuses ("... FAILED
+# <why>"), plus the typed echo. A --ui-type prints a [uiclick] press too, because
+# focusing a field is a click on it.
+UIROW_RE = re.compile(r'^\[(uiclick|uitype|uiscroll)\] loop=(\d+\.\d+)s '
+                      r'(?:path|target)="((?:[^"\\]|\\.)*)"(?: (.*))?$',
+                      re.MULTILINE)
+UIROW_LANDED_RE = re.compile(r'^(?:window="((?:[^"\\]|\\.)*)" '
+                             r'label="((?:[^"\\]|\\.)*)" )?at=(-?\d+),(-?\d+) '
+                             r'(pressed|aimed)$')
+
+
+def parse_ui_actions(out):
+    """(clicks, types, scrolls): every scripted UI action the game admitted to.
+    `ok` is False on a refusal, whose text sits in `why` ("not found (...)",
+    "disabled (...)", "MISMATCH ...", "clipped ...", "blocked ...", "off screen
+    ..."). These are whole-run lists like toast/scene: a save/load case presses
+    its way through the Title, and those rows are above the "Loaded game from"
+    cut the world-scoped lists read from."""
+    clicks, types, scrolls = [], [], []
+    for m in UIROW_RE.finditer(out):
+        tag, t, path, tail = m.group(1), float(m.group(2)), m.group(3), m.group(4)
+        row = {"t": t, "path": path, "ok": True, "why": None,
+               # The line as printed, so a guard can weigh it the way EXPECT does.
+               "line": m.group(0), "tag": tag}
+        if tail:
+            if tail.startswith("FAILED "):
+                row["ok"] = False
+                row["why"] = tail[len("FAILED "):]
+            else:
+                lm = UIROW_LANDED_RE.match(tail)
+                if lm:
+                    if lm.group(1) is not None:
+                        row["window"] = lm.group(1)
+                        row["label"] = lm.group(2)
+                    row["at"] = (int(lm.group(3)), int(lm.group(4)))
+        {"uiclick": clicks, "uitype": types, "uiscroll": scrolls}[tag].append(row)
+    return clicks, types, scrolls
+
+
+def ui_actions(args):
+    """The UI actions a case schedules, as [(flag, tag, path)] in schedule order.
+    Read off the tokenized ARGS, which is what the game receives: the value is
+    MS,"PATH"[,extra], so the path is the second comma field -- and for a click,
+    the last (a click takes no third field, and no shipped label holds a comma)."""
+    out = []
+    for i, tok in enumerate(args):
+        tag = UI_ACTION_FLAGS.get(tok)
+        if tag is None or i + 1 >= len(args):
+            continue
+        _ms, _, rest = args[i + 1].partition(",")
+        path = rest.split(",")[0] if tag == "uiclick" else rest.partition(",")[0]
+        out.append((tok, tag, path))
+    return out
+
+
+def ui_action_gaps(specs, rows, expect):
+    """(#860) Two ways a scripted UI action goes silently unreal.
+
+    missed -- the case scheduled the action and the game never reported it. The
+    schedule runs on wall time and the UI advances on sim time, so on a loaded
+    box the timeout can arrive before the menu is drawn; every CHECK about what
+    the click was supposed to do then weighs a run where it never happened.
+
+    refused -- the game printed FAILED and the case never said that refusal is
+    the point. 148 of the 188 click-using cases held `FORBID FAILED`, and the
+    rest were green over missed clicks: the red depended on a substring the case
+    happened to carry. The opt-in is the case's own vocabulary -- an EXPECT that
+    is a substring of the line, which is exactly how EXPECT already tests stdout.
+    A case that pins its refusal is unaffected; one that relied on not having one
+    now says so out loud.
+    """
+    got = {}
+    for r in rows:
+        key = (r["tag"], r["path"])
+        got[key] = got.get(key, 0) + 1
+    missed = []
+    for flag, tag, path in specs:
+        if got.get((tag, path), 0) <= 0:
+            missed.append((flag, tag, path))
+        else:
+            got[(tag, path)] -= 1     # two clicks on one widget: two lines
+    refused = [r for r in rows
+               if not r["ok"] and not any(e in r["line"] for e in expect)]
+    return missed, refused
+
+
 def parse_scene(out):
     rows = []
     for m in SCENE_RE.finditer(out):
@@ -2146,6 +2244,7 @@ def run_case(case):
     plane = parse_scoped(world, parse_plane)
     slew = parse_scoped(world, parse_slew)
     shipswitch = parse_shipswitch(world)
+    uiclick, uitype, uiscroll = parse_ui_actions(out)
     perf = parse_perf(out)
     toast = parse_toast(out)
     simreport = parse_sim_report(out)
@@ -2173,6 +2272,8 @@ def run_case(case):
         "surf": surf, "orbinfo": orbinfo, "mapb": mapb, "plane": plane, "slew": slew,
         # The handoffs themselves: [{"verb": switch/removed/unchanged/none, "name": ...}].
         "shipswitch": shipswitch,
+        # Every scripted UI action the game admitted to, whole-run like toast/scene.
+        "uiclick": uiclick, "uitype": uitype, "uiscroll": uiscroll,
         "perf": perf,
         "scene": scene,
         "toast": toast,
@@ -2226,6 +2327,24 @@ def run_case(case):
         if len(blown) > 2:
             diag.append("%s: ... %d more %s line(s) dropped for inf/nan (%d of %d printed)"
                         % (name, len(blown) - 2, tag, len(blown), len(printed)))
+    # 3d) #860: the UI actions the case scheduled versus the ones the game admitted to.
+    # A click that never happened was invisible -- only the 148 cases carrying
+    # `FORBID FAILED` turned a missed click red, and then for the wrong reason (the
+    # substring, not the story). Both halves are named here.
+    missed, refused = ui_action_gaps(ui_actions(case["args"]),
+                                     uiclick + uitype + uiscroll, case["expect"])
+    for flag, tag, path in missed:
+        diag.append("%s: the case asked for %s ...,%r and the game never reported it -- "
+                    "no [%s] line for that path, so whatever the CHECKs weigh, this run "
+                    "never clicked it (a schedule runs on wall time while the UI advances "
+                    "on sim time) (#860)" % (tag, flag, path, tag))
+    for r in refused[:3]:
+        diag.append("%s: the game refused a scripted UI action the case did not ask for "
+                    "-- pin it with an EXPECT if the refusal is the point: %s"
+                    % (r["tag"], r["line"]))
+    if len(refused) > 3:
+        diag.append("%s: ... %d more refused UI actions (%d in total)"
+                    % ("ui", len(refused) - 3, len(refused)))
     # `ns` must be globals: free vars in a CHECK generator/comprehension
     # resolve against globals, not locals. Empty __builtins__ blocks open/exec.
     check_globals = dict(ns)
@@ -2682,6 +2801,57 @@ def self_test():
     if parse_shipswitch("[toast] Active ship: racer, warp 10x"):
         fails.append("a toast that merely names the active ship read as a handoff")
 
+    # #860: the game reports every scripted UI action, and the runner used to
+    # ignore the report. Two ways that hid a run that never did the thing the
+    # CHECKs weigh: an action the game never reported at all, and a FAILED line
+    # the case did not ask for. The opt-in is an EXPECT of the line, which is
+    # already how a case says "this stdout is the point".
+    ui_log = "\n".join([
+        '[uiclick] loop=1.01s path="Game Debug/Load e2e fixture saves" '
+        'window="Game Debug" label="Load e2e fixture saves" at=870,508 pressed',
+        '[uiclick] loop=3.03s path="Save/Load/##filter" window="Save/Load" '
+        'label="##filter" at=960,463 pressed',
+        '[uitype] loop=3.04s path="Save/Load/##filter" typed="save_eva_ground"',
+        '[uiclick] loop=6.52s path="Settings/Apply DPI" FAILED disabled (the '
+        'widget is greyed out)',
+    ])
+    ui_clicks, ui_types, ui_scrolls = parse_ui_actions(ui_log)
+    if [(r["path"], r["ok"]) for r in ui_clicks] != [
+            ("Game Debug/Load e2e fixture saves", True),
+            ("Save/Load/##filter", True), ("Settings/Apply DPI", False)]:
+        fails.append("the [uiclick] rows are not the three the log printed")
+    if len(ui_types) != 1 or ui_types[0]["ok"] is not True:
+        fails.append("the [uitype] echo is not a row")
+    if ui_scrolls:
+        fails.append("the log has no [uiscroll] line")
+    if ui_clicks[0].get("window") != "Game Debug" or ui_clicks[0].get("at") != (870, 508):
+        fails.append("a landed click lost the window/label/rect it reported")
+    if not (ui_clicks[2]["why"] or "").startswith("disabled"):
+        fails.append("a refusal lost its reason: %r" % (ui_clicks[2]["why"],))
+    ui_args = shlex.split(
+        '--ui-click 1000,"Game Debug/Load e2e fixture saves" '
+        '--ui-click 2500,"fixtures" '
+        '--ui-type 3000,"Save/Load/##filter",save_eva_ground '
+        '--ui-click 6500,"Settings/Apply DPI"')
+    ui_specs = ui_actions(ui_args)
+    if [p for _f, _t, p in ui_specs] != ["Game Debug/Load e2e fixture saves",
+                                         "fixtures", "Save/Load/##filter",
+                                         "Settings/Apply DPI"]:
+        fails.append("the scheduled UI actions were not read off ARGS: %r"
+                     % (ui_specs,))
+    all_rows = ui_clicks + ui_types + ui_scrolls
+    pinned = ['path="Settings/Apply DPI" FAILED disabled']
+    if ui_action_gaps(ui_specs, all_rows, pinned) != (
+            [("--ui-click", "uiclick", "fixtures")], []):
+        fails.append("a click the game never reported is not named: %r"
+                     % (ui_action_gaps(ui_specs, all_rows, pinned)[0],))
+    missed, refused = ui_action_gaps(ui_specs, all_rows, [])
+    if len(refused) != 1 or refused[0]["path"] != "Settings/Apply DPI":
+        fails.append("a FAILED line with no EXPECT behind it is not named: %r"
+                     % ([r["path"] for r in refused],))
+    if ui_action_gaps(ui_specs, all_rows, pinned)[1]:
+        fails.append("an EXPECTed refusal still reddened the case")
+
     # EXPECT/FORBID are substring tests, so a line written as a regex is a DEAD pin.
     # Refusing it at parse time is only worth anything if the refusal itself is pinned:
     # the shapes that must be refused, and the literals that must NOT be (a save-format
@@ -2714,7 +2884,9 @@ def self_test():
           "printed row dropped because its number reads inf/nan named, and the "
           "node_r=nan row the parser does read left alone; every world-scoped row "
           "stamped with the vessel that was active when it printed, in line order, "
-          "and [mass]'s own ship= kept; regex-shaped EXPECT/FORBID "
+          "and [mass]'s own ship= kept; a scripted UI action the game never reported, "
+          "and a FAILED line with no EXPECT behind it, both named; regex-shaped "
+          "EXPECT/FORBID "
           "refused at parse while literal text containing brackets stays legal; "
           "re.search, walrus, comprehension and immediately-called lambda CHECKs "
           "accepted; CHECK failed/raised wording intact")
