@@ -19,7 +19,12 @@ ARGS --ui-click 2000,"Game Menu/Save/Load"
 ARGS --ui-click 3500,"Save/Load/Load##saveload"
 ARGS --timeout 12
 EXPECT [load] refused
-EXPECT buildings: 'bad_pad' has unknown type 'no_such_building' (catalog has: space_port)
+# The catalog LIST is pinned only up to its first entry. Every building the game gains goes
+# into that message -- the runway, station, spacedock and balloon_platform commits each made
+# this line stale on its own, with the refusal itself untouched -- and the list's content and
+# order belong to the catalog, not to this case's claim. Pinning the lead entry keeps the
+# message non-empty, which is the part worth holding.
+EXPECT buildings: 'bad_pad' has unknown type 'no_such_building' (catalog has: space_port,
 # Nothing was destroyed, so the game carries on with the system it already had.
 FORBID [game] unloaded
 FORBID [game] switched system
