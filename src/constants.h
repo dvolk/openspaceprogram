@@ -139,6 +139,24 @@ inline constexpr double kChuteAccelLimit = 50.0;
    [surfinfo], --drag-log. */
 inline constexpr double kAoAFlowFloor = 0.1;
 
+/* Sideslip degeneracy cone [deg]: beta is the yaw of the flow INSIDE the hull's
+   nose-right plane, so it is only a fact once the flow projects onto that plane.
+   When the flow lies along the hull's UP axis the projection collapses to a point
+   and both arguments of atan2(right, nose) vanish together, leaving whatever the
+   integrator's jitter points at: a hull parked nose-up in wind read -92.9, -160.0
+   and +85.7 deg in three successive samples while its AoA sat rock solid at -90.0
+   (#787). A flow within this many degrees of up has no yaw to report.
+   An ANGLE, not a speed like kAoAFlowFloor above -- and that speed floor is why
+   this was never caught: the parked hull's air-relative speed is several m/s of
+   wind, which clears 0.1 m/s easily, while a 1500 m/s flow straight up a hull's
+   mast is just as directionless in yaw.
+   Display and logging only: no force reads beta, and past +-75 deg the silhouette
+   chart refuses the direction and answers exactly (#463), so a noisy beta there
+   costs nothing but a misleading number.
+   Where: drag.h::aeroFrame (AeroFrame::betaValid), the SURFACE window's Beta row and
+   [surfinfo] beta=, --drag-log's Beta=. */
+inline constexpr double kBetaIllCondDeg = 1.0;
+
 // -- science situations -------------------------------------------------------
 
 /* FlyingLow/FlyingHigh split, as a fraction of the atmosphere top:

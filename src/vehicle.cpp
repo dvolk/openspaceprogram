@@ -3242,6 +3242,7 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
     lastDragAlpha = 0.0;
     lastDragBeta = 0.0;
     lastDragAlphaValid = false;
+    lastDragBetaValid = false;
     lastDragArea = 0.0;
     lastDragCd = 0.0;
     lastCpLever = 0.0;
@@ -3498,6 +3499,15 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
     lastDragAlphaValid = fr.valid && std::isfinite(fr.v)
                       && std::isfinite(fr.alpha) && std::isfinite(fr.beta)
                       && fr.v >= kAoAFlowFloor;
+    /* Beta's own floor is not this one (#787). A hull parked nose-up in a wind has
+       plenty of flow -- several m/s, so the speed floor is nowhere near binding --
+       and that flow lies in the pitch plane, broadside to the nose, where the flow's
+       projection onto the nose-right plane collapses and atan2(right, nose) is left
+       resolving the integrator's 1e-5 m/s of jitter: -93, -160, +86 deg in three
+       samples, next to an AoA that never moved. Everything that PRINTS beta asks
+       this question; nothing that bills a force does, because the forces take their
+       angle from the flow vector itself rather than from this pair. */
+    lastDragBetaValid = lastDragAlphaValid && fr.betaValid;
     const glm::dvec3 vhat    = vrel / std::sqrt(v2);
     // The flow in S: area and dots are rotation-invariant, so rotate the flow, not the verts.
     const glm::dvec3 vhatS   = glm::transpose(sRot) * vhat;

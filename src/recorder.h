@@ -81,14 +81,22 @@ inline int recRow(const RecSample &s, char *buf, size_t n) {
     const bool flow = !std::isnan(s.aoa);   // one test, as --drag-log does
     if(flow) {
         snprintf(aoa_txt, sizeof aoa_txt, "%.1f", s.aoa);
-        snprintf(beta_txt, sizeof beta_txt, "%.1f", s.beta);
         snprintf(cpl_txt, sizeof cpl_txt, "%.2f", s.cpl);
         snprintf(ind_txt, sizeof ind_txt, "%.3f", s.ind);
     } else {
         snprintf(aoa_txt, sizeof aoa_txt, "-");
-        snprintf(beta_txt, sizeof beta_txt, "-");
         snprintf(cpl_txt, sizeof cpl_txt, "-");
         snprintf(ind_txt, sizeof ind_txt, "-");
+    }
+    /* beta is NOT gated by `flow`: a flow can be fast enough to have an angle of
+       attack and still have no yaw to report, because it lies along the hull's up
+       axis (#787). Reusing the AoA test here would print "nan" into a column
+       whose every other missing value is "-", and a NaN in a numeric column is
+       exactly the parse error this row's one-format-string rule exists to avoid. */
+    if(!std::isnan(s.beta)) {
+        snprintf(beta_txt, sizeof beta_txt, "%.1f", s.beta);
+    } else {
+        snprintf(beta_txt, sizeof beta_txt, "-");
     }
     if(!std::isnan(s.T)) {
         snprintf(t_txt, sizeof t_txt, "%.1f", s.T);

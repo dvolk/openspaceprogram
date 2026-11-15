@@ -353,6 +353,13 @@ struct AeroFrame {
     double alpha = 0.0;     // angle of attack, rad; + = nose above flight path
     double beta = 0.0;      // sideslip, rad; + = flow from the ship's right
     bool valid = false;     // false when v=0 or the nose axis is degenerate
+    /* False when the flow lies within kBetaIllCondDeg of the hull's UP axis: beta's
+       two atan2 arguments are the flow's nose and right components, and both vanish
+       together there, so beta reports whichever way the integrator's jitter happens
+       to point rather than a yaw the flow has. alpha stays a fact at that point --
+       it measures the pitch OUT of the nose-right plane, and +-90 is exactly what a
+       flow along up is. See constants.h:kBetaIllCondDeg (#787). */
+    bool betaValid = false;
 };
 
 inline AeroFrame aeroFrame(const glm::dvec3 &v_rel,
@@ -362,8 +369,15 @@ inline AeroFrame aeroFrame(const glm::dvec3 &v_rel,
     const double v = glm::length(v_rel);
     if(v <= 0.0 || glm::length(nose) <= 0.0) { return f; }
     f.v = v;
-    f.alpha = std::atan2(-glm::dot(v_rel, up), glm::dot(v_rel, nose));
-    f.beta  = std::atan2(glm::dot(v_rel, right), glm::dot(v_rel, nose));
+    const double dn = glm::dot(v_rel, nose);
+    const double dr = glm::dot(v_rel, right);
+    f.alpha = std::atan2(-glm::dot(v_rel, up), dn);
+    f.beta  = std::atan2(dr, dn);
+    /* |dn, dr| is the flow's projection onto the nose-right plane, as a fraction of
+       the flow itself: sin of its angle off up. Under that cone the pair (dn, dr) is
+       the flow's own noise, so beta has no answer even when v is large. */
+    const double cond = std::sin(kBetaIllCondDeg * std::numbers::pi_v<double> / 180.0);
+    f.betaValid = (dn * dn + dr * dr) >= (cond * v) * (cond * v);
     f.valid = true;
     return f;
 }

@@ -2703,10 +2703,13 @@ void drawUIReadouts(Game &g) {
                partCd, with no instrument for it. It is also the number #463's silhouette
                cache is keyed on next to AoA, so a readout that shows only AoA cannot
                explain its own drag area. The [drag] line has printed it since #463; this
-               is the pilot-facing one. Dashed on exactly the AoA test: no usable flow
-               (kAoAFlowFloor), no angle. #482 (a held rudder throwing an airframe into a
-               100 deg sideslip) is what this row exists to make visible. */
-            if(ship->lastDragAlphaValid) {
+               is the pilot-facing one. Dashed on beta's own floor (lastDragBetaValid:
+               the AoA flow floor plus "the flow is not along the hull's up axis",
+               constants.h:kBetaIllCondDeg) -- a parked hull in wind has plenty of flow
+               and still no sideslip to show (#787). #482 (a held rudder throwing an
+               airframe into a 100 deg sideslip) is what this row exists to make
+               visible. */
+            if(ship->lastDragBetaValid) {
                 ImGui::Text("Beta: %.2f", glm::degrees(ship->lastDragBeta));
             } else {
                 ImGui::Text("Beta: -");
@@ -2945,12 +2948,17 @@ void drawUIReadouts(Game &g) {
                            glm::degrees(ship->lastDragAlpha))
                 : snprintf(aoa_s, sizeof aoa_s, "-");
             assert(aoa_n > 0 && aoa_n < (int)sizeof aoa_s);
-            /* #450: beta=, the yaw-plane half of the same AeroFrame pair, dashed on
-               the same test as aoa= for the same reason. It keys the hull silhouette
-               cache alongside aoa (#463), so a log that prints only aoa cannot explain
-               the area it prints next to it. */
+            /* #450: beta=, the yaw-plane half of the same AeroFrame pair. Dashed one
+               test stricter than aoa=: it needs the flow to have a direction AND to
+               project onto the hull's yaw plane, because a flow along the hull's up
+               axis has no yaw to report however fast it is (#787 -- a parked hull read
+               -93, -160, +86 deg here while aoa= sat at -90.0). It keys the hull
+               silhouette cache alongside aoa (#463), so a log that prints only aoa
+               cannot explain the area it prints next to it; past +-75 deg that cache
+               refuses the direction and answers exactly, so the dashed beta there
+               costs no billing, only an honest column. */
             char beta_s[32];
-            const int beta_n = ship->lastDragAlphaValid
+            const int beta_n = ship->lastDragBetaValid
                 ? snprintf(beta_s, sizeof beta_s, "%.6g deg",
                            glm::degrees(ship->lastDragBeta))
                 : snprintf(beta_s, sizeof beta_s, "-");

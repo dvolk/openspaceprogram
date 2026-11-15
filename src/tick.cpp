@@ -1035,8 +1035,11 @@ void tick(Game &g) {
                    parsers keep working. A silhouette is cached per DIRECTION, and
                    a direction needs both angles: a log that prints only AoA
                    cannot explain its own area (#463). The UI readout still waits
-                   for a yaw law (#450) -- this is the debug line. */
-                if(g.ship->lastDragAlphaValid) {
+                   for a yaw law (#450) -- this is the debug line.
+                   Dashed on BETA's floor, not AoA's: a flow can point anywhere
+                   except along the hull's up axis and still have no yaw to name
+                   (#787), which is exactly the broadside a parked hull sits in. */
+                if(g.ship->lastDragBetaValid) {
                     printf(" Beta=%.1f deg", glm::degrees(g.ship->lastDragBeta));
                 } else {
                     printf(" Beta=-");
@@ -1330,12 +1333,15 @@ void tick(Game &g) {
                 s.chute = v->lastChuteCdA;
                 if(v->lastDragAlphaValid) {
                     s.aoa = glm::degrees(v->lastDragAlpha);
-                    s.beta = glm::degrees(v->lastDragBeta);
                     s.cpl = v->lastCpLever;
                     s.ind = v->lastInducedCdA;
                 } else {
-                    s.aoa = s.beta = s.cpl = s.ind = NAN;
+                    s.aoa = s.cpl = s.ind = NAN;
                 }
+                /* Beta has its own floor: the flow that gives AoA a direction need not
+                   give yaw one (AeroFrame::betaValid, #787). A recorded NaN prints as
+                   "-" in the flight log, which is what a row with no sideslip means. */
+                s.beta = v->lastDragBetaValid ? glm::degrees(v->lastDragBeta) : NAN;
                 if(v->lastDragRho > 0.0) {
                     s.T = v->lastAirT;
                     s.p = v->lastAirP;

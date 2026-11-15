@@ -123,6 +123,21 @@ int main() {
               "A=3.20 aoa=2.3 beta=0.0 cpl=0.25 ind=0.000 chute=0.00 "
               "T=288.1 p=101325 a=340.3 mach=0.100 mass=6000.0 thr=0.75 stg=2");
 
+    /* --- a flow with AoA but no yaw (#787) --------------------------------
+       Beta's floor is not AoA's: a hull parked nose-up in wind has plenty of flow
+       and no sideslip to name. If the row dashed beta only when AoA dashed, this
+       sample would print "nan" -- a word in a column where every other missing
+       value is "-", which is precisely what one format string per row buys. */
+    RecSample broadside = cruise();
+    broadside.beta = NAN;
+    CHECK_ROW(broadside,
+              "t=12.50 alt_asl=700.0 alt_agl=698.5 v=78.00 v_surf=77.75 "
+              "v_orb=252.75 vs=-0.25 hs=77.75 lat=-0.094300 lon=30.500000 "
+              "pitch=2.5 roll=-0.5 hdg=91.5 dv=1450.5 acc=3.75 "
+              "rho=1.225 F=210.50 L=12.00 Cd=0.950 "
+              "A=3.20 aoa=2.3 beta=- cpl=0.25 ind=0.020 chute=0.00 "
+              "T=288.1 p=101325 a=340.3 mach=0.100 mass=6000.0 thr=0.75 stg=2");
+
     // --- no snapshot for this hull: the frame group dashes, together ------
     // The physics group is untouched: lastDrag* belongs to the hull whatever the
     // render pass has been doing. This is the row a recorder writes in the tick

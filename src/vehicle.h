@@ -701,6 +701,14 @@ public:
        the air-relative speed clears kAoAFlowFloor. False alpha is not "flying
        straight down the flow" -- it is "there is no flow to have an angle to". */
     bool lastDragAlphaValid = false;
+    /* Whether lastDragBeta measured one too -- a DIFFERENT test from alpha's, not a
+       copy. The speed floor that gates alpha says nothing about beta, whose yaw
+       needs a projection onto the hull's nose-right plane to exist at all: a parked
+       hull in wind clears the floor by miles and still has no sideslip, because its
+       flow lies along the up axis (AeroFrame::betaValid, constants.h:kBetaIllCondDeg,
+       #787). Nothing that prints or records beta asks both questions today, which is
+       the bug; the forces ask neither, since no force reads beta directly. */
+    bool lastDragBetaValid = false;
     double lastDragArea = 0.0;  // BODY silhouette facing the flow (m^2) -- since
                                 // #455 the union refuses any part with lift_area or
                                 // control_area, so this is what the hull stops, not

@@ -18,15 +18,17 @@
 # #450: beta= is the yaw-plane half of the same AeroFrame pair. Until it was
 # printed, the sideslip that keys the hull-silhouette cache (#463) had no instrument at all --
 # the [drag] line printed it, [surfinfo] did not, so the two dumps of the same substep disagreed
-# about what was measured. Same dash rule as aoa=: no usable flow, no angle. What the wind added
-# is a case where the angle is NUMERIC AND MEANINGLESS (a flow lying in the pitch plane has an
-# undefined yaw angle): pinned below as it stands, and filed as #787.
+# about what was measured. Same dash rule as aoa= for the flow-MAGNITUDE half: no usable flow,
+# no angle. The wind exposed the other half, which a speed floor cannot see at all -- a 5.8 m/s
+# flow is comfortably "usable" yet lies in the hull's pitch plane, where the yaw angle is
+# undefined. #787 fixed that: beta now dashes when the flow is within kBetaIllCondDeg (1 deg)
+# of the hull's up axis, which is the parked half of this run.
 # #498: aprg= is the third reader of the same flow -- the angle from the nose to the
 # AIR-relative prograde, which is what the new yellow marker pair points at. It is
 # dashed on the same test as aoa=/beta= because it needs the same thing: air, and a
 # flow with a direction.
 NAME surface-aoa-readout
-CLAIM [surfinfo] reports the aero angle of attack, the sideslip and the air-relative prograde while the ship has air-relative flow and "-" when it has none, and on a windy pad the numbers it reports are the authored wind: broadside at rest, and closing as the climb outruns it. Its stability pair reports a zero slope without inventing a neutral-looking margin for an airframe that has nothing lifting.
+CLAIM [surfinfo] reports the aero angle of attack, the sideslip and the air-relative prograde while the ship has air-relative flow and "-" when it has none -- and dashes the sideslip alone when the flow has a direction but no yaw to report, which is what a broadside wind at a nose-up hull is. On a windy pad the numbers it reports are the authored wind: broadside at rest, and closing as the climb outruns it. Its stability pair reports a zero slope without inventing a neutral-looking margin for an airframe that has nothing lifting.
 KIND invariant
 ARGS --time-accel 1 --timeout 6 --info-log --orbit-interval 0.5 --startship racer,res/ships/racer.json,Kerbin,pad --sim-press 1000,0,SPACE,1500,4000,T
 FORBID error:
@@ -76,15 +78,15 @@ CHECK all(abs(s["aprg"] + s["aoa"]) < 0.5 for s in surf)
 # Where the flow lies IN the pitch plane -- straight up, an east wind, a hull heading ~274 deg
 # -- the yaw angle answers ~0 and the pair is well-conditioned.
 CHECK all(abs(s["beta"]) < 0.1 for s in surf if s["vs"] > 2.0)
-# The parked rows are the ill-conditioned half: the flow is 90 deg off the nose, so the yaw-plane
-# projection is whatever the hull's 1e-5 m/s of jitter points at. What is pinned is that a NUMBER
-# comes back at all -- #787's wart is that it prints rather than dashes. Its magnitude is not
-# pinnable and that is part of the defect: the first parked row read -92.93 deg on one run and
-# -71.10 deg on the next, with the identical hull at the identical stillness, so any band here
-# would be a bet on phase. (The later parked rows did repeat -- +85.48, +85.21 -- which is why
-# this is a conditioning bug and not noise in the log.) Fixing #787 dashes these rows, and
-# `is not None` reddens at that change rather than letting it pass unnoticed.
-CHECK all(s["beta"] is not None for s in surf if s["t"] < 1.2)
+# The parked rows are the ill-conditioned half: the flow is 90 deg off the nose and lies in the
+# pitch plane, so the yaw-plane projection is whatever the hull's 1e-5 m/s of jitter points at.
+# This row used to pin a NUMBER there because that is what the code printed -- -92.93 deg on one
+# run and -71.10 on the next, same hull, same stillness, which is what made it a conditioning
+# bug rather than noise. #787 dashes it, so the pin is now the dash: aoa= keeps its -90.00 (a
+# flow along up is exactly what AoA measures) while beta refuses. The climbing rows either
+# side of the fold are the positive half -- real sideslip, printed.
+CHECK all(s["beta"] is None for s in surf if s["t"] < 1.2)
+CHECK all(s["beta"] is not None for s in surf if s["vs"] > 2.0)
 # The racer is under an atmosphere the whole run, so cla is a number throughout
 # (0.0: no lifting surface on the ship), and sm is never a number.
 CHECK all(s["cla"] == 0.0 for s in surf)

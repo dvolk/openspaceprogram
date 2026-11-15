@@ -884,6 +884,52 @@ static void test_aeroFrame() {
     // Degenerate: zero velocity -> not valid, all zero.
     AeroFrame fn = aeroFrame(glm::dvec3(0.0), right, up, nose);
     CHECK_TRUE(!fn.valid, "zero v -> not valid");
+
+    /* #787: beta is the yaw of the flow INSIDE the nose-right plane, so it needs a
+       projection onto that plane to be a fact at all. A flow along the hull's UP axis
+       (what a parked hull in a broadside wind is) has dn and dr both ~0, so
+       atan2(dr, dn) resolves the integrator's jitter and the readout swings -93, -160,
+       +86 deg between samples while AoA sits rock solid. The floor is an angle off up,
+       not a speed: kAoAFlowFloor cannot catch this because the wind is several m/s. */
+    {
+        AeroFrame fup = aeroFrame(glm::dvec3(0.0, 300.0, 0.0), right, up, nose);
+        CHECK_TRUE(fup.valid, "a flow along up has a direction");
+        CHECK_NEAR(std::fabs(fup.alpha), M_PI / 2.0, 1e-12,
+                   "and AoA is a fact there: +-90, exactly what a flow along up is");
+        CHECK_TRUE(!fup.betaValid, "but beta has no answer for it (#787)");
+
+        /* The jitter itself: a hair of lean on a 300 m/s flow off up swings beta by
+           ~90 deg (that is the ticket's three samples), while the flag says the same
+           thing about both frames. */
+        const AeroFrame j1 = aeroFrame(glm::dvec3(0.0, 300.0, 1e-4), right, up, nose);
+        const AeroFrame j2 = aeroFrame(glm::dvec3(1e-4, 300.0, 0.0), right, up, nose);
+        CHECK_TRUE(!j1.betaValid && !j2.betaValid,
+                   "both jitter samples are flagged, not printed");
+        CHECK_TRUE(std::fabs(j1.beta - j2.beta) > 1.0,
+                   "and the angle they disagree about is huge -- the swing the flag is for");
+
+        /* Either side of the cone, so the rule is about up-ness and not about how
+           broadside the hull is. A real 90 deg sideslip must still print: the
+           silhouette cache and the pilot both need it, and it is not noise. These
+           flows lean off up toward the RIGHT wing, which is what makes beta large. */
+        const double off = kBetaIllCondDeg * M_PI / 180.0;
+        const AeroFrame inside = aeroFrame(
+            glm::dvec3(300.0 * std::sin(0.5 * off), 300.0 * std::cos(0.5 * off), 0.0),
+            right, up, nose);
+        const AeroFrame outside = aeroFrame(
+            glm::dvec3(300.0 * std::sin(2.0 * off), 300.0 * std::cos(2.0 * off), 0.0),
+            right, up, nose);
+        CHECK_TRUE(!inside.betaValid, "half a degree off up: still no yaw to report");
+        CHECK_TRUE(outside.betaValid, "two degrees off up: beta is a measurement again");
+        CHECK_NEAR(outside.beta, M_PI / 2.0, 1e-9,
+                   "and it reads the full 90 deg sideslip rather than dashing it");
+
+        /* Fast and broadside is not the same as degenerate: the ticket's worry that a
+           speed floor would dash a real flight reading. */
+        const AeroFrame fast = aeroFrame(glm::dvec3(1500.0, 0.0, 1e-3), right, up, nose);
+        CHECK_TRUE(fast.betaValid, "1500 m/s across the nose is a real sideslip");
+        CHECK_NEAR(fast.beta, M_PI / 2.0, 1e-5, "near 90 deg, and printed as such");
+    }
 }
 
 static void test_liftDirection() {
