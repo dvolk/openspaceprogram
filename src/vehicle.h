@@ -576,6 +576,12 @@ public:
     bool wheels_brown_out_ = false;
     static constexpr double kWheelsRecoverS = 10.0;   // s of commanding banked before re-arm
     static constexpr double kWheelsCutS = 0.1;        // s of commanding the pool must cover
+    /* #652: armed by powerTick() on the substep or the warp hop that empties the pool,
+       consumed by tick.cpp's watcher, which puts the words on it. Transient like
+       powered_: a loaded hull re-derives its balance on the next tick, and a notice for
+       a crossing the player already watched would be a false alarm about a hull they
+       chose to park empty. */
+    bool ec_dry_notice_ = false;
 
     /* Rails: an idle ship coasts on its two-body conic instead of being
        integrated -- its body is parked out of the Bullet world, its pose
@@ -1401,6 +1407,20 @@ public:
     void chargeEC(double wh);
 
     void getPower(double *gen, double *constDraw, double *charge, double *capacity);
+
+    /* Did this hull's EC pool just cross from charge to empty? Read-and-clear, so the
+       tick layer toasts once per dry event rather than once per substep (#652). The
+       crossing matters more than the state: a hull that HAS been dry since a warp hop
+       needs no reminder every frame, while the hop that empties the pool can land in the
+       middle of a 100000x transfer, seconds before the player tries to point the hull at
+       a brake burn and finds the drums shut. powerTick() sets it -- the only place that
+       knows the balance -- and says nothing itself, because Vehicle has no Game handle
+       and a toast is the UI's word for a warning. */
+    bool takeEcDryNotice() {
+        const bool n = ec_dry_notice_;
+        ec_dry_notice_ = false;
+        return n;
+    }
 
     /* Does this hull have an electrical SYSTEM, as opposed to an EC bar that happens to
        read zero? One spelling because three places ask it: powerTick() leaves the wheels

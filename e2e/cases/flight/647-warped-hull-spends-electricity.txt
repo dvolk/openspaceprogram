@@ -19,13 +19,19 @@
 # physics: it comes off the rails UNPOWERED with the brown-out latch fired, which is what
 # made #642's gate visible in play rather than only in tests.
 #
+# ... and the case #652 describes: at 10000x the crossing happens ~143,000 sim-seconds in,
+# off-screen and unheard, and the player only finds the wheels cut when they reach the far
+# end and cannot point for a brake burn. Now the crossing itself says so, once, with the
+# diagnosis attached -- this hull's 298 W of rtg cannot cover 600 W of air, so the pool can
+# never climb back and the latch never re-arms.
+#
 # No W press: control input leaves the rails and drops warp to 1x, so a commanded window
 # and a warped window cannot overlap today. `active=0` therefore holds for the whole run,
 # but nothing here commands a railed hull, so that CHECK alone does not pin the mixer
 # term -- test_power's test_rails_hop_bills_air_not_drums does, with a hull on rails and
 # Pitch held.
 NAME warped-hull-spends-electricity
-CLAIM A hull coasting on rails bills its generation and life support, can run its pool dry while warped, and bills no wheel draw because no control pass runs out there.
+CLAIM A hull coasting on rails bills its generation and life support, can run its pool dry while warped, bills no wheel draw because no control pass runs out there, and says so once when the pool crosses empty.
 KIND invariant
 ARGS --timeout 20 --startship power_test,res/ships/power_test.json,Kerbin,rot-orbit
 ARGS --power-log --sim-press 1000,0,PERIOD --sim-press 1200,0,PERIOD
@@ -62,3 +68,12 @@ CHECK last(power)["powered"] == 0
 # And nothing bills drums that never turned: the rating sum (2475 W on this hull) appears
 # nowhere in a warped run. See the header for what this CHECK does and does not pin.
 CHECK all(r["active"] == 0.0 for r in power)
+# #652: the crossing gets a word, and names which of the two traps this is. This hull's rtg
+# is under its air, so the pool can never climb back and the latch never re-arms -- the
+# wording has to say that, because "wheels cut until the pool recharges" would promise a
+# rescue that is not coming.
+CHECK any(t.startswith("EC dry: 'power_test'") and "nothing aboard recharges it" in t for t in toast)
+# Once, not per hop: the hull sits dry for the rest of this run (the >= 2 dry rows above),
+# so a notice armed on the STATE rather than the crossing would shout all the way to the
+# ground and teach the player to ignore it.
+CHECK len([t for t in toast if t.startswith("EC dry: ")]) == 1

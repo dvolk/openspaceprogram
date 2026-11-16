@@ -1404,6 +1404,27 @@ void tick(Game &g) {
             }
         }
 
+        /* #652: an EC pool that runs dry takes the wheels away, and at warp the hop that
+           finishes it can land in the middle of a transfer -- seconds before the player
+           reaches the far end, tries to point for a brake burn and finds the drums shut.
+           Say it when it happens rather than leaving it to the EC bar, and say whether
+           the hull can climb back out on its own: with the generator under the air it
+           cannot, which is the difference between "wait a minute" and "this hull needs a
+           reactor". One notice per crossing (Vehicle::takeEcDryNotice), so a hull parked
+           at empty since a hop does not shout every frame. */
+        for(auto *s : vehicles) {
+            if(!s->takeEcDryNotice()) { continue; }
+            double gen = 0.0, constDraw = 0.0;
+            s->getPower(&gen, &constDraw, nullptr, nullptr);
+            if(gen > constDraw) {
+                g.toast("EC dry: '%s' ran out of charge -- wheels cut until "
+                        "the pool recharges", s->displayName().c_str());
+            } else {
+                g.toast("EC dry: '%s' ran out of charge -- wheels cut, and "
+                        "nothing aboard recharges it", s->displayName().c_str());
+            }
+        }
+
         g.accumulator -= g.dt;
     }
 

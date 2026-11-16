@@ -52,6 +52,9 @@
 //     the park is frozen, and not at all for a step of 0 or a hull under physics;
 //     the brown-out latch keeps running across the warp, and both of its
 //     thresholds are durations, so a minute-long hop cannot raise the cut;
+//   * the dry-pool notice (#652): armed by the one substep or hop that empties the pool,
+//     silent while a hull sits dry, re-armed by a refill, and never armed for a hull with
+//     no drums -- because the toast it feeds says those drums are cut;
 //   * EC has NO mass: draining/charging never touches a part's mass
 //     (unlike propellant);
 //   * the store's precision: a substep's worth of Wh still moves a big
@@ -823,6 +826,50 @@ static void test_gate_cut_is_a_spent_pool_not_an_expensive_ask() {
     destroyShip(f);
 }
 
+/* #652: a pool that runs dry takes the wheels away, and at warp the hop that finishes it
+   lands in the middle of a transfer -- the player finds out at the far end, when the hull
+   cannot point for a brake burn. Vehicle's half of the fix is ONE notice per CROSSING:
+   powerTick arms it, tick.cpp's watcher says the words and consumes it. Pinned here is
+   the arming rule -- charged: no; a hop that leaves charge: no; the hop that empties the
+   pool: yes; sitting at empty: no; refilled and dry again: yes -- plus the `cost > 0`
+   term, because the toast's whole claim is that the drums are cut and a hull with none
+   has nothing to say. */
+static void test_running_dry_notices_once() {
+    printf("== Gate: #652 -- running the pool dry notices once, not every frame ==\n");
+    Ship s; s.v = new Vehicle;
+    addPowerPart(s, 1000.0, 0.0, 0.0, 0.0, 2000.0, 3);  // a 1000 W triad
+    addPowerPart(s, 0.0, 100.0, 0.0, 5.0, 0.0);         // 100 W air, a 5 Wh store, no RTG
+    initShip(s);
+    CHECK_TRUE(!s.v->takeEcDryNotice(), "a charged pool has nothing to report");
+    s.v->powerTick(60.0);   // a minute of rails: 1.67 Wh of the 5
+    CHECK_NEAR(totalEC(s), 5.0 - 100.0 * 60.0 / 3600.0, 1e-6, "the hop spent its Wh");
+    CHECK_TRUE(!s.v->takeEcDryNotice(), "a hop that leaves charge says nothing");
+    s.v->powerTick(3600.0); // an hour more: the pool cannot cover it, and lands at 0
+    CHECK_NEAR(totalEC(s), 0.0, 1e-9, "the pool is dry");
+    CHECK_TRUE(s.v->takeEcDryNotice(), "the hop that finished the pool notices once");
+    CHECK_TRUE(!s.v->takeEcDryNotice(), "and not again for the same dry hull");
+    s.v->powerTick(3600.0);
+    CHECK_TRUE(!s.v->takeEcDryNotice(), "still silent a hop later");
+    /* Refilled (a docking, a reactor, a ride home) and dry again: a second crossing is a
+       second notice, which is what keeps the warning true rather than a one-per-ship
+       quota. */
+    s.v->chargeEC(5.0);
+    CHECK_TRUE(!s.v->takeEcDryNotice(), "refilling is not a crossing");
+    s.v->powerTick(3600.0);
+    CHECK_TRUE(s.v->takeEcDryNotice(), "drying out a second time notices again");
+    destroyShip(s);
+
+    /* A hull with no drums has no wheel verdict to announce, so it stays quiet even as its
+       pool empties: the notice exists for the toast, and the toast says "wheels cut". */
+    Ship n; n.v = new Vehicle;
+    addPowerPart(n, 0.0, 100.0, 0.0, 5.0, 0.0);    // air and a store, no torque anywhere
+    initShip(n);
+    n.v->powerTick(3600.0);
+    CHECK_NEAR(totalEC(n), 0.0, 1e-9, "the wheel-less pool is dry too");
+    CHECK_TRUE(!n.v->takeEcDryNotice(), "and reports nothing: no drums, no drum verdict");
+    destroyShip(n);
+}
+
 /* The pool drains pro-rata across batteries (the shares are proportional to
    each battery's charge), and never below zero. Two equal batteries each
    give up half. */
@@ -933,6 +980,8 @@ int main() {
     test_a_drum_that_delivers_nothing_bills_nothing();
     printf("\n");
     test_gate_cut_is_a_spent_pool_not_an_expensive_ask();
+    printf("\n");
+    test_running_dry_notices_once();
     printf("\n");
     test_drain_prorata_across_batteries();
     printf("\n");

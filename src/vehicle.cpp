@@ -2734,6 +2734,17 @@ void Vehicle::powerTick(double h) {
     const double netWh = (totalGen - constantDraw - activeDraw) * h / 3600.0;
     if(netWh < 0.0) { drainEC(-netWh); }
     else if(netWh > 0.0) { chargeEC(netWh); }
+    /* #652: the CROSSING, not the state. `ecCharge` is the pool as this call found it and
+       `netWh` is the whole step's balance, which drainEC clamps at zero, so "<= 0" here
+       means this substep -- or this warp hop, which is how a hull runs dry at 100000x --
+       is the one that finished the pool. A hull already sitting at empty gets no notice;
+       one that refills and dries again does, because the toast consumes the flag. The
+       `cost > 0.0` term keeps the notice honest: what the toast has to say is that the
+       drums are cut, so a hull with none (or with them switched off) has nothing to
+       report. */
+    if(hasEC && cost > 0.0 && ecCharge > 0.0 && ecCharge + netWh <= 0.0) {
+        ec_dry_notice_ = true;
+    }
 }
 
 void Vehicle::drainEC(double wh) {
