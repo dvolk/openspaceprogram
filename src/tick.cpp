@@ -1407,24 +1407,18 @@ void tick(Game &g) {
         /* #652: an EC pool that runs dry takes the wheels away, and at warp the hop that
            finishes it can land in the middle of a transfer -- seconds before the player
            reaches the far end, tries to point for a brake burn and finds the drums shut.
-           Say it when it happens rather than leaving it to the EC bar, and say whether
-           the hull can climb back out on its own: with the generator under the air it
-           cannot, which is the difference between "wait a minute" and "this hull needs a
-           reactor". One notice per crossing (Vehicle::takeEcDryNotice), so a hull parked
-           at empty since a hop does not shout every frame. Toasts draw in one unwrapped
-           line, so both spellings stay under 70 characters with a 10-character hull name
-           -- the Systems window's `Status:` row (#649) is the durable version of this. */
+           Say it when it happens rather than leaving it to the EC bar. One notice per
+           crossing (Vehicle::takeEcDryNotice), so a hull parked at empty since a hop does
+           not shout every frame. There is nothing to hedge and no watts to re-read: the
+           latch floors the pool at `cost * kWheelsCutS / 3600` on any hull whose generator
+           covers its air, so a hull that reaches literal zero has a generator that cannot
+           (test_power's test_surplus_floors_the_pool_and_never_crosses). Toasts draw on one
+           unwrapped line, so the sentence stays under 70 characters with a 10-character
+           hull name; the Systems window's `Status:` row (#649) is the durable version. */
         for(auto *s : vehicles) {
             if(!s->takeEcDryNotice()) { continue; }
-            double gen = 0.0, constDraw = 0.0;
-            s->getPower(&gen, &constDraw, nullptr, nullptr);
-            if(gen > constDraw) {
-                g.toast("EC dry on '%s': wheels cut until the pool "
-                        "recharges", s->displayName().c_str());
-            } else {
-                g.toast("EC dry on '%s': wheels cut, nothing aboard "
-                        "recharges them", s->displayName().c_str());
-            }
+            g.toast("EC dry on '%s': wheels cut, nothing aboard recharges them",
+                    s->displayName().c_str());
         }
 
         g.accumulator -= g.dt;

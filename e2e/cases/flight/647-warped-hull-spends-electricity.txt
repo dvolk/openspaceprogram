@@ -68,10 +68,12 @@ CHECK last(power)["powered"] == 0
 # And nothing bills drums that never turned: the rating sum (2475 W on this hull) appears
 # nowhere in a warped run. See the header for what this CHECK does and does not pin.
 CHECK all(r["active"] == 0.0 for r in power)
-# #652: the crossing gets a word, and names which of the two traps this is. This hull's rtg
-# is under its air, so the pool can never climb back and the latch never re-arms -- the
-# wording has to say that, because "wheels cut until the pool recharges" would promise a
-# rescue that is not coming.
+# #652: the crossing gets a word, and this hull is the trap where no rescue is coming: its
+# rtg is under its air, so the pool can only ever fall and the latch never re-arms. The
+# toast states that flat out instead of hedging, because a hull whose generator DOES cover
+# its air never crosses zero at all -- the latch floors its pool at the cut charge (see
+# test_power's test_surplus_floors_the_pool_and_never_crosses), so the crossing itself is
+# the diagnosis and this case has no watts to second-guess.
 CHECK any(t.startswith("EC dry on 'power_test'") and "nothing aboard recharges them" in t for t in toast)
 # Once, not per hop: the hull sits dry for the rest of this run (the >= 2 dry rows above),
 # so a notice armed on the STATE rather than the crossing would shout all the way to the

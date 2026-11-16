@@ -56,7 +56,9 @@
 //     thresholds are durations, so a minute-long hop cannot raise the cut;
 //   * the dry-pool notice (#652): armed by the one substep or hop that empties the pool,
 //     silent while a hull sits dry, re-armed by a refill, and never armed for a hull with
-//     no drums -- because the toast it feeds says those drums are cut;
+//     no drums -- because the toast it feeds says those drums are cut. A hull with a
+//     surplus floors its pool at the latch instead of crossing zero, which is what lets
+//     that toast state the diagnosis without re-reading the watts;
 //   * EC has NO mass: draining/charging never touches a part's mass
 //     (unlike propellant);
 //   * the store's precision: a substep's worth of Wh still moves a big
@@ -875,6 +877,48 @@ static void test_running_dry_notices_once() {
     destroyShip(n);
 }
 
+/* #652's toast says "nothing aboard recharges them" without asking the watts again, and
+   this is why: the CROSSING is the diagnosis. A hull whose generator beats its air but not
+   its air plus drums never reaches literal zero -- the latch cuts the wheels at
+   `cost * kWheelsCutS / 3600` of charge, and from there the balance is
+   `totalGen - constantDraw > 0`, so the pool climbs back and the wheels re-arm. The wheels
+   flicker; the pool floors. So `ecCharge` reaching zero with drums to cut means
+   `totalGen <= constantDraw`, which is exactly what the toast claims.
+   Measured here: 1000 W of triad, 100 W of air, 500 W of rtg, a 5 Wh store, a key pinned
+   for 2000 s of substeps -- the duty cycle #899 is about, run at 1x instead of by formula. */
+static void test_surplus_floors_the_pool_and_never_crosses() {
+    printf("== Latch: a surplus floors the pool, so a crossing means no surplus ==\n");
+    Ship s; s.v = new Vehicle;
+    addPowerPart(s, 1000.0, 100.0, 500.0, 5.0, 2000.0, 3);   // drums, air, rtg, store
+    initShip(s);
+    s.v->Command(ShipCmd(Pitch, 1.0f), true);
+    const double cut_wh = Vehicle::kWheelsCutS * 1000.0 / 3600.0;
+    double lo = 1e9;
+    bool armed = false, saw_cut = false;
+    int rearms = 0;
+    bool prev_cut = false;
+    for(int i = 0; i < 20000; i++) {   // 2000 s of substeps
+        s.v->applyControlForces(kMaxSubStep);
+        s.v->powerTick(kMaxSubStep);
+        const double q = totalEC(s);
+        if(q < lo) { lo = q; }
+        if(s.v->takeEcDryNotice()) { armed = true; }
+        const bool cut = s.v->wheels_brown_out_;
+        if(cut) { saw_cut = true; }
+        else if(prev_cut) { rearms++; }
+        prev_cut = cut;
+    }
+    CHECK_TRUE(saw_cut && rearms >= 5,
+               "the wheels cut and re-arm on a schedule -- this hull is in the cycle");
+    CHECK_TRUE(lo > 0.0, "and the pool never reaches literal zero while gen > air");
+    CHECK_TRUE(lo <= cut_wh,
+               "it floors at the latch's cut charge, not at anything a player could use");
+    CHECK_TRUE(!armed, "so a dry-pool crossing cannot happen on a hull that can recharge");
+    printf("  measured: floor %.4f Wh (cut charge %.4f Wh), %d re-arms in 2000 s\n",
+           lo, cut_wh, rearms);
+    destroyShip(s);
+}
+
 /* The pool drains pro-rata across batteries (the shares are proportional to
    each battery's charge), and never below zero. Two equal batteries each
    give up half. */
@@ -987,6 +1031,8 @@ int main() {
     test_gate_cut_is_a_spent_pool_not_an_expensive_ask();
     printf("\n");
     test_running_dry_notices_once();
+    printf("\n");
+    test_surplus_floors_the_pool_and_never_crosses();
     printf("\n");
     test_drain_prorata_across_batteries();
     printf("\n");
