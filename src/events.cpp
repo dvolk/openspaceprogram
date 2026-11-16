@@ -306,8 +306,7 @@ void flightKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
         // Cycle the orbit camera's target body.
         if(g.camera->mode == CAM_ORBIT) {
             g.focusBody = (g.focusBody + 1) % (int)g.focusTargets.size();
-            g.camera->Follow(g.focusWorldPos(g.focusBody));
-            g.camera->resetPan();   // the old subject's framing is meaningless here (#919)
+            g.camera->setSubject(g.focusWorldPos(g.focusBody));   // new subject, new framing (#919)
             double d = (g.focusTargets[g.focusBody].body == nullptr)
                 ? 50.0
                 : (double)g.focusTargets[g.focusBody].body->radius * 3.0;
@@ -527,10 +526,13 @@ void poll_events(Game &g) {
                 const int n = (int)g.question->labels.size();
                 if(n > 0) { g.answerQuestion(n - 1); }
             }
-            /* An RMB drag that started before the card must not stay armed: its
-               release is swallowed here and g.rmbCam is cleared nowhere else, so
-               the camera would follow the mouse with no button held. */
+            /* A camera drag that started before the card must not stay armed:
+               its release is swallowed here and neither flag is cleared
+               anywhere else, so the orbit would follow the mouse -- or, for
+               MMB, the aim would slide across the frame (#919) -- with no
+               button held. */
             g.rmbCam = false;
+            g.mmbCam = false;
             continue;
         }
         if(ev.type == SDL_EVENT_KEY_DOWN && g.rebind_capture_slot >= 0) {
@@ -740,9 +742,11 @@ void poll_events(Game &g) {
                    && SDL_GetTicks() - g.mmbDownMs < kPickClickMs) {
                     // Only say something if there was something to undo -- the
                     // gesture is invisible until the subject is off-centre, and
-                    // a toast on every accidental click would be noise.
-                    const bool panned = g.camera->panYaw != 0.0
-                                     || g.camera->panPitch != 0.0;
+                    // a toast on every accidental click would be noise. (The
+                    // zero itself is unconditional: it also clears a framing
+                    // that a free-cam excursion is carrying.)
+                    const bool panned = g.camera->mode == CAM_ORBIT
+                        && (g.camera->panYaw != 0.0 || g.camera->panPitch != 0.0);
                     g.camera->resetPan();
                     if(panned) {
                         g.toast("Camera: aim centred");

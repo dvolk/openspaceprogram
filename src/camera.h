@@ -55,8 +55,9 @@ public:
     static constexpr double kPitchLimit = 1.52;
 
     // Pixels of RMB drag per radian of orbit. Named because PanPx() converts
-    // its own drag from the screen's scale, and the two rates belong next to
-    // each other in one header (#919).
+    // its own drag from the screen's scale instead (panPxPerRad(), which is
+    // ~520 px/rad at 800x600 and fov 60), and the two rates sitting side by
+    // side is exactly where that difference should be visible (#919).
     static constexpr double kCamOrbitPx = 200.0;
 
     /* The +side stop, rad: how far the camera may go BELOW ref's plane
@@ -73,29 +74,23 @@ public:
     double downLimit = kPitchLimit;
 
     /* Aim offset, rad: how far the LOOK direction is rotated off the line to
-       the focus -- yaw about the un-panned view up, then pitch about its right.
-       The position stays exactly where orbitYaw/orbitPitch/distance put it, so
-       the subject holds its PIXEL offset in the frame while the player keeps
+       the focus -- pitch about the un-panned view right, then yaw about its
+       up. The position stays exactly where orbitYaw/orbitPitch/distance put it,
+       so the subject holds its PIXEL offset in the frame while the player keeps
        orbiting and zooming: this is framing, not a second camera (#919).
-       Clamped to the frame edge on each axis (panLimitX/Y), so the subject can
-       go to the border but never off-screen where the player can't find it
-       again, and inside a circle so the two corners together can't spin the
-       look line past sideways. MMB drags it, a tap zeros it. */
+       Clamped to the frame edge (clampPan()), so the subject can go to the
+       border but never off-screen where the player can't find it again. MMB
+       drags it, a tap zeros it. */
     double panYaw = 0.0, panPitch = 0.0;
 
-    /* How far the pan circle reaches, rad. The camera looks AT the focus, so
-       the focus is on the view line; rotating the view by more than the
-       vertical half-angle drops it below the frame, and past 90 deg puts it
-       BEHIND the camera -- aim= would then read a mirror image of where the
-       ship is. Both stops are live: fov is a slider and --fov, aspect changes
-       on resize, so ComputeView() re-clamps every frame rather than leaving a
-       pan the current lens no longer shows. */
+    /* The frame's half-angles: what the look line may rotate off the line to
+       the focus before the focus leaves the picture. fov is a float and
+       clampFovRad() has already kept it finite and inside [10,120] deg; aspect
+       is live (resize), so ComputeView() re-clamps every frame rather than
+       leaving a pan the current view no longer shows. The yaw stop is scaled by
+       cos(panPitch) inside clampPan(), not here. */
     double panLimitY() const { return (double)fov * 0.5; }
     double panLimitX() const { return std::atan(std::tan((double)fov * 0.5) * (double)aspect); }
-    // The composed guard: past this the two axis clamps together could leave
-    // the focus near or behind the camera. fov maxes at 120 deg, where the
-    // diagonal reaches 1.19 rad, so this only bites at the widest lenses.
-    static constexpr double kPanCircleLimit = 1.2;
 
     // Free-mode state. pos is PRIMARY; right is derived each ComputeView().
     glm::dvec3 right;
@@ -120,6 +115,11 @@ public:
 
     // Orbit: point at a new focus (no-op in Free).
     void Follow(const glm::dvec3& p);
+    /* Point at a DIFFERENT subject: the aim offset framed the old one, so it
+       goes with it (#919). Follow() is the per-frame re-aim at the same
+       subject and keeps the framing; every place that hands the camera
+       something new wants this one. */
+    void setSubject(const glm::dvec3& p);
     // Orbit zoom (clamped so it can never cross the focus) (no-op in Free).
     void wheel(double amt);
 

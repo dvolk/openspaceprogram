@@ -123,20 +123,20 @@ double Camera::panPxPerRad() const {
 }
 
 void Camera::clampPan() {
-    const double limX = panLimitX(), limY = panLimitY();
-    panYaw = std::clamp(panYaw, -limX, limX);
+    /* The frame edge, in the order the rotations compose. Pitch first: its stop
+       is the vertical half-angle and the aim reads it straight back (aim_y =
+       -panPitch). Yaw second: it is applied to a look line already tilted by
+       panPitch, so the aim lands at atan(tan(panYaw)/cos(panPitch)) -- further
+       off-centre than the angle that produced it. Clamping yaw to the raw
+       horizontal half-angle therefore pushed the subject PAST the side edge
+       (fov 60 at 4:3: 41.6 deg of aim against a 37.6 deg frame). Undoing the
+       cos() puts the corner of the two stops exactly on the corner of the
+       frame, which is also why no separate radius guard is wanted: both stops
+       are under 90 deg, so the focus can never end up behind the camera. */
+    const double limY = panLimitY();
     panPitch = std::clamp(panPitch, -limY, limY);
-    /* Two independent axis clamps describe a rectangle whose CORNER is further
-       off the view line than either edge: at fov 120 deg the corner is
-       1.68 rad, which points the camera past sideways -- the focus would go
-       behind the camera and aim= would read a mirrored position the player
-       cannot chase back. Pull any corner back onto the circle. */
-    const double r = std::hypot(panYaw, panPitch);
-    if (r > kPanCircleLimit) {
-        const double k = kPanCircleLimit / r;
-        panYaw *= k;
-        panPitch *= k;
-    }
+    const double limX = std::atan(std::tan(panLimitX()) * std::cos(panPitch));
+    panYaw = std::clamp(panYaw, -limX, limX);
 }
 
 void Camera::PanPx(double dxPx, double dyPx) {
@@ -148,11 +148,20 @@ void Camera::PanPx(double dxPx, double dyPx) {
 }
 
 void Camera::resetPan() {
-    // Orbit only, like PanPx: a pan left behind a Free-mode excursion would
-    // otherwise reappear when the player drops back onto the turntable.
-    if (mode != CAM_ORBIT) { return; }
+    /* Mode-agnostic on purpose: the offset only shows in the orbit view, but
+       zeroing it in Free or First is what stops a framing built before a
+       free-cam excursion reappearing when the player drops back onto the
+       turntable. */
     panYaw = 0.0;
     panPitch = 0.0;
+}
+
+void Camera::setSubject(const glm::dvec3& p) {
+    // The framing belongs to whatever the camera was aimed at, so a NEW subject
+    // starts centred again (#919). Per-frame re-aiming at the SAME subject goes
+    // through Follow(), which keeps it.
+    resetPan();
+    Follow(p);
 }
 
 glm::dvec3 Camera::orbitOffset() const {
@@ -175,7 +184,8 @@ void Camera::ComputeView() {
         const glm::dvec3 refUp = ref * glm::dvec3(0, 0, 1);
         glm::dvec3 dir = -off;
         if (panYaw != 0.0 || panPitch != 0.0) {
-            /* Rotate the look direction in the UN-PANNED view basis. right is
+            /* Rotate the look direction in the UN-PANNED view basis: pitch
+               about its right first, then yaw about its up. right is
                cross(forward, up) -- the same right buildView() derives -- which
                makes a positive panYaw put the subject right and a positive
                panPitch put it down: the image follows the cursor. Rotating the
@@ -184,16 +194,17 @@ void Camera::ComputeView() {
                subject slides around the frame (#919). */
             const glm::dvec3 f0 = glm::normalize(dir);
             /* |cross(f0, refUp)| = cos(orbitPitch), and clampOrbitPitch() keeps
-               orbitPitch inside kPitchLimit's 87 deg, so the smallest this can
-               be is 0.0509 -- the pan never touches f0, so it cannot bring the
-               view line near the turntable's pole either. A silent fallback here
-               would only hide a broken pitch clamp. */
-            glm::dvec3 right = glm::cross(f0, refUp);
-            assert(glm::dot(right, right) > 1e-12);
-            right = glm::normalize(right - f0 * glm::dot(right, f0));
-            const glm::dvec3 up0 = glm::cross(right, f0);
-            dir = glm::dmat3(glm::rotate(panYaw, up0))
-                * (glm::dmat3(glm::rotate(panPitch, right)) * f0);
+               orbitPitch inside kPitchLimit's 87 deg, so the squared length
+               below is never under cos^2(1.52) = 2.6e-3 -- the pan cannot bring
+               the view line near the turntable's pole either, since it never
+               touches f0. A silent fallback here would only hide a broken pitch
+               clamp. */
+            glm::dvec3 viewRight = glm::cross(f0, refUp);
+            assert(glm::dot(viewRight, viewRight) > 1e-3);
+            viewRight = glm::normalize(viewRight);
+            const glm::dvec3 viewUp = glm::cross(viewRight, f0);
+            dir = glm::dmat3(glm::rotate(panYaw, viewUp))
+                * (glm::dmat3(glm::rotate(panPitch, viewRight)) * f0);
         }
         forward = glm::normalize(dir);
         // Guard the degenerate projection at the pole (Pitch clamps away

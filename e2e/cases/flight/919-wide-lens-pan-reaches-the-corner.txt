@@ -1,0 +1,38 @@
+# #919's other half: where a pan stops, at a lens the fov-60 case cannot
+# exercise. The aim stops are the frame's half-angles, and the yaw one is the
+# horizontal half-angle SCALED BY cos(panPitch) -- yaw is applied to a look line
+# already tilted by pitch, so the focus lands at atan(tan(panYaw)/cos(panPitch))
+# rather than at panYaw. A 120 deg lens (the top of --fov's range) is where that
+# scaling is biggest and where an unscaled stop is most visible.
+#
+# One over-reaching MMB stroke (+2200,+2500 px at 800x600 -> 4.23 and 4.81 rad,
+# both far past the stops) with the cursor parked first:
+#
+#   pan = [+0.85707 +1.04720]: pitch stops at fov/2 = 1.04720 rad, and yaw stops
+#     at atan(tan(66.59 deg) x cos 60 deg) = 0.85707 -- NOT at the raw
+#     horizontal half-angle 1.16309, which would land the focus outside the
+#     frame. The cos() is what the vertical stop does not need, so this row is
+#     the only place the two differ by enough to see.
+#   aim = [+66.6 -60.0] = the corner of THAT frame: 60 deg vertical, atan(
+#     tan(60 deg) x 4/3) = 66.59 deg horizontal. x_ndc and y_ndc both 1.000 --
+#     the subject is exactly at the corner, so the promise "up to the edge, never
+#     off-screen" holds at the widest lens too.
+#   No row ever reads past that corner, which is the failure mode: a stop scaled
+#     wrong leaves the subject off the side of the screen with no drag able to
+#     bring it back.
+NAME wide-lens-pan-reaches-the-corner
+CLAIM A pan stops at the frame edge whatever the lens: at fov 120 an over-reaching drag lands the focus exactly on that frame's corner, never outside it.
+KIND invariant
+ARGS --timeout 4 --time-accel 1 --startship racer,res/ships/racer.json,Kerbin,pad --cam-log --orbit-interval 0.5 --width 800 --height 600 --fov 120
+ARGS --sim-mouse 1000,0,900,500,0
+ARGS --sim-mouse 1200,600,3100,3000,MMB
+EXPECT [camlog]
+CHECK all(r["pan"] is not None and r["aim"] is not None for r in cam)
+CHECK all(abs(r["pan"][0]) < 1e-9 and abs(r["pan"][1]) < 1e-9 for r in cam if r["t"] < 1.1)
+CHECK all(abs(r["pan"][1] - 1.047198) < 1e-4 and abs(r["pan"][0] - 0.857072) < 1e-4 for r in cam if r["t"] > 1.3)
+CHECK all(abs(r["aim"][0] - 66.6) < 0.2 and abs(r["aim"][1] + 60.0) < 0.2 for r in cam if r["t"] > 1.3)
+CHECK all(abs(r["aim"][0]) <= 66.7 and abs(r["aim"][1]) <= 60.1 for r in cam)
+# Both stops stay under 90 deg, so the focus can never be swung behind the
+# camera -- the reason no separate radius guard is needed.
+CHECK all(r["pan"][0] < 1.5708 and r["pan"][1] < 1.5708 for r in cam)
+FORBID error:

@@ -57,9 +57,8 @@ void spaceCenterEnter(Game &g) {
         for(int i = 0; i < (int)g.focusTargets.size(); i++) {
             if(g.focusTargets[i].body == g.home) { g.focusBody = i; break; }
         }
-        g.camera->Follow(g.focusWorldPos(g.focusBody));
+        g.camera->setSubject(g.focusWorldPos(g.focusBody));   // the planet is a new subject (#919)
         g.camera->distance = 2.0 * g.home->radius;
-        g.camera->resetPan();   // a framing carried over from the ship is meaningless here (#919)
         g.camera->ComputeView();   // a sane pose immediately, not next frame
     }
     printf("[spacecenter] entered (live sim)\n");

@@ -158,8 +158,8 @@ judgement. Select by number, name or path, e.g.
 | `flight/900-ascent-row-dashes-an-inclination-without-a-plane.txt` | invariant | [ascent] dashes inc_eq while the state has no plane, on rows whose conic fields are numbers, and reads the polar 90 deg once the hull earns tangential speed. |
 | `flight/900-sas-normal-at-the-star-resolves.txt` | invariant | SAS normal resolves a target on a Kerbol-centred conic instead of failing a magnitude bound, and steers along the conic's own normal. |
 | `flight/900-sas-normal-with-no-plane-refuses.txt` | invariant | SAS normal on a near-radial Kerbin climb refuses instead of steering at a plane made of residue, and the drawn normal dashes on the same rows. |
-| `flight/919-mmb-pan-off-centre.txt` | invariant | An MMB drag pans the camera's aim without moving the camera: the focus sits off-centre at the cursor's rate, stops at the frame edge, holds that place in frame across an orbit, and a tap or a new subject recentres it. |
-| `flight/919-wide-lens-pan-stays-in-front.txt` | invariant | A pan at a wide lens is capped on a circle, not just per axis, so the focus is never swung behind the camera. |
+| `flight/919-mmb-pan-off-centre.txt` | invariant | An MMB drag pans the camera's aim without moving the camera: the focus sits off-centre at the cursor's rate, stops on the frame edge, holds that place in frame across an orbit, and a tap or a new subject recentres it. |
+| `flight/919-wide-lens-pan-reaches-the-corner.txt` | invariant | A pan stops at the frame edge whatever the lens: at fov 120 an over-reaching drag lands the focus exactly on that frame's corner, never outside it. |
 
 ## crew (27)
 

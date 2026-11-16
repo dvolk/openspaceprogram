@@ -750,7 +750,12 @@ void refreshWorld(Game &g) {
                        by a yaw orbit or a zoom -- the subject keeps its pixel
                        place while the world moves behind it -- and it is
                        unchanged by the hull's pose too, which is what lets a
-                       case pin the gesture rather than the framing.
+                       case pin the gesture rather than the framing. Note that
+                       the pan IS the view, so aim is a restatement of it in
+                       screen terms (aim_y = -panPitch, aim_x =
+                       atan(tan(panYaw)/cos(panPitch))) -- it confirms where the
+                       subject landed, but it cannot contradict a broken up/right
+                       the way a screen-space measurement could.
                lv/roll/pole/camh dash when there is no local vertical to measure
                against (no ship, or a body focus). pole, gf and pin dash in free
                or first person too: there ref and orbitPitch are whatever the

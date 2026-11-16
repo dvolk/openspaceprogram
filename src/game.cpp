@@ -775,11 +775,15 @@ void Game::syncShipFocus() {
         }
         focusBody = 0;   // the "ship" focus target
         // camera is null on a --load boot (main.cpp creates it after load_game).
-        if(camera != nullptr && camera->mode == CAM_ORBIT) {
-            camera->Follow(ship->get_center_of_mass());
-            // a kerbal is 0.75 m tall; 50 m would lose it
-            camera->distance = ship->isEva() ? 5.0 : 50.0;
-            camera->resetPan();   // the framing belonged to the old subject (#919)
+        if(camera != nullptr) {
+            /* A different hull is a different subject, so the aim offset that
+               framed the old one goes -- in any mode, because in First or Free
+               it would otherwise sit there waiting for the next C (#919). */
+            camera->setSubject(ship->get_center_of_mass());
+            if(camera->mode == CAM_ORBIT) {
+                // a kerbal is 0.75 m tall; 50 m would lose it
+                camera->distance = ship->isEva() ? 5.0 : 50.0;
+            }
         }
     } else {
         if(!focusTargets.empty() && focusTargets[0].body == nullptr) {
@@ -837,7 +841,8 @@ void Game::parkTitleCamera() {
     if(camera != nullptr) {
         // The title backdrop is always an orbit view: overrides a free cam.
         camera->mode = CAM_ORBIT;
-        camera->Follow(focusWorldPos(idx));
+        // A backdrop is a new subject, so no framing carries over to it (#919).
+        camera->setSubject(focusWorldPos(idx));
         // 2 radii frames any body size -- don't "scale" it further.
         camera->distance = 2.0 * (double)b->radius;
         camera->ComputeView();
@@ -2506,7 +2511,9 @@ bool Game::ui_remove_vehicle(Vehicle *v) {
             }
             focusBody = 0;
             if(camera != nullptr && camera->mode == CAM_ORBIT) {
-                camera->Follow(ship->get_center_of_mass());
+                // The successor is a new subject: it must not inherit the
+                // framing the removed ship had (#919).
+                camera->setSubject(ship->get_center_of_mass());
                 camera->distance = 50.0;
             }
             // N/M in the remaining ships.
