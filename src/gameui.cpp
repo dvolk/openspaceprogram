@@ -3362,6 +3362,27 @@ void drawUIReadouts(Game &g) {
             uiText("Const draw: %.1f W   (life support)", constDraw);
             uiText("Active:     %.1f W   (actuators, while commanding)",
                    activeDraw);
+            /* #896: what a player actually needs before raising the warp dial is TIME,
+               not watts -- how many hours this store lasts at this balance. `power_test`
+               is 39.8 h of coasting and a Kerbin->Jool leg is hours of warp, so the
+               number decides whether the transfer is survivable at all.
+               It is derived from the Net row above rather than from a second balance of
+               its own (#659: the VAB line and this window's Net must stay one arithmetic
+               in two places, not three spellings). While the hull coasts on rails the
+               active term is zero, so at warp this IS the figure -- which is also why no
+               warp-up toast is needed: the warning that arrives mid-transfer (#652) says
+               what already happened, and this row says it before the dial moves.
+               The dash is the same absence every row-based readout uses (#894): a level
+               or charging balance has no hours aboard, and printing 0.0 h or inf there
+               would read like a measurement of one. */
+            char aboard_txt[32];
+            if(net < 0.0) {
+                /* charge is Wh and net is W, so the quotient is already hours. */
+                snprintf(aboard_txt, sizeof aboard_txt, "%.1f h", charge / -net);
+            } else {
+                snprintf(aboard_txt, sizeof aboard_txt, "-");
+            }
+            uiText("Aboard:     %s   (this balance)", aboard_txt);
         }
 
         ImGui::Separator();
