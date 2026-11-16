@@ -504,22 +504,32 @@ void tick(Game &g) {
                 const AscentLaw &law = *g.ascent;
                 const OrbitElements &o = law.elements();
                 const bool conic = law.conicOk();
-                /* nan, not a number: a railed hull or a mu-less body never got a
+                /* A dash, not a number: a railed hull or a mu-less body never got a
                    conic, and elements() still held the previous tick's -- or a
                    default-constructed one, which printed "periapsis 0 m" as though
-                   it had been measured. The e2e harness reads nan as a float, so a
-                   CHECK against such a row fails loudly instead of agreeing with an
-                   invented number (#610 review). */
-                auto optNum = [](char *buf, size_t n, double v, bool ok) {
-                    std::snprintf(buf, n, ok ? "%.6g" : "nan", v);
+                   it had been measured. '-' is what every other row-based log prints
+                   for "no value" ([orbit] lan=/lpe=, [planelog] prg=, [drag] AoA=),
+                   and the unit lives in the buffer for the same reason those printers
+                   put it there: a dashed field carries no unit, so e2e's ASCENT_RE can
+                   tell the two apart without a numeric arm that eats a lone '-' and
+                   hands float() something it cannot read. The harness reads a dash as
+                   None and a nan as a float, so the dash also makes a CHECK against an
+                   absent field fail loudly instead of comparing a float
+                   (#610 review, #894). */
+                auto optNum = [](char *buf, size_t n, const char *unit, double v,
+                                 bool ok) {
+                    if(ok) { std::snprintf(buf, n, "%.6g%s", v, unit); }
+                    else { std::snprintf(buf, n, "-"); }
                 };
                 const double sea_r = g.ship->m_parent->seaLevelRadius();
                 char peri_txt[32], apo_txt[32], inc_txt[32], node_txt[32];
-                optNum(peri_txt, sizeof peri_txt, periapsisAsl(o, sea_r), conic);
+                optNum(peri_txt, sizeof peri_txt, " m", periapsisAsl(o, sea_r), conic);
+                /* apoapsisAsl() asserts a closed conic, so the dash lives here rather
+                   than in an `ok` argument -- the value must never be computed. */
                 if(conic && o.traj == TrajectoryClass::Elliptic) {
-                    optNum(apo_txt, sizeof apo_txt, apoapsisAsl(o, sea_r), true);
+                    optNum(apo_txt, sizeof apo_txt, " m", apoapsisAsl(o, sea_r), true);
                 } else {
-                    std::snprintf(apo_txt, sizeof apo_txt, "nan");
+                    std::snprintf(apo_txt, sizeof apo_txt, "-");
                 }
                 /* Inclination against the body's equator, from the pole (see
                    flyAscent: omega() is zero for a body that does not spin, which
@@ -531,8 +541,10 @@ void tick(Game &g) {
                     const double c = glm::dot(o.h_hat, g.ship->frame->spinAxisRelTo(inertial));
                     inc_spin = glm::degrees(acosUnit(c));
                 }
-                optNum(inc_txt, sizeof inc_txt, inc_spin, conic && o.ang_momentum > 0.0);
-                optNum(node_txt, sizeof node_txt, law.node_r(), law.node_r() > 0.0);
+                optNum(inc_txt, sizeof inc_txt, " deg", inc_spin,
+                       conic && o.ang_momentum > 0.0);
+                optNum(node_txt, sizeof node_txt, " m", law.node_r(),
+                       law.node_r() > 0.0);
                 /* The two numbers the law's lift-off gate compares, printed so a
                    refusal like "this stage cannot lift off" can be checked against
                    the hull instead of taken on trust. accel is availableAccel() --
@@ -544,7 +556,7 @@ void tick(Game &g) {
                 const double g_pull = (r_hull > 1.0)
                     ? g.ship->m_parent->mu / (r_hull * r_hull) : 0.0;
                 printf("[ascent] t=%.1fs phase=%s lever=%.2f pitch=%.1f deg "
-                       "peri_asl=%s m apo_asl=%s m inc_eq=%s deg node_r=%s m "
+                       "peri_asl=%s apo_asl=%s inc_eq=%s node_r=%s "
                        "accel=%.2f m/s2 g=%.2f m/s2 why=\"%s\"\n",
                        g.time, law.phaseName(), g.ship->throttle(), law.pitch_deg(),
                        peri_txt, apo_txt, inc_txt, node_txt, amax, g_pull, law.why());

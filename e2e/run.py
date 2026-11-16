@@ -131,15 +131,24 @@ ORBIT_RE = re.compile(
 # The phase is the law's side of the contract with the player -- "done" means the
 # orbit is the one that was asked for, "failed" means it says so out loud -- so a
 # case should read it rather than grep for it. peri_asl/apo_asl/inc_eq/node_r are
-# "nan" when the law has no such number for that tick: a railed hull solves no
+# dashed when the law has no such number for that tick: a railed hull solves no
 # conic, an open trajectory has no apoapsis, a coast before the node has no node.
-# float("nan") parses and every comparison with it is false, so a CHECK that
-# wanted a real number fails loudly rather than agreeing with a placeholder that
-# used to read like a measurement (-1 m apoapsis, -1.00 deg inclination).
+# The dash is the absence every other row-based log already prints (#894 migrated
+# this row off "nan"), and like those fields a dashed one carries NO unit: the row
+# reads `node_r=-`, not `node_r=- m`. That is what makes the two-arm form below
+# unambiguous -- `[-\d.e+]+ m` would happily eat a lone '-' and leave float() with
+# something it cannot read, which is exactly how this migration was caught. A CHECK
+# that wants a real number now fails against None instead of agreeing with a
+# placeholder that used to read like a measurement (-1 m apoapsis, -1.00 deg
+# inclination) -- and instead of comparing a float("nan"), where every comparison
+# is quietly false. A nan that slips back into these fields matches NEITHER arm, so
+# the row is dropped and named by #408 rather than parsed; --self-test pins that.
 ASCENT_RE = re.compile(
     r"\[ascent\]\s+t=([\d.]+)s\s+phase=(\w+)\s+lever=([-\d.e+]+)\s+pitch=([-\d.e+]+) deg\s+"
-    r"peri_asl=([-\d.e+]+|nan) m\s+apo_asl=([-\d.e+]+|nan) m\s+inc_eq=([-\d.e+]+|nan) deg\s+"
-    r"node_r=([-\d.e+]+|nan) m"
+    r"(?:peri_asl=([-\d.e+]+) m|peri_asl=-)\s+"
+    r"(?:apo_asl=([-\d.e+]+) m|apo_asl=-)\s+"
+    r"(?:inc_eq=([-\d.e+]+) deg|inc_eq=-)\s+"
+    r"(?:node_r=([-\d.e+]+) m|node_r=-)"
     # The stage's full-throttle acceleration and the body's pull at the hull: the
     # pair the law's lift-off gate compares, so "this stage cannot lift off" can
     # be pinned from the row instead of taken on trust. Optional: a row without
@@ -1087,15 +1096,19 @@ def parse_ascent(out):
     for m in ASCENT_RE.finditer(out):
         (t, phase, lever, pitch, peri, apo, inc_eq, node, accel, gpull,
          why) = m.groups()
+        # A dashed field captures as an absent group, so it reads as None: no number
+        # for this tick, which is neither 0 nor nan (#894).
+        def opt(s):
+            return None if s is None else float(s)
         row = {
             "t": float(t), "phase": phase, "lever": float(lever),
-            "pitch": float(pitch), "peri_asl": float(peri), "apo_asl": float(apo),
-            "inc_eq": float(inc_eq), "node_r": float(node), "why": why,
+            "pitch": float(pitch), "peri_asl": opt(peri), "apo_asl": opt(apo),
+            "inc_eq": opt(inc_eq), "node_r": opt(node), "why": why,
         }
         # None when the row predates the field, so a CHECK can ask for it and
         # fail loudly on an old-format row rather than compare against None.
-        row["accel"] = None if accel is None else float(accel)
-        row["g"] = None if gpull is None else float(gpull)
+        row["accel"] = opt(accel)
+        row["g"] = opt(gpull)
         rows.append(row)
     return rows
 
@@ -2822,13 +2835,25 @@ def self_test():
         fails.append("the #408 pin's clean [orbinfo] line stopped matching ORBINFO_RE")
     if dropped_nonfinite_rows(ORBINFO_RE, [good_orb, bad_orb]) != [bad_orb]:
         fails.append("an [orbinfo] row carrying prg=-nan was not named as dropped")
-    asc_nan = ('[ascent] t=32.3s phase=pad lever=1.00 pitch=87.5 deg peri_asl=-250000 m '
-               'apo_asl=129.753 m inc_eq=0.286474 deg node_r=nan m accel=18.08 m/s2 '
-               'g=2.69 m/s2 why=""')
-    if ASCENT_RE.match(asc_nan) is None:
-        fails.append("the #408 pin's node_r=nan [ascent] line stopped matching ASCENT_RE")
-    if dropped_nonfinite_rows(ASCENT_RE, [asc_nan]):
-        fails.append("an [ascent] row the parser DOES read was reported as dropped")
+    # #894 moved [ascent]'s missing numbers onto the dash, which flips this row's half
+    # of the #408 question: a nan that slips into these fields is now a row nobody can
+    # read, so it must be NAMED rather than parsed.
+    asc_dash = ('[ascent] t=32.3s phase=pad lever=1.00 pitch=87.5 deg peri_asl=-250000 m '
+                'apo_asl=- inc_eq=0.286474 deg node_r=- accel=18.08 m/s2 '
+                'g=2.69 m/s2 why=""')
+    if ASCENT_RE.match(asc_dash) is None:
+        fails.append("a dashed [ascent] line stopped matching ASCENT_RE")
+    else:
+        row = parse_ascent(asc_dash)[0]
+        if row["apo_asl"] is not None or row["node_r"] is not None:
+            fails.append("a dashed [ascent] field did not parse as None")
+        if row["peri_asl"] != -250000.0 or row["inc_eq"] != 0.286474:
+            fails.append("a dashed [ascent] line lost the numbers it did carry")
+    asc_nan = asc_dash.replace("node_r=-", "node_r=nan")
+    if ASCENT_RE.match(asc_nan) is not None:
+        fails.append("ASCENT_RE still parses a node_r=nan [ascent] line #894 dropped")
+    if dropped_nonfinite_rows(ASCENT_RE, [asc_nan]) != [asc_nan]:
+        fails.append("a node_r=nan [ascent] row was not named as dropped")
     # A word that merely starts with these letters is not a blow-up, and the two
     # spellings glibc prints have to be caught however they sit in the line.
     for word in ("--info-log", "information", "inflight", "nano.png", "format inf_"):
@@ -3044,15 +3069,15 @@ def self_test():
     print("e2e runner self-test ok: dead-shape CHECKs (tuple, container, "
           "uncalled lambda) refused at parse and eval; a CHECK whose all()/any() "
           "walked an empty input recorded as a note that cannot redden the case; a "
-          "printed row dropped because its number reads inf/nan named, and the "
-          "node_r=nan row the parser does read left alone; every world-scoped row "
-          "stamped with the vessel that was active when it printed, in line order, "
-          "and [mass]'s own ship= kept; a scripted UI action the game never reported, "
-          "and a FAILED line with no EXPECT behind it, both named; regex-shaped "
-          "EXPECT/FORBID "
-          "refused at parse while literal text containing brackets stays legal; "
-          "re.search, walrus, comprehension and immediately-called lambda CHECKs "
-          "accepted; CHECK failed/raised wording intact")
+          "printed row dropped because its number reads inf/nan named, and "
+          "[ascent]'s dashed fields parsed as None while its nan row is named too; "
+          "every world-scoped row stamped with the vessel that was active when it "
+          "printed, in line order, and [mass]'s own ship= kept; a scripted UI action "
+          "the game never reported, and a FAILED line with no EXPECT behind it, both "
+          "named; regex-shaped EXPECT/FORBID refused at parse while literal text "
+          "containing brackets stays legal; re.search, walrus, comprehension and "
+          "immediately-called lambda CHECKs accepted; CHECK failed/raised wording "
+          "intact")
     return 0
 
 

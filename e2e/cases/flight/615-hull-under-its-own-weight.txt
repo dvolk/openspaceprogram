@@ -25,3 +25,7 @@ CHECK ascent[0]["accel"] < ascent[0]["g"]
 # Nothing was ever armed. The lever is the latching state the law writes, so a
 # non-zero one means it burned on the ground for nothing.
 CHECK max(a["lever"] for a in ascent) == 0.0
+# And the burn node has no radius to name in a run that never left the pad, so the
+# row prints that field as the dash every other row-based log uses and the parser
+# reads None -- not 0, not a nan a CHECK could quietly compare against (#894).
+CHECK all(a["node_r"] is None for a in ascent)
