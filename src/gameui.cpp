@@ -310,17 +310,22 @@ struct MapLabelPass {
 // Legend glyph shapes. kRing draws the same circle as the map's AN/DN markers, so the
 // legend is not describing a shape the map never draws.
 enum LegSwatch : unsigned char { kLegRect, kLegDot, kLegRing };
-static constexpr float kLegSwatchPx = 10.0f;
+// 8 px: the same width as the dot and ring glyphs (r = 4), so the three shapes read as
+// one size. It also buys back the row a longer word costs -- see legendItemW.
+static constexpr float kLegSwatchPx = 8.0f;
 // Draw order. The colours live with the window palette, resolved by index below, so
 // the row width (which decides wrapping) and the drawing cannot drift apart.
+// Labels are singular and short on purpose: at the default 480 px window the row has
+// ~464 px, and this set measures 436 of it (#885 -- "stations" arrived with buildings
+// and pushed AN/DN onto a second line).
 static const struct { const char *label; LegSwatch kind; } kMapLegend[] = {
     { "you",     kLegRect },
-    { "ships",   kLegRect },
-    { "stations", kLegDot },
+    { "ship",    kLegRect },
+    { "station", kLegDot },
     { "xfer",    kLegRect },
-    { "bodies",  kLegRect },
+    { "body",    kLegRect },
     { "minor",   kLegRect },
-    { "apsides", kLegDot },
+    { "apsis",   kLegDot },
     { "AN",      kLegRing },
     { "DN",      kLegRing },
 };
@@ -338,19 +343,20 @@ static constexpr ImVec4 kStationRgba(0.35f, 0.78f, 0.86f, 1.0f);
 // reserves exactly the rows the legend needs. An unmeasured row loses AN/DN at font
 // size 17 or DPI scale ~1.1.
 static float legendItemW(const char *label) {
-    // Swatch, the gap before its text, the text, and the gap the NEXT SameLine item
-    // gets. Counting one spacing instead of two put AN 14 px outside the window at
-    // --font-size 20.
-    return kLegSwatchPx + 2.0f * ImGui::GetStyle().ItemSpacing.x
+    // Swatch, the inner gap that attaches the label to it (imgui uses ItemInnerSpacing
+    // for a label beside its widget, not ItemSpacing), and the text. The gap to the
+    // NEXT item is ItemSpacing.x, which legendRowsFor adds between items.
+    return kLegSwatchPx + ImGui::GetStyle().ItemInnerSpacing.x
          + ImGui::CalcTextSize(label).x;
 }
 static int legendRowsFor(float avail_w) {
+    const float gap = ImGui::GetStyle().ItemSpacing.x;
     int rows = 1;
     float row_w = 0.0f;
     for(const auto &e : kMapLegend) {
         const float w = legendItemW(e.label);
-        if(row_w + w > avail_w) { ++rows; row_w = 0.0f; }
-        row_w += w;
+        if(row_w > 0.0f && row_w + gap + w > avail_w) { ++rows; row_w = 0.0f; }
+        row_w += (row_w > 0.0f ? gap : 0.0f) + w;
     }
     return rows;
 }
@@ -4809,19 +4815,26 @@ void drawUIMap(Game &g) {
             auto legend = [&](const char *label, ImU32 col, LegSwatch kind) {
                 const ImVec2 p = ImGui::GetCursorScreenPos();
                 const float half = kLegSwatchPx * 0.5f;
+                // Every glyph is kLegSwatchPx across and centred on the same y, so the
+                // square does not read bigger than the dot or ring beside it.
                 if(kind == kLegDot) {
-                    dl->AddCircleFilled(ImVec2(p.x + half, p.y + 8.0f), 4.0f, col);
+                    dl->AddCircleFilled(ImVec2(p.x + half, p.y + 8.0f), half, col);
                 } else if(kind == kLegRing) {
                     // Same glyph as the map's AN/DN markers, so the legend is not
                     // describing a shape the map never draws.
-                    dl->AddCircle(ImVec2(p.x + half, p.y + 8.0f), 4.0f, col, 0, 1.5f);
+                    dl->AddCircle(ImVec2(p.x + half, p.y + 8.0f), half, col, 0, 1.5f);
                 } else {
-                    dl->AddRectFilled(ImVec2(p.x, p.y + 3.0f),
-                                     ImVec2(p.x + kLegSwatchPx, p.y + 13.0f), col);
+                    dl->AddRectFilled(ImVec2(p.x, p.y + 8.0f - half),
+                                      ImVec2(p.x + kLegSwatchPx, p.y + 8.0f + half), col);
                 }
                 ImGui::Dummy(ImVec2(kLegSwatchPx, 16.0f));
-                ImGui::SameLine();
-                ImGui::TextUnformatted(label);
+                // The label belongs to its swatch, so it gets imgui's label gap rather
+                // than the between-items gap (what a Checkbox uses).
+                ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
+                // uiText, not TextUnformatted: the row is then in the --ui-list registry,
+                // so "the legend is one line" is a fact a case can read off the rects
+                // instead of one I re-measure by hand (#885).
+                uiText("%s", label);
             };
             // kMapLegend order, palette first: "minor" names the quiet rails, or the
             // faint gray reads as a rendering bug.
@@ -4835,8 +4848,9 @@ void drawUIMap(Game &g) {
             // un-normalised test wraps one item early.
             const float row_x0 = ImGui::GetCursorPosX();
             for(size_t i = 0; i < kMapLegendN; i++) {
-                // The live cursor, not an accumulator: imgui's own spacing is the truth,
-                // so the width estimate only has to be conservative for the row count.
+                // The live cursor, not an accumulator: imgui's own spacing is the truth.
+                // The cursor already carries the SameLine gap that precedes this item, so
+                // legendItemW adds only the item -- the same two terms legendRowsFor uses.
                 if(i && ImGui::GetCursorPosX() - row_x0
                           + legendItemW(kMapLegend[i].label) > avail_w) {
                     ImGui::NewLine();
