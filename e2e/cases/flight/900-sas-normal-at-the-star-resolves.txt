@@ -1,0 +1,38 @@
+# `pointingTo()` bounds the vector it is handed: `1e-12 < length2 < 1e24`, so an empty ask
+# cannot read as a heading and a 1e300 one cannot overflow into a plausible wrong angle
+# (#609). That bound is about MAGNITUDE. `Vehicle::slewTargetDir()` used to hand it its raw
+# state vectors -- `pos` in metres, `cross(p, v)` in m^2/s -- so whether a SAS mode had a
+# target at all depended on how far the hull is from its focus and how fast it moves there.
+# On the heli-earth bed around Kerbol (r 1.4961e11 m, v 29787.2 m/s) the orbit normal is
+# |h| = 4.4565e15 m^2/s, length2 1.986e31 -- 1e7 past the ceiling -- so SAS normal was dead
+# on every star-centred conic: every row `mode=normal no-frame`, the mode latched and the
+# law never once asking for torque. The same mode at Kerbin scale (|h| 1.78e9) fits under
+# the bound, which is where the cases live, so nothing noticed. Radial-out at the oort bed
+# (r 1e15 m, length2 1e30) is the same bug carrying metres instead of m^2/s.
+#
+# The fix is that a direction function returns directions: normalize in slewTargetDir(), and
+# pointingTo()'s bound keeps meaning what it was written for. The printed `target=` column is
+# unchanged -- the trace normalizes before printing (vehicle.cpp:4876) -- so this is not a
+# log-format change, only the door the ask has to pass.
+NAME sas-normal-at-the-star-resolves
+CLAIM SAS normal resolves a target on a Kerbol-centred conic instead of failing a magnitude bound, and steers along the conic's own normal.
+KIND invariant
+ARGS --startship racer,res/ships/racer.json,Kerbol,heli-earth
+ARGS --autopilot normal --slew-log --timeout 4
+LIMIT 60
+EXPECT [slew]
+FORBID no-frame
+FORBID error:
+# Premise: the mode is latched AND has a target -- SLEW_RE only matches rows that got past
+# pointingTo(), so a parsed row is evidence of both halves at once.
+CHECK len(slew) >= 10
+CHECK all(s["mode"] == "normal" for s in slew)
+# The aim is this bed's normal: the ecliptic's +Y, and a unit vector as printed.
+CHECK all(abs(s["target"][1]) > 0.9999 and abs(sum(c * c for c in s["target"]) - 1.0) < 1e-5 for s in slew)
+# And the law is chasing it, not just quoting it: E starts at the ~90 deg the spawn nose
+# makes against the normal and closes to 0.19 rad at the 4 s cutoff, on 0.222 rad/s of drum
+# authority.
+CHECK first(slew)["E"] > 1.5 and last(slew)["E"] < 0.5
+# MUTATION: hand pointingTo the raw cross(p, v) instead of a unit vector and every row
+# becomes `mode=normal no-frame`: SLEW_RE matches nothing, len(slew) is 0, and the FORBID
+# catches the string.

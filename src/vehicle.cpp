@@ -6401,11 +6401,26 @@ glm::dvec3 Vehicle::slewTargetDir() {
        -- pointingTo() owns that door, and the trace shows `no-target` rather than
        pretending the ship has a heading. */
     if(slew == SlewFree) { return slewFreeDir_; }
+    /* Return a DIRECTION, never a dimensioned state vector. pointingTo() bounds the
+       vector it is handed -- `1e-12 < length2 < 1e24`, so that an empty ask or a 1e300
+       one cannot become a NaN angle or an overflowed one (#609) -- and that bound is
+       about magnitude while what SAS wants is a line. `pos` is in metres and
+       `cross(p, v)` in m^2/s, so handed over raw the answer depends on where the hull
+       happens to be: measured on the heli-earth bed (r 1.496e11 m, v 29787 m/s), the
+       normal's |h| = 4.46e15 and length2 = 2.0e31, so EVERY row read
+       `mode=normal no-frame` -- the mode latched and did nothing at all on any
+       Sun-centred conic -- and radial-out at the oort bed (r 1e15 m) is the same bug
+       at 1e30. Kerbin scale (|h| 1.78e9) fits under the bound, which is why it has
+       stayed invisible in the cases that exist (#900). */
+    auto unit = [](glm::dvec3 u) {
+        const double l = glm::length(u);
+        return (std::isfinite(l) && l > 0.0) ? u / l : glm::dvec3(0.0);
+    };
     const glm::dvec3 pos = get_center_of_mass();
     // Radial is the same line in either frame: both are measured from the body's
     // centre, which the surface frame and the inertial one share.
-    if(slew == SlewRadialOut) { return  pos; }
-    if(slew == SlewRadialIn) { return -pos; }
+    if(slew == SlewRadialOut) { return unit(pos); }
+    if(slew == SlewRadialIn) { return -unit(pos); }
     const bool prg = (slew == SlewPrograde || slew == SlewRetrograde);
     const bool nrm = (slew == SlewNormal || slew == SlewAntiNormal);
     if(!prg && !nrm) { return glm::dvec3(0.0); }
@@ -6422,14 +6437,13 @@ glm::dvec3 Vehicle::slewTargetDir() {
        nose after whichever way the jitter pointed this tick, spending drum torque,
        while the HUD said `prg=-` (#891). Below the floor the answer is the same
        "no target" pointingTo() already fails closed on, and the [slew] row prints
-       `no-target` -- a refusal the player can see rather than a heading invented
-       from residue. */
+       `no-target` -- the trace says so rather than inventing a heading out of residue. */
     Frame *inertial = frame->getNonRotFrame();
     glm::dvec3 p, v;
     comStateIn(inertial, p, v);
     if(!conicSpeedOk(glm::length(v))) { return glm::dvec3(0.0); }
     const glm::dmat3 to_frame = glm::transpose(frame->GetOrientRelTo(inertial));
-    glm::dvec3 dir = to_frame * (nrm ? glm::cross(p, v) : v);
+    glm::dvec3 dir = unit(to_frame * (nrm ? glm::cross(p, v) : v));
     return (slew == SlewRetrograde || slew == SlewAntiNormal) ? -dir : dir;
 }
 

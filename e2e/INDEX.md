@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 384 |
+| `invariant` | a behaviour or a player route the game must keep | 385 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 48 |
 | `harness` | CLI/test-engine plumbing, not game spec | 16 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **452** |
+| | **total** | **453** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -18,7 +18,7 @@ paces a run: how much e2e a change deserves is the caller's
 judgement. Select by number, name or path, e.g.
 `python3 e2e/run.py save/172 262`.
 
-## flight (130)
+## flight (131)
 
 | case | kind | pins |
 |---|---|---|
@@ -152,6 +152,7 @@ judgement. Select by number, name or path, e.g.
 | `flight/883-twin-station-labels-get-their-own-target-rows.txt` | invariant | Two stations authored with one display_name become two distinct target labels. |
 | `flight/891-sas-prograde-with-no-conic-refuses.txt` | invariant | SAS prograde on a hull with no conic refuses instead of steering at solver residue: the mode latches, every autopilot row says no-target, and none shows a heading being chased. |
 | `flight/898-warp-landing-hop-bills-ec.txt` | invariant | The warp hop that reaches the atmosphere pays for the sim time it spent coasting: the watts-times-seconds the warped rows show holds across the landing hop, not only between them. |
+| `flight/900-sas-normal-at-the-star-resolves.txt` | invariant | SAS normal resolves a target on a Kerbol-centred conic instead of failing a magnitude bound, and steers along the conic's own normal. |
 
 ## crew (27)
 
