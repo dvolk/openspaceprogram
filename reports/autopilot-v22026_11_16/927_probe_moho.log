@@ -1,0 +1,330 @@
+Data directory: /home/ubuntu/.local/share/openspaceprogram/
+vsync: requested 1, granted 1 (no panel rate: pacer unverified); display unknown
+GLEW: no GLX display (EGL/offscreen); core GL ok
+GL renderer: AMD Radeon 780M Graphics (radeonsi, phoenix, ACO, DRM 3.64, 7.0.0-43-generic)
+window: 1920x1080 (windowed)
+MSAA: 4 sample(s), 32-bit depth
+sizeof(btScalar): 8
+Shader m_program: 1, vertex shader file res/shaders/lineShader.vs
+Shader m_program: 5, vertex shader file res/shaders/partsShader.vs
+Shader m_program: 8, vertex shader file res/shaders/terrainShader.vs
+WARNING: shader res/shaders/terrainShader.vs has no uniform named color (optimized out by shader compiler?)
+Shader m_program: 11, vertex shader file res/shaders/sunShader.vs
+WARNING: shader res/shaders/sunShader.vs has no uniform named Normal (optimized out by shader compiler?)
+WARNING: shader res/shaders/sunShader.vs has no uniform named lightDirection (optimized out by shader compiler?)
+WARNING: shader res/shaders/sunShader.vs has no uniform named color (optimized out by shader compiler?)
+Shader m_program: 14, vertex shader file res/shaders/atmosphereShader.vs
+Shader m_program: 17, vertex shader file res/shaders/cloudShader.vs
+Shader m_program: 20, vertex shader file res/shaders/oceanShader.vs
+WARNING: shader res/shaders/oceanShader.vs has no uniform named planetCenter (optimized out by shader compiler?)
+Shader m_program: 23, vertex shader file res/shaders/ringShader.vs
+Shader m_program: 26, vertex shader file res/shaders/skyboxShader.vs
+Shader m_program: 29, vertex shader file res/shaders/lineShader2.vs
+Shader m_program: 32, vertex shader file res/shaders/fx_quad.vs
+Shader m_program: 35, vertex shader file res/shaders/fx_quad.vs
+Shader m_program: 38, vertex shader file res/shaders/fx_quad.vs
+Shader m_program: 41, vertex shader file res/shaders/fx_quad.vs
+Shader m_program: 44, vertex shader file res/shaders/fx_quad.vs
+         thermal  Kerbol        albedo   -    surface     2838.10 K air base           - 
+         thermal  Eve           albedo authored surface           -  air base      291.68 K
+         thermal  Kerbin        albedo authored surface      288.15 K air base      288.15 K  (one published row states both)
+         thermal  Shay          albedo authored surface           -  air base      288.15 K
+         thermal  Duna          albedo authored surface           -  air base      214.81 K
+         thermal  Jool          albedo authored surface           -  air base      151.43 K
+         thermal  Laythe        albedo authored surface           -  air base      288.15 K
+         solar    Kerbol        L      3.164e+24 W; home Kerbin    reads     1361.0 W/m2 at 1.36e+10 m
+Loaded system 'res/systems/ksp_system.json': 18 bodies (home=Kerbin, belts=2, buildings=7)
+Roster: 8 kerbal(s) from res/data/kerbals.json
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/space_port.obj
+texture anisotropic filtering: 16 (driver max)
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/runway.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/station.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/spacedock.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/kerbal.obj
+[crew] 8 kerbal(s) standing at 'main_space_port'
+[heavy] sync: Kerbol, Moho (16 deferred)
+Building ship 'mars_explorer_mk1' (30 parts)
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/capsule.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/reaction_wheel_r1h0.25.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/tank_r1h3.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/nuclear_engine.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/nuclear_engine_shroud.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/decoupler_r1.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/adapter_r1.5to1.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/reaction_wheel_r1.5h0.375.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/tank_r1.5h5.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/orbital_engine_r1.5h1.5.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/orbital_engine_r1.5h1.5_shroud.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/decoupler_r1.5.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/adapter_r2.25to1.5.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/tank_r2.25h5.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/engine_r2.25h4.5.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/engine_r2.25h4.5_shroud.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/decoupler_r2.25.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/nose_cap_r2.25h1.125.obj
+[shroud] nuclear_engine_4: shrouded (meshes/nuclear_engine_shroud.obj over meshes/nuclear_engine.obj)
+[shroud] orbital_engine_r1.5h1.5_8: shrouded (meshes/orbital_engine_r1.5h1.5_shroud.obj over meshes/orbital_engine_r1.5h1.5.obj)
+[shroud] engine_r2.25h4.5_13: bare (meshes/engine_r2.25h4.5_shroud.obj over meshes/engine_r2.25h4.5.obj)
+[shroud] engine_r2.25h4.5_17: bare (meshes/engine_r2.25h4.5_shroud.obj over meshes/engine_r2.25h4.5.obj)
+[shroud] engine_r2.25h4.5_17_2: bare (meshes/engine_r2.25h4.5_shroud.obj over meshes/engine_r2.25h4.5.obj)
+[shroud] engine_r2.25h4.5_17_3: bare (meshes/engine_r2.25h4.5_shroud.obj over meshes/engine_r2.25h4.5.obj)
+[shroud] engine_r2.25h4.5_17_4: bare (meshes/engine_r2.25h4.5_shroud.obj over meshes/engine_r2.25h4.5.obj)
+Crew: 'Ash' aboard 'mars_explorer_mk1' part 0 (1/1)
+[dbg-dv] getMass=106521.02 kg  getDeltaV=9490.4 m/s
+Autopilot: ascent armed on 'mars_explorer_mk1' -- 100000 m circular (body Moho)
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/engine_plume.obj
+Shader m_program: 47, vertex shader file res/shaders/billboardshader.vs
+[cam] focus: 19 targets (18 body/bodies)
+[scene] title -> flight (enterFlight) t=0.0s
+@@@ mars_explorer_mk1 frozen on rails (grounded around Moho)
+Main loop starting: startup took 0.370 s | auto-exit after 700.0 s (wall clock)
+frame cap: 60 fps
+logic tick: 60 Hz (16.7 ms)
+idle: 100 ms/frame while the window is occluded/minimized
+[mapfit] Moho: body 250000 m, fit 250136 m -> 2501.4 m/px
+[ascent] t=12.8s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=29.1s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=45.1s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+Clouds (Kerbin): 2048x1024 bake_ms=238.7
+Clouds (Shay): 2048x1024 bake_ms=240.5
+Clouds (Laythe): 2048x1024 bake_ms=237.0
+[ascent] t=61.1s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=77.3s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=93.6s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=109.6s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=125.6s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=141.6s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=157.6s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=173.9s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=190.1s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=206.1s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=222.1s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=238.4s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=254.4s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=270.7s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=286.7s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=302.9s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=319.2s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=335.2s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=351.5s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=367.7s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=384.0s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=400.0s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=416.0s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=432.0s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=448.3s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=464.5s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=480.5s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=496.8s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=513.1s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=529.1s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=545.3s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=561.6s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=577.6s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=593.9s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=609.9s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=626.1s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=642.4s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=658.4s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=674.7s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=690.7s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=706.9s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=722.9s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=738.9s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=755.2s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=771.2s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=787.5s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=803.5s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=819.7s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=836.0s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=852.3s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=868.3s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=884.3s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=900.5s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=916.8s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=933.1s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=949.1s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=965.1s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=981.1s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=997.1s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=1013.1s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=1029.3s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=1045.3s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=1061.6s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=1077.6s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=1093.6s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=1109.9s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=1125.9s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=1141.9s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=1158.1s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=1174.1s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=1190.4s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=1206.7s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=1222.9s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=1238.9s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=1254.9s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=1271.2s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=1287.2s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=1303.5s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=1319.5s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=1335.5s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=1351.7s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=1368.0s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=1384.0s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=1400.3s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=1416.3s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=1432.3s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=1448.3s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=1464.3s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=1480.5s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=1496.5s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=1512.8s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=1528.8s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=1544.8s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=1560.8s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=1577.1s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=1593.3s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=1609.3s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=1625.6s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=1641.9s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=1658.1s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=1674.1s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=1690.4s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=1706.7s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=1722.9s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=1738.9s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=1755.2s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=1771.5s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=1787.7s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=1804.0s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=1820.0s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=1836.3s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=1852.5s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=1868.8s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=1885.1s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=1901.1s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=1917.3s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=1933.6s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=1949.9s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=1965.9s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=1982.1s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=1998.4s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=2014.4s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=2030.7s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=2046.9s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=2062.9s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=2079.2s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=2095.5s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=2111.7s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=2127.7s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=2144.0s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=2160.3s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=2176.3s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=2192.5s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=2208.8s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=2225.1s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=2241.3s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=2257.6s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=2273.6s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=2289.9s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=2306.1s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=2322.4s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=2338.4s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=2354.4s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=2370.7s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=2386.9s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=2402.9s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=2419.2s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=2435.5s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=2451.5s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=2467.7s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=2484.0s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=2500.3s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=2516.5s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=2532.8s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=2548.8s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=2565.1s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=2581.3s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=2597.6s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=2613.6s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=2629.9s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=2646.1s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=2662.1s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=2678.4s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=2694.4s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=2710.7s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=2726.7s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=2742.9s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=2758.9s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=2775.2s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=2791.5s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=2807.7s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=2824.0s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=2840.0s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=2856.0s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=2872.0s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=2888.3s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=2904.5s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=2920.8s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=2936.8s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=2953.1s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=2969.1s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=2985.1s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=3001.3s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=3017.3s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=3033.3s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=3049.3s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=3065.3s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=3081.6s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=3097.6s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=3113.9s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=3130.1s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=3146.4s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=3162.4s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=3178.7s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=3194.7s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=3210.7s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=3226.9s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=3242.9s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=3258.9s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=3274.9s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=3290.9s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=3306.9s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=3322.9s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=3338.9s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=3355.2s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=3371.2s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=3387.2s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=3403.5s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=3419.5s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=3435.5s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=3451.5s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=3467.7s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=3483.7s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=3499.7s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=3515.7s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"
+[ascent] t=3532.0s phase=pad lever=0.00 pitch=90.0 deg peri_asl=- apo_asl=- inc_eq=- node_r=- accel=11.88 m/s2 g=2.69 m/s2 why="ship is on rails: no commands sent"

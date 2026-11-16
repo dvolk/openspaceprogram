@@ -387,6 +387,12 @@ void tick(Game &g) {
                     // Gear ground reaction (a no-op without wheels). Same fresh
                     // pose/velocity as aero; physics_tick below integrates it.
                     s->applyGroundForces(h);
+                    /* #675: last, so it reads the three forces THIS substep handed
+                       the integrator -- thrust, gravity, air -- in one breath. It
+                       charges nothing Bullet has not already been given, and a
+                       railed hull never reaches here: no substep, nothing to
+                       charge, the same rails gap as drag. */
+                    s->lossTick(h);
                 }
                 physics_tick(h);
                 if(g.args.debug_accel) {
@@ -564,6 +570,15 @@ void tick(Game &g) {
                 optNum(inc_txt, sizeof inc_txt, " deg", inc_spin, plane_ok);
                 optNum(node_txt, sizeof node_txt, " m", law.node_r(),
                        law.node_r() > 0.0);
+                /* The flight-path angle of the conic the law is steering (#675) --
+                   the same helper ShipView publishes, so the row and the UI cannot
+                   disagree about what gamma means. Dashed like the other apsides on
+                   a state with no velocity to have an angle through. */
+                const double gamma = flightPathAngle(o);
+                char gamma_txt[32];
+                optNum(gamma_txt, sizeof gamma_txt, " deg",
+                       std::isfinite(gamma) ? glm::degrees(gamma) : 0.0,
+                       std::isfinite(gamma));
                 /* The two numbers the law's lift-off gate compares, printed so a
                    refusal like "this stage cannot lift off" can be checked against
                    the hull instead of taken on trust. accel is availableAccel() --
@@ -574,11 +589,29 @@ void tick(Game &g) {
                     g.ship->posInBodyRot(g.ship->get_center_of_mass()));
                 const double g_pull = (r_hull > 1.0)
                     ? g.ship->m_parent->mu / (r_hull * r_hull) : 0.0;
+                /* #675: what the flight is made of, so a case can pin a loss total
+                   against the same rows that drove the flight. Appended AFTER why=
+                   rather than woven in: e2e's ASCENT_RE is positional, so a column
+                   inserted in the middle matches nothing, an empty match list makes
+                   every all(...) CHECK vacuously true, and run.py documents exactly
+                   that trap (e2e/run.py:703-710). alt_asl is above the body's datum
+                   (the name the repo uses for that datum, #626), v_orb is the
+                   conic's speed -- the law's own, not the ground's -- q is the
+                   hull's dynamic pressure against its AIR (0 where there is no
+                   air), and
+                   dv/grav/drag/steer are the hull's running totals from losses.h:
+                   what its burns cost, with burns= how many burns they cover. */
+                const AscentLosses &loss = g.ship->ascentLosses();
                 printf("[ascent] t=%.1fs phase=%s lever=%.2f pitch=%.1f deg "
                        "peri_asl=%s apo_asl=%s inc_eq=%s node_r=%s "
-                       "accel=%.2f m/s2 g=%.2f m/s2 why=\"%s\"\n",
+                       "accel=%.2f m/s2 g=%.2f m/s2 why=\"%s\""
+                       " alt_asl=%.1f m v_orb=%.2f m/s q=%.1f Pa gamma=%s"
+                       " dv=%.1f m/s grav=%.1f m/s drag=%.1f m/s steer=%.1f m/s"
+                       " burns=%d\n",
                        g.time, law.phaseName(), g.ship->throttle(), law.pitch_deg(),
-                       peri_txt, apo_txt, inc_txt, node_txt, amax, g_pull, law.why());
+                       peri_txt, apo_txt, inc_txt, node_txt, amax, g_pull, law.why(),
+                       r_hull - sea_r, o.speed, g.ship->lastDynPressure, gamma_txt,
+                       loss.dv, loss.grav, loss.drag, loss.steer, loss.burns);
             }
         }
         // --orbit-log: orbital elements in the body's inertial frame.
@@ -1373,7 +1406,21 @@ void tick(Game &g) {
                 s.mass = v->getMass();
                 s.thr = v->throttle();
                 s.stg = v->activeStage();
-                char row[768];
+                /* #675: the ascent profile. q and the four totals are the hull's own
+                   last substep, so they ride no gate -- 0 is what they read with no
+                   air and with no burn. gamma is ShipView's, so it takes the
+                   snapshot test like the frame group above it, and it is already NaN
+                   for a state with no flight path (orbit.h), which prints as "-"
+                   rather than as level flight. */
+                s.q = v->lastDynPressure;
+                s.gamma = (view.ship == v) ? glm::degrees(view.flight_path) : NAN;
+                const AscentLosses &loss = v->ascentLosses();
+                s.dv_exp = loss.dv;
+                s.grav = loss.grav;
+                s.drag = loss.drag;
+                s.steer = loss.steer;
+                s.burns = loss.burns;
+                char row[1024];
                 const int wrote = recRow(s, row, sizeof row);
                 if(wrote > 0) {   // -1 = the row did not fit, so none was written
                     fprintf(g.rec.f, "[rec] %s\n", row);

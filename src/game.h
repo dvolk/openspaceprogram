@@ -217,6 +217,14 @@ struct ShipView {
     double alt_agl = 0;
     double ver_speed = 0;
     double hor_speed2 = 0;
+    /* The flight-path angle, rad, + = climbing (#675): orbit.h's flightPathAngle of
+       this snapshot's conic, so it is the angle the ascent law steers rather than
+       what the ground sees (ver_speed/hor_speed2 above). The exception to this
+       struct's "an unfilled snapshot reads zeros" rule, on purpose: a 0 here is a
+       claim that the hull is flying level, and there are states with no angle to
+       report at all -- [rec] and any future plot dash those, which is the same rule
+       the AoA readout follows. */
+    double flight_path = 0.0;
     double latitude = 0;
     double longitude = 0;
     double heading = 0;

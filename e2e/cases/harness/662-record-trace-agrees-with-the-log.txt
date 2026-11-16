@@ -46,7 +46,18 @@ CHECK all(abs(d["t"] - r["t"] - 0.25) < 1e-9 for d, r in zip(drag, rec[3::4]))
 CHECK all(r["alt_agl"] is not None and r["v_surf"] is not None and r["v_orb"] is not None and r["pitch"] is not None and r["hdg"] is not None and r["dv"] is not None for r in rec)
 CHECK all(abs(r["alt_asl"] - r["alt_agl"]) < 2000.0 for r in rec)
 CHECK all(-90.0 <= r["pitch"] <= 90.0 and 0.0 <= r["hdg"] < 360.0 and -90.0 <= r["lat"] <= 90.0 for r in rec)
+# The v3 tail (#675) is live in a run that never leaves the ground for orbit: q is the
+# hull's dynamic pressure in Kerbin's air, gamma the conic's flight-path angle the
+# navball would quote, and the four burn totals whatever this hull has spent -- the
+# case presses throttle, so the totals are readings rather than a row of dashes. What
+# is pinned is their SHAPE, not their size: dv_exp and burns only ever grow (they are
+# sums), q is positive where there is air, gamma stays inside a hemisphere, and the
+# steering loss never exceeds the impulse it was taken out of.
+CHECK all(r["q"] > 0.0 for r in rec)
+CHECK all(abs(r["gamma"]) <= 90.0 for r in rec)
+CHECK all(r["dv_exp"] >= r["steer"] and r["grav"] is not None and r["drag"] is not None for r in rec)
+CHECK all(a["dv_exp"] <= b["dv_exp"] and a["burns"] <= b["burns"] for a, b in zip(rec, rec[1:]))
 # What the recorder says it captured, in its own words on stdout.
-FILE flights/*.log "#rec v2 channels=t alt_asl alt_agl v v_surf v_orb vs hs lat lon pitch roll hdg dv acc rho F L Cd A aoa beta cpl ind chute T p a mach mass thr stg" "#ship=\"skiff\" interval_ms=250" "[rec] t=0.00 "
+FILE flights/*.log "#rec v3 channels=t alt_asl alt_agl v v_surf v_orb vs hs lat lon pitch roll hdg dv acc rho F L Cd A aoa beta cpl ind chute T p a mach mass thr stg q gamma dv_exp grav drag steer burns" "#ship=\"skiff\" interval_ms=250" "[rec] t=0.00 "
 FORBID error:
 FORBID record: FAILED

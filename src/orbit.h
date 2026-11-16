@@ -185,6 +185,21 @@ inline bool conicPrograde(const glm::dvec3 &marker_vel, glm::dvec3 &dir) {
     return true;
 }
 
+/* The FLIGHT-PATH angle: the conic's velocity over its own local horizontal, rad,
+   + = climbing (#675). It is the gamma that h = r |v| sin(gamma) speaks of a comment
+   below, and the one the ascent law steers -- taken from the state, so no reader's
+   frame can change it. NaN when the state has no velocity to have an angle through,
+   which is conicSpeedOk's answer and not a new floor. |radial| <= |v|, so the two
+   bounds only absorb rounding. */
+inline double flightPathAngle(const OrbitElements &o) {
+    if(!conicSpeedOk(o.speed)) { return std::nan(""); }
+    const double s = o.radial_vel / o.speed;
+    if(!std::isfinite(s)) { return std::nan(""); }
+    if(s < -1.0) { return std::asin(-1.0); }
+    if(s > 1.0) { return std::asin(1.0); }
+    return std::asin(s);
+}
+
 /* A PLANE needs its own floor, because |h| is not a speed. h = cross(pos, vel) has
    magnitude r |v| sin(gamma), gamma the flight path angle, so a near-radial state
    clears kConicSpeedFloor many times over while sin(gamma) collapses: the "plane" is

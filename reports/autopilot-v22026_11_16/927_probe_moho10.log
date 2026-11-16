@@ -1,0 +1,296 @@
+Data directory: /home/ubuntu/.local/share/openspaceprogram/
+vsync: requested 1, granted 1 (no panel rate: pacer unverified); display unknown
+GLEW: no GLX display (EGL/offscreen); core GL ok
+GL renderer: AMD Radeon 780M Graphics (radeonsi, phoenix, ACO, DRM 3.64, 7.0.0-43-generic)
+window: 1920x1080 (windowed)
+MSAA: 4 sample(s), 32-bit depth
+sizeof(btScalar): 8
+Shader m_program: 1, vertex shader file res/shaders/lineShader.vs
+Shader m_program: 5, vertex shader file res/shaders/partsShader.vs
+Shader m_program: 8, vertex shader file res/shaders/terrainShader.vs
+WARNING: shader res/shaders/terrainShader.vs has no uniform named color (optimized out by shader compiler?)
+Shader m_program: 11, vertex shader file res/shaders/sunShader.vs
+WARNING: shader res/shaders/sunShader.vs has no uniform named Normal (optimized out by shader compiler?)
+WARNING: shader res/shaders/sunShader.vs has no uniform named lightDirection (optimized out by shader compiler?)
+WARNING: shader res/shaders/sunShader.vs has no uniform named color (optimized out by shader compiler?)
+Shader m_program: 14, vertex shader file res/shaders/atmosphereShader.vs
+Shader m_program: 17, vertex shader file res/shaders/cloudShader.vs
+Shader m_program: 20, vertex shader file res/shaders/oceanShader.vs
+WARNING: shader res/shaders/oceanShader.vs has no uniform named planetCenter (optimized out by shader compiler?)
+Shader m_program: 23, vertex shader file res/shaders/ringShader.vs
+Shader m_program: 26, vertex shader file res/shaders/skyboxShader.vs
+Shader m_program: 29, vertex shader file res/shaders/lineShader2.vs
+Shader m_program: 32, vertex shader file res/shaders/fx_quad.vs
+Shader m_program: 35, vertex shader file res/shaders/fx_quad.vs
+Shader m_program: 38, vertex shader file res/shaders/fx_quad.vs
+Shader m_program: 41, vertex shader file res/shaders/fx_quad.vs
+Shader m_program: 44, vertex shader file res/shaders/fx_quad.vs
+         thermal  Kerbol        albedo   -    surface     2838.10 K air base           - 
+         thermal  Eve           albedo authored surface           -  air base      291.68 K
+         thermal  Kerbin        albedo authored surface      288.15 K air base      288.15 K  (one published row states both)
+         thermal  Shay          albedo authored surface           -  air base      288.15 K
+         thermal  Duna          albedo authored surface           -  air base      214.81 K
+         thermal  Jool          albedo authored surface           -  air base      151.43 K
+         thermal  Laythe        albedo authored surface           -  air base      288.15 K
+         solar    Kerbol        L      3.164e+24 W; home Kerbin    reads     1361.0 W/m2 at 1.36e+10 m
+Loaded system 'res/systems/ksp_system.json': 18 bodies (home=Kerbin, belts=2, buildings=7)
+Roster: 8 kerbal(s) from res/data/kerbals.json
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/space_port.obj
+texture anisotropic filtering: 16 (driver max)
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/runway.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/station.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/spacedock.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/kerbal.obj
+[crew] 8 kerbal(s) standing at 'main_space_port'
+[heavy] sync: Kerbol, Moho (16 deferred)
+Building ship 'mars_explorer_mk1' (30 parts)
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/capsule.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/reaction_wheel_r1h0.25.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/tank_r1h3.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/nuclear_engine.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/nuclear_engine_shroud.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/decoupler_r1.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/adapter_r1.5to1.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/reaction_wheel_r1.5h0.375.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/tank_r1.5h5.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/orbital_engine_r1.5h1.5.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/orbital_engine_r1.5h1.5_shroud.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/decoupler_r1.5.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/adapter_r2.25to1.5.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/tank_r2.25h5.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/engine_r2.25h4.5.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/engine_r2.25h4.5_shroud.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/decoupler_r2.25.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/nose_cap_r2.25h1.125.obj
+[shroud] nuclear_engine_4: shrouded (meshes/nuclear_engine_shroud.obj over meshes/nuclear_engine.obj)
+[shroud] orbital_engine_r1.5h1.5_8: shrouded (meshes/orbital_engine_r1.5h1.5_shroud.obj over meshes/orbital_engine_r1.5h1.5.obj)
+[shroud] engine_r2.25h4.5_13: bare (meshes/engine_r2.25h4.5_shroud.obj over meshes/engine_r2.25h4.5.obj)
+[shroud] engine_r2.25h4.5_17: bare (meshes/engine_r2.25h4.5_shroud.obj over meshes/engine_r2.25h4.5.obj)
+[shroud] engine_r2.25h4.5_17_2: bare (meshes/engine_r2.25h4.5_shroud.obj over meshes/engine_r2.25h4.5.obj)
+[shroud] engine_r2.25h4.5_17_3: bare (meshes/engine_r2.25h4.5_shroud.obj over meshes/engine_r2.25h4.5.obj)
+[shroud] engine_r2.25h4.5_17_4: bare (meshes/engine_r2.25h4.5_shroud.obj over meshes/engine_r2.25h4.5.obj)
+Crew: 'Ash' aboard 'mars_explorer_mk1' part 0 (1/1)
+[dbg-dv] getMass=106521.02 kg  getDeltaV=9490.4 m/s
+Autopilot: ascent armed on 'mars_explorer_mk1' -- 100000 m circular (body Moho)
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/engine_plume.obj
+Shader m_program: 47, vertex shader file res/shaders/billboardshader.vs
+[cam] focus: 19 targets (18 body/bodies)
+[scene] title -> flight (enterFlight) t=0.0s
+Main loop starting: startup took 0.357 s | auto-exit after 500.0 s (wall clock)
+frame cap: 60 fps
+logic tick: 60 Hz (16.7 ms)
+idle: 100 ms/frame while the window is occluded/minimized
+[mapfit] Moho: body 250000 m, fit 250192 m -> 2501.9 m/px
+[ascent] t=8.0s phase=ascent lever=1.00 pitch=82.0 deg peri_asl=-249989 m apo_asl=1402.24 m inc_eq=0.295922 deg node_r=- accel=12.14 m/s2 g=2.69 m/s2 why=""
+[ascent] t=18.2s phase=ascent lever=1.00 pitch=61.4 deg peri_asl=-249638 m apo_asl=6809.65 m inc_eq=0.287325 deg node_r=- accel=12.49 m/s2 g=2.66 m/s2 why=""
+[ascent] t=28.2s phase=ascent lever=1.00 pitch=39.4 deg peri_asl=-247058 m apo_asl=14857.5 m inc_eq=0.28698 deg node_r=- accel=12.86 m/s2 g=2.62 m/s2 why=""
+Clouds (Kerbin): 2048x1024 bake_ms=254.7
+Clouds (Shay): 2048x1024 bake_ms=244.6
+Clouds (Laythe): 2048x1024 bake_ms=238.0
+[ascent] t=38.2s phase=ascent lever=1.00 pitch=25.7 deg peri_asl=-239137 m apo_asl=23787.9 m inc_eq=0.288809 deg node_r=- accel=13.24 m/s2 g=2.57 m/s2 why=""
+[ascent] t=48.2s phase=ascent lever=1.00 pitch=18.1 deg peri_asl=-222814 m apo_asl=34250.4 m inc_eq=0.289755 deg node_r=- accel=13.66 m/s2 g=2.51 m/s2 why=""
+[ascent] t=58.3s phase=ascent lever=1.00 pitch=13.6 deg peri_asl=-193310 m apo_asl=50057.1 m inc_eq=0.289639 deg node_r=- accel=14.10 m/s2 g=2.45 m/s2 why=""
+[ascent] t=68.3s phase=ascent lever=1.00 pitch=10.8 deg peri_asl=-145550 m apo_asl=82768.6 m inc_eq=0.28967 deg node_r=- accel=14.57 m/s2 g=2.39 m/s2 why=""
+[ascent] t=78.3s phase=coast lever=0.00 pitch=0.0 deg peri_asl=-128212 m apo_asl=100304 m inc_eq=0.289669 deg node_r=- accel=14.70 m/s2 g=2.33 m/s2 why=""
+[ascent] t=88.3s phase=coast lever=0.00 pitch=0.0 deg peri_asl=-128212 m apo_asl=100309 m inc_eq=0.289669 deg node_r=- accel=14.70 m/s2 g=2.27 m/s2 why=""
+[ascent] t=98.5s phase=coast lever=0.00 pitch=0.0 deg peri_asl=-128213 m apo_asl=100314 m inc_eq=0.289669 deg node_r=- accel=14.70 m/s2 g=2.21 m/s2 why=""
+[ascent] t=108.7s phase=coast lever=0.00 pitch=0.0 deg peri_asl=-128213 m apo_asl=100319 m inc_eq=0.289669 deg node_r=- accel=14.70 m/s2 g=2.16 m/s2 why=""
+[ascent] t=118.8s phase=coast lever=0.00 pitch=0.0 deg peri_asl=-128214 m apo_asl=100323 m inc_eq=0.289669 deg node_r=- accel=14.70 m/s2 g=2.11 m/s2 why=""
+[ascent] t=128.8s phase=coast lever=0.00 pitch=0.0 deg peri_asl=-128214 m apo_asl=100327 m inc_eq=0.289669 deg node_r=- accel=14.70 m/s2 g=2.07 m/s2 why=""
+[ascent] t=138.8s phase=coast lever=0.00 pitch=0.0 deg peri_asl=-128215 m apo_asl=100331 m inc_eq=0.289669 deg node_r=- accel=14.70 m/s2 g=2.02 m/s2 why=""
+[ascent] t=149.0s phase=coast lever=0.00 pitch=0.0 deg peri_asl=-128215 m apo_asl=100335 m inc_eq=0.289669 deg node_r=- accel=14.70 m/s2 g=1.98 m/s2 why=""
+[ascent] t=159.2s phase=coast lever=0.00 pitch=0.0 deg peri_asl=-128216 m apo_asl=100339 m inc_eq=0.289669 deg node_r=- accel=14.70 m/s2 g=1.94 m/s2 why=""
+[ascent] t=169.2s phase=coast lever=0.00 pitch=0.0 deg peri_asl=-128216 m apo_asl=100342 m inc_eq=0.289669 deg node_r=- accel=14.70 m/s2 g=1.91 m/s2 why=""
+[ascent] t=179.2s phase=coast lever=0.00 pitch=0.0 deg peri_asl=-128217 m apo_asl=100346 m inc_eq=0.289669 deg node_r=- accel=14.70 m/s2 g=1.87 m/s2 why=""
+[ascent] t=189.2s phase=coast lever=0.00 pitch=0.0 deg peri_asl=-128217 m apo_asl=100349 m inc_eq=0.289669 deg node_r=- accel=14.70 m/s2 g=1.84 m/s2 why=""
+[ascent] t=199.2s phase=coast lever=0.00 pitch=0.0 deg peri_asl=-128217 m apo_asl=100352 m inc_eq=0.289669 deg node_r=- accel=14.70 m/s2 g=1.81 m/s2 why=""
+[ascent] t=209.3s phase=coast lever=0.00 pitch=0.0 deg peri_asl=-128218 m apo_asl=100355 m inc_eq=0.289669 deg node_r=- accel=14.70 m/s2 g=1.78 m/s2 why=""
+[ascent] t=219.3s phase=coast lever=0.00 pitch=0.0 deg peri_asl=-128218 m apo_asl=100357 m inc_eq=0.289669 deg node_r=- accel=14.70 m/s2 g=1.75 m/s2 why=""
+[ascent] t=229.5s phase=coast lever=0.00 pitch=0.0 deg peri_asl=-128218 m apo_asl=100360 m inc_eq=0.289669 deg node_r=- accel=14.70 m/s2 g=1.73 m/s2 why=""
+[ascent] t=239.5s phase=coast lever=0.00 pitch=0.0 deg peri_asl=-128219 m apo_asl=100363 m inc_eq=0.289669 deg node_r=- accel=14.70 m/s2 g=1.70 m/s2 why=""
+[ascent] t=249.5s phase=coast lever=0.00 pitch=0.0 deg peri_asl=-128219 m apo_asl=100365 m inc_eq=0.289669 deg node_r=- accel=14.70 m/s2 g=1.68 m/s2 why=""
+[ascent] t=259.7s phase=coast lever=0.00 pitch=0.0 deg peri_asl=-128219 m apo_asl=100367 m inc_eq=0.289669 deg node_r=- accel=14.70 m/s2 g=1.66 m/s2 why=""
+[ascent] t=269.7s phase=coast lever=0.00 pitch=0.0 deg peri_asl=-128219 m apo_asl=100369 m inc_eq=0.289669 deg node_r=- accel=14.70 m/s2 g=1.63 m/s2 why=""
+[ascent] t=279.7s phase=coast lever=0.00 pitch=0.0 deg peri_asl=-128220 m apo_asl=100371 m inc_eq=0.289669 deg node_r=- accel=14.70 m/s2 g=1.61 m/s2 why=""
+[ascent] t=289.8s phase=coast lever=0.00 pitch=0.0 deg peri_asl=-128220 m apo_asl=100373 m inc_eq=0.289669 deg node_r=- accel=14.70 m/s2 g=1.60 m/s2 why=""
+[ascent] t=300.0s phase=coast lever=0.00 pitch=0.0 deg peri_asl=-128220 m apo_asl=100375 m inc_eq=0.289669 deg node_r=- accel=14.70 m/s2 g=1.58 m/s2 why=""
+[ascent] t=310.0s phase=coast lever=0.00 pitch=0.0 deg peri_asl=-128220 m apo_asl=100377 m inc_eq=0.289669 deg node_r=- accel=14.70 m/s2 g=1.56 m/s2 why=""
+[ascent] t=320.0s phase=coast lever=0.00 pitch=0.0 deg peri_asl=-128220 m apo_asl=100378 m inc_eq=0.289669 deg node_r=- accel=14.70 m/s2 g=1.54 m/s2 why=""
+[ascent] t=330.0s phase=coast lever=0.00 pitch=0.0 deg peri_asl=-128221 m apo_asl=100380 m inc_eq=0.289669 deg node_r=- accel=14.70 m/s2 g=1.53 m/s2 why=""
+[ascent] t=340.2s phase=coast lever=0.00 pitch=0.0 deg peri_asl=-128221 m apo_asl=100381 m inc_eq=0.289669 deg node_r=- accel=14.70 m/s2 g=1.52 m/s2 why=""
+[ascent] t=350.2s phase=coast lever=0.00 pitch=0.0 deg peri_asl=-128221 m apo_asl=100383 m inc_eq=0.289669 deg node_r=- accel=14.70 m/s2 g=1.50 m/s2 why=""
+[ascent] t=360.3s phase=coast lever=0.00 pitch=0.0 deg peri_asl=-128221 m apo_asl=100384 m inc_eq=0.289669 deg node_r=- accel=14.70 m/s2 g=1.49 m/s2 why=""
+[ascent] t=370.3s phase=coast lever=0.00 pitch=0.0 deg peri_asl=-128221 m apo_asl=100385 m inc_eq=0.289669 deg node_r=- accel=14.70 m/s2 g=1.48 m/s2 why=""
+[ascent] t=380.5s phase=coast lever=0.00 pitch=0.0 deg peri_asl=-128221 m apo_asl=100386 m inc_eq=0.289669 deg node_r=- accel=14.70 m/s2 g=1.47 m/s2 why=""
+[ascent] t=390.5s phase=coast lever=0.00 pitch=0.0 deg peri_asl=-128222 m apo_asl=100387 m inc_eq=0.289669 deg node_r=- accel=14.70 m/s2 g=1.46 m/s2 why=""
+[ascent] t=400.7s phase=coast lever=0.00 pitch=0.0 deg peri_asl=-128222 m apo_asl=100388 m inc_eq=0.289669 deg node_r=- accel=14.70 m/s2 g=1.45 m/s2 why=""
+[ascent] t=410.7s phase=coast lever=0.00 pitch=0.0 deg peri_asl=-128222 m apo_asl=100389 m inc_eq=0.289669 deg node_r=- accel=14.70 m/s2 g=1.44 m/s2 why=""
+[ascent] t=420.7s phase=coast lever=0.00 pitch=0.0 deg peri_asl=-128222 m apo_asl=100390 m inc_eq=0.289669 deg node_r=- accel=14.70 m/s2 g=1.43 m/s2 why=""
+[ascent] t=430.7s phase=coast lever=0.00 pitch=0.0 deg peri_asl=-128222 m apo_asl=100391 m inc_eq=0.289669 deg node_r=- accel=14.70 m/s2 g=1.42 m/s2 why=""
+[ascent] t=440.8s phase=coast lever=0.00 pitch=0.0 deg peri_asl=-128222 m apo_asl=100391 m inc_eq=0.289669 deg node_r=- accel=14.70 m/s2 g=1.41 m/s2 why=""
+[ascent] t=451.0s phase=coast lever=0.00 pitch=0.0 deg peri_asl=-128222 m apo_asl=100392 m inc_eq=0.289669 deg node_r=- accel=14.70 m/s2 g=1.41 m/s2 why=""
+[ascent] t=461.0s phase=coast lever=0.00 pitch=0.0 deg peri_asl=-128222 m apo_asl=100392 m inc_eq=0.289669 deg node_r=- accel=14.70 m/s2 g=1.40 m/s2 why=""
+[ascent] t=471.0s phase=coast lever=0.00 pitch=0.0 deg peri_asl=-128222 m apo_asl=100392 m inc_eq=0.289669 deg node_r=- accel=14.70 m/s2 g=1.40 m/s2 why=""
+[ascent] t=481.2s phase=coast lever=0.00 pitch=0.0 deg peri_asl=-128222 m apo_asl=100393 m inc_eq=0.289669 deg node_r=- accel=14.70 m/s2 g=1.39 m/s2 why=""
+[ascent] t=491.2s phase=coast lever=0.00 pitch=0.0 deg peri_asl=-128222 m apo_asl=100393 m inc_eq=0.289669 deg node_r=- accel=14.70 m/s2 g=1.39 m/s2 why=""
+[ascent] t=501.3s phase=coast lever=0.00 pitch=0.0 deg peri_asl=-128222 m apo_asl=100393 m inc_eq=0.289669 deg node_r=- accel=14.70 m/s2 g=1.38 m/s2 why=""
+[ascent] t=511.3s phase=coast lever=0.00 pitch=0.0 deg peri_asl=-128222 m apo_asl=100393 m inc_eq=0.289669 deg node_r=- accel=14.70 m/s2 g=1.38 m/s2 why=""
+[ascent] t=521.5s phase=coast lever=0.00 pitch=0.0 deg peri_asl=-128222 m apo_asl=100393 m inc_eq=0.289669 deg node_r=- accel=14.70 m/s2 g=1.38 m/s2 why=""
+[ascent] t=531.5s phase=coast lever=0.00 pitch=0.0 deg peri_asl=-128222 m apo_asl=100393 m inc_eq=0.289669 deg node_r=- accel=14.70 m/s2 g=1.38 m/s2 why=""
+[ascent] t=541.7s phase=coast lever=0.00 pitch=0.0 deg peri_asl=-128222 m apo_asl=100393 m inc_eq=0.289669 deg node_r=- accel=14.70 m/s2 g=1.37 m/s2 why=""
+[ascent] t=551.7s phase=coast lever=0.00 pitch=0.0 deg peri_asl=-128222 m apo_asl=100393 m inc_eq=0.289669 deg node_r=- accel=14.70 m/s2 g=1.37 m/s2 why=""
+[ascent] t=561.7s phase=circ lever=1.00 pitch=0.0 deg peri_asl=-93595.2 m apo_asl=100397 m inc_eq=0.289674 deg node_r=350392 m accel=14.86 m/s2 g=1.37 m/s2 why=""
+[ascent] t=571.8s phase=circ lever=0.33 pitch=0.0 deg peri_asl=46077.6 m apo_asl=100400 m inc_eq=0.289674 deg node_r=350392 m accel=15.26 m/s2 g=1.37 m/s2 why=""
+[ascent] t=582.0s phase=circ lever=0.05 pitch=0.0 deg peri_asl=90797.3 m apo_asl=100404 m inc_eq=0.289995 deg node_r=350392 m accel=15.35 m/s2 g=1.37 m/s2 why=""
+[toast] Ascent done: warp 1x
+[ascent] t=588.4s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=589.4s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=590.4s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=591.4s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=592.5s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=593.5s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=594.5s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=595.5s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=596.5s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=597.5s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=598.5s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=599.5s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=600.5s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=601.5s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=602.5s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=603.5s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=604.5s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=605.5s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=606.5s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=607.6s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=608.6s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=609.6s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=610.6s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=611.6s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=612.6s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=613.6s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=614.6s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=615.6s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=616.6s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=617.6s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=618.6s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=619.7s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=620.7s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=621.7s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=622.7s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=623.7s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=624.7s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=625.7s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=626.7s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=627.7s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=628.7s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=629.7s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=630.8s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=631.8s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=632.8s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=633.8s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=634.8s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=635.8s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=636.8s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=637.8s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=638.8s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=639.8s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=640.8s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=641.8s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=642.8s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=643.9s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=644.9s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=645.9s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=646.9s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=647.9s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=648.9s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=649.9s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=650.9s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=651.9s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=652.9s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=653.9s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=654.9s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=655.9s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=656.9s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=658.0s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=659.0s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=660.0s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=661.0s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=662.0s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=663.0s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=664.0s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=665.0s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=666.0s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=667.0s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=668.0s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=669.0s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=670.0s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=671.0s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=672.1s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=673.1s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=674.1s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=675.1s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=676.1s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=677.1s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=678.1s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=679.1s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=680.1s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=681.1s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=682.1s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=683.1s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=684.1s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=685.1s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=686.1s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=687.1s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=688.1s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=689.2s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=690.2s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=691.2s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=692.2s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=693.2s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=694.2s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=695.2s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=696.2s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=697.2s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=698.2s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=699.2s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=700.2s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=701.2s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=702.3s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=703.3s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=704.3s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=705.3s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=706.3s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=707.3s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=708.3s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=709.3s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=710.3s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=711.3s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=712.3s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=713.3s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=714.3s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"
+[ascent] t=715.3s phase=done lever=0.00 pitch=0.0 deg peri_asl=100018 m apo_asl=100629 m inc_eq=0.290593 deg node_r=350392 m accel=15.36 m/s2 g=1.37 m/s2 why="periapsis at the ask, apoapsis inside the band"

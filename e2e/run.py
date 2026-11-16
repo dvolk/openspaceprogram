@@ -160,6 +160,21 @@ ASCENT_RE = re.compile(
     # them still parses.
     r"(?:\s+accel=([-\d.e+]+) m/s2\s+g=([-\d.e+]+) m/s2)?"
     r"\s+why=\"([^\"]*)\""
+    # The ascent profile the autopilot flies by (#675): how high the hull has been,
+    # the conic's speed, the whole-hull dynamic pressure, the flight-path angle, and
+    # what the burns have cost. APPENDED after why= rather than inserted mid-line:
+    # every CHECK that reads these rows does so through the group ORDER above, and
+    # the comment at the top of this regex exists to say that a field the parser
+    # cannot read must raise or fail, never silently answer a wrong number -- a
+    # mid-line insert is exactly the mistake that rule guards against. Optional
+    # whole, so a row written before #675 still parses and a CHECK that wants a
+    # reading fails loudly on the old format instead of comparing against None by
+    # accident... which is what the group is for: None means the row has no number
+    # (gamma dashes when the hull has no velocity to have an angle THROUGH).
+    r"(?:\s+alt_asl=([-\d.e+]+) m\s+v_orb=([-\d.e+]+) m/s\s+q=([-\d.e+]+) Pa\s+"
+    r"(?:gamma=([-\d.e+]+) deg|gamma=-)"
+    r"\s+dv=([-\d.e+]+) m/s\s+grav=([-\d.e+]+) m/s\s+drag=([-\d.e+]+) m/s"
+    r"\s+steer=([-\d.e+]+) m/s\s+burns=(\d+))?"
 )
 
 MAP_RE = re.compile(
@@ -1160,7 +1175,7 @@ def parse_ascent(out):
     rows = []
     for m in ASCENT_RE.finditer(out):
         (t, phase, lever, pitch, peri, apo, inc_eq, node, accel, gpull,
-         why) = m.groups()
+         why, alt_asl, v_orb, q, gamma, dv_exp, grav, drag, steer, burns) = m.groups()
         # A dashed field captures as an absent group, so it reads as None: no number
         # for this tick, which is neither 0 nor nan (#894).
         row = {
@@ -1172,6 +1187,15 @@ def parse_ascent(out):
         # fail loudly on an old-format row rather than compare against None.
         row["accel"] = num(accel)
         row["g"] = num(gpull)
+        # #675's profile. Same rule: None on a pre-#675 row. gamma is None on a row
+        # that HAS the fields and no angle to report -- a hull below orbit.h's conic
+        # speed floor -- which is not the same claim as None above, so a CHECK that
+        # means "the row is old" should test a field that never dashes (alt_asl).
+        for key, val in (("alt_asl", alt_asl), ("v_orb", v_orb), ("q", q),
+                         ("gamma", gamma), ("dv_exp", dv_exp), ("grav", grav),
+                         ("drag", drag), ("steer", steer)):
+            row[key] = num(val)
+        row["burns"] = None if burns is None else int(burns)
         rows.append(row)
     return rows
 
@@ -2942,6 +2966,32 @@ def self_test():
         if got != list(want):
             fails.append("the %s [ascent] line parsed as %r, expected %r"
                          % (tag, got, want))
+    # #675 appended the ascent profile after why=. Pinned here rather than in a case,
+    # because the tail is what every future flight CHECK walks: a full row, a dashed
+    # gamma (a hull with no velocity above orbit.h's conic floor has no angle
+    # THROUGH), and -- the one that catches a regression in the OTHER direction --
+    # that the two rows above, written before the tail existed, report NO profile
+    # instead of a profile of zeros. A CHECK like `r["grav"] < 500` must fail loudly
+    # on an old row, not agree with a 0 that nothing measured.
+    asc_prof = (asc_num + ' alt_asl=129.8 m v_orb=35.50 m/s q=0.0 Pa'
+                ' gamma=87.50 deg dv=1128.5 m/s grav=188.6 m/s drag=0.0 m/s'
+                ' steer=12.4 m/s burns=1')
+    got = parse_ascent(asc_prof)
+    want = (129.8, 35.5, 0.0, 87.5, 1128.5, 188.6, 0.0, 12.4, 1)
+    if len(got) != 1 or tuple(got[0][k] for k in ("alt_asl", "v_orb", "q", "gamma",
+                                                  "dv_exp", "grav", "drag", "steer",
+                                                  "burns")) != want:
+        fails.append("the #675 [ascent] tail parsed as %r, expected %r" % (got, want))
+    got = parse_ascent(asc_prof.replace("gamma=87.50 deg", "gamma=-"))
+    if len(got) != 1 or got[0]["gamma"] is not None or got[0]["alt_asl"] != 129.8:
+        fails.append("a [ascent] row carrying gamma=- parsed as %r" % (got,))
+    for tag, ln in (("all-numeric", asc_num), ("all-dashed", asc_dash)):
+        got = parse_ascent(ln)
+        if len(got) != 1 or any(got[0][k] is not None for k in
+                                ("alt_asl", "v_orb", "q", "gamma", "dv_exp", "grav",
+                                 "drag", "steer", "burns")):
+            fails.append("the %s [ascent] line reported a #675 profile it does not "
+                         "carry: %r" % (tag, got))
     for was, now in (("peri_asl=-250000 m", "peri_asl=nan m"),
                      ("apo_asl=129.753 m", "apo_asl=nan m"),
                      ("inc_eq=0.286474 deg", "inc_eq=nan deg"),
@@ -2951,6 +3001,20 @@ def self_test():
             fails.append("ASCENT_RE still parses a [ascent] line carrying %s" % now)
         if dropped_nonfinite_rows(ASCENT_RE, [bad]) != [bad]:
             fails.append("an [ascent] row carrying %s was not named as dropped" % now)
+    # A blow-up inside the tail is NOT #408-named, and that is a choice, not an
+    # oversight: the tail is optional whole, so an unreadable value in it degrades the
+    # row to "no profile" and the CHECK fails against None. That is what accel/g have
+    # done since #610 added them. What must not happen is the reverse -- a broken tail
+    # that reads as a profile of measurements -- so the pin is on the None, not on the
+    # row being named.
+    for was, now in (("q=0.0 Pa", "q=nan Pa"), ("grav=188.6 m/s", "grav=-inf m/s"),
+                     ("burns=1", "burns=nan")):
+        got = parse_ascent(asc_prof.replace(was, now))
+        if len(got) != 1 or any(got[0][k] is not None for k in
+                                ("alt_asl", "v_orb", "q", "gamma", "dv_exp", "grav",
+                                 "drag", "steer", "burns")):
+            fails.append("a [ascent] row carrying %s parsed as %r; the tail must "
+                         "either read clean or not at all" % (now, got))
     # A word that merely starts with these letters is not a blow-up, and the two
     # spellings glibc prints have to be caught however they sit in the line.
     for word in ("--info-log", "information", "inflight", "nano.png", "format inf_"):

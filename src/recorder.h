@@ -21,12 +21,16 @@
 // v2 (#674) added the frame readouts: the altitude pair, the three speeds, position,
 // attitude, delta-v and felt acceleration. Nothing was renamed or removed, so a v1
 // reader keeps every key it knew.
-static const int kRecVersion = 2;
+// v3 (#675) added the ascent-profile numbers the physics did not publish until now:
+// q, the flight-path angle, and the four burn totals -- all of them a reading the
+// flight model keeps, none of them computed here.
+static const int kRecVersion = 3;
 
 // The channels, in row order: the header line's contract with a reader.
 inline const char *recChannels() {
     return "t alt_asl alt_agl v v_surf v_orb vs hs lat lon pitch roll hdg dv acc"
-           " rho F L Cd A aoa beta cpl ind chute T p a mach mass thr stg";
+           " rho F L Cd A aoa beta cpl ind chute T p a mach mass thr stg"
+           " q gamma dv_exp grav drag steer burns";
 }
 
 // The dash rules come from where a number comes from, not from how sure the pass
@@ -69,6 +73,24 @@ struct RecSample {
     double mass = 0.0;     // kg, fuel and crew included
     double thr = 0.0;      // throttle, 0..1
     int stg = 0;           // the stage about to fire: the timeline's chapter marks
+    /* #675: the ascent profile, all of it published by the flight model rather than
+       worked out here. q is the whole-hull dynamic pressure (lastDynPressure: 1/2 rho
+       v^2 at the COM, v against the AIR, not the ground or the conic), so it reads 0
+       where there is no air -- that IS the reading. Reconstructing it from this row's
+       v or v_orb is a different number whenever the air moves. gamma is ShipView's
+       flight-path angle in degrees, and the one field in this struct that arrives
+       NaN on purpose: a hull with no velocity above orbit.h's conic floor has no
+       angle, and plotting the contact solver's residue as level flight is worse.
+       The four totals are the hull's running sums since it existed (losses.h), and
+       burns= is how many burns they cover -- the per-burn identity, so a reader can
+       split a total by differencing across a burns= boundary. */
+    double q = 0.0;
+    double gamma = 0.0;
+    double dv_exp = 0.0;
+    double grav = 0.0;
+    double drag = 0.0;
+    double steer = 0.0;
+    int burns = 0;
 };
 
 // One row, no newline, into buf. Returns the row's length, or -1 when it did not
@@ -111,6 +133,14 @@ inline int recRow(const RecSample &s, char *buf, size_t n) {
         snprintf(a_txt, sizeof a_txt, "-");
         snprintf(mach_txt, sizeof mach_txt, "-");
     }
+    /* gamma dashes on its own NaN, the same shape as aoa's rule (#675): "this state
+       has no flight path" is not a claim that the hull is flying level. It does NOT
+       ride the frame group's shared test below, because it can be absent while the
+       snapshot describes this hull -- a parked ship on a body that does not turn has
+       a full set of windows and no angle. */
+    char gam_txt[32];
+    if(!std::isnan(s.gamma)) { snprintf(gam_txt, sizeof gam_txt, "%.2f", s.gamma); }
+    else { snprintf(gam_txt, sizeof gam_txt, "-"); }
     // The frame group dashes as a group: one snapshot describes all ten or none.
     char agl_txt[32], vsurf_txt[32], vorb_txt[32], vs_txt[32], hs_txt[32];
     char lat_txt[32], lon_txt[32], pit_txt[32], rol_txt[32], hdg_txt[32];
@@ -137,12 +167,16 @@ inline int recRow(const RecSample &s, char *buf, size_t n) {
                                " v_orb=%s vs=%s hs=%s lat=%s lon=%s pitch=%s roll=%s"
                                " hdg=%s dv=%.1f acc=%.2f rho=%.5g F=%.2f L=%.2f"
                                " Cd=%.3f A=%.2f aoa=%s beta=%s cpl=%s ind=%s chute=%.2f"
-                               " T=%s p=%s a=%s mach=%s mass=%.1f thr=%.2f stg=%d",
+                               " T=%s p=%s a=%s mach=%s mass=%.1f thr=%.2f stg=%d"
+                               " q=%.1f gamma=%s dv_exp=%.1f grav=%.1f drag=%.1f"
+                               " steer=%.1f burns=%d",
                                s.t, s.alt_asl, agl_txt, s.v, vsurf_txt, vorb_txt,
                                vs_txt, hs_txt, lat_txt, lon_txt, pit_txt, rol_txt,
                                hdg_txt, s.dv, s.acc, s.rho, s.F, s.L, s.Cd, s.A,
                                aoa_txt, beta_txt, cpl_txt, ind_txt, s.chute,
-                               t_txt, p_txt, a_txt, mach_txt, s.mass, s.thr, s.stg);
+                               t_txt, p_txt, a_txt, mach_txt, s.mass, s.thr, s.stg,
+                               s.q, gam_txt, s.dv_exp, s.grav, s.drag, s.steer,
+                               s.burns);
     if(wrote < 0 || (size_t)wrote >= n) { return -1; }
     return wrote;
 }

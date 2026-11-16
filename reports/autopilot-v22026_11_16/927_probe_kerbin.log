@@ -1,0 +1,508 @@
+Data directory: /home/ubuntu/.local/share/openspaceprogram/
+vsync: requested 1, granted 1 (no panel rate: pacer unverified); display unknown
+GLEW: no GLX display (EGL/offscreen); core GL ok
+GL renderer: AMD Radeon 780M Graphics (radeonsi, phoenix, ACO, DRM 3.64, 7.0.0-43-generic)
+window: 1920x1080 (windowed)
+MSAA: 4 sample(s), 32-bit depth
+sizeof(btScalar): 8
+Shader m_program: 1, vertex shader file res/shaders/lineShader.vs
+Shader m_program: 5, vertex shader file res/shaders/partsShader.vs
+Shader m_program: 8, vertex shader file res/shaders/terrainShader.vs
+WARNING: shader res/shaders/terrainShader.vs has no uniform named color (optimized out by shader compiler?)
+Shader m_program: 11, vertex shader file res/shaders/sunShader.vs
+WARNING: shader res/shaders/sunShader.vs has no uniform named Normal (optimized out by shader compiler?)
+WARNING: shader res/shaders/sunShader.vs has no uniform named lightDirection (optimized out by shader compiler?)
+WARNING: shader res/shaders/sunShader.vs has no uniform named color (optimized out by shader compiler?)
+Shader m_program: 14, vertex shader file res/shaders/atmosphereShader.vs
+Shader m_program: 17, vertex shader file res/shaders/cloudShader.vs
+Shader m_program: 20, vertex shader file res/shaders/oceanShader.vs
+WARNING: shader res/shaders/oceanShader.vs has no uniform named planetCenter (optimized out by shader compiler?)
+Shader m_program: 23, vertex shader file res/shaders/ringShader.vs
+Shader m_program: 26, vertex shader file res/shaders/skyboxShader.vs
+Shader m_program: 29, vertex shader file res/shaders/lineShader2.vs
+Shader m_program: 32, vertex shader file res/shaders/fx_quad.vs
+Shader m_program: 35, vertex shader file res/shaders/fx_quad.vs
+Shader m_program: 38, vertex shader file res/shaders/fx_quad.vs
+Shader m_program: 41, vertex shader file res/shaders/fx_quad.vs
+Shader m_program: 44, vertex shader file res/shaders/fx_quad.vs
+         thermal  Kerbol        albedo   -    surface     2838.10 K air base           - 
+         thermal  Eve           albedo authored surface           -  air base      291.68 K
+         thermal  Kerbin        albedo authored surface      288.15 K air base      288.15 K  (one published row states both)
+         thermal  Shay          albedo authored surface           -  air base      288.15 K
+         thermal  Duna          albedo authored surface           -  air base      214.81 K
+         thermal  Jool          albedo authored surface           -  air base      151.43 K
+         thermal  Laythe        albedo authored surface           -  air base      288.15 K
+         solar    Kerbol        L      3.164e+24 W; home Kerbin    reads     1361.0 W/m2 at 1.36e+10 m
+Loaded system 'res/systems/ksp_system.json': 18 bodies (home=Kerbin, belts=2, buildings=7)
+Roster: 8 kerbal(s) from res/data/kerbals.json
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/space_port.obj
+texture anisotropic filtering: 16 (driver max)
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/runway.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/station.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/spacedock.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/kerbal.obj
+[crew] 8 kerbal(s) standing at 'main_space_port'
+[heavy] sync: Kerbol, Kerbin (16 deferred)
+Building ship 'mars_explorer_mk1' (30 parts)
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/capsule.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/reaction_wheel_r1h0.25.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/tank_r1h3.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/nuclear_engine.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/nuclear_engine_shroud.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/decoupler_r1.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/adapter_r1.5to1.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/reaction_wheel_r1.5h0.375.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/tank_r1.5h5.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/orbital_engine_r1.5h1.5.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/orbital_engine_r1.5h1.5_shroud.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/decoupler_r1.5.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/adapter_r2.25to1.5.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/tank_r2.25h5.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/engine_r2.25h4.5.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/engine_r2.25h4.5_shroud.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/decoupler_r2.25.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/nose_cap_r2.25h1.125.obj
+[shroud] nuclear_engine_4: shrouded (meshes/nuclear_engine_shroud.obj over meshes/nuclear_engine.obj)
+[shroud] orbital_engine_r1.5h1.5_8: shrouded (meshes/orbital_engine_r1.5h1.5_shroud.obj over meshes/orbital_engine_r1.5h1.5.obj)
+[shroud] engine_r2.25h4.5_13: bare (meshes/engine_r2.25h4.5_shroud.obj over meshes/engine_r2.25h4.5.obj)
+[shroud] engine_r2.25h4.5_17: bare (meshes/engine_r2.25h4.5_shroud.obj over meshes/engine_r2.25h4.5.obj)
+[shroud] engine_r2.25h4.5_17_2: bare (meshes/engine_r2.25h4.5_shroud.obj over meshes/engine_r2.25h4.5.obj)
+[shroud] engine_r2.25h4.5_17_3: bare (meshes/engine_r2.25h4.5_shroud.obj over meshes/engine_r2.25h4.5.obj)
+[shroud] engine_r2.25h4.5_17_4: bare (meshes/engine_r2.25h4.5_shroud.obj over meshes/engine_r2.25h4.5.obj)
+Crew: 'Ash' aboard 'mars_explorer_mk1' part 0 (1/1)
+[dbg-dv] getMass=106521.02 kg  getDeltaV=9490.4 m/s
+Autopilot: ascent armed on 'mars_explorer_mk1' -- 150000 m circular (body Kerbin)
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/engine_plume.obj
+Shader m_program: 47, vertex shader file res/shaders/billboardshader.vs
+[cam] focus: 19 targets (18 body/bodies)
+[scene] title -> flight (enterFlight) t=0.0s
+Main loop starting: startup took 0.236 s | auto-exit after 400.0 s (wall clock)
+frame cap: 60 fps
+logic tick: 60 Hz (16.7 ms)
+idle: 100 ms/frame while the window is occluded/minimized
+[mapfit] Kerbin: body 600000 m, fit 600271 m -> 6002.7 m/px
+Clouds (Kerbin): 2048x1024 bake_ms=182.0
+[ascent] t=6.9s phase=ascent lever=1.00 pitch=85.9 deg peri_asl=-598345 m apo_asl=330.583 m inc_eq=0.286473 deg node_r=- accel=12.11 m/s2 g=9.80 m/s2 why=""
+[ascent] t=14.9s phase=ascent lever=1.00 pitch=83.6 deg peri_asl=-598188 m apo_asl=558.555 m inc_eq=0.286472 deg node_r=- accel=12.38 m/s2 g=9.79 m/s2 why=""
+Clouds (Shay): 2048x1024 bake_ms=171.7
+Clouds (Laythe): 2048x1024 bake_ms=170.6
+[ascent] t=23.1s phase=ascent lever=1.00 pitch=79.6 deg peri_asl=-597947 m apo_asl=933.7 m inc_eq=0.286471 deg node_r=- accel=12.67 m/s2 g=9.78 m/s2 why=""
+[ascent] t=31.2s phase=ascent lever=1.00 pitch=74.6 deg peri_asl=-597617 m apo_asl=1386.92 m inc_eq=0.286487 deg node_r=- accel=12.97 m/s2 g=9.77 m/s2 why=""
+[ascent] t=39.3s phase=ascent lever=1.00 pitch=69.4 deg peri_asl=-597221 m apo_asl=1853.81 m inc_eq=0.286468 deg node_r=- accel=13.29 m/s2 g=9.76 m/s2 why=""
+[ascent] t=47.5s phase=ascent lever=1.00 pitch=64.6 deg peri_asl=-596807 m apo_asl=2293.45 m inc_eq=0.28647 deg node_r=- accel=13.63 m/s2 g=9.74 m/s2 why=""
+[ascent] t=55.5s phase=ascent lever=1.00 pitch=60.4 deg peri_asl=-596426 m apo_asl=2684.32 m inc_eq=0.286487 deg node_r=- accel=13.97 m/s2 g=9.73 m/s2 why=""
+[ascent] t=63.6s phase=ascent lever=1.00 pitch=56.9 deg peri_asl=-596092 m apo_asl=3039.52 m inc_eq=0.286484 deg node_r=- accel=14.34 m/s2 g=9.72 m/s2 why=""
+[ascent] t=71.7s phase=ascent lever=1.00 pitch=53.9 deg peri_asl=-595813 m apo_asl=3357.16 m inc_eq=0.286484 deg node_r=- accel=14.73 m/s2 g=9.70 m/s2 why=""
+[ascent] t=79.7s phase=ascent lever=1.00 pitch=51.5 deg peri_asl=-595582 m apo_asl=3640.3 m inc_eq=0.286482 deg node_r=- accel=15.14 m/s2 g=9.69 m/s2 why=""
+[ascent] t=87.9s phase=ascent lever=1.00 pitch=49.4 deg peri_asl=-595379 m apo_asl=3905.76 m inc_eq=0.28648 deg node_r=- accel=15.57 m/s2 g=9.69 m/s2 why=""
+[ascent] t=96.0s phase=ascent lever=1.00 pitch=47.6 deg peri_asl=-595195 m apo_asl=4155.18 m inc_eq=0.286475 deg node_r=- accel=16.04 m/s2 g=9.68 m/s2 why=""
+[ascent] t=104.1s phase=ascent lever=1.00 pitch=46.0 deg peri_asl=-595022 m apo_asl=4393.94 m inc_eq=0.286467 deg node_r=- accel=16.53 m/s2 g=9.67 m/s2 why=""
+[ascent] t=112.1s phase=ascent lever=1.00 pitch=44.5 deg peri_asl=-594858 m apo_asl=4622.27 m inc_eq=0.286458 deg node_r=- accel=17.04 m/s2 g=9.66 m/s2 why=""
+[ascent] t=120.3s phase=ascent lever=1.00 pitch=43.1 deg peri_asl=-594694 m apo_asl=4850.62 m inc_eq=0.286449 deg node_r=- accel=17.59 m/s2 g=9.66 m/s2 why=""
+[ascent] t=128.4s phase=ascent lever=1.00 pitch=41.8 deg peri_asl=-594530 m apo_asl=5077.18 m inc_eq=0.286439 deg node_r=- accel=18.18 m/s2 g=9.65 m/s2 why=""
+[ascent] t=136.5s phase=ascent lever=1.00 pitch=40.5 deg peri_asl=-594363 m apo_asl=5303.48 m inc_eq=0.28643 deg node_r=- accel=18.82 m/s2 g=9.64 m/s2 why=""
+[ascent] t=144.7s phase=ascent lever=1.00 pitch=39.3 deg peri_asl=-594194 m apo_asl=5530.58 m inc_eq=0.28642 deg node_r=- accel=19.49 m/s2 g=9.63 m/s2 why=""
+[ascent] t=152.8s phase=ascent lever=1.00 pitch=38.2 deg peri_asl=-594021 m apo_asl=5759.29 m inc_eq=0.28641 deg node_r=- accel=20.22 m/s2 g=9.63 m/s2 why=""
+[ascent] t=160.8s phase=ascent lever=1.00 pitch=37.1 deg peri_asl=-593847 m apo_asl=5986.43 m inc_eq=0.2864 deg node_r=- accel=20.99 m/s2 g=9.62 m/s2 why=""
+[ascent] t=168.9s phase=ascent lever=1.00 pitch=36.1 deg peri_asl=-593666 m apo_asl=6220.08 m inc_eq=0.28639 deg node_r=- accel=21.84 m/s2 g=9.61 m/s2 why=""
+[ascent] t=176.9s phase=ascent lever=1.00 pitch=35.1 deg peri_asl=-593482 m apo_asl=6453.07 m inc_eq=0.28638 deg node_r=- accel=22.75 m/s2 g=9.60 m/s2 why=""
+[ascent] t=185.1s phase=ascent lever=1.00 pitch=34.1 deg peri_asl=-593845 m apo_asl=6660.43 m inc_eq=0.286368 deg node_r=- accel=23.62 m/s2 g=9.60 m/s2 why=""
+[ascent] t=193.2s phase=ascent lever=1.00 pitch=34.4 deg peri_asl=-595695 m apo_asl=6616.01 m inc_eq=0.286346 deg node_r=- accel=23.83 m/s2 g=9.60 m/s2 why=""
+[ascent] t=201.3s phase=ascent lever=1.00 pitch=36.1 deg peri_asl=-596237 m apo_asl=6396.95 m inc_eq=0.286895 deg node_r=- accel=24.04 m/s2 g=9.61 m/s2 why=""
+[ascent] t=209.5s phase=ascent lever=1.00 pitch=39.2 deg peri_asl=-596653 m apo_asl=5920.41 m inc_eq=0.288313 deg node_r=- accel=24.26 m/s2 g=9.63 m/s2 why=""
+[ascent] t=217.6s phase=ascent lever=1.00 pitch=43.4 deg peri_asl=-596994 m apo_asl=5251.27 m inc_eq=0.287844 deg node_r=- accel=24.48 m/s2 g=9.66 m/s2 why=""
+[ascent] t=225.6s phase=ascent lever=1.00 pitch=48.5 deg peri_asl=-597242 m apo_asl=4472.63 m inc_eq=0.287177 deg node_r=- accel=24.70 m/s2 g=9.68 m/s2 why=""
+[ascent] t=233.7s phase=ascent lever=1.00 pitch=54.7 deg peri_asl=-597424 m apo_asl=3664.46 m inc_eq=0.315742 deg node_r=- accel=24.92 m/s2 g=9.71 m/s2 why=""
+[ascent] t=241.9s phase=ascent lever=1.00 pitch=61.7 deg peri_asl=-597559 m apo_asl=2871.81 m inc_eq=0.363673 deg node_r=- accel=25.16 m/s2 g=9.73 m/s2 why=""
+[ascent] t=249.9s phase=ascent lever=1.00 pitch=69.4 deg peri_asl=-597665 m apo_asl=2107.68 m inc_eq=0.402034 deg node_r=- accel=25.39 m/s2 g=9.76 m/s2 why=""
+[ascent] t=257.9s phase=ascent lever=1.00 pitch=77.7 deg peri_asl=-597757 m apo_asl=1371.03 m inc_eq=0.452637 deg node_r=- accel=25.62 m/s2 g=9.78 m/s2 why=""
+[ascent] t=266.0s phase=ascent lever=1.00 pitch=86.4 deg peri_asl=-597840 m apo_asl=649.772 m inc_eq=0.527349 deg node_r=- accel=25.87 m/s2 g=9.80 m/s2 why=""
+[ascent] t=274.1s phase=ascent lever=1.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.317 m inc_eq=0.282206 deg node_r=- accel=26.12 m/s2 g=9.80 m/s2 why=""
+[ascent] t=282.3s phase=ascent lever=1.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.294 m inc_eq=0.282184 deg node_r=- accel=26.37 m/s2 g=9.80 m/s2 why=""
+[ascent] t=290.3s phase=ascent lever=1.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.271 m inc_eq=0.28216 deg node_r=- accel=26.63 m/s2 g=9.80 m/s2 why=""
+[ascent] t=298.4s phase=ascent lever=1.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.265 m inc_eq=0.282141 deg node_r=- accel=26.89 m/s2 g=9.80 m/s2 why=""
+[ascent] t=306.5s phase=ascent lever=1.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.272 m inc_eq=0.282152 deg node_r=- accel=27.16 m/s2 g=9.80 m/s2 why=""
+[ascent] t=314.5s phase=ascent lever=1.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.32 m inc_eq=0.282137 deg node_r=- accel=27.44 m/s2 g=9.80 m/s2 why=""
+[ascent] t=322.7s phase=ascent lever=1.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.333 m inc_eq=0.282134 deg node_r=- accel=27.72 m/s2 g=9.80 m/s2 why=""
+[ascent] t=330.8s phase=ascent lever=1.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.333 m inc_eq=0.282133 deg node_r=- accel=28.00 m/s2 g=9.80 m/s2 why=""
+[ascent] t=338.9s phase=ascent lever=1.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.33 m inc_eq=0.282135 deg node_r=- accel=28.30 m/s2 g=9.80 m/s2 why=""
+[ascent] t=346.9s phase=ascent lever=1.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.282137 deg node_r=- accel=28.59 m/s2 g=9.80 m/s2 why=""
+[ascent] t=355.1s phase=ascent lever=1.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.323 m inc_eq=0.28213 deg node_r=- accel=28.90 m/s2 g=9.80 m/s2 why=""
+[ascent] t=363.2s phase=ascent lever=1.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.326 m inc_eq=0.282117 deg node_r=- accel=29.21 m/s2 g=9.80 m/s2 why=""
+[toast] Ascent failed: warp 1x
+[ascent] t=368.3s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=369.3s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=370.3s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=371.3s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=372.3s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=373.3s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=374.3s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=375.3s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=376.4s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=377.4s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=378.4s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=379.4s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=380.4s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=381.4s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=382.4s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=383.4s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=384.5s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=385.5s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=386.5s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=387.5s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=388.5s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=389.5s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=390.5s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=391.5s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=392.5s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=393.6s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=394.6s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=395.6s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=396.6s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=397.6s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=398.6s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=399.6s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=400.6s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=401.6s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=402.7s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=403.7s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=404.7s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=405.7s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=406.7s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=407.7s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=408.7s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=409.7s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=410.8s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=411.8s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=412.8s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=413.8s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=414.8s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=415.8s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=416.8s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=417.8s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=418.9s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=419.9s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=420.9s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=421.9s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=422.9s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=423.9s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=424.9s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=425.9s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=427.0s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=428.0s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=429.0s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=430.0s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=431.0s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=432.0s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=433.0s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=434.0s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=435.0s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=436.1s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=437.1s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=438.1s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=439.1s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=440.1s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=441.1s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=442.1s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=443.1s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=444.2s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=445.2s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=446.2s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=447.2s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=448.2s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=449.2s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=450.2s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=451.3s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=452.3s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=453.3s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=454.3s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=455.3s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=456.3s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=457.3s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=458.3s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=459.4s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=460.4s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=461.4s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=462.4s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=463.4s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=464.4s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=465.4s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=466.4s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=467.4s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=468.5s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=469.5s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=470.5s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=471.5s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=472.5s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=473.5s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=474.5s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=475.5s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=476.5s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=477.6s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=478.6s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=479.6s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=480.6s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=481.6s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=482.6s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=483.6s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=484.7s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=485.7s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=486.7s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=487.7s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=488.7s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=489.7s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=490.7s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=491.7s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=492.7s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=493.7s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=494.8s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=495.8s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=496.8s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=497.8s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=498.8s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=499.8s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=500.8s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=501.8s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=502.8s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=503.8s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=504.8s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=505.8s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=506.9s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=507.9s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=508.9s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=509.9s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=510.9s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=511.9s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=512.9s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=513.9s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=515.0s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=516.0s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=517.0s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=518.0s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=519.0s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=520.0s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=521.0s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=522.0s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=523.1s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=524.1s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=525.1s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=526.1s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=527.1s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=528.1s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=529.1s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=530.1s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=531.1s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=532.1s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=533.2s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=534.2s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=535.2s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=536.2s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=537.2s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=538.2s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=539.2s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=540.2s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=541.3s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=542.3s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=543.3s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=544.3s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=545.3s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=546.3s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=547.3s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=548.3s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=549.4s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=550.4s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=551.4s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=552.4s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=553.4s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=554.4s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=555.4s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=556.4s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=557.5s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=558.5s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=559.5s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=560.5s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=561.5s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=562.5s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=563.5s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=564.5s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=565.5s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=566.5s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=567.5s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=568.5s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=569.6s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=570.6s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=571.6s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=572.6s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=573.6s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=574.6s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=575.6s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=576.7s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=577.7s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=578.7s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=579.7s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=580.7s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=581.7s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=582.7s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=583.7s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=584.8s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=585.8s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=586.8s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=587.8s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=588.8s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=589.8s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=590.8s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=591.8s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=592.8s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=593.8s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=594.9s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=595.9s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=596.9s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=597.9s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=598.9s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=599.9s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=600.9s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=601.9s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=602.9s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=603.9s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=604.9s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=606.0s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=607.0s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=608.0s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=609.0s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=610.0s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=611.0s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=612.0s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=613.0s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=614.0s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=615.1s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=616.1s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=617.1s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=618.1s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=619.1s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=620.1s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=621.1s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=622.1s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=623.2s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=624.2s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=625.2s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=626.2s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=627.2s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=628.2s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=629.2s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=630.3s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=631.3s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=632.3s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=633.3s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=634.3s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=635.3s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=636.3s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=637.3s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=638.3s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=639.3s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=640.4s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=641.4s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=642.4s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=643.4s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=644.4s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=645.4s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=646.4s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=647.4s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=648.4s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=649.5s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=650.5s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=651.5s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=652.5s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=653.5s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=654.5s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=655.5s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=656.5s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=657.5s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=658.5s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=659.5s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=660.6s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=661.6s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=662.6s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=663.6s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=664.6s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=665.6s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=666.6s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=667.7s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=668.7s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=669.7s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=670.7s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=671.7s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=672.7s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=673.7s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=674.7s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=675.8s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=676.8s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=677.8s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=678.8s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=679.8s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=680.8s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=681.9s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=682.9s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=683.9s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=684.9s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=685.9s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=686.9s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=687.9s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=689.0s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=690.0s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=691.0s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=692.0s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=693.0s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=694.0s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=695.0s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=696.0s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=697.1s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=698.1s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=699.1s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=700.1s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=701.1s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=702.1s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=703.1s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=704.1s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=705.2s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=706.2s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=707.2s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=708.2s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=709.2s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=710.2s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=711.2s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=712.2s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=713.3s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=714.3s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=715.3s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=716.3s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=717.3s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=718.3s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=719.3s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=720.3s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+[ascent] t=721.3s phase=failed lever=0.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=227.325 m inc_eq=0.28211 deg node_r=- accel=29.39 m/s2 g=9.80 m/s2 why="the tanks are dry"
+Timeout reached (400.0 s); exiting main loop.
+  the sim advanced 722.0 s in 400.0 s of wall clock.

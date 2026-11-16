@@ -1,0 +1,290 @@
+Data directory: /home/ubuntu/.local/share/openspaceprogram/
+vsync: requested 1, granted 1 (no panel rate: pacer unverified); display unknown
+GLEW: no GLX display (EGL/offscreen); core GL ok
+GL renderer: AMD Radeon 780M Graphics (radeonsi, phoenix, ACO, DRM 3.64, 7.0.0-43-generic)
+window: 1920x1080 (windowed)
+MSAA: 4 sample(s), 32-bit depth
+sizeof(btScalar): 8
+Shader m_program: 1, vertex shader file res/shaders/lineShader.vs
+Shader m_program: 5, vertex shader file res/shaders/partsShader.vs
+Shader m_program: 8, vertex shader file res/shaders/terrainShader.vs
+WARNING: shader res/shaders/terrainShader.vs has no uniform named color (optimized out by shader compiler?)
+Shader m_program: 11, vertex shader file res/shaders/sunShader.vs
+WARNING: shader res/shaders/sunShader.vs has no uniform named Normal (optimized out by shader compiler?)
+WARNING: shader res/shaders/sunShader.vs has no uniform named lightDirection (optimized out by shader compiler?)
+WARNING: shader res/shaders/sunShader.vs has no uniform named color (optimized out by shader compiler?)
+Shader m_program: 14, vertex shader file res/shaders/atmosphereShader.vs
+Shader m_program: 17, vertex shader file res/shaders/cloudShader.vs
+Shader m_program: 20, vertex shader file res/shaders/oceanShader.vs
+WARNING: shader res/shaders/oceanShader.vs has no uniform named planetCenter (optimized out by shader compiler?)
+Shader m_program: 23, vertex shader file res/shaders/ringShader.vs
+Shader m_program: 26, vertex shader file res/shaders/skyboxShader.vs
+Shader m_program: 29, vertex shader file res/shaders/lineShader2.vs
+Shader m_program: 32, vertex shader file res/shaders/fx_quad.vs
+Shader m_program: 35, vertex shader file res/shaders/fx_quad.vs
+Shader m_program: 38, vertex shader file res/shaders/fx_quad.vs
+Shader m_program: 41, vertex shader file res/shaders/fx_quad.vs
+Shader m_program: 44, vertex shader file res/shaders/fx_quad.vs
+         thermal  Kerbol        albedo   -    surface     2838.10 K air base           - 
+         thermal  Eve           albedo authored surface           -  air base      291.68 K
+         thermal  Kerbin        albedo authored surface      288.15 K air base      288.15 K  (one published row states both)
+         thermal  Shay          albedo authored surface           -  air base      288.15 K
+         thermal  Duna          albedo authored surface           -  air base      214.81 K
+         thermal  Jool          albedo authored surface           -  air base      151.43 K
+         thermal  Laythe        albedo authored surface           -  air base      288.15 K
+         solar    Kerbol        L      3.164e+24 W; home Kerbin    reads     1361.0 W/m2 at 1.36e+10 m
+Loaded system 'res/systems/ksp_system.json': 18 bodies (home=Kerbin, belts=2, buildings=7)
+Roster: 8 kerbal(s) from res/data/kerbals.json
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/space_port.obj
+texture anisotropic filtering: 16 (driver max)
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/runway.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/station.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/spacedock.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/kerbal.obj
+[crew] 8 kerbal(s) standing at 'main_space_port'
+[heavy] sync: Kerbol, Kerbin (16 deferred)
+Building ship 'mars_explorer_mk1' (30 parts)
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/capsule.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/reaction_wheel_r1h0.25.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/tank_r1h3.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/nuclear_engine.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/nuclear_engine_shroud.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/decoupler_r1.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/adapter_r1.5to1.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/reaction_wheel_r1.5h0.375.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/tank_r1.5h5.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/orbital_engine_r1.5h1.5.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/orbital_engine_r1.5h1.5_shroud.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/decoupler_r1.5.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/adapter_r2.25to1.5.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/tank_r2.25h5.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/engine_r2.25h4.5.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/engine_r2.25h4.5_shroud.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/decoupler_r2.25.obj
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/nose_cap_r2.25h1.125.obj
+[shroud] nuclear_engine_4: shrouded (meshes/nuclear_engine_shroud.obj over meshes/nuclear_engine.obj)
+[shroud] orbital_engine_r1.5h1.5_8: shrouded (meshes/orbital_engine_r1.5h1.5_shroud.obj over meshes/orbital_engine_r1.5h1.5.obj)
+[shroud] engine_r2.25h4.5_13: bare (meshes/engine_r2.25h4.5_shroud.obj over meshes/engine_r2.25h4.5.obj)
+[shroud] engine_r2.25h4.5_17: bare (meshes/engine_r2.25h4.5_shroud.obj over meshes/engine_r2.25h4.5.obj)
+[shroud] engine_r2.25h4.5_17_2: bare (meshes/engine_r2.25h4.5_shroud.obj over meshes/engine_r2.25h4.5.obj)
+[shroud] engine_r2.25h4.5_17_3: bare (meshes/engine_r2.25h4.5_shroud.obj over meshes/engine_r2.25h4.5.obj)
+[shroud] engine_r2.25h4.5_17_4: bare (meshes/engine_r2.25h4.5_shroud.obj over meshes/engine_r2.25h4.5.obj)
+Crew: 'Ash' aboard 'mars_explorer_mk1' part 0 (1/1)
+[dbg-dv] getMass=106521.02 kg  getDeltaV=9490.4 m/s
+Autopilot: ascent armed on 'mars_explorer_mk1' -- 150000 m circular (body Kerbin)
+scene meshes: 1
+Loaded file: /home/ubuntu/openspaceprogram/res/meshes/engine_plume.obj
+Shader m_program: 47, vertex shader file res/shaders/billboardshader.vs
+[cam] focus: 19 targets (18 body/bodies)
+[scene] title -> flight (enterFlight) t=0.0s
+Main loop starting: startup took 0.231 s | auto-exit after 90.0 s (wall clock)
+frame cap: 60 fps
+logic tick: 60 Hz (16.7 ms)
+idle: 100 ms/frame while the window is occluded/minimized
+[mapfit] Kerbin: body 600000 m, fit 600270 m -> 6002.7 m/px
+Clouds (Kerbin): 2048x1024 bake_ms=183.5
+[ascent] t=3.5s phase=ascent lever=1.00 pitch=86.4 deg peri_asl=-598395 m apo_asl=284.89 m inc_eq=0.286601 deg node_r=- accel=11.99 m/s2 g=9.80 m/s2 why=""
+[drag] t=3.5s alt_asl=282.6 m rho=1.192 kg/m3 |v|=7.58 m/s |F|=6018.64 N |L|=0.00 N L_up=0.00 N Up=0.06 |tau|=2771.91 Nm Cd=0.896 A=141.05 m2 AoA=-31.2 deg Chute=0.00 m2 Induced=0.000 m2 Beta=-0.3 deg CpL=0.73 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=+0.73 m T=288.9 p=97976 a=340.9 Mach=0.024 Ld=0.00
+[ascent] t=7.5s phase=ascent lever=1.00 pitch=85.8 deg peri_asl=-598334 m apo_asl=342.235 m inc_eq=0.28649 deg node_r=- accel=12.13 m/s2 g=9.80 m/s2 why=""
+[drag] t=7.5s alt_asl=329.9 m rho=1.1865 kg/m3 |v|=17.00 m/s |F|=14712.88 N |L|=0.00 N L_up=0.00 N Up=0.07 |tau|=1807.12 Nm Cd=0.880 A=91.33 m2 AoA=-6.1 deg Chute=0.00 m2 Induced=0.000 m2 Beta=0.0 deg CpL=0.81 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=+0.81 m T=288.7 p=97425 a=340.8 Mach=0.047 Ld=0.00
+Clouds (Shay): 2048x1024 bake_ms=173.1
+Clouds (Laythe): 2048x1024 bake_ms=171.7
+[ascent] t=11.6s phase=ascent lever=1.00 pitch=84.8 deg peri_asl=-598259 m apo_asl=443.75 m inc_eq=0.286482 deg node_r=- accel=12.26 m/s2 g=9.80 m/s2 why=""
+[drag] t=11.6s alt_asl=413.3 m rho=1.1769 kg/m3 |v|=26.67 m/s |F|=32333.24 N |L|=0.00 N L_up=0.00 N Up=0.09 |tau|=1276.21 Nm Cd=0.877 A=82.99 m2 AoA=2.0 deg Chute=0.00 m2 Induced=0.000 m2 Beta=0.0 deg CpL=0.78 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=+0.78 m T=288.4 p=96459 a=340.6 Mach=0.074 Ld=0.00
+[ascent] t=15.6s phase=ascent lever=1.00 pitch=83.3 deg peri_asl=-598169 m apo_asl=584.13 m inc_eq=0.286479 deg node_r=- accel=12.40 m/s2 g=9.79 m/s2 why=""
+[drag] t=15.6s alt_asl=529.6 m rho=1.1637 kg/m3 |v|=36.00 m/s |F|=64202.89 N |L|=0.00 N L_up=0.00 N Up=0.12 |tau|=7403.75 Nm Cd=0.880 A=90.84 m2 AoA=5.8 deg Chute=0.00 m2 Induced=0.000 m2 Beta=-0.0 deg CpL=0.78 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=+0.78 m T=287.8 p=95126 a=340.3 Mach=0.100 Ld=0.00
+[ascent] t=19.7s phase=ascent lever=1.00 pitch=81.4 deg peri_asl=-598057 m apo_asl=761.677 m inc_eq=0.286472 deg node_r=- accel=12.55 m/s2 g=9.79 m/s2 why=""
+[drag] t=19.7s alt_asl=679.6 m rho=1.1468 kg/m3 |v|=45.01 m/s |F|=105241.37 N |L|=0.00 N L_up=0.00 N Up=0.15 |tau|=17576.19 Nm Cd=0.882 A=96.65 m2 AoA=8.6 deg Chute=0.00 m2 Induced=0.000 m2 Beta=-0.0 deg CpL=0.77 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=+0.77 m T=287.1 p=93429 a=339.9 Mach=0.125 Ld=0.00
+[ascent] t=23.7s phase=ascent lever=1.00 pitch=79.2 deg peri_asl=-597921 m apo_asl=966.17 m inc_eq=0.286467 deg node_r=- accel=12.69 m/s2 g=9.78 m/s2 why=""
+[drag] t=23.7s alt_asl=857.1 m rho=1.1271 kg/m3 |v|=53.47 m/s |F|=152499.68 N |L|=0.00 N L_up=0.00 N Up=0.19 |tau|=31846.89 Nm Cd=0.884 A=101.64 m2 AoA=11.0 deg Chute=0.00 m2 Induced=0.000 m2 Beta=-0.0 deg CpL=0.76 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=+0.76 m T=286.3 p=91455 a=339.4 Mach=0.148 Ld=0.00
+[ascent] t=27.8s phase=ascent lever=1.00 pitch=76.8 deg peri_asl=-597764 m apo_asl=1188.7 m inc_eq=0.286469 deg node_r=- accel=12.84 m/s2 g=9.78 m/s2 why=""
+[drag] t=27.8s alt_asl=1056.3 m rho=1.1052 kg/m3 |v|=61.21 m/s |F|=202646.91 N |L|=0.00 N L_up=0.00 N Up=0.23 |tau|=49398.84 Nm Cd=0.885 A=106.02 m2 AoA=13.1 deg Chute=0.00 m2 Induced=0.000 m2 Beta=-0.0 deg CpL=0.76 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=+0.76 m T=285.3 p=89280 a=338.8 Mach=0.168 Ld=0.00
+[ascent] t=31.8s phase=ascent lever=1.00 pitch=74.3 deg peri_asl=-597589 m apo_asl=1416.87 m inc_eq=0.286467 deg node_r=- accel=13.00 m/s2 g=9.77 m/s2 why=""
+[drag] t=31.8s alt_asl=1267.6 m rho=1.0825 kg/m3 |v|=68.29 m/s |F|=254280.86 N |L|=0.00 N L_up=0.00 N Up=0.27 |tau|=69488.91 Nm Cd=0.887 A=110.50 m2 AoA=15.2 deg Chute=0.00 m2 Induced=0.000 m2 Beta=-0.0 deg CpL=0.74 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=+0.74 m T=284.3 p=87021 a=338.2 Mach=0.187 Ld=0.00
+[ascent] t=35.9s phase=ascent lever=1.00 pitch=71.7 deg peri_asl=-597392 m apo_asl=1650.7 m inc_eq=0.286465 deg node_r=- accel=13.15 m/s2 g=9.76 m/s2 why=""
+[drag] t=35.9s alt_asl=1492.0 m rho=1.0587 kg/m3 |v|=74.92 m/s |F|=308986.33 N |L|=0.00 N L_up=0.00 N Up=0.31 |tau|=92333.82 Nm Cd=0.888 A=115.60 m2 AoA=17.5 deg Chute=0.00 m2 Induced=0.000 m2 Beta=0.0 deg CpL=0.72 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=+0.72 m T=283.2 p=84676 a=337.5 Mach=0.204 Ld=0.00
+[ascent] t=39.9s phase=ascent lever=1.00 pitch=69.1 deg peri_asl=-597191 m apo_asl=1881.07 m inc_eq=0.286475 deg node_r=- accel=13.32 m/s2 g=9.75 m/s2 why=""
+[drag] t=39.9s alt_asl=1720.2 m rho=1.0349 kg/m3 |v|=80.96 m/s |F|=361635.03 N |L|=0.00 N L_up=0.00 N Up=0.36 |tau|=114645.06 Nm Cd=0.889 A=120.21 m2 AoA=19.6 deg Chute=0.00 m2 Induced=0.000 m2 Beta=0.0 deg CpL=0.69 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=+0.69 m T=282.1 p=82344 a=336.9 Mach=0.219 Ld=0.00
+[ascent] t=44.0s phase=ascent lever=1.00 pitch=66.6 deg peri_asl=-596982 m apo_asl=2103.53 m inc_eq=0.28646 deg node_r=- accel=13.48 m/s2 g=9.75 m/s2 why=""
+[drag] t=44.0s alt_asl=1947.3 m rho=1.0118 kg/m3 |v|=86.54 m/s |F|=412614.26 N |L|=0.00 N L_up=0.00 N Up=0.40 |tau|=137435.61 Nm Cd=0.891 A=124.41 m2 AoA=21.7 deg Chute=0.00 m2 Induced=0.000 m2 Beta=-0.0 deg CpL=0.66 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=+0.66 m T=280.9 p=80078 a=336.2 Mach=0.233 Ld=0.00
+[ascent] t=48.1s phase=ascent lever=1.00 pitch=64.3 deg peri_asl=-596779 m apo_asl=2316.65 m inc_eq=0.286459 deg node_r=- accel=13.65 m/s2 g=9.74 m/s2 why=""
+[drag] t=48.1s alt_asl=2169.2 m rho=0.9895 kg/m3 |v|=91.75 m/s |F|=460688.47 N |L|=0.00 N L_up=0.00 N Up=0.43 |tau|=157684.42 Nm Cd=0.892 A=128.01 m2 AoA=23.7 deg Chute=0.00 m2 Induced=0.000 m2 Beta=0.0 deg CpL=0.63 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=+0.63 m T=279.8 p=77915 a=335.5 Mach=0.246 Ld=0.00
+[ascent] t=52.1s phase=ascent lever=1.00 pitch=62.2 deg peri_asl=-596586 m apo_asl=2515.53 m inc_eq=0.286472 deg node_r=- accel=13.82 m/s2 g=9.73 m/s2 why=""
+[drag] t=52.1s alt_asl=2379.7 m rho=0.96876 kg/m3 |v|=96.48 m/s |F|=506005.61 N |L|=0.00 N L_up=0.00 N Up=0.47 |tau|=174197.50 Nm Cd=0.893 A=131.29 m2 AoA=25.4 deg Chute=0.00 m2 Induced=0.000 m2 Beta=0.0 deg CpL=0.59 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=+0.59 m T=278.6 p=75908 a=334.8 Mach=0.257 Ld=0.00
+[ascent] t=56.1s phase=ascent lever=1.00 pitch=60.2 deg peri_asl=-596400 m apo_asl=2706.82 m inc_eq=0.28646 deg node_r=- accel=14.00 m/s2 g=9.73 m/s2 why=""
+[drag] t=56.1s alt_asl=2584.1 m rho=0.94896 kg/m3 |v|=100.93 m/s |F|=548802.14 N |L|=0.00 N L_up=0.00 N Up=0.50 |tau|=187690.37 Nm Cd=0.893 A=134.09 m2 AoA=27.1 deg Chute=0.00 m2 Induced=0.000 m2 Beta=0.0 deg CpL=0.56 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=+0.56 m T=277.6 p=74001 a=334.2 Mach=0.268 Ld=0.00
+[ascent] t=60.2s phase=ascent lever=1.00 pitch=58.3 deg peri_asl=-596229 m apo_asl=2887.46 m inc_eq=0.286461 deg node_r=- accel=14.19 m/s2 g=9.72 m/s2 why=""
+[drag] t=60.2s alt_asl=2777.7 m rho=0.9305 kg/m3 |v|=105.02 m/s |F|=588359.02 N |L|=0.00 N L_up=0.00 N Up=0.52 |tau|=197273.36 Nm Cd=0.894 A=136.50 m2 AoA=28.5 deg Chute=0.00 m2 Induced=0.000 m2 Beta=0.0 deg CpL=0.52 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=+0.52 m T=276.5 p=72232 a=333.5 Mach=0.279 Ld=0.00
+[ascent] t=64.3s phase=ascent lever=1.00 pitch=56.7 deg peri_asl=-596072 m apo_asl=3057.83 m inc_eq=0.28646 deg node_r=- accel=14.37 m/s2 g=9.71 m/s2 why=""
+[drag] t=64.3s alt_asl=2960.5 m rho=0.91336 kg/m3 |v|=108.75 m/s |F|=624172.49 N |L|=0.00 N L_up=0.00 N Up=0.55 |tau|=204142.82 Nm Cd=0.895 A=138.52 m2 AoA=29.6 deg Chute=0.00 m2 Induced=0.000 m2 Beta=0.0 deg CpL=0.49 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=+0.49 m T=275.5 p=70595 a=332.9 Mach=0.288 Ld=0.00
+[ascent] t=68.3s phase=ascent lever=1.00 pitch=55.2 deg peri_asl=-595929 m apo_asl=3219.26 m inc_eq=0.286461 deg node_r=- accel=14.57 m/s2 g=9.71 m/s2 why=""
+[drag] t=68.3s alt_asl=3132.7 m rho=0.89743 kg/m3 |v|=112.26 m/s |F|=656840.80 N |L|=0.00 N L_up=0.00 N Up=0.57 |tau|=208148.98 Nm Cd=0.896 A=140.03 m2 AoA=30.5 deg Chute=0.00 m2 Induced=0.000 m2 Beta=0.0 deg CpL=0.46 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=+0.46 m T=274.5 p=69081 a=332.3 Mach=0.297 Ld=0.00
+[ascent] t=72.3s phase=ascent lever=1.00 pitch=53.8 deg peri_asl=-595800 m apo_asl=3369.98 m inc_eq=0.286474 deg node_r=- accel=14.76 m/s2 g=9.70 m/s2 why=""
+[drag] t=72.3s alt_asl=3292.6 m rho=0.88284 kg/m3 |v|=115.43 m/s |F|=684895.83 N |L|=0.00 N L_up=0.00 N Up=0.59 |tau|=209273.00 Nm Cd=0.896 A=141.06 m2 AoA=31.2 deg Chute=0.00 m2 Induced=0.000 m2 Beta=-0.0 deg CpL=0.43 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=+0.43 m T=273.6 p=67699 a=331.8 Mach=0.305 Ld=0.00
+[ascent] t=76.4s phase=ascent lever=1.00 pitch=52.6 deg peri_asl=-595680 m apo_asl=3515.88 m inc_eq=0.286462 deg node_r=- accel=14.97 m/s2 g=9.70 m/s2 why=""
+[drag] t=76.4s alt_asl=3446.4 m rho=0.86898 kg/m3 |v|=118.47 m/s |F|=711254.67 N |L|=0.00 N L_up=0.00 N Up=0.61 |tau|=208666.91 Nm Cd=0.896 A=141.87 m2 AoA=31.7 deg Chute=0.00 m2 Induced=0.000 m2 Beta=-0.0 deg CpL=0.40 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=+0.40 m T=272.8 p=66392 a=331.3 Mach=0.313 Ld=0.00
+[ascent] t=80.5s phase=ascent lever=1.00 pitch=51.4 deg peri_asl=-595568 m apo_asl=3655.55 m inc_eq=0.286491 deg node_r=- accel=15.18 m/s2 g=9.69 m/s2 why=""
+[drag] t=80.5s alt_asl=3592.6 m rho=0.85598 kg/m3 |v|=121.31 m/s |F|=734674.01 N |L|=0.00 N L_up=0.00 N Up=0.62 |tau|=206381.51 Nm Cd=0.896 A=142.37 m2 AoA=32.1 deg Chute=0.00 m2 Induced=0.000 m2 Beta=-0.1 deg CpL=0.37 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=+0.37 m T=271.9 p=65169 a=330.7 Mach=0.320 Ld=0.00
+[ascent] t=84.5s phase=ascent lever=1.00 pitch=50.3 deg peri_asl=-595465 m apo_asl=3789.72 m inc_eq=0.286452 deg node_r=- accel=15.39 m/s2 g=9.69 m/s2 why=""
+[drag] t=84.5s alt_asl=3732.1 m rho=0.84372 kg/m3 |v|=124.00 m/s |F|=755557.08 N |L|=0.00 N L_up=0.00 N Up=0.64 |tau|=201941.23 Nm Cd=0.897 A=142.62 m2 AoA=32.2 deg Chute=0.00 m2 Induced=0.000 m2 Beta=-0.1 deg CpL=0.35 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=+0.35 m T=271.1 p=64020 a=330.2 Mach=0.327 Ld=0.00
+[ascent] t=88.6s phase=ascent lever=1.00 pitch=49.3 deg peri_asl=-595367 m apo_asl=3919.29 m inc_eq=0.286451 deg node_r=- accel=15.62 m/s2 g=9.69 m/s2 why=""
+[drag] t=88.6s alt_asl=3866.0 m rho=0.83209 kg/m3 |v|=126.61 m/s |F|=775531.53 N |L|=0.00 N L_up=0.00 N Up=0.65 |tau|=197314.39 Nm Cd=0.897 A=142.74 m2 AoA=32.3 deg Chute=0.00 m2 Induced=0.000 m2 Beta=-0.1 deg CpL=0.32 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=+0.32 m T=270.3 p=62933 a=329.7 Mach=0.334 Ld=0.00
+[ascent] t=92.6s phase=ascent lever=1.00 pitch=48.4 deg peri_asl=-595275 m apo_asl=4042.94 m inc_eq=0.286451 deg node_r=- accel=15.84 m/s2 g=9.68 m/s2 why=""
+[drag] t=92.6s alt_asl=3993.0 m rho=0.82117 kg/m3 |v|=129.07 m/s |F|=793133.70 N |L|=0.00 N L_up=0.00 N Up=0.66 |tau|=191644.05 Nm Cd=0.897 A=142.66 m2 AoA=32.3 deg Chute=0.00 m2 Induced=0.000 m2 Beta=-0.1 deg CpL=0.30 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=+0.30 m T=269.5 p=61916 a=329.3 Mach=0.341 Ld=0.00
+[ascent] t=96.7s phase=ascent lever=1.00 pitch=47.5 deg peri_asl=-595186 m apo_asl=4165.67 m inc_eq=0.286452 deg node_r=- accel=16.08 m/s2 g=9.68 m/s2 why=""
+[drag] t=96.7s alt_asl=4118.4 m rho=0.8105 kg/m3 |v|=131.51 m/s |F|=809547.78 N |L|=0.00 N L_up=0.00 N Up=0.67 |tau|=185303.33 Nm Cd=0.896 A=142.42 m2 AoA=32.1 deg Chute=0.00 m2 Induced=0.000 m2 Beta=-0.0 deg CpL=0.28 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=+0.28 m T=268.8 p=60926 a=328.8 Mach=0.347 Ld=0.00
+[ascent] t=100.7s phase=ascent lever=1.00 pitch=46.7 deg peri_asl=-595100 m apo_asl=4283.85 m inc_eq=0.28646 deg node_r=- accel=16.31 m/s2 g=9.67 m/s2 why=""
+[drag] t=100.7s alt_asl=4238.7 m rho=0.80038 kg/m3 |v|=133.86 m/s |F|=824838.08 N |L|=0.00 N L_up=0.00 N Up=0.69 |tau|=178247.06 Nm Cd=0.896 A=142.09 m2 AoA=31.9 deg Chute=0.00 m2 Induced=0.000 m2 Beta=0.0 deg CpL=0.25 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=+0.25 m T=268.0 p=59989 a=328.4 Mach=0.354 Ld=0.00
+[ascent] t=104.7s phase=ascent lever=1.00 pitch=45.9 deg peri_asl=-595015 m apo_asl=4402.01 m inc_eq=0.286467 deg node_r=- accel=16.56 m/s2 g=9.67 m/s2 why=""
+[drag] t=104.7s alt_asl=4358.5 m rho=0.7904 kg/m3 |v|=136.21 m/s |F|=839492.40 N |L|=0.00 N L_up=0.00 N Up=0.70 |tau|=170276.99 Nm Cd=0.896 A=141.67 m2 AoA=31.6 deg Chute=0.00 m2 Induced=0.000 m2 Beta=0.0 deg CpL=0.23 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=+0.23 m T=267.3 p=59067 a=327.9 Mach=0.360 Ld=0.00
+[ascent] t=108.7s phase=ascent lever=1.00 pitch=45.2 deg peri_asl=-594933 m apo_asl=4516.7 m inc_eq=0.286449 deg node_r=- accel=16.82 m/s2 g=9.67 m/s2 why=""
+[drag] t=108.7s alt_asl=4474.4 m rho=0.78084 kg/m3 |v|=138.50 m/s |F|=853111.90 N |L|=0.00 N L_up=0.00 N Up=0.70 |tau|=162098.24 Nm Cd=0.896 A=141.17 m2 AoA=31.3 deg Chute=0.00 m2 Induced=0.000 m2 Beta=0.1 deg CpL=0.21 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=+0.21 m T=266.6 p=58187 a=327.5 Mach=0.366 Ld=0.00
+[ascent] t=112.7s phase=ascent lever=1.00 pitch=44.4 deg peri_asl=-594851 m apo_asl=4630.27 m inc_eq=0.286454 deg node_r=- accel=17.08 m/s2 g=9.66 m/s2 why=""
+[drag] t=112.7s alt_asl=4588.9 m rho=0.77148 kg/m3 |v|=140.77 m/s |F|=866165.10 N |L|=0.00 N L_up=0.00 N Up=0.71 |tau|=153327.80 Nm Cd=0.896 A=140.63 m2 AoA=30.9 deg Chute=0.00 m2 Induced=0.000 m2 Beta=0.1 deg CpL=0.18 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=+0.18 m T=265.9 p=57328 a=327.1 Mach=0.373 Ld=0.00
+[ascent] t=116.8s phase=ascent lever=1.00 pitch=43.7 deg peri_asl=-594769 m apo_asl=4744.87 m inc_eq=0.286456 deg node_r=- accel=17.35 m/s2 g=9.66 m/s2 why=""
+[drag] t=116.8s alt_asl=4704.1 m rho=0.76216 kg/m3 |v|=143.05 m/s |F|=878781.53 N |L|=0.00 N L_up=0.00 N Up=0.72 |tau|=144113.67 Nm Cd=0.896 A=140.04 m2 AoA=30.6 deg Chute=0.00 m2 Induced=0.000 m2 Beta=0.1 deg CpL=0.16 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=+0.16 m T=265.2 p=56474 a=326.6 Mach=0.379 Ld=0.00
+[ascent] t=120.9s phase=ascent lever=1.00 pitch=43.0 deg peri_asl=-594687 m apo_asl=4858.84 m inc_eq=0.286451 deg node_r=- accel=17.63 m/s2 g=9.66 m/s2 why=""
+[drag] t=120.9s alt_asl=4818.6 m rho=0.75299 kg/m3 |v|=145.32 m/s |F|=890891.83 N |L|=0.00 N L_up=0.00 N Up=0.73 |tau|=134407.35 Nm Cd=0.895 A=139.41 m2 AoA=30.2 deg Chute=0.00 m2 Induced=0.000 m2 Beta=0.1 deg CpL=0.13 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=+0.13 m T=264.5 p=55637 a=326.2 Mach=0.385 Ld=0.00
+[ascent] t=124.9s phase=ascent lever=1.00 pitch=42.4 deg peri_asl=-594605 m apo_asl=4972.46 m inc_eq=0.286483 deg node_r=- accel=17.93 m/s2 g=9.65 m/s2 why=""
+[drag] t=124.9s alt_asl=4932.5 m rho=0.74395 kg/m3 |v|=147.60 m/s |F|=902419.06 N |L|=0.00 N L_up=0.00 N Up=0.74 |tau|=123149.30 Nm Cd=0.895 A=138.72 m2 AoA=29.7 deg Chute=0.00 m2 Induced=0.000 m2 Beta=0.1 deg CpL=0.10 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=+0.10 m T=263.8 p=54814 a=325.8 Mach=0.392 Ld=0.00
+[ascent] t=128.9s phase=ascent lever=1.00 pitch=41.7 deg peri_asl=-594524 m apo_asl=5084 m inc_eq=0.286487 deg node_r=- accel=18.22 m/s2 g=9.65 m/s2 why=""
+[drag] t=128.9s alt_asl=5044.2 m rho=0.73518 kg/m3 |v|=149.85 m/s |F|=913274.31 N |L|=0.00 N L_up=0.00 N Up=0.75 |tau|=112175.22 Nm Cd=0.895 A=137.98 m2 AoA=29.3 deg Chute=0.00 m2 Induced=0.000 m2 Beta=0.1 deg CpL=0.08 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=+0.08 m T=263.2 p=54017 a=325.4 Mach=0.398 Ld=0.00
+[ascent] t=132.9s phase=ascent lever=1.00 pitch=41.1 deg peri_asl=-594442 m apo_asl=5195.49 m inc_eq=0.286455 deg node_r=- accel=18.53 m/s2 g=9.64 m/s2 why=""
+[drag] t=132.9s alt_asl=5155.7 m rho=0.7265 kg/m3 |v|=152.10 m/s |F|=923869.72 N |L|=0.00 N L_up=0.00 N Up=0.75 |tau|=100754.91 Nm Cd=0.895 A=137.23 m2 AoA=28.9 deg Chute=0.00 m2 Induced=0.000 m2 Beta=0.1 deg CpL=0.05 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=+0.05 m T=262.5 p=53231 a=325.0 Mach=0.404 Ld=0.00
+[ascent] t=137.0s phase=ascent lever=1.00 pitch=40.5 deg peri_asl=-594358 m apo_asl=5308.98 m inc_eq=0.286431 deg node_r=- accel=18.85 m/s2 g=9.64 m/s2 why=""
+[drag] t=137.0s alt_asl=5269.1 m rho=0.71775 kg/m3 |v|=154.40 m/s |F|=934359.26 N |L|=0.00 N L_up=0.00 N Up=0.76 |tau|=88948.95 Nm Cd=0.894 A=136.46 m2 AoA=28.4 deg Chute=0.00 m2 Induced=0.000 m2 Beta=0.0 deg CpL=0.02 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=+0.02 m T=261.9 p=52441 a=324.6 Mach=0.411 Ld=0.00
+[ascent] t=141.1s phase=ascent lever=1.00 pitch=39.9 deg peri_asl=-594273 m apo_asl=5422.7 m inc_eq=0.286416 deg node_r=- accel=19.19 m/s2 g=9.64 m/s2 why=""
+[drag] t=141.1s alt_asl=5382.7 m rho=0.70908 kg/m3 |v|=156.71 m/s |F|=944589.62 N |L|=0.00 N L_up=0.00 N Up=0.77 |tau|=76700.53 Nm Cd=0.894 A=135.69 m2 AoA=28.0 deg Chute=0.00 m2 Induced=0.000 m2 Beta=0.0 deg CpL=-0.01 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=-0.01 m T=261.2 p=51660 a=324.2 Mach=0.417 Ld=0.00
+[ascent] t=145.1s phase=ascent lever=1.00 pitch=39.3 deg peri_asl=-594189 m apo_asl=5534.88 m inc_eq=0.286401 deg node_r=- accel=19.53 m/s2 g=9.63 m/s2 why=""
+[drag] t=145.1s alt_asl=5494.6 m rho=0.70062 kg/m3 |v|=158.98 m/s |F|=954346.77 N |L|=0.00 N L_up=0.00 N Up=0.77 |tau|=63858.24 Nm Cd=0.894 A=134.93 m2 AoA=27.5 deg Chute=0.00 m2 Induced=0.000 m2 Beta=-0.0 deg CpL=-0.04 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=-0.04 m T=260.5 p=50900 a=323.7 Mach=0.424 Ld=0.00
+[ascent] t=149.1s phase=ascent lever=1.00 pitch=38.7 deg peri_asl=-594103 m apo_asl=5649.34 m inc_eq=0.286391 deg node_r=- accel=19.89 m/s2 g=9.63 m/s2 why=""
+[drag] t=149.1s alt_asl=5608.8 m rho=0.69207 kg/m3 |v|=161.30 m/s |F|=963989.25 N |L|=0.00 N L_up=0.00 N Up=0.78 |tau|=50596.83 Nm Cd=0.894 A=134.15 m2 AoA=27.1 deg Chute=0.00 m2 Induced=0.000 m2 Beta=-0.0 deg CpL=-0.08 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=-0.08 m T=259.8 p=50135 a=323.3 Mach=0.430 Ld=0.00
+[ascent] t=153.2s phase=ascent lever=1.00 pitch=38.2 deg peri_asl=-594016 m apo_asl=5764.29 m inc_eq=0.286383 deg node_r=- accel=20.26 m/s2 g=9.63 m/s2 why=""
+[drag] t=153.2s alt_asl=5723.3 m rho=0.68358 kg/m3 |v|=163.63 m/s |F|=973381.26 N |L|=0.00 N L_up=0.00 N Up=0.79 |tau|=35679.75 Nm Cd=0.893 A=133.38 m2 AoA=26.6 deg Chute=0.00 m2 Induced=0.000 m2 Beta=-0.1 deg CpL=-0.11 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=-0.11 m T=259.1 p=49376 a=322.8 Mach=0.437 Ld=0.00
+[ascent] t=157.2s phase=ascent lever=1.00 pitch=37.6 deg peri_asl=-593930 m apo_asl=5877.91 m inc_eq=0.286378 deg node_r=- accel=20.64 m/s2 g=9.62 m/s2 why=""
+[drag] t=157.2s alt_asl=5836.5 m rho=0.67527 kg/m3 |v|=165.93 m/s |F|=982384.90 N |L|=0.00 N L_up=0.00 N Up=0.79 |tau|=21241.25 Nm Cd=0.893 A=132.62 m2 AoA=26.2 deg Chute=0.00 m2 Induced=0.000 m2 Beta=-0.1 deg CpL=-0.15 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=-0.15 m T=258.3 p=48635 a=322.4 Mach=0.444 Ld=0.00
+[ascent] t=161.2s phase=ascent lever=1.00 pitch=37.1 deg peri_asl=-593842 m apo_asl=5992.14 m inc_eq=0.286374 deg node_r=- accel=21.03 m/s2 g=9.62 m/s2 why=""
+[drag] t=161.2s alt_asl=5950.3 m rho=0.667 kg/m3 |v|=168.25 m/s |F|=991164.81 N |L|=0.00 N L_up=0.00 N Up=0.80 |tau|=6166.79 Nm Cd=0.893 A=131.87 m2 AoA=25.8 deg Chute=0.00 m2 Induced=0.000 m2 Beta=-0.1 deg CpL=-0.19 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=-0.19 m T=257.6 p=47901 a=321.9 Mach=0.451 Ld=0.00
+[ascent] t=165.3s phase=ascent lever=1.00 pitch=36.6 deg peri_asl=-593752 m apo_asl=6108.95 m inc_eq=0.28637 deg node_r=- accel=21.45 m/s2 g=9.62 m/s2 why=""
+[drag] t=165.3s alt_asl=6066.6 m rho=0.65863 kg/m3 |v|=170.62 m/s |F|=999863.47 N |L|=0.00 N L_up=0.00 N Up=0.80 |tau|=9350.45 Nm Cd=0.893 A=131.10 m2 AoA=25.3 deg Chute=0.00 m2 Induced=0.000 m2 Beta=-0.2 deg CpL=-0.23 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=-0.23 m T=256.8 p=47160 a=321.4 Mach=0.458 Ld=0.00
+[ascent] t=169.3s phase=ascent lever=1.00 pitch=36.1 deg peri_asl=-593660 m apo_asl=6226.51 m inc_eq=0.286367 deg node_r=- accel=21.89 m/s2 g=9.61 m/s2 why=""
+[drag] t=169.3s alt_asl=6183.6 m rho=0.6503 kg/m3 |v|=173.00 m/s |F|=1008236.29 N |L|=0.00 N L_up=0.00 N Up=0.81 |tau|=25343.65 Nm Cd=0.892 A=130.33 m2 AoA=24.9 deg Chute=0.00 m2 Induced=0.000 m2 Beta=-0.2 deg CpL=-0.27 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=-0.27 m T=256.0 p=46424 a=320.9 Mach=0.464 Ld=0.00
+[ascent] t=173.4s phase=ascent lever=1.00 pitch=35.5 deg peri_asl=-593567 m apo_asl=6344.87 m inc_eq=0.286364 deg node_r=- accel=22.34 m/s2 g=9.61 m/s2 why=""
+[drag] t=173.4s alt_asl=6301.3 m rho=0.642 kg/m3 |v|=175.41 m/s |F|=1016257.58 N |L|=0.00 N L_up=0.00 N Up=0.81 |tau|=42585.25 Nm Cd=0.892 A=129.52 m2 AoA=24.5 deg Chute=0.00 m2 Induced=0.000 m2 Beta=-0.2 deg CpL=-0.32 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=-0.32 m T=255.2 p=45692 a=320.4 Mach=0.472 Ld=0.00
+[ascent] t=177.4s phase=ascent lever=1.00 pitch=35.0 deg peri_asl=-593474 m apo_asl=6462.16 m inc_eq=0.286362 deg node_r=- accel=22.80 m/s2 g=9.60 m/s2 why=""
+[drag] t=177.4s alt_asl=6418.0 m rho=0.63386 kg/m3 |v|=177.82 m/s |F|=1024071.97 N |L|=0.00 N L_up=0.00 N Up=0.82 |tau|=59740.90 Nm Cd=0.892 A=128.73 m2 AoA=24.0 deg Chute=0.00 m2 Induced=0.000 m2 Beta=-0.2 deg CpL=-0.36 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=-0.36 m T=254.5 p=44978 a=320.0 Mach=0.479 Ld=0.00
+[ascent] t=181.5s phase=ascent lever=1.00 pitch=34.5 deg peri_asl=-593377 m apo_asl=6582.33 m inc_eq=0.286359 deg node_r=- accel=23.29 m/s2 g=9.60 m/s2 why=""
+[drag] t=181.5s alt_asl=6537.4 m rho=0.62561 kg/m3 |v|=180.29 m/s |F|=1031872.06 N |L|=0.00 N L_up=0.00 N Up=0.82 |tau|=77606.60 Nm Cd=0.892 A=127.92 m2 AoA=23.6 deg Chute=0.00 m2 Induced=0.000 m2 Beta=-0.2 deg CpL=-0.41 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=-0.41 m T=253.7 p=44256 a=319.5 Mach=0.486 Ld=0.00
+[ascent] t=185.5s phase=ascent lever=1.00 pitch=34.1 deg peri_asl=-594069 m apo_asl=6654.82 m inc_eq=0.286357 deg node_r=- accel=23.63 m/s2 g=9.60 m/s2 why=""
+[drag] t=185.5s alt_asl=6644.3 m rho=0.6183 kg/m3 |v|=158.76 m/s |F|=801499.84 N |L|=0.00 N L_up=0.00 N Up=0.83 |tau|=115989.84 Nm Cd=0.894 A=135.83 m2 AoA=28.1 deg Chute=0.00 m2 Induced=0.000 m2 Beta=-0.1 deg CpL=-0.49 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=-0.49 m T=253.1 p=43617 a=319.1 Mach=0.418 Ld=0.00
+[ascent] t=189.6s phase=ascent lever=1.00 pitch=34.1 deg peri_asl=-595173 m apo_asl=6650.78 m inc_eq=0.286355 deg node_r=- accel=23.74 m/s2 g=9.60 m/s2 why=""
+[drag] t=189.6s alt_asl=6639.6 m rho=0.61862 kg/m3 |v|=126.75 m/s |F|=537959.50 N |L|=0.00 N L_up=0.00 N Up=0.83 |tau|=207601.86 Nm Cd=0.904 A=156.09 m2 AoA=42.2 deg Chute=0.00 m2 Induced=0.000 m2 Beta=-0.2 deg CpL=-0.67 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=-0.67 m T=253.2 p=43645 a=319.1 Mach=0.318 Ld=0.00
+[ascent] t=193.6s phase=ascent lever=1.00 pitch=34.5 deg peri_asl=-595746 m apo_asl=6602.55 m inc_eq=0.28635 deg node_r=- accel=23.84 m/s2 g=9.60 m/s2 why=""
+[drag] t=193.6s alt_asl=6541.2 m rho=0.62535 kg/m3 |v|=112.94 m/s |F|=447973.56 N |L|=0.00 N L_up=0.00 N Up=0.88 |tau|=255647.20 Nm Cd=0.914 A=164.83 m2 AoA=51.2 deg Chute=0.00 m2 Induced=0.000 m2 Beta=-0.2 deg CpL=-0.79 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=-0.79 m T=253.8 p=44233 a=319.5 Mach=0.279 Ld=0.00
+[ascent] t=197.7s phase=ascent lever=1.00 pitch=35.2 deg peri_asl=-596058 m apo_asl=6508.13 m inc_eq=0.286355 deg node_r=- accel=23.95 m/s2 g=9.61 m/s2 why=""
+[drag] t=197.7s alt_asl=6367.9 m rho=0.63734 kg/m3 |v|=110.13 m/s |F|=433834.31 N |L|=0.00 N L_up=0.00 N Up=0.99 |tau|=190280.76 Nm Cd=0.906 A=158.64 m2 AoA=44.5 deg Chute=0.00 m2 Induced=0.000 m2 Beta=-0.1 deg CpL=-0.71 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=-0.71 m T=254.9 p=45283 a=320.2 Mach=0.277 Ld=0.00
+[ascent] t=201.7s phase=ascent lever=1.00 pitch=36.3 deg peri_asl=-596257 m apo_asl=6377.01 m inc_eq=0.286378 deg node_r=- accel=24.05 m/s2 g=9.61 m/s2 why=""
+[drag] t=201.7s alt_asl=6127.4 m rho=0.65429 kg/m3 |v|=113.69 m/s |F|=484622.07 N |L|=0.00 N L_up=0.00 N Up=0.99 |tau|=151319.10 Nm Cd=0.900 A=150.29 m2 AoA=37.6 deg Chute=0.00 m2 Induced=0.000 m2 Beta=-0.0 deg CpL=-0.63 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=-0.63 m T=256.5 p=46776 a=321.2 Mach=0.297 Ld=0.00
+[ascent] t=205.7s phase=ascent lever=1.00 pitch=37.7 deg peri_asl=-596466 m apo_asl=6171.73 m inc_eq=0.286383 deg node_r=- accel=24.16 m/s2 g=9.62 m/s2 why=""
+[drag] t=205.7s alt_asl=5819.6 m rho=0.67651 kg/m3 |v|=116.56 m/s |F|=574156.02 N |L|=0.00 N L_up=0.00 N Up=0.97 |tau|=202701.40 Nm Cd=0.902 A=152.90 m2 AoA=39.5 deg Chute=0.00 m2 Induced=0.000 m2 Beta=0.0 deg CpL=-0.66 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=-0.66 m T=258.4 p=48746 a=322.4 Mach=0.314 Ld=0.00
+[ascent] t=209.8s phase=ascent lever=1.00 pitch=39.4 deg peri_asl=-596672 m apo_asl=5886.74 m inc_eq=0.286366 deg node_r=- accel=24.27 m/s2 g=9.63 m/s2 why=""
+[drag] t=209.8s alt_asl=5472.8 m rho=0.70226 kg/m3 |v|=116.55 m/s |F|=619340.56 N |L|=0.00 N L_up=0.00 N Up=0.94 |tau|=215060.85 Nm Cd=0.901 A=152.20 m2 AoA=39.0 deg Chute=0.00 m2 Induced=0.000 m2 Beta=0.1 deg CpL=-0.66 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=-0.66 m T=260.6 p=51048 a=323.8 Mach=0.320 Ld=0.00
+[ascent] t=213.9s phase=ascent lever=1.00 pitch=41.4 deg peri_asl=-596849 m apo_asl=5568.56 m inc_eq=0.286491 deg node_r=- accel=24.38 m/s2 g=9.65 m/s2 why=""
+[drag] t=213.9s alt_asl=5101.6 m rho=0.7307 kg/m3 |v|=116.86 m/s |F|=641458.43 N |L|=0.00 N L_up=0.00 N Up=0.88 |tau|=170507.24 Nm Cd=0.898 A=145.67 m2 AoA=34.2 deg Chute=0.00 m2 Induced=0.000 m2 Beta=0.2 deg CpL=-0.61 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=-0.61 m T=262.9 p=53611 a=325.2 Mach=0.325 Ld=0.00
+[ascent] t=217.9s phase=ascent lever=1.00 pitch=43.6 deg peri_asl=-597006 m apo_asl=5217.03 m inc_eq=0.287285 deg node_r=- accel=24.48 m/s2 g=9.66 m/s2 why=""
+[drag] t=217.9s alt_asl=4717.6 m rho=0.76108 kg/m3 |v|=116.16 m/s |F|=686811.84 N |L|=0.00 N L_up=0.00 N Up=0.86 |tau|=197238.45 Nm Cd=0.898 A=147.10 m2 AoA=35.2 deg Chute=0.00 m2 Induced=0.000 m2 Beta=0.4 deg CpL=-0.63 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=-0.63 m T=265.3 p=56375 a=326.7 Mach=0.327 Ld=0.00
+[ascent] t=221.9s phase=ascent lever=1.00 pitch=46.1 deg peri_asl=-597140 m apo_asl=4826.69 m inc_eq=0.289981 deg node_r=- accel=24.59 m/s2 g=9.67 m/s2 why=""
+[drag] t=221.9s alt_asl=4327.9 m rho=0.79294 kg/m3 |v|=113.44 m/s |F|=701139.19 N |L|=0.00 N L_up=0.00 N Up=0.85 |tau|=215082.97 Nm Cd=0.899 A=148.30 m2 AoA=36.1 deg Chute=0.00 m2 Induced=0.000 m2 Beta=0.7 deg CpL=-0.65 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=-0.65 m T=267.7 p=59301 a=328.1 Mach=0.320 Ld=0.00
+[ascent] t=225.9s phase=ascent lever=1.00 pitch=48.8 deg peri_asl=-597252 m apo_asl=4431.55 m inc_eq=0.297933 deg node_r=- accel=24.71 m/s2 g=9.68 m/s2 why=""
+[drag] t=225.9s alt_asl=3932.4 m rho=0.82637 kg/m3 |v|=111.39 m/s |F|=696276.87 N |L|=0.00 N L_up=0.00 N Up=0.81 |tau|=183692.02 Nm Cd=0.897 A=144.37 m2 AoA=33.4 deg Chute=0.00 m2 Induced=0.000 m2 Beta=1.0 deg CpL=-0.62 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=-0.62 m T=270.0 p=62400 a=329.6 Mach=0.316 Ld=0.00
+[ascent] t=229.9s phase=ascent lever=1.00 pitch=51.8 deg peri_asl=-597348 m apo_asl=4038.87 m inc_eq=0.316303 deg node_r=- accel=24.82 m/s2 g=9.70 m/s2 why=""
+[drag] t=229.9s alt_asl=3542.5 m rho=0.86042 kg/m3 |v|=109.41 m/s |F|=714069.77 N |L|=0.00 N L_up=0.00 N Up=0.80 |tau|=198272.11 Nm Cd=0.898 A=145.14 m2 AoA=33.9 deg Chute=0.00 m2 Induced=0.000 m2 Beta=1.3 deg CpL=-0.64 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=-0.64 m T=272.3 p=65586 a=331.0 Mach=0.311 Ld=0.00
+[ascent] t=234.0s phase=ascent lever=1.00 pitch=55.0 deg peri_asl=-597430 m apo_asl=3628.82 m inc_eq=0.341733 deg node_r=- accel=24.93 m/s2 g=9.71 m/s2 why=""
+[drag] t=234.0s alt_asl=3150.6 m rho=0.89578 kg/m3 |v|=106.40 m/s |F|=716104.50 N |L|=0.00 N L_up=0.00 N Up=0.80 |tau|=210128.45 Nm Cd=0.898 A=146.18 m2 AoA=34.6 deg Chute=0.00 m2 Induced=0.000 m2 Beta=1.4 deg CpL=-0.65 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=-0.65 m T=274.6 p=68924 a=332.3 Mach=0.303 Ld=0.00
+[ascent] t=238.0s phase=ascent lever=1.00 pitch=58.3 deg peri_asl=-597499 m apo_asl=3237.12 m inc_eq=0.362128 deg node_r=- accel=25.05 m/s2 g=9.72 m/s2 why=""
+[drag] t=238.0s alt_asl=2771.5 m rho=0.9311 kg/m3 |v|=104.15 m/s |F|=708121.99 N |L|=0.00 N L_up=0.00 N Up=0.78 |tau|=191168.51 Nm Cd=0.897 A=143.80 m2 AoA=33.1 deg Chute=0.00 m2 Induced=0.000 m2 Beta=1.3 deg CpL=-0.64 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=-0.64 m T=276.7 p=72289 a=333.6 Mach=0.297 Ld=0.00
+[ascent] t=242.1s phase=ascent lever=1.00 pitch=62.0 deg peri_asl=-597563 m apo_asl=2843.66 m inc_eq=0.378468 deg node_r=- accel=25.16 m/s2 g=9.73 m/s2 why=""
+[drag] t=242.1s alt_asl=2390.2 m rho=0.96774 kg/m3 |v|=101.99 m/s |F|=715614.83 N |L|=0.00 N L_up=0.00 N Up=0.77 |tau|=200312.77 Nm Cd=0.897 A=144.26 m2 AoA=33.3 deg Chute=0.00 m2 Induced=0.000 m2 Beta=1.3 deg CpL=-0.65 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=-0.65 m T=278.8 p=75809 a=334.9 Mach=0.291 Ld=0.00
+[ascent] t=246.1s phase=ascent lever=1.00 pitch=65.8 deg peri_asl=-597619 m apo_asl=2450.31 m inc_eq=0.395693 deg node_r=- accel=25.28 m/s2 g=9.75 m/s2 why=""
+[drag] t=246.1s alt_asl=2015.4 m rho=1.0049 kg/m3 |v|=99.38 m/s |F|=713759.32 N |L|=0.00 N L_up=0.00 N Up=0.77 |tau|=206369.76 Nm Cd=0.897 A=144.71 m2 AoA=33.6 deg Chute=0.00 m2 Induced=0.000 m2 Beta=1.3 deg CpL=-0.67 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=-0.67 m T=280.8 p=79409 a=336.1 Mach=0.284 Ld=0.00
+[ascent] t=250.2s phase=ascent lever=1.00 pitch=69.8 deg peri_asl=-597670 m apo_asl=2068.44 m inc_eq=0.415261 deg node_r=- accel=25.40 m/s2 g=9.76 m/s2 why=""
+[drag] t=250.2s alt_asl=1647.5 m rho=1.0425 kg/m3 |v|=97.27 m/s |F|=707818.11 N |L|=0.00 N L_up=0.00 N Up=0.76 |tau|=195488.24 Nm Cd=0.897 A=143.25 m2 AoA=32.7 deg Chute=0.00 m2 Induced=0.000 m2 Beta=1.3 deg CpL=-0.66 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=-0.66 m T=282.8 p=83081 a=337.3 Mach=0.278 Ld=0.00
+[ascent] t=254.2s phase=ascent lever=1.00 pitch=73.9 deg peri_asl=-597718 m apo_asl=1698.78 m inc_eq=0.437691 deg node_r=- accel=25.52 m/s2 g=9.77 m/s2 why=""
+[drag] t=254.2s alt_asl=1290.8 m rho=1.08 kg/m3 |v|=95.29 m/s |F|=710721.57 N |L|=0.00 N L_up=0.00 N Up=0.76 |tau|=201252.91 Nm Cd=0.897 A=143.46 m2 AoA=32.8 deg Chute=0.00 m2 Induced=0.000 m2 Beta=1.4 deg CpL=-0.67 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=-0.67 m T=284.6 p=86777 a=338.4 Mach=0.273 Ld=0.00
+[ascent] t=258.2s phase=ascent lever=1.00 pitch=78.2 deg peri_asl=-597762 m apo_asl=1332.75 m inc_eq=0.464391 deg node_r=- accel=25.63 m/s2 g=9.78 m/s2 why=""
+[drag] t=258.2s alt_asl=940.2 m rho=1.1179 kg/m3 |v|=93.10 m/s |F|=708236.39 N |L|=0.00 N L_up=0.00 N Up=0.76 |tau|=204670.59 Nm Cd=0.897 A=143.56 m2 AoA=32.9 deg Chute=0.00 m2 Induced=0.000 m2 Beta=1.4 deg CpL=-0.68 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=-0.68 m T=286.3 p=90542 a=339.4 Mach=0.267 Ld=0.00
+[ascent] t=262.3s phase=ascent lever=1.00 pitch=82.5 deg peri_asl=-597804 m apo_asl=969.827 m inc_eq=0.496868 deg node_r=- accel=25.76 m/s2 g=9.79 m/s2 why=""
+[drag] t=262.3s alt_asl=590.0 m rho=1.1569 kg/m3 |v|=91.21 m/s |F|=704032.12 N |L|=0.00 N L_up=0.00 N Up=0.75 |tau|=198537.12 Nm Cd=0.897 A=142.64 m2 AoA=32.3 deg Chute=0.00 m2 Induced=0.000 m2 Beta=1.5 deg CpL=-0.68 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=-0.68 m T=288.0 p=94439 a=340.4 Mach=0.262 Ld=0.00
+[ascent] t=266.3s phase=ascent lever=1.00 pitch=86.8 deg peri_asl=-597844 m apo_asl=612.907 m inc_eq=0.539379 deg node_r=- accel=25.88 m/s2 g=9.80 m/s2 why=""
+[drag] t=266.3s alt_asl=245.2 m rho=1.1963 kg/m3 |v|=89.39 m/s |F|=704593.42 N |L|=0.00 N L_up=0.00 N Up=0.75 |tau|=201967.92 Nm Cd=0.897 A=142.61 m2 AoA=32.3 deg Chute=0.00 m2 Induced=0.000 m2 Beta=1.7 deg CpL=-0.69 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=-0.69 m T=289.6 p=98414 a=341.3 Mach=0.257 Ld=0.00
+[ascent] t=270.3s phase=ascent lever=1.00 pitch=87.1 deg peri_asl=-598435 m apo_asl=228.432 m inc_eq=0.302534 deg node_r=- accel=26.00 m/s2 g=9.80 m/s2 why=""
+[drag] t=270.3s alt_asl=228.4 m rho=1.1983 kg/m3 |v|=0.67 m/s |F|=2836.67 N |L|=0.00 N L_up=0.00 N Up=0.98 |tau|=549.25 Nm Cd=0.893 A=130.52 m2 AoA=-7.1 deg Chute=0.00 m2 Induced=0.000 m2 Beta=25.7 deg CpL=-0.63 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=-0.63 m T=289.7 p=98611 a=341.4 Mach=0.017 Ld=0.00
+[ascent] t=274.4s phase=ascent lever=1.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=228.324 m inc_eq=0.28321 deg node_r=- accel=26.13 m/s2 g=9.80 m/s2 why=""
+[drag] t=274.4s alt_asl=228.3 m rho=1.1983 kg/m3 |v|=0.01 m/s |F|=2565.07 N |L|=0.00 N L_up=0.00 N Up=0.98 |tau|=412.94 Nm Cd=0.892 A=122.22 m2 AoA=-11.4 deg Chute=0.00 m2 Induced=0.000 m2 Beta=21.7 deg CpL=-0.61 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=-0.61 m T=289.7 p=98612 a=341.4 Mach=0.017 Ld=0.00
+[ascent] t=278.5s phase=ascent lever=1.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=228.322 m inc_eq=0.28321 deg node_r=- accel=26.25 m/s2 g=9.80 m/s2 why=""
+[drag] t=278.5s alt_asl=228.3 m rho=1.1983 kg/m3 |v|=0.01 m/s |F|=2568.38 N |L|=0.00 N L_up=0.00 N Up=0.98 |tau|=424.67 Nm Cd=0.892 A=122.37 m2 AoA=-11.4 deg Chute=0.00 m2 Induced=0.000 m2 Beta=21.8 deg CpL=-0.62 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=-0.62 m T=289.7 p=98612 a=341.4 Mach=0.017 Ld=0.00
+[ascent] t=282.5s phase=ascent lever=1.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=228.319 m inc_eq=0.283209 deg node_r=- accel=26.38 m/s2 g=9.80 m/s2 why=""
+[drag] t=282.5s alt_asl=228.3 m rho=1.1983 kg/m3 |v|=0.01 m/s |F|=2571.71 N |L|=0.00 N L_up=0.00 N Up=0.98 |tau|=436.60 Nm Cd=0.892 A=122.53 m2 AoA=-11.4 deg Chute=0.00 m2 Induced=0.000 m2 Beta=21.9 deg CpL=-0.63 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=-0.63 m T=289.7 p=98612 a=341.4 Mach=0.017 Ld=0.00
+[ascent] t=286.6s phase=ascent lever=1.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=228.317 m inc_eq=0.283209 deg node_r=- accel=26.51 m/s2 g=9.80 m/s2 why=""
+[drag] t=286.6s alt_asl=228.3 m rho=1.1983 kg/m3 |v|=0.01 m/s |F|=2575.05 N |L|=0.00 N L_up=0.00 N Up=0.98 |tau|=446.83 Nm Cd=0.892 A=122.68 m2 AoA=-11.4 deg Chute=0.00 m2 Induced=0.000 m2 Beta=22.0 deg CpL=-0.64 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=-0.64 m T=289.7 p=98612 a=341.4 Mach=0.017 Ld=0.00
+[ascent] t=290.7s phase=ascent lever=1.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=228.315 m inc_eq=0.283209 deg node_r=- accel=26.64 m/s2 g=9.80 m/s2 why=""
+[drag] t=290.7s alt_asl=228.3 m rho=1.1983 kg/m3 |v|=0.01 m/s |F|=2578.41 N |L|=0.00 N L_up=0.00 N Up=0.98 |tau|=459.12 Nm Cd=0.892 A=122.83 m2 AoA=-11.3 deg Chute=0.00 m2 Induced=0.000 m2 Beta=22.0 deg CpL=-0.65 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=-0.65 m T=289.7 p=98612 a=341.4 Mach=0.017 Ld=0.00
+[ascent] t=294.7s phase=ascent lever=1.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=228.313 m inc_eq=0.283209 deg node_r=- accel=26.77 m/s2 g=9.80 m/s2 why=""
+[drag] t=294.7s alt_asl=228.3 m rho=1.1983 kg/m3 |v|=0.01 m/s |F|=2581.74 N |L|=0.00 N L_up=0.00 N Up=0.98 |tau|=471.55 Nm Cd=0.892 A=122.99 m2 AoA=-11.3 deg Chute=0.00 m2 Induced=0.000 m2 Beta=22.1 deg CpL=-0.66 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=-0.66 m T=289.7 p=98612 a=341.4 Mach=0.017 Ld=0.00
+[ascent] t=298.7s phase=ascent lever=1.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=228.311 m inc_eq=0.283208 deg node_r=- accel=26.91 m/s2 g=9.80 m/s2 why=""
+[drag] t=298.7s alt_asl=228.3 m rho=1.1983 kg/m3 |v|=0.01 m/s |F|=2585.12 N |L|=0.00 N L_up=0.00 N Up=0.98 |tau|=482.28 Nm Cd=0.892 A=123.14 m2 AoA=-11.3 deg Chute=0.00 m2 Induced=0.000 m2 Beta=22.2 deg CpL=-0.67 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=-0.67 m T=289.7 p=98612 a=341.4 Mach=0.017 Ld=0.00
+[ascent] t=302.8s phase=ascent lever=1.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=228.308 m inc_eq=0.283208 deg node_r=- accel=27.04 m/s2 g=9.80 m/s2 why=""
+[drag] t=302.8s alt_asl=228.3 m rho=1.1983 kg/m3 |v|=0.01 m/s |F|=2588.55 N |L|=0.00 N L_up=0.00 N Up=0.98 |tau|=495.22 Nm Cd=0.892 A=123.30 m2 AoA=-11.3 deg Chute=0.00 m2 Induced=0.000 m2 Beta=22.3 deg CpL=-0.68 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=-0.68 m T=289.7 p=98612 a=341.4 Mach=0.017 Ld=0.00
+[ascent] t=306.9s phase=ascent lever=1.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=228.306 m inc_eq=0.283208 deg node_r=- accel=27.18 m/s2 g=9.80 m/s2 why=""
+[drag] t=306.9s alt_asl=228.3 m rho=1.1983 kg/m3 |v|=0.01 m/s |F|=2591.99 N |L|=0.00 N L_up=0.00 N Up=0.98 |tau|=508.38 Nm Cd=0.892 A=123.46 m2 AoA=-11.3 deg Chute=0.00 m2 Induced=0.000 m2 Beta=22.3 deg CpL=-0.69 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=-0.69 m T=289.8 p=98612 a=341.4 Mach=0.017 Ld=0.00
+[ascent] t=310.9s phase=ascent lever=1.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=228.304 m inc_eq=0.283207 deg node_r=- accel=27.31 m/s2 g=9.80 m/s2 why=""
+[drag] t=310.9s alt_asl=228.3 m rho=1.1983 kg/m3 |v|=0.01 m/s |F|=2595.39 N |L|=0.00 N L_up=0.00 N Up=0.98 |tau|=519.64 Nm Cd=0.892 A=123.62 m2 AoA=-11.3 deg Chute=0.00 m2 Induced=0.000 m2 Beta=22.4 deg CpL=-0.69 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=-0.69 m T=289.8 p=98612 a=341.4 Mach=0.017 Ld=0.00
+[ascent] t=314.9s phase=ascent lever=1.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=228.301 m inc_eq=0.283207 deg node_r=- accel=27.45 m/s2 g=9.80 m/s2 why=""
+[drag] t=314.9s alt_asl=228.3 m rho=1.1983 kg/m3 |v|=0.01 m/s |F|=2598.87 N |L|=0.00 N L_up=0.00 N Up=0.98 |tau|=533.19 Nm Cd=0.892 A=123.78 m2 AoA=-11.3 deg Chute=0.00 m2 Induced=0.000 m2 Beta=22.5 deg CpL=-0.70 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=-0.70 m T=289.8 p=98612 a=341.4 Mach=0.017 Ld=0.00
+[ascent] t=319.0s phase=ascent lever=1.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=228.299 m inc_eq=0.283207 deg node_r=- accel=27.59 m/s2 g=9.80 m/s2 why=""
+[drag] t=319.0s alt_asl=228.3 m rho=1.1983 kg/m3 |v|=0.01 m/s |F|=2602.37 N |L|=0.00 N L_up=0.00 N Up=0.98 |tau|=546.70 Nm Cd=0.892 A=123.94 m2 AoA=-11.3 deg Chute=0.00 m2 Induced=0.000 m2 Beta=22.6 deg CpL=-0.71 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=-0.71 m T=289.8 p=98612 a=341.4 Mach=0.017 Ld=0.00
+[ascent] t=323.1s phase=ascent lever=1.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=228.297 m inc_eq=0.283207 deg node_r=- accel=27.73 m/s2 g=9.80 m/s2 why=""
+[drag] t=323.1s alt_asl=228.3 m rho=1.1983 kg/m3 |v|=0.01 m/s |F|=2605.88 N |L|=0.00 N L_up=0.00 N Up=0.98 |tau|=559.96 Nm Cd=0.892 A=124.10 m2 AoA=-11.3 deg Chute=0.00 m2 Induced=0.000 m2 Beta=22.6 deg CpL=-0.72 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=-0.72 m T=289.8 p=98612 a=341.4 Mach=0.017 Ld=0.00
+[ascent] t=327.1s phase=ascent lever=1.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=228.294 m inc_eq=0.283206 deg node_r=- accel=27.87 m/s2 g=9.80 m/s2 why=""
+[drag] t=327.1s alt_asl=228.3 m rho=1.1983 kg/m3 |v|=0.01 m/s |F|=2609.36 N |L|=0.00 N L_up=0.00 N Up=0.98 |tau|=573.37 Nm Cd=0.892 A=124.26 m2 AoA=-11.3 deg Chute=0.00 m2 Induced=0.000 m2 Beta=22.7 deg CpL=-0.73 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=-0.73 m T=289.8 p=98612 a=341.4 Mach=0.017 Ld=0.00
+[ascent] t=331.1s phase=ascent lever=1.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=228.292 m inc_eq=0.283206 deg node_r=- accel=28.02 m/s2 g=9.80 m/s2 why=""
+[drag] t=331.1s alt_asl=228.3 m rho=1.1983 kg/m3 |v|=0.01 m/s |F|=2612.91 N |L|=0.00 N L_up=0.00 N Up=0.98 |tau|=587.03 Nm Cd=0.892 A=124.43 m2 AoA=-11.3 deg Chute=0.00 m2 Induced=0.000 m2 Beta=22.8 deg CpL=-0.74 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=-0.74 m T=289.8 p=98612 a=341.4 Mach=0.017 Ld=0.00
+[ascent] t=335.1s phase=ascent lever=1.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=228.289 m inc_eq=0.283206 deg node_r=- accel=28.16 m/s2 g=9.80 m/s2 why=""
+[drag] t=335.1s alt_asl=228.3 m rho=1.1983 kg/m3 |v|=0.01 m/s |F|=2616.42 N |L|=0.00 N L_up=0.00 N Up=0.98 |tau|=600.84 Nm Cd=0.892 A=124.59 m2 AoA=-11.3 deg Chute=0.00 m2 Induced=0.000 m2 Beta=22.9 deg CpL=-0.75 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=-0.75 m T=289.8 p=98612 a=341.4 Mach=0.017 Ld=0.00
+[ascent] t=339.2s phase=ascent lever=1.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=228.287 m inc_eq=0.283206 deg node_r=- accel=28.31 m/s2 g=9.80 m/s2 why=""
+[drag] t=339.2s alt_asl=228.3 m rho=1.1983 kg/m3 |v|=0.01 m/s |F|=2620.01 N |L|=0.00 N L_up=0.00 N Up=0.98 |tau|=614.93 Nm Cd=0.892 A=124.75 m2 AoA=-11.3 deg Chute=0.00 m2 Induced=0.000 m2 Beta=23.0 deg CpL=-0.76 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=-0.76 m T=289.8 p=98612 a=341.4 Mach=0.017 Ld=0.00
+[ascent] t=343.3s phase=ascent lever=1.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=228.285 m inc_eq=0.283205 deg node_r=- accel=28.46 m/s2 g=9.80 m/s2 why=""
+[drag] t=343.3s alt_asl=228.3 m rho=1.1983 kg/m3 |v|=0.01 m/s |F|=2623.63 N |L|=0.00 N L_up=0.00 N Up=0.98 |tau|=629.26 Nm Cd=0.892 A=124.92 m2 AoA=-11.2 deg Chute=0.00 m2 Induced=0.000 m2 Beta=23.0 deg CpL=-0.77 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=-0.77 m T=289.8 p=98612 a=341.4 Mach=0.017 Ld=0.00
+[ascent] t=347.3s phase=ascent lever=1.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=228.282 m inc_eq=0.283205 deg node_r=- accel=28.61 m/s2 g=9.80 m/s2 why=""
+[drag] t=347.3s alt_asl=228.3 m rho=1.1983 kg/m3 |v|=0.01 m/s |F|=2627.28 N |L|=0.00 N L_up=0.00 N Up=0.98 |tau|=643.82 Nm Cd=0.892 A=125.09 m2 AoA=-11.2 deg Chute=0.00 m2 Induced=0.000 m2 Beta=23.1 deg CpL=-0.78 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=-0.78 m T=289.8 p=98613 a=341.4 Mach=0.017 Ld=0.00
+[ascent] t=351.3s phase=ascent lever=1.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=228.28 m inc_eq=0.283205 deg node_r=- accel=28.76 m/s2 g=9.80 m/s2 why=""
+[drag] t=351.3s alt_asl=228.3 m rho=1.1983 kg/m3 |v|=0.01 m/s |F|=2630.89 N |L|=0.00 N L_up=0.00 N Up=0.98 |tau|=658.54 Nm Cd=0.893 A=125.25 m2 AoA=-11.2 deg Chute=0.00 m2 Induced=0.000 m2 Beta=23.2 deg CpL=-0.79 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=-0.79 m T=289.8 p=98613 a=341.4 Mach=0.017 Ld=0.00
+[ascent] t=355.3s phase=ascent lever=1.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=228.277 m inc_eq=0.283205 deg node_r=- accel=28.91 m/s2 g=9.80 m/s2 why=""
+[drag] t=355.3s alt_asl=228.3 m rho=1.1983 kg/m3 |v|=0.01 m/s |F|=2634.51 N |L|=0.00 N L_up=0.00 N Up=0.98 |tau|=673.49 Nm Cd=0.893 A=125.42 m2 AoA=-11.2 deg Chute=0.00 m2 Induced=0.000 m2 Beta=23.3 deg CpL=-0.80 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=-0.80 m T=289.8 p=98613 a=341.4 Mach=0.017 Ld=0.00
+[ascent] t=359.4s phase=ascent lever=1.00 pitch=87.1 deg peri_asl=-598434 m apo_asl=228.275 m inc_eq=0.283205 deg node_r=- accel=29.06 m/s2 g=9.80 m/s2 why=""
+[drag] t=359.4s alt_asl=228.3 m rho=1.1983 kg/m3 |v|=0.01 m/s |F|=2638.22 N |L|=0.00 N L_up=0.00 N Up=0.98 |tau|=688.76 Nm Cd=0.893 A=125.59 m2 AoA=-11.2 deg Chute=0.00 m2 Induced=0.000 m2 Beta=23.4 deg CpL=-0.82 m CLa=0.00 m2/rad SM=- Profile=0.000 m2 FormCp=-0.82 m T=289.8 p=98613 a=341.4 Mach=0.017 Ld=0.00
+Timeout reached (90.0 s); exiting main loop.
+  the sim advanced 360.3 s in 90.0 s of wall clock.

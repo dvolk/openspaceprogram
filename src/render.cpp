@@ -307,6 +307,14 @@ void updateShipView(Game &g) {
 
     ver_speed = glm::dot(surf_vel, surf_up); // m/s, + = climbing
     hor_speed2 = glm::length(projectVecOntoPlane(surf_vel, surf_up)); // m/s
+    /* The flight-path angle (#675), and deliberately NOT the pair above over the
+       same horizon: this is the CONIC's angle (orbit.h), the one the ascent law
+       steers and a loss plot is scored against, while ver_speed/hor_speed2 are what
+       the ground sees go past. On Kerbin those two disagree by the ground's own
+       175 m/s, which is exactly why the row says which one it printed. NaN is not a
+       zero here: a hull with no velocity above orbit.h's floor has no angle, and
+       [rec] dashes the column rather than plotting the contact solver's residue. */
+    view.flight_path = flightPathAngle(o);
 
     const glm::dvec3 groundHed = glm::normalize(projectVecOntoPlane(surf_facing, surf_up));
 

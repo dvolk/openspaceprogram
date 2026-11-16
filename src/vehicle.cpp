@@ -3005,7 +3005,8 @@ Vehicle::~Vehicle() {
 }
 
 glm::dvec3 Vehicle::processGravity() {
-    return applyGravity();
+    lastGravityForce = applyGravity();
+    return lastGravityForce;
 }
 
 void Vehicle::applyThrustForce(double h) {
@@ -3105,6 +3106,28 @@ void Vehicle::applyThrustForce(double h) {
             dvAlong_ += glm::dot(f_inertial, iv) * h * inv_m / speed;
         }
     }
+}
+
+/* The hull's loss totals, one substep at a time (#675). The three forces are the
+   ones this substep handed Bullet -- thrust, gravity, air -- and they are dotted
+   with the hull's ORBITAL velocity, so they must be lifted into the same frame it
+   is measured in, exactly as --dv-log's dvAlong_ above does: inside the rotating
+   surface frame GetVel() is ground-relative, and on Kerbin that is 175 m/s of
+   ground itself, which would score a hovering hull as if it were flying east.
+   Nothing here is gated on a log flag, because the numbers are not a debug
+   figure: they are what an ascent law tunes against and what the flight summary
+   owes the player. The cost is one matrix and three products per hull per
+   substep, next to an aero pass that projects every polygon on the hull. */
+void Vehicle::lossTick(double h) {
+    if(hull == nullptr || frame == nullptr) { return; }
+    Frame *inertial = frame->getNonRotFrame();
+    if(inertial == nullptr) { inertial = frame; }
+    glm::dvec3 ip, iv;
+    comStateIn(inertial, ip, iv);
+    const glm::dmat3 toInertial = frame->GetOrientRelTo(inertial);
+    lossStep(losses_, iv, (double)hull->mass, h,
+             toInertial * lastThrustForce, toInertial * lastGravityForce,
+             toInertial * lastAeroForce);
 }
 
 // The authored atmosphere as drag.h sees it (declared in vehicle.h -- including the
@@ -3263,6 +3286,7 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
     lastAeroTorque = glm::dvec3(0.0);
     lastDragAlt = 0.0;
     lastDragRho = 0.0;
+    lastDynPressure = 0.0;
     lastAirT = 0.0;
     lastAirP = 0.0;
     lastAirA = 0.0;
@@ -3451,6 +3475,13 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
     const glm::dvec3 vrel = airRelativeVel(com);
     const double v2 = glm::length2(vrel);
     lastAirV = std::sqrt(v2);  // at the COM; a surface adds its own omega x r
+    /* The whole-hull dynamic pressure (#675): the same 1/2 rho v^2 each surface
+       pays and the chute limiter divides by, read at the COM. Published before the
+       density floor for the reason lastAirV is: thin air still has a q, and a
+       max-Q plot is exactly where a floor that reads as zero would lie. rho is
+       exactly 0 at and above the air top, so "no air" reads 0 rather than a small
+       number. */
+    lastDynPressure = 0.5 * rho * v2;
     // Above the atmosphere top rho is 0; below kRhoFloor the force is unmeasurable.
     if(rho < kRhoFloor) { return lastAeroForce; }
     /* rho > 0 means the loader's air checks already passed (molar_mass, gamma and

@@ -517,6 +517,10 @@ $(TESTDIR)/test_calendar: $(TESTDIR)/obj/test_calendar.o
 $(TESTDIR)/test_flightlog: $(TESTDIR)/obj/test_flightlog.o
 	$(CXX) -o $@ $^
 
+# losses.h is header-only (#675), so this test links nothing but itself.
+$(TESTDIR)/test_losses: $(TESTDIR)/obj/test_losses.o
+	$(CXX) -o $@ $^
+
 # The family table is data now: science.cpp's loader (needs res/ at run
 # time -- run from the repo root).
 $(TESTDIR)/test_science: $(TESTDIR)/obj/test_science.o $(TESTDIR)/obj/science.o
@@ -609,7 +613,7 @@ TESTS = test_frames test_spawn test_attitude test_slew3d test_gimbal test_actuat
         test_power test_staging test_staging_dv test_dock test_authority test_aerosweep test_contain test_inertia test_inventory \
         test_suitdef \
         test_rotation test_shipload test_stability test_save test_crew test_roster test_calendar \
-        test_flightlog test_science test_bodylimits \
+        test_flightlog test_losses test_science test_bodylimits \
         test_orbit test_orbitsample test_transfer test_porkchop test_surfmap test_eva \
         test_terrain test_drag test_solar test_groundtemp test_audio test_jet test_jobs test_orbitmap test_orbitcam \
         test_pick test_settings test_keys test_cli test_fmt test_recorder test_retrograde test_skybox \

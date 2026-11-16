@@ -15,6 +15,7 @@
 
 #include "flightlog.h" // FlightLog
 #include "sas_policy.h" // SasPolicy: pilot vs. law (#421)
+#include "losses.h"    // AscentLosses: what a burn spent, not what it did (#675)
 
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/glm.hpp>
@@ -531,6 +532,16 @@ public:
     double propSpent_ = 0.0;       // kg of rocket propellant drained
     double dvVeLast_ = 0.0;        // last ve used, exhaust_scale applied (m/s)
 
+    /* What the burns this hull has flown COST, in m/s (#675). The running totals
+       sit beside --dv-log's budget because they split the same impulse: dv there,
+       the losses here, and the same forces feed both. lossTick() is the only
+       writer, once per substep (losses.h says why the arithmetic lives there and
+       not at each reader). It is NOT in the ship save and there is nothing to
+       restore: a load builds new Vehicles, so the counters start at zero with the
+       hull they describe (#304). */
+    AscentLosses losses_;
+    const AscentLosses &ascentLosses() const { return losses_; }
+
     /* EC gate for the wheels (powerTick). Default true: no EC system = ungated. */
     bool powered_ = true;
     /* The watts powerTick struck its last balance on: gen - constantDraw -
@@ -704,6 +715,14 @@ public:
        "--drag-cd 0" all read 0/0 rather than last substep's value. */
     double lastDragAlt = 0.0;
     double lastDragRho = 0.0;
+    /* The dynamic pressure the pass stood in, 1/2 rho v^2 at the COM with v the
+       AIR-relative speed (#675) -- the ship-wide counterpart of the chute
+       limiter's qpt, which is the same expression at the canopy's own flow
+       (vehicle.cpp:3942), and of each surface's localFlow q. It is the number an
+       ascent profile wants for its max-Q moment: the bill has always been paid
+       per surface, and nobody stored the whole-ship figure. Zeroed with the pair
+       above, so no air reads 0 rather than last substep's value. */
+    double lastDynPressure = 0.0;
     /* The air the pass stood in, last substep (#552 A2/A3): what the body's profile
        says at this hull's altitude -- the temperature [K], the pressure [Pa] and the
        sound speed [m/s] that a Mach number is a ratio to. On an exponential body
@@ -1289,6 +1308,11 @@ public:
        is the whole answer rather than one consumer's share of it (#420). */
     void actuateAttitude(glm::dvec3 torque, const AttitudeAuthority &auth);
     glm::dvec3 lastThrustForce{};  // debug: total thrust force applied last substep
+    /* The gravity force the same substep applied (applyGravity's answer, kept so the
+       loss split in losses.h can read one substep's three forces from one place).
+       NOT the fictitious terms applyGravity also pushes: those are the frame's, not
+       the body's pull, and gravity loss means the body's pull. */
+    glm::dvec3 lastGravityForce{};
     /* Restoring the latched Autopilot mode when a save loads. Input never calls this:
        a key press or a window click goes through Command(ShipCmd(Sas, mode)), where the
        toggle/replace rule lives (#424). It stays public because the save loader is not a
@@ -1632,6 +1656,12 @@ public:
        hull know which way the sun is (#724 rung D). A nullptr -- a fixture, a test, a
        system with no star -- means no coupling, and the profile stays as authored. */
     glm::dvec3 applyAeroForce(double h, const TerrainBody *star = nullptr);
+
+    /* Charge this substep to the hull's loss totals (#675). Call it AFTER the force
+       appliers, with the same `h` the integrator advanced, so it reads the three
+       forces of one substep -- thrust, gravity, air -- rather than three substeps'
+       opinions of itself. Cheap: two dots, a cross-free normalize and a divide. */
+    void lossTick(double h);
 
     /* Air density (kg/m^3) at the COM. Deliberately NO kRhoFloor gate:
        jetAirGate's density half divides by the engine's rating intake
