@@ -556,8 +556,23 @@ public:
        Both figures above are the SATURATED case, and #648 made that worth saying: the
        drums now bill what they deliver, so a latched law that has arrived spends ~1 W
        while this latch still weighs the whole 2475 W rating. That is deliberate -- the
-       gate is a build question and must not read the bill (#642) -- but it does mean a
-       small-pool hull can be cut off steering it could easily afford. Filed as #654. */
+       gate is a build question and must not read the bill (#642) -- and #654 asked whether
+       it therefore strands a hull that is only asking a watt. Measured: not on any hull
+       that has a store. The burst the cut wants is one max substep of the rating, so the
+       latch closes at 0.069 Wh for 2475 W of drums -- 0.0625 Wh for the biggest shipped
+       wheel package, 0.135 Wh for the worst shipped hull (the heavy_* builds, 4850 W) --
+       and the worst ratio in the shipped roster is 6.7e-5 of a store, 0.0067% of a 2 kWh
+       capsule battery. The Systems row prints those shut charges as `0.1 Wh` (its format
+       is %.1f); flight/647 reads 0.0 because a warp hop overshoots to dry, which is the
+       hop quantum rather than this threshold. The ASK is what decides how long a hull
+       flies to get there (test_power: 720 s of authority for an arrived law against 65 s
+       for a pinned key, on one battery). What the rating does cost is the re-arm bank --
+       100x the burst: 6.9 Wh, which against the 407 W surplus of that probe hull is a 62 s
+       hold, and 13.5 Wh / 121 s for the heavy_* builds. Note that the half-store
+       backstop below never fires at shipped scale (it wants 360 kW of drums on a 2 kWh
+       store), so the bank is the whole answer until the catalog grows into it (#895); and
+       on a hull whose generator does not even cover its air, a dry pool never re-arms at
+       all -- which is #652's problem rather than this latch's. */
     bool wheels_brown_out_ = false;
     static constexpr double kWheelsRecoverS = 10.0;   // s of commanding banked before re-arm
     static constexpr double kWheelsCutS = 0.1;        // s of commanding the pool must cover

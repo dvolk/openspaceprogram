@@ -35,7 +35,12 @@
 //     pins run applyControlForces to get a real setpoint rather than handing
 //     Vehicle a number of its own making;
 //   * the gate still weighs the whole rating behind the enable mask, keyed or
-//     not, delivering or not (#642) -- the bill moved, the gate did not;
+//     not, delivering or not (#642) -- the bill moved, the gate did not; and how
+//     small that leaves the gap #654 worried about: the burst the cut asks for is
+//     kWheelsCutS of the rating, and kWheelsCutS is one max substep, so the latch closes
+//     at 0.0278 Wh for a 1000 W triad and at 6.7e-5 of a store at the worst shipped
+//     ratio. A settled ask therefore flies the whole air-only life of the pool, a pinned
+//     key an eleventh of it, and both cut at the same charge;
 //   * NOT pinned: the one substep of lag between the solve and the bill (#648).
 //     powerTick runs before applyControlForces so the gate is current (#647), so the
 //     Wh paid this substep are what the previous one delivered. Only tick.cpp's
@@ -734,6 +739,90 @@ static void test_a_drum_that_delivers_nothing_bills_nothing() {
     destroyShip(s);
 }
 
+/* #654's question, answered with the hull running rather than with prose: #648 moved the
+   BILL onto the delivered figure while the GATE stayed on the rating, so can a hull that
+   is asking ~1 W be cut off by a demand it is not making?
+   Not on a hull that has a store, and the size of the burst the gate asks for is why. The
+   cut needs kWheelsCutS of commanding, and kWheelsCutS is exactly one max substep (pinned
+   by test_rails_step_does_not_move_the_cut), so the charge that closes the latch is
+   0.0278 Wh for this hull's 1000 W triad, 0.0625 Wh for the biggest shipped wheel package
+   (reaction_wheel_r2.25h0.5625, 2250 W) and 0.135 Wh for the worst shipped hull (the
+   heavy_* builds, 4850 W of drums) -- 6.7e-5 of the store it sits on in that worst case,
+   0.0067% of a capsule's 2000 Wh. A rating-scaled cut therefore costs a hull nothing it
+   could notice: it lands at the same charge whatever the ask, and the ASK is what decides
+   how long the store lasts to get there. The arrived law below flies the whole 720 s its
+   air allows; the same hull with the key pinned at full deflection flies 65 s, and cuts at
+   the same charge. What is not cheap is the re-arm bank, 100x the burst: 6.9 Wh for
+   2475 W of drums, 13.5 Wh for the heavy_* builds (vehicle.h carries the seconds those
+   banks cost against real surpluses), and a hull whose generator does not cover its air
+   never re-arms at all -- which is #652's problem, not this gate's. The premise stops
+   holding if the catalog grows into it: 720 kW of drums (320 of the biggest shipped
+   package) puts the cut at 1% of a 2 kWh store, which is why this test pins the burst in
+   Wh and not only the behaviour. See #895. */
+static void test_gate_cut_is_a_spent_pool_not_an_expensive_ask() {
+    printf("== Gate: #654 -- an arrived law is taxed nothing; the burst decides ==\n");
+    Ship s; s.v = new Vehicle;
+    addPowerPart(s, 1000.0, 0.0, 0.0, 0.0, 2000.0, 3);  // a 1000 W triad
+    addPowerPart(s, 0.0, 100.0, 0.0, 20.0, 0.0);        // 100 W air, 20 Wh store, no RTG
+    initShip(s);
+    const double h = kMaxSubStep;
+    const double cut_wh = Vehicle::kWheelsCutS * 1000.0 / 3600.0;   // 0.0278 Wh
+    s.v->Command(ShipCmd(KillRot), true);   // latched, and already arrived: asks nothing
+    s.v->applyControlForces(h);
+    CHECK_NEAR(s.v->wheelDrawWatts(), 0.0, 1e-9,
+               "the arrived law delivers nothing, so the bill is nothing (#648)");
+    CHECK_NEAR(s.v->wheelDemandWatts(), 1000.0, 1e-9,
+               "while the gate still weighs the whole rating (#642)");
+
+    int ticks = 0;
+    while(s.v->powered_ && ticks < 20000) {
+        s.v->powerTick(h);
+        s.v->applyControlForces(h);   // the mode stays engaged the whole way down
+        ticks++;
+    }
+    CHECK_TRUE(not s.v->powered_,
+               "and the wheels do still cut -- when the pool cannot cover the burst");
+    CHECK_TRUE(s.v->wheels_brown_out_, "by the latch, not by a charge test alone");
+    /* The store buys the air's whole life: 20 Wh / 100 W = 720 s. A cut that weighed the
+       rating against the ask would end this at 20/1100 h = 65 s. */
+    CHECK_NEAR(ticks * h, 20.0 * 3600.0 / 100.0, 0.01,
+               "a settled hull keeps its authority for the store's air-only life");
+    /* The landing has to be ABOVE zero for this to mean "the burst decided" rather than
+       "the battery ran out": one substep of this hull's 100 W drain is 0.0028 Wh, a tenth
+       of the burst, so the latch closes while charge is still on the bar. */
+    CHECK_TRUE(totalEC(s) > 0.0 && totalEC(s) <= cut_wh,
+               "the latch closed on charge that is still in the pool, not on a dry one");
+    CHECK_NEAR(cut_wh, 0.0278, 1e-3,
+               "which is 1.4e-3 of this hull's 20 Wh store, and 6.7e-5 of the worst "
+               "shipped pairing (0.135 Wh against a capsule's 2000 Wh)");
+    destroyShip(s);
+
+    /* The same hull with the key pinned at full deflection: 1100 W of shortfall instead
+       of 100 W, so the store buys 65 s rather than 720 s -- 11x less flying time for the
+       same parts and the same battery. That is the ask deciding, not the gate: the cut
+       lands at the same charge both times, which is what makes the rating in the gate
+       harmless while the delivered bill (#648) is what spends the pool. */
+    Ship f; f.v = new Vehicle;
+    addPowerPart(f, 1000.0, 0.0, 0.0, 0.0, 2000.0, 3);
+    addPowerPart(f, 0.0, 100.0, 0.0, 20.0, 0.0);
+    initShip(f);
+    f.v->Command(ShipCmd(Pitch, 1.0f), true);
+    f.v->applyControlForces(h);
+    CHECK_NEAR(f.v->wheelDrawWatts(), 1000.0, 1e-6,
+               "a pinned key bills the whole rating -- read while the gate is still "
+               "open, since a shut one bills nothing whatever the drums did");
+    int sat = 0;
+    while(f.v->powered_ && sat < 20000) {
+        f.v->powerTick(h);
+        f.v->applyControlForces(h);
+        sat++;
+    }
+    CHECK_NEAR(sat * h, 20.0 * 3600.0 / 1100.0, 0.01,
+               "and the store then buys only 65 s of commanding");
+    CHECK_TRUE(totalEC(f) <= cut_wh, "at the same charge the settled hull cut at");
+    destroyShip(f);
+}
+
 /* The pool drains pro-rata across batteries (the shares are proportional to
    each battery's charge), and never below zero. Two equal batteries each
    give up half. */
@@ -842,6 +931,8 @@ int main() {
     test_the_bill_is_the_delivered_setpoint();
     printf("\n");
     test_a_drum_that_delivers_nothing_bills_nothing();
+    printf("\n");
+    test_gate_cut_is_a_spent_pool_not_an_expensive_ask();
     printf("\n");
     test_drain_prorata_across_batteries();
     printf("\n");
