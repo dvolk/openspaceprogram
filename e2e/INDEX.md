@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 381 |
+| `invariant` | a behaviour or a player route the game must keep | 382 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 48 |
 | `harness` | CLI/test-engine plumbing, not game spec | 16 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **449** |
+| | **total** | **450** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -393,7 +393,7 @@ judgement. Select by number, name or path, e.g.
 | `ui/768-systems-window-shuts-the-nozzles.txt` | golden | The Systems window's Thrust vectoring checkbox drops the live gimballed rating in --steering-log from 129710 N m to 0 while the window keeps printing 129710 N m beside the now-off switch, and says nothing about the engines being gone. |
 | `ui/873-d-pick-the-station-in-the-target-window.txt` | invariant | A station row in the Target combo selects it and the planner solves for it. |
 
-## render (87)
+## render (88)
 
 | case | kind | pins |
 |---|---|---|
@@ -478,7 +478,8 @@ judgement. Select by number, name or path, e.g.
 | `render/831-b-surfmap-asked-smaller-than-its-grid-says-so.txt` | invariant | --surfmap-n under the map's own 16-column floor is refused at parse rather than quietly baking at 16 and reporting a picture the player did not ask for. |
 | `render/839-a-second-bake-of-a-hill-reuses-its-heights.txt` | invariant | Baking the same world at the same size twice samples the ground's height ONCE: the second picture reports the same floor, ceiling and lapse cost as the first, paints a field that still moves with the season, and costs a small fraction of the first bake's sweep_ms. |
 | `render/841-a-second-ground-picture-reuses-the-hill-the-first-one-measured.txt` | invariant | The ground picture samples the ground's height ONCE per pixel and keeps the grid it sampled: a re-bake of the same world at the same size says elev_cache=hit, prints the same base-colour means digit-for-digit, and costs a small fraction of the first bake's sweep_ms. |
-| `render/870-parked-on-a-world-that-does-not-turn.txt` | invariant | A hull with no prograde to report dashes prg/rtg instead of printing nan. |
+| `render/870-parked-on-a-world-that-does-not-turn.txt` | invariant | A hull with no prograde to report dashes prg/rtg instead of printing a bearing made of solver residue. |
+| `render/870-prg-dash-on-a-polar-pad.txt` | invariant | A hull parked where the ground does not move dashes prg/rtg rather than pointing at solver residue. |
 | `render/872-b-air-platform-mark-has-no-conic.txt` | invariant | The map marks a wind-riding platform as a point: marker, name, no orbit line. |
 | `render/872-c-tracking-map-marks-stations-too.txt` | invariant | The Tracking Station's map marks each orbital station around its focus body, conic included. |
 | `render/872-d-map-marks-stay-marked-under-warp.txt` | invariant | At high time-accel the map dump still reports the marks a window drew this frame. |

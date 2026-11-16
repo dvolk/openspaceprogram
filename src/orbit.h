@@ -145,20 +145,30 @@ inline double apoapsisAsl(const OrbitElements &o, double sea_level_radius) {
 }
 
 /* A direction the state cannot support has to be reported as MISSING, not as a
-   number. glm's normalize is v * inversesqrt(dot(v,v)) with no guard, so a zero
-   vector comes back NaN, and readers of it print a broken instrument ([orbinfo]
-   showed prg=-nan, --plane-log nrm=-nan) or build a billboard matrix full of NaN
-   (billboard.cpp:58 normalizes its pos; see #235 for the same trap on a map
-   stamp). */
-inline constexpr double kConicSpeedFloor = 1e-3;   // m/s
+   number. glm's normalize is v * inversesqrt(dot(v,v)) with no guard, so an
+   exactly zero vector answers NaN -- which is how a NaN heading becomes a NaN
+   model matrix (billboard.cpp:58 normalizes the pos it is handed) and a "-nan"
+   beside a readable ecc in [orbinfo]. A NEAR-zero vector is the nastier case: it
+   answers a perfectly unit vector, so the readout prints a confident bearing that
+   is really the phase of the noise (#870). */
+inline constexpr double kConicSpeedFloor = 1e-2;   // m/s
 
-/* Where "we do not know the direction" starts, rather than "we are slow" (#870).
-   A hull resting on a world that does not rotate has a conic speed of a few
-   micrometres a second of solver jitter -- measured ~1e-5 m/s on Moho with
-   rot_ang_speed 0 -- so the prograde it points at is the phase of that jitter and
-   wanders degrees between log rows. The floor sits two orders above that jitter
-   and far below anything a player flies: Kerbin's own ground turns ~175 m/s, and a
-   landed hull on a ROTATING world keeps a real prograde from that motion. */
+/* Where "this state has no heading" starts, rather than "this state is slow"
+   (#870). Both ends of the bracket are measured, not guessed:
+     -- parked on a Moho with rotating.rot_ang_speed 0: 3..7e-05 m/s;
+     -- parked on Kerbin's own POLAR pad, where |omega x r| goes to zero and the
+        contact solver's residue takes over: 3.9e-04 .. 3.4e-03 m/s (the reason
+        the floor cannot sit at 1e-3: a polar readout would flicker between a
+        number and a dash on consecutive rows of the same log).
+   Nothing a player flies comes near it. The slowest apoapsis speed a bound
+   Kerbin conic reaches while still inside Kerbin's sphere of influence (~1.2e8 m)
+   is ~17 m/s; getting to 1e-2 m/s takes the apoapsis past 2e11 m, where Kerbol is
+   the focus and the speeds are two orders higher.
+   This is NOT the aero's kAoAFlowFloor (0.1 m/s, constants.h) wearing the same
+   hat: that one asks whether a flow has a direction the surfaces answer to, where
+   the noise is the wind law, and this one asks whether a velocity is above the
+   contact integrator's residue. Folding them into one constant breaks one of the
+   two. */
 inline bool conicSpeedOk(double speed) {
     return std::isfinite(speed) && speed >= kConicSpeedFloor;
 }
@@ -172,29 +182,6 @@ inline bool conicPrograde(const glm::dvec3 &marker_vel, glm::dvec3 &dir) {
         return false;
     }
     dir = marker_vel / v;
-    return true;
-}
-
-/* The orbit plane's normal axis (the HUD's +/- normal markers, [planelog]'s nrm=).
-   The speed floor applies here too, and it is not obvious why: |h| = |pos| |v|
-   sin(theta), so a parked hull still crosses its jitter against a PLANET RADIUS and
-   gets tens of m2/s -- nonzero and meaningless, pointing at wherever the jitter
-   happened to fall. A plane has a direction only when the velocity that helps
-   define one does. On top of that, h is exactly zero on a purely radial path, which
-   has no plane at all; there the state is fine, only the geometry is degenerate. */
-inline bool conicNormal(const glm::dvec3 &pos, const glm::dvec3 &marker_vel,
-                        glm::dvec3 &dir) {
-    if(!conicSpeedOk(glm::length(marker_vel))) {
-        dir = glm::dvec3(0.0);
-        return false;
-    }
-    const glm::dvec3 h = glm::cross(pos, marker_vel);
-    const double hv = glm::length(h);
-    if(!std::isfinite(hv) || hv <= 0.0) {
-        dir = glm::dvec3(0.0);
-        return false;
-    }
-    dir = h / hv;
     return true;
 }
 

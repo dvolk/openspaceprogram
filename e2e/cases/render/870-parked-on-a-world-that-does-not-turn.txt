@@ -1,40 +1,46 @@
-# Every shipped world turns: Moho's day is 33.5 h, Kerbin's 6 h. A hull parked on any of
-# them has the ground's own motion to call prograde -- ~175 m/s at Kerbin sea level -- so
-# the HUD has never had to answer "there is no prograde here".
+# A hull parked on a world that does not turn has no prograde. Every shipped pad body does
+# turn -- Moho's day is 33.5 h, Kerbin's 6 h -- so the ground's own motion is always there
+# to call prograde and the HUD has never had to answer "there is none".
 # e2e/fixtures/systems/870-moho-no-rotation.json is the shipped Moho with
-# rotating.rot_ang_speed set to 0, which takes that gift away. Parked on Moho's pad the
-# conic speed is 3..7e-05 m/s of solver jitter; glm's normalize is v * inversesqrt(dot(v,v))
-# with no guard, so the prograde it points at is NaN -- and [orbinfo] printed
-# "prg=-nan rtg=-nan" beside an ecc and sma that read fine (#870). The answer is now the
-# same dash lan/lpe and apo_* already use for a quantity the conic does not have, with the
-# floor at orbit.h:kConicSpeedFloor (1e-3 m/s, two orders above that jitter and far below
-# anything a player flies).
+# rotating.rot_ang_speed set to 0, which takes that motion away. Parked on its pad the
+# conic speed is 3..7e-05 m/s of contact-solver residue, and the bearing built from it is
+# the phase of that residue: glm's normalize (v * inversesqrt(dot(v,v))) answers a
+# perfectly unit vector for a near-zero input, so #870's rows read prg/rtg with full
+# precision and no meaning -- and -nan once the vector lands exactly on zero, which is the
+# shape the log rows quoted in the issue had.
+# The fix says MISSING: "-" the way lan/lpe and apo_* already do, with the line between
+# "no heading" and "slow" at orbit.h:kConicSpeedFloor (1e-2 m/s). Why not 1e-3: Kerbin's
+# own POLAR pad lands in the same state with a much larger residue (up to 3.4e-03 m/s), so
+# at 1e-3 that case's log would flicker between a number and a dash -- see
+# render/870-prg-dash-on-a-polar-pad, which is the shipped-content half of this pair and
+# the floor's upper bracket.
 #
 # What this case does NOT witness, on purpose: --plane-log prints no rows at all for a
 # grounded hull (drawOrbitPlane returns at the same gate case 197 pins), so the prg=/nrm=
-# dash arm there has no game-side witness -- it is pinned in run.py's self-test instead.
-# The prograde/retrograde/normal billboards have no log row of their own either: with the
-# floor they are simply absent on this world, which is an eyes-on check.
-# The turning-world half of the pair is case 197, which pins that a hull parked on Kerbin
-# still gets prg/rtg as NUMBERS -- the dash is for no direction, not for "slow".
+# dash arm there has no game-side witness and is pinned in run.py's self-test instead. The
+# prograde/retrograde/normal billboards have no log row of their own either: with the floor
+# they are simply absent on this world, which is an eyes-on check.
 NAME parked-on-a-world-that-does-not-turn
-CLAIM A hull with no prograde to report dashes prg/rtg instead of printing nan.
+CLAIM A hull with no prograde to report dashes prg/rtg instead of printing a bearing made of solver residue.
 KIND invariant
 ARGS --system e2e/fixtures/systems/870-moho-no-rotation.json
 ARGS --startship racer,res/ships/racer.json,Moho,pad
 ARGS --time-accel 1 --timeout 4 --info-log --plane-log --orbit-interval 1
 LIMIT 60
 EXPECT [orbinfo]
-FORBID nan
+FORBID prg=-nan
+FORBID rtg=-nan
 FORBID [planelog]
 FORBID error:
 CHECK len(orbinfo) >= 3
 CHECK all(o["body"] == "Moho" for o in orbinfo)
 CHECK all(o["prg"] is None and o["rtg"] is None for o in orbinfo)
-# The rest of the row is real, which is the point: only the direction is missing. vel is
-# the jitter itself -- under the floor -- and r is the pad's distance from Moho's centre,
-# so a CHECK cannot pass because the whole dump went away.
-CHECK all(o["vel"] < 1e-3 and o["r"] > 2.5e5 for o in orbinfo)
-# MUTATION: kConicSpeedFloor 1e-3 -> 0.0 (tmp/night3/870_bite.log) makes every row print a
-# number again -- the jitter is a velocity as far as normalize() is concerned -- so both
-# the dash and the floor that produces it are pinned here, not just the parse.
+# The rest of the row is real, which is the point: only the direction is missing. r is the
+# pad's distance from Moho's centre and ecc/sma/energy print normally, so a pass here is
+# not the whole dump having gone away. vel is the residue itself -- a number, far from
+# zero -- which is exactly what a printer with no guard turns into a confident heading.
+CHECK all(o["r"] > 2.5e5 and o["vel"] > 0.0 and o["vel"] < 1e-2 for o in orbinfo)
+# MUTATION: kConicSpeedFloor 1e-2 -> 0.0 makes every row print a number again (the residue
+# is a velocity as far as normalize() is concerned), which reddens the prg/rtg CHECK above
+# (tmp/night3/870_bite.log). The floor's OTHER end -- that it stays below real flight --
+# is held by tests/test_orbit.cpp and by render/197's numeric control CHECK.

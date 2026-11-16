@@ -1152,34 +1152,40 @@ int main() {
     }
 
     /* #870: a direction the state cannot support has to come back MISSING, not as a
-       number. glm's normalize is v * inversesqrt(dot(v,v)), so a zero vector answers
-       NaN and [orbinfo] printed prg=-nan for a hull parked on a world that does not
-       rotate: its conic speed is a few micrometres a second of solver jitter, which
-       has no heading. The floor is what turns that into "-" rather than into the
-       phase of the jitter, which wanders degrees between log rows. */
+       number. A hull parked where the ground does not move -- a world whose
+       rotating.rot_ang_speed is 0, or Kerbin's own POLAR pad, where |omega x r|
+       vanishes -- has a conic speed of contact-solver residue. That is NOT zero, so
+       glm's normalize answers a perfectly unit vector and the HUD prints a confident
+       bearing that is the phase of the residue (an exactly zero vector is worse still:
+       NaN). kConicSpeedFloor is the line between "no heading" and "slow", and both ends
+       of its bracket are measured, which is what this pin holds in place. */
     {
         CHECK(!conicSpeedOk(0.0));
         CHECK(!conicSpeedOk(-1.0));        // a speed is never negative: not a heading
         CHECK(!conicSpeedOk(NAN));
         CHECK(!conicSpeedOk(INFINITY));
-        // The jitter measured on Moho with rot_ang_speed 0, and the floor two orders
-        // above it. Both sides of the boundary are pinned so the floor cannot silently
-        // drift into real flight: Kerbin turns its own ground ~175 m/s, and that is how
-        // a hull parked on a ROTATING world keeps a prograde.
-        CHECK(!conicSpeedOk(1.0e-5));
-        CHECK(conicSpeedOk(kConicSpeedFloor));
+        /* The residue, both ends: Moho with rotating.rot_ang_speed 0 measures
+           3..7e-05 m/s, and the polar pad's contact residue measures up to 3.4e-03.
+           The floor has to clear the LARGER one or a polar readout flickers between a
+           number and a dash on consecutive rows of the same log. */
+        CHECK(!conicSpeedOk(3.4e-3));
         CHECK(!conicSpeedOk(kConicSpeedFloor * 0.999));
+        CHECK(conicSpeedOk(kConicSpeedFloor));
+        // ... and stay below anything flown: Kerbin's ground turns a parked hull ~175
+        // m/s, and the slowest apoapsis a bound Kerbin conic reaches inside Kerbin's own
+        // sphere of influence is ~17 m/s. A floor that creeps up here eats real flight.
+        CHECK(conicSpeedOk(17.0));
         CHECK(conicSpeedOk(175.0));
     }
     {
         glm::dvec3 d(1.0, 1.0, 1.0);   // deliberately dirty: the guard zeroes it
         CHECK(!conicPrograde(glm::dvec3(0.0), d));
         CHECK(d == glm::dvec3(0.0));
-        CHECK(!conicPrograde(glm::dvec3(1.0e-5, 2.0e-5, -0.5e-5), d));
+        CHECK(!conicPrograde(glm::dvec3(3.4e-3, -1.1e-3, 0.4e-3), d));
         CHECK(d == glm::dvec3(0.0));
         CHECK(!conicPrograde(glm::dvec3(NAN, 0.0, 0.0), d));
         CHECK(d == glm::dvec3(0.0));
-        CHECK(conicPrograde(glm::dvec3(1.0e-2, 0.0, 0.0), d));
+        CHECK(conicPrograde(glm::dvec3(1.0e-1, 0.0, 0.0), d));
         CHECK_NEAR(glm::length(d), 1.0, 1e-12);
         CHECK_NEAR(d.x, 1.0, 1e-12);
         CHECK(conicPrograde(glm::dvec3(-300.0, 400.0, 0.0), d));
@@ -1187,27 +1193,32 @@ int main() {
         CHECK_NEAR(d.y, 0.8, 1e-12);
         CHECK_NEAR(glm::length(d), 1.0, 1e-12);
     }
+    /* What render.cpp leans on for the +/- normal markers and [planelog]'s nrm=:
+       OrbitElements::h_hat is the CONIC's own normal -- unit for a real plane, exactly
+       zero for a radial state -- so the gate there is a length test on a vector the
+       solver already made, not a second derivation. Deriving it again from
+       cross(pos, vel) is what #870 first wrote, and it is wrong in a #850 building
+       bubble, where pos is measured from the BUILDING: there the cross product is the
+       hull's offset from its own deck crossed with the station's orbital velocity. Note
+       too that no length test rejects the parked-hull residue -- |h| = |pos| |v|
+       sin(theta) is a planet radius times noise, 12 m2/s at 600 km and 1e-5 m/s. That
+       is what conicSpeedOk above is for, and the marker gate asks both. */
     {
-        const glm::dvec3 pos(600e3, 0.0, 0.0);
-        glm::dvec3 n(1.0, 1.0, 1.0);
-        // A real plane: +X over, velocity along +Y, so the normal is +Z and unit.
-        CHECK(conicNormal(pos, glm::dvec3(0.0, 1700.0, 0.0), n));
-        CHECK_NEAR(n.z, 1.0, 1e-12);
-        CHECK_NEAR(glm::length(n), 1.0, 1e-12);
-        // Exactly radial: no plane exists (the dropped-straight-down conic).
-        CHECK(!conicNormal(pos, glm::dvec3(1.0e3, 0.0, 0.0), n));
-        CHECK(n == glm::dvec3(0.0));
-        /* The non-obvious rejection: |h| = |pos| |v| sin(theta), so a parked hull
-           crosses its jitter against a PLANET RADIUS and gets ~6 m2/s -- nowhere near
-           zero, and pointing at whatever the jitter happened to be. Testing h alone
-           would report that as a plane; the speed floor is what refuses. */
-        CHECK(glm::length(glm::cross(pos, glm::dvec3(1.0e-5, 0.0, 2.0e-5))) > 1.0);
-        CHECK(!conicNormal(pos, glm::dvec3(1.0e-5, 0.0, 2.0e-5), n));
-        CHECK(n == glm::dvec3(0.0));
-        CHECK(!conicNormal(pos, glm::dvec3(NAN, 0.0, 0.0), n));
-        CHECK(n == glm::dvec3(0.0));
-        CHECK(!conicNormal(glm::dvec3(NAN, 0.0, 0.0), glm::dvec3(0.0, 1700.0, 0.0), n));
-        CHECK(n == glm::dvec3(0.0));
+        const OrbitElements real = computeOrbitElements(glm::dvec3(600e3, 0.0, 0.0),
+                                                        glm::dvec3(0.0, 1700.0, 0.0), MU);
+        CHECK_NEAR(glm::length(real.h_hat), 1.0, 1e-12);
+        CHECK_NEAR(real.h_hat.z, 1.0, 1e-12);
+        CHECK(glm::dot(real.h_hat, real.h_hat) > 0.5);
+        // Exactly radial (the dropped-straight-down conic, and the parked hull's
+        // degenerate limit): h is zero, so h_hat is zero and the gate closes.
+        const OrbitElements rad = computeOrbitElements(glm::dvec3(600e3, 0.0, 0.0),
+                                                       glm::dvec3(100.0, 0.0, 0.0), MU);
+        CHECK(rad.h_hat == glm::dvec3(0.0));
+        CHECK(glm::dot(rad.h_hat, rad.h_hat) <= 0.5);
+        // The residue does NOT close that gate on its own, which is why the marker gate
+        // also asks conicSpeedOk.
+        CHECK(glm::length(glm::cross(glm::dvec3(600e3, 0.0, 0.0),
+                                     glm::dvec3(1.0e-5, 0.0, 2.0e-5))) > 1.0);
     }
 
     if(failures == 0) {

@@ -1,0 +1,35 @@
+# Kerbin turns, so a hull parked on it has the ground's own motion (~175 m/s at the
+# equator) to call prograde -- except at a pole, where |omega x r| goes to zero and all
+# that is left is the contact solver's residue. Parked on the SHIPPED polar pad
+# (res/data/ksp_launch_sites.json, lat 90, no fixture involved) the conic speed measures
+# 3.9e-04 .. 3.4e-03 m/s, and the bearing built from it wandered 90.02 -> 85.68 deg between
+# rows one second apart (tmp/night3/870_polar.log, printed while the floor was still
+# 1e-3). #870: that is not a slow ship, it is a ship with no heading, and the HUD said
+# "90 deg" with full confidence.
+#
+# This case is also the reason orbit.h:kConicSpeedFloor is 1e-2 m/s and not 1e-3: at 1e-3
+# the middle row of that log dashed while the other two printed bearings, so the readout
+# flickered between an instrument and a gap on consecutive rows of one parked ship. The
+# floor's upper bracket -- that 1e-2 stays below anything flown -- is held by
+# tests/test_orbit.cpp; render/870-parked-on-a-world-that-does-not-turn is the same state
+# authored outright (rotating.rot_ang_speed 0) with the rest of the row stock.
+NAME prg-dash-on-a-polar-pad
+CLAIM A hull parked where the ground does not move dashes prg/rtg rather than pointing at solver residue.
+KIND invariant
+ARGS --startship racer,res/ships/racer.json,Kerbin,pad,polar_pad
+ARGS --time-accel 1 --timeout 4 --info-log --orbit-interval 1
+LIMIT 60
+EXPECT [orbinfo]
+FORBID prg=-nan
+FORBID rtg=-nan
+FORBID error:
+CHECK len(orbinfo) >= 3
+CHECK all(o["body"] == "Kerbin" for o in orbinfo)
+CHECK all(o["prg"] is None and o["rtg"] is None for o in orbinfo)
+# The residue band this case measures, so the floor cannot be dropped to 1e-3 without this
+# CHECK's numbers being what argues against it. r is the polar pad's distance from Kerbin's
+# centre, so the row is a real parked hull rather than an empty dump.
+CHECK all(o["vel"] > 0.0 and o["vel"] < 1e-2 and o["r"] > 5.9e5 for o in orbinfo)
+# MUTATION: kConicSpeedFloor 1e-2 -> 1e-3 prints bearings on the rows whose residue is
+# 3.4e-03 / 1.9e-03 and dashes the 3.9e-04 one, reddening the all() CHECK -- which is the
+# flicker this case exists to forbid.

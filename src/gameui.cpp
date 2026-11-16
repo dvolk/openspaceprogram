@@ -3064,11 +3064,14 @@ void drawUIReadouts(Game &g) {
             if(view.plane.lpe_ok) { snprintf(lpe_s, sizeof lpe_s, "%.6g deg", glm::degrees(view.plane.lpe)); }
             else { snprintf(lpe_s, sizeof lpe_s, "-"); }
             /* prg/rtg: nose to the CONIC's prograde and retrograde -- the same two
-               HUD billboards, so they exist exactly where those markers do (#870).
-               A hull resting on a world that does not turn has a conic speed of
-               solver jitter, so there is no direction to measure to; glm::angle
-               against that answers NaN, which used to print as prg=-nan. Dashed like
-               lan/lpe above and the apo_* keys below. */
+               HUD billboards, so they exist exactly where those markers do (#870). A
+               hull parked where the ground does not move has a conic speed of
+               contact-solver residue, so the bearing it would print is the phase of that
+               residue: prg moved 90.02 -> 85.68 deg between rows one second apart on
+               Kerbin's polar pad. Dashed like lan/lpe above and the apo_* keys below;
+               vel_dir is zeroed in that case, and note that glm::angle against a zero
+               vector answers 90 deg rather than NaN, so the flag is the only honest
+               test. */
             char prg_s[32], rtg_s[32];
             const int prg_n = view.prograde_ok
                 ? snprintf(prg_s, sizeof prg_s, "%.6g deg",
