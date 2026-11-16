@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 389 |
+| `invariant` | a behaviour or a player route the game must keep | 390 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 49 |
 | `harness` | CLI/test-engine plumbing, not game spec | 16 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **458** |
+| | **total** | **459** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -401,7 +401,7 @@ judgement. Select by number, name or path, e.g.
 | `ui/873-d-pick-the-station-in-the-target-window.txt` | invariant | A station row in the Target combo selects it and the planner solves for it. |
 | `ui/896-charging-hull-dashes-its-hours.txt` | invariant | A hull that generates more than it draws prints Aboard: - instead of an hours figure. |
 
-## render (88)
+## render (89)
 
 | case | kind | pins |
 |---|---|---|
@@ -493,6 +493,7 @@ judgement. Select by number, name or path, e.g.
 | `render/872-d-map-marks-stay-marked-under-warp.txt` | invariant | At high time-accel the map dump still reports the marks a window drew this frame. |
 | `render/872-orbital-station-on-the-map.txt` | invariant | The orbital/Tracking maps mark each orbital station around the focused body, conic included. |
 | `render/873-b-relative-velocity-markers-follow-a-station.txt` | invariant | The HUD's target relative-velocity markers are placed for an orbital station, from the velocity its pose law drives. |
+| `render/892-radial-pair-in-a-tipping-bubble.txt` | invariant | Inside a building bubble whose deck tips, the radial in/out pair tracks the planet instead of the deck. |
 
 ## harness (17)
 

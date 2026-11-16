@@ -1,0 +1,209 @@
+{
+  "home": "Kerbin",
+  "soi_law": "patched_conic",
+  "epoch_year": 1,
+  "skybox": "res/skybox/v1",
+  "world_buildings": [
+    {
+      "id": "main_space_port",
+      "type": "space_port",
+      "display_name": "Main space port",
+      "body": "Kerbin",
+      "lat_deg": 0.286473,
+      "lon_deg": 270.286477,
+      "height_m": 5.0,
+      "heading_deg": 0.0,
+      "flags": [
+        "VAB_LAUNCH_PAD"
+      ]
+    },
+    {
+      "id": "kerbin_spin_pad",
+      "type": "spacedock",
+      "display_name": "Kerbin spinning dock",
+      "body": "Kerbin",
+      "orbit": {
+        "alt_m": 300000,
+        "inc_deg": 0,
+        "raan_deg": 0,
+        "phase_deg": 90
+      },
+      "attitude": "body-fixed",
+      "spin": {
+        "rate_deg_s": 2.0,
+        "axis": [
+          1.0,
+          0.0,
+          0.0
+        ]
+      },
+      "flags": [
+        "ORBITAL",
+        "VAB_LAUNCH_PAD"
+      ]
+    }
+  ],
+  "bodies": [
+    {
+      "name": "Kerbol",
+      "type": "star",
+      "radius": 261600000,
+      "mass": 1.757e+28,
+      "seed": 0.1,
+      "has_sea": false,
+      "surface": {
+        "palette": [
+          [
+            0.0,
+            [
+              1.0,
+              0.8,
+              0.35
+            ]
+          ],
+          [
+            1.0,
+            [
+              1.0,
+              1.0,
+              0.75
+            ]
+          ]
+        ]
+      },
+      "inertial": {
+        "soi": 1e+18,
+        "pos": [
+          0,
+          0,
+          0
+        ],
+        "orb_ang_speed": 0.0
+      },
+      "transfer_dv": 0.0,
+      "science_mult": 2.0
+    },
+    {
+      "name": "Kerbin",
+      "type": "planet",
+      "orbits": "Kerbol",
+      "radius": 600000,
+      "mass": 5.292e+22,
+      "seed": 1,
+      "has_sea": true,
+      "surface": {
+        "amplitude": 5000,
+        "persistence": 0.6,
+        "frequency": 1.1,
+        "sea_color": [
+          0.2,
+          0.45,
+          0.65
+        ],
+        "palette": [
+          [
+            0.0,
+            [
+              0.13,
+              0.45,
+              0.13
+            ]
+          ],
+          [
+            0.45,
+            [
+              0.45,
+              0.55,
+              0.2
+            ]
+          ],
+          [
+            0.8,
+            [
+              0.55,
+              0.45,
+              0.35
+            ]
+          ],
+          [
+            1.0,
+            [
+              1.0,
+              1.0,
+              1.0
+            ]
+          ]
+        ],
+        "atmosphere": {
+          "color": [
+            0.3,
+            0.5,
+            1.0
+          ],
+          "thickness": 15000,
+          "power": 4.0,
+          "intensity": 0.7,
+          "height": 85000,
+          "layers": [
+            {
+              "alt": 0,
+              "T": 288.15,
+              "lapse": -0.00638083
+            },
+            {
+              "alt": 11205.4,
+              "T": 216.65,
+              "lapse": 0.0
+            },
+            {
+              "alt": 20689.7,
+              "T": 216.65,
+              "lapse": 0.00091511
+            },
+            {
+              "alt": 33802.8,
+              "T": 228.65,
+              "lapse": 0.00244303
+            },
+            {
+              "alt": 50994.6,
+              "T": 270.65,
+              "lapse": 0.0
+            },
+            {
+              "alt": 55737.7,
+              "T": 270.65,
+              "lapse": -0.00225883
+            },
+            {
+              "alt": 80529.3,
+              "T": 214.65,
+              "lapse": -0.00154453
+            }
+          ],
+          "sea_level_pressure": 101325.0
+        },
+        "clouds": {
+          "height": 7500,
+          "coverage": 0.6,
+          "freq": 10,
+          "drift": 1e-05
+        }
+      },
+      "inertial": {
+        "orb_ang_speed": 6.826918657082229e-07,
+        "arg_peri": 0.0,
+        "true_anomaly0": 3.14
+      },
+      "rotating": {
+        "rot_ang_speed": 0.00029157665354214053,
+        "spin_phase0": 3.355854362286427,
+        "axial_tilt": 0.40910517666747087,
+        "tilt_azimuth": 3.6482047113650014
+      },
+      "transfer_dv": 0.0,
+      "science_mult": 1.0
+    }
+  ],
+  "note": "e2e fixture for #892: the radial in/out flight markers used to be placed from the hull's position in its OWN frame, which inside a #850 building bubble is its offset from a DECK, not the line to the planet. No shipped pad can show that: the only spawnable bubble bed (res/data/ksp_launch_sites.json's kerbin_dock) parks the hull 50 m along the dock's own Z, which is the local vertical, so the buggy and fixed directions agree to 1e-4 rad there (measured, tmp/night3/892_dock_probe.log), and kerbin_station -- which does spin -- spins about its own up axis, which leaves the planet straight under the deck, and carries no VAB_LAUNCH_PAD anyway. So this fixture authors the discriminating state: kerbin_spin_pad, an ORBITAL VAB_LAUNCH_PAD on the shipped dock's 300 km shell whose bubble tips about a LOCAL X axis at 2 deg/s. The deck turns under a hull that rides it, so the direction to Kerbin sweeps 2 deg/s through the bubble axes while the deck's own normal does not -- which is the whole difference between pointing at the planet and pointing at the floor. Bodies are 883-twin-stations.json's Kerbol and Kerbin verbatim (its Moho and Duna are dropped: nothing here leaves Kerbin's SOI); main_space_port stays so Kerbin keeps a default ground pad. Pinned by e2e/cases/render/892-radial-pair-in-a-tipping-bubble.txt."
+}

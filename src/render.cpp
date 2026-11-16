@@ -84,12 +84,14 @@ void updateShipView(Game &g) {
     if(ship == nullptr) {
         g.hud.view.ship = nullptr;
         /* The struct's rule is that an unfilled snapshot reads zeros (game.h:126),
-           and these two booleans are the only fields here that a later frame ACTS on:
-           a true left over from the ship that just went would light the prograde and
-           normal markers for nobody. */
+           and these booleans are the only fields here that a later frame ACTS on:
+           a true left over from the ship that just went would light the flight
+           markers for nobody. */
         g.hud.view.prograde_ok = false;
         g.hud.view.normal_ok = false;
+        g.hud.view.radial_ok = false;
         g.hud.view.marker_h_hat = glm::dvec3(0.0);
+        g.hud.view.marker_radial_hat = glm::dvec3(0.0);
         return;
     }
     ShipView &view = g.hud.view;
@@ -235,6 +237,24 @@ void updateShipView(Game &g) {
     }
     view.normal_ok = view.prograde_ok && conicNormalOk(o.ang_momentum, o.distance);
     view.marker_h_hat = view.normal_ok ? h : glm::dvec3(0.0);
+    /* The +/- RADIAL pair takes the same lift as the normal above, for the same reason
+       (game.h, #892). For a frame centred on the body, pos and orbit_pos point the same
+       way and this is a no-op; a #850 building bubble's origin is the BUILDING, and there
+       pos is the hull's offset from a DECK, which points wherever the building parked the
+       hull rather than at the planet. Measured at the one shipped bubble bed -- the
+       space dock parks the hull 50 m along its own Z, and that Z is the local vertical --
+       the two directions agree to 1e-4 rad, so the player sees no change today. What is
+       being fixed is the rule, before a spinning station bed or a hull parked sideways
+       makes the pair sweep around the deck (e2e/fixtures/systems/892-spin-pad.json).
+       radial_ok is only "there is a radius to take a direction from": unlike the plane
+       above, this direction needs no noise floor, because the line from the body to the
+       hull is well-conditioned wherever it was measured. */
+    view.radial_ok = std::isfinite(distance) && distance > 0.0;
+    glm::dvec3 radial_hat = view.radial_ok ? orbit_pos / distance : glm::dvec3(0.0);
+    if(view.radial_ok && ship->frame != bodyInertial) {
+        radial_hat = glm::transpose(ship->frame->GetOrientRelTo(bodyInertial)) * radial_hat;
+    }
+    view.marker_radial_hat = radial_hat;
 
     /* Air-relative prograde (#498). Vehicle::airRelativeVel is the vector the drag
        law itself answers to and it comes back in THIS frame, so the marker and the
@@ -612,7 +632,7 @@ static void drawOrbitPlane(Game &g, const glm::dmat4 &VP) {
                two agree by construction and what this row can still catch is a lift
                that disagrees, not a normal derived twice. A dash is the same absence
                the player sees: no conic speed to point along, no plane. */
-            char prg_s[64], nrm_s[64];
+            char prg_s[64], nrm_s[64], rdl_s[64];
             const int prg_n = g.hud.view.prograde_ok
                 ? snprintf(prg_s, sizeof prg_s, "(%.6f,%.6f,%.6f)",
                            g.hud.view.vel_dir.x, g.hud.view.vel_dir.y,
@@ -623,18 +643,29 @@ static void drawOrbitPlane(Game &g, const glm::dmat4 &VP) {
                            g.hud.view.marker_h_hat.x, g.hud.view.marker_h_hat.y,
                            g.hud.view.marker_h_hat.z)
                 : snprintf(nrm_s, sizeof nrm_s, "-");
+            /* rdl is the +/- radial pair's direction, printed unconditionally because it
+               is the one of the three that always has an answer: the line from the focus
+               body to the hull needs no speed or plane to exist (game.h). In a bubble
+               frame it is also the only one that shows the LIFT being done at all -- pos
+               there is the hull's offset from the DECK, and what that points at depends on
+               where the building parked it, not on where the planet is. */
+            const int rdl_n = snprintf(rdl_s, sizeof rdl_s, "(%.6f,%.6f,%.6f)",
+                                       g.hud.view.marker_radial_hat.x,
+                                       g.hud.view.marker_radial_hat.y,
+                                       g.hud.view.marker_radial_hat.z);
             assert(prg_n > 0 && prg_n < (int)sizeof prg_s);
             assert(nrm_n > 0 && nrm_n < (int)sizeof nrm_s);
+            assert(rdl_n > 0 && rdl_n < (int)sizeof rdl_s);
             printf("[planelog] t=%.1fs frame=%s plane=%s inc=%.4f deg "
                    "n_orb=(%.6f,%.6f,%.6f) n_ref=(%.6f,%.6f,%.6f) "
                    "node=(%.6f,%.6f,%.6f) ticks=%s "
-                   "prg=%s nrm=%s\n",
+                   "prg=%s nrm=%s rdl=%s\n",
                    g.time, ship->frame->building ? "bubble"
                          : (ship->frame->isRotFrame() ? "rot" : "inertial"),
                    refPlaneName(g.hud.view.ref_plane.mode), inc * 180.0 / std::numbers::pi,
                    n_orb.x, n_orb.y, n_orb.z, n_ref.x, n_ref.y, n_ref.z,
                    node.x, node.y, node.z, coplanar ? "-" : "drawn",
-                   prg_s, nrm_s);
+                   prg_s, nrm_s, rdl_s);
             fflush(stdout);
         }
     }
@@ -684,7 +715,6 @@ void paintWorld(Game &g) {
     Camera *camera = g.camera;
 
     ShipView &view = g.hud.view;
-    glm::dvec3 &pos = view.pos;
     glm::dvec3 &vel = view.vel;
     glm::dvec3 &facing = view.facing;
 
@@ -908,8 +938,11 @@ void paintWorld(Game &g) {
        glm's normalize of an exactly zero vector is NaN, which Billboard::Draw would
        multiply straight into its model matrix. Absent markers beat random ones -- the
        air pair below does the same with air_dir_valid.
-       Radial is the same line in a body's inertial and rotating frames, so pos serves
-       it -- though a #850 bubble frame's origin is the building, where it is not
+       Radial is the line from the FOCUS BODY to the hull, so it reads marker_radial_hat
+       (orbit_pos lifted back into this frame) rather than pos. For a body's inertial or
+       rotating frame those two are the same vector; a #850 building bubble's origin is the
+       building, and there pos is the hull's offset from a deck -- the pair would point
+       along the station, and around the deck once a revolution if the station spins
        (#892). */
     if(view.prograde_ok) {
         g.prograde_indicator->pos = view.marker_vel;
@@ -917,10 +950,12 @@ void paintWorld(Game &g) {
         g.retrograde_indicator->pos = - view.marker_vel;
         g.retrograde_indicator->Draw(camera, std::numbers::pi);
     }
-    g.radial_in_indicator->pos = - pos;
-    g.radial_in_indicator->Draw(camera, std::numbers::pi);
-    g.radial_out_indicator->pos = pos;
-    g.radial_out_indicator->Draw(camera, std::numbers::pi);
+    if(view.radial_ok) {
+        g.radial_in_indicator->pos = - view.marker_radial_hat;
+        g.radial_in_indicator->Draw(camera, std::numbers::pi);
+        g.radial_out_indicator->pos = view.marker_radial_hat;
+        g.radial_out_indicator->Draw(camera, std::numbers::pi);
+    }
     if(view.normal_ok) {
         /* The conic's own normal, unit and already lifted into this frame
            (updateShipView), so the flag above describes this very vector -- and this

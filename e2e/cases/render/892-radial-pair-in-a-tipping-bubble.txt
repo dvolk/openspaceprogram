@@ -1,0 +1,63 @@
+# The radial in/out markers used to be placed from `view.pos` -- the hull's position in
+# its OWN frame. For a frame centred on a body that is the line to the body, so the pair
+# has always looked right on a pad and in flight. A #850 building bubble is not centred on
+# a body: its origin is the BUILDING, so inside one `pos` is the hull's few-metre offset
+# from a deck, and `radial in` points at the floor while the planet sits somewhere else.
+# The prograde pair (#204/#205) and the normal pair (#870) were moved onto the lifted conic
+# state years ago for exactly this reason; radial was the last marker still reading a raw
+# frame position.
+#
+# Why a fixture system rather than shipped content: no shipped pad can show the difference.
+# The one spawnable bubble bed, res/data/ksp_launch_sites.json's kerbin_dock, parks the
+# hull 50 m along the dock's own Z, and for a body-fixed dock that Z IS the local vertical,
+# so the buggy and fixed directions agree to 1e-4 rad there (measured: view.pos =
+# (0.001, 0.000, -49.979) against a lifted (0.000010, 0, -1.000000),
+# tmp/night3/892_dock_probe.log). kerbin_station does spin, but about its own up axis
+# ([0,0,1]), which leaves the planet straight under the deck -- and it carries no
+# VAB_LAUNCH_PAD, so it cannot be spawned on at all. e2e/fixtures/systems/892-spin-pad.json
+# authors the discriminating state instead: an ORBITAL VAB_LAUNCH_PAD on the shipped dock's
+# 300 km shell whose bubble tips about a LOCAL X axis at 2 deg/s. The deck turns under a
+# hull that rides it, so the direction to Kerbin sweeps through the bubble axes at 2 deg/s
+# while the deck's own normal does not move at all.
+#
+# [planelog] grew rdl= with this fix: the vector the +/- radial billboards are actually
+# placed from, alongside the prg=/nrm= it already printed. PLANE_RE requires the field, and
+# run.py's self-test pins that a row missing it -- or carrying a non-number in it -- does
+# not parse into a row at all, so the witness cannot quietly disappear.
+NAME radial-pair-in-a-tipping-bubble
+CLAIM Inside a building bubble whose deck tips, the radial in/out pair tracks the planet instead of the deck.
+KIND invariant
+ARGS --system e2e/fixtures/systems/892-spin-pad.json
+ARGS --startship racer,res/ships/racer.json,Kerbin,pad,site=kerbin_spin_pad
+ARGS --time-accel 2 --timeout 20 --autopilot radial-out --slew-log --plane-log --orbit-interval 5
+LIMIT 70
+EXPECT [planelog]
+EXPECT [slew]
+FORBID error:
+CHECK len(plane) >= 3
+CHECK all(p["frame"] == "bubble" for p in plane)
+# Unit, not a dimensioned state: Billboard::Draw places the icon at 10 * normalize(pos),
+# so a zero vector is a NaN model matrix and anything that is not a direction is a bug in
+# the lift.
+CHECK all(abs(sum(c * c for c in p["rdl"]) - 1.0) < 1e-4 for p in plane)
+# It points at the planet, not along the flight path: the line from the focus body to a
+# hull at periapsis is perpendicular to the conic's prograde (measured 1e-5). A pair built
+# from the deck's horizontal, or from the hull's own axes, fails here instead of looking
+# plausible.
+CHECK all(abs(sum(a * b for a, b in zip(p["prg"], p["rdl"]))) < 0.01 for p in plane)
+# THE TEETH. The deck turns 2 deg/s, so the direction to Kerbin turns with it in the
+# bubble's own axes: 60 deg between this run's first and last rows (measured 1-cos = 0.501
+# over the 30 s between them). A pair glued to the deck normal gives dot = 1, 1-cos = 0.
+CHECK 0.15 < 1.0 - sum(a * b for a, b in zip(plane[0]["rdl"], plane[-1]["rdl"])) < 1.2
+# The same lifted line is what SAS steers at (Vehicle::slewTargetDir's radial pair), so a
+# hull on a tipping deck can keep pointing at Kerbin: the [slew] target itself sweeps 80
+# deg across this run, and once the slew settles the angle error holds at 0.0017 rad.
+CHECK all(s["mode"] == "radial-out" for s in slew)
+CHECK all(s["E"] < 0.05 for s in slew if s["t"] > 20.0)
+# What this case does NOT witness, on purpose: no row-by-row join between [planelog] and
+# [slew] -- the planelog cadence is --orbit-interval and the slew cadence is 10 Hz, so a
+# join would be a race (the #900 lesson). And the shipped beds (flight/863, 856, 857) stay
+# green without witnessing anything here: at kerbin_dock the two directions coincide, so
+# only this fixture's tipping deck separates them.
+# MUTATION: putting updateShipView's radial_hat back to normalize(view.pos) leaves rdl
+# pinned to the deck normal, which reddens the sweep CHECK (tmp/night3/892_mut_sweep.log).

@@ -138,9 +138,7 @@ struct ShipView {
        the conic, so they read this rather than vel: inside the rotating surface
        frame vel is the ground-relative velocity, missing the ground's own
        motion, which tilts the markers off the plane the orbital-plane overlay
-       draws. Radial needs no such lift in a body's inertial or rotating frame --
-       pos is already that frame's -- though a building bubble is a third frame
-       again, whose origin is the building (#892). */
+       draws. */
     glm::dvec3 marker_vel = glm::dvec3(0.0);
     /* Does that velocity have a direction at all, and does the conic have a plane at
        all (#870: orbit.h:conicPrograde, plus the lifted o.h_hat below)? A hull resting
@@ -159,6 +157,22 @@ struct ShipView {
        cross(pos, marker_vel) because a #850 bubble frame measures pos from the
        BUILDING, where that cross product is large, non-zero and points at nothing. */
     glm::dvec3 marker_h_hat = glm::dvec3(0.0);
+    /* The line from the FOCUS BODY to the hull, unit and lifted into this same (render)
+       frame, for the +/- radial pair. A body's inertial and rotating frames share that
+       line, so this is pos normalised there; a #850 building bubble does not -- its
+       origin is the BUILDING, so its pos is the hull's offset from a deck, and a hull
+       parked sideways on a spinning station would swing its radial pair around the deck
+       once a station revolution instead of holding still on the planet (#892;
+       Vehicle::slewTargetDir's radial pair reads the same lift). No SHIPPED bed shows it:
+       an ORBITAL site spawns 50 m along the bubble's own Z (vehicle.cpp:add_vehicle),
+       which for a body-fixed dock is the radial line, so the two answers agree there by
+       construction; e2e/fixtures/systems/892-spin-pad.json authors a pad whose bubble tips
+       sideways, which is what separates them. radial_ok is only "there is a body to point
+       at" -- the radius never vanishes for a ship with a parent -- and unlike the normal
+       this direction needs no floor: measured from the body it is well-conditioned
+       everywhere. */
+    glm::dvec3 marker_radial_hat = glm::dvec3(0.0);
+    bool radial_ok = false;
     /* The ship's velocity relative to the AIR, in this same (render) frame
        (#498). marker_vel is the CONIC's velocity, so inside an atmosphere on a
        rotating body it is mostly the GROUND's own motion: Kerbin carries the

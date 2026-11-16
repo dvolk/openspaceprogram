@@ -211,7 +211,10 @@ PLANE_RE = re.compile(
     # carries nan instead matches NEITHER branch, so it stays a dropped row that
     # #408's note names.
     r"(?:prg=\(([-\d.]+),([-\d.]+),([-\d.]+)\)|prg=-)\s+"
-    r"(?:nrm=\(([-\d.]+),([-\d.]+),([-\d.]+)\)|nrm=-)"
+    r"(?:nrm=\(([-\d.]+),([-\d.]+),([-\d.]+)\)|nrm=-)\s+"
+    # rdl is the +/- radial pair (#892). No dash arm: the line from the focus body to
+    # the hull always exists, so a row without it is a printer that regressed.
+    r"rdl=\(([-\d.]+),([-\d.]+),([-\d.]+)\)"
 )
 XFER_RE = re.compile(
     r"\[xferlog\]\s+t=([\d.]+)s\s+target=\"([^\"]*)\"\s+"
@@ -1171,7 +1174,7 @@ def parse_plane(out):
     rows = []
     for m in PLANE_RE.finditer(out):
         (t, frame, plane_name, inc, ox, oy, oz, rx, ry, rz,
-         nx, ny, nz, ticks, px, py, pz, sx, sy, sz) = m.groups()
+         nx, ny, nz, ticks, px, py, pz, sx, sy, sz, dx, dy, dz) = m.groups()
         rows.append({
             "t": float(t), "frame": frame, "plane": plane_name,
             "inc": float(inc),
@@ -1188,6 +1191,12 @@ def parse_plane(out):
             # than pointing at wherever that jitter happens to fall.
             "prg": None if px is None else (float(px), float(py), float(pz)),
             "nrm": None if sx is None else (float(sx), float(sy), float(sz)),
+            # The radial pair (#892): the line from the focus body to the hull, unit,
+            # lifted into the frame the row says it is drawing in. In a bubble frame this
+            # is NOT the hull's position in that frame -- the bubble's origin is the
+            # building, so what that position points at depends on where the building
+            # parked the hull, not on where the planet is.
+            "rdl": (float(dx), float(dy), float(dz)),
         })
     return rows
 
@@ -2912,7 +2921,8 @@ def self_test():
                       'n_orb=(0.000000,1.000000,0.000000) '
                       'n_ref=(0.000000,1.000000,0.000000) '
                       'node=(0.000000,0.000000,1.000000) ticks=drawn '
-                      'prg=(-0.500000,0.866025,0.000000) nrm=(0.000000,1.000000,0.000000)')
+                      'prg=(-0.500000,0.866025,0.000000) nrm=(0.000000,1.000000,0.000000) '
+                      'rdl=(0.866025,0.000000,0.500000)')
     dashed_plane_row = good_plane_row.replace(
         'prg=(-0.500000,0.866025,0.000000) nrm=(0.000000,1.000000,0.000000)', 'prg=- nrm=-')
     if PLANE_RE.match(good_plane_row) is None:
@@ -2921,6 +2931,15 @@ def self_test():
     if len(prow) != 1 or prow[0]["prg"] != (-0.5, 0.866025, 0.0) \
             or prow[0]["nrm"] != (0.0, 1.0, 0.0):
         fails.append("parse_plane lost a numeric prg=/nrm= (%r)" % (prow,))
+    # #892: the radial pair's direction rides at the end of the row, so a line printed
+    # without it (or with a non-number in it) must not parse into a row with a silent
+    # hole where the marker direction belongs.
+    if prow[0]["rdl"] != (0.866025, 0.0, 0.5):
+        fails.append("parse_plane lost the rdl= triplet (%r)" % (prow,))
+    if PLANE_RE.match(good_plane_row.replace(" rdl=(0.866025,0.000000,0.500000)", "")) is not None:
+        fails.append("PLANE_RE matched a [planelog] row with no rdl= field")
+    if PLANE_RE.match(good_plane_row.replace("rdl=(0.866025", "rdl=(-nan")) is not None:
+        fails.append("PLANE_RE matched a [planelog] row carrying rdl=-nan")
     drow = parse_plane(dashed_plane_row)
     if len(drow) != 1 or drow[0]["prg"] is not None or drow[0]["nrm"] is not None:
         fails.append("parse_plane did not read a dashed prg=/nrm= as None (%r)" % (drow,))
