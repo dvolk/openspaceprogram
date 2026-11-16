@@ -2741,8 +2741,10 @@ void Vehicle::powerTick(double h) {
        one that refills and dries again does, because the toast consumes the flag. The
        `cost > 0.0` term keeps the notice honest: what the toast has to say is that the
        drums are cut, so a hull with none (or with them switched off) has nothing to
-       report. */
-    if(hasEC && cost > 0.0 && ecCharge > 0.0 && ecCharge + netWh <= 0.0) {
+       report. No `hasEC` term: the charge is the sum of the parts' EC resources
+       (getPower), so a hull without a store reads 0 here and cannot cross anything --
+       it starts empty. */
+    if(cost > 0.0 && ecCharge > 0.0 && ecCharge + netWh <= 0.0) {
         ec_dry_notice_ = true;
     }
 }
@@ -7226,11 +7228,15 @@ RailEnd Vehicle::railAdvance(double t, const double step) {
    charge pinned at 12000.0 Wh for the whole warp, then falling at the printed 301.6 W
    the moment the hull was back under physics. One hop per call: `step` is this tick's
    sim advance, so the Wh is what the substep loop would have spent.
-   Bill AFTER the advance, and only while the hull is STILL on rails: a hop that ends on
-   air calls leaveRails(), and the substep loop bills the same step for the hull it just
-   took on, so billing here as well would charge a re-entry twice. A step of 0 is
-   Game::recoverActive re-homing a hull from the UI -- no time passed, so the gate is
-   not re-decided by a UI action.
+   Bill the hop the hull SPENT on rails, not the one it happens to land in: `railAdvance`
+   clears `onRails` when the conic reaches the air, and a rails-warp tick never runs the
+   substep loop (tick.cpp picks one branch or the other), so a guard on the POST-advance
+   `onRails` gave the landing hop -- `g.dt * time_accel` of sim, 500 s at warp 10000x --
+   to nobody. Measured: `power_test` met the atmosphere 41.9 Wh lighter than the watts in
+   its own rows say, and a hull that warps all the way down gets exactly one such hop
+   (#898). A hop that ends parked on the ground was always billed, because RailEndGround
+   returns above without leaving the rails. A step of 0 is Game::recoverActive re-homing
+   a hull from the UI -- no time passed, so the gate is not re-decided by a UI action.
    The wheels' term drops out inside powerTick: `actuatorsEngaged()` asks `mixerRuns()`,
    and there is no control pass out here, so a hull is not charged for drums it never
    turned even with a slew still engaged from before the warp. The GATE still weighs
@@ -7240,8 +7246,11 @@ RailEnd Vehicle::railAdvance(double t, const double step) {
    One honest limit: the gate's verdict is the charge at the hop's START, so at extreme
    warp the readout can call a hull POWERED for one hop after its pool went dry mid-hop. */
 RailEnd Vehicle::railsTick(double t, const double step) {
+    /* The flag has to be read BEFORE the advance: railAdvance() clears it on the hop
+       that meets the air, and that hop is the sim time the hull spent coasting. */
+    const bool spent_on_rails = onRails;
     const RailEnd e = railAdvance(t, step);
-    if(onRails && step > 0.0) { powerTick(step); }
+    if(spent_on_rails && step > 0.0) { powerTick(step); }
     return e;
 }
 

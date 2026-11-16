@@ -1411,17 +1411,19 @@ void tick(Game &g) {
            the hull can climb back out on its own: with the generator under the air it
            cannot, which is the difference between "wait a minute" and "this hull needs a
            reactor". One notice per crossing (Vehicle::takeEcDryNotice), so a hull parked
-           at empty since a hop does not shout every frame. */
+           at empty since a hop does not shout every frame. Toasts draw in one unwrapped
+           line, so both spellings stay under 70 characters with a 10-character hull name
+           -- the Systems window's `Status:` row (#649) is the durable version of this. */
         for(auto *s : vehicles) {
             if(!s->takeEcDryNotice()) { continue; }
             double gen = 0.0, constDraw = 0.0;
             s->getPower(&gen, &constDraw, nullptr, nullptr);
             if(gen > constDraw) {
-                g.toast("EC dry: '%s' ran out of charge -- wheels cut until "
-                        "the pool recharges", s->displayName().c_str());
+                g.toast("EC dry on '%s': wheels cut until the pool "
+                        "recharges", s->displayName().c_str());
             } else {
-                g.toast("EC dry: '%s' ran out of charge -- wheels cut, and "
-                        "nothing aboard recharges it", s->displayName().c_str());
+                g.toast("EC dry on '%s': wheels cut, nothing aboard "
+                        "recharges them", s->displayName().c_str());
             }
         }
 

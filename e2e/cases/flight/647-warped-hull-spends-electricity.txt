@@ -72,8 +72,8 @@ CHECK all(r["active"] == 0.0 for r in power)
 # is under its air, so the pool can never climb back and the latch never re-arms -- the
 # wording has to say that, because "wheels cut until the pool recharges" would promise a
 # rescue that is not coming.
-CHECK any(t.startswith("EC dry: 'power_test'") and "nothing aboard recharges it" in t for t in toast)
+CHECK any(t.startswith("EC dry on 'power_test'") and "nothing aboard recharges them" in t for t in toast)
 # Once, not per hop: the hull sits dry for the rest of this run (the >= 2 dry rows above),
 # so a notice armed on the STATE rather than the crossing would shout all the way to the
 # ground and teach the player to ignore it.
-CHECK len([t for t in toast if t.startswith("EC dry: ")]) == 1
+CHECK len([t for t in toast if t.startswith("EC dry on ")]) == 1

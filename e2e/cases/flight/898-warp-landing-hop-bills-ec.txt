@@ -1,0 +1,31 @@
+# A rail hop is sim time, and sim time costs Wh (#647). The hop that does NOT cost
+# anything is the hop that ENDS the rails: railAdvance() clears `onRails` when the conic
+# meets the atmosphere, and railsTick's guard read the flag AFTER the advance -- while the
+# rails-warp branch of tick.cpp never runs the substep loop that might have billed the
+# hull instead. So the landing hop belonged to no biller at all: `power_test` crossed the
+# top of Kerbin's air 4.2 Wh short of what its own rows print (a 50 s hop at the 301.6 W
+# this hull's gen and air imply), and every warp-down lands with one such free hop.
+#
+# Warp 1000x, deliberately. The endpoint test shares the SoI test's blind spot (#164), and
+# the ellipse-apo bed is ~3.9 ks around, so a 500 s hop (10000x) can jump the whole ~85 km
+# air shell and park on the ground instead. A RailEndGround hop never left the rails, so it
+# was always billed: at 10000x this case would pass with the bug back in.
+NAME warp-landing-hop-bills-ec
+CLAIM The warp hop that reaches the atmosphere pays for the sim time it spent coasting: the watts-times-seconds the warped rows show holds across the landing hop, not only between them.
+KIND invariant
+ARGS --timeout 6 --startship power_test,res/ships/power_test.json,Kerbin,ellipse-apo
+ARGS --time-accel 1000 --power-log
+EXPECT [powerlog]
+EXPECT Rails: 'power_test' entered the atmosphere, warp 1x
+FORBID error:
+FORBID FAILED
+# The premises: the run really warped (rows minutes apart) and the rows below really are
+# warped ones, so a flat charge cannot pass by being unbilled at both ends.
+CHECK max(b["t"] - a["t"] for a, b in zip(power, power[1:])) > 10.0
+CHECK len([1 for a, b in zip(power, power[1:]) if b["t"] - a["t"] > 1.0]) >= 3
+# Every span of warped rows pays watts x seconds, the landing hop included. Spans under a
+# second are off-rails physics -- there the substep loop is the biller and flight/377 pins
+# the identity. Rows at an empty pool are skipped because a clamped charge is not a slope.
+# The band is the log's own print resolution (%.1f Wh at both ends, 0.1 W on gen): with the
+# bug the span that ends at the air is 4.2 Wh light, 30x the band.
+CHECK all(abs((a["charge"] - b["charge"]) - (a["const_draw"] + a["active"] - a["gen"]) * (b["t"] - a["t"]) / 3600.0) <= 0.15 for a, b in zip(power, power[1:]) if b["t"] - a["t"] > 1.0 and a["charge"] > 0.0 and b["charge"] > 0.0)

@@ -49,7 +49,9 @@
 //   * the rails path: a hull coasting on its conic is billed once per WARP HOP,
 //     by railsTick itself (#647) -- the air bills and the RTG credits, the drums
 //     do not, because there is no control pass out there; the bill runs even when
-//     the park is frozen, and not at all for a step of 0 or a hull under physics;
+//     the park is frozen, and not at all for a step of 0 or a hull that was off
+//     rails for the whole hop -- the flag is read before railAdvance() so the hop
+//     that lands in the air is still billed (#898);
 //     the brown-out latch keeps running across the warp, and both of its
 //     thresholds are durations, so a minute-long hop cannot raise the cut;
 //   * the dry-pool notice (#652): armed by the one substep or hop that empties the pool,
@@ -433,8 +435,11 @@ static void test_rails_step_does_not_move_the_cut() {
    bill runs BEFORE the railFrozen return, so a hull a warp parked on the ground still
    spends the air -- it is off the substep loop like every other railed hull. It does not
    run for a step of 0, which is Game::recoverActive re-homing a hull from the UI with no
-   time passed, nor for a hull that is not on rails, which the substep loop bills: billing
-   that one here too is how a hop that reached the air mid-tick paid for itself twice. */
+   time passed, nor for a hull that was not on rails for this hop -- off-rails hulls ride
+   the substep loop, which is in the other branch of tick.cpp's warp test and so cannot
+   meet a warped hop. The flag is read BEFORE railAdvance() for exactly that reason: the
+   hop that reaches the air is the sim time the hull coasted, and nothing else bills it
+   (#898, pinned end to end by flight/898). */
 static void test_rails_park_bills_per_hop() {
     printf("== Rails: railsTick bills the hop, frozen park included ==\n");
     Ship s; s.v = new Vehicle;
