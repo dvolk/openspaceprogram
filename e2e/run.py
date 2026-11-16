@@ -591,6 +591,9 @@ SHAKE_RE = re.compile(
 # poles. hi= never dashes -- it is the turntable's live +side stop, the number
 # pin= compares against, so a case can tell "held at the stop" from "past a
 # stop that moved" (pitch > hi never happens: ComputeView() pulls it back).
+# pan=/aim= are the #919 aim offset: panning moves no part of the position, so a
+# case pins a drag as aim moving while dist/yaw/pitch/camh do not. mmb= is the
+# MMB-drag gate in events.cpp, the pan twin of rmb=.
 CAM_RE = re.compile(
     r"\[camlog\]\s+t=([\d.]+)s\s+mode=(\w+)\s+focus=\"([^\"]*)\"\s+"
     r"yaw=([-+\d.]+) rad\s+pitch=([-+\d.]+) rad\s+dist=([-+\d.]+) m\s+"
@@ -603,7 +606,9 @@ CAM_RE = re.compile(
     r"gf=(?:([-+]\d+\.\d+)|-)\s+"
     r"camh=(?:([-+\d.]+) m|-)\s+"
     r"hi=([-+\d.]+) rad\s+"
-    r"pin=(hi|lo|-)\s+rmb=(\d)\s+cap=(\d)"
+    r"pan=(?:\[([-+\d.]+) ([-+\d.]+)\]|-)\s+"
+    r"aim=(?:\[([-+\d.]+) ([-+\d.]+)\]|-)\s+"
+    r"pin=(hi|lo|-)\s+rmb=(\d)\s+mmb=(\d)\s+cap=(\d)"
 )
 TERRAIN_RE = re.compile(
     r"\[terrain\]\s+t=([\d.]+)s\s+body=\"([^\"]*)\"\s+patches=(\d+)\s+"
@@ -1663,8 +1668,10 @@ def parse_cam(out):
     for m in CAM_RE.finditer(out):
         (t, mode, focus, yaw, pitch, dist,
          fx, fy, fz, ux, uy, uz, lvx, lvy, lvz, roll, pole, ax1, gf, camh, hi,
-         pin, rmb, cap) = m.groups()
+         pany, panp, aimx, aimy, pin, rmb, mmb, cap) = m.groups()
         lv = None if lvx is None else (num(lvx), num(lvy), num(lvz))
+        pan = None if pany is None else (float(pany), float(panp))
+        aim = None if aimx is None else (float(aimx), float(aimy))
         rows.append({
             "t": float(t), "mode": mode, "focus": focus,
             "yaw": float(yaw), "pitch": float(pitch), "dist": float(dist),
@@ -1680,8 +1687,12 @@ def parse_cam(out):
             # The live +side stop: pitch never exceeds it, so pin == "hi" means
             # pitch == hi and a case can say so numerically.
             "hi": float(hi),
+            # #919: pan is the aim offset in rad, aim where that leaves the
+            # focus on screen in deg (+x right, +y up). Dashed outside orbit.
+            "pan": pan,
+            "aim": aim,
             "pin": pin,
-            "rmb": int(rmb), "cap": int(cap),
+            "rmb": int(rmb), "mmb": int(mmb), "cap": int(cap),
         })
     return rows
 

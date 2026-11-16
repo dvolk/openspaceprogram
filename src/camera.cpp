@@ -1,6 +1,7 @@
 #include "camera.h"
 
 #include <algorithm>
+#include <cassert>
 #include <cmath>
 #include <numbers>
 
@@ -106,6 +107,54 @@ void Camera::clampOrbitPitch() {
     if (orbitPitch < -kPitchLimit) { orbitPitch = -kPitchLimit; }
 }
 
+double Camera::panPxPerRad() const {
+    /* Pixels of drag per radian of pan, measured at the focus: the screen's
+       own scale, so the subject moves with the cursor instead of racing it.
+       Same identity GeoPatch uses for its LOD budget (terragen.h
+       lodPxPerRad): px per rad = (viewport_h/2) / tan(fov/2) -- vertical fov,
+       and the horizontal scale is identical because tan(half-angle) scales
+       with aspect exactly as the viewport width does. First order by
+       construction (the projection is a tan, the pan is an angle): at fov
+       60's frame edge the subject is ~9% eager, which is in the noise for a
+       drag and keeps the gesture linear rather than fighting tan at the end
+       of every stroke. */
+    const double h = (double)std::max(1, viewport_h);
+    return h * 0.5 / std::tan((double)fov * 0.5);
+}
+
+void Camera::clampPan() {
+    const double limX = panLimitX(), limY = panLimitY();
+    panYaw = std::clamp(panYaw, -limX, limX);
+    panPitch = std::clamp(panPitch, -limY, limY);
+    /* Two independent axis clamps describe a rectangle whose CORNER is further
+       off the view line than either edge: at fov 120 deg the corner is
+       1.68 rad, which points the camera past sideways -- the focus would go
+       behind the camera and aim= would read a mirrored position the player
+       cannot chase back. Pull any corner back onto the circle. */
+    const double r = std::hypot(panYaw, panPitch);
+    if (r > kPanCircleLimit) {
+        const double k = kPanCircleLimit / r;
+        panYaw *= k;
+        panPitch *= k;
+    }
+}
+
+void Camera::PanPx(double dxPx, double dyPx) {
+    if (mode != CAM_ORBIT) { return; }
+    const double k = 1.0 / panPxPerRad();
+    panYaw += dxPx * k;
+    panPitch += dyPx * k;
+    clampPan();
+}
+
+void Camera::resetPan() {
+    // Orbit only, like PanPx: a pan left behind a Free-mode excursion would
+    // otherwise reappear when the player drops back onto the turntable.
+    if (mode != CAM_ORBIT) { return; }
+    panYaw = 0.0;
+    panPitch = 0.0;
+}
+
 glm::dvec3 Camera::orbitOffset() const {
     const double cp = std::cos(orbitPitch), sp = std::sin(orbitPitch);
     const double cy = std::cos(orbitYaw),   sy = std::sin(orbitYaw);
@@ -119,12 +168,36 @@ void Camera::ComputeView() {
         // stop is (#876). Enforce it here rather than leaving the view
         // underground until the player happens to pan.
         clampOrbitPitch();
+        // Same reason for the aim offset: fov is live (Settings slider, --fov).
+        clampPan();
         const glm::dvec3 off = ref * orbitOffset() * distance;
         pos = focusPoint + off;
-        forward = glm::normalize(-off);
+        const glm::dvec3 refUp = ref * glm::dvec3(0, 0, 1);
+        glm::dvec3 dir = -off;
+        if (panYaw != 0.0 || panPitch != 0.0) {
+            /* Rotate the look direction in the UN-PANNED view basis. right is
+               cross(forward, up) -- the same right buildView() derives -- which
+               makes a positive panYaw put the subject right and a positive
+               panPitch put it down: the image follows the cursor. Rotating the
+               aim here rather than moving focusPoint is what keeps every clamp
+               about the POSITION valid (#876's deck stop included) while the
+               subject slides around the frame (#919). */
+            const glm::dvec3 f0 = glm::normalize(dir);
+            /* |cross(f0, refUp)| = cos(orbitPitch), and clampOrbitPitch() keeps
+               orbitPitch inside kPitchLimit's 87 deg, so the smallest this can
+               be is 0.0509 -- the pan never touches f0, so it cannot bring the
+               view line near the turntable's pole either. A silent fallback here
+               would only hide a broken pitch clamp. */
+            glm::dvec3 right = glm::cross(f0, refUp);
+            assert(glm::dot(right, right) > 1e-12);
+            right = glm::normalize(right - f0 * glm::dot(right, f0));
+            const glm::dvec3 up0 = glm::cross(right, f0);
+            dir = glm::dmat3(glm::rotate(panYaw, up0))
+                * (glm::dmat3(glm::rotate(panPitch, right)) * f0);
+        }
+        forward = glm::normalize(dir);
         // Guard the degenerate projection at the pole (Pitch clamps away
         // from it, but be safe).
-        const glm::dvec3 refUp = ref * glm::dvec3(0, 0, 1);
         glm::dvec3 up = refUp - forward * glm::dot(refUp, forward);
         if (glm::dot(up, up) < 1e-12) {
             up = (std::abs(forward.y) < 0.99) ? glm::dvec3(0, 1, 0) : glm::dvec3(1, 0, 0);

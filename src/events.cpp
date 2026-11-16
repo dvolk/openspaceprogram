@@ -307,6 +307,7 @@ void flightKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
         if(g.camera->mode == CAM_ORBIT) {
             g.focusBody = (g.focusBody + 1) % (int)g.focusTargets.size();
             g.camera->Follow(g.focusWorldPos(g.focusBody));
+            g.camera->resetPan();   // the old subject's framing is meaningless here (#919)
             double d = (g.focusTargets[g.focusBody].body == nullptr)
                 ? 50.0
                 : (double)g.focusTargets[g.focusBody].body->radius * 3.0;
@@ -705,6 +706,14 @@ void poll_events(Game &g) {
                 g.rmbDownMs = SDL_GetTicks();
                 g.rmbMoved = 0;
             }
+            // MMB over 3D pans the AIM: the camera keeps its place and the
+            // subject slides in the frame (#919).
+            if(ev.button.button == SDL_BUTTON_MIDDLE &&
+               !ImGui::GetIO().WantCaptureMouse) {
+                g.mmbCam = true;
+                g.mmbDownMs = SDL_GetTicks();
+                g.mmbMoved = 0;
+            }
         }
         if(ev.type == SDL_EVENT_MOUSE_BUTTON_UP) {
             if(ev.button.button == SDL_BUTTON_RIGHT) {
@@ -723,6 +732,24 @@ void poll_events(Game &g) {
                     }
                 }
             }
+            if(ev.button.button == SDL_BUTTON_MIDDLE) {
+                // The same click test as RMB: still and brief is a tap, which
+                // recentres the subject. MMB clicks mean nothing otherwise.
+                if(g.mmbCam && !ImGui::GetIO().WantCaptureMouse
+                   && g.mmbMoved < kPickClickPx
+                   && SDL_GetTicks() - g.mmbDownMs < kPickClickMs) {
+                    // Only say something if there was something to undo -- the
+                    // gesture is invisible until the subject is off-centre, and
+                    // a toast on every accidental click would be noise.
+                    const bool panned = g.camera->panYaw != 0.0
+                                     || g.camera->panPitch != 0.0;
+                    g.camera->resetPan();
+                    if(panned) {
+                        g.toast("Camera: aim centred");
+                    }
+                }
+                g.mmbCam = false;
+            }
         }
         if(ev.type == SDL_EVENT_MOUSE_MOTION) {
             // The VAB polls this for hover/place/select (vabUpdate), so it has
@@ -732,8 +759,13 @@ void poll_events(Game &g) {
             if(g.rmbCam && !ImGui::GetIO().WantCaptureMouse) {
                 g.rmbMoved += std::abs(ev.motion.xrel)
                             + std::abs(ev.motion.yrel);
-                g.camera->RotateY(-ev.motion.xrel / 200.0f);
-                g.camera->Pitch(ev.motion.yrel / 200.0f);
+                g.camera->RotateY(-ev.motion.xrel / Camera::kCamOrbitPx);
+                g.camera->Pitch(ev.motion.yrel / Camera::kCamOrbitPx);
+            }
+            if(g.mmbCam && !ImGui::GetIO().WantCaptureMouse) {
+                g.mmbMoved += std::abs(ev.motion.xrel)
+                            + std::abs(ev.motion.yrel);
+                g.camera->PanPx(ev.motion.xrel, ev.motion.yrel);
             }
         }
         if(ev.type == SDL_EVENT_MOUSE_WHEEL) {

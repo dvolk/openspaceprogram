@@ -30,6 +30,10 @@ https://github.com/dvolk/openspaceprogram
 ### Mouse
 
 - Right-drag - orbit the camera around what it is looking at
+- Middle-drag - slide *where* the camera aims without moving it: the subject
+  follows the cursor, up to the edge of the frame. Orbiting and zooming keep
+  that framing, so it is the screenshot key.
+- Middle-click - put the subject back dead centre
 - Wheel - zoom
 - Right-click a part - open that part's window (board a capsule,
   run an experiment, store or pick up cargo)

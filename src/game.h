@@ -903,6 +903,12 @@ struct Game {
     int rmbDownX = 0, rmbDownY = 0;
     Uint32 rmbDownMs = 0;
     int rmbMoved = 0;               // |xrel| + |yrel| while held
+    /* MMB held over 3D: pans the camera's AIM, which does not move the camera
+       (#919). Same click/drag split as RMB -- the same kPickClick thresholds --
+       so a tap there means "put the subject back in the middle". */
+    bool mmbCam = false;
+    Uint32 mmbDownMs = 0;
+    int mmbMoved = 0;
     /* Cursor position and the LMB edge, fed by the EVENT queue (events.cpp)
        rather than polled from SDL_GetMouseState. The poll reads the DEVICE,
        which a pushed event never updates, so --sim-mouse could move the camera

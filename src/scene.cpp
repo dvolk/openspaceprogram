@@ -59,6 +59,7 @@ void spaceCenterEnter(Game &g) {
         }
         g.camera->Follow(g.focusWorldPos(g.focusBody));
         g.camera->distance = 2.0 * g.home->radius;
+        g.camera->resetPan();   // a framing carried over from the ship is meaningless here (#919)
         g.camera->ComputeView();   // a sane pose immediately, not next frame
     }
     printf("[spacecenter] entered (live sim)\n");
@@ -170,6 +171,8 @@ CameraSnapshot captureCamera(const Game &g) {
     s.distance = g.camera->distance;
     s.yaw = g.camera->orbitYaw;
     s.pitch = g.camera->orbitPitch;
+    s.panYaw = g.camera->panYaw;
+    s.panPitch = g.camera->panPitch;
     // The focus as a BODY, not an index: focusTargets shifts when the "ship"
     // entry is inserted or dropped.
     s.focusBody =
@@ -196,6 +199,8 @@ void restoreCamera(Game &g, const CameraSnapshot &s) {
         g.camera->up = s.up;
         g.camera->orbitYaw = s.yaw;
         g.camera->orbitPitch = s.pitch;
+        g.camera->panYaw = s.panYaw;
+        g.camera->panPitch = s.panPitch;
         g.camera->distance = s.distance;
         g.camera->mode = CAM_FIRST;
         g.camera->ComputeView();
@@ -203,6 +208,8 @@ void restoreCamera(Game &g, const CameraSnapshot &s) {
         g.camera->mode = CAM_ORBIT;
         g.camera->orbitYaw = s.yaw;
         g.camera->orbitPitch = s.pitch;
+        g.camera->panYaw = s.panYaw;
+        g.camera->panPitch = s.panPitch;
         g.camera->distance = s.distance;
         g.camera->Follow(g.focusWorldPos(g.focusBody));
         g.camera->ComputeView();   // sane pos/forward/up immediately

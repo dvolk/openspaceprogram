@@ -1,0 +1,75 @@
+# #919: MMB drags the camera's AIM, so the ship can sit off-centre in frame.
+# The turntable keeps its position exactly -- distance, yaw, pitch and camh are
+# untouched -- and only the look direction rotates, by an angle offset applied
+# in the turntable's own basis. --cam-log's pan= is that offset in rad and aim=
+# is where it leaves the focus on screen (deg off the view line, +x right, +y
+# up). The window is pinned at 800x600 and --fov 60 because the drag rate is
+# the SCREEN's scale: px per rad = (viewport_h/2)/tan(fov/2) = 300/0.5774 =
+# 519.6, so the subject moves under the cursor rather than at some made-up rate.
+# Gestures: park the cursor; MMB-drag +200,+100 px; MMB-drag a second +0,+2400
+# px; an RMB orbit of +200 px (pure yaw); a 0-duration MMB press; the same
+# +200,+100 drag again; then G (CycleTarget).
+#
+#   pan=[+0.38490 +0.19245] = exactly 200 and 100 px at 519.6 px/rad, so a
+#     swallowed or truncated drag shows up immediately, and the two axes carry
+#     the same rate (the drag was 2:1, the pan came out 2:1).
+#   aim=[+22.4 -11.0]: the ship went RIGHT and DOWN under a right-and-down
+#     drag. That sign is the whole feel of the feature ("grab the image"), so it
+#     is pinned numerically rather than left to someone's eye.
+#   The 2400 px stroke cannot run away: panPitch stops at +0.52360 = fov/2, and
+#     aim reads -30.0 deg -- the bottom edge of the frame. The subject can be put
+#     AT the border but never off-screen, where a player would have to hunt for
+#     it. (The horizontal stop is fov/2 x aspect, which depends on the window,
+#     so the gesture pins the vertical one, which does not.)
+#   yaw/pitch/dist/camh unchanged across both pan gestures: panning moves no
+#     part of the position, which is also why #876's deck stop still governs the
+#     camera. fwd does change -- it is the look line, not the place.
+#   After the pure-yaw RMB orbit (yaw -1.00000, fwd -0.8001 -0.3227 +0.5056 ->
+#     -0.7048 +0.5022 +0.5010) aim is STILL +25.1 -30.0. That is the angular
+#     model over the translated-aim alternative: the subject holds its PIXEL
+#     place while the world orbits behind it. A translated aim point would drift
+#     it back toward centre.
+#   roll stays 0 through all of it, including at the clamp: the up still comes
+#     from ref projected off the panned forward, so an aim offset never rolls
+#     the image.
+#   The 0-duration MMB press at t=4000 zeroes pan and aim: a tap is a recentre,
+#     using the same still-and-brief test as an RMB pick (kPickClickPx 6 px /
+#     kPickClickMs 400 ms). The drag after it pans again -- a tap does not latch
+#     the gesture off.
+#   G hands the camera a new subject, and the framing goes with the old one:
+#     focus changes and pan is back to 0 (mmb=0 rows, no gesture).
+NAME mmb-pan-off-centre
+CLAIM An MMB drag pans the camera's aim without moving the camera: the focus sits off-centre at the cursor's rate, stops at the frame edge, holds that place in frame across an orbit, and a tap or a new subject recentres it.
+KIND invariant
+ARGS --timeout 7 --time-accel 1 --startship racer,res/ships/racer.json,Kerbin,pad --cam-log --orbit-interval 0.25 --width 800 --height 600 --fov 60
+ARGS --sim-mouse 1000,0,900,500,0
+ARGS --sim-mouse 1200,600,1100,600,MMB
+ARGS --sim-mouse 2000,600,1100,3000,MMB
+ARGS --sim-mouse 3000,600,1300,3000,RMB
+ARGS --sim-mouse 4000,0,1300,3000,MMB
+ARGS --sim-mouse 4500,600,1500,3100,MMB
+ARGS --sim-press 5200,0,G
+EXPECT [camlog]
+CHECK all(r["mode"] == "orbit" and r["pan"] is not None and r["aim"] is not None for r in cam)
+CHECK all(abs(r["pan"][0]) < 1e-9 and abs(r["pan"][1]) < 1e-9 and abs(r["aim"][0]) < 0.1 for r in cam if r["t"] < 1.25)
+# The gate was armed for the stroke, or the case would be watching nothing.
+CHECK all(r["mmb"] == 1 for r in cam if 1.35 < r["t"] < 1.75)
+CHECK all(abs(r["pan"][0] - 0.384900) < 1e-4 and abs(r["pan"][1] - 0.192450) < 1e-4 for r in cam if 1.35 < r["t"] < 2.00)
+CHECK all(abs(r["aim"][0] - 22.4) < 0.2 and abs(r["aim"][1] + 11.0) < 0.2 for r in cam if 1.35 < r["t"] < 2.00)
+# The frame-edge clamp, and the stroke that overreaches it leaves x alone.
+CHECK all(abs(r["pan"][1] - 0.523599) < 1e-4 and abs(r["pan"][0] - 0.384900) < 1e-4 for r in cam if 2.15 < r["t"] < 3.00)
+CHECK all(abs(r["aim"][1] + 30.0) < 0.2 and r["aim"][0] > 20.0 for r in cam if 2.15 < r["t"] < 3.00)
+# The corner of the two axis clamps is still inside the composed circle, so the
+# focus is never spun behind the camera.
+CHECK all(r["pan"][0] * r["pan"][0] + r["pan"][1] * r["pan"][1] < 1.44 for r in cam)
+CHECK all(abs(r["yaw"]) < 1e-9 and abs(r["pitch"]) < 1e-9 and abs(r["dist"] - 10.0) < 1e-6 for r in cam if r["t"] < 3.00)
+CHECK max(r["camh"] for r in cam if r["t"] < 3.0) - min(r["camh"] for r in cam if r["t"] < 3.0) < 1e-3
+CHECK max(abs(a["fwd"][0] - b["fwd"][0]) + abs(a["fwd"][1] - b["fwd"][1]) + abs(a["fwd"][2] - b["fwd"][2]) for a in cam if a["t"] < 1.25 for b in cam if 2.15 < b["t"] < 3.00) > 0.5
+CHECK any(abs(r["yaw"] + 1.0) < 1e-4 and r["mmb"] == 0 for r in cam if 3.20 < r["t"] < 4.05)
+CHECK all(abs(r["aim"][0] - 25.1) < 0.2 and abs(r["aim"][1] + 30.0) < 0.2 for r in cam if 2.15 < r["t"] < 4.05)
+CHECK all(abs(r["pan"][0]) < 1e-9 and abs(r["pan"][1]) < 1e-9 and abs(r["aim"][0]) < 0.1 for r in cam if 4.25 < r["t"] < 4.55)
+CHECK all(abs(r["pan"][0] - 0.384900) < 1e-4 and abs(r["pan"][1] - 0.192450) < 1e-4 for r in cam if 4.75 < r["t"] < 5.05)
+CHECK any(r["focus"] != "ship" for r in cam if r["t"] > 5.25)
+CHECK all(abs(r["pan"][0]) < 1e-9 and abs(r["pan"][1]) < 1e-9 for r in cam if r["t"] > 5.30)
+CHECK all(abs(r["roll"]) < 0.5 for r in cam if r["roll"] is not None)
+FORBID error:

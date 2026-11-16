@@ -697,12 +697,14 @@ void refreshWorld(Game &g) {
     refreshShipState(g, com);
 
     /* --cam-log: the camera as this frame left it, so a --sim-mouse drag that
-       never reached the camera cannot pass silently. rmb= and cap= are the
-       gates in events.cpp's mouse handlers: a right-button drag only looks when
-       rmb is armed AND imgui is not capturing the mouse. Under --sim-steps the
-       rows AND the pose replay (the shake steps on the tick, #475); in the
-       wall-clock mode the pose still tracks frame rate, so pin which rows print
-       rather than their numbers. */
+       never reached the camera cannot pass silently. rmb=, mmb= and cap= are
+       the gates in events.cpp's mouse handlers: a right-button drag only looks
+       when rmb is armed AND imgui is not capturing the mouse, and an aim pan
+       likewise needs mmb armed -- so a case can tell "the gesture was swallowed"
+       from "the camera ignored it". Under --sim-steps the rows AND the pose
+       replay (the shake steps on the tick, #475); in the wall-clock mode the
+       pose still tracks frame rate, so pin which rows print rather than their
+       numbers. */
     if(g.args.cam_log) {
         const Uint32 now_ms = g.logClockMs();
         if(g.logDue(kGateCam, now_ms, g.orbit_log_interval_ms)) {
@@ -736,6 +738,19 @@ void refreshWorld(Game &g) {
                  camh  camera height above the horizontal plane THROUGH THE
                        SHIP'S COM. Negative is below that plane, not below the
                        terrain -- a ship's own alt_agl is in [surfinfo].
+                 pan   the aim offset, rad (#919): MMB drags it, a tap zeroes
+                       it. The camera does not move -- this is where it LOOKS,
+                       off the line to the focus. Clamped to the frame edge per
+                       axis (fov/2 and its aspect partner), so the subject can
+                       reach the border but never leave the screen.
+                 aim   where that leaves the focus on screen: its angular offset
+                       from the view line in the camera basis, deg, +x right and
+                       +y up. 0 0 is dead centre. The pan is measured in the
+                       view's own basis, rebuilt every frame, so aim is unchanged
+                       by a yaw orbit or a zoom -- the subject keeps its pixel
+                       place while the world moves behind it -- and it is
+                       unchanged by the hull's pose too, which is what lets a
+                       case pin the gesture rather than the framing.
                lv/roll/pole/camh dash when there is no local vertical to measure
                against (no ship, or a body focus). pole, gf and pin dash in free
                or first person too: there ref and orbitPitch are whatever the
@@ -782,6 +797,30 @@ void refreshWorld(Game &g) {
             } else {
                 snprintf(gf_s, sizeof gf_s, "-");
             }
+            /* #919's pan=/aim=. aim is the focus's offset from the view line in
+               the camera's own basis: camera->right and camera->up come out of
+               buildView orthonormal, and focusPoint is the point the position
+               was built around (shake offset included), so a row that panned
+               reads a moved aim and an UNmoved position -- dist, yaw, pitch and
+               camh all unchanged. */
+            char pan_s[32], aim_s[32];
+            if(orbit) {
+                snprintf(pan_s, sizeof pan_s, "[%+.5f %+.5f]",
+                         camera->panYaw, camera->panPitch);
+                const glm::dvec3 tof = camera->focusPoint - camera->GetPos();
+                if(glm::length2(tof) < 1e-9) {
+                    snprintf(aim_s, sizeof aim_s, "-");
+                } else {
+                    const glm::dvec3 s = glm::normalize(tof);
+                    const double along = glm::dot(s, camera->forward);
+                    snprintf(aim_s, sizeof aim_s, "[%+.1f %+.1f]",
+                             std::atan2(glm::dot(s, camera->right), along) * rad2deg,
+                             std::atan2(glm::dot(s, camera->up), along) * rad2deg);
+                }
+            } else {
+                snprintf(pan_s, sizeof pan_s, "-");
+                snprintf(aim_s, sizeof aim_s, "-");
+            }
             const double hiStop = camera->orbitHiStop();
             if(!orbit) {
                 snprintf(pin_s, sizeof pin_s, "-");
@@ -796,13 +835,15 @@ void refreshWorld(Game &g) {
                    "yaw=%+.5f rad pitch=%+.5f rad dist=%.3f m "
                    "fwd=[%+.4f %+.4f %+.4f] up=[%+.4f %+.4f %+.4f] "
                    "lv=[%s] roll=%s pole=%s ax1=%s gf=%s camh=%s hi=%+.5f rad "
-                   "pin=%s rmb=%d cap=%d\n",
+                   "pan=%s aim=%s pin=%s rmb=%d mmb=%d cap=%d\n",
                    g.time, mode, g.focusTargets[g.focusBody].name,
                    camera->orbitYaw, camera->orbitPitch, camera->distance,
                    camera->forward.x, camera->forward.y, camera->forward.z,
                    camera->up.x, camera->up.y, camera->up.z,
-                   lv_s, roll_s, pole_s, ax1_s, gf_s, camh_s, hiStop, pin_s,
+                   lv_s, roll_s, pole_s, ax1_s, gf_s, camh_s, hiStop,
+                   pan_s, aim_s, pin_s,
                    g.rmbCam ? 1 : 0,
+                   g.mmbCam ? 1 : 0,
                    ImGui::GetIO().WantCaptureMouse ? 1 : 0);
             fflush(stdout);
         }

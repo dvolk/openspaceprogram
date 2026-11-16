@@ -779,6 +779,7 @@ void Game::syncShipFocus() {
             camera->Follow(ship->get_center_of_mass());
             // a kerbal is 0.75 m tall; 50 m would lose it
             camera->distance = ship->isEva() ? 5.0 : 50.0;
+            camera->resetPan();   // the framing belonged to the old subject (#919)
         }
     } else {
         if(!focusTargets.empty() && focusTargets[0].body == nullptr) {
@@ -1500,6 +1501,9 @@ void Game::resetWorld() {
     cam_ground_still = 0.0;
     cam_ground_on = false;
     cam_ground_ship = nullptr;
+    // An aim offset belongs to the ship that framed it, and panYaw lives on the
+    // Camera, which outlives the world (#919).
+    if(camera != nullptr) { camera->resetPan(); }
     syncShipFocus();
     /* The prefix is a frozen e2e anchor, so the function rename did not take it
        with it. EXPECTed by 66, 67, 68, 260, 345; FORBIDden by 90, 102, 262,

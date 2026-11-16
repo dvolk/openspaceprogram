@@ -42,6 +42,7 @@ struct CameraSnapshot {
     glm::dvec3 pos, fwd, up;          // the free-mode pose
     double distance = 10.0;           // orbit radius
     double yaw = 0.0, pitch = 0.0;    // orbit angles
+    double panYaw = 0.0, panPitch = 0.0;   // orbit aim offset (#919)
     TerrainBody *focusBody = nullptr;
 };
 

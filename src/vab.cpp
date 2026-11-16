@@ -1012,6 +1012,7 @@ void vabAimCamera(Game &g) {
     }
     if(g.camera != nullptr) {
         g.camera->toOrbit(g.vab.center);   // also from Free mode
+        g.camera->resetPan();              // the build tree is a new subject (#919)
         g.camera->distance = dist;
     }
     // e2e anchor: "the editor camera followed the tree".

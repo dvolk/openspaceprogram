@@ -1,0 +1,34 @@
+# #919's other half: how far a pan may NOT go.
+# The two aim stops are per axis (fov/2 and atan(tan(fov/2)*aspect)), so their
+# corners sit further off the view line than either edge. At a 120 deg lens the
+# corner is 1.57 rad: the camera would be looking past sideways, the focus
+# behind it, and aim= would report a mirrored position that no amount of
+# dragging brings back. clampPan() therefore pulls any corner onto a circle of
+# kPanCircleLimit = 1.2 rad.
+#
+# One over-reaching MMB stroke (+800,+2400 px at 800x600 -> +1.1631 +1.0472,
+# exactly both axis stops) tests it without needing a second gesture: the row
+# reads the CIRCLE, not the corner.
+#
+#   hypot(pan) = 1.2000 exactly (written squared here: 1.44, and CHECKs have no
+#     math module), and below each axis stop: the guard bit and scaled both
+#     axes together rather than leaving the corner.
+#   aim stays inside +-80 deg on each axis: the focus is still in FRONT of the
+#     camera. Over 90 deg means it went behind -- the failure the guard exists
+#     to prevent, and the reason 1.2 rad (not 90 deg) is the circle.
+#   pan holds still after the stroke (same values for every later row): the
+#     clamp runs in ComputeView() every frame, so a lens change mid-pan pulls
+#     it in rather than leaving a view the new fov cannot show.
+NAME wide-lens-pan-stays-in-front
+CLAIM A pan at a wide lens is capped on a circle, not just per axis, so the focus is never swung behind the camera.
+KIND invariant
+ARGS --timeout 4 --time-accel 1 --startship racer,res/ships/racer.json,Kerbin,pad --cam-log --orbit-interval 0.5 --width 800 --height 600 --fov 120
+ARGS --sim-mouse 1000,0,900,500,0
+ARGS --sim-mouse 1200,600,1700,2900,MMB
+EXPECT [camlog]
+CHECK all(r["pan"] is not None for r in cam)
+CHECK all(abs(r["pan"][0]) < 1e-9 and abs(r["pan"][1]) < 1e-9 for r in cam if r["t"] < 1.1)
+CHECK all(abs(r["pan"][0] * r["pan"][0] + r["pan"][1] * r["pan"][1] - 1.44) < 2e-4 for r in cam if r["t"] > 1.3)
+CHECK all(r["pan"][0] < 1.1631 and r["pan"][1] < 1.0472 for r in cam if r["t"] > 1.3)
+CHECK all(abs(r["aim"][0]) < 80.0 and abs(r["aim"][1]) < 80.0 for r in cam if r["t"] > 1.3)
+FORBID error:
