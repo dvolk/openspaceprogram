@@ -307,25 +307,26 @@ struct MapLabelPass {
 };
 
 // --- Flight map legend (mode 0) -------------------------------------------------
-// Legend glyph shapes. kRing draws the same circle as the map's AN/DN markers, so the
-// legend is not describing a shape the map never draws.
-enum LegSwatch : unsigned char { kLegRect, kLegDot, kLegRing };
-// 8 px: the same width as the dot and ring glyphs (r = 4), so the three shapes read as
-// one size. It also buys back the row a longer word costs -- see legendItemW.
+// Legend glyph shapes: each one is the shape the map actually draws for that kind (see
+// the drawing lambda in drawUIMap), not a generic chip.
+enum LegSwatch : unsigned char { kLegDot, kLegRing, kLegRingDot, kLegLine };
+// 8 px across: the same width as the dot and ring glyphs (r = 4). It also buys back the
+// row a longer word costs -- see legendItemW.
 static constexpr float kLegSwatchPx = 8.0f;
 // Draw order. The colours live with the window palette, resolved by index below, so
 // the row width (which decides wrapping) and the drawing cannot drift apart.
-// Labels are singular and short on purpose: at the default 480 px window the row has
-// ~464 px, and this set measures 436 of it (#885 -- "stations" arrived with buildings
-// and pushed AN/DN onto a second line).
+// At the default 480 px window (464 px of content region, font 14) this set draws 450 px
+// (#885: the station entry that buildings added put AN/DN on a second line at 534). Words
+// are singular where the map shows one of each kind, so the row keeps the project's own
+// vocabulary for the rest: "apsides" is what --ascent-log and the CLI help already say.
 static const struct { const char *label; LegSwatch kind; } kMapLegend[] = {
-    { "you",     kLegRect },
-    { "ship",    kLegRect },
+    { "you",     kLegRingDot },
+    { "ship",    kLegDot },
     { "station", kLegDot },
-    { "xfer",    kLegRect },
-    { "body",    kLegRect },
-    { "minor",   kLegRect },
-    { "apsis",   kLegDot },
+    { "xfer",    kLegLine },
+    { "body",    kLegDot },
+    { "minor",   kLegLine },
+    { "apsides", kLegDot },
     { "AN",      kLegRing },
     { "DN",      kLegRing },
 };
@@ -4722,9 +4723,11 @@ void drawUIMap(Game &g) {
         const float row_h = legend_h + isp;
         const float widget_h = ImGui::GetFrameHeight() + isp;
         int leg_rows = 1;
+        int want_rows = 1;
         if(map_mode == 0) {
             const int room = std::max(1, (int)((avail_h - widget_h) / row_h));
-            leg_rows = std::min(legendRowsFor(avail_w), room);
+            want_rows = legendRowsFor(avail_w);
+            leg_rows = std::min(want_rows, room);
         }
         const float controls_h = (map_mode == 0)
             ? row_h * leg_rows + widget_h
@@ -4815,19 +4818,24 @@ void drawUIMap(Game &g) {
             auto legend = [&](const char *label, ImU32 col, LegSwatch kind) {
                 const ImVec2 p = ImGui::GetCursorScreenPos();
                 const float half = kLegSwatchPx * 0.5f;
-                // Every glyph is kLegSwatchPx across and centred on the same y, so the
-                // square does not read bigger than the dot or ring beside it.
+                // Centred on the row imgui will give this item, not on a literal: at
+                // --font-size 26 and up a fixed 8 px centre rides above the word.
+                const ImVec2 c(p.x + half, p.y + legend_h * 0.5f);
+                // Each glyph is the shape the map draws for this kind, at the size the
+                // legend can afford: your marker is an ink core inside a col_ship ring,
+                // ships/stations/apsides/bodies are filled dots, and xfer/minor are 1 px
+                // rails. A generic chip would name none of them.
                 if(kind == kLegDot) {
-                    dl->AddCircleFilled(ImVec2(p.x + half, p.y + 8.0f), half, col);
+                    dl->AddCircleFilled(c, half, col);
                 } else if(kind == kLegRing) {
-                    // Same glyph as the map's AN/DN markers, so the legend is not
-                    // describing a shape the map never draws.
-                    dl->AddCircle(ImVec2(p.x + half, p.y + 8.0f), half, col, 0, 1.5f);
+                    dl->AddCircle(c, half, col, 0, 1.5f);
+                } else if(kind == kLegRingDot) {
+                    dl->AddCircleFilled(c, half * 0.6f, ink);
+                    dl->AddCircle(c, half, col, 0, 1.5f);
                 } else {
-                    dl->AddRectFilled(ImVec2(p.x, p.y + 8.0f - half),
-                                      ImVec2(p.x + kLegSwatchPx, p.y + 8.0f + half), col);
+                    dl->AddLine(ImVec2(p.x, c.y), ImVec2(p.x + kLegSwatchPx, c.y), col, 1.5f);
                 }
-                ImGui::Dummy(ImVec2(kLegSwatchPx, 16.0f));
+                ImGui::Dummy(ImVec2(kLegSwatchPx, legend_h));
                 // The label belongs to its swatch, so it gets imgui's label gap rather
                 // than the between-items gap (what a Checkbox uses).
                 ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
@@ -4847,6 +4855,7 @@ void drawUIMap(Game &g) {
             // the row from here -- the cursor starts at WindowPadding, not 0, and an
             // un-normalised test wraps one item early.
             const float row_x0 = ImGui::GetCursorPosX();
+            int drawn_rows = 1;
             for(size_t i = 0; i < kMapLegendN; i++) {
                 // The live cursor, not an accumulator: imgui's own spacing is the truth.
                 // The cursor already carries the SameLine gap that precedes this item, so
@@ -4854,10 +4863,17 @@ void drawUIMap(Game &g) {
                 if(i && ImGui::GetCursorPosX() - row_x0
                           + legendItemW(kMapLegend[i].label) > avail_w) {
                     ImGui::NewLine();
+                    ++drawn_rows;
                 }
                 legend(kMapLegend[i].label, leg_col[i], kMapLegend[i].kind);
                 if(i + 1 < kMapLegendN) { ImGui::SameLine(); }
             }
+            /* Two walks of one greedy fit: legendRowsFor above reserves the rows, the live
+               cursor here draws them. The map surface's height came from the reservation,
+               so if the two part company -- a per-entry widget added to one and not the
+               other -- the controls slide over the map. That is #885 again at a bigger
+               font, so pin it rather than trust the comment. */
+            assert(drawn_rows == want_rows);
             // Map plane (half-width) + reset view.
             /* The fourth slot orients the map into the TARGET window's target
                orbit, so the map's dihedral is the plane change to it. It needs a

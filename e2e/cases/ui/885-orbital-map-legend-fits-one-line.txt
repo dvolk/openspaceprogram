@@ -2,20 +2,28 @@ NAME 885-orbital-map-legend-fits-one-line
 CLAIM The orbital map's nine legend entries draw on one line, inside the window, at the default window size.
 KIND invariant
 # #885: the legend row used to sit just inside the default 480 px Orbital Map window, and
-# the station entry that buildings brought (#872) put AN and DN on a second line. The row
-# measured 542 px against 464 of content region (font 14). Fixed by three things that each
-# pay their way: singular labels, an 8 px swatch (the dot and ring glyphs were already 8 px
-# across at r = 4, only the square was 10), and imgui's LABEL gap (ItemInnerSpacing, 4 px)
-# between a swatch and its word instead of the between-items gap (ItemSpacing, 8 px). That
-# measures 436 px against 464 (items 372 + eight 8 px gaps), and the registry agrees: the
-# row runs from x=16 to the DN label's right edge at x=452 in a 480 px window.
+# the station entry that buildings brought (#872) pushed AN and DN onto a second line. The
+# nine entries need 534 px on one line against 464 px of content region (font 14), so line
+# one ended at "apsides" -- right edge x=468, the last thing that fit -- and AN/DN wrapped
+# (reviewer's probe of the pre-fix build, tmp/night3/review885_prefix_run.log). Without the
+# station entry the same drawing needed 450 px, which is exactly where it is back at now:
+# one 84 px entry (swatch, inner gap, 58 px of word, plus a gap) spent out of 14 px of
+# slack.
+#
+# Fixed by three things that each pay their way (all three
+# measured, all three bitten below): singular labels for the kinds the map shows one of, an
+# 8 px swatch (the dot and ring were already 8 px across at r = 4 -- only the square was 10),
+# and imgui's LABEL gap (ItemInnerSpacing, 4 px) between a swatch and its word instead of
+# the between-items gap (ItemSpacing, 8 px). Now 450 px drawn (items 386 + eight 8 px gaps)
+# with the DN label's right edge at 466 -- 14 px of slack, not much, and that is the point
+# of pinning it: the next entry has to earn its width.
 #
 # The witness is the --ui-list registry, not a log line: the labels are drawn with uiText,
 # so the registry carries their rects and "one line" is one distinct rect top -- what the
-# player sees. The width arithmetic above is only how the set was sized; do not re-derive
-# it here. The right-edge CHECK compares against ##mapnav, the map surface itself, so it
-# says "nothing ran past the window" in the window's own units rather than a pixel count
-# that would be wrong on any other layout.
+# player sees. The width arithmetic above is only how the set was sized; do not re-derive it
+# here. The filters select every TEXT row in the Orbital Map window, which today is exactly
+# the legend. If someone adds an unrelated uiText readout to that window, these CHECKs go red
+# and the right answer is to name the legend rows, not to loosen the filters.
 #
 # --width/--height are pinned so the window gets its 480 px and the box cannot decide the
 # geometry. Wrapping stays correct behaviour for a narrower window or a bigger font -- the
@@ -23,13 +31,13 @@ KIND invariant
 # the ticket is about, not "never wraps".
 ARGS --width 1280 --height 800
 ARGS --startship racer,res/ships/racer.json,Kerbin,rot-orbit
-ARGS --timeout 5 --ui-list 3000
+ARGS --timeout 8 --ui-list 3000
 LIMIT 30
 EXPECT [uilist]
 FORBID error:
-# The nine entries, as names. The vocabulary is deliberate, so it is pinned: adding an
-# entry, or renaming one, has to answer for both this line and kMapLegend.
-CHECK set(u["label"] for u in uilist if u["window"] == "Orbital Map" and u["text"]) == {"AN", "DN", "apsis", "body", "minor", "ship", "station", "xfer", "you"}
+# The nine entries, as names. The vocabulary is deliberate, so it is pinned: adding an entry,
+# or renaming one, has to answer for both this line and kMapLegend.
+CHECK set(u["label"] for u in uilist if u["window"] == "Orbital Map" and u["text"]) == {"AN", "DN", "apsides", "body", "minor", "ship", "station", "xfer", "you"}
 # ONE line: every legend row shares its rect top. A wrapped row lands a line lower, which
 # is exactly the symptom, and it moves "Map plane"/"Reset view" down with it.
 CHECK len({u["rect"][1] for u in uilist if u["window"] == "Orbital Map" and u["text"]}) == 1
@@ -38,11 +46,15 @@ CHECK len({u["rect"][1] for u in uilist if u["window"] == "Orbital Map" and u["t
 # the map surface's x instead of stopping short of it -- and every row would still share a
 # y, which is why the line above alone does not cover it.
 CHECK max(u["rect"][2] for u in uilist if u["window"] == "Orbital Map" and u["text"]) < min(u["rect"][2] for u in uilist if u["window"] == "Orbital Map" and u["label"] == "##mapnav")
-# MUTATION: two bites, each reddening the y CHECK. Reverting just the labels to the plural
-# set (ships/stations/bodies/apsides) reddens it AND the name CHECK (tmp/night3/885_mut_labels.log);
-# reverting just the drawing -- kLegSwatchPx back to 10 and the swatch gap back to
-# ItemSpacing.x -- reddens it alone (tmp/night3/885_mut_geom.log). So both halves of the fix
-# carry weight at 480 px, and neither is decoration. The right-edge CHECK went green in both:
-# the game's own wrap logic still wrapped, which is the behaviour that CHECK guards against,
-# not this one -- it is here so a future change to that logic (or to imgui's clipping) cannot
-# put AN/DN off-screen while every row still shares a y.
+# And it is ON SCREEN: the legend belongs to the control strip above the map surface. Without
+# this, a window placed off the viewport -- W_OrbitalMap has no capToWorkArea, and --height
+# 320 puts the whole row at y=-140, clipped -- still shows one distinct y and a right edge
+# inside ##mapnav, so every CHECK above would be green on a legend the player cannot see.
+CHECK max(u["rect"][3] for u in uilist if u["window"] == "Orbital Map" and u["text"]) <= min(u["rect"][1] for u in uilist if u["window"] == "Orbital Map" and u["label"] == "##mapnav")
+# MUTATION (against the current table, so re-run after any legend change). Two bites, each
+# reddening the y CHECK: plural labels (ships/stations/bodies) at 445 px drawn
+# (tmp/night3/885_mut_labels2.log), and the old drawing -- kLegSwatchPx 10 with the swatch
+# gap back to ItemSpacing.x -- on its own (tmp/night3/885_mut_geom.log). So both halves of
+# the fix carry weight at 480 px and neither is decoration. The right-edge and on-screen
+# CHECKs went green in both bites: the game's own wrap logic still wrapped correctly, which
+# is what those two guard against rather than what the fix changed.
