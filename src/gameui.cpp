@@ -3368,15 +3368,17 @@ void drawUIReadouts(Game &g) {
                number decides whether the transfer is survivable at all.
                It is derived from the Net row above rather than from a second balance of
                its own (#659: the VAB line and this window's Net must stay one arithmetic
-               in two places, not three spellings). While the hull coasts on rails the
-               active term is zero, so at warp this IS the figure -- which is also why no
-               warp-up toast is needed: the warning that arrives mid-transfer (#652) says
-               what already happened, and this row says it before the dial moves.
-               The dash is the same absence every row-based readout uses (#894): a level
-               or charging balance has no hours aboard, and printing 0.0 h or inf there
-               would read like a measurement of one. */
+               in two places, not three spellings of the bill). The active term is zero
+               while the hull coasts on rails, so a hull ALREADY at warp reads the transfer
+               figure here; one that is flying quotes what it is billing, and on this
+               fixture the two differ 9x -- which is what "(this balance)" is there for.
+               A level or charging balance has no hours aboard, so it prints the dash the
+               other readouts use (`Prg (air): -`, `Air temp: -`, the VAB's dashed aero
+               pair) rather than 0.0 h or inf. The -1.0 W floor is the VAB's own
+               (gameui.cpp:6436): a sub-watt drain would print "4000.0 h", which is
+               arithmetically true and informationally worthless. */
             char aboard_txt[32];
-            if(net < 0.0) {
+            if(net < -1.0) {
                 /* charge is Wh and net is W, so the quotient is already hours. */
                 snprintf(aboard_txt, sizeof aboard_txt, "%.1f h", charge / -net);
             } else {

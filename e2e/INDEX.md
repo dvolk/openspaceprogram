@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 386 |
+| `invariant` | a behaviour or a player route the game must keep | 387 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 48 |
 | `harness` | CLI/test-engine plumbing, not game spec | 16 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **454** |
+| | **total** | **455** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -333,7 +333,7 @@ judgement. Select by number, name or path, e.g.
 | `save/612-ask-survives-a-round-trip.txt` | invariant | A saved Guidance ask loads back into the game and is written out again. |
 | `save/867-cross-system-bubble-load.txt` | invariant | A save with a ship in a building's bubble loads from the title across systems. |
 
-## ui (59)
+## ui (60)
 
 | case | kind | pins |
 |---|---|---|
@@ -396,6 +396,7 @@ judgement. Select by number, name or path, e.g.
 | `ui/748-hold-the-job-runner-and-read-a-window-mid-bake.txt` | invariant | --hold-jobs keeps a posted surface-map bake unpublished, so a --ui-list inside the span reads the window mid-sweep: the cursor line dashes its ground number as (rebaking) instead of quoting a number for the body it just switched to, and the number lands after the release. |
 | `ui/768-systems-window-shuts-the-nozzles.txt` | golden | The Systems window's Thrust vectoring checkbox drops the live gimballed rating in --steering-log from 129710 N m to 0 while the window keeps printing 129710 N m beside the now-off switch, and says nothing about the engines being gone. |
 | `ui/873-d-pick-the-station-in-the-target-window.txt` | invariant | A station row in the Target combo selects it and the planner solves for it. |
+| `ui/896-charging-hull-dashes-its-hours.txt` | invariant | A hull that generates more than it draws prints Aboard: - instead of an hours figure. |
 
 ## render (88)
 

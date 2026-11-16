@@ -44,7 +44,7 @@ EXPECT [uilist] window="Systems" label="Status:     POWERED"
 EXPECT [uilist] window="Systems" label="Active:     2475.0 W   (actuators, while commanding)"
 EXPECT [uilist] window="Systems" label="Const draw: 600.0 W   (life support)"
 FORBID error:
-# How many rows the channel carries, per window: the Status verdict, five power rows and
+# How many rows the channel carries, per window: the Status verdict, six power rows and
 # four switch rows in Systems; one in Vessel Info. Which rows a window carries is a
 # UI decision that keeps moving, so these count what was DRAWN rather than trusting the
 # call-site list. power_test carries no fins at all, which is why Systems' aero switch row
@@ -75,11 +75,17 @@ CHECK re.search(r'\[steerlog\][^\n]*asked=0/4950/0 [^\n]*spent_all=0/49[0-9]{2}/
 CHECK abs(float(re.search('label="Net: +([-+]?[0-9.]+) W', out).group(1)) - (float(re.search('label="Generation: +([0-9.]+) W', out).group(1)) - float(re.search('label="Const draw: +([0-9.]+) W', out).group(1)) - float(re.search('label="Active: +([0-9.]+) W', out).group(1)))) < 0.2
 # #896's row is the same arithmetic in hours: charge (Wh) over the drain (W) this window
 # already prints, so the answer a player reads before raising the warp dial cannot drift
-# from the rows beside it. Identity again, not a figure -- re-engineining power_test moves
-# all three numbers and leaves this assertion true. The 0.1 band covers the one-decimal
-# printing of the hours; a hull whose balance is level or charging prints "-" here and this
-# CHECK raises, which is what it should do on a fixture that is not draining.
-CHECK abs(float(re.search('label="Aboard: +([0-9.]+) h', out).group(1)) - float(re.search('label="Charge: +([0-9.]+) /', out).group(1)) / abs(float(re.search('label="Net: +([-+]?[0-9.]+) W', out).group(1)))) < 0.1
+# from the rows beside it. Identity again, not a figure. The band is RELATIVE because the
+# CHECK re-derives from printed watts: an hours figure of 247 re-derived from a net printed
+# as one decimal can sit 0.28 off and still be exactly right, so an absolute 0.1 band would
+# redden a correct row on any hull whose drain is under ~sqrt(store) watts. parts.json
+# already spells power as 298.45, so that is not hypothetical.
+# What this CHECK is BLIND to, and the fixture's fault rather than the assertion's:
+# power_test sits at 11998.2 of 12000.0 Wh, so swapping charge for capacity in the printer
+# changes the row by 0.0007 h and survives. Killing that mutation needs a hull read well
+# below a full store; ui/896 added the fixture (res/ships/surplus_test.json) but reading it
+# part-drained would mean warping it for hours of sim, which this case is not.
+CHECK abs(float(re.search('label="Aboard: +([0-9.]+) h', out).group(1)) - float(re.search('label="Charge: +([0-9.]+) /', out).group(1)) / abs(float(re.search('label="Net: +([-+]?[0-9.]+) W', out).group(1)))) < 0.06 + 0.01 * (float(re.search('label="Charge: +([0-9.]+) /', out).group(1)) / abs(float(re.search('label="Net: +([-+]?[0-9.]+) W', out).group(1))))
 # #601's other half, and the failure shape it asks to keep: a readout is in the registry
 # to be READ. findMatches() skips text rows, so a click aimed at one reports the same miss
 # a renamed button reports instead of pressing on a caption. The refusal is pinned, not
