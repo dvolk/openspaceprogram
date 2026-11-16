@@ -7249,6 +7249,13 @@ void drawResearchLab(Game &g) {
 // Rows are PRE-BUILT, not computed per frame (the Lab's #87 pattern): buildAtlasRows
 // fills g.atlasRows on scene entry, both self-heal on g.science.version.
 namespace {
+/* Indent per tree depth in the atlas list (spaces). Three reads as a tree but costs a
+   character per level, and the list column is only 30% of the window: catalogue comets
+   ("67P/Churyumov-Gerasimenko") and station display names ("Kerbin space dock") are the
+   long rows, and imgui clips a Selectable's text with no ellipsis -- the name just stops.
+   Named so it is one knob to turn if the rows still do not fit. */
+constexpr int kAtlasIndent = 2;
+
 // A (family, situation) study-slot -- the identity key for the coverage count.
 // (Named AtlasSlot: ui::Slot is a different thing in scope.)
 struct AtlasSlot {
@@ -8086,7 +8093,7 @@ void atlasWalk(const System &sys, const TerrainBody *b, int depth,
     r.rawName = b->name;   // the plain name, for the detail-pane selection key
     r.title = b->name;
     std::string name;
-    name.append((size_t)depth * 3, ' ');
+    name.append((size_t)depth * kAtlasIndent, ' ');
     name += b->name;
     if(sys.home == b) { name += "  (home)"; }
 
@@ -8104,7 +8111,8 @@ void atlasWalk(const System &sys, const TerrainBody *b, int depth,
         s.stationKind = sb->orbital ? "orbit" : "air";
         s.rawName = sb->id;             // unique across the system (parse refuses a clash)
         s.title = sb->display_name;
-        s.name = std::string((size_t)(depth + 1) * 3, ' ') + sb->display_name;
+        s.name = std::string((size_t)(depth + 1) * kAtlasIndent, ' ')
+               + sb->display_name;
         stationDossier(*sb, *b, s.facts);
         subs.push_back(std::move(s));
     }
