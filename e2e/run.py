@@ -74,6 +74,7 @@ import csv
 import datetime
 import glob
 import json
+import math
 import os
 import re
 import shlex
@@ -618,8 +619,9 @@ SURF_RE = re.compile(
 # where a plane in an atmosphere is flying. apo_* print "-" for an open conic,
 # lan/lpe for a missing node line and prg/rtg for a conic with no prograde to
 # measure to (#870), so those get the two-arm treatment; the peri_* trio and
-# period print whatever the conic says, so they go through num() -- an inf or
-# nan from an open conic becomes None instead of raising inside a CHECK.
+# period print whatever the conic says, so they go through num() -- which reads an
+# open conic's inf or nan as None. Left as a float it would slip into a CHECK and
+# make every comparison with it quietly false (#901).
 ORBINFO_RE = re.compile(
     r"\[orbinfo\]\s+t=([\d.]+)s\s+body=\"([^\"]*)\"\s+vel=([-\d.e+]+) m/s\s+"
     r"r=([-\d.e+]+) m\s+"
@@ -698,6 +700,27 @@ def dropped_nonfinite_rows(rx, printed):
     a number in them is spelled inf or nan (#408). Every row parser is anchored on its
     tag (line_tag), so match() asks the same question finditer does at that offset."""
     return [ln for ln in printed if rx.match(ln) is None and NONFINITE_RE.search(ln)]
+
+
+def num(s):
+    """ONE spelling, for every row parser, of "this field carries no number" (#901).
+
+    An absent group (a field the row format does not have) is None, a dashed field is
+    None, and a token that is not a FINITE number is None too. That last case is the one
+    the strict numeric arms never produce -- their character class holds no letters -- so
+    it only arrives through a lenient any-token arm, where float() happily answers inf or
+    nan. A CHECK against such a float is quietly false in every direction, which is the
+    hole #408 was filed for; reading it as None makes the same CHECK fail or raise
+    instead. The row still parses, so #408's dropped-row naming does NOT fire here -- the
+    loud answer is the CHECK itself, and a case that wants the row named should be using
+    a strict arm."""
+    if s is None:
+        return None
+    try:
+        f = float(s)
+    except ValueError:
+        return None
+    return f if math.isfinite(f) else None
 
 
 # Every log row describes the vessel that was ACTIVE when it printed, and the game says
@@ -1086,8 +1109,7 @@ def parse_orbit(out):
             # conic is open, so an apoapsis CHECK on an escaping ship fails
             # loudly instead of passing off a sentinel.
             "peri_r": float(peri_r), "peri_asl": float(peri_asl),
-            "apo_r": float(apo_r) if apo_r is not None else None,
-            "apo_asl": float(apo_asl) if apo_asl is not None else None,
+            "apo_r": num(apo_r), "apo_asl": num(apo_asl),
             "inc": float(inc), "T": float(T),
             "ttAp": float(ttAp), "ttPe": float(ttPe), "h": float(h),
             "E": float(E),
@@ -1104,17 +1126,15 @@ def parse_ascent(out):
          why) = m.groups()
         # A dashed field captures as an absent group, so it reads as None: no number
         # for this tick, which is neither 0 nor nan (#894).
-        def opt(s):
-            return None if s is None else float(s)
         row = {
             "t": float(t), "phase": phase, "lever": float(lever),
-            "pitch": float(pitch), "peri_asl": opt(peri), "apo_asl": opt(apo),
-            "inc_eq": opt(inc_eq), "node_r": opt(node), "why": why,
+            "pitch": float(pitch), "peri_asl": num(peri), "apo_asl": num(apo),
+            "inc_eq": num(inc_eq), "node_r": num(node), "why": why,
         }
         # None when the row predates the field, so a CHECK can ask for it and
         # fail loudly on an old-format row rather than compare against None.
-        row["accel"] = opt(accel)
-        row["g"] = opt(gpull)
+        row["accel"] = num(accel)
+        row["g"] = num(gpull)
         rows.append(row)
     return rows
 
@@ -1278,8 +1298,7 @@ def parse_xfer(out):
             "v_inf": float(v_inf),
             # None = no capture burn. r_cap is a radius from the target's
             # centre; r_cap_asl is the height over its sea level (#405).
-            "r_cap": float(r_cap) if r_cap is not None else None,
-            "r_cap_asl": float(r_cap_asl) if r_cap_asl is not None else None,
+            "r_cap": num(r_cap), "r_cap_asl": num(r_cap_asl),
             "burn": (float(bx), float(by), float(bz)),
             # -1 = a log line from before the field existed, not "prograde".
             "retrograde": int(retro) if retro is not None else -1,
@@ -1673,14 +1692,12 @@ def parse_surf(out):
 def parse_orbinfo(out):
     """One row per --info-log ORBITAL-window dump (#498). apo_* / lan / lpe / prg /
     rtg print "-" and become None; the peri_* pair and period print whatever the
-    conic says, and an open conic's inf/nan would make the strict number class fail
-    to match the whole line -- which drops the row silently -- so those take any
-    token and become None here instead."""
-    def num(s):
-        try:
-            return float(s)
-        except (TypeError, ValueError):
-            return None
+    conic says, so those fields take ANY token -- the strict class would refuse an
+    open conic's inf/nan and drop the whole row, taking the other 18 figures with
+    it. num() then reads that non-finite token as None rather than as a float that
+    makes every comparison quietly false (#901). Note the asymmetry with #408: a
+    lenient arm means the row PARSES, so the dropped-row naming cannot fire and the
+    loud answer is the failing CHECK itself."""
     rows = []
     for m in ORBINFO_RE.finditer(out):
         (t, body, vel, r, apo_r, apo_asl, apo_t, peri_r, peri_asl, peri_t,
@@ -2907,6 +2924,22 @@ def self_test():
         fails.append("parse_orbinfo did not read a dashed prg=/rtg= as None (%r)" % (orow,))
     if parse_orbinfo(good_orb)[0]["prg"] != 8.48935:
         fails.append("parse_orbinfo lost a numeric prg= while adding the dash arm")
+    # #901: peri_* and period take any token, so an inf/nan row PARSES and #408's
+    # dropped-row naming cannot fire. num() is what makes that state loud rather than a
+    # float every comparison with which is quietly false, so both directions are pinned.
+    nan_orb = (good_orb.replace("peri_asl=-596631 m", "peri_asl=nan m")
+               .replace("period=565.737 s", "period=inf s"))
+    nrow = parse_orbinfo(nan_orb)
+    if len(nrow) != 1:
+        fails.append("an [orbinfo] line carrying peri_asl=nan stopped parsing")
+    elif nrow[0]["peri_asl"] is not None or nrow[0]["period"] is not None:
+        fails.append("an [orbinfo] inf/nan token parsed as a float instead of None")
+    if parse_orbinfo(good_orb)[0]["peri_asl"] != -596631.0:
+        fails.append("num() lost a finite [orbinfo] peri_asl")
+    # The shared helper has to answer the same way for the strict parsers, where an
+    # absent group is the ordinary absence (#894, #405).
+    if num(None) is not None or num("-") is not None or num("1.5e+05") != 150000.0:
+        fails.append("num() mishandled an absent, dashed or finite token")
 
     # #872: the [mapbldg] row is the only observable face the map's station marks have,
     # and the two cases read it field by field. A field renamed or reordered in the
