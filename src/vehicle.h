@@ -1502,6 +1502,16 @@ public:
     /* Step to the previous stage (clamped at the lowest one). */
     void advanceStage();
 
+    /* How many presses this hull still has: the counter steps one per press and
+       stops at minStage_, so this is what an autopilot has left to ask for (#928). */
+    int stagesLeft();
+
+    /* Has this stage finished its burn, by the VAB's OWN plan? Same question
+       staging.cpp's computeStaging asks when it draws the staging table, on live
+       tanks -- see the definition beside canBurn(), which it walks like. The
+       autopilot asks it before it presses (#928). */
+    bool stageIsDue();
+
     /* Deploy every STOWED chute at `stage`. Game::stage calls it before the
        decoupler extractions, so chutes on dropped subtrees deploy too. One-shot. */
     int deployChutes(int stage);

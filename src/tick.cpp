@@ -210,7 +210,38 @@ void tick(Game &g) {
                (#610 review). */
             if(g.ascent && game_running && g.ship == g.ascent_ship) {
                 const bool was_flying = g.ascent->active();
-                flyAscent(*g.ship, *g.ascent, g.dt * g.time_accel);
+                bool want_stage = false;
+                flyAscent(*g.ship, *g.ascent, g.dt * g.time_accel, &want_stage);
+                if(want_stage) {
+                    /* The press lives here, not in the driver: separating a hull
+                       restructures the world -- a new Vehicle in the list, chutes,
+                       a deduped name -- so it is a Game action, and the law stays
+                       pure (#928). Before the physics substeps, so the newly
+                       ignited engines light on the tick the law asked.
+                       The outcome is printed because a refusal the player cannot
+                       see is a mission that quietly stops staging: crew aboard is
+                       the common one, and the law will not ask again (#928). */
+                    /* Read the law's two reasons before acting on them. The law
+                       itself stays a yes/no: which half fired is a property of the
+                       hull, and printing it costs two predicates on a tick that is
+                       already separating a rocket. Without this line a dry-stage
+                       press and a due-stage press look identical in the log, and
+                       they mean different things to a designer (#928). */
+                    const bool due = g.ship->stageIsDue();
+                    const bool dry = !g.ship->canBurn();
+                    const Game::StageOutcome oc = g.stageVehicle(g.ship);
+                    printf("[stage] t=%.1fs autopilot press: %s (%s%s)\n", g.time,
+                           Game::stageOutcomeName(oc),
+                           due ? "stage drained" : "",
+                           dry ? (due ? " + dry" : "tanks dry") : "");
+                    /* The flying stack stays the hull the law was armed on:
+                       extractSubtreeAsShip keeps the parent's parts in the parent
+                       (parts.swap(keep)) and stageVehicle never reassigns Game::ship,
+                       so neither ship nor ascent_ship needs repointing. Asserted
+                       rather than assumed -- if that swap ever changes, the law would
+                       be left flying a husk with nothing said. */
+                    assert(g.ship == g.ascent_ship);
+                }
                 /* The verdict hands the clock back with the hull. A mission only
                    exists to fly the burn; once it has answered, leaving warp
                    wherever the burn left it leaves the player coasting at 10x

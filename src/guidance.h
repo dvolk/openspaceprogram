@@ -98,6 +98,16 @@ struct GuidanceState {
                                         // MUST fill it: availableAccel() is a potential
                                         // that never reads the tanks, so on its own it
                                         // reads healthy at zero fuel.
+    /* The staging plan, as two facts the hull owns and the law only reads (#928).
+       stages_left is how many presses are still reachable (activeStage - minStage);
+       stage_due is Vehicle::stageIsDue(), which asks the VAB's own question on live
+       tanks -- has this stage taken everything the parts it would drop can give, or
+       (having nothing drinkable in them) everything it can reach. The law does not
+       get fuel groups, drain layers or a part list: those are hull structure, and
+       the same question is asked by staging.cpp when it draws the table the VAB
+       shows, so one owner answers it twice. */
+    int stages_left = 0;
+    bool stage_due = false;
     bool grounded = false;
     bool railed = false;                // Bullet is not stepping this hull
 };
@@ -112,6 +122,14 @@ struct AscentCommand {
     bool burn = false;                  // hold the engine lit this tick? The
                                         // driver MUST honour this one: the lever
                                         // latches, so a stale one burns alone.
+    bool want_stage = false;            // press the stage key THIS tick (#928). This
+                                        // is a REQUEST: the law cannot separate a
+                                        // hull, because a press restructures the
+                                        // vehicle list rather than one hull's state,
+                                        // so it goes through Game::stageVehicle and
+                                        // the caller acts on it. One ask per value of
+                                        // GuidanceState::stages_left -- see
+                                        // stage_asked_at_.
 };
 
 class AscentLaw {
@@ -164,6 +182,14 @@ private:
        (#930); the schedule reads this ratchet instead of the live altitude. */
     double apex_alt_ = -1.0;
 
+    /* The stages_left value this law last asked for a press at (#928), -1 until it
+       asks. One ask per value IS the retry policy, and it needs no answer back from
+       Game: a crew refusal leaves the counter where it was, so the law never spams
+       the request every tick (stage() prints and toasts, which would bury the log);
+       a press that separated nothing still stepped the counter, so the law can ask
+       again later for the new number. */
+    int stage_asked_at_ = -1;
+
     /* The horizontal launch direction that puts the conic at the asked
        inclination, worked out once from the pad's own geometry: sin(az) =
        cos(i)/cos(lat), the textbook relation, derived here from the two
@@ -188,6 +214,13 @@ private:
                       stale full lever burns through its own coast phase.
    All throttle writes are skipped while the player holds a throttle key (#400
    F3's yield rule).
+   Staging is the one thing the law asks that is NOT a Command (#928): a press
+   restructures the world -- extractSubtreeAsShip, a new Vehicle in Game::vehicles,
+   chutes deploying, a name deduped against the roster -- so it belongs to Game, not
+   to a hull. The driver reports the law's request through *want_stage and the caller
+   acts on it, which keeps guidance.cpp free of Game and keeps the law pure. The
+   caller presses BEFORE the physics substeps, so the newly ignited engines light on
+   the same tick the law asked.
    The caller must keep calling it on the hull the law was armed on -- the law
    has no idea which ship it is flying, so feed it a different one and it will
    cheerfully launch that one instead (Game::ascent_ship is the gate).
@@ -202,7 +235,7 @@ private:
    write still goes out, because the lever latches and a law that stops mid-burn
    without putting it back has left an engine open. */
 class Vehicle;
-bool flyAscent(Vehicle &v, AscentLaw &law, double dt);
+bool flyAscent(Vehicle &v, AscentLaw &law, double dt, bool *want_stage = nullptr);
 
 /* Let go of a hull, once: releases the SlewFree latch and closes the throttle
    lever (unless a throttle key is down -- #400 F3's yield rule, and the player's
@@ -214,10 +247,13 @@ void releaseAscent(Vehicle &v);
 /* What v1 does NOT do, stated here so the next phase is a decision and not a
    discovery: no atmosphere (drag/pressure are not even in GuidanceState), no
    descent or landing -- a hull that comes back to the ground FAILS with that
-   reason rather than being flown again (#931), no transfers, no staging (it will
-   burn a single stage until the stage's thrust reads zero and then Fail), no
-   plane change after launch (the inclination is set by the launch heading, not
-   steered), and no mid-course re-burn -- if the circularisation cutoff is missed,
-   the orbit is what it is and the law reports Done/Failed rather than trying
-   again. */
+   reason rather than being flown again (#931), no transfers, no plane change
+   after launch (the inclination is set by the launch heading, not steered), and
+   no mid-course re-burn -- if the circularisation cutoff is missed, the orbit is
+   what it is and the law reports Done/Failed rather than trying again.
+   Staging landed with #928, as an ASK only: the law presses when the hull says
+   the stage is due (Vehicle::stageIsDue, the VAB's own criterion) or has run dry
+   with presses left. It does not resequence the plan, choose a drop for
+   performance, or know what the press did -- see stage_asked_at_ for the retry
+   rule, and Game::StageOutcome for what the caller learns instead. */
 #endif

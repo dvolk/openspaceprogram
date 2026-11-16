@@ -2889,6 +2889,8 @@ int Vehicle::activeStage() { return activeStage_; }
 
 void Vehicle::advanceStage() { if(activeStage_ > minStage_) { activeStage_--; } }
 
+int Vehicle::stagesLeft() { return activeStage_ > minStage_ ? activeStage_ - minStage_ : 0; }
+
 int Vehicle::deployChutes(int stage) {
     int n = 0;
     for(Part *p : parts) {
@@ -5935,6 +5937,74 @@ bool Vehicle::canBurn() {
         if(has_every) { return true; }   // isThruster() already means one rate > 0
     }
     return false;
+}
+
+/* The press question, live (#928): has this stage taken everything it was built to
+   take? staging.cpp's computeStaging answers the same question when it draws the
+   staging table the VAB shows: a stage burns "until the parts it will drop hold
+   nothing the lit engines can draw" (its drainableIn(drop)), and where the drop set
+   holds nothing drinkable it burns everything reachable instead (drainAll). Copying
+   the criterion rather than inventing one is the point: the VAB says
+   `stage 4: 106424.0 -> 53542.2 kg` for mars_explorer_mk1, and an autopilot that
+   pressed by a different rule would be flying a rocket the design table never
+   promised.
+
+   Why not ask each engine what it has: availableResourceMass() answers for ONE
+   engine, walking THAT engine's drain layers, so five engines fed from one core
+   pool each see the whole pool and the reading over-counts by the number of sharers
+   -- a press would fire when the pool has five times the burn it really has left
+   (#928's rule 4). Here the pool is billed ONCE, against the parts that hold it, so
+   sharers cannot count the same tank twice.
+
+   The known gap is the one staging.cpp has too: two engines in DIFFERENT fuel groups
+   that each reach a common upstream pool bill that pool to their own reachable set,
+   so on that geometry a press can land a little late. No shipped hull is built that
+   way today (the asparagus links in res/ships hang off one group per stage).
+
+   RCS and the suit are not here: isThruster() is rockets and jets, and the drains
+   that bill those ride in other calls, exactly as --dv-log's cursor notes. A stage
+   whose only liquid is hydrazine has nothing to wait for. */
+bool Vehicle::stageIsDue() {
+    if(stagesLeft() <= 0) { return false; }   // no press left to be due for
+    const int as = activeStage();
+    /* Which fuel groups the IGNITED engines can drink from, and which resources
+       they actually burn. A tank of something none of them draws is inert mass on
+       this stage, and dropping it costs nothing -- so it must not hold the press. */
+    std::set<int> reach;
+    bool burn[(int)ResourceType::Num] = {false};
+    for(Part *p : parts) {
+        if(!p->isThruster() || p->stage < as) { continue; }
+        for(int r = 0; r < (int)ResourceType::Num; r++) {
+            if(p->def->propellant_rate[r] > 0.0) { burn[r] = true; }
+        }
+        if(p->fuelGroup < 0) { continue; }   // walled off: no drain layers at all
+        for(const std::vector<int> &layer : fuelDrainLayers(p)) {
+            for(int g : layer) { reach.insert(g); }
+        }
+    }
+    if(reach.empty()) { return false; }   // nothing ignited that can drink
+
+    const std::vector<Part *> drop = droppedPartsAtStage(as);
+    std::set<Part *> dropSet(drop.begin(), drop.end());
+    double dropFuel = 0.0, allFuel = 0.0;
+    for(Part *p : parts) {
+        if(!p->isTank()) { continue; }     // consumeResourceMass drains tanks, only
+        if(p->fuelGroup < 0 || !reach.count(p->fuelGroup)) { continue; }
+        double m = 0.0;
+        for(int r = 0; r < (int)ResourceType::Num; r++) {
+            if(burn[r]) { m += p->resources.current[(int)r]; }
+        }
+        allFuel += m;
+        if(dropSet.count(p) != 0) { dropFuel += m; }
+    }
+    /* The gram floor is not a fudge for the same reason staging.cpp's 1e-12 is not:
+       a planned sim can land exactly on zero, while a live drain leaves float
+       residue (consumeResourceMass clamps each share at a tank's own level). A gram
+       of propellant on a hull measured in tonnes is neither a burn nor a reason to
+       hold a stage. */
+    const double kStageEmptyKg = 1e-3;
+    const double target = (dropFuel > kStageEmptyKg) ? dropFuel : allFuel;
+    return target <= kStageEmptyKg;
 }
 
 void Vehicle::ApplyThrust(double step) {

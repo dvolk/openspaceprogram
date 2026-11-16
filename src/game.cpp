@@ -2340,9 +2340,9 @@ void Game::undock() {
 /* Stage: fire the active stage's decouplers. Each decoupler's child-side
    subtree comes off as a SEPARATE ship (extractSubtreeAsShip, not a delete)
    and joins the vehicle list. Decouplers fire shallowest-first. */
-void Game::stage() {
-    Vehicle *a = ship;
-    if(a == nullptr || a->isEva()) { return; }
+Game::StageOutcome Game::stageVehicle(Vehicle *a) {
+    using Out = StageOutcome;
+    if(a == nullptr || a->isEva()) { return Out::NoHull; }
     const int st = a->activeStage();
 
     // Staging needs the parts in the physics world: wake a railed ship first.
@@ -2365,7 +2365,7 @@ void Game::stage() {
     if(crewOnStage) {
         printf("Stage: refused -- crew aboard the capsule (EVA them first)\n");
         toast("Cannot stage -- EVA the capsule's crew out first");
-        return;
+        return Out::CrewRefused;
     }
 
     /* Chutes deploy BEFORE the decoupler extractions, while every part is
@@ -2452,11 +2452,29 @@ void Game::stage() {
                ships, parts, a->activeStage(), a->numStages());
         toast("Staged -- dropped %d ship(s)", ships);
         if(refused) { refuseNote(); }   // a partial press still says which
-    } else if(refused) {
-        refuseNote();
-    } else {
-        printf("Stage: nothing left to separate\n");
+        return Out::Staged;
     }
+    if(refused) { refuseNote(); return Out::RootRefused; }
+    printf("Stage: nothing left to separate\n");
+    /* Not a hang and not a failure: the counter stepped, so the lower stages are
+       no further away than they were (#545 is the case where a fired decoupler is
+       still listed and this keeps happening). A law that asked has its answer. */
+    return Out::NothingSeparated;
+}
+
+/* The player's key: the active hull, and the outcome folded back into the
+   prints and toasts stageVehicle already makes. */
+void Game::stage() { stageVehicle(ship); }
+
+const char *Game::stageOutcomeName(Game::StageOutcome o) {
+    switch(o) {
+        case StageOutcome::Staged:           return "staged";
+        case StageOutcome::NothingSeparated: return "nothing separated";
+        case StageOutcome::RootRefused:      return "refused (root seam)";
+        case StageOutcome::CrewRefused:      return "refused (crew aboard)";
+        case StageOutcome::NoHull:           return "no hull";
+    }
+    return "?";
 }
 
 /* Remove a ship + its bookkeeping. Refuses to remove the last ship. If it was

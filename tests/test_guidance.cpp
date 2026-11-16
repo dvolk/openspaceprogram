@@ -419,6 +419,176 @@ static void test_a_sinking_ship_does_not_get_its_nose_back() {
                "and it holds the pitch the HIGHEST altitude asked for, not the current one");
 }
 
+/* #928: the law asks for a press, and asks ONCE per stage number.
+   The retry rule matters because a press can be refused -- a crewed capsule rides
+   the stage, or the seam is the hull's own root (#545) -- and Game prints and toasts
+   on every press. A law that re-asked every tick would bury the log in refusals and
+   never fly anything; a law that gave up blindly would leave a ship carrying stages
+   it could have lit. So the ask is keyed to the counter: once per value of
+   stages_left, and the counter moving (or not) on the next tick IS the feedback. */
+static void test_the_law_asks_for_a_press_and_asks_once() {
+    printf("== the press request: once per stage number ==\n");
+    AscentTarget t; t.apo_asl = t.peri_asl = 100e3; t.inc_rad = -1.0;
+    AscentLaw law(t);
+    GuidanceState s; s.pos = glm::dvec3(R_MOHO + 20000.0, 0.0, 0.0);
+    s.vel = glm::dvec3(0.0, 400.0, 0.0);
+    s.mu = MU_MOHO; s.sea_r = R_MOHO; s.spin_axis = glm::dvec3(0.0, 0.0, 1.0);
+    s.accel_max = 18.0; s.grounded = false;
+    s.stages_left = 2; s.stage_due = true;
+    const AscentCommand c1 = law.step(s);
+    printf("   [due] want_stage=%d phase=%s\n", (int)c1.want_stage, law.phaseName());
+    CHECK_TRUE(c1.want_stage, "a stage the hull says is due gets a press asked for");
+    CHECK_TRUE(law.phase() == AscentPhase::Ascent, "asking is not a verdict");
+    const AscentCommand c2 = law.step(s);
+    CHECK_TRUE(!c2.want_stage, "and it is not asked twice for the same stage number");
+
+    /* The refusal, and where it ends: still dry, still the same counter, so the
+       ask is spent and the mission says the honest thing rather than looping. */
+    s.has_propellant = false;
+    const AscentCommand c3 = law.step(s);
+    printf("   [refused] want_stage=%d phase=%s why=\"%s\"\n",
+           (int)c3.want_stage, law.phaseName(), law.why());
+    CHECK_TRUE(!c3.want_stage, "a dry hull does not re-ask a press it was refused");
+    CHECK_TRUE(law.phase() == AscentPhase::Failed, "and the mission ends rather than spins");
+    CHECK_TRUE(std::string(law.why()).find("tanks are dry") != std::string::npos,
+               "with the reason it has always given");
+
+    /* The other direction, which is the one that used to end a mission: a stage
+       that has run dry with presses still unasked is a press, not a failure. */
+    AscentLaw law2(t);
+    GuidanceState s2 = s; s2.has_propellant = true;
+    s2.stages_left = 2; s2.stage_due = false;
+    law2.step(s2);
+    CHECK_TRUE(law2.phase() == AscentPhase::Ascent, "flying, nothing due, no ask");
+    s2.has_propellant = false;
+    const AscentCommand d1 = law2.step(s2);
+    printf("   [dry with presses] want_stage=%d phase=%s\n",
+           (int)d1.want_stage, law2.phaseName());
+    CHECK_TRUE(d1.want_stage, "a dry stage with presses left asks for one");
+    CHECK_TRUE(law2.phase() != AscentPhase::Failed, "instead of failing on that tick");
+    const AscentCommand d2 = law2.step(s2);
+    CHECK_TRUE(!d2.want_stage && law2.phase() == AscentPhase::Failed,
+               "and if the press did not arrive, it fails on the next tick");
+
+    /* A press that separated nothing still stepped the counter (#545's shape), so a
+       later press is askable again -- the law is keyed to the number, not to whether
+       the last one dropped anything. */
+    AscentLaw law3(t);
+    GuidanceState s3 = s; s3.has_propellant = true;
+    s3.stages_left = 3; s3.stage_due = true;
+    CHECK_TRUE(law3.step(s3).want_stage, "asked at three presses left");
+    CHECK_TRUE(!law3.step(s3).want_stage, "not asked again at three");
+    s3.stages_left = 2;                       // the counter moved, whatever it dropped
+    CHECK_TRUE(law3.step(s3).want_stage, "asked again at two, due or not being the hull's call");
+}
+
+/* #928's claim, made checkable: the SAME hull flown by the SAME law with presses
+   allowed and with presses refused. The stage table is sized so the pad stage
+   cannot reach the ask on its own (684 m/s against the ~1.1 km/s a 100 km Moho
+   orbit costs), so staging is not a tuning knob in this test -- it is the
+   difference between Done and "the tanks are dry".
+   The hull is the stager's shape, not a fantasy: one stage lights its own tanks,
+   its structure leaves with it when it is dropped, and the next stage's tank is
+   unreachable until that stage lights (no fuel links in res/ships/stager.json).
+   The press timing is pinned too: a law that pressed early would drop a tankful
+   of propellant no engine can reach, so the test asserts the ask came when THAT
+   stage's pool was empty, not merely that it came. */
+struct StageSpec {
+    double thrust;   // N, what this stage's engines rate
+    double mdot;     // kg/s they draw, at full lever
+    double prop;     // kg in the pool this stage burns (and is dropped with)
+    double dry;      // kg of structure that leaves the hull when this stage goes
+};
+
+struct StagedFlight {
+    bool done = false, failed = false;
+    std::string why;
+    int presses = 0;
+    double prop_at_press = -1.0;   // the dropped stage's leftover propellant, kg
+    double peri = 0.0, apo = 0.0;
+};
+
+/* The gram floor stageIsDue() uses, mirrored: the live drain leaves float residue,
+   so "empty" is a gram and not zero. Kept here rather than shared because the test
+   is checking the law's DECISION, and the number it decides on is the pool. */
+static const double kStageEmpty = 1e-3;
+
+static StagedFlight simulateStaged(const AscentTarget &target, const StageSpec *st,
+                                   int nStage, double baseDry, bool allow_press,
+                                   double dt = 1.0/120.0, int max_s = 900) {
+    StagedFlight f;
+    AscentLaw law(target);
+    std::vector<double> prop(nStage);
+    for(int i = 0; i < nStage; i++) { prop[i] = st[i].prop; }
+    int cur = 0;                        // which stage is lit (0 = the pad stage)
+    const int pressesMax = nStage - 1;
+    glm::dvec3 pos(R_MOHO + 1.0, 0.0, 0.0), vel(0.0, 0.0, 0.0);
+    for(int step = 0; step * dt < max_s; step++) {
+        double mass = baseDry;
+        for(int i = cur; i < nStage; i++) { mass += st[i].dry + prop[i]; }
+        const double pos_r = glm::length(pos);
+        GuidanceState s;
+        s.pos = pos; s.vel = vel;
+        s.mu = MU_MOHO; s.sea_r = R_MOHO;
+        s.spin_axis = glm::dvec3(0.0, 0.0, 1.0);
+        s.accel_max = st[cur].thrust / mass;   // a potential: fuel-blind, as in the game
+        s.has_propellant = prop[cur] > 0.0;
+        s.stages_left = pressesMax - cur;
+        s.stage_due = prop[cur] <= kStageEmpty;   // the pool THIS press drops
+        s.grounded = (pos_r - R_MOHO) < 1.0;
+        const AscentCommand c = law.step(s);
+        if(c.want_stage) {
+            f.presses++;
+            f.prop_at_press = prop[cur];
+            if(allow_press) { cur++; }   // refused: the counter does not move, and
+                                         // the structure stays aboard with its tank
+        }
+        double thrust_now = 0.0;
+        if(c.burn && prop[cur] > 0.0) {
+            thrust_now = st[cur].thrust * c.throttle;
+            prop[cur] -= st[cur].mdot * c.throttle * dt;
+            if(prop[cur] < 0.0) { prop[cur] = 0.0; }
+        }
+        const glm::dvec3 grav = -glm::normalize(pos) * (MU_MOHO / (pos_r * pos_r));
+        const glm::dvec3 aim = (glm::length2(c.aim) > 1e-12) ? glm::normalize(c.aim)
+                                                             : glm::dvec3(0.0);
+        vel += (aim * (thrust_now / mass) + grav) * dt;
+        pos += vel * dt;
+        if(!law.active()) {
+            f.done = law.phase() == AscentPhase::Done;
+            f.failed = law.phase() == AscentPhase::Failed;
+            f.why = law.why();
+            break;
+        }
+    }
+    const OrbitElements o = law.elements();
+    f.peri = periapsisAsl(o, R_MOHO);
+    f.apo = (o.traj == TrajectoryClass::Elliptic) ? apoapsisAsl(o, R_MOHO) : -1.0;
+    if(f.why.empty()) { f.why = std::string("ran out of steps in ") + law.phaseName(); }
+    return f;
+}
+
+static void test_a_staged_hull_flies_and_an_unstaged_one_does_not() {
+    printf("== staging is the difference between Done and dry ==\n");
+    const StageSpec st[2] = {
+        {56250.0, 12.5, 500.0, 900.0},    // the pad stage: 4500 m/s of ve, 684 m/s of dv
+        {25000.0, 6.25, 700.0, 0.0},      // the stage under it: 1.56 km/s, and it lights
+    };
+    AscentTarget t; t.apo_asl = t.peri_asl = 100e3; t.inc_rad = -1.0;
+    const StagedFlight fly = simulateStaged(t, st, 2, 1470.23, true);
+    const StagedFlight stuck = simulateStaged(t, st, 2, 1470.23, false);
+    printf("   [presses allowed] presses=%d leftAtPress=%.4f kg peri=%.1f apo=%.1f why=\"%s\"\n",
+           fly.presses, fly.prop_at_press, fly.peri, fly.apo, fly.why.c_str());
+    printf("   [presses refused] presses=%d peri=%.1f apo=%.1f why=\"%s\"\n",
+           stuck.presses, stuck.peri, stuck.apo, stuck.why.c_str());
+    CHECK_TRUE(fly.done, "with presses the law reaches the ask");
+    CHECK_TRUE(stuck.failed && stuck.why.find("tanks are dry") != std::string::npos,
+               "without them the same hull runs dry and says so");
+    CHECK_TRUE(fly.presses == 1, "exactly one press for a two-stage stack");
+    CHECK_TRUE(fly.prop_at_press >= 0.0 && fly.prop_at_press <= 1e-3,
+               "and it came when that stage's own pool was empty, not with a tankful left");
+}
+
 static void test_the_law_fails_loudly_not_silently() {
     printf("== the doors: rails, a dead stage, no conic ==\n");
     AscentTarget t; t.apo_asl = t.peri_asl = 100e3; t.inc_rad = -1.0;
@@ -610,6 +780,8 @@ int main() {
     test_the_shape_holds_at_other_altitudes();
     test_the_shape_at_the_tick_rates_the_game_uses();
     test_asks_it_cannot_land_say_so();
+    test_the_law_asks_for_a_press_and_asks_once();
+    test_a_staged_hull_flies_and_an_unstaged_one_does_not();
     printf("%d checks, %d failures\n", checks, failures);
     return failures ? 1 : 0;
 }

@@ -183,8 +183,28 @@ AscentCommand AscentLaw::step(const GuidanceState &s) {
        fuel and, without the driver's has_propellant, the law would fly a dry
        hull for ever: aiming, arming a burn that produces nothing, and never
        reaching Done or Failed. */
+    /* Staging (#928): the law asks, it never presses. Two ways a stage is over --
+       the plan says so (s.stage_due, which is Vehicle::stageIsDue() asking the VAB's
+       own question on live tanks), or the stage has run dry while presses remain.
+       The second is the one that used to end a mission: "the tanks are dry" was the
+       verdict for a hull with three stages still folded under it.
+       Once per value of stages_left (stage_asked_at_), which IS the retry policy: a
+       refusal from Game leaves the counter alone, so this does not fire every tick
+       and bury the log in refusals; a press that separated nothing stepped it, so a
+       later press can still be asked. No answer comes back to the law -- the caller
+       learns what happened (Game::StageOutcome), the law learns it by the counter
+       moving or not moving on the next tick. */
+    bool press = false;
+    if(s.stages_left > 0 && s.stages_left != stage_asked_at_) {
+        if(s.stage_due || !s.has_propellant) { press = true; }
+    }
+    if(press) {
+        c.want_stage = true;
+        stage_asked_at_ = s.stages_left;
+    }
+
     const bool can_thrust = s.accel_max > 0.0 && s.has_propellant;
-    if(!can_thrust && (phase_ == AscentPhase::Pad || phase_ == AscentPhase::Ascent
+    if(!can_thrust && !press && (phase_ == AscentPhase::Pad || phase_ == AscentPhase::Ascent
                        || phase_ == AscentPhase::Coast || phase_ == AscentPhase::Circ)) {
         phase_ = AscentPhase::Failed;
         why_ = s.accel_max > 0.0 ? "the tanks are dry" : "no thrust available";
@@ -232,7 +252,7 @@ AscentCommand AscentLaw::step(const GuidanceState &s) {
         /* Burn until the APOAPSIS is at the ask: that is the transfer, and the
            rest of the mission is one burn at its far end. */
         if(elliptic && apo_asl >= target.apo_asl) { phase_ = AscentPhase::Coast; }
-    } else if(phase_ == AscentPhase::Coast) {
+    } else if(phase_ == AscentPhase::Coast && can_thrust) {
         /* Start the circularisation burn BEFORE the node, by half of its own
            length: the node is where dv is cheapest, so the burn should straddle
            it rather than all happen after it. Sizing the lead from the burn
@@ -247,7 +267,10 @@ AscentCommand AscentLaw::step(const GuidanceState &s) {
         const double v_node = (elliptic && o.semi_major > 0.0)
             ? std::sqrt(std::max(0.0, s.mu * (2.0/r_node - 1.0/o.semi_major))) : 0.0;
         const double dv_need = std::sqrt(s.mu / r_node) - v_node;   // what the burn owes
-        assert(can_thrust);   // the gate above has already Failed a stage that cannot push
+        assert(can_thrust);   // the branch above tests it: a dry tick that is
+                              // pressing this tick has no burn to size, and the next
+                              // tick either has thrust or has nothing left to press
+                              // and Fails (#928)
         const double burn_len = dv_need / s.accel_max;
         /* The lead is sized from the burn, never from the tick. Every in-envelope
            ask owes hundreds of m/s at its node, so half a burn-length is seconds
@@ -354,7 +377,11 @@ void releaseAscent(Vehicle &v) {
     }
 }
 
-bool flyAscent(Vehicle &v, AscentLaw &law, double dt) {
+bool flyAscent(Vehicle &v, AscentLaw &law, double dt, bool *want_stage) {
+    /* The law's press request, if this caller wants one (#928). Cleared first so a
+       bail-out tick -- inactive law, no frame, a NaN aim -- reports no ask rather
+       than last tick's. */
+    if(want_stage != nullptr) { *want_stage = false; }
     if(!law.active()) {
         /* Let go of the ship. SlewFree is a latch the player's SAS keys toggle,
            and a latched slew keeps a hull awake (off rails) forever, so leaving
@@ -391,6 +418,11 @@ bool flyAscent(Vehicle &v, AscentLaw &law, double dt) {
        needs: it walked every thruster regardless of stage and never asked whether an
        engine missing one of two propellants could light. */
     s.has_propellant = v.canBurn();
+    /* The staging plan, from the hull and not from the law (#928): which presses are
+       still reachable, and whether this one is due. stageIsDue() walks the fuel graph
+       the way canBurn() does, so it lives with the graph; the law sees two facts. */
+    s.stages_left = v.stagesLeft();
+    s.stage_due = v.stageIsDue();
     /* The body's pole, from the frame that owns it -- not omega(), which is zero
        for a body that does not spin and therefore left the launch heading
        degenerate. spinAxisRelTo is the one spelling the game already uses for
@@ -398,6 +430,11 @@ bool flyAscent(Vehicle &v, AscentLaw &law, double dt) {
     s.spin_axis = v.frame->spinAxisRelTo(inertial);
 
     const AscentCommand c = law.step(s);
+    /* Report the press here rather than at the end: a press has nothing to do with
+       the aim, so a tick that bails below on a bad aim still honours the law's ask
+       (the counter has already been spent in the law, so swallowing the request
+       here would strand the stage for the rest of the mission). */
+    if(want_stage != nullptr) { *want_stage = c.want_stage; }
     /* A NaN aim means something upstream is broken: ShipCmd(Aim) would leave the
        hull holding its last good setpoint, so refuse the whole tick rather than
        send it (pointingTo() fails closed on the same thing, #609). */

@@ -1261,6 +1261,23 @@ struct Game {
     void updateDocking();
     // Splits the most recent seam off the active ship.
     void undock();
+    /* What a stage press did. Game::stage() is the player's key and answers with
+       prints and toasts; the autopilot needs the ANSWER rather than the noise,
+       because a press that was refused and a press that separated nothing are
+       different facts for the law that asked (#928, #545). Nothing about the
+       player's path changed: stage() is this with the void return back. */
+    enum class StageOutcome {
+        Staged,            // at least one subtree came off as its own ship
+        NothingSeparated,  // the counter stepped; no decoupler had a side to give
+        RootRefused,       // a decoupler's side is the whole ship (the root seam)
+        CrewRefused,       // a crewed capsule rides the stage (EVA them first)
+        NoHull,            // no ship, or an EVA kerbal: nothing to press
+    };
+    /* Stage `a` (any hull, not just the active one) and say which of the above
+       happened. Prints exactly what stage() printed. */
+    StageOutcome stageVehicle(Vehicle *a);
+    // The outcome in words, for the log line that names who pressed.
+    static const char *stageOutcomeName(StageOutcome o);
     // Refuses a stage that still carries a crewed capsule.
     void stage();
     /* The tracking list's "x" and the VAB's occupied-pad refusal (the ui_

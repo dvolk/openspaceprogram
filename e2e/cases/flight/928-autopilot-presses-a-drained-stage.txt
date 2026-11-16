@@ -1,0 +1,40 @@
+# The ascent autopilot pushes the stage button. Moho again, and again on purpose:
+# the point here is the PRESS, not the air, and on an airless hull a staging
+# failure has exactly one cause. stager is two stages whose upper engine cannot
+# drink the lower stage's tank (no fuel links in res/ships/stager.json), so the
+# stack goes dry at ~100 km unless somebody separates it -- which is the whole
+# difference between phase=done and why="the tanks are dry" (#928).
+NAME autopilot-presses-a-drained-stage
+CLAIM The ascent autopilot separates a drained stage by itself and still makes the ask.
+KIND invariant
+ARGS --startship stager,res/ships/stager.json,Moho,pad --ascent 100e3 --time-accel 10
+ARGS --ascent-log --orbit-log --orbit-interval 1
+ARGS --sim-steps 6000 --timeout 200 --no-paint
+# 6000 logic ticks covers ~607 s of sim: the climb buys its time at warp 10 and
+# the Done verdict hands the clock back to 1x (#612), so the last ~1300 ticks are
+# worth ~20 s. The verdict lands at ~587 s, which leaves ~20 s of sim and ~1300
+# ticks of margin -- the same shape as the 610 case, sized off its own flight
+# rather than guessed.
+LIMIT 60
+EXPECT Autopilot: ascent armed on 'stager'
+# The press, and the press ACCEPTED: stageVehicle() answers with an outcome and
+# tick.cpp prints it, because a separation the player cannot see is a mission
+# that quietly stops staging. "now on stage 1 of 2" is the ship's own count, so a
+# press that dropped the wrong seam fails here instead of flying a different
+# rocket.
+EXPECT autopilot press: staged
+EXPECT Stage: dropped 1 ship(s) / 3 part(s); now on stage 1 of 2
+FORBID autopilot press: refused
+FORBID phase=failed
+# The mission the press exists for. Without it the law fails dry at ~936 m/s of
+# delta-v with periapsis ~218 km underground, so "done" is the staging result and
+# not a coincidence of the profile.
+CHECK last(ascent)["phase"] == "done"
+CHECK last(ascent)["why"] == "periapsis at the ask, apoapsis inside the band"
+CHECK last(orbit)["peri_asl"] > 99e3
+CHECK abs(last(orbit)["apo_asl"] - 100e3) < 5e3
+CHECK last(ascent)["dv_exp"] > 1050.0
+# The lever is closed on the tick the mission finished -- the same pin the 610
+# case makes, restated here because a hull that has just split in two is the more
+# likely place to leave a burn running.
+CHECK last(ascent)["lever"] == 0.0
