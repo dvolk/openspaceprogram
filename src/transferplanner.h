@@ -173,9 +173,12 @@ public:
     /* Select by name alone, taking the LAST match -- the list is bodies, then
        vessels, then stations, so a vessel wins over a body of the same name and
        a station over both. This is the CLI's shape, where there is no row to
-       click. A tie can only cross kinds: within one kind the labels are unique
-       (dedupVehicleName on spawn, buildings.h:dedupBuildingName at placement,
-       #883), so what this leaves selected always resolves to a row. */
+       click. A tie here can only cross KINDS: within one kind the labels are
+       unique for anything this build SPAWNS (dedupVehicleName on spawn,
+       buildings.h:dedupBuildingName at placement, #883). It is not enforced on
+       load -- save.cpp restores ship names verbatim -- so a hand-edited save can
+       still hold two vessels under one name, which is the same collision a
+       layer down. */
     void selectTargetByName(const std::string &name);
 
     std::vector<XferTarget> xferTargets;

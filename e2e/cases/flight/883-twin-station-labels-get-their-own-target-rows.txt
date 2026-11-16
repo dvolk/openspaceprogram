@@ -3,19 +3,27 @@
 # stations the same display_name has written ONE target. The Target window lists
 # two rows that read alike, findTargetRow resolves either click to the FIRST
 # matching row, and the plan, the burn marker and the map's Target plane all
-# follow a station the player did not pick. Nothing warns (#883).
+# follow a station the player did not pick. Nothing warned (#883).
 #
 # Ship names dodge this when they spawn (vehicle.cpp:dedupVehicleName gives the
 # rest " #2", " #3"); building labels now dodge it where they are placed, with
 # the same rule and -- because the identity has no body term -- across the whole
 # SYSTEM rather than per body.
 #
-# The fixture e2e/fixtures/systems/883-twin-stations.json is the shipped
-# ksp_system bodies with its site fragment replaced by three inline buildings: a
-# launch pad and TWO Kerbin stations both authored display_name "Twin station",
-# on different orbits. This run asks for a name that is not there at all, which
-# makes the planner print the rows it did look at -- the only face the row list
-# has in a log. The next case (883-b) aims at one of them.
+# The fixture e2e/fixtures/systems/883-twin-stations.json is 688-kerbin-wind's
+# four bodies with that fixture's wind block removed, and with the site FRAGMENT
+# replaced by three inline buildings: one launch pad plus TWO Kerbin stations
+# both authored display_name "Twin station", on different orbits. The bodies are
+# NOT byte-identical to shipped res/systems/ksp_system.json (that fixture
+# predates the albedo/composition blocks, and its Duna's air height is 65000
+# against shipped 50000) -- which is fine here because nothing in this case
+# reads air or relief. The BUILDINGS are faithful to the shipped
+# res/data/ksp_launch_sites.json, so the pair is a one-field diff from content
+# the game really ships.
+#
+# This run asks for a name that is not there at all, which makes the planner
+# print the rows it did look at -- the only face the row list has in a log. The
+# next case (883-b) aims at one of the twins.
 NAME twin-station-labels-get-their-own-target-rows
 CLAIM Two stations authored with one display_name become two distinct target labels.
 KIND invariant
@@ -24,11 +32,17 @@ ARGS --time-accel 1 --timeout 3 --startship racer,res/ships/racer.json,Kerbin,pa
 ARGS --transfer-target "no such thing"
 FORBID error:
 # Both twins are rows, and they answer to different names: "Twin station" and
-# "Twin station #2". Without the placement dedup this line reads
+# "Twin station #2". Without the placement dedup the line reads
 # "Twin station" "Twin station" -- two rows, one identity -- and EXPECT reddens.
+# The whole line is spelled out, so it also pins that this fixture's Kerbin has
+# no child bodies and this hull has no siblings: on shipped KSP the same
+# diagnostic leads with "Mun" "Minmus" (see 873-c), and adding a body or a
+# sibling vessel to the fixture would need this line to grow with it.
 EXPECT [xfer] --transfer-target "no such thing" is not plannable here; this hull can aim at: "Twin station" "Twin station #2"
-# The rename says itself once, at placement, and names which building moved.
-# Counted rather than EXPECTed so a rename that fires per frame -- or per
-# re-place on a system switch -- goes red.
-CHECK out.count('buildings: \'kerbin_station_b\' answers to "Twin station #2"') == 1
+# The rename says itself at placement, and says WHICH building already owns the
+# label. Counted rather than EXPECTed so a rename that fired again -- per frame,
+# or on the re-place after a system switch -- goes red. One run, so this proves
+# once-per-load rather than once-ever.
+CHECK out.count('warning: building \'kerbin_station_b\' answers to "Twin station #2"') == 1
+CHECK out.count('"Twin station" is already taken by \'kerbin_station\'') == 1
 CHECK out.count('"Twin station" "Twin station #2"') == 1

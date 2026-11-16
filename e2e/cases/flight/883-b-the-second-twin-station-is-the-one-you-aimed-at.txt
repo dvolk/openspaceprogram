@@ -33,6 +33,8 @@ CHECK all(x["target"] == "Twin station #2" for x in xfer)
 CHECK all(x["dv_dep"] > 0.0 and x["tof"] > 0.0 for x in xfer)
 CHECK any(m["slot"] == "tgt" for m in mapb)
 CHECK all(abs(m["n"][0]) < 1e-6 and abs(m["n"][1] - 0.939693) < 1e-5 and abs(m["n"][2] - 0.342020) < 1e-5 for m in mapb if m["slot"] == "tgt")
-# The flight readout measures in that plane too, so the HUD and the map agree
-# about which of the twins is being flown to.
+# The flight readout measures against the plane the map resolved, so the HUD
+# numbers describe the picture on screen. What it does NOT pin is WHICH twin the
+# planner resolved -- plane=tgt says the readout is using the target slot, and a
+# wrong twin would still say tgt. The normal above is the discriminator.
 CHECK all(o["plane"] == "tgt" for o in orbit if o["t"] > 1.0)

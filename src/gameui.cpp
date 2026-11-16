@@ -1444,10 +1444,11 @@ void drawUIReadouts(Game &g) {
             for(int i = 0; i < (int)xferTargets.size(); i++) {
                 // PushID: two rows can carry one label -- a body, a vessel and a
                 // station may share a name, and the planner keeps them apart by
-                // kind. (Within one kind the labels are unique: dedupVehicleName
-                // on spawn, and #883 dedups building labels at placement.) imgui
-                // needs an id, or the second row steals the first's (the VAB
-                // site combo below does the same thing for the same reason).
+                // kind. (Within one kind the labels are unique for anything this
+                // build spawns: dedupVehicleName on spawn, and #883 dedups
+                // building labels at placement.) imgui needs an id, or the second
+                // row steals the first's (the VAB site combo below does the same
+                // thing for the same reason).
                 ImGui::PushID(i);
                 if(ImGui::Selectable(xferTargets[i].name,
                                      planner.isTarget(xferTargets[i]))) {

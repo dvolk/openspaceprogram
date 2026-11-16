@@ -703,10 +703,13 @@ int main() {
            window and --transfer-target match {label, kind}, and that identity has
            no body term, so two buildings in one system answering to one label are
            ONE target -- the combo lists two rows and clicking either resolves the
-           first, so the plan and the map's Target plane follow a station the
-           player did not pick. Placement renames a collision the way spawn
-           renames a ship; this pins that no SHIPPED world needs the rename, so
-           what a player reads is what the author typed. */
+           first, and once the hull crosses an SoI a same-named station around the
+           NEW body inherits the selection. Placement renames a collision the way
+           spawn renames a ship; this pins that no SHIPPED world needs the rename,
+           so what a player reads is what the author typed. Exact-string, because
+           that is what the planner compares: a near-duplicate ("Kerbin Station"
+           beside "Kerbin station") is a readable ambiguity in the combo rather
+           than a wrong target, so it is not failed here. */
         {
             std::vector<std::string> taken;
             for(const WorldBuilding &w : sys.world_buildings) {
@@ -717,7 +720,6 @@ int main() {
                            logical.c_str(), w.id.c_str(), base.c_str());
                     failures++;
                 }
-                taken.push_back(base);
             }
         }
         if(!homePad) {
@@ -730,27 +732,24 @@ int main() {
     // --- dedupBuildingName ------------------------------------------------
     /* The rule placement applies (#883), spelled out because it is a RENAME of
        authored data and so has to stay exactly the rule ship names already use
-       (vehicle.cpp:dedupVehicleName): first asks for the base name and gets it,
-       later ones get " #2", " #3". What this deliberately does NOT do is parse
-       an existing suffix -- base "X #2" against a taken "X #3" answers "X #2
-       #2", not "X #3", the same way a ship called "X #2" renames to "X #2 #2".
-       Consistency with the ship rule is worth more here than tidiness, and the
-       list is flat across the whole system because TargetRef has no body term:
-       a name used on Kerbin is taken on Mun too. */
+       (vehicle.cpp:dedupVehicleName): the first ask gets the base name, later
+       ones " #2", " #3". What it deliberately does NOT do is parse a suffix it
+       put there itself: asking for "Science outpost #2" when that is taken
+       answers " #2 #2", just as a ship named "X #2" renames to "X #2 #2".
+       Consistency with the ship rule is worth more here than tidiness. The list
+       is flat across the whole system because TargetRef has no body term: a name
+       used around Kerbin is taken around Mun too. */
     {
         std::vector<std::string> taken;
         CHECK(dedupBuildingName(taken, "Science outpost") == "Science outpost");
-        taken.push_back("Science outpost");
         CHECK(dedupBuildingName(taken, "Science outpost") == "Science outpost #2");
-        taken.push_back("Science outpost #2");
         CHECK(dedupBuildingName(taken, "Science outpost") == "Science outpost #3");
         CHECK(dedupBuildingName(taken, "Other outpost") == "Other outpost");
+        // It records what it handed out: a caller that has to remember to do
+        // that itself can forget, and the collision is back with no signal.
+        CHECK(taken.size() == 4);
         CHECK(dedupBuildingName(taken, "Science outpost #2")
               == "Science outpost #2 #2");
-        /* ... and the counter rides on WHATEVER the base is, so the renamed
-           label is a label like any other: hand "Science outpost #2 #2" back as
-           taken and the next ask for that base is " #3", not another level. */
-        taken.push_back("Science outpost #2 #2");
         CHECK(dedupBuildingName(taken, "Science outpost #2")
               == "Science outpost #2 #3");
     }

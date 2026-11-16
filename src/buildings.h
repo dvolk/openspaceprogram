@@ -46,11 +46,13 @@ BuildingsCatalog load_buildings_catalog(const char *path);
 
 // One world instance (the system JSON "world_buildings" entry).
 struct WorldBuilding {
-    std::string id;           // instance id: unique per BODY (that is what
-                              // validate checks, and what placement and
-                              // find_launch_site match on). Labels are the
-                              // stronger rule -- unique across the system,
-                              // see dedupBuildingName below (#883).
+    std::string id;           // instance id: unique across the SYSTEM -- parse
+                              // refuses a duplicate anywhere in the merged
+                              // fragment + inline list, and placement,
+                              // find_launch_site and the save's pose references
+                              // all match on it. display_name is NOT unique as
+                              // authored; placement renames a clash
+                              // (dedupBuildingName, #883).
     std::string type;         // catalog name
     std::string display_name; // optional; empty -> catalog label
     std::string body;         // body name
@@ -122,24 +124,34 @@ std::vector<WorldBuilding> parse_world_buildings_all(
    carries its ships. */
 glm::dmat3 buildingOrient(const glm::dvec3 &up, double heading_rad);
 
-/* A building's label is the name the Target window and --transfer-target match
-   on, and a transfer target's IDENTITY is {label, kind} with no body term
-   (transferplanner.h:TargetRef), so two buildings in one system that answer to
-   one label are ONE target: the combo lists two rows and clicking either
-   resolves the first, so the plan, the burn marker and the map's Target plane
-   all follow a different station than the one that was clicked (#883).
-   Vessels dodge this when they spawn (vehicle.h:dedupVehicleName); buildings
-   dodge it where they are placed, with the same rule -- first keeps the base
-   name, the rest get " #2", " #3". `taken` is the whole system's list, not one
-   body's, for the same reason the identity has no body term. Pure so a test can
-   drive it (placing needs GL and physics). */
-std::string dedupBuildingName(const std::vector<std::string> &taken,
+/* Two buildings in one system that answer to one label are ONE transfer target,
+   and the damage has two halves. The identity is {label, kind} with no body term
+   (transferplanner.h:TargetRef), so the Target window lists two rows that read
+   alike and clicking either resolves the first: the plan, the burn marker and the
+   map's Target plane follow a station the player did not pick (#883). And the
+   rows are built from the body the hull is inside (transferplanner.cpp: `pb =
+   ship->frame->body`), so a same-named station around a DIFFERENT body takes over
+   the selection the moment the hull crosses into that SoI, armed plan and all.
+   Hence `taken` spans the SYSTEM rather than one body.
+   Only ORBITAL buildings become rows, so for a pad or a scenic building the
+   rename is hygiene rather than an identity fix: its label appears in the VAB
+   site picker, the "At <site>" readout and the standing-on-<site> ask, where two
+   identical names are confusing but nothing resolves off them.
+   The rule is the one a ship name gets on spawn (vehicle.h:dedupVehicleName):
+   first keeps the base, the rest get " #2", " #3". Deliberately not shared with
+   that function -- the vessel form also refuses roster names and reads live
+   Vehicle pointers, so sharing would cost a template for two callers. `taken`
+   learns the name it returns, so a caller cannot forget to record it. Standalone
+   because placing needs GL and physics. */
+std::string dedupBuildingName(std::vector<std::string> &taken,
                               const std::string &base);
 
 /* The checks place_world_buildings would throw on, without instantiating or
    needing physics: type in the catalog, body in the system, unique instance id
-   per body. A cross-system load runs this on the incoming system so a bad
-   definition refuses before the switch destroys the running game (#302). */
+   per body (parse_world_buildings_all above already refuses a duplicate across
+   the whole merged list, so this term only bites on a hand-built list). A
+   cross-system load runs this on the incoming system so a bad definition refuses
+   before the switch destroys the running game (#302). */
 void validate_world_buildings(const System &sys, const BuildingsCatalog &cat);
 
 /* Instantiate every world building on its body (TerrainBody::pads).
