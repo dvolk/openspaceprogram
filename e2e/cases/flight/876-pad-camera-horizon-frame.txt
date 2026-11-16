@@ -1,0 +1,59 @@
+# #876's pad complaints -- "panning left and right then rolls the camera", "the
+# other side view is upside down", "can't go below the horizon" -- all came from
+# one fact: the ship-focus turntable's yaw axis was the hull's LATERAL axis 1,
+# horizontal for a rocket on the pad, so the turntable's pole sat on the horizon.
+# This case pins the FIXED shape, measured after the blend (gf= the ground-frame
+# weight, pole= the yaw axis against the local vertical, roll= how tilted the
+# local vertical reads on screen, hi= the turntable's live +side stop, camh= the
+# camera's height above the plane through the ship's COM):
+#   gf=+1.000 on every row: a parked hull frames the turntable on the surface,
+#     not on the hull.
+#   pole=0 +- 1 everywhere: the yaw axis is the local vertical, so a left/right
+#     drag sweeps the horizon. Before the blend this sat at 90.0 on every row.
+#   ax1 > 89 everywhere: measured against the HULL instead of the ground, the
+#     same row says the turntable has nothing of the rocket in it -- the rocket
+#     stands with axis 1 broadside, so 90 deg is "not the hull's frame".
+#   roll=0 +- 1 everywhere, INCLUDING across the 3 rad yaw sweep: the image never
+#     rolls. Before the blend the same sweep took roll 0 -> 172 deg while fwd
+#     moved by 0.06; here it moves fwd by ~2.5, because it is a real orbit (the
+#     max below, pose-pinned on yaw rather than on wall-clock row times).
+#   Pan down and the stop is the DECK, not the pole: pin=hi with hi ~ +0.91 rad
+#     (52 deg below the horizon), well short of the 1.52 pole clamp, and pitch
+#     exactly at hi -- never past it.
+#   THEN ZOOM OUT, which is where the angle-stops-the-camera trick is actually
+#     tested: the stop shrinks with distance (asin((h_com-1)/d)) and ComputeView()
+#     pulls the pitch back to it, so the camera holds ~1 m off the deck at 27 m
+#     out instead of sliding under Kerbin. Enforcing the stop only on the drag
+#     that set it left camh at -21 m, then -58 m, with the ship still drawn.
+#     camh stays inside (-9.5, -7.0): the racer's COM sits ~8.9 m over the pad, so
+#     the stop is ~1 m off the deck (kCamDeckClearanceM) at any distance. A low
+#     worm's-eye view is reachable now, which is what "can't go below the
+#     horizon" was asking for.
+# Deliberately golden: the numbers are measured, and re-measuring them is what
+# tuning the blend (or #916's terrain-aware clamp) means. --cam-gizmo rides
+# along because nothing else exercises that overlay, and the default GL_/
+# Assertion forbids then catch it drawing nothing but errors.
+NAME pad-camera-horizon-frame
+CLAIM A landed ship's turntable lives in the local-vertical frame: its yaw axis is the local vertical, a left/right drag orbits instead of rolling, and panning down stops at the deck at any zoom.
+KIND golden
+ARGS --timeout 6 --time-accel 1 --startship racer,res/ships/racer.json,Kerbin,pad --cam-log --cam-gizmo --orbit-interval 0.25
+ARGS --sim-mouse 1000,0,900,500,0
+ARGS --sim-mouse 1200,800,900,900,RMB
+ARGS --sim-mouse 2500,1000,1500,900,RMB
+ARGS --sim-mouse 3600,0,CUR,CUR,5
+ARGS --sim-mouse 3800,0,CUR,CUR,5
+ARGS --sim-mouse 4000,0,CUR,CUR,5
+ARGS --sim-mouse 4200,0,CUR,CUR,5
+EXPECT [camlog]
+CHECK all(r["mode"] == "orbit" and r["gf"] is not None and r["gf"] > 0.99 for r in cam)
+CHECK all(abs(r["pole"]) < 1.0 for r in cam)
+CHECK all(r["ax1"] is not None and r["ax1"] > 89.0 for r in cam)
+CHECK all(abs(r["roll"]) < 1.0 for r in cam)
+CHECK max(abs(a["fwd"][0] - b["fwd"][0]) + abs(a["fwd"][1] - b["fwd"][1]) + abs(a["fwd"][2] - b["fwd"][2]) for a in cam if abs(a["yaw"]) < 1e-9 for b in cam if b["yaw"] < -2.9) > 1.0
+CHECK all(abs(r["pitch"] - r["hi"]) < 1e-4 for r in cam if r["pin"] == "hi")
+CHECK any(r["pin"] == "hi" and 0.5 < r["hi"] < 1.2 for r in cam)
+CHECK max(r["dist"] for r in cam) > 20.0
+CHECK min(r["camh"] for r in cam) > -9.5
+CHECK min(r["camh"] for r in cam) < -7.0
+FORBID error:
+LIMIT 60

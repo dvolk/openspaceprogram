@@ -93,6 +93,19 @@ Camera::Camera(const glm::dvec3& focusPos, float fov, float aspect, float zNear,
     this->view = glm::translate(pos);
 }
 
+double Camera::orbitHiStop() const {
+    // min(kPitchLimit, downLimit) and not min(downLimit, kPitchLimit): a NaN
+    // stop then picks kPitchLimit instead of poisoning both comparisons and
+    // opening the turntable (the same trap as clampFovRad above).
+    return std::min(kPitchLimit, downLimit);
+}
+
+void Camera::clampOrbitPitch() {
+    const double hi = orbitHiStop();
+    if (orbitPitch > hi) { orbitPitch = hi; }
+    if (orbitPitch < -kPitchLimit) { orbitPitch = -kPitchLimit; }
+}
+
 glm::dvec3 Camera::orbitOffset() const {
     const double cp = std::cos(orbitPitch), sp = std::sin(orbitPitch);
     const double cy = std::cos(orbitYaw),   sy = std::sin(orbitYaw);
@@ -101,6 +114,11 @@ glm::dvec3 Camera::orbitOffset() const {
 
 void Camera::ComputeView() {
     if (mode == CAM_ORBIT) {
+        // The caller's stop may have moved since the last drag -- zooming out
+        // at the pad shrinks it, and a parked pitch can sit past where the new
+        // stop is (#876). Enforce it here rather than leaving the view
+        // underground until the player happens to pan.
+        clampOrbitPitch();
         const glm::dvec3 off = ref * orbitOffset() * distance;
         pos = focusPoint + off;
         forward = glm::normalize(-off);
@@ -200,11 +218,11 @@ void Camera::MoveUp(double amt) {
 
 void Camera::Pitch(double angle) {
     if (mode == CAM_ORBIT) {
-        // Pitch the turntable; clamp short of the pole where up vanishes.
+        // Pitch the turntable. The -side stop is the pole where up vanishes;
+        // the +side stop is the caller's, which sits at the deck while the
+        // frame is ground-locked (#876).
         orbitPitch += angle;
-        const double lim = kPitchLimit;
-        if (orbitPitch > lim) { orbitPitch = lim; }
-        if (orbitPitch < -lim) { orbitPitch = -lim; }
+        clampOrbitPitch();
     } else if (mode == CAM_FREE) {
         const glm::dmat3 rot = glm::dmat3(glm::rotate(angle, right));
         forward = rot * forward;

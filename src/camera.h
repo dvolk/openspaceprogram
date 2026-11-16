@@ -54,6 +54,19 @@ public:
     // not restate the literal to say so.
     static constexpr double kPitchLimit = 1.52;
 
+    /* The +side stop, rad: how far the camera may go BELOW ref's plane
+       (positive orbitPitch rides toward ref -ẑ). Defaults to kPitchLimit, which
+       is right while the hull holds the frame -- there the stop is the pole,
+       where the projected up vanishes. A ground-locked frame instead lowers it
+       to the deck the ship stands on, so panning below the horizon gives a low
+       view and not an underground one (#876).
+       The caller writes it every frame next to ref, and ComputeView() ENFORCES
+       it, not just Pitch(): a stop that moves under a pitch already at the old
+       one -- zooming out at the pad, or scene.cpp popping a parked pitch -- has
+       to pull the view back, or the turntable keeps drawing underground. The
+       -side stop stays at the pole. */
+    double downLimit = kPitchLimit;
+
     // Free-mode state. pos is PRIMARY; right is derived each ComputeView().
     glm::dvec3 right;
 
@@ -89,6 +102,9 @@ public:
     void setAspect(float _aspect);
     void setViewport(int w, int h);
     void setFov(float _fov);
+    // The live +side stop, rad: what clampOrbitPitch() holds orbitPitch to and
+    // what #876's cam-log prints as hi= beside pin=.
+    double orbitHiStop() const;
     const glm::dvec3& GetPos() const;
     const glm::dvec3& GetRenderOrigin() const { return renderOrigin; }
     const glm::dvec3& GetForward() const;
@@ -103,6 +119,11 @@ public:
 private:
     // Unit focus->camera offset in the ref frame. Pitch positive toward ref -ẑ.
     glm::dvec3 orbitOffset() const;
+
+    // Hold orbitPitch inside [-kPitchLimit, orbitHiStop()]. Pitch() calls it and
+    // ComputeView() calls it, so a stop that moved since the last drag cannot
+    // leave the view outside it.
+    void clampOrbitPitch();
 
     // Refresh frustumSinX/CosX/SinY/CosY from fov and aspect (call whenever
     // either changes -- the projection is rebuilt at the same sites).

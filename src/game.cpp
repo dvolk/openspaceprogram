@@ -1493,6 +1493,13 @@ void Game::resetWorld() {
     time_accel = 0;
     // The title screen is an orbit view: a quitting free-cam pilot keeps no pose.
     if(camera != nullptr) { camera->mode = CAM_ORBIT; }
+    /* The ground-frame latch belongs to the hull that just died. groundFrameWeight
+       re-arms on a ship-pointer change, but a freed Vehicle can come back at the
+       same address in the next world, so the teardown clears it as well (#876). */
+    cam_ground_w = -1.0;
+    cam_ground_still = 0.0;
+    cam_ground_on = false;
+    cam_ground_ship = nullptr;
     syncShipFocus();
     /* The prefix is a frozen e2e anchor, so the function rename did not take it
        with it. EXPECTed by 66, 67, 68, 260, 345; FORBIDden by 90, 102, 262,

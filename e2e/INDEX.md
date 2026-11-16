@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 392 |
+| `invariant` | a behaviour or a player route the game must keep | 393 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 50 |
 | `harness` | CLI/test-engine plumbing, not game spec | 16 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **462** |
+| | **total** | **463** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -18,7 +18,7 @@ paces a run: how much e2e a change deserves is the caller's
 judgement. Select by number, name or path, e.g.
 `python3 e2e/run.py save/172 262`.
 
-## flight (135)
+## flight (136)
 
 | case | kind | pins |
 |---|---|---|
@@ -148,7 +148,8 @@ judgement. Select by number, name or path, e.g.
 | `flight/865-platform-park-save-load.txt` | invariant | A ship parked on the platform saves its bubble-frame pose and loads back onto the deck. |
 | `flight/873-c-stations-are-target-rows-pads-are-not.txt` | invariant | The transfer target list carries this body's orbital stations and none of its pads. |
 | `flight/873-transfer-to-an-orbital-station.txt` | invariant | The Target window plans a transfer to an orbital station: intercept only, and its authored orbit becomes the map's Target plane. |
-| `flight/876-pad-camera-turntable-pole.txt` | golden | A landed ship's turntable yaw axis sits 90 deg off the local vertical, so a left/right drag at the pitch clamp rolls the image instead of orbiting it. |
+| `flight/876-flying-hull-holds-its-frame.txt` | invariant | An airborne ship's turntable returns to the hull frame and stays there: the ground-frame weight decays to zero, the hull's own axes hold the turntable, and a slow low apex does not swing the frame back. |
+| `flight/876-pad-camera-horizon-frame.txt` | golden | A landed ship's turntable lives in the local-vertical frame: its yaw axis is the local vertical, a left/right drag orbits instead of rolling, and panning down stops at the deck at any zoom. |
 | `flight/883-b-the-second-twin-station-is-the-one-you-aimed-at.txt` | invariant | Aiming at the renamed twin plans the second station's orbit, not the first station's. |
 | `flight/883-twin-station-labels-get-their-own-target-rows.txt` | invariant | Two stations authored with one display_name become two distinct target labels. |
 | `flight/891-sas-prograde-with-no-conic-refuses.txt` | invariant | SAS prograde on a hull with no conic refuses instead of steering at solver residue: the mode latches, every autopilot row says no-target, and none shows a heading being chased. |

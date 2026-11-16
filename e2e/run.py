@@ -578,14 +578,19 @@ SHAKE_RE = re.compile(
 # --cam-log: the camera the render pass left this frame. yaw/pitch are what a
 # --sim-mouse drag is supposed to change; rmb/cap say whether the gesture
 # reached the camera at all (a part window under the cursor eats the drag).
-# #876 added the orientation half: up/lv/roll/pole/camh. Those answer "does the
+# #876 added the orientation half: up/lv/roll/pole/gf/camh. Those answer "does the
 # picture read", not "where is the turntable": pole is the angle between the
 # turntable's yaw axis and the local vertical (90 deg = a left/right drag rolls
 # the image instead of orbiting it), roll is how tilted that vertical looks on
-# screen. lv/roll/pole/camh dash when there is no local vertical to measure
-# against (no ship, or a body focus); roll additionally goes NOISY rather than
-# dashing when the view line runs along lv, so a case pins it at a side view,
-# never at the poles.
+# screen, gf is the ground-frame weight that blends the turntable between the
+# hull's attitude and the north-up surface frame. lv/roll/pole/ax1/camh dash when
+# there is no local vertical to measure against (no ship, or a body focus);
+# pole/gf/pin additionally dash outside orbit mode, where ref and orbitPitch are
+# whatever the last orbit frame left. roll goes NOISY rather than dashing when
+# the view line runs along lv, so a case pins it at a side view, never at the
+# poles. hi= never dashes -- it is the turntable's live +side stop, the number
+# pin= compares against, so a case can tell "held at the stop" from "past a
+# stop that moved" (pitch > hi never happens: ComputeView() pulls it back).
 CAM_RE = re.compile(
     r"\[camlog\]\s+t=([\d.]+)s\s+mode=(\w+)\s+focus=\"([^\"]*)\"\s+"
     r"yaw=([-+\d.]+) rad\s+pitch=([-+\d.]+) rad\s+dist=([-+\d.]+) m\s+"
@@ -594,7 +599,10 @@ CAM_RE = re.compile(
     r"(?:lv=\[([-+\d.]+) ([-+\d.]+) ([-+\d.]+)\]|lv=\[-\])\s+"
     r"roll=(?:([-+\d.]+) deg|-)\s+"
     r"pole=(?:([-+\d.]+) deg|-)\s+"
+    r"ax1=(?:([-+\d.]+) deg|-)\s+"
+    r"gf=(?:([-+]\d+\.\d+)|-)\s+"
     r"camh=(?:([-+\d.]+) m|-)\s+"
+    r"hi=([-+\d.]+) rad\s+"
     r"pin=(hi|lo|-)\s+rmb=(\d)\s+cap=(\d)"
 )
 TERRAIN_RE = re.compile(
@@ -1654,8 +1662,8 @@ def parse_cam(out):
     rows = []
     for m in CAM_RE.finditer(out):
         (t, mode, focus, yaw, pitch, dist,
-         fx, fy, fz, ux, uy, uz, lvx, lvy, lvz, roll, pole, camh, pin, rmb,
-         cap) = m.groups()
+         fx, fy, fz, ux, uy, uz, lvx, lvy, lvz, roll, pole, ax1, gf, camh, hi,
+         pin, rmb, cap) = m.groups()
         lv = None if lvx is None else (num(lvx), num(lvy), num(lvz))
         rows.append({
             "t": float(t), "mode": mode, "focus": focus,
@@ -1666,7 +1674,12 @@ def parse_cam(out):
             # case that selects on them cannot be satisfied by a view that
             # printed nothing (#876).
             "lv": lv,
-            "roll": num(roll), "pole": num(pole), "camh": num(camh),
+            "roll": num(roll), "pole": num(pole), "ax1": num(ax1),
+            "gf": num(gf),
+            "camh": num(camh),
+            # The live +side stop: pitch never exceeds it, so pin == "hi" means
+            # pitch == hi and a case can say so numerically.
+            "hi": float(hi),
             "pin": pin,
             "rmb": int(rmb), "cap": int(cap),
         })

@@ -25,6 +25,7 @@
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/projection.hpp>    // glm::proj
 #include <glm/gtx/vector_angle.hpp>  // glm::orientedAngle
+#include <glm/gtc/quaternion.hpp>    // dquat / slerp / mat3_cast (the camera frame blend)
 
 // Small-angle rotation (a is ~1e-3 rad): R ~= I + [a]x.
 static glm::dmat3 shakeRot(const glm::dvec3 &a) {
@@ -436,6 +437,116 @@ static bool focusLocalVertical(Game &g, glm::dvec3 &lv) {
     return true;
 }
 
+/* North-up tangent basis with ẑ = up, in the orbit camera's column order
+   [back, right, up]. The azimuth anchor is a WORLD axis rather than anything on
+   the hull: a vessel resting with a lateral axis in the sky has no heading to
+   anchor to, and whichever projection happens to survive would jump as the hull
+   tips. That is the shape the EVA basis has used since #850. It does flip which
+   world axis anchors the azimuth where the local vertical crosses this frame's
+   Y (|up.y| > 0.9, so ~64 deg body latitude), which a rover driving poleward
+   would see snap; left as found, since a snapped azimuth is a far smaller
+   offence than a rolling one. */
+static glm::dmat3 tangentRef(const glm::dvec3 &up) {
+    const glm::dvec3 ref_dir = (std::fabs(up.y) > 0.9)
+        ? glm::dvec3(1.0, 0.0, 0.0) : glm::dvec3(0.0, 1.0, 0.0);
+    const glm::dvec3 right = glm::normalize(ref_dir - up * glm::dot(ref_dir, up));
+    return glm::dmat3(glm::cross(right, up), right, up);
+}
+
+/* Blend two turntable bases, taking the rotation between them the short way and
+   scaling it by t. Both arguments must be orthonormal with det +1, which is what
+   glm's quat(mat3) wants -- the attitude basis is [nose, right, up] with
+   cross(nose, right) = up, and tangentRef builds its back column by cross(). A
+   mixture (attitudeRef against a transposed basis, say) still yields a matrix,
+   just a skewed one that mat3_cast hides, hence the assert.
+   Known edge, left alone: at t ~ 0.5 with the two bases near ANTIPODAL (a hull
+   resting on its nose), slerp's axis is unstable and the frame flips. That needs
+   a grounded inverted hull caught mid-blend. */
+static glm::dmat3 blendRef(const glm::dmat3 &a, const glm::dmat3 &b, double t) {
+    assert(glm::determinant(a) > 0.5 && glm::determinant(b) > 0.5);
+    if(t <= 0.0) { return a; }
+    if(t >= 1.0) { return b; }
+    const glm::dquat qa(a), qb(b);
+    return glm::mat3_cast(glm::slerp(qa, qb, t));
+}
+
+/* Metres the ground-locked camera keeps above the deck before the turntable
+   stops it. */
+static constexpr double kCamDeckClearanceM = 1.0;
+
+/* How far the turntable may take the camera below the ground frame's plane, rad:
+   it descends until it is kCamDeckClearanceM above the deck the SHIP stands on
+   and no further. Angles, because that is what the turntable speaks: at the
+   pad's 10 m it is a worm's-eye view a metre off the deck. Zooming out does not
+   buy more sky either -- the stop is an angle, so the camera's height above that
+   deck stays at the clearance at any distance, because Camera::ComputeView()
+   re-applies the live stop every frame instead of only on the drag that set it.
+   Scaled by w so a frame the hull still holds keeps the pole stop; Camera owns
+   the kPitchLimit cap. A hull whose COM sits below kCamDeckClearanceM (a low
+   rover) stops AT the COM plane rather than a metre above it: the clamp measures
+   the ship, not the terrain.
+   Only the deck under the ship: terrain under the CAMERA stays #916. */
+static double deckPitchLimit(Vehicle *ship, const glm::dvec3 &lv,
+                             double distance, double w) {
+    double h_com;      // the ship's COM above the deck it rests on
+    if(ship->frame->building != nullptr) {
+        h_com = ship->get_center_of_mass().z;    // the bubble's deck is z = 0
+    } else {
+        const double r = glm::length(ship->get_center_of_mass());
+        h_com = r - (double)ship->m_parent->GetTerrainHeight(glm::vec3(lv));
+    }
+    const double room = (h_com - kCamDeckClearanceM) / distance;
+    return Camera::kPitchLimit * (1.0 - w)
+         + std::asin(std::clamp(room, 0.0, 1.0)) * w;
+}
+
+/* The ground-frame weight for a ship-focus turntable: 1 = north-up surface
+   frame, 0 = the hull's own attitude. Damped so a bouncy landing cannot snap
+   the frame, and snapped rather than eased on a ship's first framing (a paused
+   boot must not open on a frame that then slides; a vessel switch must not
+   inherit whoever was flown before).
+   Keyed on the game's own isGrounded() -- within kShipGroundBand of the surface
+   AND under kShipGroundSpeed m/s, the same tolerance science calls Landed --
+   not on an altitude band: a hull parked slow and low is exactly the one whose
+   horizon should not spin when you pan.
+   But isGrounded() is a tolerance, and the camera is a loud surface: an apex at
+   38 m where the hull briefly crawls under kShipGroundSpeed reads grounded, and
+   blending on the raw reading swung the view ~60 deg around the ship and back
+   inside 1.5 s. So the latch is sticky in and instant out -- the surface frame
+   engages only once the hull has sat still for kCamSettleS, while handing the
+   frame back to the hull waits for nothing. Once engaged, staying grounded
+   keeps it: the timer gates ENTRY, not ownership. */
+static constexpr double kCamSettleS = 2.0;
+
+static double groundFrameWeight(Game &g, Vehicle *ship) {
+    if(ship != g.cam_ground_ship) {
+        g.cam_ground_ship = ship;
+        g.cam_ground_w = -1.0;        // sentinel: snap this frame
+        g.cam_ground_still = 0.0;
+        g.cam_ground_on = false;
+    }
+    const bool grounded = ship->isGrounded();
+    const double dt = g.smoothingDt(g.cam_ground_w_ms);
+    if(!grounded) {
+        g.cam_ground_still = 0.0;
+        g.cam_ground_on = false;
+    } else {
+        g.cam_ground_still += dt;
+        // First framing of this hull opens as found; after that, entry needs
+        // the settle.
+        if(g.cam_ground_w < 0.0 || g.cam_ground_still >= kCamSettleS) {
+            g.cam_ground_on = true;
+        }
+    }
+    const double target = g.cam_ground_on ? 1.0 : 0.0;
+    if(g.cam_ground_w < 0.0) {
+        g.cam_ground_w = target;
+    } else {
+        g.cam_ground_w += (target - g.cam_ground_w) * (1.0 - std::exp(-dt / 0.4));
+    }
+    return g.cam_ground_w;
+}
+
 /* State half of the 3D pass (#212). The terrain LOD owns the ground's Bullet
    collision bodies, so skipping it changes collision outcomes, not just
    pixels (#24). */
@@ -455,6 +566,9 @@ void refreshWorld(Game &g) {
     assert(g.focusTargets[g.focusBody].body != nullptr || ship != nullptr);
 
     const glm::dvec3 com = ship ? ship->get_center_of_mass() : glm::dvec3(0.0);
+    // --cam-log's gf=: this frame's ground-frame weight, -1 = no turntable
+    // framing happened (free/first person, or a body focus).
+    double cam_gf = -1.0;
     // First person: eye at the controller's top (stack +Z face), along the
     // nose.
     if(camera->mode == CAM_FIRST) {
@@ -492,26 +606,43 @@ void refreshWorld(Game &g) {
                 // focusLocalVertical, which #876's numbers measure against.
                 glm::dvec3 cam_up(0.0, 0.0, 1.0);
                 focusLocalVertical(g, cam_up);
-                // Tangent "north": +Y, or +X near +/-Y so the projection never
-                // vanishes.
-                const glm::dvec3 ref_dir = (std::fabs(cam_up.y) > 0.9)
-                    ? glm::dvec3(1.0, 0.0, 0.0) : glm::dvec3(0.0, 1.0, 0.0);
-                const glm::dvec3 right = glm::normalize(
-                    ref_dir - cam_up * glm::dot(ref_dir, cam_up));
-                const glm::dvec3 back = glm::cross(right, cam_up);
-                camera->ref = glm::dmat3(back, right, cam_up);
+                camera->ref = tangentRef(cam_up);
+                camera->downLimit = Camera::kPitchLimit;
+                // Not a measured weight: an EVA kerbal is north-up always, so
+                // there is nothing to blend and no deck to stop at -- #850
+                // lives with the pole stop. gf= prints 1 so a case can tell
+                // "surface frame" from "no framing ran".
+                cam_gf = 1.0;
             } else {
-            // The orbit camera expects ref as [back, right, up]; the ship's
-            // axes 0/1/2 are [right, up, nose]. Feed the columns in the
-            // camera's order: nose-as-up swaps the pitch/yaw responses.
+            /* The orbit camera expects ref as [back, right, up]; the ship's
+               axes 0/1/2 are [right, up, nose]. Feed the columns in the
+               camera's order: nose-as-up swaps the pitch/yaw responses.
+               Attitude is the right frame in the air, and wrong on the pad --
+               this column is the ship's LATERAL axis 1, so the turntable's pole
+               lands on the horizon. While the hull is grounded, lean toward the
+               same north-up basis the EVA branch above builds; see
+               groundFrameWeight (#876). */
             const glm::dmat3 sa = ship->attitudeBasis();
-            camera->ref = glm::dmat3(sa[2],   // back = nose
-                                     sa[0],   // right
-                                     sa[1]);  // up
+            const glm::dmat3 attRef(sa[2],   // back = nose
+                                    sa[0],   // right
+                                    sa[1]);  // up
+            const double w = groundFrameWeight(g, ship);
+            glm::dvec3 lv;
+            // Below ~0.005 the slerp is under any visible rotation, so skip
+            // the blend and the terrain sample with it.
+            if(w < 0.005 || !focusLocalVertical(g, lv)) {
+                camera->ref = attRef;
+                camera->downLimit = Camera::kPitchLimit;
+            } else {
+                camera->ref = blendRef(attRef, tangentRef(lv), w);
+                camera->downLimit = deckPitchLimit(ship, lv, camera->distance, w);
+            }
+            cam_gf = w;
             }
         } else {
             TerrainBody *b = g.focusTargets[g.focusBody].body;
             camera->ref = b->frame->getRotFrame()->GetOrientRelTo(rf);
+            camera->downLimit = Camera::kPitchLimit;
         }
     }
 
@@ -591,16 +722,30 @@ void refreshWorld(Game &g) {
                  pole  the turntable's yaw axis (ref Z, before the wobble)
                        against lv: ~0 = a left/right drag sweeps the horizon,
                        ~90 = it rolls the image about the view line while fwd
-                       barely moves. A landed rocket sits at 90.
+                       barely moves. A landed rocket sat at 90 before #876's
+                       blend; gf= is what moved it.
+                 ax1   the same yaw axis against the HULL's lateral axis 1:
+                       0 deg = the hull holds the turntable, 90 deg = the
+                       surface frame does. pole needs the hull to stay in a
+                       known pose to mean anything (a hop's arc drifts it a few
+                       degrees); ax1 says which frame is in charge either way.
+                 gf    the ground-frame weight this frame: 1 = the turntable
+                       lives in the north-up surface frame, 0 = the hull's
+                       attitude holds it, dash where no framing ran (free or
+                       first person, a body focus).
                  camh  camera height above the horizontal plane THROUGH THE
                        SHIP'S COM. Negative is below that plane, not below the
                        terrain -- a ship's own alt_agl is in [surfinfo].
                lv/roll/pole/camh dash when there is no local vertical to measure
-               against (no ship, or a body focus). pole and pin dash in free or
-               first person too: there ref and orbitPitch are whatever the last
-               orbit frame left, not what built this view.
+               against (no ship, or a body focus). pole, gf and pin dash in free
+               or first person too: there ref and orbitPitch are whatever the
+               last orbit frame left, not what built this view.
                pin= says the pitch clamp is holding -- the only reason a drag
-               would print unchanged yaw/pitch. */
+               would print unchanged yaw/pitch. hi is the live +side stop it is
+               held to -- the deck while gf is up, the pole while it is not --
+               and ComputeView() pulls the pitch back to it every frame, so a
+               row can sit AT hi but never past it. Meaningless unless
+               mode=orbit. */
             glm::dvec3 lv;
             const bool orbit = camera->mode == CAM_ORBIT;
             const bool have_lv = focusLocalVertical(g, lv);
@@ -611,8 +756,11 @@ void refreshWorld(Game &g) {
             const double pole_deg = have_lv && orbit
                 ? acosUnit(glm::dot(base_ref[2], lv)) * rad2deg
                 : 0.0;
+            const double ax1_deg = have_lv && orbit
+                ? acosUnit(glm::dot(base_ref[2], ship->attitudeBasis()[1])) * rad2deg
+                : 0.0;
             const double camh = have_lv ? glm::dot(camera->GetPos() - com, lv) : 0.0;
-            char lv_s[32], roll_s[16], pole_s[16], camh_s[32], pin_s[8];
+            char lv_s[32], roll_s[16], pole_s[16], ax1_s[16], camh_s[32], gf_s[8], pin_s[8];
             if(have_lv) {
                 snprintf(lv_s, sizeof lv_s, "%+.4f %+.4f %+.4f", lv.x, lv.y, lv.z);
                 snprintf(roll_s, sizeof roll_s, "%+.1f deg", roll_deg);
@@ -624,12 +772,20 @@ void refreshWorld(Game &g) {
             }
             if(have_lv && orbit) {
                 snprintf(pole_s, sizeof pole_s, "%+.1f deg", pole_deg);
+                snprintf(ax1_s, sizeof ax1_s, "%+.1f deg", ax1_deg);
             } else {
                 snprintf(pole_s, sizeof pole_s, "-");
+                snprintf(ax1_s, sizeof ax1_s, "-");
             }
+            if(orbit && cam_gf >= 0.0) {
+                snprintf(gf_s, sizeof gf_s, "%+.3f", cam_gf);
+            } else {
+                snprintf(gf_s, sizeof gf_s, "-");
+            }
+            const double hiStop = camera->orbitHiStop();
             if(!orbit) {
                 snprintf(pin_s, sizeof pin_s, "-");
-            } else if(camera->orbitPitch >= Camera::kPitchLimit - 1e-6) {
+            } else if(camera->orbitPitch >= hiStop - 1e-6) {
                 snprintf(pin_s, sizeof pin_s, "hi");
             } else if(camera->orbitPitch <= -Camera::kPitchLimit + 1e-6) {
                 snprintf(pin_s, sizeof pin_s, "lo");
@@ -639,12 +795,13 @@ void refreshWorld(Game &g) {
             printf("[camlog] t=%.3fs mode=%s focus=\"%s\" "
                    "yaw=%+.5f rad pitch=%+.5f rad dist=%.3f m "
                    "fwd=[%+.4f %+.4f %+.4f] up=[%+.4f %+.4f %+.4f] "
-                   "lv=[%s] roll=%s pole=%s camh=%s pin=%s rmb=%d cap=%d\n",
+                   "lv=[%s] roll=%s pole=%s ax1=%s gf=%s camh=%s hi=%+.5f rad "
+                   "pin=%s rmb=%d cap=%d\n",
                    g.time, mode, g.focusTargets[g.focusBody].name,
                    camera->orbitYaw, camera->orbitPitch, camera->distance,
                    camera->forward.x, camera->forward.y, camera->forward.z,
                    camera->up.x, camera->up.y, camera->up.z,
-                   lv_s, roll_s, pole_s, camh_s, pin_s,
+                   lv_s, roll_s, pole_s, ax1_s, gf_s, camh_s, hiStop, pin_s,
                    g.rmbCam ? 1 : 0,
                    ImGui::GetIO().WantCaptureMouse ? 1 : 0);
             fflush(stdout);
@@ -1088,8 +1245,11 @@ void paintWorld(Game &g) {
     // with a ship.
     if(ship) {
     g.front_indicator->pos = facing;
-    // The orbit camera already tracks the ship's roll, so the nose billboard
-    // needs no roll of its own.
+    /* The nose billboard needs no roll of its own: Billboard::Draw aligns the
+       quad to the SCREEN basis, not the hull's. Until #876's blend that read as
+       "the orbit camera already tracks the ship's roll"; in the ground frame a
+       rolled hull now looks rolled and the horizon stays level, which is the
+       same alignment seen from the other side. */
     g.front_indicator->Draw(camera, std::numbers::pi);
     /* Prograde and the normal pair are the CONIC's, so they read marker_vel --
        the orbital velocity in this frame. vel is the frame-relative one, which
@@ -1288,6 +1448,10 @@ void refreshVab(Game &g) {
     Camera *cam = g.camera;
     cam->renderOrigin = g.vab.center;
     cam->ref = glm::dmat3(1.0);
+    // The editor's frame is the build tree, which has no deck to stop at:
+    // leaving a flight frame's downLimit here would hold the editor's pitch to
+    // wherever the last landed hull's stop was.
+    cam->downLimit = Camera::kPitchLimit;
     cam->Follow(g.vab.center);
     cam->ComputeView();
 

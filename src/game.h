@@ -681,6 +681,21 @@ struct Game {
         return (double)shake_rng * (2.0 / 4294967296.0) - 1.0;
     }
 
+    /* #876: how much the ship-focus turntable leans on the local vertical
+       instead of the hull's attitude. 1 = north-up surface frame, 0 = attitude,
+       -1 = nothing framed yet, so the run's first ship frame snaps to the target
+       instead of easing in from a frame the player never saw. State because it
+       is damped across frames, and it goes through Game::smoothingDt so a
+       --sim-steps run replays the same ramp rather than the frame rate's.
+       All three latch fields belong to the hull named by cam_ground_ship: the
+       framing re-arms when that pointer changes, so a vessel switch or a save
+       load cannot inherit the camera frame of whoever was flown before. */
+    double cam_ground_w = -1.0;
+    Uint32 cam_ground_w_ms = 0;
+    double cam_ground_still = 0.0;    // continuous seconds grounded
+    bool cam_ground_on = false;       // surface frame latched in
+    Vehicle *cam_ground_ship = nullptr;
+
     /* The scene stack: back() is the live scene, never empty (see scene.h). Each
        frame carries the camera pose to hand back when it is popped. */
     std::vector<SceneFrame> sceneStack;

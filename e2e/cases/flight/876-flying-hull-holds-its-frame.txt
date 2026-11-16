@@ -1,0 +1,39 @@
+# The other half of the #876 blend: a FLYING hull must keep its own frame, or the
+# fix would have just replaced one bad frame with another (a rocket banking in
+# air whose camera ignores the bank). Keys and the alt pin follow
+# flight/03-thrust-ascent, so the case cannot pass on a ship that never left the
+# pad. gf= is the ground-frame weight, ax1= the turntable's yaw axis against the
+# HULL's lateral axis 1 (0 deg = the hull holds the frame, 90 deg = the surface
+# frame does):
+#   first rows gf=+1.000 and ax1 ~90: the run starts parked, so the turntable is
+#     the surface frame and has nothing of the hull in it -- see
+#     flight/876-pad-camera-horizon-frame.
+#   min gf < 0.05 and, on those rows, ax1 under 10 deg: once she is moving,
+#     isGrounded() goes false and the damped weight hands the frame back to the
+#     hull within about a second. ax1 rather than pole, because pole only says
+#     90 while the hull stays vertical -- this hop's arc drifts it to 98 deg by
+#     t=8 for reasons that have nothing to do with the blend.
+#   every row after t=5 keeps gf < 0.05, which is the real question. This key
+#     sequence HOPS: the apex near t=6.5 sits at 39 m where the hull crawls under
+#     kShipGroundSpeed (|v| = 2.0 m/s), so isGrounded() reads true for about a
+#     second and the raw reading pulled gf to +0.691 -- the chase camera swung
+#     60 deg around the ship and back inside 1.5 s. The latch now needs
+#     kCamSettleS of stillness to enter the surface frame, so a hop apex never
+#     engages it and gf stays pinned at +0.000 through it.
+# Not pinned here: roll. In the hull frame the local vertical is broadside, which
+# is the ill-conditioned reading (atan2 of two near-zeros), and what the HUD does
+# with that while the hull rolls is #876's open HUD question, not this one.
+NAME flying-hull-holds-its-frame
+CLAIM An airborne ship's turntable returns to the hull frame and stays there: the ground-frame weight decays to zero, the hull's own axes hold the turntable, and a slow low apex does not swing the frame back.
+KIND invariant
+ARGS --startship racer,res/ships/racer.json,Kerbin,pad --time-accel 1 --timeout 8 --dbg-log --cam-log --orbit-interval 0.5
+ARGS --sim-press 1000,2000,R
+ARGS --sim-press 3000,2000,T
+EXPECT [camlog]
+CHECK last(dbg)["alt"] - first(dbg)["alt"] > 10
+CHECK first(cam)["gf"] > 0.99
+CHECK all(r["ax1"] is not None and r["ax1"] > 89.0 for r in cam if r["gf"] is not None and r["gf"] > 0.99)
+CHECK min(r["gf"] for r in cam if r["gf"] is not None) < 0.05
+CHECK all(r["ax1"] is not None and abs(r["ax1"]) < 10.0 for r in cam if r["gf"] is not None and r["gf"] < 0.05)
+CHECK all(r["gf"] is not None and r["gf"] < 0.05 for r in cam if r["t"] > 5.0)
+FORBID error:
