@@ -898,7 +898,7 @@ void paintWorld(Game &g) {
                -- and a station contributes the velocity its own pose law drives
                (#850), with no COM offset or stasis term to get wrong. */
             tv = planner.targetState(*xt, inertial).v;
-            rel_kind = xt->station != nullptr ? "station" : "ship";
+            rel_kind = kindName(xt->kind());
             rel_name = xt->name;
         } else if(ship->dockTargetShip != nullptr
                   && ship->dockTargetPort != nullptr) {
@@ -911,6 +911,8 @@ void paintWorld(Game &g) {
             rel_kind = "dock";
             rel_name = ts->displayName().c_str();
         }
+        // A null kind means nothing to mark: a body target, or no target and no
+        // armed docking port.
         if(rel_kind != nullptr) {
             const glm::dmat3 Os = sf->GetOrientRelTo(inertial);
             const glm::dvec3 sv = Os * (vel + sf->GetStasisVelocity(com))
@@ -924,15 +926,21 @@ void paintWorld(Game &g) {
                 g.relvel_retro_indicator->pos = relvel;
                 g.relvel_retro_indicator->Draw(camera, std::numbers::pi);
             }
-            /* --relvel-log: what the two markers were placed FROM. They are
-               billboards in a 3D pass, so nothing else in the log says whether a
-               target reached this code at all -- which is exactly how a station
-               target used to fail: silently, drawing nothing (#873). tgt_v is the
-               target's speed in the shared inertial frame, so a case can check it
-               against the target's own conic instead of trusting the marker. */
+            /* --relvel-log: the relative state the two markers are placed from,
+               at the --orbit-interval gate -- INCLUDING the samples where the
+               markers were skipped (a difference under 1e-9), because "it drew
+               nothing" is a fact worth seeing. They are billboards in a 3D pass,
+               so nothing else in the log says whether a target reached this code
+               at all -- which is exactly how a station target used to fail:
+               silently, drawing nothing while the TARGET window planned for it
+               (#873). tgt_v is the target's speed in the shared inertial frame, so
+               a case can check it against the target's own conic rather than
+               trusting the marker. rel_spd, not dv: [xferlog]'s dv_ fields are
+               burns, this is a closing speed. Paint pass only, like --plane-log:
+               --no-paint prints nothing at all. */
             if(g.args.relvel_log
                && g.logDue(kGateRelVel, g.logClockMs(), g.orbit_log_interval_ms)) {
-                printf("[relvel] t=%.1fs target=\"%s\" kind=%s dv=%.4f m/s "
+                printf("[relvel] t=%.1fs target=\"%s\" kind=%s rel_spd=%.4f m/s "
                        "tgt_v=%.4f m/s rel=[%.4f %.4f %.4f]\n",
                        g.time, rel_name, rel_kind, glm::length(relvel),
                        glm::length(tv), relvel.x, relvel.y, relvel.z);

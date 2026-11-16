@@ -8,15 +8,18 @@
 # capture shell, no sea-level radius) and where the state comes from: the
 # building's own clocked Frame (#850), not a Bullet hull.
 #
-# The map's Target plane is the observable that proves the STATE is right and not
-# merely present: n is cross(r, v) of the station lifted into Kerbin's inertial
-# frame, so an epoch slip, a wrong mu or a lift out of the ROTATING frame all move
-# it off the 51.6 deg plane the file authors.
+# The map's Target plane is the observable that proves the STATE is lifted from the
+# right frame: n = cross(r, v) of the station in Kerbin's INERTIAL frame, so a lift
+# out of the ROTATING frame (or a plane the file did not author) moves it off
+# 51.6 deg. What it CANNOT see is an epoch slip or a wrong mu -- r and v rotate
+# together inside the plane, and mu never enters n -- which is why the ToF window
+# below and case B's tgt_v carry the magnitude.
 NAME transfer-to-an-orbital-station
 CLAIM The Target window plans a transfer to an orbital station: intercept only, and its authored orbit becomes the map's Target plane.
 KIND invariant
 ARGS --time-accel 1 --timeout 6 --startship racer,res/ships/racer.json,Kerbin,pad
 ARGS --transfer-target "Kerbin station" --xfer-log --orbit-log --map-plane 3 --map-dump 3000 --orbit-interval 1.0
+ARGS --porkchop-log --porkchop-n 40 --sim-press 3000,0,P
 FORBID no-solution
 FORBID error:
 # A plan exists, for the station, on the --orbit-interval cadence.
@@ -35,3 +38,11 @@ CHECK all(abs(m["n"][0]) < 1e-6 and abs(m["n"][1] - 0.621148) < 1e-5 and abs(m["
 # And the flight readout measures against that plane too, so its numbers describe
 # the picture the player is looking at.
 CHECK all(o["plane"] == "tgt" for o in orbit if o["t"] > 1.0)
+# The SEARCH window is the station's, not the planner's 3-day default. A porkchop
+# sweep prints the range it searched, and the ends are one and three of the
+# target's own period: a 400 km Kerbin circle runs 2*pi*r/v = 3343.3 s. The solved
+# ToF alone cannot pin this -- the cheapest leg from the pad is short whatever the
+# ceiling is -- so the case asks what the sweep was willing to look at.
+CHECK len(porkchop) >= 1
+CHECK all(p["target"] == "Kerbin station" for p in porkchop)
+CHECK all(abs(p["dep_hi"] - 3343.0) < 2.0 and abs(p["tof_hi"] - 10030.0) < 2.0 for p in porkchop)

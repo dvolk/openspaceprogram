@@ -21,7 +21,7 @@ CHECK all(r["kind"] == "station" and r["target"] == "Kerbin station" for r in re
 # 1879.33 m/s is sqrt(6.674e-11 * 5.292e22 / 1.0e6): the circular speed of the
 # station's own conic at its authored 400 km over a 600 km Kerbin.
 CHECK all(abs(r["tgt_v"] - 1879.33) < 0.5 for r in relvel)
-# dv is the marker's own length: it must not vanish (the draw skips a 1e-9
+# rel_spd is the marker's own length: it must not vanish (the draw skips a 1e-9
 # difference), and it must equal |rel| -- two numbers the print makes separately.
-CHECK all(r["dv"] > 100.0 for r in relvel)
-CHECK all(abs(sum(p * p for p in r["rel"]) ** 0.5 - r["dv"]) < 0.01 for r in relvel)
+CHECK all(r["rel_spd"] > 100.0 for r in relvel)
+CHECK all(abs(sum(p * p for p in r["rel"]) ** 0.5 - r["rel_spd"]) < 0.01 for r in relvel)

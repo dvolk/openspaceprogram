@@ -218,7 +218,7 @@ XFER_RE = re.compile(
 # instead of just its presence.
 RELVEL_RE = re.compile(
     r"\[relvel\]\s+t=([\d.]+)s\s+target=\"([^\"]*)\"\s+kind=(\w+)\s+"
-    r"dv=([-\d.e+]+) m/s\s+tgt_v=([-\d.e+]+) m/s\s+"
+    r"rel_spd=([-\d.e+]+) m/s\s+tgt_v=([-\d.e+]+) m/s\s+"
     r"rel=\[([-\d.]+) ([-\d.]+) ([-\d.]+)\]"
 )
 PORKCHOP_RE = re.compile(
@@ -1264,12 +1264,13 @@ def parse_xfer(out):
 def parse_relvel(out):
     rows = []
     for m in RELVEL_RE.finditer(out):
-        (t, target, kind, dv, tgt_v, rx, ry, rz) = m.groups()
+        (t, target, kind, rel_spd, tgt_v, rx, ry, rz) = m.groups()
         rows.append({
             "t": float(t), "target": target,
             # station / ship / dock: which target the markers followed, and
             # whether they came from the transfer target at all (#873).
-            "kind": kind, "dv": float(dv),
+            # A closing speed, not a burn: [xferlog]'s dv_ fields are burns.
+            "kind": kind, "rel_spd": float(rel_spd),
             # |target velocity| in the focus body's inertial frame.
             "tgt_v": float(tgt_v),
             # target - you, in the ship's own render frame: the retro marker's
@@ -2861,11 +2862,11 @@ def self_test():
 
     # #873: the [relvel] row is the only face the HUD's two relative-velocity markers
     # have, and a case that walks it field by field is only as good as this row shape.
-    good_rv = ('[relvel] t=2.5s target="Kerbin station" kind=station dv=1762.8765 m/s '
+    good_rv = ('[relvel] t=2.5s target="Kerbin station" kind=station rel_spd=1762.8765 m/s '
                'tgt_v=1879.3299 m/s rel=[1120.3823 1127.0262 -763.0785]')
     if RELVEL_RE.match(good_rv) is None:
         fails.append("the #873 pin's clean [relvel] line stopped matching RELVEL_RE")
-    for lost in (" kind=station", " tgt_v=1879.3299 m/s", " dv=1762.8765 m/s",
+    for lost in (" kind=station", " tgt_v=1879.3299 m/s", " rel_spd=1762.8765 m/s",
                  ' target="Kerbin station"'):
         if RELVEL_RE.match(good_rv.replace(lost, "")) is not None:
             fails.append("RELVEL_RE matched a [relvel] row missing%s" % lost)
@@ -2875,13 +2876,13 @@ def self_test():
             "rel=[1120.3823 1127.0262 -763.0785]", "rel=(1120.3823,1127.0262,-763.0785)")) is not None:
         fails.append("RELVEL_RE took a parenthesised rel=, so the #873 pins read noise")
     rv = parse_relvel(good_rv)[0]
-    if (rv["kind"] != "station" or rv["dv"] != 1762.8765 or rv["tgt_v"] != 1879.3299
+    if (rv["kind"] != "station" or rv["rel_spd"] != 1762.8765 or rv["tgt_v"] != 1879.3299
             or rv["rel"] != (1120.3823, 1127.0262, -763.0785)):
-        fails.append("parse_relvel misread kind, dv, tgt_v or rel")
+        fails.append("parse_relvel misread kind, rel_spd, tgt_v or rel")
     # A negative dv is not a speed the printer can produce, but a parse that swallowed
     # "dv=-1" as "dv=" plus junk would hide a printf bug.
-    if parse_relvel(good_rv.replace("dv=1762.8765", "dv=-1"))[0]["dv"] != -1.0:
-        fails.append("parse_relvel did not read a signed dv=")
+    if parse_relvel(good_rv.replace("rel_spd=1762.8765", "rel_spd=-1"))[0]["rel_spd"] != -1.0:
+        fails.append("parse_relvel did not read a signed rel_spd=")
 
     # #447: a row belongs to the ship that was ACTIVE when it printed, and the
     # marker that says so carries no timestamp -- line order is the only evidence,

@@ -1,9 +1,9 @@
 # Which things the TARGET window offers is the whole feature of #873, and the list
 # is otherwise an imgui combo with no face in the log: this body's ORBITAL stations
 # are rows, its surface pads are not (a pad has no conic about the body -- the
-# Surface Map and the VAB picker are their business), and neither is a Venus air
-# platform, whose pose law is the zonal wind in the ROTATING frame (#884 records
-# what targeting one would actually need).
+# Surface Map and the VAB picker are their business). The code also drops AIR
+# platforms, whose pose law is the zonal wind in the ROTATING frame, but shipped
+# Kerbin has none, so that term is pinned nowhere -- noted on #884.
 #
 # Ask for a pad BY NAME and --transfer-target prints what IS plannable, once per bad
 # name. That diagnostic line is the observable: it spells the whole list, in the

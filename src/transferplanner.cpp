@@ -228,7 +228,7 @@ void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
         TerrainBody *pb = g->ship->frame->body;
         for(auto *b : g->sys.bodies) {
             if(b->frame && b->frame->parent == pb->frame) {
-                xferTargets.push_back({b->name.c_str(), b, nullptr});
+                xferTargets.push_back({b->name.c_str(), b, nullptr, nullptr});
             }
         }
         /* Sibling vessels: Game::vehicles filtered to the subject's SoI body.
@@ -236,7 +236,8 @@ void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
            Part (part.h), never a target here. */
         for(auto *s : g->vehicles) {
             if(s != g->ship && s->m_parent == pb) {
-                xferTargets.push_back({s->displayName().c_str(), nullptr, s});
+                xferTargets.push_back({s->displayName().c_str(), nullptr, s,
+                                       nullptr});
             }
         }
         /* Orbital buildings of the same body (#873): a station is as flyable as
@@ -245,16 +246,25 @@ void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
            has no conic, and the Surface Map and the VAB picker are its business.
            An air platform is not either: its pose is the zonal wind in the
            ROTATING frame (buildingair.h), so about the body it has no orbit to
-           plan against, and follow-up #884 covers what targeting one would mean.
-           Not the one this hull is standing in: a transfer to the deck under
-           your own feet is 0 dv noise, and the sibling-vessel rule above already
-           excludes the hull itself for the same reason.
-           The row's name points INTO StaticBuilding::display_name, so a station
-           row cannot outlive its body: pads are freed by ~TerrainBody, which
-           only runs inside freeBodies(), after resetWorld() and
-           invalidateClockStampedCaches() have dropped these rows (game.cpp). */
+           plan against, and #884 covers what targeting one would mean.
+           The station the hull is standing IN stays a row, the way a vessel
+           docked to you stays one: the last kilometre IS the feature. Dropping
+           it here cleared the target at the BUBBLE EDGE -- ~9 km out for a 10 km
+           bubble, because Vehicle::switchFrames enters the node on approach --
+           and with the target went the burn marker, both relative-velocity
+           markers, the map's Target plane and a swept porkchop grid, silently.
+           p->frame is the load-bearing term, not the assert targetState() makes:
+           a pad with no bubble node has no state to plan against.
+           The row's name points INTO StaticBuilding::display_name, so it must
+           not outlive its pad. Pads only die with their body, and every route
+           that empties the tree rebuilds or clears these rows first: resetWorld
+           -> resetForNewWorld, and a clock jump or system swap ->
+           invalidateClockState -> dropTargets. update() rebuilds the list
+           wholesale, so nothing here needs erasing by hand -- and a pad cannot
+           be re-placed over a live row, since place_world_buildings is
+           idempotent per body by instance id. */
         for(StaticBuilding *p : pb->pads) {
-            if(p->orbital && p->frame != nullptr && p->frame != g->ship->frame) {
+            if(p->orbital && p->frame != nullptr) {
                 xferTargets.push_back({p->display_name.c_str(),
                                        nullptr, nullptr, p});
             }
@@ -273,7 +283,7 @@ void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
                 printf("[xfer] --transfer-target \"%s\" is not plannable here; this hull "
                        "can aim at:", g->args.transfer_target.c_str());
                 for(const auto &t : xferTargets) { printf(" \"%s\"", t.name); }
-                if(xferTargets.empty()) { printf(" nothing (no body or vessel shares this ship's SoI)"); }
+                if(xferTargets.empty()) { printf(" nothing (no body, vessel or station shares this ship's SoI)"); }
                 printf("\n");
                 fflush(stdout);
             }

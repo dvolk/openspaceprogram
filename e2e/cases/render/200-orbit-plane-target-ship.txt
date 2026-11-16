@@ -1,7 +1,7 @@
 # A VESSEL target: its plane comes from lifting the ship's own state through its
-# frame (the same targetInertial() the transfer solve uses), not from a rail, so
-# this is the path where a wrong COM, a missing stasis term or the wrong parent
-# would show up. The fixture's "laythe explorer" sits in an ecliptic Kerbin
+# frame (the same TransferPlanner::targetState the transfer solve and the HUD's
+# relative-velocity markers use), not from a rail, so this is the path where a
+# wrong COM, a missing stasis term or the wrong parent would show up. The fixture's "laythe explorer" sits in an ecliptic Kerbin
 # orbit, so slot=tgt must read exactly (0,1,0) -- the normal the Ecliptic slot
 # derives by a completely different path.
 #
@@ -13,7 +13,7 @@ CLAIM A vessel target's plane comes from its state through its frame.
 KIND invariant
 ARGS --time-accel 1 --timeout 6 --startships e2e/fixtures/startships.json
 ARGS --transfer-target "laythe explorer" --map-plane 3
-ARGS --orbit-log --orbit-interval 1 --map-dump 4000 --xfer-log
+ARGS --orbit-log --orbit-interval 1 --map-dump 4000 --xfer-log --relvel-log
 EXPECT [mapdump]
 EXPECT [xferlog]
 FORBID FAILED
@@ -24,3 +24,8 @@ CHECK all(x["target"] == "laythe explorer" for x in xfer)
 CHECK all(abs(m["n"][0]) < 1e-6 and abs(m["n"][1] - 1.0) < 1e-6 and abs(m["n"][2]) < 1e-6 for m in mapb if m["slot"] == "tgt")
 # The HUD agrees that this is the plane it is measuring in.
 CHECK all(o["plane"] == "tgt" for o in orbit if o["t"] > 1.0)
+# ... and its relative-velocity markers still follow a VESSEL target (#873 moved
+# that block onto the shared state lift, so kind= is pinned for the old kind too).
+CHECK len(relvel) >= 3
+CHECK all(r["kind"] == "ship" and r["target"] == "laythe explorer" for r in relvel)
+CHECK all(r["rel_spd"] > 0.0 for r in relvel)

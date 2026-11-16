@@ -1426,9 +1426,9 @@ void drawUIReadouts(Game &g) {
     });
 
     // Target selection + transfer planner: parent->child transfers (with
-    // capture) and same-body ship intercepts. The solution is computed in the
-    // 3D pass, so this window is readout + inputs -- and only when the user
-    // asked for a plan at all.
+    // capture) and same-body intercepts against a vessel or, since #873, an
+    // orbital station. The solution is computed in the 3D pass, so this window
+    // is readout + inputs -- and only when the user asked for a plan at all.
     drawWin(g, W_Target, [&] {
         if(xferTargets.empty()) {
             ImGui::Text("No transfer targets: no child bodies, stations or ships here.");

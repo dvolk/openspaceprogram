@@ -37,6 +37,20 @@ class StaticBuilding;
    a vessel may be named after a body, and a station after either. */
 enum class TargetKind { body, ship, station };
 
+/* The kind's own word, for the log. Spelled once so a printer and a CHECK
+   cannot drift apart from what the enum says (the frame.h refPlaneName
+   pattern). An armed docking port is NOT a TargetKind: it has no row and no
+   identity, only a marker -- src/render.cpp names that case for itself. */
+inline const char *kindName(TargetKind k) {
+    switch(k) {
+        case TargetKind::body: return "body";
+        case TargetKind::ship: return "ship";
+        case TargetKind::station: return "station";
+    }
+    assert(false);
+    return "?";
+}
+
 /* A target the player holds on to, by identity rather than by row: xferTargets
    is rebuilt from scratch every frame, so a row number is only this frame's
    address -- a vessel being added or deleted silently retargets the window, the
@@ -53,7 +67,12 @@ struct TargetRef {
 class TransferPlanner {
 public:
     struct XferTarget {
-        const char *name;
+        /* Defaulted like the three pointers: an all-null row is a row that names
+           nothing, and kind() asserts exactly one pointer is set -- in a build
+           without asserts it would answer "station" and targetState() would
+           dereference null, so the row sites setting all four fields by name-slot
+           is what keeps this unreachable. */
+        const char *name = nullptr;
         TerrainBody *body = nullptr;      // body target (capture available)
         Vehicle *ship = nullptr;          // ship target (intercept only)
         /* An ORBITAL building (#873): a state pair about the same body, so it
@@ -154,7 +173,9 @@ public:
     /* Select by name alone, taking the LAST match -- the list is bodies, then
        vessels, then stations, so a vessel wins over a body of the same name and
        a station over both. This is the CLI's shape, where there is no row to
-       click. */
+       click. Two rows of the same name AND kind (station labels are not deduped,
+       #883) are one identity, so which of them target() lands on after this is
+       the list's order -- the first -- not this loop's last. */
     void selectTargetByName(const std::string &name);
 
     std::vector<XferTarget> xferTargets;
@@ -270,13 +291,15 @@ private:
     Game *g;
 
     /* Drop the rows, leaving anything clock-stamped alone. A row's name points
-       INTO a Vehicle's displayName() storage (its own `name`, or the suit
-       profile's for a walking kerbal) and its `ship` IS that Vehicle, so the
-       rows must not outlive the fleet: update() rebuilds the list every
-       refresh, but anything scanning it in between -- the TARGET block, the
-       map's transfer plane, the relvel marker -- reads freed names. A Game
-       teardown gets here through resetForNewWorld, which replaces the list
-       empty. */
+       INTO the thing it names: a Vehicle's displayName() storage (its own `name`,
+       or the suit profile's for a walking kerbal) or, for a station row (#873),
+       StaticBuilding::display_name -- and its pointer IS that object, so the rows
+       must not outlive it: update() rebuilds the list every refresh, but anything
+       scanning it in between -- the TARGET block, the map's transfer plane, the
+       relvel marker -- reads freed names. A Game teardown gets here through
+       resetForNewWorld, which replaces the list empty; a fleet death erases its
+       rows through Game::dropVehicleRefs, and a pad only ever dies with its body,
+       which no route does before this has run. */
     void dropTargets();
 
     /* Drop a selection whose target is gone: a deleted target takes it with it,
