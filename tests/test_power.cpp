@@ -588,8 +588,29 @@ static void test_net_power_is_recorded() {
     CHECK_NEAR(t.v->netPowerW(), -100.0, 1e-9, "a drain reads negative");
     CHECK_NEAR(totalEC(t), 900.0, 1e-6, "and the pool fell by the same rate");
 
+    /* The half that has drifted before (#648) and the reason the record is taken
+       inside powerTick rather than from getPower(): the DELIVERED wheel bill. A
+       fixture with no drum cannot fail that term, so both ships above could be
+       right while the readout dropped 1000 W. Held stick: the drum bills its
+       authored 1000 W beside the capsule's 100 W; released stick: the record
+       clears and only life support is left (#648's other half). */
+    Ship u; u.v = new Vehicle;
+    addPowerPart(u, /*draw=*/1000.0, /*const=*/0.0, /*gen=*/0.0,
+                 /*ec_wh=*/0.0, /*torque=*/2000.0, 3);   // a 1000 W triad
+    addPowerPart(u, /*draw=*/0.0, /*const=*/100.0, /*gen=*/0.0,
+                 /*ec_wh=*/5000.0, /*torque=*/0.0);      // a capsule
+    initShip(u);
+    steer(u, 1.0f);
+    u.v->powerTick(3600.0);
+    CHECK_NEAR(u.v->netPowerW(), -1100.0, 1e-9, "the record bills the drums too");
+    CHECK_NEAR(totalEC(u), 3900.0, 1e-6, "and the pool fell by that, not by -100");
+    steer(u, 0.0f);
+    u.v->powerTick(3600.0);
+    CHECK_NEAR(u.v->netPowerW(), -100.0, 1e-9, "a released stick leaves only life support");
+
     destroyShip(s);
     destroyShip(t);
+    destroyShip(u);
 }
 
 /* An active stick adds the wheels' draw: with a 100 W capsule and a 1000 W

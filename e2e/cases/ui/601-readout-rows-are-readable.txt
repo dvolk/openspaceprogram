@@ -88,18 +88,19 @@ CHECK abs(float(re.search('label="Net: +([-+]?[0-9.]+) W', out).group(1)) - (flo
 # below a full store; ui/896 added the fixture (res/ships/surplus_test.json) but reading it
 # part-drained would mean warping it for hours of sim, which this case is not.
 CHECK abs(float(re.search('label="Aboard: +([0-9.]+) h', out).group(1)) - float(re.search('label="Charge: +([0-9.]+) /', out).group(1)) / abs(float(re.search('label="Net: +([-+]?[0-9.]+) W', out).group(1)))) < 0.06 + 0.01 * (float(re.search('label="Charge: +([0-9.]+) /', out).group(1)) / abs(float(re.search('label="Net: +([-+]?[0-9.]+) W', out).group(1))))
-# #659's half, and the one that actually bites: the window no longer ADDS the terms up, it
-# reads the rate powerTick balanced on, so the row can be checked against a printed figure
-# instead of against a re-derivation. The sum CHECK above only proves the window's own rows
-# agree with each other; this one proves the figure on screen is one the SIM used -- a term
-# it pays without reporting through getPower() (a pump, a scoop, an experiment) reddens this
-# and not the one above, which is the whole point.
-# ANY row, not last(): --ui-list fires on WALL clock and [powerlog] rows are stamped with
-# SIM time, so the last row is the end of the run, not the moment of the dump -- measured
-# here, the dump lands while W is held (Active 2475.0, Net -2776.6) while the last row reads
-# active=0.0W net=-301.6W after the release. 0.2 W is the print rounding; the match must be
-# exact because it is the same figure quoted twice.
-CHECK any(abs(float(re.search('label="Net: +([-+]?[0-9.]+) W', out).group(1)) - p["net"]) < 0.2 for p in power)
+# #659's half: the window no longer ADDS the terms up, it reads the rate powerTick
+# balanced on, so the row can be checked against a printed figure instead of against a
+# re-derivation. The sum CHECK above only proves the window's own rows agree with each
+# other; this one says a [powerlog] row carried the same pair.
+# Matched as a PAIR (net with active), not on net alone. --ui-list fires on WALL clock
+# and log rows are stamped with SIM time, so the harness cannot name the row that was
+# current when the dump happened -- `last(power)` is the end of the run, not the dump
+# (measured: the dump reads Active 2475.0 / Net -2776.6 while the last row reads
+# active=0.0W net=-301.6W). Matching one field therefore passes for a window quoting any
+# phase of the run: this row set has 20 rows at net=-301.6W and 9 at -2776.6W, so a Net
+# row stuck on the coast figure sails through. Requiring the same row's bill to match is
+# what pins the moment. 0.2 W is print rounding -- the same figure quoted twice.
+CHECK any(abs(float(re.search('label="Net: +([-+]?[0-9.]+) W', out).group(1)) - p["net"]) < 0.2 and abs(float(re.search('label="Active: +([0-9.]+) W', out).group(1)) - p["active"]) < 0.2 for p in power)
 # #601's other half, and the failure shape it asks to keep: a readout is in the registry
 # to be READ. findMatches() skips text rows, so a click aimed at one reports the same miss
 # a renamed button reports instead of pressing on a caption. The refusal is pinned, not

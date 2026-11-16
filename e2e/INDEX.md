@@ -7,10 +7,10 @@ kind says how much weight the assertions carry.
 | kind | meaning | cases |
 |---|---|---|
 | `invariant` | a behaviour or a player route the game must keep | 387 |
-| `golden` | tuned numbers or a content table -- update deliberately when tuning | 48 |
+| `golden` | tuned numbers or a content table -- update deliberately when tuning | 49 |
 | `harness` | CLI/test-engine plumbing, not game spec | 16 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **455** |
+| | **total** | **456** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -333,7 +333,7 @@ judgement. Select by number, name or path, e.g.
 | `save/612-ask-survives-a-round-trip.txt` | invariant | A saved Guidance ask loads back into the game and is written out again. |
 | `save/867-cross-system-bubble-load.txt` | invariant | A save with a ship in a building's bubble loads from the title across systems. |
 
-## ui (60)
+## ui (61)
 
 | case | kind | pins |
 |---|---|---|
@@ -391,6 +391,7 @@ judgement. Select by number, name or path, e.g.
 | `ui/644-part-card-shows-what-a-part-costs-the-pool.txt` | golden | A part's own flight window prints its electrical terms: the pod's 225 W commanding and 600 W constant, the RTG's +298 W generated -- three rows, no others. |
 | `ui/644-vab-prints-what-the-assembly-costs-the-pool.txt` | golden | The VAB prints the assembly's electrical balance -- 298 W generated, 600 W constant, 12000 Wh stored, 2475 W of rated drum draw -- says it drains at rest and that its drums outrun its generator, and puts 2250 W on the big wheel block's own card. |
 | `ui/649-systems-window-switches-a-group-off.txt` | golden | The Systems window is listed in the Windows panel and prints the EC balance, and its Reaction wheels checkbox drops the live authority in --steering-log from 4950 N m to 0 while the row still quotes the 4950 N m the switch gives up. |
+| `ui/659-paused-hull-still-has-its-balance.txt` | golden | a paused Systems window shows this hull's real power balance, not a tick that never ran. |
 | `ui/734-wing-card-holds-its-numbers.txt` | invariant | The part window's flow row and watts row publish on an instrument's 2 Hz cadence rather than every frame, EACH OPEN CARD ON ITS OWN -- eleven reads a tenth of a second apart see a couple of different figures, not eleven -- while the model behind them keeps logging every substep, and each published pair is the worst-loaded FRAME of its window, so q, Mach and the watts the player reads belong to one instant rather than to three different moments. |
 | `ui/741-the-debug-clock-solar-row-is-wired-to-the-sun-the-sim-uses.txt` | invariant | The debug window's solar clock row is readable, its value is the sim clock's own, and the rate at which it walks is the day length the atlas prints for the home world -- so the one UI readout that reads the sun cannot be rewired to a different sun, a different day, or nothing at all without a test noticing. |
 | `ui/748-hold-the-job-runner-and-read-a-window-mid-bake.txt` | invariant | --hold-jobs keeps a posted surface-map bake unpublished, so a --ui-list inside the span reads the window mid-sweep: the cursor line dashes its ground number as (rebaking) instead of quoting a number for the body it just switched to, and the number lands after the release. |

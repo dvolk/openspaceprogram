@@ -3341,9 +3341,13 @@ void drawUIReadouts(Game &g) {
                comment. powerTick records the rate it actually balanced on, so a term the
                sim pays without reporting (a pump, a scoop, an experiment) now shows up
                as ui/601's identity CHECK reddening rather than as a wrong number on the
-               pilot's screen. The three term rows above stay their own reads: the CHECK
-               comparing them against this one is the drift detector, and it only works
-               if they are independent. */
+               pilot's screen. The three term rows below stay their own live reads: the
+               CHECK comparing them against this one is the drift detector, and it only
+               works while they are independent -- which is the price of this shape, and
+               worth paying because the alternative is the pilot's screen being wrong in
+               silence. A stopped world still gets a fresh record (tick.cpp's
+               zero-length powerTick), so "the last balance struck" is never a balance
+               that was never struck. */
             const double net = ship->netPowerW();
             /* Every row below is uiText, not ImGui::Text, so the harness can read the
                figures off the screen (#601) -- which is what lets ui/601 assert the
@@ -3375,8 +3379,12 @@ void drawUIReadouts(Game &g) {
                is 39.8 h of coasting and a Kerbin->Jool leg is hours of warp, so the
                number decides whether the transfer is survivable at all.
                It is derived from the Net row above rather than from a second balance of
-               its own (#659: the VAB line and this window's Net must stay one arithmetic
-               in two places, not three spellings of the bill). The active term is zero
+               its own, so this window's hours and this window's watts cannot disagree
+               (#659). It is NOT the same quantity as the VAB's `EC: at rest drains`
+               line: that one estimates a build from PartDefs, at rest, and quotes
+               capacity; this one reads what a flying hull's powerTick paid and quotes
+               the charge that is left. The two agree only for a hull that is commanding
+               nothing. The active term is zero
                while the hull coasts on rails, so a hull ALREADY at warp reads the transfer
                figure here; one that is flying quotes what it is billing, and on this
                fixture the two differ 9x -- which is what "(this balance)" is there for.

@@ -257,6 +257,19 @@ void tick(Game &g) {
         // Runs paused too, so a ship spawned beside a driven building has its
         // collider right away (see Game::gateBuildingColliders).
         g.gateBuildingColliders();
+        /* A stopped world still HAS a power balance, so record it with a
+           zero-length tick: netWh is 0, so this pays nothing and charges nothing.
+           #659 moved the Systems Net row and --power-log's net= onto the rate
+           powerTick strikes its balance on, and a hull that has not ticked in this
+           process -- a load, a quickload, a fresh spawn -- would otherwise print a
+           record of a tick that never happened next to live term rows: "+0.0 W
+           (charging)" under 298.4 W of generation and 600.0 W of life support, in
+           exactly the state a player pauses to decide whether to raise the warp
+           dial. The EC gate and the wheels' brown-out latch that this also refreshes
+           are DURATIONS, never the caller's step (#898), so a paused call reaches
+           the verdict the first unpaused substep would reach, one frame earlier and
+           with no Wh spent to get there. */
+        if(g.time_accel == 0 && g.ship) { g.ship->powerTick(0.0); }
         if(g.time_accel != 0) {
             /* No re-snapshot here. updateDocking() retires the absorbed ship at
                the end of a step, but retiring takes it out of the live list

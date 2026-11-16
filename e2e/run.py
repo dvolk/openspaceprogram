@@ -452,11 +452,14 @@ DRAINLOG_RE = re.compile(
 POWER_RE = re.compile(
     r"\[powerlog\]\s+t=([\d.]+)s\s+ship=\"([^\"]*)\"\s+powered=(\d+)\s+"
     r"gen=([-\d.]+)W\s+const_draw=([-\d.]+)W\s+charge=([-\d.]+)Wh\s+"
-    r"capacity=([-\d.]+)Wh\s+active=([-\d.]+)W"
-    # #659: the net powerTick actually balanced on, so a readout can quote a printed
-    # figure instead of re-adding the terms. Optional: a row from before the field
-    # still parses, and reads None.
-    r"(?:\s+net=([-\d.]+)W)?"
+    r"capacity=([-\d.]+)Wh\s+active=([-\d.]+)W\s+net=([-\d.]+)W"
+    # #659: the net powerTick balanced on, so a readout can quote a printed figure
+    # instead of re-adding the terms. NOT optional: the printer and this parser ship
+    # in the same tree, so a row missing the field is a printer that LOST it, and the
+    # strict arm makes that a row #408 names rather than a None nobody asked for. Same
+    # shape as gen= and active= beside it; a dashed net= would still parse (the bare
+    # '-' is what num() reads as no value, #901), which is how the convention stays
+    # available if this figure ever needs one.
 )
 # --dv-log (vehicle.cpp dv_log): the running delta-v budget, cumulative since
 # the ship existed. dv_del integrates the force the integrator was handed,
@@ -2947,6 +2950,22 @@ def self_test():
     # absent group is the ordinary absence (#894, #405).
     if num(None) is not None or num("-") is not None or num("1.5e+05") != 150000.0:
         fails.append("num() mishandled an absent, dashed or finite token")
+    # #659's net= column, written from what vehicle.cpp PRINTS rather than from what
+    # the format string was meant to say -- that is how #894's dash bug survived its
+    # own self-test. The arm is STRICT, unlike [ascent]'s dashed pair, because this
+    # figure has no "no value" state to spell: powerTick always pays a number. A row
+    # that lost the field, or ever grew a dash, drops out and #408 names it rather
+    # than handing every reader of power["net"] a None nobody asked for.
+    good_power = ('[powerlog] t=5.0s ship="power_test" powered=1 gen=298.4W '
+                  'const_draw=600.0W charge=11996.3Wh capacity=12000.0Wh '
+                  'active=2475.0W net=-2776.6W')
+    if parse_power(good_power)[0]["net"] != -2776.6:
+        fails.append("parse_power lost the #659 net= column")
+    for label, mangled in (("missing", good_power.replace(" net=-2776.6W", "")),
+                           ("dashed", good_power.replace("net=-2776.6W", "net=-")),
+                           ("mangled", good_power.replace("net=-2776.6W", "net=near-2776.6W"))):
+        if POWER_RE.match(mangled) is not None:
+            fails.append("POWER_RE matched a [powerlog] row whose net= field is %s" % label)
 
     # #872: the [mapbldg] row is the only observable face the map's station marks have,
     # and the two cases read it field by field. A field renamed or reordered in the

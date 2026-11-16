@@ -533,15 +533,20 @@ public:
 
     /* EC gate for the wheels (powerTick). Default true: no EC system = ungated. */
     bool powered_ = true;
-    /* The watts powerTick ACTUALLY balanced on its last call: gen - constantDraw -
+    /* The watts powerTick struck its last balance on: gen - constantDraw -
        activeDraw, the sum behind netWh. The Systems window and --power-log print this
        instead of adding the three terms up themselves (#659): a bill term that
        powerTick pays but getPower() does not report would otherwise make the number
-       the pilot reads wrong in silence, which is #642's mistake shape. Staleness is
-       bounded by one powerTick -- it is rewritten every substep and once per warp hop
-       (railsTick) -- so a part staged between two calls is at most one substep late
-       here, and ui/601's identity CHECK between this and the printed terms is what
-       would notice. */
+       the pilot reads wrong in silence, which is #642's mistake shape.
+       It is a RECORD, not a live sum, and the two are not the same animal:
+       drainEC/chargeEC clamp at empty and full, so a hull parked dry prints this
+       rate while its pool no longer moves. Staleness is bounded by one powerTick --
+       every substep off rails, once per warp hop (railsTick), and once a frame while
+       the world is stopped (tick.cpp) -- EXCEPT that a Vehicle which has never
+       ticked at all carries 0.0. Docking is the one part change that lands after
+       the substep loop (tick.cpp's updateDocking), so on that frame the terms can
+       be post-dock while this is pre-dock. ui/601's identity CHECK between this and
+       the printed terms is what would notice, and it can only notice at a dump. */
     double net_power_w_ = 0.0;
     /* The brown-out latch (#642). A hull whose generator cannot pay the wheels' bill
        drains its pool, the wheels cut, the unspent surplus recharges the pool, and
