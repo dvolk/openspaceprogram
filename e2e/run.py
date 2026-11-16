@@ -174,12 +174,13 @@ BLDG_RE = re.compile(
 # pts=0 for an air platform is the feature, not a missing sample: a wind-riding
 # platform has no conic to draw. pos is the mark and anchor the building's placement
 # pose, both in the map's frame: on a circular orbit their radii are equal, so only the
-# distance between the two shows a marker frozen at placement. drawn is how many marks
-# a map WINDOW drew that frame -- without it the row proves the maths but not that a map
-# draws it.
+# distance between the two shows a marker frozen at placement. peri_r is where the
+# sampled ring starts (its periapsis) and gate_r the radius its size gate uses; drawn
+# is how many marks a map WINDOW drew that frame -- without it the row proves the maths
+# but not that a map draws it.
 MAPBLDG_RE = re.compile(
     r"\[mapbldg\]\s+t=([\d.]+)s\s+focus=(\S+)\s+id=(\S+)\s+kind=(\w+)\s+"
-    r"r=([-\d.]+)\s+pts=(\d+)\s+conic_r=([-\d.]+)\s+"
+    r"r=([-\d.]+)\s+pts=(\d+)\s+peri_r=([-\d.]+)\s+gate_r=([-\d.]+)\s+"
     r"pos=([-\d.]+),([-\d.]+),([-\d.]+)\s+anchor=(none|[-\d.]+,[-\d.]+,[-\d.]+)\s+"
     r"drawn=(-?\d+)"
 )
@@ -1152,10 +1153,11 @@ def parse_bldg(out):
 def parse_mapbldg(out):
     rows = []
     for m in MAPBLDG_RE.finditer(out):
-        (t, focus, bid, kind, r, pts, conic_r, px, py, pz, anc, drawn) = m.groups()
+        (t, focus, bid, kind, r, pts, peri_r, gate_r, px, py, pz, anc, drawn) = m.groups()
         rows.append({
             "t": float(t), "focus": focus, "id": bid, "kind": kind,
-            "r": float(r), "pts": int(pts), "conic_r": float(conic_r),
+            "r": float(r), "pts": int(pts), "peri_r": float(peri_r),
+            "gate_r": float(gate_r),
             "pos": (float(px), float(py), float(pz)),
             # "none" for an air platform: its pose is the wind law, so there is no
             # placement anchor to compare the mark against.
@@ -2800,26 +2802,31 @@ def self_test():
     # printf is caught here, in milliseconds, rather than as a "0 rows" mystery in a
     # case that has to boot the game to notice.
     good_mb = ('[mapbldg] t=2.5s focus=Kerbin id=kerbin_station kind=orbit r=1000000 '
-               'pts=64 conic_r=1000000 pos=1000000,0,0 anchor=1000000,0,0 drawn=2')
+               'pts=64 peri_r=1000000 gate_r=1000000 pos=1000000,0,0 '
+               'anchor=1000000,0,0 drawn=2')
     if MAPBLDG_RE.match(good_mb) is None:
         fails.append("the #872 pin's clean [mapbldg] line stopped matching MAPBLDG_RE")
-    for lost in (" pos=1000000,0,0 anchor=1000000,0,0", " drawn=2", " conic_r=1000000",
-                 " pts=64"):
+    for lost in (" pos=1000000,0,0 anchor=1000000,0,0", " drawn=2", " peri_r=1000000",
+                 " gate_r=1000000", " pts=64"):
         if MAPBLDG_RE.match(good_mb.replace(lost, "")) is not None:
             fails.append("MAPBLDG_RE matched a [mapbldg] row missing%s" % lost)
     # The row prints pos=..., with commas: a space-separated triplet would parse as one
     # field and silently drop the rest of the line.
     if MAPBLDG_RE.match(good_mb.replace("pos=1000000,0,0", "pos=1000000 0 0")) is not None:
         fails.append("MAPBLDG_RE took a space-separated pos=, so the #872 pins read noise")
-    # The air-platform spelling: no anchor (its pose is the wind law) and drawn=-1 (no
-    # map window marked anything this frame) both have to survive the parse.
+    # The air-platform spelling: no anchor and no ring start (its pose is the wind law,
+    # so its gate is its own distance) and drawn=-1 (no map window marked anything this
+    # frame) all have to survive the parse.
     air_mb = (good_mb.replace("kind=orbit", "kind=air")
-              .replace("pts=64 conic_r=1000000", "pts=0 conic_r=0")
+              .replace("pts=64 peri_r=1000000 gate_r=1000000", "pts=0 peri_r=0 gate_r=6107800")
               .replace("anchor=1000000,0,0", "anchor=none").replace("drawn=2", "drawn=-1"))
     if MAPBLDG_RE.match(air_mb) is None:
         fails.append("the #872 air [mapbldg] spelling stopped matching MAPBLDG_RE")
-    if parse_mapbldg(air_mb)[0]["anchor"] is not None or parse_mapbldg(air_mb)[0]["drawn"] != -1:
-        fails.append("parse_mapbldg misread anchor=none or drawn=-1")
+    air_row = parse_mapbldg(air_mb)[0]
+    if air_row["anchor"] is not None or air_row["drawn"] != -1 or air_row["pts"] != 0:
+        fails.append("parse_mapbldg misread anchor=none, drawn=-1 or pts=0")
+    if air_row["gate_r"] != 6107800.0 or air_row["peri_r"] != 0.0:
+        fails.append("parse_mapbldg misread the gate_r/peri_r pair")
 
     # #447: a row belongs to the ship that was ACTIVE when it printed, and the
     # marker that says so carries no timestamp -- line order is the only evidence,

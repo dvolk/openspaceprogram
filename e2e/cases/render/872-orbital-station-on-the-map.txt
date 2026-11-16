@@ -24,11 +24,13 @@ CHECK all(m["kind"] == "orbit" and m["focus"] == "Kerbin" for m in mapbldg)
 # calls and no window stamps it, so the stamp goes stale and reads -1. Without this the
 # rows would only prove the maths behind a mark, never that a map marks anything.
 CHECK all(m["drawn"] >= 2 for m in mapbldg)
-# A conic, not just a dot: 64 samples on the station's own circle, and that circle
-# passes through the marker -- an orbMu or epoch-state slip shows up as a ring the
-# mark does not sit on.
+# A conic, not just a dot: 64 samples on the station's own ring, and the mark sits
+# between the ring's near and far radius -- an orbMu or epoch-state slip shows up as a
+# mark outside its own ring. (Bracket, not equality: peri_r is where the sample starts
+# and gate_r the radius its size gate uses, and on an eccentric station the mark rides
+# between them rather than on either.)
 CHECK all(m["pts"] >= 8 for m in mapbldg)
-CHECK all(abs(m["conic_r"] - m["r"]) < 1.0 for m in mapbldg)
+CHECK all(m["peri_r"] <= m["r"] + 1.0 and m["r"] <= m["gate_r"] + 1.0 for m in mapbldg)
 # And the marker sits on that circle at the authored altitude: 400 km and
 # 300 km over Kerbin's 600 km radius.
 CHECK all(abs(m["r"] - 1000000.0) < 1000 for m in mapbldg if m["id"] == "kerbin_station")

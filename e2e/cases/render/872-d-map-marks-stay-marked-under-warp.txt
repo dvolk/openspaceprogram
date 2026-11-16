@@ -1,0 +1,21 @@
+# drawn= has to mean "a map window marked these in the frame that just finished", and
+# sim time cannot say that (#872). At --time-accel 100 one frame burns ~1.7 s of sim, so
+# a stamp aged against g.time reads stale while every frame is marking; paused (the
+# default for a new game and for every load) it ages not at all, so a map the player
+# closed a minute ago still reads fresh. The stamp carries the imgui frame instead.
+#
+# This case pins the warp half, where the mark count is the whole claim: high time-accel,
+# map open, and the dump must still say a window marked both stations. The other half --
+# a closed window reading -1 -- is what cases A and C rely on when their call site is
+# deleted, and was checked by closing the map with TAB.
+NAME map-marks-stay-marked-under-warp
+CLAIM At high time-accel the map dump still reports the marks a window drew this frame.
+KIND invariant
+ARGS --time-accel 100 --timeout 3 --map-dump 2000 --dbg-log --orbit-interval 1.0
+ARGS --startship racer,res/ships/racer.json,Kerbin,pad
+FORBID error:
+CHECK set(m["id"] for m in mapbldg) == {"kerbin_dock", "kerbin_station"}
+CHECK all(m["drawn"] >= 2 for m in mapbldg)
+# And the mark is where the 208 s of propagation put it, not where it was placed: ~300 km
+# along the orbit from the anchor, which a placement-pinned marker could never show.
+CHECK all(sum((p - a) ** 2 for p, a in zip(m["pos"], m["anchor"])) ** 0.5 > 100000.0 for m in mapbldg)

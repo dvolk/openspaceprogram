@@ -516,16 +516,22 @@ static void drawSystemBodyOrbits(Game &g, TerrainBody *focus,
    and what the player sees cannot drift.
    An orbital station's epoch state (terrain.h) is fixed at placement and lives in the
    body's inertial node, which is the frame these maps project: the conic is the same
-   64-point sample forever, so orbit_caches hits from the second frame onward -- the
-   same trick the body rails above use. An air platform is held up by the atmosphere
-   and drifts with the wind, so there is no conic to draw: marker and name only.
+   64-point sample forever, so orbit_caches hits from the second frame onward. That is
+   the body rails' caching, with one difference worth naming: the rails sample in the
+   conic's own frame and lift the POINTS, while this lifts the STATE and samples in map
+   space -- the two are the same picture only because for a pad of the focus body that
+   lift is the identity, which is the invariant the sample guard below checks.
+   An air platform is held up by the atmosphere and drifts with the wind, so there is no
+   conic to draw: marker and name only.
    The buffer is reused between calls, so the reference is only good until the next
    call -- all three callers use it inside one loop. */
 struct MapStationMark {
     const StaticBuilding *b;
     glm::dvec3 pos;                            // the focus's frame, i.e. map space
     const std::vector<glm::dvec3> *conic;      // null for an air platform
-    double conic_r = 0.0;                      // |conic[0]|, 0.0 with no conic
+    double peri_r = 0.0;                       // |conic[0]|: where the sample starts,
+                                               // i.e. periapsis (0.0 with no conic)
+    double gate_r = 0.0;                       // the ring's widest radius, else |pos|
 };
 
 static const std::vector<MapStationMark> &collectMapStations(TerrainBody *focus) {
@@ -540,37 +546,40 @@ static const std::vector<MapStationMark> &collectMapStations(TerrainBody *focus)
         m.b = b;
         m.pos = ef->GetOrientRelTo(focus->frame) * b->posePos
               + ef->GetPositionRelTo(focus->frame);
+        m.gate_r = glm::length(m.pos);
         m.conic = nullptr;
-        /* orbMu, not the focus's: orbMu is the mu the building's own pose is integrated
-           with (tickPose), so a map that ever showed two bodies' mu could not draw a
-           ring the station does not fly. */
+        /* orbMu because it is the mu tickPose integrates the pose with. It is the
+           focus's mu today -- a pad's orbMu comes from the body that owns the pad --
+           so this only says the ring and the pose cannot be divided between two
+           bodies if that ever stops being true. */
         if(b->orbital && b->orbMu > 0.0) {
-            /* PoseFrame is the body's inertial node by construction, so the state lift
-               to the map frame is a rotation with no transport term. Checked, not
-               asserted: this runs on a per-frame draw path with no NDEBUG build
-               (Makefile:46), and skipping one ring beats aborting mid-pan. A driven
-               building FRAME would need the stasis term, and its own frame never
-               carries the conic anyway (frame.cpp skips the Kepler branch there). */
+            /* The pad's poseFrame IS the focus's inertial node by construction (the
+               pad hangs off this body, and poseFrame() asks that body), so the state
+               lift to the map frame is a rotation with no transport term -- and this
+               cannot be false today. It is checked rather than asserted because it
+               sits on a per-frame draw path that has no NDEBUG build (Makefile:46):
+               losing one ring beats aborting mid-pan. A driven building's own FRAME
+               could not be the source anyway (frame.cpp skips the Kepler branch for
+               those), and if the check ever did fail, --map-dump would show the row
+               with kind=orbit pts=0, which no shipped station case accepts. */
             if(ef == focus->frame->getNonRotFrame()) {
                 const glm::dvec3 epos = ef->GetOrientRelTo(focus->frame) * b->epochPos
                                       + ef->GetPositionRelTo(focus->frame);
                 const glm::dvec3 evel = ef->GetOrientRelTo(focus->frame) * b->epochVel;
-                m.conic = &orbit_caches[(const void *)b].sample(epos, evel, b->orbMu, 64);
-                if(!m.conic->empty()) { m.conic_r = glm::length((*m.conic)[0]); }
+                OrbitSampleCache &cache = orbit_caches[(const void *)b];
+                m.conic = &cache.sample(epos, evel, b->orbMu, 64);
+                if(!m.conic->empty()) { m.peri_r = glm::length((*m.conic)[0]); }
+                /* Gate on the widest radius the ring has, not on where the mark sits
+                   this instant: an eccentric station's ring is apoapsis wide even at
+                   periapsis, and buildingorbit.h promises authored eccentric elements
+                   work, so an r-based gate would blink its ring and name off at a
+                   zoom where the ring is plainly on screen. */
+                if(cache.apoapsis_r > 0.0) { m.gate_r = cache.apoapsis_r; }
             }
         }
         marks.push_back(m);
     }
     return marks;
-}
-
-/* What the last map frame actually marked, for --map-dump to report (#872). Without
-   it the dump's rows would prove the maths only: delete the drawMapStations calls
-   below and every case stays green. Both windows write it -- whichever drew last
-   answers -- and the maps draw once per frame, so it is current at the hook. */
-static void stampMapStations(Game &g, int marked) {
-    g.map.station_marks = marked;
-    g.map.station_marks_t = g.time;
 }
 
 // Call after labels.flushDiscs(): these are markers, so they sit above the body discs.
@@ -585,8 +594,8 @@ static void drawMapStations(Game &g, TerrainBody *focus, const OrbitMap &map,
            hairline over the body's disc -- and an ungated 3 px dot lands inside the
            focus disc, whose label pass then drops its name, leaving unexplained cyan
            specks on the planet. */
-        const double r_m = glm::length(m.pos);
-        if(r_m / map_scale < 4.0f) { continue; }
+        if(m.gate_r / map_scale < 4.0f) { continue; }
+        ++marked;
         if(m.conic) {
             map.drawOrbit(dl, *m.conic, col, 1.0f);
         }
@@ -594,9 +603,15 @@ static void drawMapStations(Game &g, TerrainBody *focus, const OrbitMap &map,
         if(!view.contains(px.x, px.y, 3.0f)) { continue; }
         dl->AddCircleFilled(px, 3.0f, col);
         labels.add(px, 3.0f, col, m.b->display_name.c_str(), kLabelStation);
-        ++marked;
     }
-    stampMapStations(g, marked);
+    /* Counted per frame for --map-dump, which prints it so a case can pin that a map
+       WINDOW marks stations: delete both drawMapStations calls and no window stamps
+       anything, so the dump's rows say drawn=-1. It counts what passed the size gate,
+       NOT what fit the viewport -- pan and window size are the player's, and a case
+       that reddens when a font gets bigger pins nothing about the feature. */
+    g.map.station_marks = marked;
+    g.map.station_marks_frame = ImGui::GetFrameCount();
+    g.map.station_marks_focus = focus;
 }
 
 // Sim-clock calendar formatting (fmt_cal_time / fmt_cal_compact /
@@ -8086,10 +8101,15 @@ void dumpAtlas(Game &g) {
    frame: on a circular orbit the two radii are equal, so a radius check cannot tell a
    live marker from one frozen at placement -- the distance between these can. */
 static void dumpMapStations(Game &g, TerrainBody *focus) {
-    /* Written by drawMapStations; the hook runs after the state pass, so a stamp from
-       this frame means a window marked them. drawn=-1 says no map window drew them at
-       all, which is the difference between "the maths would mark" and "the map marks". */
-    const bool fresh = g.time - g.map.station_marks_t < 0.5;
+    /* Written by drawMapStations along with the imgui frame that drew it. The hook
+       fires after the state pass and before the next NewFrame, so an equal frame means
+       a window marked these in the frame that just finished; drawn=-1 says none did,
+       which is the difference between "the maths would mark" and "the map marks".
+       Sim time cannot answer this: --time-accel 100 burns ~1.7 s of sim per frame, so
+       fresh marks would read stale, and a paused game burns none, so a window that
+       closed a minute ago would read fresh. */
+    const bool fresh = g.map.station_marks_frame == ImGui::GetFrameCount()
+                    && g.map.station_marks_focus == focus;
     const int drawn = fresh ? g.map.station_marks : -1;
     for(const MapStationMark &s : collectMapStations(focus)) {
         /* An orbital building's epoch state IS its placement anchor and never moves, so
@@ -8106,12 +8126,12 @@ static void dumpMapStations(Game &g, TerrainBody *focus) {
                 snprintf(anc, sizeof anc, "%.0f,%.0f,%.0f", a.x, a.y, a.z);
             }
         }
-        printf("[mapbldg] t=%.1fs focus=%s id=%s kind=%s r=%.0f pts=%zu conic_r=%.0f "
-               "pos=%.0f,%.0f,%.0f anchor=%s drawn=%d\n",
+        printf("[mapbldg] t=%.1fs focus=%s id=%s kind=%s r=%.0f pts=%zu peri_r=%.0f "
+               "gate_r=%.0f pos=%.0f,%.0f,%.0f anchor=%s drawn=%d\n",
                g.time, focus->name.c_str(), s.b->id.c_str(),
                s.b->orbital ? "orbit" : "air",       // the collector admits only these
                glm::length(s.pos),
-               s.conic ? s.conic->size() : (size_t)0, s.conic_r,
+               s.conic ? s.conic->size() : (size_t)0, s.peri_r, s.gate_r,
                s.pos.x, s.pos.y, s.pos.z, anc, drawn);
     }
 }

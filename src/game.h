@@ -352,13 +352,23 @@ struct MapState {
        then leaves their framing alone -- the fit is the opening view, and
        "Reset view" asks for it back. */
     bool posed = false;
-    /* How many station marks the last map frame drew, and when (#872). --map-dump
-       prints it so a case pins that a map window MARKS stations, not only that the
-       maths behind a mark is right: the dump itself could otherwise report marks no
-       window draws. Session state, and the two windows share this struct --
-       whichever map drew last answers, which is what a case looks at. */
+    /* What the last map draw marked (#872): how many marks, in which imgui frame.
+       --map-dump prints it so a case can pin that a map WINDOW marks stations, not
+       only that the maths behind a mark is right.
+       The frame, not sim time: the dump runs after the state pass and before the next
+       NewFrame, so "this frame's count == the stamp's" means exactly "a window drew
+       these in the frame that just finished". A sim-time window lies both ways --
+       --time-accel 100 advances ~1.7 s of sim per frame (marks vanish though every
+       frame draws them), and a paused game advances none (a window that closed long
+       ago still looks fresh). Session state, cleared with the world: a load also moves
+       g.time BACKWARDS, which no frame number does. The count is what passed the size
+       gate, not what fit the viewport -- pan and window size are not the feature. */
     int station_marks = 0;
-    double station_marks_t = -1.0;
+    int station_marks_frame = -1;
+    /* Which body that count belongs to, compared only (never dereferenced) like
+       fit_body/fit_ship above: a frame in which the focus changed -- an SOI crossing,
+       a Tracking "Fly" click -- must not pair Kerbin's count with a Mun row. */
+    TerrainBody *station_marks_focus = nullptr;
 };
 
 /* Surface Map SESSION state (Game::surfmap), not save state: the pixels are

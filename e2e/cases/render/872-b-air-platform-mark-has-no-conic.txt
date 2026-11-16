@@ -15,9 +15,11 @@ ARGS --startship skiff,res/ships/skiff_gear.json,Venus,pad,site=venus_cloud_plat
 FORBID error:
 CHECK len([m for m in mapbldg if m["id"] == "venus_cloud_platform"]) == 1
 CHECK all(m["kind"] == "air" and m["focus"] == "Venus" for m in mapbldg if m["id"] == "venus_cloud_platform")
-# The point of the feature: pts=0 is not a missing sample, it is no conic -- and conic_r
-# agrees, so the two cannot disagree about what the window drew.
-CHECK all(m["pts"] == 0 and m["conic_r"] == 0.0 for m in mapbldg if m["id"] == "venus_cloud_platform")
+# The point of the feature: pts=0 is not a missing sample, it is no conic -- and the
+# two ring radii agree, so they cannot disagree about what the window drew. An air
+# platform has no ring to start (peri_r=0) and its size gate uses its own distance.
+CHECK all(m["pts"] == 0 and m["peri_r"] == 0.0 for m in mapbldg if m["id"] == "venus_cloud_platform")
+CHECK all(abs(m["gate_r"] - m["r"]) < 1.0 for m in mapbldg if m["id"] == "venus_cloud_platform")
 # No placement anchor either: an air platform's pose comes from the wind law, so the row
 # prints "none" instead of an epoch state the building never uses.
 CHECK all(m["anchor"] is None for m in mapbldg if m["id"] == "venus_cloud_platform")

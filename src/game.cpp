@@ -1424,6 +1424,13 @@ void Game::clearEphemeralState() {
        as "same focus" and leave the dead framing in place. */
     map.fit_body = nullptr;
     map.fit_ship = nullptr;
+    /* The #872 mark stamp for the same reason: it counts marks a window drew in a world
+       that is about to die, and a load can run --map-dump in the same frame it lands,
+       before any window has drawn the new one. The frame counter is kept by imgui and
+       does not go backwards, so the stamp would still look current. */
+    map.station_marks = 0;
+    map.station_marks_frame = -1;
+    map.station_marks_focus = nullptr;
     // The snapshot describes a ship that is about to die; updateShipView
     // re-takes it on the next state pass (render.cpp:78 nulls it for no ship).
     hud.view.ship = nullptr;
