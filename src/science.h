@@ -398,14 +398,20 @@ struct AtlasFact {
 };
 
 // One pre-built System Atlas row (the lab renders these; see buildAtlasRows
-// for the discovered% definition and its limits).
+// for the discovered% definition and its limits). A body row is followed by one
+// row per station hanging off that body (#886): same list, same dump, so a
+// station cannot be in one face and not the other.
 struct AtlasRow {
-    std::string rawName;      // the body's plain name (selection key)
-    std::string name;         // indented + "(home)" marker (display)
-    std::string valueWord;    // "notable" etc.
+    std::string rawName;      // selection key: a body name, or a station's building id
+    std::string title;        // the dossier heading: body name, or a station's display name
+    std::string name;         // indented + "(home)"/"(S)" marker (display)
+    std::string valueWord;    // "notable" etc. (a station row leaves this empty)
     double valueExact = 0.0;  // the raw science_mult (tooltip)
     long dv = 0;              // approach Δv (rounded to 50), or 0
     int discovered = 0;       // 0-100
+    bool station = false;     // a station sub-row: no research tier, no approach, no %
+    std::string stationKind;  // a station row: "orbit" or "air" -- --mapbldg's words (#872)
+    int stations = 0;         // a body row: how many station rows follow it (the "(S)" marker)
     std::vector<AtlasFact> facts;
 };
 

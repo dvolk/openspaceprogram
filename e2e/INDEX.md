@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 391 |
+| `invariant` | a behaviour or a player route the game must keep | 392 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 49 |
 | `harness` | CLI/test-engine plumbing, not game spec | 16 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **460** |
+| | **total** | **461** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -335,7 +335,7 @@ judgement. Select by number, name or path, e.g.
 | `save/612-ask-survives-a-round-trip.txt` | invariant | A saved Guidance ask loads back into the game and is written out again. |
 | `save/867-cross-system-bubble-load.txt` | invariant | A save with a ship in a building's bubble loads from the title across systems. |
 
-## ui (62)
+## ui (63)
 
 | case | kind | pins |
 |---|---|---|
@@ -400,6 +400,7 @@ judgement. Select by number, name or path, e.g.
 | `ui/768-systems-window-shuts-the-nozzles.txt` | golden | The Systems window's Thrust vectoring checkbox drops the live gimballed rating in --steering-log from 129710 N m to 0 while the window keeps printing 129710 N m beside the now-off switch, and says nothing about the engines being gone. |
 | `ui/873-d-pick-the-station-in-the-target-window.txt` | invariant | A station row in the Target combo selects it and the planner solves for it. |
 | `ui/885-orbital-map-legend-fits-one-line.txt` | invariant | The orbital map's eight legend entries draw on one line, inside the window, at the default window size. |
+| `ui/886-the-atlas-lists-every-station.txt` | invariant | The System Atlas lists every station as its own row under the body it belongs to, and says on the body row that it has one, so a player who wants to visit a station can find out that it exists and where it is. |
 | `ui/896-charging-hull-dashes-its-hours.txt` | invariant | A hull that generates more than it draws prints Aboard: - instead of an hours figure. |
 
 ## render (89)

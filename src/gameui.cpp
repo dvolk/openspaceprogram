@@ -7242,7 +7242,9 @@ void drawResearchLab(Game &g) {
 
 // ---- System Atlas (Research Lab) -----------------------------------------
 // The system as a tree, one row per body: name (indented by depth), research VALUE
-// tier, APPROACH dv, % DISCOVERED. Selecting a body adds its DOSSIER. --atlas-dump
+// tier, APPROACH dv, % DISCOVERED. Selecting a body adds its DOSSIER. Under a body
+// hang its stations (#886), one row each, which carry a dossier of their own -- where
+// the thing is, so the atlas answers "what is out there to fly to". --atlas-dump
 // prints the same rows.
 // Rows are PRE-BUILT, not computed per frame (the Lab's #87 pattern): buildAtlasRows
 // fills g.atlasRows on scene entry, both self-heal on g.science.version.
@@ -8021,9 +8023,59 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
     line("periapsis lon (ecl)", pa.lpe_ok ? fmt_deg(pa.lpe, v, sizeof v) : "-");
 }
 
-// Walk the frame tree from `b`, one row per body (tree order). A body's inertial frame
-// has TWO kinds of children: its OWN spin frame (rotating -- skipping it is what keeps
-// this from recursing forever) and the inertial frames of the bodies that ORBIT it.
+/* A station row's dossier (#886): where the thing is, in the same words the body
+   dossier uses for a rail. The state is the AUTHORING read back -- epochPos/epochVel
+   are what placement built from the JSON's circular spec and what tickPose propagates
+   each tick, so a row disagreeing with the flight readout or with the map's ring
+   (#872) means the placement or the driven pose is wrong, not this text.
+   Altitudes are above the host's mean sea level, like ORBITAL's PeA/ApA (#405). */
+void stationDossier(const StaticBuilding &b, const TerrainBody &host,
+                    std::vector<AtlasFact> &f) {
+    char v[128];
+    auto line = [&](const char *label, const char *value) {
+        f.push_back(AtlasFact{ label, value, false });
+    };
+    // No section header: a station has a handful of facts, and its --atlas-dump row
+    // already opens the block with "station".
+    line("about", host.name.c_str());
+    if(b.orbital) {
+        const OrbitElements o = computeOrbitElements(b.epochPos, b.epochVel,
+                                                     b.orbMu);
+        const double sea = host.seaLevelRadius();
+        line("periapsis alt", fmt_dist(periapsisAsl(o, sea), v, sizeof v));
+        if(o.traj == TrajectoryClass::Elliptic) {
+            line("apoapsis alt", fmt_dist(apoapsisAsl(o, sea), v, sizeof v));
+            line("period", fmt_time(o.period, v, sizeof v));
+        }
+        /* The epoch state lives in the host's INERTIAL frame, whose +Y is its pole, so
+           this is the authored "inc_deg" read back. The equator is the only plane a
+           station author measures against -- a station has no parent rail to tilt from. */
+        line("plane tilt (eq.)", fmt_deg(acosUnit(o.h_hat.y), v, sizeof v));
+        line("attitude", b.attMode == buildingorbit::Mode::BodyFixed
+                           ? "body-fixed (nadir)" : "sky-fixed");
+        if(b.spinRate != 0.0) {
+            line("spin period", fmt_time(std::numbers::pi * 2.0 / std::fabs(b.spinRate),
+                                         v, sizeof v));
+        }
+    } else {
+        /* A balloon platform: no conic, and the air branch of placement never sets
+           attMode -- the deck rides the ENU basis at its lat/lon (buildingair.h).
+           Printing "body-fixed (nadir)" here would describe a law this building does
+           not run, so attitude and spin stay with the orbital case. */
+        line("altitude", fmt_dist(b.airR - host.seaLevelRadius(), v, sizeof v));
+        line("latitude", fmt_deg(b.airLat, v, sizeof v));
+        line("rides wind", fmt_speed(b.airEast, v, sizeof v));
+        line("deck heading", fmt_deg(b.airHeading, v, sizeof v));
+    }
+    // The SoI bubble a ship comes to rest inside (#850) -- why the deck is landable.
+    line("bubble", b.frame != nullptr ? fmt_dist(b.frame->soi, v, sizeof v) : "-");
+    if(b.hasFlag("VAB_LAUNCH_PAD")) { line("launch pad", "yes"); }
+}
+
+// Walk the frame tree from `b`, one row per body (tree order) plus one row per
+// station under it. A body's inertial frame has TWO kinds of children: its OWN spin
+// frame (rotating -- skipping it is what keeps this from recursing forever) and the
+// inertial frames of the bodies that ORBIT it.
 // `seen` guards a cyclic orbit pair in the data (#129).
 void atlasWalk(const System &sys, const TerrainBody *b, int depth,
                const std::map<std::string, std::set<AtlasSlot>> &covered,
@@ -8032,10 +8084,33 @@ void atlasWalk(const System &sys, const TerrainBody *b, int depth,
     if(!seen.insert(b).second) { return; }   // already shown: stop the cycle
     AtlasRow r;
     r.rawName = b->name;   // the plain name, for the detail-pane selection key
+    r.title = b->name;
     std::string name;
     name.append((size_t)depth * 3, ' ');
     name += b->name;
     if(sys.home == b) { name += "  (home)"; }
+
+    /* #886: the stations the player is looking for. The SAME set the map marks
+       (collectMapStations, #872) -- a DRIVEN building, orbital or air. A surface pad
+       stays out: it has a place on the ground, the Surface Map pins it, and the VAB
+       already lists the ones you can launch from. Requires a conic-or-wind to
+       describe, hence the orbMu gate beside the orbital one. */
+    std::vector<AtlasRow> subs;
+    for(const StaticBuilding *sb : b->pads) {
+        if(sb == nullptr || !sb->driven()) { continue; }
+        if(sb->orbital && sb->orbMu <= 0.0) { continue; }
+        AtlasRow s;
+        s.station = true;
+        s.stationKind = sb->orbital ? "orbit" : "air";
+        s.rawName = sb->id;             // unique across the system (parse refuses a clash)
+        s.title = sb->display_name;
+        s.name = std::string((size_t)(depth + 1) * 3, ' ') + sb->display_name;
+        stationDossier(*sb, *b, s.facts);
+        subs.push_back(std::move(s));
+    }
+    r.stations = (int)subs.size();
+    // The ticket's "(S)": a body worth flying to has something in its sky.
+    if(r.stations > 0) { name += "  (S)"; }
     r.name = std::move(name);
     r.valueWord = valueWord(b->science_mult);
     r.valueExact = b->science_mult;
@@ -8047,6 +8122,7 @@ void atlasWalk(const System &sys, const TerrainBody *b, int depth,
     r.discovered = (int)std::min<size_t>(100, (size_t)std::lround(100.0 * cov / total));
     atlasDossier(*b, r.facts);
     out.push_back(std::move(r));
+    for(AtlasRow &s : subs) { out.push_back(std::move(s)); }
 
     if(b->frame == nullptr) { return; }
     for(const Frame *child : b->frame->children) {
@@ -8093,8 +8169,10 @@ void drawResearchAtlas(Game &g) {
             return;
         }
 
-        // Selection = the raw body name (a string, not an index, so it survives the rows being
-        // rebuilt). Default to home, else the first body.
+        // Selection = a body name, or a station's building id (a string, not an index, so it
+        // survives the rows being rebuilt). Default to home, else the first body. First match
+        // wins, so an id that shadowed a body name would open the body -- no shipped id comes
+        // close to one.
         static std::string selected;
         auto findRow = [&](const std::string &n) -> const AtlasRow * {
             for(const AtlasRow &r : g.atlasRows) {
@@ -8110,7 +8188,7 @@ void drawResearchAtlas(Game &g) {
 
         // The Δ, × and — in the rows below render in the bundled
         // DejaVuSansMono; a --font override lacking them would show tofu.
-        ImGui::TextDisabled("select a body:");
+        ImGui::TextDisabled("select a body or station:");
         ImGui::Separator();
 
         // Tree list on the left (narrow 1/3), dossier on the right. Two side-by-side children
@@ -8121,9 +8199,13 @@ void drawResearchAtlas(Game &g) {
         ImGui::BeginChild("##atlasList", ImVec2(listW, 0.0f), false);
         for(const AtlasRow &r : g.atlasRows) {
             const bool sel = (r.rawName == selected);
+            // A station row wears the map's cyan (#872), so the dot the player saw on the
+            // Orbital Map and the name in this tree read as the same thing.
+            if(r.station) { ImGui::PushStyleColor(ImGuiCol_Text, kStationRgba); }
             if(ImGui::Selectable(r.name.c_str(), sel)) {
                 selected = r.rawName;
             }
+            if(r.station) { ImGui::PopStyleColor(); }
         }
         ImGui::EndChild();
 
@@ -8134,7 +8216,7 @@ void drawResearchAtlas(Game &g) {
         if(row == nullptr) {
             ImGui::TextDisabled("(not in this system)");
         } else {
-            ImGui::Text("%s", row->rawName.c_str());
+            ImGui::Text("%s", row->title.c_str());
             ImGui::Separator();
             if(ImGui::BeginTable("##atlasDetailRows", 2,
                                  ImGuiTableFlags_BordersInner)) {
@@ -8142,26 +8224,31 @@ void drawResearchAtlas(Game &g) {
                                         ImGuiTableColumnFlags_WidthStretch);
                 ImGui::TableSetupColumn("value",
                                         ImGuiTableColumnFlags_WidthStretch);
-                // research weight (the exact × is a tooltip on the word)
-                ImGui::TableNextRow();
-                ImGui::TableNextColumn();
-                ImGui::TextUnformatted("research weight");
-                ImGui::TableNextColumn();
-                ImGui::TextUnformatted(row->valueWord.c_str());
-                ImGui::SetItemTooltip("×%.1f of home", row->valueExact);
-                // approach Δv (0 = home / the star: no approach)
-                ImGui::TableNextRow();
-                ImGui::TableNextColumn();
-                ImGui::TextUnformatted("approach Δv");
-                ImGui::TableNextColumn();
-                if(row->dv <= 0) { ImGui::TextDisabled("\xe2\x80\x94"); }  // "—"
-                else { ImGui::Text("%ld m/s", row->dv); }
-                // science found (% of the body's study-situations covered)
-                ImGui::TableNextRow();
-                ImGui::TableNextColumn();
-                ImGui::TextUnformatted("science found");
-                ImGui::TableNextColumn();
-                ImGui::Text("%d%%", row->discovered);
+                /* A station has no research tier, no approach Δv and no study slots --
+                   its dossier is where it IS, which is all in row->facts. Printing the
+                   three body rows would be three dashes pretending to be measurements. */
+                if(!row->station) {
+                    // research weight (the exact × is a tooltip on the word)
+                    ImGui::TableNextRow();
+                    ImGui::TableNextColumn();
+                    ImGui::TextUnformatted("research weight");
+                    ImGui::TableNextColumn();
+                    ImGui::TextUnformatted(row->valueWord.c_str());
+                    ImGui::SetItemTooltip("×%.1f of home", row->valueExact);
+                    // approach Δv (0 = home / the star: no approach)
+                    ImGui::TableNextRow();
+                    ImGui::TableNextColumn();
+                    ImGui::TextUnformatted("approach Δv");
+                    ImGui::TableNextColumn();
+                    if(row->dv <= 0) { ImGui::TextDisabled("\xe2\x80\x94"); }  // "—"
+                    else { ImGui::Text("%ld m/s", row->dv); }
+                    // science found (% of the body's study-situations covered)
+                    ImGui::TableNextRow();
+                    ImGui::TableNextColumn();
+                    ImGui::TextUnformatted("science found");
+                    ImGui::TableNextColumn();
+                    ImGui::Text("%d%%", row->discovered);
+                }
                 // Pre-built strings, so this window and --atlas-dump print the same text.
                 for(const AtlasFact &fa : row->facts) {
                     ImGui::TableNextRow();
@@ -8187,15 +8274,31 @@ void drawResearchAtlas(Game &g) {
 void dumpAtlas(Game &g) {
     buildAtlasRows(g);
     for(const AtlasRow &r : g.atlasRows) {
-        printf("[atlas] %s weight=%s approach_dv=%ld discovered=%d%%\n",
-               r.rawName.c_str(), r.valueWord.c_str(), r.dv, r.discovered);
+        if(r.station) {
+            /* One station per row (#886), indented under the body it hangs off, and id /
+               kind in --mapbldg's words (#872) so both dumps name a station the same way.
+               The display name is quoted: it can hold spaces, and a reader (or a regex)
+               should not have to guess where it ends. */
+            printf("[atlas]   station id=%s kind=%s name=\"%s\"\n",
+                   r.rawName.c_str(), r.stationKind.c_str(), r.title.c_str());
+        } else {
+            printf("[atlas] %s weight=%s approach_dv=%ld discovered=%d%%",
+                   r.rawName.c_str(), r.valueWord.c_str(), r.dv, r.discovered);
+            /* The "(S)" the window draws beside a host body's name, in the face a test
+               can read. Omitted at zero: most bodies have none, and printing 0 on all of
+               them would be noise in a 40-row dump. */
+            if(r.stations > 0) { printf(" stations=%d", r.stations); }
+            printf("\n");
+        }
+        // A station's facts sit one rung deeper, the way its row does in the tree.
+        const char *ind = r.station ? "    " : "  ";
         for(const AtlasFact &fa : r.facts) {
-            if(fa.header) { printf("[atlas]   [%s]\n", fa.label.c_str()); }
+            if(fa.header) { printf("[atlas] %s[%s]\n", ind, fa.label.c_str()); }
             // 26 wide: the longest label is now "ground anchor (sea level)" at 25 (#793), which
             // overflowed the old 22 and pushed its own value -- and only its own -- four columns
             // out of line. The column is a column: bump it rather than shorten a label that is
             // the whole point of the row.
-            else { printf("[atlas]   %-26s %s\n", fa.label.c_str(),
+            else { printf("[atlas] %s%-26s %s\n", ind, fa.label.c_str(),
                                             fa.value.c_str()); }
         }
     }

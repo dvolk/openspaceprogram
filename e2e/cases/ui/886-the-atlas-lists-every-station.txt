@@ -1,0 +1,77 @@
+NAME 886-the-atlas-lists-every-station
+CLAIM The System Atlas lists every station as its own row under the body it belongs to, and says on the body row that it has one, so a player who wants to visit a station can find out that it exists and where it is.
+KIND invariant
+# #886 asked for a way to find space stations: "add it to the system atlas, one station per
+# row. Maybe also mark bodies that have at least one station in the body list with a symbol
+# (or just (S))". Both are in the atlas's PRE-BUILT row list (buildAtlasRows / atlasWalk), so
+# the lab window and --atlas-dump cannot disagree about which stations exist.
+#
+# What counts as a station here is the SAME set the map marks (collectMapStations, #872): a
+# DRIVEN building -- orbital (station / space dock) or air (balloon platform). A surface pad
+# stays out of the atlas: it has a place on the ground, the Surface Map pins it, and the VAB
+# site picker already lists the ones you can launch from. So one vocabulary across the map,
+# the map dump, and now the atlas: the same predicate, `driven()`.
+#
+# In the window a station row is one indent deeper than its host, tinted the map's cyan
+# (kStationRgba), and selectable: its dossier is where the thing IS (periapsis/apoapsis alt,
+# period, plane tilt against the host's equator, attitude and spin, the SoI bubble, whether
+# the VAB can start from it) rather than a research tier, an approach Δv and a % surveyed --
+# the three body rows are skipped for it instead of printing three dashes. The host body's
+# row gets the ticket's "  (S)".
+#
+# In the dump the station row prints indented, with id/kind in --mapbldg's words, and its
+# facts one rung deeper. The marker's "  (S)" is a decoration on a Selectable label, which
+# the --ui-list registry does not carry (it registers text rows), so what these CHECKs pin is
+# the count the marker draws from, plus the rows themselves. render/science/111-research-lab
+# opens the lab -- so the atlas window with its station rows and its PushStyleColor pair does
+# get drawn on every run of that case, and any assert trip there is that case's failure.
+ARGS --system res/systems/ksp_system.json --timeout 6 --atlas-dump 4000 --map-dump 4500
+LIMIT 30
+EXPECT [atlas]   station id=kerbin_station kind=orbit name="Kerbin station"
+EXPECT [atlas]   station id=kerbin_dock kind=orbit name="Kerbin space dock"
+FORBID error:
+# The ticket's marker, in the face a test can read: the body row counts its stations. Printed
+# only when the count is non-zero, so a body with none says nothing rather than printing 0.
+CHECK re.search(r"\[atlas\] Kerbin weight=\w+ approach_dv=\d+ discovered=\d+% stations=2", out)
+# One row per station, and UNDER its host: the body's block runs to the next body header, so
+# counting station rows inside Kerbin's block is what pins the tree placement -- the two rows
+# exist elsewhere in this dump too, and two rows in the wrong place would be just as useless.
+CHECK (lambda k: len(re.findall(r"\[atlas\]   station id=", k)) == 2)(re.search(r"\[atlas\] Kerbin weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+# A body with no station gets neither the count nor a sub-row. Without this, stamping every
+# body with a marker -- or listing a station once per body -- keeps the two CHECKs above green.
+CHECK (lambda m: "stations=" not in m and "[atlas]   station " not in m)(re.search(r"\[atlas\] Mun weight=.*?(?=\[atlas\] \w+ weight=|\Z)", out, re.S).group(0))
+# The atlas and the map answer for the same buildings (#872), so the two dumps list the same
+# ids. This is the CHECK that says the atlas added the stations rather than a hand-written
+# shortlist: delete collectMapStations' driven() gate, or atlasWalk's, and one side moves.
+CHECK set(re.findall(r"\[atlas\]   station id=(\S+)", out)) == set(m["id"] for m in mapbldg if m["focus"] == "Kerbin")
+# A station's dossier block is the run of four-space-indented [atlas] lines after its header:
+# the indent IS the tree, so the block ends by construction at the next row. Do not "tidy" the
+# extraction into `.*` with re.S -- greedy dot eats the rest of the dump and the capture lands
+# in some later body's facts, where the same label names a different measurement.
+# The dossier is the AUTHORING read back: ksp_launch_sites.json places kerbin_station at
+# 400000 m / 51.6 deg inclination, with a 2 deg/s spin (a 180 s turn) and the default 10 km
+# bubble. 51.60 deg is measured against Kerbin's equator, the only plane a station author
+# uses -- if the epoch state were being read from the wrong frame this row would drift.
+CHECK (lambda s: re.search(r"periapsis alt\s+400\.0 km", s) and re.search(r"apoapsis alt\s+400\.0 km", s) and re.search(r"plane tilt \(eq\.\)\s+51\.60 deg", s) and re.search(r"spin period\s+00:03:00", s) and re.search(r"bubble\s+10\.0 km", s))(re.search(r"\[atlas\]   station id=kerbin_station[^\n]*((?:\n\[atlas\] {4}.*)*)", out).group(1))
+# The dock: 300 km over the equator, no spin (so no spin row), and flagged VAB_LAUNCH_PAD,
+# which is the fact that makes it worth finding -- the atlas is where a player learns that a
+# station is a place to launch from.
+CHECK (lambda s: re.search(r"periapsis alt\s+300\.0 km", s) and re.search(r"plane tilt \(eq\.\)\s+0\.00 deg", s) and re.search(r"launch pad\s+yes", s) and "spin period" not in s)(re.search(r"\[atlas\]   station id=kerbin_dock[^\n]*((?:\n\[atlas\] {4}.*)*)", out).group(1))
+# A station is not a body: it has no research tier, no approach Δv and no surveyed %, so its
+# header must not print the body header's fields at all. Cheap to pin, and it is what stops
+# the two row kinds collapsing back into one printf with dashes in the empty slots.
+CHECK not re.search(r"\[atlas\]   station [^\n]*(weight=|approach_dv=|discovered=)", out)
+# MUTATION (measured, one build each; the case names the bite and what went red).
+# - No sub-rows (atlasWalk's pad loop iterated empty): both EXPECT lines missing, plus the
+#   marker, nesting and set-equality CHECKs. The two dossier CHECKs RAISE rather than fail --
+#   there is no block to extract -- which is still red, not vacuous
+#   (tmp/night3/886_mut_rows.log).
+# - Marker from the wrong source (r.stations = sys.world_buildings.size(), i.e. every body in
+#   the file, pads or not): the marker CHECK (Kerbin reads stations=6) and the Mun CHECK, and
+#   nothing else (tmp/night3/886_mut_marker.log).
+# - Station header printed with the body's fields (weight=/approach_dv=/discovered=): only the
+#   last CHECK (tmp/night3/886_mut_header.log).
+# - driven() gate dropped, so surface pads join the atlas: the marker count (stations=4), the
+#   nesting count and the set-equality against the map all go red -- the map still marks only
+#   the two driven buildings, which is exactly the disagreement this case exists to catch
+#   (tmp/night3/886_mut_gate.log).
