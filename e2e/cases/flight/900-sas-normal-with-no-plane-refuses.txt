@@ -13,10 +13,12 @@
 #
 # The floor is orbit.h's kConicNormalFloor on h/r -- the TANGENTIAL speed, m/s at any
 # scale -- refused below 0.1 m/s. Both ends measured: the pad's residue sits at 6.8e-4 m/s
-# and the climb runs 1.4e-2 .. 7.6e-2, while the slowest apoapsis a bound Kerbin conic
-# reaches is ~17 m/s. Reusing kConicSpeedFloor (1e-2) unchanged would NOT have refused the
-# climbing rows. Below the floor the target is the zero vector, which is the ask
-# pointingTo() already fails closed on (#609), so the row prints `no-target`.
+# and the climb runs 1.4e-2 .. 7.6e-2, while the slowest tangential speed a conic BOUND to
+# any shipped body reaches (surface periapsis, that body's own sphere of influence as the
+# apoapsis) is 1.48 m/s on Eeloo -- the tightest in ksp_system, with Kerbin at 24.4 m/s.
+# Reusing kConicSpeedFloor (1e-2) unchanged would NOT have refused the climbing rows. Below
+# the floor the target is the zero vector, which is the ask pointingTo() already fails
+# closed on (#609), so the row prints `no-target`.
 #
 # What is pinned here is that SAS and the DRAWN normal now refuse together: render.cpp used
 # `dot(h_hat, h_hat) > 0.5` and the ascent row `ang_momentum > 0.0`, and orbit.h makes h_hat
@@ -24,13 +26,23 @@
 # noise starts. [planelog]'s nrm= dashes through the near-vertical phase, on the same
 # timeline the bill prints no-target.
 #
-# What stays on the far side of the floor, and belongs there: from ~5.2 s on this run the
-# hull has accumulated 0.1 .. 1.2 m/s of its OWN tangential velocity (it tilted), h/r clears
-# the floor and six rows resolve -- the drums then ask 3.7e6 N m to roll the hull 90 deg
-# sideways, bounded to the 14.7k N m the hull actually has. That is a player holding normal
-# on a near-radial trajectory, and the reference is theirs, not the integrator's; the
-# absolute floor is what keeps a real 3 km/s reentry corridor 2 deg off radial (sin gamma
-# 0.035, h/r 105 m/s) working, which a relative floor on sin(gamma) would break.
+# What stays on the far side of the floor, and the honest reason it stays. From ~5.1 s the
+# rows resolve, and it is NOT "the player steered into a plane of their own": no steering key
+# is pressed here (R is throttle, T is thrust), and the resolved rows show SAS itself slewing
+# -- w_slew 0.087 .. 0.71 rad/s while the nose walks off vertical and E falls 89.6 -> 76.8
+# deg. The law turns the hull, the hull earns 0.1 .. 1.2 m/s of tangential velocity, h/r
+# clears the floor, and the plane is a consequence of steering the floor refused earlier. By
+# then the state really does have a plane, so this is not the bug; but the mode also flaps
+# across the floor on the way (measured on a second run: refused 4.950, resolved 5.067 and
+# 5.167, refused 5.283 and 5.400, resolved from 5.517 -- four transitions in 0.6 s on a mode
+# the player latched), and an ask parked near E = 90 deg is a max-rate turn about an axis the
+# noise picks. Both of those are filed as follow-ups rather than pinned here. #900 changed the
+# refusal and the marker's agreement with it, and that is what these CHECKs hold.
+#
+# One bound on what the marker CHECKs can cover: [planelog] is printed from inside
+# drawOrbitPlane(), which returns early for a grounded hull, so this run's rows start at
+# ~3.4 s (liftoff), not at t = 0. The pad's residue window is therefore pinned by the BILL,
+# which runs at 10 Hz from t = 0.017, and not by the marker.
 NAME sas-normal-with-no-plane-refuses
 CLAIM SAS normal on a near-radial Kerbin climb refuses instead of steering at a plane made of residue, and the drawn normal dashes on the same rows.
 KIND invariant
@@ -59,19 +71,25 @@ CHECK all(o["r"] > 5.9e5 and o["r"] < 6.1e5 for o in orbinfo)
 # accepted 7 / 6 / 8. Any CHECK here that pins a count to 1 is a flaky case, and the state
 # sits right ON the floor around 5 s, which is where the accepted rows flicker.
 CHECK out.count("mode=normal no-target") >= 30
+# The other direction, and the one that was missing: a floor set absurdly HIGH (1e3 m/s,
+# say) passes every other CHECK here -- every row refuses, len(slew) is 0 so all() is
+# vacuously true, and every nrm is dashed. Three rows is the keep end in that direction;
+# the numeric bracket itself (~1.48 m/s on Eeloo, the tightest shipped body) lives in
+# tests/test_orbit.cpp, where both ends are pinned as numbers rather than as a scenario.
+CHECK len(slew) >= 3
 # And the accepted minority stays small, which is the half a mutation would blow up: delete
 # the conicNormal() guard and every row resolves -- out.count drops to ~6 and len(slew)
 # climbs to ~53, with the target reversing frame to frame.
 CHECK len(slew) <= 20
 CHECK all(s["mode"] == "normal" for s in slew)
-# The marker and the autopilot cannot claim different planes: render.cpp:231 and
-# slewTargetDir() ask the same conicNormalOk, so [planelog] dashes the normal for the same
-# states the bill refuses. Held as a RATIO rather than a row-by-row join -- the planelog
-# cadence is the --orbit-interval one (1 s here) and the bill's is 10 Hz, and the accepted
-# window flickers between runs for the reason above. Measured 0, 0 and 1 drawn normals
-# against 3-5 rows. Take the conicNormalOk out of render.cpp and every row draws one (the
-# old `dot(h_hat, h_hat) > 0.5` is an exactly-zero test, and h_hat is never zero here), which
-# reddens both halves of this.
+# The marker and the autopilot cannot claim different planes: render.cpp and slewTargetDir()
+# ask the same conicNormalOk, so [planelog] dashes the normal for the same states the bill
+# refuses. Held as a RATIO rather than a row-by-row join -- the planelog cadence is the
+# --orbit-interval one (1 s here, and only while airborne, per the note above) and the bill's
+# is 10 Hz, and the accepted window flickers between runs for the reason above. Measured 3
+# rows with 2 dashed, and 0 / 0 / 1 drawn across runs. Take the conicNormalOk out of
+# render.cpp and every row draws one (the old `dot(h_hat, h_hat) > 0.5` is an exactly-zero
+# test, and h_hat is never zero here), which reddens the EXPECT below and both halves of this.
 CHECK len(plane) >= 2
-CHECK sum(1 for p in plane if p["nrm"] is None) >= 2
+CHECK sum(1 for p in plane if p["nrm"] is None) >= 1
 CHECK sum(1 for p in plane if p["nrm"] is not None) * 2 <= len(plane)

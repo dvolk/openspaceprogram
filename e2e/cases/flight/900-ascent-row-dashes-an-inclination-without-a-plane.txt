@@ -1,0 +1,33 @@
+# [ascent]'s inc_eq asks "does this state have a PLANE", and a hull sitting on the pad does not.
+#
+# #900 gave a plane its own floor -- orbit.h's kConicNormalFloor on h/r, the TANGENTIAL speed,
+# refused below 0.1 m/s -- and routed three consumers through it: the autopilot's normal pair,
+# render.cpp's +/- markers, and this row's inc_eq. The row is the one the other two cannot
+# stand in for, and it used to gate on `ang_momentum > 0.0` -- an exactly-zero test, because
+# orbit.h makes h_hat exactly unit or exactly zero. On Kerbin's POLAR pad h is not zero: it is
+# the contact solver's residue turned into an angular momentum, |h| ~ 408 m2/s at r = 599681 m,
+# which is h/r = 6.8e-4 m/s. The same row prints peri_asl and apo_asl as NUMBERS, so the dash
+# is this field's own decision and not #894's missing-conic dash -- which is the difference
+# the first CHECK below holds.
+#
+# The floor is not a mute: once the ascent law has built real tangential speed the inclination
+# reads again, and for a launch off a polar pad the right reading is 90 deg.
+NAME ascent-row-dashes-an-inclination-without-a-plane
+CLAIM [ascent] dashes inc_eq while the state has no plane, on rows whose conic fields are numbers, and reads the polar 90 deg once the hull earns tangential speed.
+KIND invariant
+ARGS --startship racer,res/ships/racer.json,Kerbin,pad,polar_pad
+ARGS --time-accel 1 --timeout 4 --ascent 100000 --ascent-log --orbit-interval 1
+LIMIT 200
+EXPECT [ascent]
+FORBID error:
+# Enough rows to judge, and the CONIC is not the missing thing on them: a railed hull or a
+# mu-less body dashes peri_asl as well (#894), and an inc_eq dash there would say nothing
+# about the plane gate.
+CHECK len(ascent) >= 3
+CHECK any(a["peri_asl"] is not None and a["apo_asl"] is not None for a in ascent)
+# The pin. Drop conicNormalOk from tick.cpp's plane_ok and no case in the battery reddens --
+# this is what does, and it reddens because a residue plane gets a confident inclination.
+CHECK any(a["inc_eq"] is None and a["peri_asl"] is not None for a in ascent)
+# And the keep end, so the dash cannot be a blanket refusal: the law flies the hull, the plane
+# becomes real, and the number it prints is the polar one.
+CHECK any(a["inc_eq"] is not None and 85.0 < a["inc_eq"] < 95.0 for a in ascent)

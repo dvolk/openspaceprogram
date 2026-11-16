@@ -6420,16 +6420,39 @@ glm::dvec3 Vehicle::slewTargetDir() {
         const double l = glm::length(u);
         return (std::isfinite(l) && l > 0.0) ? u / l : glm::dvec3(0.0);
     };
-    const glm::dvec3 pos = get_center_of_mass();
-    // Radial is the same line in either frame: both are measured from the body's
-    // centre, which the surface frame and the inertial one share.
-    if(slew == SlewRadialOut) { return unit(pos); }
-    if(slew == SlewRadialIn) { return -unit(pos); }
+    /* A headless hull -- the split and authority fixtures build one with no frame tree --
+       has no conic to read. Radial answers from the position such a hull does have, in
+       the world it was placed in, and the conic modes refuse rather than invent a
+       heading. #900 made the radial pair share this lift, which is what put the null on
+       the radial path at all; prograde already walked it and would have crashed the same
+       way one mode over. */
+    if(frame == nullptr) {
+        if(slew == SlewRadialOut) { return unit(get_center_of_mass()); }
+        if(slew == SlewRadialIn) { return -unit(get_center_of_mass()); }
+        return glm::dvec3(0.0);
+    }
+    /* Every conic mode reads the same lifted state. Prograde and the normal need it
+       because the CONIC owns them (below); radial needs it for a plainer reason --
+       get_center_of_mass() is in THIS frame's axes, and a #850 building bubble is
+       centred on the BUILDING, so there "the line from the origin to the hull" is the
+       line from a station's origin to a hull 49.9 m off it, which is not the radial of
+       the conic the hull is flying. Surface frames and the inertial one ARE both
+       body-centred, which is why this stayed invisible. A radius needs no floor beyond
+       unit()'s guard: |pos| is the body distance (~6e5 m on Kerbin), so its direction
+       error is position noise over that distance, not a ratio of two small numbers the
+       way a residue velocity is (#900 review). */
+    Frame *inertial = frame->getNonRotFrame();
+    if(inertial == nullptr) { inertial = frame; }
+    glm::dvec3 p, v;
+    comStateIn(inertial, p, v);
+    const glm::dmat3 to_frame = glm::transpose(frame->GetOrientRelTo(inertial));
+    if(slew == SlewRadialOut) { return unit(to_frame * p); }
+    if(slew == SlewRadialIn) { return -unit(to_frame * p); }
     const bool prg = (slew == SlewPrograde || slew == SlewRetrograde);
     const bool nrm = (slew == SlewNormal || slew == SlewAntiNormal);
     if(!prg && !nrm) { return glm::dvec3(0.0); }
-    /* Prograde and the normal belong to the CONIC, so take the state from the
-       non-rotating node: inside the rotating surface frame GetVel() is the
+    /* Prograde and the normal belong to the CONIC, which is why the state above is
+       taken from the non-rotating node: inside the rotating surface frame GetVel() is the
        ground-relative velocity, which for a ship flying slowly points nowhere
        near its orbit's prograde, and the cross product of that pair is not the
        orbit's normal. Then back into this frame -- slewDemand steers in it.
@@ -6442,10 +6465,6 @@ glm::dvec3 Vehicle::slewTargetDir() {
        while the HUD said `prg=-` (#891). Below the floor the answer is the same
        "no target" pointingTo() already fails closed on, and the [slew] row prints
        `no-target` -- the trace says so rather than inventing a heading out of residue. */
-    Frame *inertial = frame->getNonRotFrame();
-    glm::dvec3 p, v;
-    comStateIn(inertial, p, v);
-    const glm::dmat3 to_frame = glm::transpose(frame->GetOrientRelTo(inertial));
     if(nrm) {
         /* The normal pair answers "does this state have a PLANE", which is not the
            question the speed floor asks. |h| = r |v| sin(gamma), so a near-radial

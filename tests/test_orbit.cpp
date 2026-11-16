@@ -1193,6 +1193,69 @@ int main() {
         CHECK_NEAR(d.y, 0.8, 1e-12);
         CHECK_NEAR(glm::length(d), 1.0, 1e-12);
     }
+    /* #900: a PLANE needs a floor of its own, because |h| is not a speed. h = r |v|
+       sin(gamma), so the near-radial state -- a vertical climb, or the polar pad before
+       it -- clears kConicSpeedFloor many times over while its whole angular momentum is
+       the residue of the last sideways cm/s. Same bracket discipline as the speed above:
+       both ends measured, and the numbers here ARE the measurements (orbit.h quotes them
+       too), so a retune that breaks either end reddens here. */
+    {
+        const double r_pad = 599681.0;   // Kerbin's polar pad, as [orbinfo] printed it
+        CHECK(!conicNormalOk(0.0, r_pad));
+        CHECK(!conicNormalOk(-1.0, r_pad));      // a magnitude is never negative
+        CHECK(!conicNormalOk(NAN, r_pad));
+        CHECK(!conicNormalOk(INFINITY, r_pad));
+        CHECK(!conicNormalOk(1e12, 0.0));        // no radius, no ratio
+        CHECK(!conicNormalOk(1e12, -r_pad));
+        CHECK(!conicNormalOk(1e12, NAN));
+        /* Refuse end, measured: 6.8e-4 m/s of tangential residue on the pad, and up to
+           7.6e-2 through the vertical climb. The pair below is the point of the whole
+           floor -- the SAME state passes the speed gate, so gating the normal by speed
+           (which is what #891 shipped) refused nothing here. */
+        CHECK(conicSpeedOk(0.163677));           // |v| on the pad: 16x the speed floor
+        CHECK(!conicNormalOk(407.97, r_pad));    // |h| of that same state: h/r 6.8e-4
+        CHECK(!conicNormalOk(45738.4, r_pad));   // mid-climb: h/r 7.6e-2, |v| 2.3 m/s
+        CHECK(!conicNormalOk(kConicNormalFloor * r_pad * 0.999, r_pad));
+        CHECK(conicNormalOk(kConicNormalFloor * r_pad, r_pad));
+        /* Keep end: the slowest tangential speed a conic BOUND to a shipped body reaches
+           (periapsis at its surface, apoapsis at its own sphere of influence, with
+           system.cpp's law and inertialSoi's lift). Worst in ksp_system is Eeloo at
+           1.48 m/s -- Gilly 3.0, Pol 7.5, Kerbin 24.4 -- so the floor holds 15x under
+           the tightest one. A floor that creeps past these eats a real plane change. */
+        CHECK(conicNormalOk(1.48 * 1.0e8, 1.0e8));
+        CHECK(conicNormalOk(24.4 * r_pad, r_pad));
+        /* A reentry corridor: 3 km/s, 2 deg off radial. sin(gamma) is only 0.035, which
+           is why the floor is NOT a bound on sin(gamma) -- h/r is 105 m/s and the plane
+           is as real as any. This is the state a relative floor would break. */
+        {
+            const double g2 = glm::radians(2.0);
+            const glm::dvec3 v = 3000.0 * glm::dvec3(std::cos(g2), std::sin(g2), 0.0);
+            const glm::dvec3 h = glm::cross(glm::dvec3(6.0e5, 0.0, 0.0), v);
+            CHECK(conicNormalOk(glm::length(h), 6.0e5));
+            CHECK(glm::length(h) / (6.0e5 * glm::length(v)) < 0.04);   // sin(gamma)
+        }
+    }
+    {   // conicNormal(): the same shape as conicPrograde -- refuse zeroes the out.
+        glm::dvec3 d(1.0, 2.0, 3.0);
+        // Near-radial: |v| = 20 m/s, twice a thousand times the speed floor, and h/r =
+        // 1e-5 m/s. This is #900's bug in three lines.
+        CHECK(!conicNormal(glm::dvec3(599681.0, 0.0, 0.0), glm::dvec3(20.0, 1e-5, 0.0), d));
+        CHECK(d == glm::dvec3(0.0));
+        CHECK(!conicNormal(glm::dvec3(0.0), glm::dvec3(0.0, 1700.0, 0.0), d));  // no radius
+        CHECK(d == glm::dvec3(0.0));
+        CHECK(!conicNormal(glm::dvec3(NAN, 0.0, 0.0), glm::dvec3(0.0, 1700.0, 0.0), d));
+        CHECK(d == glm::dvec3(0.0));
+        // A flown orbit: unit, and the plane the elements agree with (orbit.h's own
+        // OrbitElements::h_hat), so a caller cannot get a normal that differs from the
+        // one render.cpp draws.
+        CHECK(conicNormal(glm::dvec3(600e3, 0.0, 0.0), glm::dvec3(0.0, 1700.0, 0.0), d));
+        CHECK_NEAR(glm::length(d), 1.0, 1e-12);
+        CHECK_NEAR(d.z, 1.0, 1e-12);
+        const OrbitElements o = computeOrbitElements(glm::dvec3(600e3, 0.0, 0.0),
+                                                     glm::dvec3(0.0, 1700.0, 0.0), MU);
+        CHECK_NEAR(glm::dot(d, o.h_hat), 1.0, 1e-12);
+        CHECK_NEAR(o.ang_momentum / glm::length(glm::dvec3(600e3, 0.0, 0.0)), 1700.0, 1e-9);
+    }
     /* What render.cpp leans on for the +/- normal markers and [planelog]'s nrm=:
        OrbitElements::h_hat is the CONIC's own normal -- unit for a real plane, exactly
        zero for a radial state -- so the gate there is a length test on a vector the
@@ -1202,7 +1265,10 @@ int main() {
        hull's offset from its own deck crossed with the station's orbital velocity. Note
        too that no length test rejects the parked-hull residue -- |h| = |pos| |v|
        sin(theta) is a planet radius times noise, 12 m2/s at 600 km and 1e-5 m/s. That
-       is what conicSpeedOk above is for, and the marker gate asks both. */
+       is what conicSpeedOk above is for. #900 changed the marker's OTHER gate from
+       `dot(h_hat, h_hat) > 0.5` -- an exactly-zero test, since h_hat is unit or zero by
+       construction -- to conicNormalOk(o.ang_momentum, o.distance), which puts that 12
+       m2/s as h/r = 2e-5 m/s and refuses it. */
     {
         const OrbitElements real = computeOrbitElements(glm::dvec3(600e3, 0.0, 0.0),
                                                         glm::dvec3(0.0, 1700.0, 0.0), MU);

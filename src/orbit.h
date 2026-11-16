@@ -194,24 +194,45 @@ inline bool conicPrograde(const glm::dvec3 &marker_vel, glm::dvec3 &dir) {
    6.9 .. 21.3 m/s).
    The quantity to bound is therefore h / r, the TANGENTIAL speed: m/s whatever the
    conic's scale, and it is bounded above by |v|, so a state that passes this passes
-   conicSpeedOk too. Both ends measured, the way #870 bracketed the speed:
+   conicSpeedOk too (see the static_assert below -- render.cpp relies on that when it
+   asks both). Both ends measured, the way #870 bracketed the speed:
      -- refuse: 6.8e-4 m/s on the pad, and 1.4e-2 .. 7.6e-2 through the vertical climb
         above (which is why reusing kConicSpeedFloor unchanged would NOT work);
-     -- keep: at apoapsis h/r IS the speed, and the slowest apoapsis a bound Kerbin
-        conic reaches inside the sphere of influence is ~17 m/s; star-centred beds are
-        three orders higher (heli-earth: 2.98e4).
-   10 * kConicSpeedFloor = 0.1 m/s puts the two ends two orders apart.
-   It is ABSOLUTE on purpose. The scale-free-looking alternative -- bound sin(gamma)
-   = h / (r |v|) instead -- refuses states whose plane is perfectly real: a reentry
-   corridor at 3 km/s and 2 deg off radial has sin(gamma) = 0.035 and h/r = 105 m/s,
-   and it has every right to a normal. What the floor is asking is whether the
-   tangential speed is above the integrator's noise, which is a rate, not an angle. */
+     -- keep: at apoapsis h/r IS the speed. Taking each shipped body's own sphere of
+        influence (system.cpp's law, with inertialSoi's lift) as the apoapsis and its
+        surface as the periapsis -- the slowest tangential speed a conic bound to that
+        body reaches -- the worst in the shipped ksp_system is Eeloo at 1.48 m/s
+        (Gilly 3.0, Pol 7.5, Kerbin 24.4), so the floor sits 15x under the tightest
+        one. Star-centred beds are three orders higher (heli-earth: 2.98e4).
+   It is ABSOLUTE on purpose, for two reasons. The scale-free-looking alternative --
+   bound sin(gamma) = h / (r |v|) instead -- refuses states whose plane is perfectly
+   real: a reentry corridor at 3 km/s and 2 deg off radial has sin(gamma) = 0.035 and
+   h/r = 105 m/s, and it has every right to a normal. And the noise this floor is
+   clearing belongs to the CONTACT INTEGRATOR, not to the body: the residue measured on
+   Kerbin's pad is millimetres-per-second whether the body is Kerbin or a cobblestone,
+   which is why a rate rather than a fraction of the local circular speed is the right
+   shape.
+   Where that honesty bites: solar_system.json's "2020 CD3" has radius 0.45 m and
+   mu 4.8e-8, so a circular orbit at its own sphere of influence runs 6e-7 m/s --
+   below the integrator's residue, i.e. there is no measurable plane there to keep, and
+   #870's kConicSpeedFloor already refuses prograde on that body for the same reason.
+   The floors are consistent with each other; whether "resting on the ground" should
+   gate them instead of a magnitude is #893's question, and it wants one answer for
+   both. */
 inline constexpr double kConicNormalFloor = 10 * kConicSpeedFloor;   // m/s of tangential speed
+static_assert(kConicNormalFloor >= kConicSpeedFloor,
+              "h/r <= |v|, so the plane floor must sit at or above the speed floor or "
+              "the speed gate stops meaning anything next to a plane gate (render.cpp "
+              "asks both and reads the plane one as the stronger)");
 
 /* Does this state have an orbital plane at all, from the two magnitudes the elements
-   already carry? render.cpp asked `dot(h_hat, h_hat) > 0.5` and the ascent row asked
-   `ang_momentum > 0.0`; orbit.h makes h_hat exactly unit or exactly zero, so both were
-   tests for exactly zero, which is not where the noise starts (#900). */
+   already carry? render.cpp's marker asked `dot(h_hat, h_hat) > 0.5` and the ascent row
+   asked `ang_momentum > 0.0`; orbit.h makes h_hat exactly unit or exactly zero, so both
+   were tests for exactly zero, which is not where the noise starts (#900). Those were
+   the two that gate a FLIGHT control and its readout; the plane the overlay draws,
+   orbitPlaneAngles()/orbitNodePoints(), [orbinfo]'s inc/lan and the orbit-sample cache
+   key still ask their own exactly-zero questions, so a row can print `nrm=-` beside a
+   confident `inc=` and `ticks=drawn` (filed; #893's display half). */
 inline bool conicNormalOk(double h_mag, double r) {
     return std::isfinite(h_mag) && std::isfinite(r) && r > 0.0
            && h_mag / r >= kConicNormalFloor;
