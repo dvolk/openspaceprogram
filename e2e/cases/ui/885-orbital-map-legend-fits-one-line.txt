@@ -1,22 +1,29 @@
 NAME 885-orbital-map-legend-fits-one-line
-CLAIM The orbital map's nine legend entries draw on one line, inside the window, at the default window size.
+CLAIM The orbital map's eight legend entries draw on one line, inside the window, at the default window size.
 KIND invariant
 # #885: the legend row used to sit just inside the default 480 px Orbital Map window, and
 # the station entry that buildings brought (#872) pushed AN and DN onto a second line. The
-# nine entries need 534 px on one line against 464 px of content region (font 14), so line
-# one ended at "apsides" -- right edge x=468, the last thing that fit -- and AN/DN wrapped
-# (reviewer's probe of the pre-fix build, tmp/night3/review885_prefix_run.log). Without the
-# station entry the same drawing needed 450 px, which is exactly where it is back at now:
-# one 84 px entry (swatch, inner gap, 58 px of word, plus a gap) spent out of 14 px of
-# slack.
+# nine entries then in use needed 534 px on one line against 464 px of content region
+# (font 14), so line one ended at "apsides" -- right edge x=468, the last thing that fit --
+# and AN/DN wrapped (reviewer's probe of the pre-fix build, tmp/night3/review885_prefix_run.log).
+# Without the station entry the same drawing needed 450 px.
 #
-# Fixed by three things that each pay their way (all three
-# measured, all three bitten below): singular labels for the kinds the map shows one of, an
-# 8 px swatch (the dot and ring were already 8 px across at r = 4 -- only the square was 10),
-# and imgui's LABEL gap (ItemInnerSpacing, 4 px) between a swatch and its word instead of
-# the between-items gap (ItemSpacing, 8 px). Now 450 px drawn (items 386 + eight 8 px gaps)
-# with the DN label's right edge at 466 -- 14 px of slack, not much, and that is the point
-# of pinning it: the next entry has to earn its width.
+# Fixed by four things, each measured:
+# - singular labels for the kinds the map shows one of (ship, station, body); "apsides"
+#   stays, because --ascent-log and the CLI help already say that;
+# - an 8 px swatch (the dot and ring were already 8 px across at r = 4 -- only the square
+#   was 10);
+# - imgui's LABEL gap (ItemInnerSpacing, 4 px) between a swatch and its word instead of the
+#   between-items gap (ItemSpacing, 8 px);
+# - "minor" dropped. It named no distinct kind: col_minor draws the faint asteroid/comet
+#   rails, which are the same rail as "body" at a lower prominence tier, and its colour is
+#   defined as one small offset off whatever canvas the window draws on (#17 on the black
+#   map, #D9 on the light style). So its chip was unreadable by construction in BOTH themes,
+#   and brightening the chip would have described a line the map never draws.
+#
+# That leaves 393 px drawn (items 337 + seven 8 px gaps), 71 px of slack. Unlike the state
+# at the fix, the row is no longer near its ceiling -- see the MUTATION note, which changed
+# because of that.
 #
 # The witness is the --ui-list registry, not a log line: the labels are drawn with uiText,
 # so the registry carries their rects and "one line" is one distinct rect top -- what the
@@ -35,9 +42,10 @@ ARGS --timeout 8 --ui-list 3000
 LIMIT 30
 EXPECT [uilist]
 FORBID error:
-# The nine entries, as names. The vocabulary is deliberate, so it is pinned: adding an entry,
-# or renaming one, has to answer for both this line and kMapLegend.
-CHECK set(u["label"] for u in uilist if u["window"] == "Orbital Map" and u["text"]) == {"AN", "DN", "apsides", "body", "minor", "ship", "station", "xfer", "you"}
+# The eight entries, as names. The vocabulary is deliberate, so it is pinned: adding an entry,
+# renaming one, or dropping one has to answer for both this line and kMapLegend. This is also
+# the CHECK that notices "minor" coming back.
+CHECK set(u["label"] for u in uilist if u["window"] == "Orbital Map" and u["text"]) == {"AN", "DN", "apsides", "body", "ship", "station", "xfer", "you"}
 # ONE line: every legend row shares its rect top. A wrapped row lands a line lower, which
 # is exactly the symptom, and it moves "Map plane"/"Reset view" down with it.
 CHECK len({u["rect"][1] for u in uilist if u["window"] == "Orbital Map" and u["text"]}) == 1
@@ -51,10 +59,16 @@ CHECK max(u["rect"][2] for u in uilist if u["window"] == "Orbital Map" and u["te
 # 320 puts the whole row at y=-140, clipped -- still shows one distinct y and a right edge
 # inside ##mapnav, so every CHECK above would be green on a legend the player cannot see.
 CHECK max(u["rect"][3] for u in uilist if u["window"] == "Orbital Map" and u["text"]) <= min(u["rect"][1] for u in uilist if u["window"] == "Orbital Map" and u["label"] == "##mapnav")
-# MUTATION (against the current table, so re-run after any legend change). Two bites, each
-# reddening the y CHECK: plural labels (ships/stations/bodies) at 445 px drawn
-# (tmp/night3/885_mut_labels2.log), and the old drawing -- kLegSwatchPx 10 with the swatch
-# gap back to ItemSpacing.x -- on its own (tmp/night3/885_mut_geom.log). So both halves of
-# the fix carry weight at 480 px and neither is decoration. The right-edge and on-screen
-# CHECKs went green in both bites: the game's own wrap logic still wrapped correctly, which
-# is what those two guard against rather than what the fix changed.
+# MUTATION (against the CURRENT eight-entry table -- re-run these after any legend change,
+# because the headroom moved). Two bites, each reddening the y CHECK: plural
+# ships/stations/bodies WITH "minor" back (a 9-entry plural row), and the old drawing --
+# kLegSwatchPx 10 with the swatch gap back to ItemSpacing.x -- with the same 9 entries
+# (tmp/night3/885_mut9_labels.log, tmp/night3/885_mut9_geom.log). Re-adding "minor" alone
+# reddens the name CHECK only (tmp/night3/885_mut_minor.log).
+#
+# Worth saying plainly, because it is a change from the state when this case was written: at
+# eight entries the row has 71 px of slack, so the earlier single bites -- plural labels
+# alone (tmp/night3/885_mut_labels2.log) or the old swatch/gap alone
+# (tmp/night3/885_mut_geom.log), both at nine entries -- no longer overflow it. The width
+# pin is still real; it is no longer close to the edge. If the legend grows again, re-measure
+# before assuming which CHECK goes red.

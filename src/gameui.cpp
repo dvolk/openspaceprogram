@@ -315,17 +315,24 @@ enum LegSwatch : unsigned char { kLegDot, kLegRing, kLegRingDot, kLegLine };
 static constexpr float kLegSwatchPx = 8.0f;
 // Draw order. The colours live with the window palette, resolved by index below, so
 // the row width (which decides wrapping) and the drawing cannot drift apart.
-// At the default 480 px window (464 px of content region, font 14) this set draws 450 px
+// At the default 480 px window (464 px of content region, font 14) this set draws 393 px
 // (#885: the station entry that buildings added put AN/DN on a second line at 534). Words
 // are singular where the map shows one of each kind, so the row keeps the project's own
 // vocabulary for the rest: "apsides" is what --ascent-log and the CLI help already say.
+// There is no entry for the faint asteroid/comet rails (col_minor): it is the SAME rail as
+// "body" at a lower prominence tier, and its colour is defined as one small offset off
+// whichever canvas the window draws on (#17 on black, #D9 on the light style), so a chip of
+// it is unreadable by construction -- brightening the chip to make it legible would describe
+// a line the map never draws. The pre-existing worry was that faint gray reads as a
+// rendering bug; "body" now covers what it is. One known gap: "body" swatches col_child,
+// which is what a catalogue body's rail and disc use, while the FOCUS body's disc is drawn
+// in ink -- tracked as #911.
 static const struct { const char *label; LegSwatch kind; } kMapLegend[] = {
     { "you",     kLegRingDot },
     { "ship",    kLegDot },
     { "station", kLegDot },
     { "xfer",    kLegLine },
     { "body",    kLegDot },
-    { "minor",   kLegLine },
     { "apsides", kLegDot },
     { "AN",      kLegRing },
     { "DN",      kLegRing },
@@ -333,7 +340,7 @@ static const struct { const char *label; LegSwatch kind; } kMapLegend[] = {
 constexpr size_t kMapLegendN = sizeof(kMapLegend) / sizeof(kMapLegend[0]);
 // leg_col[] in drawUIMap is bound to this table by ORDER alone, so a new entry with no
 // palette slot would silently draw a black swatch. Tripwire it instead.
-static_assert(kMapLegendN == 9, "add the matching colour to leg_col in drawUIMap");
+static_assert(kMapLegendN == 8, "add the matching colour to leg_col in drawUIMap");
 
 // The station marker, shared by both map windows, the legend and the --map-dump row:
 // cyan, so it reads as neither your own conic (green) nor another hull (orange) (#872).
@@ -4844,11 +4851,10 @@ void drawUIMap(Game &g) {
                 // instead of one I re-measure by hand (#885).
                 uiText("%s", label);
             };
-            // kMapLegend order, palette first: "minor" names the quiet rails, or the
-            // faint gray reads as a rendering bug.
+            // kMapLegend order, palette first.
             const ImU32 leg_col[kMapLegendN] = {
                 col_ship, col_vessel, ImGui::GetColorU32(kStationRgba),
-                col_xfer, col_child, col_minor, col_apsis,
+                col_xfer, col_child, col_apsis,
                 ImGui::GetColorU32(kColNodeAn), ImGui::GetColorU32(kColNodeDn)
             };
             // avail_w is GetContentRegionAvail() taken at this same cursor, so measure
