@@ -1,0 +1,46 @@
+# #891: SAS aimed at the residue #870 taught the HUD to dash. `Vehicle::slewTargetDir()`
+# built prograde/retrograde and the plane normal straight out of `comStateIn()` with no
+# floor, while render.cpp's markers and [orbinfo] had agreed on `orbit.h:kConicSpeedFloor`
+# (1e-2 m/s) since #870. Parked on Kerbin's shipped polar pad -- lat 90, where
+# |omega x r| is zero and the contact solver's residue is all that is left (2.9e-04 ..
+# 4.6e-04 m/s in tmp/night3/891_after.log) -- a residue vector still normalizes to a
+# confident unit heading, so a prograde hold slewed the nose after whichever way the jitter
+# pointed this tick, spending reaction-wheel torque, while the same screen printed `prg=-`.
+# The function's own comment claimed "Matches the drawn markers (render.cpp), so what SAS
+# aims at is what the prograde icon shows": true before #870, false after it.
+#
+# The fix shares the rule rather than adding plumbing: below the floor the target is the
+# zero vector, which is the ask `pointingTo()` already fails closed on (#609), and the
+# law's row prints `no-target` and returns before it demands any torque -- the same refusal
+# SAS shows for a mode with nothing to point at. So the pin is on the autopilot rows: the
+# mode latches (`mode=prograde`), the answer is a refusal on every row, and no row shows
+# the law chasing a heading (`mode=prograde E=`).
+NAME sas-prograde-with-no-conic-refuses
+CLAIM SAS prograde on a hull with no conic refuses instead of steering at solver residue: the mode latches, every autopilot row says no-target, and none shows a heading being chased.
+KIND invariant
+ARGS --startship racer,res/ships/racer.json,Kerbin,pad,polar_pad
+ARGS --time-accel 1 --timeout 6 --info-log --orbit-interval 1 --slew-log
+ARGS --sim-press 2000,0,Z
+LIMIT 200
+EXPECT [slew]
+EXPECT [orbinfo]
+EXPECT mode=prograde no-target
+FORBID mode=prograde E=
+FORBID prg=-nan
+FORBID error:
+# The premise, pinned by the readout rather than assumed: this is the no-heading state, the
+# residue under the floor that render/870-prg-dash-on-a-polar-pad measures, and the HUD says
+# so too. If the state stopped being the state, the refusal below would prove nothing.
+CHECK len(orbinfo) >= 3
+CHECK all(o["prg"] is None and o["rtg"] is None for o in orbinfo)
+CHECK all(o["vel"] > 0.0 and o["vel"] < 1e-2 for o in orbinfo)
+# Refusal for as long as the law is latched, not one lucky tick: [slew] runs at 10 Hz and
+# the latch runs from the Z pop at 2 s to the 6 s cutoff, so >= 10 rows is a fifth of them.
+# Measured 36 here, 54 in the issue's 8 s repro with the key held. The pop sits at 2 s
+# because a pop at 1 s is swallowed while the hull is still being put down and the run then
+# has no [slew] row at all -- the EXPECT on the mode name is what keeps that from reading
+# as a vacuous pass.
+CHECK out.count("mode=prograde no-target") >= 10
+# MUTATION: delete the `conicSpeedOk` guard in slewTargetDir() and the rows become
+# `mode=prograde E=... target=[...]` -- the FORBID fires and the count drops to 0, because
+# the law is steering at a unit vector made of noise.

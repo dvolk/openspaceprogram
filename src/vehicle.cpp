@@ -6415,10 +6415,19 @@ glm::dvec3 Vehicle::slewTargetDir() {
        near its orbit's prograde, and the cross product of that pair is not the
        orbit's normal. Then back into this frame -- slewDemand steers in it.
        Matches the drawn markers (render.cpp), so what SAS aims at is what the
-       prograde icon shows. */
+       prograde icon shows -- including #870's floor, which this path used to skip.
+       Parked on a world that does not turn, or on Kerbin's polar pad where
+       |omega x r| goes to zero, `v` here is the contact solver's residue
+       (measured 3.9e-04 .. 3.4e-03 m/s): a unit vector of noise, so SAS slewed the
+       nose after whichever way the jitter pointed this tick, spending drum torque,
+       while the HUD said `prg=-` (#891). Below the floor the answer is the same
+       "no target" pointingTo() already fails closed on, and the [slew] row prints
+       `no-target` -- a refusal the player can see rather than a heading invented
+       from residue. */
     Frame *inertial = frame->getNonRotFrame();
     glm::dvec3 p, v;
     comStateIn(inertial, p, v);
+    if(!conicSpeedOk(glm::length(v))) { return glm::dvec3(0.0); }
     const glm::dmat3 to_frame = glm::transpose(frame->GetOrientRelTo(inertial));
     glm::dvec3 dir = to_frame * (nrm ? glm::cross(p, v) : v);
     return (slew == SlewRetrograde || slew == SlewAntiNormal) ? -dir : dir;
