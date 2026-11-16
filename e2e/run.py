@@ -137,7 +137,11 @@ ORBIT_RE = re.compile(
 # this row off "nan"), and like those fields a dashed one carries NO unit: the row
 # reads `node_r=-`, not `node_r=- m`. That is what makes the two-arm form below
 # unambiguous -- `[-\d.e+]+ m` would happily eat a lone '-' and leave float() with
-# something it cannot read, which is exactly how this migration was caught. A CHECK
+# something it cannot read, which is exactly how this migration was caught. The
+# convention cuts one way, too: the field AFTER a dash must not start with the unit's
+# letter, since `peri_asl=- mass=` would match the numeric arm with the group '-'.
+# Today's followers are apo_asl / inc_eq / node_r / accel / why, all safe, and the
+# mistake raises in parse_ascent rather than reporting a wrong number. A CHECK
 # that wants a real number now fails against None instead of agreeing with a
 # placeholder that used to read like a measurement (-1 m apoapsis, -1.00 deg
 # inclination) -- and instead of comparing a float("nan"), where every comparison
@@ -784,10 +788,12 @@ NOTE_WORDS = re.compile(r"\b(WARNING|FAILED|refused|no-solution|no active ship)\
 # above is [-\d.e+]+ -- it takes the sign and stops at the letters, so the field never
 # closes and the whole row fails to match and disappears: len(<list>) comes up short,
 # last() is an older row, and the CHECKs assert about the rows that survived (#408).
-# Only a line the parser COULD NOT read is the finding here: [ascent] prints "nan" on
-# purpose for "no node yet" and its regex reads it, so that row is not dropped and not
-# named. The lookaround is not decoration -- "--info-log", "information" and "inflight"
-# merely start with these letters.
+# Only a line the parser COULD NOT read is the finding here, and no row is exempt any
+# more: [ascent] used to be the exception -- it printed "nan" for "no node yet" and its
+# regex read that, so the row was neither dropped nor named. #894 moved those fields onto
+# the dash, so a nan in one of them now matches neither arm and IS named. The lookaround
+# is not decoration -- "--info-log", "information" and "inflight" merely start with these
+# letters.
 NONFINITE_RE = re.compile(r"(?<![A-Za-z0-9_.])[-+]?(?:inf|nan)(?![A-Za-z0-9_])",
                           re.IGNORECASE)
 # A CHECK's own string literals, masked before a parser name is looked for in the expression.
@@ -2837,23 +2843,31 @@ def self_test():
         fails.append("an [orbinfo] row carrying prg=-nan was not named as dropped")
     # #894 moved [ascent]'s missing numbers onto the dash, which flips this row's half
     # of the #408 question: a nan that slips into these fields is now a row nobody can
-    # read, so it must be NAMED rather than parsed.
-    asc_dash = ('[ascent] t=32.3s phase=pad lever=1.00 pitch=87.5 deg peri_asl=-250000 m '
-                'apo_asl=- inc_eq=0.286474 deg node_r=- accel=18.08 m/s2 '
-                'g=2.69 m/s2 why=""')
-    if ASCENT_RE.match(asc_dash) is None:
-        fails.append("a dashed [ascent] line stopped matching ASCENT_RE")
-    else:
-        row = parse_ascent(asc_dash)[0]
-        if row["apo_asl"] is not None or row["node_r"] is not None:
-            fails.append("a dashed [ascent] field did not parse as None")
-        if row["peri_asl"] != -250000.0 or row["inc_eq"] != 0.286474:
-            fails.append("a dashed [ascent] line lost the numbers it did carry")
-    asc_nan = asc_dash.replace("node_r=-", "node_r=nan")
-    if ASCENT_RE.match(asc_nan) is not None:
-        fails.append("ASCENT_RE still parses a node_r=nan [ascent] line #894 dropped")
-    if dropped_nonfinite_rows(ASCENT_RE, [asc_nan]) != [asc_nan]:
-        fails.append("a node_r=nan [ascent] row was not named as dropped")
+    # read, so it must be NAMED rather than parsed. Both rows pin all four arms, because
+    # a typo in one alternative is invisible if that field is only ever numeric (or only
+    # ever dashed) in the sample.
+    asc_num = ('[ascent] t=32.3s phase=pad lever=1.00 pitch=87.5 deg peri_asl=-250000 m '
+               'apo_asl=129.753 m inc_eq=0.286474 deg node_r=1.2e+05 m accel=18.08 m/s2 '
+               'g=2.69 m/s2 why=""')
+    asc_dash = ('[ascent] t=32.3s phase=pad lever=1.00 pitch=87.5 deg peri_asl=- '
+                'apo_asl=- inc_eq=- node_r=- accel=18.08 m/s2 g=2.69 m/s2 why=""')
+    for tag, ln, want in (("all-numeric", asc_num,
+                           (-250000.0, 129.753, 0.286474, 120000.0)),
+                          ("all-dashed", asc_dash, (None, None, None, None))):
+        got = [r[k] for r in parse_ascent(ln)
+               for k in ("peri_asl", "apo_asl", "inc_eq", "node_r")]
+        if got != list(want):
+            fails.append("the %s [ascent] line parsed as %r, expected %r"
+                         % (tag, got, want))
+    for was, now in (("peri_asl=-250000 m", "peri_asl=nan m"),
+                     ("apo_asl=129.753 m", "apo_asl=nan m"),
+                     ("inc_eq=0.286474 deg", "inc_eq=nan deg"),
+                     ("node_r=1.2e+05 m", "node_r=nan m")):
+        bad = asc_num.replace(was, now)
+        if ASCENT_RE.match(bad) is not None:
+            fails.append("ASCENT_RE still parses a [ascent] line carrying %s" % now)
+        if dropped_nonfinite_rows(ASCENT_RE, [bad]) != [bad]:
+            fails.append("an [ascent] row carrying %s was not named as dropped" % now)
     # A word that merely starts with these letters is not a blow-up, and the two
     # spellings glibc prints have to be caught however they sit in the line.
     for word in ("--info-log", "information", "inflight", "nano.png", "format inf_"):

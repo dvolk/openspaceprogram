@@ -506,16 +506,17 @@ void tick(Game &g) {
                 const bool conic = law.conicOk();
                 /* A dash, not a number: a railed hull or a mu-less body never got a
                    conic, and elements() still held the previous tick's -- or a
-                   default-constructed one, which printed "periapsis 0 m" as though
-                   it had been measured. '-' is what every other row-based log prints
-                   for "no value" ([orbit] lan=/lpe=, [planelog] prg=, [drag] AoA=),
-                   and the unit lives in the buffer for the same reason those printers
-                   put it there: a dashed field carries no unit, so e2e's ASCENT_RE can
-                   tell the two apart without a numeric arm that eats a lone '-' and
-                   hands float() something it cannot read. The harness reads a dash as
-                   None and a nan as a float, so the dash also makes a CHECK against an
-                   absent field fail loudly instead of comparing a float
-                   (#610 review, #894). */
+                   default-constructed one, which printed this row's periapsis as a
+                   confident number the law had never measured. '-' is what every other
+                   row-based log prints for "no value" ([orbitlog] lan=/lpe=, [planelog]
+                   prg=, [drag] AoA=, [slew] w_cap=), and the unit lives in the buffer
+                   for the same reason those printers put it there: a dashed field
+                   carries no unit, so e2e's ASCENT_RE can tell the two apart without a
+                   numeric arm that eats a lone '-' and hands float() something it cannot
+                   read. A nan here is no longer something the harness reads: it matches
+                   neither arm, so the row drops and e2e names it (#408). The dash also
+                   makes a CHECK against an absent field fail against None instead of
+                   quietly comparing a float nan (#610 review, #894). */
                 auto optNum = [](char *buf, size_t n, const char *unit, double v,
                                  bool ok) {
                     if(ok) { std::snprintf(buf, n, "%.6g%s", v, unit); }

@@ -1,0 +1,21 @@
+# A hull coasting on rails is outside the physics world, so the ascent law sends it no
+# commands and never solves a conic. Its row used to print nan in the four numbers that
+# need one; #894 made them the dash every other row-based log already uses, and the
+# harness reads a dash as None rather than as a float a CHECK could quietly compare.
+# Every flown case leaves all four fields numbered -- a verdict freezes the conic rather
+# than clearing it -- so this is the one live row where they all dash, and the one place
+# a typo in a single regex arm shows up outside --self-test.
+NAME rail-rows-dash-their-apsides
+CLAIM A hull on rails dashes its ascent apsides, inclination and burn node, and the harness reads all four as None.
+KIND invariant
+ARGS --timeout 6 --time-accel 100 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+ARGS --ascent 100e3 --ascent-log --no-paint
+LIMIT 60
+EXPECT phase=pad
+EXPECT why="ship is on rails: no commands sent"
+FORBID peri_asl=nan
+CHECK len(ascent) >= 3
+CHECK all(a["peri_asl"] is None and a["apo_asl"] is None and a["inc_eq"] is None and a["node_r"] is None for a in ascent)
+# The row is still a row: the two numbers the lift-off gate compares print whether or not
+# a conic exists, so the dashes above are four absences and not a dropped reading.
+CHECK all(a["accel"] > 0.0 and a["g"] > 0.0 for a in ascent)
