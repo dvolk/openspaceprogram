@@ -547,16 +547,21 @@ void tick(Game &g) {
                 }
                 /* Inclination against the body's equator, from the pole (see
                    flyAscent: omega() is zero for a body that does not spin, which
-                   used to make this field print -1.00 as a stand-in for "unknown"). */
+                   used to make this field print -1.00 as a stand-in for "unknown").
+                   "Is there a plane" is orbit.h's conicNormalOk, the same test the
+                   autopilot's normal pair and the drawn marker use: `ang_momentum > 0.0`
+                   was a test for exactly zero, and a near-radial state's h is not near
+                   zero -- it is r |v| sin(gamma), a large number whose direction is the
+                   phase of the noise (#900). Such a hull has no inclination to print. */
                 double inc_spin = 0.0;
-                if(conic && o.ang_momentum > 0.0) {
+                const bool plane_ok = conic && conicNormalOk(o.ang_momentum, o.distance);
+                if(plane_ok) {
                     Frame *inertial = g.ship->frame->getNonRotFrame();
                     if(inertial == nullptr) { inertial = g.ship->frame; }
                     const double c = glm::dot(o.h_hat, g.ship->frame->spinAxisRelTo(inertial));
                     inc_spin = glm::degrees(acosUnit(c));
                 }
-                optNum(inc_txt, sizeof inc_txt, " deg", inc_spin,
-                       conic && o.ang_momentum > 0.0);
+                optNum(inc_txt, sizeof inc_txt, " deg", inc_spin, plane_ok);
                 optNum(node_txt, sizeof node_txt, " m", law.node_r(),
                        law.node_r() > 0.0);
                 /* The two numbers the law's lift-off gate compares, printed so a

@@ -185,6 +185,52 @@ inline bool conicPrograde(const glm::dvec3 &marker_vel, glm::dvec3 &dir) {
     return true;
 }
 
+/* A PLANE needs its own floor, because |h| is not a speed. h = cross(pos, vel) has
+   magnitude r |v| sin(gamma), gamma the flight path angle, so a near-radial state
+   clears kConicSpeedFloor many times over while sin(gamma) collapses: the "plane" is
+   then the heading of the last sideways cm/s, and its unit normal reverses between
+   frames (#900, measured on a vertical climb off Kerbin's polar pad -- 10 of 27
+   consecutive targets jumped more than 90 deg, the worst 174 deg, while |v| ran
+   6.9 .. 21.3 m/s).
+   The quantity to bound is therefore h / r, the TANGENTIAL speed: m/s whatever the
+   conic's scale, and it is bounded above by |v|, so a state that passes this passes
+   conicSpeedOk too. Both ends measured, the way #870 bracketed the speed:
+     -- refuse: 6.8e-4 m/s on the pad, and 1.4e-2 .. 7.6e-2 through the vertical climb
+        above (which is why reusing kConicSpeedFloor unchanged would NOT work);
+     -- keep: at apoapsis h/r IS the speed, and the slowest apoapsis a bound Kerbin
+        conic reaches inside the sphere of influence is ~17 m/s; star-centred beds are
+        three orders higher (heli-earth: 2.98e4).
+   10 * kConicSpeedFloor = 0.1 m/s puts the two ends two orders apart.
+   It is ABSOLUTE on purpose. The scale-free-looking alternative -- bound sin(gamma)
+   = h / (r |v|) instead -- refuses states whose plane is perfectly real: a reentry
+   corridor at 3 km/s and 2 deg off radial has sin(gamma) = 0.035 and h/r = 105 m/s,
+   and it has every right to a normal. What the floor is asking is whether the
+   tangential speed is above the integrator's noise, which is a rate, not an angle. */
+inline constexpr double kConicNormalFloor = 10 * kConicSpeedFloor;   // m/s of tangential speed
+
+/* Does this state have an orbital plane at all, from the two magnitudes the elements
+   already carry? render.cpp asked `dot(h_hat, h_hat) > 0.5` and the ascent row asked
+   `ang_momentum > 0.0`; orbit.h makes h_hat exactly unit or exactly zero, so both were
+   tests for exactly zero, which is not where the noise starts (#900). */
+inline bool conicNormalOk(double h_mag, double r) {
+    return std::isfinite(h_mag) && std::isfinite(r) && r > 0.0
+           && h_mag / r >= kConicNormalFloor;
+}
+
+/* The conic's normal unit vector, or false -- and a zeroed dir -- when the state has
+   no plane. Same shape as conicPrograde so a caller cannot get the direction without
+   passing the floor. */
+inline bool conicNormal(const glm::dvec3 &pos, const glm::dvec3 &vel, glm::dvec3 &dir) {
+    const glm::dvec3 h = glm::cross(pos, vel);
+    const double h_len = glm::length(h);
+    if(!conicNormalOk(h_len, glm::length(pos))) {
+        dir = glm::dvec3(0.0);
+        return false;
+    }
+    dir = h / h_len;
+    return true;
+}
+
 /* A normal is not enough: an in-plane angle needs a zero direction too.
    y_hat = n_hat x x_hat0 points along INCREASING longitude -- for the
    body-rail frame (n_hat = +Y, x_hat0 = +X) that is -Z, which is why railAz

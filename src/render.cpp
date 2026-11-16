@@ -219,16 +219,21 @@ void updateShipView(Game &g) {
        from its own deck crossed with the station's orbital velocity: large, non-zero,
        and nowhere near the plane whose ring the overlay draws beside it. o.h_hat is
        the conic's own normal -- exactly zero when the state is radial (orbit.h) --
-       lifted into this frame the way drawOrbitPlane lifts it, and the 0.5 test is
-       that overlay's own degenerate gate. The speed floor gates it too: a plane needs
-       a velocity to be a plane OF, and below kConicSpeedFloor that velocity is the
-       integrator's residue, so |h| = |pos| |v| sin(theta) is a planet radius times
-       noise rather than a plane. */
+       lifted into this frame the way drawOrbitPlane lifts it.
+       What gates it is orbit.h's conicNormalOk, not the 0.5 this used to test: h_hat is
+       unit or exactly zero by construction, so `dot(h, h) > 0.5` was a test for exactly
+       zero, and the near-radial state is not near zero -- it is r |v| sin(gamma) with a
+       vanishing sin(gamma), which is a large number made of noise (#900). The floor is
+       the tangential speed h/r, which is also what the paragraph above argues for; it
+       lives in orbit.h so the autopilot, [ascent]'s inc_eq and this marker all ask the
+       same question the same way. The speed floor gates it too: a plane needs a velocity
+       to be a plane OF, and below kConicSpeedFloor that velocity is the integrator's
+       residue. */
     glm::dvec3 h = o.h_hat;
     if(ship->frame != bodyInertial) {
         h = glm::transpose(ship->frame->GetOrientRelTo(bodyInertial)) * h;
     }
-    view.normal_ok = view.prograde_ok && glm::dot(h, h) > 0.5;
+    view.normal_ok = view.prograde_ok && conicNormalOk(o.ang_momentum, o.distance);
     view.marker_h_hat = view.normal_ok ? h : glm::dvec3(0.0);
 
     /* Air-relative prograde (#498). Vehicle::airRelativeVel is the vector the drag

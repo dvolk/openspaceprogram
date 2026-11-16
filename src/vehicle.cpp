@@ -6445,10 +6445,26 @@ glm::dvec3 Vehicle::slewTargetDir() {
     Frame *inertial = frame->getNonRotFrame();
     glm::dvec3 p, v;
     comStateIn(inertial, p, v);
-    if(!conicSpeedOk(glm::length(v))) { return glm::dvec3(0.0); }
     const glm::dmat3 to_frame = glm::transpose(frame->GetOrientRelTo(inertial));
-    glm::dvec3 dir = unit(to_frame * (nrm ? glm::cross(p, v) : v));
-    return (slew == SlewRetrograde || slew == SlewAntiNormal) ? -dir : dir;
+    if(nrm) {
+        /* The normal pair answers "does this state have a PLANE", which is not the
+           question the speed floor asks. |h| = r |v| sin(gamma), so a near-radial
+           climb -- a vertical launch, which on the polar pad is also where the
+           ground's own motion is zero -- clears the speed floor 16x while its whole
+           angular momentum is 6.8e-4 m/s of tangential residue: SAS slewed the nose
+           after a normal that reversed by up to 174 deg between frames, asking 4.0e6
+           N m of drum torque for it (#900). conicNormal() bounds the tangential speed
+           h/r, which is the same quantity render.cpp argues for in its own comment and
+           never tested. Below the floor this is the same zero-vector refusal
+           pointingTo() already fails closed on, so the row prints `no-target`. */
+        glm::dvec3 h;
+        if(!conicNormal(p, v, h)) { return glm::dvec3(0.0); }
+        const glm::dvec3 dir = unit(to_frame * h);
+        return slew == SlewAntiNormal ? -dir : dir;
+    }
+    if(!conicSpeedOk(glm::length(v))) { return glm::dvec3(0.0); }
+    const glm::dvec3 dir = unit(to_frame * v);
+    return slew == SlewRetrograde ? -dir : dir;
 }
 
 /* Route one commanded attitude torque through the available actuators. The
