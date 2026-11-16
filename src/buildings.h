@@ -46,7 +46,11 @@ BuildingsCatalog load_buildings_catalog(const char *path);
 
 // One world instance (the system JSON "world_buildings" entry).
 struct WorldBuilding {
-    std::string id;           // instance id (unique in the system)
+    std::string id;           // instance id: unique per BODY (that is what
+                              // validate checks, and what placement and
+                              // find_launch_site match on). Labels are the
+                              // stronger rule -- unique across the system,
+                              // see dedupBuildingName below (#883).
     std::string type;         // catalog name
     std::string display_name; // optional; empty -> catalog label
     std::string body;         // body name
@@ -117,6 +121,20 @@ std::vector<WorldBuilding> parse_world_buildings_all(
    about that axis. Ship placement uses the same matrix so a headed pad
    carries its ships. */
 glm::dmat3 buildingOrient(const glm::dvec3 &up, double heading_rad);
+
+/* A building's label is the name the Target window and --transfer-target match
+   on, and a transfer target's IDENTITY is {label, kind} with no body term
+   (transferplanner.h:TargetRef), so two buildings in one system that answer to
+   one label are ONE target: the combo lists two rows and clicking either
+   resolves the first, so the plan, the burn marker and the map's Target plane
+   all follow a different station than the one that was clicked (#883).
+   Vessels dodge this when they spawn (vehicle.h:dedupVehicleName); buildings
+   dodge it where they are placed, with the same rule -- first keeps the base
+   name, the rest get " #2", " #3". `taken` is the whole system's list, not one
+   body's, for the same reason the identity has no body term. Pure so a test can
+   drive it (placing needs GL and physics). */
+std::string dedupBuildingName(const std::vector<std::string> &taken,
+                              const std::string &base);
 
 /* The checks place_world_buildings would throw on, without instantiating or
    needing physics: type in the catalog, body in the system, unique instance id

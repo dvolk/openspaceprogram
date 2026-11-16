@@ -1,0 +1,38 @@
+# Naming the twins differently is only half of #883: the point is that the plan
+# follows the station the player asked for. The fixture
+# e2e/fixtures/systems/883-twin-stations.json authors TWO Kerbin stations both
+# named "Twin station" -- 400 km at 51.6 deg, and 300 km at 20 deg -- so as
+# authored they are one identity and both resolve to the 51.6 deg one. With the
+# placement dedup the second answers to "Twin station #2", and asking for it by
+# name moves the map's Target plane to the 20 deg orbit.
+#
+# The Target plane is the observable that tells the two apart by CONSTRUCTION
+# rather than by string: n is cross(r, v) of the targeted station in Kerbin's
+# inertial frame, so it is the authored plane of whichever station the planner
+# resolved. Authored at raan 0, n = (0, cos inc, sin inc):
+#   station #1 (51.6 deg)  (0, 0.621148, 0.783693)   <- what BOTH twins used to give
+#   station #2 (20 deg)    (0, 0.939693, 0.342020)   <- what "#2" must give
+#   the ecliptic slot      (0, 1.000000, 0.000000)
+# so a target that ignored the second station reads 51.6 deg, and these bands
+# are nowhere near it. The other slots are also present, hence the slot=="tgt"
+# filter: without it the ecliptic row would sit outside the bands and pass the
+# check as a failure of the wrong thing.
+NAME the-second-twin-station-is-the-one-you-aimed-at
+CLAIM Aiming at the renamed twin plans the second station's orbit, not the first station's.
+KIND invariant
+ARGS --system e2e/fixtures/systems/883-twin-stations.json
+ARGS --time-accel 1 --timeout 6 --startship racer,res/ships/racer.json,Kerbin,pad
+ARGS --transfer-target "Twin station #2" --xfer-log --orbit-log --orbit-interval 1.0
+ARGS --map-plane 3 --map-dump 3000
+FORBID no-solution
+FORBID error:
+# The label resolves at all: before the dedup there is no such row, so the ask
+# misses, no plan is printed and this goes red on an empty list.
+CHECK len(xfer) >= 3
+CHECK all(x["target"] == "Twin station #2" for x in xfer)
+CHECK all(x["dv_dep"] > 0.0 and x["tof"] > 0.0 for x in xfer)
+CHECK any(m["slot"] == "tgt" for m in mapb)
+CHECK all(abs(m["n"][0]) < 1e-6 and abs(m["n"][1] - 0.939693) < 1e-5 and abs(m["n"][2] - 0.342020) < 1e-5 for m in mapb if m["slot"] == "tgt")
+# The flight readout measures in that plane too, so the HUD and the map agree
+# about which of the twins is being flown to.
+CHECK all(o["plane"] == "tgt" for o in orbit if o["t"] > 1.0)

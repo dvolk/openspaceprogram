@@ -173,9 +173,9 @@ public:
     /* Select by name alone, taking the LAST match -- the list is bodies, then
        vessels, then stations, so a vessel wins over a body of the same name and
        a station over both. This is the CLI's shape, where there is no row to
-       click. Two rows of the same name AND kind (station labels are not deduped,
-       #883) are one identity, so which of them target() lands on after this is
-       the list's order -- the first -- not this loop's last. */
+       click. A tie can only cross kinds: within one kind the labels are unique
+       (dedupVehicleName on spawn, buildings.h:dedupBuildingName at placement,
+       #883), so what this leaves selected always resolves to a row. */
     void selectTargetByName(const std::string &name);
 
     std::vector<XferTarget> xferTargets;
@@ -320,9 +320,10 @@ static_assert(std::is_move_assignable_v<TransferPlanner>,
    label and kind, not the same object: dedupVehicleName keeps labels unique
    among LIVE vehicles, so a retired name can be reused later. That is safe only
    because every death clears a selection that no longer resolves -- an identity
-   is never carried across its object's lifetime. A station's label is NOT
-   deduped (issue #883), so two stations on one body under one name are the same
-   identity; the row that wins is the first in the list. */
+   is never carried across its object's lifetime. Station labels are made unique
+   where buildings are placed (buildings.h:dedupBuildingName, #883), so two
+   stations never collapse onto one identity; a body and a station may still
+   share a label, which is what the kind term is for. */
 inline bool targetMatches(const TransferPlanner::XferTarget &t, const TargetRef &ref) {
     return !ref.empty() && t.name == ref.name && t.kind() == ref.kind;
 }

@@ -1,0 +1,34 @@
+# A station's label IS its transfer-target identity: TargetRef is {label, kind}
+# and carries no body term (transferplanner.h), so an author who gives two
+# stations the same display_name has written ONE target. The Target window lists
+# two rows that read alike, findTargetRow resolves either click to the FIRST
+# matching row, and the plan, the burn marker and the map's Target plane all
+# follow a station the player did not pick. Nothing warns (#883).
+#
+# Ship names dodge this when they spawn (vehicle.cpp:dedupVehicleName gives the
+# rest " #2", " #3"); building labels now dodge it where they are placed, with
+# the same rule and -- because the identity has no body term -- across the whole
+# SYSTEM rather than per body.
+#
+# The fixture e2e/fixtures/systems/883-twin-stations.json is the shipped
+# ksp_system bodies with its site fragment replaced by three inline buildings: a
+# launch pad and TWO Kerbin stations both authored display_name "Twin station",
+# on different orbits. This run asks for a name that is not there at all, which
+# makes the planner print the rows it did look at -- the only face the row list
+# has in a log. The next case (883-b) aims at one of them.
+NAME twin-station-labels-get-their-own-target-rows
+CLAIM Two stations authored with one display_name become two distinct target labels.
+KIND invariant
+ARGS --system e2e/fixtures/systems/883-twin-stations.json
+ARGS --time-accel 1 --timeout 3 --startship racer,res/ships/racer.json,Kerbin,pad
+ARGS --transfer-target "no such thing"
+FORBID error:
+# Both twins are rows, and they answer to different names: "Twin station" and
+# "Twin station #2". Without the placement dedup this line reads
+# "Twin station" "Twin station" -- two rows, one identity -- and EXPECT reddens.
+EXPECT [xfer] --transfer-target "no such thing" is not plannable here; this hull can aim at: "Twin station" "Twin station #2"
+# The rename says itself once, at placement, and names which building moved.
+# Counted rather than EXPECTed so a rename that fires per frame -- or per
+# re-place on a system switch -- goes red.
+CHECK out.count('buildings: \'kerbin_station_b\' answers to "Twin station #2"') == 1
+CHECK out.count('"Twin station" "Twin station #2"') == 1

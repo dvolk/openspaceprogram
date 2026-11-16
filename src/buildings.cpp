@@ -440,9 +440,36 @@ static void attach_bubble_frame(StaticBuilding *sp, TerrainBody *hb,
     sp->tickFrame(0.0);
 }
 
+std::string dedupBuildingName(const std::vector<std::string> &taken,
+                              const std::string &base) {
+    std::string nm = base;
+    int n = 2;
+    while(true) {
+        bool hit = false;
+        for(const std::string &s : taken) {
+            if(s == nm) { hit = true; break; }
+        }
+        if(!hit) { return nm; }
+        nm = base + " #" + std::to_string(n);
+        n++;
+    }
+}
+
 void place_world_buildings(System &sys, const BuildingsCatalog &cat,
                            Shader *shader, TerrainBody *sun) {
     validate_world_buildings(sys, cat);
+    /* Labels are transfer-target identities (#883), so they have to be unique
+       across the SYSTEM: a TargetRef carries no body, so a "Science outpost" on
+       Kerbin and one on Mun collide in the Target window exactly as two on the
+       same body do. Seeded from what is ALREADY placed because this runs a
+       second time after a system switch (#850) and a rename must not move a
+       station that already answers to the bare name. */
+    std::vector<std::string> taken;
+    for(const TerrainBody *b : sys.bodies) {
+        for(const StaticBuilding *p : b->pads) {
+            if(!p->display_name.empty()) { taken.push_back(p->display_name); }
+        }
+    }
     for(const WorldBuilding &w : sys.world_buildings) {
         const BuildingDef *def = cat.find(w.type);   // validated above
         TerrainBody *hb = sys.find(w.body);          // validated above
@@ -465,7 +492,16 @@ void place_world_buildings(System &sys, const BuildingsCatalog &cat,
         sp->parent = hb;
         sp->sun = sun;
         sp->id = w.id;
-        sp->display_name = w.label(cat);
+        const std::string base = w.label(cat);
+        sp->display_name = dedupBuildingName(taken, base);
+        taken.push_back(sp->display_name);
+        if(sp->display_name != base) {
+            // Say it once, at placement: an author who typed the same
+            // display_name twice should see which building got renamed.
+            printf("buildings: '%s' answers to \"%s\" -- \"%s\" is already "
+                   "taken in this system\n", w.id.c_str(),
+                   sp->display_name.c_str(), base.c_str());
+        }
         sp->flags = w.flags;
         if(w.orbital) {
             /* A space dock / station: a driven pose on a Kepler orbit, in the

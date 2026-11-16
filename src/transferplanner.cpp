@@ -182,10 +182,10 @@ void TransferPlanner::selectTarget(const std::string &name, TargetKind kind) {
 void TransferPlanner::selectTargetByName(const std::string &name) {
     // Last name match wins, as --transfer-target always resolved it: the list
     // is bodies, then vessels, then stations, so a vessel named after a body is
-    // the one a test naming that string means to aim at. Two rows of the SAME
-    // kind and name (station labels are not deduped, #883) are one identity to
-    // the planner, so which of them target() lands on is the list's order, not
-    // this loop's.
+    // the one a test naming that string means to aim at. A tie here can only be
+    // across KINDS -- names are unique within one kind (dedupVehicleName on
+    // spawn, dedupBuildingName at placement, #883) -- so the later kind wins and
+    // findTargetRow resolves a row of that kind.
     for(int i = 0; i < (int)xferTargets.size(); i++) {
         if(xferTargets[i].name == name) {
             xfer_sel = TargetRef{name, xferTargets[i].kind()};
