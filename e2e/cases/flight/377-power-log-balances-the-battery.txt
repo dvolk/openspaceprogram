@@ -1,9 +1,9 @@
 # --power-log prints the whole electrical model in one row -- generation,
-# constant draw, stored charge, the active draw (#643), and the powered= gate the
-# reaction wheels live behind -- and nothing in the battery could read any of it:
-# run.py had no parser for [powerlog] and no case asserted a thing about it
-# (#377). So a ship that stopped MAKING power, or stopped LOSING it, kept its
-# battery bar green.
+# constant draw, stored charge, the active draw (#643), the net the balance was
+# struck on (#659) and the powered= gate the reaction wheels live behind -- and
+# nothing in the battery could read any of it: run.py had no parser for
+# [powerlog] and no case asserted a thing about it (#377). So a ship that stopped
+# MAKING power, or stopped LOSING it, kept its battery bar green.
 #
 # power_test is the smallest ship that shows all of it: a 600 W capsule, a
 # 298.45 W RTG and a 2250 W wheel on a 12000 Wh battery. The RTG does NOT cover
@@ -67,3 +67,12 @@ CHECK abs((first([r for r in power if 3.6 < r["t"] < 7.6])["charge"] - last([r f
 CHECK len([r for r in power if r["t"] < 2.8]) >= 3 and all(r["active"] == 0.0 for r in power if r["t"] < 2.8)
 CHECK len([r for r in power if 3.6 < r["t"] < 7.6]) >= 5 and all(r["active"] > 0.0 for r in power if 3.6 < r["t"] < 7.6)
 CHECK max(r["active"] for r in power) > 2000.0
+# #659 added the row's ANSWER alongside its terms: net= is the rate powerTick
+# actually balanced on. That matters beyond tidiness -- it is what lets the Systems
+# window's Net row (which reads this figure instead of adding the terms up itself)
+# be checked against a printed figure rather than a re-derivation. So the column
+# has to be the rate the BATTERY moved at, not a copy of what some UI arithmetic
+# would have said. Same window and same 20% band as the coast CHECK above; here the
+# expected figure is PRINTED instead of re-derived from gen/const_draw/active.
+CHECK all(r["net"] is not None and r["net"] < 0.0 for r in power)
+CHECK abs((last([r for r in power if r["t"] > 8.5])["charge"] - first([r for r in power if r["t"] > 8.5])["charge"]) / (last([r for r in power if r["t"] > 8.5])["t"] - first([r for r in power if r["t"] > 8.5])["t"]) - sum(r["net"] for r in power if r["t"] > 8.5) / len([r for r in power if r["t"] > 8.5]) / 3600.0) < 0.2 * abs(sum(r["net"] for r in power if r["t"] > 8.5) / len([r for r in power if r["t"] > 8.5]) / 3600.0)

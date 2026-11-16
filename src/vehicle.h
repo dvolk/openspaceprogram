@@ -533,6 +533,16 @@ public:
 
     /* EC gate for the wheels (powerTick). Default true: no EC system = ungated. */
     bool powered_ = true;
+    /* The watts powerTick ACTUALLY balanced on its last call: gen - constantDraw -
+       activeDraw, the sum behind netWh. The Systems window and --power-log print this
+       instead of adding the three terms up themselves (#659): a bill term that
+       powerTick pays but getPower() does not report would otherwise make the number
+       the pilot reads wrong in silence, which is #642's mistake shape. Staleness is
+       bounded by one powerTick -- it is rewritten every substep and once per warp hop
+       (railsTick) -- so a part staged between two calls is at most one substep late
+       here, and ui/601's identity CHECK between this and the printed terms is what
+       would notice. */
+    double net_power_w_ = 0.0;
     /* The brown-out latch (#642). A hull whose generator cannot pay the wheels' bill
        drains its pool, the wheels cut, the unspent surplus recharges the pool, and
        they re-arm -- free-running, that is a relaxation oscillator at the SUBSTEP rate,
@@ -849,6 +859,11 @@ public:
        written as `powered_` at the call site so the power half keeps one spelling even
        where the handle does not apply. */
     bool ecPowersWheels() const { return powered_; }
+    /* What the sim balanced on its last powerTick, in W (#659). Read this rather than
+       subtracting gen/const draw/active in a window: the readout then cannot drift from
+       the bill, and a new term the sim pays without reporting reddens ui/601 instead of
+       making the pilot's number wrong in silence. */
+    double netPowerW() const { return net_power_w_; }
     /* Is anyone ASKING for attitude authority this tick? Note what this does NOT
        answer: since #648 the wheels' EC bill is what the mixer DELIVERED, so this says
        a command is live, not that a command costs anything -- a converged law with the

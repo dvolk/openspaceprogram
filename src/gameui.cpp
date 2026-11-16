@@ -3330,13 +3330,21 @@ void drawUIReadouts(Game &g) {
             uiText("No EC system -- nothing to pay, nothing to cut");
         } else {
             // Active draw: the attitude actuators, only while a command is live.
-            // This is the sum powerTick() pays, not a re-derivation of it (#575), and
-            // since #648 that sum is what the drums DELIVERED rather than what they are
+            // Since #648 that sum is what the drums DELIVERED rather than what they are
             // rated. It says "actuators" and not "wheels" because the bill follows the
             // authority the hull spends, not the part: a pod's built-in drums appear
             // here too (#596).
             const double activeDraw = ship->wheelDrawWatts();
-            const double net = gen - constDraw - activeDraw;
+            /* #659: the net is READ, not re-added. Until now this line computed
+               gen - constDraw - activeDraw itself, which is a second arithmetic of the
+               bill -- the thing #575 exists to prevent, cited in this block's own
+               comment. powerTick records the rate it actually balanced on, so a term the
+               sim pays without reporting (a pump, a scoop, an experiment) now shows up
+               as ui/601's identity CHECK reddening rather than as a wrong number on the
+               pilot's screen. The three term rows above stay their own reads: the CHECK
+               comparing them against this one is the drift detector, and it only works
+               if they are independent. */
+            const double net = ship->netPowerW();
             /* Every row below is uiText, not ImGui::Text, so the harness can read the
                figures off the screen (#601) -- which is what lets ui/601 assert the
                identity between them rather than a screenshot-sized hope. That includes

@@ -559,6 +559,39 @@ static void test_life_support_drains_pool() {
     destroyShip(s);
 }
 
+/* #659: the Systems window and [powerlog] print the net powerTick PAID rather than
+   adding up gen/draw themselves, because a hull can be charged for a term those
+   sums cannot see. That only works if the rate exists on the Vehicle, so it is
+   recorded every substep and warp hop -- and the figure has to be the one the pool
+   actually moved at, not a parallel arithmetic. The charge checks above pin the
+   movement; these pin the rate, both signs, since #896's Aboard row divides by the
+   drain. */
+static void test_net_power_is_recorded() {
+    printf("== Balance: the net powerTick pays is readable ==\n");
+    Ship s; s.v = new Vehicle;
+    addPowerPart(s, /*draw=*/0.0, /*const=*/0.0, /*gen=*/300.0,
+                 /*ec_wh=*/1000.0, /*torque=*/0.0);    // RTG + 1000 Wh battery
+    addPowerPart(s, /*draw=*/0.0, /*const=*/100.0, /*gen=*/0.0,
+                 /*ec_wh=*/0.0, /*torque=*/0.0);       // life support
+    initShip(s);
+    s.v->drainEC(500.0);   // half-empty, so charging does not clamp
+
+    s.v->powerTick(3600.0);
+    CHECK_NEAR(s.v->netPowerW(), 200.0, 1e-9, "net = gen - constant draw");
+    CHECK_NEAR(totalEC(s), 700.0, 1e-6, "the pool moved by the recorded net");
+
+    Ship t; t.v = new Vehicle;
+    addPowerPart(t, /*draw=*/0.0, /*const=*/400.0, /*gen=*/300.0,
+                 /*ec_wh=*/1000.0, /*torque=*/0.0);
+    initShip(t);
+    t.v->powerTick(3600.0);
+    CHECK_NEAR(t.v->netPowerW(), -100.0, 1e-9, "a drain reads negative");
+    CHECK_NEAR(totalEC(t), 900.0, 1e-6, "and the pool fell by the same rate");
+
+    destroyShip(s);
+    destroyShip(t);
+}
+
 /* An active stick adds the wheels' draw: with a 100 W capsule and a 1000 W
    wheel, commanding attitude drains 1100 W (not just the 100 W life
    support). With the stick off it drains only the 100 W. */
@@ -1019,6 +1052,8 @@ int main() {
     test_rtg_charges_battery();
     printf("\n");
     test_life_support_drains_pool();
+    printf("\n");
+    test_net_power_is_recorded();
     printf("\n");
     test_active_wheel_draws();
     printf("\n");

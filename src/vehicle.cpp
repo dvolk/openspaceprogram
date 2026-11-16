@@ -2731,7 +2731,11 @@ void Vehicle::powerTick(double h) {
        the gate above and nowhere near the balance -- paying the rating is how a hull
        that asked 4 N m of a 4500 N m drum ate the pool at 2250 W. */
     const double activeDraw = wheelDrawWatts();
-    const double netWh = (totalGen - constantDraw - activeDraw) * h / 3600.0;
+    /* Record the rate the bill was taken at, not just the Wh: the Systems window and
+       --power-log print netPowerW() from here rather than re-adding the terms, so the
+       number the pilot reads cannot drift from the number the sim paid (#659). */
+    net_power_w_ = totalGen - constantDraw - activeDraw;
+    const double netWh = net_power_w_ * h / 3600.0;
     if(netWh < 0.0) { drainEC(-netWh); }
     else if(netWh > 0.0) { chargeEC(netWh); }
     /* #652: the CROSSING, not the state. `ecCharge` is the pool as this call found it and
@@ -2815,9 +2819,9 @@ void Vehicle::power_log(double time) {
        this hull is BILLING, not what its drums are rated at (#599's same split). */
     const double active = wheelDrawWatts();
     printf("[powerlog] t=%.1fs ship=\"%s\" powered=%d gen=%.1fW "
-           "const_draw=%.1fW charge=%.1fWh capacity=%.1fWh active=%.1fW\n",
+           "const_draw=%.1fW charge=%.1fWh capacity=%.1fWh active=%.1fW net=%.1fW\n",
            time, displayName().c_str(), (int)powered_, gen, constDraw, charge,
-           capacity, active);
+           capacity, active, netPowerW());
     fflush(stdout);
 }
 

@@ -453,6 +453,10 @@ POWER_RE = re.compile(
     r"\[powerlog\]\s+t=([\d.]+)s\s+ship=\"([^\"]*)\"\s+powered=(\d+)\s+"
     r"gen=([-\d.]+)W\s+const_draw=([-\d.]+)W\s+charge=([-\d.]+)Wh\s+"
     r"capacity=([-\d.]+)Wh\s+active=([-\d.]+)W"
+    # #659: the net powerTick actually balanced on, so a readout can quote a printed
+    # figure instead of re-adding the terms. Optional: a row from before the field
+    # still parses, and reads None.
+    r"(?:\s+net=([-\d.]+)W)?"
 )
 # --dv-log (vehicle.cpp dv_log): the running delta-v budget, cumulative since
 # the ship existed. dv_del integrates the force the integrator was handed,
@@ -1567,12 +1571,15 @@ def parse_drainlog(out):
 def parse_power(out):
     rows = []
     for m in POWER_RE.finditer(out):
-        (t, ship, powered, gen, const_draw, charge, capacity, active) = m.groups()
+        (t, ship, powered, gen, const_draw, charge, capacity, active,
+         net) = m.groups()
         rows.append({
             "t": float(t), "ship": ship, "powered": int(powered),
             "gen": float(gen), "const_draw": float(const_draw),
             "charge": float(charge), "capacity": float(capacity),
             "active": float(active),
+            # What powerTick balanced on (#659); None on a pre-#659 row.
+            "net": num(net),
         })
     return rows
 
