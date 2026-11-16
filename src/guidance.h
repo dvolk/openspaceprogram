@@ -158,6 +158,11 @@ private:
     double circ_node_r_ = -1.0;
     double pitch_ = 90.0;
     const char *why_ = "";
+    /* Highest altitude the pitch schedule has seen (m above the datum), -1 until
+       the first aim tick. pathAngle() is a schedule over a coordinate, so a hull
+       that loses height would be told to point further up than it did at the pad
+       (#930); the schedule reads this ratchet instead of the live altitude. */
+    double apex_alt_ = -1.0;
 
     /* The horizontal launch direction that puts the conic at the asked
        inclination, worked out once from the pad's own geometry: sin(az) =
@@ -208,9 +213,11 @@ void releaseAscent(Vehicle &v);
 
 /* What v1 does NOT do, stated here so the next phase is a decision and not a
    discovery: no atmosphere (drag/pressure are not even in GuidanceState), no
-   descent or landing, no transfers, no staging (it will burn a single stage
-   until the stage's thrust reads zero and then Fail), no plane change after
-   launch (the inclination is set by the launch heading, not steered), and no
-   mid-course re-burn -- if the circularisation cutoff is missed, the orbit is
-   what it is and the law reports Done/Failed rather than trying again. */
+   descent or landing -- a hull that comes back to the ground FAILS with that
+   reason rather than being flown again (#931), no transfers, no staging (it will
+   burn a single stage until the stage's thrust reads zero and then Fail), no
+   plane change after launch (the inclination is set by the launch heading, not
+   steered), and no mid-course re-burn -- if the circularisation cutoff is missed,
+   the orbit is what it is and the law reports Done/Failed rather than trying
+   again. */
 #endif

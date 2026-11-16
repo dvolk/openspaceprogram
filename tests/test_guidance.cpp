@@ -345,6 +345,80 @@ static void test_the_launch_heading_buys_the_inclination() {
     CHECK_NEAR(az, 45.0, 0.01, "the pad heading is 45 deg from due east");
 }
 
+/* #931: the Pad -> Ascent edge is one-way and nothing else re-read `grounded`,
+   so a hull that came back to the surface kept a live mission and kept burning.
+   On Kerbin that ran 20 s of phase=ascent, lever 1.00, |v| = 0.01 m/s, and the
+   verdict printed was "the tanks are dry" -- the consequence of the landing, not
+   the landing. The cause has to outrank the consequence, so the dry-tank test
+   sits after this one. */
+static void test_a_hull_that_lands_is_a_failed_mission() {
+    printf("== a hull that comes back down ==\n");
+    AscentTarget t; t.apo_asl = t.peri_asl = 100e3; t.inc_rad = -1.0;
+    AscentLaw law(t);
+    GuidanceState s; s.pos = glm::dvec3(R_MOHO, 0.0, 0.0); s.vel = glm::dvec3(0.0);
+    s.mu = MU_MOHO; s.sea_r = R_MOHO; s.spin_axis = glm::dvec3(0.0, 0.0, 1.0);
+    s.accel_max = 18.0; s.grounded = true;
+    law.step(s);
+    CHECK_TRUE(law.phase() == AscentPhase::Pad, "armed on the pad it is still on the pad");
+    CHECK_TRUE(law.active(), "and a ship at rest on the ground is not yet a failure");
+
+    s.pos = glm::dvec3(R_MOHO + 5000.0, 0.0, 0.0);
+    s.vel = glm::dvec3(0.0, 300.0, 0.0);
+    s.grounded = false;
+    law.step(s);
+    CHECK_TRUE(law.phase() == AscentPhase::Ascent, "airborne, it is flying");
+
+    s.grounded = true;                     // back on the surface, engines still rated
+    const AscentCommand c = law.step(s);
+    printf("   [landed] phase=%s why=\"%s\" |aim|=%.3f throttle=%.2f\n",
+           law.phaseName(), law.why(), glm::length(c.aim), c.throttle);
+    CHECK_TRUE(law.phase() == AscentPhase::Failed, "a hull back on the ground is Failed");
+    CHECK_TRUE(!law.active(), "and the mission is over, not still commanding");
+    CHECK_NEAR(glm::length(c.aim), 0.0, 0.0, "it sends no aim (the driver cancels the setpoint)");
+    CHECK_NEAR(c.throttle, 0.0, 0.0, "and no throttle");
+    CHECK_TRUE(std::string(law.why()).find("came back down") != std::string::npos,
+               "and it says the ship landed, not that the tanks ran dry");
+
+    /* The ordering, pinned: a hull that is both parked and dry must not be
+       blamed for the tanks. */
+    AscentLaw law2(t);
+    GuidanceState s2 = s; s2.grounded = false; s2.has_propellant = true;
+    law2.step(s2);                          // leave the pad
+    s2.grounded = true; s2.has_propellant = false;
+    law2.step(s2);
+    CHECK_TRUE(std::string(law2.why()).find("came back down") != std::string::npos,
+               "the landing outranks the dry tanks");
+}
+
+/* #930: pathAngle() is a schedule over ALTITUDE, so a hull that loses height is
+   told to point further up than it did at the pad. On Kerbin the commanded pitch
+   climbed from 34 deg back to 87.1 deg while the ship sank, and the flight ended
+   parked on the surface. The schedule reads the high-water mark instead, so the
+   pitch the law asks for can only flatten as the flight goes on. Pinning the
+   property rather than the number keeps it true whatever profile v2 picks. */
+static void test_a_sinking_ship_does_not_get_its_nose_back() {
+    printf("== the pitch schedule cannot walk backwards ==\n");
+    AscentTarget t; t.apo_asl = t.peri_asl = 100e3; t.inc_rad = -1.0;
+    AscentLaw law(t);
+    GuidanceState s; s.vel = glm::dvec3(0.0, 300.0, 0.0);
+    s.mu = MU_MOHO; s.sea_r = R_MOHO; s.spin_axis = glm::dvec3(0.0, 0.0, 1.0);
+    s.accel_max = 18.0; s.grounded = false;
+    double prev = 1e9;
+    bool fell = false;
+    for(double alt : {2e3, 3e3, 5e3, 8e3, 4e3, 2e3, 0.5e3}) {
+        s.pos = glm::dvec3(R_MOHO + alt, 0.0, 0.0);
+        law.step(s);
+        const double pitch = law.pitch_deg();
+        printf("   [alt %6.0f m] pitch %.2f deg phase=%s\n", alt, pitch, law.phaseName());
+        CHECK_TRUE(pitch <= prev + 1e-9, "the commanded pitch never steepens");
+        if(alt < 5e3 && prev < 40.0) { fell = true; }   // the sinking part actually ran
+        prev = pitch;
+    }
+    CHECK_TRUE(fell, "the test really flew DOWN from above the apex it had reached");
+    CHECK_NEAR(prev, std::atan2(3000.0, 8000.0) * 180.0 / 3.14159265358979, 1e-6,
+               "and it holds the pitch the HIGHEST altitude asked for, not the current one");
+}
+
 static void test_the_law_fails_loudly_not_silently() {
     printf("== the doors: rails, a dead stage, no conic ==\n");
     AscentTarget t; t.apo_asl = t.peri_asl = 100e3; t.inc_rad = -1.0;
@@ -522,6 +596,8 @@ static void test_letting_go_closes_both_channels() {
 
 int main() {
     test_a_pad_ship_aims_at_the_sky_and_never_at_nan();
+    test_a_hull_that_lands_is_a_failed_mission();
+    test_a_sinking_ship_does_not_get_its_nose_back();
     test_the_fields_become_a_mission();
     test_letting_go_closes_both_channels();
     test_done_is_a_periapsis_not_a_speed();

@@ -32,7 +32,15 @@ static const double kLeadFrac = 0.5;   // node burn starts this fraction of its 
    What matters is being flat EARLY and LOW, because horizontal speed at low
    altitude is what buys apoapsis cheaply. A gravity turn does this by itself
    when you stop steering; the schedule's job is to ask for the lean before
-   gravity gets around to it. */
+   gravity gets around to it.
+
+   The caller feeds this the HIGH-WATER altitude, not the live one (#930). Measured
+   on Kerbin with mars_explorer_mk1 (reports/autopilot-v22026_11_16/927_probe_kerbin.log):
+   apoapsis peaked at 6.7 km, drag took the hull back down, and the schedule asked
+   for the pad's own nose again -- commanded pitch climbed from 34 deg back to 87.1
+   while the ship sank, ending parked on the surface at 1 cm/s with the lever at
+   1.00. A schedule over a coordinate is two-way in time; only the profile's
+   history says which way the flight is going. */
 static double pathAngle(double alt, double ask_alt) {
     const double h_half = std::max(1000.0, kFlatHalf * std::max(ask_alt, 0.0));
     return std::atan2(h_half, std::max(0.0, alt));   // 90 deg at the pad, -> 0 as we climb
@@ -134,6 +142,19 @@ AscentCommand AscentLaw::step(const GuidanceState &s) {
     }
     if(!(glm::length2(s.pos) > 1.0) || !std::isfinite(s.mu) || s.mu <= 0.0) {
         phase_ = AscentPhase::Failed; why_ = "no usable conic around this body"; return c;
+    }
+
+    /* A hull that has come back to the ground is not a mission that is still
+       flying (#931). The Pad -> Ascent edge below is one-way and nothing else
+       re-reads grounded, so a ship that lands kept a live mission: measured on
+       Kerbin, phase=ascent with the lever pinned at 1.00 and |v| = 0.01 m/s for
+       the last 20 s of the flight, and the verdict it finally printed was
+       "the tanks are dry" -- the consequence, not the cause. Ask the question
+       first, so the landing outranks the dry tanks. Anything past Pad was
+       airborne at least once, which is what makes this a return rather than a
+       refusal to start. */
+    if(phase_ != AscentPhase::Pad && s.grounded) {
+        phase_ = AscentPhase::Failed; why_ = "the ship came back down"; return c;
     }
 
     const OrbitElements o = computeOrbitElements(s.pos, s.vel, s.mu);
@@ -280,7 +301,12 @@ AscentCommand AscentLaw::step(const GuidanceState &s) {
         if(!c.burn) { return c; }
     } else {
         const double alt = r - s.sea_r;
-        const double gamma = pathAngle(alt, target.apo_asl);
+        /* The schedule reads the high-water mark, not this tick's height: see
+           pathAngle()'s note. On a climb this is the same number the live
+           altitude gives, so a vacuum profile is untouched -- what it stops is
+           the nose swinging back up when the hull sinks. */
+        if(apex_alt_ < 0.0 || alt > apex_alt_) { apex_alt_ = alt; }
+        const double gamma = pathAngle(apex_alt_, target.apo_asl);
         pitch_ = glm::degrees(gamma);
         /* Until the ship is actually moving downrange, "horizontal" is the
            heading we chose for the target inclination. After that it is where
