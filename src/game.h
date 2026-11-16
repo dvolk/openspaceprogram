@@ -159,18 +159,17 @@ struct ShipView {
     glm::dvec3 marker_h_hat = glm::dvec3(0.0);
     /* The line from the FOCUS BODY to the hull, unit and lifted into this same (render)
        frame, for the +/- radial pair. A body's inertial and rotating frames share that
-       line, so this is pos normalised there; a #850 building bubble does not -- its
-       origin is the BUILDING, so its pos is the hull's offset from a deck, and a hull
-       parked sideways on a spinning station would swing its radial pair around the deck
-       once a station revolution instead of holding still on the planet (#892;
+       line, so this is pos normalised there; a #850 building bubble does not -- its origin
+       is the BUILDING, so its pos is the hull's offset from the building, and inside one
+       the pair points along the station and holds there while the planet turns (#892;
        Vehicle::slewTargetDir's radial pair reads the same lift). No SHIPPED bed shows it:
-       an ORBITAL site spawns 50 m along the bubble's own Z (vehicle.cpp:add_vehicle),
-       which for a body-fixed dock is the radial line, so the two answers agree there by
-       construction; e2e/fixtures/systems/892-spin-pad.json authors a pad whose bubble tips
-       sideways, which is what separates them. radial_ok is only "there is a body to point
-       at" -- the radius never vanishes for a ship with a parent -- and unlike the normal
-       this direction needs no floor: measured from the body it is well-conditioned
-       everywhere. */
+       place_vehicle_def's ORBITAL branch parks the hull 50 m along the bubble's local -Z,
+       which for a body-fixed dock is the vertical, so the two answers agree there to under
+       a milliradian; e2e/fixtures/systems/892-spin-pad.json authors a pad whose bubble tips
+       sideways, which is what separates them. radial_ok is only "there is a radius to take
+       a direction from": unlike the normal this direction needs no floor -- measured from
+       the body it is well-conditioned everywhere -- and the gate exists so the billboard
+       is never handed a zero vector. */
     glm::dvec3 marker_radial_hat = glm::dvec3(0.0);
     bool radial_ok = false;
     /* The ship's velocity relative to the AIR, in this same (render) frame

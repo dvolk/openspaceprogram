@@ -139,12 +139,24 @@ void updateShipView(Game &g) {
     orbit_vel = vel;
     marker_vel = vel;
     Frame *bodyInertial = ship->m_parent->frame;
+    assert(bodyInertial != nullptr);
+    /* The way BACK, because three of the ship's readouts are computed on the conic and
+       drawn in the frame the hull lives in: marker_vel, marker_h_hat and
+       marker_radial_hat. One spelling of it, since spelling it out three times
+       slightly differently is #892's bug in miniature. The node being rotated against is
+       the same one Vehicle::slewTargetDir walks to (frame->getNonRotFrame()), which is what
+       lets the drawn markers and SAS aim at one line -- drawOrbitPlane asserts it too. */
+    assert(ship->frame == nullptr || bodyInertial == ship->frame->getNonRotFrame());
+    auto lift = [ship, bodyInertial](glm::dvec3 v) {
+        return ship->frame != bodyInertial
+             ? glm::transpose(ship->frame->GetOrientRelTo(bodyInertial)) * v
+             : v;
+    };
     if(ship->frame != bodyInertial) {
         ship->comStateIn(bodyInertial, orbit_pos, orbit_vel);
         // And back into this frame, so the flight markers can point along the
         // conic while being drawn in the frame they live in.
-        marker_vel = glm::transpose(ship->frame->GetOrientRelTo(bodyInertial))
-                   * orbit_vel;
+        marker_vel = lift(orbit_vel);
     }
 
     // Surface-relative state: position/velocity in the ROTATING frame.
@@ -231,30 +243,25 @@ void updateShipView(Game &g) {
        same question the same way. The speed floor gates it too: a plane needs a velocity
        to be a plane OF, and below kConicSpeedFloor that velocity is the integrator's
        residue. */
-    glm::dvec3 h = o.h_hat;
-    if(ship->frame != bodyInertial) {
-        h = glm::transpose(ship->frame->GetOrientRelTo(bodyInertial)) * h;
-    }
+    glm::dvec3 h = lift(o.h_hat);
     view.normal_ok = view.prograde_ok && conicNormalOk(o.ang_momentum, o.distance);
     view.marker_h_hat = view.normal_ok ? h : glm::dvec3(0.0);
     /* The +/- RADIAL pair takes the same lift as the normal above, for the same reason
        (game.h, #892). For a frame centred on the body, pos and orbit_pos point the same
        way and this is a no-op; a #850 building bubble's origin is the BUILDING, and there
-       pos is the hull's offset from a DECK, which points wherever the building parked the
-       hull rather than at the planet. Measured at the one shipped bubble bed -- the
-       space dock parks the hull 50 m along its own Z, and that Z is the local vertical --
-       the two directions agree to 1e-4 rad, so the player sees no change today. What is
-       being fixed is the rule, before a spinning station bed or a hull parked sideways
-       makes the pair sweep around the deck (e2e/fixtures/systems/892-spin-pad.json).
+       pos is the hull's offset from the building, which points wherever the hull happens
+       to sit rather than at the planet. At the one shipped bubble bed the two answers
+       agree: the dock parks the hull 50 m along its local -Z, and for a body-fixed dock
+       that IS the vertical (measured 1e-5 rad apart early in a flight, 2.8e-4 rad by
+       t=30s as the hull walks off the dock on the relative Clohessy-Wilshire dynamics --
+       under a milliradian either way, so the player sees no change today). What is being
+       fixed is the rule; e2e/fixtures/systems/892-spin-pad.json authors the bed that
+       separates them, a bubble whose deck tips at 2 deg/s while the planet stays put.
        radial_ok is only "there is a radius to take a direction from": unlike the plane
-       above, this direction needs no noise floor, because the line from the body to the
-       hull is well-conditioned wherever it was measured. */
+       above, this direction needs no noise floor, and its job is to keep a zero vector
+       away from Billboard::Draw, whose normalize would answer NaN. */
     view.radial_ok = std::isfinite(distance) && distance > 0.0;
-    glm::dvec3 radial_hat = view.radial_ok ? orbit_pos / distance : glm::dvec3(0.0);
-    if(view.radial_ok && ship->frame != bodyInertial) {
-        radial_hat = glm::transpose(ship->frame->GetOrientRelTo(bodyInertial)) * radial_hat;
-    }
-    view.marker_radial_hat = radial_hat;
+    view.marker_radial_hat = view.radial_ok ? lift(orbit_pos / distance) : glm::dvec3(0.0);
 
     /* Air-relative prograde (#498). Vehicle::airRelativeVel is the vector the drag
        law itself answers to and it comes back in THIS frame, so the marker and the
@@ -444,24 +451,27 @@ void refreshWorld(Game &g) {
         // focused on the ship, the body's rotating frame when on a body.
         if(g.focusTargets[g.focusBody].body == nullptr) {
             if(ship->isEva()) {
-                // North-up on the kerbal's radial, tangent plane from the WORLD
+                // North-up on the kerbal's up, tangent plane from the WORLD
                 // axes: the frame's orient spins with the planet, and the
                 // kerbal's own axes would feed back into its attitude law.
-                // In a building bubble the radial from the frame ORIGIN is
+                // Away from a building that up IS the line from the body centre;
+                // in a building bubble the direction from the frame ORIGIN is
                 // meaningless (the origin is the building, metres away, and
                 // the direction swings as the kerbal walks -- the camera
                 // rolls): use the bubble's +Z, the deck normal, as the stable
-                // up (#850).
-                const glm::dvec3 radial = (ship->frame->building != nullptr)
+                // up (#850). Note this is the one place the game deliberately
+                // does NOT want ShipView::marker_radial_hat: a marker wants the
+                // planet and a camera wants something that does not roll.
+                const glm::dvec3 cam_up = (ship->frame->building != nullptr)
                     ? glm::dvec3(0.0, 0.0, 1.0) : glm::normalize(com);
                 // Tangent "north": +Y, or +X near +/-Y so the projection never
                 // vanishes.
-                const glm::dvec3 ref_dir = (std::fabs(radial.y) > 0.9)
+                const glm::dvec3 ref_dir = (std::fabs(cam_up.y) > 0.9)
                     ? glm::dvec3(1.0, 0.0, 0.0) : glm::dvec3(0.0, 1.0, 0.0);
                 const glm::dvec3 right = glm::normalize(
-                    ref_dir - radial * glm::dot(ref_dir, radial));
-                const glm::dvec3 back = glm::cross(right, radial);
-                camera->ref = glm::dmat3(back, right, radial);
+                    ref_dir - cam_up * glm::dot(ref_dir, cam_up));
+                const glm::dvec3 back = glm::cross(right, cam_up);
+                camera->ref = glm::dmat3(back, right, cam_up);
             } else {
             // The orbit camera expects ref as [back, right, up]; the ship's
             // axes 0/1/2 are [right, up, nose]. Feed the columns in the
@@ -941,9 +951,8 @@ void paintWorld(Game &g) {
        Radial is the line from the FOCUS BODY to the hull, so it reads marker_radial_hat
        (orbit_pos lifted back into this frame) rather than pos. For a body's inertial or
        rotating frame those two are the same vector; a #850 building bubble's origin is the
-       building, and there pos is the hull's offset from a deck -- the pair would point
-       along the station, and around the deck once a revolution if the station spins
-       (#892). */
+       building, and there pos is the hull's offset from the building -- the pair would
+       point along the station and hold there while the planet turns (#892). */
     if(view.prograde_ok) {
         g.prograde_indicator->pos = view.marker_vel;
         g.prograde_indicator->Draw(camera, std::numbers::pi);

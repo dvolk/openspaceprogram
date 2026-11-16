@@ -1,31 +1,42 @@
 # The radial in/out markers used to be placed from `view.pos` -- the hull's position in
 # its OWN frame. For a frame centred on a body that is the line to the body, so the pair
 # has always looked right on a pad and in flight. A #850 building bubble is not centred on
-# a body: its origin is the BUILDING, so inside one `pos` is the hull's few-metre offset
-# from a deck, and `radial in` points at the floor while the planet sits somewhere else.
-# The prograde pair (#204/#205) and the normal pair (#870) were moved onto the lifted conic
-# state years ago for exactly this reason; radial was the last marker still reading a raw
-# frame position.
+# a body: its origin is the BUILDING, so inside one `pos` is the hull's offset from the
+# building, and `radial in` points at whatever side of the station the hull sits on while
+# the planet is somewhere else. The prograde pair (#204/#205) and the normal pair (#870)
+# were moved onto the lifted conic state for exactly this reason; radial was the last marker
+# still reading a raw frame position.
 #
 # Why a fixture system rather than shipped content: no shipped pad can show the difference.
-# The one spawnable bubble bed, res/data/ksp_launch_sites.json's kerbin_dock, parks the
-# hull 50 m along the dock's own Z, and for a body-fixed dock that Z IS the local vertical,
-# so the buggy and fixed directions agree to 1e-4 rad there (measured: view.pos =
-# (0.001, 0.000, -49.979) against a lifted (0.000010, 0, -1.000000),
-# tmp/night3/892_dock_probe.log). kerbin_station does spin, but about its own up axis
-# ([0,0,1]), which leaves the planet straight under the deck -- and it carries no
-# VAB_LAUNCH_PAD, so it cannot be spawned on at all. e2e/fixtures/systems/892-spin-pad.json
-# authors the discriminating state instead: an ORBITAL VAB_LAUNCH_PAD on the shipped dock's
-# 300 km shell whose bubble tips about a LOCAL X axis at 2 deg/s. The deck turns under a
-# hull that rides it, so the direction to Kerbin sweeps through the bubble axes at 2 deg/s
-# while the deck's own normal does not move at all.
+# The one spawnable bubble bed, res/data/ksp_launch_sites.json's kerbin_dock, parks the hull
+# 50 m along the dock's local -Z (place_vehicle_def's ORBITAL branch), and for a body-fixed
+# dock that IS the vertical, so the buggy and fixed directions agree there to under a
+# milliradian -- 1e-5 rad early in a flight, 2.8e-4 rad by t=30s as the hull walks off the
+# dock on the relative (Clohessy-Wilshire) dynamics. Measured in tmp/night3/892_dock_probe.log:
+# view.pos = (0.001, 0.000, -49.979) against the lifted (0.000010, 0, -1.000000).
+# kerbin_station does spin, but about its own up axis ([0,0,1]), which leaves the planet
+# straight under the deck -- and it carries no VAB_LAUNCH_PAD, so it cannot be spawned on at
+# all. e2e/fixtures/systems/892-spin-pad.json authors the discriminating state instead: the
+# shipped dock's 300 km shell with one field added, a bubble that tips about a LOCAL X axis
+# at 2 deg/s. The planet then turns through the bubble's own axes at the spin rate, while a
+# vector built from the hull's offset from the building does not -- that one drifts too
+# (nothing welds the hull to the deck, hence the CW note above), but at ~0.8 deg/s, not 2.
 #
 # [planelog] grew rdl= with this fix: the vector the +/- radial billboards are actually
 # placed from, alongside the prg=/nrm= it already printed. PLANE_RE requires the field, and
-# run.py's self-test pins that a row missing it -- or carrying a non-number in it -- does
-# not parse into a row at all, so the witness cannot quietly disappear.
+# run.py's self-test pins that a row missing it -- or carrying a non-number in it -- parses
+# as no row at all, so the witness cannot quietly disappear.
+#
+# Cadence, and why the sweep CHECK below is a RATE. [planelog] prints on a wall-clock gate
+# (g.logClockMs -> SDL_GetTicks) and --timeout is a wall cutoff, so a loaded box or a low
+# --frame-cap covers fewer SIMULATED seconds across the same number of rows: with
+# --frame-cap 3 these ARGS produced only 10.7 s of sim between the first and last rows, and
+# an absolute "swept at least 33 deg" bound reddened a CORRECT build
+# (tmp/night3/review892_cap3.log). Dividing by the sim seconds the rows actually span fixes
+# that: the chord between the first and last unit directions is 2*sin(omega*span/2), i.e.
+# 0.0333..0.0349 per sim second for any span from 5 s to 40 s at the authored 2 deg/s.
 NAME radial-pair-in-a-tipping-bubble
-CLAIM Inside a building bubble whose deck tips, the radial in/out pair tracks the planet instead of the deck.
+CLAIM Inside a building bubble whose deck tips, the radial in/out pair tracks the planet instead of the station.
 KIND invariant
 ARGS --system e2e/fixtures/systems/892-spin-pad.json
 ARGS --startship racer,res/ships/racer.json,Kerbin,pad,site=kerbin_spin_pad
@@ -41,23 +52,32 @@ CHECK all(p["frame"] == "bubble" for p in plane)
 # the lift.
 CHECK all(abs(sum(c * c for c in p["rdl"]) - 1.0) < 1e-4 for p in plane)
 # It points at the planet, not along the flight path: the line from the focus body to a
-# hull at periapsis is perpendicular to the conic's prograde (measured 1e-5). A pair built
+# hull at periapsis is perpendicular to the conic's prograde (measured 1.1e-5). A pair built
 # from the deck's horizontal, or from the hull's own axes, fails here instead of looking
 # plausible.
 CHECK all(abs(sum(a * b for a, b in zip(p["prg"], p["rdl"]))) < 0.01 for p in plane)
-# THE TEETH. The deck turns 2 deg/s, so the direction to Kerbin turns with it in the
-# bubble's own axes: 60 deg between this run's first and last rows (measured 1-cos = 0.501
-# over the 30 s between them). A pair glued to the deck normal gives dot = 1, 1-cos = 0.
-CHECK 0.15 < 1.0 - sum(a * b for a, b in zip(plane[0]["rdl"], plane[-1]["rdl"])) < 1.2
-# The same lifted line is what SAS steers at (Vehicle::slewTargetDir's radial pair), so a
-# hull on a tipping deck can keep pointing at Kerbin: the [slew] target itself sweeps 80
-# deg across this run, and once the slew settles the angle error holds at 0.0017 rad.
+# THE TEETH, as a rate over the sim seconds these rows actually cover (cadence note above).
+# 2 deg/s of deck tip is a chord rate of 0.0334/s across this run's 30 s span (measured
+# 0.03337 at --frame-cap 60, 0.03460 at cap 3, 0.03473 at cap 2 -- the rate is what stays put
+# when the box does not). The pre-fix vector, the hull's own drifting offset from the
+# building, gives 0.0144/s: a ~2.3x margin either way. The bounds reach a 65 s span so no
+# box that gets through MORE sim can redden it either.
+CHECK plane[-1]["t"] - plane[0]["t"] >= 5.0
+CHECK 0.028 < sum((a - b) ** 2 for a, b in zip(plane[0]["rdl"], plane[-1]["rdl"])) ** 0.5 / (plane[-1]["t"] - plane[0]["t"]) < 0.038
+# The same lifted line is what SAS steers at (Vehicle::slewTargetDir's radial pair): the
+# [slew] target itself turns with the deck, 80 deg across this run, and the nose gets onto
+# it -- 0.0017 rad of error once the slew settles -- so a hull on a tipping deck can keep
+# pointing at Kerbin rather than at the station beside it. A count of settled rows would
+# depend on how much sim the box got through, so this pins that it reached the target, not
+# for how long.
+CHECK len(slew) >= 3
 CHECK all(s["mode"] == "radial-out" for s in slew)
-CHECK all(s["E"] < 0.05 for s in slew if s["t"] > 20.0)
+CHECK min(s["E"] for s in slew) < 0.05
 # What this case does NOT witness, on purpose: no row-by-row join between [planelog] and
 # [slew] -- the planelog cadence is --orbit-interval and the slew cadence is 10 Hz, so a
 # join would be a race (the #900 lesson). And the shipped beds (flight/863, 856, 857) stay
-# green without witnessing anything here: at kerbin_dock the two directions coincide, so
-# only this fixture's tipping deck separates them.
-# MUTATION: putting updateShipView's radial_hat back to normalize(view.pos) leaves rdl
-# pinned to the deck normal, which reddens the sweep CHECK (tmp/night3/892_mut_sweep.log).
+# green without witnessing anything here: at kerbin_dock the two directions agree to under a
+# milliradian, so only this fixture's tipping deck separates them.
+# MUTATION: putting updateShipView's radial back to normalize(view.pos) gives a chord rate of
+# 0.0144/s -- and prg.rdl of 0.87 by the last row, since that drifting vector tilts out of
+# the local horizontal -- which reddens both CHECKs (tmp/night3/892_mut_sweep.log).

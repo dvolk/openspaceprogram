@@ -493,7 +493,7 @@ judgement. Select by number, name or path, e.g.
 | `render/872-d-map-marks-stay-marked-under-warp.txt` | invariant | At high time-accel the map dump still reports the marks a window drew this frame. |
 | `render/872-orbital-station-on-the-map.txt` | invariant | The orbital/Tracking maps mark each orbital station around the focused body, conic included. |
 | `render/873-b-relative-velocity-markers-follow-a-station.txt` | invariant | The HUD's target relative-velocity markers are placed for an orbital station, from the velocity its pose law drives. |
-| `render/892-radial-pair-in-a-tipping-bubble.txt` | invariant | Inside a building bubble whose deck tips, the radial in/out pair tracks the planet instead of the deck. |
+| `render/892-radial-pair-in-a-tipping-bubble.txt` | invariant | Inside a building bubble whose deck tips, the radial in/out pair tracks the planet instead of the station. |
 
 ## harness (17)
 
