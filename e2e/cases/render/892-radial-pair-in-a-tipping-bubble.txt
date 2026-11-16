@@ -79,5 +79,7 @@ CHECK min(s["E"] for s in slew) < 0.05
 # green without witnessing anything here: at kerbin_dock the two directions agree to under a
 # milliradian, so only this fixture's tipping deck separates them.
 # MUTATION: putting updateShipView's radial back to normalize(view.pos) gives a chord rate of
-# 0.0144/s -- and prg.rdl of 0.87 by the last row, since that drifting vector tilts out of
-# the local horizontal -- which reddens both CHECKs (tmp/night3/892_mut_sweep.log).
+# 0.0144/s, and prg.rdl of 0.026 by the last row -- 1.5 deg off the local horizontal, where
+# the fixed build measures 1.1e-5 -- so both CHECKs go red (tmp/night3/892_mut_sweep.log,
+# tmp/night3/892_mut_sweep2.log). The rate is the wide-margin one; the perpendicularity gate
+# only catches the mutant by 2.6x, so do not lean on it alone.
