@@ -1226,6 +1226,17 @@ int main(int argc, char **argv)
         ref_node_dn->InitMesh(dninterface);
     }
 
+    /* --cam-gizmo: one unit segment along +X. Every gizmo axis is this mesh
+       with the axis direction, its length and its place folded into the MVP,
+       so the debug overlay needs no per-axis buffers (#876). */
+    Mesh *cam_gizmo_seg = new Mesh;
+    {
+        PosInterface seg;
+        seg.positions.push_back(glm::vec3(0.0f, 0.0f, 0.0f));
+        seg.positions.push_back(glm::vec3(1.0f, 0.0f, 0.0f));
+        cam_gizmo_seg->InitMesh(seg);
+    }
+
     game.skyboxshader = skyboxshader;
     game.lineshader = lineshader;
     // game.partsshader was set at boot, before anything minted a Part.
@@ -1235,6 +1246,7 @@ int main(int argc, char **argv)
     game.ref_circle_xy = ref_circle_xy;
     game.ref_node_an = ref_node_an;
     game.ref_node_dn = ref_node_dn;
+    game.cam_gizmo_seg = cam_gizmo_seg;
     game.front_indicator = front_indicator;
     game.prograde_indicator = prograde_indicator;
     game.retrograde_indicator = retrograde_indicator;

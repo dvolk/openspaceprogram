@@ -686,14 +686,29 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
 
     app.add_flag("--cam-log", args.cam_log,
                  "Periodically print the live camera to stdout: mode, the "
-                 "orbit turntable (yaw/pitch/dist), the view direction, and "
-                 "the two flags that decide what a --sim-mouse gesture "
-                 "actually does -- rmb= whether a right-button drag is armed, "
-                 "cap= whether imgui ate the mouse (a window under the cursor "
-                 "swallows the drag). --sim-mouse is documented to move the "
-                 "camera, yet nothing else in stdout proves it moved: without "
-                 "this line a mouse case whose drag never reached the camera "
-                 "still passes");
+                 "orbit turntable (yaw/pitch/dist), the view direction, the "
+                 "camera's up and the local vertical it should be measured "
+                 "against, roll (how tilted that vertical reads on screen), "
+                 "pole (the angle from the turntable's yaw axis to it -- 90 "
+                 "means a left/right drag rolls the image instead of orbiting, "
+                 "#876), camh (camera height above the ship's local horizontal "
+                 "plane), pin= whether the pitch clamp is holding, and the two "
+                 "flags that decide what a --sim-mouse gesture actually does "
+                 "-- rmb= whether a right-button drag is armed, cap= whether "
+                 "imgui ate the mouse (a window under the cursor swallows the "
+                 "drag). --sim-mouse is documented to move the camera, yet "
+                 "nothing else in stdout proves it moved: without this line a "
+                 "mouse case whose drag never reached the camera still passes");
+
+    app.add_flag("--cam-gizmo", args.cam_gizmo,
+                 "Draw the frames the orbit camera is built from, at the "
+                 "focus: the turntable's yaw axis (ref Z, blue), its other "
+                 "two axes, the camera's own up (white) and the local "
+                 "vertical (yellow). #876's complaints are orientation, not "
+                 "numbers: with blue lying on the horizon, a left/right drag "
+                 "is a roll of the whole image, and no --cam-log row says so "
+                 "until you know which dot() to look at. Sits alongside the "
+                 "reference circles; nothing else draws these");
 
     app.add_flag("--audio-log", args.audio_log,
                  "Trace every audio event to stdout as [aud] lines: the "

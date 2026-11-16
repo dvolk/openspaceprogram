@@ -148,6 +148,7 @@ struct GameArgs {
     bool att_log = false;          // the ship's frame axes + angular velocity
     bool shake_log = false;       // the cam-shake state per interval
     bool cam_log = false;         // the live camera pose + who ate the input
+    bool cam_gizmo = false;       // draw the frames the camera is built from
     bool audio_log = false;       // the [aud] audio-event trace
     bool terrain_log = false;     // the local body's patch-tree LOD
     bool tq_log = false;           // COM-lag x net-force spurious-torque probe

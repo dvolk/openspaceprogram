@@ -410,6 +410,32 @@ static void refreshShipState(Game &g, const glm::dvec3 &com) {
     }
 }
 
+/* Local vertical at the flown ship, in the render frame: the bubble's deck
+   normal inside a SoI bubble, the parent's radial everywhere else. This is the
+   ONE spelling of that choice: the EVA orbit basis below asks for it too, so
+   the frame the camera builds and the frame #876's roll=/pole= are measured in
+   cannot drift apart. normalize(COM) is the wrong ask inside a bubble: that
+   origin is the building, metres away, so the "radial" swings as the ship
+   taxies across the deck.
+   False -- no local vertical -- without a ship (the title view) and with a body
+   focus: then the turntable's basis is the body's spin frame, and a ship-radial
+   number next to it explains nothing. Also false at the frame origin with no
+   bubble, where there is no radial to take; callers keep their own fallback. */
+static bool focusLocalVertical(Game &g, glm::dvec3 &lv) {
+    Vehicle *ship = g.ship;
+    assert(g.focusBody >= 0 && g.focusBody < (int)g.focusTargets.size());
+    if(ship == nullptr || g.focusTargets[g.focusBody].body != nullptr) { return false; }
+    if(ship->frame->building != nullptr) {
+        lv = glm::dvec3(0.0, 0.0, 1.0);
+        return true;
+    }
+    const glm::dvec3 com = ship->get_center_of_mass();
+    const double r2 = glm::length2(com);
+    if(r2 < 1e-9) { return false; }   // sitting on the frame origin: no radial
+    lv = com / std::sqrt(r2);
+    return true;
+}
+
 /* State half of the 3D pass (#212). The terrain LOD owns the ground's Bullet
    collision bodies, so skipping it changes collision outcomes, not just
    pixels (#24). */
@@ -462,8 +488,10 @@ void refreshWorld(Game &g) {
                 // up (#850). Note this is the one place the game deliberately
                 // does NOT want ShipView::marker_radial_hat: a marker wants the
                 // planet and a camera wants something that does not roll.
-                const glm::dvec3 cam_up = (ship->frame->building != nullptr)
-                    ? glm::dvec3(0.0, 0.0, 1.0) : glm::normalize(com);
+                // The deck-normal-vs-radial choice itself lives in
+                // focusLocalVertical, which #876's numbers measure against.
+                glm::dvec3 cam_up(0.0, 0.0, 1.0);
+                focusLocalVertical(g, cam_up);
                 // Tangent "north": +Y, or +X near +/-Y so the projection never
                 // vanishes.
                 const glm::dvec3 ref_dir = (std::fabs(cam_up.y) > 0.9)
@@ -489,6 +517,9 @@ void refreshWorld(Game &g) {
 
     // Camera shake: shift the focus point and wobble the orbit basis.
     if(ship) { camShakeStep(g, ship); }
+    // The basis the caller chose, before the wobble goes on it: that is the
+    // frame #876's measurements are about, not the one the view ends up with.
+    const glm::dmat3 base_ref = camera->ref;
     if(camera->mode == CAM_ORBIT && ship &&
        g.focusTargets[g.focusBody].body == nullptr) {
         camera->focusPoint += g.shake_off;
@@ -546,12 +577,74 @@ void refreshWorld(Game &g) {
         if(g.logDue(kGateCam, now_ms, g.orbit_log_interval_ms)) {
             const char *mode = camera->mode == CAM_ORBIT ? "orbit"
                              : camera->mode == CAM_FREE  ? "free" : "first";
+            /* #876's complaints are not in yaw/pitch/dist: those say where the
+               turntable is, not whether the picture reads. The fields here are
+               measured against the local vertical (the deck normal in a bubble,
+               the parent's radial outside it):
+                 up    the camera's up, in the render frame.
+                 lv    that local vertical.
+                 roll  lv in the camera basis: 0 deg = screen up IS world up,
+                       +-90 = the horizon runs up the screen, +-180 = the world
+                       is upside down. Ill-conditioned when the view line runs
+                       along lv -- straight down the mast, where the picture has
+                       no horizon at all -- so read it at a side view.
+                 pole  the turntable's yaw axis (ref Z, before the wobble)
+                       against lv: ~0 = a left/right drag sweeps the horizon,
+                       ~90 = it rolls the image about the view line while fwd
+                       barely moves. A landed rocket sits at 90.
+                 camh  camera height above the horizontal plane THROUGH THE
+                       SHIP'S COM. Negative is below that plane, not below the
+                       terrain -- a ship's own alt_agl is in [surfinfo].
+               lv/roll/pole/camh dash when there is no local vertical to measure
+               against (no ship, or a body focus). pole and pin dash in free or
+               first person too: there ref and orbitPitch are whatever the last
+               orbit frame left, not what built this view.
+               pin= says the pitch clamp is holding -- the only reason a drag
+               would print unchanged yaw/pitch. */
+            glm::dvec3 lv;
+            const bool orbit = camera->mode == CAM_ORBIT;
+            const bool have_lv = focusLocalVertical(g, lv);
+            const double rad2deg = 180.0 / std::numbers::pi;
+            const double roll_deg = have_lv
+                ? std::atan2(glm::dot(lv, camera->right), glm::dot(lv, camera->up)) * rad2deg
+                : 0.0;
+            const double pole_deg = have_lv && orbit
+                ? acosUnit(glm::dot(base_ref[2], lv)) * rad2deg
+                : 0.0;
+            const double camh = have_lv ? glm::dot(camera->GetPos() - com, lv) : 0.0;
+            char lv_s[32], roll_s[16], pole_s[16], camh_s[32], pin_s[8];
+            if(have_lv) {
+                snprintf(lv_s, sizeof lv_s, "%+.4f %+.4f %+.4f", lv.x, lv.y, lv.z);
+                snprintf(roll_s, sizeof roll_s, "%+.1f deg", roll_deg);
+                snprintf(camh_s, sizeof camh_s, "%+.1f m", camh);
+            } else {
+                snprintf(lv_s, sizeof lv_s, "-");
+                snprintf(roll_s, sizeof roll_s, "-");
+                snprintf(camh_s, sizeof camh_s, "-");
+            }
+            if(have_lv && orbit) {
+                snprintf(pole_s, sizeof pole_s, "%+.1f deg", pole_deg);
+            } else {
+                snprintf(pole_s, sizeof pole_s, "-");
+            }
+            if(!orbit) {
+                snprintf(pin_s, sizeof pin_s, "-");
+            } else if(camera->orbitPitch >= Camera::kPitchLimit - 1e-6) {
+                snprintf(pin_s, sizeof pin_s, "hi");
+            } else if(camera->orbitPitch <= -Camera::kPitchLimit + 1e-6) {
+                snprintf(pin_s, sizeof pin_s, "lo");
+            } else {
+                snprintf(pin_s, sizeof pin_s, "-");
+            }
             printf("[camlog] t=%.3fs mode=%s focus=\"%s\" "
                    "yaw=%+.5f rad pitch=%+.5f rad dist=%.3f m "
-                   "fwd=[%+.4f %+.4f %+.4f] rmb=%d cap=%d\n",
+                   "fwd=[%+.4f %+.4f %+.4f] up=[%+.4f %+.4f %+.4f] "
+                   "lv=[%s] roll=%s pole=%s camh=%s pin=%s rmb=%d cap=%d\n",
                    g.time, mode, g.focusTargets[g.focusBody].name,
                    camera->orbitYaw, camera->orbitPitch, camera->distance,
                    camera->forward.x, camera->forward.y, camera->forward.z,
+                   camera->up.x, camera->up.y, camera->up.z,
+                   lv_s, roll_s, pole_s, camh_s, pin_s,
                    g.rmbCam ? 1 : 0,
                    ImGui::GetIO().WantCaptureMouse ? 1 : 0);
             fflush(stdout);
@@ -711,6 +804,68 @@ static void drawPlumeQuad(Game &g, const glm::dmat4 &Model, const glm::dmat4 &Vi
     glDepthMask(GL_TRUE);
     glDisable(GL_BLEND);
     glBindTexture(GL_TEXTURE_2D, 0);
+}
+
+/* One gizmo axis. g.cam_gizmo_seg runs 0 -> +X, so the model matrix pins +X
+   onto dir and scales it by len; the other two columns only keep the basis
+   rigid -- the segment never reads them. */
+static void drawGizmoAxis(Game &g, const glm::dmat4 &VP, const glm::dvec3 &from,
+                          const glm::dvec3 &dir, double len, glm::vec4 col) {
+    const double l2 = glm::length2(dir);
+    if(l2 < 1e-12) { return; }
+    const glm::dvec3 d = dir / std::sqrt(l2);
+    // Any unit vector off d to build the filler columns from; the parallel one
+    // would cross to zero.
+    const glm::dvec3 seed = (std::fabs(d.x) < 0.9)
+        ? glm::dvec3(1.0, 0.0, 0.0) : glm::dvec3(0.0, 1.0, 0.0);
+    const glm::dvec3 a = glm::normalize(seed - d * glm::dot(seed, d));
+    const glm::dmat4 model = glm::translate(from)
+                           * glm::dmat4(glm::dmat3(d * len, a, glm::cross(d, a)));
+    g.lineshader->setUniform_mat4(0, VP * model);
+    g.lineshader->setUniform_vec4(1, col);
+    g.cam_gizmo_seg->Draw(GL_LINES);
+}
+
+/* --cam-gizmo: the frames the orbit camera is built from, painted where the
+   player can see them (#876). That issue's complaints are orientation, not
+   numbers: a yaw axis lying on the horizon, and a left/right drag that is
+   really a roll of the whole image, stay invisible in --cam-log until you
+   already know which dot() to look at. Every axis hangs off the focus, because
+   the camera IS the viewpoint and paints nothing there.
+     red    ref X -- where yaw 0 puts the camera
+     green  ref Y
+     blue   ref Z both ways -- the yaw axis, i.e. the turntable's pole
+     white  the camera's up (screen up, planted at the focus)
+     yellow the local vertical at the ship
+   Blue along yellow: a left/right drag sweeps the horizon. Blue across it: the
+   same drag rolls the picture. --cam-log's pole= prints that angle as a digit,
+   for the ref BEFORE the wobble; the gizmo shows the frame this one drew.
+   The live ref, wobble included. */
+static void drawCamGizmo(Game &g) {
+    Camera *camera = g.camera;
+    // Ship-relative, like every other draw site: the float cast quantizes on
+    // this grid rather than on planet-scale numbers (Camera::renderOrigin).
+    const glm::dvec3 from = camera->focusPoint - camera->GetRenderOrigin();
+    // Readable at any zoom, short enough to stay near the hull.
+    const double len = 0.5 * std::max(
+        glm::length(camera->GetPos() - camera->focusPoint), 5.0);
+    // Unlike the reference rings, this overlay keeps the view's translation:
+    // these lines live at a place in the world, not around the eye.
+    const glm::dmat4 VP = glm::dmat4(camera->GetProjection()) * camera->GetView();
+    if(camera->mode == CAM_ORBIT) {
+        // ref only in orbit mode: free and first person never re-set it, so
+        // there it would draw the last orbit frame's basis and call it now.
+        const glm::dmat3 r = camera->ref;
+        drawGizmoAxis(g, VP, from, r[0], len, glm::vec4(1.0f, 0.0f, 0.0f, 0.8f));
+        drawGizmoAxis(g, VP, from, r[1], len, glm::vec4(0.0f, 1.0f, 0.0f, 0.8f));
+        drawGizmoAxis(g, VP, from, r[2], len, glm::vec4(0.0f, 0.5f, 1.0f, 0.9f));
+        drawGizmoAxis(g, VP, from, -r[2], len, glm::vec4(0.0f, 0.25f, 0.5f, 0.6f));
+    }
+    drawGizmoAxis(g, VP, from, camera->up, len, glm::vec4(1.0f, 1.0f, 1.0f, 0.8f));
+    glm::dvec3 lv;
+    if(focusLocalVertical(g, lv)) {
+        drawGizmoAxis(g, VP, from, lv, len, glm::vec4(1.0f, 1.0f, 0.0f, 0.9f));
+    }
 }
 
 /* Paint half of the 3D pass (#212). The postfx Begin/End pair lives in main.cpp
@@ -1094,6 +1249,12 @@ void paintWorld(Game &g) {
         }
         // Restore: the width is global state, and the Bullet debug drawer draws
         // GL_LINES with whatever the last setter left.
+        glLineWidth(1.0f);
+    }
+    if(g.args.cam_gizmo) {
+        glLineWidth(3);
+        g.lineshader->Bind();
+        drawCamGizmo(g);
         glLineWidth(1.0f);
     }
 

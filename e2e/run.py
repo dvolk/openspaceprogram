@@ -578,10 +578,24 @@ SHAKE_RE = re.compile(
 # --cam-log: the camera the render pass left this frame. yaw/pitch are what a
 # --sim-mouse drag is supposed to change; rmb/cap say whether the gesture
 # reached the camera at all (a part window under the cursor eats the drag).
+# #876 added the orientation half: up/lv/roll/pole/camh. Those answer "does the
+# picture read", not "where is the turntable": pole is the angle between the
+# turntable's yaw axis and the local vertical (90 deg = a left/right drag rolls
+# the image instead of orbiting it), roll is how tilted that vertical looks on
+# screen. lv/roll/pole/camh dash when there is no local vertical to measure
+# against (no ship, or a body focus); roll additionally goes NOISY rather than
+# dashing when the view line runs along lv, so a case pins it at a side view,
+# never at the poles.
 CAM_RE = re.compile(
     r"\[camlog\]\s+t=([\d.]+)s\s+mode=(\w+)\s+focus=\"([^\"]*)\"\s+"
     r"yaw=([-+\d.]+) rad\s+pitch=([-+\d.]+) rad\s+dist=([-+\d.]+) m\s+"
-    r"fwd=\[([-+\d.]+) ([-+\d.]+) ([-+\d.]+)\]\s+rmb=(\d)\s+cap=(\d)"
+    r"fwd=\[([-+\d.]+) ([-+\d.]+) ([-+\d.]+)\]\s+"
+    r"up=\[([-+\d.]+) ([-+\d.]+) ([-+\d.]+)\]\s+"
+    r"(?:lv=\[([-+\d.]+) ([-+\d.]+) ([-+\d.]+)\]|lv=\[-\])\s+"
+    r"roll=(?:([-+\d.]+) deg|-)\s+"
+    r"pole=(?:([-+\d.]+) deg|-)\s+"
+    r"camh=(?:([-+\d.]+) m|-)\s+"
+    r"pin=(hi|lo|-)\s+rmb=(\d)\s+cap=(\d)"
 )
 TERRAIN_RE = re.compile(
     r"\[terrain\]\s+t=([\d.]+)s\s+body=\"([^\"]*)\"\s+patches=(\d+)\s+"
@@ -1640,11 +1654,20 @@ def parse_cam(out):
     rows = []
     for m in CAM_RE.finditer(out):
         (t, mode, focus, yaw, pitch, dist,
-         fx, fy, fz, rmb, cap) = m.groups()
+         fx, fy, fz, ux, uy, uz, lvx, lvy, lvz, roll, pole, camh, pin, rmb,
+         cap) = m.groups()
+        lv = None if lvx is None else (num(lvx), num(lvy), num(lvz))
         rows.append({
             "t": float(t), "mode": mode, "focus": focus,
             "yaw": float(yaw), "pitch": float(pitch), "dist": float(dist),
             "fwd": (float(fx), float(fy), float(fz)),
+            "up": (float(ux), float(uy), float(uz)),
+            # Dashed fields go through num() rather than a plausible 0, so a
+            # case that selects on them cannot be satisfied by a view that
+            # printed nothing (#876).
+            "lv": lv,
+            "roll": num(roll), "pole": num(pole), "camh": num(camh),
+            "pin": pin,
             "rmb": int(rmb), "cap": int(cap),
         })
     return rows

@@ -49,6 +49,11 @@ public:
     double orbitYaw = 0.0;     // ref-frame azimuth, rad (0 = ref x̂)
     double orbitPitch = 0.0;   // ref-frame elevation, rad (clamped near pole)
 
+    // How far Pitch() may go from ref's plane, rad (~87 deg). Named because
+    // #876's --cam-log prints whether this clamp is holding, and the log must
+    // not restate the literal to say so.
+    static constexpr double kPitchLimit = 1.52;
+
     // Free-mode state. pos is PRIMARY; right is derived each ComputeView().
     glm::dvec3 right;
 

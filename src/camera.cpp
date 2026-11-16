@@ -202,7 +202,7 @@ void Camera::Pitch(double angle) {
     if (mode == CAM_ORBIT) {
         // Pitch the turntable; clamp short of the pole where up vanishes.
         orbitPitch += angle;
-        const double lim = 1.52;   // rad (~87 deg), just short of the pole
+        const double lim = kPitchLimit;
         if (orbitPitch > lim) { orbitPitch = lim; }
         if (orbitPitch < -lim) { orbitPitch = -lim; }
     } else if (mode == CAM_FREE) {

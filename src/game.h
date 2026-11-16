@@ -959,6 +959,9 @@ struct Game {
     // carry the orbit map's green/red node colors.
     Mesh *ref_node_an = nullptr;
     Mesh *ref_node_dn = nullptr;
+    // Unit segment 0 -> +X. --cam-gizmo draws it once per axis with the axis
+    // and its length composed into the MVP (#876).
+    Mesh *cam_gizmo_seg = nullptr;
     Billboard *front_indicator = nullptr;
     Billboard *prograde_indicator = nullptr;
     Billboard *retrograde_indicator = nullptr;
