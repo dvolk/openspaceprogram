@@ -1,0 +1,24 @@
+# Which things the TARGET window offers is the whole feature of #873, and the list
+# is otherwise an imgui combo with no face in the log: this body's ORBITAL stations
+# are rows, its surface pads are not (a pad has no conic about the body -- the
+# Surface Map and the VAB picker are their business), and neither is a Venus air
+# platform, whose pose law is the zonal wind in the ROTATING frame (#884 records
+# what targeting one would actually need).
+#
+# Ask for a pad BY NAME and --transfer-target prints what IS plannable, once per bad
+# name. That diagnostic line is the observable: it spells the whole list, in the
+# order the planner builds it (bodies, then vessels, then stations).
+NAME stations-are-target-rows-pads-are-not
+CLAIM The transfer target list carries this body's orbital stations and none of its pads.
+KIND invariant
+ARGS --time-accel 1 --timeout 3 --startship racer,res/ships/racer.json,Kerbin,pad
+ARGS --transfer-target "Main space port" --orbit-interval 1.0
+FORBID error:
+EXPECT [xfer] --transfer-target "Main space port" is not plannable here; this hull can aim at: "Mun" "Minmus" "Kerbin station" "Kerbin space dock"
+# Once, not once a frame: the warning is stamped with the name that was reported.
+CHECK out.count("can aim at:") == 1
+# The stations come last (the list is bodies, vessels, stations) and BOTH are there;
+# a pad appearing anywhere in the line would make the EXPECT above fail, which is why
+# the case asks for a pad rather than a typo.
+CHECK out.count('"Kerbin station" "Kerbin space dock"') == 1
+CHECK out.count('aim at: "Main space port"') == 0

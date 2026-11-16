@@ -1,0 +1,27 @@
+# The two relative-velocity markers are the HUD half of #873: a station you can
+# plan a burn to is useless if you cannot see which way to point to close with it.
+# They are billboards, so nothing else in the log says whether a target reached
+# that code at all -- and the old code typed the target as a Vehicle, so a station
+# fell through to the dock target and drew NOTHING, silently, while the TARGET
+# window happily printed a plan for it.
+#
+# --relvel-log prints what both markers were placed FROM. tgt_v is the station's
+# speed in Kerbin's inertial frame, which pins against the authored circle:
+# v = sqrt(mu / r) with mu = G * 5.292e22 and r = 600 km + 400 km. A lift out of
+# the ROTATING frame would be short by Kerbin's own ~175 m/s at the equator, and a
+# target that never reached the code would read no rows at all.
+NAME relative-velocity-markers-follow-a-station
+CLAIM The HUD's target relative-velocity markers are placed for an orbital station, from the velocity its pose law drives.
+KIND invariant
+ARGS --time-accel 1 --timeout 5 --startship racer,res/ships/racer.json,Kerbin,pad
+ARGS --transfer-target "Kerbin station" --relvel-log --orbit-interval 1.0
+FORBID error:
+CHECK len(relvel) >= 3
+CHECK all(r["kind"] == "station" and r["target"] == "Kerbin station" for r in relvel)
+# 1879.33 m/s is sqrt(6.674e-11 * 5.292e22 / 1.0e6): the circular speed of the
+# station's own conic at its authored 400 km over a 600 km Kerbin.
+CHECK all(abs(r["tgt_v"] - 1879.33) < 0.5 for r in relvel)
+# dv is the marker's own length: it must not vanish (the draw skips a 1e-9
+# difference), and it must equal |rel| -- two numbers the print makes separately.
+CHECK all(r["dv"] > 100.0 for r in relvel)
+CHECK all(abs(sum(p * p for p in r["rel"]) ** 0.5 - r["dv"]) < 0.01 for r in relvel)

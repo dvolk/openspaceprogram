@@ -1431,7 +1431,7 @@ void drawUIReadouts(Game &g) {
     // asked for a plan at all.
     drawWin(g, W_Target, [&] {
         if(xferTargets.empty()) {
-            ImGui::Text("No transfer targets: no child bodies or ships here.");
+            ImGui::Text("No transfer targets: no child bodies, stations or ships here.");
             return;
         }
         const TransferPlanner::XferTarget *sel = xferTarget();
@@ -1439,16 +1439,24 @@ void drawUIReadouts(Game &g) {
         if(uiBeginCombo("Target", cur)) {
             // "none" is a real entry so the target can be cleared from here.
             if(ImGui::Selectable("none", sel == nullptr)) {
-                planner.selectTarget(std::string(), false);
+                planner.selectTarget(std::string(), TargetKind::body);
             }
             for(int i = 0; i < (int)xferTargets.size(); i++) {
+                // PushID: two rows can carry one label -- a body and a vessel
+                // named the same, and station labels are not deduped at all
+                // (#883). The planner keeps them apart by kind; imgui needs an
+                // id, or the second row steals the first's (the VAB site combo
+                // below does the same thing for the same reason).
+                ImGui::PushID(i);
                 if(ImGui::Selectable(xferTargets[i].name,
                                      planner.isTarget(xferTargets[i]))) {
-                    // By identity, and the row's KIND with it: a body and a
-                    // vessel can share a name, and the list shows both rows.
+                    // By identity, and the row's KIND with it: a body, a vessel
+                    // and a station can share a name, and the list shows a row
+                    // for each.
                     planner.selectTarget(xferTargets[i].name,
-                                         xferTargets[i].ship != nullptr);
+                                         xferTargets[i].kind());
                 }
+                ImGui::PopID();
             }
             ImGui::EndCombo();
         }
@@ -1478,13 +1486,17 @@ void drawUIReadouts(Game &g) {
            changed the selection, and the row it names is this frame's. */
         const TransferPlanner::XferTarget *t = xferTarget();
         if(t == nullptr) {
-            ImGui::Text("Select a target body or ship.");
+            ImGui::Text("Select a target body, station or ship.");
             return;
         }
         if(!xfer_compute) { return; }
-        const bool isShip = t->ship != nullptr;
-        if(isShip) {
-            ImGui::TextDisabled("ship target: intercept only, no capture burn");
+        /* Only a BODY has a capture leg. A vessel and an orbital station are
+           both state pairs about the focus body, so the plan ends at a
+           rendezvous with no second burn (#873). */
+        const bool can_capture = t->body != nullptr;
+        if(!can_capture) {
+            ImGui::TextDisabled("%s target: intercept only, no capture burn",
+                                t->station != nullptr ? "station" : "ship");
         }
         // A porkchop "Send best" plan: count down to the departure instant.
         if(planner.xfer_from_porkchop && planner.xfer_t_dep > 0.0) {
@@ -1558,12 +1570,13 @@ void drawUIReadouts(Game &g) {
         const TransferSolution &sol = xfer.sol;
         char dist_s[32], time_s[40];
         ImGui::Text("dv depart:  %08.1f m/s", sol.dv_departure);
-        if(!isShip) {
+        if(can_capture) {
             /* sol.r_cap is a capture periapsis RADIUS around the target, so the
                plan reads as a height above the TARGET's own sea level (#405).
                A body solve always has one: planTransfer only sets a capture leg
                when r_cap > 0, and a body's r_cap is its sea-level radius plus
-               the near-body shell edge. */
+               the near-body shell edge. A station has no sea level and no
+               capture shell, which is why it is not in this branch. */
             assert(t->body != nullptr && sol.r_cap > 0.0);
             ImGui::Text("dv capture: %08.1f m/s @ %s", sol.dv_capture,
                         fmt_dist(sol.r_cap - t->body->seaLevelRadius(),
@@ -1596,12 +1609,12 @@ void drawUIReadouts(Game &g) {
        of flight), computed on demand and cached. */
     drawWin(g, W_Porkchop, [&] {
         if(xferTargets.empty()) {
-            ImGui::Text("No transfer targets: no child bodies or ships here.");
+            ImGui::Text("No transfer targets: no child bodies, stations or ships here.");
             return;
         }
         const TransferPlanner::XferTarget *t = xferTarget();
         if(t == nullptr) {
-            ImGui::Text("Select a target body or ship (Target window).");
+            ImGui::Text("Select a target body, station or ship (Target window).");
             return;
         }
         const char *tn = t->name;

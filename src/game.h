@@ -580,7 +580,7 @@ enum LogGate { kGateOrbit, kGateDbg, kGateInfo, kGateAtt, kGateShake,
                kGateSkyDim, kGateXfer, kGateDv, kGateCompound, kGateProxSnap,
                kGateSpin, kGateMass, kGateFuel, kGateDrain, kGatePower,
                kGateSteer, kGateSlew, kGateAscent, kGateRec, kGateSolar,
-               kGateBldg, kGateCount };
+               kGateBldg, kGateRelVel, kGateCount };
 
 /* A headless test hook (cli.h --atlas-dump / --map-dump): fires act() once,
    at/after ms on the schedule clock (Game::schedClockMs(): loop_start_ms normally,

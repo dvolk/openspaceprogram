@@ -129,6 +129,9 @@ struct GameArgs {
     bool info_log = false;       // dump Orbit/Surface Info to stdout
     bool debug_accel = false;   // per-substep thrust/velocity dump
     bool xfer_log = false;
+    /* The HUD's target relative-velocity markers (#873). Billboards, so this is
+       the only witness that a target reached that code at all. */
+    bool relvel_log = false;
     bool porkchop_log = false;   // the launch-window grid min
     int porkchop_n = 256;
     std::vector<int> porkchop_bench; // sweep these sizes off one snapshot

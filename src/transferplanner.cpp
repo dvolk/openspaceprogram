@@ -37,14 +37,6 @@ InertialShip shipInertial(Game &g, const glm::dvec3 &com, const glm::dvec3 &vel)
     return s;
 }
 
-struct InertialTarget {
-    glm::dvec3 r = glm::dvec3(0.0), v = glm::dvec3(0.0);
-    double mu = 0.0;
-    double r_cap = 0.0;
-    double tof_max = 3.0 * 86400.0;
-    bool capture = false;
-};
-
 // Period of the conic through (r, v) under mu (s); 0 if it is not closed.
 // Works for a body or a ship, since both are Keplerian about the same parent.
 double orbitalPeriod(const glm::dvec3 &r, const glm::dvec3 &v, double mu) {
@@ -54,44 +46,6 @@ double orbitalPeriod(const glm::dvec3 &r, const glm::dvec3 &v, double mu) {
     if(energy >= 0.0) { return 0.0; }
     const double a = -mu / (2.0 * energy);
     return 2.0 * std::numbers::pi * std::sqrt(a * a * a / mu);
-}
-InertialTarget targetInertial(const TransferPlanner::XferTarget &t,
-                              Frame *inertial) {
-    InertialTarget d;
-    if(t.body) {
-        Frame *tf = t.body->frame;
-        d.r = tf->GetPositionRelTo(inertial);
-        d.v = tf->GetVelocityRelTo(inertial);
-        d.mu = t.body->mu;
-        /* Capture "orbit" at the near-body shell edge: the LowOrbit/HighOrbit
-           boundary, above the air on every body. Ask the frame for it rather
-           than re-deriving datum + shellEdge -- the ship switches into THIS
-           sphere, so the plan cannot disagree with it (the loader's derivation
-           is pinned in tests/test_scenarios.cpp). r_cap is a RADIUS, so both
-           the Transfer window and --xfer-log print its height off the datum
-           (#405/#406). */
-        assert(t.body->rot_frame != nullptr);
-        d.r_cap = t.body->rot_frame->soi;
-        if(tf->orb_ang_speed > 0.0) {
-            // 3 target periods covers the min-dv point with margin.
-            d.tof_max = 3.0 * (2.0 * std::numbers::pi / tf->orb_ang_speed);
-        }
-        d.capture = true;
-    } else {
-        Frame *tsf = t.ship->frame;
-        const glm::dvec3 tcom = t.ship->get_center_of_mass();
-        const glm::dmat3 O = tsf->GetOrientRelTo(inertial);
-        d.r = O * tcom + tsf->GetPositionRelTo(inertial);
-        d.v = O * (t.ship->GetVel() + tsf->GetStasisVelocity(tcom))
-            + tsf->GetVelocityRelTo(inertial);
-        // A ship has no orb_ang_speed to read, so scale the search by its own
-        // conic. The 3-day default is nonsense for a 1-hour orbit (150 ToF
-        // samples spread over days) and too tight for a co-orbital phasing
-        // window, which is measured in target periods (#136).
-        const double T = orbitalPeriod(d.r, d.v, inertial->body->mu);
-        if(T > 0.0) { d.tof_max = 3.0 * T; }
-    }
-    return d;
 }
 
 // One [porkchop] line per swept grid (the shape e2e/run.py parses). The swept
@@ -162,18 +116,79 @@ void dumpPorkchop(const std::string &dir, const std::string &target,
 }
 } // namespace
 
-void TransferPlanner::selectTarget(const std::string &name, bool isShip) {
-    xfer_sel = TargetRef{name, isShip};
+TransferPlanner::TargetState TransferPlanner::targetState(
+        const XferTarget &t, Frame *inertial) const {
+    TargetState d;
+    if(t.body) {
+        Frame *tf = t.body->frame;
+        d.r = tf->GetPositionRelTo(inertial);
+        d.v = tf->GetVelocityRelTo(inertial);
+        d.mu = t.body->mu;
+        /* Capture "orbit" at the near-body shell edge: the LowOrbit/HighOrbit
+           boundary, above the air on every body. Ask the frame for it rather
+           than re-deriving datum + shellEdge -- the ship switches into THIS
+           sphere, so the plan cannot disagree with it (the loader's derivation
+           is pinned in tests/test_scenarios.cpp). r_cap is a RADIUS, so both
+           the Transfer window and --xfer-log print its height off the datum
+           (#405/#406). */
+        assert(t.body->rot_frame != nullptr);
+        d.r_cap = t.body->rot_frame->soi;
+        if(tf->orb_ang_speed > 0.0) {
+            // 3 target periods covers the min-dv point with margin.
+            d.tof_max = 3.0 * (2.0 * std::numbers::pi / tf->orb_ang_speed);
+        }
+        d.capture = true;
+        return d;
+    }
+    /* A vessel or an orbital station: a state pair about the focus body, so the
+       plan ends at a rendezvous -- no mu, no capture shell, no r_cap. Both read
+       the state the physics already maintains rather than re-deriving it, so a
+       plan cannot disagree with what the player is looking at. */
+    if(t.station) {
+        /* The station's own bubble Frame (#850), clocked by the tree with the
+           same instant the planner runs at. Its parent IS the body's inertial
+           node -- which for a building node is what getNonRotFrame() walks to --
+           so its velocity needs no COM offset and no stasis term: SetDrivenState
+           already composed the origin's motion into root_vel, and the inertial
+           parent spins at omega 0. */
+        Frame *bf = t.station->frame;
+        assert(bf != nullptr);   // attach_bubble_frame gives every orbital pad one
+        d.r = bf->GetPositionRelTo(inertial);
+        d.v = bf->GetVelocityRelTo(inertial);
+    } else {
+        Frame *tsf = t.ship->frame;
+        const glm::dvec3 tcom = t.ship->get_center_of_mass();
+        const glm::dmat3 O = tsf->GetOrientRelTo(inertial);
+        d.r = O * tcom + tsf->GetPositionRelTo(inertial);
+        d.v = O * (t.ship->GetVel() + tsf->GetStasisVelocity(tcom))
+            + tsf->GetVelocityRelTo(inertial);
+    }
+    // Neither kind has an orb_ang_speed to read, so scale the search by its own
+    // conic. The 3-day default is nonsense for a 1-hour orbit (150 ToF samples
+    // spread over days) and too tight for a co-orbital phasing window, which is
+    // measured in target periods (#136).
+    const double T = orbitalPeriod(d.r, d.v, inertial->body->mu);
+    if(T > 0.0) { d.tof_max = 3.0 * T; }
+    return d;
+}
+
+void TransferPlanner::selectTarget(const std::string &name, TargetKind kind) {
+    // An empty name clears the selection whatever the kind says, which is what
+    // the window's "none" row relies on.
+    xfer_sel = TargetRef{name, kind};
     dropStaleTarget();
 }
 
 void TransferPlanner::selectTargetByName(const std::string &name) {
     // Last name match wins, as --transfer-target always resolved it: the list
-    // is bodies then vessels, so a vessel named after a body is the one a test
-    // naming that string means to aim at.
+    // is bodies, then vessels, then stations, so a vessel named after a body is
+    // the one a test naming that string means to aim at. Two rows of the SAME
+    // kind and name (station labels are not deduped, #883) are one identity to
+    // the planner, so which of them target() lands on is the list's order, not
+    // this loop's.
     for(int i = 0; i < (int)xferTargets.size(); i++) {
         if(xferTargets[i].name == name) {
-            xfer_sel = TargetRef{name, xferTargets[i].ship != nullptr};
+            xfer_sel = TargetRef{name, xferTargets[i].kind()};
         }
     }
     // A name-only request cannot know the kind, so an unresolved one is dropped
@@ -222,6 +237,26 @@ void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
         for(auto *s : g->vehicles) {
             if(s != g->ship && s->m_parent == pb) {
                 xferTargets.push_back({s->displayName().c_str(), nullptr, s});
+            }
+        }
+        /* Orbital buildings of the same body (#873): a station is as flyable as
+           a sibling vessel, and its pose law is a Kepler conic under the same
+           mu, so the solver needs nothing new. A surface pad is not a row -- it
+           has no conic, and the Surface Map and the VAB picker are its business.
+           An air platform is not either: its pose is the zonal wind in the
+           ROTATING frame (buildingair.h), so about the body it has no orbit to
+           plan against, and follow-up #884 covers what targeting one would mean.
+           Not the one this hull is standing in: a transfer to the deck under
+           your own feet is 0 dv noise, and the sibling-vessel rule above already
+           excludes the hull itself for the same reason.
+           The row's name points INTO StaticBuilding::display_name, so a station
+           row cannot outlive its body: pads are freed by ~TerrainBody, which
+           only runs inside freeBodies(), after resetWorld() and
+           invalidateClockStampedCaches() have dropped these rows (game.cpp). */
+        for(StaticBuilding *p : pb->pads) {
+            if(p->orbital && p->frame != nullptr && p->frame != g->ship->frame) {
+                xferTargets.push_back({p->display_name.c_str(),
+                                       nullptr, nullptr, p});
             }
         }
         // --transfer-target wins over the window's combo on every rebuild.
@@ -283,7 +318,7 @@ void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
         if(xfer.frame - xfer.period_frame >= 30) {
             xfer.period_frame = xfer.frame;
             const InertialShip s1 = shipInertial(*g, com, vel);
-            pc_period = targetInertial(*t, s1.inertial).tof_max / 3.0;
+            pc_period = targetState(*t, s1.inertial).tof_max / 3.0;
         }
     } else {
         xfer.frame++;
@@ -291,7 +326,7 @@ void TransferPlanner::update(const glm::dvec3 &com, const glm::dvec3 &vel) {
                                           xfer_tof_log, xfer.frame);
         if(dirty) {
             const InertialShip s1 = shipInertial(*g, com, vel);
-            const InertialTarget d = targetInertial(*t, s1.inertial);
+            const TargetState d = targetState(*t, s1.inertial);
             // Scale for the porkchop range sliders: one target period, the
             // same quantity the auto range is built from (tof_max = 3 of
             // them), so the sliders' ends and the auto window cannot disagree.
@@ -458,13 +493,14 @@ bool TransferPlanner::targetPlaneNormal(Frame *focus_inertial,
     if(t->ship && t->ship->isGrounded()) { return false; }
     // The same state lift the solver uses, so the plane the map shows cannot
     // disagree with the transfer planned to this target.
-    const InertialTarget d = targetInertial(*t, focus_inertial);
+    const TargetState d = targetState(*t, focus_inertial);
     const glm::dvec3 h = glm::cross(d.r, d.v);
     const double hl = glm::length(h);
     if(hl <= 1e-9) { return false; }
-    // An escaping ship target has no orbit to share a plane with. A body target
-    // is on rails, so its conic is closed by construction.
-    if(t->ship && orbitalPeriod(d.r, d.v, focus_inertial->body->mu) <= 0.0) {
+    // An escaping target has no orbit to share a plane with. Only a body target
+    // is on rails, so its conic is closed by construction; a vessel AND a station
+    // (#873) are state pairs, so both must be asked.
+    if(t->body == nullptr && orbitalPeriod(d.r, d.v, focus_inertial->body->mu) <= 0.0) {
         return false;
     }
     n_hat = h / hl;
@@ -482,7 +518,7 @@ void TransferPlanner::porkchopCompute() {
     // Snapshot ship/target state in the parent's INERTIAL frame -- the ONLY game
     // state read; the grid sweep is pure and runs on the background worker.
     const InertialShip s1 = shipInertial(*g, g->hud.view.pos, g->hud.view.vel);
-    const InertialTarget d = targetInertial(*t, s1.inertial);
+    const TargetState d = targetState(*t, s1.inertial);
 
     double t_dep_lo, t_dep_hi;
     if(pcCustomDep) {
@@ -518,8 +554,9 @@ void TransferPlanner::porkchopCompute() {
     const bool capture = d.capture;
     const std::string tname = t->name;
     // The kind travels with the name: a grid swept for the VESSEL "Mun" must not
-    // be handed to the moon Mun if the vessel is deleted mid-sweep.
-    const bool t_is_ship = t->ship != nullptr;
+    // be handed to the moon Mun if the vessel is deleted mid-sweep, and a grid
+    // swept for a station must not slide onto either of them (#873).
+    const TargetKind t_kind = t->kind();
     const double t_now = g->time;
     const int epoch = g->cache_epoch;      // drop the result if the world changes
     JobRunner *jobs = &g->jobs;           // stopping() is thread-safe (job.h)
@@ -527,7 +564,7 @@ void TransferPlanner::porkchopCompute() {
     pc_in_flight++;
     g->jobs.post("Porkchop grid", [r1,v1,r2,v2,mu_p,mu_t,r_cap,
                                   t_dep_lo,t_dep_hi,tof_lo,tof_hi,
-                                  sizes,capture,log,tname,t_is_ship,t_now,
+                                  sizes,capture,log,tname,t_kind,t_now,
                                   epoch,dump,dump_dir,jobs,this]()
                 -> std::function<void()> {
         // Worker: PURE (no game state, GL, or imgui). shared_ptr because the
@@ -559,7 +596,7 @@ void TransferPlanner::porkchopCompute() {
             if(dump) { dumpPorkchop(dump_dir, tname, t_now, *res); }
         }
         // Main-thread continuation: publish the result, clear "sweeping".
-        return [this, res, t_now, tname, t_is_ship, epoch]() {
+        return [this, res, t_now, tname, t_kind, epoch]() {
             // Epoch bumped since posting: the grid is for the old world. Only
             // installSystem aborts jobs, so a teardown lets it land and drop
             // here. Drop before touching the target list -- a SHIP target list
@@ -573,7 +610,7 @@ void TransferPlanner::porkchopCompute() {
                moved (#392). The selection alone is the whole answer: retirement
                and rebuild both clear an identity that no longer resolves, so a
                selection that still matches this one names a live row. */
-            const bool still_target = (TargetRef{tname, t_is_ship} == xfer_sel);
+            const bool still_target = (TargetRef{tname, t_kind} == xfer_sel);
             if(still_target && res) {
                 pc = std::move(*res);
                 pc_computed_at = t_now;
@@ -582,7 +619,7 @@ void TransferPlanner::porkchopCompute() {
                 // on: the list is rebuilt every frame, so a sibling ship joining
                 // or leaving shifts the index while the vessel is the same, and
                 // update() would drop a grid that is still exactly right.
-                pc_target = TargetRef{tname, t_is_ship};
+                pc_target = TargetRef{tname, t_kind};
             }
             if(pc_in_flight > 0) { pc_in_flight--; }
         };

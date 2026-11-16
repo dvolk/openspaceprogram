@@ -878,36 +878,66 @@ void paintWorld(Game &g) {
         g.burn_indicator->pos = planner.xfer.burn_dir;
         g.burn_indicator->Draw(camera, std::numbers::pi);
     }
-    // Target ship's relative velocity: two markers (you-target / target-you),
-    // when a ship is targeted or a docking port is selected.
-    Vehicle *relvel_target = nullptr;
-    if(const auto *t = planner.target()) { relvel_target = t->ship; }
-    if(relvel_target == nullptr &&
-       ship->dockTargetShip != nullptr && ship->dockTargetPort != nullptr) {
-        relvel_target = ship->dockTargetShip;
-    }
-    if(relvel_target != nullptr) {
+    /* Target relative velocity: two markers (you-target / target-you).
+       A BODY target gets neither: its relative state is the intercept the
+       TARGET window already prints, and there is no direction at a planet worth
+       burning against. A vessel or an orbital station (#873) does, and so does
+       an armed docking port whether or not it is the transfer target. */
+    {
         // Both velocities into the shared inertial frame (stasis + frame
         // velocity), then the difference back into this render frame.
         Frame *inertial = ship->frame->getNonRotFrame();
         Frame *sf = ship->frame;
-        Frame *tsf = relvel_target->frame;
-        const glm::dmat3 Os = sf->GetOrientRelTo(inertial);
-        const glm::dvec3 sv = Os * (vel + sf->GetStasisVelocity(com))
-            + sf->GetVelocityRelTo(inertial);
-        const glm::dvec3 tcom = relvel_target->get_center_of_mass();
-        const glm::dmat3 Ot = tsf->GetOrientRelTo(inertial);
-        const glm::dvec3 tv = Ot * (relvel_target->GetVel()
-            + tsf->GetStasisVelocity(tcom))
-            + tsf->GetVelocityRelTo(inertial);
-        const glm::dvec3 relvel = glm::transpose(Os) * (tv - sv);  // target − you
-        if(glm::length(relvel) > 1e-9) {
-            // you − target: the prograde (diamond) icon
-            g.relvel_indicator->pos = -relvel;
-            g.relvel_indicator->Draw(camera, std::numbers::pi);
-            // target − you: the retrograde (X) icon
-            g.relvel_retro_indicator->pos = relvel;
-            g.relvel_retro_indicator->Draw(camera, std::numbers::pi);
+        const auto *xt = planner.target();
+        const char *rel_kind = nullptr;
+        const char *rel_name = nullptr;
+        glm::dvec3 tv = glm::dvec3(0.0);
+        if(xt != nullptr && xt->kind() != TargetKind::body) {
+            /* The same lift the solver uses (TransferPlanner::targetState), so
+               the markers cannot disagree with the plan printed for the target
+               -- and a station contributes the velocity its own pose law drives
+               (#850), with no COM offset or stasis term to get wrong. */
+            tv = planner.targetState(*xt, inertial).v;
+            rel_kind = xt->station != nullptr ? "station" : "ship";
+            rel_name = xt->name;
+        } else if(ship->dockTargetShip != nullptr
+                  && ship->dockTargetPort != nullptr) {
+            Vehicle *ts = ship->dockTargetShip;
+            Frame *tsf = ts->frame;
+            const glm::dvec3 tcom = ts->get_center_of_mass();
+            const glm::dmat3 Ot = tsf->GetOrientRelTo(inertial);
+            tv = Ot * (ts->GetVel() + tsf->GetStasisVelocity(tcom))
+               + tsf->GetVelocityRelTo(inertial);
+            rel_kind = "dock";
+            rel_name = ts->displayName().c_str();
+        }
+        if(rel_kind != nullptr) {
+            const glm::dmat3 Os = sf->GetOrientRelTo(inertial);
+            const glm::dvec3 sv = Os * (vel + sf->GetStasisVelocity(com))
+                + sf->GetVelocityRelTo(inertial);
+            const glm::dvec3 relvel = glm::transpose(Os) * (tv - sv);  // target − you
+            if(glm::length(relvel) > 1e-9) {
+                // you − target: the prograde (diamond) icon
+                g.relvel_indicator->pos = -relvel;
+                g.relvel_indicator->Draw(camera, std::numbers::pi);
+                // target − you: the retrograde (X) icon
+                g.relvel_retro_indicator->pos = relvel;
+                g.relvel_retro_indicator->Draw(camera, std::numbers::pi);
+            }
+            /* --relvel-log: what the two markers were placed FROM. They are
+               billboards in a 3D pass, so nothing else in the log says whether a
+               target reached this code at all -- which is exactly how a station
+               target used to fail: silently, drawing nothing (#873). tgt_v is the
+               target's speed in the shared inertial frame, so a case can check it
+               against the target's own conic instead of trusting the marker. */
+            if(g.args.relvel_log
+               && g.logDue(kGateRelVel, g.logClockMs(), g.orbit_log_interval_ms)) {
+                printf("[relvel] t=%.1fs target=\"%s\" kind=%s dv=%.4f m/s "
+                       "tgt_v=%.4f m/s rel=[%.4f %.4f %.4f]\n",
+                       g.time, rel_name, rel_kind, glm::length(relvel),
+                       glm::length(tv), relvel.x, relvel.y, relvel.z);
+                fflush(stdout);
+            }
         }
     }
     }

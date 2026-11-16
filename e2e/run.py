@@ -210,6 +210,17 @@ XFER_RE = re.compile(
     r"(?:r_cap=([-\d.e+]+) m\s+r_cap_asl=([-\d.e+]+) m\s+)?"
     r"burn=\[([-\d.]+) ([-\d.]+) ([-\d.]+)\]\s*(?:retrograde=(\d))?\s*(?:rev=(\d))?"
 )
+# --relvel-log (render.cpp): what the HUD's two target relative-velocity markers
+# were placed FROM (#873). They are billboards in a 3D pass, so this row is the only
+# witness that a target of a given KIND reached that code at all -- a station target
+# used to draw nothing, silently. tgt_v is the target's speed in the shared inertial
+# frame, which is what lets a CHECK test the NUMBER against the target's own conic
+# instead of just its presence.
+RELVEL_RE = re.compile(
+    r"\[relvel\]\s+t=([\d.]+)s\s+target=\"([^\"]*)\"\s+kind=(\w+)\s+"
+    r"dv=([-\d.e+]+) m/s\s+tgt_v=([-\d.e+]+) m/s\s+"
+    r"rel=\[([-\d.]+) ([-\d.]+) ([-\d.]+)\]"
+)
 PORKCHOP_RE = re.compile(
     r"\[porkchop\]\s+t=([\d.]+)s\s+target=\"([^\"]*)\"\s+"
     r"(\d+)x(\d+)\s+dep=\[([-\d.e+]+),([-\d.e+]+)\]s\s+tof=\[([-\d.e+]+),([-\d.e+]+)\]s\s+"
@@ -645,6 +656,7 @@ ROW_PARSERS = [
     ("mapb", MAP_RE, "world"), ("mapbldg", MAPBLDG_RE, "world"),
     ("dbg", DBG_RE, "world"), ("bldg", BLDG_RE, "world"),
     ("plane", PLANE_RE, "world"), ("xfer", XFER_RE, "world"),
+    ("relvel", RELVEL_RE, "world"),
     ("porkchop", PORKCHOP_RE, "world"), ("surfmap", SURFMAP_RE, "world"),
     ("solar", SOLAR_RE, "world"), ("slew", SLEW_RE, "world"), ("perf", PERF_RE, "out"),
     ("toast", TOAST_RE, "out"), ("att", ATT_RE, "world"), ("eva", EVA_RE, "world"),
@@ -1245,6 +1257,24 @@ def parse_xfer(out):
             # -1 = a log line from before the field existed, not "prograde".
             "retrograde": int(retro) if retro is not None else -1,
             "rev": int(rev) if rev is not None else -1,
+        })
+    return rows
+
+
+def parse_relvel(out):
+    rows = []
+    for m in RELVEL_RE.finditer(out):
+        (t, target, kind, dv, tgt_v, rx, ry, rz) = m.groups()
+        rows.append({
+            "t": float(t), "target": target,
+            # station / ship / dock: which target the markers followed, and
+            # whether they came from the transfer target at all (#873).
+            "kind": kind, "dv": float(dv),
+            # |target velocity| in the focus body's inertial frame.
+            "tgt_v": float(tgt_v),
+            # target - you, in the ship's own render frame: the retro marker's
+            # direction, and -rel for the prograde one.
+            "rel": (float(rx), float(ry), float(rz)),
         })
     return rows
 
@@ -2276,6 +2306,7 @@ def run_case(case):
     scene = parse_scene(out)
     mapb = parse_scoped(world, parse_mapb)
     mapbldg = parse_scoped(world, parse_mapbldg)
+    relvel = parse_scoped(world, parse_relvel)
     plane = parse_scoped(world, parse_plane)
     slew = parse_scoped(world, parse_slew)
     shipswitch = parse_shipswitch(world)
@@ -2305,7 +2336,7 @@ def run_case(case):
         "cam": cam,
         "terrain": terrain,
         "surf": surf, "orbinfo": orbinfo, "mapb": mapb, "mapbldg": mapbldg,
-        "plane": plane, "slew": slew,
+        "plane": plane, "slew": slew, "relvel": relvel,
         # The handoffs themselves: [{"verb": switch/removed/unchanged/none, "name": ...}].
         "shipswitch": shipswitch,
         # Every scripted UI action the game admitted to, whole-run like toast/scene.
@@ -2827,6 +2858,30 @@ def self_test():
         fails.append("parse_mapbldg misread anchor=none, drawn=-1 or pts=0")
     if air_row["gate_r"] != 6107800.0 or air_row["peri_r"] != 0.0:
         fails.append("parse_mapbldg misread the gate_r/peri_r pair")
+
+    # #873: the [relvel] row is the only face the HUD's two relative-velocity markers
+    # have, and a case that walks it field by field is only as good as this row shape.
+    good_rv = ('[relvel] t=2.5s target="Kerbin station" kind=station dv=1762.8765 m/s '
+               'tgt_v=1879.3299 m/s rel=[1120.3823 1127.0262 -763.0785]')
+    if RELVEL_RE.match(good_rv) is None:
+        fails.append("the #873 pin's clean [relvel] line stopped matching RELVEL_RE")
+    for lost in (" kind=station", " tgt_v=1879.3299 m/s", " dv=1762.8765 m/s",
+                 ' target="Kerbin station"'):
+        if RELVEL_RE.match(good_rv.replace(lost, "")) is not None:
+            fails.append("RELVEL_RE matched a [relvel] row missing%s" % lost)
+    # rel= prints a space-separated bracket (like burn= in [xferlog]); a parenthesised
+    # or comma-separated triplet would parse as one field and drop the rest of the line.
+    if RELVEL_RE.match(good_rv.replace(
+            "rel=[1120.3823 1127.0262 -763.0785]", "rel=(1120.3823,1127.0262,-763.0785)")) is not None:
+        fails.append("RELVEL_RE took a parenthesised rel=, so the #873 pins read noise")
+    rv = parse_relvel(good_rv)[0]
+    if (rv["kind"] != "station" or rv["dv"] != 1762.8765 or rv["tgt_v"] != 1879.3299
+            or rv["rel"] != (1120.3823, 1127.0262, -763.0785)):
+        fails.append("parse_relvel misread kind, dv, tgt_v or rel")
+    # A negative dv is not a speed the printer can produce, but a parse that swallowed
+    # "dv=-1" as "dv=" plus junk would hide a printf bug.
+    if parse_relvel(good_rv.replace("dv=1762.8765", "dv=-1"))[0]["dv"] != -1.0:
+        fails.append("parse_relvel did not read a signed dv=")
 
     # #447: a row belongs to the ship that was ACTIVE when it printed, and the
     # marker that says so carries no timestamp -- line order is the only evidence,

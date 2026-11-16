@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 374 |
+| `invariant` | a behaviour or a player route the game must keep | 378 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 48 |
 | `harness` | CLI/test-engine plumbing, not game spec | 16 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **442** |
+| | **total** | **446** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -18,7 +18,7 @@ paces a run: how much e2e a change deserves is the caller's
 judgement. Select by number, name or path, e.g.
 `python3 e2e/run.py save/172 262`.
 
-## flight (124)
+## flight (126)
 
 | case | kind | pins |
 |---|---|---|
@@ -146,6 +146,8 @@ judgement. Select by number, name or path, e.g.
 | `flight/863-dock-bubble-rest.txt` | invariant | A ship spawned beside the space dock rides its SoI bubble: at rest relative to the dock, like a ship on a pad. |
 | `flight/864-platform-parked-rails-warp.txt` | invariant | A ship parked on the platform rides rails warp frozen in the platform's frame while the platform drifts. |
 | `flight/865-platform-park-save-load.txt` | invariant | A ship parked on the platform saves its bubble-frame pose and loads back onto the deck. |
+| `flight/873-c-stations-are-target-rows-pads-are-not.txt` | invariant | The transfer target list carries this body's orbital stations and none of its pads. |
+| `flight/873-transfer-to-an-orbital-station.txt` | invariant | The Target window plans a transfer to an orbital station: intercept only, and its authored orbit becomes the map's Target plane. |
 
 ## crew (27)
 
@@ -325,7 +327,7 @@ judgement. Select by number, name or path, e.g.
 | `save/612-ask-survives-a-round-trip.txt` | invariant | A saved Guidance ask loads back into the game and is written out again. |
 | `save/867-cross-system-bubble-load.txt` | invariant | A save with a ship in a building's bubble loads from the title across systems. |
 
-## ui (58)
+## ui (59)
 
 | case | kind | pins |
 |---|---|---|
@@ -387,8 +389,9 @@ judgement. Select by number, name or path, e.g.
 | `ui/741-the-debug-clock-solar-row-is-wired-to-the-sun-the-sim-uses.txt` | invariant | The debug window's solar clock row is readable, its value is the sim clock's own, and the rate at which it walks is the day length the atlas prints for the home world -- so the one UI readout that reads the sun cannot be rewired to a different sun, a different day, or nothing at all without a test noticing. |
 | `ui/748-hold-the-job-runner-and-read-a-window-mid-bake.txt` | invariant | --hold-jobs keeps a posted surface-map bake unpublished, so a --ui-list inside the span reads the window mid-sweep: the cursor line dashes its ground number as (rebaking) instead of quoting a number for the body it just switched to, and the number lands after the release. |
 | `ui/768-systems-window-shuts-the-nozzles.txt` | golden | The Systems window's Thrust vectoring checkbox drops the live gimballed rating in --steering-log from 129710 N m to 0 while the window keeps printing 129710 N m beside the now-off switch, and says nothing about the engines being gone. |
+| `ui/873-d-pick-the-station-in-the-target-window.txt` | invariant | A station row in the Target combo selects it and the planner solves for it. |
 
-## render (85)
+## render (86)
 
 | case | kind | pins |
 |---|---|---|
@@ -477,6 +480,7 @@ judgement. Select by number, name or path, e.g.
 | `render/872-c-tracking-map-marks-stations-too.txt` | invariant | The Tracking Station's map marks each orbital station around its focus body, conic included. |
 | `render/872-d-map-marks-stay-marked-under-warp.txt` | invariant | At high time-accel the map dump still reports the marks a window drew this frame. |
 | `render/872-orbital-station-on-the-map.txt` | invariant | The orbital/Tracking maps mark each orbital station around the focused body, conic included. |
+| `render/873-b-relative-velocity-markers-follow-a-station.txt` | invariant | The HUD's target relative-velocity markers are placed for an orbital station, from the velocity its pose law drives. |
 
 ## harness (17)
 

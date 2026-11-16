@@ -1,0 +1,23 @@
+# The combo is the player's route to a station target, not just the CLI's (#873):
+# Windows menu -> Target window -> the Target combo -> a station row. Clicking
+# through imgui's own hit-testing is what makes this a real pin -- a row that is
+# renamed, hidden or never added reports FAILED instead of clicking empty space.
+#
+# It also pins the combo's PushID (#873): the id is per-row, but the label the
+# registry reports stays the row's own name, so a case does not have to know the
+# row's index. Case 241 pins the same thing for a ship row.
+NAME pick-the-station-in-the-target-window
+CLAIM A station row in the Target combo selects it and the planner solves for it.
+KIND invariant
+ARGS --time-accel 1 --timeout 6 --xfer-log --orbit-interval 1
+ARGS --startship racer,res/ships/racer.json,Kerbin,pad
+ARGS --ui-click 2000,"Windows/Target" --ui-click 2600,"Target/Target"
+ARGS --ui-click 3200,"##Combo_00/Kerbin station"
+EXPECT path="##Combo_00/Kerbin station" window="##Combo_00" label="Kerbin station"
+FORBID FAILED
+FORBID error:
+# Nothing plans before the click (there is no target), and every solve after it
+# names the station.
+CHECK len(xfer) >= 2
+CHECK all(x["target"] == "Kerbin station" for x in xfer)
+CHECK all(x["t"] > 3.0 for x in xfer)

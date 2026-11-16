@@ -1,0 +1,37 @@
+# An orbital station is somewhere a player can fly to, so the TARGET window has to
+# plan a transfer to it (#873). The list was bodies + sibling vessels only: the
+# stations #872 put on the maps were invisible to the planner, and a burn could
+# never be aimed at one.
+#
+# A station is a state pair about the SAME body the ship orbits, so the solver
+# needs no new math -- but it does need to be told the plan is an intercept (no
+# capture shell, no sea-level radius) and where the state comes from: the
+# building's own clocked Frame (#850), not a Bullet hull.
+#
+# The map's Target plane is the observable that proves the STATE is right and not
+# merely present: n is cross(r, v) of the station lifted into Kerbin's inertial
+# frame, so an epoch slip, a wrong mu or a lift out of the ROTATING frame all move
+# it off the 51.6 deg plane the file authors.
+NAME transfer-to-an-orbital-station
+CLAIM The Target window plans a transfer to an orbital station: intercept only, and its authored orbit becomes the map's Target plane.
+KIND invariant
+ARGS --time-accel 1 --timeout 6 --startship racer,res/ships/racer.json,Kerbin,pad
+ARGS --transfer-target "Kerbin station" --xfer-log --orbit-log --map-plane 3 --map-dump 3000 --orbit-interval 1.0
+FORBID no-solution
+FORBID error:
+# A plan exists, for the station, on the --orbit-interval cadence.
+CHECK len(xfer) >= 3
+CHECK all(x["target"] == "Kerbin station" for x in xfer)
+CHECK all(x["dv_dep"] > 0.0 and x["total"] > 0.0 and x["tof"] > 0.0 for x in xfer)
+# Intercept, not capture: a station has no SOI shell and no sea level, so there is
+# no r_cap to print and no second burn -- the same shape a ship target has.
+CHECK all(x["r_cap"] is None and x["r_cap_asl"] is None for x in xfer)
+CHECK all(x["dv_cap"] == 0.0 for x in xfer)
+# The map's fourth plane slot is the station's orbit plane: authored 51.6 deg at
+# raan 0 about Kerbin, so n = (0, cos 51.6, sin 51.6) = (0, 0.621148, 0.783693).
+CHECK len(mapb) == 4
+CHECK mapb[3]["slot"] == "tgt"
+CHECK all(abs(m["n"][0]) < 1e-6 and abs(m["n"][1] - 0.621148) < 1e-5 and abs(m["n"][2] - 0.783693) < 1e-5 for m in mapb if m["slot"] == "tgt")
+# And the flight readout measures against that plane too, so its numbers describe
+# the picture the player is looking at.
+CHECK all(o["plane"] == "tgt" for o in orbit if o["t"] > 1.0)

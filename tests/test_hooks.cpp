@@ -50,6 +50,7 @@ static int failures = 0;
 // Distinct addresses, never dereferenced: the row helpers only compare them.
 static Vehicle *fakeV(int n) { return reinterpret_cast<Vehicle *>(0x1000 + n); }
 static TerrainBody *fakeB(int n) { return reinterpret_cast<TerrainBody *>(0x2000 + n); }
+static StaticBuilding *fakeS(int n) { return reinterpret_cast<StaticBuilding *>(0x3000 + n); }
 static const char *names[] = { "a", "b", "c" };
 
 static void test_prune_drops_stale() {
@@ -135,25 +136,39 @@ static void test_target_identity() {
         { names[0], fakeB(1), nullptr },   // the body "a"
         { names[0], nullptr, fakeV(1) },   // a vessel also called "a"
     };
-    const TargetRef bodyRef{names[0], false};
-    const TargetRef shipRef{names[0], true};
+    const TargetRef bodyRef{names[0], TargetKind::body};
+    const TargetRef shipRef{names[0], TargetKind::ship};
     CHECK(findTargetRow(rows, bodyRef) == &rows[0]);
     CHECK(findTargetRow(rows, shipRef) == &rows[1]);
     CHECK(!targetMatches(rows[0], shipRef));
     CHECK(!targetMatches(rows[1], bodyRef));
     // No target and target-gone are the same answer, so callers have one check.
     CHECK(findTargetRow(rows, TargetRef{}) == nullptr);
-    CHECK(findTargetRow(rows, TargetRef{"zz", false}) == nullptr);
+    CHECK(findTargetRow(rows, TargetRef{"zz", TargetKind::body}) == nullptr);
+    /* #873 adds a THIRD kind under the same label: an orbital station also
+       called "a". Its pointer, not its name, is what makes it a station, and it
+       resolves neither the body's nor the vessel's identity. */
+    rows.push_back({ names[0], nullptr, nullptr, fakeS(1) });
+    const TargetRef stationRef{names[0], TargetKind::station};
+    CHECK(rows[2].kind() == TargetKind::station);
+    CHECK(findTargetRow(rows, stationRef) == &rows[2]);
+    CHECK(!targetMatches(rows[2], bodyRef));
+    CHECK(!targetMatches(rows[2], shipRef));
+    CHECK(!targetMatches(rows[0], stationRef));
+    CHECK(!targetMatches(rows[1], stationRef));
     /* Retiring the vessel: its row goes, the body's stays. This is the LOOKUP
        half of what Game::dropVehicleRefs relies on -- a ship selection stops
        resolving while a same-named body selection stays put. The CLEARING half
        (the selection then goes empty rather than sliding onto the row that
        moved up) lives in the planner's out-of-line methods, which this binary
-       does not link; e2e 241 pins it. */
+       does not link; e2e 241 pins it.
+       Erasing is by POINTER, not by name, so the same-named station row (#873)
+       survives a vessel's death untouched -- and vice versa. */
     eraseShipTargetRows(rows, fakeV(1));
-    CHECK(rows.size() == 1);
+    CHECK(rows.size() == 2);
     CHECK(findTargetRow(rows, shipRef) == nullptr);
     CHECK(findTargetRow(rows, bodyRef) == &rows[0]);
+    CHECK(findTargetRow(rows, stationRef) == &rows[1]);
 }
 
 static void test_drop_question() {
@@ -204,12 +219,12 @@ static void test_solve_is_stale() {
        the OLD hull's departure velocity. Nothing asserts, nothing crashes, and
        the 30-frame refresh makes it self-heal, which is exactly why it hid. */
     TransferPlanner::Solve s;
-    s.target = TargetRef{"Mun", false};
+    s.target = TargetRef{"Mun", TargetKind::body};
     s.subject = fakeV(1);
     s.auto_tof = true;
     s.tof_log = 3.0;
     s.solved_frame = 100;
-    const TargetRef sel{"Mun", false};
+    const TargetRef sel{"Mun", TargetKind::body};
     // Nothing the player can see changed, and the refresh tick is not due.
     CHECK(!solve_is_stale(s, sel, fakeV(1), true, 3.0, 129));
     // The tick still re-solves a plan nothing touched: both orbits move under it.
@@ -223,8 +238,8 @@ static void test_solve_is_stale() {
     CHECK(solve_is_stale(bare, sel, fakeV(1), true, 3.0, 101));
     // The target identity, including its kind: "Mun" the moon is not "Mun" the
     // vessel, and a gone/empty selection answers for nothing.
-    CHECK(solve_is_stale(s, TargetRef{"Minmus", false}, fakeV(1), true, 3.0, 101));
-    CHECK(solve_is_stale(s, TargetRef{"Mun", true}, fakeV(1), true, 3.0, 101));
+    CHECK(solve_is_stale(s, TargetRef{"Minmus", TargetKind::body}, fakeV(1), true, 3.0, 101));
+    CHECK(solve_is_stale(s, TargetRef{"Mun", TargetKind::ship}, fakeV(1), true, 3.0, 101));
     CHECK(solve_is_stale(s, TargetRef{}, fakeV(1), true, 3.0, 101));
     // The ToF knobs: auto <-> pinned, and a pinned ToF the slider moved.
     CHECK(solve_is_stale(s, sel, fakeV(1), false, 3.0, 101));

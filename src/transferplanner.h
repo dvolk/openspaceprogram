@@ -13,6 +13,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cassert>
 #include <cmath>
 #include <string>
 #include <type_traits>
@@ -29,6 +30,12 @@ struct Game;
 struct TerrainBody;
 struct Frame;
 class Vehicle;
+class StaticBuilding;
+
+/* What kind of thing a row names, and therefore what a plan against it means.
+   Part of the IDENTITY (TargetRef) because the same label can name two of them:
+   a vessel may be named after a body, and a station after either. */
+enum class TargetKind { body, ship, station };
 
 /* A target the player holds on to, by identity rather than by row: xferTargets
    is rebuilt from scratch every frame, so a row number is only this frame's
@@ -37,9 +44,9 @@ class Vehicle;
    because a vessel may be named after a body, and the list shows both. */
 struct TargetRef {
     std::string name;
-    bool isShip = false;
+    TargetKind kind = TargetKind::body;
     bool empty() const { return name.empty(); }
-    bool operator==(const TargetRef &o) const { return name == o.name && isShip == o.isShip; }
+    bool operator==(const TargetRef &o) const { return name == o.name && kind == o.kind; }
     bool operator!=(const TargetRef &o) const { return !(*this == o); }
 };
 
@@ -47,8 +54,21 @@ class TransferPlanner {
 public:
     struct XferTarget {
         const char *name;
-        TerrainBody *body;   // body target (capture available)
-        Vehicle *ship;       // ship target (intercept only)
+        TerrainBody *body = nullptr;      // body target (capture available)
+        Vehicle *ship = nullptr;          // ship target (intercept only)
+        /* An ORBITAL building (#873): a state pair about the same body, so it
+           plans like a ship. A surface pad is never a row, and neither is an air
+           platform -- its pose law is the wind, in the rotating frame, so it has
+           no conic about the body for a transfer to aim at. */
+        StaticBuilding *station = nullptr;
+        /* Exactly one pointer is set, and that IS the kind -- derived rather
+           than stored, so a tag cannot disagree with the row it describes. */
+        TargetKind kind() const {
+            if(body != nullptr) { return TargetKind::body; }
+            if(ship != nullptr) { return TargetKind::ship; }
+            assert(station != nullptr);
+            return TargetKind::station;
+        }
     };
 
     // A POINTER, not a reference: resetForNewWorld() replaces *this wholesale.
@@ -102,17 +122,39 @@ public:
        Called from Game::clearEphemeralState, so all three routes get it. */
     void resetForNewWorld();
 
+    /* What a row is made of, in the focus body's INERTIAL frame -- the frame
+       the transfer conic lives in -- plus what a solve needs to know about the
+       KIND: a body carries its mu and the capture shell to dip into, while a
+       ship or a station is a bare state pair (intercept, no capture burn). Both
+       set their own tof_max from three target periods, which is what scales the
+       auto sweep and the porkchop range sliders (pc_period).
+       The ONE place a target's state is lifted: the solver, the map's Target
+       plane slot and the HUD relative-velocity markers all read this, so a
+       target cannot have two different states inside one frame. */
+    struct TargetState {
+        glm::dvec3 r = glm::dvec3(0.0), v = glm::dvec3(0.0);
+        double mu = 0.0;
+        double r_cap = 0.0;
+        double tof_max = 3.0 * 86400.0;
+        bool capture = false;
+    };
+    /* `inertial` is the focus body's non-rotating node -- the same node the
+       ship's own state is lifted into. */
+    TargetState targetState(const XferTarget &t, Frame *inertial) const;
+
     /* Select by IDENTITY ("" clears), resolving against the current list so the
-       caller sees this frame's index. `isShip` is part of the identity: the list
+       caller sees this frame's index. `kind` is part of the identity: the list
        can hold a body and a vessel under one name, and the combo shows a row for
        each. This must NOT rebuild xferTargets: the Target window calls it from
        inside its own loop over the rows, so a rebuild would reallocate the
        vector mid-iteration. Rebuilding belongs to update(), and retirement
        erases rows through Game::dropVehicleRefs. */
-    void selectTarget(const std::string &name, bool isShip);
+    void selectTarget(const std::string &name, TargetKind kind);
 
-    /* Select by name alone, taking the LAST match -- a vessel wins over a body
-       of the same name. This is the CLI's shape, where there is no row to click. */
+    /* Select by name alone, taking the LAST match -- the list is bodies, then
+       vessels, then stations, so a vessel wins over a body of the same name and
+       a station over both. This is the CLI's shape, where there is no row to
+       click. */
     void selectTargetByName(const std::string &name);
 
     std::vector<XferTarget> xferTargets;
@@ -249,16 +291,17 @@ private:
 static_assert(std::is_move_assignable_v<TransferPlanner>,
               "TransferPlanner must stay assignable: resetForNewWorld() replaces it");
 
-/* Does a row name this identity? A body and a vessel can share a name and the
-   combo lists a row for each, so the kind is part of the answer. The compare is
-   TEXTUAL (TargetRef::name is a copy), so a match means the same label and kind,
-   not the same object: dedupVehicleName keeps labels unique among LIVE vehicles,
-   so a retired name can be reused later. That is safe only because every death
-   clears a selection that no longer resolves -- an identity is never carried
-   across its object's lifetime. */
+/* Does a row name this identity? A body, a vessel and a station can share a
+   name and the combo lists a row for each, so the kind is part of the answer.
+   The compare is TEXTUAL (TargetRef::name is a copy), so a match means the same
+   label and kind, not the same object: dedupVehicleName keeps labels unique
+   among LIVE vehicles, so a retired name can be reused later. That is safe only
+   because every death clears a selection that no longer resolves -- an identity
+   is never carried across its object's lifetime. A station's label is NOT
+   deduped (issue #883), so two stations on one body under one name are the same
+   identity; the row that wins is the first in the list. */
 inline bool targetMatches(const TransferPlanner::XferTarget &t, const TargetRef &ref) {
-    return !ref.empty() && t.name == ref.name
-        && (t.ship != nullptr) == ref.isShip;
+    return !ref.empty() && t.name == ref.name && t.kind() == ref.kind;
 }
 
 /* The row an identity names in `rows`, or null. An empty identity names nothing,

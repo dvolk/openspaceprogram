@@ -572,9 +572,17 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                  "and the TARGET window's \"Compute transfer\" on, which it "
                  "starts as)");
 
+    app.add_flag("--relvel-log", args.relvel_log,
+                 "Periodically print what the HUD's two target "
+                 "relative-velocity markers were placed from (target, its "
+                 "kind, the relative speed and the target's inertial speed). "
+                 "The markers are billboards, so this is the only way to see "
+                 "that a target reached them at all");
+
     app.add_option("--transfer-target", args.transfer_target,
                    "Transfer planner target: a child body of the ship's "
-                   "current body, or another ship in the same body");
+                   "current body, another ship in the same body, or an "
+                   "orbital station around it");
 
     app.add_flag("--porkchop-log", args.porkchop_log,
                  "Print the porkchop plot's best cell (min dv, its departure "
