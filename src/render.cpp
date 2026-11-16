@@ -191,8 +191,13 @@ void updateShipView(Game &g) {
        points at (render.cpp:809-816) and what --plane-log prints as prg=. It has
        been the number behind the ORBITAL window's Prg/Rtg rows too, until those
        rows went away on 2026_11_06. A grounded ship has one (the ground's own
-       motion), where normalize(vel) would divide by a near-zero length. */
-    vel_dir = glm::normalize(marker_vel);
+       motion), where normalize(vel) would divide by a near-zero length. A hull at
+       rest on a world that does not turn has neither that gift nor a plane to
+       measure, which is what the two flags are for (#870): glm's normalize is
+       v * inversesqrt(dot(v,v)), so a zero vector answers NaN, and that NaN used to
+       reach --plane-log as prg=-nan and the marker matrices in paintWorld. */
+    view.prograde_ok = conicPrograde(marker_vel, vel_dir);
+    view.normal_ok = conicNormal(pos, marker_vel, view.marker_h_hat);
 
     /* Air-relative prograde (#498). Vehicle::airRelativeVel is the vector the drag
        law itself answers to and it comes back in THIS frame, so the marker and the
@@ -560,23 +565,37 @@ static void drawOrbitPlane(Game &g, const glm::dmat4 &VP) {
         const Uint32 now_ms = g.logClockMs();
         if(g.logDue(kGatePlane, now_ms, g.orbit_log_interval_ms)) {
             const double inc = acosUnit(glm::dot(n_orb, n_ref));
-            /* The flight markers as paintWorld places them, so a marker that
-               drifts off the plane it belongs on is visible here rather than
-               only on screen: prg must be IN the plane and nrm must BE the
-               plane normal. Both in the render frame, like n_orb. */
-            const glm::dvec3 prg = glm::normalize(g.hud.view.marker_vel);
-            const glm::dvec3 nrm = glm::normalize(
-                glm::cross(g.hud.view.pos, g.hud.view.marker_vel));
+            /* The flight markers as this frame built them, so a marker that drifts
+               off the plane it belongs on is visible here rather than only on
+               screen: prg must be IN the plane and nrm must BE the plane normal.
+               Both in the render frame, like n_orb -- and both read from the vectors
+               the billboards were placed from, not recomputed, so a dash here is the
+               same absence the player sees on screen (#870). A hull resting on a
+               world that does not turn has neither: no conic speed to point along and
+               no plane to take a normal from. */
+            char prg_s[64], nrm_s[64];
+            const int prg_n = g.hud.view.prograde_ok
+                ? snprintf(prg_s, sizeof prg_s, "(%.6f,%.6f,%.6f)",
+                           g.hud.view.vel_dir.x, g.hud.view.vel_dir.y,
+                           g.hud.view.vel_dir.z)
+                : snprintf(prg_s, sizeof prg_s, "-");
+            const int nrm_n = g.hud.view.normal_ok
+                ? snprintf(nrm_s, sizeof nrm_s, "(%.6f,%.6f,%.6f)",
+                           g.hud.view.marker_h_hat.x, g.hud.view.marker_h_hat.y,
+                           g.hud.view.marker_h_hat.z)
+                : snprintf(nrm_s, sizeof nrm_s, "-");
+            assert(prg_n > 0 && prg_n < (int)sizeof prg_s);
+            assert(nrm_n > 0 && nrm_n < (int)sizeof nrm_s);
             printf("[planelog] t=%.1fs frame=%s plane=%s inc=%.4f deg "
                    "n_orb=(%.6f,%.6f,%.6f) n_ref=(%.6f,%.6f,%.6f) "
                    "node=(%.6f,%.6f,%.6f) ticks=%s "
-                   "prg=(%.6f,%.6f,%.6f) nrm=(%.6f,%.6f,%.6f)\n",
+                   "prg=%s nrm=%s\n",
                    g.time, ship->frame->building ? "bubble"
                          : (ship->frame->isRotFrame() ? "rot" : "inertial"),
                    refPlaneName(g.hud.view.ref_plane.mode), inc * 180.0 / std::numbers::pi,
                    n_orb.x, n_orb.y, n_orb.z, n_ref.x, n_ref.y, n_ref.z,
                    node.x, node.y, node.z, coplanar ? "-" : "drawn",
-                   prg.x, prg.y, prg.z, nrm.x, nrm.y, nrm.z);
+                   prg_s, nrm_s);
             fflush(stdout);
         }
     }
@@ -843,19 +862,33 @@ void paintWorld(Game &g) {
        inside the rotating surface frame misses the ground's own motion: the
        markers then sit off the plane the orbital-plane overlay draws, and a
        slowly flying ship points nowhere near its orbit's prograde. Radial is
-       the same line in both frames, so pos serves it. */
-    g.prograde_indicator->pos = view.marker_vel;
-    g.prograde_indicator->Draw(camera, std::numbers::pi);
-    g.retrograde_indicator->pos = - view.marker_vel;
-    g.retrograde_indicator->Draw(camera, std::numbers::pi);
+       the same line in both frames, so pos serves it.
+       Both pairs are gated on the flags updateShipView sets from
+       orbit.h:conicPrograde / conicNormal (#870). A hull resting on a world that
+       does not turn has a conic speed of solver jitter, so the green diamond would
+       point at a random heading and the normal pair at whatever the jitter crossed
+       with; glm's normalize of an exactly zero vector is NaN, which Billboard::Draw
+       would multiply straight into its model matrix. Absent markers beat random ones
+       -- the air pair below does the same with air_dir_valid. */
+    if(view.prograde_ok) {
+        g.prograde_indicator->pos = view.marker_vel;
+        g.prograde_indicator->Draw(camera, std::numbers::pi);
+        g.retrograde_indicator->pos = - view.marker_vel;
+        g.retrograde_indicator->Draw(camera, std::numbers::pi);
+    }
     g.radial_in_indicator->pos = - pos;
     g.radial_in_indicator->Draw(camera, std::numbers::pi);
     g.radial_out_indicator->pos = pos;
     g.radial_out_indicator->Draw(camera, std::numbers::pi);
-    g.normal_plus_indicator->pos = glm::cross(pos, view.marker_vel);
-    g.normal_plus_indicator->Draw(camera, std::numbers::pi);
-    g.normal_minus_indicator->pos = -glm::cross(pos, view.marker_vel);
-    g.normal_minus_indicator->Draw(camera, std::numbers::pi);
+    if(view.normal_ok) {
+        // marker_h_hat is the unit form of the cross product these markers used to
+        // compute for themselves, so the direction is the same and the flag above
+        // describes this very vector.
+        g.normal_plus_indicator->pos = view.marker_h_hat;
+        g.normal_plus_indicator->Draw(camera, std::numbers::pi);
+        g.normal_minus_indicator->pos = -view.marker_h_hat;
+        g.normal_minus_indicator->Draw(camera, std::numbers::pi);
+    }
     /* Air-relative prograde/retrograde (#498): the direction the AIR sees the ship
        moving, so the one the aero law -- and a pilot flying in it -- actually
        answers to. Only while there is air and a flow with a direction, so on the

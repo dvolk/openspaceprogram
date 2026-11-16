@@ -1,6 +1,7 @@
 // test_orbit: two-body orbital elements + time-to-apsis (src/orbit.h), plus the
 // planeTangentBasis the orbital-plane overlay draws with and the orbitNodePoints
-// crossings the orbit map marks as AN/DN.
+// crossings the orbit map marks as AN/DN, plus the conicPrograde / conicNormal
+// guards that say WHEN the state has no direction to report at all (#870).
 // Runs from the repo root:
 //   make test   (or: g++ -O2 -std=c++20 -I./src -I./middleware/glm/ tests/test_orbit.cpp -o test_orbit && ./test_orbit)
 //
@@ -1148,6 +1149,65 @@ int main() {
         CHECK_NEAR(o.periapsis_r, 0.0, 1e-9);
         CHECK(o.apoapsis_r == -1.0);
         CHECK_NEAR(periapsisAsl(o, r), -r, 1e-9);
+    }
+
+    /* #870: a direction the state cannot support has to come back MISSING, not as a
+       number. glm's normalize is v * inversesqrt(dot(v,v)), so a zero vector answers
+       NaN and [orbinfo] printed prg=-nan for a hull parked on a world that does not
+       rotate: its conic speed is a few micrometres a second of solver jitter, which
+       has no heading. The floor is what turns that into "-" rather than into the
+       phase of the jitter, which wanders degrees between log rows. */
+    {
+        CHECK(!conicSpeedOk(0.0));
+        CHECK(!conicSpeedOk(-1.0));        // a speed is never negative: not a heading
+        CHECK(!conicSpeedOk(NAN));
+        CHECK(!conicSpeedOk(INFINITY));
+        // The jitter measured on Moho with rot_ang_speed 0, and the floor two orders
+        // above it. Both sides of the boundary are pinned so the floor cannot silently
+        // drift into real flight: Kerbin turns its own ground ~175 m/s, and that is how
+        // a hull parked on a ROTATING world keeps a prograde.
+        CHECK(!conicSpeedOk(1.0e-5));
+        CHECK(conicSpeedOk(kConicSpeedFloor));
+        CHECK(!conicSpeedOk(kConicSpeedFloor * 0.999));
+        CHECK(conicSpeedOk(175.0));
+    }
+    {
+        glm::dvec3 d(1.0, 1.0, 1.0);   // deliberately dirty: the guard zeroes it
+        CHECK(!conicPrograde(glm::dvec3(0.0), d));
+        CHECK(d == glm::dvec3(0.0));
+        CHECK(!conicPrograde(glm::dvec3(1.0e-5, 2.0e-5, -0.5e-5), d));
+        CHECK(d == glm::dvec3(0.0));
+        CHECK(!conicPrograde(glm::dvec3(NAN, 0.0, 0.0), d));
+        CHECK(d == glm::dvec3(0.0));
+        CHECK(conicPrograde(glm::dvec3(1.0e-2, 0.0, 0.0), d));
+        CHECK_NEAR(glm::length(d), 1.0, 1e-12);
+        CHECK_NEAR(d.x, 1.0, 1e-12);
+        CHECK(conicPrograde(glm::dvec3(-300.0, 400.0, 0.0), d));
+        CHECK_NEAR(d.x, -0.6, 1e-12);
+        CHECK_NEAR(d.y, 0.8, 1e-12);
+        CHECK_NEAR(glm::length(d), 1.0, 1e-12);
+    }
+    {
+        const glm::dvec3 pos(600e3, 0.0, 0.0);
+        glm::dvec3 n(1.0, 1.0, 1.0);
+        // A real plane: +X over, velocity along +Y, so the normal is +Z and unit.
+        CHECK(conicNormal(pos, glm::dvec3(0.0, 1700.0, 0.0), n));
+        CHECK_NEAR(n.z, 1.0, 1e-12);
+        CHECK_NEAR(glm::length(n), 1.0, 1e-12);
+        // Exactly radial: no plane exists (the dropped-straight-down conic).
+        CHECK(!conicNormal(pos, glm::dvec3(1.0e3, 0.0, 0.0), n));
+        CHECK(n == glm::dvec3(0.0));
+        /* The non-obvious rejection: |h| = |pos| |v| sin(theta), so a parked hull
+           crosses its jitter against a PLANET RADIUS and gets ~6 m2/s -- nowhere near
+           zero, and pointing at whatever the jitter happened to be. Testing h alone
+           would report that as a plane; the speed floor is what refuses. */
+        CHECK(glm::length(glm::cross(pos, glm::dvec3(1.0e-5, 0.0, 2.0e-5))) > 1.0);
+        CHECK(!conicNormal(pos, glm::dvec3(1.0e-5, 0.0, 2.0e-5), n));
+        CHECK(n == glm::dvec3(0.0));
+        CHECK(!conicNormal(pos, glm::dvec3(NAN, 0.0, 0.0), n));
+        CHECK(n == glm::dvec3(0.0));
+        CHECK(!conicNormal(glm::dvec3(NAN, 0.0, 0.0), glm::dvec3(0.0, 1700.0, 0.0), n));
+        CHECK(n == glm::dvec3(0.0));
     }
 
     if(failures == 0) {

@@ -31,3 +31,10 @@ FORBID rtg=nan
 FORBID FAILED
 FORBID error:
 CHECK len(plane) == 0
+# The turning-world half of #870's pair, and the control for case 870: Kerbin turns, so a
+# parked hull has the ground's own motion (175 m/s at the equator) to call prograde, and
+# the row must carry NUMBERS. The dash orbit.h:conicPrograde prints is for no direction at
+# all, not for slow, and this is what catches the floor being raised into real flight.
+CHECK len(orbinfo) >= 3
+CHECK all(o["prg"] is not None and o["rtg"] is not None for o in orbinfo)
+CHECK all(o["vel"] > 1.0 for o in orbinfo)

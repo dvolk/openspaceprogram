@@ -140,6 +140,21 @@ struct ShipView {
        motion, which tilts the markers off the plane the orbital-plane overlay
        draws. Radial needs no such lift -- pos is already this frame's. */
     glm::dvec3 marker_vel = glm::dvec3(0.0);
+    /* Does that velocity have a direction at all, and does pos x marker_vel
+       (#870: orbit.h:conicPrograde / conicNormal). A hull resting on a world that
+       does not rotate has a conic speed of solver jitter, and glm's normalize
+       turns a zero vector into NaN, which [orbinfo] used to print as -nan and the
+       billboards would have built NaN matrices from. The log dashes prg=/rtg= and
+       the markers are absent -- the same rule air_dir_valid applies to the
+       air-relative pair below. */
+    bool prograde_ok = false;
+    bool normal_ok = false;
+    /* The conic's orbit normal in this same (render) frame, unit when normal_ok
+       and zero when it is not. The +/- normal markers draw from THIS, so the flag
+       describes the very direction they point at instead of being a second opinion
+       on normalize(cross(pos, marker_vel)) -- and a degenerate conic hands the
+       billboard a zero vector instead of one whose length is jitter. */
+    glm::dvec3 marker_h_hat = glm::dvec3(0.0);
     /* The ship's velocity relative to the AIR, in this same (render) frame
        (#498). marker_vel is the CONIC's velocity, so inside an atmosphere on a
        rotating body it is mostly the GROUND's own motion: Kerbin carries the

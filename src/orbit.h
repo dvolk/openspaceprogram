@@ -144,6 +144,60 @@ inline double apoapsisAsl(const OrbitElements &o, double sea_level_radius) {
     return o.apoapsis_r - sea_level_radius;
 }
 
+/* A direction the state cannot support has to be reported as MISSING, not as a
+   number. glm's normalize is v * inversesqrt(dot(v,v)) with no guard, so a zero
+   vector comes back NaN, and readers of it print a broken instrument ([orbinfo]
+   showed prg=-nan, --plane-log nrm=-nan) or build a billboard matrix full of NaN
+   (billboard.cpp:58 normalizes its pos; see #235 for the same trap on a map
+   stamp). */
+inline constexpr double kConicSpeedFloor = 1e-3;   // m/s
+
+/* Where "we do not know the direction" starts, rather than "we are slow" (#870).
+   A hull resting on a world that does not rotate has a conic speed of a few
+   micrometres a second of solver jitter -- measured ~1e-5 m/s on Moho with
+   rot_ang_speed 0 -- so the prograde it points at is the phase of that jitter and
+   wanders degrees between log rows. The floor sits two orders above that jitter
+   and far below anything a player flies: Kerbin's own ground turns ~175 m/s, and a
+   landed hull on a ROTATING world keeps a real prograde from that motion. */
+inline bool conicSpeedOk(double speed) {
+    return std::isfinite(speed) && speed >= kConicSpeedFloor;
+}
+
+/* The conic's prograde unit vector, or false -- and a zeroed dir -- when the state
+   has none. */
+inline bool conicPrograde(const glm::dvec3 &marker_vel, glm::dvec3 &dir) {
+    const double v = glm::length(marker_vel);
+    if(!conicSpeedOk(v)) {
+        dir = glm::dvec3(0.0);
+        return false;
+    }
+    dir = marker_vel / v;
+    return true;
+}
+
+/* The orbit plane's normal axis (the HUD's +/- normal markers, [planelog]'s nrm=).
+   The speed floor applies here too, and it is not obvious why: |h| = |pos| |v|
+   sin(theta), so a parked hull still crosses its jitter against a PLANET RADIUS and
+   gets tens of m2/s -- nonzero and meaningless, pointing at wherever the jitter
+   happened to fall. A plane has a direction only when the velocity that helps
+   define one does. On top of that, h is exactly zero on a purely radial path, which
+   has no plane at all; there the state is fine, only the geometry is degenerate. */
+inline bool conicNormal(const glm::dvec3 &pos, const glm::dvec3 &marker_vel,
+                        glm::dvec3 &dir) {
+    if(!conicSpeedOk(glm::length(marker_vel))) {
+        dir = glm::dvec3(0.0);
+        return false;
+    }
+    const glm::dvec3 h = glm::cross(pos, marker_vel);
+    const double hv = glm::length(h);
+    if(!std::isfinite(hv) || hv <= 0.0) {
+        dir = glm::dvec3(0.0);
+        return false;
+    }
+    dir = h / hv;
+    return true;
+}
+
 /* A normal is not enough: an in-plane angle needs a zero direction too.
    y_hat = n_hat x x_hat0 points along INCREASING longitude -- for the
    body-rail frame (n_hat = +Y, x_hat0 = +X) that is -Z, which is why railAz

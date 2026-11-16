@@ -193,8 +193,11 @@ PLANE_RE = re.compile(
     r"n_orb=\(([-\d.]+),([-\d.]+),([-\d.]+)\)\s+"
     r"n_ref=\(([-\d.]+),([-\d.]+),([-\d.]+)\)\s+"
     r"node=\(([-\d.]+),([-\d.]+),([-\d.]+)\)\s+ticks=(\S+)\s+"
-    r"prg=\(([-\d.]+),([-\d.]+),([-\d.]+)\)\s+"
-    r"nrm=\(([-\d.]+),([-\d.]+),([-\d.]+)\)"
+    # prg=/nrm= print "-" when the state has no such direction (#870). A row that
+    # carries nan instead matches NEITHER branch, so it stays a dropped row that
+    # #408's note names.
+    r"(?:prg=\(([-\d.]+),([-\d.]+),([-\d.]+)\)|prg=-)\s+"
+    r"(?:nrm=\(([-\d.]+),([-\d.]+),([-\d.]+)\)|nrm=-)"
 )
 XFER_RE = re.compile(
     r"\[xferlog\]\s+t=([\d.]+)s\s+target=\"([^\"]*)\"\s+"
@@ -599,9 +602,10 @@ SURF_RE = re.compile(
 # needed it: prg/rtg are now the ONLY place the CONIC's prograde angle prints -- the
 # window dropped its own Prg/Rtg rows on 2026_11_06, leaving the HUD marker and these
 # keys. #498 is precisely that the conic points where the ORBIT is going rather than
-# where a plane in an atmosphere is flying. apo_* print "-" for an open conic and
-# lan/lpe for a missing node line, so those get the two-arm treatment; the peri_*
-# trio and period print whatever the conic says, so they go through num() -- an inf or
+# where a plane in an atmosphere is flying. apo_* print "-" for an open conic,
+# lan/lpe for a missing node line and prg/rtg for a conic with no prograde to
+# measure to (#870), so those get the two-arm treatment; the peri_* trio and
+# period print whatever the conic says, so they go through num() -- an inf or
 # nan from an open conic becomes None instead of raising inside a CHECK.
 ORBINFO_RE = re.compile(
     r"\[orbinfo\]\s+t=([\d.]+)s\s+body=\"([^\"]*)\"\s+vel=([-\d.e+]+) m/s\s+"
@@ -614,7 +618,8 @@ ORBINFO_RE = re.compile(
     r"sma=([-\d.e+]+) m\s+plane=(\S+)\s+"
     r"(?:lan=([-\d.e+]+) deg|lan=-)\s+"
     r"(?:lpe=([-\d.e+]+) deg|lpe=-)\s+"
-    r"prg=([-\d.e+]+) deg\s+rtg=([-\d.e+]+) deg\s+"
+    r"(?:prg=([-\d.e+]+) deg|prg=-)\s+"
+    r"(?:rtg=([-\d.e+]+) deg|rtg=-)\s+"
     r"energy=([-\d.e+]+) J/kg"
 )
 # What a --timeout run says about its own sim clock (#402): "the sim advanced X s
@@ -1130,10 +1135,13 @@ def parse_plane(out):
             "node": (float(nx), float(ny), float(nz)),
             # "-" when the planes are coplanar: no node to point at.
             "ticks": ticks,
-            # The prograde marker and the normal axis (the + side, like n_orb),
-            # unit, as paintWorld places them.
-            "prg": (float(px), float(py), float(pz)),
-            "nrm": (float(sx), float(sy), float(sz)),
+            # The prograde marker and the normal axis (the + side, like n_orb), unit,
+            # as the billboards were placed. None when the state has no such direction
+            # to place them from (#870): a hull resting on a world that does not turn
+            # has a conic speed of solver jitter, and the markers are absent rather
+            # than pointing at wherever that jitter happens to fall.
+            "prg": None if px is None else (float(px), float(py), float(pz)),
+            "nrm": None if sx is None else (float(sx), float(sy), float(sz)),
         })
     return rows
 
@@ -1644,11 +1652,11 @@ def parse_surf(out):
 
 
 def parse_orbinfo(out):
-    """One row per --info-log ORBITAL-window dump (#498). apo_* / lan / lpe print
-    "-" and become None; the peri_* pair and period print whatever the conic says,
-    and an open conic's inf/nan would make the strict number class fail to match
-    the whole line -- which drops the row silently -- so those take any token and
-    become None here instead."""
+    """One row per --info-log ORBITAL-window dump (#498). apo_* / lan / lpe / prg /
+    rtg print "-" and become None; the peri_* pair and period print whatever the
+    conic says, and an open conic's inf/nan would make the strict number class fail
+    to match the whole line -- which drops the row silently -- so those take any
+    token and become None here instead."""
     def num(s):
         try:
             return float(s)
@@ -1668,8 +1676,9 @@ def parse_orbinfo(out):
             "plane": plane, "lan": num(lan), "lpe": num(lpe),
             # nose to the CONIC's prograde / retrograde (marker_vel) -- the pair the
             # ORBITAL window used to print as rows of its own (2026_11_06). The Game
-            # Debug window's Prg (air) is the air-relative pair to these (#498).
-            "prg": float(prg), "rtg": float(rtg),
+            # Debug window's Prg (air) is the air-relative pair to these (#498). None
+            # when the conic has no prograde to measure to at all (#870).
+            "prg": num(prg), "rtg": num(rtg),
             "energy": float(energy),
         })
     return rows
@@ -2828,6 +2837,37 @@ def self_test():
     for word in ("inf", "-nan", "INF", "prg=+nan deg", "eta=inf s", "hdg=nan,"):
         if not NONFINITE_RE.search(word):
             fails.append("NONFINITE_RE missed %r" % word)
+
+    # #870: a hull resting on a world that does not turn has no conic prograde and no
+    # plane normal, so both files print "-" where a direction used to be. The parse has
+    # to answer None -- so a case can pin `p["prg"] is None` -- rather than drop the row
+    # or raise inside float(). Both printers are pinned, in both spellings.
+    good_plane_row = ('[planelog] t=3.5s frame=rot plane=equ inc=51.6000 deg '
+                      'n_orb=(0.000000,1.000000,0.000000) '
+                      'n_ref=(0.000000,1.000000,0.000000) '
+                      'node=(0.000000,0.000000,1.000000) ticks=drawn '
+                      'prg=(-0.500000,0.866025,0.000000) nrm=(0.000000,1.000000,0.000000)')
+    dashed_plane_row = good_plane_row.replace(
+        'prg=(-0.500000,0.866025,0.000000) nrm=(0.000000,1.000000,0.000000)', 'prg=- nrm=-')
+    if PLANE_RE.match(good_plane_row) is None:
+        fails.append("the #870 pin's clean [planelog] line stopped matching PLANE_RE")
+    prow = parse_plane(good_plane_row)
+    if len(prow) != 1 or prow[0]["prg"] != (-0.5, 0.866025, 0.0) \
+            or prow[0]["nrm"] != (0.0, 1.0, 0.0):
+        fails.append("parse_plane lost a numeric prg=/nrm= (%r)" % (prow,))
+    drow = parse_plane(dashed_plane_row)
+    if len(drow) != 1 or drow[0]["prg"] is not None or drow[0]["nrm"] is not None:
+        fails.append("parse_plane did not read a dashed prg=/nrm= as None (%r)" % (drow,))
+    # The dash arm must not become an excuse to swallow a blow-up: a row that PRINTS
+    # nan is still a broken instrument, and #408's note is what names it.
+    if PLANE_RE.match(good_plane_row.replace("prg=(-0.500000", "prg=(-nan")) is not None:
+        fails.append("PLANE_RE matched a [planelog] row carrying prg=-nan")
+    dash_orb = good_orb.replace("prg=8.48935 deg rtg=171.511 deg", "prg=- rtg=-")
+    orow = parse_orbinfo(dash_orb)
+    if len(orow) != 1 or orow[0]["prg"] is not None or orow[0]["rtg"] is not None:
+        fails.append("parse_orbinfo did not read a dashed prg=/rtg= as None (%r)" % (orow,))
+    if parse_orbinfo(good_orb)[0]["prg"] != 8.48935:
+        fails.append("parse_orbinfo lost a numeric prg= while adding the dash arm")
 
     # #872: the [mapbldg] row is the only observable face the map's station marks have,
     # and the two cases read it field by field. A field renamed or reordered in the

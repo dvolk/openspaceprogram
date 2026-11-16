@@ -1,0 +1,122 @@
+{
+  "note": "e2e fixture for #870: the shipped ksp_system Kerbol and Moho verbatim, with ONE number changed -- rotating.rot_ang_speed 0 on Moho (the shipped value is 5.1927151299004845e-06, a ~33.5 h day). No shipped body authors a zero: every world in res/systems turns, so a hull parked on the ground always has the ground's own motion to call prograde and the HUD has never had to say it has none. That is the case this file is: parked on Moho's pad the conic speed is a few micrometres a second of solver jitter, glm's normalize answers NaN for it, and [orbinfo] printed prg=-nan rtg=-nan. Moho keeps no sea_level, no atmosphere and its shipped radius/mass/orbit/tilt; the pad is the shipped moho_pad from res/data/ksp_launch_sites.json copied inline. Pinned by e2e/cases/render/870-parked-on-a-world-that-does-not-turn.txt.",
+  "home": "Moho",
+  "soi_law": "patched_conic",
+  "epoch_year": 1,
+  "skybox": "res/skybox/v1",
+  "world_buildings": [
+    {
+      "id": "moho_pad",
+      "type": "space_port",
+      "display_name": "Moho pad",
+      "body": "Moho",
+      "lat_deg": 0.286473,
+      "lon_deg": 270.286477,
+      "height_m": 5.0,
+      "heading_deg": 0.0,
+      "flags": [
+        "VAB_LAUNCH_PAD"
+      ]
+    }
+  ],
+  "bodies": [
+    {
+      "name": "Kerbol",
+      "type": "star",
+      "radius": 261600000,
+      "mass": 1.757e+28,
+      "seed": 0.1,
+      "has_sea": false,
+      "surface": {
+        "palette": [
+          [
+            0.0,
+            [
+              1.0,
+              0.8,
+              0.35
+            ]
+          ],
+          [
+            1.0,
+            [
+              1.0,
+              1.0,
+              0.75
+            ]
+          ]
+        ],
+        "temperature": 2838.1
+      },
+      "inertial": {
+        "soi": 1e+18,
+        "pos": [
+          0,
+          0,
+          0
+        ],
+        "orb_ang_speed": 0.0
+      },
+      "transfer_dv": 0.0,
+      "science_mult": 2.0
+    },
+    {
+      "name": "Moho",
+      "type": "planet",
+      "orbits": "Kerbol",
+      "radius": 250000,
+      "mass": 2.526e+21,
+      "seed": 1,
+      "has_sea": false,
+      "surface": {
+        "amplitude": 800,
+        "palette": [
+          [
+            0.0,
+            [
+              0.35,
+              0.22,
+              0.2
+            ]
+          ],
+          [
+            0.6,
+            [
+              0.5,
+              0.32,
+              0.3
+            ]
+          ],
+          [
+            1.0,
+            [
+              0.65,
+              0.45,
+              0.42
+            ]
+          ]
+        ],
+        "albedo": 0.068,
+        "albedo_src": "via Mercury",
+        "even_share": 0.013935832091621402,
+        "even_share_src": "via Mercury, defaulted"
+      },
+      "inertial": {
+        "orb_ang_speed": 2.8356872230308897e-06,
+        "arg_peri": 0.2617993877991494,
+        "true_anomaly0": 3.140508989974855,
+        "orb_incl": 0.12217304763960307,
+        "lon_asc_node": 1.2217304763960306,
+        "ecc": 0.2
+      },
+      "rotating": {
+        "rot_ang_speed": 0.0,
+        "spin_phase0": 0.34041004981157125,
+        "axial_tilt": 0.0005235987755982988,
+        "tilt_azimuth": 3.405444219766777
+      },
+      "transfer_dv": 5346.3,
+      "science_mult": 2.3
+    }
+  ]
+}

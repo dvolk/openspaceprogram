@@ -3057,14 +3057,29 @@ void drawUIReadouts(Game &g) {
                 ship->isGrounded());
             const char *bme = (ps.biome != Biome::None)
                 ? biomeName(ps.biome) : "-";
-            const double prograde_angle = glm::angle(facing_dir, vel_dir);
-            const double retrograde_angle = glm::angle(facing_dir, -vel_dir);
             // lan/lpe in the map's plane, labelled with it (#171).
             char lan_s[32], lpe_s[32];
             if(view.plane.node_ok && view.plane.lon_ok) { snprintf(lan_s, sizeof lan_s, "%.6g deg", glm::degrees(view.plane.lan)); }
             else { snprintf(lan_s, sizeof lan_s, "-"); }
             if(view.plane.lpe_ok) { snprintf(lpe_s, sizeof lpe_s, "%.6g deg", glm::degrees(view.plane.lpe)); }
             else { snprintf(lpe_s, sizeof lpe_s, "-"); }
+            /* prg/rtg: nose to the CONIC's prograde and retrograde -- the same two
+               HUD billboards, so they exist exactly where those markers do (#870).
+               A hull resting on a world that does not turn has a conic speed of
+               solver jitter, so there is no direction to measure to; glm::angle
+               against that answers NaN, which used to print as prg=-nan. Dashed like
+               lan/lpe above and the apo_* keys below. */
+            char prg_s[32], rtg_s[32];
+            const int prg_n = view.prograde_ok
+                ? snprintf(prg_s, sizeof prg_s, "%.6g deg",
+                           glm::degrees(glm::angle(facing_dir, vel_dir)))
+                : snprintf(prg_s, sizeof prg_s, "-");
+            const int rtg_n = view.prograde_ok
+                ? snprintf(rtg_s, sizeof rtg_s, "%.6g deg",
+                           glm::degrees(glm::angle(facing_dir, -vel_dir)))
+                : snprintf(rtg_s, sizeof rtg_s, "-");
+            assert(prg_n > 0 && prg_n < (int)sizeof prg_s);
+            assert(rtg_n > 0 && rtg_n < (int)sizeof rtg_s);
             /* The _r apsides are RADII from the focus, the _asl ones metres above
                its mean sea level (#404). An OPEN conic has no apoapsis, so the
                three apo_* keys print "-" instead of a -1 sentinel -- [orbitlog]
@@ -3084,15 +3099,14 @@ void drawUIReadouts(Game &g) {
             printf("[orbinfo] t=%.1fs body=\"%s\" vel=%.6g m/s r=%.6g m "
                    "%s peri_r=%.6g m peri_asl=%.6g m peri_t=%.6g s "
                    "period=%.6g s inc=%.6g deg ecc=%.6g sma=%.6g m "
-                   "plane=%s lan=%s lpe=%s prg=%.6g deg rtg=%.6g deg "
+                   "plane=%s lan=%s lpe=%s prg=%s rtg=%s "
                    "energy=%.6g J/kg\n",
                    time, b->name.c_str(), speed, distance,
                    apo_s,
                    o.periapsis_r, periapsisAsl(o, sea_r), o.time_to_peri,
                    o.period, glm::degrees(view.plane.inc), o.ecc, o.semi_major,
                    refPlaneName(view.ref_plane.mode), lan_s, lpe_s,
-                   glm::degrees(prograde_angle),
-                   glm::degrees(retrograde_angle),
+                   prg_s, rtg_s,
                    o.energy);
             /* aoa: the airframe's angle of attack (see the SURFACE window -- the
                attitude reading, not a per-surface one; #453 made each surface
