@@ -132,6 +132,11 @@ struct AscentCommand {
                                         // stage_asked_at_.
 };
 
+/* Which way the caller said no to a press the law asked for (#941), or None until
+   it has. The names are the two Game::StageOutcome values that are refusals;
+   guidance.cpp stays free of Game, so the caller maps one onto the other. */
+enum class PressRefusal { None, Crew, Root };
+
 class AscentLaw {
 public:
     AscentLaw(const AscentTarget &t) : target(t) {
@@ -153,6 +158,24 @@ public:
        mostly a finite-burn allowance rather than a tick-rate one -- pinned by
        tests/test_guidance.cpp, not assumed. Widening it is #611's question. */
     AscentCommand step(const GuidanceState &s);
+
+    /* The caller refused the press the law asked for (#941). The law's only staging
+       feedback was the stages_left counter, which a refusal leaves exactly where it
+       was, so its once-per-value latch made a refusal permanent: the mission burned
+       that stage dry and reported "the tanks are dry" with stages still folded under
+       it, even after the player put the kerbal on EVA. So the caller reports the
+       answer back here.
+         Crew -- fixable mid-flight (EVA the kerbal in the drop set), so the latch is
+                 released and the re-ask is throttled: an unfixed refusal is one line
+                 a second, not one a tick, and a fixed one gets its stage.
+         Root -- not fixable mid-flight (which seam is the ship's root is decided in
+                 the VAB), so it is remembered for the verdict and never re-asked.
+       NothingSeparated is NOT a refusal and does not call this: it steps the counter,
+       which remains the law's ordinary feedback. Either way, remembering is only
+       about telling the truth at the end -- a stage that runs dry while the press is
+       unanswered still ends the mission, because a law that waits on a player for an
+       unbounded time flies missions that can never be scored. */
+    void pressRefused(PressRefusal kind);
 
     AscentPhase phase() const { return phase_; }
     bool active() const { return phase_ != AscentPhase::Done && phase_ != AscentPhase::Failed; }
@@ -183,12 +206,23 @@ private:
     double apex_alt_ = -1.0;
 
     /* The stages_left value this law last asked for a press at (#928), -1 until it
-       asks. One ask per value IS the retry policy, and it needs no answer back from
-       Game: a crew refusal leaves the counter where it was, so the law never spams
-       the request every tick (stage() prints and toasts, which would bury the log);
-       a press that separated nothing still stepped the counter, so the law can ask
-       again later for the new number. */
+       asks. One ask per value is the retry policy for everything the caller does NOT
+       report: a press that separated nothing still stepped the counter, so the law
+       can ask again later for the new number. A refusal used to be invisible here,
+       which made it permanent -- see pressRefused(), which is #941's answer back. */
     int stage_asked_at_ = -1;
+
+    /* Logic ticks to wait before the next ask is allowed after a reported refusal
+       (#941). A tick count, not a clock: step() deliberately takes no dt. */
+    int stage_retry_in_ = 0;
+
+    /* The last refusal the caller reported (#941). Held so the dry verdict can say
+       why the stack is still in one piece: "the tanks are dry" is true but useless
+       when the reason nothing separated is a press someone said no to. Cleared when
+       stages_left moves, because a press HAS happened by then and an old refusal is
+       no longer the reason. */
+    PressRefusal press_refused_ = PressRefusal::None;
+    int last_stages_seen_ = -1;
 
     /* The horizontal launch direction that puts the conic at the asked
        inclination, worked out once from the pad's own geometry: sin(az) =

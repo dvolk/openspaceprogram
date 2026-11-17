@@ -17,6 +17,12 @@
    loop in tests/test_guidance.cpp settled on, not what looked plausible. */
 static const double kFlatHalf = 0.03;  // pitch-over half-angle altitude, as a fraction of the ask
 static const double kLeadFrac = 0.5;   // node burn starts this fraction of its length early
+/* #941: how long the law waits before asking for a press it was refused. Logic
+   ticks, not seconds -- step() takes no dt -- so this is about a second of real
+   time whatever the warp, which is what the caller's refusal print wants: often
+   enough that a player who puts the kerbal on EVA sees the mission carry on, not
+   often enough to bury the log. */
+static const int kPressRetryTicks = 60;
 
 /* The pitch schedule: a commanded PATH ANGLE against ALTITUDE. 90 deg (straight
    up) off the pad, halving every kFlatHalf * ask metres of climb -- so a 100 km
@@ -128,6 +134,24 @@ void AscentLaw::setLaunchHeading(const GuidanceState &s) {
     launch_h_ = glm::normalize(std::cos(az) * e1 + std::sin(az) * e2);
 }
 
+void AscentLaw::pressRefused(PressRefusal kind) {
+    /* #941: the press this law asked for did not happen. Nothing the law sees
+       records that -- stages_left, its only staging feedback, stays exactly where
+       it was -- so the caller has to say so. A refusal is not a verdict about the
+       stage, it is a door held shut: the phase machine and the throttle latch stay
+       as they were, and a stage that runs dry while the door is shut still ends the
+       mission the tick after its ask (guidance.h: waiting on a player for an
+       unbounded time is a different design, and a worse default). */
+    if(!active()) { return; }
+    press_refused_ = kind;
+    if(kind != PressRefusal::Crew) { return; }
+    /* Only the fixable refusal is asked again: EVA the kerbal and the next ask
+       separates. A root seam is how the craft was built in the VAB, so re-asking
+       would print one refusal per second until the mission ended. */
+    stage_asked_at_ = -1;
+    stage_retry_in_ = kPressRetryTicks;
+}
+
 AscentCommand AscentLaw::step(const GuidanceState &s) {
     AscentCommand c;
     assert(s.sea_r >= 0.0);   // a datum below the centre would make altitudes lie
@@ -188,14 +212,23 @@ AscentCommand AscentLaw::step(const GuidanceState &s) {
        own question on live tanks), or the stage has run dry while presses remain.
        The second is the one that used to end a mission: "the tanks are dry" was the
        verdict for a hull with three stages still folded under it.
-       Once per value of stages_left (stage_asked_at_), which IS the retry policy: a
-       refusal from Game leaves the counter alone, so this does not fire every tick
-       and bury the log in refusals; a press that separated nothing stepped it, so a
-       later press can still be asked. No answer comes back to the law -- the caller
-       learns what happened (Game::StageOutcome), the law learns it by the counter
-       moving or not moving on the next tick. */
+       One ask per value of stages_left (stage_asked_at_), so a press does not fire
+       every tick and bury the log; a press that separated nothing stepped the
+       counter, so a later press can still be asked. A REFUSAL is the third case and
+       the one the counter cannot see: Game::stageVehicle says no, stages_left stays
+       exactly where it was, and the law never asked again -- for the rest of the
+       mission, even after the player put the kerbal on EVA (#941). pressRefused()
+       carries that answer back here, and stage_retry_in_ holds an unfixed refusal to
+       about one ask a second. */
+    if(stage_retry_in_ > 0) { stage_retry_in_--; }
+    if(s.stages_left != last_stages_seen_) {
+        /* The counter moved, so a press did happen -- and any refusal the caller
+           reported before it is not the reason the stack is still together. */
+        press_refused_ = PressRefusal::None;
+        last_stages_seen_ = s.stages_left;
+    }
     bool press = false;
-    if(s.stages_left > 0 && s.stages_left != stage_asked_at_) {
+    if(stage_retry_in_ <= 0 && s.stages_left > 0 && s.stages_left != stage_asked_at_) {
         if(s.stage_due || !s.has_propellant) { press = true; }
     }
     if(press) {
@@ -207,7 +240,14 @@ AscentCommand AscentLaw::step(const GuidanceState &s) {
     if(!can_thrust && !press && (phase_ == AscentPhase::Pad || phase_ == AscentPhase::Ascent
                        || phase_ == AscentPhase::Coast || phase_ == AscentPhase::Circ)) {
         phase_ = AscentPhase::Failed;
-        why_ = s.accel_max > 0.0 ? "the tanks are dry" : "no thrust available";
+        /* The honest version of "the tanks are dry": true, and useless on its own
+           when the reason the stack is still in one piece is a press the caller
+           refused (#941 -- the mission ends saying "no fuel" with full stages still
+           folded under it). Static strings, because why_ is a const char *. */
+        why_ = s.accel_max <= 0.0 ? "no thrust available"
+             : press_refused_ == PressRefusal::Crew ? "the tanks are dry, and a stage press was refused (crew aboard)"
+             : press_refused_ == PressRefusal::Root ? "the tanks are dry, and a stage press was refused (root seam)"
+             : "the tanks are dry";
         return c;
     }
 

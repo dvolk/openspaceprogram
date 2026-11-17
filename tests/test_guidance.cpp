@@ -482,6 +482,83 @@ static void test_the_law_asks_for_a_press_and_asks_once() {
     CHECK_TRUE(law3.step(s3).want_stage, "asked again at two, due or not being the hull's call");
 }
 
+/* #941: the case the counter cannot see. A press the caller REFUSED leaves
+   stages_left exactly where it was, so the once-per-value latch made the refusal
+   permanent -- the mission burned that stage dry and reported "the tanks are dry"
+   with presses still folded under it, even after the player put the kerbal on EVA.
+   The caller now reports the refusal, so the latch must release (a mid-flight fix
+   has to be able to arrive) while the re-ask stays throttled -- an unfixed refusal
+   that asks every tick buries the log, which is why the latch exists at all (#928).
+   The window is a tick count, not a clock: step() takes no dt. 60 logic ticks is
+   about a second at 1x, so an unfixed refusal is one line a second, not one a frame. */
+static void test_a_reported_refusal_is_retried_and_named() {
+    printf("== a reported refusal: retried, throttled, named ==\n");
+    AscentTarget t; t.apo_asl = t.peri_asl = 100e3; t.inc_rad = -1.0;
+    AscentLaw law(t);
+    GuidanceState s; s.pos = glm::dvec3(R_MOHO + 20000.0, 0.0, 0.0);
+    s.vel = glm::dvec3(0.0, 400.0, 0.0);
+    s.mu = MU_MOHO; s.sea_r = R_MOHO; s.spin_axis = glm::dvec3(0.0, 0.0, 1.0);
+    s.accel_max = 18.0; s.grounded = false;
+    s.stages_left = 2; s.stage_due = true;
+    CHECK_TRUE(law.step(s).want_stage, "asked at two presses left");
+    law.pressRefused(PressRefusal::Crew);
+    for(int i = 0; i < 20; i++) {
+        CHECK_TRUE(!law.step(s).want_stage, "silent while the retry window counts down");
+    }
+    int ticks = 20;
+    bool asked = false;
+    while(!asked && ticks < 200) { asked = law.step(s).want_stage; ticks++; }
+    printf("   [reported] the next ask came %d ticks after the refusal\n", ticks);
+    CHECK_TRUE(asked, "the ask comes back, so a player who EVAed the kerbal gets her stage");
+    CHECK_TRUE(ticks > 20 && ticks <= 120, "and it comes back on a second, not every tick and not never");
+    CHECK_TRUE(!law.step(s).want_stage, "still one ask per stage number after the retry");
+
+    /* Reporting a refusal is not a promise to wait for the player. The tanks keep
+       draining while the window runs, and a stage that empties with its press
+       unanswered ends the mission the tick it always would have (#941's open
+       question, answered: hold the throttle forever and a mis-crafted hull flies a
+       mission that can never end). What changes is what the verdict SAYS, which is
+       the part of #941 that actually fooled anyone. */
+    s.has_propellant = false; s.stage_due = false;
+    const AscentCommand f = law.step(s);
+    CHECK_TRUE(!f.want_stage && law.phase() == AscentPhase::Failed,
+               "a hull that runs dry inside the window still gets its verdict");
+    CHECK_TRUE(std::string(law.why()).find("press was refused (crew aboard)") != std::string::npos,
+               "and it says so instead of only naming the empty tanks");
+
+    /* A root seam is not fixable mid-flight -- which side of a decoupler is the
+       ship's root is decided in the VAB -- so it is remembered and never re-asked:
+       one refusal line for the flight, not one a second. */
+    AscentLaw law2(t);
+    GuidanceState s2 = s; s2.has_propellant = true; s2.stages_left = 3; s2.stage_due = true;
+    CHECK_TRUE(law2.step(s2).want_stage, "asked at three presses left");
+    law2.pressRefused(PressRefusal::Root);
+    bool re_asked = false;
+    for(int i = 0; i < 120; i++) { re_asked = re_asked || law2.step(s2).want_stage; }
+    CHECK_TRUE(!re_asked, "a root refusal is not re-asked");
+    s2.has_propellant = false;
+    law2.step(s2);
+    CHECK_TRUE(law2.phase() == AscentPhase::Failed
+               && std::string(law2.why()).find("refused (root seam)") != std::string::npos,
+               "but the verdict still names it");
+
+    /* The memory lasts as long as the refusal does. Once stages_left moves, a press
+       HAS happened, and an old no is not why the stack is still together. */
+    AscentLaw law3(t);
+    GuidanceState s3 = s; s3.has_propellant = true; s3.stages_left = 2; s3.stage_due = true;
+    law3.step(s3);
+    law3.pressRefused(PressRefusal::Crew);
+    s3.stages_left = 1;                       // EVAed her, and the next press separated
+    s3.has_propellant = false;
+    law3.step(s3);
+    CHECK_TRUE(law3.phase() == AscentPhase::Failed && std::string(law3.why()) == "the tanks are dry",
+               "a refusal is forgotten once the counter has moved on");
+
+    law.pressRefused(PressRefusal::Crew);
+    CHECK_TRUE(law.phase() == AscentPhase::Failed,
+               "and reporting to a law that already answered changes nothing");
+}
+
 /* #928's claim, made checkable: the SAME hull flown by the SAME law with presses
    allowed and with presses refused. The stage table is sized so the pad stage
    cannot reach the ask on its own (684 m/s against the ~1.1 km/s a 100 km Moho
@@ -781,6 +858,7 @@ int main() {
     test_the_shape_at_the_tick_rates_the_game_uses();
     test_asks_it_cannot_land_say_so();
     test_the_law_asks_for_a_press_and_asks_once();
+    test_a_reported_refusal_is_retried_and_named();
     test_a_staged_hull_flies_and_an_unstaged_one_does_not();
     printf("%d checks, %d failures\n", checks, failures);
     return failures ? 1 : 0;

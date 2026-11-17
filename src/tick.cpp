@@ -241,6 +241,20 @@ void tick(Game &g) {
                        rather than assumed -- if that swap ever changes, the law would
                        be left flying a husk with nothing said. */
                     assert(g.ship == g.ascent_ship);
+                    /* Tell the law back what happened (#941). Its only feedback was
+                       stages_left, which a refusal leaves exactly where it was, so the
+                       once-per-value latch made every refusal permanent. Both refusals
+                       are reported, for different reasons: a crew refusal is fixable
+                       mid-flight -- EVA her, and the next ask separates -- so the law
+                       releases its latch and re-asks about once a second; a root refusal
+                       is not fixable up here (which seam is the ship's root is decided
+                       in the VAB), so re-asking would print one refusal per second until
+                       the mission ended, and the law only needs to remember it to stop
+                       the verdict saying "the tanks are dry" with stages still attached.
+                       NothingSeparated already stepped the counter, which is the law's
+                       normal signal, and NoHull means there is nothing left to fly. */
+                    if(oc == Game::StageOutcome::CrewRefused) { g.ascent->pressRefused(PressRefusal::Crew); }
+                    else if(oc == Game::StageOutcome::RootRefused) { g.ascent->pressRefused(PressRefusal::Root); }
                 }
                 /* The verdict hands the clock back with the hull. A mission only
                    exists to fly the burn; once it has answered, leaving warp
