@@ -1497,6 +1497,18 @@ public:
     int activeStage_ = 1;
     int totalStages_ = 1;
     int minStage_ = 1;
+    /* Which of the two press targets this stage burns against, decided the once per
+       stage that stageIsDue() explains -- it is the live form of computeStaging's
+       `drainAll`, which staging.cpp strikes at the START of a row's burn. Re-reading
+       it per tick is what kept mars_explorer_mk1's dry boosters aboard (#928
+       follow-up), because an asparagus drop set that has just emptied looks exactly
+       like a drop set that never held fuel. Re-stamped when the counter moves or the
+       part set changes: either makes it a different drop set. */
+    struct StageStamp {
+        int stage = -1;
+        size_t nParts = 0;
+        bool drainAll = false;
+    } stageStamp_;
 
     int activeStage();
     /* Step to the previous stage (clamped at the lowest one). */

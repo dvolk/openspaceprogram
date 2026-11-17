@@ -421,6 +421,117 @@ static void test_child_below() {
     }
 }
 
+/* WHEN the press is due, on the shape that actually ships: an asparagus stack.
+   (#928 follow-up. The bug was reported by flying mars_explorer_mk1 on Kerbin:
+   four booster groups read 0.0 kg while the core group still held 5.7 t, and the
+   autopilot never pressed.)
+
+   staging.cpp decides ONCE PER BURN whether a row's drop set holds anything
+   drinkable -- `drainAll = !row.drops || sim.drainableIn(drop) <= 1e-12`,
+   staging.cpp:785 -- and only then burns. Re-deciding that every tick cannot
+   work: a booster tank that has just emptied looks identical to a drop set that
+   never held fuel, so the target flips to the fallback (every reachable tank) and
+   the dead boosters ride the ship all the way to full-stack burnout. The two
+   cases below are the same line of code with the same empty drop set, and they
+   have to answer differently because of what the drop set looked like when the
+   stage lit.
+
+   No init() here, unlike test_fuel.cpp: this file's ships have no Bodies and
+   init() builds the rigid body. So the fuel groups stageIsDue() walks are set by
+   hand -- the same integers buildFuelGroups() assigns, given that every shipped
+   decoupler carries fuel_barrier and therefore splits the stack it joins. With no
+   fuelLinks, an engine's drain layers are its own group, which is all these cases
+   need: the tanks sit beside the engines that drink them. */
+static Part *addFuelPart(Ship &s, Part *parent, int stage, const char *name,
+                         int group, double h2, double lox, double rate,
+                         double ve) {
+    s.defs.push_back(PartDef());
+    PartDef &d = s.defs.back();
+    d.name = name;
+    d.decoupler = false;
+    d.mass = 100.0f;
+    d.radius = 1.0f;
+    d.height = 2.0f;
+    d.capacity[(int)ResourceType::Hydrogen] = h2;
+    d.capacity[(int)ResourceType::LOX] = lox;
+    if(rate > 0.0) {
+        d.setPropellantRate(ResourceType::Hydrogen, rate);
+        d.setPropellantRate(ResourceType::LOX, rate);
+        d.exhaust_velocity = ve;   // isThruster() wants a rate AND an ve
+    }
+    Part *p = new Part;
+    p->body = nullptr;
+    p->def = &d;
+    p->stage = stage;
+    p->parent = parent;
+    p->fuelGroup = group;
+    p->resources.current[(int)ResourceType::Hydrogen] = h2;
+    p->resources.current[(int)ResourceType::LOX] = lox;
+    s.v->parts.push_back(p);
+    return p;
+}
+
+static Part *addTank(Ship &s, Part *parent, int stage, const char *name,
+                     int group, double h2, double lox) {
+    return addFuelPart(s, parent, stage, name, group, h2, lox, 0.0, 0.0);
+}
+
+static Part *addEngine(Ship &s, Part *parent, int stage, const char *name,
+                       int group) {
+    return addFuelPart(s, parent, stage, name, group, 0.0, 0.0, 1.0, 100.0);
+}
+
+static double partFuel(Part *p) {
+    return p->resources.current[(int)ResourceType::Hydrogen]
+         + p->resources.current[(int)ResourceType::LOX];
+}
+
+static void test_press_due_on_asparagus_stack() {
+    printf("== stageIsDue: the drop set, not the whole ship ==\n");
+    {   // booster + core: two groups, only the booster's is droppable
+        Ship s; s.v = new Vehicle;
+        addPart(s, NULL, 2, false, "capsule");
+        Part *ctank = addTank(s, s.v->parts[0], 2, "core_tank", 0, 1000.0, 1000.0);
+        addEngine(s, ctank, 2, "core_engine", 0);
+        Part *dec   = addPart(s, s.v->parts[0], 2, true, "dec_booster");
+        Part *btank = addTank(s, dec, 2, "booster_tank", 1, 500.0, 500.0);
+        addEngine(s, btank, 2, "booster_engine", 1);
+        s.v->totalStages_ = 2; s.v->minStage_ = 1; s.v->activeStage_ = 2;
+
+        // This first call is also the stamp: it records what the drop set held
+        // when the stage lit, which is the decision staging.cpp makes once a burn.
+        CHECK_TRUE(!s.v->stageIsDue(), "a full stack is not due");
+        btank->resources.current[(int)ResourceType::Hydrogen] = 0.0;
+        btank->resources.current[(int)ResourceType::LOX] = 0.0;
+        printf("   booster %.0f kg, core %.0f kg -> due=%d\n",
+               partFuel(btank), partFuel(ctank), (int)s.v->stageIsDue());
+        CHECK_TRUE(s.v->stageIsDue(),
+                   "a dry booster drops even though the core tank is still full");
+        destroyShip(s);
+    }
+    {   // the other branch: this press drops nothing drinkable, so the stage
+        // burns everything it can reach first -- the VAB's drainAll, stamped the
+        // same once-per-stage way
+        Ship f; f.v = new Vehicle;
+        addPart(f, NULL, 2, false, "capsule");
+        Part *ftank = addTank(f, f.v->parts[0], 2, "core_tank", 0, 1000.0, 1000.0);
+        addEngine(f, ftank, 2, "core_engine", 0);
+        Part *fdec  = addPart(f, f.v->parts[0], 2, true, "dec_fairing");
+        addPart(f, fdec, 2, false, "fairing");   // comes off, holds nothing to burn
+        f.v->totalStages_ = 2; f.v->minStage_ = 1; f.v->activeStage_ = 2;
+
+        CHECK_TRUE(!f.v->stageIsDue(),
+                   "a press that drops no fuel waits while the stage can still burn");
+        ftank->resources.current[(int)ResourceType::Hydrogen] = 0.0;
+        ftank->resources.current[(int)ResourceType::LOX] = 0.0;
+        printf("   fairing row, core %.0f kg -> due=%d\n",
+               partFuel(ftank), (int)f.v->stageIsDue());
+        CHECK_TRUE(f.v->stageIsDue(),
+                   "and it is due once the stage has taken everything it can reach");
+        destroyShip(f);
+    }
+}
+
 int main() {
     printf("== droppedPartsAtStage (src/vehicle.h) ==\n");
     test_no_decoupler();
@@ -435,6 +546,7 @@ int main() {
     test_extract_refusals();
     test_deep_chain();
     test_child_below();
+    test_press_due_on_asparagus_stack();
 
     printf("%d checks, %d failures\n", g_checks, g_failures);
     if(g_failures) { printf("FAILED\n"); return 1; }

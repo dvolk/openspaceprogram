@@ -5956,6 +5956,15 @@ bool Vehicle::canBurn() {
    (#928's rule 4). Here the pool is billed ONCE, against the parts that hold it, so
    sharers cannot count the same tank twice.
 
+   The choice between the two targets is made ONCE PER STAGE, not every tick, exactly
+   as computeStaging makes it once per burn (`drainAll = !row.drops ||
+   drainableIn(drop) <= 1e-12`, staging.cpp:785). Re-deciding it live is a real bug on
+   the standard asparagus shape: the moment the boosters' own tanks empty, dropFuel
+   falls to zero and the per-tick reading flips to the fallback target -- the KEPT core
+   tank -- so the press waits for the whole stack to burn out and the dry boosters ride
+   for minutes. mars_explorer_mk1 at Kerbin did exactly that: the four booster groups
+   read 0.0 kg while g2 still held 5.7 t, and no press fired.
+
    The known gap is the one staging.cpp has too: two engines in DIFFERENT fuel groups
    that each reach a common upstream pool bill that pool to their own reachable set,
    so on that geometry a press can land a little late. No shipped hull is built that
@@ -6003,8 +6012,14 @@ bool Vehicle::stageIsDue() {
        of propellant on a hull measured in tonnes is neither a burn nor a reason to
        hold a stage. */
     const double kStageEmptyKg = 1e-3;
-    const double target = (dropFuel > kStageEmptyKg) ? dropFuel : allFuel;
-    return target <= kStageEmptyKg;
+    /* Stamped once per stage (see the header of this function): what the VAB would
+       see for this row at the moment its burn starts. A part-set change -- docking,
+       another press -- re-stamps, because then it is a different drop set. */
+    if(stageStamp_.stage != as || stageStamp_.nParts != parts.size()) {
+        stageStamp_ = {as, parts.size(),
+                       drop.empty() || dropFuel <= kStageEmptyKg};
+    }
+    return (stageStamp_.drainAll ? allFuel : dropFuel) <= kStageEmptyKg;
 }
 
 void Vehicle::ApplyThrust(double step) {
