@@ -16,12 +16,7 @@
 #include <cmath>
 #include <algorithm>
 #include <string>
-
-static int checks = 0, failures = 0;
-#define CHECK_TRUE(cond, msg) do { checks++; if(!(cond)) { failures++; printf("FAIL: %s\n", msg); } } while(0)
-#define CHECK_NEAR(a, e, tol, msg) do { checks++; const double _a=(a), _e=(e); \
-    if(!std::isfinite(_a) || !std::isfinite(_e) || std::fabs(_a-_e) > (tol)) { failures++; \
-    printf("FAIL: %s (got %.6g, want %.6g, tol %.3g)\n", msg, _a, _e, (double)(tol)); } } while(0)
+#include "tchecks.h"
 
 static const double G_CONST = 6.674e-11;            // src/system.cpp's G (#707)
 static const double MU_MOHO = G_CONST * 2.526e21;   // ksp_system.json Moho mass
@@ -860,6 +855,6 @@ int main() {
     test_the_law_asks_for_a_press_and_asks_once();
     test_a_reported_refusal_is_retried_and_named();
     test_a_staged_hull_flies_and_an_unstaged_one_does_not();
-    printf("%d checks, %d failures\n", checks, failures);
-    return failures ? 1 : 0;
+    printf("%d checks, %d failures\n", g_checks, g_failures);
+    return g_failures ? 1 : 0;
 }

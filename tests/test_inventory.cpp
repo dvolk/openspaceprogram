@@ -50,30 +50,7 @@
 
 #include "vehicle.h"   // Vehicle + Part (inline)
 #include "inventory.h"
-
-static int g_failures = 0;
-static int g_checks = 0;
-
-#define CHECK_TRUE(cond, msg)                                                  \
-    do {                                                                       \
-        g_checks++;                                                            \
-        if (!(cond)) {                                                         \
-            g_failures++;                                                      \
-            printf("FAIL: %s\n", msg);                                         \
-        }                                                                      \
-    } while (0)
-
-#define CHECK_NEAR(actual, expected, tol, msg)                                 \
-    do {                                                                       \
-        g_checks++;                                                            \
-        double _a = (actual), _e = (expected);                                 \
-        if (!std::isfinite(_a) || !std::isfinite(_e)                           \
-            || std::fabs(_a - _e) > (tol)) {                                   \
-            g_failures++;                                                      \
-            printf("FAIL: %s (got %.9g, want %.9g, tol %.3g)\n",               \
-                   msg, _a, _e, (double)(tol));                                \
-        }                                                                      \
-    } while (0)
+#include "tchecks.h"
 
 /* A hand-built part. `defs` is a deque, not a vector: push_back on a vector
    reallocates and would dangle every Part::def handed out so far. `invCap`

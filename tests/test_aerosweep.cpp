@@ -66,29 +66,7 @@
 #include "physics.h"   // SetAngVelocity: the rate column
 #include "vehicle.h"   // Vehicle + Part (inline); pulls in Bullet (btcommon.h)
 #include "terrain.h"   // TerrainBody: the air this hull flies in
-
-static int g_failures = 0;
-static int g_checks = 0;
-
-#define CHECK_TRUE(cond, msg)                                                 \
-    do {                                                                      \
-        g_checks++;                                                           \
-        if(!(cond)) { g_failures++; printf("FAIL: %s\n", msg); }              \
-    } while(0)
-
-#define CHECK_NEAR(actual, expected, tol, msg)                                \
-    do {                                                                      \
-        g_checks++;                                                           \
-        double _a = (actual), _e = (expected);                                \
-        /* Both sides guarded: a "diff > tol" test cannot see a NaN, and a    \
-           pin written the other way round would pass on one (#604). */       \
-        if(!std::isfinite(_a) || !std::isfinite(_e)                           \
-           || std::fabs(_a - _e) > (tol)) {                                   \
-            g_failures++;                                                     \
-            printf("FAIL: %s (got %.9g, want %.9g, tol %.3g)\n",              \
-                   msg, _a, _e, (double)(tol));                               \
-        }                                                                     \
-    } while(0)
+#include "tchecks.h"
 
 /* A body with the fields airDensity / airSoundSpeed read: 600 km radius, a sea-level
    atmosphere, and the gravity that atmosphere implies (#552 A2 -- the loader refuses a

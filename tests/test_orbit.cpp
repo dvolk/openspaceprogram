@@ -14,23 +14,7 @@
 
 #include <cmath>
 #include <cstdio>
-
-static int failures = 0;
-#define CHECK(cond) do { \
-        if(!(cond)) { \
-            printf("FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond); \
-            failures++; \
-        } \
-    } while(0)
-
-#define CHECK_NEAR(a, b, tol) do { \
-        double _a = (a), _b = (b), _t = (tol); \
-        if(!(std::fabs(_a - _b) <= _t)) { \
-            printf("FAIL %s:%d: %s = %.12g, want %.12g +- %g\n", \
-                   __FILE__, __LINE__, #a, _a, _b, _t); \
-            failures++; \
-        } \
-    } while(0)
+#include "tchecks.h"
 
 static const double MU = 1.0e12;   // m^3/s^2
 
@@ -55,7 +39,7 @@ static void check_all_finite(const OrbitElements &o, const char *label) {
     for(size_t i = 0; i < sizeof(f) / sizeof(f[0]); i++) {
         if(!std::isfinite(f[i])) {
             printf("FAIL %s: field %zu not finite (%g)\n", label, i, f[i]);
-            failures++;
+            g_failures++;
         }
     }
 }
@@ -936,7 +920,7 @@ int main() {
             if(got != want) {
                 printf("FAIL orbitNodePoints: %s gives %d, want %d\n",
                        label, got, want);
-                failures++;
+                g_failures++;
             }
             if(got & kNodeAn) {
                 const double r = p / (1.0 + edn);
@@ -1287,10 +1271,10 @@ int main() {
                                      glm::dvec3(1.0e-5, 0.0, 2.0e-5))) > 1.0);
     }
 
-    if(failures == 0) {
+    if(g_failures == 0) {
         printf("test_orbit: all checks passed\n");
         return 0;
     }
-    printf("test_orbit: %d FAILURES\n", failures);
+    printf("test_orbit: %d FAILURES\n", g_failures);
     return 1;
 }

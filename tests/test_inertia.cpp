@@ -47,30 +47,7 @@
 #include <vector>
 
 #include "vehicle.h"   // Vehicle + Part (inline); pulls in Bullet (btcommon.h)
-
-static int g_failures = 0;
-static int g_checks = 0;
-
-#define CHECK_NEAR(actual, expected, tol, msg)                                 \
-    do {                                                                       \
-        g_checks++;                                                            \
-        double _a = (actual), _e = (expected);                                 \
-        if (!std::isfinite(_a) || !std::isfinite(_e)                           \
-            || std::fabs(_a - _e) > (tol)) {                                   \
-            g_failures++;                                                      \
-            printf("FAIL: %s (got %.9g, want %.9g, tol %.3g)\n",               \
-                   msg, _a, _e, (double)(tol));                                \
-        }                                                                      \
-    } while (0)
-
-#define CHECK_TRUE(cond, msg)                                                  \
-    do {                                                                       \
-        g_checks++;                                                            \
-        if (!(cond)) {                                                         \
-            g_failures++;                                                      \
-            printf("FAIL: %s\n", msg);                                         \
-        }                                                                      \
-    } while (0)
+#include "tchecks.h"
 
 /* --- the independent reference math ------------------------------------- */
 

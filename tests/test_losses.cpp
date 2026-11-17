@@ -29,12 +29,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>   // angleAxis / mat3_cast, for the frame test
 #include <glm/gtx/norm.hpp>         // glm::length2
-
-static int checks = 0, failures = 0;
-#define CHECK_TRUE(cond, msg) do { checks++; if(!(cond)) { failures++; printf("FAIL: %s\n", msg); } } while(0)
-#define CHECK_NEAR(a, e, tol, msg) do { checks++; const double _a=(a), _e=(e); \
-    if(!std::isfinite(_a) || !std::isfinite(_e) || std::fabs(_a-_e) > (tol)) { failures++; \
-    printf("FAIL: %s (got %.6g, want %.6g, tol %.3g)\n", msg, _a, _e, (double)(tol)); } } while(0)
+#include "tchecks.h"
 
 // Moho, so the numbers are the game's and not invented (src/system.cpp's G * mass).
 static const double G_CONST = 6.674e-11;
@@ -257,6 +252,6 @@ int main() {
         CHECK_TRUE(L.burns == 0, "and no burn was ever counted");
     }
 
-    printf("%d checks, %d failures\n", checks, failures);
-    return failures ? 1 : 0;
+    printf("%d checks, %d failures\n", g_checks, g_failures);
+    return g_failures ? 1 : 0;
 }

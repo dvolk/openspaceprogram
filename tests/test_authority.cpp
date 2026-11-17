@@ -47,38 +47,7 @@
 #include "vehicle.h"   // Vehicle + Part (inline); pulls in Bullet (btcommon.h)
 
 #include "terrain.h"   // #426 handover test: a body with an atmosphere under it
-
-static int g_failures = 0;
-static int g_checks = 0;
-
-#define CHECK_TRUE(cond, msg)                                                  \
-    do {                                                                       \
-        g_checks++;                                                            \
-        if (!(cond)) {                                                         \
-            g_failures++;                                                      \
-            printf("FAIL: %s\n", msg);                                         \
-        }                                                                      \
-    } while (0)
-
-#define CHECK_NEAR(actual, expected, tol, msg)                                 \
-    do {                                                                       \
-        g_checks++;                                                            \
-        double _a = (actual), _e = (expected);                                 \
-        /* BOTH sides. Only _a was guarded, so a pin written the other way round  \
-           -- CHECK_NEAR(1.0, computed, ...) -- silently passed on a computed     \
-           NaN, because fabs(1.0 - NaN) > tol is false. That is the SPELLING     \
-           that fails open: a "diff > tol" test cannot see a NaN, while          \
-           "!(diff <= tol)" can. #604 put this guard in every test binary's      \
-           CHECK_NEAR, so a new test file wants it from its first line -- a       \
-           mutation battery that reports green on checks that never ran is the   \
-           cost of forgetting it. */                                             \
-        if (!std::isfinite(_a) || !std::isfinite(_e)                            \
-            || std::fabs(_a - _e) > (tol)) {                                    \
-            g_failures++;                                                      \
-            printf("FAIL: %s (got %.9g, want %.9g, tol %.3g)\n",               \
-                   msg, _a, _e, (double)(tol));                                \
-        }                                                                      \
-    } while (0)
+#include "tchecks.h"
 
 /* Hand-built defs live in a deque: push_back on a vector would dangle every
    Part::def handed out so far (as in test_dock). */

@@ -25,24 +25,7 @@
 #include <cstdio>
 #include <fstream>
 #include <string>
-
-static int failures = 0;
-
-#define CHECK_NEAR(what, got, want, tol) do { \
-        double _g = (got), _w = (want), _t = (tol); \
-        if(!std::isfinite(_g) || !std::isfinite(_w) || std::fabs(_g - _w) > _t) { \
-            printf("FAIL %s:%d: %s = %.9g, want %.9g +- %g\n", \
-                   __FILE__, __LINE__, what, _g, _w, _t); \
-            failures++; \
-        } \
-    } while(0)
-
-#define CHECK_TRUE(cond, what) do { \
-        if(!(cond)) { \
-            printf("FAIL %s:%d: %s\n", __FILE__, __LINE__, what); \
-            failures++; \
-        } \
-    } while(0)
+#include "tchecks.h"
 
 static nlohmann::json read_json(const char *path) {
     std::ifstream f(path);
@@ -142,11 +125,11 @@ static void checkSystem(const char *path) {
         /* 1e-7 rad (5.7e-6 deg) rather than the atan2-level 1e-9: acos flattens
            near dot = 1, so an orbit authored IN the plane cannot read tighter
            than ~1.5e-8 no matter how exact the state is. */
-        CHECK_NEAR(what, angleDiff(a.inc, incl), 0.0, 1e-7);
+        CHECK_NEAR(angleDiff(a.inc, incl), 0.0, 1e-7, what);
         // The state must carry the authored eccentricity too, or the LPe
         // comparison below is checking a different orbit.
         snprintf(what, sizeof what, "%s/%s d_ecc", path, bj["name"].get<std::string>().c_str());
-        CHECK_NEAR(what, o.ecc, ecc, 1e-9);
+        CHECK_NEAR(o.ecc, ecc, 1e-9, what);
         /* Every shipped reference supplies a zero direction lying in its own
            plane. If one did not, all the longitude checks below would be
            skipped silently and the test would still pass. */
@@ -171,7 +154,7 @@ static void checkSystem(const char *path) {
 
         if(a.node_ok) {
             snprintf(what, sizeof what, "%s/%s d_lan", path, bj["name"].get<std::string>().c_str());
-            CHECK_NEAR(what, angleDiff(a.lan, lan), 0.0, 1e-9);
+            CHECK_NEAR(angleDiff(a.lan, lan), 0.0, 1e-9, what);
         }
         /* LPe is the angle that survives a degenerate node: a coplanar body
            still states where its periapsis points, as lon_asc_node + arg_peri
@@ -179,7 +162,7 @@ static void checkSystem(const char *path) {
            what lpe_ok says above, so this runs whenever there is one. */
         if(a.lpe_ok) {
             snprintf(what, sizeof what, "%s/%s d_lpe", path, bj["name"].get<std::string>().c_str());
-            CHECK_NEAR(what, angleDiff(a.lpe, lan + argp), 0.0, 1e-9);
+            CHECK_NEAR(angleDiff(a.lpe, lan + argp), 0.0, 1e-9, what);
         }
         /* The map's Orbital view measures against the orbit's OWN plane, where
            no direction is privileged: inc must read 0 and no longitude may be
@@ -192,7 +175,7 @@ static void checkSystem(const char *path) {
            and acos flattens there. 1e-6 rad is 0.00006 deg, far inside what any
            readout prints, and still catches a wrong-plane regression. */
         snprintf(what, sizeof what, "%s/%s own-plane inc", path, bj["name"].get<std::string>().c_str());
-        CHECK_NEAR(what, oa.inc, 0.0, 1e-6);
+        CHECK_NEAR(oa.inc, 0.0, 1e-6, what);
         snprintf(what, sizeof what, "%s/%s own-plane dashes lon/node/lpe",
                  path, bj["name"].get<std::string>().c_str());
         CHECK_TRUE(!oa.lon_ok && !oa.node_ok && !oa.lpe_ok, what);
@@ -207,10 +190,10 @@ int main() {
     // The solar systems are where "incl_ref": "equator" actually appears.
     checkSystem("res/systems/solar_system.json");
 
-    if(failures == 0) {
+    if(g_failures == 0) {
         std::printf("test_railangles: all checks passed\n");
         return 0;
     }
-    std::printf("test_railangles: %d check(s) failed\n", failures);
+    std::printf("test_railangles: %d check(s) failed\n", g_failures);
     return 1;
 }

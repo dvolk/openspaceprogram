@@ -20,34 +20,12 @@
 #include "buildingair.h"
 #include <glm/gtx/transform.hpp>
 #include <glm/gtx/norm.hpp>
+#include "tchecks.h"
 
 /* The frame tests link frame.o alone: StaticBuilding is only ever a marker
    pointer here, never dereferenced, so a stub definition stands in for the
    real one (terrain.h) without dragging in the physics chain. */
 struct StaticBuilding {};
-
-static int g_failures = 0;
-static int g_checks = 0;
-
-#define CHECK_NEAR(a, b, eps, msg)                                              \
-    do {                                                                       \
-        g_checks++;                                                            \
-        double _a = (a), _b = (b);                                             \
-        if (!std::isfinite(_a) || !std::isfinite(_b)                           \
-            || std::fabs(_a - _b) > (eps)) {                                   \
-            g_failures++;                                                      \
-            printf("FAIL: %s  (got %.9g, want %.9g)\n", msg, _a, _b);          \
-        }                                                                      \
-    } while (0)
-
-#define CHECK_TRUE(cond, msg)                                                  \
-    do {                                                                       \
-        g_checks++;                                                            \
-        if (!(cond)) {                                                         \
-            g_failures++;                                                      \
-            printf("FAIL: %s\n", msg);                                         \
-        }                                                                      \
-    } while (0)
 
 static bool dvec_close(glm::dvec3 a, glm::dvec3 b, double eps) {
     return glm::length(a - b) < eps;

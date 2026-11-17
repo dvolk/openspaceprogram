@@ -10,23 +10,7 @@
 
 #include <cmath>
 #include <cstdio>
-
-static int failures = 0;
-#define CHECK(cond) do { \
-        if(!(cond)) { \
-            printf("FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond); \
-            failures++; \
-        } \
-    } while(0)
-
-#define CHECK_NEAR(a, b, tol) do { \
-        double _a = (a), _b = (b), _t = (tol); \
-        if(!(std::fabs(_a - _b) <= _t)) { \
-            printf("FAIL %s:%d: %s = %.12g, want %.12g +- %g\n", \
-                   __FILE__, __LINE__, #a, _a, _b, _t); \
-            failures++; \
-        } \
-    } while(0)
+#include "tchecks.h"
 
 static const double MU = 1.0e12;   // m^3/s^2
 
@@ -207,10 +191,10 @@ int main() {
         CHECK(multi_rev_wins > 0);
     }
 
-    if(failures == 0) {
+    if(g_failures == 0) {
         printf("test_porkchop: all checks passed\n");
         return 0;
     }
-    printf("test_porkchop: %d FAILURES\n", failures);
+    printf("test_porkchop: %d FAILURES\n", g_failures);
     return 1;
 }
