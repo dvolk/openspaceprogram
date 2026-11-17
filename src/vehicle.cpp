@@ -7153,13 +7153,25 @@ glm::dvec3 Vehicle::posInBodyRot(const glm::dvec3 &p) const {
     return frame->GetOrientRelTo(rot) * p + frame->GetPositionRelTo(rot);
 }
 
-double Vehicle::distanceTo(Vehicle *o) {
+void Vehicle::gapTo(Vehicle *o, double &dist, double &rate) {
     Frame *root = frame;
     while(root->parent) { root = root->parent; }
     glm::dvec3 p, v, q, w;
     comStateIn(root, p, v);
     o->comStateIn(root, q, w);
-    return glm::length(p - q);
+    const glm::dvec3 gap = q - p;
+    dist = glm::length(gap);
+    /* The projection of the neighbour's velocity on the line to it, so a
+       bearing-down hull reads NEGATIVE. Below the degenerate gap the direction is
+       undefined and no test can be made of it, so the rate reads zero rather
+       than a number out of a unit vector of a rounding error. */
+    rate = (dist < 1e-9) ? 0.0 : glm::dot(gap, w - v) / dist;
+}
+
+double Vehicle::distanceTo(Vehicle *o) {
+    double dist, rate;
+    gapTo(o, dist, rate);
+    return dist;
 }
 
 bool Vehicle::inTerrainBand() {

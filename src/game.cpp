@@ -2141,9 +2141,20 @@ void Game::updateProximity() {
     // Waking a ship re-homes it but never moves it between containers, so the
     // live list is safe to walk here.
     bool any_engaged = false;
+    /* #937: engaged is not the same as approaching. An airborne stage can NEVER
+       be parked -- canRail() is isGrounded() || !inAtmosphere() -- so a dropped
+       booster keeps `any_engaged` true for the rest of the flight at any
+       distance, and a warp policy keyed on that is a warp policy that never
+       lifts. This flag is the one that means something to the player: a live
+       neighbour INSIDE the engage radius and closing faster than
+       --prox-close-v. A stage leaves with the parent's rigid velocity
+       (extractSubtreeAsShip, vehicle.cpp:5477 -- there is no separation
+       impulse), so a press reads ~0 m/s here and never trips the cap. */
+    bool bearing_down = false;
     for(auto *s : vehicles) {
         if(s == a) { continue; }
-        const double d = a->distanceTo(s);
+        double d, rate;
+        a->gapTo(s, d, rate);
         if(s->onRails && r_on > 0.0 && d < r_on) {
             s->releaseControl();   // no armed commands once it's live
             s->leaveRails();
@@ -2162,7 +2173,10 @@ void Game::updateProximity() {
                                        time, s->displayName().c_str(), d, r_off,
                                        grounded ? "ground" : "fly"); }
         }
-        if(!s->onRails) { any_engaged = true; }
+        if(!s->onRails) {
+            any_engaged = true;
+            if(d < r_on && rate < -args.prox_close_v) { bearing_down = true; }
+        }
     }
 
     if(any_engaged && a->onRails) {
@@ -2184,11 +2198,32 @@ void Game::updateProximity() {
     double cap = args.prox_warp;
     if(cap >= (double)kRailsWarp) { cap = (double)(kRailsWarp - 1); }
     if(cap < 0.0) { cap = 0.0; }
+    /* Two floors, and only one of them is a policy (#937).
+       The rails floor is physics bookkeeping: while any hull is live the clock
+       cannot sit at rails warp, whatever the neighbour is doing, because that
+       branch integrates conics only -- the measurement above. The --prox-warp
+       floor is the player's dial, and it belongs to an APPROACH: a live
+       neighbour inside the engage radius and closing faster than
+       --prox-close-v. Keying it on mere liveness cost the player their warp for
+       the rest of a Kerbin ascent, because an airborne stage cannot be parked
+       (canRail) and so holds the pass engaged forever at any distance. It also
+       over-reached: rails warp is already refused while any hull is airborne
+       (enter_rails_warp), so inside an atmosphere the cap was not defending the
+       rails boundary at all -- it was confiscating the 10x physics rung, the
+       only warp available there. Docking is not a casualty: capture is gated at
+       kDockMaxV = 2 m/s inside kDockCapture = 1.5 m, nowhere near the gate. */
+    const double rails_floor = (double)(kRailsWarp - 1);
+    if(!bearing_down && cap < rails_floor) { cap = rails_floor; }
     if(any_engaged && time_accel > cap) {
         time_accel = cap;
-        toast("Close approach: time accel limited to %dx", (int)cap);
-        if(args.prox_log) { printf("[prox] t=%.3f warp CAPPED to %g\n",
-                                   time, cap); }
+        if(bearing_down) {
+            toast("Close approach: time accel limited to %dx", (int)cap);
+        } else {
+            toast("A hull is live nearby: off the rails (%dx)", (int)cap);
+        }
+        if(args.prox_log) { printf("[prox] t=%.3f warp CAPPED to %g (%s)\n",
+                                   time, cap,
+                                   bearing_down ? "bearing down" : "rails floor"); }
     }
 
     if(args.prox_log) {
@@ -2199,12 +2234,18 @@ void Game::updateProximity() {
            the proximity pass: unlike the tick.cpp logs, lifting the print out
            of the time_accel gate would mean lifting the pass with it. */
         if(logDue(kGateProxSnap, logClockMs(), orbit_log_interval_ms)) {
-            printf("[prox] t=%.3f regime=%s r_on=%.0f r_off=%.0f\n",
-                   time, grounded ? "ground" : "fly", r_on, r_off);
+            printf("[prox] t=%.3f regime=%s r_on=%.0f r_off=%.0f close_v=%.1f\n",
+                   time, grounded ? "ground" : "fly", r_on, r_off,
+                   args.prox_close_v);
             for(auto *s : vehicles) {
                 if(s == a) { continue; }
-                printf("[prox]   %s dist=%.1f m %s\n", s->displayName().c_str(),
-                       a->distanceTo(s), s->onRails ? "on-rails" : "LIVE");
+                /* rate > 0 = pulling away, so a future report can say WHY the
+                   clock moved rather than being asked (#937). */
+                double d, rate;
+                a->gapTo(s, d, rate);
+                printf("[prox]   %s dist=%.1f m rate=%+.1f m/s %s\n",
+                       s->displayName().c_str(), d, rate,
+                       s->onRails ? "on-rails" : "LIVE");
             }
         }
     }

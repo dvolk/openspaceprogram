@@ -2186,6 +2186,12 @@ public:
 
     // COM separation in the universe (root) frame: frame-invariant.
     double distanceTo(Vehicle *o);
+    /* The same walk, and how fast the gap is changing: rate > 0 means the two
+       hulls are separating. Both numbers come from one pair of comStateIn calls
+       in the shared root frame, so a caller that wants both does not pay the
+       frame walk twice (#937: the proximity pass needs the rate to tell an
+       approach from a departure). */
+    void gapTo(Vehicle *o, double &dist, double &rate);
 
     /* The COM's osculating orbit dips into the terrain band (periapsis within
        3 km of the surface). A PERIAPSIS test, not proximity. */

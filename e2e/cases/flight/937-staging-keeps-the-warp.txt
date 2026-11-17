@@ -1,0 +1,25 @@
+# A press must not cost the player their clock. Pre-fix, THIS geometry printed
+# "Close approach: time accel limited to 1x" on the tick of the press (the newborn
+# stage is inside the 2 km engage radius, so the proximity pass counted the flight as
+# engaged) and every sim second after it cost a wall second. The FORBIDs below are the
+# claim; they fail against the pre-fix log at t=563.7s.
+# Moho rather than Kerbin because it is cheap (1 s of wall) and because the cause is
+# the same on both: liveness, not distance, was the trigger. On Kerbin the rule is
+# worse than slow -- an airborne stage can NEVER be parked (canRail() is
+# isGrounded() || !inAtmosphere()), so the cap does not lift for the rest of the
+# flight, however far the booster gets (#937).
+NAME staging-keeps-the-warp
+CLAIM Pressing the stage does not put the clock at 1x.
+KIND invariant
+ARGS --startship stager,res/ships/stager.json,Moho,pad --ascent 100e3 --time-accel 10
+ARGS --ascent-log --prox-log --orbit-log --orbit-interval 5 --sim-steps 6000 --timeout 200 --no-paint
+LIMIT 60
+# The press happened, so the FORBIDs below are about a press and not about a flight
+# that never staged at all.
+EXPECT autopilot press: staged
+EXPECT Stage: dropped 1 ship(s) / 3 part(s); now on stage 1 of 2
+FORBID Close approach
+FORBID warp CAPPED
+# And the flight is still a flight: the cap was never the thing holding it up.
+CHECK last(ascent)["phase"] == "done"
+CHECK last(orbit)["peri_asl"] > 99e3

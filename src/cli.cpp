@@ -817,8 +817,15 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "proximity-activated ship beyond it returns to the rails "
                    "(default 20 = 20 m)");
     app.add_option("--prox-warp", args.prox_warp,
-                   "Max time accel while any non-active ship is engaged "
-                   "(default 1)");
+                   "Max time accel while a non-active ship is engaged AND "
+                   "bearing down on the active one (default 1)");
+    app.add_option("--prox-close-v", args.prox_close_v,
+                   "Closing speed (m/s) that makes an engaged neighbour an "
+                   "approach, so the one that trips --prox-warp: inside the "
+                   "engage radius and closing faster than this. A stage that "
+                   "just left pays the parent's velocity, so it reads ~0 and "
+                   "never trips it (default 50; negative treats any neighbour "
+                   "as approaching, which is what the proximity e2e cases use)");
 
     app.add_flag("--compound-check", args.compound_check,
                  "Periodically print, for every ship, how far the part poses "
@@ -1117,6 +1124,7 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
             {"--prox-fly-off", args.prox_fly_off},
             {"--prox-ground-on", args.prox_ground_on},
             {"--prox-ground-off", args.prox_ground_off},
+            {"--prox-close-v", args.prox_close_v},
             {"--prox-warp", args.prox_warp},
             {"--sky-dim", args.sky_dim},
             {"--sky-dim-cone", args.sky_dim_cone},

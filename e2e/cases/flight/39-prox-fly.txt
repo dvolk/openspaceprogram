@@ -2,7 +2,12 @@ NAME prox-fly
 CLAIM Proximity checks report the right state for a ship flying near another.
 KIND invariant
 ARGS --startships e2e/fixtures/startships_fly.json --time-accel 1 --timeout 6 --prox-log
+ARGS --prox-close-v -100
 ARGS --sim-press 1500,0,PERIOD
+# --prox-close-v -100: the two hulls spawn 20 m apart on the SAME orbit, so their
+# range rate is ~0 and #937's approach gate would leave the clock alone. This case
+# is about the cap machinery, so it asks for the strict gate (negative = treat any
+# neighbour as approaching) rather than the default 50 m/s one.
 EXPECT [prox]
 EXPECT ENGAGED
 EXPECT , fly)

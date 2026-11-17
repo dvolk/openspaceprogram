@@ -164,6 +164,11 @@ struct GameArgs {
     double prox_ground_on = 10.0;   // engage radius while grounded (m; 0 = never auto-wake)
     double prox_ground_off = 20.0;  // release radius while grounded (m)
     double prox_warp = 1.0;         // max time accel while a ship is engaged
+    /* The closing speed (m/s) that makes an engaged neighbour an APPROACH worth
+       slowing the clock for (#937). Inside the engage radius AND closing faster
+       than this. Negative = always an approach, which is what the proximity e2e
+       cases use to pin the cap on a co-orbital pair. */
+    double prox_close_v = 50.0;
     bool compound_check = false;   // the ship-as-one-rigid-body gate
 
     std::vector<std::string> postfx_spec;
