@@ -1,0 +1,31 @@
+# A stage dropped inside the air cannot be parked: canRail() is
+# isGrounded() || !inAtmosphere(), so past the release radius it stays a live
+# rigid body for the rest of the session. #938 measured one at -17.9 km BELOW
+# sea level and still LIVE -- Kerbin's Bullet ground is only the rendered LOD
+# leaf patches, so a booster with no patch underneath it falls through the
+# planet and orbits inside it forever. #939 gives that population an end: a hull
+# the sim cannot park, with no crew, not docked and not the ship being flown, is
+# retired once it is beyond --cull-radius.
+# Kerbin and not Moho because the victim has to be AIRBORNE. On Moho the same
+# stage parks in vacuum (canRail() true) and the cull must NOT fire -- that is
+# what the !canRail() guard is for, and why a pad fleet or a parked orbital
+# hull is never a victim. 5 km here instead of the 25 km default so the case
+# stays short: the press lands at t=73.7s and the cut at t=114.5s.
+NAME far-stage-is-cut-loose
+CLAIM An uncrewed airborne stage beyond --cull-radius is retired, and the flown hull never is.
+KIND invariant
+ARGS --startship stager,res/ships/stager.json,Kerbin,pad --ascent 100e3 --time-accel 10
+ARGS --ascent-log --prox-log --cull-radius 5000 --sim-steps 1500 --timeout 120 --no-paint
+LIMIT 150
+# The press happened, so the cull below is about a dropped stage and not about
+# a flight that never staged.
+EXPECT autopilot press: staged
+EXPECT [cull] t=
+# retire() prints the world's size, which is the claim in one line: the victim
+# is gone and the flown hull is still in it.
+EXPECT retired: 'stager Decoupler (2m)' (1 vehicle(s) left in the world)
+FORBID 'stager' cut loose
+# The release log used to lie: it printed "RELEASED" on every tick for a hull
+# that goOnRails() had refused (canRail() false), which is the same airborne
+# population the cull exists for. Pre-fix this line matched hundreds of rows.
+FORBID stager Decoupler (2m) RELEASED

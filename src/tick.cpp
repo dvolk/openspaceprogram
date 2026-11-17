@@ -314,8 +314,11 @@ void tick(Game &g) {
 
             // Proximity wakes ships near the active ship. Runs BEFORE
             // UpdateOrbitRails so a woken ship is re-expressed against last
-            // tick's frame transforms.
+            // tick's frame transforms. The cull rides the same pass: it reads
+            // the same distances, and a hull it retires is out of the list
+            // before anything else walks it this tick.
             g.updateProximity();
+            g.cullFarDebris();
 
             g.sun->frame->UpdateOrbitRails(g.time);
 

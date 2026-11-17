@@ -1244,6 +1244,12 @@ struct Game {
     // False + keeps the accel if any ship is not rail-eligible.
     bool enter_rails_warp();
     void updateProximity();
+    /* Cut loose a hull the sim can neither park nor keep any reason to run
+       (#939): airborne (canRail() refuses anything airborne, so today it stays
+       under physics forever however far it gets), uncrewed, not docked, not the
+       active ship, and beyond --cull-radius. Collects the victims first and
+       retires after the walk, because retire() erases from `vehicles`. */
+    void cullFarDebris();
     /* Re-express the Bullet world's static content when the active ship's
        frame changes (see worldFrame). Cheap no-op otherwise. */
     void syncWorldFrame();

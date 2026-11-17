@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 397 |
+| `invariant` | a behaviour or a player route the game must keep | 398 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 50 |
 | `harness` | CLI/test-engine plumbing, not game spec | 16 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **467** |
+| | **total** | **468** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -18,7 +18,7 @@ paces a run: how much e2e a change deserves is the caller's
 judgement. Select by number, name or path, e.g.
 `python3 e2e/run.py save/172 262`.
 
-## flight (140)
+## flight (141)
 
 | case | kind | pins |
 |---|---|---|
@@ -162,6 +162,7 @@ judgement. Select by number, name or path, e.g.
 | `flight/919-wide-lens-pan-reaches-the-corner.txt` | invariant | A pan stops at the frame edge whatever the lens: at fov 120 an over-reaching drag lands the focus exactly on that frame's corner, never outside it. |
 | `flight/928-autopilot-presses-a-drained-stage.txt` | invariant | The ascent autopilot separates a drained stage by itself and still makes the ask. |
 | `flight/937-staging-keeps-the-warp.txt` | invariant | Pressing the stage does not put the clock at 1x. |
+| `flight/939-far-stage-is-cut-loose.txt` | invariant | An uncrewed airborne stage beyond --cull-radius is retired, and the flown hull never is. |
 
 ## crew (27)
 

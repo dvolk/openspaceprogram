@@ -169,6 +169,11 @@ struct GameArgs {
        than this. Negative = always an approach, which is what the proximity e2e
        cases use to pin the cap on a co-orbital pair. */
     double prox_close_v = 50.0;
+    /* Distance (m) beyond which a hull the sim CANNOT park -- airborne, no crew,
+       not docked, not the active ship -- is cut loose rather than simulated
+       forever (#939). 0 disables. Default 25 km: well outside --prox-fly-off
+       (10 km) and far enough that the player has no view of it worth keeping. */
+    double cull_radius = 25000.0;
     bool compound_check = false;   // the ship-as-one-rigid-body gate
 
     std::vector<std::string> postfx_spec;
