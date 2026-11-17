@@ -477,6 +477,96 @@ static void test_a_bell_is_a_line_with_a_sense() {
     CHECK_TRUE(withinLimits(mixed, sp), "and neither row goes past its own limit to get there");
 }
 
+/* The Scratch is reused between solves now (#645), so an answer has to describe
+ * THIS row set and never the one those buffers last held. Every case solves on a
+ * Scratch that has already served a bigger or different row set, and asks for what
+ * a fresh Scratch would answer -- which is what a hull that staged half its drums
+ * away, or lost its fins, or gained a bell, would silently get wrong. */
+static void test_a_reused_scratch_answers_for_its_own_rows() {
+    const double nan = std::nan("");
+    const std::vector<ActuatorRow> three = {
+        { glm::dvec3(0.0, 0.0, 1.0), 100.0 },
+        { glm::dvec3(1.0, 0.0, 0.0), 200.0 },
+        { glm::dvec3(0.0, 1.0, 0.0), 50.0 },
+    };
+    const std::vector<ActuatorRow> one = { { glm::dvec3(0.0, 0.0, 1.0), 100.0 } };
+    actuators::Scratch used;
+    actuatorSolveInto(three, glm::dvec3(30.0, 40.0, 200.0), used);   // three lines, three asks
+    glm::dvec3 got = actuatorSolveInto(one, glm::dvec3(0.0, 0.0, -70.0), used);
+    CHECK_TRUE(used.setpoints.size() == 1, "the answer is sized to THIS row set");
+    CHECK_REL(used.setpoints[0], -70.0, 1e-12, "and holds only this row's ask");
+    CHECK_REL(got.z, -70.0, 1e-9, "the delivered vector is one drum's, not three's");
+
+    /* A bell's line is a SENSE, clamped [0, capacity]. If that flag survived in a
+     * reused lines buffer, the drum after it could not wind the other way: the clamp
+     * has to stay per line, not per buffer (#595). */
+    const std::vector<ActuatorRow> bell = { { glm::dvec3(0.0, 0.0, 100.0), 1.0, true } };
+    actuatorSolveInto(bell, glm::dvec3(0.0, 0.0, 100.0), used);
+    got = actuatorSolveInto(one, glm::dvec3(0.0, 0.0, -70.0), used);
+    CHECK_REL(used.setpoints[0], -70.0, 1e-12,
+              "a drum after a bell still winds the other way");
+    CHECK_REL(got.z, -70.0, 1e-9, "and the delivered torque is negative, not zero");
+
+    /* A poisoned row is dead: its setpoint must be zero, not whatever the same row
+     * index was asked for on the previous ship. */
+    const std::vector<ActuatorRow> dead = { { glm::dvec3(nan, 0.0, 0.0), 100.0 },
+                                            { glm::dvec3(0.0, 0.0, 1.0), 30.0 } };
+    got = actuatorSolveInto(dead, glm::dvec3(0.0, 0.0, 10.0), used);
+    CHECK_REL(used.setpoints[0], 0.0, 1e-12, "a dead row is asked to do nothing");
+    CHECK_REL(used.setpoints[1], 10.0, 1e-12, "the live row still answers");
+
+    /* No rows at all: the answer must be empty, not the previous ship's. */
+    const std::vector<ActuatorRow> none;
+    got = actuatorSolveInto(none, glm::dvec3(0.0, 0.0, 10.0), used);
+    CHECK_TRUE(used.setpoints.empty(), "no rows, no setpoints");
+    CHECK_REL(glm::length(got), 0.0, 1e-12, "and nothing delivered");
+
+    /* A poisoned demand: sized to the rows and zeroed. The old code did this before
+     * the early return; a reused buffer that skips the zeroing hands back the last
+     * substep's ask. */
+    actuatorSolveInto(three, glm::dvec3(0.0, 0.0, 90.0), used);
+    got = actuatorSolveInto(three, glm::dvec3(nan, 0.0, 0.0), used);
+    CHECK_TRUE(used.setpoints.size() == 3, "a poisoned demand still sizes the answer");
+    CHECK_REL(used.setpoints[0] + used.setpoints[1] + used.setpoints[2], 0.0, 1e-12,
+              "and every actuator is asked for nothing");
+
+    /* THE GAME'S ORDER: two-sided drum rows first (the drums-and-fins solve), then
+     * one-way bell rows (#595's mop-up) on the SAME Scratch. A stale two-sided line
+     * breaks this in the worst way -- silently: the mop-up reports a delivered torque
+     * big enough to pass its own shortfall gate while the per-bell answer comes back
+     * zero, so the hull believes a bell fired that never did. */
+    const std::vector<ActuatorRow> drum = { { glm::dvec3(0.0, 0.0, 1.0), 100.0 } };
+    actuatorSolveInto(drum, glm::dvec3(0.0, 0.0, 70.0), used);
+    got = actuatorSolveInto(bell, glm::dvec3(0.0, 0.0, 60.0), used);
+    CHECK_REL(used.setpoints[0], 0.6, 1e-12, "the bell is asked for 60% of its rating");
+    CHECK_REL(got.z, 60.0, 1e-9, "and the delivered torque is the bell's, not the drum's");
+    got = actuatorSolveInto(bell, glm::dvec3(0.0, 0.0, -60.0), used);
+    CHECK_REL(used.setpoints[0], 0.0, 1e-12, "a bell asked to brake stays shut");
+    CHECK_REL(glm::length(got), 0.0, 1e-12, "and buys nothing about the opposed axis");
+
+    /* q -- where the coordinate descent starts -- is zeroed for determinism, not for
+     * hygiene. Two drums 0.01 rad apart asked 120 N m along the bisector answer the
+     * ~100/20 split actuators.h documents; carry a previous ask over and WHICH drum
+     * gets the 100 depends on last substep's demand, while the delivered vector keeps
+     * reading 120.00 -- invisible in the flight, and #579 bills momentum from exactly
+     * these two numbers. */
+    const double th = 0.01;
+    const std::vector<ActuatorRow> nearpar = {
+        { glm::dvec3(0.0, 0.0, 1.0), 100.0 },
+        { glm::dvec3(0.0, std::sin(th), std::cos(th)), 100.0 },
+    };
+    const glm::dvec3 bis(0.0, std::sin(th / 2.0), std::cos(th / 2.0));
+    actuators::Scratch det;
+    actuatorSolveInto(nearpar, 120.0 * bis, det);
+    const double first0 = det.setpoints[0], first1 = det.setpoints[1];
+    CHECK_REL(first0, 99.876192, 1e-6, "one drum takes the bisector demand almost alone");
+    CHECK_REL(first1, 20.127302, 1e-6, "the other takes the rest (#641's open split)");
+    actuatorSolveInto(nearpar, glm::dvec3(0.0, 0.0, 30.0), det);   // a different ask
+    actuatorSolveInto(nearpar, 120.0 * bis, det);
+    CHECK_REL(det.setpoints[0], first0, 1e-12, "and the split does not depend on the last ask");
+    CHECK_REL(det.setpoints[1], first1, 1e-12, "on either drum");
+}
+
 int main() {
     test_capability_is_about_an_axis();
     test_the_rpY_split();
@@ -487,6 +577,7 @@ int main() {
     test_a_fin_ring_splits_and_a_lost_fin_shows();
     test_a_drum_and_a_fin_on_one_line_share_it();
     test_a_bell_is_a_line_with_a_sense();
+    test_a_reused_scratch_answers_for_its_own_rows();
     printf("test_actuators: %d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

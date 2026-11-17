@@ -1040,6 +1040,17 @@ private:
        this substep are what the previous one delivered. At kMaxSubStep that lag is 0.1 s
        of sim, and it is the same "last actuated substep" reading the #599 record uses. */
     double wheelSpendWatts_ = 0.0;
+    /* The solve's work buffers (#645) -- the same bargain rcsScratch makes below. An
+       actuated substep used to pay ten fresh vectors for a handful of rows: 91,830
+       allocations in a 42,000-tick Kerbin ascent (10.0 x 9,183 actuateAttitude calls).
+       actuatorSolveInto resizes these instead, so only the capacity grows. attRows_ is
+       the wheels-then-surfaces concatenation the ONE solve walks: #426 needs one index
+       space over both, and the wheel rows stay first so the setpoint offsets in
+       actuateAttitude stay stable. Both belong to actuateAttitude alone, and its two
+       solves -- drums and fins, then #595's bell mop-up -- take the Scratch in turn, so
+       nothing may carry a drum or fin setpoint past the mop-up. */
+    actuators::Scratch attScratch_;
+    std::vector<ActuatorRow> attRows_;
 
 public:
     /* WHAT CAN TURN THIS SHIP RIGHT NOW (#425). One answer to "how hard, and

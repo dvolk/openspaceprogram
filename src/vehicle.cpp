@@ -6908,12 +6908,15 @@ void Vehicle::actuateAttitude(glm::dvec3 torque, const AttitudeAuthority &a) {
        row is kN m per rad) a 100 N m drum is a rounding error on the same line, which
        is the honest ratio between what the air and the drivetrain can do.
        The wheel rows come first so the setpoint indices below are stable. */
-    std::vector<ActuatorRow> rows;
-    rows.reserve(a.wheels.size() + a.surfaces.size());
-    rows.insert(rows.end(), a.wheels.begin(), a.wheels.end());
-    rows.insert(rows.end(), a.surfaces.begin(), a.surfaces.end());
-    std::vector<double> setpoints;
-    const glm::dvec3 delivered = actuatorSolve(rows, tauW, setpoints);
+    attRows_.clear();
+    attRows_.reserve(a.wheels.size() + a.surfaces.size());
+    attRows_.insert(attRows_.end(), a.wheels.begin(), a.wheels.end());
+    attRows_.insert(attRows_.end(), a.surfaces.begin(), a.surfaces.end());
+    /* The offsets below read a surface's setpoint at wheels.size() + k, so the two
+       inserts and the row count have to agree. Cheap to state, and it is the only
+       place the ordering rule can be checked. */
+    assert(attRows_.size() == a.wheels.size() + a.surfaces.size());
+    const glm::dvec3 delivered = actuatorSolveInto(attRows_, tauW, attScratch_);
     /* A FIN'S SHARE NEVER TRAVELS THROUGH THIS CALL. actuatorSolve answers with a
        torque, and for a drum that is what actually happens to the hull -- but a
        surface steers by pushing on the AIR, and applyAeroForce bills that force from
@@ -6927,7 +6930,7 @@ void Vehicle::actuateAttitude(glm::dvec3 torque, const AttitudeAuthority &a) {
     assert(a.surfaceParts.size() == a.surfaces.size());
     glm::dvec3 aeroShare(0.0);
     for(size_t k = 0; k < a.surfaces.size(); k++) {
-        const double rad = setpoints[a.wheels.size() + k];
+        const double rad = attScratch_.setpoints[a.wheels.size() + k];
         /* The solver bounds each row by its own limit; the slack is the divide by the
            row's length. A setpoint past max_deflection would be clamped away silently
            in applyAeroForce, so say so here where it is the solver's fault. */
@@ -6979,7 +6982,7 @@ void Vehicle::actuateAttitude(glm::dvec3 torque, const AttitudeAuthority &a) {
                row by its own limit; clamp it rather than silently over-bill a housing
                past its authored figure, and clamp per row so a row that is not a number
                fails closed (charges nothing) instead of reaching the total. */
-            double u = std::fabs(setpoints[m]) / a.wheels[m].limit;
+            double u = std::fabs(attScratch_.setpoints[m]) / a.wheels[m].limit;
             assert(u <= 1.0 + 1e-9);
             if(u > 1.0) { u = 1.0; }
             if(u > peak) { peak = u; }
@@ -7021,8 +7024,14 @@ void Vehicle::actuateAttitude(glm::dvec3 torque, const AttitudeAuthority &a) {
            this gate a law that has already ARRIVED would dribble hydrazine forever
            chasing the solver's own residue. */
         if(glm::length2(shortfall) > 1e-12 * (glm::length2(tauW) + 1.0)) {
-            std::vector<double> rset;
-            const glm::dvec3 turn = actuatorSolve(a.rcs, shortfall, rset);
+            /* The same Scratch, second solve of this substep: it replaces
+               attScratch_.setpoints with per-bell fractions, so every drum and fin
+               setpoint is read ABOVE this line and nothing may want one after it
+               (#579's momentum store is the named future reader -- it belongs with
+               the wheel loop, not down here). Reusing the buffers is what makes the
+               mop-up cost nothing to run (#645). */
+            const glm::dvec3 turn = actuatorSolveInto(a.rcs, shortfall, attScratch_);
+            const std::vector<double> &rset = attScratch_.setpoints;
             if(glm::length2(turn) > 0.0) {
                 rcsAttFrac.assign(a.rcs.size(), 0.0);
                 for(size_t i = 0; i < a.rcs.size() && i < rset.size(); i++) {

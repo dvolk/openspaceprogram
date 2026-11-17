@@ -14,8 +14,9 @@
 //
 //   actuatorTorqueAbout()  what these actuators can bring to bear ABOUT an axis
 //                          (the capability the slew law's alpha budgets with);
-//   actuatorSolve()        what they actually deliver against a demanded vector,
-//                          and what each one's share of it is.
+//   actuatorSolveInto()    what they actually deliver against a demanded vector,
+//                          and what each one's share of it is (actuatorSolve() is
+//                          the same solve on a one-shot Scratch, for tests).
 //
 // The two answer different questions over the same rows: the first is the most
 // torque they can produce ALONG a direction (each actuator free to allocate
@@ -42,21 +43,29 @@
 // capacity the translation solve left. Merging the two into one weighted solve is
 // how a ship ends up refusing to translate because it is busy turning.
 // Worth knowing both exist before a third demand shape shows up and someone
-// merges them. It also carries no Scratch like rcs::Scratch yet: today's rows are a
-// hull's wheels plus its control surfaces -- still a handful -- so these vectors are
-// the whole cost. #668 took the four biggest away: the AttitudeAuthority row sets
-// (wheels, wheelParts, surfaces, surfaceParts) are InlineVec now, so the walk that
-// runs every actuation substep AND once per frame per open window allocates NOTHING
-// (heaptrack 2026_11_06: 85,386 allocations per 20 s of atmospheric flight, 65% of
-// that run's steady-state total, and 24,216 of them survived the reserve() pass).
-// What still allocates is eight per substep for a hull with a live demand: two in
-// actuateAttitude (the concatenated rows, the setpoints) and six in actuatorSolve
-// (lines, lineOf, sense, share, mag, q) -- that is the Scratch's remaining job, and
-// the reason this file takes its row argument as a CONTAINER TEMPLATE rather than a
-// std::vector: an interface fixed on std::vector would put the authority rows back
-// through the heap. The UI calls attitudeAuthority() once per FRAME (Game Debug's
-// steering rows ask the live answer, Systems asks the hardware one), plus two more
-// per --steering-log line. Closed windows draw no body at all (ui.h), so the default
+// merges them.
+// It now carries a Scratch of its own too, the same shape as rcs::Scratch:
+// actuators::Scratch held per hull (Vehicle::attScratch_) and passed into
+// actuatorSolveInto, so an actuated substep allocates nothing after warmup. It used
+// to pay ten allocations -- two in actuateAttitude (the concatenated rows, the
+// setpoint vector) and eight in the solve, whose six vectors plus the lines vector's
+// growth make eight (#645). heaptrack 2026_11_17, 42,000-tick Kerbin ascent: 91,830
+// = 10.0 x 9,183 actuateAttitude calls. That bed's hull carries no RCS part, so the
+// bell mop-up never ran in it and the count is the single-solve path only; the
+// mop-up's buffers are reused by the same Scratch (#595) but are not in that number.
+// What the Scratch does NOT do is avoid the row copy: the drums-and-fins solve
+// concatenates the authority rows into the hull's own reused attRows_ (40 bytes a
+// row), so it allocates nothing but the copy is real work, and the row argument
+// stays a CONTAINER TEMPLATE anyway because the mop-up passes an InlineVec straight
+// through and actuatorTorqueAbout reads the authority rows in place. #668 took the
+// four biggest away before any of this: the AttitudeAuthority row sets (wheels,
+// wheelParts, surfaces, surfaceParts) are InlineVec now, so the walk that runs every
+// actuation substep AND once per frame per open window allocates nothing (measured
+// separately, 2026_11_06 on 20 s of atmospheric flight: 85,386 allocations, 65% of
+// that run's steady-state total).
+// The UI calls attitudeAuthority() once per FRAME (Game Debug's steering rows
+// ask the live answer, Systems asks the hardware one), plus two more per
+// --steering-log line. Closed windows draw no body at all (ui.h), so the default
 // flight layout pays none of this. #594 landed the other half of the old ask: ONE
 // AttitudeAuthority per substep, answered once for the stick and every latched law
 // together (#420).
@@ -135,12 +144,51 @@ inline std::array<double, 3> actuatorRpY(const Rows &rows,
              actuatorTorqueAbout(rows, ax[1]) };
 }
 
+namespace actuators {
+
+/* One actuator LINE: the direction it levers torque along, the N m all the rows
+   grouped onto it can carry together, and whether that reach is a SENSE (+q only,
+   a thruster bell: #595) or a line a drum winds either way. */
+struct Line {
+    glm::dvec3 dir = glm::dvec3(0.0);
+    double capacity = 0.0;
+    bool one_way = false;   // the line carries +q only (a bell, not a drum: #595)
+};
+
+/* Every work buffer the solve uses, as vectors sized to the biggest solve seen.
+   actuateAttitude runs every physics SUBSTEP and holds one of these per hull
+   (Vehicle::attScratch_), so an actuated substep allocates nothing after warmup;
+   actuatorSolve() below wraps a one-shot Scratch for tests and for any caller with
+   no hull to hold one. A Scratch belongs to ONE solve at a time: the two solves of
+   a substep -- #595's bell mop-up after the drums-and-fins one -- take it in turn,
+   never at once. The ROW SET is the caller's, never the Scratch's: passing the
+   Scratch's own buffer as `rows` would let out.lines.clear() erase it mid-walk, and
+   the signature has nothing to stop that. Every buffer is resized and overwritten
+   before it is read, so stale capacity is never stale data; what a caller must NOT
+   do is keep the setpoints across a second solve, since they describe the row set of
+   the last one. */
+struct Scratch {
+    std::vector<double> setpoints;  // solution: per-row ask (N m, radians for a fin)
+    std::vector<Line> lines;        // the grouped lines, rebuilt every solve
+    std::vector<int> lineOf;        // per row: which line it fell on, -1 if a dead row
+    std::vector<double> sense;      // per row: +1/-1 along its line's chosen sense
+    std::vector<double> share;      // per row: its N m of its line's capacity
+    std::vector<double> mag;        // per row: |axis|, its N m per unit of setpoint
+    /* Per line: the N m it is carrying. Zeroed at the start of every solve -- not for
+       hygiene but because it is where the coordinate descent starts, and the descent's
+       answer is not unique (see the near-parallel pair above), so a carried-over q
+       makes a hull's per-drum split depend on last substep's demand. */
+    std::vector<double> q;
+};
+
+}  // namespace actuators
+
 /* Fit `demand` (N m) into what the rows can deliver: one scalar per row, inside
    +/- its limit, so that Sum s_k * axis_k lands as close to `demand` as the
-   ratings allow. `setpoints` is resized to rows and answers what each actuator is
-   asked to do -- a wheel's N m along its own axis (which is the number #579's
-   momentum store wants), a fin's radians -- so the caller can bill the actuator
-   rather than only the sum. Returns the DELIVERED vector: it is shorter than
+   ratings allow. The Scratch's `setpoints` is resized to rows and answers what each
+   actuator is asked to do -- a wheel's N m along its own axis (which is the number
+   #579's momentum store wants), a fin's radians -- so the caller can bill the
+   actuator rather than only the sum. Returns the DELIVERED vector: it is shorter than
    `demand` wherever the rows cannot follow it, so an axis the hull has no
    actuator for buys nothing rather than a pretend torque.
  *
@@ -168,25 +216,30 @@ inline std::array<double, 3> actuatorRpY(const Rows &rows,
      axis then differs from the returned vector by ~ q * angle: 6e-5 N m at
      theta = 1e-6, zero at theta = 0 (where there is nothing to be off). */
 template<class Rows>
-inline glm::dvec3 actuatorSolve(const Rows &rows,
-                                const glm::dvec3 &demand,
-                                std::vector<double> &setpoints) {
-    setpoints.assign(rows.size(), 0.0);
+inline glm::dvec3 actuatorSolveInto(const Rows &rows, const glm::dvec3 &demand,
+                                    actuators::Scratch &out) {
+    out.setpoints.assign(rows.size(), 0.0);
     /* A NaN demand asks for nothing, and it has to be answered here: the sweep's
        clamp reads `fabs(want) <= capacity`, which a NaN fails into the NEGATIVE
        limit, i.e. a poisoned demand would command full torque against itself. */
     if(!std::isfinite(demand.x) || !std::isfinite(demand.y)
     || !std::isfinite(demand.z)) { return glm::dvec3(0.0); }
-    struct Line {
-        glm::dvec3 dir = glm::dvec3(0.0);
-        double capacity = 0.0;
-        bool one_way = false;   // the line carries +q only (a bell, not a drum: #595)
-    };
-    std::vector<Line> lines;
     /* Per row: which line it fell on, whether it points along or against that
-       line's chosen sense, and how much of the line's capacity is its share. */
-    std::vector<int> lineOf(rows.size(), -1);
-    std::vector<double> sense(rows.size(), 0.0), share(rows.size(), 0.0), mag(rows.size(), 0.0);
+       line's chosen sense, and how much of the line's capacity is its share.
+       assign() into the Scratch rather than a fresh vector per solve: the capacity
+       a hull has already reached is what gets reused, and a resize-down leaves the
+       rows past `rows.size()` unread (#645). lines, lineOf, setpoints and q must be
+       reset -- dropping any of the first three reddens test_actuators, once by
+       answering a 100 N m drum's -70 N m demand with -35, and dropping q's zeroing
+       flips the near-parallel split the doc block above states as measured fact. The
+       sense/share/mag fills below are defensive by contrast: the solve writes an
+       entry for every live row and never reads a dead row's, so no fixture can pin
+       them. */
+    out.lines.clear();
+    out.lineOf.assign(rows.size(), -1);
+    out.sense.assign(rows.size(), 0.0);
+    out.share.assign(rows.size(), 0.0);
+    out.mag.assign(rows.size(), 0.0);
     for(size_t k = 0; k < rows.size(); k++) {
         const double m2 = glm::dot(rows[k].axis, rows[k].axis);
         if(!(m2 > 0.0) || !(rows[k].limit > 0.0)) { continue; }
@@ -202,52 +255,66 @@ inline glm::dvec3 actuatorSolve(const Rows &rows,
            (the tolerance is for axes that agree to within rounding, not for "nearly
            parallel", which is a real geometry with two nearly-independent lines). */
         const double tol = 1.0 - 1e-9;
-        for(size_t j = 0; j < lines.size(); j++) {
-            if(lines[j].one_way != rows[k].one_way) { continue; }
-            const double d = glm::dot(dir, lines[j].dir);
+        for(size_t j = 0; j < out.lines.size(); j++) {
+            if(out.lines[j].one_way != rows[k].one_way) { continue; }
+            const double d = glm::dot(dir, out.lines[j].dir);
             if(rows[k].one_way ? d > tol : std::fabs(d) > tol) { hit = (int)j; break; }
         }
         if(hit < 0) {
-            lines.push_back({ dir, 0.0, rows[k].one_way });
-            hit = (int)lines.size() - 1;
+            out.lines.push_back({ dir, 0.0, rows[k].one_way });
+            hit = (int)out.lines.size() - 1;
         }
         const double w = rows[k].limit * m;
-        lines[hit].capacity += w;
-        lineOf[k] = hit;
-        sense[k] = (glm::dot(dir, lines[hit].dir) >= 0.0) ? 1.0 : -1.0;
-        share[k] = w;
-        mag[k] = m;
+        out.lines[hit].capacity += w;
+        out.lineOf[k] = hit;
+        out.sense[k] = (glm::dot(dir, out.lines[hit].dir) >= 0.0) ? 1.0 : -1.0;
+        out.share[k] = w;
+        out.mag[k] = m;
     }
-    if(lines.empty()) { return glm::dvec3(0.0); }
+    if(out.lines.empty()) { return glm::dvec3(0.0); }
 
-    std::vector<double> q(lines.size(), 0.0);   // N m each line is currently carrying
+    out.q.assign(out.lines.size(), 0.0);        // N m each line is currently carrying
     for(int sweep = 0; sweep < 32; sweep++) {
         double moved = 0.0;
-        for(size_t j = 0; j < lines.size(); j++) {
+        for(size_t j = 0; j < out.lines.size(); j++) {
             /* This line's best contribution given every OTHER line's: the residual
                it is free to answer, projected on its own direction, clamped to its
                capacity -- and to its SENSE, which for a bell is [0, capacity]: it can
                wind up the turn, never brake one the other way (#595). */
             glm::dvec3 rest(0.0);
-            for(size_t i = 0; i < lines.size(); i++) {
-                if(i != j) { rest += q[i] * lines[i].dir; }
+            for(size_t i = 0; i < out.lines.size(); i++) {
+                if(i != j) { rest += out.q[i] * out.lines[i].dir; }
             }
-            const double want = glm::dot(demand - rest, lines[j].dir);
-            const double hi = lines[j].capacity;
-            const double lo = lines[j].one_way ? 0.0 : -hi;
+            const double want = glm::dot(demand - rest, out.lines[j].dir);
+            const double hi = out.lines[j].capacity;
+            const double lo = out.lines[j].one_way ? 0.0 : -hi;
             const double take = (want > hi) ? hi : (want < lo ? lo : want);
-            moved = std::fmax(moved, std::fabs(take - q[j]));
-            q[j] = take;
+            moved = std::fmax(moved, std::fabs(take - out.q[j]));
+            out.q[j] = take;
         }
         if(moved <= 1e-12 * (glm::length(demand) + 1.0)) { break; }
     }
     glm::dvec3 delivered(0.0);
-    for(size_t j = 0; j < lines.size(); j++) { delivered += q[j] * lines[j].dir; }
+    for(size_t j = 0; j < out.lines.size(); j++) { delivered += out.q[j] * out.lines[j].dir; }
     for(size_t k = 0; k < rows.size(); k++) {
-        const int j = lineOf[k];
+        const int j = out.lineOf[k];
         if(j < 0) { continue; }      // a dead row is asked to do nothing
-        const double along = q[j] * (share[k] / lines[j].capacity);
-        setpoints[k] = sense[k] * along / mag[k];
+        const double along = out.q[j] * (out.share[k] / out.lines[j].capacity);
+        out.setpoints[k] = out.sense[k] * along / out.mag[k];
     }
+    return delivered;
+}
+
+/* Test-side wrapper: one-shot Scratch, the per-row answer copied into the caller's
+   vector -- the same bargain rcs.h's rcsAllocate makes. No game code calls it; the
+   hull's own Scratch is the only hot caller (#645). The row argument stays a
+   container template, so this wrapper takes an InlineVec or a std::vector and
+   neither pays for the other's buffers. */
+template<class Rows>
+inline glm::dvec3 actuatorSolve(const Rows &rows, const glm::dvec3 &demand,
+                                std::vector<double> &setpoints) {
+    actuators::Scratch once;
+    const glm::dvec3 delivered = actuatorSolveInto(rows, demand, once);
+    setpoints = once.setpoints;
     return delivered;
 }
