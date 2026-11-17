@@ -13,9 +13,13 @@
 #include <glm/gtx/norm.hpp>
 
 /* Tuning constants, hoisted so the flight test can be re-flown against a
-   different value with a one-line diff. Every number here is what the closed
-   loop in tests/test_guidance.cpp settled on, not what looked plausible. */
+   different value with a one-line diff. Every number here is what the closed loop in
+   tests/test_guidance.cpp settled on, not what looked plausible -- except kFlatAir,
+   which only a hull flying through air can settle; the suite pins that one's FORM
+   (one flat-over altitude, scaled by the height of the air), and its value comes from
+   the flights quoted by pathAngle() below. */
 static const double kFlatHalf = 0.03;  // pitch-over half-angle altitude, as a fraction of the ask
+static const double kFlatAir = 0.40;   // ... and as a fraction of the body's air top (#960)
 static const double kLeadFrac = 0.5;   // node burn starts this fraction of its length early
 /* #941: how long the law waits before asking for a press it was refused. Logic
    ticks, not seconds -- step() takes no dt -- so this is about a second of real
@@ -25,8 +29,7 @@ static const double kLeadFrac = 0.5;   // node burn starts this fraction of its 
 static const int kPressRetryTicks = 60;
 
 /* The pitch schedule: a commanded PATH ANGLE against ALTITUDE. 90 deg (straight
-   up) off the pad, halving every kFlatHalf * ask metres of climb -- so a 100 km
-   ask is 45 deg by 3 km and under 10 deg by 30 km.
+   up) off the pad, 45 deg at h_half metres of climb, -> 0 as we climb.
 
    Two failure modes this replaced. Keyed to a fraction of the target apoapsis
    (alt / 0.25 * ask), it flew nearly vertical for 25 km and 34 s: periapsis at
@@ -35,10 +38,34 @@ static const int kPressRetryTicks = 60;
    a 19 m/s^2 stage opens the conic by 50 km, and "no apoapsis" read as "not made
    yet" -- pointing up harder is what opened it.
 
-   What matters is being flat EARLY and LOW, because horizontal speed at low
-   altitude is what buys apoapsis cheaply. A gravity turn does this by itself
-   when you stop steering; the schedule's job is to ask for the lean before
-   gravity gets around to it.
+   On a body with no air, what matters is being flat EARLY and LOW, because
+   horizontal speed at low altitude is what buys apoapsis cheaply; that is what
+   kFlatHalf * ask is for (3 km on a 100 km ask). Inside air the same shape is the
+   wrong one. What the air bills is (CdA/m) * integral(1/2 rho v dt) = (CdA/m) *
+   integral(1/2 rho * v ds): the PATH flown through dense air, times how fast it is
+   flown. A hull whose thrust only balances drag at ~250 m/s at sea level (1.84 MN
+   against CdA ~47 m^2) cannot buy apoapsis down there at any throttle -- it has to
+   climb out of the air first and lean over afterwards. Hence the air term: in air,
+   h_half is at least kFlatAir * the air top.
+
+   Flown, not guessed, and the difference is the whole mission. mars_explorer_mk1 off
+   Kerbin, 150 km ask, same bed, air term off: apoapsis never past 9.4 km, 11.7 km/s of
+   drag, the tanks dry at t=1109 s. With kFlatAir = 0.40 -- a 34 km turn, so 74 deg of
+   pitch at 10 km and 45 deg at 34 km -- the same hull reaches 150 x 159 km for 4.8 km/s
+   of delta-v. Swept: 0.10 and 0.18 never leave the air (16 km and 31 km of apoapsis),
+   0.24 and above reach space, and 0.40 was the best of the five values flown. That is
+   steeper than the curve MechJeb's AutoPath builds by keying its turn to the air's
+   depth (0.05..0.85 of it, ~60 deg at 10 km on Kerbin); 0.18, which does reproduce their
+   curve, was flown here and lost, because the hulls of this game drag far harder than
+   the point-mass model their defaults are tuned against.
+
+   The air term only ever DELAYS the flatten: kFlatHalf * ask stays the floor and
+   air_top is 0 on a body with no atmosphere, so an airless flight -- and every shape
+   pinned in tests/test_guidance.cpp -- is bit for bit what it used to be (the Moho
+   control flight still ends at peri 100068 m, apo 101120 m). What it does not fix is
+   the SHAPE of the answer: at these values the profile now reaches its node and
+   overshoots the asked apoapsis by 6-70% depending on the ask, which is the finite-burn
+   question #611 owns.
 
    The caller feeds this the HIGH-WATER altitude, not the live one (#930). Measured
    on Kerbin with mars_explorer_mk1 (reports/autopilot-v22026_11_16/927_probe_kerbin.log):
@@ -47,8 +74,10 @@ static const int kPressRetryTicks = 60;
    while the ship sank, ending parked on the surface at 1 cm/s with the lever at
    1.00. A schedule over a coordinate is two-way in time; only the profile's
    history says which way the flight is going. */
-static double pathAngle(double alt, double ask_alt) {
-    const double h_half = std::max(1000.0, kFlatHalf * std::max(ask_alt, 0.0));
+static double pathAngle(double alt, double ask_alt, double air_top) {
+    const double h_ask = kFlatHalf * std::max(ask_alt, 0.0);
+    const double h_air = kFlatAir * std::max(air_top, 0.0);   // 0 where there is no air
+    const double h_half = std::max(1000.0, std::max(h_ask, h_air));
     return std::atan2(h_half, std::max(0.0, alt));   // 90 deg at the pad, -> 0 as we climb
 }
 
@@ -369,7 +398,7 @@ AscentCommand AscentLaw::step(const GuidanceState &s) {
            altitude gives, so a vacuum profile is untouched -- what it stops is
            the nose swinging back up when the hull sinks. */
         if(apex_alt_ < 0.0 || alt > apex_alt_) { apex_alt_ = alt; }
-        const double gamma = pathAngle(apex_alt_, target.apo_asl);
+        const double gamma = pathAngle(apex_alt_, target.apo_asl, s.air_top_asl);
         pitch_ = glm::degrees(gamma);
         /* Until the ship is actually moving downrange, "horizontal" is the
            heading we chose for the target inclination. After that it is where
@@ -446,6 +475,13 @@ bool flyAscent(Vehicle &v, AscentLaw &law, double dt, bool *want_stage) {
     v.comStateIn(inertial, s.pos, s.vel);
     s.mu = v.m_parent->mu;
     s.sea_r = v.m_parent->seaLevelRadius();
+    /* The air top, and nothing else about the air (#960). The law still bills no drag
+       and reads no pressure; it only needs to know how tall the atmosphere is, because
+       a pitch schedule that flattens at 4.5 km inside an 85 km air spends 82% of the
+       mission's delta-v pushing air out of the way. enabled is the loader's flag, so an
+       airless body hands the law 0 and gets the schedule it has always had. */
+    s.air_top_asl = v.m_parent->surface.atmosphere.enabled
+                  ? v.m_parent->surface.atmosphere.top() : 0.0;
     s.grounded = v.isGrounded();
     s.railed = v.onRails;
     s.accel_max = v.availableAccel();

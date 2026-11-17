@@ -836,6 +836,76 @@ static void test_letting_go_closes_both_channels() {
     CHECK_TRUE(v->slewRequestMode() == SlewNone, "and calling it twice keeps it off");
 }
 
+/* pathAngle()'s air term (#960). The harness has no drag -- Moho has none -- so this
+   pins the SCHEDULE, not a mission: at the same high-water altitude, a body with air
+   must ask for a nose at least as high as a body without one, because what the air
+   bills is the path flown through it and a hull that leans over at 4 km pays for a long
+   one. Measured off Kerbin with mars_explorer_mk1: with the air term off, a 150 km ask
+   never got past 9.4 km of apoapsis and spent 11.7 km/s of drag; with it on the same
+   hull on the same bed reached 150 x 159 km for 4.8 km/s.
+
+   kFlatAir itself is a FLIGHT-tuned number, so it is deliberately not duplicated here.
+   What the suite can pin is the form: the nose comes down as the hull climbs, one
+   flat-over altitude read as h_half = alt * tan(pitch) and the same at every altitude,
+   keyed on the height of the air, and never below the ask-keyed one. */
+static double schedPitch(const AscentTarget &t, double air_top, double alt) {
+    AscentLaw law(t);
+    GuidanceState s;
+    /* A slow climb, so the apoapsis stays put and the law keeps answering with its
+       schedule instead of moving to Coast and aiming prograde. */
+    s.pos = glm::dvec3(R_MOHO + alt, 0.0, 0.0);
+    s.vel = glm::dvec3(0.0, 30.0, 0.0);
+    s.mu = MU_MOHO; s.sea_r = R_MOHO; s.spin_axis = glm::dvec3(0.0, 0.0, 1.0);
+    s.accel_max = 19.0; s.has_propellant = true;
+    s.air_top_asl = air_top;
+    law.step(s);
+    return law.pitch_deg();
+}
+
+static double schedHHalf(const AscentTarget &t, double air_top, double alt) {
+    return alt * std::tan(glm::radians(schedPitch(t, air_top, alt)));
+}
+
+static void test_the_air_holds_the_nose_up() {
+    printf("== the pitch schedule in air: the air, not only the ask, says when to flatten ==\n");
+    const double ask = 150e3;
+    const double air_top = 85e3;   // Kerbin's air top, res/systems/ksp_system.json
+    AscentTarget t; t.apo_asl = t.peri_asl = ask; t.inc_rad = -1.0;
+    const double alts[] = {1e3, 5e3, 10e3, 20e3, 40e3, 80e3};
+    const int n = (int)(sizeof(alts) / sizeof(alts[0]));
+    double no_air[8], air[8];
+    for(int i = 0; i < n; i++) {
+        no_air[i] = schedHHalf(t, 0.0, alts[i]);
+        air[i] = schedHHalf(t, air_top, alts[i]);
+        printf("   [alt %5.0f km] no air %5.1f deg (flat-over %6.1f km), air %5.1f deg (%6.1f km)\n",
+               alts[i] / 1e3, schedPitch(t, 0.0, alts[i]), no_air[i] / 1e3,
+               schedPitch(t, air_top, alts[i]), air[i] / 1e3);
+    }
+    /* One flat-over altitude, whatever altitude it is read from: the schedule is
+       atan2(h_half, alt), and a second term keyed on something else would show up here
+       as two different h_half's. */
+    CHECK_NEAR(air[3], air[1], 1.0, "the air-keyed schedule has ONE flat-over altitude");
+    CHECK_NEAR(no_air[3], no_air[1], 1.0, "...and so does the ask-keyed one");
+    /* The air term scales with the height of the air, not with the ask and not with how
+       much air is left above the ship: halve the air top, halve the turn. */
+    const double half_top = schedHHalf(t, air_top / 2.0, 10e3);
+    CHECK_NEAR(half_top, air[2] / 2.0, 1.0, "the turn scales with how tall the air is");
+    for(int i = 0; i < n; i++) {
+        CHECK_TRUE(air[i] >= no_air[i] - 1e-6, "the air term only ever DELAYS the flatten");
+        CHECK_TRUE(air[i] > 0.0, "and stays a path angle");
+        if(i > 0) {
+            /* The nose on the pitch, not on h_half: h_half is what stays put. */
+            CHECK_TRUE(schedPitch(t, air_top, alts[i]) < schedPitch(t, air_top, alts[i-1]),
+                       "the nose comes down as the hull climbs");
+        }
+    }
+    /* The size of it, and why it is there: on Kerbin the turn moves from a few km to
+       tens of km, so the fat part of the air is flown steep. Measured: this is the
+       difference between 9.4 km of apoapsis and reaching space. */
+    CHECK_TRUE(air[2] > 4.0 * no_air[2], "in air the turn is far above the ask's own scale");
+    CHECK_TRUE(schedPitch(t, air_top, 10e3) > 60.0, "and the hull is still climbing steeply at 10 km");
+}
+
 int main() {
     test_a_pad_ship_aims_at_the_sky_and_never_at_nan();
     test_a_hull_that_lands_is_a_failed_mission();
@@ -855,6 +925,7 @@ int main() {
     test_the_law_asks_for_a_press_and_asks_once();
     test_a_reported_refusal_is_retried_and_named();
     test_a_staged_hull_flies_and_an_unstaged_one_does_not();
+    test_the_air_holds_the_nose_up();
     printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures ? 1 : 0;
 }

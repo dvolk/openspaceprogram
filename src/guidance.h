@@ -91,6 +91,13 @@ struct GuidanceState {
                                         // all the same, and it is what "east" and
                                         // the asked inclination are measured from.
     double accel_max = 0.0;             // availableAccel(), m/s^2 at full throttle
+    /* The body's air top, metres above the same datum as sea_r, or 0 when the body has
+       no atmosphere at all. The law still models no drag and reads no pressure: this is
+       ONE number, answering ONE question -- how much of the climb happens inside air,
+       and therefore how late the pitch schedule may flatten (pathAngle, #960). The
+       driver fills it from AtmosphereParams::top() only when the body authors an
+       atmosphere, so an airless flight gets exactly 0 and flies the schedule it used to. */
+    double air_top_asl = 0.0;
     bool has_propellant = true;         // THIS stage can actually burn: the driver
                                         // fills it from Vehicle::canBurn(), which asks
                                         // per ignited engine whether every resource it
@@ -282,12 +289,15 @@ bool flyAscent(Vehicle &v, AscentLaw &law, double dt, bool *want_stage);
 void releaseAscent(Vehicle &v);
 
 /* What v1 does NOT do, stated here so the next phase is a decision and not a
-   discovery: no atmosphere (drag/pressure are not even in GuidanceState), no
-   descent or landing -- a hull that comes back to the ground FAILS with that
-   reason rather than being flown again (#931), no transfers, no plane change
-   after launch (the inclination is set by the launch heading, not steered), and
-   no mid-course re-burn -- if the circularisation cutoff is missed, the orbit is
-   what it is and the law reports Done/Failed rather than trying again.
+   discovery: the law still bills no drag and reads no pressure. GuidanceState
+   carries the air's HEIGHT (#960), because that is all the pitch schedule needs
+   to know, and nothing else about the air: no q, no flight-path closure, no
+   throttle response to drag. No descent or landing -- a hull that comes back to
+   the ground FAILS with that reason rather than being flown again (#931), no
+   transfers, no plane change after launch (the inclination is set by the launch
+   heading, not steered), and no mid-course re-burn -- if the circularisation
+   cutoff is missed, the orbit is what it is and the law reports Done/Failed
+   rather than trying again.
    Staging landed with #928, as an ASK only: the law presses when the hull says
    the stage is due (Vehicle::stageIsDue, the VAB's own criterion) or has run dry
    with presses left. It does not resequence the plan, choose a drop for
