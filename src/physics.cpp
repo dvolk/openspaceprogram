@@ -450,14 +450,18 @@ glm::dvec3 getInertiaDiag(Body *body) {
 }
 
 double impulseMass(Body *body, glm::dvec3 rel, glm::dvec3 dir) {
+    /* The cross term scales as |dir|^2, so a non-unit dir is not a slightly
+       different answer, it is a different quantity. Asserted rather than
+       normalised here because the callers all have a unit vector to hand and a
+       silent renormalise would hide a bad basis. */
+    assert(glm::dot(dir, dir) > 0.99 && glm::dot(dir, dir) < 1.01);
     btRigidBody *r = getRigidBody(body);
     const double invM = r->getInvMass();
     if(invM <= 0.0) { return 0.0; }     // immovable: no finite impulse mass
     const btVector3 rr(rel.x, rel.y, rel.z), dd(dir.x, dir.y, dir.z);
     const btVector3 c = rr.cross(dd);
     const btVector3 k = r->getInvInertiaTensorWorld() * c;
-    const double inv = invM + c.dot(k);
-    return inv > 0.0 ? 1.0 / inv : 0.0;
+    return 1.0 / (invM + c.dot(k));     // invM > 0 alone makes the denominator > 0
 }
 
 glm::dvec3 GetPosition(Body *b) {

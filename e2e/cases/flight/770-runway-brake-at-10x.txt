@@ -1,0 +1,34 @@
+NAME runway-brake-at-10x
+CLAIM A gear hull that rolls up under thrust at 10x warp brakes to a stop and stays stopped.
+KIND invariant
+ARGS --time-accel 10 --startship skiffgear,res/ships/skiff_gear.json,Kerbin,pad,site=ksc_runway
+ARGS --sim-steps 300 --dbg-log --orbit-interval 0.5
+# Brakes are on at spawn: release (O), roll up under thrust, then brake (O) again.
+# --sim-steps so the press schedule counts logic ticks, not the wall (#472): 1000 ms
+# is 60 ticks whatever the accel, and at warp 10 that is 10 s of sim.
+ARGS --sim-press 500,0,O
+ARGS --sim-press 1000,700,T
+ARGS --sim-press 2000,0,O
+EXPECT [dbg]
+# Why this case exists at warp 10 when 852 does the same story at warp 1: the substep
+# here is 3 x 0.0556 s, the coarsest the shipped loop makes (warp >= 11 rides rails),
+# and that is the only regime in which wheel.h's momentum clamp can bind (#770). Every
+# other driving case ran at warp 1, where the criterion 2.7*g*h is ~0.04 and the clamp
+# is provably dead code -- so the whole warp 8-10 rolling regime had no net under it.
+#
+# What it measures is that the clamp did not eat the rolling law. Measured here: 40.1
+# m/s at t=15 s, 45.0 m/s at t=20 s (alt 2.3-2.8 m, so this is rolling, not flying),
+# brake on at 2000 ms = 20 s of sim, 0.47 m/s at t=25 s and 0.01 m/s from t=30 s on.
+# With the clamp forced off (in.stopRate = 0) the same run is identical to 0.02 m/s --
+# the clamp cannot bind at 45 m/s, where tanh has saturated and the friction circle
+# (kGrip*N ~ 1.7 kN) sits two orders under the momentum budget (stopRate*|v| ~ 180 kN).
+# It binds at REST, which 859 pins. So this case's job is the negative: keep the moving
+# hull's braking law working at the coarsest substep, where an over-damped tire would
+# show up as a hull that never stops or stops and craws.
+CHECK max(d["v"] for d in dbg) > 30
+CHECK last(dbg)["v"] < 0.1
+CHECK all(abs(d["v"]) < 0.1 for d in dbg[-4:])
+# And it stays where the brakes left it: under 0.5 m of travel across the last four
+# log steps (~40 s of sim). Measured 0.2 m.
+CHECK (lambda ds: max(sum((b["pos"][j]-ds[-5]["pos"][j])**2 for j in (0,1,2)) for b in ds[-4:]) < 0.5)(dbg)
+FORBID error:

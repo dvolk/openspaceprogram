@@ -44,7 +44,10 @@ static wheel::Input rest(double compression) {
     in.forward = glm::dvec3(0.0, 1.0, 0.0);
     in.contactVel = glm::dvec3(0.0);
     in.brake = 0.0;
-    in.stopRate = 0.0;   // momentum clamp off: these pins are about the gains
+    in.stopRate = 0.0;   // momentum clamp off: these pins are about the gains, not
+                         // the clamp -- at warp 1 the clamp cannot bind (2.7*g*h is
+                         // ~0.04), so the clamp has its own pins below and a hull
+                         // case at warp 10 in e2e.
     return in;
 }
 
@@ -136,10 +139,11 @@ int main() {
 
     /* The momentum clamp (#770): the tangential pair may not spend more than
        stopping this substep's slip needs. Without it, a braked wheel's near-zero
-       slip gain ((kBrakeGrip+roll)*N/kSlipEps ~ 8 kN per m/s at a parked load)
-       over-corrects the patch velocity once the substep passes ~0.03 s: the sign
-       flips every step, the suspension pumps, and a parked hull walks itself
-       across a balloon deck at warp. */
+       slip gain -- (kBrakeGrip+kRollResist)/kSlipEps = 2.7 N per N of load per
+       m/s, against a one-substep budget of m/(n*h) -- over-corrects the patch
+       velocity: the ratio is 2.7*g*h, mass-free, and it passes 1 at h = 0.042 s on
+       Venus (warp 8 at --physics-hz 60). The sign flips every step, the suspension
+       pumps, and a parked hull walks itself across a balloon deck at warp. */
     {
         // Lateral slip of 0.05 m/s: the raw gain is 4000 * 0.05 = 200 N.
         wheel::Input noClamp = rest(0.1);

@@ -40,8 +40,9 @@ struct Input {
     double brake;            // 0..1 brake demand
     /* kg/s: the hull's effective mass at this patch divided by the physics
        substep, over the number of ground contacts sharing that mass. 0 turns
-       the clamp off. See force(). */
-    double stopRate;
+       the clamp off. See force(). Defaulted because "off" is the direction a
+       garbage value can land in, and a small positive one guts the brakes. */
+    double stopRate = 0.0;
 };
 
 // The force the ground applies to the hull at the contact patch (world N).
@@ -68,17 +69,22 @@ inline glm::dvec3 force(const Input &in) {
     double cap = kGrip * N;
     /* Nor can a contact spend more than the slip momentum in front of it. Both
        tire terms are EXPLICIT forces, held for a whole substep, so a gain past
-       ~mass/substep over-corrects the patch velocity and flips its sign. A
-       braked hull is exactly that gain: the tanh knee makes the brake worth
-       (kRollResist + kBrakeGrip)/kSlipEps = 2.7 N per N of load per m/s, so a
-       1090 kg hull on three wheels asks ~26 kN per m/s while one 0.0556 s
-       substep (warp 10, the coarsest the shipped loop makes -- warp 11+ rides
-       rails) can only spend 20 kN per m/s. The brake then reversed the slip
-       every step, pumped the suspension (N 935 <-> 2885 N per wheel) and pitched
-       the hull +/-0.22 rad/s, and the friction circle rectified that oscillation
-       into a parked skiff walking 0.24 m/s across a balloon deck (#770; #862's
-       tire-impulse idea). Stopping the slip is all the ground is ever asked to
-       do, so cap the pair at its share of the hull's momentum. */
+       mass/substep over-corrects the patch velocity and flips its sign. A braked
+       hull has exactly that gain: the tanh knee makes the brake worth
+       (kRollResist + kBrakeGrip)/kSlipEps = 2.7 N per N of load per m/s, and a
+       parked load is m*g per wheel, so ask over one substep's budget is 2.7*g*h --
+       no hull mass in it. At Venus g with h = 0.0556 s (warp 10, the coarsest
+       substep the shipped loop makes -- warp 11+ rides rails) that is 1.32, i.e.
+       over 1 from warp 8 up. The brake then reversed the slip every step, pumped
+       the suspension (N 935 <-> 2885 N per wheel) and pitched the hull
+       +/-0.22 rad/s, and the friction circle rectified that oscillation into a
+       parked skiff walking 0.24 m/s across a balloon deck (#770; #862's
+       tire-impulse idea). Stopping the slip is what the ground is asked to do
+       there, so cap the pair at its share of the hull's momentum. What that cap
+       makes of the tire is worth naming: at zero slip it is pure damping, so it no
+       longer HOLDS a parked hull against a steady force. Whoever adds stiction on
+       top has to raise the cap with max(stopRate*|v|, kStatic*N) or this line
+       cancels it in silence. */
     if(in.stopRate > 0.0) {
         const double mom = in.stopRate * std::sqrt(vF * vF + vL * vL);
         if(mom < cap) { cap = mom; }

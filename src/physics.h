@@ -85,7 +85,9 @@ glm::dvec3 getInertiaDiag(Body *body);
    COM offset `rel`: 1 / (1/m + (rel x dir)^T Iw^-1 (rel x dir)). A force that
    must not reverse the motion it is fighting -- a tire braking a slip -- has to
    know this; the linear mass alone ignores the pitch it also drives (#770).
-   Zero for a body that cannot move (infinite mass). */
+   `dir` is asserted unit, not renormalised. Zero for a body that cannot move
+   (infinite mass) -- note that wheel::force reads a zero stopRate as "clamp off",
+   the opposite meaning, so a new caller must not pass this answer straight in. */
 double impulseMass(Body *body, glm::dvec3 rel, glm::dvec3 dir);
 
 void SetVelocity(Body *body, glm::dvec3 vel);

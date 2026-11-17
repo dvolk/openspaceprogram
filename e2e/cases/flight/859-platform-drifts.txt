@@ -41,10 +41,11 @@ CHECK sum(p*p for p in dbg[-1]["pos"]) < 10000
 # x=-1.0 out to x=-38.9 (the deck mesh's edge, x=+-40) and stopped there: 34 m in 140 s with no
 # wind to blame, because inside the bubble the air is at rest with the deck and [drag] bills 0.0 N.
 # The ground law, not the air, was moving it: with brakes on, wheel.h's longitudinal term is worth
-# (kBrakeGrip+kRollResist)*N/kSlipEps ~ 8 kN per m/s at a parked load, and it is an EXPLICIT force
-# held for a whole substep. Warp 10 steps 3 x 0.0556 s, past the point where that over-corrects
-# the patch velocity (gain*h/mass > 1), so the brake reversed the slip every step, pumped the
-# suspension (normal load 935 <-> 2885 N per wheel) and pitched the hull +/-0.22 rad/s; the
+# (kBrakeGrip+kRollResist)*N/kSlipEps per m/s -- 2.7 N of force per N of load per m/s -- and it is
+# an EXPLICIT force held for a whole substep. Warp 10 steps 3 x 0.0556 s, and the ask against one
+# substep's momentum budget is 2.7*g*h = 1.32 at Venus g (mass drops out: a parked load is m*g per
+# wheel), so the brake reversed the slip every step, pumped the suspension (normal load 935 <->
+# 2885 N per wheel) and pitched the hull +/-0.22 rad/s; the
 # friction circle rectified that oscillation into a steady slide. The clamp caps a contact's
 # tangential force at its share of the hull's momentum -- stopping the slip in front of it is all
 # the ground is ever asked to do -- and the slide is gone at every substep the shipped loop can

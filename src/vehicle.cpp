@@ -4599,6 +4599,12 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
    thrust; nothing integrates until physics_tick. */
 void Vehicle::applyGroundForces(double h) {
     if(gearParts.empty() || hull == nullptr || !hullInWorld()) { return; }
+    /* h is the substep the tire force is held for, and the momentum clamp below
+       divides by it. The caller is the substep loop (tick.cpp), which cannot
+       reach here with h <= 0; asserted rather than guarded, because a zero h that
+       silently turned the clamp off is the failure this function exists to
+       prevent (#770). Same contract as applyThrust's assert two neighbours away. */
+    assert(h > 0.0);
     const glm::dvec3 com = get_center_of_mass();
     const glm::dvec3 vel = GetVelocity(hull);
     const glm::dvec3 omega = GetAngVelocity(hull);
@@ -4674,14 +4680,16 @@ void Vehicle::applyGroundForces(double h) {
            (wheel.h, #770). Measured at THIS patch -- a tangential push here also
            buys pitch, so the linear mass alone is too generous -- and divided
            across the gear the hull has, because the hull's momentum is one pot
-           that every wheel would otherwise spend in full. gearParts rather than
-           the wheels touching right now: a smaller denominator is the safe
-           direction, and counting this substep's contacts would raycast twice. */
+           that every wheel would otherwise spend in full. The denominator is
+           gearParts.size(), NOT this substep's contact count: gearParts is the
+           larger of the two, so it is the softer clamp. Counting contacts gives
+           the exact deadbeat budget, but only a second pass over the cached
+           contacts knows how many there are, and the raycast would run twice. */
         const glm::dvec3 slip = in.contactVel - n * glm::dot(in.contactVel, n);
         const double slipM = glm::length(slip);
         const glm::dvec3 slipDir = slipM > 1e-9 ? slip / slipM : f;
-        in.stopRate = h > 0.0 ? impulseMass(hull, rel, slipDir)
-                                / (h * (double)gearParts.size()) : 0.0;
+        in.stopRate = impulseMass(hull, rel, slipDir)
+                        / (h * (double)gearParts.size());
         const glm::dvec3 F = wheel::force(in);
         ApplyForce(hull, rel, F);
         if(recordForceVecs) { lastForceVecs.push_back({ rel, F, kForceGround }); }

@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 400 |
+| `invariant` | a behaviour or a player route the game must keep | 401 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 50 |
 | `harness` | CLI/test-engine plumbing, not game spec | 16 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **470** |
+| | **total** | **471** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -18,7 +18,7 @@ paces a run: how much e2e a change deserves is the caller's
 judgement. Select by number, name or path, e.g.
 `python3 e2e/run.py save/172 262`.
 
-## flight (143)
+## flight (144)
 
 | case | kind | pins |
 |---|---|---|
@@ -126,6 +126,7 @@ judgement. Select by number, name or path, e.g.
 | `flight/713-heading-points-where-the-hull-is-going.txt` | invariant | [surfinfo]'s hdg= is a compass heading in equirect.h's convention: a hull cruising east along the equator reads an EASTERLY heading while its own longitude grows, so the readout cannot be mirrored east-west. |
 | `flight/718-a-hull-on-the-ground-stands-in-a-wind.txt` | golden | A hull landed at an Earth pad stands in 5.4 m/s of moving air without leaving its place: tas reads the wind, hs stays under 0.01 m/s, and it stays landed for the whole run. |
 | `flight/730-the-air-bills-each-surface-in-watts.txt` | invariant | Each [surface] row's watts= is that surface's share of the air's bill -- its q x its CdA x the flow speed standing AT it, for both what the pass charges a surface (its form drag and the induced price of its lift) -- so taking each part's CdA back out of its own watts adds the row back up to the [drag] line's Profile= PLUS its Induced= exactly: no part counted twice, none invented, none of the bill unassigned. It is never a rounded-to-zero placeholder while the hull is in the air, and the mirrored wing pair's watts differ wherever their q does, which is what one ship-wide figure would hide. |
+| `flight/770-runway-brake-at-10x.txt` | invariant | A gear hull that rolls up under thrust at 10x warp brakes to a stop and stays stopped. |
 | `flight/772-the-giants-and-titan-move-their-air.txt` | golden | A hull spawned on each of the five bodies #772 winds reads its authored wind at the spawn altitude: the airspeed stays the bed's own value while the ground speed takes the wind, at Jupiter by exactly the 150 m/s its sheet states. |
 | `flight/809-transfer-plan-follows-the-active-ship.txt` | invariant | With a transfer target held, every plan the game prints belongs to the hull in control -- including the frames right after switching to another of your own vessels. |
 | `flight/817-a-startship-alt-asks-a-height.txt` | invariant | --startship alt=<metres> opens a circular bed at exactly that altitude above sea level -- not the scenario's fraction -- with the air the profile has there, and says so on the Spawn line. |
