@@ -11,35 +11,7 @@
 #include <cstdio>
 
 #include "bodylimits.h"
-
-static int g_failures = 0;
-static int g_checks = 0;
-
-#define CHECK_TRUE(cond, msg)                                                 \
-    do {                                                                      \
-        g_checks++;                                                           \
-        if (!(cond)) {                                                        \
-            g_failures++;                                                     \
-            printf("FAIL: %s\n", msg);                                        \
-        }                                                                     \
-    } while (0)
-
-#define CHECK_NEAR(actual, expected, rel_tol, msg)                            \
-    do {                                                                      \
-        g_checks++;                                                           \
-        double _a = (actual), _e = (expected);                                \
-        /* Relative, except at an expectation of exactly zero (#510):              \
-           rel_tol * 0.0 would demand bit-exactness, which is not what a           \
-           caller writing 1e-12 means. 0.0 AS a tolerance stays exact, so          \
-           a bit-identical pin keeps its teeth. */                                 \
-        const double _tol = (_e == 0.0) ? rel_tol                                  \
-                                        : rel_tol * std::fabs(_e);                 \
-        if (!std::isfinite(_a) || !std::isfinite(_e)                              \
-            || std::fabs(_a - _e) > _tol) {                                       \
-            g_failures++;                                                     \
-            printf("FAIL: %s (got %.9g, want %.9g)\n", msg, _a, _e);          \
-        }                                                                     \
-    } while (0)
+#include "tchecks.h"
 
 #define CHECK_THROWS(expr, msg)                                               \
     do {                                                                      \
@@ -68,17 +40,17 @@ static void test_shell_edge() {
     // shell. #686 moved Kerbin off that line: its air now tops out at 85 km, so
     // the home world's rotating frame, LowOrbit band and spawn beds lift with it
     // -- the first time this floor has not been deciding the daily driver.
-    CHECK_NEAR(shellEdge(0.0), 100e3, 1e-12, "airless -> kMinShell");
-    CHECK_NEAR(shellEdge(70e3), 100e3, 1e-12, "a 70 km top -> kMinShell");
+    CHECK_REL(shellEdge(0.0), 100e3, 1e-12, "airless -> kMinShell");
+    CHECK_REL(shellEdge(70e3), 100e3, 1e-12, "a 70 km top -> kMinShell");
 
     // Tall atmospheres get top + 20%: the shell contains its own air and
     // LowOrbit is a real band above it.
-    CHECK_NEAR(shellEdge(85e3), 102e3, 1e-12, "Earth / Kerbin (85 km) -> 102 km");
+    CHECK_REL(shellEdge(85e3), 102e3, 1e-12, "Earth / Kerbin (85 km) -> 102 km");
     // The examples are the shipped giants' authored ceilings: #682 step 3 moved Jool
     // 200 -> 275 km and Saturn 600 -> 800 km to where a circular orbit still feels
     // 10..1000 Pa of q, so a giant's frame is now sized by its air rather than by 10 H.
-    CHECK_NEAR(shellEdge(275e3), 330e3, 1e-12, "Jool (275 km) -> 330 km");
-    CHECK_NEAR(shellEdge(800e3), 960e3, 1e-12, "Saturn (800 km) -> 960 km");
+    CHECK_REL(shellEdge(275e3), 330e3, 1e-12, "Jool (275 km) -> 330 km");
+    CHECK_REL(shellEdge(800e3), 960e3, 1e-12, "Saturn (800 km) -> 960 km");
 
     // The invariant the #97 fix rests on: the shell always covers the air
     // plus the frame-switch hysteresis, for EVERY top.
@@ -97,21 +69,21 @@ static void test_soi_laws() {
 
     // patched_conic reproduces the KSP wiki SOIs the old K table hardcoded
     // (Squad generated the wiki values with this same formula).
-    CHECK_NEAR(soiPatchedConic(13599840260.0, 5.2915793e22, 1.757e28),
+    CHECK_REL(soiPatchedConic(13599840260.0, 5.2915793e22, 1.757e28),
                84159290.0, 2e-3, "Kerbin ~ wiki 84,159 km");
-    CHECK_NEAR(soiPatchedConic(12000000.0, 9.7600236e20, 5.2915793e22),
+    CHECK_REL(soiPatchedConic(12000000.0, 9.7600236e20, 5.2915793e22),
                2429559.1, 2e-3, "Mun ~ wiki 2,430 km");
-    CHECK_NEAR(soiPatchedConic(31548000.0, 1.242e17, 1.224e23),
+    CHECK_REL(soiPatchedConic(31548000.0, 1.242e17, 1.224e23),
                126120.0, 2e-3, "Gilly ~ wiki 126.1 km");
 
     // hill reproduces the real solar system's old hardcoded values.
-    CHECK_NEAR(soiHill(1.496e11, 5.972e24, 1.989e30),
+    CHECK_REL(soiHill(1.496e11, 5.972e24, 1.989e30),
                1.4964e9, 1e-2, "Earth Hill ~ 1.496 Gm");
 
     // Degenerate inputs -> 0 (a law value of 0 lets the lift win).
-    CHECK_NEAR(soiPatchedConic(0.0, 1.0, 1.0), 0.0, 0.0, "a=0 -> 0");
-    CHECK_NEAR(soiHill(1.0, 0.0, 1.0), 0.0, 0.0, "m=0 -> 0");
-    CHECK_NEAR(soiPatchedConic(1.0, 1.0, 0.0), 0.0, 0.0, "M=0 -> 0");
+    CHECK_REL(soiPatchedConic(0.0, 1.0, 1.0), 0.0, 0.0, "a=0 -> 0");
+    CHECK_REL(soiHill(1.0, 0.0, 1.0), 0.0, 0.0, "m=0 -> 0");
+    CHECK_REL(soiPatchedConic(1.0, 1.0, 0.0), 0.0, 0.0, "M=0 -> 0");
 
     // The law picker + the JSON name parse.
     CHECK_TRUE(soiByLaw(SoiLaw::PatchedConic, 12e6, 9.76e20, 5.292e22)
@@ -132,22 +104,22 @@ static void test_lift() {
     // (113 + 25 + 10 = 148 km; the bed spawns at 13 + 125 = 138 km, which
     // must resolve inside the SOI). This is the shipped nesting violator
     // the old data model could not express.
-    CHECK_NEAR(inertialSoi(126120.0, 113000.0, 100000.0), 148000.0, 1e-12,
+    CHECK_REL(inertialSoi(126120.0, 113000.0, 100000.0), 148000.0, 1e-12,
                "Gilly lifted to 148 km (bed floor)");
     // Kerbin: the law value wins by miles.
-    CHECK_NEAR(inertialSoi(84159290.0, 700000.0, 100000.0), 84159290.0,
+    CHECK_REL(inertialSoi(84159290.0, 700000.0, 100000.0), 84159290.0,
                1e-12, "Kerbin law value wins");
     // Phobos-class collapse: a ~7 km law value still yields an SOI that
     // contains the 136 km inertial-orbit bed.
-    CHECK_NEAR(inertialSoi(7256.0, 111167.0, 100000.0), 146167.0, 1e-12,
+    CHECK_REL(inertialSoi(7256.0, 111167.0, 100000.0), 146167.0, 1e-12,
                "Phobos lifted to rotSoi + 35 km");
     // A tall-atmo shell: the bed floor scales with it (a Jool-sized 240 km shell
     // gives 0.25*240+10 = 70 km over the rot SOI, above the 20 km hysteresis
     // floor). Fixture values, not shipped ones: #682 step 3 authored Jool's air top
     // at 275 km, so its shell now derives 330 km and this floor 92.5 km.
-    CHECK_NEAR(inertialSoi(2.456e9, 6.24e6, 240e3), 2.456e9, 1e-12,
+    CHECK_REL(inertialSoi(2.456e9, 6.24e6, 240e3), 2.456e9, 1e-12,
                "Jool law value wins");
-    CHECK_NEAR(inertialSoi(0.0, 6.24e6, 240e3), 6.31e6, 1e-12,
+    CHECK_REL(inertialSoi(0.0, 6.24e6, 240e3), 6.31e6, 1e-12,
                "Jool-size shell lifts to rotSoi + 70 km");
 }
 

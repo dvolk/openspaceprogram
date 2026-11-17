@@ -53,35 +53,7 @@
 
 #include "drag.h"
 #include "equirect.h"  // the east/north basis a wind row is authored in (#688)
-
-static int g_failures = 0;
-static int g_checks = 0;
-
-#define CHECK_TRUE(cond, msg)                                                 \
-    do {                                                                      \
-        g_checks++;                                                           \
-        if (!(cond)) {                                                        \
-            g_failures++;                                                     \
-            printf("FAIL: %s\n", msg);                                        \
-        }                                                                     \
-    } while (0)
-
-#define CHECK_NEAR(actual, expected, rel_tol, msg)                            \
-    do {                                                                      \
-        g_checks++;                                                           \
-        double _a = (actual), _e = (expected);                                \
-        /* Relative, except at an expectation of exactly zero (#510):              \
-           rel_tol * 0.0 would demand bit-exactness, which is not what a           \
-           caller writing 1e-12 means. 0.0 AS a tolerance stays exact, so          \
-           a bit-identical pin keeps its teeth. */                                 \
-        const double _tol = (_e == 0.0) ? rel_tol                                  \
-                                        : rel_tol * std::fabs(_e);                 \
-        if (!std::isfinite(_a) || !std::isfinite(_e)                              \
-            || std::fabs(_a - _e) > _tol) {                                       \
-            g_failures++;                                                     \
-            printf("FAIL: %s (got %.9g, want %.9g)\n", msg, _a, _e);          \
-        }                                                                     \
-    } while (0)
+#include "tchecks.h"
 
 /* #739 moved what a file AUTHORS about its air from a density to a datum pressure, and
    resolveAtmoLevels now takes that pressure. These tests are written around the standard
@@ -106,31 +78,31 @@ static void test_density() {
        clamps its floor, so Kerbin's sea beds and Eve's dry valleys already sat under
        a datum that was just the bare radius. e2e/fixtures/systems/245-kerbin-sea.json
        is the case where a PAD sits under one. */
-    CHECK_NEAR(airDensity(a, 0.0), 1.225, 0.0, "alt=0 -> rho0, not vacuum");
-    CHECK_NEAR(airDensity(a, -100.0), 1.225, 0.0, "alt<0 -> rho0, not vacuum");
+    CHECK_REL(airDensity(a, 0.0), 1.225, 0.0, "alt=0 -> rho0, not vacuum");
+    CHECK_REL(airDensity(a, -100.0), 1.225, 0.0, "alt<0 -> rho0, not vacuum");
     // Flat, not the exponential continued down: that would make the deepest sea the
     // densest air in the game, and it grows without bound (115 kg/m3 by -25 km).
-    CHECK_NEAR(airDensity(a, -25000.0), 1.225, 0.0, "a deep sea floor is still rho0");
+    CHECK_REL(airDensity(a, -25000.0), 1.225, 0.0, "a deep sea floor is still rho0");
     // Monotone ACROSS the datum, which the two exact pins above cannot see: a bump
     // sitting at the meeting point would still read rho0 at both of them.
     CHECK_TRUE(airDensity(a, -5000.0) >= airDensity(a, 5000.0),
                "rho does not fall as a hull descends through the datum");
     // And no cliff where the model meets the datum.
-    CHECK_NEAR(airDensity(a, 1e-6), 1.225, 1e-9, "the profile meets rho0 at the datum");
+    CHECK_REL(airDensity(a, 1e-6), 1.225, 1e-9, "the profile meets rho0 at the datum");
     /* The clamp is THIS body's sea level, not a constant. Every atmosphere in this
        file is 1.225, so a hard-coded 1.225 passes them all; Eve (1.7 kg/m3 at
        H 7000, its valley floors down near -amp/3 = -1.7 km) is the one that says
        sea_level_density. */
     const DragAtmosphere eve { 1.7, 7000.0 };
-    CHECK_NEAR(airDensity(eve, 0.0), 1.7, 0.0, "Eve at its datum -> its own rho0");
-    CHECK_NEAR(airDensity(eve, -1667.0), 1.7, 0.0, "an Eve valley floor -> Eve's rho0");
+    CHECK_REL(airDensity(eve, 0.0), 1.7, 0.0, "Eve at its datum -> its own rho0");
+    CHECK_REL(airDensity(eve, -1667.0), 1.7, 0.0, "an Eve valley floor -> Eve's rho0");
 
     // Just above the surface, the density is (essentially) sea level.
-    CHECK_NEAR(airDensity(a, 1.0), 1.225 * std::exp(-1.0 / 5500.0), 1e-12,
+    CHECK_REL(airDensity(a, 1.0), 1.225 * std::exp(-1.0 / 5500.0), 1e-12,
                "rho(1 m) == rho0 * e^(-1/H)");
 
     // One scale height: the density has fallen to rho0 / e.
-    CHECK_NEAR(airDensity(a, 5500.0), 1.225 / std::exp(1.0), 1e-12,
+    CHECK_REL(airDensity(a, 5500.0), 1.225 / std::exp(1.0), 1e-12,
                "rho(H) == rho0 / e");
 
     // Monotone: denser lower down.
@@ -147,10 +119,10 @@ static void test_density() {
        scale height 1.225 kg/m3 of drag down there. */
     const DragAtmosphere none0 { 0.0, 5500.0 };
     const DragAtmosphere noneH { 1.225, 0.0 };
-    CHECK_NEAR(airDensity(none0, 100.0), 0.0, 0.0, "no density -> 0");
-    CHECK_NEAR(airDensity(noneH, 100.0), 0.0, 0.0, "no scale height -> 0");
-    CHECK_NEAR(airDensity(none0, -100.0), 0.0, 0.0, "no density -> 0 below the datum");
-    CHECK_NEAR(airDensity(noneH, -100.0), 0.0, 0.0, "no scale height -> 0 below it");
+    CHECK_REL(airDensity(none0, 100.0), 0.0, 0.0, "no density -> 0");
+    CHECK_REL(airDensity(noneH, 100.0), 0.0, 0.0, "no scale height -> 0");
+    CHECK_REL(airDensity(none0, -100.0), 0.0, 0.0, "no density -> 0 below the datum");
+    CHECK_REL(airDensity(noneH, -100.0), 0.0, 0.0, "no scale height -> 0 below it");
 }
 
 static void test_densityTop() {
@@ -161,21 +133,21 @@ static void test_densityTop() {
     const DragAtmosphere kerbin { 1.225, 5500.0, 70000.0 };
 
     // At and above the top the air is vacuum.
-    CHECK_NEAR(airDensity(kerbin, 70000.0), 0.0, 0.0, "rho(top) == 0");
-    CHECK_NEAR(airDensity(kerbin, 100000.0), 0.0, 0.0, "rho above the top == 0");
+    CHECK_REL(airDensity(kerbin, 70000.0), 0.0, 0.0, "rho(top) == 0");
+    CHECK_REL(airDensity(kerbin, 100000.0), 0.0, 0.0, "rho above the top == 0");
     CHECK_TRUE(airDensity(kerbin, 69000.0) > 0.0, "rho just below the top > 0");
 
     // Inside the top the cutoff changes nothing: the same exponential.
-    CHECK_NEAR(airDensity(kerbin, 5500.0), airDensity(a, 5500.0), 1e-15,
+    CHECK_REL(airDensity(kerbin, 5500.0), airDensity(a, 5500.0), 1e-15,
                "inside the top the model is unchanged");
-    CHECK_NEAR(airDensity(kerbin, 60000.0),
+    CHECK_REL(airDensity(kerbin, 60000.0),
                1.225 * std::exp(-60000.0 / 5500.0), 1e-12,
                "rho(60 km) == rho0 * e^(-60km/H)");
 
     // height 0 means no cutoff at all (the fallback for a body that does not
     // author one): 200 km still reads a wisp, not vacuum.
     CHECK_TRUE(airDensity(a, 200000.0) > 0.0, "height 0 -> no cutoff");
-    CHECK_NEAR(airDensity(kerbin, 200000.0), 0.0, 0.0,
+    CHECK_REL(airDensity(kerbin, 200000.0), 0.0, 0.0,
                "with a top, 200 km is vacuum");
 
     // The force follows: a 100 km Kerbin orbit is genuine vacuum, so no
@@ -213,7 +185,7 @@ static void test_air_thermodynamics() {
        at 66 kPa, and nothing but these three numbers said so. The shipped Kerbin
        wears a level table now -- tests/test_scenarios.cpp pins what it reads. */
     const DragAtmosphere kerbin = makeAir(1.225, 5500.0, 70000.0, 9.81);
-    CHECK_NEAR(airTemperature(kerbin, 0.0), 187.95593796005446, 1e-12,
+    CHECK_REL(airTemperature(kerbin, 0.0), 187.95593796005446, 1e-12,
                "Kerbin's isothermal temperature: g H M / R");
     /* #724 rung D: the sound speed a hull's Mach number divides by and the air temperature
        it is computed from are ONE law (drag.h:soundSpeedFromT), because the aero pass now
@@ -224,33 +196,33 @@ static void test_air_thermodynamics() {
        T = g H M / R. The trio lock (atmo.h) says those are ONE number in the algebra, and
        they agree to a few ulps in binary -- which is worth recording here rather than
        papering over, because the coupled path uses the second form. */
-    CHECK_NEAR(soundSpeedFromT(kerbin, airTemperature(kerbin, 0.0)),
+    CHECK_REL(soundSpeedFromT(kerbin, airTemperature(kerbin, 0.0)),
                airSoundSpeed(kerbin, 0.0), 1e-9,
                "the temperature-keyed law IS the altitude-keyed one, at the datum");
-    CHECK_NEAR(soundSpeedFromT(kerbin, airTemperature(kerbin, 7000.0)),
+    CHECK_REL(soundSpeedFromT(kerbin, airTemperature(kerbin, 7000.0)),
                airSoundSpeed(kerbin, 7000.0), 1e-9,
                "...and halfway up the column");
-    CHECK_NEAR(soundSpeedFromT(kerbin, 0.0), 0.0, 0.0, "no air, no sound speed");
-    CHECK_NEAR(airSoundSpeed(kerbin, 0.0), 274.83995342744475, 1e-12,
+    CHECK_REL(soundSpeedFromT(kerbin, 0.0), 0.0, 0.0, "no air, no sound speed");
+    CHECK_REL(airSoundSpeed(kerbin, 0.0), 274.83995342744475, 1e-12,
                "Kerbin's sound speed: sqrt(gamma g H)");
-    CHECK_NEAR(airPressure(kerbin, 0.0), 66094.875, 1e-12,
+    CHECK_REL(airPressure(kerbin, 0.0), 66094.875, 1e-12,
                "Kerbin's sea-level pressure: rho0 g H");
 
     /* An atmosphere that does not name its planet gets no thermodynamics -- it is
        not quietly Earth. This is the pin that reddens a world default put back into
        drag.h's member initialiser. */
     const DragAtmosphere noworld { 1.225, 5500.0, 70000.0 };
-    CHECK_NEAR(airTemperature(noworld, 0.0), 0.0, 0.0,
+    CHECK_REL(airTemperature(noworld, 0.0), 0.0, 0.0,
                "no gravity named -> 0 K, not Earth's 9.81");
-    CHECK_NEAR(airSoundSpeed(noworld, 0.0), 0.0, 0.0, "no gravity named -> 0 m/s");
-    CHECK_NEAR(airPressure(noworld, 0.0), 0.0, 0.0, "no gravity named -> 0 Pa");
-    CHECK_NEAR(airDensity(noworld, 1000.0), 1.225 * std::exp(-1000.0 / 5500.0), 1e-12,
+    CHECK_REL(airSoundSpeed(noworld, 0.0), 0.0, 0.0, "no gravity named -> 0 m/s");
+    CHECK_REL(airPressure(noworld, 0.0), 0.0, 0.0, "no gravity named -> 0 Pa");
+    CHECK_REL(airDensity(noworld, 1000.0), 1.225 * std::exp(-1000.0 / 5500.0), 1e-12,
                "... and it still drags: g is not in rho");
 
     /* The ideal-gas tie spelled the OTHER way: if someone gives p its own formula
        while T keeps the old H, the two stop agreeing. */
     const double rspec = kGasR / kAirMolarMass;
-    CHECK_NEAR(airPressure(kerbin, 0.0),
+    CHECK_REL(airPressure(kerbin, 0.0),
                1.225 * rspec * airTemperature(kerbin, 0.0), 1e-12,
                "p == rho R T / M, spelled through the gas constant");
 
@@ -260,13 +232,13 @@ static void test_air_thermodynamics() {
        test_layered_atmosphere); this fixture is the profile every other shipped body
        still uses, and the tolerance says "close", not "USSA". */
     const DragAtmosphere earth = makeAir(1.225, 8500.0, 0.0, 9.82);
-    CHECK_NEAR(airTemperature(earth, 0.0), 290.773461987318, 1e-12,
+    CHECK_REL(airTemperature(earth, 0.0), 290.773461987318, 1e-12,
                "H 8500 reads 290.8 K");
-    CHECK_NEAR(airTemperature(earth, 0.0), 288.15, 0.015, "within 1.5% of USSA 288.15 K");
-    CHECK_NEAR(airSoundSpeed(earth, 0.0), 341.8449941128289, 1e-12,
+    CHECK_REL(airTemperature(earth, 0.0), 288.15, 0.015, "within 1.5% of USSA 288.15 K");
+    CHECK_REL(airSoundSpeed(earth, 0.0), 341.8449941128289, 1e-12,
                "Earth's sound speed sqrt(gamma g H)");
-    CHECK_NEAR(airSoundSpeed(earth, 0.0), 340.3, 0.015, "within 1.5% of USSA 340.3 m/s");
-    CHECK_NEAR(airPressure(earth, 0.0), 101325.0, 0.015,
+    CHECK_REL(airSoundSpeed(earth, 0.0), 340.3, 0.015, "within 1.5% of USSA 340.3 m/s");
+    CHECK_REL(airPressure(earth, 0.0), 101325.0, 0.015,
                "within 1.5% of USSA 101.325 kPa");
 
     /* What molar mass does and does not move: ONLY the temperature line. M cancels
@@ -274,73 +246,73 @@ static void test_air_thermodynamics() {
        that started using M in the density profile would go red here. The CO2 numbers
        are what the shipped defs now author for Venus / Mars / Duna / Eve. */
     const DragAtmosphere co2 = makeAir(1.225, 5500.0, 70000.0, 9.81, 0.044);
-    CHECK_NEAR(airTemperature(co2, 0.0), 285.5289763237949, 1e-12,
+    CHECK_REL(airTemperature(co2, 0.0), 285.5289763237949, 1e-12,
                "CO2 air (M 0.044) reads 285.5 K");
-    CHECK_NEAR(airSoundSpeed(co2, 0.0), airSoundSpeed(kerbin, 0.0), 0.0,
+    CHECK_REL(airSoundSpeed(co2, 0.0), airSoundSpeed(kerbin, 0.0), 0.0,
                "molar mass cancels out of the sound speed");
-    CHECK_NEAR(airPressure(co2, 12000.0), airPressure(kerbin, 12000.0), 0.0,
+    CHECK_REL(airPressure(co2, 12000.0), airPressure(kerbin, 12000.0), 0.0,
                "molar mass cancels out of the pressure too");
 
     /* And gamma moves only the sound speed: it is cp/cv, and nothing else reads it.
        1.3 is what the CO2 bodies author; 1.0 is the monatomic limit. */
     const DragAtmosphere co2gam = makeAir(1.225, 5500.0, 70000.0, 9.81, 0.044, 1.3);
     const DragAtmosphere mono = makeAir(1.225, 5500.0, 70000.0, 9.81, kAirMolarMass, 1.0);
-    CHECK_NEAR(airSoundSpeed(co2gam, 0.0), 264.842405970041, 1e-12,
+    CHECK_REL(airSoundSpeed(co2gam, 0.0), 264.842405970041, 1e-12,
                "CO2's gamma 1.3: sqrt(1.3 g H)");
-    CHECK_NEAR(airTemperature(co2gam, 0.0), airTemperature(co2, 0.0), 0.0,
+    CHECK_REL(airTemperature(co2gam, 0.0), airTemperature(co2, 0.0), 0.0,
                "gamma does not move the temperature");
-    CHECK_NEAR(airSoundSpeed(mono, 0.0), 232.28215600859227, 1e-12,
+    CHECK_REL(airSoundSpeed(mono, 0.0), 232.28215600859227, 1e-12,
                "monatomic gas: sqrt(1.0 g H)");
-    CHECK_NEAR(airTemperature(mono, 0.0), airTemperature(kerbin, 0.0), 0.0,
+    CHECK_REL(airTemperature(mono, 0.0), airTemperature(kerbin, 0.0), 0.0,
                "gamma does not move the temperature");
-    CHECK_NEAR(airPressure(mono, 3000.0), airPressure(kerbin, 3000.0), 0.0,
+    CHECK_REL(airPressure(mono, 3000.0), airPressure(kerbin, 3000.0), 0.0,
                "gamma does not move the pressure");
 
     /* THE A2 PROMISE: adding the thermodynamics cannot move a drag number. rho is
        g-free, so a body's gravity rides the seam and touches nothing the flight
        model bills. */
     const DragAtmosphere duna = makeAir(1.225, 5500.0, 70000.0, 2.94);
-    CHECK_NEAR(airDensity(duna, 0.0), airDensity(kerbin, 0.0), 0.0,
+    CHECK_REL(airDensity(duna, 0.0), airDensity(kerbin, 0.0), 0.0,
                "rho at the datum does not depend on gravity");
-    CHECK_NEAR(airDensity(duna, 12000.0), airDensity(kerbin, 12000.0), 0.0,
+    CHECK_REL(airDensity(duna, 12000.0), airDensity(kerbin, 12000.0), 0.0,
                "rho aloft does not depend on gravity");
-    CHECK_NEAR(airDensity(duna, -500.0), airDensity(kerbin, -500.0), 0.0,
+    CHECK_REL(airDensity(duna, -500.0), airDensity(kerbin, -500.0), 0.0,
                "nor does the flat floor under the datum");
-    CHECK_NEAR(airSoundSpeed(duna, 0.0), 274.83995342744475 * std::sqrt(2.94 / 9.81), 1e-12,
+    CHECK_REL(airSoundSpeed(duna, 0.0), 274.83995342744475 * std::sqrt(2.94 / 9.81), 1e-12,
                "the sound speed does: it scales as sqrt(g)");
 
     /* p rides rho's OWN scale height -- the same exponential, so the pressure
        gradient balances the weight of the air (hydrostatic) everywhere above the
        datum. Central difference: the truncation error is ~(dh/H)^2/6, hence 1e-4. */
-    CHECK_NEAR(airPressure(kerbin, 5500.0), 66094.875 / std::exp(1.0), 1e-12,
+    CHECK_REL(airPressure(kerbin, 5500.0), 66094.875 / std::exp(1.0), 1e-12,
                "p(H) == p0/e: pressure falls as fast as density");
     const double h = 10000.0, dh = 100.0;
     const double grad = (airPressure(kerbin, h - dh) - airPressure(kerbin, h + dh)) / (2.0 * dh);
-    CHECK_NEAR(grad, airDensity(kerbin, h) * 9.81, 1e-4,
+    CHECK_REL(grad, airDensity(kerbin, h) * 9.81, 1e-4,
                "-dp/dh == rho g above the datum");
 
     /* Below the datum BOTH are flat (#245), which is deliberately not hydrostatic:
        under a has_sea body the game has thick air, not water, and no law integrates
        a water column (#618, closed as designed). Pinned so nobody "fixes" it by
        inventing a sub-datum pressure nothing bills. */
-    CHECK_NEAR(airPressure(kerbin, -1000.0), airPressure(kerbin, 0.0), 0.0,
+    CHECK_REL(airPressure(kerbin, -1000.0), airPressure(kerbin, 0.0), 0.0,
                "p is flat below the datum, like rho");
-    CHECK_NEAR(airPressure(kerbin, 70000.0), 0.0, 0.0, "no air, no pressure at the top");
-    CHECK_NEAR(airPressure(kerbin, 120000.0), 0.0, 0.0, "... nor above it");
+    CHECK_REL(airPressure(kerbin, 70000.0), 0.0, 0.0, "no air, no pressure at the top");
+    CHECK_REL(airPressure(kerbin, 120000.0), 0.0, 0.0, "... nor above it");
 
     /* T and a stop at the top too, on BOTH profiles (#632). rho and p have always gone
        to zero there, so a Kerbin hull at 120 km used to read 188.0 K of air and a 274.8
        m/s sound speed in vacuum -- which is a Mach number divided by nothing (#543),
        and a different answer from what a layered body gives at its own top. */
-    CHECK_NEAR(airTemperature(kerbin, 70000.0), 0.0, 0.0, "no air, no air temperature at the top");
-    CHECK_NEAR(airSoundSpeed(kerbin, 70000.0), 0.0, 0.0, "no air, no sound speed at the top");
-    CHECK_NEAR(airTemperature(kerbin, 120000.0), 0.0, 0.0, "... nor above it");
-    CHECK_NEAR(airSoundSpeed(kerbin, 120000.0), 0.0, 0.0, "... nor above it");
+    CHECK_REL(airTemperature(kerbin, 70000.0), 0.0, 0.0, "no air, no air temperature at the top");
+    CHECK_REL(airSoundSpeed(kerbin, 70000.0), 0.0, 0.0, "no air, no sound speed at the top");
+    CHECK_REL(airTemperature(kerbin, 120000.0), 0.0, 0.0, "... nor above it");
+    CHECK_REL(airSoundSpeed(kerbin, 120000.0), 0.0, 0.0, "... nor above it");
     /* No authored top means no cutoff, which is what the exponential tail means. */
     const DragAtmosphere notop = makeAir(1.225, 5500.0, 0.0, 9.81);
-    CHECK_NEAR(airTemperature(notop, 120000.0), airTemperature(kerbin, 0.0), 0.0,
+    CHECK_REL(airTemperature(notop, 120000.0), airTemperature(kerbin, 0.0), 0.0,
                "height 0: the tail still implies its temperature");
-    CHECK_NEAR(airSoundSpeed(notop, 120000.0), airSoundSpeed(kerbin, 0.0), 0.0,
+    CHECK_REL(airSoundSpeed(notop, 120000.0), airSoundSpeed(kerbin, 0.0), 0.0,
                "... and its sound speed");
 
     /* Fail CLOSED on a degenerate or hostile atmosphere. Guards are in the
@@ -357,22 +329,22 @@ static void test_air_thermodynamics() {
     const DragAtmosphere badRho = makeAir(nan, 5500.0, 70000.0, 9.81);
     const DragAtmosphere badH = makeAir(1.225, nan, 70000.0, 9.81);
     const DragAtmosphere badG = makeAir(1.225, 5500.0, 70000.0, nan);
-    CHECK_NEAR(airTemperature(none0, 0.0), 0.0, 0.0, "no density -> no temperature");
-    CHECK_NEAR(airSoundSpeed(none0, 0.0), 0.0, 0.0, "no density -> no sound speed");
-    CHECK_NEAR(airTemperature(negg, 0.0), 0.0, 0.0, "negative gravity -> 0 K, not a negative T");
-    CHECK_NEAR(airPressure(negg, 0.0), 0.0, 0.0, "negative gravity -> 0 Pa, not a negative p");
-    CHECK_NEAR(airSoundSpeed(negg, 0.0), 0.0, 0.0, "negative gravity -> 0 m/s, not a NaN sqrt");
-    CHECK_NEAR(airTemperature(negH, 0.0), 0.0, 0.0, "negative scale height -> 0 K");
-    CHECK_NEAR(airSoundSpeed(negH, 0.0), 0.0, 0.0, "negative scale height -> 0 m/s");
-    CHECK_NEAR(airDensity(negH, 1000.0), 0.0, 0.0, "... and no density either");
-    CHECK_NEAR(airTemperature(badRho, 0.0), 0.0, 0.0, "NaN density reads 0 K, not NaN");
-    CHECK_NEAR(airTemperature(badH, 0.0), 0.0, 0.0, "NaN scale height reads 0 K");
-    CHECK_NEAR(airTemperature(badG, 0.0), 0.0, 0.0, "NaN gravity reads 0 K");
-    CHECK_NEAR(airPressure(badH, 1000.0), 0.0, 0.0, "NaN scale height -> 0 Pa");
-    CHECK_NEAR(airSoundSpeed(badG, 0.0), 0.0, 0.0, "NaN gravity -> 0 m/s, never a NaN Mach");
-    CHECK_NEAR(airDensity(badRho, 1000.0), 0.0, 0.0, "NaN density -> no drag at all");
-    CHECK_NEAR(airDensity(badH, 1000.0), 0.0, 0.0, "NaN scale height -> no drag");
-    CHECK_NEAR(airDensity(badG, 1000.0), 1.225 * std::exp(-1000.0 / 5500.0), 1e-12,
+    CHECK_REL(airTemperature(none0, 0.0), 0.0, 0.0, "no density -> no temperature");
+    CHECK_REL(airSoundSpeed(none0, 0.0), 0.0, 0.0, "no density -> no sound speed");
+    CHECK_REL(airTemperature(negg, 0.0), 0.0, 0.0, "negative gravity -> 0 K, not a negative T");
+    CHECK_REL(airPressure(negg, 0.0), 0.0, 0.0, "negative gravity -> 0 Pa, not a negative p");
+    CHECK_REL(airSoundSpeed(negg, 0.0), 0.0, 0.0, "negative gravity -> 0 m/s, not a NaN sqrt");
+    CHECK_REL(airTemperature(negH, 0.0), 0.0, 0.0, "negative scale height -> 0 K");
+    CHECK_REL(airSoundSpeed(negH, 0.0), 0.0, 0.0, "negative scale height -> 0 m/s");
+    CHECK_REL(airDensity(negH, 1000.0), 0.0, 0.0, "... and no density either");
+    CHECK_REL(airTemperature(badRho, 0.0), 0.0, 0.0, "NaN density reads 0 K, not NaN");
+    CHECK_REL(airTemperature(badH, 0.0), 0.0, 0.0, "NaN scale height reads 0 K");
+    CHECK_REL(airTemperature(badG, 0.0), 0.0, 0.0, "NaN gravity reads 0 K");
+    CHECK_REL(airPressure(badH, 1000.0), 0.0, 0.0, "NaN scale height -> 0 Pa");
+    CHECK_REL(airSoundSpeed(badG, 0.0), 0.0, 0.0, "NaN gravity -> 0 m/s, never a NaN Mach");
+    CHECK_REL(airDensity(badRho, 1000.0), 0.0, 0.0, "NaN density -> no drag at all");
+    CHECK_REL(airDensity(badH, 1000.0), 0.0, 0.0, "NaN scale height -> no drag");
+    CHECK_REL(airDensity(badG, 1000.0), 1.225 * std::exp(-1000.0 / 5500.0), 1e-12,
                "NaN gravity does not poison rho");
     CHECK_TRUE(std::isfinite(airTemperature(badG, 0.0)) && std::isfinite(airSoundSpeed(badG, 0.0))
                && std::isfinite(airPressure(badH, 100.0)) && std::isfinite(airDensity(badRho, 1.0)),
@@ -430,54 +402,54 @@ static void test_layered_atmosphere() {
        and the datum density is the consequence. p0Of() inverted the density this test
        thinks in, so the density comes back exactly and the pressure lands on the
        standard's own 101,325 Pa -- the number the shipped file now writes out. */
-    CHECK_NEAR(airDensity(air, 0.0), 1.225, 0.0, "the datum keeps the authored density");
-    CHECK_NEAR(airPressure(air, 0.0), 101325.0, 1e-4, "p0 comes out of rho0 and T0: 101.3 kPa");
-    CHECK_NEAR(airTemperature(air, 0.0), 288.15, 0.0, "T at the datum is level 0's, authored");
-    CHECK_NEAR(airSoundSpeed(air, 0.0), 340.3, 1e-4, "a at the datum: 340.3 m/s");
+    CHECK_REL(airDensity(air, 0.0), 1.225, 0.0, "the datum keeps the authored density");
+    CHECK_REL(airPressure(air, 0.0), 101325.0, 1e-4, "p0 comes out of rho0 and T0: 101.3 kPa");
+    CHECK_REL(airTemperature(air, 0.0), 288.15, 0.0, "T at the datum is level 0's, authored");
+    CHECK_REL(airSoundSpeed(air, 0.0), 340.3, 1e-4, "a at the datum: 340.3 m/s");
 
     /* The standard's pressure column, 0 to 51 km -- read at the geometric altitude
        each published row sits at (us76Geom), which is the only honest comparison:
        every row lands inside 0.6%, where the uniform-g column sat 0.5-6.0% below. */
-    CHECK_NEAR(airPressure(air, us76Geom(11000.0)), 22632.0, 0.01,
+    CHECK_REL(airPressure(air, us76Geom(11000.0)), 22632.0, 0.01,
                "p at US76's 11 km row (11.019 km geometric here)");
-    CHECK_NEAR(airPressure(air, us76Geom(20000.0)), 5474.9, 0.01, "p at its 20 km row");
-    CHECK_NEAR(airPressure(air, us76Geom(32000.0)), 868.02, 0.01, "p at its 32 km row");
-    CHECK_NEAR(airPressure(air, us76Geom(47000.0)), 110.91, 0.01,
+    CHECK_REL(airPressure(air, us76Geom(20000.0)), 5474.9, 0.01, "p at its 20 km row");
+    CHECK_REL(airPressure(air, us76Geom(32000.0)), 868.02, 0.01, "p at its 32 km row");
+    CHECK_REL(airPressure(air, us76Geom(47000.0)), 110.91, 0.01,
                "p at its 47 km row (stratopause)");
-    CHECK_NEAR(airPressure(air, us76Geom(51000.0)), 66.94, 0.01, "p at its 51 km row");
-    CHECK_NEAR(airDensity(air, us76Geom(11000.0)), 0.36393, 0.01, "rho at its 11 km row");
-    CHECK_NEAR(airDensity(air, us76Geom(20000.0)), 0.088035, 0.01, "rho at its 20 km row");
+    CHECK_REL(airPressure(air, us76Geom(51000.0)), 66.94, 0.01, "p at its 51 km row");
+    CHECK_REL(airDensity(air, us76Geom(11000.0)), 0.36393, 0.01, "rho at its 11 km row");
+    CHECK_REL(airDensity(air, us76Geom(20000.0)), 0.088035, 0.01, "rho at its 20 km row");
 
     /* Each level's base temperature, bit for bit -- and the standard's 85 km row
        needs no level of its own, because it is where the -2.0 K/km mesospheric lapse
        lands (186.65 K here against its 186.87 K). */
-    CHECK_NEAR(airTemperature(air, 11000.0), 216.65, 0.0, "T at 11 km");
-    CHECK_NEAR(airTemperature(air, 20000.0), 216.65, 0.0, "isothermal from 11 to 20 km");
-    CHECK_NEAR(airTemperature(air, 32000.0), 228.65, 0.0, "warming 20 to 32 km");
-    CHECK_NEAR(airTemperature(air, 47000.0), 270.65, 0.0, "warming 32 to 47 km");
-    CHECK_NEAR(airTemperature(air, 71000.0), 214.65, 0.0, "cooling 51 to 71 km");
-    CHECK_NEAR(airTemperature(air, 84999.0), 186.87, 0.005, "T near the top, where the lapse lands");
+    CHECK_REL(airTemperature(air, 11000.0), 216.65, 0.0, "T at 11 km");
+    CHECK_REL(airTemperature(air, 20000.0), 216.65, 0.0, "isothermal from 11 to 20 km");
+    CHECK_REL(airTemperature(air, 32000.0), 228.65, 0.0, "warming 20 to 32 km");
+    CHECK_REL(airTemperature(air, 47000.0), 270.65, 0.0, "warming 32 to 47 km");
+    CHECK_REL(airTemperature(air, 71000.0), 214.65, 0.0, "cooling 51 to 71 km");
+    CHECK_REL(airTemperature(air, 84999.0), 186.87, 0.005, "T near the top, where the lapse lands");
 
     /* WHAT THE LAPSE BUYS: the sound speed is no longer one number for the whole
        body, so the Mach number #543 divides by becomes an altitude question. */
-    CHECK_NEAR(airSoundSpeed(air, 11000.0), 295.05, 0.01, "a at 11 km: 295.1 m/s");
+    CHECK_REL(airSoundSpeed(air, 11000.0), 295.05, 0.01, "a at 11 km: 295.1 m/s");
     CHECK_TRUE(airSoundSpeed(air, 11000.0) < airSoundSpeed(air, 0.0) - 40.0,
                "the sound bar moves 45 m/s by the tropopause");
-    CHECK_NEAR(300.0 / airSoundSpeed(air, 0.0), 0.8815, 0.01, "300 m/s at the datum: Mach 0.88");
-    CHECK_NEAR(300.0 / airSoundSpeed(air, 11000.0), 1.0167, 0.01, "the same 300 m/s at 11 km: Mach 1.02");
+    CHECK_REL(300.0 / airSoundSpeed(air, 0.0), 0.8815, 0.01, "300 m/s at the datum: Mach 0.88");
+    CHECK_REL(300.0 / airSoundSpeed(air, 11000.0), 1.0167, 0.01, "the same 300 m/s at 11 km: Mach 1.02");
 
     /* #245's flat floor is the SAME law under a layered body, not an exception that
        only exists on the exponential path: nothing gets denser under the sea floor. */
-    CHECK_NEAR(airDensity(air, -500.0), 1.225, 0.0, "rho flat under the datum");
-    CHECK_NEAR(airPressure(air, -500.0), airPressure(air, 0.0), 0.0, "p flat under it too");
-    CHECK_NEAR(airTemperature(air, -500.0), 288.15, 0.0, "T flat under it too");
+    CHECK_REL(airDensity(air, -500.0), 1.225, 0.0, "rho flat under the datum");
+    CHECK_REL(airPressure(air, -500.0), airPressure(air, 0.0), 0.0, "p flat under it too");
+    CHECK_REL(airTemperature(air, -500.0), 288.15, 0.0, "T flat under it too");
 
     /* And the air stops at the authored top -- height, because a layer table has no
        scale height for top() to multiply. */
-    CHECK_NEAR(airDensity(air, 85000.0), 0.0, 0.0, "vacuum at the top");
-    CHECK_NEAR(airPressure(air, 85000.0), 0.0, 0.0, "no pressure at the top");
-    CHECK_NEAR(airTemperature(air, 85000.0), 0.0, 0.0, "no temperature at the top");
-    CHECK_NEAR(airSoundSpeed(air, 200000.0), 0.0, 0.0, "no sound speed above it");
+    CHECK_REL(airDensity(air, 85000.0), 0.0, 0.0, "vacuum at the top");
+    CHECK_REL(airPressure(air, 85000.0), 0.0, 0.0, "no pressure at the top");
+    CHECK_REL(airTemperature(air, 85000.0), 0.0, 0.0, "no temperature at the top");
+    CHECK_REL(airSoundSpeed(air, 200000.0), 0.0, 0.0, "no sound speed above it");
 
     /* A level boundary must not step the air. p side: base_p is filled in by
        integrating the level above to this level's base_alt, which is exactly where the
@@ -486,11 +458,11 @@ static void test_layered_atmosphere() {
        resolveAtmoLevels refuses a seam wider than kAtmoSeamTol rather than trusting
        the author (see the refusals below; a 100 K seam is a 38% step in rho with p
        identical to 13 digits). */
-    CHECK_NEAR(airDensity(air, 11000.0 - 1e-6), airDensity(air, 11000.0 + 1e-6), 1e-9,
+    CHECK_REL(airDensity(air, 11000.0 - 1e-6), airDensity(air, 11000.0 + 1e-6), 1e-9,
                "no density cliff at a level boundary");
-    CHECK_NEAR(airPressure(air, 20000.0 - 1e-6), airPressure(air, 20000.0 + 1e-6), 1e-9,
+    CHECK_REL(airPressure(air, 20000.0 - 1e-6), airPressure(air, 20000.0 + 1e-6), 1e-9,
                "... nor where the lapse changes sign");
-    CHECK_NEAR(airTemperature(air, 32000.0 - 1e-6), airTemperature(air, 32000.0 + 1e-6), 1e-9,
+    CHECK_REL(airTemperature(air, 32000.0 - 1e-6), airTemperature(air, 32000.0 + 1e-6), 1e-9,
                "... nor mid-warming");
 
     /* Hydrostatic inside both spellings (the central difference costs ~(dh/H)^2/6,
@@ -499,10 +471,10 @@ static void test_layered_atmosphere() {
        in equilibrium in the field the hull actually falls in, so at 20 km over Earth
        the weight per m^3 is 0.6% less than rho * 9.82 and the column agrees. */
     const double dh = 100.0;
-    CHECK_NEAR((airPressure(air, 20000.0 - dh) - airPressure(air, 20000.0 + dh)) / (2.0 * dh),
+    CHECK_REL((airPressure(air, 20000.0 - dh) - airPressure(air, 20000.0 + dh)) / (2.0 * dh),
                airDensity(air, 20000.0) * gAt(20000.0), 1e-4,
                "-dp/dh == rho g(z) inside a lapse level");
-    CHECK_NEAR((airPressure(air, 15000.0 - dh) - airPressure(air, 15000.0 + dh)) / (2.0 * dh),
+    CHECK_REL((airPressure(air, 15000.0 - dh) - airPressure(air, 15000.0 + dh)) / (2.0 * dh),
                airDensity(air, 15000.0) * gAt(15000.0), 1e-4,
                "-dp/dh == rho g(z) inside an isothermal level");
 
@@ -512,10 +484,10 @@ static void test_layered_atmosphere() {
     const double cd = 1.2, area = 4.0;
     const glm::dvec3 vup(0.0, 300.0, 0.0);
     const glm::dvec3 f10k = dragForce(air, cd, area, 10000.0, vup);
-    CHECK_NEAR(glm::length(f10k), 0.5 * airDensity(air, 10000.0) * cd * area * 90000.0,
+    CHECK_REL(glm::length(f10k), 0.5 * airDensity(air, 10000.0) * cd * area * 90000.0,
                1e-9, "|F| == 0.5 rho cd A v^2 on a layered body");
     CHECK_TRUE(f10k.y < 0.0, "and it pushes against the motion at 10 km");
-    CHECK_NEAR(glm::length(dragForce(air, cd, area, -1667.0, vup)),
+    CHECK_REL(glm::length(dragForce(air, cd, area, -1667.0, vup)),
                glm::length(dragForce(air, cd, area, 0.0, vup)), 1e-12,
                "#245's floor drags on the layered path too");
     CHECK_TRUE(dragForce(air, cd, area, 85000.0, vup) == glm::dvec3(0.0),
@@ -530,7 +502,7 @@ static void test_layered_atmosphere() {
        the claim is about one profile shape against another, not about a world. */
     const DragAtmosphere kerbin_exp = makeAir(1.225, 5500.0, 70000.0, 9.81);
     const DragAtmosphere earth_exp = makeAir(1.225, 8500.0, 0.0, 9.82);
-    CHECK_NEAR(airDensity(air, 20000.0) / airDensity(kerbin_exp, 20000.0), 2.743, 0.005,
+    CHECK_REL(airDensity(air, 20000.0) / airDensity(kerbin_exp, 20000.0), 2.743, 0.005,
                "a lapse rate is what puts real air at 20 km over a scale-height body");
     CHECK_TRUE(airDensity(air, 20000.0) < airDensity(earth_exp, 20000.0),
                "lapse air thins faster than isothermal air of the same rho0");
@@ -539,13 +511,13 @@ static void test_layered_atmosphere() {
        the table is thicker air up to ~13 km and thinner above, so drag, q and the jet
        gate move on the way through the sky. This is the only place that delta is a
        number rather than a hope -- no e2e case flies a layered body yet (#631). */
-    CHECK_NEAR(airDensity(air, 5000.0) / airDensity(earth_exp, 5000.0), 1.082, 0.005,
+    CHECK_REL(airDensity(air, 5000.0) / airDensity(earth_exp, 5000.0), 1.082, 0.005,
                "5 km: 8% thicker than the exponential Earth shipped with");
-    CHECK_NEAR(airDensity(air, 10000.0) / airDensity(earth_exp, 10000.0), 1.093, 0.005,
+    CHECK_REL(airDensity(air, 10000.0) / airDensity(earth_exp, 10000.0), 1.093, 0.005,
                "10 km: 9% -- the peak");
-    CHECK_NEAR(airDensity(air, 30000.0) / airDensity(earth_exp, 30000.0), 0.509, 0.01,
+    CHECK_REL(airDensity(air, 30000.0) / airDensity(earth_exp, 30000.0), 0.509, 0.01,
                "30 km: half of it");
-    CHECK_NEAR(airDensity(air, 50000.0) / airDensity(earth_exp, 50000.0), 0.300, 0.01,
+    CHECK_REL(airDensity(air, 50000.0) / airDensity(earth_exp, 50000.0), 0.300, 0.01,
                "50 km: under a third");
 
     /* A layered profile weighs its column, so gravity DOES move its density: rho is
@@ -560,7 +532,7 @@ static void test_layered_atmosphere() {
     halfg.gravity = 4.91;
     halfg.layers = Lhalf.data();
     halfg.layer_count = (int)Lhalf.size();
-    CHECK_NEAR(airDensity(halfg, 0.0), 1.225, 0.0, "the datum is the same air either way");
+    CHECK_REL(airDensity(halfg, 0.0), 1.225, 0.0, "the datum is the same air either way");
     CHECK_TRUE(airDensity(halfg, 20000.0) > airDensity(air, 20000.0),
                "half the gravity: a lighter column, so a taller one -- thicker air aloft");
 
@@ -646,15 +618,15 @@ static void test_layered_atmosphere() {
     edge.radius = rkerbin;
     edge.layers = near_pole.data();
     edge.layer_count = (int)near_pole.size();
-    CHECK_NEAR(airDensity(edge, 30000.0), 2.7206636e-2, 1e-7,
+    CHECK_REL(airDensity(edge, 30000.0), 2.7206636e-2, 1e-7,
                "a level 1.1 K off the pole still answers the integral");
 
     /* A layered body with no g named fails CLOSED rather than integrating at 0. */
     DragAtmosphere nog { 1.225, 0.0, 85000.0 };
     nog.layers = L.data();
     nog.layer_count = (int)L.size();
-    CHECK_NEAR(airDensity(nog, 5000.0), 0.0, 0.0, "layered but no gravity -> no air");
-    CHECK_NEAR(airPressure(nog, 5000.0), 0.0, 0.0, "... and no pressure");
+    CHECK_REL(airDensity(nog, 5000.0), 0.0, 0.0, "layered but no gravity -> no air");
+    CHECK_REL(airPressure(nog, 5000.0), 0.0, 0.0, "... and no pressure");
 }
 
 /* #683 -- the column is weighed in the field the hull actually falls in.
@@ -679,16 +651,16 @@ static void test_gravity_falloff() {
     flat.gravity = 9.81;
     DragAtmosphere ker = flat;
     ker.radius = rker;
-    CHECK_NEAR(geopotentialDepth(rker, 69999.0), 62685.765, 1e-7,
+    CHECK_REL(geopotentialDepth(rker, 69999.0), 62685.765, 1e-7,
                "69,999 m geometric is 62.7 km of column at Kerbin's radius");
-    CHECK_NEAR(geopotentialDepth(0.0, 69999.0), 69999.0, 0.0,
+    CHECK_REL(geopotentialDepth(0.0, 69999.0), 69999.0, 0.0,
                "no world named, no falloff: the depth is the altitude");
-    CHECK_NEAR(airDensity(ker, 5000.0), 0.4972627, 1e-5, "5 km: 0.75% thicker");
-    CHECK_NEAR(airDensity(ker, 35000.0), 2.997598e-3, 1e-5, "35 km: 42% thicker");
-    CHECK_NEAR(airDensity(ker, 69999.0), 1.375001e-5, 1e-5, "just under the top");
-    CHECK_NEAR(airDensity(ker, 69999.0) / airDensity(flat, 69999.0), 3.7798, 1e-3,
+    CHECK_REL(airDensity(ker, 5000.0), 0.4972627, 1e-5, "5 km: 0.75% thicker");
+    CHECK_REL(airDensity(ker, 35000.0), 2.997598e-3, 1e-5, "35 km: 42% thicker");
+    CHECK_REL(airDensity(ker, 69999.0), 1.375001e-5, 1e-5, "just under the top");
+    CHECK_REL(airDensity(ker, 69999.0) / airDensity(flat, 69999.0), 3.7798, 1e-3,
                "the #683 gain at Kerbin's top: 3.78x, not a rounding error");
-    CHECK_NEAR(airDensity(ker, 5000.0) / airDensity(flat, 5000.0), 1.0075, 1e-3,
+    CHECK_REL(airDensity(ker, 5000.0) / airDensity(flat, 5000.0), 1.0075, 1e-3,
                "... and single-digit where a plane flies");
 
     /* What the field does NOT touch: the datum's air, the temperature and sound speed
@@ -697,21 +669,21 @@ static void test_gravity_falloff() {
        vacuum on. All of that has to stay put or the fix has moved further than #683
        asked (it is a column question, not a units question -- the atlas, the shells,
        the science bands and the spawn beds all still speak geometric metres). */
-    CHECK_NEAR(airDensity(ker, 0.0), 1.225, 0.0, "the datum is the same air either way");
-    CHECK_NEAR(airPressure(ker, 0.0), airPressure(flat, 0.0), 0.0, "p0 = rho0 g H, both ways");
-    CHECK_NEAR(airTemperature(ker, 35000.0), airTemperature(flat, 35000.0), 0.0,
+    CHECK_REL(airDensity(ker, 0.0), 1.225, 0.0, "the datum is the same air either way");
+    CHECK_REL(airPressure(ker, 0.0), airPressure(flat, 0.0), 0.0, "p0 = rho0 g H, both ways");
+    CHECK_REL(airTemperature(ker, 35000.0), airTemperature(flat, 35000.0), 0.0,
                "T does not contain the column");
-    CHECK_NEAR(airSoundSpeed(ker, 35000.0), airSoundSpeed(flat, 35000.0), 0.0,
+    CHECK_REL(airSoundSpeed(ker, 35000.0), airSoundSpeed(flat, 35000.0), 0.0,
                "... nor does the sound speed");
-    CHECK_NEAR(airPressure(ker, 35000.0), airDensity(ker, 35000.0) * 9.81 * 5500.0, 1e-9,
+    CHECK_REL(airPressure(ker, 35000.0), airDensity(ker, 35000.0) * 9.81 * 5500.0, 1e-9,
                "aloft, p is still rho Rs T of the same implied T");
-    CHECK_NEAR(airDensity(ker, 70000.0), 0.0, 0.0, "`height` stays geometric: vacuum at the top");
-    CHECK_NEAR(airDensity(ker, -3000.0), 1.225, 0.0, "#245's floor is unchanged");
+    CHECK_REL(airDensity(ker, 70000.0), 0.0, 0.0, "`height` stays geometric: vacuum at the top");
+    CHECK_REL(airDensity(ker, -3000.0), 1.225, 0.0, "#245's floor is unchanged");
 
     /* Hydrostatic in the real field, on the exponential branch too: at 35 km over a
        600 km body the field is 11 % weaker than at the datum, and dp/dh follows it. */
     const double gz35 = 9.81 * rker * rker / ((rker + 35000.0) * (rker + 35000.0));
-    CHECK_NEAR((airPressure(ker, 35000.0 - 100.0) - airPressure(ker, 35000.0 + 100.0)) / 200.0,
+    CHECK_REL((airPressure(ker, 35000.0 - 100.0) - airPressure(ker, 35000.0 + 100.0)) / 200.0,
                airDensity(ker, 35000.0) * gz35, 1e-4,
                "-dp/dh == rho g(z) on a single exponential too");
 
@@ -730,9 +702,9 @@ static void test_gravity_falloff() {
     DragAtmosphere expAir = makeAir(1.225, Hiso, 40000.0, 9.81);
     expAir.radius = rker;
     const double ze = 25000.0;   // above the second level's base, so a different lookup
-    CHECK_NEAR(airPressure(tableAir, ze), airPressure(expAir, ze), 1e-9,
+    CHECK_REL(airPressure(tableAir, ze), airPressure(expAir, ze), 1e-9,
                "isothermal levels == one exponential, with a radius on both");
-    CHECK_NEAR(airDensity(tableAir, 7000.0), airDensity(expAir, 7000.0), 1e-9,
+    CHECK_REL(airDensity(tableAir, 7000.0), airDensity(expAir, 7000.0), 1e-9,
                "... below the seam too");
 
     /* A LAPSE level on a 300 km body, at absolute numbers. The textbook
@@ -747,10 +719,10 @@ static void test_gravity_falloff() {
     small.radius = r300;
     small.layers = two.data();
     small.layer_count = (int)two.size();
-    CHECK_NEAR(airPressure(small, 10000.0), 30747.617, 1e-5, "at the seam (T 190 K)");
-    CHECK_NEAR(airDensity(small, 20000.0), 0.2835661, 1e-5, "20 km (T 210 K)");
-    CHECK_NEAR(airPressure(small, 49999.0), 4612.979, 1e-5, "just under its 50 km top");
-    CHECK_NEAR(airDensity(small, 49999.0), 5.951758e-2, 1e-5, "... and its density");
+    CHECK_REL(airPressure(small, 10000.0), 30747.617, 1e-5, "at the seam (T 190 K)");
+    CHECK_REL(airDensity(small, 20000.0), 0.2835661, 1e-5, "20 km (T 210 K)");
+    CHECK_REL(airPressure(small, 49999.0), 4612.979, 1e-5, "just under its 50 km top");
+    CHECK_REL(airDensity(small, 49999.0), 5.951758e-2, 1e-5, "... and its density");
     /* A warming level is where the closed form's log lives, so it gets a sign pin of
        its own: this level warms 2 K/km and the air still thins, by the SAME amount
        the uniform spelling gives plus the field's own slack (1.483x at the top). The
@@ -765,7 +737,7 @@ static void test_gravity_falloff() {
     small_flat.radius = 0.0;
     small_flat.layers = two_flat.data();
     small_flat.layer_count = (int)two_flat.size();
-    CHECK_NEAR(airPressure(small, 49999.0) / airPressure(small_flat, 49999.0), 1.4829, 1e-3,
+    CHECK_REL(airPressure(small, 49999.0) / airPressure(small_flat, 49999.0), 1.4829, 1e-3,
                "the falloff at a lapse level's ceiling");
     /* The spelling this file exists to refuse: geopotentialise `alt` BEFORE the level
        maths, the way Orbiter's models do, because theirs are authored in geopotential
@@ -781,12 +753,12 @@ static void test_gravity_falloff() {
     const double p_geozw = warm.base_p
         * std::exp(-(small.gravity / (warm.lapse * Rs3))
                    * std::log1p(warm.lapse * dZw / warm.base_T));
-    CHECK_NEAR(p_geozw / airPressure(small, 49999.0), 0.96198, 1e-4,
+    CHECK_REL(p_geozw / airPressure(small, 49999.0), 0.96198, 1e-4,
                "geopotentialising before the level maths is 3.8% thin, not a rounding");
-    CHECK_NEAR(airDensity(small, 49999.0 - 1e-6), airDensity(small, 49999.0), 1e-9,
+    CHECK_REL(airDensity(small, 49999.0 - 1e-6), airDensity(small, 49999.0), 1e-9,
                "no step at the top of a warming level");
     const double gz20 = 3.71 * r300 * r300 / ((r300 + 20000.0) * (r300 + 20000.0));
-    CHECK_NEAR((airPressure(small, 20000.0 - 100.0) - airPressure(small, 20000.0 + 100.0)) / 200.0,
+    CHECK_REL((airPressure(small, 20000.0 - 100.0) - airPressure(small, 20000.0 + 100.0)) / 200.0,
                airDensity(small, 20000.0) * gz20, 1e-4,
                "-dp/dh == rho g(z) inside a warming level");
 }
@@ -804,17 +776,17 @@ static void test_force() {
     const glm::dvec3 vup(0.0, 300.0, 0.0);
     const glm::dvec3 f_up = dragForce(a, cd, A, alt, vup);
     const double F_expect = 0.5 * rho * cd * A * 300.0 * 300.0;
-    CHECK_NEAR(f_up.y, -F_expect, 1e-12, "F is opposite the motion");
-    CHECK_NEAR(f_up.x, 0.0, 0.0, "no sideways component (1)");
-    CHECK_NEAR(f_up.z, 0.0, 0.0, "no sideways component (2)");
-    CHECK_NEAR(glm::length(f_up), F_expect, 1e-12, "|F| == 0.5 rho cd A v^2");
+    CHECK_REL(f_up.y, -F_expect, 1e-12, "F is opposite the motion");
+    CHECK_REL(f_up.x, 0.0, 0.0, "no sideways component (1)");
+    CHECK_REL(f_up.z, 0.0, 0.0, "no sideways component (2)");
+    CHECK_REL(glm::length(f_up), F_expect, 1e-12, "|F| == 0.5 rho cd A v^2");
 
     // An oblique velocity: still exactly opposite it, same magnitude.
     const glm::dvec3 vob(100.0, 200.0, -100.0);
     const glm::dvec3 f_ob = dragForce(a, cd, A, alt, vob);
     const double v = glm::length(vob);
     const double F_ob = 0.5 * rho * cd * A * v * v;
-    CHECK_NEAR(glm::length(f_ob), F_ob, 1e-12, "|F| at oblique v");
+    CHECK_REL(glm::length(f_ob), F_ob, 1e-12, "|F| at oblique v");
     // f_ob is anti-parallel to v_ob: the cross product is zero.
     CHECK_TRUE(glm::length(glm::cross(f_ob, vob)) < 1e-6 * F_ob,
                "F is anti-parallel to v");
@@ -822,7 +794,7 @@ static void test_force() {
 
     // Quadratic in speed: 2x speed -> 4x force.
     const glm::dvec3 f_2v = dragForce(a, cd, A, alt, vup * 2.0);
-    CHECK_NEAR(glm::length(f_2v), 4.0 * glm::length(f_up), 1e-12,
+    CHECK_REL(glm::length(f_2v), 4.0 * glm::length(f_up), 1e-12,
                "|F(2v)| == 4 |F(v)|");
 
     // Degenerate inputs -> zero force (no guards needed at the call site).
@@ -842,7 +814,7 @@ static void test_force() {
        the force law needs a sub-datum pin of its own. */
     const glm::dvec3 f_sea = dragForce(a, cd, A, 0.0, vup);
     const glm::dvec3 f_sub = dragForce(a, cd, A, -1667.0, vup);
-    CHECK_NEAR(glm::length(f_sub), glm::length(f_sea), 1e-12,
+    CHECK_REL(glm::length(f_sub), glm::length(f_sea), 1e-12,
                "drag at -1667 m == drag at the datum");
     CHECK_TRUE(glm::length(f_sub) > 0.0, "sub-datum air pushes");
 }
@@ -855,15 +827,15 @@ static void test_aeroFrame() {
     // Prograde: all zero, valid.
     AeroFrame f0 = aeroFrame(glm::dvec3(0.0, 0.0, 300.0), right, up, nose);
     CHECK_TRUE(f0.valid, "prograde is valid");
-    CHECK_NEAR(f0.v, 300.0, 1e-12, "speed = |v|");
-    CHECK_NEAR(f0.alpha, 0.0, 1e-12, "alpha 0 (prograde)");
-    CHECK_NEAR(f0.beta, 0.0, 1e-12, "beta 0 (prograde)");
+    CHECK_REL(f0.v, 300.0, 1e-12, "speed = |v|");
+    CHECK_REL(f0.alpha, 0.0, 1e-12, "alpha 0 (prograde)");
+    CHECK_REL(f0.beta, 0.0, 1e-12, "beta 0 (prograde)");
 
     // v leans +Y while the nose stays along +Z: the flight path is ABOVE the
     // nose, so the nose sits below it -> alpha = -45 deg.
     AeroFrame fp = aeroFrame(glm::dvec3(0.0, 300.0, 300.0), right, up, nose);
-    CHECK_NEAR(fp.alpha, -M_PI / 4.0, 1e-12, "alpha = -45 deg for (0,300,300)");
-    CHECK_NEAR(fp.beta, 0.0, 1e-12, "beta 0 (pure pitch)");
+    CHECK_REL(fp.alpha, -M_PI / 4.0, 1e-12, "alpha = -45 deg for (0,300,300)");
+    CHECK_REL(fp.beta, 0.0, 1e-12, "beta 0 (pure pitch)");
 
     // The convention that decides whether wings lift: nose pitched 20 deg above
     // a horizontal flight path -> alpha = +20 deg, so liftCurve() pushes the
@@ -873,13 +845,13 @@ static void test_aeroFrame() {
         const glm::dvec3 pitched(0.0, std::sin(th), std::cos(th));
         const glm::dvec3 upT = glm::cross(pitched, right);  // the ship's +Y
         AeroFrame fu = aeroFrame(glm::dvec3(0.0, 0.0, 300.0), right, upT, pitched);
-        CHECK_NEAR(fu.alpha, th, 1e-9, "nose above the flow -> alpha > 0");
+        CHECK_REL(fu.alpha, th, 1e-9, "nose above the flow -> alpha > 0");
     }
 
     // Pure bank: v has a +X component -> beta = atan2(vx, vz) = 45 deg.
     AeroFrame fb = aeroFrame(glm::dvec3(300.0, 0.0, 300.0), right, up, nose);
-    CHECK_NEAR(fb.beta, M_PI / 4.0, 1e-12, "beta = 45 deg for (300,0,300)");
-    CHECK_NEAR(fb.alpha, 0.0, 1e-12, "alpha 0 (pure bank)");
+    CHECK_REL(fb.beta, M_PI / 4.0, 1e-12, "beta = 45 deg for (300,0,300)");
+    CHECK_REL(fb.alpha, 0.0, 1e-12, "alpha 0 (pure bank)");
 
     // Degenerate: zero velocity -> not valid, all zero.
     AeroFrame fn = aeroFrame(glm::dvec3(0.0), right, up, nose);
@@ -894,7 +866,7 @@ static void test_aeroFrame() {
     {
         AeroFrame fup = aeroFrame(glm::dvec3(0.0, 300.0, 0.0), right, up, nose);
         CHECK_TRUE(fup.valid, "a flow along up has a direction");
-        CHECK_NEAR(std::fabs(fup.alpha), M_PI / 2.0, 1e-12,
+        CHECK_REL(std::fabs(fup.alpha), M_PI / 2.0, 1e-12,
                    "and AoA is a fact there: +-90, exactly what a flow along up is");
         CHECK_TRUE(!fup.betaValid, "but beta has no answer for it (#787)");
 
@@ -916,7 +888,7 @@ static void test_aeroFrame() {
         /* aeroFrame() compares against a folded sin rather than calling std::sin per
            substep (constants.h:kBetaIllCondSin). A written-out literal needs a pin, or it
            is a second copy of the constant that nothing watches. */
-        CHECK_NEAR(kBetaIllCondSin, std::sin(off), 1e-15,
+        CHECK_REL(kBetaIllCondSin, std::sin(off), 1e-15,
                    "kBetaIllCondSin is sin(kBetaIllCondDeg), not a stale literal");
         const AeroFrame inside = aeroFrame(
             glm::dvec3(300.0 * std::sin(0.5 * off), 300.0 * std::cos(0.5 * off), 0.0),
@@ -926,14 +898,14 @@ static void test_aeroFrame() {
             right, up, nose);
         CHECK_TRUE(!inside.betaValid, "half a degree off up: still no yaw to report");
         CHECK_TRUE(outside.betaValid, "two degrees off up: beta is a measurement again");
-        CHECK_NEAR(outside.beta, M_PI / 2.0, 1e-9,
+        CHECK_REL(outside.beta, M_PI / 2.0, 1e-9,
                    "and it reads the full 90 deg sideslip rather than dashing it");
 
         /* Fast and broadside is not the same as degenerate: the ticket's worry that a
            speed floor would dash a real flight reading. */
         const AeroFrame fast = aeroFrame(glm::dvec3(1500.0, 0.0, 1e-3), right, up, nose);
         CHECK_TRUE(fast.betaValid, "1500 m/s across the nose is a real sideslip");
-        CHECK_NEAR(fast.beta, M_PI / 2.0, 1e-5, "near 90 deg, and printed as such");
+        CHECK_REL(fast.beta, M_PI / 2.0, 1e-5, "near 90 deg, and printed as such");
     }
 }
 
@@ -944,10 +916,10 @@ static void test_liftDirection() {
     // Prograde (flow along the nose): the lift direction is the up axis.
     const glm::dvec3 ld0 = liftDirection(glm::dvec3(0.0, 0.0, 300.0),
                                          right, nose);
-    CHECK_NEAR(ld0.x, 0.0, 0.0, "prograde liftDir x == 0");
-    CHECK_NEAR(ld0.y, 1.0, 1e-12, "prograde liftDir y == 1 (up)");
-    CHECK_NEAR(ld0.z, 0.0, 0.0, "prograde liftDir z == 0");
-    CHECK_NEAR(glm::length(ld0), 1.0, 1e-12, "liftDir is a unit vector");
+    CHECK_REL(ld0.x, 0.0, 0.0, "prograde liftDir x == 0");
+    CHECK_REL(ld0.y, 1.0, 1e-12, "prograde liftDir y == 1 (up)");
+    CHECK_REL(ld0.z, 0.0, 0.0, "prograde liftDir z == 0");
+    CHECK_REL(glm::length(ld0), 1.0, 1e-12, "liftDir is a unit vector");
 
     // Always perpendicular to the flow (lift is the force OUT of the flow).
     {
@@ -955,7 +927,7 @@ static void test_liftDirection() {
         const glm::dvec3 ld = liftDirection(v, right, nose);
         CHECK_TRUE(std::fabs(glm::dot(ld, v)) < 1e-9,
                    "liftDir is perpendicular to v");
-        CHECK_NEAR(glm::length(ld), 1.0, 1e-12, "deflected liftDir is unit");
+        CHECK_REL(glm::length(ld), 1.0, 1e-12, "deflected liftDir is unit");
     }
 
     // A banked ship: the lift direction follows the (banked) up axis, not
@@ -965,7 +937,7 @@ static void test_liftDirection() {
         const glm::dvec3 v(0.0, 0.0, 300.0);  // prograde for this banked ship
         const glm::dvec3 ld2 = liftDirection(v, right2, nose2);
         const glm::dvec3 up2 = glm::cross(nose2, right2);  // = -X
-        CHECK_NEAR(glm::length(ld2 - up2), 0.0, 1e-12,
+        CHECK_REL(glm::length(ld2 - up2), 0.0, 1e-12,
                    "banked liftDir follows the banked up axis");
     }
 
@@ -991,13 +963,13 @@ static void test_liftForce() {
 
     // Positive AoA: the lift is along liftDir, the right magnitude.
     const glm::dvec3 L = liftForce(q, S, cl, alpha, liftDir);
-    CHECK_NEAR(L.y, L_expect, 1e-12, "|L| == q*S*cl*alpha (positive AoA)");
-    CHECK_NEAR(L.x, 0.0, 0.0, "lift has no x component");
-    CHECK_NEAR(L.z, 0.0, 0.0, "lift has no z component");
+    CHECK_REL(L.y, L_expect, 1e-12, "|L| == q*S*cl*alpha (positive AoA)");
+    CHECK_REL(L.x, 0.0, 0.0, "lift has no x component");
+    CHECK_REL(L.z, 0.0, 0.0, "lift has no z component");
 
     // Negative AoA: the same magnitude, opposite direction (down).
     const glm::dvec3 Ln = liftForce(q, S, cl, -alpha, liftDir);
-    CHECK_NEAR(Ln.y, -L_expect, 1e-12, "negative AoA pushes down");
+    CHECK_REL(Ln.y, -L_expect, 1e-12, "negative AoA pushes down");
 
     // Zero AoA: a symmetric section (CL0 = 0) generates no lift.
     CHECK_TRUE(liftForce(q, S, cl, 0.0, liftDir) == glm::dvec3(0.0),
@@ -1008,7 +980,7 @@ static void test_liftForce() {
     {
         const double A = 0.20;
         const glm::dvec3 L_lin  = liftForce(q, S, cl, 0.10, liftDir, A);
-        CHECK_NEAR(L_lin.y, q * S * cl * 0.10, 1e-12, "below stall: linear");
+        CHECK_REL(L_lin.y, q * S * cl * 0.10, 1e-12, "below stall: linear");
         const glm::dvec3 L_deep = liftForce(q, S, cl, 2.0 * A, liftDir, A);
         CHECK_TRUE(L_deep == glm::dvec3(0.0), "deep stall (2A) -> zero lift");
     }
@@ -1042,10 +1014,10 @@ static void test_wing_lifts_up() {
         const glm::dvec3 nose(0.0, std::sin(th), std::cos(th));
         const glm::dvec3 up   = glm::cross(nose, right);  // the ship's +Y
         const AeroFrame fr = aeroFrame(vrel, right, up, nose);
-        CHECK_NEAR(fr.alpha, th, 1e-9, "AoA = the pitch above the flow");
+        CHECK_REL(fr.alpha, th, 1e-9, "AoA = the pitch above the flow");
 
         const glm::dvec3 ld = liftDirection(vrel, right, nose);
-        CHECK_NEAR(glm::dot(ld, glm::dvec3(0.0, 1.0, 0.0)), 1.0, 1e-9,
+        CHECK_REL(glm::dot(ld, glm::dvec3(0.0, 1.0, 0.0)), 1.0, 1e-9,
                    "the wing normal points at the sky");
         const glm::dvec3 L = liftForce(q, 4.0, 6.0, fr.alpha, ld, 0.35);
         CHECK_TRUE(L.y > 0.0, "a wing above the flow LIFTS");
@@ -1057,7 +1029,7 @@ static void test_wing_lifts_up() {
         const AeroFrame fd = aeroFrame(vrel, right, upD, noseD);
         const glm::dvec3 Ld = liftForce(q, 4.0, 6.0, fd.alpha,
                                         liftDirection(vrel, right, noseD), 0.35);
-        CHECK_NEAR(fd.alpha, -th, 1e-9, "nose below the flow -> AoA < 0");
+        CHECK_REL(fd.alpha, -th, 1e-9, "nose below the flow -> AoA < 0");
         CHECK_TRUE(Ld.y < 0.0, "a wing below the flow pushes down");
 
         // And the same world answer from an AIRFRAME FLOPPED UPSIDE DOWN: roll
@@ -1073,7 +1045,7 @@ static void test_wing_lifts_up() {
         const glm::dvec3 li = liftDirection(vrel, rightInv, noseInv);
         CHECK_TRUE(li.y < 0.0, "the rolled wing normal points at the ground");
         const glm::dvec3 Li = liftForce(q, 4.0, 6.0, fi.alpha, li, 0.35);
-        CHECK_NEAR(fi.alpha, -th, 1e-9, "rolled: nose above flow reads AoA < 0");
+        CHECK_REL(fi.alpha, -th, 1e-9, "rolled: nose above flow reads AoA < 0");
         CHECK_TRUE(Li.y > 0.0, "rolled airframe, nose above the flow: still LIFTS");
     }
 }
@@ -1107,11 +1079,11 @@ static void test_partAero() {
 
     const PartAero base = partAero(ship, vrel);
     CHECK_TRUE(base.valid, "an aligned mount has a usable frame");
-    CHECK_NEAR(base.alpha, aoa, 1e-12, "an aligned mount sees the ship's AoA");
+    CHECK_REL(base.alpha, aoa, 1e-12, "an aligned mount sees the ship's AoA");
     const glm::dvec3 baseF = liftForce(q, S, cl, base.alpha, base.liftDir, stall);
     const glm::dvec3 shipF = liftForce(q, S, cl, aoa,
                                        liftDirection(vrel, ship[0], ship[2]), stall);
-    CHECK_NEAR(glm::length(baseF - shipF), 0.0, 0.0,
+    CHECK_REL(glm::length(baseF - shipF), 0.0, 0.0,
                "an aligned mount lifts exactly as the ship-wide frame did");
 
     // 180 deg about the part's own nose -- how jet.json's wing_2 is mounted.
@@ -1119,11 +1091,11 @@ static void test_partAero() {
         const glm::dmat3 flipped(-ship[0], -ship[1], ship[2]);
         const PartAero f = partAero(flipped, vrel);
         CHECK_TRUE(f.valid, "a flipped mount still has a usable frame");
-        CHECK_NEAR(f.alpha, -base.alpha, 1e-12, "a 180-deg roll sees the mirrored AoA");
-        CHECK_NEAR(glm::length(f.liftDir + base.liftDir), 0.0, 0.0,
+        CHECK_REL(f.alpha, -base.alpha, 1e-12, "a 180-deg roll sees the mirrored AoA");
+        CHECK_REL(glm::length(f.liftDir + base.liftDir), 0.0, 0.0,
                    "and the mirrored lift direction");
         const glm::dvec3 F = liftForce(q, S, cl, f.alpha, f.liftDir, stall);
-        CHECK_NEAR(glm::length(F - baseF), 0.0, 0.0,
+        CHECK_REL(glm::length(F - baseF), 0.0, 0.0,
                    "both flips cancel: the force is unchanged, so shipped lifts move 0");
     }
 
@@ -1137,11 +1109,11 @@ static void test_partAero() {
             std::sin(inc) * ship[1] + std::cos(inc) * ship[2]);
         const PartAero p = partAero(pitched, vrel);
         CHECK_TRUE(p.valid, "an incident mount has a usable frame");
-        CHECK_NEAR(p.alpha, aoa + inc, 1e-12, "incidence adds to the angle of attack");
+        CHECK_REL(p.alpha, aoa + inc, 1e-12, "incidence adds to the angle of attack");
         CHECK_TRUE(glm::length(p.liftDir - base.liftDir) < 1e-9,
                    "pitch about the mount's own right axis keeps the lift vertical");
         const glm::dvec3 F = liftForce(q, S, cl, p.alpha, p.liftDir, stall);
-        CHECK_NEAR(F.y / baseF.y, (cl * (aoa + inc)) / (cl * aoa), 1e-9,
+        CHECK_REL(F.y / baseF.y, (cl * (aoa + inc)) / (cl * aoa), 1e-9,
                    "and the wing lifts by its OWN angle");
     }
 
@@ -1162,8 +1134,8 @@ static void test_partAero() {
         const glm::dvec3 Fr = liftForce(q, S, cl, pr.alpha, pr.liftDir, stall);
         CHECK_TRUE(std::fabs(Fl.x) > 0.01 * std::fabs(Fl.y),
                    "a dihedral wing's force tilts out of the vertical");
-        CHECK_NEAR(Fl.x + Fr.x, 0.0, 1e-12, "a mirrored dihedral pair cancels sideways");
-        CHECK_NEAR(pl.alpha, pr.alpha, 1e-12, "and sees the same angle either way");
+        CHECK_REL(Fl.x + Fr.x, 0.0, 1e-12, "a mirrored dihedral pair cancels sideways");
+        CHECK_REL(pl.alpha, pr.alpha, 1e-12, "and sees the same angle either way");
     }
 
     // Unusable frames lift nothing rather than lifting on a garbage axis.
@@ -1174,7 +1146,7 @@ static void test_partAero() {
         // Flow straight up the mount's own up axis: the lift direction is undefined.
         const PartAero e = partAero(ship, glm::dvec3(0.0, 100.0, 0.0));
         CHECK_TRUE(!e.valid, "a surface with no lift direction is refused");
-        CHECK_NEAR(glm::length(e.liftDir), 0.0, 0.0, "and carries no direction out");
+        CHECK_REL(glm::length(e.liftDir), 0.0, 0.0, "and carries no direction out");
     }
 }
 
@@ -1209,9 +1181,9 @@ static void test_surface_alpha_readout() {
         const glm::dmat3 twin(-ship[0], -ship[1], ship[2]);   // the same plate at clock 180
         const PartAero a = partAero(ship, vrel);
         const PartAero b = partAero(twin, vrel);
-        CHECK_NEAR(surfaceAlphaDegForReadout(a, frameOf(ship), up, right), 5.0, 1e-9,
+        CHECK_REL(surfaceAlphaDegForReadout(a, frameOf(ship), up, right), 5.0, 1e-9,
                    "an aligned wing reads its own AoA, in degrees");
-        CHECK_NEAR(surfaceAlphaDegForReadout(b, frameOf(twin), up, right),
+        CHECK_REL(surfaceAlphaDegForReadout(b, frameOf(twin), up, right),
                    surfaceAlphaDegForReadout(a, frameOf(ship), up, right), 1e-9,
                    "and its 180-deg twin reads the SAME number, not the mirror");
         // What the sign MEANS: the sign of the force, in the same ship axis the
@@ -1235,9 +1207,9 @@ static void test_surface_alpha_readout() {
                               glm::dvec3(0.0, 0.0, 1.0));
         const PartAero pa = partAero(fin, vyaw), pb = partAero(fin2, vyaw);
         CHECK_TRUE(pa.valid && pb.valid, "both fins of a 90/270 pair have frames");
-        CHECK_NEAR(std::fabs(surfaceAlphaDegForReadout(pa, frameOf(fin), up, right)), 10.0,
+        CHECK_REL(std::fabs(surfaceAlphaDegForReadout(pa, frameOf(fin), up, right)), 10.0,
                    1e-9, "a yawed flow gives a fin its yaw angle, not the ship's AoA");
-        CHECK_NEAR(surfaceAlphaDegForReadout(pa, frameOf(fin), up, right),
+        CHECK_REL(surfaceAlphaDegForReadout(pa, frameOf(fin), up, right),
                    surfaceAlphaDegForReadout(pb, frameOf(fin2), up, right), 1e-9,
                    "and a 90/270 pair reads alike");
         const glm::dvec3 Fa = liftForce(q, S, cl, pa.alpha, pa.liftDir, stall);
@@ -1371,7 +1343,7 @@ static void test_surface_alpha_readout() {
                              100.0 * std::cos(glm::radians(10.0)));
         const double ra = surfaceAlphaDegForReadout(partAero(vtA, v10), rfA, up, right);
         const double rb = surfaceAlphaDegForReadout(partAero(vtB, v10), rfB, up, right);
-        CHECK_NEAR(ra, rb, 1e-9, "a +-45 v-tail pair prints the SAME number");
+        CHECK_REL(ra, rb, 1e-9, "a +-45 v-tail pair prints the SAME number");
         CHECK_TRUE(std::fabs(ra) > 1.0, "and it is a real angle, not the tie pinning zero");
         // The tie-break is a decision, not a no-op: quoting the -45 half against RIGHT
         // instead of UP flips its sign (its force projects oppositely on the two axes).
@@ -1395,13 +1367,13 @@ static void test_surface_alpha_readout() {
                                                     frameOf(ship), up, right);
         CHECK_TRUE(std::fabs(ra - rb) > 1.0,
                    "a rolling airframe's two wings read DIFFERENT angles");
-        CHECK_NEAR(ra + rb, 0.0, 1e-9, "equal and opposite, because the roll is");
+        CHECK_REL(ra + rb, 0.0, 1e-9, "equal and opposite, because the roll is");
     }
 
     // An unusable frame reads 0.0 out of the struct's defaults. That is NOT a claim
     // that the surface sits at zero -- tick.cpp declines to quote such a part at all
     // -- so callers gate on Part::aeroValid; this only pins there is nothing to sign.
-    CHECK_NEAR(surfaceAlphaDegForReadout(partAero(glm::dmat3(0.0), vrel),
+    CHECK_REL(surfaceAlphaDegForReadout(partAero(glm::dmat3(0.0), vrel),
                                          frameOf(ship), up, right),
                0.0, 1e-12, "a refused frame carries no angle to sign");
 
@@ -1423,7 +1395,7 @@ static void test_surface_alpha_readout() {
                    "a fore-aft fin 20 deg off the nose still has a frame and a real angle");
         CHECK_TRUE(glm::dot(a.liftDir, rf.axisUp ? up : right) == 0.0,
                    "and its live force has no component on the quoted axis (exact, not tiny)");
-        CHECK_NEAR(std::fabs(surfaceAlphaDegForReadout(a, rf, up, right)), 90.0, 1e-9,
+        CHECK_REL(std::fabs(surfaceAlphaDegForReadout(a, rf, up, right)), 90.0, 1e-9,
                    "the readout still quotes the 90 deg it is actually at");
         CHECK_TRUE(rf.rigSign == 0.0,
                    "(a nose-projecting mount answers neither axis question, as documented)");
@@ -1501,10 +1473,10 @@ static void test_neutral_point() {
     {
         LiftSlopeSum s;
         s.add(slope(ship, vrel, 10.0, right), glm::dvec3(0.0), up, right);
-        CHECK_NEAR(s.slope(), 60.0, 1e-6,
+        CHECK_REL(s.slope(), 60.0, 1e-6,
                    "a 10 m2 wing at 6/rad buys 60 m2 of lift per radian");
         CHECK_TRUE(s.usable(), "a surface in its linear range has a margin to quote");
-        CHECK_NEAR(s.margin(), 0.0, 1e-9, "bolted at the pivot, its margin is zero");
+        CHECK_REL(s.margin(), 0.0, 1e-9, "bolted at the pivot, its margin is zero");
     }
 
     // The mirrored twin -- the shape that broke the first attempt. Both halves lift
@@ -1515,9 +1487,9 @@ static void test_neutral_point() {
         LiftSlopeSum s;
         s.add(slope(ship, vrel, 10.0, right), 5.0 * right, up, right);
         s.add(slope(twin, vrel, 10.0, right), -5.0 * right, up, right);
-        CHECK_NEAR(s.slope(), 120.0, 1e-6,
+        CHECK_REL(s.slope(), 120.0, 1e-6,
                    "a 180-degree twin pair ADDS its slope rather than cancelling it");
-        CHECK_NEAR(s.margin(), 0.0, 1e-9, "and a pair offset along its span has no lever");
+        CHECK_REL(s.margin(), 0.0, 1e-9, "and a pair offset along its span has no lever");
     }
 
     // And the SUM refuses to quote a lever when the surfaces cancel. Built here out of
@@ -1530,7 +1502,7 @@ static void test_neutral_point() {
         LiftSlopeSum s;
         s.add(up * 60.0, 5.0 * right, up, right);
         s.add(-up * 60.0, -5.0 * right, up, right);
-        CHECK_NEAR(s.slope(), 0.0, 1e-12, "surfaces that disagree cancel");
+        CHECK_REL(s.slope(), 0.0, 1e-12, "surfaces that disagree cancel");
         CHECK_TRUE(!s.usable(),
                    "and the readout dashes rather than quoting the average of a cancelled sum");
     }
@@ -1541,10 +1513,10 @@ static void test_neutral_point() {
         LiftSlopeSum s;
         s.add(slope(ship, vrel, 10.0, right), glm::dvec3(0.0), up, right);
         s.add(slope(ship, vrel, 2.0, right), -5.0 * nose, up, right);
-        CHECK_NEAR(s.slope(), 72.0, 1e-6, "wings plus tailplane, in area per radian");
-        CHECK_NEAR(s.margin(), 60.0 / 72.0, 1e-6,
+        CHECK_REL(s.slope(), 72.0, 1e-6, "wings plus tailplane, in area per radian");
+        CHECK_REL(s.margin(), 60.0 / 72.0, 1e-6,
                    "a tailplane 5 m aft puts the lift change BEHIND the COM");
-        CHECK_NEAR(s.point(), -s.margin(), 1e-9,
+        CHECK_REL(s.point(), -s.margin(), 1e-9,
                    "point() is the same lever read ahead-positive");
     }
 
@@ -1554,7 +1526,7 @@ static void test_neutral_point() {
         LiftSlopeSum s;
         s.add(slope(ship, vrel, 10.0, right), glm::dvec3(0.0), up, right);
         s.add(slope(ship, vrel, 2.0, right), 5.0 * nose, up, right);
-        CHECK_NEAR(s.margin(), -60.0 / 72.0, 1e-6, "a tail AHEAD of the wings is a negative margin");
+        CHECK_REL(s.margin(), -60.0 / 72.0, 1e-6, "a tail AHEAD of the wings is a negative margin");
     }
 
     // A surface ROLLED about the nose -- every shipped tailplane carries +-5 deg of
@@ -1569,8 +1541,8 @@ static void test_neutral_point() {
         const glm::dmat3 rolled = glm::mat3_cast(glm::angleAxis(glm::radians(30.0), nose));
         LiftSlopeSum s;
         s.add(slope(rolled, vrel, 10.0, right), -5.0 * nose, up, right);
-        CHECK_NEAR(s.slope(), 45.0, 1e-6, "a wing rolled 30 deg buys cos^2 of its slope");
-        CHECK_NEAR(s.margin(), 5.0, 1e-6, "and still the same 5 m of lever");
+        CHECK_REL(s.slope(), 45.0, 1e-6, "a wing rolled 30 deg buys cos^2 of its slope");
+        CHECK_REL(s.margin(), 5.0, 1e-6, "and still the same 5 m of lever");
     }
 
     // A fin answers to yaw, not pitch: its lift runs along ship's right, so a ship
@@ -1582,7 +1554,7 @@ static void test_neutral_point() {
                              glm::dvec3(0.0, 0.0, 1.0));
         LiftSlopeSum s;
         s.add(slope(fin, vrel, 4.0, right), -3.0 * nose, up, right);
-        CHECK_NEAR(s.slope(), 0.0, 1e-12, "a fin contributes no PITCH slope");
+        CHECK_REL(s.slope(), 0.0, 1e-12, "a fin contributes no PITCH slope");
         CHECK_TRUE(!s.usable(), "and its margin is refused, not quoted as 0");
     }
 
@@ -1602,19 +1574,19 @@ static void test_neutral_point() {
         LiftSlopeSum linear;
         linear.add(slope(ship, flowAt(glm::radians(10.0)), 10.0, right),
                    glm::dvec3(0.0), up, right);
-        CHECK_NEAR(linear.slope(), 60.0 * std::cos(glm::radians(10.0)), 1e-4,
+        CHECK_REL(linear.slope(), 60.0 * std::cos(glm::radians(10.0)), 1e-4,
                    "below the 20.05 deg stall angle the slope is still the linear one, projected");
         LiftSlopeSum past;
         past.add(slope(ship, flowAt(glm::radians(30.0)), 10.0, right),
                  glm::dvec3(0.0), up, right);
         CHECK_TRUE(past.slope() < 0.0,
                    "past the stall peak, more angle of attack means LESS lift");
-        CHECK_NEAR(past.margin(), 0.0, 1e-9,
+        CHECK_REL(past.margin(), 0.0, 1e-9,
                    "while the margin of a surface at the pivot stays put -- the lever says nothing about this");
         LiftSlopeSum flat;
         flat.add(slope(ship, flowAt(glm::radians(80.0)), 10.0, right),
                  glm::dvec3(0.0), up, right);
-        CHECK_NEAR(flat.slope(), 0.0, 1e-9, "past 2x the stall angle the law is identically zero");
+        CHECK_REL(flat.slope(), 0.0, 1e-9, "past 2x the stall angle the law is identically zero");
         CHECK_TRUE(!flat.usable(), "and a stalled-flat airframe quotes no margin");
     }
 }
@@ -1642,10 +1614,10 @@ static void test_surface_effectiveness() {
     const glm::dvec3 tail = glm::dvec3(0.0, 0.0, -3.0);
     const glm::dvec3 up(0.0, 1.0, 0.0), right(1.0, 0.0, 0.0), nose(0.0, 0.0, 1.0);
     const glm::dvec3 row = surfaceTorquePerRadian(100.0, 2.0, 6.0, tail, up, right);
-    CHECK_NEAR(row.x, -3600.0, 1e-9, "the moment is the push at its offset, per rad");
-    CHECK_NEAR(row.y, 0.0, 1e-9, "and nothing else");
-    CHECK_NEAR(row.z, 0.0, 1e-9, "and nothing else");
-    CHECK_NEAR(row.x, -surfaceTorquePerRadian(100.0, 2.0, 6.0, tail, up, right, +1.0).x,
+    CHECK_REL(row.x, -3600.0, 1e-9, "the moment is the push at its offset, per rad");
+    CHECK_REL(row.y, 0.0, 1e-9, "and nothing else");
+    CHECK_REL(row.z, 0.0, 1e-9, "and nothing else");
+    CHECK_REL(row.x, -surfaceTorquePerRadian(100.0, 2.0, 6.0, tail, up, right, +1.0).x,
                1e-9, "targetSign is the authored axis's, exactly as controlDeflection's");
 
     /* The mirrored twin -- a canard ahead of the COM with its plate flipped -- levers
@@ -1655,7 +1627,7 @@ static void test_surface_effectiveness() {
     const glm::dvec3 twin = surfaceTorquePerRadian(100.0, 2.0, 6.0,
                                                    glm::dvec3(0.0, 0.0, 3.0),
                                                    glm::dvec3(0.0, -1.0, 0.0), right);
-    CHECK_NEAR(twin.x, row.x, 1e-9, "a mirrored pair levers the same way");
+    CHECK_REL(twin.x, row.x, 1e-9, "a mirrored pair levers the same way");
 
     /* No air, no area, no slope: no row. The row is a q-times-geometry budget, so a
        hull in vacuum or at rest has nothing to spend, which is the right answer
@@ -1693,7 +1665,7 @@ static void test_surface_effectiveness() {
     /* 3 m * sin(t), not 3 m * t: the tolerance is relative, and the difference
        between sin(1e-4) and 1e-4 is 1.7e-13 -- far inside the geometry's meaning,
        far outside a 1e-12 relative pin. */
-    CHECK_NEAR(glm::length(r14), 3.0 * std::sin(t14), 1e-12,
+    CHECK_REL(glm::length(r14), 3.0 * std::sin(t14), 1e-12,
                "a 3 m arm 1e-4 rad off the degenerate line still levers 3e-4 m");
     CHECK_TRUE(r18 == glm::dvec3(0.0), "and 1e-8 rad is degenerate, as it must be");
 
@@ -1709,12 +1681,12 @@ static void test_surface_effectiveness() {
     const double comp = 1200.0 * 3.0 * c45;
     const glm::dvec3 asPitch = surfaceTorquePerRadian(100.0, 2.0, 6.0, tail, push45, right);
     const glm::dvec3 asYaw = surfaceTorquePerRadian(100.0, 2.0, 6.0, tail, push45, up);
-    CHECK_NEAR(glm::length(asPitch), 3600.0, 1e-9,
+    CHECK_REL(glm::length(asPitch), 3600.0, 1e-9,
                "the reach is the geometry's, not the label's");
-    CHECK_NEAR(asPitch.x, -comp, 1e-6, "labeled pitch: its own axis is what it buys");
-    CHECK_NEAR(asPitch.y, +comp, 1e-6, "and it buys the other axis too");
-    CHECK_NEAR(asYaw.x, -asPitch.x, 1e-6, "labeled yaw: same plate, opposite sense");
-    CHECK_NEAR(asYaw.y, -asPitch.y, 1e-6, "because only the SENSE is the label's");
+    CHECK_REL(asPitch.x, -comp, 1e-6, "labeled pitch: its own axis is what it buys");
+    CHECK_REL(asPitch.y, +comp, 1e-6, "and it buys the other axis too");
+    CHECK_REL(asYaw.x, -asPitch.x, 1e-6, "labeled yaw: same plate, opposite sense");
+    CHECK_REL(asYaw.y, -asPitch.y, 1e-6, "because only the SENSE is the label's");
 
     /* ...and the label is still a WALL where #495 says it is one. This plate levers
        nothing about the axis it is rigged for, so its command sign is undecidable and
@@ -1757,9 +1729,9 @@ static void test_local_flow_sweep() {
         CHECK_TRUE(s.vp == vrel, "no spin: the sweep is exactly zero, not nearly");
         // Compared against the SAME expression on the COM flow, so this says "the
         // sweep contributed nothing", not "these two spellings of q agree".
-        CHECK_NEAR(s.q, 0.5 * rho * glm::dot(vrel, vrel), 0.0,
+        CHECK_REL(s.q, 0.5 * rho * glm::dot(vrel, vrel), 0.0,
                    "and so is the change in dynamic pressure");
-        CHECK_NEAR(glm::length(s.F), 0.0, 0.0, "so a 0-deg wing still lifts nothing");
+        CHECK_REL(glm::length(s.F), 0.0, 0.0, "so a 0-deg wing still lifts nothing");
     }
 
     // localFlow's own bookkeeping: vp2 is the magnitude q was built from, so the
@@ -1768,17 +1740,17 @@ static void test_local_flow_sweep() {
     {
         const LocalFlow lf = localFlow(vrel, glm::dvec3(0.0, 0.0, 2.0),
                                        glm::dvec3(0.0, 3.0, 0.0), rho);
-        CHECK_NEAR(std::sqrt(lf.vp2), glm::length(lf.vp), 1e-12,
+        CHECK_REL(std::sqrt(lf.vp2), glm::length(lf.vp), 1e-12,
                    "sqrt(vp2) is the flow's magnitude, as glm::length computes it");
-        CHECK_NEAR(lf.q, 0.5 * rho * lf.vp2, 0.0, "and q is half rho times vp2 exactly");
+        CHECK_REL(lf.q, 0.5 * rho * lf.vp2, 0.0, "and q is half rho times vp2 exactly");
     }
 
     // The bug, stated: on the COM's flow every surface of this airframe sees 0 deg,
     // however fast it is rotating. No sweep, no damping.
     {
         const PartAero same = partAero(ship, vrel);
-        CHECK_NEAR(same.alpha, 0.0, 0.0, "COM flow: every surface sees the same 0 deg");
-        CHECK_NEAR(glm::length(liftForce(0.5 * rho * v * v, S, cl, same.alpha,
+        CHECK_REL(same.alpha, 0.0, 0.0, "COM flow: every surface sees the same 0 deg");
+        CHECK_REL(glm::length(liftForce(0.5 * rho * v * v, S, cl, same.alpha,
                                          same.liftDir, stall)),
                    0.0, 0.0, "COM flow: a pitching airframe gets nothing out of it");
     }
@@ -1794,9 +1766,9 @@ static void test_local_flow_sweep() {
         const glm::dvec3 rCanard(0.0, 0.0, 3.0), rTail(0.0, 0.0, -2.5);
         const Surf c = surf(rCanard, w), t = surf(rTail, w);
         CHECK_TRUE(c.pa.valid && t.pa.valid, "the swept frames are usable");
-        CHECK_NEAR(c.pa.alpha, std::atan2(3.0 * 0.5, v), 1e-12,
+        CHECK_REL(c.pa.alpha, std::atan2(3.0 * 0.5, v), 1e-12,
                    "the surface the pitch drives DOWN meets the flow from below");
-        CHECK_NEAR(t.pa.alpha, -std::atan2(2.5 * 0.5, v), 1e-12,
+        CHECK_REL(t.pa.alpha, -std::atan2(2.5 * 0.5, v), 1e-12,
                    "and the one being lifted meets it from above");
         CHECK_TRUE(c.pa.alpha * t.pa.alpha < 0.0, "the pair tilts OPPOSITE ways");
         const glm::dvec3 F = c.F + t.F;
@@ -1837,7 +1809,7 @@ static void test_local_flow_sweep() {
         const glm::dvec3 rCanard(0.0, 0.0, 3.0), rTail(0.0, 0.0, -2.5);
         const Surf c0 = surfAt(rCanard, glm::dvec3(0.0), inc);
         const Surf t0 = surfAt(rTail, glm::dvec3(0.0), inc);
-        CHECK_NEAR(std::fabs(c0.pa.alpha), a0, 1e-12,
+        CHECK_REL(std::fabs(c0.pa.alpha), a0, 1e-12,
                    "the mount sits past the stall angle, inside the droop");
         CHECK_TRUE(glm::length(c0.F) > 0.0 && glm::length(t0.F) > 0.0,
                    "a tilted wing at rest still lifts -- only the SWEEP is damping");
@@ -1859,12 +1831,12 @@ static void test_local_flow_sweep() {
         const glm::dvec3 w(0.0, 0.0, 0.6);                    // about the ship's nose
         const glm::dvec3 rR(4.0, 0.0, 0.0), rL(-4.0, 0.0, 0.0);
         const Surf a = surf(rR, w), b = surf(rL, w);
-        CHECK_NEAR(a.pa.alpha, -std::atan2(4.0 * 0.6, v), 1e-12,
+        CHECK_REL(a.pa.alpha, -std::atan2(4.0 * 0.6, v), 1e-12,
                    "the rising tip's local flow comes up at it");
-        CHECK_NEAR(b.pa.alpha, -a.pa.alpha, 0.0, "its twin sees the mirror, exactly");
+        CHECK_REL(b.pa.alpha, -a.pa.alpha, 0.0, "its twin sees the mirror, exactly");
         const glm::dvec3 F = a.F + b.F;
-        CHECK_NEAR(F.y, 0.0, 0.0, "the two lifts cancel vertically");
-        CHECK_NEAR(F.x, 0.0, 0.0, "and sideways");
+        CHECK_REL(F.y, 0.0, 0.0, "the two lifts cancel vertically");
+        CHECK_REL(F.x, 0.0, 0.0, "and sideways");
         const glm::dvec3 M = glm::cross(rR, a.F) + glm::cross(rL, b.F);
         CHECK_TRUE(glm::dot(M, w) < 0.0, "while both together oppose the roll");
         // What is left over is the tilted pair pushing along the flow -- small, and
@@ -1880,7 +1852,7 @@ static void test_local_flow_sweep() {
         const glm::dvec3 w(0.0, 0.0, 2.0);
         const glm::dvec3 r(0.0, 3.0, 0.0);
         const Surf s = surf(r, w);
-        CHECK_NEAR(s.pa.alpha, 0.0, 0.0, "a sideways sweep leaves the ANGLE alone");
+        CHECK_REL(s.pa.alpha, 0.0, 0.0, "a sideways sweep leaves the ANGLE alone");
         CHECK_TRUE(s.q > 0.5 * rho * v * v, "but the surface still feels a faster flow");
     }
 
@@ -1894,7 +1866,7 @@ static void test_local_flow_sweep() {
         const Surf s = surf(r, w);
         CHECK_TRUE(glm::length(glm::cross(w, r)) > v, "the tip outruns the air it flies in");
         CHECK_TRUE(glm::dot(s.vp, nose) < 0.0, "so its flow comes from behind");
-        CHECK_NEAR(glm::length(s.F), 0.0, 0.0, "and the droop leaves it no lift to damp with");
+        CHECK_REL(glm::length(s.F), 0.0, 0.0, "and the droop leaves it no lift to damp with");
     }
 }
 
@@ -1905,18 +1877,18 @@ static void test_liftCurve() {
     const double clmax = cl * A;  // peak CL, reached at |alpha| = A
 
     // Below stall: exactly linear (the Phase 2 law), sign follows alpha.
-    CHECK_NEAR(liftCurve(cl, 0.05, A), cl * 0.05, 1e-12, "below stall: linear");
-    CHECK_NEAR(liftCurve(cl, -0.05, A), -cl * 0.05, 1e-12, "below stall: linear (-)");
+    CHECK_REL(liftCurve(cl, 0.05, A), cl * 0.05, 1e-12, "below stall: linear");
+    CHECK_REL(liftCurve(cl, -0.05, A), -cl * 0.05, 1e-12, "below stall: linear (-)");
 
     // Zero AoA: no lift (a symmetric section).
-    CHECK_NEAR(liftCurve(cl, 0.0, A), 0.0, 0.0, "zero AoA -> 0");
+    CHECK_REL(liftCurve(cl, 0.0, A), 0.0, 0.0, "zero AoA -> 0");
 
     // At the stall angle: the peak (cl*A), continuous from both sides.
-    CHECK_NEAR(liftCurve(cl, A, A), clmax, 1e-12, "at stall angle: peak");
-    CHECK_NEAR(liftCurve(cl, -A, A), -clmax, 1e-12, "at stall angle: peak (-)");
+    CHECK_REL(liftCurve(cl, A, A), clmax, 1e-12, "at stall angle: peak");
+    CHECK_REL(liftCurve(cl, -A, A), -clmax, 1e-12, "at stall angle: peak (-)");
 
     // Just past stall: the droop has begun (below the peak, still positive).
-    CHECK_NEAR(liftCurve(cl, A * 1.1, A),
+    CHECK_REL(liftCurve(cl, A * 1.1, A),
                cl * A * std::cos(0.1 * M_PI * 0.5), 1e-12, "past stall: droop");
 
     // Monotone decrease through the droop: peak > 1.1A > 1.5A > 2A (=0).
@@ -1927,23 +1899,23 @@ static void test_liftCurve() {
 
     // At 2x the stall angle the droop is complete (deep stall); beyond it, and
     // at a fully sideways 90 deg, the wing is edge-on and generates no lift.
-    CHECK_NEAR(liftCurve(cl, A * 2.0, A), 0.0, 0.0, "at 2A: deep stall -> 0");
-    CHECK_NEAR(liftCurve(cl, A * 3.0, A), 0.0, 0.0, "beyond 2A: still 0");
-    CHECK_NEAR(liftCurve(cl, M_PI * 0.5, A), 0.0, 0.0, "90 deg -> 0");
+    CHECK_REL(liftCurve(cl, A * 2.0, A), 0.0, 0.0, "at 2A: deep stall -> 0");
+    CHECK_REL(liftCurve(cl, A * 3.0, A), 0.0, 0.0, "beyond 2A: still 0");
+    CHECK_REL(liftCurve(cl, M_PI * 0.5, A), 0.0, 0.0, "90 deg -> 0");
 
     // Symmetric in |alpha|: equal magnitude up or down, sign follows alpha.
-    CHECK_NEAR(std::fabs(liftCurve(cl, 0.2, A)), std::fabs(liftCurve(cl, -0.2, A)),
+    CHECK_REL(std::fabs(liftCurve(cl, 0.2, A)), std::fabs(liftCurve(cl, -0.2, A)),
                1e-12, "symmetric magnitude");
     CHECK_TRUE(liftCurve(cl, 0.2, A) > 0.0 && liftCurve(cl, -0.2, A) < 0.0,
                "sign follows alpha");
 
     // No stall (A = 0): pure linear for ALL alpha (the Phase 2 law, no droop).
-    CHECK_NEAR(liftCurve(cl, 1.0, 0.0), cl * 1.0, 1e-12, "no stall: linear (+)");
-    CHECK_NEAR(liftCurve(cl, -1.0, 0.0), -cl * 1.0, 1e-12, "no stall: linear (-)");
+    CHECK_REL(liftCurve(cl, 1.0, 0.0), cl * 1.0, 1e-12, "no stall: linear (+)");
+    CHECK_REL(liftCurve(cl, -1.0, 0.0), -cl * 1.0, 1e-12, "no stall: linear (-)");
 
     // Degenerate: no slope -> no lift.
-    CHECK_NEAR(liftCurve(0.0, 0.1, A), 0.0, 0.0, "cl = 0 -> 0");
-    CHECK_NEAR(liftCurve(-1.0, 0.1, A), 0.0, 0.0, "cl < 0 -> 0");
+    CHECK_REL(liftCurve(0.0, 0.1, A), 0.0, 0.0, "cl = 0 -> 0");
+    CHECK_REL(liftCurve(-1.0, 0.1, A), 0.0, 0.0, "cl < 0 -> 0");
 }
 
 /* #543 A5. Every number below is what drag.h::liftSlopeMach answers for a cl 6
@@ -1958,15 +1930,15 @@ static void test_lift_slope_mach() {
 
     // INCOMPRESSIBLE IDENTITY. Mach 0 answers the authored slope exactly -- and
     // Prandtl-Glauert is not switched on at a threshold, it is 1 there by arithmetic.
-    CHECK_NEAR(liftSlopeMach(cl, 0.0), cl, 0.0, "M 0: the authored slope");
-    CHECK_NEAR(liftSlopeMach(cl, -1.0), cl, 0.0, "M < 0 (no flow): authored slope");
-    CHECK_NEAR(liftSlopeMach(cl, 0.01), 6.000300022502, 1e-9, "M 0.01: 1.00005 x cl");
+    CHECK_REL(liftSlopeMach(cl, 0.0), cl, 0.0, "M 0: the authored slope");
+    CHECK_REL(liftSlopeMach(cl, -1.0), cl, 0.0, "M < 0 (no flow): authored slope");
+    CHECK_REL(liftSlopeMach(cl, 0.01), 6.000300022502, 1e-9, "M 0.01: 1.00005 x cl");
 
     // SUBSONIC, Prandtl-Glauert: cl / sqrt(1 - M^2). The cruise end of the game's
     // envelope: the skiff's 85 m/s is M 0.31 on Kerbin's 274.8 m/s, worth +5.2%.
-    CHECK_NEAR(liftSlopeMach(cl, 0.3), 6.289709020332, 1e-9, "M 0.3: 1.0483 x cl");
-    CHECK_NEAR(liftSlopeMach(cl, 0.5), cl / std::sqrt(0.75), 1e-12, "M 0.5");
-    CHECK_NEAR(liftSlopeMach(cl, 0.7), 8.401680504168, 1e-9, "M 0.7: 1.4003 x cl");
+    CHECK_REL(liftSlopeMach(cl, 0.3), 6.289709020332, 1e-9, "M 0.3: 1.0483 x cl");
+    CHECK_REL(liftSlopeMach(cl, 0.5), cl / std::sqrt(0.75), 1e-12, "M 0.5");
+    CHECK_REL(liftSlopeMach(cl, 0.7), 8.401680504168, 1e-9, "M 0.7: 1.4003 x cl");
     // The whole point of the correction: it is monotone UP all the way to the band.
     CHECK_TRUE(liftSlopeMach(cl, 0.3) > cl && liftSlopeMach(cl, 0.7) > liftSlopeMach(cl, 0.3),
                "subsonic: rising with Mach");
@@ -1974,21 +1946,21 @@ static void test_lift_slope_mach() {
     // THE BAND. PG is extrapolation past ~0.75 and the sqrt would run to infinity at
     // M 1, so the band joins PG(0.75) to the thin-airfoil value at 1.25 in a straight
     // line of ABSOLUTE slope. Continuous at both edges -- pinned from either side:
-    CHECK_NEAR(liftSlopeMach(cl, 0.749999), 9.071131801733, 1e-6, "just under the band");
-    CHECK_NEAR(liftSlopeMach(cl, kTransonicMach), 9.071147352221, 1e-9, "band low edge");
-    CHECK_NEAR(liftSlopeMach(cl, 0.750001), 9.071139876593, 1e-6, "just over the edge");
-    CHECK_NEAR(liftSlopeMach(cl, 1.249999), 5.333340808961, 1e-6, "just under the top edge");
-    CHECK_NEAR(liftSlopeMach(cl, kSupersonicMach), 4.0 / std::sqrt(0.5625), 1e-12,
+    CHECK_REL(liftSlopeMach(cl, 0.749999), 9.071131801733, 1e-6, "just under the band");
+    CHECK_REL(liftSlopeMach(cl, kTransonicMach), 9.071147352221, 1e-9, "band low edge");
+    CHECK_REL(liftSlopeMach(cl, 0.750001), 9.071139876593, 1e-6, "just over the edge");
+    CHECK_REL(liftSlopeMach(cl, 1.249999), 5.333340808961, 1e-6, "just under the top edge");
+    CHECK_REL(liftSlopeMach(cl, kSupersonicMach), 4.0 / std::sqrt(0.5625), 1e-12,
                "band high edge = thin airfoil at 1.25");
-    CHECK_NEAR(liftSlopeMach(cl, 1.250001), 5.333321481516, 1e-6, "just over the top edge");
+    CHECK_REL(liftSlopeMach(cl, 1.250001), 5.333321481516, 1e-6, "just over the top edge");
     // What the band BUYS: raw PG at M 0.99 answers 42.5 -- seven times the authored
     // slope, on a section that in reality has a shock on it and is losing lift. The
     // same query through the band answers 7.28, and M 1 is finite for any cl.
-    CHECK_NEAR(liftSlopeMach(cl, 0.8), 8.697365950333, 1e-9, "M 0.8: falling");
-    CHECK_NEAR(liftSlopeMach(cl, 0.9), 7.949803146555, 1e-9, "M 0.9");
-    CHECK_NEAR(liftSlopeMach(cl, 0.99), 7.276996623155, 1e-9, "M 0.99");
-    CHECK_NEAR(liftSlopeMach(cl, 1.0), 7.202240342777, 1e-9, "M 1: finite, falling");
-    CHECK_NEAR(liftSlopeMach(cl, 1.1), 6.454677539000, 1e-9, "M 1.1");
+    CHECK_REL(liftSlopeMach(cl, 0.8), 8.697365950333, 1e-9, "M 0.8: falling");
+    CHECK_REL(liftSlopeMach(cl, 0.9), 7.949803146555, 1e-9, "M 0.9");
+    CHECK_REL(liftSlopeMach(cl, 0.99), 7.276996623155, 1e-9, "M 0.99");
+    CHECK_REL(liftSlopeMach(cl, 1.0), 7.202240342777, 1e-9, "M 1: finite, falling");
+    CHECK_REL(liftSlopeMach(cl, 1.1), 6.454677539000, 1e-9, "M 1.1");
     CHECK_TRUE(std::isfinite(liftSlopeMach(cl, 1.0)), "M 1 is finite");
     // For a section this steep (any cl above 3.53 -- every shipped part authors 6.0) the
     // curve's peak is the band's low edge, 1.512 cl, and it is falling through M 1.
@@ -2001,11 +1973,11 @@ static void test_lift_slope_mach() {
     // SUPERSONIC, thin airfoil: 4 / sqrt(M^2 - 1) per radian, for ANY cl. Read that
     // again: above the band the authored slope stops mattering -- that is what the
     // theory says (drag.h spells out the consequence and where the real fix is).
-    CHECK_NEAR(liftSlopeMach(cl, 1.5), 3.577708764000, 1e-9, "M 1.5");
-    CHECK_NEAR(liftSlopeMach(cl, 1.62), 3.138437619572, 1e-9, "M 1.62 (flight/631's entry)");
-    CHECK_NEAR(liftSlopeMach(cl, 2.0), 4.0 / std::sqrt(3.0), 1e-12, "M 2");
-    CHECK_NEAR(liftSlopeMach(cl, 3.0), std::sqrt(2.0), 1e-12, "M 3: sqrt 2");
-    CHECK_NEAR(liftSlopeMach(1.0, 3.0), liftSlopeMach(cl, 3.0), 0.0,
+    CHECK_REL(liftSlopeMach(cl, 1.5), 3.577708764000, 1e-9, "M 1.5");
+    CHECK_REL(liftSlopeMach(cl, 1.62), 3.138437619572, 1e-9, "M 1.62 (flight/631's entry)");
+    CHECK_REL(liftSlopeMach(cl, 2.0), 4.0 / std::sqrt(3.0), 1e-12, "M 2");
+    CHECK_REL(liftSlopeMach(cl, 3.0), std::sqrt(2.0), 1e-12, "M 3: sqrt 2");
+    CHECK_REL(liftSlopeMach(1.0, 3.0), liftSlopeMach(cl, 3.0), 0.0,
                "supersonic: cl drops out");
     CHECK_TRUE(liftSlopeMach(cl, 3.0) < liftSlopeMach(cl, 1.3), "supersonic: falling");
 
@@ -2023,10 +1995,10 @@ static void test_lift_slope_mach() {
     CHECK_TRUE(sweepOk, "sweep M 0..4: finite, positive, no step over 0.02");
     // Absurd Mach: 4/sqrt(M^2-1) -> 0, and it must not overflow on the way there.
     CHECK_TRUE(liftSlopeMach(cl, 1e300) == 0.0, "M 1e300: 0, not NaN");
-    CHECK_NEAR(liftSlopeMach(cl, std::numeric_limits<double>::quiet_NaN()), cl, 0.0,
+    CHECK_REL(liftSlopeMach(cl, std::numeric_limits<double>::quiet_NaN()), cl, 0.0,
                "NaN Mach quotes the authored slope rather than poisoning the force");
     // No slope to correct.
-    CHECK_NEAR(liftSlopeMach(0.0, 2.0), 0.0, 0.0, "cl 0 -> 0");
+    CHECK_REL(liftSlopeMach(0.0, 2.0), 0.0, 0.0, "cl 0 -> 0");
     // A part file that authors a non-finite slope stays non-finite through the band's
     // interpolation rather than becoming NaN through inf - inf. It is not VALID -- the
     // aero pass asserts a finite slope (vehicle.cpp) and a dossier that reads inf prints
@@ -2048,17 +2020,17 @@ static void test_lift_slope_mach() {
        about. */
     const double A = 0.35;   // the shipped wing stall_angle
     const double f05 = 1.0 / std::sqrt(1.0 - 0.25);   // PG at M 0.5
-    CHECK_NEAR(liftCurve(liftSlopeMach(cl, 0.5), 0.1, A),
+    CHECK_REL(liftCurve(liftSlopeMach(cl, 0.5), 0.1, A),
                liftCurve(cl, 0.1, A) * f05, 1e-12, "liftCurve: scales by the factor");
     // The peak CL and the whole droop scale with it -- documented simplification:
     // the section stalls at the same ANGLE at every Mach.
-    CHECK_NEAR(liftCurve(liftSlopeMach(cl, 0.5), A, A), liftCurve(cl, A, A) * f05,
+    CHECK_REL(liftCurve(liftSlopeMach(cl, 0.5), A, A), liftCurve(cl, A, A) * f05,
                1e-12, "the stall peak scales too");
-    CHECK_NEAR(liftCurve(liftSlopeMach(cl, 0.5), 1.5 * A, A),
+    CHECK_REL(liftCurve(liftSlopeMach(cl, 0.5), 1.5 * A, A),
                liftCurve(cl, 1.5 * A, A) * f05, 1e-12, "and the droop");
     // A deflected surface is the same curve with the deflection in the angle seat.
     const glm::dvec3 dir(0.0, 1.0, 0.0);
-    CHECK_NEAR(glm::length(controlForce(100.0, 2.0, liftSlopeMach(cl, 1.62), 0.1, dir, A)),
+    CHECK_REL(glm::length(controlForce(100.0, 2.0, liftSlopeMach(cl, 1.62), 0.1, dir, A)),
                glm::length(controlForce(100.0, 2.0, cl, 0.1, dir, A))
                * (liftSlopeMach(cl, 1.62) / cl), 1e-9,
                "controlForce: a fin's authority moves with the air");
@@ -2071,13 +2043,13 @@ static void test_lift_slope_mach() {
     const double s0 = glm::length(liftSlopePerQ(pa, rot, flow, 4.0, cl, A, lat));
     const double sM = glm::length(liftSlopePerQ(pa, rot, flow, 4.0,
                                                 liftSlopeMach(cl, 0.5), A, lat));
-    CHECK_NEAR(s0, 4.0 * cl, 1e-6, "a 4 m2 wing at 6/rad: the slope is not vacuous");
-    CHECK_NEAR(sM, s0 * f05, 1e-9, "liftSlopePerQ: the same factor, one read");
+    CHECK_REL(s0, 4.0 * cl, 1e-6, "a 4 m2 wing at 6/rad: the slope is not vacuous");
+    CHECK_REL(sM, s0 * f05, 1e-9, "liftSlopePerQ: the same factor, one read");
     // The authority budget's row (#487's damping source) is q*S*cl by construction.
     const glm::dvec3 ri(0.0, 0.0, -3.0), push(0.0, 1.0, 0.0), about(1.0, 0.0, 0.0);
-    CHECK_NEAR(glm::length(surfaceTorquePerRadian(100.0, 2.0, cl, ri, push, about)),
+    CHECK_REL(glm::length(surfaceTorquePerRadian(100.0, 2.0, cl, ri, push, about)),
                600.0 * cl, 1e-9, "a 3 m lever: the row is not vacuous");
-    CHECK_NEAR(glm::length(surfaceTorquePerRadian(100.0, 2.0, liftSlopeMach(cl, 2.0),
+    CHECK_REL(glm::length(surfaceTorquePerRadian(100.0, 2.0, liftSlopeMach(cl, 2.0),
                                                   ri, push, about)),
                glm::length(surfaceTorquePerRadian(100.0, 2.0, cl, ri, push, about))
                * (liftSlopeMach(cl, 2.0) / cl), 1e-12,
@@ -2091,57 +2063,57 @@ static void test_wave_cd() {
 
     // BELOW THE BAND: zero, by the branch and not by luck. A5's slope correction is
     // already live at M 0.3 (1.048x); this one is exactly nothing there.
-    CHECK_NEAR(waveCd(tc, 0.0), 0.0, 0.0, "no flow, no wave drag");
-    CHECK_NEAR(waveCd(tc, 0.3), 0.0, 0.0, "a cruise Mach pays no wave drag");
-    CHECK_NEAR(waveCd(tc, 0.749999), 0.0, 0.0, "nothing before the band opens");
+    CHECK_REL(waveCd(tc, 0.0), 0.0, 0.0, "no flow, no wave drag");
+    CHECK_REL(waveCd(tc, 0.3), 0.0, 0.0, "a cruise Mach pays no wave drag");
+    CHECK_REL(waveCd(tc, 0.749999), 0.0, 0.0, "nothing before the band opens");
     // The band's low edge is continuous with that zero...
     CHECK_TRUE(waveCd(tc, 0.75) == 0.0, "the edge itself is the zero");
     CHECK_TRUE(waveCd(tc, 0.750001) < 1e-7, "and the band opens from zero");
     // ... and the high edge IS the Ackeret value, probed from both sides.
     const double edge = ack / std::sqrt(kSupersonicMach * kSupersonicMach - 1.0);
-    CHECK_NEAR(waveCd(tc, kSupersonicMach), edge, 1e-12, "M 1.25 = Ackeret at 1.25");
+    CHECK_REL(waveCd(tc, kSupersonicMach), edge, 1e-12, "M 1.25 = Ackeret at 1.25");
     // Probed a whole 1e-6 Mach off the edge, so the expected miss IS the band's own
     // slope (2 ppm), not a seam: the two branches agree to that much at the meeting.
-    CHECK_NEAR(waveCd(tc, 1.249999), edge, 1e-5, "the join reaches it");
-    CHECK_NEAR(waveCd(tc, 1.250001), edge, 1e-5, "and Ackeret starts there");
+    CHECK_REL(waveCd(tc, 1.249999), edge, 1e-5, "the join reaches it");
+    CHECK_REL(waveCd(tc, 1.250001), edge, 1e-5, "and Ackeret starts there");
 
     // ABOVE: 4 (t/c)^2 / sqrt(M^2-1), decaying with speed.
-    CHECK_NEAR(waveCd(tc, 1.25), 0.013333333333333334, 1e-15, "the peak of the curve");
-    CHECK_NEAR(waveCd(tc, 1.65), ack / std::sqrt(1.65 * 1.65 - 1.0), 1e-15,
+    CHECK_REL(waveCd(tc, 1.25), 0.013333333333333334, 1e-15, "the peak of the curve");
+    CHECK_REL(waveCd(tc, 1.65), ack / std::sqrt(1.65 * 1.65 - 1.0), 1e-15,
                "flight/631's entry Mach");
-    CHECK_NEAR(waveCd(tc, 3.0), ack / std::sqrt(8.0), 1e-15, "and it thins as 1/M");
-    CHECK_NEAR(waveCd(tc, 10.0), ack / std::sqrt(99.0), 1e-15, "hypersonic tail");
+    CHECK_REL(waveCd(tc, 3.0), ack / std::sqrt(8.0), 1e-15, "and it thins as 1/M");
+    CHECK_REL(waveCd(tc, 10.0), ack / std::sqrt(99.0), 1e-15, "hypersonic tail");
 
     // The join is a straight line in ABSOLUTE cd, so the middle of the band is the
     // average of the edges -- 0 at 0.75, the Ackeret value at 1.25.
-    CHECK_NEAR(waveCd(tc, 1.0), 0.5 * edge, 1e-15, "half way up the band");
+    CHECK_REL(waveCd(tc, 1.0), 0.5 * edge, 1e-15, "half way up the band");
     CHECK_TRUE(waveCd(tc, 0.9) < waveCd(tc, 1.0) && waveCd(tc, 1.0) < waveCd(tc, 1.1),
                "rises through the band");
     CHECK_TRUE(waveCd(tc, 1.25) > waveCd(tc, 1.3), "then falls -- M 1.25 is the peak");
 
     // Quadratic in thickness, which is what a SECTION law is: twice as thick is four
     // times the bill, so the mesh box's thickness is not a cosmetic input.
-    CHECK_NEAR(waveCd(2.0 * tc, 2.0), 4.0 * waveCd(tc, 2.0), 1e-15,
+    CHECK_REL(waveCd(2.0 * tc, 2.0), 4.0 * waveCd(tc, 2.0), 1e-15,
                "cd_wave goes as (t/c)^2");
 
     // GUARDS. A dry or malformed part reads zero rather than a NaN cd that would
     // propagate into q*S*CdA; a NaN Mach is not a flow either.
-    CHECK_NEAR(waveCd(0.0, 2.0), 0.0, 0.0, "a plate of no thickness pays nothing");
-    CHECK_NEAR(waveCd(-0.05, 2.0), 0.0, 0.0, "a negative thickness is not a bill");
+    CHECK_REL(waveCd(0.0, 2.0), 0.0, 0.0, "a plate of no thickness pays nothing");
+    CHECK_REL(waveCd(-0.05, 2.0), 0.0, 0.0, "a negative thickness is not a bill");
     CHECK_TRUE(waveCd(std::numeric_limits<double>::quiet_NaN(), 2.0) == 0.0,
                "NaN thickness answers 0, not NaN");
     CHECK_TRUE(waveCd(tc, std::numeric_limits<double>::quiet_NaN()) == 0.0,
                "NaN Mach answers 0, not NaN");
-    CHECK_NEAR(waveCd(tc, -1.5), 0.0, 0.0, "a negative Mach is no flow");
+    CHECK_REL(waveCd(tc, -1.5), 0.0, 0.0, "a negative Mach is no flow");
     // The cap: linear theory wants a thin section, and PartDef::meshThicknessToChord
     // answers 2 x radius / height for a def with NO mesh -- >= 1 for the plate defs
     // that fallback exists for. Cap the bill rather than trusting 4 (t/c)^2 there.
-    CHECK_NEAR(waveCd(1.0, kSupersonicMach), waveCd(kWaveThicknessLimit, kSupersonicMach),
+    CHECK_REL(waveCd(1.0, kSupersonicMach), waveCd(kWaveThicknessLimit, kSupersonicMach),
                1e-15, "a no-mesh def pays the cap, not 4.0");
-    CHECK_NEAR(waveCd(std::numeric_limits<double>::infinity(), kSupersonicMach),
+    CHECK_REL(waveCd(std::numeric_limits<double>::infinity(), kSupersonicMach),
                waveCd(kWaveThicknessLimit, kSupersonicMach), 1e-15,
                "inf thickness pays the cap too");
-    CHECK_NEAR(waveCd(kWaveThicknessLimit, kSupersonicMach), 4.0 * 0.09 / 0.75, 1e-15,
+    CHECK_REL(waveCd(kWaveThicknessLimit, kSupersonicMach), 4.0 * 0.09 / 0.75, 1e-15,
                "and the cap is a 30% thick section");
 
     // One continuous function over the whole speed range, with no jump anywhere.
@@ -2161,8 +2133,8 @@ static void test_wave_cd() {
             if(w > peak) { peak = w; peakMach = m; }
             prev = w;
         }
-        CHECK_NEAR(peakMach, kSupersonicMach, 0.0011, "the peak sits on the band edge");
-        CHECK_NEAR(peak, edge, 1e-6, "and is the Ackeret value there");
+        CHECK_REL(peakMach, kSupersonicMach, 0.0011, "the peak sits on the band edge");
+        CHECK_REL(peak, edge, 1e-6, "and is the Ackeret value there");
     }
 
     // THE CORPUS, measured off the shipped partdefs (tests/test_shipload.cpp pins the
@@ -2172,12 +2144,12 @@ static void test_wave_cd() {
     {
         // Typed to 10 digits, hence the 1e-6: these are magnitude pins for the parts
         // the game actually ships, not bit-exactness claims.
-        CHECK_NEAR(waveCd(0.044, 1.65), 0.0059004581, 1e-6, "thin wing at 631's Mach");
-        CHECK_NEAR(waveCd(0.086, 1.65), 0.0225412128, 1e-6, "thick fin at 631's Mach");
+        CHECK_REL(waveCd(0.044, 1.65), 0.0059004581, 1e-6, "thin wing at 631's Mach");
+        CHECK_REL(waveCd(0.086, 1.65), 0.0225412128, 1e-6, "thick fin at 631's Mach");
         CHECK_TRUE(waveCd(0.044, 0.65) == 0.0 && waveCd(0.086, 0.65) == 0.0,
                    "flight/451 at Mach 0.655 pays nothing");
         CHECK_TRUE(waveCd(0.05, 0.31) == 0.0, "the skiff at Mach 0.31 pays nothing");
-        CHECK_NEAR(waveCd(0.05, 1.25), 0.0133333333, 1e-6,
+        CHECK_REL(waveCd(0.05, 1.25), 0.0133333333, 1e-6,
                    "a wing at the band edge pays more than its whole profile cd");
     }
 
@@ -2192,20 +2164,20 @@ static void test_wave_cd() {
         const double clean = surfaceFormCdA(planform, edgeArea, cdF, cdS, cdB, 1.0, 0.0);
         const double corr = surfaceFormCdA(planform, edgeArea, cdF + w, cdS, cdB + w,
                                            1.0, 0.0);
-        CHECK_NEAR(clean, planform * cdF, 1e-12, "chordwise = planform x cd");
-        CHECK_NEAR(corr - clean, planform * w, 1e-12, "the wave bills the planform once");
+        CHECK_REL(clean, planform * cdF, 1e-12, "chordwise = planform x cd");
+        CHECK_REL(corr - clean, planform * w, 1e-12, "the wave bills the planform once");
         // Broadside: same planform, no chordwise exposure -> no wave either.
         const double sideClean = surfaceFormCdA(planform, edgeArea, cdF, cdS, cdB, 0.0, 1.0);
         const double sideCorr = surfaceFormCdA(planform, edgeArea, cdF + w, cdS, cdB + w,
                                                0.0, 1.0);
-        CHECK_NEAR(sideClean, planform * cdS, 1e-12, "broadside pays the plate cd");
-        CHECK_NEAR(sideCorr, sideClean, 1e-15, "and nothing wave-shaped");
+        CHECK_REL(sideClean, planform * cdS, 1e-12, "broadside pays the plate cd");
+        CHECK_REL(sideCorr, sideClean, 1e-15, "and nothing wave-shaped");
         // And along the span it pays the edge area, untouched by the law.
         const double spanClean = surfaceFormCdA(planform, edgeArea, cdF, cdS, cdB, 0.0, 0.0);
         const double spanCorr = surfaceFormCdA(planform, edgeArea, cdF + w, cdS, cdB + w,
                                                0.0, 0.0);
-        CHECK_NEAR(spanClean, edgeArea * cdS, 1e-12, "span pays thickness x chord");
-        CHECK_NEAR(spanCorr, spanClean, 1e-15, "and no wave");
+        CHECK_REL(spanClean, edgeArea * cdS, 1e-12, "span pays thickness x chord");
+        CHECK_REL(spanCorr, spanClean, 1e-15, "and no wave");
     }
 }
 
@@ -2223,7 +2195,7 @@ static void test_controlForce() {
         const glm::dvec3 f1 = controlForce(q, S, cl, 0.10, dir, A);
         const glm::dvec3 f2 = controlForce(q, S, cl, 0.20, dir, A);
         CHECK_TRUE(glm::length(f2 - 2.0 * f1) < 1e-9, "linear in delta");
-        CHECK_NEAR(glm::length(f1), q * S * cl * 0.10, 1e-9, "magnitude = q*S*cl*delta");
+        CHECK_REL(glm::length(f1), q * S * cl * 0.10, 1e-9, "magnitude = q*S*cl*delta");
     }
 
     /* THE DROOP (#494): authority peaks at the stall angle and is gone by twice
@@ -2232,7 +2204,7 @@ static void test_controlForce() {
        safe to charge: the old law would have billed a CL of cl*0.35 = 2.1 on a
        plate that cannot make one. */
     {
-        CHECK_NEAR(glm::length(controlForce(q, S, cl, A, dir, A)), q * S * cl * A, 1e-9,
+        CHECK_REL(glm::length(controlForce(q, S, cl, A, dir, A)), q * S * cl * A, 1e-9,
                    "peaks at the stall angle");
         // Past the peak the force falls but keeps its sign, up to 2x.
         CHECK_TRUE(glm::length(controlForce(q, S, cl, 0.35, dir, A))
@@ -2240,7 +2212,7 @@ static void test_controlForce() {
                    "past the stall angle, travel buys less force");
         CHECK_TRUE(glm::dot(controlForce(q, S, cl, 0.35, dir, A), dir) > 0.0,
                    "still bites at the shipped travel stop");
-        CHECK_NEAR(glm::length(controlForce(q, S, cl, 2.0 * A, dir, A)), 0.0, 1e-9,
+        CHECK_REL(glm::length(controlForce(q, S, cl, 2.0 * A, dir, A)), 0.0, 1e-9,
                    "zero by twice the stall angle");
         // Monotonic fall from the peak to the zero, so the stick never reverses.
         double prev = glm::length(controlForce(q, S, cl, A, dir, A));
@@ -2309,7 +2281,7 @@ static void test_controlDeflectionSign() {
     const auto lever = [&](const glm::dvec3 &ri, const glm::dvec3 &push,
                            const glm::dvec3 &about) {
         const glm::dmat3 mount = pushMount(push);
-        CHECK_NEAR(glm::determinant(mount), 1.0, 1e-12, "a mount is a proper rotation");
+        CHECK_REL(glm::determinant(mount), 1.0, 1e-12, "a mount is a proper rotation");
         return controlRigLever(ri, mount, about);
     };
 
@@ -2803,15 +2775,15 @@ static void test_control_trim() {
     // caller's early-out compares against 0.0.
     CHECK_TRUE(controlCommandFrac(0.0, -0.0) == 0.0, "negative zero is still neutral");
     // The point of the field: a surface is commanded with nothing held.
-    CHECK_NEAR(controlCommandFrac(0.0, 0.5), 0.5, 0.0, "trim alone commands the surface");
-    CHECK_NEAR(controlCommandFrac(0.0, -0.25), -0.25, 0.0, "either way");
+    CHECK_REL(controlCommandFrac(0.0, 0.5), 0.5, 0.0, "trim alone commands the surface");
+    CHECK_REL(controlCommandFrac(0.0, -0.25), -0.25, 0.0, "either way");
     // A surface cannot travel past its own stop, however the two are combined...
-    CHECK_NEAR(controlCommandFrac(1.0, 0.5), 1.0, 0.0, "stick plus trim stops at full travel");
-    CHECK_NEAR(controlCommandFrac(-1.0, -0.5), -1.0, 0.0, "and the same the other way");
+    CHECK_REL(controlCommandFrac(1.0, 0.5), 1.0, 0.0, "stick plus trim stops at full travel");
+    CHECK_REL(controlCommandFrac(-1.0, -0.5), -1.0, 0.0, "and the same the other way");
     // ...but trim is not a ratchet: holding against it backs the surface off.
-    CHECK_NEAR(controlCommandFrac(-1.0, 0.5), -0.5, 0.0,
+    CHECK_REL(controlCommandFrac(-1.0, 0.5), -0.5, 0.0,
                "stick against trim wins, reduced -- it does not latch");
-    CHECK_NEAR(controlCommandFrac(0.5, 0.25), 0.75, 0.0, "stick and trim add up");
+    CHECK_REL(controlCommandFrac(0.5, 0.25), 0.75, 0.0, "stick and trim add up");
 }
 
 // --- Projected (silhouette) area of a body, from its convex-hull vertices.
@@ -2867,13 +2839,13 @@ static void test_projectedArea() {
     // Cube: axis-on = one face (4); (1,0,1) shows two faces at 45 deg ->
     // 4 / sqrt(2) each -> 8 / sqrt(2) = 4 sqrt(2).
     const std::vector<glm::dvec3> cube = cubeVerts();
-    CHECK_NEAR(projectedArea(cube, glm::dvec3(0.0, 0.0, 1.0)), 4.0, 1e-9,
+    CHECK_REL(projectedArea(cube, glm::dvec3(0.0, 0.0, 1.0)), 4.0, 1e-9,
                "cube axis-on == 4");
-    CHECK_NEAR(projectedArea(cube, glm::dvec3(1.0, 0.0, 1.0)),
+    CHECK_REL(projectedArea(cube, glm::dvec3(1.0, 0.0, 1.0)),
                8.0 / std::sqrt(2.0), 1e-9, "cube (1,0,1) == 4 sqrt(2)");
 
     // Symmetry: a convex body's silhouette is the same from either side.
-    CHECK_NEAR(projectedArea(cube, glm::dvec3(0.3, -0.5, 0.8)),
+    CHECK_REL(projectedArea(cube, glm::dvec3(0.3, -0.5, 0.8)),
                projectedArea(cube, glm::dvec3(-0.3, 0.5, -0.8)), 1e-9,
                "silhouette symmetric in dir (cube)");
 
@@ -2897,11 +2869,11 @@ static void test_projectedArea() {
     // (along the thin axis) = the planform (4); edge-on = thickness * length
     // (0.2). This is the 10x thin-wing ratio the drag model relies on.
     const std::vector<glm::dvec3> wing = boxVerts(1.0, 0.05, 1.0);
-    CHECK_NEAR(projectedArea(wing, glm::dvec3(0.0, 1.0, 0.0)), 4.0, 1e-9,
+    CHECK_REL(projectedArea(wing, glm::dvec3(0.0, 1.0, 0.0)), 4.0, 1e-9,
                "wing face-on == planform (4)");
-    CHECK_NEAR(projectedArea(wing, glm::dvec3(1.0, 0.0, 0.0)), 0.2, 1e-9,
+    CHECK_REL(projectedArea(wing, glm::dvec3(1.0, 0.0, 0.0)), 0.2, 1e-9,
                "wing edge-on (x) == thickness * chord (0.2)");
-    CHECK_NEAR(projectedArea(wing, glm::dvec3(0.0, 0.0, 1.0)), 0.2, 1e-9,
+    CHECK_REL(projectedArea(wing, glm::dvec3(0.0, 0.0, 1.0)), 0.2, 1e-9,
                "wing edge-on (z) == thickness * span (0.2)");
 
     // A STACK of coaxial parts (a rocket: 3 boxes end-to-end along Z) is ONE
@@ -2921,9 +2893,9 @@ static void test_projectedArea() {
                                            z0 + ((k & 4) ? 1.5 : -1.5)));
             }
         }
-        CHECK_NEAR(projectedArea(stack, glm::dvec3(0.0, 0.0, 1.0)), 4.0, 1e-9,
+        CHECK_REL(projectedArea(stack, glm::dvec3(0.0, 0.0, 1.0)), 4.0, 1e-9,
                    "stacked rocket: ONE end face prograde (4), not 3 (12)");
-        CHECK_NEAR(projectedArea(stack, glm::dvec3(1.0, 0.0, 0.0)), 18.0, 1e-9,
+        CHECK_REL(projectedArea(stack, glm::dvec3(1.0, 0.0, 0.0)), 18.0, 1e-9,
                    "stacked rocket: full side length side-on (18)");
         // The prograde->side swing is the honest ~4.5x (18/4), not the ~1x a
         // per-part sum would give for a prograde stack.
@@ -2933,10 +2905,10 @@ static void test_projectedArea() {
     }
 
     // Degenerate inputs -> 0.
-    CHECK_NEAR(projectedArea(std::vector<glm::dvec3>(), glm::dvec3(0.0, 0.0, 1.0)),
+    CHECK_REL(projectedArea(std::vector<glm::dvec3>(), glm::dvec3(0.0, 0.0, 1.0)),
                0.0, 0.0, "empty vertex list -> 0");
-    CHECK_NEAR(projectedArea(cube, glm::dvec3(0.0)), 0.0, 0.0, "zero dir -> 0");
-    CHECK_NEAR(projectedArea({glm::dvec3(0.0, 0.0, 0.0),
+    CHECK_REL(projectedArea(cube, glm::dvec3(0.0)), 0.0, 0.0, "zero dir -> 0");
+    CHECK_REL(projectedArea({glm::dvec3(0.0, 0.0, 0.0),
                               glm::dvec3(1.0, 0.0, 0.0)},
                              glm::dvec3(0.0, 0.0, 1.0)), 0.0, 0.0,
                "2 vertices -> 0");
@@ -2946,7 +2918,7 @@ static void test_projectedArea() {
         line.push_back(glm::dvec3(0.0, 0.0, 0.0));
         line.push_back(glm::dvec3(1.0, 0.0, 0.0));
         line.push_back(glm::dvec3(2.0, 0.0, 0.0));
-        CHECK_NEAR(projectedArea(line, glm::dvec3(0.0, 1.0, 0.0)), 0.0, 0.0,
+        CHECK_REL(projectedArea(line, glm::dvec3(0.0, 1.0, 0.0)), 0.0, 0.0,
                    "collinear vertices -> 0");
     }
 }
@@ -2963,18 +2935,18 @@ static std::vector<glm::dvec2> rect(double x0, double y0, double x1, double y1) 
 
 static void test_zeroTolerance() {
     printf("== the harness itself: what a zero expectation means (#510) ==\n");
-    /* CHECK_NEAR is RELATIVE, and against an expectation of exactly zero a relative
+    /* CHECK_REL is RELATIVE, and against an expectation of exactly zero a relative
        tolerance is void: 1e-12 x 0.0 is 0.0, so every "the tank is empty" and "the
        two lifts cancel" pin here was demanding bit-exactness while reading like
        slack -- and would break on any innocuous reassociation upstream. The macro
        now falls back to an absolute tolerance when the expectation is zero, which
        this case fails under the old definition and passes under the new one. */
-    CHECK_NEAR(1e-13, 0.0, 1e-12, "a zero expectation takes the written tolerance"
+    CHECK_REL(1e-13, 0.0, 1e-12, "a zero expectation takes the written tolerance"
                                   " as absolute slack");
     /* The other half of the promise: a NONZERO expectation is still relative, so a
        pin on a large number keeps its meaning (0.5 m of slack on a megametre, which
        an absolute 1e-6 would have refused). */
-    CHECK_NEAR(1.0e6 + 0.5, 1.0e6, 1e-6, "a nonzero expectation stays relative");
+    CHECK_REL(1.0e6 + 0.5, 1.0e6, 1e-6, "a nonzero expectation stays relative");
 }
 
 static void test_unionArea() {
@@ -2982,19 +2954,19 @@ static void test_unionArea() {
 
     // One polygon: its own area. Two apart: the sum (the gap is air, not
     // airframe). One inside another: just the outer one.
-    CHECK_NEAR(unionProjectedArea({ rect(-1.0, -1.0, 1.0, 1.0) }), 4.0, 1e-12,
+    CHECK_REL(unionProjectedArea({ rect(-1.0, -1.0, 1.0, 1.0) }), 4.0, 1e-12,
                "one square == its area");
-    CHECK_NEAR(unionProjectedArea({ rect(0.0, 0.0, 1.0, 1.0),
+    CHECK_REL(unionProjectedArea({ rect(0.0, 0.0, 1.0, 1.0),
                                     rect(3.0, 0.0, 4.0, 1.0) }), 2.0, 1e-12,
                "two disjoint squares == the sum");
-    CHECK_NEAR(unionProjectedArea({ rect(0.0, 0.0, 4.0, 4.0),
+    CHECK_REL(unionProjectedArea({ rect(0.0, 0.0, 4.0, 4.0),
                                     rect(1.0, 1.0, 2.0, 2.0) }), 16.0, 1e-12,
                "a contained square adds nothing");
-    CHECK_NEAR(unionProjectedArea({ rect(0.0, 0.0, 1.0, 1.0),
+    CHECK_REL(unionProjectedArea({ rect(0.0, 0.0, 1.0, 1.0),
                                     rect(0.5, 0.0, 1.5, 1.0) }), 1.5, 1e-12,
                "half-overlap charges the overlap once");
     // Edge-to-edge contact shares a line, not an area.
-    CHECK_NEAR(unionProjectedArea({ rect(0.0, 0.0, 1.0, 1.0),
+    CHECK_REL(unionProjectedArea({ rect(0.0, 0.0, 1.0, 1.0),
                                     rect(1.0, 0.0, 2.0, 1.0) }), 2.0, 1e-12,
                "touching edge to edge == the sum");
 
@@ -3003,7 +2975,7 @@ static void test_unionArea() {
        0.25 = 1.5. Inclusion-exclusion agrees (3 - 1.75 + 0.25), and that is the
        pin: subtracting the pairwise overlaps alone gives 1.25, so a fix that
        double-charged the triple overlap would fail here. */
-    CHECK_NEAR(unionProjectedArea({ rect(-0.5, -0.5, 0.5, 0.5),
+    CHECK_REL(unionProjectedArea({ rect(-0.5, -0.5, 0.5, 0.5),
                                     rect(-0.25, -0.5, 0.75, 0.5),
                                     rect(0.0, -0.5, 1.0, 0.5) }), 1.5, 1e-12,
                "triple overlap counted once (not 1.25)");
@@ -3011,7 +2983,7 @@ static void test_unionArea() {
     /* Two bars crossing in an X of sorts (a spar over a longeron): the eight
        edge crossings are the only breakpoints that make this slab-exact, so it
        pins the crossing collection. Areas: 0.4 + 0.4 - 0.04 = 0.76. */
-    CHECK_NEAR(unionProjectedArea({ rect(-1.0, -0.1, 1.0, 0.1),
+    CHECK_REL(unionProjectedArea({ rect(-1.0, -0.1, 1.0, 0.1),
                                     rect(-0.1, -1.0, 0.1, 1.0) }), 0.76, 1e-12,
                "crossing bars == sum minus the crossing square");
 
@@ -3024,13 +2996,13 @@ static void test_unionArea() {
         polys.push_back({ glm::dvec2(0.0, 0.0), glm::dvec2(2.0, 0.0),
                           glm::dvec2(0.0, 2.0) });
         polys.push_back(rect(1.0, 0.0, 3.0, 2.0));
-        CHECK_NEAR(unionProjectedArea(polys), 5.5, 1e-12,
+        CHECK_REL(unionProjectedArea(polys), 5.5, 1e-12,
                    "triangle + square == 5.5 (slanted edge, exact)");
     }
 
     // Degenerate inputs: no polygons, a line, a single point.
-    CHECK_NEAR(unionProjectedArea({}), 0.0, 0.0, "no polygons -> 0");
-    CHECK_NEAR(unionProjectedArea({ { glm::dvec2(0, 0), glm::dvec2(1, 0),
+    CHECK_REL(unionProjectedArea({}), 0.0, 0.0, "no polygons -> 0");
+    CHECK_REL(unionProjectedArea({ { glm::dvec2(0, 0), glm::dvec2(1, 0),
                                       glm::dvec2(2, 0) } }), 0.0, 1e-12,
                "collinear polygon -> 0");
 
@@ -3051,8 +3023,8 @@ static void test_unionArea() {
         }
         const double balloon = projectedArea(merged, glm::dvec3(0.0, 0.0, 1.0));
         const double real = unionProjectedArea(polys);
-        CHECK_NEAR(real, 2.0, 1e-12, "two separated plates == 2 m2");
-        CHECK_NEAR(balloon, 4.0, 1e-12, "the balloon over them == 4 m2");
+        CHECK_REL(real, 2.0, 1e-12, "two separated plates == 2 m2");
+        CHECK_REL(balloon, 4.0, 1e-12, "the balloon over them == 4 m2");
         CHECK_TRUE(real < balloon, "the union is never the balloon");
     }
 
@@ -3064,7 +3036,7 @@ static void test_unionArea() {
         for(int k = 0; k < 3; k++) {
             stack.push_back(rect(-1.0, -1.0, 1.0, 1.0));  // same 2x2 face, 3 high
         }
-        CHECK_NEAR(unionProjectedArea(stack), 4.0, 1e-12,
+        CHECK_REL(unionProjectedArea(stack), 4.0, 1e-12,
                    "a stack charges one face, not three");
     }
 }
@@ -3094,16 +3066,16 @@ static void test_silhouetteBill() {
         }
         std::vector<double> vis(3, 0.0);
         const SilhouetteBill b = silhouetteBill(polys, atts, &vis);
-        CHECK_NEAR(b.area, 4.0, 1e-12, "a stack silhouettes one face");
-        CHECK_NEAR(vis[0], 4.0, 1e-12, "the front part keeps the whole face");
-        CHECK_NEAR(vis[1], 0.0, 1e-12, "the middle part is invisible");
-        CHECK_NEAR(vis[2], 0.0, 1e-12, "and so is the rear");
-        CHECK_NEAR(b.cdNum / b.area, 0.35, 1e-12,
+        CHECK_REL(b.area, 4.0, 1e-12, "a stack silhouettes one face");
+        CHECK_REL(vis[0], 4.0, 1e-12, "the front part keeps the whole face");
+        CHECK_REL(vis[1], 0.0, 1e-12, "the middle part is invisible");
+        CHECK_REL(vis[2], 0.0, 1e-12, "and so is the rear");
+        CHECK_REL(b.cdNum / b.area, 0.35, 1e-12,
                    "so the coefficient is the front part's, not a mean of three");
         double sum = 0.0;
         for(double v : vis) { sum += v; }
-        CHECK_NEAR(sum, b.area, 1e-12, "the credits partition the silhouette");
-        CHECK_NEAR(b.cpNum.z, 0.0, 1e-12, "and the cp rides with the part that kept it");
+        CHECK_REL(sum, b.area, 1e-12, "the credits partition the silhouette");
+        CHECK_REL(b.cpNum.z, 0.0, 1e-12, "and the cp rides with the part that kept it");
     }
 
     /* The ORDER is what the credits mean, so it gets pinned both ways: a small part
@@ -3127,17 +3099,17 @@ static void test_silhouetteBill() {
         atts[0].cp = glm::dvec3(0.0, 0.0, 5.0);
         atts[1].cp = glm::dvec3(0.0, 0.0, 1.0);
         const SilhouetteBill frontSmall = silhouetteBill(polys, atts, &vis);
-        CHECK_NEAR(frontSmall.area, 16.0, 1e-12, "the silhouette is the big one either way");
-        CHECK_NEAR(vis[0], 1.0, 1e-12, "small IN FRONT keeps its own face");
-        CHECK_NEAR(vis[1], 15.0, 1e-12, "and the big one the rest of it");
-        CHECK_NEAR(frontSmall.cpNum.z, 1.0 * 5.0 + 15.0 * 1.0, 1e-12,
+        CHECK_REL(frontSmall.area, 16.0, 1e-12, "the silhouette is the big one either way");
+        CHECK_REL(vis[0], 1.0, 1e-12, "small IN FRONT keeps its own face");
+        CHECK_REL(vis[1], 15.0, 1e-12, "and the big one the rest of it");
+        CHECK_REL(frontSmall.cpNum.z, 1.0 * 5.0 + 15.0 * 1.0, 1e-12,
                    "and each credited strip carries its owner's cp");
         atts[0].depth = 0.0; atts[1].depth = 1.0;
         std::fill(vis.begin(), vis.end(), 0.0);
         const SilhouetteBill behindBig = silhouetteBill(polys, atts, &vis);
-        CHECK_NEAR(vis[0], 0.0, 1e-12, "small BEHIND big contributes nothing at all");
-        CHECK_NEAR(vis[1], 16.0, 1e-12, "and the big one keeps the whole face");
-        CHECK_NEAR(behindBig.cpNum.z, 16.0 * 1.0, 1e-12,
+        CHECK_REL(vis[0], 0.0, 1e-12, "small BEHIND big contributes nothing at all");
+        CHECK_REL(vis[1], 16.0, 1e-12, "and the big one keeps the whole face");
+        CHECK_REL(behindBig.cpNum.z, 16.0 * 1.0, 1e-12,
                    "so the hidden part's cp point drops out of the bill entirely");
     }
 
@@ -3154,14 +3126,14 @@ static void test_silhouetteBill() {
         std::vector<double> vis(2, 0.0);
         atts[0].depth = 1.0; atts[1].depth = 0.0;
         const SilhouetteBill b = silhouetteBill(polys, atts, &vis);
-        CHECK_NEAR(b.area, 3.0, 1e-12, "two overlapping bars == 3 m2 of silhouette");
-        CHECK_NEAR(vis[0], 2.0, 1e-12, "the front bar keeps the 2 it covers");
-        CHECK_NEAR(vis[1], 1.0, 1e-12, "the rear bar only the strip clear of it");
+        CHECK_REL(b.area, 3.0, 1e-12, "two overlapping bars == 3 m2 of silhouette");
+        CHECK_REL(vis[0], 2.0, 1e-12, "the front bar keeps the 2 it covers");
+        CHECK_REL(vis[1], 1.0, 1e-12, "the rear bar only the strip clear of it");
         atts[0].depth = 0.0; atts[1].depth = 1.0;
         std::fill(vis.begin(), vis.end(), 0.0);
         silhouetteBill(polys, atts, &vis);
-        CHECK_NEAR(vis[0], 1.0, 1e-12, "swap the depths and the split swaps with them");
-        CHECK_NEAR(vis[1], 2.0, 1e-12, "(and still 3 m^2 in total)");
+        CHECK_REL(vis[0], 1.0, 1e-12, "swap the depths and the split swaps with them");
+        CHECK_REL(vis[1], 2.0, 1e-12, "(and still 3 m^2 in total)");
     }
 
     /* An independent algorithm for the same question: give each part what the union
@@ -3200,14 +3172,14 @@ static void test_silhouetteBill() {
             const double u = unionProjectedArea(prefix);
             const double grew = u - prev;
             prev = u;
-            CHECK_NEAR(vis[order[k]], grew, 1e-9,
+            CHECK_REL(vis[order[k]], grew, 1e-9,
                        "a part's visible area == what the union grows by in depth order");
         }
-        CHECK_NEAR(prev, b.area, 1e-9, "and the last union == the billed area");
+        CHECK_REL(prev, b.area, 1e-9, "and the last union == the billed area");
         double sum = 0.0, cdNum = 0.0;
         for(size_t i = 0; i < n; i++) { sum += vis[i]; cdNum += vis[i] * atts[i].cd; }
-        CHECK_NEAR(sum, b.area, 1e-9, "the credits partition the silhouette");
-        CHECK_NEAR(cdNum, b.cdNum, 1e-9, "and the cd numerator is those credits weighted");
+        CHECK_REL(sum, b.area, 1e-9, "the credits partition the silhouette");
+        CHECK_REL(cdNum, b.cdNum, 1e-9, "and the cd numerator is those credits weighted");
     }
 }
 
@@ -3237,12 +3209,12 @@ static void test_cp_silhouette() {
         std::vector<glm::dvec2> cw = rect(0.0, 0.0, 2.0, 4.0);
         std::reverse(cw.begin(), cw.end());
         polygonCentroid2(cw, c);
-        CHECK_NEAR(c.x, 1.0, 1e-15, "a 2x4 bar's centroid x, clockwise ring");
-        CHECK_NEAR(c.y, 2.0, 1e-15, "a 2x4 bar's centroid y, clockwise ring");
+        CHECK_REL(c.x, 1.0, 1e-15, "a 2x4 bar's centroid x, clockwise ring");
+        CHECK_REL(c.y, 2.0, 1e-15, "a 2x4 bar's centroid y, clockwise ring");
         // A triangle: the vertex mean, which no vertex-average-of-a-quad is.
         polygonCentroid2({ glm::dvec2(0, 0), glm::dvec2(3, 0), glm::dvec2(0, 3) }, c);
-        CHECK_NEAR(c.x, 1.0, 1e-15, "a triangle's centroid is the vertex mean (x)");
-        CHECK_NEAR(c.y, 1.0, 1e-15, "a triangle's centroid is the vertex mean (y)");
+        CHECK_REL(c.x, 1.0, 1e-15, "a triangle's centroid is the vertex mean (x)");
+        CHECK_REL(c.y, 1.0, 1e-15, "a triangle's centroid is the vertex mean (y)");
         /* An ASYMMETRIC quad, where the two answers part company. A trapezoid (0,0)
            (4,0) (1,1) (0,1): shoelace area 2.5, centroid (1.4, 0.4); the vertex mean
            is (1.25, 0.5). Without this pin a helper that averages vertices passes
@@ -3250,8 +3222,8 @@ static void test_cp_silhouette() {
            silhouette sweep too. */
         polygonCentroid2({ glm::dvec2(0, 0), glm::dvec2(4, 0), glm::dvec2(1, 1),
                            glm::dvec2(0, 1) }, c);
-        CHECK_NEAR(c.x, 1.4, 1e-12, "a trapezoid's centroid is the AREA centroid (x)");
-        CHECK_NEAR(c.y, 0.4, 1e-12, "a trapezoid's centroid is the AREA centroid (y)");
+        CHECK_REL(c.x, 1.4, 1e-12, "a trapezoid's centroid is the AREA centroid (x)");
+        CHECK_REL(c.y, 0.4, 1e-12, "a trapezoid's centroid is the AREA centroid (y)");
         CHECK_TRUE(std::fabs(c.x - 1.25) > 0.1 || std::fabs(c.y - 0.5) > 0.1,
                    "which is not its vertex mean");
         // Degenerate rings leave the caller's value alone, so the call site can
@@ -3292,13 +3264,13 @@ static void test_cp_silhouette() {
         const glm::dvec3 flow(1.0, 0.0, 0.0);
         const FlowPlane pl = flowPlane(flow);
         CHECK_TRUE(pl.valid, "a broadside flow has a plane");
-        CHECK_NEAR(glm::dot(pl.u, glm::dvec3(0, 0, 1)), 1.0, 1e-12, "its u runs with +z");
-        CHECK_NEAR(glm::dot(pl.w, glm::dvec3(0, -1, 0)), 1.0, 1e-12, "and its w with -y");
+        CHECK_REL(glm::dot(pl.u, glm::dvec3(0, 0, 1)), 1.0, 1e-12, "its u runs with +z");
+        CHECK_REL(glm::dot(pl.w, glm::dvec3(0, -1, 0)), 1.0, 1e-12, "and its w with -y");
         std::vector<glm::dvec2> poly;
         projectPartHull(cone, glm::dmat3(1.0), glm::dvec3(0.0), pl, poly);
         CHECK_TRUE(polygonArea2(poly) > 0.0, "the cone does project to an area");
         const glm::dvec2 off = silhouetteCpOffset2(poly, glm::dvec2(0.0));
-        CHECK_NEAR(off.x, -1.0 / 3.0, 1e-12, "a cone's area sits 1/3 of its length"
+        CHECK_REL(off.x, -1.0 / 3.0, 1e-12, "a cone's area sits 1/3 of its length"
                                            " toward the base, not at the mount");
         CHECK_TRUE(std::fabs(off.y) < 1e-15,
                    "and does not lean across for a symmetric cone");
@@ -3315,8 +3287,8 @@ static void test_cp_silhouette() {
         const glm::dvec2 m2{glm::dot(glm::dvec3(0.0, 3.0, 5.0), pl.u),
                             glm::dot(glm::dvec3(0.0, 3.0, 5.0), pl.w)};
         const glm::dvec2 off2 = silhouetteCpOffset2(poly2, m2);
-        CHECK_NEAR(off2.x, off.x, 1e-12, "the offset does not depend on where the part is");
-        CHECK_NEAR(off2.y, off.y, 1e-12, "the offset does not depend on where the part is (y)");
+        CHECK_REL(off2.x, off.x, 1e-12, "the offset does not depend on where the part is");
+        CHECK_REL(off2.y, off.y, 1e-12, "the offset does not depend on where the part is (y)");
     }
 
     /* A hull centred on its mount is EXACTLY unchanged by this fix, whichever way
@@ -3368,9 +3340,9 @@ static void test_cp_silhouette() {
         std::vector<glm::dvec2> poly;
         projectPartHull(plate, glm::dmat3(1.0), glm::dvec3(0.0), pl, poly);
         const glm::dvec2 off = silhouetteCpOffset2(poly, glm::dvec2(0.0));
-        CHECK_NEAR(glm::length(off), 4.0, 1e-12,
+        CHECK_REL(glm::length(off), 4.0, 1e-12,
                    "a plate authored at its root pushes 4 m from its mount");
-        CHECK_NEAR(glm::dot(off.x * pl.u + off.y * pl.w, glm::dvec3(0, 0, 1)), 4.0, 1e-12,
+        CHECK_REL(glm::dot(off.x * pl.u + off.y * pl.w, glm::dvec3(0, 0, 1)), 4.0, 1e-12,
                    "and for a broadside flow that is 4 m of weathervane arm, out toward"
                    " where the plate actually is (z 0..8, bolt at z 0)");
     }
@@ -3420,7 +3392,7 @@ static void test_cp_silhouette() {
         for(const glm::dvec3 &h : hull) { vertsShip.push_back(localRot * h + localPos); }
         std::vector<glm::dvec2> polyV;
         projectHull(vertsShip, plS, polyV);
-        CHECK_NEAR(polygonArea2(polyV), polygonArea2(poly), 1e-12,
+        CHECK_REL(polygonArea2(polyV), polygonArea2(poly), 1e-12,
                    "both routes see the same silhouette area, so both see the same polygon");
         glm::dvec2 cV(0.0);
         polygonCentroid2(polyV, cV);
@@ -3430,7 +3402,7 @@ static void test_cp_silhouette() {
         // correct composition leaves only the along-flow coordinate; a wrong sRot
         // or a basis mixed across frames leaves metres of this.
         const glm::dvec3 d = glm::transpose(sRot) * (cp - sPos) - ref;
-        /* Absolute tolerances: CHECK_NEAR is RELATIVE (#510), and these expectations
+        /* Absolute tolerances: CHECK_REL is RELATIVE (#510), and these expectations
            are zero, so the macro would demand bit-exactness. The residuals below are
            the rounding of a rotated basis, ~1e-16 on a hull a few metres across. */
         CHECK_TRUE(std::fabs(glm::dot(d, plS.u)) < 1e-9,
@@ -3438,7 +3410,7 @@ static void test_cp_silhouette() {
                    " rotated ship, a rotated part and an off-centre hull (u)");
         CHECK_TRUE(std::fabs(glm::dot(d, plS.w)) < 1e-9,
                    "(and across the plane) -- sRot, localRot and the local origin all line up");
-        CHECK_NEAR(glm::dot(d, vhatS), glm::dot(localPos, vhatS), 1e-9,
+        CHECK_REL(glm::dot(d, vhatS), glm::dot(localPos, vhatS), 1e-9,
                    "and the only leftover is along the flow, which is the mount's own"
                    " coordinate there -- the part a projection cannot see");
     }
@@ -3463,13 +3435,13 @@ static void test_partMounts() {
         piled.emplace_back();
         projectPartHull(box, id, glm::dvec3(0.0), pl, piled.back());
     }
-    CHECK_NEAR(unionProjectedArea(apart), 2.0, 1e-12,
+    CHECK_REL(unionProjectedArea(apart), 2.0, 1e-12,
                "two mounts 10 m apart == the sum (the union sees the gap)");
-    CHECK_NEAR(unionProjectedArea(piled), 1.0, 1e-12,
+    CHECK_REL(unionProjectedArea(piled), 1.0, 1e-12,
                "the same mount twice charges one face");
     // What let the old law get away with it: a mount moves a polygon, it never
     // resizes it.
-    CHECK_NEAR(polygonArea2(apart[1]), 1.0, 1e-12, "a mount does not resize a part");
+    CHECK_REL(polygonArea2(apart[1]), 1.0, 1e-12, "a mount does not resize a part");
 
     /* The offset is read in the SHARED basis, not the part's: a part spun on its
        mount still sits where it is mounted. Built without gtc so this test stays
@@ -3488,10 +3460,10 @@ static void test_partMounts() {
     // Stated against the plane's own basis, which is what "shared" means here.
     const glm::dvec2 want{glm::dot(mount, pl.u), glm::dot(mount, pl.w)};
     CHECK_TRUE(glm::length(want) > 1.0, "the mount is off the flow axis (else this proves nothing)");
-    CHECK_NEAR(centre(upright).x, want.x, 1e-12, "the part lands where it is mounted");
-    CHECK_NEAR(centre(upright).y, want.y, 1e-12, "measured in the ship's basis, not the part's");
-    CHECK_NEAR(centre(turned).x, want.x, 1e-12, "a spun mount stays put");
-    CHECK_NEAR(centre(turned).y, want.y, 1e-12, "and keeps its place");
+    CHECK_REL(centre(upright).x, want.x, 1e-12, "the part lands where it is mounted");
+    CHECK_REL(centre(upright).y, want.y, 1e-12, "measured in the ship's basis, not the part's");
+    CHECK_REL(centre(turned).x, want.x, 1e-12, "a spun mount stays put");
+    CHECK_REL(centre(turned).y, want.y, 1e-12, "and keeps its place");
 
     /* The undercharge this fixes, at ship scale: parts stacked ALONG the view all
        project the same face, so the union is one face either way (which is why
@@ -3504,8 +3476,8 @@ static void test_partMounts() {
         spread.emplace_back();
         projectPartHull(box, id, glm::dvec3(k * 2.0, 0.0, 0.0), pl, spread.back());
     }
-    CHECK_NEAR(unionProjectedArea(stack), 1.0, 1e-12, "a stack along the view == one face");
-    CHECK_NEAR(unionProjectedArea(spread), 3.0, 1e-12, "the same parts across the view == three");
+    CHECK_REL(unionProjectedArea(stack), 1.0, 1e-12, "a stack along the view == one face");
+    CHECK_REL(unionProjectedArea(spread), 3.0, 1e-12, "the same parts across the view == three");
 
     /* Which way the mount TURNS the part is unpinned by everything above: a cube is
        symmetric enough that transposing the rotation changes nothing measurable. So
@@ -3536,7 +3508,7 @@ static void test_partMounts() {
     /* Both sides of this identity go through the same float-valued mount matrix but
        combine it differently, so they agree to ~2e-8, not to a ulp. The law itself
        is good to a few percent; a mount is not where the precision lives. */
-    CHECK_NEAR(polygonArea2(fast), polygonArea2(brute), 1e-6,
+    CHECK_REL(polygonArea2(fast), polygonArea2(brute), 1e-6,
                "an offset part projects like its turned, moved vertices");
     CHECK_TRUE(glm::length(centre(fast) - centre(brute)) < 1e-6,
                "and lands on the same polygon, not just the same area");
@@ -3579,12 +3551,12 @@ static void test_silhouetteMemo() {
                "a fresh cell fills its four corners");
     CHECK_TRUE(calls == 4, "each node computed once");
     CHECK_TRUE(memo.lookup(0.11, -0.31, out), "a full cell hits");
-    CHECK_NEAR(out, exact(0.11, -0.31), 1e-6, "bilinear is exact on a linear surface");
+    CHECK_REL(out, exact(0.11, -0.31), 1e-6, "bilinear is exact on a linear surface");
     // Second query in the same cell: no recomputation.
     calls = 0;
     CHECK_TRUE(memo.lookup(0.13, -0.29, out), "still a hit");
     CHECK_TRUE(calls == 0, "a hit computes nothing");
-    CHECK_NEAR(out, exact(0.13, -0.29), 1e-6, "hit reads the cached surface");
+    CHECK_REL(out, exact(0.13, -0.29), 1e-6, "hit reads the cached surface");
     /* The rest of the bill rides the same four nodes, and the coefficient is their
        RATIO: cdNum blends to 3 x area, so the mean is 3 whatever the blend weights
        -- which is the property the hull law depends on (a blended cdNum over a
@@ -3593,10 +3565,10 @@ static void test_silhouetteMemo() {
     {
         SilhouetteBill bl;
         CHECK_TRUE(memo.lookup(0.13, -0.29, bl), "the bill hits with the area");
-        CHECK_NEAR(bl.cdNum, 3.0 * bl.area, 1e-6, "the cd numerator blends on the area");
-        CHECK_NEAR(bl.cdNum / bl.area, 3.0, 1e-6, "so the coefficient survives the blend");
+        CHECK_REL(bl.cdNum, 3.0 * bl.area, 1e-6, "the cd numerator blends on the area");
+        CHECK_REL(bl.cdNum / bl.area, 3.0, 1e-6, "so the coefficient survives the blend");
         const SilhouetteBill want = exactBill(0.13, -0.29);
-        CHECK_NEAR(glm::length(bl.cpNum - want.cpNum), 0.0, 1e-5 * glm::length(want.cpNum),
+        CHECK_REL(glm::length(bl.cpNum - want.cpNum), 0.0, 1e-5 * glm::length(want.cpNum),
                    "and so does the cp numerator (same basis at every node)");
     }
 
@@ -3715,7 +3687,7 @@ static void test_silhouetteMemo() {
     double ra = fb.alpha, rb = fb.beta;
     SilhouetteMemo::fold(ra, rb);
     CHECK_TRUE(std::fabs(rb) < 1e-12, "astern with up folds to ahead with up, at zero yaw");
-    CHECK_NEAR(out, exact(ra, rb), 1e-6, "the nodes answer the reversed flow");
+    CHECK_REL(out, exact(ra, rb), 1e-6, "the nodes answer the reversed flow");
     /* The bug this pins: wrapping alpha alone left beta clamped at +-90, so every
        row past 90 deg read the area of a quartering flow instead of its own. */
     CHECK_TRUE(std::fabs(exact(ra, SilhouetteMemo::kFoldHalf) - out) > 1e-3,
@@ -3739,7 +3711,7 @@ static void test_silhouetteMemo() {
     CHECK_TRUE(memo.fillAround(1.30, 1.30, 4, counted) == 4,
                "inside the range it fills, even in a far corner");
     CHECK_TRUE(memo.lookup(1.30, 1.30, out), "and hits");
-    CHECK_NEAR(out, exact(1.30, 1.30), 1e-6, "with no blend error on a linear surface");
+    CHECK_REL(out, exact(1.30, 1.30), 1e-6, "with no blend error on a linear surface");
 }
 
 static void test_flowDirection() {
@@ -3750,12 +3722,12 @@ static void test_flowDirection() {
         for(double b = -1.2; b <= 1.2; b += 0.4) {
             const glm::dvec3 v = flowDirection(a, b, right, up, nose);
             const AeroFrame f = aeroFrame(v, right, up, nose);
-            CHECK_NEAR(f.alpha, a, 1e-9, "aeroFrame(flowDirection(a,b)) round-trips alpha");
-            CHECK_NEAR(f.beta, b, 1e-9, "and beta");
+            CHECK_REL(f.alpha, a, 1e-9, "aeroFrame(flowDirection(a,b)) round-trips alpha");
+            CHECK_REL(f.beta, b, 1e-9, "and beta");
         }
     }
     // The ship may hold its axes unnormalized only by luck; a zero nose refuses.
-    CHECK_NEAR(glm::length(flowDirection(0.0, 0.0, right, up, glm::dvec3(0.0))), 0.0, 0.0,
+    CHECK_REL(glm::length(flowDirection(0.0, 0.0, right, up, glm::dvec3(0.0))), 0.0, 0.0,
                "degenerate frame -> zero direction");
 }
 
@@ -3764,19 +3736,19 @@ static void test_inducedCd() {
 
     /* CL=1 on a span-4, area-8 wing: AR = 16/8 = 2, so CDi = 1/(pi e AR) =
        1/(pi * 0.8 * 2). Hand-checked against the textbook formula. */
-    CHECK_NEAR(inducedCd(1.0, 4.0, 8.0), 1.0 / (std::numbers::pi * 0.8 * 2.0),
+    CHECK_REL(inducedCd(1.0, 4.0, 8.0), 1.0 / (std::numbers::pi * 0.8 * 2.0),
                1e-12, "CL=1, AR=2 == 1/(pi e AR)");
     // Grows with the SQUARE of CL: twice the lift costs four times the drag.
-    CHECK_NEAR(inducedCd(2.0, 4.0, 8.0), 4.0 * inducedCd(1.0, 4.0, 8.0), 1e-12,
+    CHECK_REL(inducedCd(2.0, 4.0, 8.0), 4.0 * inducedCd(1.0, 4.0, 8.0), 1e-12,
                "quadratic in CL");
     // A longer, narrower wing of the same area lifts cheaper: AR goes up.
     CHECK_TRUE(inducedCd(1.0, 8.0, 8.0) < inducedCd(1.0, 4.0, 8.0),
                "a higher aspect ratio costs less induced drag");
     // No lift, no lifting surface, no span -> nothing to pay.
-    CHECK_NEAR(inducedCd(0.0, 4.0, 8.0), 0.0, 0.0, "CL=0 -> 0");
-    CHECK_NEAR(inducedCd(1.0, 4.0, 0.0), 0.0, 0.0, "no planform -> 0");
-    CHECK_NEAR(inducedCd(1.0, 0.0, 8.0), 0.0, 0.0, "no span -> 0");
-    CHECK_NEAR(inducedCd(1.0, 4.0, 8.0, 0.0), 0.0, 0.0, "a zero Oswald efficiency -> 0");
+    CHECK_REL(inducedCd(0.0, 4.0, 8.0), 0.0, 0.0, "CL=0 -> 0");
+    CHECK_REL(inducedCd(1.0, 4.0, 0.0), 0.0, 0.0, "no planform -> 0");
+    CHECK_REL(inducedCd(1.0, 0.0, 8.0), 0.0, 0.0, "no span -> 0");
+    CHECK_REL(inducedCd(1.0, 4.0, 8.0, 0.0), 0.0, 0.0, "a zero Oswald efficiency -> 0");
 }
 
 static void test_partCd() {
@@ -3790,9 +3762,9 @@ static void test_partCd() {
     //   c = +1  -> nose into the flow  -> drag_forward
     //   c =  0  -> broadside           -> drag_side
     //   c = -1  -> base into the flow  -> drag_backward
-    CHECK_NEAR(partCd(fwd, side, bwd,  1.0), fwd,  1e-12, "c=+1 -> forward anchor");
-    CHECK_NEAR(partCd(fwd, side, bwd,  0.0), side, 1e-12, "c=0 -> side anchor");
-    CHECK_NEAR(partCd(fwd, side, bwd, -1.0), bwd,  1e-12, "c=-1 -> backward anchor");
+    CHECK_REL(partCd(fwd, side, bwd,  1.0), fwd,  1e-12, "c=+1 -> forward anchor");
+    CHECK_REL(partCd(fwd, side, bwd,  0.0), side, 1e-12, "c=0 -> side anchor");
+    CHECK_REL(partCd(fwd, side, bwd, -1.0), bwd,  1e-12, "c=-1 -> backward anchor");
 
     // CONVEX blend: the weights (side(1-c^2), fwd(max(c,0)^2), bwd(max(-c,0)^2))
     // are non-negative and sum to 1, so cd stays within the anchor range for
@@ -3808,9 +3780,9 @@ static void test_partCd() {
     // pin the exact value at two 45 deg angles:
     //   c = +1/sqrt2 (nose-in):  side*0.5 + fwd*0.5 + bwd*0
     //   c = -1/sqrt2 (base-in):  side*0.5 + fwd*0 + bwd*0.5
-    CHECK_NEAR(partCd(fwd, side, bwd,  1.0 / std::sqrt(2.0)),
+    CHECK_REL(partCd(fwd, side, bwd,  1.0 / std::sqrt(2.0)),
                0.5 * side + 0.5 * fwd, 1e-12, "c=+1/sqrt2 -> .5 side + .5 fwd");
-    CHECK_NEAR(partCd(fwd, side, bwd, -1.0 / std::sqrt(2.0)),
+    CHECK_REL(partCd(fwd, side, bwd, -1.0 / std::sqrt(2.0)),
                0.5 * side + 0.5 * bwd, 1e-12, "c=-1/sqrt2 -> .5 side + .5 bwd");
 
     // With fwd < side < bwd the blend eases nose->base and is monotone up as
@@ -3827,7 +3799,7 @@ static void test_partCd() {
     {
         const double s = 1.0;
         for(double c = -1.0; c <= 1.0 + 1e-9; c += 0.1) {
-            CHECK_NEAR(partCd(s, s, s, c), s, 1e-12, "symmetric part -> s");
+            CHECK_REL(partCd(s, s, s, c), s, 1e-12, "symmetric part -> s");
         }
     }
 
@@ -3843,8 +3815,8 @@ static void test_partCd() {
 
     // Robustness: a slightly-out-of-range cosine (a non-unit axis or flow) is
     // clamped, not amplified -- c=+1.5 behaves like the forward anchor.
-    CHECK_NEAR(partCd(fwd, side, bwd,  1.5), fwd, 1e-12, "c>1 clamps to forward");
-    CHECK_NEAR(partCd(fwd, side, bwd, -1.5), bwd, 1e-12, "c<-1 clamps to backward");
+    CHECK_REL(partCd(fwd, side, bwd,  1.5), fwd, 1e-12, "c>1 clamps to forward");
+    CHECK_REL(partCd(fwd, side, bwd, -1.5), bwd, 1e-12, "c<-1 clamps to backward");
 }
 
 static void test_surfaceFormCdA() {
@@ -3855,18 +3827,18 @@ static void test_surfaceFormCdA() {
     const double S = 8.0, edge = 0.2, fwd = 0.03, side = 1.0, bwd = 0.03;
 
     // Chordwise: the profile cd on the planform, and no plate term at all.
-    CHECK_NEAR(surfaceFormCdA(S, edge, fwd, side, bwd,  1.0, 0.0), S * fwd, 1e-12,
+    CHECK_REL(surfaceFormCdA(S, edge, fwd, side, bwd,  1.0, 0.0), S * fwd, 1e-12,
                "chordwise -> profile cd x planform");
-    CHECK_NEAR(surfaceFormCdA(S, edge, fwd, side, bwd, -1.0, 0.0), S * bwd, 1e-12,
+    CHECK_REL(surfaceFormCdA(S, edge, fwd, side, bwd, -1.0, 0.0), S * bwd, 1e-12,
                "base-in -> backward anchor on the planform");
     // Out of the plate's plane: the planform IS the silhouette, so it pays as a plate.
-    CHECK_NEAR(surfaceFormCdA(S, edge, fwd, side, bwd, 0.0, 1.0), S * side, 1e-12,
+    CHECK_REL(surfaceFormCdA(S, edge, fwd, side, bwd, 0.0, 1.0), S * side, 1e-12,
                "face-on -> planform as a flat plate");
     // Along the span: only the edge faces the flow. This is #559 -- #455 billed the
     // planform here too, keyed on the chord axis alone, which made a horizontal wing
     // in sideslip pay 8 m2 of plate for 0.1 m of aluminium (measured: 15.6 m2 of CdA
     // for the 453 bed's two wings, whose real silhouette there is under 1 m2).
-    CHECK_NEAR(surfaceFormCdA(S, edge, fwd, side, bwd, 0.0, 0.0), edge * side, 1e-12,
+    CHECK_REL(surfaceFormCdA(S, edge, fwd, side, bwd, 0.0, 0.0), edge * side, 1e-12,
                "spanwise -> edge x cd_side");
     CHECK_TRUE(surfaceFormCdA(S, edge, fwd, side, bwd, 0.0, 0.0) < S * side * 0.05,
                "a wing in sideslip pays under 5% of its planform");
@@ -3879,7 +3851,7 @@ static void test_surfaceFormCdA() {
         const double u = 1.0;
         for(double c = -1.0; c <= 1.0 + 1e-9; c += 0.1) {
             for(double n = 0.0; n * n <= 1.0 - c * c + 1e-9; n += 0.1) {
-                CHECK_NEAR(surfaceFormCdA(S, S, u, u, u, c, n), S, 1e-9,
+                CHECK_REL(surfaceFormCdA(S, S, u, u, u, c, n), S, 1e-9,
                            "unit cd everywhere -> planform, whatever the direction");
             }
         }
@@ -3889,24 +3861,24 @@ static void test_surfaceFormCdA() {
     // half plate -- the same sin^2 shape the body law uses, now on the right area.
     {
         const double r = 1.0 / std::sqrt(2.0);
-        CHECK_NEAR(surfaceFormCdA(S, edge, fwd, side, bwd, r, r),
+        CHECK_REL(surfaceFormCdA(S, edge, fwd, side, bwd, r, r),
                    S * (0.5 * fwd + 0.5 * side), 1e-12,
                    "45 deg incidence -> .5 profile + .5 plate");
     }
 
     // Degenerate inputs: no planform -> nothing; no edge (a mesh-less def) -> the
     // spanwise share is simply not charged rather than an invented area.
-    CHECK_NEAR(surfaceFormCdA(0.0, edge, fwd, side, bwd, 0.0, 0.0), 0.0, 0.0,
+    CHECK_REL(surfaceFormCdA(0.0, edge, fwd, side, bwd, 0.0, 0.0), 0.0, 0.0,
                "no planform -> 0");
-    CHECK_NEAR(surfaceFormCdA(S, 0.0, fwd, side, bwd, 0.0, 0.0), 0.0, 0.0,
+    CHECK_REL(surfaceFormCdA(S, 0.0, fwd, side, bwd, 0.0, 0.0), 0.0, 0.0,
                "no edge area -> spanwise pays nothing");
-    CHECK_NEAR(surfaceFormCdA(S, -1.0, fwd, side, bwd, 0.0, 0.0), 0.0, 0.0,
+    CHECK_REL(surfaceFormCdA(S, -1.0, fwd, side, bwd, 0.0, 0.0), 0.0, 0.0,
                "a negative edge is not a charge");
     // Out-of-range cosines clamp (a non-unit axis): the spanwise weight never goes
     // negative to make up for an over-unity pair, and nothing above 1 gets charged.
-    CHECK_NEAR(surfaceFormCdA(S, edge, fwd, side, bwd, 1.5, 0.0), S * fwd, 1e-12,
+    CHECK_REL(surfaceFormCdA(S, edge, fwd, side, bwd, 1.5, 0.0), S * fwd, 1e-12,
                "c>1 clamps to chordwise");
-    CHECK_NEAR(surfaceFormCdA(S, edge, fwd, side, bwd, 0.8, 0.7),
+    CHECK_REL(surfaceFormCdA(S, edge, fwd, side, bwd, 0.8, 0.7),
                S * (0.64 * fwd + 0.49 * side), 1e-12,
                "c^2+n^2 > 1 -> no negative spanwise term");
 }
@@ -3942,12 +3914,12 @@ static void test_liftingSystems() {
         CHECK_TRUE(id.size() == 2 && id[0] == id[1], "co-planar halves -> one system");
         CHECK_TRUE(sys.size() == 1, "one system in the list");
         if(sys.size() == 1) {
-            CHECK_NEAR(sys[0].span, 8.0, 1e-12, "span is the union: 8 m");
-            CHECK_NEAR(sys[0].area, 16.0, 1e-12, "area is the sum: 16 m2");
+            CHECK_REL(sys[0].span, 8.0, 1e-12, "span is the union: 8 m");
+            CHECK_REL(sys[0].area, 16.0, 1e-12, "area is the sum: 16 m2");
             CHECK_TRUE(sys[0].members == 2, "two members");
             // AR 4 rather than two AR-2 systems: the same CL pays half the induced
             // drag, which is the whole point of the ticket.
-            CHECK_NEAR(inducedCd(1.0, sys[0].span, sys[0].area),
+            CHECK_REL(inducedCd(1.0, sys[0].span, sys[0].area),
                        inducedCd(1.0, 8.0, 16.0), 1e-12, "AR 4, not 2 x AR 2");
         }
     }
@@ -3964,7 +3936,7 @@ static void test_liftingSystems() {
         CHECK_TRUE(id[0] != id[1], "a 12 cm slot is two wings");
         CHECK_TRUE(sys.size() == 2, "two systems");
         if(sys.size() == 2) {
-            CHECK_NEAR(sys[0].span, 4.0, 1e-12, "each half bills its own 4 m span");
+            CHECK_REL(sys[0].span, 4.0, 1e-12, "each half bills its own 4 m span");
         }
     }
     // Dihedral: mirrored 5 deg panels are still one wing, and the span is the
@@ -3978,7 +3950,7 @@ static void test_liftingSystems() {
         const std::vector<int> id = classifyLiftingSystems(v, noBridge, lat, fwd, sys);
         CHECK_TRUE(id[0] == id[1], "5 deg dihedral still one wing");
         if(sys.size() == 1) {
-            CHECK_NEAR(sys[0].span, 8.0 * std::cos(t), 1e-9, "span is the projection");
+            CHECK_REL(sys[0].span, 8.0 * std::cos(t), 1e-9, "span is the projection");
         }
     }
     // Vertical fins: span up, so they never join a wing -- and each still bills its
@@ -3993,7 +3965,7 @@ static void test_liftingSystems() {
         CHECK_TRUE(id[0] == id[1] && id[2] != id[0], "a fin is not part of the wing");
         CHECK_TRUE(sys.size() == 2, "wing + fin");
         if(sys.size() == 2) {
-            CHECK_NEAR(sys[1].span, 2.0 * 0.6635, 1e-12,
+            CHECK_REL(sys[1].span, 2.0 * 0.6635, 1e-12,
                        "a fin bills its vertical span");
         }
     }
@@ -4011,7 +3983,7 @@ static void test_liftingSystems() {
         const std::vector<int> id = classifyLiftingSystems(v, noBridge, lat, fwd, sys);
         CHECK_TRUE(id[0] == id[1], "a flap at the trailing edge joins the wing");
         if(sys.size() == 1) {
-            CHECK_NEAR(sys[0].area, 10.0, 1e-12, "its area joins the planform");
+            CHECK_REL(sys[0].area, 10.0, 1e-12, "its area joins the planform");
         }
     }
     // THE SHIPPED JET, exactly: wings mounted at +-3 with 2 m half-spans, so their
@@ -4023,8 +3995,8 @@ static void test_liftingSystems() {
         const std::vector<int> id = classifyLiftingSystems(v, hull, lat, fwd, sys);
         CHECK_TRUE(id[0] == id[1], "a fuselage bridges the wing roots");
         if(sys.size() == 1) {
-            CHECK_NEAR(sys[0].span, 8.0, 1e-12, "span is the panels', not the hull's");
-            CHECK_NEAR(sys[0].area, 16.0, 1e-12, "area is the panels'");
+            CHECK_REL(sys[0].span, 8.0, 1e-12, "span is the panels', not the hull's");
+            CHECK_REL(sys[0].area, 16.0, 1e-12, "area is the panels'");
         }
     }
     // A bridge that does not reach both roots is not a bridge.
@@ -4050,7 +4022,7 @@ static void test_liftingSystems() {
         CHECK_TRUE(id[0] == id[1] && id[1] == id[2], "a chain is one system");
         if(sys.size() == 1) {
             CHECK_TRUE(sys[0].members == 3, "three members");
-            CHECK_NEAR(sys[0].span, 6.4, 1e-9, "union span across the chain");
+            CHECK_REL(sys[0].span, 6.4, 1e-9, "union span across the chain");
         }
     }
     // A plate whose chord is turned out of the fore/aft plane (say, a canard
@@ -4091,10 +4063,10 @@ static void test_wind_profile() {
     // different claims (and a body whose only row is a jet aloft has said nothing
     // about its surface).
     const std::vector<WindLevel> one {{ 0.0, 5.0, 0.0 }};
-    CHECK_NEAR(windAt(one, 0.0, here_lat, here_lon).x, 5.0, 0.0, "one row at the datum reads its value");
-    CHECK_NEAR(windAt(one, 90000.0, here_lat, here_lon).x, 5.0, 0.0, "held above the row");
-    CHECK_NEAR(windAt(one, -2000.0, here_lat, here_lon).x, 5.0, 0.0, "held below the row");
-    CHECK_NEAR(windAt(one, 1e12, here_lat, here_lon).x, 5.0, 0.0, "held arbitrarily far above");
+    CHECK_REL(windAt(one, 0.0, here_lat, here_lon).x, 5.0, 0.0, "one row at the datum reads its value");
+    CHECK_REL(windAt(one, 90000.0, here_lat, here_lon).x, 5.0, 0.0, "held above the row");
+    CHECK_REL(windAt(one, -2000.0, here_lat, here_lon).x, 5.0, 0.0, "held below the row");
+    CHECK_REL(windAt(one, 1e12, here_lat, here_lon).x, 5.0, 0.0, "held arbitrarily far above");
 
     /* The shape the e2e fixture (688-kerbin-wind.json) and a flying bed actually
        use: a 0 m/s row at the datum, 20 m/s at 17 km, and Kerbin's flying beds at
@@ -4102,30 +4074,30 @@ static void test_wind_profile() {
        that a step, a nearest-row read, or reading the table AT the datum would all
        break (0 or 20 instead of 10). */
     const std::vector<WindLevel> prof {{ 0.0, 0.0, 0.0 }, { 17000.0, 20.0, 0.0 }};
-    CHECK_NEAR(windAt(prof, 0.0, here_lat, here_lon).x, 0.0, 0.0, "the datum row");
-    CHECK_NEAR(windAt(prof, 8500.0, here_lat, here_lon).x, 10.0, 1e-12, "half way up == half the shear");
-    CHECK_NEAR(windAt(prof, 4250.0, here_lat, here_lon).x, 5.0, 1e-12, "a quarter up == a quarter");
-    CHECK_NEAR(windAt(prof, 17000.0, here_lat, here_lon).x, 20.0, 1e-12, "the top row exactly");
-    CHECK_NEAR(windAt(prof, 17001.0, here_lat, here_lon).x, 20.0, 0.0, "held above the top row");
-    CHECK_NEAR(windAt(prof, 42500.0, here_lat, here_lon).x, 20.0, 0.0, "held far above (42.5 km)");
-    CHECK_NEAR(windAt(prof, -1.0, here_lat, here_lon).x, 0.0, 0.0, "held below the datum row");
+    CHECK_REL(windAt(prof, 0.0, here_lat, here_lon).x, 0.0, 0.0, "the datum row");
+    CHECK_REL(windAt(prof, 8500.0, here_lat, here_lon).x, 10.0, 1e-12, "half way up == half the shear");
+    CHECK_REL(windAt(prof, 4250.0, here_lat, here_lon).x, 5.0, 1e-12, "a quarter up == a quarter");
+    CHECK_REL(windAt(prof, 17000.0, here_lat, here_lon).x, 20.0, 1e-12, "the top row exactly");
+    CHECK_REL(windAt(prof, 17001.0, here_lat, here_lon).x, 20.0, 0.0, "held above the top row");
+    CHECK_REL(windAt(prof, 42500.0, here_lat, here_lon).x, 20.0, 0.0, "held far above (42.5 km)");
+    CHECK_REL(windAt(prof, -1.0, here_lat, here_lon).x, 0.0, 0.0, "held below the datum row");
 
     /* east and north interpolate independently: a VECE, not a speed with a
        direction, so a shear that also swings is expressible (#688 asks for a
        vector field even while the field is constant). */
     const std::vector<WindLevel> she {{ 0.0, 3.0, -4.0 }, { 1000.0, -3.0, 4.0 }};
     const glm::dvec3 mid = windAt(she, 500.0, here_lat, here_lon);
-    CHECK_NEAR(mid.x, 0.0, 1e-12, "east crosses zero mid-span");
-    CHECK_NEAR(mid.y, 0.0, 1e-12, "north crosses zero mid-span");
+    CHECK_REL(mid.x, 0.0, 1e-12, "east crosses zero mid-span");
+    CHECK_REL(mid.y, 0.0, 1e-12, "north crosses zero mid-span");
     const glm::dvec3 q = windAt(she, 250.0, here_lat, here_lon);
-    CHECK_NEAR(q.x, 1.5, 1e-12, "east at a quarter");
-    CHECK_NEAR(q.y, -2.0, 1e-12, "north at a quarter");
+    CHECK_REL(q.x, 1.5, 1e-12, "east at a quarter");
+    CHECK_REL(q.y, -2.0, 1e-12, "north at a quarter");
     // A three-row table finds its OWN span rather than the first one.
     const std::vector<WindLevel> jet {{ 0.0, 1.0, 0.0 }, { 50000.0, 1.0, 0.0 },
                                       { 65000.0, 100.0, 0.0 }};
-    CHECK_NEAR(windAt(jet, 25000.0, here_lat, here_lon).x, 1.0, 0.0, "a calm layer stays calm");
-    CHECK_NEAR(windAt(jet, 57500.0, here_lat, here_lon).x, 50.5, 1e-12, "the jet interpolates in its own span");
-    CHECK_NEAR(windAt(jet, 65000.0, here_lat, here_lon).x, 100.0, 0.0, "the jet's own row");
+    CHECK_REL(windAt(jet, 25000.0, here_lat, here_lon).x, 1.0, 0.0, "a calm layer stays calm");
+    CHECK_REL(windAt(jet, 57500.0, here_lat, here_lon).x, 50.5, 1e-12, "the jet interpolates in its own span");
+    CHECK_REL(windAt(jet, 65000.0, here_lat, here_lon).x, 100.0, 0.0, "the jet's own row");
 
     /* WHERE a row answers (#767). Jupiter publishes "up to 150 m/s (<30 deg lat)"
        beside "up to 40 m/s (>30 deg lat)", so a row that answers for the whole body
@@ -4137,13 +4109,13 @@ static void test_wind_profile() {
         { 0.0, 150.0, 0.0, 0.0, -30.0, 30.0 },
         { 0.0, 40.0, 0.0, 0.0, 30.0, 90.0 },
     };
-    CHECK_NEAR(windAt(belts, 0.0, 0.0, 0.0).x, 150.0, 0.0, "the equatorial belt");
-    CHECK_NEAR(windAt(belts, 0.0, -60.0, 0.0).x, 40.0, 0.0, "the south belt");
-    CHECK_NEAR(windAt(belts, 0.0, 60.0, 0.0).x, 40.0, 0.0, "the north belt");
-    CHECK_NEAR(windAt(belts, 0.0, -30.0, 0.0).x, 150.0, 0.0, "a band edge belongs to the row above it");
-    CHECK_NEAR(windAt(belts, 0.0, 30.0, 0.0).x, 40.0, 0.0, "and so does the other one");
-    CHECK_NEAR(windAt(belts, 0.0, 90.0, 0.0).x, 40.0, 0.0, "the pole belongs to the row that reaches it");
-    CHECK_NEAR(windAt(belts, 90000.0, 0.0, 0.0).x, 150.0, 0.0, "held above, in its own belt");
+    CHECK_REL(windAt(belts, 0.0, 0.0, 0.0).x, 150.0, 0.0, "the equatorial belt");
+    CHECK_REL(windAt(belts, 0.0, -60.0, 0.0).x, 40.0, 0.0, "the south belt");
+    CHECK_REL(windAt(belts, 0.0, 60.0, 0.0).x, 40.0, 0.0, "the north belt");
+    CHECK_REL(windAt(belts, 0.0, -30.0, 0.0).x, 150.0, 0.0, "a band edge belongs to the row above it");
+    CHECK_REL(windAt(belts, 0.0, 30.0, 0.0).x, 40.0, 0.0, "and so does the other one");
+    CHECK_REL(windAt(belts, 0.0, 90.0, 0.0).x, 40.0, 0.0, "the pole belongs to the row that reaches it");
+    CHECK_REL(windAt(belts, 90000.0, 0.0, 0.0).x, 150.0, 0.0, "held above, in its own belt");
 
     /* A band across the antimeridian is ONE row, not two: lon is stored as a start
        plus an eastward width, so 350..10 answers for 355 deg and for 5 deg. */
@@ -4151,17 +4123,17 @@ static void test_wind_profile() {
         { 0.0, 7.0, 0.0, 0.0, -90.0, 90.0, 350.0, 370.0 },
         { 0.0, 2.0, 0.0, 0.0, -90.0, 90.0, 10.0, 350.0 },
     };
-    CHECK_NEAR(windAt(wrap, 0.0, 0.0, 355.0).x, 7.0, 0.0, "inside the crossing band, west of 0");
-    CHECK_NEAR(windAt(wrap, 0.0, 0.0, 5.0).x, 7.0, 0.0, "inside it, east of 0");
-    CHECK_NEAR(windAt(wrap, 0.0, 0.0, 180.0).x, 2.0, 0.0, "outside it");
-    CHECK_NEAR(windAt(wrap, 0.0, 0.0, 10.0).x, 2.0, 0.0, "the far edge is excluded");
+    CHECK_REL(windAt(wrap, 0.0, 0.0, 355.0).x, 7.0, 0.0, "inside the crossing band, west of 0");
+    CHECK_REL(windAt(wrap, 0.0, 0.0, 5.0).x, 7.0, 0.0, "inside it, east of 0");
+    CHECK_REL(windAt(wrap, 0.0, 0.0, 180.0).x, 2.0, 0.0, "outside it");
+    CHECK_REL(windAt(wrap, 0.0, 0.0, 10.0).x, 2.0, 0.0, "the far edge is excluded");
     /* lon 360 is the same meridian as lon 0, and callers DO hand one over: the surface
        map's right-hand edge is u == 1, and equirect.h's inverse unwraps a direction a
        hair west of the prime meridian onto a full turn that rounds to 360 deg. A half
        open band would find no row there, and the loader promised there is always one, so
        the assert in windAt would abort the game over a rounding artefact. */
-    CHECK_NEAR(windAt(wrap, 0.0, 0.0, 360.0).x, 7.0, 0.0, "lon 360 is lon 0, not a hole");
-    CHECK_NEAR(windAt(wrap, 0.0, 0.0, -5.0).x, 7.0, 0.0, "and a hair west of 0 is inside it");
+    CHECK_REL(windAt(wrap, 0.0, 0.0, 360.0).x, 7.0, 0.0, "lon 360 is lon 0, not a hole");
+    CHECK_REL(windAt(wrap, 0.0, 0.0, -5.0).x, 7.0, 0.0, "and a hair west of 0 is inside it");
 
     /* A whole-sphere COLUMN and a belt at different altitudes. The narrowest band
        covering a place answers for it at EVERY altitude; the column answers elsewhere.
@@ -4175,11 +4147,11 @@ static void test_wind_profile() {
         { 10000.0, 100.0, 0.0, 0.0, 0.0, 10.0 },
         { 30000.0, 200.0, 0.0, 0.0, 0.0, 10.0 },
     };
-    CHECK_NEAR(windAt(mix, 0.0, 5.0, 0.0).x, 100.0, 0.0, "inside the belt, held at its own lowest row");
-    CHECK_NEAR(windAt(mix, 20000.0, 5.0, 0.0).x, 150.0, 0.0, "the belt's mid-span, not the column's row");
-    CHECK_NEAR(windAt(mix, 40000.0, 5.0, 0.0).x, 200.0, 0.0, "held above the belt, still inside it");
-    CHECK_NEAR(windAt(mix, 20000.0, -45.0, 0.0).x, 10.0, 0.0, "outside the belt the column answers");
-    CHECK_NEAR(windAt(mix, 5000.0, -45.0, 0.0).x, 2.5, 1e-12, "and interpolates there as its own profile");
+    CHECK_REL(windAt(mix, 0.0, 5.0, 0.0).x, 100.0, 0.0, "inside the belt, held at its own lowest row");
+    CHECK_REL(windAt(mix, 20000.0, 5.0, 0.0).x, 150.0, 0.0, "the belt's mid-span, not the column's row");
+    CHECK_REL(windAt(mix, 40000.0, 5.0, 0.0).x, 200.0, 0.0, "held above the belt, still inside it");
+    CHECK_REL(windAt(mix, 20000.0, -45.0, 0.0).x, 10.0, 0.0, "outside the belt the column answers");
+    CHECK_REL(windAt(mix, 5000.0, -45.0, 0.0).x, 2.5, 1e-12, "and interpolates there as its own profile");
 
     /* The RISING axis (#767 again): the air moving along the local vertical, which
        is what a Hadley cell's upwelling and a subtropical downdraft actually are.
@@ -4187,10 +4159,10 @@ static void test_wind_profile() {
        ships anyway -- so this pins the mechanism: the same interpolation, and the
        sign that makes a downdraft a downdraft. */
     const std::vector<WindLevel> rise {{ 0.0, 0.0, 0.0, 0.02 }, { 10000.0, 0.0, 0.0, -0.02 }};
-    CHECK_NEAR(windAt(rise, 0.0, here_lat, here_lon).z, 0.02, 1e-15, "rising at the datum");
-    CHECK_NEAR(windAt(rise, 5000.0, here_lat, here_lon).z, 0.0, 1e-15, "neither way half way up");
-    CHECK_NEAR(windAt(rise, 10000.0, here_lat, here_lon).z, -0.02, 1e-15, "sinking at the top");
-    CHECK_NEAR(windAt(rise, 5000.0, here_lat, here_lon).x, 0.0, 0.0, "and no horizontal wind invented");
+    CHECK_REL(windAt(rise, 0.0, here_lat, here_lon).z, 0.02, 1e-15, "rising at the datum");
+    CHECK_REL(windAt(rise, 5000.0, here_lat, here_lon).z, 0.0, 1e-15, "neither way half way up");
+    CHECK_REL(windAt(rise, 10000.0, here_lat, here_lon).z, -0.02, 1e-15, "sinking at the top");
+    CHECK_REL(windAt(rise, 5000.0, here_lat, here_lon).x, 0.0, 0.0, "and no horizontal wind invented");
 
     /* The basis (equirect.h) the two components are measured in: same axes as
        equirectDir, so lon 0 = +X, lon +pi/2 = -Z, north = +Y. Getting these wrong
@@ -4198,18 +4170,18 @@ static void test_wind_profile() {
        pinned here rather than left to the composition in vehicle.cpp. */
     const glm::dvec3 up0 = equirectDir(0.0, 0.0);
     const glm::dvec3 e0 = equirectEast(up0);
-    CHECK_NEAR(e0.z, -1.0, 1e-12, "east at lon 0 is -Z");
-    CHECK_NEAR(equirectNorth(up0, e0).y, 1.0, 1e-12, "north at the equator is +Y");
+    CHECK_REL(e0.z, -1.0, 1e-12, "east at lon 0 is -Z");
+    CHECK_REL(equirectNorth(up0, e0).y, 1.0, 1e-12, "north at the equator is +Y");
     const glm::dvec3 up90 = equirectDir(std::numbers::pi / 2.0, 0.0);
     const glm::dvec3 e90 = equirectEast(up90);
-    CHECK_NEAR(e90.x, -1.0, 1e-12, "a quarter round, east is -X -- it turns with the map");
+    CHECK_REL(e90.x, -1.0, 1e-12, "a quarter round, east is -X -- it turns with the map");
     // East does not change with latitude, because lon lines are meridians.
     const glm::dvec3 up45 = equirectDir(0.0, std::numbers::pi / 4.0);
     const glm::dvec3 e45 = equirectEast(up45);
-    CHECK_NEAR(e45.z, -1.0, 1e-12, "east at lat 45 is still -Z");
+    CHECK_REL(e45.z, -1.0, 1e-12, "east at lat 45 is still -Z");
     const glm::dvec3 n45 = equirectNorth(up45, e45);
-    CHECK_NEAR(n45.x, -std::numbers::sqrt2 / 2.0, 1e-12, "north leans back off the pole");
-    CHECK_NEAR(n45.y, std::numbers::sqrt2 / 2.0, 1e-12, "and still rises with latitude");
+    CHECK_REL(n45.x, -std::numbers::sqrt2 / 2.0, 1e-12, "north leans back off the pole");
+    CHECK_REL(n45.y, std::numbers::sqrt2 / 2.0, 1e-12, "and still rises with latitude");
 
     // A wind must stay horizontal wherever it is asked for, and a unit basis is
     // what keeps an authored 10 m/s from becoming 10.x.
@@ -4222,21 +4194,21 @@ static void test_wind_profile() {
             const glm::dvec3 e = equirectEast(up);
             const glm::dvec3 n = equirectNorth(up, e);
             const double tol = 1e-12;
-            CHECK_NEAR(glm::length(e), 1.0, tol, "east is unit");
-            CHECK_NEAR(glm::length(n), 1.0, tol, "north is unit");
-            CHECK_NEAR(glm::dot(e, up), 0.0, tol, "east is horizontal");
-            CHECK_NEAR(glm::dot(n, up), 0.0, tol, "north is horizontal");
-            CHECK_NEAR(glm::dot(e, n), 0.0, tol, "east and north are square");
+            CHECK_REL(glm::length(e), 1.0, tol, "east is unit");
+            CHECK_REL(glm::length(n), 1.0, tol, "north is unit");
+            CHECK_REL(glm::dot(e, up), 0.0, tol, "east is horizontal");
+            CHECK_REL(glm::dot(n, up), 0.0, tol, "north is horizontal");
+            CHECK_REL(glm::dot(e, n), 0.0, tol, "east and north are square");
         }
     }
 
     // Exactly on a pole the meridian is undefined: the fallback is arbitrary, but
     // it must be horizontal and finite, never NaN and never a shrunk wind.
     const glm::dvec3 ePole = equirectEast(glm::dvec3(0.0, 1.0, 0.0));
-    CHECK_NEAR(glm::length(ePole), 1.0, 0.0, "a pole's east is still unit");
-    CHECK_NEAR(ePole.y, 0.0, 0.0, "a pole's east is still horizontal");
+    CHECK_REL(glm::length(ePole), 1.0, 0.0, "a pole's east is still unit");
+    CHECK_REL(ePole.y, 0.0, 0.0, "a pole's east is still horizontal");
     const glm::dvec3 nPole = equirectNorth(glm::dvec3(0.0, 1.0, 0.0), ePole);
-    CHECK_NEAR(glm::length(nPole), 1.0, 0.0, "a pole's north is still unit");
+    CHECK_REL(glm::length(nPole), 1.0, 0.0, "a pole's north is still unit");
 }
 
 /* THE GENERATOR (#775): a column of anchors plus the body's spin becomes latitude
@@ -4269,7 +4241,7 @@ static void test_wind_generate() {
        source denies. */
     WindGenInfo slow;
     const auto slowRows = windGenerate(col, kSlowSpin, kSlowR, 7ull, slow);
-    CHECK_NEAR(slow.ro, 11.0, 0.02, "a Venus-slow rotator's Rossby number");
+    CHECK_REL(slow.ro, 11.0, 0.02, "a Venus-slow rotator's Rossby number");
     CHECK_TRUE(slow.bands == 1, "a rotator that slow gets one band");
     CHECK_TRUE(slowRows.size() == col.size(), "and the column comes back unchanged");
 
@@ -4278,7 +4250,7 @@ static void test_wind_generate() {
        the ONLY thing that trims it now the amplitude is normalized over the count. */
     WindGenInfo fast;
     const auto fastRows = windGenerate(col, kFastSpin, kFastR, 7ull, fast);
-    CHECK_NEAR(fast.ro, 0.00163, 0.02, "a Jupiter-fast rotator's Rossby number");
+    CHECK_REL(fast.ro, 0.00163, 0.02, "a Jupiter-fast rotator's Rossby number");
     CHECK_TRUE(fast.asked == 36, "the Rhines scale asks for 36 belts per hemisphere");
     CHECK_TRUE(fast.clamped && fast.bands == 31, "and the 64-row budget keeps 15, because a"
                                                  " faint belt is a WIDE belt, never a hole"
@@ -4286,7 +4258,7 @@ static void test_wind_generate() {
     CHECK_TRUE(fastRows.size() == 62, "one row per anchor per band");
     CHECK_TRUE(fastRows.size() <= kWindMaxRows, "and never past the loader's row cap, which is"
                                            " the aero path's linear-scan budget");
-    CHECK_NEAR(std::abs(windAt(fastRows, 11000.0, 89.5, 0.0).x), 40.0 * kWindGenFloor, 1e-12,
+    CHECK_REL(std::abs(windAt(fastRows, 11000.0, 89.5, 0.0).x), 40.0 * kWindGenFloor, 1e-12,
                "the poleward belt sits exactly on the amplitude floor whatever the count");
 
     /* The SHAPE of the span, not just its two ends. An Earth-slow body (Rhines ~13 deg,
@@ -4296,11 +4268,11 @@ static void test_wind_generate() {
        rather than pinning only where it starts and where it ends. */
     WindGenInfo mid;
     const auto midRows = windGenerate(col, kMidSpin, kMidR, 7ull, mid);
-    CHECK_NEAR(mid.ro, 0.045662, 1e-5, "an Earth-slow rotator's Rossby number -- the regime the"
+    CHECK_REL(mid.ro, 0.045662, 1e-5, "an Earth-slow rotator's Rossby number -- the regime the"
                                        " prose above names, pinned so the prose cannot drift");
     CHECK_TRUE(mid.asked == 6 && !mid.clamped && mid.bands == 13,
                "an Earth-slow rotator gets exactly the count the Rhines scale asked for");
-    CHECK_NEAR(std::abs(windAt(midRows, 11000.0, 42.0, 0.0).x),
+    CHECK_REL(std::abs(windAt(midRows, 11000.0, 42.0, 0.0).x),
                40.0 * std::sqrt(kWindGenFloor), 1e-9,
                "the halfway belt lands on the geometric middle of the span");
 
@@ -4320,7 +4292,7 @@ static void test_wind_generate() {
        player: 31 bands along a meridian is 30 boundaries, and every one of them is a flip.
        A belt cancelled by some cap anywhere upstream shows up here as a missing flip. */
     CHECK_TRUE(flips == 30, "every band boundary flips the wind, and none of them is missing");
-    CHECK_NEAR(windAt(fastRows, 11000.0, 0.0, 0.0).x, 40.0, 0.0,
+    CHECK_REL(windAt(fastRows, 11000.0, 0.0, 0.0).x, 40.0, 0.0,
                "the equatorial band carries the anchor's own value");
 
     /* Mirror-symmetric: zonal winds are, and hemispheres that disagreed would be a bug

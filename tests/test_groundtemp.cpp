@@ -22,31 +22,7 @@
 
 #include "equirect.h"
 #include "groundtemp.h"
-
-static int g_failures = 0;
-static int g_checks = 0;
-
-#define CHECK_TRUE(cond, msg)                                                 \
-    do {                                                                      \
-        g_checks++;                                                           \
-        if (!(cond)) {                                                        \
-            g_failures++;                                                     \
-            printf("FAIL: %s\n", msg);                                        \
-        }                                                                     \
-    } while (0)
-
-#define CHECK_NEAR(actual, expected, rel_tol, msg)                            \
-    do {                                                                      \
-        g_checks++;                                                           \
-        double _a = (actual), _e = (expected);                                \
-        const double _tol = (_e == 0.0) ? rel_tol                             \
-                                        : rel_tol * std::fabs(_e);            \
-        if (!std::isfinite(_a) || !std::isfinite(_e)                          \
-            || std::fabs(_a - _e) > _tol) {                                   \
-            g_failures++;                                                     \
-            printf("FAIL: %s (got %.9g, want %.9g)\n", msg, _a, _e);         \
-        }                                                                     \
-    } while (0)
+#include "tchecks.h"
 
 #define CHECK_INT(actual, expected, msg)                                      \
     do {                                                                      \
@@ -93,7 +69,7 @@ int main() {
             s4 += T * T * T * T * std::sin(th);
         }
         const double mean4 = 0.5 * (std::numbers::pi / n) * s4;   // (1/2) int X sin th dth
-        CHECK_NEAR(mean4, 1.0, 2e-5, "the sphere radiates exactly T0^4 whatever f is");
+        CHECK_REL(mean4, 1.0, 2e-5, "the sphere radiates exactly T0^4 whatever f is");
     }
     /* <cos_inc> = 1/4 on its own, the identity above standing on. */
     {
@@ -103,7 +79,7 @@ int main() {
             const double th = std::numbers::pi * (i + 0.5) / n;
             sc += std::max(0.0, std::cos(th)) * std::sin(th);
         }
-        CHECK_NEAR(0.5 * (std::numbers::pi / n) * sc, 0.25, 1e-5,
+        CHECK_REL(0.5 * (std::numbers::pi / n) * sc, 0.25, 1e-5,
                    "the sphere's mean floored cosine is 1/4");
     }
 
@@ -112,16 +88,16 @@ int main() {
         const double T0 = 288.15;
         const double n4 = std::pow(groundTemperature(T0, f, 0.0) / T0, 4.0);
         const double d4 = std::pow(groundTemperature(T0, f, 1.0) / T0, 4.0);
-        CHECK_NEAR(d4, 4.0 - 3.0 * n4, 1e-12,
+        CHECK_REL(d4, 4.0 - 3.0 * n4, 1e-12,
                    "one knob forces the day end from the night end: d^4 = 4 - 3n^4");
     }
-    CHECK_NEAR(groundTemperature(288.15, 1.0, 0.0), 288.15, 1e-12,
+    CHECK_REL(groundTemperature(288.15, 1.0, 0.0), 288.15, 1e-12,
                "f = 1 is a uniform surface, night included");
-    CHECK_NEAR(groundTemperature(288.15, 1.0, 1.0), 288.15, 1e-12,
+    CHECK_REL(groundTemperature(288.15, 1.0, 1.0), 288.15, 1e-12,
                "and the same at noon");
-    CHECK_NEAR(groundTemperature(270.4, 0.0, 1.0) / 270.4, std::pow(4.0, 0.25), 1e-12,
+    CHECK_REL(groundTemperature(270.4, 0.0, 1.0) / 270.4, std::pow(4.0, 0.25), 1e-12,
                "f = 0 at the subsolar point is local radiative balance, 4^1/4 T0");
-    CHECK_NEAR(groundTemperature(270.4, 0.0, 0.0), 0.0, 1e-12,
+    CHECK_REL(groundTemperature(270.4, 0.0, 0.0), 0.0, 1e-12,
                "and f = 0 in night radiates away -- the missing inertia, not a bug");
     CHECK_TRUE(groundTemperature(288.15, 0.9, 0.25)
                  < groundTemperature(288.15, 0.9, 0.75),
@@ -146,7 +122,7 @@ int main() {
     for(const Authored &r : rows) {
         /* Night first: the generators fit f FROM this end, so the C++ must give it back. A
            drift in either spelling of the law shows up here in tenths of a kelvin. */
-        CHECK_NEAR(groundTemperature(r.anchor_K, r.even_share, 0.0), r.pair_night_K, 1e-6,
+        CHECK_REL(groundTemperature(r.anchor_K, r.even_share, 0.0), r.pair_night_K, 1e-6,
                    (std::string(r.name) + ": the authored knob reproduces its night end").c_str());
         const double day = groundTemperature(r.anchor_K, r.even_share, 1.0);
         CHECK_TRUE(std::fabs(day - r.pair_day_K) <= r.max_day_err_K + 1e-9,
@@ -164,20 +140,20 @@ int main() {
        else nothing (0.0, and the caller dashes). The order is the corpus's authority, and
        most of the shipped system rides on rung two: the KSP worlds state an air datum and no
        ground reading (#625 put that datum on a published temperature). */
-    CHECK_NEAR(groundAnchor_K(288.15, 291.68, 255.0), 288.15, 0.0,
+    CHECK_REL(groundAnchor_K(288.15, 291.68, 255.0), 288.15, 0.0,
                "a stated ground temperature outranks everything");
-    CHECK_NEAR(groundAnchor_K(0.0, 214.81, 209.81), 214.81, 0.0,
+    CHECK_REL(groundAnchor_K(0.0, 214.81, 209.81), 214.81, 0.0,
                "with no ground reading, the air's datum is the ground");
-    CHECK_NEAR(groundAnchor_K(0.0, 0.0, 270.33), 270.33, 0.0,
+    CHECK_REL(groundAnchor_K(0.0, 0.0, 270.33), 270.33, 0.0,
                "with no air either, the derived black-body anchors -- and says so");
-    CHECK_NEAR(groundAnchor_K(0.0, 0.0, 0.0), 0.0, 0.0,
+    CHECK_REL(groundAnchor_K(0.0, 0.0, 0.0), 0.0, 0.0,
                "and with none of the three there is no anchor, so the row dashes");
     /* #729: this is what the game actually passes now -- the FIELD's sentinel, not a bare 0.0.
        If thermalAuthored() were `>= 0.0` the first line below would return -1 K as if a source
        had stated it, and a caller that forgot to check would multiply it into the law. */
-    CHECK_NEAR(groundAnchor_K(kThermalUnauthored, 291.68, 255.0), 291.68, 0.0,
+    CHECK_REL(groundAnchor_K(kThermalUnauthored, 291.68, 255.0), 291.68, 0.0,
                "a sentinel ground temperature falls through to the air's datum");
-    CHECK_NEAR(groundAnchor_K(kThermalUnauthored, kThermalUnauthored, 270.33), 270.33, 0.0,
+    CHECK_REL(groundAnchor_K(kThermalUnauthored, kThermalUnauthored, 270.33), 270.33, 0.0,
                "a sentinel air datum falls through to the derived black-body");
     /* WHICH rung answered is its own question, and the readouts (the atlas' anchor row, the
        surface map's legend) name the answer instead of re-spelling the order (#636, #722). A
@@ -226,19 +202,19 @@ int main() {
        three ends a reader would check by eye: no coupling, full coupling at the datum, and
        the blend in between. The weight is the air's own pressure fraction, so "no air" and
        "above the top" both answer 0.0 and the caller gets no coupling for free. */
-    CHECK_NEAR(followAirTemperature(288.15, 295.61, 0.0, 1.0), 288.15, 0.0,
+    CHECK_REL(followAirTemperature(288.15, 295.61, 0.0, 1.0), 288.15, 0.0,
                "a follow of 0.0 is a reading: the air keeps its profile");
-    CHECK_NEAR(followAirTemperature(288.15, 295.61, 1.0, 1.0), 295.61, 0.0,
+    CHECK_REL(followAirTemperature(288.15, 295.61, 1.0, 1.0), 295.61, 0.0,
                "k=1 at the datum is the ground's own temperature");
-    CHECK_NEAR(followAirTemperature(288.15, 295.61, 0.35, 1.0),
+    CHECK_REL(followAirTemperature(288.15, 295.61, 0.35, 1.0),
                288.15 + 0.35 * (295.61 - 288.15), 0.0,
                "the blend is linear in the knob");
-    CHECK_NEAR(followAirTemperature(288.15, 295.61, 0.35, 0.0), 288.15, 0.0,
+    CHECK_REL(followAirTemperature(288.15, 295.61, 0.35, 0.0), 288.15, 0.0,
                "aloft, where the column says no weight, the profile stands alone");
-    CHECK_NEAR(followWeight(101325.0, 101325.0), 1.0, 0.0, "at the datum the air is all there");
-    CHECK_NEAR(followWeight(0.0, 101325.0), 0.0, 0.0, "above the top: nothing to couple");
-    CHECK_NEAR(followWeight(50.0, 0.0), 0.0, 0.0, "no sea-level pressure: no fraction, no coupling");
-    CHECK_NEAR(followWeight(2.0 * 101325.0, 101325.0), 1.0, 0.0,
+    CHECK_REL(followWeight(101325.0, 101325.0), 1.0, 0.0, "at the datum the air is all there");
+    CHECK_REL(followWeight(0.0, 101325.0), 0.0, 0.0, "above the top: nothing to couple");
+    CHECK_REL(followWeight(50.0, 0.0), 0.0, 0.0, "no sea-level pressure: no fraction, no coupling");
+    CHECK_REL(followWeight(2.0 * 101325.0, 101325.0), 1.0, 0.0,
                "below the datum the column is flat, and so is the weight");
     CHECK_TRUE(!followAuthored(kFollowUnauthored),
                "an air nobody priced does not follow its ground at all");
@@ -248,16 +224,16 @@ int main() {
        legal to author. Handing that 0 K to followAirTemperature's assert would abort the game
        over a night sky, so coupledAirTemperature() answers the profile instead. Nothing else
        in the battery composes the two knobs, which is why this pin is here. */
-    CHECK_NEAR(coupledAirTemperature(233.90, 214.81, 0.0, 0.5, 0.33, 0.0, 0.0), 233.90, 0.0,
+    CHECK_REL(coupledAirTemperature(233.90, 214.81, 0.0, 0.5, 0.33, 0.0, 0.0), 233.90, 0.0,
                "a bare rock's night has no ground temperature to follow: the profile stands");
-    CHECK_NEAR(coupledAirTemperature(233.90, 214.81, 0.30, 0.5, 0.33, 1.0, 0.0),
+    CHECK_REL(coupledAirTemperature(233.90, 214.81, 0.30, 0.5, 0.33, 1.0, 0.0),
                233.90 + 0.5 * 0.33 * (214.81 * std::pow(3.1, 0.25) - 233.90), 1e-9,
                "the composed call is the blend, with the ground from the anchor and cosine");
-    CHECK_NEAR(coupledAirTemperature(233.90, 214.81, 0.30, kFollowUnauthored, 0.33, 1.0, 0.0),
+    CHECK_REL(coupledAirTemperature(233.90, 214.81, 0.30, kFollowUnauthored, 0.33, 1.0, 0.0),
                233.90, 0.0, "no knob: the profile stands, and nothing is asserted about it");
-    CHECK_NEAR(coupledAirTemperature(233.90, 214.81, 0.30, 0.5, 0.0, 1.0, 0.0),
+    CHECK_REL(coupledAirTemperature(233.90, 214.81, 0.30, 0.5, 0.0, 1.0, 0.0),
                233.90, 0.0, "no weight (vacuum or above the top): the profile stands");
-    CHECK_NEAR(coupledAirTemperature(0.0, 214.81, 0.30, 0.5, 0.33, 1.0, 0.0),
+    CHECK_REL(coupledAirTemperature(0.0, 214.81, 0.30, 0.5, 0.33, 1.0, 0.0),
                0.0, 0.0, "no air at all answers no temperature");
     /* #793: the height term belongs on the GROUND, and it is the GROUND's height -- the elevation
        of the terrain, not the hull's altitude above the datum. The air side already carries the
@@ -269,7 +245,7 @@ int main() {
     {
         const double datum = 288.15, summit = -31.9, f = 0.5, k = 0.5, w = 0.33;
         const double law = groundTemperature(datum, f, 1.0);
-        CHECK_NEAR(coupledAirTemperature(datum, datum, f, k, w, 1.0, summit),
+        CHECK_REL(coupledAirTemperature(datum, datum, f, k, w, 1.0, summit),
                    datum + k * w * (law + summit - datum), 1e-12,
                    "the blend is the blend, with the ground standing at its own elevation");
         const double coast = coupledAirTemperature(datum, datum, f, k, w, 1.0, 0.0);
@@ -277,18 +253,18 @@ int main() {
         CHECK_TRUE(over_summit < coast,
                    "air above a summit is coupled LESS than air above a coast: the heat source "
                    "under it is colder");
-        CHECK_NEAR(coast - over_summit, k * w * -summit, 1e-12,
+        CHECK_REL(coast - over_summit, k * w * -summit, 1e-12,
                    "and by exactly the follow knob times the weight times the lapse at that height");
         const double prof_at_summit = datum + summit;
-        CHECK_NEAR(coupledAirTemperature(prof_at_summit, datum, f, k, w, 1.0, summit)
+        CHECK_REL(coupledAirTemperature(prof_at_summit, datum, f, k, w, 1.0, summit)
                        - prof_at_summit,
                    coast - datum, 1e-12,
                    "giving the ground the HULL's height instead cancels the lapse out of the "
                    "blend, which is the shape vehicle.cpp and tick.cpp refuse");
     }
-    CHECK_NEAR(followWeight(101325.0, 101325.0), 1.0, 0.0,
+    CHECK_REL(followWeight(101325.0, 101325.0), 1.0, 0.0,
                "the weight is fail-closed: a fraction that is not a number answers none");
-    CHECK_NEAR(followWeight(kThermalUnauthored, 101325.0), 0.0, 0.0,
+    CHECK_REL(followWeight(kThermalUnauthored, 101325.0), 0.0, 0.0,
                "a negative pressure is not a fraction either");
 
     /* ---- the sentinel, which is the difference between Venus and Mercury ------------ */
@@ -347,7 +323,7 @@ int main() {
                 const double dot = glm::dot(equirectDir(lon, lat), equirectDir(lon_ss, dec));
                 const double a = std::sin(lat) * std::sin(dec);
                 const double b = std::cos(lat) * std::cos(dec);
-                CHECK_NEAR(std::max(dot, 0.0), std::max(a + b * std::cos(lon - lon_ss), 0.0),
+                CHECK_REL(std::max(dot, 0.0), std::max(a + b * std::cos(lon - lon_ss), 0.0),
                            1e-9, "the lag's forcing IS the geometry's cosine at the same place");
             }
         }
@@ -376,17 +352,17 @@ int main() {
                 const double y = groundForcingLagged(tau, z, sun);
                 CHECK_TRUE(y >= 0.0 && y <= 1.0 + 1e-12,
                            "the forcing a caller gets is a share of the same law");
-                CHECK_NEAR(y, groundLagRow(pl[0], su[0], tau).at(pl[1] - su[1]), 1e-12,
+                CHECK_REL(y, groundLagRow(pl[0], su[0], tau).at(pl[1] - su[1]), 1e-12,
                            "one place and one instant answers that place's row");
                 // An un-normalised bearing is the same place (a direction is a bearing).
-                CHECK_NEAR(groundForcingLagged(tau, 3.7 * z, 0.2 * sun), y, 1e-12,
+                CHECK_REL(groundForcingLagged(tau, 3.7 * z, 0.2 * sun), y, 1e-12,
                            "and lengths do not reach it");
                 for(double phi : { 0.3, 1.7, -2.9 }) {
                     /* A spin about the POLE, and the pole is +Y here (equirect.h: north is +Y),
                        which is easy to get wrong in a test that means to prove a frame rule. */
                     const double c = std::cos(phi), s = std::sin(phi);
                     const glm::dmat3 spin(c, 0.0, -s, 0.0, 1.0, 0.0, s, 0.0, c);
-                    CHECK_NEAR(groundForcingLagged(tau, spin * z, spin * sun), y, 1e-9,
+                    CHECK_REL(groundForcingLagged(tau, spin * z, spin * sun), y, 1e-9,
                                "a spin-axis rotation of the pair is the same afternoon");
                 }
             }
@@ -566,7 +542,7 @@ int main() {
         /* Measured at these grids: the two phase means agree to 1.9e-6 absolute and the sphere to
            2.8e-7, and neither gap depends on tau -- both are pure quadrature of the same kinked
            forcing, which is the shape of evidence that the identity is exact and the grid is not. */
-        CHECK_NEAR(sphere / wsum, 0.25, 1e-4,
+        CHECK_REL(sphere / wsum, 0.25, 1e-4,
                    "and the sphere still radiates exactly the power the star delivers");
     }
 
@@ -608,7 +584,7 @@ int main() {
                 const double v = pd.at(h);
                 if(v > vmax) { vmax = v; hmax = h; }
             }
-            CHECK_NEAR(hmax, std::atan(tau), 1e-3, "a smooth forcing lags by exactly atan(tau)");
+            CHECK_REL(hmax, std::atan(tau), 1e-3, "a smooth forcing lags by exactly atan(tau)");
         }
     }
 
@@ -618,18 +594,18 @@ int main() {
        rotation -- and on an unlagged row, whose real day arc is 1.12 rad at lat 45. */
     {
         const double pi = std::numbers::pi, d2r = pi / 180.0;
-        CHECK_NEAR(groundLagRow(80.0 * d2r, 23.44 * d2r, 1.0).h0, pi, 1e-9,
+        CHECK_REL(groundLagRow(80.0 * d2r, 23.44 * d2r, 1.0).h0, pi, 1e-9,
                    "a polar-day row's day arc is the whole rotation");
-        CHECK_NEAR(groundLagRow(80.0 * d2r, -23.44 * d2r, 1.0).h0, 0.0, 0.0,
+        CHECK_REL(groundLagRow(80.0 * d2r, -23.44 * d2r, 1.0).h0, 0.0, 0.0,
                    "a polar-night row's is nothing");
         const GroundLagRow un = groundLagRow(45.0 * d2r, -23.44 * d2r, 0.0);
-        CHECK_NEAR(un.h0, std::acos(-un.a / un.b), 1e-9,
+        CHECK_REL(un.h0, std::acos(-un.a / un.b), 1e-9,
                    "an unlagged row knows its own day arc too");
         /* dec at the pole: b collapses to 0, which must land on a polar mode rather than an acos
            of -a/0. This is also the edge the lat/dec range assert is written for. */
         const GroundLagRow pole = groundLagRow(30.0 * d2r, 0.5 * pi, 1.0);
         CHECK_INT(pole.mode, GroundLagRow::kPolarDay, "a star over the pole lights that hemisphere");
-        CHECK_NEAR(pole.h0, pi, 1e-9, "and its rows know it");
+        CHECK_REL(pole.h0, pi, 1e-9, "and its rows know it");
         CHECK_TRUE(std::isfinite(pole.at(0.7)) && pole.at(0.7) >= 0.0 && pole.at(0.7) <= 1.0,
                    "the polar answer stays a share");
     }

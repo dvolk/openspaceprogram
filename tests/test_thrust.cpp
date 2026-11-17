@@ -58,35 +58,7 @@
 #include "vehicle.h"  // #400: Vehicle::producedThrust / availableThrust / availableAccel
 #include "terrain.h"  // and the body whose air a jet breathes
 #include <glm/gtc/constants.hpp>  // glm::radians, for an engine with a gimbal cone
-
-static int g_failures = 0;
-static int g_checks = 0;
-
-#define CHECK_TRUE(cond, msg)                                                  \
-    do {                                                                       \
-        g_checks++;                                                            \
-        if (!(cond)) {                                                         \
-            g_failures++;                                                      \
-            printf("FAIL: %s\n", msg);                                         \
-        }                                                                      \
-    } while (0)
-
-#define CHECK_NEAR(actual, expected, rel_tol, msg)                             \
-    do {                                                                       \
-        g_checks++;                                                            \
-        double _a = (actual), _e = (expected);                                 \
-        /* Relative, except at an expectation of exactly zero (#510):              \
-           rel_tol * 0.0 would demand bit-exactness, which is not what a           \
-           caller writing 1e-12 means. 0.0 AS a tolerance stays exact, so          \
-           a bit-identical pin keeps its teeth. */                                 \
-        const double _tol = (_e == 0.0) ? rel_tol                                  \
-                                        : rel_tol * std::fabs(_e);                 \
-        if (!std::isfinite(_a) || !std::isfinite(_e)                              \
-            || std::fabs(_a - _e) > _tol) {                                       \
-            g_failures++;                                                      \
-            printf("FAIL: %s (got %.9g, want %.9g)\n", msg, _a, _e);           \
-        }                                                                      \
-    } while (0)
+#include "tchecks.h"
 
 /*
  * 3. getInertiaDiag: the real function, from src/physics.cpp. A ship part has
@@ -121,9 +93,9 @@ static void test_inertia_diag() {
     b.mass = m0;
 
     const glm::dvec3 I = getInertiaDiag(&b);
-    CHECK_NEAR(I.x, I0.getX(), 1e-9, "I_x(m) == the shape's I_x");
-    CHECK_NEAR(I.y, I0.getY(), 1e-9, "I_y(m) == the shape's I_y");
-    CHECK_NEAR(I.z, I0.getZ(), 1e-9, "I_z(m) == the shape's I_z");
+    CHECK_REL(I.x, I0.getX(), 1e-9, "I_x(m) == the shape's I_x");
+    CHECK_REL(I.y, I0.getY(), 1e-9, "I_y(m) == the shape's I_y");
+    CHECK_REL(I.z, I0.getZ(), 1e-9, "I_z(m) == the shape's I_z");
     CHECK_TRUE(!(I == glm::dvec3(1.0, 1.0, 1.0)),
                "inertia must not be the identity tensor");
 
@@ -132,9 +104,9 @@ static void test_inertia_diag() {
        btVector3(1,1,1) inertia (the old SetMass bug) fails. */
     b.mass = m0 / 2.0;
     const glm::dvec3 Ih = getInertiaDiag(&b);
-    CHECK_NEAR(Ih.x, 0.5 * I0.getX(), 1e-9, "I_x(m/2) == 0.5 * I_x(m)");
-    CHECK_NEAR(Ih.y, 0.5 * I0.getY(), 1e-9, "I_y(m/2) == 0.5 * I_y(m)");
-    CHECK_NEAR(Ih.z, 0.5 * I0.getZ(), 1e-9, "I_z(m/2) == 0.5 * I_z(m)");
+    CHECK_REL(Ih.x, 0.5 * I0.getX(), 1e-9, "I_x(m/2) == 0.5 * I_x(m)");
+    CHECK_REL(Ih.y, 0.5 * I0.getY(), 1e-9, "I_y(m/2) == 0.5 * I_y(m)");
+    CHECK_REL(Ih.z, 0.5 * I0.getZ(), 1e-9, "I_z(m/2) == 0.5 * I_z(m)");
     CHECK_TRUE(!(Ih == glm::dvec3(1.0, 1.0, 1.0)),
                "inertia at half the mass must not be the identity tensor");
 
@@ -225,12 +197,12 @@ static void test_substep_delivery() {
         char buf[192];
         snprintf(buf, sizeof buf,
                  "NEW pattern ta=%g: delivered v == F/m*T (%.1f m/s)", ta, v_full);
-        CHECK_NEAR(v_new, v_full, 1e-3, buf);
+        CHECK_REL(v_new, v_full, 1e-3, buf);
 
         snprintf(buf, sizeof buf,
                  "OLD pattern ta=%g: delivered v == F/m*T/n (%.1f m/s) "
                  "[harness must see the 1/n loss]", ta, v_full / n);
-        CHECK_NEAR(v_old, v_full / n, 1e-3, buf);
+        CHECK_REL(v_old, v_full / n, 1e-3, buf);
 
         snprintf(buf, sizeof buf,
                  "ta=%g: new pattern delivers the FULL thrust (old lost %d-1 of %d substeps)",
@@ -267,7 +239,7 @@ static void test_fuel_flow() {
         char buf[160];
         snprintf(buf, sizeof buf,
                  "NEW model ta=%g: burn == nominal %.3f kg/s (warp-independent)", ta, mdot);
-        CHECK_NEAR(fuel_per_simsec(mdot, ta, true), mdot, 1e-9, buf);
+        CHECK_REL(fuel_per_simsec(mdot, ta, true), mdot, 1e-9, buf);
 
         // OLD model: per-tick was mdot/60, tick rate per sim-sec was 50/ta,
         // so burn per sim-sec = mdot*50/(60*ta) -- WRONG on two counts: the
@@ -276,7 +248,7 @@ static void test_fuel_flow() {
         snprintf(buf, sizeof buf,
                  "OLD model ta=%g: burn == %.4g kg/s [harness must see the loss + warp leak]",
                  ta, old_expect);
-        CHECK_NEAR(fuel_per_simsec(mdot, ta, false), old_expect, 1e-9, buf);
+        CHECK_REL(fuel_per_simsec(mdot, ta, false), old_expect, 1e-9, buf);
         // The two old-model defects, made explicit:
         CHECK_TRUE(fuel_per_simsec(mdot, ta, false) < mdot,
                    "OLD model burns LESS than nominal (was inconsistent)");
@@ -412,25 +384,25 @@ static void test_produced_and_available_thrust() {
     /* COASTING: the whole point of #400. The throttle is zero, so the read-back is zero,
        and a law that plans with it has no way to know the engine is fine. */
     r.v->setThrottle(0.0);
-    CHECK_NEAR(r.v->producedThrust(), 0.0, 0.0, "nothing produced at zero throttle");
-    CHECK_NEAR(r.v->availableThrust(), 20000.0, 1e-12,
+    CHECK_REL(r.v->producedThrust(), 0.0, 0.0, "nothing produced at zero throttle");
+    CHECK_REL(r.v->availableThrust(), 20000.0, 1e-12,
                "20000 N available anyway: the stage-3 engine at full throttle, and a"
                " rocket does not care that there is air here");
-    CHECK_NEAR(r.v->availableAccel(), 16.0, 1e-12,
+    CHECK_REL(r.v->availableAccel(), 16.0, 1e-12,
                "over 1250 kg that is 16 m/s^2 of a_max -- the number a burn plan needs"
                " while the throttle is still at zero");
 
     /* The two numbers move differently, and that is what makes them two. */
     r.v->setThrottle(0.5);
-    CHECK_NEAR(r.v->producedThrust(), 10000.0, 1e-12, "half a throttle, half the"
+    CHECK_REL(r.v->producedThrust(), 10000.0, 1e-12, "half a throttle, half the"
                " production -- of the live stage only (the stage-1 engines and the jet"
                " are gated by the stage counter)");
-    CHECK_NEAR(r.v->availableThrust(), 20000.0, 1e-12, "available does not move with"
+    CHECK_REL(r.v->availableThrust(), 20000.0, 1e-12, "available does not move with"
                " the throttle");
-    CHECK_NEAR(r.v->availableAccel(), 16.0, 1e-12, "so a_max is stable while the law"
+    CHECK_REL(r.v->availableAccel(), 16.0, 1e-12, "so a_max is stable while the law"
                " writes the throttle -- no feedback through its own output (#400's"
                " flip-flop)");
-    CHECK_NEAR(r.v->getFullThrustTWR() / r.v->getTWR(), 2.0, 1e-12,
+    CHECK_REL(r.v->getFullThrustTWR() / r.v->getTWR(), 2.0, 1e-12,
                "the Vessel window's current-over-full TWR pair is produced-over-"
                "available, not two spellings of one number");
 
@@ -438,16 +410,16 @@ static void test_produced_and_available_thrust() {
     r.v->advanceStage();
     r.v->advanceStage();
     CHECK_TRUE(r.v->activeStage() == 1, "the counter grinds down one press at a time");
-    CHECK_NEAR(r.v->availableThrust(),
+    CHECK_REL(r.v->availableThrust(),
                70000.0 + 1100.0 * E / kAirSeaLevelDensity + 10000.0 * E, 1e-9,
                "20000 + 50000 + the jet at ITS BEST SPEED in THIS air: (100 + 1*1000)"
                " x E/1.225 (the rating intake, #630) + rho*0.04*500*500, with rho = E");
-    CHECK_NEAR(r.v->producedThrust(),
+    CHECK_REL(r.v->producedThrust(),
                0.5 * (70000.0 + 1100.0 * E / kAirSeaLevelDensity), 1e-9,
                "at half throttle the jet is asked for what it gives standing still"
                " (fan + mdot*ve, gated by the air against its 1.225 kg/m3 rating), because"
                " producedThrust uses the speed the ship actually has");
-    CHECK_NEAR(r.v->availableAccel(),
+    CHECK_REL(r.v->availableAccel(),
                (70000.0 + 1100.0 * E / kAirSeaLevelDensity + 10000.0 * E) / 1250.0, 1e-9,
                "and the a_max that stage-down just bought, at the same mass");
     /* #607: an ask up the stack costs nothing, and it must cost nothing for THIS rig
@@ -455,10 +427,10 @@ static void test_produced_and_available_thrust() {
        the same loop as availableThrust, so if the directional read scored the jet off,
        forgot --exhaust-scale or divided by anything but the current mass, this pin is
        the one that says so. */
-    CHECK_NEAR(r.v->availableAccelAlong(glm::dvec3(0.0, 0.0, 1.0)), r.v->availableAccel(),
+    CHECK_REL(r.v->availableAccelAlong(glm::dvec3(0.0, 0.0, 1.0)), r.v->availableAccel(),
                1e-12, "up the stack with the jet and the air in the sum: the two reads"
                " still agree");
-    CHECK_NEAR(r.v->availableAccelAlong(glm::dvec3(0.0, 0.0, -1.0)), -r.v->availableAccel(),
+    CHECK_REL(r.v->availableAccelAlong(glm::dvec3(0.0, 0.0, -1.0)), -r.v->availableAccel(),
                1e-12, "and agree backwards");
     CHECK_TRUE(r.v->availableThrust() > r.v->producedThrust(),
                "at half throttle available still leads produced");
@@ -468,11 +440,11 @@ static void test_produced_and_available_thrust() {
     TerrainBody *vac = mkPressureBody(0.0);
     r.v->m_parent = vac;
     r.v->placeShip(glm::dvec3(0.0, 0.0, 600000.0 + ALT), glm::dmat3(1.0));
-    CHECK_NEAR(r.v->availableThrust(), 70000.0, 1e-12, "the jet's air money is gone in"
+    CHECK_REL(r.v->availableThrust(), 70000.0, 1e-12, "the jet's air money is gone in"
                " vacuum: the stage-1 pair is all there is");
-    CHECK_NEAR(r.v->producedThrust(), 35000.0, 1e-12, "and the same at half throttle");
+    CHECK_REL(r.v->producedThrust(), 35000.0, 1e-12, "and the same at half throttle");
     r.v->setThrottle(1.0);
-    CHECK_NEAR(r.v->producedThrust(), r.v->availableThrust(), 1e-12,
+    CHECK_REL(r.v->producedThrust(), r.v->availableThrust(), 1e-12,
                "rockets at full throttle: the two agree, because they are the same"
                " engines read with and without the throttle");
     r.v->m_parent = body;
@@ -527,41 +499,41 @@ static void test_available_accel_along() {
     Vehicle *v = mkOneEngineRig(defs, 0.0);
     CHECK_TRUE(v->activeStage() == 3, "the 20000 N engine is the live stage");
     const double a_full = 10.0;  // 20000 N over 2000 kg, by hand
-    CHECK_NEAR(v->availableAccel(), a_full, 1e-12, "10 m/s^2 straight up the stack");
+    CHECK_REL(v->availableAccel(), a_full, 1e-12, "10 m/s^2 straight up the stack");
 
     /* Straight up the stack is the one ask the two reads MUST agree on: they sum the
        same per-engine ceiling, which is why that ceiling is one function. */
-    CHECK_NEAR(v->availableAccelAlong(glm::dvec3(0.0, 0.0, 1.0)), v->availableAccel(),
+    CHECK_REL(v->availableAccelAlong(glm::dvec3(0.0, 0.0, 1.0)), v->availableAccel(),
                1e-12, "an engine pointed at the ask: availableAccelAlong =="
                " availableAccel -- one per-engine ceiling, two sums");
     /* With no cone the share is a plain cosine, so sideways is nothing and backwards
        is NEGATIVE rather than 0 -- a law that read 0 here would plan a retrograde burn
        as a coast. */
-    CHECK_NEAR(v->availableAccelAlong(glm::dvec3(1.0, 0.0, 0.0)), 0.0, 1e-12,
+    CHECK_REL(v->availableAccelAlong(glm::dvec3(1.0, 0.0, 0.0)), 0.0, 1e-12,
                "90 deg off an ungimballed engine: nothing");
-    CHECK_NEAR(v->availableAccelAlong(glm::dvec3(0.0, 0.0, -1.0)), -a_full, 1e-12,
+    CHECK_REL(v->availableAccelAlong(glm::dvec3(0.0, 0.0, -1.0)), -a_full, 1e-12,
                "180 deg off: the same authority with the wrong sign");
     /* dir is a direction, not a magnitude: its length must not leak into the answer. */
-    CHECK_NEAR(v->availableAccelAlong(glm::dvec3(0.0, -300.0, 400.0)), 0.8 * a_full,
+    CHECK_REL(v->availableAccelAlong(glm::dvec3(0.0, -300.0, 400.0)), 0.8 * a_full,
                1e-12, "an un-normalised 3-4-5 ask still gets cos(theta) = 0.8");
     /* A zero ask is a real state, not a caller bug: a law's aim is zero until it aims.
        It has to be answered at the door rather than left to the math, because the math
        does not stay NaN on the way out: normalize(0) is NaN, glm::clamp does not rescue
        it, std::max(0.0, NaN) is 0.0, so cos(acos(NaN)) is 1 -- the read would hand the
        law its FULL ceiling along a direction nobody asked for. */
-    CHECK_NEAR(v->availableAccelAlong(glm::dvec3(0.0)), 0.0, 0.0,
+    CHECK_REL(v->availableAccelAlong(glm::dvec3(0.0)), 0.0, 0.0,
                "no aim asks for no acceleration");
-    CHECK_NEAR(v->availableAccelAlong(glm::dvec3(std::nan(""), 0.0, 1.0)), 0.0, 0.0,
+    CHECK_REL(v->availableAccelAlong(glm::dvec3(std::nan(""), 0.0, 1.0)), 0.0, 0.0,
                "and neither does a NaN aim: the same door the throttle's own NaN guard"
                " uses, because a NaN component takes the same road to 1.0");
-    CHECK_NEAR(v->availableAccelAlong(glm::dvec3(1e-320, 0.0, 0.0)), 0.0, 0.0,
+    CHECK_REL(v->availableAccelAlong(glm::dvec3(1e-320, 0.0, 0.0)), 0.0, 0.0,
                "an ask so small its length underflows to zero is the same case, and"
                " length() > 0.0 catches it with the other two");
-    CHECK_NEAR(v->availableAccelAlong(glm::dvec3(INFINITY, 0.0, 0.0)), 0.0, 0.0,
+    CHECK_REL(v->availableAccelAlong(glm::dvec3(INFINITY, 0.0, 0.0)), 0.0, 0.0,
                "an infinite component is the nastiest of them: length is inf, which is"
                "> 0, and normalize gives inf*(1/inf) = NaN, so it takes the SAME road"
                " to full authority. The isfinite term is what stops it");
-    CHECK_NEAR(v->availableAccelAlong(glm::dvec3(1e308, 0.0, 0.0)), 0.0, 0.0,
+    CHECK_REL(v->availableAccelAlong(glm::dvec3(1e308, 0.0, 0.0)), 0.0, 0.0,
                "a huge but finite ask overflows length() and reads 0 too: it has a"
                " perfectly good direction, and failing closed is cheaper here than a"
                " scale-safe normalize for a number this game does not produce");
@@ -572,10 +544,10 @@ static void test_available_accel_along() {
     Vehicle *tv = mkOneEngineRig(defs, 30.0);
     const glm::dvec3 thirty_off(0.0, -std::sin(glm::radians(30.0)),
                                 std::cos(glm::radians(30.0)));
-    CHECK_NEAR(tv->availableAccelAlong(thirty_off), a_full, 1e-12,
+    CHECK_REL(tv->availableAccelAlong(thirty_off), a_full, 1e-12,
                "an ask exactly gimbal_max off the mount is reachable: the boundary of"
                " the cone costs nothing");
-    CHECK_NEAR(tv->availableAccelAlong(glm::dvec3(0.0, -1.0, 0.0)), 0.5 * a_full, 1e-12,
+    CHECK_REL(tv->availableAccelAlong(glm::dvec3(0.0, -1.0, 0.0)), 0.5 * a_full, 1e-12,
                "sideways with a 30 deg cone: 90 - 30, so cos 60");
     /* And the cone hangs off the MOUNT, not off wherever the steering happens to have
        the nozzle this tick. The engine below is swung +20 deg, so a live-deflection
@@ -583,13 +555,13 @@ static void test_available_accel_along() {
        hardware's mounting, and a ceiling that moved with the stick would let a law
        size its burn with the player's WASD. */
     Vehicle *sv = mkOneEngineRig(defs, 30.0, 20.0);
-    CHECK_NEAR(sv->availableAccelAlong(glm::dvec3(0.0, -1.0, 0.0)), 0.5 * a_full, 1e-12,
+    CHECK_REL(sv->availableAccelAlong(glm::dvec3(0.0, -1.0, 0.0)), 0.5 * a_full, 1e-12,
                "a swung nozzle still reads its mount: 90 deg off the MOUNT is cos 60"
                " even with the gimbals already 20 deg off centre");
-    CHECK_NEAR(sv->availableAccelAlong(glm::dvec3(0.0, 1.0, 0.0)), 0.5 * a_full, 1e-12,
+    CHECK_REL(sv->availableAccelAlong(glm::dvec3(0.0, 1.0, 0.0)), 0.5 * a_full, 1e-12,
                "and the other side is the same number -- the deflection does not lean"
                " the ceiling one way");
-    CHECK_NEAR(sv->availableAccelAlong(glm::dvec3(0.0, 0.0, -1.0)), -a_full
+    CHECK_REL(sv->availableAccelAlong(glm::dvec3(0.0, 0.0, -1.0)), -a_full
                * std::cos(glm::radians(30.0)), 1e-12,
                "retrograde with a 30 deg cone: 180 - 30 off, and still negative");
     delete sv->m_parent;
@@ -631,33 +603,33 @@ static void test_available_accel_along_two_mounts() {
 
     /* The stage gate is half of "available": the lateral engine is not available yet,
        in any direction. */
-    CHECK_NEAR(v->availableAccelAlong(glm::dvec3(0.0, 0.0, 1.0)), 10.0, 1e-12,
+    CHECK_REL(v->availableAccelAlong(glm::dvec3(0.0, 0.0, 1.0)), 10.0, 1e-12,
                "up the stack: the 20000 N engine, over 2000 kg");
-    CHECK_NEAR(v->availableAccelAlong(glm::dvec3(1.0, 0.0, 0.0)), 0.0, 1e-12,
+    CHECK_REL(v->availableAccelAlong(glm::dvec3(1.0, 0.0, 0.0)), 0.0, 1e-12,
                "along the lateral engine's own mount: still nothing, because the stage"
                " counter has not reached it");
 
     v->advanceStage();
     v->advanceStage();
     CHECK_TRUE(v->activeStage() == 1, "both lit now");
-    CHECK_NEAR(v->availableAccel(), 12.5, 1e-12, "25000 N over 2000 kg");
+    CHECK_REL(v->availableAccel(), 12.5, 1e-12, "25000 N over 2000 kg");
     /* Each engine against its OWN mount, and the two added rather than maxed or taken
        in order. */
-    CHECK_NEAR(v->availableAccelAlong(glm::dvec3(0.0, 0.0, 1.0)), 10.0, 1e-12,
+    CHECK_REL(v->availableAccelAlong(glm::dvec3(0.0, 0.0, 1.0)), 10.0, 1e-12,
                "up the stack: the axial engine at full share and the lateral one at"
                " nothing -- so 10, not 12.5 (every engine on the root's axis) and not"
                " the max");
-    CHECK_NEAR(v->availableAccelAlong(glm::dvec3(1.0, 0.0, 0.0)), 2.5, 1e-12,
+    CHECK_REL(v->availableAccelAlong(glm::dvec3(1.0, 0.0, 0.0)), 2.5, 1e-12,
                "along the lateral mount: the 5000 N engine is what is available there"
                " -- not 0 (first thruster only), not 10 (max)");
-    CHECK_NEAR(v->availableAccelAlong(glm::dvec3(-1.0, 0.0, 0.0)), -2.5, 1e-12,
+    CHECK_REL(v->availableAccelAlong(glm::dvec3(-1.0, 0.0, 0.0)), -2.5, 1e-12,
                "and signed the other way");
 
     /* The difficulty scale lands on both reads by the same route. */
     v->exhaust_scale = 0.5;
-    CHECK_NEAR(v->availableAccel(), 6.25, 1e-12, "--exhaust-scale 0.5 halves the"
+    CHECK_REL(v->availableAccel(), 6.25, 1e-12, "--exhaust-scale 0.5 halves the"
                " direction-free number");
-    CHECK_NEAR(v->availableAccelAlong(glm::dvec3(1.0, 0.0, 0.0)), 1.25, 1e-12,
+    CHECK_REL(v->availableAccelAlong(glm::dvec3(1.0, 0.0, 0.0)), 1.25, 1e-12,
                "and the directional one, because it is the same sum divided by the same"
                " mass");
     v->exhaust_scale = 1.0;
@@ -670,14 +642,14 @@ static void test_available_accel_along_two_mounts() {
        by the wrong ceiling (guidance.cpp rotates its aim for exactly this reason). */
     v->placeShip(glm::dvec3(0.0, 0.0, 600000.0),
                  glm::dmat3(glm::angleAxis(glm::radians(90.0), glm::dvec3(1.0, 0.0, 0.0))));
-    CHECK_NEAR(v->availableAccelAlong(glm::dvec3(0.0, -1.0, 0.0)), 10.0, 1e-12,
+    CHECK_REL(v->availableAccelAlong(glm::dvec3(0.0, -1.0, 0.0)), 10.0, 1e-12,
                "the world axis the stack mount swung onto (+90 deg about X tips +Z"
                " toward -Y, the same convention test_gimbal pins): full authority");
-    CHECK_NEAR(v->availableAccelAlong(glm::dvec3(0.0, 1.0, 0.0)), -10.0, 1e-12,
+    CHECK_REL(v->availableAccelAlong(glm::dvec3(0.0, 1.0, 0.0)), -10.0, 1e-12,
                "and the same number with the wrong sign on the other side of it");
-    CHECK_NEAR(v->availableAccelAlong(glm::dvec3(0.0, 0.0, 1.0)), 0.0, 1e-12,
+    CHECK_REL(v->availableAccelAlong(glm::dvec3(0.0, 0.0, 1.0)), 0.0, 1e-12,
                "and nothing along the axis it used to point along");
-    CHECK_NEAR(v->availableAccelAlong(glm::dvec3(1.0, 0.0, 0.0)), 2.5, 1e-12,
+    CHECK_REL(v->availableAccelAlong(glm::dvec3(1.0, 0.0, 0.0)), 2.5, 1e-12,
                "the lateral mount did not move under a rotation about its own axis");
     delete v->m_parent;
     delete v;
@@ -735,10 +707,10 @@ static void test_can_burn() {
         Part *eng = mkRigPart(defs, "engine", 100.0, 5.0, 4000.0, 1);
         v->attachMode(eng, 0, AttachMode::Down, 0.0);
         v->init();
-        CHECK_NEAR(v->availableThrust(), 20000.0, 1e-12,
+        CHECK_REL(v->availableThrust(), 20000.0, 1e-12,
                    "the potential still rates the engine: it is a RATING, and a plan is"
                    " allowed to ask what this stage could do");
-        CHECK_NEAR(v->availableAccel(), 10.0, 1e-12, "20000 N over 2000 kg");
+        CHECK_REL(v->availableAccel(), 10.0, 1e-12, "20000 N over 2000 kg");
         CHECK_TRUE(!v->canBurn(), "and nothing can burn: there is no propellant on the"
                    " ship. A law that sizes its throttle with the number above divides"
                    " by a promise the hull will never keep");
@@ -765,7 +737,7 @@ static void test_can_burn() {
         v->attachMode(tank, 0, AttachMode::Down, 0.0);
         v->init();
         CHECK_TRUE(v->canBurn(), "hydrogen AND LOX, in a group the engine can drain");
-        CHECK_NEAR(v->availableThrust(), 20000.0, 1e-12,
+        CHECK_REL(v->availableThrust(), 20000.0, 1e-12,
                    "and the rating did not move: fuel is not part of a rating");
         delete v;
     }
@@ -801,7 +773,7 @@ static void test_can_burn() {
         Part *tank = mkRigTank(defs, "tank", 100.0, 100.0, 100.0);
         v->attachMode(tank, 0, AttachMode::Down, 0.0);
         v->init();
-        CHECK_NEAR(v->availableThrust(), 20000.0, 1e-12, "rated, and it would fly --");
+        CHECK_REL(v->availableThrust(), 20000.0, 1e-12, "rated, and it would fly --");
         CHECK_TRUE(!v->canBurn(), "-- if it could be fed. Full tanks of both propellants"
                    " sit on the hull and this engine is walled off from every one of"
                    " them; a ship-wide pool cannot see that, per-engine reach can");
@@ -826,7 +798,7 @@ static void test_can_burn() {
         v->init();
         CHECK_TRUE(v->activeStage() == 3, "the counter starts at the top stage, and a"
                    " part is live at stage >= the counter");
-        CHECK_NEAR(v->availableThrust(), 20000.0, 1e-12,
+        CHECK_REL(v->availableThrust(), 20000.0, 1e-12,
                    "the live engine is the 20000 N one, and it rates healthy");
         CHECK_TRUE(!v->canBurn(), "but the live engine has no LOX, and the engine that"
                    " could run on hydrogen alone is not ignited -- a full tank below the"
@@ -861,7 +833,7 @@ static void test_can_burn() {
         v->attachMode(tank, 0, AttachMode::Down, 0.0);
         v->init();
         CHECK_TRUE(v->canBurn(), "the hydrogen-only engine has what it needs");
-        CHECK_NEAR(v->availableThrust(), 24000.0, 1e-12,
+        CHECK_REL(v->availableThrust(), 24000.0, 1e-12,
                    "while the ceiling is a sum over every ignited engine, fed or not:"
                    " it bills the unfed 20000 N one too (#639)");
         delete v;
@@ -939,8 +911,8 @@ static void test_jet_last_grams() {
            that density earns (drag.h), and a funded tank means the fuel share is 1. */
         const double gate = jetAirGate(v->airDensityAtCom(),
                                        air->surface.atmosphere.oxidizer_share);
-        CHECK_NEAR(gate, 1.0, 1e-3, "sea-level air opens the gate");
-        CHECK_NEAR(flow, jet->jetFuelRate() * (1.0 / 60.0) * gate, 1e-12,
+        CHECK_REL(gate, 1.0, 1e-3, "sea-level air opens the gate");
+        CHECK_REL(flow, jet->jetFuelRate() * (1.0 / 60.0) * gate, 1e-12,
                    "and a funded jet draws its rated flow through that gate -- the gate"
                    " once, and no fuel share on a tank that covers the tick");
         CHECK_TRUE(full > 0.0, "so the engine arms at full thrust");
@@ -948,11 +920,11 @@ static void test_jet_last_grams() {
         /* Half a tick left. Before #638 this tick was refused outright. */
         *jf = 0.5 * flow;
         v->ApplyThrust_TESTONLY(1.0 / 60.0);
-        CHECK_NEAR(jet->armedThrust, 0.5 * full, 1e-3,
+        CHECK_REL(jet->armedThrust, 0.5 * full, 1e-3,
                    "the sliver tick burns at the share it can pay for, not at full"
                    " thrust and not at zero: momentum the fuel did not buy is the same"
                    " debt #630 closed on the ram term");
-        CHECK_NEAR(*jf, 0.0, 0.0,
+        CHECK_REL(*jf, 0.0, 0.0,
                    "and the tank is EMPTY -- the last grams are reachable now, where they"
                    " used to sit unreachable under one tick of flow for ever");
         CHECK_TRUE(!v->canBurn(),
@@ -963,8 +935,8 @@ static void test_jet_last_grams() {
            tick's armedThrust and the pin passes on a stale value. */
         v->clearThrust();
         v->ApplyThrust_TESTONLY(1.0 / 60.0);
-        CHECK_NEAR(jet->armedThrust, 0.0, 0.0, "a dry jet arms nothing, quietly");
-        CHECK_NEAR(*jf, 0.0, 0.0, "and a dry tick takes nothing from an empty tank");
+        CHECK_REL(jet->armedThrust, 0.0, 0.0, "a dry jet arms nothing, quietly");
+        CHECK_REL(*jf, 0.0, 0.0, "and a dry tick takes nothing from an empty tank");
         delete v->m_parent;
         delete v;
     }
@@ -992,10 +964,10 @@ static void test_jet_last_grams() {
 
         const double gate = jetAirGate(v->airDensityAtCom(),
                                        thin->surface.atmosphere.oxidizer_share);
-        CHECK_NEAR(gate, 0.3, 0.01,
+        CHECK_REL(gate, 0.3, 0.01,
                    "thin air gates the jet without closing it (0 < gate < 1)");
         v->ApplyThrust_TESTONLY(1.0 / 60.0);
-        CHECK_NEAR(500.0 - *jf, jet->jetFuelRate() * (1.0 / 60.0) * gate, 1e-12,
+        CHECK_REL(500.0 - *jf, jet->jetFuelRate() * (1.0 / 60.0) * gate, 1e-12,
                    "the draw carries the air gate exactly once -- the fuel share is 1"
                    " with a full tank, so anything else here is a double penalty");
         CHECK_TRUE(jet->armedThrust > 0.0, "and it still flies");
@@ -1003,12 +975,12 @@ static void test_jet_last_grams() {
         delete v;
     }
     /* The sizing itself, the shape both branches now share. */
-    CHECK_NEAR(Vehicle::burnShare(10.0, 4.0), 1.0, 0.0, "pools cover the tick -> full");
-    CHECK_NEAR(Vehicle::burnShare(2.0, 4.0), 0.5, 0.0, "half a tick -> half");
-    CHECK_NEAR(Vehicle::burnShare(0.0, 4.0), 0.0, 0.0, "nothing to draw -> no burn");
-    CHECK_NEAR(Vehicle::burnShare(10.0, 0.0), 0.0, 0.0,
+    CHECK_REL(Vehicle::burnShare(10.0, 4.0), 1.0, 0.0, "pools cover the tick -> full");
+    CHECK_REL(Vehicle::burnShare(2.0, 4.0), 0.5, 0.0, "half a tick -> half");
+    CHECK_REL(Vehicle::burnShare(0.0, 4.0), 0.0, 0.0, "nothing to draw -> no burn");
+    CHECK_REL(Vehicle::burnShare(10.0, 0.0), 0.0, 0.0,
                "a zero-length tick is no burn, the way the rocket branch always read it");
-    CHECK_NEAR(Vehicle::burnShare(std::nan(""), 4.0), 0.0, 0.0,
+    CHECK_REL(Vehicle::burnShare(std::nan(""), 4.0), 0.0, 0.0,
                "a NaN availability fails CLOSED -- (x < 1.0) would answer fully covered");
 }
 
@@ -1039,24 +1011,24 @@ static void test_the_throttle_setpoint_channel() {
 
     /* The setpoint goes through the funnel, not around it (#424's door). */
     v->setThrottle(0.4);
-    CHECK_NEAR(v->throttle(), 0.4f, 1e-9, "a named write, in the units the readouts use");
-    CHECK_NEAR(v->producedThrust(), 20000.0 * 0.4f, 1e-3,
+    CHECK_REL(v->throttle(), 0.4f, 1e-9, "a named write, in the units the readouts use");
+    CHECK_REL(v->producedThrust(), 20000.0 * 0.4f, 1e-3,
                "and the thrust follows: 0.4 of a 20000 N stage (0.4f, because the"
                " throttle is a float, so the product is not exactly 8000)");
     v->Command(ShipCmd(ThrottleSet, 0.25f), true, 1.0);
-    CHECK_NEAR(v->throttle(), 0.25f, 1e-9,
+    CHECK_REL(v->throttle(), 0.25f, 1e-9,
                "a law sends it as a ShipCmd, the same door the keys use");
-    CHECK_NEAR(v->producedThrust(), 5000.0, 1e-9, "one quarter of rated thrust");
+    CHECK_REL(v->producedThrust(), 5000.0, 1e-9, "one quarter of rated thrust");
 
     /* A law's ask saturates rather than being a sender bug: it divides an acceleration
        it wants by availableAccel(), and wanting more than the stage can give is normal. */
     v->setThrottle(1.7);
-    CHECK_NEAR(v->throttle(), 1.0f, 0.0, "a 300% ask lands at 100%, not 300%");
+    CHECK_REL(v->throttle(), 1.0f, 0.0, "a 300% ask lands at 100%, not 300%");
     v->setThrottle(-0.3);
-    CHECK_NEAR(v->throttle(), 0.0f, 0.0, "and a negative one lands at zero");
+    CHECK_REL(v->throttle(), 0.0f, 0.0, "and a negative one lands at zero");
     v->setThrottle(std::nan(""));
-    CHECK_NEAR(v->throttle(), 0.0f, 0.0, "NaN fails CLOSED, like every control-state door");
-    CHECK_NEAR(v->producedThrust(), 0.0, 0.0,
+    CHECK_REL(v->throttle(), 0.0f, 0.0, "NaN fails CLOSED, like every control-state door");
+    CHECK_REL(v->producedThrust(), 0.0, 0.0,
                "so a NaN cannot ride into the fuel rates or the save file as a number"
                " the readouts would print");
 
@@ -1064,7 +1036,7 @@ static void test_the_throttle_setpoint_channel() {
        --physics-hz. Two half-second presses at 0.6/s is 0.6. */
     v->Command(ShipCmd(ThrottleUp), true, 0.5);
     v->Command(ShipCmd(ThrottleUp), true, 0.5);
-    CHECK_NEAR(v->throttle(), 0.6f, 1e-6, "the keys still ramp, 0.6 per second");
+    CHECK_REL(v->throttle(), 0.6f, 1e-6, "the keys still ramp, 0.6 per second");
     CHECK_TRUE(v->throttleKeyHeld(),
                "and the ship can say that the PLAYER is on the lever this tick");
 
@@ -1079,7 +1051,7 @@ static void test_the_throttle_setpoint_channel() {
     /* PAUSED is paused for the law too: a setpoint must not fire behind a frozen clock
        the way the keys already do not. */
     v->Command(ShipCmd(ThrottleSet, 0.3f), false, 1.0);
-    CHECK_NEAR(v->throttle(), 0.9f, 1e-9, "simActive false: nothing written");
+    CHECK_REL(v->throttle(), 0.9f, 1e-9, "simActive false: nothing written");
 
     /* THE RULE the autopilot will use, stated as code: yield while a key is held,
        resume when it is up. This is the behaviour F3 exists to make possible -- without
@@ -1087,15 +1059,15 @@ static void test_the_throttle_setpoint_channel() {
     v->clearThrust();
     v->setThrottle(0.0);                           // from a known stop
     v->Command(ShipCmd(ThrottleUp), true, 0.5);    // the player takes 0.3
-    CHECK_NEAR(v->throttle(), 0.3f, 1e-6, "one half-second press from zero");
+    CHECK_REL(v->throttle(), 0.3f, 1e-6, "one half-second press from zero");
     auto lawTurn = [&v]() { if(!v->throttleKeyHeld()) { v->setThrottle(1.0); } };
     lawTurn();
-    CHECK_NEAR(v->throttle(), 0.3f, 1e-6,
+    CHECK_REL(v->throttle(), 0.3f, 1e-6,
                "the law stands aside while the key is down -- the player keeps the"
                " lever, exactly as a held stick key owns its axis");
     v->clearThrust();                              // the key comes up
     lawTurn();
-    CHECK_NEAR(v->throttle(), 1.0f, 0.0,
+    CHECK_REL(v->throttle(), 1.0f, 0.0,
                "and takes it back the tick the key is released, without being asked");
 
     /* The lever is LATCHED, not per-tick intent: only the who-holds-it claim resets at
@@ -1105,7 +1077,7 @@ static void test_the_throttle_setpoint_channel() {
     v->setThrottle(0.6);
     v->clearThrust();
     v->clearThrust();
-    CHECK_NEAR(v->throttle(), 0.6f, 0.0,
+    CHECK_REL(v->throttle(), 0.6f, 0.0,
                "the setpoint survives the tick boundary; only the key claim resets");
 
     /* Coast is the most ordinary thing a law asks for -- and ShipCmd's default amount is
@@ -1113,19 +1085,19 @@ static void test_the_throttle_setpoint_channel() {
        channel's ceiling was ever reached here. */
     v->setThrottle(0.7);
     v->Command(ShipCmd(ThrottleSet), true, 1.0);
-    CHECK_NEAR(v->throttle(), 0.0f, 0.0, "ThrottleSet with the default amount is coast");
+    CHECK_REL(v->throttle(), 0.0f, 0.0, "ThrottleSet with the default amount is coast");
     v->setThrottle(0.7);
     v->Command(ShipCmd(ThrottleSet, 0.0f), true, 1.0);
-    CHECK_NEAR(v->throttle(), 0.0f, 0.0, "and an explicit 0 lands the same way");
+    CHECK_REL(v->throttle(), 0.0f, 0.0, "and an explicit 0 lands the same way");
     v->setThrottle(0.8f);
     for(int i = 0; i < 5; i++) { v->Command(ShipCmd(ThrottleUp), true, 0.5); }
-    CHECK_NEAR(v->throttle(), 1.0f, 0.0, "the keys ramp to 1.0 and no further");
+    CHECK_REL(v->throttle(), 1.0f, 0.0, "the keys ramp to 1.0 and no further");
 
     /* Losing the pilot cuts the throttle through the same door. */
     v->clearThrust();
     v->setThrottle(0.8);
     v->releaseControl();
-    CHECK_NEAR(v->throttle(), 0.0f, 0.0, "releaseControl() cuts it");
+    CHECK_REL(v->throttle(), 0.0f, 0.0, "releaseControl() cuts it");
     delete v;
     delete vac;
 }
@@ -1159,13 +1131,13 @@ static void test_the_four_thrust_readings() {
     /* 1. the LEVER: a demand, and it DEFAULTS to 1.0 -- so a ship that has never seen a
           key reads "full throttle" (the spawn behaviour #849 asks whether to change, not
           changed here). */
-    CHECK_NEAR(v->throttle(), 1.0, 0.0, "the throttle lever starts at full");
+    CHECK_REL(v->throttle(), 1.0, 0.0, "the throttle lever starts at full");
     /* 2. the POTENTIAL: non-zero for any live engine with fuel, firing or not. */
-    CHECK_NEAR(v->availableThrust(), 20000.0, 1e-9,
+    CHECK_REL(v->availableThrust(), 20000.0, 1e-9,
                "the ignited stage could push 20000 N -- true, and useless as a move test");
     /* 3. the RATING READ BACK: rated x lever x air. It never asks whether ApplyThrust
           armed anything this tick, which is what its old "RIGHT NOW" comment claimed. */
-    CHECK_NEAR(v->producedThrust(), 20000.0, 1e-9,
+    CHECK_REL(v->producedThrust(), 20000.0, 1e-9,
                "producedThrust reads the full burn on a ship that has never fired");
     /* 4. the FIRED FLAG: the only honest answer, and it says parked. */
     CHECK_TRUE(eng->armedThrust == 0.0f, "no part is armed this tick");
@@ -1179,7 +1151,7 @@ static void test_the_four_thrust_readings() {
        is up". */
     v->m_thrust = 1.0f;
     CHECK_TRUE(v->isThrusting(), "the fired flag is what turns true during a burn");
-    CHECK_NEAR(v->producedThrust(), 20000.0, 1e-9,
+    CHECK_REL(v->producedThrust(), 20000.0, 1e-9,
                "and the three other readings did not move a watt -- they cannot tell a"
                " burn from a parked hull");
 

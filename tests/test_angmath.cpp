@@ -33,28 +33,7 @@
 #include <numbers>
 
 #include "angmath.h"
-
-static int g_failures = 0;
-static int g_checks = 0;
-
-#define CHECK_TRUE(cond, msg)                                                 \
-    do {                                                                      \
-        g_checks++;                                                           \
-        if (!(cond)) {                                                        \
-            g_failures++;                                                     \
-            printf("FAIL: %s\n", msg);                                        \
-        }                                                                     \
-    } while (0)
-
-#define CHECK_NEAR(actual, expected, rel_tol, msg)                            \
-    do {                                                                      \
-        g_checks++;                                                           \
-        const double a_ = (actual), e_ = (expected);                          \
-        if(!(std::fabs(a_ - e_) <= rel_tol * std::fabs(e_) + 1e-12)) {        \
-            g_failures++;                                                     \
-            printf("FAIL: %s -- got %.6g, want %.6g\n", msg, a_, e_);         \
-        }                                                                     \
-    } while (0)
+#include "tchecks.h"
 
 /* --- what the clamp is FOR: fp drift, one ulp at a time --------------------- */
 static void test_drift_and_range() {
@@ -65,28 +44,28 @@ static void test_drift_and_range() {
     CHECK_TRUE(one_dn < -1.0, "and its mirror is too");
     CHECK_TRUE(std::isnan(std::acos(one_up)),
                "unclamped, that input is a NaN -- which is the bug being clamped");
-    CHECK_NEAR(acosUnit(one_up), 0.0, 0.0, "one ulp past 1 reads 0 deg");
-    CHECK_NEAR(acosUnit(one_dn), std::numbers::pi, 0.0, "one ulp past -1 reads 180 deg");
-    CHECK_NEAR(acosUnit(2.0), 0.0, 0.0, "so does a cosine that is simply out of range");
-    CHECK_NEAR(acosUnit(-2.0), std::numbers::pi, 0.0, "and its mirror");
+    CHECK_REL(acosUnit(one_up), 0.0, 0.0, "one ulp past 1 reads 0 deg");
+    CHECK_REL(acosUnit(one_dn), std::numbers::pi, 0.0, "one ulp past -1 reads 180 deg");
+    CHECK_REL(acosUnit(2.0), 0.0, 0.0, "so does a cosine that is simply out of range");
+    CHECK_REL(acosUnit(-2.0), std::numbers::pi, 0.0, "and its mirror");
     /* An infinity is out of range and comparisons DO hold on it, so it clamps. The
        contrast with NaN below is the whole of #622. */
     const double inf = std::numeric_limits<double>::infinity();
-    CHECK_NEAR(acosUnit(inf), 0.0, 0.0, "an infinite cosine clamps to 0 deg");
-    CHECK_NEAR(acosUnit(-inf), std::numbers::pi, 0.0, "and to 180 on the other side");
+    CHECK_REL(acosUnit(inf), 0.0, 0.0, "an infinite cosine clamps to 0 deg");
+    CHECK_REL(acosUnit(-inf), std::numbers::pi, 0.0, "and to 180 on the other side");
 }
 
 /* --- the function is the one it claims to be --------------------------------- */
 static void test_the_angle_itself() {
     printf("== the angle, not its complement or its sine ==\n");
     const double pi = std::numbers::pi;
-    CHECK_NEAR(acosUnit(1.0), 0.0, 0.0, "cos 1 -> 0");
-    CHECK_NEAR(acosUnit(0.0), pi / 2.0, 1e-12, "cos 0 -> 90 deg");
-    CHECK_NEAR(acosUnit(0.5), pi / 3.0, 1e-12, "cos 0.5 -> 60 deg");
-    CHECK_NEAR(acosUnit(-0.5), 2.0 * pi / 3.0, 1e-12, "cos -0.5 -> 120 deg");
-    CHECK_NEAR(acosUnit(-1.0), pi, 0.0, "cos -1 -> 180 deg");
+    CHECK_REL(acosUnit(1.0), 0.0, 0.0, "cos 1 -> 0");
+    CHECK_REL(acosUnit(0.0), pi / 2.0, 1e-12, "cos 0 -> 90 deg");
+    CHECK_REL(acosUnit(0.5), pi / 3.0, 1e-12, "cos 0.5 -> 60 deg");
+    CHECK_REL(acosUnit(-0.5), 2.0 * pi / 3.0, 1e-12, "cos -0.5 -> 120 deg");
+    CHECK_REL(acosUnit(-1.0), pi, 0.0, "cos -1 -> 180 deg");
     for(const double x : {0.3, -0.7, 0.999999}) {
-        CHECK_NEAR(std::cos(acosUnit(x)), x, 1e-12, "cos(acosUnit(x)) round-trips in range");
+        CHECK_REL(std::cos(acosUnit(x)), x, 1e-12, "cos(acosUnit(x)) round-trips in range");
     }
     /* Monotone: a smaller cosine is a bigger angle, so a sign slip is visible. */
     CHECK_TRUE(acosUnit(0.9) < acosUnit(0.1), "the angle rises as the cosine falls");
@@ -98,16 +77,16 @@ static void test_the_angle_itself() {
 static void test_the_sine_twin() {
     printf("== asinUnit: the same law, the other inverse ==\n");
     const double pi = std::numbers::pi;
-    CHECK_NEAR(asinUnit(std::nextafter(1.0, 2.0)), pi / 2.0, 1e-12,
+    CHECK_REL(asinUnit(std::nextafter(1.0, 2.0)), pi / 2.0, 1e-12,
                "one ulp past 1 reads 90 deg, not NaN (render.cpp's navball pitch)");
-    CHECK_NEAR(asinUnit(std::nextafter(-1.0, -2.0)), -pi / 2.0, 1e-12, "and -90 on the mirror");
-    CHECK_NEAR(asinUnit(0.0), 0.0, 0.0, "sin 0 -> 0");
-    CHECK_NEAR(asinUnit(0.5), pi / 6.0, 1e-12, "sin 0.5 -> 30 deg");
-    CHECK_NEAR(asinUnit(-0.5), -pi / 6.0, 1e-12, "sin -0.5 -> -30 deg");
+    CHECK_REL(asinUnit(std::nextafter(-1.0, -2.0)), -pi / 2.0, 1e-12, "and -90 on the mirror");
+    CHECK_REL(asinUnit(0.0), 0.0, 0.0, "sin 0 -> 0");
+    CHECK_REL(asinUnit(0.5), pi / 6.0, 1e-12, "sin 0.5 -> 30 deg");
+    CHECK_REL(asinUnit(-0.5), -pi / 6.0, 1e-12, "sin -0.5 -> -30 deg");
     for(const double x : {0.3, -0.7, 0.999999}) {
         /* Complements: catches one of the two being the wrong inverse while the
            other still looks right. */
-        CHECK_NEAR(acosUnit(x) + asinUnit(x), pi / 2.0, 1e-12,
+        CHECK_REL(acosUnit(x) + asinUnit(x), pi / 2.0, 1e-12,
                    "acosUnit(x) and asinUnit(x) make a right angle");
     }
     CHECK_TRUE(asinUnit(-0.9) < asinUnit(0.1), "asin rises with its argument as acos falls");
@@ -127,7 +106,7 @@ static void test_a_nan_walks_through() {
        put a NaN at an end of acos' range. A hand-written (c < -1 ? -1 : ...)
        clamp does not -- NaN fails both comparisons -- and the mutation battery
        shows the pin set cannot tell that spelling from std::clamp, correctly. */
-    CHECK_NEAR(std::fmax(nan, -1.0), -1.0, 0.0, "std::fmax would rescue a NaN, which is why it stays out of acosUnit");
+    CHECK_REL(std::fmax(nan, -1.0), -1.0, 0.0, "std::fmax would rescue a NaN, which is why it stays out of acosUnit");
     CHECK_TRUE(!std::isnan(acosUnit(0.0)), "the finite neighbour of that NaN is fine");
 }
 
@@ -138,7 +117,7 @@ static void test_the_laundering_step() {
     /* availableAccelAlong()'s shape: cos(max(0, off - cone)). std::max keeps its
        first argument unless the second is strictly greater, and nothing is greater
        than NaN, so the NaN angle becomes 0 rad, i.e. "the ask is dead ahead". */
-    CHECK_NEAR(std::cos(std::max(0.0, acosUnit(nan) - 0.0)), 1.0, 0.0,
+    CHECK_REL(std::cos(std::max(0.0, acosUnit(nan) - 0.0)), 1.0, 0.0,
                "std::max(0.0, NaN) is 0.0, so the share reads 1.0: full thrust along nothing");
     CHECK_TRUE(!(std::fabs(nan) > 1.0),
                "and a range gate waves a NaN through too: fabs(NaN) > 1 is false");

@@ -24,31 +24,7 @@
 
 #include "insolation.h"   // starFromBody / subsolarLonLat / skyAtPlace (#724)
 #include "solar.h"
-
-static int g_failures = 0;
-static int g_checks = 0;
-
-#define CHECK_TRUE(cond, msg)                                                 \
-    do {                                                                      \
-        g_checks++;                                                           \
-        if (!(cond)) {                                                        \
-            g_failures++;                                                     \
-            printf("FAIL: %s\n", msg);                                        \
-        }                                                                     \
-    } while (0)
-
-#define CHECK_NEAR(actual, expected, rel_tol, msg)                            \
-    do {                                                                      \
-        g_checks++;                                                           \
-        double _a = (actual), _e = (expected);                                \
-        const double _tol = (_e == 0.0) ? rel_tol                             \
-                                        : rel_tol * std::fabs(_e);            \
-        if (!std::isfinite(_a) || !std::isfinite(_e)                          \
-            || std::fabs(_a - _e) > _tol) {                                   \
-            g_failures++;                                                     \
-            printf("FAIL: %s (got %.9g, want %.9g)\n", msg, _a, _e);         \
-        }                                                                     \
-    } while (0)
+#include "tchecks.h"
 
 /* Sol's authored radius (utils/rss/html/sunfact.html) and the temperature
    utils/make_solar_system.py authors from Earth's irradiance row -- the number now
@@ -86,11 +62,11 @@ int main() {
     };
     for(const Row &r : rows) {
         const double s = solarFlux(L, r.a);
-        CHECK_NEAR(s, r.flux, r.tol, r.name);
+        CHECK_REL(s, r.flux, r.tol, r.name);
         /* The /4 (intercept pi r^2, radiate 4 pi r^2) and the BOND albedo are the
            corpus's convention, not ours: this lands on every sheet's own row. */
         const double bb = blackbodyTemperature(s, r.albedo);
-        CHECK_NEAR(bb, r.bb, r.tol, r.name);
+        CHECK_REL(bb, r.bb, r.tol, r.name);
     }
 
     /* The shipped KSP system: Kerbol's authored temperature is the inversion of
@@ -99,7 +75,7 @@ int main() {
        is the wiki's semimajor axis (utils/ksp_bodies.csv). The wiki's own Kerbol
        range -- 4014.95 - 9621.2 K -- would put ~5,500 W/m^2 on a world built like
        Earth, and the generator prints that disagreement rather than resolving it. */
-    CHECK_NEAR(solarFlux(starLuminosity(261600000.0, 2838.1), 13599840256.0),
+    CHECK_REL(solarFlux(starLuminosity(261600000.0, 2838.1), 13599840256.0),
                1361.0, 0.005, "Kerbin receives Earth's sun");
 
     /* Pluto, spelled out instead of parked at a 20 % tolerance (a band that wide would
@@ -108,7 +84,7 @@ int main() {
        irradiance with no albedo at all (36.9 K). The sheet contradicts itself, the
        generator waives the pair in writing (FACT_SURFACE_KNOWN), and this pins OUR side
        tightly so a moved albedo still trips it. */
-    CHECK_NEAR(blackbodyTemperature(solarFlux(L, 5.905e12), 0.720), 32.2,
+    CHECK_REL(blackbodyTemperature(solarFlux(L, 5.905e12), 0.720), 32.2,
                0.01, "Pluto: the figure the waiver argues about");
 
     /* ---- the shipped data, not a copy of it -------------------------------------- */
@@ -141,7 +117,7 @@ int main() {
                 }
             }
         }
-        CHECK_NEAR(T, p.temp_K, 1e-6, p.path);
+        CHECK_REL(T, p.temp_K, 1e-6, p.path);
     }
 
     /* ---- the spread of one star's light ----------------------------------------- */
@@ -149,20 +125,20 @@ int main() {
        factor 3 apart differ by 9, whatever the star. */
     const double near_flux = solarFlux(L, 1.0e11);
     const double far_flux  = solarFlux(L, 3.0e11);
-    CHECK_NEAR(near_flux / far_flux, 9.0, 1e-12, "flux follows 1/d^2");
+    CHECK_REL(near_flux / far_flux, 9.0, 1e-12, "flux follows 1/d^2");
 
     /* No star, no flux -- and NOT a zero distance with a zero flux, which a caller
        would print as a real reading. */
-    CHECK_NEAR(solarFlux(0.0, 1.0e11), 0.0, 0.0, "no star gives no flux");
+    CHECK_REL(solarFlux(0.0, 1.0e11), 0.0, 0.0, "no star gives no flux");
     /* A distance below the module's own floor is "no answer", not an enormous one:
        both entry points have to agree about that, or a direct solarFlux call returns a
        finite flux that sunSample would have called invalid. */
-    CHECK_NEAR(solarFlux(L, kSunMinDistance_m / 10.0), 0.0, 0.0,
+    CHECK_REL(solarFlux(L, kSunMinDistance_m / 10.0), 0.0, 0.0,
                "a zero distance is not a reading");
     {
         const SunSample ss = sunSample(0.0, glm::dvec3(0.0), glm::dvec3(1.0e10, 0, 0));
         CHECK_TRUE(!ss.valid, "a dark star gives an invalid sample");
-        CHECK_NEAR(ss.flux, 0.0, 0.0, "and no flux to mistake for a reading");
+        CHECK_REL(ss.flux, 0.0, 0.0, "and no flux to mistake for a reading");
     }
     {
         const SunSample at = sunSample(L, glm::dvec3(0.0), glm::dvec3(0.0));
@@ -171,29 +147,29 @@ int main() {
     {
         const SunSample ss = sunSample(L, glm::dvec3(0.0), glm::dvec3(0.0, 2.0e11, 0.0));
         CHECK_TRUE(ss.valid, "a point off the star samples the star");
-        CHECK_NEAR(ss.dist_m, 2.0e11, 1e-12, "distance is measured to the star");
+        CHECK_REL(ss.dist_m, 2.0e11, 1e-12, "distance is measured to the star");
         /* to_sun points FROM the point TO the star, so from +Y it is -Y. */
-        CHECK_NEAR(ss.to_sun.y, -1.0, 1e-12, "to_sun points back at the star");
-        CHECK_NEAR(ss.to_sun.x, 0.0, 1e-12, "and carries no other component");
+        CHECK_REL(ss.to_sun.y, -1.0, 1e-12, "to_sun points back at the star");
+        CHECK_REL(ss.to_sun.x, 0.0, 1e-12, "and carries no other component");
     }
 
     /* ---- what a surface collects -------------------------------------------- */
     const glm::dvec3 up(0.0, 0.0, 1.0);
-    CHECK_NEAR(incidentFlux(1000.0, up, up), 1000.0, 1e-12,
+    CHECK_REL(incidentFlux(1000.0, up, up), 1000.0, 1e-12,
                "facing the beam collects all of it");
-    CHECK_NEAR(incidentFlux(1000.0, up, glm::dvec3(1.0, 0.0, 0.0)), 0.0, 0.0,
+    CHECK_REL(incidentFlux(1000.0, up, glm::dvec3(1.0, 0.0, 0.0)), 0.0, 0.0,
                "edge-on collects nothing");
-    CHECK_NEAR(incidentFlux(1000.0, up, -up), 0.0, 0.0,
+    CHECK_REL(incidentFlux(1000.0, up, -up), 0.0, 0.0,
                "a night side collects nothing, not a negative heating");
-    CHECK_NEAR(incidentFlux(1000.0, up, glm::normalize(glm::dvec3(0.0, 1.0, 1.0))),
+    CHECK_REL(incidentFlux(1000.0, up, glm::normalize(glm::dvec3(0.0, 1.0, 1.0))),
                1000.0 * std::sqrt(0.5), 1e-12, "the cosine, not the angle");
 
     /* ---- the horizon -------------------------------------------------------- */
-    CHECK_NEAR(sunElevation(up, up), std::numbers::pi / 2.0, 1e-12,
+    CHECK_REL(sunElevation(up, up), std::numbers::pi / 2.0, 1e-12,
                "overhead is +90 deg");
-    CHECK_NEAR(sunElevation(up, -up), -std::numbers::pi / 2.0, 1e-12,
+    CHECK_REL(sunElevation(up, -up), -std::numbers::pi / 2.0, 1e-12,
                "below the feet is -90 deg");
-    CHECK_NEAR(sunElevation(up, glm::dvec3(1.0, 0.0, 0.0)), 0.0, 1e-12,
+    CHECK_REL(sunElevation(up, glm::dvec3(1.0, 0.0, 0.0)), 0.0, 1e-12,
                "on the horizon is 0");
     /* A non-unit `up` (a hull at a body's exact centre) must not answer NaN. */
     CHECK_TRUE(std::isfinite(sunElevation(glm::dvec3(0.0, 0.0, 0.3), up)),
@@ -213,11 +189,11 @@ int main() {
        (#744's lesson: compose the law so it answers the safe value). It answers 0.0, and the
        caller dashes. Deleting the albedoAuthored test here aborts the test binary on the
        assert, which is the same abort a player would get mapping Minmus as a temperature. */
-    CHECK_NEAR(derivedBlackbody_K(1361.0, kAlbedoUnauthored), 0.0, 0.0,
+    CHECK_REL(derivedBlackbody_K(1361.0, kAlbedoUnauthored), 0.0, 0.0,
                "an unauthored albedo derives no temperature");
-    CHECK_NEAR(derivedBlackbody_K(0.0, 0.3), 0.0, 0.0,
+    CHECK_REL(derivedBlackbody_K(0.0, 0.3), 0.0, 0.0,
                "no light in range derives no temperature either");
-    CHECK_NEAR(derivedBlackbody_K(1361.0, 0.294), 255.1, 2e-3,
+    CHECK_REL(derivedBlackbody_K(1361.0, 0.294), 255.1, 2e-3,
                "Kerbin's own light and albedo do, at the ~255 K #687 reported");
     CHECK_TRUE(derivedBlackbody_K(1361.0, 0.0) > 0.0,
                "a body that reflects nothing still derives a temperature (it is the hot case)");
@@ -233,7 +209,7 @@ int main() {
         const StarFromBody east = starFromBody(glm::dvec3(0.0),
                                                glm::dvec3(5.0e9, 0.0, 0.0), ident);
         CHECK_TRUE(east.valid, "a star 5e9 m away is placeable");
-        CHECK_NEAR(east.to_sun.x, 1.0, 1e-12, "identity frame: root +X is +X");
+        CHECK_REL(east.to_sun.x, 1.0, 1e-12, "identity frame: root +X is +X");
 
         /* The transpose is the whole module in one line: root_orient carries the ROTATING
            axes into root axes, so a star sitting at root +X, seen through a +90 deg turn
@@ -244,24 +220,24 @@ int main() {
             glm::dmat4(1.0), std::numbers::pi / 2.0, glm::dvec3(0.0, 1.0, 0.0)));
         const StarFromBody turned = starFromBody(glm::dvec3(0.0),
                                                  glm::dvec3(5.0e9, 0.0, 0.0), quarter);
-        CHECK_NEAR(turned.to_sun.z, 1.0, 1e-12, "the frame step goes the other way");
+        CHECK_REL(turned.to_sun.z, 1.0, 1e-12, "the frame step goes the other way");
         double noon_lon = 0.0, noon_lat = 0.0;
         subsolarLonLat(turned, noon_lon, noon_lat);
-        CHECK_NEAR(noon_lon, 3.0 * std::numbers::pi / 2.0, 1e-12,
+        CHECK_REL(noon_lon, 3.0 * std::numbers::pi / 2.0, 1e-12,
                    "a quarter turn moves local noon to lon 270");
-        CHECK_NEAR(noon_lat, 0.0, 1e-12, "a star in the equatorial plane is over the equator");
+        CHECK_REL(noon_lat, 0.0, 1e-12, "a star in the equatorial plane is over the equator");
 
         /* Local noon is defined by what a plate collects, so the two halves of the module
            have to agree at the point they name. */
         const SkyAtZenith noon = skyAtPlace(turned, noon_lon, noon_lat);
         CHECK_TRUE(noon.valid, "the subsolar point has a reading");
-        CHECK_NEAR(noon.cos_inc, 1.0, 1e-12, "local noon collects the whole beam");
-        CHECK_NEAR(noon.elev_rad, std::numbers::pi / 2.0, 1e-12,
+        CHECK_REL(noon.cos_inc, 1.0, 1e-12, "local noon collects the whole beam");
+        CHECK_REL(noon.elev_rad, std::numbers::pi / 2.0, 1e-12,
                    "and at noon the star is overhead");
         const SkyAtZenith anti = skyAtPlace(turned, noon_lon + std::numbers::pi,
                                             noon_lat);
-        CHECK_NEAR(anti.cos_inc, 0.0, 1e-12, "the far side collects nothing");
-        CHECK_NEAR(anti.elev_rad, -std::numbers::pi / 2.0, 1e-12,
+        CHECK_REL(anti.cos_inc, 0.0, 1e-12, "the far side collects nothing");
+        CHECK_REL(anti.elev_rad, -std::numbers::pi / 2.0, 1e-12,
                    "and the star is underfoot, not skipped");
         CHECK_TRUE(anti.valid, "night is a reading, not an absence");
 
@@ -271,13 +247,13 @@ int main() {
            passes the whole suite while every elev and flat in the log saturates. */
         const SkyAtZenith far = skyAtZenith(east, 3.7e6 * east.to_sun);
         CHECK_TRUE(far.valid, "a hull 3700 km up has a horizon");
-        CHECK_NEAR(far.cos_inc, 1.0, 1e-12, "a long zenith is the same direction");
-        CHECK_NEAR(far.elev_rad, std::numbers::pi / 2.0, 1e-12,
+        CHECK_REL(far.cos_inc, 1.0, 1e-12, "a long zenith is the same direction");
+        CHECK_REL(far.elev_rad, std::numbers::pi / 2.0, 1e-12,
                    "and reads overhead, not clamped-from-below");
         const SkyAtZenith tilted = skyAtZenith(east, 3.7e6 * glm::dvec3(1.0, 1.0, 0.0));
-        CHECK_NEAR(tilted.cos_inc, std::sqrt(0.5), 1e-12,
+        CHECK_REL(tilted.cos_inc, std::sqrt(0.5), 1e-12,
                    "the cosine comes from the direction, not the length");
-        CHECK_NEAR(tilted.elev_rad, std::numbers::pi / 4.0, 1e-12,
+        CHECK_REL(tilted.elev_rad, std::numbers::pi / 4.0, 1e-12,
                    "and so does the elevation");
 
         /* The daily mean a redistribution model will one day multiply: sweeping longitude
@@ -288,7 +264,7 @@ int main() {
         for(int i = 0; i < n; i++) {
             sum += skyAtPlace(east, 2.0 * std::numbers::pi * i / n, 0.0).cos_inc;
         }
-        CHECK_NEAR(sum / n, 1.0 / std::numbers::pi, 1e-5,
+        CHECK_REL(sum / n, 1.0 / std::numbers::pi, 1e-5,
                    "the daily mean cosine is 1/pi");
 
         /* SEASONS, pinned before anything uses them. A body tilted by theta, seen from a
@@ -314,11 +290,11 @@ int main() {
             if(std::fabs(dlat) > max_dec) { max_dec = std::fabs(dlat); }
         }
         CHECK_TRUE(!out_of_tropics, "the star never leaves the tropics");
-        CHECK_NEAR(max_dec, tilt, 1e-3, "the solstices reach the tilt itself");
+        CHECK_REL(max_dec, tilt, 1e-3, "the solstices reach the tilt itself");
         double eq_lon = 0.0, eq_lat = 1.0;
         subsolarLonLat(starFromBody(glm::dvec3(0.0), glm::dvec3(5.0e9, 0.0, 0.0), tipped),
                        eq_lon, eq_lat);
-        CHECK_NEAR(eq_lat, 0.0, 1e-12,
+        CHECK_REL(eq_lat, 0.0, 1e-12,
                    "with the star in the equatorial plane, the tilt moves no seasons");
 
         /* Absences, which are the reason the log dashes instead of printing 0. */
@@ -339,9 +315,9 @@ int main() {
         CHECK_TRUE(skyAtZenith(east, glm::dvec3(kNoHorizon_m * 2.0, 0.0, 0.0)).valid,
                    "and just above it, it is");
         const SkyAtZenith edge = skyAtZenith(east, glm::dvec3(0.0, 1.0, 0.0));
-        CHECK_NEAR(edge.elev_rad, 0.0, 1e-12, "on the horizon reads zero, not NaN");
+        CHECK_REL(edge.elev_rad, 0.0, 1e-12, "on the horizon reads zero, not NaN");
         CHECK_TRUE(edge.valid, "dusk is a reading");
-        CHECK_NEAR(edge.cos_inc, 0.0, 1e-12, "and a horizon collects nothing");
+        CHECK_REL(edge.cos_inc, 0.0, 1e-12, "and a horizon collects nothing");
 
         /* The clock's row, lifted out of the UI so it can be pinned at all (#741 is the
            end-to-end half). Local noon is at the subsolar longitude, east-positive means

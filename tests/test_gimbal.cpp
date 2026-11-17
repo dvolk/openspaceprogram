@@ -24,35 +24,7 @@
 #include <glm/gtc/quaternion.hpp>
 
 #include "gimbal.h"
-
-static int g_failures = 0;
-static int g_checks = 0;
-
-#define CHECK_TRUE(cond, msg)                                                 \
-    do {                                                                      \
-        g_checks++;                                                           \
-        if (!(cond)) {                                                        \
-            g_failures++;                                                     \
-            printf("FAIL: %s\n", msg);                                        \
-        }                                                                     \
-    } while (0)
-
-#define CHECK_NEAR(actual, expected, rel_tol, msg)                            \
-    do {                                                                      \
-        g_checks++;                                                           \
-        double _a = (actual), _e = (expected);                                \
-        /* Relative, except at an expectation of exactly zero (#510):              \
-           rel_tol * 0.0 would demand bit-exactness, which is not what a           \
-           caller writing 1e-12 means. 0.0 AS a tolerance stays exact, so          \
-           a bit-identical pin keeps its teeth. */                                 \
-        const double _tol = (_e == 0.0) ? rel_tol                                  \
-                                        : rel_tol * std::fabs(_e);                 \
-        if (!std::isfinite(_a) || !std::isfinite(_e)                              \
-            || std::fabs(_a - _e) > _tol) {                                       \
-            g_failures++;                                                     \
-            printf("FAIL: %s (got %.9g, want %.9g)\n", msg, _a, _e);          \
-        }                                                                     \
-    } while (0)
+#include "tchecks.h"
 
 static void checkVec(const glm::dvec3 &a, const glm::dvec3 &e, double tol,
                      const char *msg) {
@@ -93,7 +65,7 @@ static void test_dir_closed_form() {
              "pitch-then-yaw about local X then local Y");
     // Unit length at a large deflection.
     const glm::dvec3 big = gimbalDir(ident(), 0.7853981633974483, 0.7853981633974483);
-    CHECK_NEAR(glm::length(big), 1.0, 1e-12, "45 deg/45 deg stays unit");
+    CHECK_REL(glm::length(big), 1.0, 1e-12, "45 deg/45 deg stays unit");
     // Mirror symmetry in each angle.
     checkVec(gimbalDir(ident(), -p, y),
              glm::dvec3(want.x, -want.y, want.z), 1e-12, "pitch mirrors");
@@ -149,9 +121,9 @@ static void test_rot() {
     const double p = 0.3, y = 0.2;
     const glm::dmat3 sw = gimbalRot(rot, p, y);
     checkVec(sw[2], gimbalDir(rot, p, y), 1e-12, "frame +Z == gimbalDir exactly");
-    CHECK_NEAR(glm::length(sw[0]), 1.0, 1e-12, "swung local X stays unit");
-    CHECK_NEAR(glm::length(sw[1]), 1.0, 1e-12, "swung local Y stays unit");
-    CHECK_NEAR(glm::dot(sw[0], sw[1]), 0.0, 1e-12, "swung axes stay perpendicular");
+    CHECK_REL(glm::length(sw[0]), 1.0, 1e-12, "swung local X stays unit");
+    CHECK_REL(glm::length(sw[1]), 1.0, 1e-12, "swung local Y stays unit");
+    CHECK_REL(glm::dot(sw[0], sw[1]), 0.0, 1e-12, "swung axes stay perpendicular");
     checkVec(glm::cross(sw[0], sw[1]), sw[2], 1e-12, "right-handed: x x y == z");
     // The swing happens ABOUT the part's own axes: at tiny pitch the frame's
     // +Z tips toward -its own +Y (the same first-order fact as gimbalDir).
@@ -169,11 +141,11 @@ static void test_targets() {
     // (the closed form of gimbalDir read backwards).
     double out[2];
     gimbalTargets(ident(), glm::dvec3(0.0, -g, 0.0), out);
-    CHECK_NEAR(out[0], g, 1e-12, "lateral -up -> pitch +g");
-    CHECK_NEAR(out[1], 0.0, 0.0, "pure pitch lateral -> no yaw");
+    CHECK_REL(out[0], g, 1e-12, "lateral -up -> pitch +g");
+    CHECK_REL(out[1], 0.0, 0.0, "pure pitch lateral -> no yaw");
     gimbalTargets(ident(), glm::dvec3(g, 0.0, 0.0), out);
-    CHECK_NEAR(out[0], 0.0, 0.0, "pure yaw lateral -> no pitch");
-    CHECK_NEAR(out[1], g, 1e-12, "lateral +right -> yaw +g");
+    CHECK_REL(out[0], 0.0, 0.0, "pure yaw lateral -> no pitch");
+    CHECK_REL(out[1], g, 1e-12, "lateral +right -> yaw +g");
 
     // The point of the shared vector: for an engine in ANY rolled or reversed
     // attitude, the first-order deviation gimbalDir achieves (dir - authored
@@ -202,8 +174,8 @@ static void test_step() {
     const double rate = 1.5708;                   // 90 deg/s
     // One 20 ms step: exactly rate * h toward each target, one side each.
     gimbalStep(cur, target, rate, 0.02);
-    CHECK_NEAR(cur[0], 1.5708 * 0.02, 1e-12, "positive side steps +rate*h");
-    CHECK_NEAR(cur[1], -1.5708 * 0.02, 1e-12, "negative side steps -rate*h");
+    CHECK_REL(cur[0], 1.5708 * 0.02, 1e-12, "positive side steps +rate*h");
+    CHECK_REL(cur[1], -1.5708 * 0.02, 1e-12, "negative side steps -rate*h");
     // Monotone toward the target while far.
     double prev0 = cur[0], prev1 = cur[1];
     for(int i = 0; i < 20; i++) {
@@ -215,15 +187,15 @@ static void test_step() {
     }
     // Arrives exactly and never overshoots.
     gimbalStep(cur, target, rate, 10.0);
-    CHECK_NEAR(cur[0], target[0], 0.0, "lands on the positive target exactly");
-    CHECK_NEAR(cur[1], target[1], 0.0, "lands on the negative target exactly");
+    CHECK_REL(cur[0], target[0], 0.0, "lands on the positive target exactly");
+    CHECK_REL(cur[1], target[1], 0.0, "lands on the negative target exactly");
     // Recenters with the same bound (the engine-off case).
     const double zero[2] = {0.0, 0.0};
     gimbalStep(cur, zero, rate, 0.02);
-    CHECK_NEAR(cur[0], target[0] - rate * 0.02, 1e-12, "recenters at rate*h");
+    CHECK_REL(cur[0], target[0] - rate * 0.02, 1e-12, "recenters at rate*h");
     gimbalStep(cur, zero, rate, 100.0);
-    CHECK_NEAR(cur[0], 0.0, 0.0, "recenter lands on zero exactly");
-    CHECK_NEAR(cur[1], 0.0, 0.0, "recenter lands on zero exactly (neg side)");
+    CHECK_REL(cur[0], 0.0, 0.0, "recenter lands on zero exactly");
+    CHECK_REL(cur[1], 0.0, 0.0, "recenter lands on zero exactly (neg side)");
 }
 
 static void test_torque() {
@@ -235,13 +207,13 @@ static void test_torque() {
     checkVec(tau, glm::cross(rel, dir * 50000.0), 1e-9, "tau == rel x T*dir");
     // A centered, ungimballed engine on the stack axis: no torque at all.
     const glm::dvec3 axial = gimbalTorque(rel, 50000.0, glm::dvec3(0.0, 0.0, 1.0));
-    CHECK_NEAR(glm::length(axial), 0.0, 1e-9, "axial thrust through the lever gives no torque");
+    CHECK_REL(glm::length(axial), 0.0, 1e-9, "axial thrust through the lever gives no torque");
     // Zero thrust, no torque.
-    CHECK_NEAR(glm::length(gimbalTorque(rel, 0.0, dir)), 0.0, 0.0, "no thrust -> no torque");
+    CHECK_REL(glm::length(gimbalTorque(rel, 0.0, dir)), 0.0, 0.0, "no thrust -> no torque");
     // Small-angle authority grows linearly with the angle.
     const double t1 = glm::length(gimbalTorque(rel, 50000.0, gimbalDir(ident(), 0.01, 0.0)));
     const double t2 = glm::length(gimbalTorque(rel, 50000.0, gimbalDir(ident(), 0.02, 0.0)));
-    CHECK_NEAR(t2 / t1, 2.0, 1e-4, "torque ~ sin(angle): linear at small angles");
+    CHECK_REL(t2 / t1, 2.0, 1e-4, "torque ~ sin(angle): linear at small angles");
 }
 
 static void test_split() {
@@ -284,7 +256,7 @@ static void test_split() {
     // Bigger transverse than TVC can take: TVC fills to tvcMax, the wheels
     // absorb the shortfall; nothing is dropped, nothing doubles.
     tvcSplit(glm::dvec3(10000.0, 0.0, 3000.0), Z, tvcMax, heff, tauW, lat);
-    CHECK_NEAR(glm::length(lat), tvcMax / heff, 1e-12, "TVC saturates at tvcMax");
+    CHECK_REL(glm::length(lat), tvcMax / heff, 1e-12, "TVC saturates at tvcMax");
     checkVec(tauW, glm::dvec3(10000.0 - tvcMax, 0.0, 3000.0), 1e-9,
              "wheels take the transverse shortfall AND the roll");
 
@@ -294,7 +266,7 @@ static void test_split() {
     // 2.29 N m -- so the saturation must stay per line and the roll arrive
     // undiluted.
     tvcSplit(glm::dvec3(10000.0, 0.0, 9000.0), Z, tvcMax, heff, tauW, lat);
-    CHECK_NEAR(glm::length(lat), tvcMax / heff, 1e-12, "TVC share unchanged by a big roll");
+    CHECK_REL(glm::length(lat), tvcMax / heff, 1e-12, "TVC share unchanged by a big roll");
     checkVec(tauW, glm::dvec3(10000.0 - tvcMax, 0.0, 9000.0), 1e-9,
              "a saturated transverse line does not spend the roll line (#420)");
 
@@ -312,15 +284,15 @@ static void test_split() {
     // over -- actuatorSolve with no rows is what applies nothing, and
     // tests/test_authority.cpp pins that half.
     tvcSplit(glm::dvec3(1000.0, 0.0, 1000.0), Z, 0.0, 0.0, tauW, lat);
-    CHECK_NEAR(glm::length(lat), 0.0, 0.0, "no hardware -> no TVC aim");
+    CHECK_REL(glm::length(lat), 0.0, 0.0, "no hardware -> no TVC aim");
     checkVec(tauW, glm::dvec3(1000.0, 0.0, 1000.0), 1e-12,
              "no hardware -> the split still only splits");
 
     // Zero command, and the aligned-everything guards: quiet, no NaN.
     tvcSplit(glm::dvec3(0.0), Z, tvcMax, heff, tauW, lat);
-    CHECK_NEAR(glm::length(tauW) + glm::length(lat), 0.0, 0.0, "zero command -> quiet");
+    CHECK_REL(glm::length(tauW) + glm::length(lat), 0.0, 0.0, "zero command -> quiet");
     tvcSplit(glm::dvec3(2000.0, 0.0, 0.0), Z, tvcMax, 0.0, tauW, lat);
-    CHECK_NEAR(glm::length(lat), 0.0, 0.0, "heff 0 (engines at COM height) -> all wheels");
+    CHECK_REL(glm::length(lat), 0.0, 0.0, "heff 0 (engines at COM height) -> all wheels");
     checkVec(tauW, glm::dvec3(2000.0, 0.0, 0.0), 1e-12, "heff 0 -> wheels take all");
 
     // A tilted stack axis still splits along ITS roll, not world Z.

@@ -32,28 +32,7 @@
 
 #include "actuators.h"    // ActuatorRow: the row this container was built for
 #include "inlinevec.h"
-
-static int g_failures = 0;
-static int g_checks = 0;
-
-#define CHECK_TRUE(cond, msg)                                                 \
-    do {                                                                      \
-        g_checks++;                                                           \
-        if (!(cond)) {                                                        \
-            g_failures++;                                                     \
-            printf("FAIL: %s\n", msg);                                        \
-        }                                                                     \
-    } while (0)
-
-#define CHECK_NEAR(actual, expected, rel_tol, msg)                            \
-    do {                                                                      \
-        g_checks++;                                                           \
-        const double a_ = (actual), e_ = (expected);                          \
-        if(!(std::fabs(a_ - e_) <= rel_tol * std::fabs(e_) + 1e-12)) {        \
-            g_failures++;                                                     \
-            printf("FAIL: %s -- got %.6g, want %.6g\n", msg, a_, e_);         \
-        }                                                                     \
-    } while (0)
+#include "tchecks.h"
 
 /* "No allocation" is an internal claim, so pin its observable cause: the storage
    is inside the object. sizeof catches a slot_ that moved out of the object. */
@@ -72,7 +51,7 @@ static void test_the_common_case_stays_inside_the_object() {
     CHECK_TRUE(v.size() == 8, "push_back reaches the inline limit exactly");
     CHECK_TRUE(inside(v), "and never left the object");
     CHECK_TRUE(v.capacity() == 8, "still no heap capacity");
-    CHECK_NEAR(v[3].limit, 3.0, 0.0, "indexing reads the row that was pushed");
+    CHECK_REL(v[3].limit, 3.0, 0.0, "indexing reads the row that was pushed");
 }
 
 static void test_overflow_is_an_answer_not_a_cliff() {
@@ -100,7 +79,7 @@ static void test_refilling_a_row_set_costs_nothing() {
     CHECK_TRUE(v.data() == before, "clear() did not move the storage");
     for(int k = 0; k < 6; k++) { v.push_back({ glm::dvec3(0.0, 1.0, 0.0), double(k) }); }
     CHECK_TRUE(v.data() == before, "the rebuild lands in the SAME memory (#668's point)");
-    CHECK_NEAR(v[5].limit, 5.0, 0.0, "and the new rows are the ones that are there");
+    CHECK_REL(v[5].limit, 5.0, 0.0, "and the new rows are the ones that are there");
 }
 
 static void test_it_is_still_a_value() {
@@ -109,20 +88,20 @@ static void test_it_is_still_a_value() {
     InlineVec<ActuatorRow, 3> b(a);          // inline copy
     CHECK_TRUE(b.size() == 2 && b.data() != a.data(), "a copy owns its own inline slots");
     b[0].limit = 99.0;
-    CHECK_NEAR(a[0].limit, 10.0, 0.0, "mutating the copy cannot reach the original");
+    CHECK_REL(a[0].limit, 10.0, 0.0, "mutating the copy cannot reach the original");
 
     InlineVec<ActuatorRow, 3> c;
     for(int k = 0; k < 9; k++) { c.push_back({ glm::dvec3(1.0, 0.0, 0.0), double(k) }); }
     InlineVec<ActuatorRow, 3> d(c);          // heap copy
     CHECK_TRUE(d.size() == 9 && d.data() != c.data(), "a heap copy is a separate buffer");
     d[8].limit = -1.0;
-    CHECK_NEAR(c[8].limit, 8.0, 0.0, "and the original keeps its own answer");
+    CHECK_REL(c[8].limit, 8.0, 0.0, "and the original keeps its own answer");
     c = d;                                   // heap assign over a heap buffer
     CHECK_TRUE(c.size() == 9 && c[8].limit == -1.0, "assignment copies the rows across");
 
     InlineVec<ActuatorRow, 3> moved(std::move(d));
     CHECK_TRUE(moved.size() == 9 && d.empty(), "a move takes the rows and leaves nothing");
-    CHECK_NEAR(moved[0].limit, 0.0, 0.0, "intact");
+    CHECK_REL(moved[0].limit, 0.0, 0.0, "intact");
     d.push_back({ glm::dvec3(0.0, 1.0, 0.0), 7.0 });
     CHECK_TRUE(d.size() == 1 && moved.size() == 9, "the moved-from vector is usable again");
 }
@@ -139,15 +118,15 @@ static void test_the_stl_consumers_still_read_it() {
     rows.insert(rows.end(), wheels.begin(), wheels.end());
     rows.insert(rows.end(), surfaces.begin(), surfaces.end());
     CHECK_TRUE(rows.size() == 3, "both row sets reached the concatenated vector");
-    CHECK_NEAR(actuatorTorqueAbout(rows, glm::dvec3(0.0, 0.0, 1.0)), 200.0, 1e-12,
+    CHECK_REL(actuatorTorqueAbout(rows, glm::dvec3(0.0, 0.0, 1.0)), 200.0, 1e-12,
                "the solver sees the wheel row about its own axis");
     /* And the same helper asked of the InlineVec directly: actuators.h takes any
        row container, which is how the authority rows reach it without a copy. */
-    CHECK_NEAR(actuatorTorqueAbout(wheels, glm::dvec3(1.0, 0.0, 0.0)), 200.0, 1e-12,
+    CHECK_REL(actuatorTorqueAbout(wheels, glm::dvec3(1.0, 0.0, 0.0)), 200.0, 1e-12,
                "actuatorTorqueAbout reads the inline rows in place");
     double sum = 0.0;
     for(const ActuatorRow &r : surfaces) { sum += r.limit; }
-    CHECK_NEAR(sum, 50.0, 0.0, "range-for walks exactly the live rows");
+    CHECK_REL(sum, 50.0, 0.0, "range-for walks exactly the live rows");
 }
 
 int main() {

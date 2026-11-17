@@ -77,35 +77,7 @@
 #include "cli.h"      // GameArgs (the shipped --physics-hz default)
 #include "physics.h"
 #include "timestep.h"  // substepCount() -- the tick loop's substep plan
-
-static int g_failures = 0;
-static int g_checks = 0;
-
-#define CHECK_TRUE(cond, msg)                                                  \
-    do {                                                                       \
-        g_checks++;                                                            \
-        if (!(cond)) {                                                         \
-            g_failures++;                                                      \
-            printf("FAIL: %s\n", msg);                                         \
-        }                                                                      \
-    } while (0)
-
-#define CHECK_NEAR(actual, expected, rel_tol, msg)                             \
-    do {                                                                       \
-        g_checks++;                                                            \
-        double _a = (actual), _e = (expected);                                 \
-        /* Relative, except at an expectation of exactly zero (#510):              \
-           rel_tol * 0.0 would demand bit-exactness, which is not what a           \
-           caller writing 1e-12 means. 0.0 AS a tolerance stays exact, so          \
-           a bit-identical pin keeps its teeth. */                                 \
-        const double _tol = (_e == 0.0) ? rel_tol                                  \
-                                        : rel_tol * std::fabs(_e);                 \
-        if (!std::isfinite(_a) || !std::isfinite(_e)                              \
-            || std::fabs(_a - _e) > _tol) {                                       \
-            g_failures++;                                                      \
-            printf("FAIL: %s (got %.9g, want %.9g)\n", msg, _a, _e);           \
-        }                                                                      \
-    } while (0)
+#include "tchecks.h"
 
 struct RunResult {
     bool converged;
@@ -331,9 +303,9 @@ static void test_inertia_and_angvel_readers() {
         // Reads back exactly the shape-derived inertia (a unit box is
         // 2m/3 about every axis) -- not a default/identity tensor.
         const glm::dvec3 I = getInertiaDiag(&b);
-        CHECK_NEAR(I.x, I0.getX(), 1e-9, "getInertiaDiag x == shape I_x");
-        CHECK_NEAR(I.y, I0.getY(), 1e-9, "getInertiaDiag y == shape I_y");
-        CHECK_NEAR(I.z, I0.getZ(), 1e-9, "getInertiaDiag z == shape I_z");
+        CHECK_REL(I.x, I0.getX(), 1e-9, "getInertiaDiag x == shape I_x");
+        CHECK_REL(I.y, I0.getY(), 1e-9, "getInertiaDiag y == shape I_y");
+        CHECK_REL(I.z, I0.getZ(), 1e-9, "getInertiaDiag z == shape I_z");
         CHECK_TRUE(!(I == glm::dvec3(1.0, 1.0, 1.0)),
                    "inertia must not be the identity tensor");
 
@@ -341,17 +313,17 @@ static void test_inertia_and_angvel_readers() {
         // track a mass change and stay linear in it -- still not the identity.
         b.mass = m1;
         const glm::dvec3 Ih = getInertiaDiag(&b);
-        CHECK_NEAR(Ih.x, 0.5 * I0.getX(), 1e-9, "I_x(m/2) == 0.5 * I_x(m)");
-        CHECK_NEAR(Ih.y, 0.5 * I0.getY(), 1e-9, "I_y(m/2) == 0.5 * I_y(m)");
-        CHECK_NEAR(Ih.z, 0.5 * I0.getZ(), 1e-9, "I_z(m/2) == 0.5 * I_z(m)");
+        CHECK_REL(Ih.x, 0.5 * I0.getX(), 1e-9, "I_x(m/2) == 0.5 * I_x(m)");
+        CHECK_REL(Ih.y, 0.5 * I0.getY(), 1e-9, "I_y(m/2) == 0.5 * I_y(m)");
+        CHECK_REL(Ih.z, 0.5 * I0.getZ(), 1e-9, "I_z(m/2) == 0.5 * I_z(m)");
 
         // The law reads the body's angular velocity every substep; the
         // reader must round-trip exactly.
         rb->setAngularVelocity(btVector3(1.0, 2.0, 3.0));
         const glm::dvec3 w = GetAngVelocity(&b);
-        CHECK_NEAR(w.x, 1.0, 1e-9, "GetAngVelocity x round-trip");
-        CHECK_NEAR(w.y, 2.0, 1e-9, "GetAngVelocity y round-trip");
-        CHECK_NEAR(w.z, 3.0, 1e-9, "GetAngVelocity z round-trip");
+        CHECK_REL(w.x, 1.0, 1e-9, "GetAngVelocity x round-trip");
+        CHECK_REL(w.y, 2.0, 1e-9, "GetAngVelocity y round-trip");
+        CHECK_REL(w.z, 3.0, 1e-9, "GetAngVelocity z round-trip");
     } // b's destructor deletes rb
 }
 
@@ -439,12 +411,12 @@ static void test_torque_delivery() {
         snprintf(buf, sizeof buf,
                  "NEW pattern ta=%g: delivered w == tau/I*T (%.1f rad/s)",
                  ta, w_full);
-        CHECK_NEAR(w_new, w_full, 1e-3, buf);
+        CHECK_REL(w_new, w_full, 1e-3, buf);
 
         snprintf(buf, sizeof buf,
                  "OLD pattern ta=%g: delivered w == tau/I*T/n (%.1f rad/s) "
                  "[harness must see the 1/n loss]", ta, w_full / n);
-        CHECK_NEAR(w_old, w_full / n, 1e-3, buf);
+        CHECK_REL(w_old, w_full / n, 1e-3, buf);
 
         snprintf(buf, sizeof buf,
                  "ta=%g: new pattern delivers the FULL torque (old lost %d-1 of %d substeps)",

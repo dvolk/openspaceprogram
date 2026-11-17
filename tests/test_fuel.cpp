@@ -47,35 +47,7 @@
 #include <vector>
 
 #include "vehicle.h"   // Vehicle + PartDef + ResourceContent (inline)
-
-static int g_failures = 0;
-static int g_checks = 0;
-
-#define CHECK_TRUE(cond, msg)                                                  \
-    do {                                                                       \
-        g_checks++;                                                            \
-        if (!(cond)) {                                                         \
-            g_failures++;                                                      \
-            printf("FAIL: %s\n", msg);                                         \
-        }                                                                      \
-    } while (0)
-
-#define CHECK_NEAR(actual, expected, rel_tol, msg)                             \
-    do {                                                                       \
-        g_checks++;                                                            \
-        double _a = (actual), _e = (expected);                                 \
-        /* Relative, except at an expectation of exactly zero (#510):              \
-           rel_tol * 0.0 would demand bit-exactness, which is not what a           \
-           caller writing 1e-12 means. 0.0 AS a tolerance stays exact, so          \
-           a bit-identical pin keeps its teeth. */                                 \
-        const double _tol = (_e == 0.0) ? rel_tol                                  \
-                                        : rel_tol * std::fabs(_e);                 \
-        if (!std::isfinite(_a) || !std::isfinite(_e)                              \
-            || std::fabs(_a - _e) > _tol) {                                       \
-            g_failures++;                                                      \
-            printf("FAIL: %s (got %.9g, want %.9g)\n", msg, _a, _e);           \
-        }                                                                      \
-    } while (0)
+#include "tchecks.h"
 
 /* A hand-built ship. `defs` must outlive the Vehicle (Part::def points
    into it). A deque, not a vector: push_back on a vector reallocates and
@@ -186,12 +158,12 @@ static void test_prorata_in_group() {
     for(int i = 0; i < 3; i++) {
         char buf[64];
         snprintf(buf, sizeof buf, "tank %d drained 30 (pro-rata in group)", i);
-        CHECK_NEAR(tanks[i]->resources.current[(int)ResourceType::Hydrogen],
+        CHECK_REL(tanks[i]->resources.current[(int)ResourceType::Hydrogen],
                    70.0, 1e-5, buf);
         snprintf(buf, sizeof buf, "tank %d's effective mass shed its 30 kg", i);
-        CHECK_NEAR(tanks[i]->effectiveMass(), 270.0, 1e-5, buf);
+        CHECK_REL(tanks[i]->effectiveMass(), 270.0, 1e-5, buf);
     }
-    CHECK_NEAR(t0->resources.current[(int)ResourceType::LOX], 100.0, 1e-6,
+    CHECK_REL(t0->resources.current[(int)ResourceType::LOX], 100.0, 1e-6,
                "LOX untouched by the H2 draw");
     destroyShip(s);
 }
@@ -211,9 +183,9 @@ static void test_prorata_unequal() {
 
     CHECK_TRUE(s.v->consumeResourceMass(ResourceType::Hydrogen, 30.0f, eng),
                "consume 30 kg from 200 + 100 kg tanks");
-    CHECK_NEAR(big->resources.current[(int)ResourceType::Hydrogen], 180.0, 1e-5,
+    CHECK_REL(big->resources.current[(int)ResourceType::Hydrogen], 180.0, 1e-5,
                "big tank drained 20 (200 -> 180)");
-    CHECK_NEAR(small->resources.current[(int)ResourceType::Hydrogen], 90.0, 1e-5,
+    CHECK_REL(small->resources.current[(int)ResourceType::Hydrogen], 90.0, 1e-5,
                "small tank drained 10 (100 -> 90)");
     destroyShip(s);
 }
@@ -242,17 +214,17 @@ static void test_barrier_splits_groups() {
     /* engineA drains only tankA (NOT tankB, across the wall). */
     CHECK_TRUE(s.v->consumeResourceMass(ResourceType::Hydrogen, 50.0f, engA),
                "engineA draws 50 kg from its own group");
-    CHECK_NEAR(tankA->resources.current[(int)ResourceType::Hydrogen], 50.0, 1e-5,
+    CHECK_REL(tankA->resources.current[(int)ResourceType::Hydrogen], 50.0, 1e-5,
                "tankA drained 50");
-    CHECK_NEAR(tankB->resources.current[(int)ResourceType::Hydrogen], 100.0, 1e-6,
+    CHECK_REL(tankB->resources.current[(int)ResourceType::Hydrogen], 100.0, 1e-6,
                "tankB untouched (the barrier blocks the draw)");
 
     /* engineB drains only tankB (NOT tankA). */
     CHECK_TRUE(s.v->consumeResourceMass(ResourceType::Hydrogen, 30.0f, engB),
                "engineB draws 30 kg from its own group");
-    CHECK_NEAR(tankB->resources.current[(int)ResourceType::Hydrogen], 70.0, 1e-5,
+    CHECK_REL(tankB->resources.current[(int)ResourceType::Hydrogen], 70.0, 1e-5,
                "tankB drained 30");
-    CHECK_NEAR(tankA->resources.current[(int)ResourceType::Hydrogen], 50.0, 1e-6,
+    CHECK_REL(tankA->resources.current[(int)ResourceType::Hydrogen], 50.0, 1e-6,
                "tankA unchanged by engineB's draw");
     destroyShip(s);
 }
@@ -270,9 +242,9 @@ static void test_stranded_fuel() {
 
     CHECK_TRUE(s.v->consumeResourceMass(ResourceType::Hydrogen, 100.0f, eng),
                "group-covered flow fires");
-    CHECK_NEAR(t0->resources.current[(int)ResourceType::Hydrogen], 10.0, 1e-5,
+    CHECK_REL(t0->resources.current[(int)ResourceType::Hydrogen], 10.0, 1e-5,
                "tank 0 drained 50");
-    CHECK_NEAR(t1->resources.current[(int)ResourceType::Hydrogen], 10.0, 1e-5,
+    CHECK_REL(t1->resources.current[(int)ResourceType::Hydrogen], 10.0, 1e-5,
                "tank 1 drained 50");
     destroyShip(s);
 }
@@ -290,11 +262,11 @@ static void test_insufficient_total() {
 
     CHECK_TRUE(!s.v->consumeResourceMass(ResourceType::Hydrogen, 130.0f, eng),
                "flow above the group total is refused");
-    CHECK_NEAR(t0->resources.current[(int)ResourceType::Hydrogen], 60.0, 1e-6,
+    CHECK_REL(t0->resources.current[(int)ResourceType::Hydrogen], 60.0, 1e-6,
                "tank 0 untouched");
-    CHECK_NEAR(t1->resources.current[(int)ResourceType::Hydrogen], 60.0, 1e-6,
+    CHECK_REL(t1->resources.current[(int)ResourceType::Hydrogen], 60.0, 1e-6,
                "tank 1 untouched");
-    CHECK_NEAR(t0->effectiveMass(), 220.0, 1e-6, "tank 0 effective mass untouched");
+    CHECK_REL(t0->effectiveMass(), 220.0, 1e-6, "tank 0 effective mass untouched");
     destroyShip(s);
 }
 
@@ -311,9 +283,9 @@ static void test_full_drain() {
 
     CHECK_TRUE(s.v->consumeResourceMass(ResourceType::Hydrogen, 100.0f, eng),
                "consuming exactly the group total is allowed");
-    CHECK_NEAR(t0->resources.current[(int)ResourceType::Hydrogen], 0.0, 1e-9,
+    CHECK_REL(t0->resources.current[(int)ResourceType::Hydrogen], 0.0, 1e-9,
                "tank 0 empty");
-    CHECK_NEAR(t1->resources.current[(int)ResourceType::Hydrogen], 0.0, 1e-9,
+    CHECK_REL(t1->resources.current[(int)ResourceType::Hydrogen], 0.0, 1e-9,
                "tank 1 empty");
     CHECK_TRUE(t0->resources.current[(int)ResourceType::Hydrogen] >= 0.0f,
                "no negative contents (float rounding)");
@@ -346,7 +318,7 @@ static void test_repeated_draws_stay_symmetric() {
     for(int i = 0; i < 3; i++) {
         char buf[64];
         snprintf(buf, sizeof buf, "tank %d still in step (100 -> 260/3)", i);
-        CHECK_NEAR(tanks[i]->resources.current[(int)ResourceType::Hydrogen],
+        CHECK_REL(tanks[i]->resources.current[(int)ResourceType::Hydrogen],
                    260.0 / 3.0, 1e-5, buf);
     }
     destroyShip(s);
@@ -370,17 +342,17 @@ static void test_fuel_link_one_way() {
     /* Engine A drains tankB (linked source, dist 1) first, then tankA (dist 0). */
     CHECK_TRUE(s.v->consumeResourceMass(ResourceType::Hydrogen, 50.0f, engA),
                "engine A draws 50 kg");
-    CHECK_NEAR(tankB->resources.current[(int)ResourceType::Hydrogen], 50.0, 1e-5,
+    CHECK_REL(tankB->resources.current[(int)ResourceType::Hydrogen], 50.0, 1e-5,
                "tankB drained 50 (linked source, drained first)");
-    CHECK_NEAR(tankA->resources.current[(int)ResourceType::Hydrogen], 100.0, 1e-6,
+    CHECK_REL(tankA->resources.current[(int)ResourceType::Hydrogen], 100.0, 1e-6,
                "tankA untouched (own group, drained second)");
 
     /* Drain 80 more: tankB has 50 left (drains fully), then tankA drains 30. */
     CHECK_TRUE(s.v->consumeResourceMass(ResourceType::Hydrogen, 80.0f, engA),
                "engine A draws 80 kg");
-    CHECK_NEAR(tankB->resources.current[(int)ResourceType::Hydrogen], 0.0, 1e-9,
+    CHECK_REL(tankB->resources.current[(int)ResourceType::Hydrogen], 0.0, 1e-9,
                "tankB empty");
-    CHECK_NEAR(tankA->resources.current[(int)ResourceType::Hydrogen], 70.0, 1e-5,
+    CHECK_REL(tankA->resources.current[(int)ResourceType::Hydrogen], 70.0, 1e-5,
                "tankA drained 30");
     destroyShip(s);
 }
@@ -405,29 +377,29 @@ static void test_fuel_link_two_hop() {
     /* Engine A drains C (dist 2), then B (dist 1), then A (dist 0). */
     CHECK_TRUE(s.v->consumeResourceMass(ResourceType::Hydrogen, 50.0f, engA),
                "engine A draws 50 kg");
-    CHECK_NEAR(tankC->resources.current[(int)ResourceType::Hydrogen], 50.0, 1e-5,
+    CHECK_REL(tankC->resources.current[(int)ResourceType::Hydrogen], 50.0, 1e-5,
                "tankC drained 50 (furthest, drained first)");
-    CHECK_NEAR(tankB->resources.current[(int)ResourceType::Hydrogen], 100.0, 1e-6,
+    CHECK_REL(tankB->resources.current[(int)ResourceType::Hydrogen], 100.0, 1e-6,
                "tankB untouched");
-    CHECK_NEAR(tankA->resources.current[(int)ResourceType::Hydrogen], 100.0, 1e-6,
+    CHECK_REL(tankA->resources.current[(int)ResourceType::Hydrogen], 100.0, 1e-6,
                "tankA untouched");
 
     /* Drain 120 more: C has 50 left (drains fully), then B drains 70. */
     CHECK_TRUE(s.v->consumeResourceMass(ResourceType::Hydrogen, 120.0f, engA),
                "engine A draws 120 kg");
-    CHECK_NEAR(tankC->resources.current[(int)ResourceType::Hydrogen], 0.0, 1e-9,
+    CHECK_REL(tankC->resources.current[(int)ResourceType::Hydrogen], 0.0, 1e-9,
                "tankC empty");
-    CHECK_NEAR(tankB->resources.current[(int)ResourceType::Hydrogen], 30.0, 1e-5,
+    CHECK_REL(tankB->resources.current[(int)ResourceType::Hydrogen], 30.0, 1e-5,
                "tankB drained 70");
-    CHECK_NEAR(tankA->resources.current[(int)ResourceType::Hydrogen], 100.0, 1e-6,
+    CHECK_REL(tankA->resources.current[(int)ResourceType::Hydrogen], 100.0, 1e-6,
                "tankA untouched");
 
     /* Drain 120 more: B has 30 left (drains fully), then A drains 90. */
     CHECK_TRUE(s.v->consumeResourceMass(ResourceType::Hydrogen, 120.0f, engA),
                "engine A draws 120 kg");
-    CHECK_NEAR(tankB->resources.current[(int)ResourceType::Hydrogen], 0.0, 1e-9,
+    CHECK_REL(tankB->resources.current[(int)ResourceType::Hydrogen], 0.0, 1e-9,
                "tankB empty");
-    CHECK_NEAR(tankA->resources.current[(int)ResourceType::Hydrogen], 10.0, 1e-5,
+    CHECK_REL(tankA->resources.current[(int)ResourceType::Hydrogen], 10.0, 1e-5,
                "tankA drained 90");
     destroyShip(s);
 }
@@ -453,22 +425,22 @@ static void test_fuel_link_star_symmetric() {
     /* 60 kg off the {B,C} layer (both at dist 1): 30 each, A untouched. */
     CHECK_TRUE(s.v->consumeResourceMass(ResourceType::Hydrogen, 60.0f, engA),
                "engine A draws 60 kg");
-    CHECK_NEAR(tankB->resources.current[(int)ResourceType::Hydrogen], 70.0, 1e-5,
+    CHECK_REL(tankB->resources.current[(int)ResourceType::Hydrogen], 70.0, 1e-5,
                "tankB drained 30 (pro-rata with its sibling arm)");
-    CHECK_NEAR(tankC->resources.current[(int)ResourceType::Hydrogen], 70.0, 1e-5,
+    CHECK_REL(tankC->resources.current[(int)ResourceType::Hydrogen], 70.0, 1e-5,
                "tankC drained 30 (pro-rata with its sibling arm)");
-    CHECK_NEAR(tankA->resources.current[(int)ResourceType::Hydrogen], 100.0, 1e-6,
+    CHECK_REL(tankA->resources.current[(int)ResourceType::Hydrogen], 100.0, 1e-6,
                "tankA untouched (own group is the last layer)");
 
     /* 150 more: the {B,C} layer has 70+70 left -- BOTH drain to empty,
        70 each, in step -- then the {A} layer takes the final 10. */
     CHECK_TRUE(s.v->consumeResourceMass(ResourceType::Hydrogen, 150.0f, engA),
                "engine A draws 150 kg");
-    CHECK_NEAR(tankB->resources.current[(int)ResourceType::Hydrogen], 0.0, 1e-9,
+    CHECK_REL(tankB->resources.current[(int)ResourceType::Hydrogen], 0.0, 1e-9,
                "tankB empty (drained with its sibling, not before it)");
-    CHECK_NEAR(tankC->resources.current[(int)ResourceType::Hydrogen], 0.0, 1e-9,
+    CHECK_REL(tankC->resources.current[(int)ResourceType::Hydrogen], 0.0, 1e-9,
                "tankC empty (drained with its sibling)");
-    CHECK_NEAR(tankA->resources.current[(int)ResourceType::Hydrogen], 90.0, 1e-5,
+    CHECK_REL(tankA->resources.current[(int)ResourceType::Hydrogen], 90.0, 1e-5,
                "tankA drained 10 (own group, last)");
     destroyShip(s);
 }
@@ -510,7 +482,7 @@ static void test_draw_bills_what_left_the_tanks() {
     double was[7];
     for(int i = 0; i < 7; i++) { was[i] = layer[i]->resources.current[H]; before += was[i]; }
     const double amt = s.v->availableResourceMass(ResourceType::Hydrogen, eng);
-    CHECK_NEAR(amt, before, 1e-9, "the engine sees every kg of its single layer");
+    CHECK_REL(amt, before, 1e-9, "the engine sees every kg of its single layer");
     const Vehicle::FuelDraw d = s.v->consumeResourceMass(ResourceType::Hydrogen, amt, eng);
     CHECK_TRUE(d.ok, "a draw of exactly what the ship holds is not refused");
     /* Sum the drops TANK BY TANK. Measured difference, not (sum before) - (sum after):
@@ -524,7 +496,7 @@ static void test_draw_bills_what_left_the_tanks() {
                "WITNESS only: these seven still round short in this parts order (if it goes "
                "red the fixture stopped being a rounding witness -- the pin below is the one "
                "with teeth)");
-    CHECK_NEAR(d.drawn, drop, 0.0, "the report is the kg that left, not the kg asked for");
+    CHECK_REL(d.drawn, drop, 0.0, "the report is the kg that left, not the kg asked for");
     destroyShip(s);
 
     /* The other half of the fix: that shortfall belongs to the NEXT layer and is not
@@ -552,7 +524,7 @@ static void test_draw_bills_what_left_the_tanks() {
     CHECK_TRUE(nearDrop >= 50.0,
                "WITNESS only: the near layer covered at least its planned 50 kg (the far "
                "layer rounds short in THIS parts order -- see the note above the fixture)");
-    CHECK_NEAR(farDrop + nearDrop, ask, 0.0, "the two layers shed exactly what was asked");
+    CHECK_REL(farDrop + nearDrop, ask, 0.0, "the two layers shed exactly what was asked");
     destroyShip(s2);
 }
 
@@ -577,64 +549,64 @@ static void test_fuel_link_dual_chain() {
     /* 50 kg off the {C,D} layer (both at dist 2): 25 each, nothing else. */
     CHECK_TRUE(s.v->consumeResourceMass(ResourceType::Hydrogen, 50.0f, engA),
                "engine A draws 50 kg");
-    CHECK_NEAR(tankC->resources.current[(int)ResourceType::Hydrogen], 75.0, 1e-5,
+    CHECK_REL(tankC->resources.current[(int)ResourceType::Hydrogen], 75.0, 1e-5,
                "tankC drained 25 (pro-rata with D, furthest layer)");
-    CHECK_NEAR(tankD->resources.current[(int)ResourceType::Hydrogen], 75.0, 1e-5,
+    CHECK_REL(tankD->resources.current[(int)ResourceType::Hydrogen], 75.0, 1e-5,
                "tankD drained 25 (pro-rata with C)");
-    CHECK_NEAR(tankB->resources.current[(int)ResourceType::Hydrogen], 100.0, 1e-6,
+    CHECK_REL(tankB->resources.current[(int)ResourceType::Hydrogen], 100.0, 1e-6,
                "tankB untouched (its layer is next)");
-    CHECK_NEAR(tankE->resources.current[(int)ResourceType::Hydrogen], 100.0, 1e-6,
+    CHECK_REL(tankE->resources.current[(int)ResourceType::Hydrogen], 100.0, 1e-6,
                "tankE untouched (its layer is next)");
-    CHECK_NEAR(tankA->resources.current[(int)ResourceType::Hydrogen], 100.0, 1e-6,
+    CHECK_REL(tankA->resources.current[(int)ResourceType::Hydrogen], 100.0, 1e-6,
                "tankA untouched (own group, last layer)");
 
     /* 150 more: the {C,D} layer (150 left) drains fully -- 75 each, in
        step -- B, E and A untouched. */
     CHECK_TRUE(s.v->consumeResourceMass(ResourceType::Hydrogen, 150.0f, engA),
                "engine A draws 150 kg");
-    CHECK_NEAR(tankC->resources.current[(int)ResourceType::Hydrogen], 0.0, 1e-9,
+    CHECK_REL(tankC->resources.current[(int)ResourceType::Hydrogen], 0.0, 1e-9,
                "tankC empty");
-    CHECK_NEAR(tankD->resources.current[(int)ResourceType::Hydrogen], 0.0, 1e-9,
+    CHECK_REL(tankD->resources.current[(int)ResourceType::Hydrogen], 0.0, 1e-9,
                "tankD empty (with C, not C first)");
-    CHECK_NEAR(tankB->resources.current[(int)ResourceType::Hydrogen], 100.0, 1e-6,
+    CHECK_REL(tankB->resources.current[(int)ResourceType::Hydrogen], 100.0, 1e-6,
                "tankB untouched (its layer is next)");
-    CHECK_NEAR(tankE->resources.current[(int)ResourceType::Hydrogen], 100.0, 1e-6,
+    CHECK_REL(tankE->resources.current[(int)ResourceType::Hydrogen], 100.0, 1e-6,
                "tankE untouched (its layer is next)");
 
     /* 100 more: the {B,E} layer (100 left): 50 each, A untouched. */
     CHECK_TRUE(s.v->consumeResourceMass(ResourceType::Hydrogen, 100.0f, engA),
                "engine A draws 100 kg");
-    CHECK_NEAR(tankB->resources.current[(int)ResourceType::Hydrogen], 50.0, 1e-5,
+    CHECK_REL(tankB->resources.current[(int)ResourceType::Hydrogen], 50.0, 1e-5,
                "tankB drained 50 (pro-rata with E)");
-    CHECK_NEAR(tankE->resources.current[(int)ResourceType::Hydrogen], 50.0, 1e-5,
+    CHECK_REL(tankE->resources.current[(int)ResourceType::Hydrogen], 50.0, 1e-5,
                "tankE drained 50 (pro-rata with B)");
-    CHECK_NEAR(tankA->resources.current[(int)ResourceType::Hydrogen], 100.0, 1e-6,
+    CHECK_REL(tankA->resources.current[(int)ResourceType::Hydrogen], 100.0, 1e-6,
                "tankA untouched (last layer)");
 
     /* 50 more: {B,E} has 50+50 left -- 25 each, A still untouched. */
     CHECK_TRUE(s.v->consumeResourceMass(ResourceType::Hydrogen, 50.0f, engA),
                "engine A draws 50 kg");
-    CHECK_NEAR(tankB->resources.current[(int)ResourceType::Hydrogen], 25.0, 1e-5,
+    CHECK_REL(tankB->resources.current[(int)ResourceType::Hydrogen], 25.0, 1e-5,
                "tankB drained 25 (pro-rata with E)");
-    CHECK_NEAR(tankE->resources.current[(int)ResourceType::Hydrogen], 25.0, 1e-5,
+    CHECK_REL(tankE->resources.current[(int)ResourceType::Hydrogen], 25.0, 1e-5,
                "tankE drained 25 (pro-rata with B)");
-    CHECK_NEAR(tankA->resources.current[(int)ResourceType::Hydrogen], 100.0, 1e-6,
+    CHECK_REL(tankA->resources.current[(int)ResourceType::Hydrogen], 100.0, 1e-6,
                "tankA untouched (all closer layers still have fuel)");
 
     /* 50 more: B and E drain to empty (25 each). */
     CHECK_TRUE(s.v->consumeResourceMass(ResourceType::Hydrogen, 50.0f, engA),
                "engine A draws 50 kg");
-    CHECK_NEAR(tankB->resources.current[(int)ResourceType::Hydrogen], 0.0, 1e-9,
+    CHECK_REL(tankB->resources.current[(int)ResourceType::Hydrogen], 0.0, 1e-9,
                "tankB empty");
-    CHECK_NEAR(tankE->resources.current[(int)ResourceType::Hydrogen], 0.0, 1e-9,
+    CHECK_REL(tankE->resources.current[(int)ResourceType::Hydrogen], 0.0, 1e-9,
                "tankE empty (with B)");
-    CHECK_NEAR(tankA->resources.current[(int)ResourceType::Hydrogen], 100.0, 1e-6,
+    CHECK_REL(tankA->resources.current[(int)ResourceType::Hydrogen], 100.0, 1e-6,
                "tankA untouched (its layer is last)");
 
     /* 60 more: only the {A} layer has fuel: A drains 60. */
     CHECK_TRUE(s.v->consumeResourceMass(ResourceType::Hydrogen, 60.0f, engA),
                "engine A draws 60 kg");
-    CHECK_NEAR(tankA->resources.current[(int)ResourceType::Hydrogen], 40.0, 1e-5,
+    CHECK_REL(tankA->resources.current[(int)ResourceType::Hydrogen], 40.0, 1e-5,
                "tankA drained 60 (own group, last)");
     destroyShip(s);
 }
@@ -655,9 +627,9 @@ static void test_fuel_link_insufficient() {
     /* Total = 60 (A) + 60 (B) = 120. Request 130: refused. */
     CHECK_TRUE(!s.v->consumeResourceMass(ResourceType::Hydrogen, 130.0f, engA),
                "flow above the total is refused");
-    CHECK_NEAR(tankA->resources.current[(int)ResourceType::Hydrogen], 60.0, 1e-6,
+    CHECK_REL(tankA->resources.current[(int)ResourceType::Hydrogen], 60.0, 1e-6,
                "tankA untouched");
-    CHECK_NEAR(tankB->resources.current[(int)ResourceType::Hydrogen], 60.0, 1e-6,
+    CHECK_REL(tankB->resources.current[(int)ResourceType::Hydrogen], 60.0, 1e-6,
                "tankB untouched");
     destroyShip(s);
 }
@@ -687,15 +659,15 @@ static void test_applythrust_scarcest_limits_burn() {
 
         s.v->ApplyThrust_TESTONLY(50.0);
 
-        CHECK_NEAR(tank->resources.current[(int)ResourceType::LOX], 0.0, 1e-9,
+        CHECK_REL(tank->resources.current[(int)ResourceType::LOX], 0.0, 1e-9,
                    "LOX fully consumed (10 -> 0)");
         /* Lockstep: H2 drained exactly what LOX did (10), NOT the full flow
            (50). The old leaky code drained 50 of H2 and left LOX at 10. */
-        CHECK_NEAR(tank->resources.current[(int)ResourceType::Hydrogen], 90.0, 1e-6,
+        CHECK_REL(tank->resources.current[(int)ResourceType::Hydrogen], 90.0, 1e-6,
                    "H2 drained 10 (lockstep with LOX), not the full 50 (the leak)");
         /* The engine fired at a partial thrust proportional to the 10/50 burn
            (full = 2*1.0*100 = 200 N; 200 * 10/50 = 40 N). */
-        CHECK_NEAR(eng->armedThrust, 40.0, 1e-5, "partial thrust = 200 * (10/50)");
+        CHECK_REL(eng->armedThrust, 40.0, 1e-5, "partial thrust = 200 * (10/50)");
         destroyShip(s);
     }
 
@@ -710,9 +682,9 @@ static void test_applythrust_scarcest_limits_burn() {
 
         s.v->ApplyThrust_TESTONLY(50.0);
 
-        CHECK_NEAR(tank->resources.current[(int)ResourceType::Hydrogen], 0.0, 1e-9,
+        CHECK_REL(tank->resources.current[(int)ResourceType::Hydrogen], 0.0, 1e-9,
                    "H2 fully consumed (10 -> 0)");
-        CHECK_NEAR(tank->resources.current[(int)ResourceType::LOX], 90.0, 1e-6,
+        CHECK_REL(tank->resources.current[(int)ResourceType::LOX], 90.0, 1e-6,
                    "LOX drained 10 (lockstep with H2), not the full 50");
         destroyShip(s);
     }
@@ -728,11 +700,11 @@ static void test_applythrust_scarcest_limits_burn() {
 
         s.v->ApplyThrust_TESTONLY(50.0);
 
-        CHECK_NEAR(tank->resources.current[(int)ResourceType::Hydrogen], 50.0, 1e-6,
+        CHECK_REL(tank->resources.current[(int)ResourceType::Hydrogen], 50.0, 1e-6,
                    "H2 drained the full flow (100 -> 50)");
-        CHECK_NEAR(tank->resources.current[(int)ResourceType::LOX], 50.0, 1e-6,
+        CHECK_REL(tank->resources.current[(int)ResourceType::LOX], 50.0, 1e-6,
                    "LOX drained the full flow (100 -> 50)");
-        CHECK_NEAR(eng->armedThrust, 200.0, 1e-5, "full thrust (both plentiful)");
+        CHECK_REL(eng->armedThrust, 200.0, 1e-5, "full thrust (both plentiful)");
         destroyShip(s);
     }
 }
@@ -759,16 +731,16 @@ static void test_applythrust_unbalanced_tanks() {
         s.v->dv_log_enabled = true;
 
         const double mass0 = s.v->getMass();
-        CHECK_NEAR(mass0, 410.0, 1e-9, "3 dry parts (100 kg) + 100 H2 + 10 LOX");
+        CHECK_REL(mass0, 410.0, 1e-9, "3 dry parts (100 kg) + 100 H2 + 10 LOX");
         s.v->ApplyThrust_TESTONLY(50.0);   /* wants 50 kg of each propellant */
 
-        CHECK_NEAR(loxtank->resources.current[(int)ResourceType::LOX], 0.0, 1e-9,
+        CHECK_REL(loxtank->resources.current[(int)ResourceType::LOX], 0.0, 1e-9,
                    "LOX tank emptied (10 -> 0)");
-        CHECK_NEAR(h2tank->resources.current[(int)ResourceType::Hydrogen], 90.0, 1e-6,
+        CHECK_REL(h2tank->resources.current[(int)ResourceType::Hydrogen], 90.0, 1e-6,
                    "H2 drained 10 in lockstep, not the full 50 (the leak)");
-        CHECK_NEAR(eng->armedThrust, 40.0, 1e-5, "partial thrust = 200 * (10/50)");
-        CHECK_NEAR(s.v->propSpent_, 20.0, 1e-6, "propSpent counts both propellants");
-        CHECK_NEAR(mass0 - s.v->getMass(), 20.0, 1e-5,
+        CHECK_REL(eng->armedThrust, 40.0, 1e-5, "partial thrust = 200 * (10/50)");
+        CHECK_REL(s.v->propSpent_, 20.0, 1e-6, "propSpent counts both propellants");
+        CHECK_REL(mass0 - s.v->getMass(), 20.0, 1e-5,
                    "the ship shed exactly the propellant it booked");
 
         /* Next tick: LOX is gone, so s = 0 -- nothing may be drained (the
@@ -777,10 +749,10 @@ static void test_applythrust_unbalanced_tanks() {
            does), so reset it to see the no-thrust outcome. */
         eng->armedThrust = 0.0f;
         s.v->ApplyThrust_TESTONLY(50.0);
-        CHECK_NEAR(h2tank->resources.current[(int)ResourceType::Hydrogen], 90.0, 1e-6,
+        CHECK_REL(h2tank->resources.current[(int)ResourceType::Hydrogen], 90.0, 1e-6,
                    "no oxidizer: the next tick drains no H2 at all");
-        CHECK_NEAR(s.v->propSpent_, 20.0, 1e-6, "and books no more propellant");
-        CHECK_NEAR(eng->armedThrust, 0.0, 1e-9, "and arms no thrust");
+        CHECK_REL(s.v->propSpent_, 20.0, 1e-6, "and books no more propellant");
+        CHECK_REL(eng->armedThrust, 0.0, 1e-9, "and arms no thrust");
         destroyShip(s);
     }
 
@@ -795,16 +767,16 @@ static void test_applythrust_unbalanced_tanks() {
         s.v->dv_log_enabled = true;
 
         const double mass0 = s.v->getMass();
-        CHECK_NEAR(mass0, 410.0, 1e-9, "3 dry parts (100 kg) + 10 H2 + 100 LOX");
+        CHECK_REL(mass0, 410.0, 1e-9, "3 dry parts (100 kg) + 10 H2 + 100 LOX");
         s.v->ApplyThrust_TESTONLY(50.0);
 
-        CHECK_NEAR(h2tank->resources.current[(int)ResourceType::Hydrogen], 0.0, 1e-9,
+        CHECK_REL(h2tank->resources.current[(int)ResourceType::Hydrogen], 0.0, 1e-9,
                    "H2 tank emptied (10 -> 0)");
-        CHECK_NEAR(loxtank->resources.current[(int)ResourceType::LOX], 90.0, 1e-6,
+        CHECK_REL(loxtank->resources.current[(int)ResourceType::LOX], 90.0, 1e-6,
                    "LOX drained 10 in lockstep, not the full 50");
-        CHECK_NEAR(eng->armedThrust, 40.0, 1e-5, "partial thrust = 200 * (10/50)");
-        CHECK_NEAR(s.v->propSpent_, 20.0, 1e-6, "propSpent counts both propellants");
-        CHECK_NEAR(mass0 - s.v->getMass(), 20.0, 1e-5,
+        CHECK_REL(eng->armedThrust, 40.0, 1e-5, "partial thrust = 200 * (10/50)");
+        CHECK_REL(s.v->propSpent_, 20.0, 1e-6, "propSpent counts both propellants");
+        CHECK_REL(mass0 - s.v->getMass(), 20.0, 1e-5,
                    "the ship shed exactly the propellant it booked");
         destroyShip(s);
     }
@@ -823,16 +795,16 @@ static void test_applythrust_unbalanced_tanks() {
         s.v->dv_log_enabled = true;
 
         const double mass0 = s.v->getMass();
-        CHECK_NEAR(mass0, 410.0, 1e-9, "3 dry parts (100 kg) + 100 H2 + 10 LOX");
+        CHECK_REL(mass0, 410.0, 1e-9, "3 dry parts (100 kg) + 100 H2 + 10 LOX");
         s.v->ApplyThrust_TESTONLY(50.0);
 
-        CHECK_NEAR(h2tank->resources.current[(int)ResourceType::Hydrogen], 90.0, 1e-6,
+        CHECK_REL(h2tank->resources.current[(int)ResourceType::Hydrogen], 90.0, 1e-6,
                    "far H2 layer drained 10 (not the full 50)");
-        CHECK_NEAR(loxtank->resources.current[(int)ResourceType::LOX], 0.0, 1e-9,
+        CHECK_REL(loxtank->resources.current[(int)ResourceType::LOX], 0.0, 1e-9,
                    "near LOX layer drained 10 to empty");
-        CHECK_NEAR(eng->armedThrust, 40.0, 1e-5, "partial thrust = 200 * (10/50)");
-        CHECK_NEAR(s.v->propSpent_, 20.0, 1e-6, "propSpent counts both propellants");
-        CHECK_NEAR(mass0 - s.v->getMass(), 20.0, 1e-5,
+        CHECK_REL(eng->armedThrust, 40.0, 1e-5, "partial thrust = 200 * (10/50)");
+        CHECK_REL(s.v->propSpent_, 20.0, 1e-6, "propSpent counts both propellants");
+        CHECK_REL(mass0 - s.v->getMass(), 20.0, 1e-5,
                    "the ship shed exactly the propellant it booked");
         destroyShip(s);
     }
@@ -853,14 +825,14 @@ static void test_applythrust_unbalanced_tanks() {
         const double mass0 = s.v->getMass();
         s.v->ApplyThrust_TESTONLY(50.0);
 
-        CHECK_NEAR(tank->resources.current[(int)ResourceType::Hydrogen], 90.0, 1e-6,
+        CHECK_REL(tank->resources.current[(int)ResourceType::Hydrogen], 90.0, 1e-6,
                    "shared H2 drained once (10), not once per engine");
-        CHECK_NEAR(tank->resources.current[(int)ResourceType::LOX], 0.0, 1e-9,
+        CHECK_REL(tank->resources.current[(int)ResourceType::LOX], 0.0, 1e-9,
                    "shared LOX emptied by the first engine");
-        CHECK_NEAR(eng1->armedThrust, 40.0, 1e-5, "first engine: partial thrust");
-        CHECK_NEAR(eng2->armedThrust, 0.0, 1e-9, "second engine: empty pool, no thrust");
-        CHECK_NEAR(s.v->propSpent_, 20.0, 1e-6, "the shared draw is booked once");
-        CHECK_NEAR(mass0 - s.v->getMass(), 20.0, 1e-5,
+        CHECK_REL(eng1->armedThrust, 40.0, 1e-5, "first engine: partial thrust");
+        CHECK_REL(eng2->armedThrust, 0.0, 1e-9, "second engine: empty pool, no thrust");
+        CHECK_REL(s.v->propSpent_, 20.0, 1e-6, "the shared draw is booked once");
+        CHECK_REL(mass0 - s.v->getMass(), 20.0, 1e-5,
                    "and shed exactly that");
         destroyShip(s);
     }
@@ -880,11 +852,11 @@ static void test_mass_figure_sees_a_sub_float_ulp_draw() {
 
     const double mass0 = s.v->getMass();
     const double dv0 = s.v->getDeltaV();
-    CHECK_NEAR(mass0, 200200.0, 1e-9, "2 dry parts (100 kg) + 200 t of propellant");
+    CHECK_REL(mass0, 200200.0, 1e-9, "2 dry parts (100 kg) + 200 t of propellant");
 
     CHECK_TRUE(s.v->consumeResourceMass(ResourceType::Hydrogen, 0.001, eng),
                "a 1 g draw fits");
-    CHECK_NEAR(mass0 - s.v->getMass(), 0.001, 1e-6,
+    CHECK_REL(mass0 - s.v->getMass(), 0.001, 1e-6,
                "the mass figure moves by the gram, not by nothing");
     CHECK_TRUE(dv0 - s.v->getDeltaV() > 0.0,
                "delta-v moves too: the propellant inside the log is not quantized");
@@ -900,7 +872,7 @@ static void test_mass_figure_sees_a_sub_float_ulp_draw() {
     initShip(s2);
     CHECK_TRUE(s2.v->consumeResourceMass(ResourceType::Hydrogen, 0.001, eng2),
                "the same 1 g draw fits");
-    CHECK_NEAR(small->resources.current[(int)ResourceType::Hydrogen], 0.999, 1e-13,
+    CHECK_REL(small->resources.current[(int)ResourceType::Hydrogen], 0.999, 1e-13,
                "and it is a double draw, not a float-rounded one");
     destroyShip(s2);
 }
@@ -920,9 +892,9 @@ static void test_applythrust_last_dribble_fits() {
     initShip(s);
 
     s.v->ApplyThrust_TESTONLY(25.0);
-    CHECK_NEAR(tank->resources.current[(int)ResourceType::Hydrogen], 0.0, 1e-9,
+    CHECK_REL(tank->resources.current[(int)ResourceType::Hydrogen], 0.0, 1e-9,
                "the H2 dribble burns instead of being refused");
-    CHECK_NEAR(tank->resources.current[(int)ResourceType::LOX], 0.0, 1e-9,
+    CHECK_REL(tank->resources.current[(int)ResourceType::LOX], 0.0, 1e-9,
                "and so does the LOX one");
     CHECK_TRUE(eng->armedThrust > 0.0, "the engine still fires on the remainder");
     destroyShip(s);
@@ -953,7 +925,7 @@ static void test_force_overlay_recording() {
     s.v->placeShip(glm::dvec3(0.0, 0.0, 1000.0), glm::dmat3(1.0));
 
     s.v->ApplyThrust_TESTONLY(50.0);            // tanks plentiful -> full 200 N
-    CHECK_NEAR(eng->armedThrust, 200.0, 1e-5, "engine armed at full thrust");
+    CHECK_REL(eng->armedThrust, 200.0, 1e-5, "engine armed at full thrust");
     s.v->clearRcs();                            // the tick's own between-substeps clear
     s.v->Command(ShipCmd(RcsNose, +1.0f), true);   // the pod allocates 60 N along +Z
     s.v->recordForceVecs = true;
@@ -980,7 +952,7 @@ static void test_force_overlay_recording() {
                "thrust entries sum to the force Bullet got");
     CHECK_TRUE(glm::length(rcsSum - s.v->lastRcsAch) < 1e-9,
                "rcs entries sum to the achieved RCS force");
-    CHECK_NEAR(glm::length(rcsSum), 60.0, 1e-5, "the pod delivered the demanded 60 N");
+    CHECK_REL(glm::length(rcsSum), 60.0, 1e-5, "the pod delivered the demanded 60 N");
 
     /* A no-command substep emits no entries -- with the REAL per-substep
        boundary (the same beginForceRecordSubstep the tick.cpp loop calls),
@@ -1016,9 +988,9 @@ static void test_force_overlay_recording() {
     s.v->Command(ShipCmd(RcsRight, +1.0f), true);
     s.v->applyControlForces(1.0 / 60.0);
     CHECK_TRUE(s.v->lastForceVecs.empty(), "recording off -> nothing captured");
-    CHECK_NEAR(glm::length(s.v->lastThrustForce), 200.0, 1e-9,
+    CHECK_REL(glm::length(s.v->lastThrustForce), 200.0, 1e-9,
                "the engine still fired (200 N) while unrecorded");
-    CHECK_NEAR(glm::length(s.v->lastRcsAch), 60.0, 1e-5,
+    CHECK_REL(glm::length(s.v->lastRcsAch), 60.0, 1e-5,
                "the pod still fired (60 N) while unrecorded");
     destroyShip(s);
 }
@@ -1058,33 +1030,33 @@ static void test_staged_plan_tracks_a_live_hull() {
         CHECK_TRUE(rows[0].stage == 2 && rows[1].stage == 1, "the walk runs top label down");
         /* The seeding invariant: the plan's first mass is the hull's mass, contents
            and all -- not the def-derived figure an authored build would use. */
-        CHECK_NEAR(rows[0].massStart, s.v->getMass(), 1e-9, "the plan starts at the live mass");
-        CHECK_NEAR(rows[0].massEnd, 600.0, 1e-9, "the booster period ends when ITS tanks run dry");
-        CHECK_NEAR(rows[0].deltaV, 100.0 * std::log(800.0 / 600.0), 1e-9,
+        CHECK_REL(rows[0].massStart, s.v->getMass(), 1e-9, "the plan starts at the live mass");
+        CHECK_REL(rows[0].massEnd, 600.0, 1e-9, "the booster period ends when ITS tanks run dry");
+        CHECK_REL(rows[0].deltaV, 100.0 * std::log(800.0 / 600.0), 1e-9,
                    "booster dv = ve ln(m0/m1) at the live mass");
         CHECK_TRUE(rows[0].engines == 1 && rows[0].drops, "label 2: one engine, and it separates");
-        CHECK_NEAR(rows[1].massStart, 300.0, 1e-9, "the upper period starts after the drop is gone");
-        CHECK_NEAR(rows[1].deltaV, 100.0 * std::log(300.0 / 200.0), 1e-9, "upper dv, same model");
+        CHECK_REL(rows[1].massStart, 300.0, 1e-9, "the upper period starts after the drop is gone");
+        CHECK_REL(rows[1].deltaV, 100.0 * std::log(300.0 / 200.0), 1e-9, "upper dv, same model");
     }
-    CHECK_NEAR(s.v->stagedDeltaV(), 100.0 * std::log(800.0 / 600.0) + 100.0 * std::log(300.0 / 200.0),
+    CHECK_REL(s.v->stagedDeltaV(), 100.0 * std::log(800.0 / 600.0) + 100.0 * std::log(300.0 / 200.0),
                1e-9, "the readout is the sum of the rows");
 
     /* Burn 40 kg out of the lower group: 13% of the fuel, well past the refresh
        band, so the next read re-prices from the tanks as they now stand. */
     CHECK_TRUE(s.v->consumeResourceMass(ResourceType::Hydrogen, 40.0f, engLo),
                "the lower engine draws 40 kg");
-    CHECK_NEAR(s.v->getMass(), 760.0, 1e-9, "the hull is 40 kg lighter");
+    CHECK_REL(s.v->getMass(), 760.0, 1e-9, "the hull is 40 kg lighter");
     const std::vector<StageRow> &burnt = s.v->stagedRows();
-    CHECK_NEAR(burnt[0].massStart, 760.0, 1e-9, "the plan is re-anchored on the lighter hull");
-    CHECK_NEAR(s.v->stagedDeltaV(), 100.0 * std::log(760.0 / 600.0) + 100.0 * std::log(300.0 / 200.0),
+    CHECK_REL(burnt[0].massStart, 760.0, 1e-9, "the plan is re-anchored on the lighter hull");
+    CHECK_REL(s.v->stagedDeltaV(), 100.0 * std::log(760.0 / 600.0) + 100.0 * std::log(300.0 / 200.0),
                1e-9, "burnt propellant leaves the plan");
 
     /* A dribble inside the band keeps the cached answer. That is what the band is
        for, so pin it: an exact-equality here means the vector was not recomputed. */
     const double held = s.v->stagedDeltaV();
     CHECK_TRUE(s.v->consumeResourceMass(ResourceType::Hydrogen, 0.5f, engLo), "draw 0.5 kg");
-    CHECK_NEAR(s.v->getMass(), 759.5, 1e-9, "the hull is 0.5 kg lighter");
-    CHECK_NEAR(s.v->stagedDeltaV(), held, 0.0, "a sub-band dribble keeps the cached plan");
+    CHECK_REL(s.v->getMass(), 759.5, 1e-9, "the hull is 0.5 kg lighter");
+    CHECK_REL(s.v->stagedDeltaV(), held, 0.0, "a sub-band dribble keeps the cached plan");
 
     /* The separation: the dropped parts leave the hull, so the plan must re-key.
        An early version of the cache kept a snapshot that still contained them and
@@ -1093,11 +1065,11 @@ static void test_staged_plan_tracks_a_live_hull() {
         s.v->parts.erase(std::find(s.v->parts.begin(), s.v->parts.end(), gone));
         delete gone;
     }
-    CHECK_NEAR(s.v->getMass(), 300.0, 1e-9, "the lower half is off the hull");
+    CHECK_REL(s.v->getMass(), 300.0, 1e-9, "the lower half is off the hull");
     const std::vector<StageRow> &after = s.v->stagedRows();
     CHECK_TRUE(after.size() == 1, "one label left, one row");
-    CHECK_NEAR(after.front().massStart, s.v->getMass(), 1e-9, "re-keyed: the plan starts at the live mass");
-    CHECK_NEAR(s.v->stagedDeltaV(), 100.0 * std::log(300.0 / 200.0), 1e-9,
+    CHECK_REL(after.front().massStart, s.v->getMass(), 1e-9, "re-keyed: the plan starts at the live mass");
+    CHECK_REL(s.v->stagedDeltaV(), 100.0 * std::log(300.0 / 200.0), 1e-9,
                "and it bills only what the survivor can still reach");
 
     delete pad;

@@ -87,35 +87,7 @@
 
 #include "vehicle.h"   // Vehicle + PartDef + ResourceContent (inline)
 #include "timestep.h"  // kMaxSubStep, which kWheelsCutS deliberately equals
-
-static int g_failures = 0;
-static int g_checks = 0;
-
-#define CHECK_TRUE(cond, msg)                                                  \
-    do {                                                                       \
-        g_checks++;                                                            \
-        if (!(cond)) {                                                         \
-            g_failures++;                                                      \
-            printf("FAIL: %s\n", msg);                                         \
-        }                                                                      \
-    } while (0)
-
-#define CHECK_NEAR(actual, expected, rel_tol, msg)                             \
-    do {                                                                       \
-        g_checks++;                                                            \
-        double _a = (actual), _e = (expected);                                 \
-        /* Relative, except at an expectation of exactly zero (#510):              \
-           rel_tol * 0.0 would demand bit-exactness, which is not what a           \
-           caller writing 1e-12 means. 0.0 AS a tolerance stays exact, so          \
-           a bit-identical pin keeps its teeth. */                                 \
-        const double _tol = (_e == 0.0) ? rel_tol                                  \
-                                        : rel_tol * std::fabs(_e);                 \
-        if (!std::isfinite(_a) || !std::isfinite(_e)                              \
-            || std::fabs(_a - _e) > _tol) {                                       \
-            g_failures++;                                                      \
-            printf("FAIL: %s (got %.9g, want %.9g)\n", msg, _a, _e);           \
-        }                                                                      \
-    } while (0)
+#include "tchecks.h"
 
 /* A hand-built ship. `defs` must outlive the Vehicle (Part::def points
    into it). A deque, not a vector: push_back on a vector reallocates and
@@ -221,14 +193,14 @@ static void test_gate_empty_battery_no_gen() {
     Part *bat = addPowerPart(s, /*draw=*/0.0, /*const=*/0.0, /*gen=*/0.0,
                              /*ec=*/1000.0, /*torque=*/0.0);  // a battery
     initShip(s);
-    CHECK_NEAR(totalEC(s), 1000.0, 1e-9, "battery seeded full at build");
+    CHECK_REL(totalEC(s), 1000.0, 1e-9, "battery seeded full at build");
 
     s.v->drainEC(1000.0);   // run the battery empty
-    CHECK_NEAR(totalEC(s), 0.0, 1e-9, "battery drained empty");
+    CHECK_REL(totalEC(s), 0.0, 1e-9, "battery drained empty");
 
     s.v->powerTick(1.0);
     CHECK_TRUE(!s.v->powered_, "empty battery + no gen -> gated (wheels dead)");
-    CHECK_NEAR(totalEC(s), 0.0, 1e-9, "still empty (nothing to drain)");
+    CHECK_REL(totalEC(s), 0.0, 1e-9, "still empty (nothing to drain)");
     (void)bat;
     destroyShip(s);
 }
@@ -306,14 +278,14 @@ static void test_gate_pays_the_wheels_demand() {
        the mixer never ran. The 0 below is therefore applyRotationForce's clear, not a
        mixer that looked for work and found none -- and wheelDrawWatts() has its own
        power gate, so an unpowered hull bills 0 whatever the record holds. */
-    CHECK_NEAR(s.v->wheelDrawWatts(), 0.0, 1e-9,
+    CHECK_REL(s.v->wheelDrawWatts(), 0.0, 1e-9,
                "a gated drum bills nothing: no rows, no demand, no bill (#642, #648)");
     CHECK_TRUE(glm::length2(s.v->attitudeDelivery().asked) == 0.0,
                "and the #599 record agrees that the mixer saw no ask");
     /* What the gate asks is not the billed figure: the billed figure is the gate's
        own verdict, so reading it back would let the wheels re-arm the substep after
        cutting them. */
-    CHECK_NEAR(s.v->wheelDemandWatts(), 1000.0, 1e-9,
+    CHECK_REL(s.v->wheelDemandWatts(), 1000.0, 1e-9,
                "the cost survives the gate that refused it");
     /* Letting go of the stick is not a power fix: the same hull stays gated. */
     s.v->Command(ShipCmd(Pitch, 0.0f), true);
@@ -359,9 +331,9 @@ static void test_brown_out_latches_then_rearms() {
        single threshold would have chattered at 125 Hz. The store is deliberately
        20 Wh: half of it (10 Wh) sits ABOVE the bank, so the bank is what decides. */
     const double recover_wh = Vehicle::kWheelsRecoverS * 1000.0 / 3600.0;  // 2.78 Wh
-    CHECK_NEAR(Vehicle::kWheelsRecoverS, 10.0, 0.0,
+    CHECK_REL(Vehicle::kWheelsRecoverS, 10.0, 0.0,
                "the hysteresis window is 10 s of commanding");
-    CHECK_NEAR(Vehicle::kWheelsRecoverS / Vehicle::kWheelsCutS, 100.0, 1.0,
+    CHECK_REL(Vehicle::kWheelsRecoverS / Vehicle::kWheelsCutS, 100.0, 1.0,
                "the re-arm bank is 100x the burst the cut asks for, so the cycle is "
                "the power balance's rather than the step rate's");
     int cut = 0;
@@ -371,9 +343,9 @@ static void test_brown_out_latches_then_rearms() {
         cut++;
     }
     CHECK_TRUE(s.v->powered_, "a banked pool brings the wheels back");
-    CHECK_NEAR(totalEC(s), recover_wh, 0.05,
+    CHECK_REL(totalEC(s), recover_wh, 0.05,
                "it re-arms at the recovery margin, not at the first Wh back");
-    CHECK_NEAR(cut * h, recover_wh * 3600.0 / 400.0, 0.02,
+    CHECK_REL(cut * h, recover_wh * 3600.0 / 400.0, 0.02,
                "the cut is one ~25 s drop, not a substep-rate flicker");
     s.v->Command(ShipCmd(Pitch, 0.0f), true);
     destroyShip(s);
@@ -394,11 +366,11 @@ static void test_rails_hop_bills_air_not_drums() {
     s.v->onRails = true;
 
     s.v->powerTick(3600.0);   // one hour in a single hop
-    CHECK_NEAR(totalEC(s), 900.0, 0.5,
+    CHECK_REL(totalEC(s), 900.0, 0.5,
                "an hour of rails costs the 100 Wh of air, not the 1100 Wh of air plus drums");
-    CHECK_NEAR(s.v->wheelDrawWatts(), 0.0, 1e-9,
+    CHECK_REL(s.v->wheelDrawWatts(), 0.0, 1e-9,
                "a railed hull's drums are not engaged, so the readout bills nothing either");
-    CHECK_NEAR(s.v->wheelDemandWatts(), 1000.0, 1e-9,
+    CHECK_REL(s.v->wheelDemandWatts(), 1000.0, 1e-9,
                "while the gate still weighs what those drums would cost");
     CHECK_TRUE(s.v->powered_, "900 Wh left and a 100 W bill is not a brown-out");
 
@@ -406,7 +378,7 @@ static void test_rails_hop_bills_air_not_drums() {
        powerTick), so a hull could leave the rails uncontrolled with a full pool, or
        stay controlled with an empty one. */
     for(int i = 0; i < 12; i++) { s.v->powerTick(3600.0); }
-    CHECK_NEAR(totalEC(s), 0.0, 1e-9, "the pool runs out on the rails");
+    CHECK_REL(totalEC(s), 0.0, 1e-9, "the pool runs out on the rails");
     CHECK_TRUE(s.v->wheels_brown_out_, "and the latch fires there rather than freezing");
     CHECK_TRUE(not s.v->powered_, "so the hull comes off the rails uncontrolled");
     destroyShip(s);
@@ -427,7 +399,7 @@ static void test_rails_step_does_not_move_the_cut() {
     s.v->powerTick(60.0);   // a minute of warp in one hop
     CHECK_TRUE(s.v->powered_,
                "the cut asks for kWheelsCutS of commanding, not for this hop's Wh");
-    CHECK_NEAR(Vehicle::kWheelsCutS, kMaxSubStep, 0.0,
+    CHECK_REL(Vehicle::kWheelsCutS, kMaxSubStep, 0.0,
                "the burst the pool must cover is one max substep -- stated, not inherited");
     destroyShip(s);
 }
@@ -451,14 +423,14 @@ static void test_rails_park_bills_per_hop() {
     s.v->railFrozen = true;                         // parked by a warp landing
 
     s.v->railsTick(0.0, 3600.0);
-    CHECK_NEAR(totalEC(s), 900.0, 0.5,
+    CHECK_REL(totalEC(s), 900.0, 0.5,
                "a frozen park still spends the air, one hop at a time");
     s.v->railsTick(0.0, 0.0);
-    CHECK_NEAR(totalEC(s), 900.0, 1e-9,
+    CHECK_REL(totalEC(s), 900.0, 1e-9,
                "a UI re-home passes step 0: no time passed, so nothing to bill");
     s.v->onRails = false;
     s.v->railsTick(0.0, 3600.0);
-    CHECK_NEAR(totalEC(s), 900.0, 1e-9,
+    CHECK_REL(totalEC(s), 900.0, 1e-9,
                "a hull under physics is billed by the substep loop, never twice");
     CHECK_TRUE(s.v->powered_, "900 of 1000 Wh is no reason to cut the wheels");
     destroyShip(s);
@@ -493,7 +465,7 @@ static void test_brown_out_rearm_backstop() {
         cut++;
     }
     CHECK_TRUE(s.v->powered_, "and it re-arms rather than staying cut forever");
-    CHECK_NEAR(totalEC(s), 0.5 * 3.0, 0.05, "re-armed at half the store");
+    CHECK_REL(totalEC(s), 0.5 * 3.0, 0.05, "re-armed at half the store");
     CHECK_TRUE(totalEC(s) < Vehicle::kWheelsRecoverS * 1000.0 / 3600.0,
                "half a store bound the bank, as it must on a small pool");
     s.v->Command(ShipCmd(Pitch, 0.0f), true);
@@ -510,7 +482,7 @@ static void test_life_support_drains_then_gates() {
     addPowerPart(s, 1000.0, 0.0, 0.0, 0.0, 2000.0);   // a wheel
     addPowerPart(s, 0.0, 100.0, 0.0, 2000.0, 0.0);    // a capsule (100 W + 2000 Wh)
     initShip(s);
-    CHECK_NEAR(totalEC(s), 2000.0, 1e-9, "capsule battery seeded full");
+    CHECK_REL(totalEC(s), 2000.0, 1e-9, "capsule battery seeded full");
 
     /* While there is stored charge the ship is powered (the wheel may run). */
     s.v->powerTick(1.0);
@@ -518,7 +490,7 @@ static void test_life_support_drains_then_gates() {
 
     /* Run the battery fully down (100 W life support): the ship gates. */
     s.v->drainEC(2000.0);
-    CHECK_NEAR(totalEC(s), 0.0, 1e-9, "battery drained to empty");
+    CHECK_REL(totalEC(s), 0.0, 1e-9, "battery drained to empty");
     s.v->powerTick(1.0);
     CHECK_TRUE(!s.v->powered_, "no charge + no gen -> gated (uncontrolled)");
     destroyShip(s);
@@ -533,15 +505,15 @@ static void test_rtg_charges_battery() {
     initShip(s);
 
     s.v->drainEC(500.0);   // start half-empty
-    CHECK_NEAR(totalEC(s), 500.0, 1e-9, "battery half-empty");
+    CHECK_REL(totalEC(s), 500.0, 1e-9, "battery half-empty");
 
     s.v->powerTick(3600.0);  // 300 W x 1 h = 300 Wh
-    CHECK_NEAR(totalEC(s), 800.0, 1e-6, "battery gained 300 Wh (500 -> 800)");
+    CHECK_REL(totalEC(s), 800.0, 1e-6, "battery gained 300 Wh (500 -> 800)");
 
     /* Charging clamps at capacity: a full battery cannot over-charge. */
     s.v->chargeEC(1000.0);
     s.v->powerTick(3600.0);  // another 300 Wh requested
-    CHECK_NEAR(totalEC(s), 1000.0, 1e-6, "battery clamped at capacity");
+    CHECK_REL(totalEC(s), 1000.0, 1e-6, "battery clamped at capacity");
     destroyShip(s);
 }
 
@@ -552,10 +524,10 @@ static void test_life_support_drains_pool() {
     Ship s; s.v = new Vehicle;
     addPowerPart(s, 0.0, 100.0, 0.0, 2000.0, 0.0);    // a capsule
     initShip(s);
-    CHECK_NEAR(totalEC(s), 2000.0, 1e-9, "capsule battery seeded full");
+    CHECK_REL(totalEC(s), 2000.0, 1e-9, "capsule battery seeded full");
 
     s.v->powerTick(3600.0);  // 100 W x 1 h = 100 Wh
-    CHECK_NEAR(totalEC(s), 1900.0, 1e-6, "battery lost 100 Wh (2000 -> 1900)");
+    CHECK_REL(totalEC(s), 1900.0, 1e-6, "battery lost 100 Wh (2000 -> 1900)");
     destroyShip(s);
 }
 
@@ -577,16 +549,16 @@ static void test_net_power_is_recorded() {
     s.v->drainEC(500.0);   // half-empty, so charging does not clamp
 
     s.v->powerTick(3600.0);
-    CHECK_NEAR(s.v->netPowerW(), 200.0, 1e-9, "net = gen - constant draw");
-    CHECK_NEAR(totalEC(s), 700.0, 1e-6, "the pool moved by the recorded net");
+    CHECK_REL(s.v->netPowerW(), 200.0, 1e-9, "net = gen - constant draw");
+    CHECK_REL(totalEC(s), 700.0, 1e-6, "the pool moved by the recorded net");
 
     Ship t; t.v = new Vehicle;
     addPowerPart(t, /*draw=*/0.0, /*const=*/400.0, /*gen=*/300.0,
                  /*ec_wh=*/1000.0, /*torque=*/0.0);
     initShip(t);
     t.v->powerTick(3600.0);
-    CHECK_NEAR(t.v->netPowerW(), -100.0, 1e-9, "a drain reads negative");
-    CHECK_NEAR(totalEC(t), 900.0, 1e-6, "and the pool fell by the same rate");
+    CHECK_REL(t.v->netPowerW(), -100.0, 1e-9, "a drain reads negative");
+    CHECK_REL(totalEC(t), 900.0, 1e-6, "and the pool fell by the same rate");
 
     /* The half that has drifted before (#648) and the reason the record is taken
        inside powerTick rather than from getPower(): the DELIVERED wheel bill. A
@@ -602,11 +574,11 @@ static void test_net_power_is_recorded() {
     initShip(u);
     steer(u, 1.0f);
     u.v->powerTick(3600.0);
-    CHECK_NEAR(u.v->netPowerW(), -1100.0, 1e-9, "the record bills the drums too");
-    CHECK_NEAR(totalEC(u), 3900.0, 1e-6, "and the pool fell by that, not by -100");
+    CHECK_REL(u.v->netPowerW(), -1100.0, 1e-9, "the record bills the drums too");
+    CHECK_REL(totalEC(u), 3900.0, 1e-6, "and the pool fell by that, not by -100");
     steer(u, 0.0f);
     u.v->powerTick(3600.0);
-    CHECK_NEAR(u.v->netPowerW(), -100.0, 1e-9, "a released stick leaves only life support");
+    CHECK_REL(u.v->netPowerW(), -100.0, 1e-9, "a released stick leaves only life support");
 
     destroyShip(s);
     destroyShip(t);
@@ -622,7 +594,7 @@ static void test_active_wheel_draws() {
     addPowerPart(s, 1000.0, 0.0, 0.0, 0.0, 2000.0, 3);  // a 1000 W triad
     addPowerPart(s, 0.0, 100.0, 0.0, 5000.0, 0.0);    // a capsule (100 W + 5000 Wh)
     initShip(s);
-    CHECK_NEAR(totalEC(s), 5000.0, 1e-9, "battery seeded full");
+    CHECK_REL(totalEC(s), 5000.0, 1e-9, "battery seeded full");
 
     /* Stick active: 100 W (life) + 1000 W (wheel) = 1100 W for 1 h. The stick
        is only reachable through Command (#575), which is also the point: the
@@ -633,7 +605,7 @@ static void test_active_wheel_draws() {
        figure is per package, #593) and not a fraction of it. */
     steer(s, 1.0f);
     s.v->powerTick(3600.0);
-    CHECK_NEAR(totalEC(s), 3900.0, 1e-6, "active wheel drains 1100 Wh");
+    CHECK_REL(totalEC(s), 3900.0, 1e-6, "active wheel drains 1100 Wh");
     steer(s, 0.0f);
 
     /* Stick off: only the 100 W life support for 1 h. Two things make the wheels' term
@@ -642,16 +614,16 @@ static void test_active_wheel_draws() {
        the half that needs its own pin, since the gate alone would print 0 anyway -- that
        is test_a_drum_that_delivers_nothing_bills_nothing, where the key stays down. */
     s.v->powerTick(3600.0);
-    CHECK_NEAR(totalEC(s), 3800.0, 1e-6, "stick off drains only life support");
+    CHECK_REL(totalEC(s), 3800.0, 1e-6, "stick off drains only life support");
 
     /* The same sum the Systems window's Active row prints (#575), pinned on
        both gates: the wheel bills its draw only while the stick is working it AND the
        hull has power. The row used to re-derive this and dropped the power half, so an
        unpowered hull showed a draw it was not paying. */
     steer(s, 1.0f);
-    CHECK_NEAR(s.v->wheelDrawWatts(), 1000.0, 1e-9, "commanded: the wheel's 1000 W");
+    CHECK_REL(s.v->wheelDrawWatts(), 1000.0, 1e-9, "commanded: the wheel's 1000 W");
     s.v->powered_ = false;
-    CHECK_NEAR(s.v->wheelDrawWatts(), 0.0, 1e-9,
+    CHECK_REL(s.v->wheelDrawWatts(), 0.0, 1e-9,
                "no power: an electric actuator bills nothing, stick or no stick");
     s.v->powered_ = true;
     /* The third gate (#425 D-2): a hull that has the drums switched off has no wheel
@@ -661,13 +633,13 @@ static void test_active_wheel_draws() {
        no rows means the stick's demand scales to nothing, so there is no bill to fill. */
     s.v->wheels_enabled = false;
     steer(s, 1.0f);
-    CHECK_NEAR(s.v->wheelDrawWatts(), 0.0, 1e-9,
+    CHECK_REL(s.v->wheelDrawWatts(), 0.0, 1e-9,
                "switched off: a drum that is not working bills no EC");
     s.v->wheels_enabled = true;
     steer(s, 1.0f);
-    CHECK_NEAR(s.v->wheelDrawWatts(), 1000.0, 1e-9, "switched back on: billing again");
+    CHECK_REL(s.v->wheelDrawWatts(), 1000.0, 1e-9, "switched back on: billing again");
     steer(s, 0.0f);
-    CHECK_NEAR(s.v->wheelDrawWatts(), 0.0, 1e-9,
+    CHECK_REL(s.v->wheelDrawWatts(), 0.0, 1e-9,
                "released stick: actuatorsEngaged() is off, so nothing bills");
     destroyShip(s);
 }
@@ -690,16 +662,16 @@ static void test_a_pods_own_drums_pay() {
     addPowerPart(s, /*draw=*/100.0, /*const=*/100.0, /*gen=*/0.0,
                  /*ec=*/2000.0, /*torque=*/200.0, /*axes=*/3);
     initShip(s);
-    CHECK_NEAR(totalEC(s), 2000.0, 1e-9, "pod battery seeded full");
+    CHECK_REL(totalEC(s), 2000.0, 1e-9, "pod battery seeded full");
 
     steer(s, 1.0f);
-    CHECK_NEAR(s.v->wheelDrawWatts(), 100.0, 1e-9,
+    CHECK_REL(s.v->wheelDrawWatts(), 100.0, 1e-9,
                "on a wheel-less hull the pod's own drums are the Active row");
     s.v->powerTick(3600.0);
-    CHECK_NEAR(totalEC(s), 1800.0, 1e-6, "commanding a pod drains life support AND drums");
+    CHECK_REL(totalEC(s), 1800.0, 1e-6, "commanding a pod drains life support AND drums");
     steer(s, 0.0f);
     s.v->powerTick(3600.0);
-    CHECK_NEAR(totalEC(s), 1700.0, 1e-6, "coasting drains life support alone");
+    CHECK_REL(totalEC(s), 1700.0, 1e-6, "coasting drains life support alone");
 
     /* With the pool empty the gate closes and the pod's own drums are dead. Life support
        empties a pod either way (#418); what this rig adds is that the drums are part of
@@ -708,7 +680,7 @@ static void test_a_pods_own_drums_pay() {
     s.v->powerTick(1.0);
     CHECK_TRUE(not s.v->powered_, "an empty pod pool gates its own drums");
     steer(s, 1.0f);
-    CHECK_NEAR(s.v->wheelDrawWatts(), 0.0, 1e-9,
+    CHECK_REL(s.v->wheelDrawWatts(), 0.0, 1e-9,
                "a gated drum bills nothing even with the stick held");
     destroyShip(s);
 }
@@ -737,13 +709,13 @@ static void test_the_bill_is_the_delivered_setpoint() {
     /* The stick is a normalized demand (#425), so the ask scales with the deflection
        and the line is never over-subscribed here: the setpoint IS the fraction. */
     steer(s, 1.0f);
-    CHECK_NEAR(s.v->wheelDrawWatts(), 1000.0, 1e-6, "a full ask pays the whole figure");
+    CHECK_REL(s.v->wheelDrawWatts(), 1000.0, 1e-6, "a full ask pays the whole figure");
     steer(s, 0.5f);
-    CHECK_NEAR(s.v->wheelDrawWatts(), 500.0, 1e-6, "half the deflection, half the bill");
+    CHECK_REL(s.v->wheelDrawWatts(), 500.0, 1e-6, "half the deflection, half the bill");
     steer(s, 0.25f);
-    CHECK_NEAR(s.v->wheelDrawWatts(), 250.0, 1e-6,
+    CHECK_REL(s.v->wheelDrawWatts(), 250.0, 1e-6,
                "a quarter ask on the same drum is a quarter of the figure (#648)");
-    CHECK_NEAR(s.v->wheelDemandWatts(), 1000.0, 1e-9,
+    CHECK_REL(s.v->wheelDemandWatts(), 1000.0, 1e-9,
                "the gate still weighs the whole rating: affordability is not a demand "
                "question (#642), and a gate that tracked the ask would re-arm its own "
                "brown-out");
@@ -753,7 +725,7 @@ static void test_the_bill_is_the_delivered_setpoint() {
     const double before = totalEC(s);
     steer(s, 0.25f);
     s.v->powerTick(3600.0);
-    CHECK_NEAR(before - totalEC(s), 250.0, 1e-6, "an hour of a quarter ask costs 250 Wh");
+    CHECK_REL(before - totalEC(s), 250.0, 1e-6, "an hour of a quarter ask costs 250 Wh");
     destroyShip(s);
 }
 
@@ -768,11 +740,11 @@ static void test_a_drum_that_delivers_nothing_bills_nothing() {
     addPowerPart(s, 500.0, 0.0, 0.0, 0.0, 2000.0, 3);   // a 500 W triad
     addPowerPart(s, 0.0, 0.0, 0.0, 5000.0, 0.0);        // a battery
     initShip(s);
-    CHECK_NEAR(s.v->wheelDemandWatts(), 1500.0, 1e-9,
+    CHECK_REL(s.v->wheelDemandWatts(), 1500.0, 1e-9,
                "both housings are still a cost to the gate, delivering or not");
 
     steer(s, 1.0f);   // pitch: only the triad levers it
-    CHECK_NEAR(s.v->wheelDrawWatts(), 500.0, 1e-6,
+    CHECK_REL(s.v->wheelDrawWatts(), 500.0, 1e-6,
                "the axial drum delivers nothing about pitch, so it pays nothing");
 
     /* Roll, on the other hand, is the one line both housings cover, and a held key
@@ -782,7 +754,7 @@ static void test_a_drum_that_delivers_nothing_bills_nothing() {
     s.v->Command(ShipCmd(Pitch, 0.0f), true);
     s.v->Command(ShipCmd(Roll, 1.0f), true);
     s.v->applyControlForces(kMaxSubStep);
-    CHECK_NEAR(s.v->wheelDrawWatts(), 1500.0, 1e-6,
+    CHECK_REL(s.v->wheelDrawWatts(), 1500.0, 1e-6,
                "about the stack both housings are at their limits, and each pays its own");
 
     /* THE ARRIVED LAW. Kill-rot is latched and the hull is not spinning, so the law asks
@@ -798,7 +770,7 @@ static void test_a_drum_that_delivers_nothing_bills_nothing() {
                "mixer's answer rather than a shut door");
     CHECK_TRUE(glm::length2(s.v->attitudeDelivery().asked) == 0.0,
                "the law had nothing to ask, which is why the mixer never ran (#599)");
-    CHECK_NEAR(s.v->wheelDrawWatts(), 0.0, 1e-9,
+    CHECK_REL(s.v->wheelDrawWatts(), 0.0, 1e-9,
                "an autopilot that has arrived stops eating the pool (#648)");
     destroyShip(s);
 }
@@ -833,9 +805,9 @@ static void test_gate_cut_is_a_spent_pool_not_an_expensive_ask() {
     const double cut_wh = Vehicle::kWheelsCutS * 1000.0 / 3600.0;   // 0.0278 Wh
     s.v->Command(ShipCmd(KillRot), true);   // latched, and already arrived: asks nothing
     s.v->applyControlForces(h);
-    CHECK_NEAR(s.v->wheelDrawWatts(), 0.0, 1e-9,
+    CHECK_REL(s.v->wheelDrawWatts(), 0.0, 1e-9,
                "the arrived law delivers nothing, so the bill is nothing (#648)");
-    CHECK_NEAR(s.v->wheelDemandWatts(), 1000.0, 1e-9,
+    CHECK_REL(s.v->wheelDemandWatts(), 1000.0, 1e-9,
                "while the gate still weighs the whole rating (#642)");
 
     int ticks = 0;
@@ -849,14 +821,14 @@ static void test_gate_cut_is_a_spent_pool_not_an_expensive_ask() {
     CHECK_TRUE(s.v->wheels_brown_out_, "by the latch, not by a charge test alone");
     /* The store buys the air's whole life: 20 Wh / 100 W = 720 s. A cut that weighed the
        rating against the ask would end this at 20/1100 h = 65 s. */
-    CHECK_NEAR(ticks * h, 20.0 * 3600.0 / 100.0, 0.01,
+    CHECK_REL(ticks * h, 20.0 * 3600.0 / 100.0, 0.01,
                "a settled hull keeps its authority for the store's air-only life");
     /* The landing has to be ABOVE zero for this to mean "the burst decided" rather than
        "the battery ran out": one substep of this hull's 100 W drain is 0.0028 Wh, a tenth
        of the burst, so the latch closes while charge is still on the bar. */
     CHECK_TRUE(totalEC(s) > 0.0 && totalEC(s) <= cut_wh,
                "the latch closed on charge that is still in the pool, not on a dry one");
-    CHECK_NEAR(cut_wh, 0.0278, 1e-3,
+    CHECK_REL(cut_wh, 0.0278, 1e-3,
                "which is 1.4e-3 of this hull's 20 Wh store, and 6.7e-5 of the worst "
                "shipped pairing (0.135 Wh against a capsule's 2000 Wh)");
     destroyShip(s);
@@ -872,7 +844,7 @@ static void test_gate_cut_is_a_spent_pool_not_an_expensive_ask() {
     initShip(f);
     f.v->Command(ShipCmd(Pitch, 1.0f), true);
     f.v->applyControlForces(h);
-    CHECK_NEAR(f.v->wheelDrawWatts(), 1000.0, 1e-6,
+    CHECK_REL(f.v->wheelDrawWatts(), 1000.0, 1e-6,
                "a pinned key bills the whole rating -- read while the gate is still "
                "open, since a shut one bills nothing whatever the drums did");
     int sat = 0;
@@ -881,7 +853,7 @@ static void test_gate_cut_is_a_spent_pool_not_an_expensive_ask() {
         f.v->applyControlForces(h);
         sat++;
     }
-    CHECK_NEAR(sat * h, 20.0 * 3600.0 / 1100.0, 0.01,
+    CHECK_REL(sat * h, 20.0 * 3600.0 / 1100.0, 0.01,
                "and the store then buys only 65 s of commanding");
     CHECK_TRUE(totalEC(f) <= cut_wh, "at the same charge the settled hull cut at");
     destroyShip(f);
@@ -903,10 +875,10 @@ static void test_running_dry_notices_once() {
     initShip(s);
     CHECK_TRUE(!s.v->takeEcDryNotice(), "a charged pool has nothing to report");
     s.v->powerTick(60.0);   // a minute of rails: 1.67 Wh of the 5
-    CHECK_NEAR(totalEC(s), 5.0 - 100.0 * 60.0 / 3600.0, 1e-6, "the hop spent its Wh");
+    CHECK_REL(totalEC(s), 5.0 - 100.0 * 60.0 / 3600.0, 1e-6, "the hop spent its Wh");
     CHECK_TRUE(!s.v->takeEcDryNotice(), "a hop that leaves charge says nothing");
     s.v->powerTick(3600.0); // an hour more: the pool cannot cover it, and lands at 0
-    CHECK_NEAR(totalEC(s), 0.0, 1e-9, "the pool is dry");
+    CHECK_REL(totalEC(s), 0.0, 1e-9, "the pool is dry");
     CHECK_TRUE(s.v->takeEcDryNotice(), "the hop that finished the pool notices once");
     CHECK_TRUE(!s.v->takeEcDryNotice(), "and not again for the same dry hull");
     s.v->powerTick(3600.0);
@@ -926,7 +898,7 @@ static void test_running_dry_notices_once() {
     addPowerPart(n, 0.0, 100.0, 0.0, 5.0, 0.0);    // air and a store, no torque anywhere
     initShip(n);
     n.v->powerTick(3600.0);
-    CHECK_NEAR(totalEC(n), 0.0, 1e-9, "the wheel-less pool is dry too");
+    CHECK_REL(totalEC(n), 0.0, 1e-9, "the wheel-less pool is dry too");
     CHECK_TRUE(!n.v->takeEcDryNotice(), "and reports nothing: no drums, no drum verdict");
     destroyShip(n);
 }
@@ -984,16 +956,16 @@ static void test_drain_prorata_across_batteries() {
     initShip(s);
 
     s.v->drainEC(600.0);   // 600 Wh off 2000: 300 each (pro-rata)
-    CHECK_NEAR(b0->resources.current[(int)ResourceType::EC], 700.0, 1e-5,
+    CHECK_REL(b0->resources.current[(int)ResourceType::EC], 700.0, 1e-5,
                "battery 0 drained 300 (1000 -> 700)");
-    CHECK_NEAR(b1->resources.current[(int)ResourceType::EC], 700.0, 1e-5,
+    CHECK_REL(b1->resources.current[(int)ResourceType::EC], 700.0, 1e-5,
                "battery 1 drained 300 (1000 -> 700)");
 
     /* Drain past the total: clamped to zero, no negative float round-off. */
     s.v->drainEC(5000.0);
-    CHECK_NEAR(b0->resources.current[(int)ResourceType::EC], 0.0, 1e-9,
+    CHECK_REL(b0->resources.current[(int)ResourceType::EC], 0.0, 1e-9,
                "battery 0 empty");
-    CHECK_NEAR(b1->resources.current[(int)ResourceType::EC], 0.0, 1e-9,
+    CHECK_REL(b1->resources.current[(int)ResourceType::EC], 0.0, 1e-9,
                "battery 1 empty");
     CHECK_TRUE(b0->resources.current[(int)ResourceType::EC] >= 0.0f,
                "battery 0 not negative");
@@ -1015,14 +987,14 @@ static void test_substep_drain_survives_the_store() {
     Ship s; s.v = new Vehicle;
     addPowerPart(s, 0.0, 600.0, 298.45, 12000.0, 0.0);  // capsule + RTG + 12 kWh
     initShip(s);
-    CHECK_NEAR(totalEC(s), 12000.0, 1e-9, "battery seeded full");
+    CHECK_REL(totalEC(s), 12000.0, 1e-9, "battery seeded full");
 
     const double h = 1.0 / 180.0;   // the substep the sim actually takes
     for(int i = 0; i < 1800; i++) { s.v->powerTick(h); }   // 10 s of flight
 
     /* 301.55 W for 10 s = 0.8376 Wh. Small in absolute terms, and the whole
        point is that it is not zero. */
-    CHECK_NEAR(totalEC(s), 12000.0 - 301.55 * 10.0 / 3600.0, 1e-6,
+    CHECK_REL(totalEC(s), 12000.0 - 301.55 * 10.0 / 3600.0, 1e-6,
                "1800 substeps of a 301.55 W net draw move the charge");
     destroyShip(s);
 }
@@ -1037,10 +1009,10 @@ static void test_ec_no_mass_change() {
     const double m0 = bat->body->mass;
 
     s.v->drainEC(400.0);
-    CHECK_NEAR(bat->body->mass, m0, 1e-12, "drain: mass unchanged");
+    CHECK_REL(bat->body->mass, m0, 1e-12, "drain: mass unchanged");
     s.v->chargeEC(800.0);
-    CHECK_NEAR(bat->body->mass, m0, 1e-12, "charge: mass unchanged");
-    CHECK_NEAR(bat->resources.current[(int)ResourceType::EC], 1000.0, 1e-6,
+    CHECK_REL(bat->body->mass, m0, 1e-12, "charge: mass unchanged");
+    CHECK_REL(bat->resources.current[(int)ResourceType::EC], 1000.0, 1e-6,
                "charge restored the pool to full");
     destroyShip(s);
 }

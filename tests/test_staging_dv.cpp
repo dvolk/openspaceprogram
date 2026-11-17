@@ -30,35 +30,7 @@
 #include <deque>
 #include <string>
 #include <vector>
-
-static int g_failures = 0;
-static int g_checks = 0;
-
-#define CHECK_TRUE(cond, msg)                                                  \
-    do {                                                                       \
-        g_checks++;                                                            \
-        if (!(cond)) {                                                         \
-            g_failures++;                                                      \
-            printf("FAIL: %s\n", msg);                                         \
-        }                                                                      \
-    } while (0)
-
-#define CHECK_NEAR(actual, expected, rel_tol, msg)                             \
-    do {                                                                       \
-        g_checks++;                                                            \
-        double _a = (actual), _e = (expected);                                 \
-        /* Relative, except at an expectation of exactly zero (#510):              \
-           rel_tol * 0.0 would demand bit-exactness, which is not what a           \
-           caller writing 1e-12 means. 0.0 AS a tolerance stays exact, so          \
-           a bit-identical pin keeps its teeth. */                                 \
-        const double _tol = (_e == 0.0) ? rel_tol                                  \
-                                        : rel_tol * std::fabs(_e);                 \
-        if (!std::isfinite(_a) || !std::isfinite(_e)                              \
-            || std::fabs(_a - _e) > _tol) {                                       \
-            g_failures++;                                                      \
-            printf("FAIL: %s (got %.9g, want %.9g)\n", msg, _a, _e);           \
-        }                                                                      \
-    } while (0)
+#include "tchecks.h"
 
 // PartDef lives in a deque so pointers stay valid while the build grows.
 // Tanks carry mass + capacity; engines carry thrust (and may hold no
@@ -160,8 +132,8 @@ static void test_two_stage() {
     bool burn[(int)ResourceType::Num] = {};
     burn[(int)ResourceType::Hydrogen] = true;
     burn[(int)ResourceType::LOX] = true;
-    CHECK_NEAR(partDryMass(*bs.parts[0].def, burn), 50.0, 1e-9, "upper dry");
-    CHECK_NEAR(bs.parts[0].def->mass, 50.0, 1e-9, "upper catalog mass is dry structure");
+    CHECK_REL(partDryMass(*bs.parts[0].def, burn), 50.0, 1e-9, "upper dry");
+    CHECK_REL(bs.parts[0].def->mass, 50.0, 1e-9, "upper catalog mass is dry structure");
 
     const double g = 10.0;
     const std::vector<StageRow> rows = computeStaging(bs, g);
@@ -174,26 +146,26 @@ static void test_two_stage() {
     // dv = 1000 * ln(325/175).
     CHECK_TRUE(rows[0].stage == 2, "row0 is stage 2");
     CHECK_TRUE(rows[0].drops, "stage 2 drops");
-    CHECK_NEAR(rows[0].massStart, 325.0, 1e-6, "s1 m0");
-    CHECK_NEAR(rows[0].massEnd, 175.0, 1e-6, "s1 m1 (before drop)");
-    CHECK_NEAR(rows[0].deltaV, 1000.0 * std::log(325.0 / 175.0), 1e-4, "s1 dv");
+    CHECK_REL(rows[0].massStart, 325.0, 1e-6, "s1 m0");
+    CHECK_REL(rows[0].massEnd, 175.0, 1e-6, "s1 m1 (before drop)");
+    CHECK_REL(rows[0].deltaV, 1000.0 * std::log(325.0 / 175.0), 1e-4, "s1 dv");
 
     // Stage 1 (upper): after dropping dec+lower (5+50+10 = 65 kg dry),
     // m0 = 175 - 65 = 110, burns 50 kg -> m1 = 60.
     // dv = 1000 * ln(110/60).
     CHECK_TRUE(rows[1].stage == 1, "row1 is stage 1");
     CHECK_TRUE(!rows[1].drops, "stage 1 does not drop");
-    CHECK_NEAR(rows[1].massStart, 110.0, 1e-6, "s2 m0");
-    CHECK_NEAR(rows[1].massEnd, 60.0, 1e-6, "s2 m1");
-    CHECK_NEAR(rows[1].deltaV, 1000.0 * std::log(110.0 / 60.0), 1e-4, "s2 dv");
+    CHECK_REL(rows[1].massStart, 110.0, 1e-6, "s2 m0");
+    CHECK_REL(rows[1].massEnd, 60.0, 1e-6, "s2 m1");
+    CHECK_REL(rows[1].deltaV, 1000.0 * std::log(110.0 / 60.0), 1e-4, "s2 dv");
 
     // TWR against g = 10. Stage 1: T = 1000 N (one engine).
     // min at start: 1000 / (325 * 10); max at end: 1000 / (175 * 10).
-    CHECK_NEAR(rows[0].minTWR, 1000.0 / (325.0 * g), 1e-6, "s1 minTWR");
-    CHECK_NEAR(rows[0].maxTWR, 1000.0 / (175.0 * g), 1e-6, "s1 maxTWR");
+    CHECK_REL(rows[0].minTWR, 1000.0 / (325.0 * g), 1e-6, "s1 minTWR");
+    CHECK_REL(rows[0].maxTWR, 1000.0 / (175.0 * g), 1e-6, "s1 maxTWR");
     CHECK_TRUE(rows[0].minTWR < rows[0].maxTWR, "s1 min < max");
-    CHECK_NEAR(rows[1].minTWR, 1000.0 / (110.0 * g), 1e-6, "s2 minTWR");
-    CHECK_NEAR(rows[1].maxTWR, 1000.0 / (60.0 * g), 1e-6, "s2 maxTWR");
+    CHECK_REL(rows[1].minTWR, 1000.0 / (110.0 * g), 1e-6, "s2 minTWR");
+    CHECK_REL(rows[1].maxTWR, 1000.0 / (60.0 * g), 1e-6, "s2 maxTWR");
     CHECK_TRUE(rows[0].engines == 1 && rows[1].engines == 1, "one engine each");
 }
 
@@ -209,9 +181,9 @@ static void test_single_stage() {
     CHECK_TRUE(rows.size() == 1, "one row");
     if(rows.size() != 1) { return; }
     CHECK_TRUE(!rows[0].drops, "nothing to drop");
-    CHECK_NEAR(rows[0].deltaV, 2000.0 * std::log(220.0 / 120.0), 1e-4, "dv");
-    CHECK_NEAR(rows[0].massStart, 220.0, 1e-6, "m0");
-    CHECK_NEAR(rows[0].massEnd, 120.0, 1e-6, "m1");
+    CHECK_REL(rows[0].deltaV, 2000.0 * std::log(220.0 / 120.0), 1e-4, "dv");
+    CHECK_REL(rows[0].massStart, 220.0, 1e-6, "m0");
+    CHECK_REL(rows[0].massEnd, 120.0, 1e-6, "m1");
 }
 
 // Hydrazine / jet fuel / life support ride along as INERT mass (vacuum
@@ -231,9 +203,9 @@ static void test_inert_resources() {
     const std::vector<StageRow> rows = computeStaging(bs, 9.8);
     CHECK_TRUE(rows.size() == 1, "inert: one row");
     if(rows.size() != 1) { return; }
-    CHECK_NEAR(rows[0].massStart, 308.99, 1e-3, "inert m0");
-    CHECK_NEAR(rows[0].massEnd, 208.99, 1e-3, "inert m1 (mono kept)");
-    CHECK_NEAR(rows[0].deltaV, 2000.0 * std::log(308.99 / 208.99), 1e-3, "inert dv");
+    CHECK_REL(rows[0].massStart, 308.99, 1e-3, "inert m0");
+    CHECK_REL(rows[0].massEnd, 208.99, 1e-3, "inert m1 (mono kept)");
+    CHECK_REL(rows[0].deltaV, 2000.0 * std::log(308.99 / 208.99), 1e-3, "inert dv");
 }
 
 // A nuclear-thermal (H2-ONLY) engine on a tank that also holds LOX: no engine
@@ -253,9 +225,9 @@ static void test_h2_only_engine() {
     // into the dry/inert mass.
     bool burn[(int)ResourceType::Num] = {};
     burn[(int)ResourceType::Hydrogen] = true;
-    CHECK_NEAR(partPropellantMass(*bs.parts[tank].def, burn), 50.0, 1e-9,
+    CHECK_REL(partPropellantMass(*bs.parts[tank].def, burn), 50.0, 1e-9,
                "h2-only: tank burnable = H2 only (the LOX is inert)");
-    CHECK_NEAR(partDryMass(*bs.parts[tank].def, burn), 150.0, 1e-9,
+    CHECK_REL(partDryMass(*bs.parts[tank].def, burn), 150.0, 1e-9,
                "h2-only: tank dry = structure + the inert LOX");
 
     // Wet 220, burnable 50 (H2), so the burn ends at 170 (the LOX rides
@@ -264,9 +236,9 @@ static void test_h2_only_engine() {
     const std::vector<StageRow> rows = computeStaging(bs, 10.0);
     CHECK_TRUE(rows.size() == 1, "h2-only: one row");
     if(rows.size() != 1) { return; }
-    CHECK_NEAR(rows[0].massStart, 220.0, 1e-6, "h2-only m0");
-    CHECK_NEAR(rows[0].massEnd, 170.0, 1e-6, "h2-only m1 (the LOX is kept)");
-    CHECK_NEAR(rows[0].deltaV, 2000.0 * std::log(220.0 / 170.0), 1e-3, "h2-only dv");
+    CHECK_REL(rows[0].massStart, 220.0, 1e-6, "h2-only m0");
+    CHECK_REL(rows[0].massEnd, 170.0, 1e-6, "h2-only m1 (the LOX is kept)");
+    CHECK_REL(rows[0].deltaV, 2000.0 * std::log(220.0 / 170.0), 1e-3, "h2-only dv");
 }
 
 // Payload separator: a decoupler subtree with NO propellant. Without the
@@ -293,11 +265,11 @@ static void test_inert_drop() {
     const std::vector<StageRow> rows = computeStaging(bs, 10.0);
     CHECK_TRUE(rows.size() >= 2, "inert-drop: at least two rows");
     if(rows.size() < 2) { return; }
-    CHECK_NEAR(rows[0].deltaV, 1000.0 * std::log(350.0 / 200.0), 1e-3, "id s1 dv");
+    CHECK_REL(rows[0].deltaV, 1000.0 * std::log(350.0 / 200.0), 1e-3, "id s1 dv");
     // The upper burn must still happen even though the sep holds no
     // propellant (the drainAll fallback).
     CHECK_TRUE(rows[1].deltaV > 100.0, "inert-drop: upper burn survives");
-    CHECK_NEAR(rows[1].deltaV, 1000.0 * std::log(135.0 / 85.0), 1e-3, "id s2 dv");
+    CHECK_REL(rows[1].deltaV, 1000.0 * std::log(135.0 / 85.0), 1e-3, "id s2 dv");
     CHECK_TRUE(rows[1].drops, "id s2 still records the sep drop");
 }
 
@@ -310,7 +282,7 @@ static void test_zero_g() {
     const std::vector<StageRow> rows = computeStaging(bs, 0.0);
     CHECK_TRUE(rows.size() == 1, "zero-g: one row");
     if(rows.size() != 1) { return; }
-    CHECK_NEAR(rows[0].deltaV, 2000.0 * std::log(220.0 / 120.0), 1e-4, "zero-g dv");
+    CHECK_REL(rows[0].deltaV, 2000.0 * std::log(220.0 / 120.0), 1e-4, "zero-g dv");
     CHECK_TRUE(rows[0].minTWR == 0.0 && rows[0].maxTWR == 0.0, "zero-g TWR is 0");
 }
 
@@ -352,24 +324,24 @@ static void test_asparagus() {
     if(rows.size() != 2) { return; }
 
     CHECK_TRUE(rows[0].drops, "stage 1 drops the booster");
-    CHECK_NEAR(rows[0].massStart, 325.0, 1e-6, "asp m0");
-    CHECK_NEAR(rows[0].massEnd, 225.0, 1e-6, "asp m1 (outer empty, still attached)");
+    CHECK_REL(rows[0].massStart, 325.0, 1e-6, "asp m0");
+    CHECK_REL(rows[0].massEnd, 225.0, 1e-6, "asp m1 (outer empty, still attached)");
     // dv while BOTH engines fire and the outer empties:
     // F = 2000, mdot = 2, ve_eq = 1000. dv = 1000 * ln(325/225).
-    CHECK_NEAR(rows[0].deltaV, 1000.0 * std::log(325.0 / 225.0), 1e-3, "asp s1 dv");
+    CHECK_REL(rows[0].deltaV, 1000.0 * std::log(325.0 / 225.0), 1e-3, "asp s1 dv");
 
     CHECK_TRUE(!rows[1].drops, "final does not drop");
-    CHECK_NEAR(rows[1].massStart, 160.0, 1e-6, "asp s2 m0");
-    CHECK_NEAR(rows[1].massEnd, 60.0, 1e-6, "asp s2 m1");
+    CHECK_REL(rows[1].massStart, 160.0, 1e-6, "asp s2 m0");
+    CHECK_REL(rows[1].massEnd, 60.0, 1e-6, "asp s2 m1");
     // Only the core engine remains: T = 1000, mdot = 1, ve = 1000.
-    CHECK_NEAR(rows[1].deltaV, 1000.0 * std::log(160.0 / 60.0), 1e-3, "asp s2 dv");
+    CHECK_REL(rows[1].deltaV, 1000.0 * std::log(160.0 / 60.0), 1e-3, "asp s2 dv");
 
     // Stage-1 TWR is the pair (T = 2000) at 325 .. 225 kg on g = 10.
-    CHECK_NEAR(rows[0].minTWR, 2000.0 / (325.0 * g), 1e-6, "asp s1 minTWR");
-    CHECK_NEAR(rows[0].maxTWR, 2000.0 / (225.0 * g), 1e-6, "asp s1 maxTWR");
+    CHECK_REL(rows[0].minTWR, 2000.0 / (325.0 * g), 1e-6, "asp s1 minTWR");
+    CHECK_REL(rows[0].maxTWR, 2000.0 / (225.0 * g), 1e-6, "asp s1 maxTWR");
     // After the drop only the core engine burns (T = 1000).
-    CHECK_NEAR(rows[1].minTWR, 1000.0 / (160.0 * g), 1e-6, "asp s2 minTWR");
-    CHECK_NEAR(rows[1].maxTWR, 1000.0 / (60.0 * g), 1e-6, "asp s2 maxTWR");
+    CHECK_REL(rows[1].minTWR, 1000.0 / (160.0 * g), 1e-6, "asp s2 minTWR");
+    CHECK_REL(rows[1].maxTWR, 1000.0 / (60.0 * g), 1e-6, "asp s2 maxTWR");
 }
 
 // Decoupler is a fuel barrier: WITHOUT the link the core engine cannot
@@ -396,14 +368,14 @@ static void test_barrier_no_link() {
     // when the OUTER is empty (100 s): 200 kg burned total, m = 175.
     // Drop 65 -> 110 left (core dry 50 + 50 fuel + engine 10).
     CHECK_TRUE(rows[0].drops, "barrier s1 drops");
-    CHECK_NEAR(rows[0].massStart, 375.0, 1e-6, "barrier s1 m0");
-    CHECK_NEAR(rows[0].massEnd, 175.0, 1e-6, "barrier s1 m1");
+    CHECK_REL(rows[0].massStart, 375.0, 1e-6, "barrier s1 m0");
+    CHECK_REL(rows[0].massEnd, 175.0, 1e-6, "barrier s1 m1");
     // Two engines, mdot = 2, F = 2000, ve_eq = 1000.
-    CHECK_NEAR(rows[0].deltaV, 1000.0 * std::log(375.0 / 175.0), 1e-3, "barrier s1 dv");
+    CHECK_REL(rows[0].deltaV, 1000.0 * std::log(375.0 / 175.0), 1e-3, "barrier s1 dv");
     // Core kept 50 kg because the barrier stopped the outer from feeding it.
-    CHECK_NEAR(rows[1].massStart, 110.0, 1e-6, "barrier s2 m0");
-    CHECK_NEAR(rows[1].massEnd, 60.0, 1e-6, "barrier s2 m1");
-    CHECK_NEAR(rows[1].deltaV, 1000.0 * std::log(110.0 / 60.0), 1e-3, "barrier s2 dv");
+    CHECK_REL(rows[1].massStart, 110.0, 1e-6, "barrier s2 m0");
+    CHECK_REL(rows[1].massEnd, 60.0, 1e-6, "barrier s2 m1");
+    CHECK_REL(rows[1].deltaV, 1000.0 * std::log(110.0 / 60.0), 1e-3, "barrier s2 dv");
 }
 
 // Exhaust-velocity difficulty scale: thrust (so ve_eq = F/mdot) and TWR
@@ -422,12 +394,12 @@ static void test_exhaust_scale() {
     if(a.size() != 1 || b.size() != 1) { return; }
 
     // Same mass schedule (the burn does not scale).
-    CHECK_NEAR(b[0].massStart, a[0].massStart, 1e-9, "scale m0 unchanged");
-    CHECK_NEAR(b[0].massEnd, a[0].massEnd, 1e-9, "scale m1 unchanged");
+    CHECK_REL(b[0].massStart, a[0].massStart, 1e-9, "scale m0 unchanged");
+    CHECK_REL(b[0].massEnd, a[0].massEnd, 1e-9, "scale m1 unchanged");
     // ve_eq and TWR double; delta-v is ve_eq * ln(m0/m1), so it doubles too.
-    CHECK_NEAR(b[0].deltaV, 2.0 * a[0].deltaV, 1e-6, "scale dv doubles");
-    CHECK_NEAR(b[0].minTWR, 2.0 * a[0].minTWR, 1e-6, "scale minTWR doubles");
-    CHECK_NEAR(b[0].maxTWR, 2.0 * a[0].maxTWR, 1e-6, "scale maxTWR doubles");
+    CHECK_REL(b[0].deltaV, 2.0 * a[0].deltaV, 1e-6, "scale dv doubles");
+    CHECK_REL(b[0].minTWR, 2.0 * a[0].minTWR, 1e-6, "scale minTWR doubles");
+    CHECK_REL(b[0].maxTWR, 2.0 * a[0].maxTWR, 1e-6, "scale maxTWR doubles");
 }
 
 /* stagingSignature: the Staging window caches its rows against this hash
@@ -580,11 +552,11 @@ static BuildShip stacked_ship(Catalog &cat, int top, int bottom) {
 
 // Field-by-field except the label, which the caller checks separately.
 static void same_rows(const StageRow &a, const StageRow &b) {
-    CHECK_NEAR(a.deltaV, b.deltaV, 1e-9, "same delta-v");
-    CHECK_NEAR(a.massStart, b.massStart, 1e-9, "same mass start");
-    CHECK_NEAR(a.massEnd, b.massEnd, 1e-9, "same mass end");
-    CHECK_NEAR(a.minTWR, b.minTWR, 1e-9, "same min TWR");
-    CHECK_NEAR(a.maxTWR, b.maxTWR, 1e-9, "same max TWR");
+    CHECK_REL(a.deltaV, b.deltaV, 1e-9, "same delta-v");
+    CHECK_REL(a.massStart, b.massStart, 1e-9, "same mass start");
+    CHECK_REL(a.massEnd, b.massEnd, 1e-9, "same mass end");
+    CHECK_REL(a.minTWR, b.minTWR, 1e-9, "same min TWR");
+    CHECK_REL(a.maxTWR, b.maxTWR, 1e-9, "same max TWR");
     CHECK_TRUE(a.drops == b.drops, "same separation");
     CHECK_TRUE(a.engines == b.engines, "same lit engine count");
 }
@@ -761,11 +733,11 @@ static void test_a_label_dense_ship_is_still_cheap_to_number() {
             CHECK_TRUE(std::isfinite(r.massStart) && std::isfinite(r.massEnd)
                        && r.massEnd > 0.0 && r.massStart >= r.massEnd,
                        "label-dense mass columns are finite and shrink");
-            CHECK_NEAR(r.deltaV, ve * std::log(r.massStart / r.massEnd), 1e-9,
+            CHECK_REL(r.deltaV, ve * std::log(r.massStart / r.massEnd), 1e-9,
                        "label-dense delta-v matches ve ln(m0/m1)");
             spent += r.massStart - r.massEnd;
         }
-        CHECK_NEAR(spent, fuel, 1e-9, "the label-dense rows spend every kg of propellant once");
+        CHECK_REL(spent, fuel, 1e-9, "the label-dense rows spend every kg of propellant once");
         bool same = rows.size() == warm.size() && !rows.empty();
         for(size_t i = 0; same && i < rows.size(); i++) {
             same = rows[i].stage == warm[i].stage && rows[i].deltaV == warm[i].deltaV
@@ -884,11 +856,11 @@ static void test_deep_chain_burn_stays_physical() {
             CHECK_TRUE(std::isfinite(r.massStart) && std::isfinite(r.massEnd)
                        && r.massEnd > 0.0 && r.massStart >= r.massEnd,
                        (tag + "mass columns are finite and shrink").c_str());
-            CHECK_NEAR(r.deltaV, ve * std::log(r.massStart / r.massEnd), 1e-9,
+            CHECK_REL(r.deltaV, ve * std::log(r.massStart / r.massEnd), 1e-9,
                        (tag + "delta-v matches ve ln(m0/m1)").c_str());
             spent += r.massStart - r.massEnd;
         }
-        CHECK_NEAR(spent, fuel, 1e-9, (tag + "every kg of propellant is spent once").c_str());
+        CHECK_REL(spent, fuel, 1e-9, (tag + "every kg of propellant is spent once").c_str());
     }
 }
 
@@ -933,14 +905,14 @@ static void test_drop_walk_takes_only_the_decouplers_side() {
     CHECK_TRUE(rows.size() == 2, "two labels, two rows");
     if(rows.size() != 2) { return; }
     CHECK_TRUE(rows[0].stage == 2 && rows[0].drops, "the high label separates");
-    CHECK_NEAR(rows[0].massStart, 220.0, 1e-9, "everything is aboard to start");
-    CHECK_NEAR(rows[0].massEnd, 160.0, 1e-9, "the branch burned its own 60 kg");
-    CHECK_NEAR(rows[0].deltaV, 1000.0 * std::log(220.0 / 160.0), 1e-9,
+    CHECK_REL(rows[0].massStart, 220.0, 1e-9, "everything is aboard to start");
+    CHECK_REL(rows[0].massEnd, 160.0, 1e-9, "the branch burned its own 60 kg");
+    CHECK_REL(rows[0].deltaV, 1000.0 * std::log(220.0 / 160.0), 1e-9,
                "and paid for it");
     CHECK_TRUE(rows[1].stage == 1 && !rows[1].drops, "the final row separates nothing");
-    CHECK_NEAR(rows[1].massStart, 110.0, 1e-9, "only the decoupler's side left");
-    CHECK_NEAR(rows[1].massEnd, 70.0, 1e-9, "the sibling's tank is still there to drain");
-    CHECK_NEAR(rows[1].deltaV, 1000.0 * std::log(110.0 / 70.0), 1e-9, "and it drains");
+    CHECK_REL(rows[1].massStart, 110.0, 1e-9, "only the decoupler's side left");
+    CHECK_REL(rows[1].massEnd, 70.0, 1e-9, "the sibling's tank is still there to drain");
+    CHECK_REL(rows[1].deltaV, 1000.0 * std::log(110.0 / 70.0), 1e-9, "and it drains");
 }
 
 /* A part that is its OWN parent is malformed input -- the loaders refuse a parent that is
@@ -962,10 +934,10 @@ static void test_a_self_parent_walks_once() {
     CHECK_TRUE(rows.size() == 2, "two labels, two rows");
     if(rows.size() != 2) { return; }
     CHECK_TRUE(rows[0].drops, "the self-parented decoupler still separates");
-    CHECK_NEAR(rows[0].massStart, 165.0, 1e-9, "the cycle loses nothing");
-    CHECK_NEAR(rows[0].massEnd, 165.0, 1e-9, "nothing is lit at that label, so no burn");
-    CHECK_NEAR(rows[1].massStart, 160.0, 1e-9, "and the decoupler left");
-    CHECK_NEAR(rows[1].massEnd, 60.0, 1e-9, "the tank drains down to its dry mass");
+    CHECK_REL(rows[0].massStart, 165.0, 1e-9, "the cycle loses nothing");
+    CHECK_REL(rows[0].massEnd, 165.0, 1e-9, "nothing is lit at that label, so no burn");
+    CHECK_REL(rows[1].massStart, 160.0, 1e-9, "and the decoupler left");
+    CHECK_REL(rows[1].massEnd, 60.0, 1e-9, "the tank drains down to its dry mass");
 }
 
 /* What makes a drop "ready to leave" is the fuel a LIT ENGINE can reach inside it, not
@@ -998,13 +970,13 @@ static void test_a_sealed_drop_does_not_hold_the_burn_open() {
     // Label 2 burns while the reachable part of the drop lasts: boostTank's 40 kg at
     // 1 kg/s is 40 s, during which coreEng spends 40 kg of the core's 200 as well.
     CHECK_TRUE(rows[0].stage == 2 && rows[0].drops, "label 2 separates");
-    CHECK_NEAR(rows[0].massStart, 425.0, 1e-9, "everything is aboard");
-    CHECK_NEAR(rows[0].massEnd, 345.0, 1e-9, "80 kg burnt, the sealed tank still aboard");
+    CHECK_REL(rows[0].massStart, 425.0, 1e-9, "everything is aboard");
+    CHECK_REL(rows[0].massEnd, 345.0, 1e-9, "80 kg burnt, the sealed tank still aboard");
     // The separation takes the sealed tank's 80 kg of propellant with it, full.
-    CHECK_NEAR(rows[1].massStart, 225.0, 1e-9, "the survivor kept its own 160 kg");
-    CHECK_NEAR(rows[1].massEnd, 65.0, 1e-9, "and burns it in the last row");
+    CHECK_REL(rows[1].massStart, 225.0, 1e-9, "the survivor kept its own 160 kg");
+    CHECK_REL(rows[1].massEnd, 65.0, 1e-9, "and burns it in the last row");
     CHECK_TRUE(rows[1].deltaV > 0.0, "the survivor still has something to burn");
-    CHECK_NEAR(rows[1].deltaV, 1000.0 * std::log(225.0 / 65.0), 1e-9,
+    CHECK_REL(rows[1].deltaV, 1000.0 * std::log(225.0 / 65.0), 1e-9,
                "one engine, the fuel that is left");
 }
 
@@ -1045,18 +1017,18 @@ static void test_reachability_survives_a_renumbering() {
     CHECK_TRUE(rows.size() == 3, "three labels, three rows");
     if(rows.size() != 3) { return; }
     CHECK_TRUE(rows[0].stage == 3 && rows[0].drops, "label 3 separates");
-    CHECK_NEAR(rows[0].massStart, 435.0, 1e-9, "all aboard");
-    CHECK_NEAR(rows[0].massEnd, 395.0, 1e-9, "the drop's REACHABLE fuel burns");
-    CHECK_NEAR(rows[0].deltaV, 1000.0 * std::log(435.0 / 395.0), 1e-9, "s3 dv");
+    CHECK_REL(rows[0].massStart, 435.0, 1e-9, "all aboard");
+    CHECK_REL(rows[0].massEnd, 395.0, 1e-9, "the drop's REACHABLE fuel burns");
+    CHECK_REL(rows[0].deltaV, 1000.0 * std::log(435.0 / 395.0), 1e-9, "s3 dv");
 
     CHECK_TRUE(rows[1].stage == 2 && rows[1].drops, "label 2 separates");
-    CHECK_NEAR(rows[1].massStart, 360.0, 1e-9, "period 1 left, renumbered");
-    CHECK_NEAR(rows[1].massEnd, 320.0, 1e-9, "and its reachable fuel burns, no more");
-    CHECK_NEAR(rows[1].deltaV, 1000.0 * std::log(360.0 / 320.0), 1e-9, "s2 dv");
+    CHECK_REL(rows[1].massStart, 360.0, 1e-9, "period 1 left, renumbered");
+    CHECK_REL(rows[1].massEnd, 320.0, 1e-9, "and its reachable fuel burns, no more");
+    CHECK_REL(rows[1].deltaV, 1000.0 * std::log(360.0 / 320.0), 1e-9, "s2 dv");
 
-    CHECK_NEAR(rows[2].massStart, 240.0, 1e-9, "the survivor, both drops gone");
-    CHECK_NEAR(rows[2].massEnd, 60.0, 1e-9, "burns everything that is left");
-    CHECK_NEAR(rows[2].deltaV, 1000.0 * std::log(240.0 / 60.0), 1e-9, "s1 dv");
+    CHECK_REL(rows[2].massStart, 240.0, 1e-9, "the survivor, both drops gone");
+    CHECK_REL(rows[2].massEnd, 60.0, 1e-9, "burns everything that is left");
+    CHECK_REL(rows[2].deltaV, 1000.0 * std::log(240.0 / 60.0), 1e-9, "s1 dv");
 }
 
 /* An engine-less tank in a drop, fed to the core engine by a fuel link, is part of what
@@ -1082,12 +1054,12 @@ static void test_a_linked_tank_in_a_drop_holds_the_burn_open() {
     const std::vector<StageRow> rows = computeStaging(bs, 10.0);
     CHECK_TRUE(rows.size() == 2, "two labels, two rows");
     if(rows.size() != 2) { return; }
-    CHECK_NEAR(rows[0].massStart, 415.0, 1e-9, "all aboard");
-    CHECK_NEAR(rows[0].massEnd, 295.0, 1e-9, "both drop tanks run dry, the core's does not");
-    CHECK_NEAR(rows[0].deltaV, 1000.0 * std::log(415.0 / 295.0), 1e-9, "s3 dv");
-    CHECK_NEAR(rows[1].massStart, 260.0, 1e-9, "the drop leaves 35 kg of structure");
-    CHECK_NEAR(rows[1].massEnd, 60.0, 1e-9, "the core burns the rest");
-    CHECK_NEAR(rows[1].deltaV, 1000.0 * std::log(260.0 / 60.0), 1e-9, "s1 dv");
+    CHECK_REL(rows[0].massStart, 415.0, 1e-9, "all aboard");
+    CHECK_REL(rows[0].massEnd, 295.0, 1e-9, "both drop tanks run dry, the core's does not");
+    CHECK_REL(rows[0].deltaV, 1000.0 * std::log(415.0 / 295.0), 1e-9, "s3 dv");
+    CHECK_REL(rows[1].massStart, 260.0, 1e-9, "the drop leaves 35 kg of structure");
+    CHECK_REL(rows[1].massEnd, 60.0, 1e-9, "the core burns the rest");
+    CHECK_REL(rows[1].deltaV, 1000.0 * std::log(260.0 / 60.0), 1e-9, "s1 dv");
 }
 
 /* A decoupler an EARLIER separation already took must not start a walk of its own. decB
@@ -1114,17 +1086,17 @@ static void test_a_separation_does_not_relist_an_already_dead_subtree() {
     CHECK_TRUE(rows.size() == 2, "label 2 separates nothing, so it gets no row: 3 and 1 only");
     if(rows.size() != 2) { return; }
     CHECK_TRUE(rows[0].stage == 3 && rows[0].drops, "label 3 separates the whole tail");
-    CHECK_NEAR(rows[0].massStart, 200.0, 1e-9, "all aboard");
+    CHECK_REL(rows[0].massStart, 200.0, 1e-9, "all aboard");
     /* The tail is walled off, so this drop is INERT and the row falls back to draining
        everything reachable (computeStaging's inert-drop fallback: drainAll when the drop
        holds nothing drainable) rather than burning nothing. Its own tank's 20 kg stays
        aboard and leaves with the tail. */
-    CHECK_NEAR(rows[0].massEnd, 100.0, 1e-9, "the core's 100 kg burns; the tail's does not");
-    CHECK_NEAR(rows[0].deltaV, 1000.0 * std::log(200.0 / 100.0), 1e-9, "s3 dv");
+    CHECK_REL(rows[0].massEnd, 100.0, 1e-9, "the core's 100 kg burns; the tail's does not");
+    CHECK_REL(rows[0].deltaV, 1000.0 * std::log(200.0 / 100.0), 1e-9, "s3 dv");
     CHECK_TRUE(rows[1].stage == 1, "the next row is the survivor's, not label 2's");
-    CHECK_NEAR(rows[1].massStart, 60.0, 1e-9, "the tail left dry, and so did the core");
-    CHECK_NEAR(rows[1].massEnd, 60.0, 1e-9, "nothing left to burn");
-    CHECK_NEAR(rows[1].deltaV, 0.0, 1e-9, "s1 dv");
+    CHECK_REL(rows[1].massStart, 60.0, 1e-9, "the tail left dry, and so did the core");
+    CHECK_REL(rows[1].massEnd, 60.0, 1e-9, "nothing left to burn");
+    CHECK_REL(rows[1].deltaV, 0.0, 1e-9, "s1 dv");
 }
 
 /* Reachability means "a LIT engine can draw this", not "some engine somewhere could
@@ -1156,13 +1128,13 @@ static void test_an_unlit_engine_does_not_open_a_burn() {
     CHECK_TRUE(rows.size() == 2, "label 2 separates nothing, so rows are 3 and 1");
     if(rows.size() != 2) { return; }
     CHECK_TRUE(rows[0].engines == 1, "secEng is not lit at label 3");
-    CHECK_NEAR(rows[0].massStart, 520.0, 1e-9, "all aboard");
-    CHECK_NEAR(rows[0].massEnd, 500.0, 1e-9, "only dropTank's 20 kg burns");
-    CHECK_NEAR(rows[0].deltaV, 1000.0 * std::log(520.0 / 500.0), 1e-9, "s3 dv");
-    CHECK_NEAR(rows[1].massStart, 375.0, 1e-9, "linkTank leaves with its 100 kg unburnt");
-    CHECK_NEAR(rows[1].massEnd, 95.0, 1e-9, "nothing drainable is left");
+    CHECK_REL(rows[0].massStart, 520.0, 1e-9, "all aboard");
+    CHECK_REL(rows[0].massEnd, 500.0, 1e-9, "only dropTank's 20 kg burns");
+    CHECK_REL(rows[0].deltaV, 1000.0 * std::log(520.0 / 500.0), 1e-9, "s3 dv");
+    CHECK_REL(rows[1].massStart, 375.0, 1e-9, "linkTank leaves with its 100 kg unburnt");
+    CHECK_REL(rows[1].massEnd, 95.0, 1e-9, "nothing drainable is left");
     CHECK_TRUE(rows[1].engines == 2, "secEng lights for the last row");
-    CHECK_NEAR(rows[1].deltaV, 1000.0 * std::log(375.0 / 95.0), 1e-9, "s1 dv");
+    CHECK_REL(rows[1].deltaV, 1000.0 * std::log(375.0 / 95.0), 1e-9, "s1 dv");
 }
 
 /* The reachability marks are stamped once per burn, after that label's engines light
@@ -1201,16 +1173,16 @@ static void test_a_newly_lit_engine_outside_the_drop_reaches_inside_it() {
     CHECK_TRUE(rows[1].drops, "label 2 separates decB, midTank and linkTank");
     CHECK_TRUE(!rows[2].drops, "no decoupler is left at label 1, so this is the drainAll row");
     CHECK_TRUE(rows[0].engines == 1, "only coreEng is lit at label 3");
-    CHECK_NEAR(rows[0].massStart, 425.0, 1e-9, "all aboard");
-    CHECK_NEAR(rows[0].massEnd, 405.0, 1e-9, "dropTank's 20 kg burn");
-    CHECK_NEAR(rows[0].deltaV, 1000.0 * std::log(425.0 / 405.0), 1e-9, "s3 dv");
+    CHECK_REL(rows[0].massStart, 425.0, 1e-9, "all aboard");
+    CHECK_REL(rows[0].massEnd, 405.0, 1e-9, "dropTank's 20 kg burn");
+    CHECK_REL(rows[0].deltaV, 1000.0 * std::log(425.0 / 405.0), 1e-9, "s3 dv");
     CHECK_TRUE(rows[1].engines == 2, "secEng lights for label 2");
-    CHECK_NEAR(rows[1].massStart, 390.0, 1e-9, "dropTank left dry");
-    CHECK_NEAR(rows[1].massEnd, 310.0, 1e-9, "linkTank's 40 kg is drainable, midTank's is not");
-    CHECK_NEAR(rows[1].deltaV, 1000.0 * std::log(390.0 / 310.0), 1e-9, "s2 dv: two engines, same ve");
-    CHECK_NEAR(rows[2].massStart, 265.0, 1e-9, "midTank leaves with 20 kg unburnt");
-    CHECK_NEAR(rows[2].massEnd, 85.0, 1e-9, "drainAll burns the 180 kg still aboard");
-    CHECK_NEAR(rows[2].deltaV, 1000.0 * std::log(265.0 / 85.0), 1e-9, "s1 dv");
+    CHECK_REL(rows[1].massStart, 390.0, 1e-9, "dropTank left dry");
+    CHECK_REL(rows[1].massEnd, 310.0, 1e-9, "linkTank's 40 kg is drainable, midTank's is not");
+    CHECK_REL(rows[1].deltaV, 1000.0 * std::log(390.0 / 310.0), 1e-9, "s2 dv: two engines, same ve");
+    CHECK_REL(rows[2].massStart, 265.0, 1e-9, "midTank leaves with 20 kg unburnt");
+    CHECK_REL(rows[2].massEnd, 85.0, 1e-9, "drainAll burns the 180 kg still aboard");
+    CHECK_REL(rows[2].deltaV, 1000.0 * std::log(265.0 / 85.0), 1e-9, "s1 dv");
 }
 
 /* A LIVE decoupler sitting above a part an EARLIER separation already killed, where that
@@ -1250,16 +1222,16 @@ static void test_a_live_decoupler_above_a_dead_tank_does_not_adopt_its_fuel() {
     const std::vector<StageRow> rows = computeStaging(bs, 10.0);
     CHECK_TRUE(rows.size() == 3, "labels 3, 2 and the final label 1");
     if(rows.size() != 3) { return; }
-    CHECK_NEAR(rows[0].massStart, 365.0, 1e-9, "all aboard");
-    CHECK_NEAR(rows[0].massEnd, 165.0, 1e-9, "the inert drop falls back to draining coreTank");
-    CHECK_NEAR(rows[0].deltaV, 1000.0 * std::log(365.0 / 165.0), 1e-9, "s3 dv");
+    CHECK_REL(rows[0].massStart, 365.0, 1e-9, "all aboard");
+    CHECK_REL(rows[0].massEnd, 165.0, 1e-9, "the inert drop falls back to draining coreTank");
+    CHECK_REL(rows[0].deltaV, 1000.0 * std::log(365.0 / 165.0), 1e-9, "s3 dv");
     CHECK_TRUE(rows[1].drops, "decTop is still alive at label 2");
     CHECK_TRUE(rows[1].engines == 2, "secEng lights for label 2");
-    CHECK_NEAR(rows[1].massStart, 110.0, 1e-9, "decA left dry and deadTank left with its 40 kg");
-    CHECK_NEAR(rows[1].massEnd, 90.0, 1e-9, "only the 20 kg aboard is burnable");
-    CHECK_NEAR(rows[2].massStart, 85.0, 1e-9, "decTop left too, so label 1 starts 5 kg lighter");
-    CHECK_NEAR(rows[2].massEnd, 85.0, 1e-9, "and nothing drainable is left");
-    CHECK_NEAR(rows[2].deltaV, 0.0, 1e-9, "s1 dv: the burn already had it");
+    CHECK_REL(rows[1].massStart, 110.0, 1e-9, "decA left dry and deadTank left with its 40 kg");
+    CHECK_REL(rows[1].massEnd, 90.0, 1e-9, "only the 20 kg aboard is burnable");
+    CHECK_REL(rows[2].massStart, 85.0, 1e-9, "decTop left too, so label 1 starts 5 kg lighter");
+    CHECK_REL(rows[2].massEnd, 85.0, 1e-9, "and nothing drainable is left");
+    CHECK_REL(rows[2].deltaV, 0.0, 1e-9, "s1 dv: the burn already had it");
 }
 
 /* Seeding: staging a ship that EXISTS rather than a build being authored (#948). The
@@ -1319,12 +1291,12 @@ static void test_seed_the_fuel_and_mass_a_live_ship_carries() {
     const std::vector<StageRow> rows = computeStaging(bs, 10.0, 1.0, half);
     CHECK_TRUE(rows.size() == 2, "half fuel still flies the same two labels");
     if(rows.size() != 2) { return; }
-    CHECK_NEAR(rows[0].massStart, 225.0, 1e-9, "the row starts at the mass aboard");
-    CHECK_NEAR(rows[0].massEnd, 150.0, 1e-9, "the lower tank had 75 kg to give, not 150");
-    CHECK_NEAR(rows[0].deltaV, 1000.0 * std::log(225.0 / 150.0), 1e-9, "s2 dv on the fuel that is there");
-    CHECK_NEAR(rows[1].massStart, 85.0, 1e-9, "dec + drained loTank + loEng left");
-    CHECK_NEAR(rows[1].massEnd, 60.0, 1e-9, "the upper tank had 25 kg left to burn");
-    CHECK_NEAR(rows[1].deltaV, 1000.0 * std::log(85.0 / 60.0), 1e-9, "s1 dv likewise");
+    CHECK_REL(rows[0].massStart, 225.0, 1e-9, "the row starts at the mass aboard");
+    CHECK_REL(rows[0].massEnd, 150.0, 1e-9, "the lower tank had 75 kg to give, not 150");
+    CHECK_REL(rows[0].deltaV, 1000.0 * std::log(225.0 / 150.0), 1e-9, "s2 dv on the fuel that is there");
+    CHECK_REL(rows[1].massStart, 85.0, 1e-9, "dec + drained loTank + loEng left");
+    CHECK_REL(rows[1].massEnd, 60.0, 1e-9, "the upper tank had 25 kg left to burn");
+    CHECK_REL(rows[1].deltaV, 1000.0 * std::log(85.0 / 60.0), 1e-9, "s1 dv likewise");
 
     /* Crew and inventory: PartDef cannot know a seat weighs anything, so the caller
        folds the extra into that part's dry mass. Same fuel, more kg to move. That is
@@ -1334,9 +1306,9 @@ static void test_seed_the_fuel_and_mass_a_live_ship_carries() {
     StagingSeed crewed = half;
     crewed.dryKg[0] += 90.0;
     const std::vector<StageRow> flown = computeStaging(bs, 10.0, 1.0, crewed);
-    CHECK_NEAR(flown[0].massStart, 315.0, 1e-9, "the crew rides the part that carries them");
-    CHECK_NEAR(flown[0].deltaV, 1000.0 * std::log(315.0 / 240.0), 1e-9, "same fuel, heavier stack");
-    CHECK_NEAR(flown[1].deltaV, 1000.0 * std::log(175.0 / 150.0), 1e-9, "and the drop still sheds only the drop");
+    CHECK_REL(flown[0].massStart, 315.0, 1e-9, "the crew rides the part that carries them");
+    CHECK_REL(flown[0].deltaV, 1000.0 * std::log(315.0 / 240.0), 1e-9, "same fuel, heavier stack");
+    CHECK_REL(flown[1].deltaV, 1000.0 * std::log(175.0 / 150.0), 1e-9, "and the drop still sheds only the drop");
 
     /* Nothing aboard to burn: the plan is two rows of zero, and the hardware and its
        TWR are still there to explain why the number is not an error. */
@@ -1344,8 +1316,8 @@ static void test_seed_the_fuel_and_mass_a_live_ship_carries() {
     for(double &f : empty.fuelKg) { f = 0.0; }
     const std::vector<StageRow> dry = computeStaging(bs, 10.0, 1.0, empty);
     CHECK_TRUE(dry.size() == 2, "an empty ship still walks its labels");
-    CHECK_NEAR(dry[0].massStart, 125.0, 1e-9, "dry mass only");
-    CHECK_NEAR(dry[0].deltaV + dry[1].deltaV, 0.0, 0.0, "no fuel, no delta-v");
+    CHECK_REL(dry[0].massStart, 125.0, 1e-9, "dry mass only");
+    CHECK_REL(dry[0].deltaV + dry[1].deltaV, 0.0, 0.0, "no fuel, no delta-v");
     CHECK_TRUE(dry[0].engines == 1 && dry[0].drops, "the stage-2 engine is lit and the drop still happens");
 }
 

@@ -67,8 +67,13 @@ inline void tcNearReport(const char *file, int line, const char *ea, const char 
     tcNearReport(__FILE__, __LINE__, #a_, #e_, (a_), (e_), (rel_), true, nullptr)
 #define tcRelMsg(a_, e_, rel_, m_) \
     tcNearReport(__FILE__, __LINE__, #a_, #e_, (a_), (e_), (rel_), true, (m_))
-#define tcTrueExpr(c_) tcTrueReport(__FILE__, __LINE__, #c_, (c_), nullptr)
-#define tcTrueMsg(c_, m_) tcTrueReport(__FILE__, __LINE__, #c_, (c_), (m_))
+/* The condition gets a !! before it reaches a function: `if(cond)` is a
+   contextual conversion, which an explicit operator bool satisfies, while a bool
+   PARAMETER is an implicit copy, which it does not. test_fuel.cpp checks
+   consumeResourceMass(), whose FuelDraw result is explicitly convertible, so the
+   macro has to convert it in place (#954). */
+#define tcTrueExpr(c_) tcTrueReport(__FILE__, __LINE__, #c_, !!(c_), nullptr)
+#define tcTrueMsg(c_, m_) tcTrueReport(__FILE__, __LINE__, #c_, !!(c_), (m_))
 
 #define CHECK_NEAR(...) TC_PICK4(__VA_ARGS__, tcNearMsg, tcNearExpr)(__VA_ARGS__)
 #define CHECK_REL(...) TC_PICK4(__VA_ARGS__, tcRelMsg, tcRelExpr)(__VA_ARGS__)
