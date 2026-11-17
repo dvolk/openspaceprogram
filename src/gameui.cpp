@@ -295,13 +295,19 @@ struct MapLabelPass {
         // kLabelTarget: the transfer note and the target's name get the map's other
         // side rather than disappearing off its edge. Everything below that tier is
         // dropped when its one slot does not fit.
-        for(const MapLabelPlaced &p : placeMapLabels(items, blocked, rect, focus,
-                                                     kMaxMapLabels,
-                                                     1.0f, 4.0f, 32.0f,
-                                                     kLabelTarget)) {
+        // Scratch for the placed names: this runs once per drawn frame per map
+        // window, and a fresh return vector was part of the 3 allocations a frame
+        // cost (#964). Sharing one across the two map windows is safe the same way
+        // LabelGrid's is -- they draw in turn on one thread, and the loop below
+        // consumes this before flush() returns.
+        static thread_local std::vector<MapLabelPlaced> placed;
+        placeMapLabelsInto(placed, items, blocked, rect, focus,
+                           kMaxMapLabels, 1.0f, 4.0f, 32.0f, kLabelTarget);
+        for(const MapLabelPlaced &p : placed) {
             const Item &it = items[(size_t)p.cand];
             dl->AddText(p.at, it.col, arena.data() + it.off);
         }
+        placed.clear();   // its cands point at items, which reset() empties right here
         reset();     // capacity is what is reused; the callers keep one per window
     }
 };
@@ -5177,14 +5183,17 @@ void drawToasts(Game &g) {
        in-flight toast returns next frame. */
     if(g.screenshot_requested) { return; }
     const double now = SDL_GetTicks() * 0.001;
-    std::vector<const ToastMsg *> live;
-    for(const ToastMsg &t : g.toasts) {
-        if(now - t.born < kToastLife) { live.push_back(&t); }
+    /* The kToastVisible newest toasts that are still alive, NEWEST FIRST. Walking back
+       from the end and stopping there needs no container at all: a fresh vector grown
+       by push_back cost 2.6 allocations every frame a toast was up (#964). The
+       n < kToastVisible test is the array's bound -- not the queue cap, which
+       Game::toast keeps at kToastVisible * 2 for its own reasons. */
+    const ToastMsg *live[kToastVisible];
+    int n = 0;
+    for(auto it = g.toasts.rbegin(); it != g.toasts.rend() && n < kToastVisible; ++it) {
+        if(now - it->born < kToastLife) { live[n++] = &*it; }
     }
-    if(live.empty()) { return; }
-    if(live.size() > (size_t)kToastVisible) {
-        live.erase(live.begin(), live.end() - kToastVisible);
-    }
+    if(n == 0) { return; }
 
     const ImGuiViewport *vp = ImGui::GetMainViewport();
     const float cx = vp->WorkPos.x + vp->WorkSize.x * 0.5f;
@@ -5195,9 +5204,8 @@ void drawToasts(Game &g) {
     const float step = line_h * 1.3f;   // line height + a breath of spacing
     ImDrawList *dl = ImGui::GetForegroundDrawList();
     const float shadow = g.ui_scale;   // DPI-aware shadow offset
-    const int n = (int)live.size();
     for(int i = 0; i < n; i++) {
-        const ToastMsg &t = *live[i];
+        const ToastMsg &t = *live[n - 1 - i];   // newest first in the array, oldest first here
         const double age = now - t.born;
         // Fade in over 0.25 s, fade out over the last 0.6 s of the life.
         const double a = std::min(1.0, std::min(age / 0.25,

@@ -656,6 +656,53 @@ int main() {
             }
         }
 
+        /* Two contracts the game's per-frame reuse depends on (#964). Every other
+           fixture here calls the by-value form, so none of them can see either:
+           (1) the Into form REPLACES into its out. The map keeps one placed vector and
+               calls it once per drawn frame per window; an appending version would grow
+               it forever and then index stale cands into an items vector the caller has
+               already emptied -- an out-of-bounds read, not a wrong label.
+           (2) The sweep order comes from the TIER, not from where the caller appended.
+               The game injects a selected target (tier 1) and stations (tier 4) in the
+               middle of the catalogue, so arrival order is NOT tier order; and the
+               order within a tier is the catalogue order #808 pins, so it has to
+               survive however the tiers interleave. Both inputs below hold the same 8
+               labels in the same within-tier order, interleaved differently. */
+        {
+            std::vector<Lbl> asc, inter;
+            for(int i = 0; i < 8; i++) {
+                // Tiers 0,0,1,1,2,2,3,3 -- already in sweep order, and dots far
+                // enough apart that nothing here is decided by a contest.
+                asc.push_back({ { ImVec2(40.0f + 45.0f * (i % 4), 60.0f + 70.0f * (i / 4)),
+                                  ImVec2(28.0f, 12.0f), 3.0f, (unsigned char)(i / 2) } });
+            }
+            // Re-arrived as cands 0,4,1,5,2,6,3,7: tiers 0,2,0,2,1,3,1,3.
+            for(int p = 0; p < 8; p++) { inter.push_back(asc[(p % 2) * 4 + p / 2]); }
+
+            const auto want = placeMapLabels(asc, none, view, centre, 160);
+            const auto got = placeMapLabels(inter, none, view, centre, 160);
+            CHECK_TRUE(want.size() == 8 && got.size() == 8,
+                       "both arrival orders place all 8 names");
+            bool same_order = want.size() == got.size();
+            for(size_t k = 0; same_order && k < want.size(); k++) {
+                same_order &= want[k].at.x == got[k].at.x && want[k].at.y == got[k].at.y;
+            }
+            CHECK_TRUE(same_order,
+                       "labels land in tier order whatever order the caller appended them in");
+
+            std::vector<MapLabelPlaced> scratch;
+            placeMapLabelsInto(scratch, asc, none, view, centre, 160);
+            const size_t once = scratch.size();
+            placeMapLabelsInto(scratch, asc, none, view, centre, 160);
+            CHECK_TRUE(scratch.size() == once,
+                       "placeMapLabelsInto replaces into its out rather than appending");
+            bool same_again = scratch.size() == want.size();
+            for(size_t k = 0; same_again && k < want.size(); k++) {
+                same_again &= scratch[k].at.x == want[k].at.x && scratch[k].at.y == want[k].at.y;
+            }
+            CHECK_TRUE(same_again, "the reused scratch answers exactly what a fresh vector does");
+        }
+
         // Edges: a body against the right edge keeps its dot and LOSES its name rather
         // than printing it on the near side, where it would read as belonging to the
         // next dot in from the edge. That is the cost of side stability, paid on

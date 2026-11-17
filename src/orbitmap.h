@@ -189,8 +189,10 @@ struct MapLabelCand {
 };
 struct MapLabelPlaced { int cand; ImVec2 at; };   // index into items; top-left to draw at
 
-// Pass this as placeMapLabels()'s must_fit_tier for the pure drop rule: no name gets a
-// second side. It is outside every real tier, which are 0..10 in gameui.cpp.
+// Pass this as placeMapLabelsInto()'s (or placeMapLabels()'s) must_fit_tier for the
+// pure drop rule: no name gets a second side. It is outside every real tier, which
+// are 0..10 in gameui.cpp -- the tier ladder is why the placement order is built by
+// counting 256 buckets rather than sorted.
 constexpr unsigned char kMapLabelNoBackup = 255;
 
 // The four slots around a marker; index order is right, left, below, above, and which
@@ -319,24 +321,46 @@ private:
 // `must_fit_tier` is the one exception to "dropped": a candidate at or below that
 // priority gets the opposite side of its dot when the outward slot falls off the map.
 // Pass 255 (the default) for the pure drop rule.
+//
+// `out` is FILLED, not returned: the map calls this once per drawn frame per window,
+// and the fresh return vector was a third of the 3 allocations a drawn frame cost
+// (#964). It is cleared here, so a caller keeps one and reuses its capacity -- the
+// same bargain the reused `grid` below makes.
 template <class Item>
-inline std::vector<MapLabelPlaced> placeMapLabels(const std::vector<Item> &items,
-                                                  const std::vector<MapLabelCand> &blocks,
-                                                  const ImVec4 &view,
-                                                  const ImVec2 &focus,
-                                                  size_t max_drawn,
-                                                  float gap = 1.0f, float pad = 4.0f,
-                                                  float cell = 32.0f,
-                                                  unsigned char must_fit_tier = 255) {
+inline void placeMapLabelsInto(std::vector<MapLabelPlaced> &out,
+                               const std::vector<Item> &items,
+                               const std::vector<MapLabelCand> &blocks,
+                               const ImVec4 &view,
+                               const ImVec2 &focus,
+                               size_t max_drawn,
+                               float gap = 1.0f, float pad = 4.0f,
+                               float cell = 32.0f,
+                               unsigned char must_fit_tier = 255) {
     // Index order: the caller's items stay where they are because the result indexes
-    // them. stable_sort keeps bodies in catalogue order inside a priority tier, so
-    // which name wins a contest does not chatter between frames as bodies drift.
-    std::vector<int> order(items.size());
-    for(size_t i = 0; i < order.size(); i++) { order[i] = (int)i; }
-    std::stable_sort(order.begin(), order.end(),
-                     [&](int a, int b) { return items[a].cand.prio < items[b].cand.prio; });
+    // them. The tiers are a small fixed ladder (gameui.cpp's kLabel* enum), so the
+    // order is BUILT by counting rather than sorted: one pass counts per tier, a
+    // second scatters the indices into their tier's run. Iterating i ascending lands
+    // bodies in catalogue order INSIDE a tier, which is the stability #808 wanted --
+    // which name wins a contest must not chatter between frames as bodies drift.
+    // Counting also drops the allocation a sort cannot: libstdc++ pays for
+    // stable_sort's temporary buffer BEFORE it looks at the range, so the sort cost
+    // one allocation per drawn frame even on a map that was already in tier order --
+    // and a selected target or a station breaks that order mid-sweep (#964).
+    static thread_local std::vector<int> order;
+    unsigned counts[256] = {};
+    for(const Item &it : items) { counts[(unsigned char)it.cand.prio]++; }
+    unsigned at[256];
+    unsigned run = 0;
+    for(int t = 0; t < 256; t++) { at[t] = run; run += counts[t]; }
+    order.clear();
+    order.resize(items.size());
+    for(size_t i = 0; i < items.size(); i++) {
+        order[at[(unsigned char)items[i].cand.prio]++] = (int)i;
+    }
 
-    // Reused across frames and both map windows (they draw in turn on one thread);
+    // Reused across frames and both map windows (they draw in turn on one thread,
+    // and both pass the same Item -- a second Item type would instantiate its own
+    // grid and order, and the sharing this note claims would quietly stop holding);
     // reset() is what re-fits it to this window.
     static thread_local LabelGrid grid;
     grid.reset(view, cell);
@@ -352,7 +376,7 @@ inline std::vector<MapLabelPlaced> placeMapLabels(const std::vector<Item> &items
                               b.dot.x + b.r_px + gap, b.dot.y + b.r_px + gap), b.prio);
     }
 
-    std::vector<MapLabelPlaced> out;
+    out.clear();
     out.reserve(max_drawn < items.size() ? max_drawn : items.size());
     ImVec2 slot[4];
     for(int idx : order) {
@@ -392,5 +416,23 @@ inline std::vector<MapLabelPlaced> placeMapLabels(const std::vector<Item> &items
         grid.claimName(box);
         out.push_back({idx, slot[chosen]});
     }
+}
+
+// The by-value shape: for a caller that wants a list of its own (the fixtures), not
+// a scratch it keeps. Same answers, one more allocation the first time it grows.
+// Keep the parameter list in sync with placeMapLabelsInto -- a default carried by
+// only one of the two makes the fixtures pin a different map than the game draws.
+template <class Item>
+inline std::vector<MapLabelPlaced> placeMapLabels(const std::vector<Item> &items,
+                                                  const std::vector<MapLabelCand> &blocks,
+                                                  const ImVec4 &view,
+                                                  const ImVec2 &focus,
+                                                  size_t max_drawn,
+                                                  float gap = 1.0f, float pad = 4.0f,
+                                                  float cell = 32.0f,
+                                                  unsigned char must_fit_tier = 255) {
+    std::vector<MapLabelPlaced> out;
+    placeMapLabelsInto(out, items, blocks, view, focus, max_drawn,
+                       gap, pad, cell, must_fit_tier);
     return out;
 }
