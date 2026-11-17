@@ -24,7 +24,9 @@
 //     a float ULP at 200 t still moves them (#382);
 //   * a draw reports the kg that LEFT the tanks, not the kg it was asked for, and a
 //     layer that comes up short passes the remainder down instead of dropping it
-//     (#531).
+//     (#531);
+//   * the staged delta-v plan a flying hull shows (Vehicle::stagedRows) is priced on
+//     the tanks as they are now, and re-keys when fuel burns or hardware leaves (#948).
 //
 // Links the REAL SetMass (src/physics.cpp, as test_thrust.cpp does), so the
 // part-mass shedding + Bullet inertia update is exercised too. No GL context
@@ -37,6 +39,7 @@
 
 #include "btcommon.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <deque>
@@ -86,13 +89,15 @@ struct Ship {
 };
 
 /* Add one part. h2/lox > 0 -> a tank; engine -> a thruster; barrier -> a
-   fuel wall (decoupler); rcsThrust > 0 -> an RCS pod (hyd kg of hydrazine
-   in its own capacity). Returns the new Part (index parts.size()-1). */
+   fuel wall (decoupler); rcsThrust > 0 -> an RCS pod (hyd kg of hydrazine in
+   its own capacity). `stage` is the part's staging label and `decoupler` makes
+   it a real separation device, which is what the staged delta-v walk drops.
+   Returns the new Part (index parts.size()-1). */
 /* double, like the capacity these land in (#530): a float parameter would quietly
    truncate a future fixture's value the way the loader used to. */
 static Part *addPart(Ship &s, double h2, double lox, bool engine = false,
                      bool barrier = false, double rcsThrust = 0.0,
-                     double hyd = 0.0) {
+                     double hyd = 0.0, int stage = 1, bool decoupler = false) {
     /* DRY structure mass only. The fuel (h2/lox) is NOT baked into the body:
        init() seeds it into resources.current, and Part::effectiveMass adds it
        back (body dry + contents), so the ship's mass is 100 + h2 + lox either
@@ -120,11 +125,16 @@ static Part *addPart(Ship &s, double h2, double lox, bool engine = false,
     d.fuel_barrier = barrier;
     d.rcs_thrust = rcsThrust;
     d.capacity[(int)ResourceType::Hydrazine] = hyd;
+    /* The parser forces a fuel wall on every decoupler (shipdef.cpp), so a
+       fixture that asks for a decoupler gets the wall with it -- staging treats a
+       decoupler as a wall whether or not the caller spelled it out. */
+    if(decoupler) { d.decoupler = true; d.fuel_barrier = true; }
     s.defs.push_back(d);
 
     Part *p = new Part;
     p->body = b;
     p->def = &s.defs.back();
+    p->stage = stage;
     s.v->parts.push_back(p);
     return p;
 }
@@ -1013,6 +1023,87 @@ static void test_force_overlay_recording() {
     destroyShip(s);
 }
 
+/* Staged delta-v on a LIVE hull (#948). staging.cpp's own suite proves the burn
+   model; this proves the part that only exists for a flying ship: the snapshot of
+   parts/parents/labels/fuel-links, the seed that says what the tanks hold RIGHT
+   NOW, and the cache that decides when an answer is stale. A hull in flight
+   differs from an authored build in ways the model had never seen -- partly burnt
+   tanks, and hardware that has already left. */
+static void test_staged_plan_tracks_a_live_hull() {
+    printf("== Staged plan on a live hull: seeded from what it carries now (#948) ==\n");
+    Ship s; s.v = new Vehicle;
+    /* Up top (label 1): an engine and its own small tank. Below a decoupler
+       (label 2): a bigger tank and a second engine. The decoupler's fuel wall
+       splits the tanks into two groups, like a real two-stager. Five parts at
+       100 kg dry = 500, plus 100 kg and 200 kg of propellant = 800 wet. */
+    Part *engUp = addPart(s, 0, 0, true);
+    Part *tankUp = addPart(s, 50, 50);
+    Part *dec = addPart(s, 0, 0, false, false, 0.0, 0.0, 2, true);
+    Part *tankLo = addPart(s, 100, 100, false, false, 0.0, 0.0, 2);
+    Part *engLo = addPart(s, 0, 0, true, false, 0.0, 0.0, 2);
+    link(s, engUp, tankUp);
+    link(s, tankUp, dec);
+    link(s, dec, tankLo);
+    link(s, tankLo, engLo);
+    initShip(s);
+
+    TerrainBody *pad = new TerrainBody;
+    pad->name = "pad";
+    pad->g = 10.0;
+    s.v->m_parent = pad;
+
+    const std::vector<StageRow> &rows = s.v->stagedRows();
+    CHECK_TRUE(rows.size() == 2, "one row per staging label");
+    if(rows.size() == 2) {
+        CHECK_TRUE(rows[0].stage == 2 && rows[1].stage == 1, "the walk runs top label down");
+        /* The seeding invariant: the plan's first mass is the hull's mass, contents
+           and all -- not the def-derived figure an authored build would use. */
+        CHECK_NEAR(rows[0].massStart, s.v->getMass(), 1e-9, "the plan starts at the live mass");
+        CHECK_NEAR(rows[0].massEnd, 600.0, 1e-9, "the booster period ends when ITS tanks run dry");
+        CHECK_NEAR(rows[0].deltaV, 100.0 * std::log(800.0 / 600.0), 1e-9,
+                   "booster dv = ve ln(m0/m1) at the live mass");
+        CHECK_TRUE(rows[0].engines == 1 && rows[0].drops, "label 2: one engine, and it separates");
+        CHECK_NEAR(rows[1].massStart, 300.0, 1e-9, "the upper period starts after the drop is gone");
+        CHECK_NEAR(rows[1].deltaV, 100.0 * std::log(300.0 / 200.0), 1e-9, "upper dv, same model");
+    }
+    CHECK_NEAR(s.v->stagedDeltaV(), 100.0 * std::log(800.0 / 600.0) + 100.0 * std::log(300.0 / 200.0),
+               1e-9, "the readout is the sum of the rows");
+
+    /* Burn 40 kg out of the lower group: 13% of the fuel, well past the refresh
+       band, so the next read re-prices from the tanks as they now stand. */
+    CHECK_TRUE(s.v->consumeResourceMass(ResourceType::Hydrogen, 40.0f, engLo),
+               "the lower engine draws 40 kg");
+    CHECK_NEAR(s.v->getMass(), 760.0, 1e-9, "the hull is 40 kg lighter");
+    const std::vector<StageRow> &burnt = s.v->stagedRows();
+    CHECK_NEAR(burnt[0].massStart, 760.0, 1e-9, "the plan is re-anchored on the lighter hull");
+    CHECK_NEAR(s.v->stagedDeltaV(), 100.0 * std::log(760.0 / 600.0) + 100.0 * std::log(300.0 / 200.0),
+               1e-9, "burnt propellant leaves the plan");
+
+    /* A dribble inside the band keeps the cached answer. That is what the band is
+       for, so pin it: an exact-equality here means the vector was not recomputed. */
+    const double held = s.v->stagedDeltaV();
+    CHECK_TRUE(s.v->consumeResourceMass(ResourceType::Hydrogen, 0.5f, engLo), "draw 0.5 kg");
+    CHECK_NEAR(s.v->getMass(), 759.5, 1e-9, "the hull is 0.5 kg lighter");
+    CHECK_NEAR(s.v->stagedDeltaV(), held, 0.0, "a sub-band dribble keeps the cached plan");
+
+    /* The separation: the dropped parts leave the hull, so the plan must re-key.
+       An early version of the cache kept a snapshot that still contained them and
+       asserted its own mass against a hull that had lost 460 kg. */
+    for(Part *gone : {dec, tankLo, engLo}) {
+        s.v->parts.erase(std::find(s.v->parts.begin(), s.v->parts.end(), gone));
+        delete gone;
+    }
+    CHECK_NEAR(s.v->getMass(), 300.0, 1e-9, "the lower half is off the hull");
+    const std::vector<StageRow> &after = s.v->stagedRows();
+    CHECK_TRUE(after.size() == 1, "one label left, one row");
+    CHECK_NEAR(after.front().massStart, s.v->getMass(), 1e-9, "re-keyed: the plan starts at the live mass");
+    CHECK_NEAR(s.v->stagedDeltaV(), 100.0 * std::log(300.0 / 200.0), 1e-9,
+               "and it bills only what the survivor can still reach");
+
+    delete pad;
+    destroyShip(s);
+}
+
 int main() {
     test_prorata_in_group();
     printf("\n");
@@ -1049,6 +1140,8 @@ int main() {
     test_applythrust_last_dribble_fits();
     printf("\n");
     test_force_overlay_recording();
+    printf("\n");
+    test_staged_plan_tracks_a_live_hull();
 
     printf("\n%d checks, %d failures\n", g_checks, g_failures);
     if(g_failures == 0) {

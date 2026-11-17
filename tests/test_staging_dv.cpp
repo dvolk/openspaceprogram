@@ -1262,6 +1262,93 @@ static void test_a_live_decoupler_above_a_dead_tank_does_not_adopt_its_fuel() {
     CHECK_NEAR(rows[2].deltaV, 0.0, 1e-9, "s1 dv: the burn already had it");
 }
 
+/* Seeding: staging a ship that EXISTS rather than a build being authored (#948). The
+   VAB asks "what would this build do, tanks full"; a flown ship has to answer "what do
+   I have left", and the only difference is two arrays -- what each part holds of the
+   burnable resources, and what it weighs with crew, inventory and any resource no
+   engine on this ship can burn. The fixture is test_two_stage's (dry 125, fuel 200,
+   wet 325; ve 1000, 1 kg/s per engine, g 10), so the numbers below are the same
+   arithmetic with the fuel moved. */
+static void test_seed_the_fuel_and_mass_a_live_ship_carries() {
+    Catalog cat;
+    BuildShip bs;
+    const int upTank = addPart(bs, cat.tank(50, 25, 25), "upTank", -1, 1);
+    addPart(bs, cat.engine(10, 0.5, 1000.0), "upEng", upTank, 1);
+    const int dec = addPart(bs, cat.decoupler(5), "dec", upTank, 2);
+    const int loTank = addPart(bs, cat.tank(50, 75, 75), "loTank", dec, 2);
+    addPart(bs, cat.engine(10, 0.5, 1000.0), "loEng", loTank, 2);
+    (void)dec; (void)loTank;
+
+    const std::vector<StageRow> full = computeStaging(bs, 10.0);
+    CHECK_TRUE(full.size() == 2, "the unseeded fixture still has two rows");
+
+    /* The mask is exported so a live ship weighs its resources with THIS rule, not a
+       copy of it: both propellants here, because both engines are chemical. */
+    bool burn[(int)ResourceType::Num] = {};
+    stagingPropellantMask(bs, burn);
+    CHECK_TRUE(burn[(int)ResourceType::Hydrogen] && burn[(int)ResourceType::LOX],
+               "the build's engines decide what is burnable");
+    CHECK_TRUE(!burn[(int)ResourceType::Hydrazine] && !burn[(int)ResourceType::JetFuel],
+               "and nothing else joins the pool");
+
+    /* Seeding the def's own figures has to be the identity, bit for bit -- otherwise
+       the flight readout and the VAB table are different code paths for the same
+       question, which is the bug this seed exists to close. */
+    StagingSeed same;
+    for(size_t i = 0; i < bs.parts.size(); i++) {
+        same.fuelKg.push_back(partPropellantMass(*bs.parts[i].def, burn));
+        same.dryKg.push_back(partDryMass(*bs.parts[i].def, burn));
+    }
+    const std::vector<StageRow> seeded = computeStaging(bs, 10.0, 1.0, same);
+    bool identical = seeded.size() == full.size();
+    for(size_t i = 0; identical && i < full.size(); i++) {
+        identical = seeded[i].deltaV == full[i].deltaV
+                 && seeded[i].massStart == full[i].massStart
+                 && seeded[i].massEnd == full[i].massEnd
+                 && seeded[i].minTWR == full[i].minTWR
+                 && seeded[i].maxTWR == full[i].maxTWR
+                 && seeded[i].engines == full[i].engines
+                 && seeded[i].drops == full[i].drops
+                 && seeded[i].stage == full[i].stage;
+    }
+    CHECK_TRUE(identical, "seeding the def's own figures changes no digit");
+
+    /* Half-full tanks: 125 dry + 100 fuel aboard. */
+    StagingSeed half = same;
+    for(double &f : half.fuelKg) { f *= 0.5; }
+    const std::vector<StageRow> rows = computeStaging(bs, 10.0, 1.0, half);
+    CHECK_TRUE(rows.size() == 2, "half fuel still flies the same two labels");
+    if(rows.size() != 2) { return; }
+    CHECK_NEAR(rows[0].massStart, 225.0, 1e-9, "the row starts at the mass aboard");
+    CHECK_NEAR(rows[0].massEnd, 150.0, 1e-9, "the lower tank had 75 kg to give, not 150");
+    CHECK_NEAR(rows[0].deltaV, 1000.0 * std::log(225.0 / 150.0), 1e-9, "s2 dv on the fuel that is there");
+    CHECK_NEAR(rows[1].massStart, 85.0, 1e-9, "dec + drained loTank + loEng left");
+    CHECK_NEAR(rows[1].massEnd, 60.0, 1e-9, "the upper tank had 25 kg left to burn");
+    CHECK_NEAR(rows[1].deltaV, 1000.0 * std::log(85.0 / 60.0), 1e-9, "s1 dv likewise");
+
+    /* Crew and inventory: PartDef cannot know a seat weighs anything, so the caller
+       folds the extra into that part's dry mass. Same fuel, more kg to move. That is
+       how a flown hull counts its seats: mars_explorer_mk1 carries 97.0 kg of crew the
+       authored build tree does not, which alone put its flight figure 1.5% under the
+       VAB's before it was accounted for (#948). */
+    StagingSeed crewed = half;
+    crewed.dryKg[0] += 90.0;
+    const std::vector<StageRow> flown = computeStaging(bs, 10.0, 1.0, crewed);
+    CHECK_NEAR(flown[0].massStart, 315.0, 1e-9, "the crew rides the part that carries them");
+    CHECK_NEAR(flown[0].deltaV, 1000.0 * std::log(315.0 / 240.0), 1e-9, "same fuel, heavier stack");
+    CHECK_NEAR(flown[1].deltaV, 1000.0 * std::log(175.0 / 150.0), 1e-9, "and the drop still sheds only the drop");
+
+    /* Nothing aboard to burn: the plan is two rows of zero, and the hardware and its
+       TWR are still there to explain why the number is not an error. */
+    StagingSeed empty = same;
+    for(double &f : empty.fuelKg) { f = 0.0; }
+    const std::vector<StageRow> dry = computeStaging(bs, 10.0, 1.0, empty);
+    CHECK_TRUE(dry.size() == 2, "an empty ship still walks its labels");
+    CHECK_NEAR(dry[0].massStart, 125.0, 1e-9, "dry mass only");
+    CHECK_NEAR(dry[0].deltaV + dry[1].deltaV, 0.0, 0.0, "no fuel, no delta-v");
+    CHECK_TRUE(dry[0].engines == 1 && dry[0].drops, "the stage-2 engine is lit and the drop still happens");
+}
+
 int main() {
     test_two_stage();
     test_single_stage();
@@ -1286,6 +1373,7 @@ int main() {
     test_a_newly_lit_engine_outside_the_drop_reaches_inside_it();
     test_a_live_decoupler_above_a_dead_tank_does_not_adopt_its_fuel();
     test_a_separation_does_not_relist_an_already_dead_subtree();
+    test_seed_the_fuel_and_mass_a_live_ship_carries();
 
     printf("test_staging_dv: %d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;

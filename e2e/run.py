@@ -488,11 +488,15 @@ POWER_RE = re.compile(
 # drift past kMassRebuildFrac apart -- so they differ by design, and a case pins
 # the band rather than hiding it in a tolerance. A case takes the DIFFERENCE
 # between two rows: that is what one burn spent.
+# dv_left is getDeltaV(), the coarse one-burn figure (#41); dv_staged is the
+# ship's own staged plan, the number the Vessel Info window shows (#948). They
+# differ on a mixed-Isp ship, and only the staged one is monotone under a stage
+# press -- which is what case 948 pins.
 DV_RE = re.compile(
     r"\[dv\]\s+t=([\d.]+)s\s+ship=\"([^\"]*)\"\s+mass=([-\d.]+)\s*kg\s+"
     r"hullmass=([-\d.]+)\s*kg\s+thrust=([-\d.]+)N\s+dv_del=([-\d.]+)\s+"
     r"dv_along=([-\d.]+)\s+dv_rocket=([-\d.]+)\s+prop=([-\d.]+)\s*kg\s+"
-    r"ve=([-\d.]+) m/s\s+dv_left=([-\d.]+)"
+    r"ve=([-\d.]+) m/s\s+dv_left=([-\d.]+)\s+m/s\s+dv_staged=([-\d.]+)"
 )
 # --mass-log (vehicle.cpp mass_log): one line per VEHICLE per sample, so the
 # fleet's mass adds up. A decoupler hands its subtree to a new Vehicle, so the
@@ -1651,14 +1655,14 @@ def parse_dv(out):
     rows = []
     for m in DV_RE.finditer(out):
         (t, ship, mass, hullmass, thrust, dv_del, dv_along, dv_rocket,
-         prop, ve, dv_left) = m.groups()
+         prop, ve, dv_left, dv_staged) = m.groups()
         rows.append({
             "t": float(t), "ship": ship, "mass": float(mass),
             "hullmass": float(hullmass),
             "thrust": float(thrust), "dv_del": float(dv_del),
             "dv_along": float(dv_along), "dv_rocket": float(dv_rocket),
             "prop": float(prop), "ve": float(ve),
-            "dv_left": float(dv_left),
+            "dv_left": float(dv_left), "dv_staged": float(dv_staged),
         })
     return rows
 

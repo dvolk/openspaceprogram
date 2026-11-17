@@ -2641,6 +2641,147 @@ double Vehicle::getDeltaV() {
     return ve * exhaust_scale * log(getMass() / (getMass() - remaining_fuel));
 }
 
+/* BuildShip view of a live Vehicle, for the staging model (#948): the same tree with
+   the same stage labels, and ids synthesized from the part's index -- computeStaging
+   resolves fuel links through ids, so any scheme that is internally consistent works.
+   Poses stay empty: the burn model reads def, parent, stage and the link endpoints,
+   nothing else. `order` comes back as a copy of `ship.parts`, because that is what the
+   caller's cache compares index-wise, so this assumes parts are parent-before-child.
+   They are: every mutation of Vehicle::parts appends or filters, a separation re-roots
+   a moved subtree at its own root (an ancestor of everything it moves), and the save
+   loader asserts the parent is already mapped (save.cpp). A parent that is not aboard
+   becomes a root, which is what a half-fixed-up tree means; a parent that comes LATER
+   still resolves -- the walk builds its own child table -- but it breaks the index
+   equality this snapshot is cached by, so it is asserted rather than papered over. */
+static void stageSnapshot(const Vehicle &ship, std::vector<Part *> &order,
+                          BuildShip &out) {
+    const size_t n = ship.parts.size();
+    /* Cleared by the callee, not the caller: a stale entry surviving a separation is a
+       part that no longer exists inside the snapshot, and the plan then describes a
+       ship that is not aboard. Measured while writing this: 106521 kg of rows billed
+       on a 35678 kg hull. */
+    order.clear();
+    out.parts.clear();
+    out.fuelLinks.clear();
+    order.reserve(n);
+    out.parts.reserve(n);
+    std::map<const Part *, int> where;
+    for(size_t i = 0; i < n; i++) { where[ship.parts[i]] = (int)i; }
+    for(size_t i = 0; i < n; i++) {
+        Part *p = ship.parts[i];
+        assert(p->def != nullptr);   // make_part mints one; with no def there is no mass to seed either
+        BuildPart bp;
+        bp.def = p->def;
+        bp.id = std::to_string(i);
+        bp.stage = p->stage;
+        bp.parent = -1;
+        if(p->parent != nullptr) {
+            std::map<const Part *, int>::const_iterator it = where.find(p->parent);
+            if(it != where.end()) {
+                assert(it->second < (int)i);
+                bp.parent = it->second;
+            }
+        }
+        order.push_back(p);
+        out.parts.push_back(bp);
+    }
+    out.fuelLinks.reserve(ship.fuelLinks.size());
+    for(const Vehicle::FuelLink &fl : ship.fuelLinks) {
+        std::map<const Part *, int>::const_iterator f = where.find(fl.from);
+        std::map<const Part *, int>::const_iterator t = where.find(fl.to);
+        if(f == where.end() || t == where.end()) { continue; }
+        BuildShip::FuelLink bl;
+        bl.def = (fl.from->def != nullptr) ? fl.from->def : fl.to->def;
+        bl.id = std::to_string(out.fuelLinks.size());   // never read; only endpoints are
+        bl.from = std::to_string(f->second);
+        bl.to = std::to_string(t->second);
+        out.fuelLinks.push_back(bl);
+    }
+}
+
+const std::vector<StageRow> &Vehicle::stagedRows() {
+    /* Does stagedSnap_ still describe this hull? Part identity, parent edge, stage
+       label, fuel-link endpoints: one pass over pointers, no allocation. A separation,
+       a dock or undock, or a fuel-link edit changes it. The in-flight part popup does
+       NOT: it writes trim and chute state, and a stage label is only written when a
+       part is minted or loaded. */
+    bool fresh = stagedOrder_.size() == parts.size()
+              && stagedLinks_.size() == fuelLinks.size();
+    for(size_t i = 0; fresh && i < parts.size(); i++) {
+        if(stagedOrder_[i] != parts[i] || stagedParent_[i] != parts[i]->parent
+           || stagedSnap_.parts[i].stage != parts[i]->stage) { fresh = false; }
+    }
+    for(size_t k = 0; fresh && k < fuelLinks.size(); k++) {
+        if(stagedLinks_[k].first != fuelLinks[k].from
+           || stagedLinks_[k].second != fuelLinks[k].to) { fresh = false; }
+    }
+    if(!fresh) {
+        stageSnapshot(*this, stagedOrder_, stagedSnap_);
+        stagedParent_.assign(stagedOrder_.size(), nullptr);
+        for(size_t i = 0; i < stagedOrder_.size(); i++) { stagedParent_[i] = stagedOrder_[i]->parent; }
+        stagedLinks_.assign(fuelLinks.size(), std::make_pair((Part *)nullptr, (Part *)nullptr));
+        for(size_t k = 0; k < fuelLinks.size(); k++) {
+            stagedLinks_[k] = std::make_pair(fuelLinks[k].from, fuelLinks[k].to);
+        }
+        stagedFuel_ = -1.0;   // forces the burn below
+    }
+
+    /* Split each live part by the SAME mask computeStaging will build, so the seeded
+       pair adds up to the mass the hull really carries: `fuelKg` is what the burnable
+       resources hold, `dryKg` is everything else about that part -- structure, crew,
+       inventory, and any resource no engine on this ship can burn. Non-burnable mass
+       rides `dry` on purpose: the sim never touches it, so it leaves only when the part
+       does, which is how a cargo tank's H2 reads aboard a ship with no engine that can
+       take it. */
+    bool burn[(int)ResourceType::Num];
+    stagingPropellantMask(stagedSnap_, burn);
+    stagedSeed_.fuelKg.resize(stagedOrder_.size());
+    stagedSeed_.dryKg.resize(stagedOrder_.size());
+    double fuelTot = 0.0, massTot = 0.0;
+    for(size_t i = 0; i < stagedOrder_.size(); i++) {
+        const Part *p = stagedOrder_[i];
+        double f = 0.0;
+        for(int r = 0; r < (int)ResourceType::Num; r++) {
+            if(burn[r] && resourceHasMass((ResourceType)r)) { f += p->resources.current[r]; }
+        }
+        const double em = p->effectiveMass();
+        stagedSeed_.fuelKg[i] = f;
+        stagedSeed_.dryKg[i] = em - f;
+        fuelTot += f;
+        massTot += em;
+    }
+
+    /* A burn ticks the fuel every substep, and re-running a burn simulation per frame
+       is what the VAB's own cache note bills at 84us (one group) to 473us (240 groups)
+       -- with Vessel Info open by default in flight. Recompute once the fuel or mass
+       total has moved past this fraction of the figures the cached rows were built on,
+       or once the ship's own scalars moved (g feeds the rows' TWR, exhaust_scale feeds
+       thrust; neither is in the VAB's cache key by accident, and this one has no
+       signature to inherit it from). The fraction is deliberately COARSER than the
+       printed resolution: while a burn runs the figure lags by up to ve x 0.2%, about
+       9 m/s at ve 4400 and 18 m/s at the catalog's 9000, so a pilot watching the plan
+       drain sees a staircase rather than a needle. */
+    constexpr double kStagedRefreshFrac = 0.002;
+    const bool moved = std::fabs(fuelTot - stagedFuel_) > kStagedRefreshFrac * std::max(fuelTot, 1.0)
+                    || std::fabs(massTot - stagedMass_) > kStagedRefreshFrac * std::max(massTot, 1.0)
+                    || stagedG_ != m_parent->g || stagedExhaust_ != exhaust_scale;
+    if(moved) {
+        stagedRows_ = computeStaging(stagedSnap_, m_parent->g, exhaust_scale, stagedSeed_);
+        /* The seeded pair has to add up to the hull the model is billed on: the first
+           row's ignition mass IS the ship's mass. That is the invariant the seed
+           exists for, and it is the one that goes missing if a part drops out of the
+           snapshot or a part's def goes away (computeStaging seeds nothing for a
+           null-def part, so its mass would vanish from the rows only). */
+        assert(stagedRows_.empty()
+               || std::fabs(stagedRows_.front().massStart - massTot) <= 1e-6 * massTot);
+        stagedFuel_ = fuelTot;
+        stagedMass_ = massTot;
+        stagedG_ = m_parent->g;
+        stagedExhaust_ = exhaust_scale;
+    }
+    return stagedRows_;
+}
+
 double Vehicle::getMass() {
     // effectiveMass: the ship's mass includes what is parked in it (containment).
     double r = 0.0;
@@ -5231,16 +5372,20 @@ void Vehicle::drain_log(double time) {
    accelerates, which rebuildCompound() only re-makes once the two drift past
    kMassRebuildFrac apart. `ve` is the LAST rocket in part order, so on a
    mixed-Isp ship the line reads coherently but that number is not a ship
-   property. */
+   property.
+   `dv_left` is getDeltaV(), the coarse single-burn figure (#41); `dv_staged` is
+   the ship's own staged plan -- what the Vessel Info window shows and the number
+   that does not jump when a stage separates (#948). The pair is the pair a player
+   sees if they compare the flight readout with the VAB table. */
 void Vehicle::dv_log(double time) {
     if(hull == nullptr) { return; }
     printf("[dv] t=%.3fs ship=\"%s\" mass=%.2f kg hullmass=%.2f kg "
            "thrust=%.1fN dv_del=%.3f dv_along=%.3f dv_rocket=%.3f "
-           "prop=%.3f kg ve=%.1f m/s dv_left=%.1f m/s\n",
+           "prop=%.3f kg ve=%.1f m/s dv_left=%.1f m/s dv_staged=%.1f m/s\n",
            time, displayName().c_str(), getMass(), hull->mass,
            glm::length(lastThrustForce),
            dvDelivered_, dvAlong_, dvRocket_, propSpent_, dvVeLast_,
-           getDeltaV());
+           getDeltaV(), stagedDeltaV());
     fflush(stdout);
 }
 

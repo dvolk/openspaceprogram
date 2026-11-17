@@ -927,7 +927,12 @@ static void drawGuidanceWindow(Game &g) {
             ask.inc_deg = glm::clamp(ask.inc_deg, 0.0, 180.0);
 
             const bool in_sky = b != nullptr && b->frame != nullptr;
-            const double dv = ship->getDeltaV();
+            /* #948: the staged plan, not getDeltaV(). Two windows used to print two
+               different "delta-v" figures for the same hull (12195 here, 9490 in
+               Vessel Info) and this one also refused asks on its own number, so a
+               player could be told the ask was unaffordable by a figure they were not
+               shown. The staged total is the same model the VAB's table runs. */
+            const double dv = ship->stagedDeltaV();
             const double need = in_sky ? ascentDvNeed(*b, ask.apo_asl) : 0.0;
             if(in_sky) {
                 // The row is the readout; the estimate is not on it (2026_11_05 UI
@@ -3298,7 +3303,26 @@ void drawUIReadouts(Game &g) {
         ImGui::Text("Stage: %d / %d",
                     ship->activeStage(), ship->numStages());
         ImGui::Text("Mass: %.3fkg", ship->getMass());
-        ImGui::Text("Delta-v: %.1fm/s", ship->getDeltaV());
+        /* #948: the staged plan for what is still aboard -- the same burn model the
+           VAB's Staging window runs, seeded from the fuel actually in the tanks and
+           the mass the parts actually carry. This used to be getDeltaV(), one ideal
+           burn of everything the ship holds at the ve of the FIRST rocket in part
+           order, so a mixed-Isp ship priced 69t of chemical propellant at the
+           nuclear engine's Isp, and the figure ROSE when a stage separated. The rows
+           below are the stage labels still aboard, in the order the stage counter
+           will fly them; a press removes one row and re-prices the rest (#952), so
+           this is a plan, not a bank balance. */
+        const std::vector<StageRow> &srows = ship->stagedRows();
+        double staged = 0.0;
+        for(const StageRow &r : srows) { staged += r.deltaV; }
+        ImGui::Text("Delta-v: %.1fm/s staged", staged);
+        for(size_t i = 0; i < srows.size() && i < 6; i++) {
+            const StageRow &r = srows[i];
+            ImGui::Text("  %d:%8.0f m/s %2d eng%s", r.stage, r.deltaV, r.engines,
+                        r.drops ? "" : " *");
+        }
+        if(srows.size() > 6) { ImGui::Text("  ... %zu more", srows.size() - 6); }
+        if(!srows.empty() && !srows.back().drops) { ImGui::TextDisabled("  * no separation"); }
         /* "Throttle", not "Thrust Util": the engine command value R/F ramp (0..1), not a
            utilisation ratio. */
         ImGui::Text("Throttle: %.0f%%", ship->throttle() * 100);

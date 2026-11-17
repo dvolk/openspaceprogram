@@ -323,10 +323,13 @@ TARCH = $(BULLET3_OBJS) $(SDLIMG_A) $(SDLMIXER_A) $(SDL3_A) $(GLEW_A) $(PNG_A) $
 TSYS  = $(if $(filter windows,$(OS)),,-lGL) $(SDL3_SYS)
 # Real-Bullet tests share these TUs. part.o is here because build_ship mints
 # every part through make_part, and keys.o because Kerbal::armInput takes the
-# tick's SlotProbe, whose held() lives there.
+# tick's SlotProbe, whose held() lives there. staging.o since #948: Vehicle::stagedRows()
+# answers the flight delta-v readout with the VAB's burn model, so vehicle.o now has an
+# undefined reference into it -- and a test that links vehicle.o must link the model too.
 TCOMMON_OBJS = $(TESTDIR)/obj/physics.o $(TESTDIR)/obj/body.o $(TESTDIR)/obj/vehicle.o \
                $(TESTDIR)/obj/eva.o $(TESTDIR)/obj/crew.o $(TESTDIR)/obj/inventory.o \
                $(TESTDIR)/obj/part.o $(TESTDIR)/obj/shipdef.o $(TESTDIR)/obj/frame.o \
+               $(TESTDIR)/obj/staging.o \
                $(TESTDIR)/obj/terrain.o \
                $(TESTDIR)/obj/shader.o $(TESTDIR)/obj/camera.o $(TESTDIR)/obj/mesh.o \
                $(TESTDIR)/obj/texture.o $(TESTDIR)/obj/gldebug.o $(TESTDIR)/obj/buildings.o \

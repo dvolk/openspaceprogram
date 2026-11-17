@@ -22,14 +22,34 @@ struct StageRow {
     bool drops = false;      // separates parts (vs a pure burn)
 };
 
-// Simulate the staged burn of `ship` (tanks start FULL) against surface
+/* Per-part seeding, for staging a ship that EXISTS rather than one being
+   authored (#948). A flight Vehicle holds what it holds: tanks partly drained,
+   crew and inventory riding the hull. Index-aligned with ship.parts; an empty
+   member keeps the as-designed figure (full tanks, PartDef dry mass).
+   The caller owns the split: pass fuelKg = what the part holds of the burnable
+   resources (see stagingPropellantMask) and dryKg = everything else about that
+   part, so dryKg + fuelKg equals the mass the ship really carries for it. */
+struct StagingSeed {
+    std::vector<double> fuelKg;
+    std::vector<double> dryKg;
+};
+
+// Simulate the staged burn of `ship` against surface
 // gravity `g` (0 skips TWR). `exhaust_scale` scales thrust only, never the
 // fuel burn. Stage periods: the stage numbers carrying a decoupler, PLUS the highest
 // and the lowest whether or not they carry one (the walk asserts it spans
 // minStage..maxStage, and a label with nothing to separate is skipped later -- which is
 // why a ship can fly N labels while the table lists fewer rows).
+// Without `seed`, tanks start FULL -- the VAB's question.
 std::vector<StageRow> computeStaging(const BuildShip &ship, double g,
-                                     double exhaust_scale = 1.0);
+                                     double exhaust_scale = 1.0,
+                                     const StagingSeed &seed = {});
+
+/* Which resources the staged burn may spend: the union over the build's rocket
+   engines, jets excluded. A caller filling StagingSeed::fuelKg MUST weigh the
+   part with this same rule, or a live ship's rows disagree with the VAB's.
+   Same #41 limitation as computeStaging: ship-wide, not per fuel group. */
+void stagingPropellantMask(const BuildShip &ship, bool *burn);
 
 /* A content hash of everything computeStaging reads about `ship`, plus the two
    scalars. The Staging window redraws every frame on a build that only changes

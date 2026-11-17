@@ -60,7 +60,11 @@ struct RecSample {
     double hs = 0.0;       // horizontal (surface) speed
     double lat = 0.0, lon = 0.0;
     double pitch = 0.0, roll = 0.0, hdg = 0.0;   // surface-relative (render.cpp)
-    double dv = 0.0;       // delta-v still in the tanks (Vehicle::getDeltaV)
+    /* The coarse one-burn figure (Vehicle::getDeltaV), NOT the Vessel Info window's staged plan:
+       a telemetry row is one part in ~2000 of a recording, and #948 is about the readout a pilot
+       watches, not this column. Note it can rise when a stage separates (#948's diagnosis), so a
+       script reading this column should not assume monotonicity. */
+    double dv = 0.0;
     double acc = 0.0;      // felt acceleration: |thrust + aero| / mass
     double rho = 0.0;      // air density the flight model stood in, kg/m3
     double F = 0.0;        // |aero force| (lift + drag), N

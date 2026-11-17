@@ -31,6 +31,7 @@
 #include "equirect.h" // kNoCoord (SpawnPlace's lat/lon pair); the law itself: vehicle.cpp
 #include "rcs.h"      // the RCS nozzle allocator + per-substep Scratch
 #include "shipdef.h"
+#include "staging.h"  // StageRow / StagingSeed: the staged plan for a live ship (#948)
 #include "part.h"
 #include "terrain.h"
 #include "frame.h"
@@ -1434,8 +1435,38 @@ public:
 
     /* The figures a player plans a burn with, in double: the fuel they are made
        of is stored in double (#379), and narrowing on the way to the readout
-       throws that precision away -- ULP(0.0078kg) at 97t, ~1kg at 10kt (#382). */
+       throws that precision away -- ULP(0.0078kg) at 97t, ~1kg at 10kt (#382).
+       ONE ideal burn of everything the tanks hold, at the ve of the FIRST rocket
+       in part order: cheap, and wrong in two ways on a mixed-Isp ship (#41, #948)
+       -- it prices chemical propellant at the nuclear engine's Isp, and it treats
+       fuel in tanks about to be jettisoned as propellant while their dry mass rides
+       along as dead weight, so pressing a stage can make the number rise. The
+       Vessel Info readout uses stagedRows() instead; this stays the coarse figure
+       the recorder and the ascent heuristic budget with. */
     double getDeltaV();
+
+    /* #948: the staged plan for the ship AS IT IS -- the same burn model the VAB's
+       Staging window runs (staging.h), seeded from the fuel actually in the tanks
+       and the mass the parts actually carry (crew and inventory ride the hull, and
+       PartDef knows neither). Rows are the stage labels still aboard, in the order
+       the stage counter will fly them, so their sum is what a pilot has LEFT.
+       Not a law that a press lowers it: a press deletes one priced row AND re-prices
+       the rows under it, because the deleted period was modelled as having spent fuel
+       that engines on surviving tanks may still hold. On mars_explorer_mk1 the deleted
+       row is worth 3022 m/s and the re-pricing about 1500, so the sum falls; a stage
+       where that contest flips still jumps. #952.
+       Cost is the VAB's: 84us for a small ship, 473us for a 240-group monster, so it
+       is cached and recomputed only when the tree or the ship's totals move (see the
+       definition -- and note the figure there lags a burn by up to ve x 0.2%). Never
+       call it per tick from a new site without reading that gate. */
+    const std::vector<StageRow> &stagedRows();
+
+    /* Sum of stagedRows(): the ship's remaining delta-v, staged. */
+    double stagedDeltaV() {
+        double dv = 0.0;
+        for(const StageRow &r : stagedRows()) { dv += r.deltaV; }
+        return dv;
+    }
 
     /* TODO should be cached per frame */
     double getMass();
@@ -1530,6 +1561,24 @@ public:
         size_t nDropParts = 0;
         bool drainAll = false;
     } stageStamp_;
+
+    /* #948: the cache behind stagedRows(). Held as a BuildShip because that is what
+       computeStaging reads; the parallel pointer arrays are how a redraw answers
+       "does this snapshot still describe this ship?" without hashing (a ship is tens
+       of parts, and one pass over pointers and labels is cheaper than an FNV over
+       synthesized ids). stagedFuel_/stagedMass_/stagedG_/stagedExhaust_ are the
+       figures the cached rows were computed on: while a burn runs the totals move
+       every tick, and re-running the burn simulation per frame is what the VAB's own
+       cache note bills at 473us. stagedSeed_ lives here so the per-frame refill costs
+       no allocation. */
+    BuildShip stagedSnap_;
+    StagingSeed stagedSeed_;
+    std::vector<Part *> stagedOrder_;        // parts in snapshot order
+    std::vector<Part *> stagedParent_;       // per snapshot part, as seen then
+    std::vector<std::pair<Part *, Part *> > stagedLinks_;
+    std::vector<StageRow> stagedRows_;
+    double stagedFuel_ = -1.0, stagedMass_ = -1.0;
+    double stagedG_ = -1.0, stagedExhaust_ = -1.0;
 
     int activeStage();
     /* Step to the previous stage (clamped at the lowest one). */
