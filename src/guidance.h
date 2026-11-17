@@ -94,10 +94,20 @@ struct GuidanceState {
     /* The body's air top, metres above the same datum as sea_r, or 0 when the body has
        no atmosphere at all. The law still models no drag and reads no pressure: this is
        ONE number, answering ONE question -- how much of the climb happens inside air,
-       and therefore how late the pitch schedule may flatten (pathAngle, #960). The
-       driver fills it from AtmosphereParams::top() only when the body authors an
-       atmosphere, so an airless flight gets exactly 0 and flies the schedule it used to. */
+       and therefore how late the pitch schedule may flatten (pathAngle, #960). It never
+       changes mid-flight, so it is arguably the law's to hold rather than the tick's to
+       carry; it rides here because GuidanceState is the only way in. The driver MUST
+       fill it from the body's AtmosphereParams -- the default is the AIRLESS schedule,
+       so a caller that forgets flies a Kerbin climb like a Moho one. */
     double air_top_asl = 0.0;
+    /* Kilograms of air per square metre above the datum -- the hydrostatic column, p0/g,
+       which is what the drag integral actually sees. 0 with no air. This is the PAIR of
+       air_top_asl, filled from the same AtmosphereParams: HEIGHT says how much of the
+       climb happens inside air, WEIGHT says whether that air can push back. Duna's sky
+       is 50 km tall and holds 2% of Kerbin's mass per square metre, so a schedule keyed
+       on height alone steers a Duna ascent like a Kerbin one and flies it out of fuel
+       (#960 review). */
+    double air_column = 0.0;
     bool has_propellant = true;         // THIS stage can actually burn: the driver
                                         // fills it from Vehicle::canBurn(), which asks
                                         // per ignited engine whether every resource it

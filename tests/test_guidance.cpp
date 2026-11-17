@@ -15,6 +15,7 @@
 #include <cstdio>
 #include <cmath>
 #include <algorithm>
+#include <array>
 #include <string>
 #include "tchecks.h"
 
@@ -844,11 +845,14 @@ static void test_letting_go_closes_both_channels() {
    never got past 9.4 km of apoapsis and spent 11.7 km/s of drag; with it on the same
    hull on the same bed reached 150 x 159 km for 4.8 km/s.
 
-   kFlatAir itself is a FLIGHT-tuned number, so it is deliberately not duplicated here.
-   What the suite can pin is the form: the nose comes down as the hull climbs, one
-   flat-over altitude read as h_half = alt * tan(pitch) and the same at every altitude,
-   keyed on the height of the air, and never below the ask-keyed one. */
-static double schedPitch(const AscentTarget &t, double air_top, double alt) {
+   kFlatAir itself is a FLIGHT-tuned number, so it is deliberately not spelled here. What
+   the suite pins is the form: the nose comes down as the hull climbs, one flat-over
+   altitude read as h_half = alt * tan(pitch) and the same at every altitude, keyed on
+   the height of the air, capped by the ask, and never below the ask-keyed one. The two
+   size checks at the bottom DO bound kFlatAir from below -- with an 85 km air they need
+   it above ~0.21 -- which is the deliberate half: the shipped 0.40 must not drift back
+   toward the 4.5 km turn this issue is about. */
+static double schedPitch(const AscentTarget &t, double air_top, double air_column, double alt) {
     AscentLaw law(t);
     GuidanceState s;
     /* A slow climb, so the apoapsis stays put and the law keeps answering with its
@@ -858,52 +862,82 @@ static double schedPitch(const AscentTarget &t, double air_top, double alt) {
     s.mu = MU_MOHO; s.sea_r = R_MOHO; s.spin_axis = glm::dvec3(0.0, 0.0, 1.0);
     s.accel_max = 19.0; s.has_propellant = true;
     s.air_top_asl = air_top;
+    s.air_column = air_column;
     law.step(s);
     return law.pitch_deg();
 }
 
-static double schedHHalf(const AscentTarget &t, double air_top, double alt) {
-    return alt * std::tan(glm::radians(schedPitch(t, air_top, alt)));
+static double schedHHalf(const AscentTarget &t, double air_top, double air_column, double alt) {
+    return alt * std::tan(glm::radians(schedPitch(t, air_top, air_column, alt)));
 }
 
 static void test_the_air_holds_the_nose_up() {
     printf("== the pitch schedule in air: the air, not only the ask, says when to flatten ==\n");
     const double ask = 150e3;
-    const double air_top = 85e3;   // Kerbin's air top, res/systems/ksp_system.json
+    /* Authored air, res/systems/ksp_system.json: height and column mass (p0/g). */
+    const double air_top = 85e3, air_column = 10328.0;      // Kerbin
+    const double thin_top = 50e3, thin_column = 204.0;      // Duna
     AscentTarget t; t.apo_asl = t.peri_asl = ask; t.inc_rad = -1.0;
-    const double alts[] = {1e3, 5e3, 10e3, 20e3, 40e3, 80e3};
-    const int n = (int)(sizeof(alts) / sizeof(alts[0]));
-    double no_air[8], air[8];
-    for(int i = 0; i < n; i++) {
-        no_air[i] = schedHHalf(t, 0.0, alts[i]);
-        air[i] = schedHHalf(t, air_top, alts[i]);
+    const std::array<double, 6> alts = {1e3, 5e3, 10e3, 20e3, 40e3, 80e3};
+    std::array<double, alts.size()> no_air{}, air{};
+    for(size_t i = 0; i < alts.size(); i++) {
+        no_air[i] = schedHHalf(t, 0.0, 0.0, alts[i]);
+        air[i] = schedHHalf(t, air_top, air_column, alts[i]);
         printf("   [alt %5.0f km] no air %5.1f deg (flat-over %6.1f km), air %5.1f deg (%6.1f km)\n",
-               alts[i] / 1e3, schedPitch(t, 0.0, alts[i]), no_air[i] / 1e3,
-               schedPitch(t, air_top, alts[i]), air[i] / 1e3);
+               alts[i] / 1e3, schedPitch(t, 0.0, 0.0, alts[i]), no_air[i] / 1e3,
+               schedPitch(t, air_top, air_column, alts[i]), air[i] / 1e3);
     }
     /* One flat-over altitude, whatever altitude it is read from: the schedule is
        atan2(h_half, alt), and a second term keyed on something else would show up here
        as two different h_half's. */
     CHECK_NEAR(air[3], air[1], 1.0, "the air-keyed schedule has ONE flat-over altitude");
     CHECK_NEAR(no_air[3], no_air[1], 1.0, "...and so does the ask-keyed one");
-    /* The air term scales with the height of the air, not with the ask and not with how
-       much air is left above the ship: halve the air top, halve the turn. */
-    const double half_top = schedHHalf(t, air_top / 2.0, 10e3);
-    CHECK_NEAR(half_top, air[2] / 2.0, 1.0, "the turn scales with how tall the air is");
-    for(int i = 0; i < n; i++) {
+    /* The air term scales with the height of the air, and with its weight, not with how
+       much air is left above the ship: halve either, halve the turn. The weight pair is
+       deliberately thinner than Kerbin's 10328 kg/m^2, which is past the point where a
+       sky counts fully -- a saturated term would not halve, and that is the clamp. */
+    CHECK_NEAR(schedHHalf(t, air_top / 2.0, air_column, 10e3), air[2] / 2.0, 1.0,
+               "the turn scales with how tall the air is");
+    const double heavy = schedHHalf(t, air_top, 5000.0, 10e3);
+    CHECK_NEAR(schedHHalf(t, air_top, 2500.0, 10e3), heavy / 2.0, 1.0,
+               "...and with how heavy it is");
+    for(size_t i = 0; i < alts.size(); i++) {
         CHECK_TRUE(air[i] >= no_air[i] - 1e-6, "the air term only ever DELAYS the flatten");
         CHECK_TRUE(air[i] > 0.0, "and stays a path angle");
         if(i > 0) {
             /* The nose on the pitch, not on h_half: h_half is what stays put. */
-            CHECK_TRUE(schedPitch(t, air_top, alts[i]) < schedPitch(t, air_top, alts[i-1]),
-                       "the nose comes down as the hull climbs");
+            const double down = schedPitch(t, air_top, air_column, alts[i]);
+            const double up = schedPitch(t, air_top, air_column, alts[i-1]);
+            CHECK_TRUE(down < up, "the nose comes down as the hull climbs");
         }
     }
     /* The size of it, and why it is there: on Kerbin the turn moves from a few km to
        tens of km, so the fat part of the air is flown steep. Measured: this is the
        difference between 9.4 km of apoapsis and reaching space. */
     CHECK_TRUE(air[2] > 4.0 * no_air[2], "in air the turn is far above the ask's own scale");
-    CHECK_TRUE(schedPitch(t, air_top, 10e3) > 60.0, "and the hull is still climbing steeply at 10 km");
+    CHECK_TRUE(schedPitch(t, air_top, air_column, 10e3) > 60.0, "and the hull is still climbing steeply at 10 km");
+
+    /* And the three bounds, which the checks above cannot see. The ask still owns the
+       floor: on a 1500 km ask the air term is smaller than kFlatHalf * ask, so the
+       schedule must be the ask-keyed one exactly -- delete the max() and every check
+       above still passes, because they all use an ask the air term beats. */
+    AscentTarget high; high.apo_asl = high.peri_asl = 1500e3; high.inc_rad = -1.0;
+    CHECK_NEAR(schedHHalf(high, air_top, air_column, 10e3), schedHHalf(high, 0.0, 0.0, 10e3), 1.0,
+               "an ask taller than the air still flies the ask's own schedule");
+    /* The air never outlasts the ask either. Duna's sky is 50 km over a 20 km mission:
+       uncapped, that asked a 20 km turn where the ask wanted 600 m, and the hull flew
+       to 1150 km of apoapsis with its tanks dry (#960 review). A body whose air is TALLER
+       than the ask must schedule like one whose air is exactly as tall. */
+    AscentTarget low; low.apo_asl = low.peri_asl = 20e3; low.inc_rad = -1.0;
+    const double tall = schedHHalf(low, air_top, air_column, 10e3);
+    CHECK_NEAR(tall, schedHHalf(low, 20e3, air_column, 10e3), 1.0,
+               "air taller than the ask is capped at the ask");
+    CHECK_TRUE(tall < 20e3, "so the turn ends below the altitude the mission is asking for");
+    /* And thin air buys no trajectory at all. Duna has 2% of Kerbin's air per square
+       metre; the flown hull there was better off flying the ask's own schedule, and a
+       height-only term steered it into the ground of its own apoapsis instead. */
+    CHECK_NEAR(schedHHalf(low, thin_top, thin_column, 10e3), schedHHalf(low, 0.0, 0.0, 10e3), 1.0,
+               "a sky too thin to push back does not bend the schedule");
 }
 
 int main() {

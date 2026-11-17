@@ -1,0 +1,43 @@
+# An autopilot ascent off Kerbin has to get OUT of the air, not just fly a
+# schedule. pathAngle() used to size its turn from the ask alone, so a 150 km
+# ask turned over on a 4.5 km scale inside an 85 km sky: mars_explorer_mk1 --
+# 1.84 MN against ~47 m^2 of CdA, which puts its sea-level airspeed ceiling at
+# ~250 m/s -- never passed 9.4 km of apoapsis, billed 11.7 km/s of drag and
+# ended "the tanks are dry" at t=1109 s (#960). The law now asks how TALL and
+# how HEAVY the air is (GuidanceState::air_top_asl / air_column, which the
+# driver fills off the body's AtmosphereParams) and the same hull on the same
+# bed reaches 150 x 159 km for 4.8 km/s.
+#
+# This case exists because nothing else in the suite touches that wiring. Case
+# 610 flies the airless body on purpose, and tests/test_guidance.cpp pins the
+# schedule as a pure function -- so a driver that left the two air numbers at
+# their zero default would keep both green and quietly fly every Kerbin climb
+# like a Moho one. Only a hull off a real pad sees the atmosphere.
+#
+# The verdict is still "failed", and deliberately not pinned either way here:
+# the orbit comes out 150.0 x 159.1 km against a 150 km ask, 142 m outside the
+# law's shape band, which is #611's finite-burn question rather than this one.
+NAME atmospheric-ascent-gets-out-of-the-air
+CLAIM An autopilot ascent through Kerbin's air reaches space instead of dying inside it.
+KIND invariant
+ARGS --startship mars_explorer_mk1,res/ships/mars_explorer_mk1.json,Kerbin,pad --ascent 150e3 --time-accel 10
+ARGS --ascent-log --sim-steps 42000 --timeout 900 --no-paint
+LIMIT 60
+EXPECT Autopilot: ascent armed on 'mars_explorer_mk1'
+FORBID why="the tanks are dry"
+FORBID error:
+# Out of the air. Kerbin's sky ends at 85 km and the broken profile peaked at
+# 9.4 km, so the ask itself is the natural line to draw -- with half of it as
+# slack for a machine-to-machine wobble in the burn.
+CHECK max(a["apo_asl"] for a in ascent) > 120e3
+# The wiring, low down, where the mission was actually lost. The schedule turns
+# on 0.4 x the air top, so between 4 and 8 km the hull is still 78-83 deg up;
+# sized from the ask alone it was 24-31 deg there, which is the whole difference
+# between climbing through the fat air and ploughing along inside it.
+CHECK min(a["pitch"] for a in ascent if 4e3 < a["alt_asl"] < 8e3) > 70.0
+# And the reason it was worth the gravity loss: drag is no longer most of the
+# bill. It used to be 11695 m/s against a 10667 m/s mission; this flight pays
+# 711 of 4817, and 1042 of that is the deliberate price of climbing steep.
+# (dv_exp, not dv: the row prints dv= while the parser keys it apart from a
+# mission's own delta-v budget.)
+CHECK last(ascent)["drag"] < 0.25 * last(ascent)["dv_exp"]

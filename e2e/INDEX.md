@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 401 |
+| `invariant` | a behaviour or a player route the game must keep | 402 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 50 |
 | `harness` | CLI/test-engine plumbing, not game spec | 16 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **471** |
+| | **total** | **472** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -18,7 +18,7 @@ paces a run: how much e2e a change deserves is the caller's
 judgement. Select by number, name or path, e.g.
 `python3 e2e/run.py save/172 262`.
 
-## flight (144)
+## flight (145)
 
 | case | kind | pins |
 |---|---|---|
@@ -166,6 +166,7 @@ judgement. Select by number, name or path, e.g.
 | `flight/939-b-vacuum-stage-is-parked-not-cut.txt` | invariant | A dropped stage the sim is able to park is never cut loose. |
 | `flight/939-far-stage-is-cut-loose.txt` | invariant | An uncrewed airborne stage beyond --cull-radius is retired, and the flown hull never is. |
 | `flight/948-staged-dv-plan-never-rises.txt` | invariant | The flight delta-v readout is the ship's staged plan: it never rises across a stage press, it starts at the VAB's figure for the same build (minus the mass a flown ship carries and an authored build does not), and with one engine type left it agrees with the coarse single-burn figure. |
+| `flight/960-atmospheric-ascent-gets-out-of-the-air.txt` | invariant | An autopilot ascent through Kerbin's air reaches space instead of dying inside it. |
 
 ## crew (27)
 

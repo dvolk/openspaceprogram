@@ -16,10 +16,21 @@
    different value with a one-line diff. Every number here is what the closed loop in
    tests/test_guidance.cpp settled on, not what looked plausible -- except kFlatAir,
    which only a hull flying through air can settle; the suite pins that one's FORM
-   (one flat-over altitude, scaled by the height of the air), and its value comes from
-   the flights quoted by pathAngle() below. */
+   (one flat-over altitude, scaled by the height and the weight of the air), and its
+   value comes from the flights quoted by pathAngle() below. */
 static const double kFlatHalf = 0.03;  // pitch-over half-angle altitude, as a fraction of the ask
+/* Flight-tuned like the line above, and still under 1 so the scheduled turn ends INSIDE
+   the air it was sized from: at and above the air top lastDynPressure is exactly 0, so a
+   turn that outlasts the sky is flying blind in vacuum. Capped by the ask in pathAngle(). */
 static const double kFlatAir = 0.40;   // ... and as a fraction of the body's air top (#960)
+/* The air column (kg per m^2 above the datum, p0/g) at which a sky counts FULLY in the
+   schedule above. Not flight-tuned: it is where "air that can push back" starts, and the
+   authored bodies leave a wide gap around it. Out: Pluto 2, Mars 171, Duna 204. In and
+   saturated: Kerbin 10328, Earth 10318, Shay 11267, Eve 11904, Jool 12743, Laythe 12910,
+   Uranus 11102, Titan 106000, Venus 1.04e6. Between: Jupiter 3858, Neptune 8870, Saturn
+   8940, which get that fraction of the bend -- correct for what their columns are worth,
+   and none of the three has a launch pad yet (#960 review). */
+static const double kAirColumnFull = 10e3;
 static const double kLeadFrac = 0.5;   // node burn starts this fraction of its length early
 /* #941: how long the law waits before asking for a press it was refused. Logic
    ticks, not seconds -- step() takes no dt -- so this is about a second of real
@@ -52,12 +63,13 @@ static const int kPressRetryTicks = 60;
    Kerbin, 150 km ask, same bed, air term off: apoapsis never past 9.4 km, 11.7 km/s of
    drag, the tanks dry at t=1109 s. With kFlatAir = 0.40 -- a 34 km turn, so 74 deg of
    pitch at 10 km and 45 deg at 34 km -- the same hull reaches 150 x 159 km for 4.8 km/s
-   of delta-v. Swept: 0.10 and 0.18 never leave the air (16 km and 31 km of apoapsis),
-   0.24 and above reach space, and 0.40 was the best of the five values flown. That is
-   steeper than the curve MechJeb's AutoPath builds by keying its turn to the air's
-   depth (0.05..0.85 of it, ~60 deg at 10 km on Kerbin); 0.18, which does reproduce their
-   curve, was flown here and lost, because the hulls of this game drag far harder than
-   the point-mass model their defaults are tuned against.
+   of delta-v. Swept six values: 0.10 and 0.18 never leave the air (16 km and 31 km of
+   apoapsis); 0.24, 0.30, 0.40 and 0.55 all reach space and all overshoot a 150 km ask --
+   apoapsis 384, 337, 159 and 227 km -- so 0.40 ships for landing closest, not for being
+   right. That is steeper than the curve MechJeb's AutoPath builds by keying its turn to
+   the air's depth (0.05..0.85 of it, ~60 deg at 10 km on Kerbin); 0.18, which does
+   reproduce their curve, was flown here and lost, because the hulls of this game drag far
+   harder than the point-mass model their defaults are tuned against.
 
    The air term only ever DELAYS the flatten: kFlatHalf * ask stays the floor and
    air_top is 0 on a body with no atmosphere, so an airless flight -- and every shape
@@ -74,9 +86,24 @@ static const int kPressRetryTicks = 60;
    while the ship sank, ending parked on the surface at 1 cm/s with the lever at
    1.00. A schedule over a coordinate is two-way in time; only the profile's
    history says which way the flight is going. */
-static double pathAngle(double alt, double ask_alt, double air_top) {
+static double pathAngle(double alt, double ask_alt, double air_top, double air_column) {
     const double h_ask = kFlatHalf * std::max(ask_alt, 0.0);
-    const double h_air = kFlatAir * std::max(air_top, 0.0);   // 0 where there is no air
+    /* Two bounds on the air term, both measured, both found on Duna -- 50 km of sky
+       over a 20 km mission.
+         CAPPED BY THE ASK. Uncapped, the schedule asked for a 20 km turn where the ask
+       wanted 600 m. MechJeb's AutoPath caps the same way -- min(0.85 x depth,
+       targetAltitude) -- and for the same reason: the schedule's job is to reach the
+       ask, and a turn that outlasts the ask has no stopping point.
+         WEIGHTED BY THE AIR. The cap alone did not save Duna -- flown, the capped
+       hull still ran out to 1.35 million m of apoapsis with its tanks dry -- because
+       the term was sizing the turn by the LENGTH of the path through air while drag
+       bills its MASS: (CdA/m) * integral(rho v ds). Duna's column is 204 kg per square
+       metre against Kerbin's 10328 (p0/g, hydrostatic, from res/systems/ksp_system.json),
+       so the air there bills a fiftieth of what the term pays for. A thin sky buys no
+       trajectory, so it gets none: below kAirColumnFull it stops counting at all. */
+    const double weight = std::min(1.0, std::max(air_column, 0.0) / kAirColumnFull);
+    const double h_air = kFlatAir * weight
+                       * std::min(std::max(air_top, 0.0), std::max(ask_alt, 0.0));
     const double h_half = std::max(1000.0, std::max(h_ask, h_air));
     return std::atan2(h_half, std::max(0.0, alt));   // 90 deg at the pad, -> 0 as we climb
 }
@@ -184,6 +211,7 @@ void AscentLaw::pressRefused(PressRefusal kind) {
 AscentCommand AscentLaw::step(const GuidanceState &s) {
     AscentCommand c;
     assert(s.sea_r >= 0.0);   // a datum below the centre would make altitudes lie
+    assert(s.air_top_asl >= 0.0);   // 0 means no air; a negative top is not a thing
     conic_ok_ = false;
     if(!active()) { return c; }
     if(s.railed) {
@@ -398,7 +426,7 @@ AscentCommand AscentLaw::step(const GuidanceState &s) {
            altitude gives, so a vacuum profile is untouched -- what it stops is
            the nose swinging back up when the hull sinks. */
         if(apex_alt_ < 0.0 || alt > apex_alt_) { apex_alt_ = alt; }
-        const double gamma = pathAngle(apex_alt_, target.apo_asl, s.air_top_asl);
+        const double gamma = pathAngle(apex_alt_, target.apo_asl, s.air_top_asl, s.air_column);
         pitch_ = glm::degrees(gamma);
         /* Until the ship is actually moving downrange, "horizontal" is the
            heading we chose for the target inclination. After that it is where
@@ -477,11 +505,23 @@ bool flyAscent(Vehicle &v, AscentLaw &law, double dt, bool *want_stage) {
     s.sea_r = v.m_parent->seaLevelRadius();
     /* The air top, and nothing else about the air (#960). The law still bills no drag
        and reads no pressure; it only needs to know how tall the atmosphere is, because
-       a pitch schedule that flattens at 4.5 km inside an 85 km air spends 82% of the
-       mission's delta-v pushing air out of the way. enabled is the loader's flag, so an
-       airless body hands the law 0 and gets the schedule it has always had. */
-    s.air_top_asl = v.m_parent->surface.atmosphere.enabled
+       a pitch schedule that flattens at 4.5 km inside an 85 km air spent 82% of the
+       mission's delta-v pushing air out of the way (the before/after flights are quoted
+       by pathAngle() below). NOT atmosphere.enabled, which is the LOADER's flag:
+       physical() is this repo's one answer to "is there air here?" -- the aero pass and
+       the rails gate ask it too, so the law cannot disagree with them. An airless body
+       hands the law 0 and gets the schedule it has always had. */
+    s.air_top_asl = v.m_parent->surface.atmosphere.physical()
                   ? v.m_parent->surface.atmosphere.top() : 0.0;
+    /* ...and how much air that height contains. Hydrostatics says the weight of the
+       column above a datum IS its sea-level pressure, so p0/g is the mass per square
+       metre the drag integral gets to spend -- no profile reading, no layers, no
+       scale height (which the system file leaves unset for every authored sky here). */
+    s.air_column = 0.0;
+    if(s.air_top_asl > 0.0) {
+        assert(v.m_parent->g > 0.0);   // a sky with no gravity holding it down is not a sky
+        s.air_column = v.m_parent->surface.atmosphere.sea_level_pressure / v.m_parent->g;
+    }
     s.grounded = v.isGrounded();
     s.railed = v.onRails;
     s.accel_max = v.availableAccel();
