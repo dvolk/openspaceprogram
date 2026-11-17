@@ -449,6 +449,17 @@ glm::dvec3 getInertiaDiag(Body *body) {
     return body->inertiaPerKg * body->mass;
 }
 
+double impulseMass(Body *body, glm::dvec3 rel, glm::dvec3 dir) {
+    btRigidBody *r = getRigidBody(body);
+    const double invM = r->getInvMass();
+    if(invM <= 0.0) { return 0.0; }     // immovable: no finite impulse mass
+    const btVector3 rr(rel.x, rel.y, rel.z), dd(dir.x, dir.y, dir.z);
+    const btVector3 c = rr.cross(dd);
+    const btVector3 k = r->getInvInertiaTensorWorld() * c;
+    const double inv = invM + c.dot(k);
+    return inv > 0.0 ? 1.0 / inv : 0.0;
+}
+
 glm::dvec3 GetPosition(Body *b) {
     const btVector3& pos = getRigidBody(b)->getCenterOfMassPosition();
     return glm::dvec3(pos.getX(), pos.getY(), pos.getZ());

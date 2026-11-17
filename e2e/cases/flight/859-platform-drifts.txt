@@ -1,5 +1,5 @@
 NAME platform-drifts
-CLAIM The balloon platform drifts east at the authored wind speed, a pure function of the clock.
+CLAIM The balloon platform drifts east at the authored wind speed, a pure function of the clock, and a hull parked on its deck stays put.
 KIND invariant
 ARGS --system res/systems/solar_system.json --time-accel 10
 ARGS --startship skiff,res/ships/skiff_gear.json,Venus,pad,site=venus_cloud_platform
@@ -34,19 +34,24 @@ CHECK all(abs(b["r"] - 6107800) < 1 for b in bldg if b["id"]=="venus_cloud_platf
 # the building itself drifts 1.7 km per log step above.
 CHECK "bubble" in orbit[-1]["frame"]
 CHECK sum(p*p for p in dbg[-1]["pos"]) < 10000
-# |v| here is the frame-local speed at the sampling instant, which for a hull on landing gear is
-# contact-solver jitter rather than motion, and it is not stable between runs: the last three
-# rows read 0.40 / 0.13 / 0.28 before #945 and 0.40 / 0.17 / 1.01 after it (a re-run of the same
-# build lands 0.52). The row that went red printed vel = [-0.98 -0.04 -0.26] |v| = 1.01 beside a
-# pos of [-38.9 -0.0 1.6] -- the SAME point as the row before it, so nothing moved in those 20 s.
-# #945 leaves the parts behind others out of the hull's cd vote (the billed area is unchanged), so
-# the wind's force on a parked hull and the point it acts at both move, and the gear jitter with
-# them; the band goes 1.0 -> 1.5 to cover a spread this case cannot control. The claim the band
-# was standing in for is REST, so it is pinned below directly, as displacement across the last two
-# log steps: measured 0.3 m over 40 s, against the platform's own 3450 m in the same span. What
-# the ship does before that (before #945 too) is creep -4.8 m per step from x=-5.0 to x=-38.9 and
-# stop.
-CHECK abs(dbg[-1]["v"]) < 1.5
-CHECK (lambda d: sum((d[-1]["pos"][i]-d[-3]["pos"][i])**2 for i in (0,1,2))**0.5 < 8.0)(dbg)
+# |v| is the frame-local speed at the sampling instant, and REST is now pinned literally rather
+# than as a jitter band: parked at spawn, the hull sits on ONE frame-local point for the whole
+# 200 s at 10x -- every row reads pos=[-1.0 0.0 1.7] |v|=0.00 -- while the deck carries it 17 km.
+# It used not to. Before the wheel.h momentum clamp this same run crept EAST at 0.24 m/s, from
+# x=-1.0 out to x=-38.9 (the deck mesh's edge, x=+-40) and stopped there: 34 m in 140 s with no
+# wind to blame, because inside the bubble the air is at rest with the deck and [drag] bills 0.0 N.
+# The ground law, not the air, was moving it: with brakes on, wheel.h's longitudinal term is worth
+# (kBrakeGrip+kRollResist)*N/kSlipEps ~ 8 kN per m/s at a parked load, and it is an EXPLICIT force
+# held for a whole substep. Warp 10 steps 3 x 0.0556 s, past the point where that over-corrects
+# the patch velocity (gain*h/mass > 1), so the brake reversed the slip every step, pumped the
+# suspension (normal load 935 <-> 2885 N per wheel) and pitched the hull +/-0.22 rad/s; the
+# friction circle rectified that oscillation into a steady slide. The clamp caps a contact's
+# tangential force at its share of the hull's momentum -- stopping the slip in front of it is all
+# the ground is ever asked to do -- and the slide is gone at every substep the shipped loop can
+# produce (warp >= 11 is on rails, so 0.0556 s is the worst case). A hand-set --physics-hz 30
+# still creeps; that is #862's suspension half. The old bands (|v| < 1.5, 8 m across two steps)
+# could not tell this from a hull walking off the deck, which is how the walk stayed behind them.
+CHECK all(abs(d["v"]) < 0.1 for d in dbg)
+CHECK (lambda ds: max(sum((b["pos"][j]-ds[0]["pos"][j])**2 for j in (0,1,2)) for b in ds) < 1.0)(dbg)
 CHECK all(abs(o["r"] - 6107800) < 100 for o in orbit)
 FORBID error:

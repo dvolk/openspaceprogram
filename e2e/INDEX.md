@@ -139,7 +139,7 @@ judgement. Select by number, name or path, e.g.
 | `flight/856-orbital-gate-immovable.txt` | invariant | An orbital collider is live only near the ship, and the station stays on its orbit. |
 | `flight/857-dock-present-while-paused.txt` | invariant | A space dock is positioned beside the ship at spawn even while the game is paused. |
 | `flight/858-platform-spawn-rests.txt` | invariant | A ship spawned on the Venus balloon platform rests on the deck, at rest in the platform's frame. |
-| `flight/859-platform-drifts.txt` | invariant | The balloon platform drifts east at the authored wind speed, a pure function of the clock. |
+| `flight/859-platform-drifts.txt` | invariant | The balloon platform drifts east at the authored wind speed, a pure function of the clock, and a hull parked on its deck stays put. |
 | `flight/860-platform-paused-present.txt` | invariant | The balloon platform is positioned beside the ship at spawn even while the game is paused. |
 | `flight/861-parked-ship-keeps-deck.txt` | invariant | Switching away parks a deck ship on rails in the platform's frame; switching back wakes it onto the deck. |
 | `flight/862-tall-ship-rests.txt` | invariant | A tall gearless rocket stands vertical on the platform and rests rigidly, not tips or slides. |

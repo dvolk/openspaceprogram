@@ -81,6 +81,13 @@ void ApplyTorque(Body *body, glm::dvec3 torque);
    current mass */
 glm::dvec3 getInertiaDiag(Body *body);
 
+/* The mass the body presents to an impulse along the unit `dir` applied at the
+   COM offset `rel`: 1 / (1/m + (rel x dir)^T Iw^-1 (rel x dir)). A force that
+   must not reverse the motion it is fighting -- a tire braking a slip -- has to
+   know this; the linear mass alone ignores the pitch it also drives (#770).
+   Zero for a body that cannot move (infinite mass). */
+double impulseMass(Body *body, glm::dvec3 rel, glm::dvec3 dir);
+
 void SetVelocity(Body *body, glm::dvec3 vel);
 void SetAngVelocity(Body *body, glm::dvec3 vel);
 /* Teleports pose ONLY: proceedToTransform is just setCenterOfMassTransform,

@@ -4598,7 +4598,6 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
    A no-op for a wheel-less hull. Forces accumulate on the one body like aero and
    thrust; nothing integrates until physics_tick. */
 void Vehicle::applyGroundForces(double h) {
-    (void)h;
     if(gearParts.empty() || hull == nullptr || !hullInWorld()) { return; }
     const glm::dvec3 com = get_center_of_mass();
     const glm::dvec3 vel = GetVelocity(hull);
@@ -4671,6 +4670,18 @@ void Vehicle::applyGroundForces(double h) {
         in.forward      = f;
         in.contactVel   = vRel + glm::cross(omega, rel);
         in.brake        = brakesOn ? 1.0 : 0.0;
+        /* The momentum this contact may spend stopping the slip in ONE substep
+           (wheel.h, #770). Measured at THIS patch -- a tangential push here also
+           buys pitch, so the linear mass alone is too generous -- and divided
+           across the gear the hull has, because the hull's momentum is one pot
+           that every wheel would otherwise spend in full. gearParts rather than
+           the wheels touching right now: a smaller denominator is the safe
+           direction, and counting this substep's contacts would raycast twice. */
+        const glm::dvec3 slip = in.contactVel - n * glm::dot(in.contactVel, n);
+        const double slipM = glm::length(slip);
+        const glm::dvec3 slipDir = slipM > 1e-9 ? slip / slipM : f;
+        in.stopRate = h > 0.0 ? impulseMass(hull, rel, slipDir)
+                                / (h * (double)gearParts.size()) : 0.0;
         const glm::dvec3 F = wheel::force(in);
         ApplyForce(hull, rel, F);
         if(recordForceVecs) { lastForceVecs.push_back({ rel, F, kForceGround }); }

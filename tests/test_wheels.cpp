@@ -44,6 +44,7 @@ static wheel::Input rest(double compression) {
     in.forward = glm::dvec3(0.0, 1.0, 0.0);
     in.contactVel = glm::dvec3(0.0);
     in.brake = 0.0;
+    in.stopRate = 0.0;   // momentum clamp off: these pins are about the gains
     return in;
 }
 
@@ -131,6 +132,49 @@ int main() {
         const glm::dvec3 tang = F - n * glm::dot(F, n);
         CHECK_NEAR(glm::length(tang), 0.0, 1e-9, "static force is along the normal");
         CHECK_TRUE(glm::dot(F, n) > 0.0, "pushes out of the deck");
+    }
+
+    /* The momentum clamp (#770): the tangential pair may not spend more than
+       stopping this substep's slip needs. Without it, a braked wheel's near-zero
+       slip gain ((kBrakeGrip+roll)*N/kSlipEps ~ 8 kN per m/s at a parked load)
+       over-corrects the patch velocity once the substep passes ~0.03 s: the sign
+       flips every step, the suspension pumps, and a parked hull walks itself
+       across a balloon deck at warp. */
+    {
+        // Lateral slip of 0.05 m/s: the raw gain is 4000 * 0.05 = 200 N.
+        wheel::Input noClamp = rest(0.1);
+        noClamp.contactVel = glm::dvec3(0.05, 0.0, 0.0);
+        const glm::dvec3 raw = wheel::force(noClamp);
+        CHECK_NEAR(std::fabs(raw.x), wheel::kLatStiff * 0.05, 1e-9,
+                   "no clamp: lateral gain sets the force");
+
+        noClamp.stopRate = 2000.0;   // 2000 kg/s * 0.05 m/s = 100 N of momentum
+        const glm::dvec3 held = wheel::force(noClamp);
+        CHECK_NEAR(std::fabs(held.x), 100.0, 1e-9,
+                   "the contact spends its slip momentum, not its gain");
+        CHECK_TRUE(held.x < 0.0 && raw.x < 0.0, "and it still opposes the slip");
+        CHECK_NEAR(held.z, 10000.0 * 0.1, 1e-9, "the clamp leaves the normal alone");
+
+        // A slip the friction circle already owns is unaffected: 5 m/s wants
+        // 20 kN, mu*N is 900 N, and the momentum budget (10 kN) is not the limit.
+        noClamp.contactVel = glm::dvec3(5.0, 0.0, 0.0);
+        const glm::dvec3 slid = wheel::force(noClamp);
+        CHECK_NEAR(std::hypot(slid.x, slid.y), wheel::kGrip * 1000.0, 1e-9,
+                   "a slipping wheel still gets mu*N");
+
+        // The brake is the term that bit: 0.05 m/s of rolling under a full brake
+        // asks for 820 * tanh(0.05/0.3) = 135 N, above the 100 N in front of it.
+        wheel::Input braked = rest(0.1);
+        braked.brake = 1.0;
+        braked.contactVel = glm::dvec3(0.0, 0.05, 0.0);
+        const double want = (wheel::kRollResist + wheel::kBrakeGrip) * 1000.0
+                            * std::tanh(0.05 / wheel::kSlipEps);
+        const double unbuilt = wheel::force(braked).y;
+        CHECK_NEAR(std::fabs(unbuilt), want, 1e-9, "no clamp: the brake drinks the slip");
+        braked.stopRate = 2000.0;
+        const double clamped = wheel::force(braked).y;
+        CHECK_NEAR(std::fabs(clamped), 100.0, 1e-9, "a braked wheel cannot brake past a stop");
+        CHECK_TRUE(clamped < 0.0, "still backwards");
     }
 
     printf("test_wheels: %d checks, %d failures\n", g_checks, g_failures);
