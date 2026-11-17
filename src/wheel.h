@@ -43,6 +43,9 @@ struct Input {
        the clamp off. See force(). Defaulted because "off" is the direction a
        garbage value can land in, and a small positive one guts the brakes. */
     double stopRate = 0.0;
+    /* Same budget along the strut normal, spent on the STRUT's closing rate
+       (#862). 0 turns that clamp off. See force(). */
+    double normalStopRate = 0.0;
 };
 
 // The force the ground applies to the hull at the contact patch (world N).
@@ -50,8 +53,23 @@ struct Input {
 inline glm::dvec3 force(const Input &in) {
     if(in.compression <= 0.0) { return glm::dvec3(0.0); }
 
-    // Suspension: push along the normal, never pull (a wheel cannot stick).
-    double N = in.spring * in.compression + in.damp * in.compressRate;
+    /* Suspension: push along the normal, never pull (a wheel cannot stick).
+       The damper gets the same treatment as the tire pair (#862). It is an
+       EXPLICIT force held for a whole substep, so damp*compressRate over-corrects
+       the closing rate once the strut's own gain passes what one substep can
+       spend: damp*h > m/n, i.e. h > m/(n*wheel_damp) = 658.65/9000 = 0.073 s for
+       shipped gear under a 658 kg hull -- a hand-set --physics-hz 30. The strut
+       then pumped: every substep reversed the closing rate, and a parked hull
+       walked across the balloon deck at that substep while holding still at 60 Hz.
+       The SPRING is deliberately not capped -- it is what holds the hull up, and
+       its own explicit-stability limit, h < 2/sqrt(k/(m/n)) = 0.19 s here, sits
+       outside the substeps the shipped loop can make. */
+    double damper = in.damp * in.compressRate;
+    if(in.normalStopRate > 0.0) {
+        const double mom = in.normalStopRate * std::fabs(in.compressRate);
+        if(std::fabs(damper) > mom) { damper = std::copysign(mom, damper); }
+    }
+    double N = in.spring * in.compression + damper;
     if(N < 0.0) { N = 0.0; }
 
     // Tire: split the patch velocity into rolling / lateral components.

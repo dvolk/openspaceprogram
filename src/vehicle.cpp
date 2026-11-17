@@ -4690,6 +4690,13 @@ void Vehicle::applyGroundForces(double h) {
         const glm::dvec3 slipDir = slipM > 1e-9 ? slip / slipM : f;
         in.stopRate = impulseMass(hull, rel, slipDir)
                         / (h * (double)gearParts.size());
+        /* The same budget along the strut (#862). n is the contact normal the
+           force is applied along -- normalised in the ray branch, radial in the
+           analytic one -- so impulseMass's unit-dir assert is satisfied by
+           construction. Capping only the damper (wheel.h) leaves the spring,
+           which is what holds the hull up. */
+        in.normalStopRate = impulseMass(hull, rel, n)
+                        / (h * (double)gearParts.size());
         const glm::dvec3 F = wheel::force(in);
         ApplyForce(hull, rel, F);
         if(recordForceVecs) { lastForceVecs.push_back({ rel, F, kForceGround }); }

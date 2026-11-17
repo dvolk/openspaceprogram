@@ -48,6 +48,7 @@ static wheel::Input rest(double compression) {
                          // the clamp -- at warp 1 the clamp cannot bind (2.7*g*h is
                          // ~0.04), so the clamp has its own pins below and a hull
                          // case at warp 10 in e2e.
+    in.normalStopRate = 0.0;   // likewise for the strut damper (#862)
     return in;
 }
 
@@ -179,6 +180,63 @@ int main() {
         const double clamped = wheel::force(braked).y;
         CHECK_NEAR(std::fabs(clamped), 100.0, 1e-9, "a braked wheel cannot brake past a stop");
         CHECK_TRUE(clamped < 0.0, "still backwards");
+    }
+
+    /* The strut's DAMPER gets the same budget as the tire pair (#862). It is an
+       explicit force held for a whole substep, so damp*compressRate over-corrects
+       the closing rate once damp*h passes the mass one strut carries: shipped gear
+       is 3000 N s/m under ~220 kg per wheel, so past h = 0.073 s -- which a
+       hand-set --physics-hz 30 crosses and warp 10 at 60 Hz does not. */
+    {
+        wheel::Input strut = rest(0.1);
+        strut.compressRate = 1.0;                     // closing at 1 m/s
+        CHECK_NEAR(wheel::force(strut).z, 10000.0 * 0.1 + 1000.0, 1e-9,
+                   "uncapped: the strut bills its own gain");
+        strut.normalStopRate = 400.0;                 // 400 N of momentum in front of it
+        CHECK_NEAR(wheel::force(strut).z, 10000.0 * 0.1 + 400.0, 1e-9,
+                   "capped: the strut spends its substep momentum, not its gain");
+        strut.compressRate = -1.0;                    // rebounding
+        CHECK_NEAR(wheel::force(strut).z, 10000.0 * 0.1 - 400.0, 1e-9,
+                   "the same cap on the rebound");
+        wheel::Input soft = rest(0.01);
+        soft.compressRate = -1.0;
+        soft.normalStopRate = 400.0;
+        CHECK_NEAR(wheel::force(soft).z, 0.0, 1e-9, "and a wheel still cannot stick");
+        wheel::Input still = rest(0.1);
+        still.normalStopRate = 1.0;                   // a tiny budget, no closing rate
+        CHECK_NEAR(wheel::force(still).z, 10000.0 * 0.1, 1e-9,
+                   "the SPRING is never capped -- it is what holds the hull up");
+    }
+
+    /* #862's mechanism, pinned at the one place it happens: a substep of the
+       uncapped damper does not stop the strut closing, it REVERSES the closing
+       rate past zero, and the rebound it invents is the energy the strut pumps.
+       Shipped gear (wheel_damp 3000) under the ~220 kg one strut of a 658 kg hull
+       carries, at h = 0.111 s (a hand-set --physics-hz 30) closing at 0.1 m/s:
+       the damper alone asks 300 N, which over one substep is 0.151 m/s of change
+       against 0.1 m/s of motion -- 1.5x too much. Capped at m/h = 1982 kg/s it
+       asks 198 N, which spends the closing exactly (deadbeat). The real caller
+       divides the budget across all the gear as well, so it lands under this.
+       An envelope loop over 400 substeps was tried first and does NOT show growth
+       at these constants (0.321 m decays to 0.049 m either way: the strut is
+       damped at zeta 0.64); the growth shows up in the hull, through the friction
+       circle, which is what the --physics-hz 30 platform run measures. */
+    {
+        const double m = 220.0, h = 0.111, v0 = 0.1;
+        wheel::Input in = rest(0.1);
+        in.damp = 3000.0;                              // shipped wheel_damp
+        const double springOnly = wheel::force(in).z;   // compressRate 0
+        in.compressRate = v0;
+        const double damperRaw = wheel::force(in).z - springOnly;
+        const double dvRaw = damperRaw / m * h;
+        CHECK_NEAR(damperRaw, 3000.0 * v0, 1e-9, "the damper alone is c * closing rate");
+        CHECK_TRUE(dvRaw > v0, "uncapped, one substep buys MORE velocity change than there is motion");
+        in.normalStopRate = m / h;
+        const double damperCap = wheel::force(in).z - springOnly;
+        const double dvCap = damperCap / m * h;
+        CHECK_NEAR(dvCap, v0, 1e-9, "capped at m/h the substep spends the closing, deadbeat");
+        printf("   [strut h=%.3f] raw %.0f N = %.3f m/s against %.3f m/s of closing;"
+               " capped %.0f N\n", h, damperRaw, dvRaw, v0, damperCap);
     }
 
     printf("test_wheels: %d checks, %d failures\n", g_checks, g_failures);
