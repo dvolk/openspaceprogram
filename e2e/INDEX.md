@@ -166,7 +166,7 @@ judgement. Select by number, name or path, e.g.
 | `flight/939-b-vacuum-stage-is-parked-not-cut.txt` | invariant | A dropped stage the sim is able to park is never cut loose. |
 | `flight/939-far-stage-is-cut-loose.txt` | invariant | An uncrewed airborne stage beyond --cull-radius is retired, and the flown hull never is. |
 | `flight/948-staged-dv-plan-never-rises.txt` | invariant | The flight delta-v readout is the ship's staged plan: it never rises across a stage press, it starts at the VAB's figure for the same build (minus the mass a flown ship carries and an authored build does not), and with one engine type left it agrees with the coarse single-burn figure. |
-| `flight/960-atmospheric-ascent-gets-out-of-the-air.txt` | invariant | An autopilot ascent through Kerbin's air reaches space instead of dying inside it. |
+| `flight/960-atmospheric-ascent-gets-out-of-the-air.txt` | invariant | An autopilot ascent through Kerbin's air climbs out of the air and stays near the ask, instead of dying inside it. |
 
 ## crew (27)
 

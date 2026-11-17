@@ -29,7 +29,15 @@ static const double kFlatAir = 0.40;   // ... and as a fraction of the body's ai
    saturated: Kerbin 10328, Earth 10318, Shay 11267, Eve 11904, Jool 12743, Laythe 12910,
    Uranus 11102, Titan 106000, Venus 1.04e6. Between: Jupiter 3858, Neptune 8870, Saturn
    8940, which get that fraction of the bend -- correct for what their columns are worth,
-   and none of the three has a launch pad yet (#960 review). */
+   and none of the three has a launch pad yet (#960 review).
+
+   Two honesty notes. p0/g is the WHOLE column, so a body whose authored `height` cuts the
+   profile early is credited with air above its own ceiling: integrating each shipped
+   profile over [0, height] agrees with p0/g to 0.1-3.8% everywhere except Pluto, whose 20
+   km cut leaves a third of the column above it (2.1 against 1.4) -- which changes nothing
+   five thousand-fold under the threshold. And the ceiling itself is unflown: Venus is the
+   only padded body far past saturation, so whether 0.40 x 116 km is the right bend in air
+   100x Kerbin's thick is a guess this term does not argue for. */
 static const double kAirColumnFull = 10e3;
 static const double kLeadFrac = 0.5;   // node burn starts this fraction of its length early
 /* #941: how long the law waits before asking for a press it was refused. Logic
@@ -211,7 +219,11 @@ void AscentLaw::pressRefused(PressRefusal kind) {
 AscentCommand AscentLaw::step(const GuidanceState &s) {
     AscentCommand c;
     assert(s.sea_r >= 0.0);   // a datum below the centre would make altitudes lie
-    assert(s.air_top_asl >= 0.0);   // 0 means no air; a negative top is not a thing
+    /* 0 means no air; a negative or NaN top is not a thing. NaN is worth naming here
+       because min/max SWALLOW it: min(1.0, NaN) answers 1.0, so a NaN column would
+       silently buy the FULL Kerbin bend -- the worst of the silent answers (#960 review). */
+    assert(s.air_top_asl >= 0.0 && std::isfinite(s.air_top_asl));
+    assert(s.air_column >= 0.0 && std::isfinite(s.air_column));
     conic_ok_ = false;
     if(!active()) { return c; }
     if(s.railed) {
@@ -513,14 +525,20 @@ bool flyAscent(Vehicle &v, AscentLaw &law, double dt, bool *want_stage) {
        hands the law 0 and gets the schedule it has always had. */
     s.air_top_asl = v.m_parent->surface.atmosphere.physical()
                   ? v.m_parent->surface.atmosphere.top() : 0.0;
-    /* ...and how much air that height contains. Hydrostatics says the weight of the
-       column above a datum IS its sea-level pressure, so p0/g is the mass per square
-       metre the drag integral gets to spend -- no profile reading, no layers, no
-       scale height (which the system file leaves unset for every authored sky here). */
+    /* ...and how much air that height contains. This is the same fact the loader
+       authors: #739 makes sea_level_pressure "the weight of the column at the datum,
+       in Pa", so dividing by the gravity AT THE DATUM SPHERE gives that column in kg per
+       m^2 -- the mass the drag integral gets to spend, with no profile reading, no walk
+       over the layers table and no scale height (only Titan authors one). airGravity()
+       is the call the loader and dragAtm() weigh the air with (#697), so the law cannot
+       size its turn from a different field than the one that bills a hull for the air. */
     s.air_column = 0.0;
     if(s.air_top_asl > 0.0) {
-        assert(v.m_parent->g > 0.0);   // a sky with no gravity holding it down is not a sky
-        s.air_column = v.m_parent->surface.atmosphere.sea_level_pressure / v.m_parent->g;
+        const double air_g = v.m_parent->airGravity();
+        /* Same rule as dragAtm's (#708): air needs a field to be weighed in. A loaded
+           body always has a mu, so this only fires on a hand-built one. */
+        assert(air_g > 0.0);
+        s.air_column = v.m_parent->surface.atmosphere.sea_level_pressure / air_g;
     }
     s.grounded = v.isGrounded();
     s.railed = v.onRails;

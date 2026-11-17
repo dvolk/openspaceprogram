@@ -846,12 +846,20 @@ static void test_letting_go_closes_both_channels() {
    hull on the same bed reached 150 x 159 km for 4.8 km/s.
 
    kFlatAir itself is a FLIGHT-tuned number, so it is deliberately not spelled here. What
-   the suite pins is the form: the nose comes down as the hull climbs, one flat-over
-   altitude read as h_half = alt * tan(pitch) and the same at every altitude, keyed on
-   the height of the air, capped by the ask, and never below the ask-keyed one. The two
-   size checks at the bottom DO bound kFlatAir from below -- with an 85 km air they need
-   it above ~0.21 -- which is the deliberate half: the shipped 0.40 must not drift back
-   toward the 4.5 km turn this issue is about. */
+   the suite pins is the FORM: the nose comes down as the hull climbs; one flat-over
+   altitude read as h_half = alt * tan(pitch), the same at every altitude (that check can
+   only bite if h_half becomes altitude-dependent -- it is a form pin, not a size one);
+   keyed on the height of the air; capped by the ask; never below the ask-keyed one.
+   Size gets pinned where it is cheap to state as data, not as constants:
+     * the two size checks below bound kFlatAir from BELOW (with an 85 km air, "4x the
+       ask's own scale" needs it above 0.2118); nothing bounds it from ABOVE, and
+       flight/960-atmospheric-ascent-gets-out-of-the-air is what holds the flown size, now
+       from both sides;
+     * the column threshold is bracketed: Duna's 204 kg/m^2 must bend nothing (so the
+       threshold is above that) and Kerbin's 10328 must already saturate (so it is below
+       this), which is the whole empty band the shipped bodies offer.
+   (The 1000 m floor in h_half is NOT pinned here -- it shows up in
+   test_asks_it_cannot_land_say_so, on a 10 km Moho ask.) */
 static double schedPitch(const AscentTarget &t, double air_top, double air_column, double alt) {
     AscentLaw law(t);
     GuidanceState s;
@@ -903,7 +911,6 @@ static void test_the_air_holds_the_nose_up() {
                "...and with how heavy it is");
     for(size_t i = 0; i < alts.size(); i++) {
         CHECK_TRUE(air[i] >= no_air[i] - 1e-6, "the air term only ever DELAYS the flatten");
-        CHECK_TRUE(air[i] > 0.0, "and stays a path angle");
         if(i > 0) {
             /* The nose on the pitch, not on h_half: h_half is what stays put. */
             const double down = schedPitch(t, air_top, air_column, alts[i]);
@@ -938,6 +945,13 @@ static void test_the_air_holds_the_nose_up() {
        height-only term steered it into the ground of its own apoapsis instead. */
     CHECK_NEAR(schedHHalf(low, thin_top, thin_column, 10e3), schedHHalf(low, 0.0, 0.0, 10e3), 1.0,
                "a sky too thin to push back does not bend the schedule");
+    /* And the bracket closes from the other side. Raising the threshold past Kerbin's own
+       column would still let Duna through at zero and still pass every check above, while
+       shrinking the bend of every sky that actually matters (measured: a threshold of 15e3
+       moves the Kerbin turn from 34 km to 23 km and the flown apoapsis from 159 km to 402
+       km, green). Kerbin is past saturation, so ten times its air must buy nothing more. */
+    CHECK_NEAR(air[2], schedHHalf(t, air_top, 10.0 * air_column, 10e3), 1.0,
+               "Kerbin's own sky is already past the point where more air buys nothing");
 }
 
 int main() {

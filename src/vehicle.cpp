@@ -3290,10 +3290,10 @@ DragAtmosphere dragAtm(const AtmosphereParams &a, const TerrainBody &body) {
     DragAtmosphere da { a.sea_level_density, a.scale_height, a.top() };
     da.radius = body.seaLevelRadius();   // #683: the field the hull falls in, not g alone
     // #697: and it is the field AT THAT SPHERE. A body with a raised sea sits further
-    // out than its mean radius, so its air is lighter by (mean / datum)^2 -- which is
-    // what dividing mu by this radius already says. Same field the loader used to bake
-    // the level base_p and the datum density, so the two cannot drift.
-    da.gravity = body.mu / (da.radius * da.radius);
+    // out than its mean radius, so its air is lighter by (mean / datum)^2. TerrainBody
+    // owns that number: the loader baked the level base_p and the datum density with
+    // the same call, so the two cannot drift.
+    da.gravity = body.airGravity();
     /* Assert rather than default (#708). drag.h bills NOTHING unless gravity > 0, so a
        body that never got a mu reports VACUUM air to a hull flying through it, which is
        the invisible half of the old typed-g hole: a loaded body always has one, so this

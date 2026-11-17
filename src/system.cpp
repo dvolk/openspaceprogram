@@ -1718,14 +1718,13 @@ System load_system(const char *path, Shader *terrainshader, Shader *sunshader,
                    cancels and rho0 = p0 / (g H) -- which is also why the derived
                    temperature cannot drift into being a third statement of one column.
                    A layer table inverts through its own datum ideal gas.
-                   Both use mu / seaLevelRadius()^2 -- the SAME field dragAtm() hands
-                   drag.h per hull (#697) and the same one the level integration below
-                   uses, so the datum cannot step.
+                   Both use TerrainBody::airGravity() -- mu / seaLevelRadius()^2, the
+                   SAME field dragAtm() hands drag.h per hull (#697) and the same one
+                   the level integration below uses, so the datum cannot step.
                    Garbage is left to refuse below rather than divided through: if the
                    profile is missing, or level 0 sits at 0 K, rho0 stays 0 and the
                    profile guards fire with their own messages. */
-                const double r_sea = body->seaLevelRadius();
-                const double air_g = body->mu / (r_sea * r_sea);
+                const double air_g = body->airGravity();
                 if(s.atmosphere.sea_level_pressure > 0.0) {
                     if(!s.atmosphere.layers.empty()) {
                         if(s.atmosphere.layers[0].base_T > 0.0) {

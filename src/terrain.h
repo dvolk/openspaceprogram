@@ -156,6 +156,13 @@ struct TerrainBody {
        the moment the loader sets them; TerrainParams carries the twin for
        worker-side terrain math, where only the snapshot is in hand. */
     double seaLevelRadius() const { return (double)radius + (double)surface.sea_level; }
+    /* The gravity the AIR is weighed in [m/s^2] -- the field at the datum sphere, not
+       at the mean radius. #697: a body with a raised sea sits further out than its mean
+       radius, so its air is lighter by (mean / datum)^2. The loader bakes the level
+       base_p and the datum density with this, dragAtm() bills a hull with this, and the
+       ascent law turns its column (p0/g) into a number with this (#960) -- one owner so
+       the three cannot drift into three different airs. */
+    double airGravity() const { const double r = seaLevelRadius(); return mu / (r * r); }
     /* Science fields (system JSON, utils/sci_dist.py). transfer_dv is the
        approach leg [m/s]: home->planet, parent->moon. */
     double science_mult = 1.0;

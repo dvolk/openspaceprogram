@@ -18,7 +18,7 @@
 # the orbit comes out 150.0 x 159.1 km against a 150 km ask, 142 m outside the
 # law's shape band, which is #611's finite-burn question rather than this one.
 NAME atmospheric-ascent-gets-out-of-the-air
-CLAIM An autopilot ascent through Kerbin's air reaches space instead of dying inside it.
+CLAIM An autopilot ascent through Kerbin's air climbs out of the air and stays near the ask, instead of dying inside it.
 KIND invariant
 ARGS --startship mars_explorer_mk1,res/ships/mars_explorer_mk1.json,Kerbin,pad --ascent 150e3 --time-accel 10
 ARGS --ascent-log --sim-steps 42000 --timeout 900 --no-paint
@@ -32,9 +32,17 @@ FORBID error:
 CHECK max(a["apo_asl"] for a in ascent) > 120e3
 # The wiring, low down, where the mission was actually lost. The schedule turns
 # on 0.4 x the air top, so between 4 and 8 km the hull is still 78-83 deg up;
-# sized from the ask alone it was 24-31 deg there, which is the whole difference
-# between climbing through the fat air and ploughing along inside it.
+# sized from the ask alone the same flight printed 25-47 deg there (24 rows of
+# the air-off control flight), which is the whole difference between climbing
+# through the fat air and ploughing along inside it.
 CHECK min(a["pitch"] for a in ascent if 4e3 < a["alt_asl"] < 8e3) > 70.0
+# Two-sided, deliberately. A schedule that bends TOO much for the air reaches
+# space too and looks fine until it is 400 km away: raising the column threshold
+# from 10 to 15e3 kg/m^2 moved this flight's apoapsis from 159 km to 402 km at
+# dv 5245 and every other assertion here stayed green. The mission is a 150 km
+# orbit, so flying away is a failure in the same direction #962 measured on Duna.
+CHECK max(a["apo_asl"] for a in ascent) < 250e3
+CHECK last(ascent)["dv_exp"] < 5.1e3
 # And the reason it was worth the gravity loss: drag is no longer most of the
 # bill. It used to be 11695 m/s against a 10667 m/s mission; this flight pays
 # 711 of 4817, and 1042 of that is the deliberate price of climbing steep.
