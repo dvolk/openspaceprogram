@@ -1046,24 +1046,18 @@ inline void forEachSilhouetteSlab(const std::vector<std::vector<glm::dvec2>> &po
     for(size_t a = 0; a < spans.size(); a++) {
         for(size_t b = a + 1; b < spans.size(); b++) {
             /* A crossing point lies on an edge of BOTH polygons, so its y is inside
-               both y ranges; strictly disjoint ranges therefore have none. This is
-               the pair test that pays: on a ship, parts sit at different heights, so
-               most pairs share no y at all and die here instead of running the edge
-               double loop. Measured on a wide part under 200 narrow ones upwind --
-               0.385 ms/pass of slab walk becomes 0.019 ms, and the whole bill pass
-               0.413 ms to 0.063 ms (tmp/night4/phase949.cpp, #949). Kept STRICT so a
-               pair merely touching at one y is still tested: it cannot produce a
-               crossing either, but skipping it would trim the breakpoint set at a
-               hair's width, and the pins downstream are worth more than the branch.
-
-               A sort of the spans by x, so the inner loop could BREAK instead of
-               continuing, is the other half of this idea and is NOT here: it buys a
-               further 7% on a scattered 200-part rig and costs 27% on a stack,
-               because reordering the spans reorders the bands each slab sees and
-               makes the bill's per-slab depth sort more expensive (267k comparisons
-               become 330k, 0.30 ms become 1.31). Pruning pairs must not move the
-               breakpoint set, and it does not; reordering spans moves nothing either,
-               but it changes what the sort downstream costs. */
+               both y ranges; strictly disjoint ranges therefore have none, and the
+               pair dies here instead of running the edge double loop. This is the
+               pair test that pays: on a ship parts sit at different heights, so most
+               pairs share no y at all. Measured on a wide part under 200 narrow ones
+               upwind -- 0.385 ms/pass of slab walk becomes 0.019 ms, and the whole
+               bill pass 0.413 ms to 0.063 ms (#949). Kept STRICT at a touching y:
+               such a pair cannot contribute a crossing either (it is a shared vertex,
+               whose x is already a breakpoint, or a parallel pair the den == 0 test
+               below rejects), and strict means this prune never reasons about
+               endpoints. Verified bit-for-bit against the unpruned walk by
+               tmp/night4/diff949.cpp, over 805 polygon sets including degenerate
+               and coincident ones. */
             if(spans[a].yhi < spans[b].ylo || spans[b].yhi < spans[a].ylo) { continue; }
             const std::vector<glm::dvec2> &pa = polys[spans[a].poly];
             const std::vector<glm::dvec2> &pb = polys[spans[b].poly];

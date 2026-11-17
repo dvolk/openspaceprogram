@@ -5444,25 +5444,25 @@ void Vehicle::releaseControl() {
    Compared with Sim::droppedAt, this walk differs where the
    two situations differ: no liveness test here (Part has no dead flag -- a part leaves a
    Vehicle by moving to another one, so `parts` is exactly what is aboard), seeds on
-   isDecoupler() rather than a precomputed flag, and the result is a pointer set, so the
-   returned order is address order, which changes between runs of the same save, so no
-   caller may read it as an ordering: game.cpp goes through stagedDecouplers below,
-   which re-sorts and does not stop at depth. Both walks are iterative DFS over the same
-   parent edges, and the `dropped` test above is what keeps a malformed parent edge from
-   looping -- staging's seenEpoch does the same job. (#535) */
+   isDecoupler() rather than a precomputed flag, and the result comes back sorted by part
+   ADDRESS -- an order that changes between runs of the same save, so it is a membership
+   key and never a sequence: stageIsDue() binary_searches it, and game.cpp goes through
+   stagedDecouplers below, which re-sorts by depth and does not stop at depth. Both walks
+   are iterative DFS over the same parent edges, and the `dropped` test above is what
+   keeps a malformed parent edge from looping -- staging's seenEpoch does the same
+   job. (#535, #942) */
 std::vector<Part *> Vehicle::droppedPartsAtStage(int stage) {
     /* Same graph, fewer allocations. The shape of this used to be a
        std::map<Part*, std::vector<Part*>> plus a std::set<Part*>: a red-black node
        (and a child vector) per parent, and a node per dropped part, on EVERY call.
        That is fine once a press and not fine at all when stageIsDue() asks it every
-       logic tick while an ascent law is armed (#942, measured 34 us/call on a
-       286-part stack). It is now two sorted arrays -- (parent, child) pairs, and the
-       parts by address, which turns "already dropped?" into a byte -- and the
-       output is still sorted by address exactly as the set yielded, so no caller
-       sees a different order. */
+       logic tick while an ascent law is armed: stageIsDue() measured 34 us/call on a
+       286-part stack, nearly all of it churn (#942). It is now two sorted arrays --
+       (parent, child) pairs, and the parts by address, which turns "already
+       dropped?" into a byte. */
     const size_t n = parts.size();
     std::vector<std::pair<Part *, Part *>> kids;
-    kids.reserve(n > 0 ? n - 1 : 0);
+    kids.reserve(n);   // not n - 1: a malformed parent edge gives every part a parent
     for(Part *p : parts) {
         if(p->parent != nullptr) { kids.push_back({p->parent, p}); }
     }
@@ -5481,9 +5481,8 @@ std::vector<Part *> Vehicle::droppedPartsAtStage(int stage) {
         return (size_t)(it - byAddr.begin());
     };
 
-    std::vector<Part *> out;
-    out.reserve(n);
     std::vector<Part *> stack;
+    size_t nDropped = 0;
     for(Part *p : parts) {
         if(!p->isDecoupler() || p->stage != stage) { continue; }
         stack.push_back(p);   // the decoupler flies off with its stage
@@ -5493,7 +5492,7 @@ std::vector<Part *> Vehicle::droppedPartsAtStage(int stage) {
             const size_t qi = indexOf(q);
             if(dropped[qi]) { continue; }
             dropped[qi] = 1;
-            out.push_back(q);
+            nDropped++;
             auto lo = std::lower_bound(kids.begin(), kids.end(), q,
                         [](const std::pair<Part *, Part *> &e, Part *key) {
                             return e.first < key;
@@ -5502,11 +5501,16 @@ std::vector<Part *> Vehicle::droppedPartsAtStage(int stage) {
                 stack.push_back(it->second);
             }
         }
-        stack.clear();   // the next decoupler starts fresh
     }
-    // The set used to hand back address order; keep it, so nothing downstream can
-    // be reading an ordering that quietly changed.
-    std::sort(out.begin(), out.end());
+    /* Emit in address order by reading the index, rather than sorting what the walk
+       pushed: same list, same order as the std::set used to hand back, one pass
+       instead of one sort, and the sortedness that stageIsDue()'s binary_search
+       needs stops being a fact someone has to remember to preserve. */
+    std::vector<Part *> out;
+    out.reserve(nDropped);
+    for(size_t i = 0; i < n; i++) {
+        if(dropped[i]) { out.push_back(byAddr[i]); }
+    }
     return out;
 }
 
@@ -6259,8 +6263,7 @@ bool Vehicle::stageIsDue() {
     double dropFuel = 0.0, allFuel = 0.0;
     for(Part *p : parts) {
         if(!p->isTank()) { continue; }     // consumeResourceMass drains tanks, only
-        auto rg = std::lower_bound(reach.begin(), reach.end(), p->fuelGroup);
-        if(rg == reach.end() || *rg != p->fuelGroup) { continue; }
+        if(!std::binary_search(reach.begin(), reach.end(), p->fuelGroup)) { continue; }
         double m = 0.0;
         for(int r = 0; r < (int)ResourceType::Num; r++) {
             if(burn[r]) { m += p->resources.current[(int)r]; }

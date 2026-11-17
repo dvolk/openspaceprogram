@@ -341,6 +341,54 @@ static void test_deep_chain() {
     destroyShip(s);
 }
 
+/* What stageIsDue() actually asks of droppedPartsAtStage: the list comes back
+   sorted by part ADDRESS, because that is what it binary_searches when it prices
+   "how much propellant leaves with this press". The ORDER carries no meaning (a
+   rebuild permutes addresses -- see the note at tests/test_dock.cpp:546 about why
+   no order pin can see that), but the SORTEDNESS is load-bearing: an unsorted drop
+   list makes dropFuel read about zero, which flips the press rule to drainAll, and
+   that is #928 wearing this test's clothes. So sortedness gets pinned here.
+
+   The cycle case is for the walk's `dropped` test: a malformed parent edge used to
+   be able to loop. Vehicle tolerates one (stagedDecouplers asserts on depth rather
+   than dying), so the walk must terminate and still drop each part exactly once. */
+static void test_dropped_sortedness_and_cycles() {
+    {   // the plain shape, and its order
+        Ship s; s.v = new Vehicle;
+        Part *root = addPart(s, NULL, 2, false, "capsule");
+        Part *dec  = addPart(s, root, 1, true,  "decoupler");
+        Part *kid  = addPart(s, dec,  1, false, "kid");
+        (void)kid;
+        const std::vector<Part *> d = s.v->droppedPartsAtStage(1);
+        CHECK_TRUE(std::is_sorted(d.begin(), d.end()),
+                   "drops come back address-sorted");
+        checkDrop(s, 1, want("decoupler", "kid"), "decoupler plus its kid");
+        destroyShip(s);
+    }
+    {   // dec and kid each other's parent: the walk terminates, no double count
+        Ship s; s.v = new Vehicle;
+        Part *root = addPart(s, NULL, 2, false, "core");
+        Part *dec  = addPart(s, root, 1, true,  "dec");
+        Part *kid  = addPart(s, dec,  1, false, "kid");
+        dec->parent = kid;
+        const std::vector<Part *> d = s.v->droppedPartsAtStage(1);
+        CHECK_TRUE(d.size() == 2, "a parent cycle drops each part once");
+        CHECK_TRUE(std::is_sorted(d.begin(), d.end()), "and still in address order");
+        checkDrop(s, 1, want("dec", "kid"), "parent cycle terminates");
+        destroyShip(s);
+    }
+    {   // a decoupler that is its own parent
+        Ship s; s.v = new Vehicle;
+        Part *root = addPart(s, NULL, 2, false, "core");
+        Part *dec  = addPart(s, root, 1, true,  "dec");
+        dec->parent = dec;
+        const std::vector<Part *> d = s.v->droppedPartsAtStage(1);
+        CHECK_TRUE(d.size() == 1, "a self-parented decoupler drops itself once");
+        checkDrop(s, 1, want("dec"), "self-parent terminates");
+        destroyShip(s);
+    }
+}
+
 /* The shroud condition (Vehicle::hasChildBelow): a child on the part's
    EXHAUST face (below, in the part's OWN frame) shrouds it; a child above
    or on the side does not. The rotated case pins that "below" is judged
@@ -546,6 +594,7 @@ int main() {
     test_staged_decouplers_other_stage();
     test_extract_refusals();
     test_deep_chain();
+    test_dropped_sortedness_and_cycles();
     test_child_below();
     test_press_due_on_asparagus_stack();
 

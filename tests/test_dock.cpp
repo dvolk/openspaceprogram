@@ -543,7 +543,7 @@ static void test_seam_staging() {
        capsule, sideY, sideY2, sideYkid -- and they differ only because sideYkid is a
        grandchild whose sibling was built last, which is why two parts would not do.
 
-       A rebuild through a pointer-ordered std::set (the idiom droppedPartsAtStage uses
+       A rebuild through an address-ordered list (the idiom droppedPartsAtStage uses
        above) is NOT catchable from here: measured, the allocator hands these four parts
        out in build order, so sorting them by address is not a permutation and no order
        pin can see it. That rebuild is still worth worrying about on a real ship, whose
