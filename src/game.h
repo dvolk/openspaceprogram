@@ -1243,6 +1243,23 @@ struct Game {
     void syncShipFocus();
     // False + keeps the accel if any ship is not rail-eligible.
     bool enter_rails_warp();
+    /* What one tick knows about each neighbour (#943). Built once by
+       updateProximity(), read by that pass's own snapshot and by cullFarDebris(),
+       which runs on the same tick right after it (tick.cpp). dist/rate are the
+       numbers the engage/release decisions were made on, so the log prints what
+       the pass acted on rather than a second measurement of the same tick. alt is
+       deliberately NOT here: it is a per-body walk the pass only needs for the
+       lines it actually prints. */
+    struct ProxNeighbour {
+        Vehicle *v;
+        double dist;       // m, hull-to-hull gap (Vehicle::gapTo)
+        double rate;       // m/s, > 0 = pulling away
+        bool onRails;      // as this pass left it
+    };
+    /* Rebuilt every proximity tick, so a reader on the same tick can trust it;
+       prox_stamp_ is the tick it was built on (asserted by its readers). */
+    std::vector<ProxNeighbour> prox_;
+    double prox_stamp_ = -1.0;
     void updateProximity();
     /* Cut loose a hull the sim can neither park nor keep any reason to run
        (#939): airborne (canRail() refuses anything airborne, so today it stays

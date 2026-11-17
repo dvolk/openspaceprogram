@@ -1341,6 +1341,23 @@ int main(int argc, char **argv)
         }
     }
 
+    /* Two dials answer "is that hull far from me" (#943): --prox-fly-off parks a
+       neighbour, --cull-radius deletes one that cannot be parked. Independent on
+       purpose -- a cull inside the release radius is a real configuration, and the
+       939 cases run one deliberately (5 km cull against a 10 km release, where a
+       spent stage is cut loose rather than parked) -- so it is not refused. But it
+       is easy to reach by accident, and then an airborne hull is deleted before the
+       proximity pass ever had a chance to park it, which makes the hysteresis that
+       makes proximity behave invisible. Name the consequence instead of blocking it. */
+    if(args.cull_radius > 0.0 && args.cull_radius < args.prox_fly_off) {
+        printf("NOTE: --cull-radius %.0f m is inside --prox-fly-off %.0f m, so an "
+               "airborne hull the sim cannot park is cut loose before the proximity "
+               "pass could ever release one. Fine if that is the point (a spent "
+               "stage); otherwise raise --cull-radius.\n",
+               args.cull_radius, args.prox_fly_off);
+        fflush(stdout);
+    }
+
     /* --idle-fps: while the window is occluded or minimized the loop idles
        instead of drawing into a swap that goes nowhere. Throttled, NOT skipped:
        the 3D pass is not only pixels -- sc.refresh re-poses the camera and runs

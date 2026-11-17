@@ -2161,6 +2161,10 @@ void Game::updateProximity() {
        (extractSubtreeAsShip, vehicle.cpp:5477 -- there is no separation
        impulse), so a press reads ~0 m/s here and never trips the cap. */
     bool bearing_down = false;
+    /* One record per neighbour for this tick (#943): the snapshot below and
+       cullFarDebris() both read these instead of walking the frame chain again. */
+    prox_.clear();
+    prox_.reserve(vehicles.size());
     for(auto *s : vehicles) {
         if(s == a) { continue; }
         double d, rate;
@@ -2200,7 +2204,11 @@ void Game::updateProximity() {
                 bearing_down = true;
             }
         }
+        /* Recorded after the decisions above, so onRails is the state this pass
+           left the neighbour in (it may have just woken or parked). */
+        prox_.push_back({s, d, rate, s->onRails});
     }
+    prox_stamp_ = time;
 
     if(any_engaged && a->onRails) {
         a->leaveRails();
@@ -2260,24 +2268,23 @@ void Game::updateProximity() {
             printf("[prox] t=%.3f regime=%s r_on=%.0f r_off=%.0f close_v=%.1f\n",
                    time, grounded ? "ground" : "fly", r_on, r_off,
                    args.prox_close_v);
-            for(auto *s : vehicles) {
-                if(s == a) { continue; }
+            for(const ProxNeighbour &n : prox_) {
                 /* rate > 0 = pulling away, so a future report can say WHY the
                    clock moved rather than being asked (#937). alt= is the
                    neighbour's own height over the datum, geometric (not the aero
                    pass's lastDragAlt, which reads 0 with no air and goes stale on
                    a railed hull): #938 asks where a dropped stage ends up, and the
                    answer hinges on being airborne, which is exactly what
-                   canRail() refuses to park. */
-                double d, rate;
-                a->gapTo(s, d, rate);
-                const double alt = s->m_parent
-                    ? glm::length(s->posInBodyRot(s->comPos()))
-                          - s->m_parent->seaLevelRadius()
+                   canRail() refuses to park. Worth one walk per PRINTED line, so it
+                   stays here rather than riding on the record for every neighbour
+                   every tick (#943). */
+                const double alt = n.v->m_parent
+                    ? glm::length(n.v->posInBodyRot(n.v->comPos()))
+                          - n.v->m_parent->seaLevelRadius()
                     : 0.0;
                 printf("[prox]   %s dist=%.1f m rate=%+.1f m/s alt=%.0f m %s\n",
-                       s->displayName().c_str(), d, rate, alt,
-                       s->onRails ? "on-rails" : "LIVE");
+                       n.v->displayName().c_str(), n.dist, n.rate, alt,
+                       n.onRails ? "on-rails" : "LIVE");
             }
         }
     }
@@ -2306,9 +2313,16 @@ void Game::updateProximity() {
    worthless, and out of sight". */
 void Game::cullFarDebris() {
     if(args.cull_radius <= 0.0 || ship == nullptr) { return; }
+    /* The distance comes from this tick's proximity walk (#943): one frame walk
+       per neighbour instead of a third one, and no more Vehicle::distanceTo --
+       which is gapTo, so it used to pay for a range rate this pass throws away.
+       tick.cpp runs the two passes back to back; asserted, because a stale record
+       would cull on last tick's distance in silence. prox_ never holds the active
+       ship, so that guard is gone with the walk. */
+    assert(prox_stamp_ == time);
     std::vector<std::pair<Vehicle *, double>> loose;
-    for(Vehicle *v : vehicles) {
-        if(v == ship) { continue; }
+    for(const ProxNeighbour &n : prox_) {
+        Vehicle *v = n.v;
         if(v->isEva()) { continue; }
         if(firstVehicleSeat(v) != nullptr) { continue; }
         bool flyable_by_anyone = false;
@@ -2318,9 +2332,8 @@ void Game::cullFarDebris() {
         if(flyable_by_anyone) { continue; }
         if(!v->seams.empty()) { continue; }
         if(v->canRail()) { continue; }   // parkable already: grounded, or vacuum
-        const double d = ship->distanceTo(v);
-        if(d <= args.cull_radius) { continue; }
-        loose.push_back({v, d});
+        if(n.dist <= args.cull_radius) { continue; }
+        loose.push_back({v, n.dist});
     }
     /* Deleting a hull the player could see is a destructive verb, so it says so
        in the game and not only on stdout -- the same courtesy ui_remove_vehicle
