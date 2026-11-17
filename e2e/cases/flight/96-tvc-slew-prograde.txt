@@ -31,9 +31,11 @@ KIND invariant
 # the 8 s throttle really ends moves with the frame cadence -- #472 already fixed
 # the other half of it, the tick clamp). So the hold is now pinned by its
 # mean plus a ceiling that a hull which never recovered would blow by 3.5x (it
-# would still be near the 0.35 rad the tap put there), and the drift is pinned by
-# its SHAPE: every post-cutoff row larger than the last, and the total past the
-# cutoff at least 0.15 rad -- measured 0.2228-0.4124 in the 9.4 s window.
+# would still be near the 0.35 rad the tap put there). The drift WAS pinned by its
+# shape -- every post-cutoff row larger than the last, 0.15 rad in total, measured
+# 0.2228-0.4124 -- and that pair was still asserting something that is not true of
+# the hull: see the ENGINE OFF block below, where the window comes off the log and
+# the rate, not the direction of the error, carries the claim (#955).
 ARGS --time-accel 1 --startship tvc_test,res/ships/tvc_test.json,Kerbin,rot-orbit
 ARGS --att-log --slew-log --orbit-interval 0.3
 ARGS --sim-press 1000,8000,T
@@ -53,12 +55,24 @@ CHECK max(s["E"] for s in slew if 4.3 < s["t"] < 5.5) > 0.02
 # the 0.35 rad the tap put there, 3.5x over this ceiling.
 CHECK max(s["E"] for s in slew if 6.0 < s["t"] < 8.8) < 0.10
 CHECK sum(s["E"] for s in slew if 6.0 < s["t"] < 8.8) / len([s for s in slew if 6.0 < s["t"] < 8.8]) < 0.04
-# ENGINE OFF, NO STEERING: from 9.4 s (clear of the hold's last swing) every row is
-# bigger than the last -- the law does not arrest a wheel-less hull with no armed
-# engine -- and the total past the cutoff is 0.2228-0.4124 rad in those runs. The
-# old pin here was the final angle alone (> 0.3), which the spread straddles.
-CHECK all(a["E"] < b["E"] for a in slew for b in slew if 9.4 < a["t"] < b["t"])
-CHECK last(slew)["E"] - min(s["E"] for s in slew if s["t"] > 9.4) > 0.15
+# ENGINE OFF, NO STEERING. The cutoff is wherever the log says it is -- the first row with
+# alpha=0, measured 8.700-9.217 s over 74 recorded runs -- and the window below starts 0.2 s
+# after IT, so a cadence that slides when the 8 s throttle press lands no longer slides the
+# pins with it (#955; #138, the wall-clock press window, is the open root cause). What
+# "nothing steers" pins is the RATE: an unactuated hull keeps the one the limit cycle left
+# it, |w| moving by at most 1e-4 rad/s across every post-cutoff row in all 74 logs (that is
+# the print's own resolution, so the true spread is smaller -- the pin leaves 10x anyway).
+# The error column is NOT assertable past the cutoff, and that is what the old pins had
+# wrong in both directions: E is the angle to a prograde target that is itself coasting
+# along the orbit, so it can shrink -- the two battery reds had |w| = 0.0028 rad/s and E
+# slid DOWN 0.014 rad where the pin demanded it grow by 0.15 -- and it can turn around
+# mid-window (4 of the 74). The churn that proves the law WAS steering sits on the other
+# side of the cutoff: w_slew reverses sign inside the hold window in 74/74 runs, and the
+# alpha=/tau= pins below say what the hull gave up when the throttle let go.
+CHECK min(s["t"] for s in slew if s["alpha"] == 0.0) > 8.6
+CHECK min(s["t"] for s in slew if s["alpha"] == 0.0) < 9.6
+CHECK (lambda off: len(off) >= 8 and all(s["alpha"] == 0.0 for s in off) and max(s["wnorm"] for s in off) - min(s["wnorm"] for s in off) < 1e-3)([s for s in slew if s["t"] > min(r["t"] for r in slew if r["alpha"] == 0.0) + 0.2])
+CHECK (lambda hold: any(a["w_slew"] * b["w_slew"] < 0 for a in hold for b in hold))([s for s in slew if 6.0 < s["t"] < 8.8])
 # NO THRUST, BUT NOT NO ACTUATORS either. alpha= is what the armed engines can lever
 # THIS TICK, so a released throttle takes it to zero -- and alpha_full= (#608) is the
 # same axis with the ignited stage at FULL throttle, which does not follow the lever:

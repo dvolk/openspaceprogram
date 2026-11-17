@@ -6,9 +6,17 @@
 # 100 km floor to 1.2 x 85 km = 102 km moves this row too: 600000 + 0.85 x 102000 =
 # 686700 m. It is the same authoring change seen from a second bed -- 352 reads the
 # 1.25 one.
+#
+# The metre, though, is not the authored number: `fit` is the hull's RADIUS at the
+# frame the map opens (extent = max(body radius, o.distance) for an open conic), and
+# the row prints it with %.0f. Spawn puts the hull at 686700 m and the first map
+# frame is usually that same instant -- but 1 of the 25 recorded runs opens it a
+# frame later and prints 686701. So the row is pinned as a band around the bed and as
+# its own arithmetic (m/px = fit/100), which is what actually says "framed on its
+# current radius" and does not care where the last digit lands (#955).
 NAME map-fit-open-conic
 CLAIM An escaping ship's map opens framed on its current radius.
 KIND invariant
 ARGS --timeout 4 --startship racer,res/ships/racer.json,Kerbin,escape
 FORBID error:
-CHECK re.search(r"\[mapfit\] Kerbin: body 600000 m, fit 686700 m -> 6867\.0 m/px", out)
+CHECK (lambda m: m is not None and abs(int(m.group(1)) - 686700) <= 100 and abs(float(m.group(2)) - int(m.group(1)) / 100.0) < 0.05)(re.search(r"\[mapfit\] Kerbin: body 600000 m, fit (\d+) m -> ([\d.]+) m/px", out))

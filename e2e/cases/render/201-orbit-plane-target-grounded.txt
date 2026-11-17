@@ -8,12 +8,29 @@
 # not about reachability -- so [xferlog] must still name it. Without the gate,
 # "Target orbit" would quietly become "Equatorial" for every player who targets a
 # landed vessel, which is most of them.
+#
+# WHEN the rows may be read, though, is not free: the target spawns on the PAD, and
+# a pad spawn DROPS onto the deck. isGrounded() is a speed test -- 3 m/s,
+# kShipGroundSpeed in constants.h -- so while the tanker falls it is legitimately NOT
+# grounded, the gate opens, and plane=tgt is the honest label for those rows. Measured
+# off the gate itself (a temporary print in targetPlaneNormal, since reverted):
+# ungrounded at t=1.22-1.32 in three idle runs, |v| up to 3.745 m/s, and in one run of
+# these same ARGS as late as t=3.55. Across the 103 recorded runs of this case, 3
+# printed a tgt row -- at t=1.6, 1.9 and 4.9 -- and the other 100 printed ecl in every
+# row. The old pin started at t > 1.0, which is inside that settle, so it was a
+# coin-flip on frame cadence (#955). It now starts at t > 6.0, past the worst recorded
+# un-grounded moment (4.9) with ~1 s to spare, and the run is 14 s instead of 6 so the
+# window still holds 8 rows rather than 1. --map-dump moves from 4000 to 8000 with it:
+# the dump lands at t=8.1, so FORBID slot=tgt samples the settled tanker too instead of
+# the falling one, and len(mapb) == 3 still says one dump. How long a pad spawn really
+# takes to settle -- and why a parked hull's speed sits AT that 3 m/s test instead of
+# well under it -- is filed as #957.
 NAME orbit-plane-target-grounded
 CLAIM A grounded target has no plane and falls back to the ecliptic.
 KIND invariant
-ARGS --time-accel 1 --timeout 6 --startships e2e/fixtures/startships.json
+ARGS --time-accel 1 --timeout 14 --startships e2e/fixtures/startships.json
 ARGS --transfer-target tanker --map-plane 3
-ARGS --orbit-log --orbit-interval 1 --map-dump 4000 --xfer-log
+ARGS --orbit-log --orbit-interval 1 --map-dump 8000 --xfer-log
 EXPECT [mapdump]
 EXPECT [xferlog]
 FORBID FAILED
@@ -21,4 +38,4 @@ FORBID error:
 FORBID slot=tgt
 CHECK len(mapb) == 3
 CHECK all(x["target"] == "tanker" for x in xfer)
-CHECK all(o["plane"] == "ecl" for o in orbit if o["t"] > 1.0)
+CHECK all(o["plane"] == "ecl" for o in orbit if o["t"] > 6.0)
