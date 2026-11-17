@@ -1876,6 +1876,30 @@ int main() {
         std::vector<int> none;
         CHECK(partitionFuelGroups(std::vector<int>(), std::vector<bool>(), none) == 0);
         CHECK(none.empty());
+        // The adjacency is scratch the function keeps between calls (#963), so the
+        // answer must not depend on the PREVIOUS call: a different tree has to
+        // inherit nothing from the one before it. The flood stack drains itself, so
+        // no input can pin its clear -- that one is defensive.
+        {
+            std::vector<int> g;
+            const std::vector<int> hub = { -1, 0, 0 };            // 0 joins 1 and 2
+            const std::vector<bool> open = { false, false, false };
+            CHECK(partitionFuelGroups(hub, open, g) == 1);
+            // Same part count, walled in the middle: part 2 hangs off the wall, so
+            // nothing may join it to 0. Leftover adjacency from the hub would flood
+            // 0 -> 2 and give one group.
+            const std::vector<int> chain = { -1, 0, 1 };
+            const std::vector<bool> midWall = { false, true, false };
+            CHECK(partitionFuelGroups(chain, midWall, g) == 2);
+            CHECK(g[0] == 0 && g[1] == -1 && g[2] == 1);
+            // ... and a smaller tree must carry this tree's answers, not the rows
+            // it no longer has.
+            const std::vector<int> two = { -1, 0 };
+            const std::vector<bool> twoOpen = { false, false };
+            CHECK(partitionFuelGroups(two, twoOpen, g) == 1);
+            CHECK(g.size() == 2);                       // sized to THIS tree
+            CHECK(g[0] == 0 && g[1] == 0);              // not the chain's {0, -1}
+        }
     }
     // --- fuelLinkLoop: the authoring-time twin of build_ship's cycle check
     //     (#291). The drain model needs a DAG; build_ship throws on a loop, but

@@ -1990,7 +1990,25 @@ int partitionFuelGroups(const std::vector<int> &parent,
     const size_t n = parent.size();
     assert(wall.size() == n);   // one tree, one wall flag per part
     group.assign(n, -1);
-    std::vector<std::vector<size_t> > adj(n);
+    /* The adjacency and the flood stack are scratch, not fresh. Rebuilding n empty
+       vectors plus a stack per group cost 156,486 of the 1,538,864 allocations in a
+       42,000-tick ascent -- ~207 of the ~337 each staged-plan rebuild pays, and
+       Vehicle::stagedRows() rebuilds ~755 times across a flight (#963). None of it
+       outlives the flood: capacity, not content, is what to keep. resize() only
+       grows, since shrinking would drop the inner rows' capacity, and each row is
+       cleared rather than rebuilt.
+       One scratch per thread serves all three consumers -- the live ship, the
+       staging snapshot, the editor's loop check. Nothing can re-enter this while the
+       scratch is live: the body calls nothing outside vector ops and asserts, and a
+       caller cannot hold the adjacency because it is a function static -- the return
+       value and `group` are the only results. A fourth consumer that wants the
+       adjacency itself must take it as an out-parameter, not reach for this static.
+       stack.clear() is defensive: the walk below drains the stack, so it is already
+       empty at the next seed. */
+    static thread_local std::vector<std::vector<size_t> > adj;
+    static thread_local std::vector<size_t> stack;
+    if(adj.size() < n) { adj.resize(n); }
+    for(size_t i = 0; i < n; i++) { adj[i].clear(); }
     for(size_t i = 0; i < n; i++) {
         const int p = parent[i];
         if(p < 0) { continue; }
@@ -2004,7 +2022,7 @@ int partitionFuelGroups(const std::vector<int> &parent,
     for(size_t i = 0; i < n; i++) {
         if(wall[i] || group[i] != -1) { continue; }
         group[i] = next;
-        std::vector<size_t> stack;
+        stack.clear();
         stack.push_back(i);
         while(!stack.empty()) {
             const size_t q = stack.back();
