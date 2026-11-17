@@ -5451,38 +5451,68 @@ void Vehicle::releaseControl() {
    parent edges, and the `dropped` test above is what keeps a malformed parent edge from
    looping -- staging's seenEpoch does the same job. (#535) */
 std::vector<Part *> Vehicle::droppedPartsAtStage(int stage) {
-    // parent -> children over Part::parent (a tree: one parent edge per non-root part).
-    std::map<Part *, std::vector<Part *>> children;
+    /* Same graph, fewer allocations. The shape of this used to be a
+       std::map<Part*, std::vector<Part*>> plus a std::set<Part*>: a red-black node
+       (and a child vector) per parent, and a node per dropped part, on EVERY call.
+       That is fine once a press and not fine at all when stageIsDue() asks it every
+       logic tick while an ascent law is armed (#942, measured 34 us/call on a
+       286-part stack). It is now two sorted arrays -- (parent, child) pairs, and the
+       parts by address, which turns "already dropped?" into a byte -- and the
+       output is still sorted by address exactly as the set yielded, so no caller
+       sees a different order. */
+    const size_t n = parts.size();
+    std::vector<std::pair<Part *, Part *>> kids;
+    kids.reserve(n > 0 ? n - 1 : 0);
     for(Part *p : parts) {
-        if(p->parent != nullptr) { children[p->parent].push_back(p); }
+        if(p->parent != nullptr) { kids.push_back({p->parent, p}); }
     }
-    std::set<Part *> dropped;
+    // Address order is the only order that makes a pointer comparable, and this is
+    // a lookup key, not a result the caller reads as an ordering.
+    std::sort(kids.begin(), kids.end(),
+              [](const std::pair<Part *, Part *> &a, const std::pair<Part *, Part *> &b) {
+                  return a.first < b.first;
+              });
+    std::vector<Part *> byAddr(parts.begin(), parts.end());
+    std::sort(byAddr.begin(), byAddr.end());
+    std::vector<char> dropped(n, 0);
+    auto indexOf = [&](Part *q) -> size_t {
+        auto it = std::lower_bound(byAddr.begin(), byAddr.end(), q);
+        assert(it != byAddr.end() && *it == q);   // every part is in the index
+        return (size_t)(it - byAddr.begin());
+    };
+
+    std::vector<Part *> out;
+    out.reserve(n);
+    std::vector<Part *> stack;
     for(Part *p : parts) {
         if(!p->isDecoupler() || p->stage != stage) { continue; }
-        dropped.insert(p);   // the decoupler flies off with its stage
-        // Iterative DFS over the decoupler's child side. Order inside the set is address
-        // order, not this walk's order, so nothing downstream reads it as an ordering.
-        std::vector<Part *> stack;
-        auto kids = children.find(p);
-        if(kids != children.end()) {
-            for(size_t i = 0; i < kids->second.size(); i++) { stack.push_back(kids->second[i]); }
-        }
+        stack.push_back(p);   // the decoupler flies off with its stage
+        // Iterative DFS over the decoupler's child side.
         while(!stack.empty()) {
             Part *q = stack.back(); stack.pop_back();
-            if(dropped.count(q)) { continue; }
-            dropped.insert(q);
-            auto it = children.find(q);
-            if(it != children.end()) {
-                for(size_t i = 0; i < it->second.size(); i++) { stack.push_back(it->second[i]); }
+            const size_t qi = indexOf(q);
+            if(dropped[qi]) { continue; }
+            dropped[qi] = 1;
+            out.push_back(q);
+            auto lo = std::lower_bound(kids.begin(), kids.end(), q,
+                        [](const std::pair<Part *, Part *> &e, Part *key) {
+                            return e.first < key;
+                        });
+            for(auto it = lo; it != kids.end() && it->first == q; ++it) {
+                stack.push_back(it->second);
             }
         }
+        stack.clear();   // the next decoupler starts fresh
     }
-    return std::vector<Part *>(dropped.begin(), dropped.end());
+    // The set used to hand back address order; keep it, so nothing downstream can
+    // be reading an ordering that quietly changed.
+    std::sort(out.begin(), out.end());
+    return out;
 }
 
 /* The decouplers of one stage, in the order their split ships get made (#540). Two
-   facts make the tie matter. droppedPartsAtStage hands back a std::set<Part*>, so
-   its order is part ADDRESS order, which changes between runs of the same save; and
+   facts make the tie matter. droppedPartsAtStage hands its drops back sorted by
+   part ADDRESS, so that order changes between runs of the same save; and
    decouplers that share a stage AND a depth are shipped, not hypothetical --
    measured over res/ships, 4 of 29 have them: heavy_one stage 4 is a 4-ring,
    mars_explorer_mk1 stage 4 has four at depth 12, and heavy_two has one 2-way tie
@@ -6202,8 +6232,12 @@ bool Vehicle::stageIsDue() {
     const int as = activeStage();
     /* Which fuel groups the IGNITED engines can drink from, and which resources
        they actually burn. A tank of something none of them draws is inert mass on
-       this stage, and dropping it costs nothing -- so it must not hold the press. */
-    std::set<int> reach;
+       this stage, and dropping it costs nothing -- so it must not hold the press.
+       A sorted vector, not a std::set: this runs every logic tick while an ascent
+       law is armed, and the set was one node allocation per group per tick (#942).
+       Sorted once, then binary_search -- the group count is a handful, so the sort
+       is free and the lookups replace a tree walk each. */
+    std::vector<int> reach;
     bool burn[(int)ResourceType::Num] = {false};
     for(Part *p : parts) {
         if(!p->isThruster() || p->stage < as) { continue; }
@@ -6212,23 +6246,27 @@ bool Vehicle::stageIsDue() {
         }
         if(p->fuelGroup < 0) { continue; }   // walled off: no drain layers at all
         for(const std::vector<int> &layer : fuelDrainLayers(p)) {
-            for(int g : layer) { reach.insert(g); }
+            for(int g : layer) { reach.push_back(g); }
         }
     }
+    std::sort(reach.begin(), reach.end());
+    reach.erase(std::unique(reach.begin(), reach.end()), reach.end());
     if(reach.empty()) { return false; }   // nothing ignited that can drink
 
     const std::vector<Part *> drop = droppedPartsAtStage(as);
-    std::set<Part *> dropSet(drop.begin(), drop.end());
+    // droppedPartsAtStage returns address order (see its note), which is what a
+    // binary search needs -- no second copy into a set.
     double dropFuel = 0.0, allFuel = 0.0;
     for(Part *p : parts) {
         if(!p->isTank()) { continue; }     // consumeResourceMass drains tanks, only
-        if(p->fuelGroup < 0 || !reach.count(p->fuelGroup)) { continue; }
+        auto rg = std::lower_bound(reach.begin(), reach.end(), p->fuelGroup);
+        if(rg == reach.end() || *rg != p->fuelGroup) { continue; }
         double m = 0.0;
         for(int r = 0; r < (int)ResourceType::Num; r++) {
             if(burn[r]) { m += p->resources.current[(int)r]; }
         }
         allFuel += m;
-        if(dropSet.count(p) != 0) { dropFuel += m; }
+        if(std::binary_search(drop.begin(), drop.end(), p)) { dropFuel += m; }
     }
     /* The gram floor is not a fudge for the same reason staging.cpp's 1e-12 is not:
        a planned sim can land exactly on zero, while a live drain leaves float
