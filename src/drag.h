@@ -1022,7 +1022,7 @@ struct SilhouetteBand {
 template <class AtSlab>
 inline void forEachSilhouetteSlab(const std::vector<std::vector<glm::dvec2>> &polys,
                                  AtSlab &&atSlab) {
-    struct Span { size_t poly; double lo, hi; };
+    struct Span { size_t poly; double lo, hi, ylo, yhi; };
     static thread_local std::vector<Span> spans;
     static thread_local std::vector<double> xs;
     static thread_local std::vector<SilhouetteBand> bands;
@@ -1030,10 +1030,12 @@ inline void forEachSilhouetteSlab(const std::vector<std::vector<glm::dvec2>> &po
     xs.clear();
     for(size_t i = 0; i < polys.size(); i++) {
         if(polys[i].size() < 3) { continue; }
-        Span sp{i, polys[i][0].x, polys[i][0].x};
+        Span sp{i, polys[i][0].x, polys[i][0].x, polys[i][0].y, polys[i][0].y};
         for(const glm::dvec2 &v : polys[i]) {
             if(v.x < sp.lo) { sp.lo = v.x; }
             if(v.x > sp.hi) { sp.hi = v.x; }
+            if(v.y < sp.ylo) { sp.ylo = v.y; }
+            if(v.y > sp.yhi) { sp.yhi = v.y; }
         }
         spans.push_back(sp);
         for(const glm::dvec2 &v : polys[i]) { xs.push_back(v.x); }
@@ -1043,6 +1045,26 @@ inline void forEachSilhouetteSlab(const std::vector<std::vector<glm::dvec2>> &po
     // curvature. The x-range tests reject most pairs of a ship's hulls cheaply.
     for(size_t a = 0; a < spans.size(); a++) {
         for(size_t b = a + 1; b < spans.size(); b++) {
+            /* A crossing point lies on an edge of BOTH polygons, so its y is inside
+               both y ranges; strictly disjoint ranges therefore have none. This is
+               the pair test that pays: on a ship, parts sit at different heights, so
+               most pairs share no y at all and die here instead of running the edge
+               double loop. Measured on a wide part under 200 narrow ones upwind --
+               0.385 ms/pass of slab walk becomes 0.019 ms, and the whole bill pass
+               0.413 ms to 0.063 ms (tmp/night4/phase949.cpp, #949). Kept STRICT so a
+               pair merely touching at one y is still tested: it cannot produce a
+               crossing either, but skipping it would trim the breakpoint set at a
+               hair's width, and the pins downstream are worth more than the branch.
+
+               A sort of the spans by x, so the inner loop could BREAK instead of
+               continuing, is the other half of this idea and is NOT here: it buys a
+               further 7% on a scattered 200-part rig and costs 27% on a stack,
+               because reordering the spans reorders the bands each slab sees and
+               makes the bill's per-slab depth sort more expensive (267k comparisons
+               become 330k, 0.30 ms become 1.31). Pruning pairs must not move the
+               breakpoint set, and it does not; reordering spans moves nothing either,
+               but it changes what the sort downstream costs. */
+            if(spans[a].yhi < spans[b].ylo || spans[b].yhi < spans[a].ylo) { continue; }
             const std::vector<glm::dvec2> &pa = polys[spans[a].poly];
             const std::vector<glm::dvec2> &pb = polys[spans[b].poly];
             const double xlo = std::max(spans[a].lo, spans[b].lo);
