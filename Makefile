@@ -629,6 +629,14 @@ $(TESTS):
 	$(MAKE) --no-print-directory $(TESTDIR)/$@
 	$(TESTDIR)/$@
 
+# Builds every test binary and runs none. `make` alone leaves them at whatever
+# was last built, so the path you type next can be a binary from before the edit
+# you just made -- it prints "all checks passed" and exits 0 either way. That
+# read as green twice in one night, and the checks that appeared to pass had not
+# compiled (#907). So: `make && make tests`, or just `make test`.
+.PHONY: tests
+tests: $(addprefix $(TESTDIR)/,$(TESTS))
+
 .PHONY: test-parts
 test-parts:
 	@if python3 -c "import importlib.util as u; exit(1 if u.find_spec('trimesh') is None else 0)"; then \

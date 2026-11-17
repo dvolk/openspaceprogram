@@ -15,6 +15,7 @@ Space sim inspired by [Pioneer](https://pioneerspacesim.net/) and Kerbal Space P
     cd openspaceprogram
     ./bootstrap.sh
     make
+    make test         # unit tests; `make` alone does not build them, `make tests` builds without running
 
 then start osp with:
 
