@@ -8,11 +8,16 @@
 # pointer, so this path could not be written down and --ui-click had to take a
 # bare "Board" (case 224). A qualified path is what makes the case say WHICH
 # capsule it pressed.
+# The PICK names its part through --ui-focus rather than a screen coordinate:
+# since #876's pad camera turns with the ground, the dead centre is the hull's
+# COM, which for `racer` is its fuel tank, so a hard-coded centre pixel stopped
+# opening the capsule's window at all (#946).
 NAME eva-board-round-trip
 CLAIM EVA out and board again leaves exactly one vessel and the suit parked as a seat.
 KIND invariant
 ARGS --time-accel 1 --timeout 8 --startship racer,res/ships/racer.json,Kerbin,pad
-ARGS --sim-mouse 1000,0,960,540,RMB
+ARGS --ui-focus 1000,"racer/capsule_1"
+ARGS --sim-mouse 1100,0,CUR,CUR,RMB
 ARGS --ui-click 2000,"racer > Capsule (2m)##0/EVA##eva0"
 ARGS --ui-click 4000,"racer > Capsule (2m)##0/Board##board_Ash"
 EXPECT Crew: 'Ash' aboard 'racer' part 0 (1/1)

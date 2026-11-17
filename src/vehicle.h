@@ -2243,9 +2243,12 @@ public:
     /* Write the rail state into the body (once per tick). Spin is zeroed. */
     void writeRailPose();
 
-    /* The COM state in `inertial`, the frame node where the trajectory is a
-       Kepler conic. */
-    void comStateIn(Frame *inertial, glm::dvec3 &p, glm::dvec3 &v);
+    /* The COM state in `inFrame` -- any frame node. Most callers pass the
+       non-rotating node where the trajectory is a Kepler conic; render.cpp also
+       passes the body's ROTATING frame for the surface readouts, so this carries
+       the whole switch law (old frame's stasis added, new frame's subtracted),
+       not just the conic half. */
+    void comStateIn(Frame *inFrame, glm::dvec3 &p, glm::dvec3 &v);
 
     /* A point of this ship (frame coords) in the body's ROTATING frame -- the
        axes terrain, wind and biomes live in. Identity when already there.

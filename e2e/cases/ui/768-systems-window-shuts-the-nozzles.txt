@@ -59,8 +59,10 @@ CHECK out.index('tvc_rating_full=129710') < out.index('tvc_rating_full=0 ')
 CHECK re.search(r'\[steerlog\][^\n]*tvc_rating_full=0 tvc_hw=129710', out)
 # One row per switch group, whatever the group's state -- the row that says "off" has to be
 # the SAME row that said "on", not a replacement caption. Counted per dump so a row that
-# vanished with the door closed shows up as [10, 9] instead of looking plausible.
-CHECK [len([l for l in d.split("\n") if l.rstrip().endswith(" text") and 'window="Systems"' in l]) for d in out.split("[uilist] loop=")[1:]] == [10, 10]
+# vanished with the door closed shows up as [11, 10] instead of looking plausible. The count
+# is 11 since #896 added the `Aboard:` hours row to the power block; it tracks the window,
+# not this case's nozzles (#946).
+CHECK [len([l for l in d.split("\n") if l.rstrip().endswith(" text") and 'window="Systems"' in l]) for d in out.split("[uilist] loop=")[1:]] == [11, 11]
 # The click landed on a checkbox, not on the caption beside it: findMatches() skips text
 # rows, so aiming at the figure would report a miss rather than flipping anything.
 CHECK any('path="Systems/Thrust vectoring"' in l and ' pressed' in l for l in out.split("\n"))

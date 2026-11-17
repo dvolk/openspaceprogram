@@ -91,11 +91,13 @@ CHECK re.search(r'\[steerlog\][^\n]*wheels_on=1 [^\n]*wheels=4950/4950/4950 whee
 CHECK re.search(r'\[steerlog\][^\n]*wheels_on=0 [^\n]*wheels=0/0/0 wheels_hw=4950/4950/4950', out)
 CHECK out.index('wheels=4950/4950/4950') < out.index('wheels=0/0/0')
 # Per dump, not per run: two --ui-list times means two dumps, and each has to carry the
-# whole window -- Status, five power rows and one row per switch group (four of them since
-# #768's nozzles). A row that vanished with the door closed, which is the mistake this
-# window's design is about, shows up here as 10 then 9 rather than as a 19 that still looks
-# plausible.
-CHECK [len([l for l in d.split("\n") if l.rstrip().endswith(" text") and 'window="Systems"' in l]) for d in out.split("[uilist] loop=")[1:]] == [10, 10]
+# whole window -- Status, six power rows and one row per switch group (four of them since
+# #768's nozzles). The sixth power row is #896's `Aboard:`, the hours this store lasts at
+# this balance; it joined on 2026_11_16 and this count joined it (#946 -- the count is a
+# backstop for a vanished row, not a pin of the window's prose, so it follows the window).
+# A row that vanished with the door closed, which is the mistake this window's design is
+# about, shows up here as 11 then 10 rather than as a 21 that still looks plausible.
+CHECK [len([l for l in d.split("\n") if l.rstrip().endswith(" text") and 'window="Systems"' in l]) for d in out.split("[uilist] loop=")[1:]] == [11, 11]
 # Vessel Info is down to one row -- the Angular rate that says whether the hull is
 # turning. The per-axis actuator rows it used to carry (drums, gimbals, fins) all moved to
 # Game Debug in the 2026_11_05 pass, so this count no longer depends on the part list; the

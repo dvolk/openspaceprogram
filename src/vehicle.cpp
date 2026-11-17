@@ -7212,16 +7212,13 @@ void Vehicle::moveToFrame(Frame *newFrame, double t) {
     placeShip(forient * sPos + fpos, forient * sRot);
 
     /* The stored velocity is the frame-coordinate velocity, so inertial velocity is
-       R*(v + stasis(p)) + V: the OLD frame's stasis is added here, the NEW frame's
-       SUBTRACTED below. Both halves gate together, or a same-frame call is short by
-       stasis. */
-    const bool reanchor = (frame != newFrame);
-    glm::dvec3 vel = oldVel;
-    if(reanchor) { vel += frame->GetStasisVelocity(oldCom); }
-    vel = forient * vel + frame->GetVelocityRelTo(newFrame);
-    const glm::dvec3 newCom = forient * oldCom + fpos;
-    const glm::dvec3 newVel = reanchor ? vel - newFrame->GetStasisVelocity(newCom)
-                                       : vel;
+       R*(v + stasis(p)) + V: the OLD frame's stasis is added, the NEW frame's
+       SUBTRACTED, and the two halves gate together. That law now lives in
+       switchFrameState, because this function and comStateIn spelled it separately
+       and comStateIn was missing the subtraction (#946: a railed hull's surface
+       speed kept 183 m/s of Kerbin spin). */
+    glm::dvec3 newCom, newVel;
+    switchFrameState(frame, newFrame, oldCom, oldVel, newCom, newVel);
 
     // Logged before the asserts: this is the detail you want when one fires.
     printf("@@@ %s frame %s -> %s: com (%.0f %.0f %.0f) -> (%.0f %.0f %.0f)"
@@ -7276,12 +7273,11 @@ void Vehicle::moveToFrame(Frame *newFrame, double t) {
 
     /* Angular velocity is the rotational analogue of the stasis terms: the hull stores
        the spin RELATIVE to its frame, in that frame's axes, so a switch adds the OLD
-       frame's TOTAL omega (own spin + ancestors', #850), rotates into the new frame's
-       axes and subtracts the NEW frame's. Left alone, |w| survives but the spin
-       re-axes. Identity when frame == newFrame, so unlike the velocity it needs no
-       reanchor gate. */
+       frame's TOTAL omega (own spin + ancestors', #850) and subtracts the NEW frame's.
+       Left alone, |w| survives but the spin re-axes. Identity when frame == newFrame,
+       so unlike the velocity it needs no reanchor gate. */
     const glm::dvec3 wOld = GetAngVelocity(hull);
-    SetAngVelocity(hull, forient * (wOld + frame->omega_total) - newFrame->omega_total);
+    SetAngVelocity(hull, switchFrameSpin(frame, newFrame, wOld));
 
     /* Continuity tripwire, same shape as the pos/vel/attitude ones: an algebraic
        identity that fires only if the transform is wrong. */
@@ -7366,14 +7362,11 @@ void Vehicle::writeRailPose() {
     SetAngVelocity(hull, glm::dvec3(0.0));
 }
 
-void Vehicle::comStateIn(Frame *inertial, glm::dvec3 &p, glm::dvec3 &v) {
-    p = get_center_of_mass();
-    v = GetVelocity(hull);
-    if(frame != inertial) {
-        v += frame->GetStasisVelocity(p);
-        v = frame->GetOrientRelTo(inertial) * v + frame->GetVelocityRelTo(inertial);
-        p = frame->GetOrientRelTo(inertial) * p + frame->GetPositionRelTo(inertial);
-    }
+void Vehicle::comStateIn(Frame *inFrame, glm::dvec3 &p, glm::dvec3 &v) {
+    // The whole switch law, in one place (frame.h). This call site is why it
+    // has to be the whole law: render.cpp asks for the surface readouts in the
+    // body's ROTATING frame, and a hull on rails lives in the inertial one.
+    switchFrameState(frame, inFrame, get_center_of_mass(), GetVelocity(hull), p, v);
 }
 
 glm::dvec3 Vehicle::posInBodyRot(const glm::dvec3 &p) const {

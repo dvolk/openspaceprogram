@@ -1,10 +1,16 @@
+# The EVA/Board buttons live in the capsule's part window, so the case RMB-picks
+# the capsule first -- by NAME (--ui-focus resolves the pixel) rather than by a
+# centre coordinate: #876's ground-framed pad camera puts the hull's COM at dead
+# centre, and `racer`'s COM is in its fuel tank, so the old 960,540 opened the
+# tank's window and the EVA row was simply never drawn (#946).
 NAME platform-eva-stands
 CLAIM EVA on the platform: stand, walk, fall off the edge, and keep flying with RCS.
 KIND invariant
 ARGS --system res/systems/solar_system.json --time-accel 1
 ARGS --startship racer,res/ships/racer.json,Venus,pad,site=venus_cloud_platform
 ARGS --timeout 34 --eva-log --orbit-interval 0.5
-ARGS --sim-mouse 2000,0,960,540,RMB
+ARGS --ui-focus 2000,"racer/capsule_1"
+ARGS --sim-mouse 2100,0,CUR,CUR,RMB
 ARGS --ui-click 3000,"racer > Capsule (2m)##0/EVA##eva0"
 ARGS --sim-press 6000,22000,W
 EXPECT EVA: 'Ash' out of 'racer' part 0

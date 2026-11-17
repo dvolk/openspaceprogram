@@ -1,10 +1,18 @@
+# RMB picks a part in flight. The case NAMES the part it wants under the cursor
+# (--ui-focus resolves it to a pixel) rather than writing a pixel down: since
+# #876's pad camera turns with the ground, the screen centre is the hull's COM,
+# and for `racer` that sits inside its fuel tank -- it used to be the top of the
+# mast, because the turntable was held by the hull's own attitude. A pixel here
+# would be a claim about framing, and framing belongs to #876/#919 to change.
 NAME part-pick
 CLAIM RMB in flight opens the part window for the part under the cursor.
 KIND invariant
 ARGS --time-accel 0 --timeout 15 --startship racer,res/ships/racer.json,Kerbin,pad
-ARGS --sim-mouse 1000,0,960,540,0
-ARGS --sim-mouse 1200,0,960,540,RMB
+ARGS --ui-focus 1000,"racer/capsule_1"
+ARGS --sim-mouse 1200,0,CUR,CUR,RMB
 EXPECT Main loop starting
+EXPECT [uifocus] 'racer/capsule_1' ->
 EXPECT ship=racer part=0 (capsule)
 FORBID miss px=
+FORBID uifocus] 'racer/capsule_1' FAILED
 FORBID error:

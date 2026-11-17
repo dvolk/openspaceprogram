@@ -782,15 +782,15 @@ int main() {
 
         // Switch algebra (moveToFrame's formulas) across the third level:
         // root pos/vel/spin are invariant, both directions.
-        const auto switch_state = [&](Frame *from, Frame *to,
+        /* The SHIPPED law, not a copy of it. A test-local spelling could not see
+           #946: Vehicle::comStateIn had the same algebra with the new frame's
+           stasis missing, and these invariants were green either way. */
+        const auto switch_state = [](Frame *from, Frame *to,
                                         const glm::dvec3 &pf, const glm::dvec3 &vf,
                                         const glm::dvec3 &wf,
                                         glm::dvec3 &pt, glm::dvec3 &vt, glm::dvec3 &wt) {
-            const glm::dmat3 Fo = from->GetOrientRelTo(to);
-            pt = Fo * pf + from->GetPositionRelTo(to);
-            vt = Fo * (vf + from->GetStasisVelocity(pf))
-               + from->GetVelocityRelTo(to) - to->GetStasisVelocity(pt);
-            wt = Fo * (wf + from->omega_total) - to->omega_total;
+            switchFrameState(from, to, pf, vf, pt, vt);
+            wt = switchFrameSpin(from, to, wf);
         };
         const glm::dvec3 p0(25.0, 8.0, -4.0), v0(0.2, -0.1, 0.05), w0(0.01, 0.02, -0.01);
         const glm::dvec3 root_p0 = bub->root_orient * p0 + bub->root_pos;
@@ -820,6 +820,53 @@ int main() {
         eerbon_rot->children.pop_back();
         delete bub;
         sun->UpdateOrbitRails(123.45);
+    }
+
+    {
+        printf("== #946: state read in the body's SPIN frame ==\n");
+        // The surface readout's leg: a hull's trajectory lives in the body's
+        // INERTIAL node (on rails, or parked while the pad is modelled there),
+        // and the horizon-speed readout asks for it in the body's ROTATING node.
+        // Dropping the new frame's stasis left that figure at the INERTIAL speed
+        // -- 183 m/s of Kerbin's own spin too high for a hull standing still on
+        // the ground, and the readout jumped by exactly that when the ship came
+        // off the rails. eerbon's spin is 0.001 rad/s at a 100 km radius, so the
+        // co-rotation this leg must remove is 100 m/s.
+        Frame *iner = eerbon;
+        Frame *spin = eerbon_rot;
+        const double w = spin->rot_ang_speed;
+        const double R = 1.0e5;
+        const glm::dvec3 ps(R, 0.0, 0.0);      // on the equator, spin-frame axes
+        glm::dvec3 pi, vi;
+        switchFrameState(spin, iner, ps, glm::dvec3(0.0), pi, vi);
+        CHECK_NEAR(glm::length(vi), w * R, 1e-9,
+                   "a hull parked on the deck moves with the ground (inertial node)");
+        // And back the other way -- the readout's direction. Parked must read 0.
+        glm::dvec3 ps2, vs2;
+        switchFrameState(iner, spin, pi, vi, ps2, vs2);
+        CHECK_TRUE(dvec_close(ps2, ps, 1e-6), "inertial -> rot round trip: position");
+        CHECK_NEAR(glm::length(vs2), 0.0, 1e-9,
+                   "a hull parked on the deck reads 0 in the rotating frame");
+        // Rolling along the deck at 20 m/s: the inertial figure is the ground's
+        // motion plus the roll, and the rotating figure is the roll ALONE -- which
+        // is what the HUD's hs means.
+        const glm::dvec3 deck(0.0, 0.0, 20.0);
+        glm::dvec3 qi, vqi;
+        switchFrameState(spin, iner, ps, deck, qi, vqi);
+        CHECK_NEAR(glm::length(vqi - vi), 20.0, 1e-9,
+                   "inertial speed = ground motion + deck speed");
+        glm::dvec3 qs, vqs;
+        switchFrameState(iner, spin, qi, vqi, qs, vqs);
+        CHECK_TRUE(dvec_close(vqs, deck, 1e-9),
+                   "rotating-frame speed == deck speed, spin not counted twice");
+        // The spin law has the same shape (omega_old added, omega_new subtracted).
+        // Both are along local +Y here, so the inertial node sees their sum.
+        const glm::dvec3 ws(0.0, 0.5, 0.0);
+        const glm::dvec3 wi = switchFrameSpin(spin, iner, ws);
+        const glm::dvec3 back = switchFrameSpin(iner, spin, wi);
+        CHECK_TRUE(dvec_close(back, ws, 1e-12), "spin switch round trip");
+        CHECK_NEAR(glm::length(wi), 0.5 + w, 1e-12,
+                   "spin into the inertial node carries the frame's own spin");
     }
 
     {

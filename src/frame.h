@@ -234,3 +234,19 @@ RefPlane uiRefPlane(Frame *focus, const glm::dvec3 &h_hat,
 // not a number. Three letters to fit the ORBITAL window's column.
 const char *refPlaneName(int mode);
 
+/* The frame-switch law in ONE spelling: a body's pos/vel, stored in `from` as
+   frame coordinates, in `to`. The stored velocity is frame-coordinate, so the
+   OLD frame's stasis is ADDED and the NEW frame's SUBTRACTED (see
+   Frame::GetStasisVelocity); the two halves gate together, or a same-frame call
+   comes out short by a stasis term. The spin is the same shape on omegas.
+   #946 was the cost of spelling this twice with one half missing:
+   Vehicle::comStateIn added the old stasis but not the new one, so converting
+   INTO a rotating frame kept the co-rotation. A railed hull -- which lives in
+   the body's INERTIAL node -- read its [surfinfo] hs at the inertial speed,
+   183 m/s of Kerbin's own spin too high, and the number jumped by exactly that
+   the moment it came off the rails. Both callers now go through here, and
+   test_frames.cpp pins this law against the root-space invariants. */
+void switchFrameState(Frame *from, Frame *to, const glm::dvec3 &p,
+                      const glm::dvec3 &v, glm::dvec3 &pt, glm::dvec3 &vt);
+glm::dvec3 switchFrameSpin(Frame *from, Frame *to, const glm::dvec3 &w);
+

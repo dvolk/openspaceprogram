@@ -181,3 +181,20 @@ void Frame::UpdateOrbitRails(double time) {
         child->UpdateOrbitRails(time);
     }
 }
+
+void switchFrameState(Frame *from, Frame *to, const glm::dvec3 &p,
+                      const glm::dvec3 &v, glm::dvec3 &pt, glm::dvec3 &vt) {
+    /* The new frame's stasis term needs the RESULTING position, so pt is written
+       before vt finishes -- an input that aliases an output would then be read
+       too late. Callers keep them separate; assert rather than comment. */
+    assert(&p != &pt && &v != &vt);
+    const glm::dmat3 Fo = from->GetOrientRelTo(to);
+    pt = Fo * p + from->GetPositionRelTo(to);
+    if(from == to) { vt = v; return; }
+    vt = Fo * (v + from->GetStasisVelocity(p)) + from->GetVelocityRelTo(to)
+       - to->GetStasisVelocity(pt);
+}
+
+glm::dvec3 switchFrameSpin(Frame *from, Frame *to, const glm::dvec3 &w) {
+    return from->GetOrientRelTo(to) * (w + from->omega_total) - to->omega_total;
+}
