@@ -37,7 +37,11 @@ refusals; NOGLCHECK opts out of the GL drains for timing-sensitive cases.
 CHECK sees out and
 the parsed logs (orbit/dbg/att/eva/fuel/drainlog/power/dv/mass/drag/shake/cam/
 terrain/surf/xfer/porkchop/surfmap/solar/mapb/plane/slew/toast/scene) plus
-first/last/re. Every row of a world-scoped log carries `ship`: the vessel that
+first/last, `re`, and the pure builtins `abs len any all max min float int zip
+set sum sorted tuple range` (#910). A CHECK evaluates against an empty
+`__builtins__` -- that is what keeps a case out of the filesystem and the
+interpreter -- so a helper a case author needs gets added to that list, not
+worked around inside the case. Every row of a world-scoped log carries `ship`: the vessel that
 was active when the game printed the line, read from the game's own "Active ship
 N of M: NAME" marker, or None while the run has never switched; `shipswitch`
 lists those handoffs themselves, so a CHECK can name its ship instead of mixing
@@ -98,6 +102,23 @@ DEFAULT_JOBS = 2
 # gdb/valgrind without reconstructing the invocation by hand.
 LIMIT = None
 SHOW_CMD = False
+# What a CHECK may call besides the row lists and first/last. A CHECK evaluates
+# against an EMPTY __builtins__ (see check_globals), which is what keeps a case
+# out of the filesystem and the interpreter; this dict is the whole allowlist, so
+# a helper a case author needs gets added HERE rather than worked around inside
+# the case (#910). `any`/`all` deliberately stay out: the runner swaps in
+# rec_any/rec_all, which count a walk that saw no rows (#653). --self-test pins
+# the trio below and that the allowlist is still closed.
+CHECK_BUILTINS = {
+    "abs": abs, "len": len,
+    "max": max, "min": min, "float": float, "int": int, "zip": zip,
+    "set": set, "sum": sum,
+    # The order-pinning trio: a case whose claim IS a sequence -- staging order,
+    # legend draw order, which row came first -- wants `tuple(sorted(...))`, and
+    # walking two lists by index wants `range`.
+    "sorted": sorted, "tuple": tuple, "range": range,
+    "re": re,
+}
 # Every case forbids these. A GL error, an abort and a shader failure are never
 # an expected outcome, and repeating the same six lines in every case file
 # buried the assertions a case actually makes. "error:" is NOT here: a clean
@@ -2486,11 +2507,8 @@ def run_case(case):
         "toast": toast,
         # None unless the run printed its --timeout accounting (#402).
         "simreport": simreport,
-        "first": first, "last": last,
-        "abs": abs, "len": len, "any": rec_any, "all": rec_all,
-        "max": max, "min": min, "float": float, "int": int, "zip": zip,
-        "set": set, "sum": sum,
-        "re": re,
+        "first": first, "last": last, "any": rec_any, "all": rec_all,
+        **CHECK_BUILTINS,
     }
     # 3b) A row list that came back EMPTY while the game clearly printed its tag is a
     # disagreement between this file's regex and the game's printer, not a world with no rows.
@@ -3269,12 +3287,34 @@ def self_test():
             if not want_refused:
                 fails.append("literal %r was refused as regex-shaped"
                              % (forbid_txt or expect_txt,))
+    # The CHECK namespace (#910), in both directions. The ordering trio a case
+    # author reaches for has to be there -- and the empty __builtins__ that makes
+    # CHECK_BUILTINS an ALLOWLIST has to stay empty, because a "helpful" widening
+    # turns every case file into a script that can read the repo.
+    for expr, want in (('tuple(sorted(r["n"] for r in rows))', (1, 2, 3)),
+                       ('[i for i in range(len(rows))]', [0, 1, 2]),
+                       ('sum(sum(t) for t in zip(range(3), range(3)))', 6)):
+        try:
+            got = eval(expr, dict(CHECK_BUILTINS, __builtins__={},
+                                  rows=[{"n": 3}, {"n": 1}, {"n": 2}]))
+            if got != want:
+                fails.append("CHECK namespace %r gave %r, want %r"
+                             % (expr, got, want))
+        except Exception as e:
+            fails.append("CHECK namespace cannot evaluate %r: %s" % (expr, e))
+    for barred in ("open", "exec", "eval", "compile", "__import__", "globals",
+                   "vars", "dir", "getattr", "input"):
+        try:
+            eval(barred, dict(CHECK_BUILTINS, __builtins__={}))
+            fails.append("CHECK namespace lets a case reach %r" % barred)
+        except NameError:
+            pass
     if fails:
         for f in fails:
             print("SELF-TEST FAIL: %s" % f)
         return 1
-    print("e2e runner self-test ok: dead-shape CHECKs (tuple, container, "
-          "uncalled lambda) refused at parse and eval; a CHECK whose all()/any() "
+    print("e2e runner self-test ok: dead-shape CHECKs (a trailing comma, a container, "
+          "an uncalled lambda) refused at parse and eval; a CHECK whose all()/any() "
           "walked an empty input recorded as a note that cannot redden the case; a "
           "printed row dropped because its number reads inf/nan named, and "
           "[ascent]'s dashed fields parsed as None while its nan row is named too; "
@@ -3284,7 +3324,8 @@ def self_test():
           "named; regex-shaped EXPECT/FORBID refused at parse while literal text "
           "containing brackets stays legal; re.search, walrus, comprehension and "
           "immediately-called lambda CHECKs accepted; CHECK failed/raised wording "
-          "intact")
+          "intact; the CHECK allowlist carries sorted/tuple/range and still refuses "
+          "open/exec/__import__")
     return 0
 
 
