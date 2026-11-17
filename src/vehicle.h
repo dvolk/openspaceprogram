@@ -452,18 +452,20 @@ public:
     double drainSpan_ = 0.0;                // s of sim covered since the print
     bool drainPrimed_ = false;              // a sample ran on this part tree
 
-    /* --dv-log state: the running delta-v budget, in m/s since the ship
-       existed. Three routes to the same number:
-         dvDelivered_ integrates the force the integrator was actually handed
-         (|F| * h / hull mass, per substep -- applyThrustForce);
-         dvAlong_ is that impulse projected onto the velocity direction, so
-         dvDelivered_ - dvAlong_ is what the burn's pointing threw away. Times
-         |v| it is the orbital energy the burn bought, but only for a constant
-         |v|: a case brackets it between min|v| and max|v| instead;
+    /* --dv-log state: the TSIOLKOVSKY side of the budget, in m/s since the ship
+       existed. The delivered side is not stored here. The impulse the integrator
+       was handed, and its share along the velocity line, live in losses_ below:
+       lossTick() writes them once per substep, and losses_.dv - losses_.steer IS
+       the along-velocity figure. Two members integrating the same force in the
+       same file were two owners of one integral, which is how [dv], [ascent] and
+       [rec] would start pricing one flight differently the day either changed its
+       mass basis, frame or burn gate (#933). Times |v| the along figure is the
+       orbital energy the burn bought, but only for a constant |v|: a case brackets
+       it between min|v| and max|v| instead.
          dvRocket_ integrates the Tsiolkovsky budget over the propellant the
          engines actually drained (ve * ln(m_before/m_after), per engine per
          tick -- ApplyThrust).
-       dvDelivered_ and dvRocket_ share the part table's ve and propellant rate
+       dvRocket_ and losses_.dv share the part table's ve and propellant rate
        (PartDef::fullThrust() IS rate * ve), so their agreement does NOT prove
        the part table -- it proves the two sides agree on the MASS basis (the
        hull Bullet accelerates vs the analytic getMass()), on the CLOCK basis
@@ -471,9 +473,7 @@ public:
        factor s and exhaust_scale, each of which must land on both sides.
        LIMITATION: this is the MAIN-ENGINE budget. RCS pushes go through
        applyRcsForce() and jets drain their own fuel without a vacuum dv, so
-       neither reaches it and dv_del reads 0 for an RCS-only nudge (#368).
-       dvAlong_ also stays put while the inertial speed is 0: no direction to
-       project onto. */
+       neither reaches it and dv_del reads 0 for an RCS-only nudge (#368). */
     bool dv_log_enabled = false;   // synced from args per tick (tick.cpp)
 
     /* PILOT vs SAS on one axis (#421, #425 D-2): who gets an axis when a held key and
@@ -538,19 +538,19 @@ public:
        (gameui.cpp), not to this field -- the sim takes any non-negative figure. */
     double sas_turn_rate = 0.0;
 
-    double dvDelivered_ = 0.0;
-    double dvAlong_ = 0.0;
     double dvRocket_ = 0.0;
     double propSpent_ = 0.0;       // kg of rocket propellant drained
     double dvVeLast_ = 0.0;        // last ve used, exhaust_scale applied (m/s)
 
-    /* What the burns this hull has flown COST, in m/s (#675). The running totals
-       sit beside --dv-log's budget because they split the same impulse: dv there,
-       the losses here, and the same forces feed both. lossTick() is the only
-       writer, once per substep (losses.h says why the arithmetic lives there and
-       not at each reader). It is NOT in the ship save and there is nothing to
-       restore: a load builds new Vehicles, so the counters start at zero with the
-       hull they describe (#304). */
+    /* What the burns this hull has flown COST, in m/s (#675). This is also the
+       only record of what they DELIVERED: losses_.dv is the thrust impulse the
+       integrator was handed, and losses_.dv - losses_.steer the part of it along
+       the velocity line, which is what --dv-log prints as dv_del and dv_along
+       (#933). dvRocket_ beside it is the tank's side of the same transaction.
+       lossTick() is the only writer, once per substep (losses.h says why the
+       arithmetic lives there and not at each reader). It is NOT in the ship save
+       and there is nothing to restore: a load builds new Vehicles, so the counters
+       start at zero with the hull they describe (#304). */
     AscentLosses losses_;
     const AscentLosses &ascentLosses() const { return losses_; }
 

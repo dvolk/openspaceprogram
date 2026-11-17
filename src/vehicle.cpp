@@ -3250,32 +3250,19 @@ void Vehicle::applyThrustForce(double h) {
     if(glm::length2(dcom) > 0.0) {
         ApplyTorque(hull, -glm::cross(dcom, ftotal));
     }
-    /* --dv-log: the impulse this substep hands the integrator. hull->mass is
-       the mass Bullet actually accelerates (rebuildCompound), NOT getMass(),
-       so a hull mass that lags the draining fuel shows up as a gap against
-       dvRocket_. The along-velocity term uses the NON-ROTATING velocity: what
-       a burn buys is measured against the conic, and inside the surface frame
-       GetVel() is ground-relative. */
-    if(dv_log_enabled && hull->mass > 0.0) {
-        const double inv_m = 1.0 / (double)hull->mass;
-        dvDelivered_ += glm::length(ftotal) * h * inv_m;
-        Frame *inertial = frame->getNonRotFrame();
-        glm::dvec3 ip, iv;
-        comStateIn(inertial, ip, iv);
-        const double speed = glm::length(iv);
-        if(speed > 0.0) {
-            const glm::dvec3 f_inertial = frame->GetOrientRelTo(inertial) * ftotal;
-            dvAlong_ += glm::dot(f_inertial, iv) * h * inv_m / speed;
-        }
-    }
+    /* Nothing integrates the impulse this handed Bullet -- lossTick() -> lossStep()
+       runs on the same substep and is the one owner of dv_del, dv_along and the
+       losses (#933). Two members summing the same force in this file were two
+       prices for one flight. */
 }
 
 /* The hull's loss totals, one substep at a time (#675). The three forces are the
    ones this substep handed Bullet -- thrust, gravity, air -- and they are dotted
    with the hull's ORBITAL velocity, so they must be lifted into the same frame it
-   is measured in, exactly as --dv-log's dvAlong_ above does: inside the rotating
-   surface frame GetVel() is ground-relative, and on Kerbin that is 175 m/s of
-   ground itself, which would score a hovering hull as if it were flying east.
+   is measured in: inside the rotating surface frame GetVel() is ground-relative,
+   and on Kerbin that is 175 m/s of ground itself, which would score a hovering
+   hull as if it were flying east. This is also where --dv-log's dv_del and
+   dv_along come from now (#933): one sum of the thrust impulse, not two.
    Nothing here is gated on a log flag, because the numbers are not a debug
    figure: they are what an ascent law tunes against and what the flight summary
    owes the player. The cost is one matrix and three products per hull per
@@ -5392,6 +5379,14 @@ void Vehicle::drain_log(double time) {
    velocity it costs shows up as a gap between them. dv_along is the delivered
    impulse projected onto the (non-rotating) velocity direction: on a prograde
    burn it equals dv_del, and the shortfall is what the pointing threw away.
+   Both are read off losses_ rather than summed again here (#933): dv_del is
+   losses_.dv and dv_along is losses_.dv - losses_.steer, the identity losses.h
+   states and tests/test_losses.cpp pins. Two owners of one integral is how [dv],
+   [ascent] and [rec] would price one flight differently. One behavioural seam
+   comes with it: below kConicSpeedFloor there is no velocity line to score
+   against, so such a substep charges its impulse to dv_del and nothing to
+   dv_along -- whereas the deleted member left dv_along untouched, which at
+   orbital speeds (the only speeds these cases fly) is the same line.
    dv_left is the HUD's number, so the readout is pinned against the flight.
    Two masses, deliberately: `mass` is the analytic ship (getMass, what the fuel
    bookkeeping and the HUD use), `hullmass` is the compound Bullet actually
@@ -5410,7 +5405,7 @@ void Vehicle::dv_log(double time) {
            "prop=%.3f kg ve=%.1f m/s dv_left=%.1f m/s dv_staged=%.1f m/s\n",
            time, displayName().c_str(), getMass(), hull->mass,
            glm::length(lastThrustForce),
-           dvDelivered_, dvAlong_, dvRocket_, propSpent_, dvVeLast_,
+           losses_.dv, losses_.dv - losses_.steer, dvRocket_, propSpent_, dvVeLast_,
            getDeltaV(), stagedDeltaV());
     fflush(stdout);
 }
