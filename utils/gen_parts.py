@@ -46,7 +46,12 @@ MASS_DENSITY = {
     "fuselage":       25.0,
     "reaction_wheel": 128.0,
     "adapter":        15.0,
-    "nose_cap":       192.0,
+    # A cap is a closed shell -- fuselage's structure, with the far end buttoned
+    # up. It was 192.0, denser than a crew capsule, which put a 1.125 m tip at
+    # 3435 kg: more than the 2531 kg engine it sits on, and 13.7 t of solid iron
+    # on a stack that carries four of them (#951). A cap that houses a chute bay
+    # should say so the way `chute` does -- a declared mass, not a density.
+    "nose_cap":       25.0,
     "rcs":            40.0,
     "cargo":          40.0,
     "materials_pod":  60.0,
