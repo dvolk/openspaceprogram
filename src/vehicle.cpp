@@ -1535,6 +1535,13 @@ void Vehicle::rebuildCompound() {
         // survive as a non-zero silhouette for a ship with no hull to apply it
         // to, and the balloon law could not lie that way.
         aeroSilParts.clear();
+        /* ...and the arrays that are positional twins of it. silhouetteBill asserts
+           atts.size() == polys.size(); leaving stale attributes parked next to an
+           empty polygon set keeps the ship one careless call away from that assert. */
+        aeroSilPartAtt.clear();
+        aeroSilPartVis.clear();
+        aeroSilNode.clear();
+        aeroSilNodeAtt.clear();
         aeroSil.clear();
         aeroGeomValid = false;
         gearParts.clear();
@@ -1713,12 +1720,16 @@ bool Vehicle::refreshMassProps() {
     return true;
 }
 
-/* The silhouette inputs: the part set, each part's collision body, and its
-   mount. Anything that changes what the ship presents to the air changes
-   this fingerprint; fuel burn (mass, and the COM shift that makes
-   refreshCompound rebuild) does not. splitmix64 mixing; doubles enter as
-   exact bits, so a collision means the geometry was bit-identical anyway
-   (modulo 2^64 bad luck). */
+/* The silhouette inputs: the part set, each part's collision body, its mount, and
+   the def fields that decide what that part contributes -- its drag anchors and
+   whether its planform makes it a surface rather than body. Anything that changes
+   what the ship presents to the air changes this fingerprint; fuel burn (mass, and
+   the COM shift that makes refreshCompound rebuild) does not. The def fields only
+   started mattering with #945, which caches each part's cd and its share of the
+   silhouette per flow direction: a def edited in place would otherwise keep
+   matching the old key and keep answering with a bill its parts no longer earn.
+   splitmix64 mixing; doubles enter as exact bits, so a collision means the
+   geometry was bit-identical anyway (modulo 2^64 bad luck). */
 static uint64_t aeroGeomFingerprint(const std::vector<Part *> &parts) {
     const auto mix = [](uint64_t h, uint64_t v) {
         uint64_t x = h ^ (v + 0x9e3779b97f4a7c15ull + (h << 6) + (h >> 2));
@@ -1741,6 +1752,14 @@ static uint64_t aeroGeomFingerprint(const std::vector<Part *> &parts) {
         for(int c = 0; c < 3; c++) {
             for(int r = 0; r < 3; r++) { h = mix(h, std::bit_cast<uint64_t>(p->localRot[c][r])); }
         }
+        /* And what it contributes to that silhouette: the cd anchors the
+           coefficient is made of, and the planform that decides whether the part is
+           body here at all (#945 caches both per flow direction). */
+        h = mix(h, std::bit_cast<uint64_t>(p->def ? p->def->drag_forward : 0.0));
+        h = mix(h, std::bit_cast<uint64_t>(p->def ? p->def->drag_side : 0.0));
+        h = mix(h, std::bit_cast<uint64_t>(p->def ? p->def->drag_backward : 0.0));
+        h = mix(h, std::bit_cast<uint64_t>(p->def ? p->def->lift_area : 0.0));
+        h = mix(h, std::bit_cast<uint64_t>(p->def ? p->def->control_area : 0.0));
     }
     return h;
 }
@@ -3595,19 +3614,35 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
     double formCdA = 0.0;
     double formCdArm = 0.0;
 
-    // Node fill (#463): the union at one flow direction, projected through that
-    // direction's own plane. Separate scratch because the CURRENT direction's
-    // polygons are the exact fallback and have to survive the fill.
-    auto unionAtS = [&](const glm::dvec3 &dirS) {
-        const FlowPlane pl = flowPlane(dirS);
-        /* The slots stay alive between nodes and between substeps; only their CONTENTS
-           are reset. projectHull finishes by swapping its polygon into the caller's
-           slot, so a fresh slot means the hull buffer it replaces is freed: clearing the
-           outer vector here paid one malloc per part per projection (heaptrack
-           2026_11_06: +10,836 allocations per 20 s of atmospheric flight, on top of the
-           ~1 ms a filling substep already spends). RESIZE to the projected count at the
-           end, so a part-set change drops the tail but everything that survives keeps
-           its buffer. */
+    /* One projection for the whole ship, into ONE shared flow plane (#463): the
+       polygons can only be unioned if they share a 2-D basis, so the PLANE rotates
+       into each part rather than each part picking its own. Along with the polygons
+       this fills what each one brings to the bill (#945):
+        - cd, as it faces THIS flow direction (localRot[2] is the part's nose and
+          sRot preserves dots, so the compound-local direction is the right one);
+        - depth, how far upwind the part's hull reaches along the flow -- the larger
+          it is, the sooner the air meets it, which is how a strip of the silhouette
+          decides which part it belongs to;
+        - cp, where that part's silhouette pushes, in the COMPOUND's axes (#512's
+          arm: the centroid of the projected polygon, not the bolt that holds it).
+       Returns the number of polygons written. The vectors keep their capacity, like
+       the polygons themselves: a fresh slot would free the hull buffer projectHull
+       swapped into it (heaptrack 2026_11_06: +10,836 allocations per 20 s of
+       atmospheric flight). `rows`, when given, collects the per-part numbers the
+       OSP_SHIP_DUMP audit prints -- which cannot be laid out until the visible
+       areas exist, so the printing happens after the bill. */
+    struct SilDumpRow {
+        const char *name;
+        double mass, fwd, right, up, projA, cd, liftA, ctrlA, noseDot, depth;
+        glm::dvec2 cpOff2;
+    };
+    auto projectSilhouette = [&](const glm::dvec3 &dirLocal,
+                                 std::vector<std::vector<glm::dvec2>> &polys,
+                                 std::vector<SilhouettePart> &atts,
+                                 std::vector<SilDumpRow> *rows) {
+        const FlowPlane pl = flowPlane(dirLocal);
+        const double dl = glm::length(dirLocal);
+        const glm::dvec3 dhat = dl > 0.0 ? dirLocal / dl : glm::dvec3(0.0);
         size_t n = 0;
         for(Part *p : parts) {
             if(p->body == nullptr || p->body->hullVerts.empty()) { continue; }
@@ -3617,14 +3652,58 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
                cache with an area the force never pays. */
             if(p->def != nullptr
                && isAeroSurface(p->def->lift_area, p->def->control_area)) { continue; }
-            if(n == aeroSilNode.size()) { aeroSilNode.emplace_back(); }
+            if(n == polys.size()) {
+                polys.emplace_back();
+                atts.push_back(SilhouettePart());
+            }
             // projectHull clears and refills the slot; keeping the slot is what
             // keeps its buffer, which is the whole point of the reuse above.
-            std::vector<glm::dvec2> &poly = aeroSilNode[n++];
+            std::vector<glm::dvec2> &poly = polys[n];
             projectPartHull(p->body->hullVerts, p->localRot, p->localPos, pl, poly);
+            SilhouettePart &at = atts[n];
+            const double noseDot = p->def ? glm::dot(p->localRot[2], dhat) : 0.0;
+            at.cd = p->def ? partCd(p->def->drag_forward, p->def->drag_side,
+                                    p->def->drag_backward, noseDot)
+                           : 0.0;
+            const glm::dvec2 mount2{glm::dot(p->localPos, pl.u),
+                                    glm::dot(p->localPos, pl.w)};
+            const glm::dvec2 cpOff2 = silhouetteCpOffset2(poly, mount2);
+            at.cp = p->localPos + cpOff2.x * pl.u + cpOff2.y * pl.w;
+            /* The support of the part's hull along the flow: the forward-most
+               material, which is what the air reaches first. Mount plus extent --
+               taking the larger of the two instead is a real trap, and it picked the
+               longest part in every column rather than the nearest one. Cheap (the
+               verts are already hot from the projection) and better than the mount
+               alone, which says nothing about a cone's tip. */
+            const glm::dvec3 dirPart = glm::transpose(p->localRot) * dhat;
+            const double mountD = glm::dot(p->localPos, dhat);
+            double depth = mountD + glm::dot(p->body->hullVerts[0], dirPart);
+            for(const glm::dvec3 &v : p->body->hullVerts) {
+                const double d = mountD + glm::dot(v, dirPart);
+                if(d > depth) { depth = d; }
+            }
+            at.depth = depth;
+            if(rows) {
+                const glm::dvec3 r = partPosS(p) - com;
+                rows->push_back({ p->def ? p->def->name.c_str() : "?",
+                                  p->effectiveMass(),
+                                  glm::dot(r, nose), glm::dot(r, right), glm::dot(r, up),
+                                  polygonArea2(poly), at.cd,
+                                  p->def ? p->def->lift_area : 0.0,
+                                  p->def ? p->def->control_area : 0.0,
+                                  noseDot, at.depth, cpOff2 });
+            }
+            n++;
         }
-        aeroSilNode.resize(n);
-        return unionProjectedArea(aeroSilNode);
+        polys.resize(n);
+        atts.resize(n);
+        return n;
+    };
+    // Node fill (#463, #945): the whole bill at one flow direction, projected
+    // through that direction's own plane.
+    auto billAtS = [&](const glm::dvec3 &dirLocal) {
+        projectSilhouette(dirLocal, aeroSilNode, aeroSilNodeAtt, nullptr);
+        return silhouetteBill(aeroSilNode, aeroSilNodeAtt);
     };
     /* How many silhouette nodes one substep may compute. A node is a whole
        project-and-union pass -- 0.009 ms on a 13-part hull, but the union's
@@ -3639,25 +3718,11 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
     static constexpr int kSilFillNodes = 1;
 
     // DRAG: AREA = the UNION of the parts' silhouettes facing the flow;
-    // COEFFICIENT = the parts' 3-anchor cd (partCd) area-weighted. Applied at the
-    // center of pressure, and answering to the flow THERE, so a banked ship
+    // COEFFICIENT = the parts' 3-anchor cd (partCd) weighted by the area each one
+    // CONTRIBUTES to that union, not by its own projected area (#945). Applied at
+    // the center of pressure, and answering to the flow THERE, so a banked ship
     // weathervanes into the flow AND the same term damps the swing (#486).
     {
-        /* One flow plane for the whole ship (#463): the polygons can only be
-           unioned if they share a 2-D basis, so the PLANE rotates into each part
-           rather than each part picking its own basis. Their areas drive the
-           centre of pressure and the cd mean, so this projects once per part per
-           substep, as before, and keeps the polygons for the union. */
-        const FlowPlane plS = flowPlane(vhatS);
-        /* Same reuse as unionAtS above: the slots keep their hull buffers, so
-           projectPartHull reserves into memory that is already there. The count is the
-           live view, not the vector's size -- see the resize after this block's loop. */
-        size_t silParts = 0;
-        glm::dvec3 cp(0.0);      // center of pressure (area-weighted centroid)
-        double cpArea = 0.0;
-        glm::dvec3 cpOffsetSum(0.0); // area-weighted cp MOVE from #512, as a vector (audit)
-        double cpOffsetMagSum = 0.0; // the same offsets without cancelling (audit)
-        double cdNum = 0.0;      // sum of (partArea x part cd) for the cd mean
         /* OSP_SHIP_DUMP: one design-audit dump of the whole ship as this pass sees
            it (per-part arm, projected area, cd as it faces the flow), plus the cp
            this pass computed. Throwaway instrumentation like AUDIO_DEBUG/PRECDBG: ONE
@@ -3666,7 +3731,8 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
            mixed accountings on purpose and labelled: a part's mass is effectiveMass()
            while the header is the compound body's, and SUM projA is the parts' areas
            ADDED while the force below pays on unionA (their union), which on an
-           overlapping ship can be half of it. */
+           overlapping ship can be half of it. #945 adds `visA`: the part of that
+           projection the air still sees, which is the weight it now votes with. */
         /* OSP_SHIP_DUMP_BETA moves the dump off the first substep (which is usually
            a straight-and-level attitude where every hull projects symmetrically and
            the cp question is invisible) to the first pass at AT LEAST that much
@@ -3684,115 +3750,78 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
         if(aeroDump == 2 && std::fabs(fr.beta * rad2deg) >= dumpBeta) { aeroDump = 1; }
         else if(aeroDump == 1 && dumpBeta > 0.0
                 && std::fabs(fr.beta * rad2deg) < dumpBeta) { aeroDump = 2; }
-        if(aeroDump == 1) {
-            printf("[ship] compound mass %.1f  vrel %.1f m/s  alpha %.1f  beta %.1f  alt %.0f\n",
-                   hull->mass, glm::length(vrel), alpha * rad2deg,
-                   fr.beta * rad2deg, alt);
-        }
-        for(Part *p : parts) {
-            if(p->body == nullptr || p->body->hullVerts.empty()) { continue; }
-            /* #455: surfaces are billed below, at their own place, on their own
-               planform. Excluding them here is what makes A_ship, lastDragCd and cp
-               BODY properties: the jet used to print A=4.32 with Cd=0.77, where the
-               0.77 was dragged down from ~0.9 by two wings whose 0.4 m2 of edge-on
-               mesh sat in the same average as a 3.1 m2 fuel tank. The area the two
-               conventions share is a coincidence of the same word. */
-            if(p->def != nullptr
-               && isAeroSurface(p->def->lift_area, p->def->control_area)) { continue; }
-            // hullVerts are part-local: projectPartHull carries them through the
-            // mount into the SHARED plane, so a wing 4 m off the centreline lands
-            // 4 m off the centreline in the union. (Its own area is translation-
-            // invariant, which is why the mount position used to be ignorable.)
-            if(silParts == aeroSilParts.size()) { aeroSilParts.emplace_back(); }
-            std::vector<glm::dvec2> &poly = aeroSilParts[silParts++];
-            projectPartHull(p->body->hullVerts, p->localRot, p->localPos, plS, poly);
-            const double a = polygonArea2(poly);
-            /* #512: the arm is where the AREA is, not where the part is bolted on.
-               cpOff2 is the part's projected silhouette centroid minus the same mount
-               projected into the SAME ship-local flow plane -- a ship-local free
-               vector, hence the sRot that joins it to the S-frame part position. The
-               coordinate the projection cannot see (along the flow) stays with the
-               mount; drag.h sizes what that costs. */
-            const glm::dvec2 mount2{glm::dot(p->localPos, plS.u),
-                                    glm::dot(p->localPos, plS.w)};
-            const glm::dvec2 cpOff2 = silhouetteCpOffset2(poly, mount2);
-            if(aeroDump == 1) {
-                cpOffsetSum += a * (cpOff2.x * plS.u + cpOff2.y * plS.w);
-                cpOffsetMagSum += a * std::sqrt(cpOff2.x * cpOff2.x + cpOff2.y * cpOff2.y);
-            }
-            cp += a * silhouetteCpPointS(sRot, partPosS(p), cpOff2, plS);
-            cpArea += a;
-            // cd AS IT FACES THE FLOW (partCd): localRot[2] is the part's nose in S
-            // and sRot preserves dots.
-            double cd = 0.0;
-            if(p->def != nullptr) {
-                const double c = glm::dot(p->localRot[2], vhatS);
-                cd = partCd(p->def->drag_forward,
-                            p->def->drag_side,
-                            p->def->drag_backward, c);
-                if(cd > 0.0) { cdNum += a * cd; }
-            }
-            if(aeroDump == 1) {   // throwaway design audit: arms in SHIP axes, from the COM
-                const glm::dvec3 r = partPosS(p) - com;
-                /* #512: cpOff is how far this part's AREA sits from the bolt that
-                   holds it -- the cp's arm per part. Zero means the hull is centred
-                   on its mount and the mount says something; a third of a metre or
-                   more means the mount is not where the drag pushes. */
-                const glm::dvec3 offS = silhouetteCpPointS(sRot, partPosS(p), cpOff2, plS)
-                                       - partPosS(p);
-                printf("[ship] %-16s m %7.1f fwd %6.2f right %6.2f up %6.2f"
-                       " projA %5.2f cd %.2f liftA %.2f ctrlA %.2f noseDot %5.2f"
-                       " cpOff %5.2f (f %6.2f r %6.2f u %6.2f)\n",
-                       p->def ? p->def->name.c_str() : "?", p->effectiveMass(),
-                       glm::dot(r, nose), glm::dot(r, right), glm::dot(r, up), a, cd,
-                       p->def ? p->def->lift_area : 0.0, p->def ? p->def->control_area : 0.0,
-                       p->def ? glm::dot(p->localRot[2], vhatS) : 0.0,
-                       glm::length(offS),
-                       glm::dot(offS, nose), glm::dot(offS, right), glm::dot(offS, up));
-            }
-        }
-        /* The live silhouette is exactly the polygons this substep projected; the vector
-           may still hold capacity (and a longer tail) from a bigger part set. */
-        aeroSilParts.resize(silParts);
-        /* The ship's silhouette: the union of those polygons, cached per flow
-           DIRECTION (speed and density multiply the force, they do not change
-           its shape). A miss falls back to the exact union of the polygons this
-           substep already projected, so a MISS cannot be wrong -- a HIT is only
-           as right as the key that found it, and a mis-keyed cell that was
-           already filled is invisible from here (#504: mutating the fold in
+        /* The audit projects a silhouette, so it needs a flow to project ALONG. On a
+           substep with no usable direction the per-part rows would sum to a real
+           visA beside a unionA of 0.00 and a cp of the COM -- the same disagreement
+           #560 caught between a row's columns, one printf earlier -- so the audit
+           waits, exactly as the beta gate above waits for a real sideslip. */
+        const bool dumping = aeroDump == 1 && lastDragAlphaValid;
+        /* The ship's silhouette BILL: the area the air is stopped by, the cd mean
+           over that same area, and where it pushes -- all three from one place, all
+           three cached per flow DIRECTION (speed and density multiply the force,
+           they do not change its shape).
+           A HIT projects nothing. A MISS falls back to the exact bill over the
+           polygons this substep projects for itself, so a MISS cannot be wrong -- a
+           HIT is only as right as the key that found it, and a mis-keyed cell that
+           was already filled is invisible from here (#504: mutating the fold in
            drag.h leaves every flight case green; only tests/test_drag.cpp dies).
-           The fallback is not free, either -- a filling substep pays that exact
-           pass plus up to kSilFillNodes node passes, and the budget only decides
-           how quickly the cache stops being needed.
-           A substep with no meaningful flow direction does not consult the chart
-           at all -- the same test the AoA readout uses (lastDragAlphaValid).
-           aeroFrame::valid only refuses v == 0, so a parked ship's jitter passes
-           it, and warming the table with those angles spends fills on a direction
-           this ship is not flying; the log then prints a concrete area for a row
-           whose angle it has just dashed.
-           */
-        double A_ship = 0.0;
-        if(lastDragAlphaValid) {
-            if(!aeroSil.lookup(alpha, fr.beta, A_ship)) {
+           The fallback is not free either -- a filling substep pays that exact pass
+           plus up to kSilFillNodes node passes, and the budget only decides how
+           quickly the cache stops being needed.
+           A substep with no meaningful flow direction does not consult the chart at
+           all -- the same test the AoA readout uses (lastDragAlphaValid).
+           aeroFrame::valid only refuses v == 0, so a parked ship's jitter passes it,
+           and warming the table with those angles spends fills on a direction this
+           ship is not flying; the log then prints a concrete area for a row whose
+           angle it has just dashed. The audit forces the exact pass either way,
+           because its per-part columns do not exist on a HIT. */
+        SilhouetteBill bill;
+        std::vector<SilDumpRow> rows;
+        bool fromChart = false;
+        if(!dumping && lastDragAlphaValid) {
+            fromChart = aeroSil.lookup(alpha, fr.beta, bill);
+        }
+        if(!fromChart && (dumping || lastDragAlphaValid)) {
+            if(dumping) {
+                printf("[ship] compound mass %.1f  vrel %.1f m/s  alpha %.1f  beta %.1f  alt %.0f\n",
+                       hull->mass, glm::length(vrel), alpha * rad2deg,
+                       fr.beta * rad2deg, alt);
+                rows.reserve(parts.size());
+            }
+            projectSilhouette(vhatS, aeroSilParts, aeroSilPartAtt,
+                              dumping ? &rows : nullptr);
+            if(lastDragAlphaValid) {
                 aeroSil.fillAround(alpha, fr.beta, kSilFillNodes,
                                    [&](double na, double nb) {
-                                       return unionAtS(glm::transpose(sRot)
+                                       return billAtS(glm::transpose(sRot)
                                            * flowDirection(na, nb, right, up, nose));
                                    });
-                A_ship = unionProjectedArea(aeroSilParts);
+            }
+            if(dumping) {
+                aeroSilPartVis.assign(aeroSilParts.size(), 0.0);
+                bill = silhouetteBill(aeroSilParts, aeroSilPartAtt, &aeroSilPartVis);
+            } else {
+                bill = silhouetteBill(aeroSilParts, aeroSilPartAtt);
             }
         }
+        const double A_ship = lastDragAlphaValid ? bill.area : 0.0;
         lastDragArea = A_ship;
-        /* The coefficient and the centre of pressure stay weighted by the SUM of
-           the parts' areas, while the force uses their UNION. That is not a
-           contradiction: the union answers "how much air does this shape stop",
-           the mean answers "what is that air worth per m^2 of it", and the CP
-           answers "where does it push" -- none of which is the other. A ship whose
-           parts overlap in the view gets no extra drag, but its cd still leans
-           toward whichever part presents the most material. */
-        lastDragCd = (cpArea > 0.0) ? (cdNum / cpArea) : 0.0;
-        if(cpArea > 0.0) { cp /= cpArea; }
-        else { cp = com; }  // degenerate: no per-part area -> act through the COM
+        /* #945: the coefficient and the centre of pressure are weighted by the area
+           each part contributes to the UNION, not by each part's own projected area.
+           They used to be measured against different areas on purpose -- the force
+           paying on the union while the cd mean leaned on whichever part presented
+           the most material, hidden behind its neighbours or not. On
+           mars_explorer_mk1 that vote was 366.7 m^2 wide against a 79.0 m^2
+           silhouette, so the mean was mostly tanks arguing a cd the air cannot see.
+           Crediting every strip of the silhouette to the upwind-most part that covers
+           it makes the credits a partition of the area, so the denominator here IS
+           the area the force is billed on and the two halves cannot drift apart. */
+        lastDragCd = (A_ship > 0.0) ? (bill.cdNum / A_ship) : 0.0;
+        /* The cp in the compound's own axes, which is the one frame every chart node
+           shares; frame S is where it is used. Degenerate: no billed area, so act
+           through the COM. */
+        glm::dvec3 cp = com;
+        if(A_ship > 0.0) { cp = sPos + sRot * (bill.cpNum / A_ship); }
         lastCpLever = glm::dot(cp - com, nose);   // + = cp ahead: AoA push diverges
         /* The hull's share of the airframe's form-drag cp (#455), weighted by the
            CdA this substep actually charges it -- the same product the force below
@@ -3802,8 +3831,32 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
             formCdA += hullCdA;
             formCdArm += hullCdA * lastCpLever;
         }
-        if(aeroDump == 1) {
+        if(dumping) {
             aeroDump = 0;
+            double sumProjA = 0.0, sumVisA = 0.0, cdNumOwn = 0.0;
+            glm::dvec3 cpOffsetSum(0.0);   // area-weighted cp MOVE from #512 (audit)
+            double cpOffsetMagSum = 0.0;   // the same offsets without cancelling (audit)
+            const FlowPlane plS = flowPlane(vhatS);
+            for(size_t i = 0; i < rows.size(); i++) {
+                const SilDumpRow &rw = rows[i];
+                sumProjA += rw.projA;
+                sumVisA += aeroSilPartVis[i];
+                cdNumOwn += rw.projA * rw.cd;
+                const glm::dvec3 offS = sRot * (rw.cpOff2.x * plS.u + rw.cpOff2.y * plS.w);
+                cpOffsetSum += rw.projA * offS;
+                cpOffsetMagSum += rw.projA * glm::length(offS);
+                /* #512: cpOff is how far this part's AREA sits from the bolt that
+                   holds it -- the cp's arm per part. Zero means the hull is centred
+                   on its mount and the mount says something; a third of a metre or
+                   more means the mount is not where the drag pushes. */
+                printf("[ship] %-16s m %7.1f fwd %6.2f right %6.2f up %6.2f"
+                       " projA %5.2f visA %5.2f dep %7.2f cd %.2f liftA %.2f ctrlA %.2f"
+                       " noseDot %5.2f cpOff %5.2f (f %6.2f r %6.2f u %6.2f)\n",
+                       rw.name, rw.mass, rw.fwd, rw.right, rw.up, rw.projA,
+                       aeroSilPartVis[i], rw.depth, rw.cd, rw.liftA, rw.ctrlA, rw.noseDot,
+                       glm::length(offS),
+                       glm::dot(offS, nose), glm::dot(offS, right), glm::dot(offS, up));
+            }
             const glm::dvec3 rc = cp - com;
             /* The ship's cp MOVE from this fix, as a vector. Parts whose silhouettes
                lean opposite ways cancel: on the glider at a broadside tumble the
@@ -3811,16 +3864,21 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
                is 0.06 m of average per-part offset and 0.004 m of actual cp. Quote the
                first to see which parts are wrong, the second to see what the ship
                feels. */
-            const glm::dvec3 cpMove = cpArea > 0.0 ? sRot * (cpOffsetSum / cpArea)
-                                                   : glm::dvec3(0.0);
+            const glm::dvec3 cpMove = sumProjA > 0.0 ? sRot * (cpOffsetSum / sumProjA)
+                                                     : glm::dvec3(0.0);
             printf("[ship] cp moved by this fix: %.3f m (f %6.3f r %6.3f u %6.3f) of %.2f m2;"
                    " per-part offsets average %.3f m (mean of magnitudes)\n",
                    glm::length(cpMove), glm::dot(cpMove, nose), glm::dot(cpMove, right),
-                   glm::dot(cpMove, up), cpArea,
-                   cpArea > 0.0 ? cpOffsetMagSum / cpArea : 0.0);
-            printf("[ship] SUM projA %.2f  unionA %.2f  cp fwd %.2f right %.2f up %.2f  cd %.2f\n",
-                   cpArea, A_ship, glm::dot(rc, nose), glm::dot(rc, right), glm::dot(rc, up),
-                   lastDragCd);
+                   glm::dot(cpMove, up), sumProjA,
+                   sumProjA > 0.0 ? cpOffsetMagSum / sumProjA : 0.0);
+            /* SUM projA is the old vote, visA the new one: they sum to the same thing
+               only when nothing hides behind anything else. cdOwn is what the mean
+               used to be, next to the cd the force now pays. */
+            printf("[ship] SUM projA %.2f  visA %.2f  unionA %.2f  cp fwd %.2f right %.2f"
+                   " up %.2f  cd %.3f (was %.3f)\n",
+                   sumProjA, sumVisA, A_ship, glm::dot(rc, nose), glm::dot(rc, right),
+                   glm::dot(rc, up), lastDragCd,
+                   sumProjA > 0.0 ? cdNumOwn / sumProjA : 0.0);
             fflush(stdout);
         }
         /* #486: the hull answers to the flow AT ITS OWN PLACE. Wherever cp sits,

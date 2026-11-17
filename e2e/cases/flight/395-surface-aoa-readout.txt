@@ -53,18 +53,27 @@ CHECK all(s2["wind_east"] > s1["wind_east"] for s1, s2 in zip(surf[:-1], surf[1:
 # of a degree rather than re-banded.
 CHECK all(abs(abs(s["aoa"]) - 90.0) < 0.1 for s in surf if s["t"] < 1.2)
 CHECK all(abs(s["aprg"] - 90.0) < 0.1 for s in surf if s["t"] < 1.2)
-# CLIMBING: the air-relative speed exceeds the vertical one by the sideways flow. Measured
-# tas - vs = 3.74 at a 2.63 m/s climb, 1.43 at 11.2, 0.87 at 27.8 -- against 5.8 m/s of
-# crosswind, so the excess is nowhere near the crosswind itself: the hull goes UP through the
-# air, and sqrt(vs^2 + w^2) - vs shrinks as vs outruns w. The old case pinned "< 1.5" for every
-# row over 2 m/s, which the first climbing rows blow through by more than a metre per second;
-# what is pinned now is the SHAPE -- always more than the ground speed, and falling monotonically
-# through the burn (t=5.5 and 6.0 excluded: that is the throttle-down, where vs drops and the
-# excess turns back up to 0.91 and 1.05).
+# CLIMBING: the air-relative speed exceeds the vertical one by the sideways flow. The excess is
+# sqrt(vs^2 + w^2) - vs against 5.83 -> 6.07 m/s of crosswind, so it is nowhere near the crosswind
+# itself and it SHRINKS as vs outruns w: measured 3.66 at a 2.77 m/s climb, 1.43 at 11.1, 0.62 at
+# 32.2 unloaded; 3.24 at 2.59, 1.49 at 10.6, 0.66 at 31.4 when the same case runs loaded. The old
+# case pinned "< 1.5" for every row over 2 m/s, which the first climbing rows blow through by more
+# than a metre per second; what is pinned now is the SHAPE -- always more than the ground speed,
+# and falling monotonically through the burn (the last two rows are the throttle-down, where vs
+# drops and the excess turns back up to 0.70/0.71).
+# The band's two ends both come out of that formula rather than out of a guess. The FLOOR follows
+# the top of the climb, and #945 moved that: the cheapest hull this run has ever had carries it to
+# 32.2 m/s of climb where it used to reach 27.8, and w^2/(2 vs) is 0.62 there against the 0.87 the
+# comment used to quote (0.7 -> 0.5). The CEILING follows the filter's own edge: at vs just over 2
+# the excess is sqrt(4 + 34) - 2 = 3.8 m/s, and this case samples on wall clock, so which row first
+# clears vs > 2.0 depends on load -- unloaded that row is vs 2.77 (excess 3.66), loaded it is vs
+# 2.08 (excess 4.09). A ceiling of 4.0 is therefore a bet on the sampling phase, not on physics;
+# 4.5 sits above the worst the edge can produce while still being nowhere near the 15.6 a row
+# before the climb (vs -9.78) would report if the filter let it through.
 CHECK all(s["tas"] > s["vs"] for s in surf if s["vs"] > 2.0)
-CHECK all(0.7 < s["tas"] - s["vs"] < 4.0 for s in surf if s["vs"] > 2.0)
+CHECK all(0.5 < s["tas"] - s["vs"] < 4.5 for s in surf if s["vs"] > 2.0)
 CHECK all(s2["tas"] - s2["vs"] < s1["tas"] - s1["vs"] for s1, s2 in zip([r for r in surf if 1.9 <= r["t"] <= 5.0][:-1], [r for r in surf if 1.9 <= r["t"] <= 5.0][1:]))
-# aoa falls from -65.95 deg at 2.63 m/s of climb to -8.67 at 31.6: the angle is where the wind
+# aoa falls from -64.8 deg at 2.77 m/s of climb to -10.5 at 32.2: the angle is where the wind
 # arrives, and the faster the hull climbs the less a 6 m/s crosswind bends it. Monotone through
 # the burn (t=6.0 is the throttle-down row, so it is excluded rather than band-ed around).
 CHECK all(abs(s2["aoa"]) < abs(s1["aoa"]) for s1, s2 in zip([r for r in surf if 1.5 < r["t"] < 5.6][:-1], [r for r in surf if 1.5 < r["t"] < 5.6][1:]))

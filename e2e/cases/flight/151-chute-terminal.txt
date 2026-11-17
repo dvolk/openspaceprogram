@@ -27,11 +27,24 @@ CHECK last(att)["wnorm"] < 1
 # left the FLIGHT PATH unpinned. It hangs here: the canopy is above the COM, so the
 # ship flips through 90 deg and settles nose-UP (AoA -> 180), and it does it in
 # clean air at a few tens of m/s rather than in a ground-contact jitter.
-# What the agreement check pins is the invariant a projected silhouette really has:
-# it is symmetric in its view direction, so the nose-on rows before the flip and
-# the nose-up hang after it are the SAME flow line and must report the same area.
-# Report an angle but apply a different flow's area -- clamp where it should fold,
-# a sign error in the frame -- and the hang answers a broadside figure.
+# What the agreement check used to pin is the invariant a projected silhouette really has: it is
+# symmetric in its view direction, so the nose-on rows before the flip and the nose-up hang after
+# it are the SAME flow line and must report the same area. #945 removed the nose-on half of that
+# pair, and why it did is itself a finding: the hull's cp lever reads -0.06 m on the first logged
+# row (Mach 2.26) and +1.09 m by the time the chute is full, so the ship weathervanes through
+# 90 deg inside the FIRST logged second -- t=1.7 is already AoA 107.9 and no row lands within a
+# degree of nose-on. The symmetry statement therefore stays pinned where it was always also
+# pinned, tests/test_drag.cpp; what this case guards is the half the flight path still produces,
+# that the HANG reports the axial area rather than a broadside one. The hang is sampled once every
+# 2 s of wall clock, so which rows exist depends on load; what does not change is the settled part.
+# Over the rows where the canopy is FULL (Chute=25.00) and |AoA| >= 170, both an unloaded and a
+# loaded sweep read 3.12..3.20 m2. The mid-flip rows read 3.67..4.40 depending on where the sample
+# lands (one run caught AoA -126 at 4.40, another caught -73.9 at 3.67), and the row where the
+# canopy is still paying out reads 3.32 -- which is why the filter asks for a full canopy rather
+# than merely a deployed one. Report an angle but apply a different flow's area -- clamp where it
+# should fold, a sign error in the frame, a mis-keyed chart cell -- and the hang answers the wider
+# figure, 23% off the settled band at the closest and 39% at the widest. The count is pinned first
+# so the band cannot pass by selecting nothing (#653).
 # What it does NOT pin, measured rather than assumed: the pair-fold itself.
 # Mutating SilhouetteMemo::fold to clamp instead of wrap leaves this case GREEN
 # while tests/test_drag.cpp dies on it (4 checks), because a flight substep answers
@@ -42,5 +55,6 @@ CHECK last(att)["wnorm"] < 1
 # path reports once the angle is past 90, which until now nothing did.
 CHECK any(d.get("aoa") is not None and abs(d["aoa"]) > 90 for d in drag)
 CHECK all(d.get("a", 0.0) > 0 for d in drag if d.get("aoa") is not None and abs(d["aoa"]) > 90)
-CHECK (lambda nose, hang: (nose and hang and abs(min(nose) - min(hang)) < 0.05 * min(nose)))([d["a"] for d in drag if d.get("aoa") is not None and d.get("a") is not None and abs(d["aoa"]) < 1.0 and d["t"] < 4.5], [d["a"] for d in drag if d.get("aoa") is not None and d.get("a") is not None and abs(d["aoa"]) > 175])
+CHECK len([d for d in drag if d.get("aoa") is not None and abs(d["aoa"]) > 170 and d.get("chute", 0) > 20.0]) >= 8
+CHECK all(3.05 < d["a"] < 3.28 for d in drag if d.get("aoa") is not None and abs(d["aoa"]) > 170 and d.get("chute", 0) > 20.0)
 FORBID error:

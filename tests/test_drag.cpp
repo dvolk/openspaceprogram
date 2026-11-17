@@ -3069,6 +3069,148 @@ static void test_unionArea() {
     }
 }
 
+/* silhouetteBill(polys, atts): which part each strip of the silhouette belongs to
+   (#945). The union answers how much air a shape stops; this answers WHO argues the
+   coefficient over that air, by crediting every strip to the upwind-most part
+   covering it (`depth` = how far upwind the part reaches; larger = met first).
+   The area must be partitioned, not merely matched: every m^2 of the silhouette is
+   credited exactly once, so the cd mean the force pays is a mean over the area the
+   force pays. */
+static void test_silhouetteBill() {
+    printf("== silhouetteBill: who each strip of the silhouette is credited to ==\n");
+
+    /* A stack silhouettes one face, and that face belongs to the front part alone:
+       the cd mean is then that part's, which is the whole point of #945. */
+    {
+        std::vector<std::vector<glm::dvec2>> polys;
+        std::vector<SilhouettePart> atts;
+        for(int k = 0; k < 3; k++) {
+            polys.push_back(rect(-1.0, -1.0, 1.0, 1.0));
+            SilhouettePart at;
+            at.cd = 0.35 + 0.3 * k;
+            at.depth = 3 - k;                    // part 0 is the upwind one
+            at.cp = glm::dvec3(0.0, 0.0, double(k));
+            atts.push_back(at);
+        }
+        std::vector<double> vis(3, 0.0);
+        const SilhouetteBill b = silhouetteBill(polys, atts, &vis);
+        CHECK_NEAR(b.area, 4.0, 1e-12, "a stack silhouettes one face");
+        CHECK_NEAR(vis[0], 4.0, 1e-12, "the front part keeps the whole face");
+        CHECK_NEAR(vis[1], 0.0, 1e-12, "the middle part is invisible");
+        CHECK_NEAR(vis[2], 0.0, 1e-12, "and so is the rear");
+        CHECK_NEAR(b.cdNum / b.area, 0.35, 1e-12,
+                   "so the coefficient is the front part's, not a mean of three");
+        double sum = 0.0;
+        for(double v : vis) { sum += v; }
+        CHECK_NEAR(sum, b.area, 1e-12, "the credits partition the silhouette");
+        CHECK_NEAR(b.cpNum.z, 0.0, 1e-12, "and the cp rides with the part that kept it");
+    }
+
+    /* The ORDER is what the credits mean, so it gets pinned both ways: a small part
+       in front of a big one keeps its own face, and the same part behind one keeps
+       nothing. A telescoping sum (visible_k = U_k - U_{k-1}) holds for ANY order, so
+       this pair -- not the totals -- is what separates "credited by depth" from
+       "credited by whichever polygon came first". */
+    {
+        std::vector<std::vector<glm::dvec2>> polys = {
+            rect(-0.5, -0.5, 0.5, 0.5),          // small
+            rect(-2.0, -2.0, 2.0, 2.0),          // big, and it contains the small
+        };
+        std::vector<SilhouettePart> atts(2);
+        std::vector<double> vis(2, 0.0);
+        atts[0].depth = 1.0; atts[1].depth = 0.0;
+        /* Deliberate, and pinned: a kept strip carries its OWNER's cp, not a point on
+           the strip itself. The projection cannot see where along the flow a part
+           sits, so the along-flow coordinate is the mount's -- which is why #945
+           moves the cp onto the visible parts (and why #947 wants the hidden body's
+           side still paying something). */
+        atts[0].cp = glm::dvec3(0.0, 0.0, 5.0);
+        atts[1].cp = glm::dvec3(0.0, 0.0, 1.0);
+        const SilhouetteBill frontSmall = silhouetteBill(polys, atts, &vis);
+        CHECK_NEAR(frontSmall.area, 16.0, 1e-12, "the silhouette is the big one either way");
+        CHECK_NEAR(vis[0], 1.0, 1e-12, "small IN FRONT keeps its own face");
+        CHECK_NEAR(vis[1], 15.0, 1e-12, "and the big one the rest of it");
+        CHECK_NEAR(frontSmall.cpNum.z, 1.0 * 5.0 + 15.0 * 1.0, 1e-12,
+                   "and each credited strip carries its owner's cp");
+        atts[0].depth = 0.0; atts[1].depth = 1.0;
+        std::fill(vis.begin(), vis.end(), 0.0);
+        const SilhouetteBill behindBig = silhouetteBill(polys, atts, &vis);
+        CHECK_NEAR(vis[0], 0.0, 1e-12, "small BEHIND big contributes nothing at all");
+        CHECK_NEAR(vis[1], 16.0, 1e-12, "and the big one keeps the whole face");
+        CHECK_NEAR(behindBig.cpNum.z, 16.0 * 1.0, 1e-12,
+                   "so the hidden part's cp point drops out of the bill entirely");
+    }
+
+    /* A covering [0,2] and B covering [1,3] merge to [0,3]. Crediting that merged
+       strip to one part -- the shortcut #945 replaces -- would bill B the 1 m^2 at
+       the top that A covers, and zero A. Each atomic strip goes to the part that
+       actually covers it. */
+    {
+        std::vector<std::vector<glm::dvec2>> polys = {
+            rect(0.0, 0.0, 1.0, 2.0),
+            rect(0.0, 1.0, 1.0, 3.0),
+        };
+        std::vector<SilhouettePart> atts(2);
+        std::vector<double> vis(2, 0.0);
+        atts[0].depth = 1.0; atts[1].depth = 0.0;
+        const SilhouetteBill b = silhouetteBill(polys, atts, &vis);
+        CHECK_NEAR(b.area, 3.0, 1e-12, "two overlapping bars == 3 m2 of silhouette");
+        CHECK_NEAR(vis[0], 2.0, 1e-12, "the front bar keeps the 2 it covers");
+        CHECK_NEAR(vis[1], 1.0, 1e-12, "the rear bar only the strip clear of it");
+        atts[0].depth = 0.0; atts[1].depth = 1.0;
+        std::fill(vis.begin(), vis.end(), 0.0);
+        silhouetteBill(polys, atts, &vis);
+        CHECK_NEAR(vis[0], 1.0, 1e-12, "swap the depths and the split swaps with them");
+        CHECK_NEAR(vis[1], 2.0, 1e-12, "(and still 3 m^2 in total)");
+    }
+
+    /* An independent algorithm for the same question: give each part what the union
+       GROWS by when the parts are added in depth order. n unions rather than one,
+       so this is a reference, not a candidate -- agreeing to 1e-9 on a scattered set
+       says the slab attribution is not losing or inventing area anywhere. It
+       telescopes for any order, so it checks bookkeeping only; the two blocks above
+       are the ones that check the physics. */
+    {
+        struct Box { double x0, y0, x1, y1, depth; };
+        const Box boxes[] = {
+            { 0.0, 0.0, 2.0, 2.0, 5.0 },
+            { 1.0, 0.0, 3.0, 2.0, 4.0 },
+            { 0.0, 1.0, 2.0, 3.0, 3.0 },
+            { 2.5, -1.0, 3.5, 1.0, 2.0 },
+            { 0.5, 0.5, 1.5, 1.5, 1.0 },        // inside the first
+        };
+        const size_t n = sizeof(boxes) / sizeof(boxes[0]);
+        std::vector<std::vector<glm::dvec2>> polys;
+        std::vector<SilhouettePart> atts(n);
+        for(size_t i = 0; i < n; i++) {
+            polys.push_back(rect(boxes[i].x0, boxes[i].y0, boxes[i].x1, boxes[i].y1));
+            atts[i].depth = boxes[i].depth;
+            atts[i].cd = 0.5 + 0.1 * double(i);
+        }
+        std::vector<double> vis(n, 0.0);
+        const SilhouetteBill b = silhouetteBill(polys, atts, &vis);
+        std::vector<size_t> order(n);
+        for(size_t i = 0; i < n; i++) { order[i] = i; }
+        std::sort(order.begin(), order.end(),
+                  [&](size_t a, size_t z) { return atts[a].depth > atts[z].depth; });
+        double prev = 0.0;
+        for(size_t k = 0; k < n; k++) {
+            std::vector<std::vector<glm::dvec2>> prefix;
+            for(size_t j = 0; j <= k; j++) { prefix.push_back(polys[order[j]]); }
+            const double u = unionProjectedArea(prefix);
+            const double grew = u - prev;
+            prev = u;
+            CHECK_NEAR(vis[order[k]], grew, 1e-9,
+                       "a part's visible area == what the union grows by in depth order");
+        }
+        CHECK_NEAR(prev, b.area, 1e-9, "and the last union == the billed area");
+        double sum = 0.0, cdNum = 0.0;
+        for(size_t i = 0; i < n; i++) { sum += vis[i]; cdNum += vis[i] * atts[i].cd; }
+        CHECK_NEAR(sum, b.area, 1e-9, "the credits partition the silhouette");
+        CHECK_NEAR(cdNum, b.cdNum, 1e-9, "and the cd numerator is those credits weighted");
+    }
+}
+
 /* projectPartHull: the MOUNT belongs to the shape. A part's own area is
    translation-invariant, which is how the per-part law could ignore localPos for
    years; the moment two parts' polygons are unioned, ignoring it piles every
@@ -3233,13 +3375,19 @@ static void test_cp_silhouette() {
                    " where the plate actually is (z 0..8, bolt at z 0)");
     }
 
-    /* The frame chain the call site performs (applyAeroForce), pinned against an
-       independent route to the same point. Above, everything is identity-aligned,
-       so a wrong sRot or a dropped transpose is invisible here -- that is exactly
-       how `off.x * pl.u + off.y * pl.w` (ship-local basis, no sRot) would slip
-       through, and it would put cp metres off on a yawed ship.
-       Code route: silhouetteCpPointS (what applyAeroForce calls) composes the
-       offset with the SHIP-LOCAL plane basis and sRot.
+    /* The frame chain the cp composition performs. #945 splits it in two:
+       projectSilhouette builds each part's cp in the COMPOUND's own axes, and the
+       drag block turns the credited mean into a world point as
+       sPos + sRot * (cpNum / area). Pinned here against an independent route to the
+       same point. Above, everything is identity-aligned, so a wrong sRot or a
+       dropped transpose is invisible here -- that is exactly how
+       `off.x * pl.u + off.y * pl.w` (ship-local basis, no sRot) would slip through,
+       and it would put cp metres off on a yawed ship.
+       Code route: silhouetteCpPointS composes the offset with the SHIP-LOCAL plane
+       basis and sRot. It has no production caller any more -- vehicle.cpp inlines
+       the same two factors now that the cp rides on the part attributes instead of
+       being composed at the call site -- so it stands here as the leg this pin holds
+       up against the reference route, not as the code the game runs.
        Reference route: rotate the hull VERTS into the ship frame (localRot*h +
        localPos), project those onto plS, take the area centroid -- where the area
        actually is, with no basis-rotation trick involved.
@@ -3408,14 +3556,25 @@ static void test_silhouetteMemo() {
     memo.reset();
     CHECK_TRUE(!memo.empty(), "reset allocates the table");
     CHECK_TRUE(!memo.lookup(0.3, 0.1, out), "fresh table: nothing filled -> miss");
-    CHECK_TRUE(memo.fillAround(0.3, 0.1, 0, [](double, double) { return 1.0; }) == 0,
+    CHECK_TRUE(memo.fillAround(0.3, 0.1, 0,
+                               [](double, double) { return SilhouetteBill(); }) == 0,
                "a zero budget fills nothing (and costs nothing)");
 
     /* A function LINEAR in both angles: bilinear interpolation reproduces it
        exactly, so any disagreement is the memo's error, not the surface's. */
     const auto exact = [](double a, double b) { return 1.0 + 0.5 * a + 0.25 * b; };
+    /* The memo caches the whole BILL now (#945), so the exact function the caller
+       hands it returns one: the same linear surface in the area, three times it in
+       the cd numerator, and a cp that walks with the angles. */
+    const auto exactBill = [&](double a, double b) {
+        SilhouetteBill bl;
+        bl.area = exact(a, b);
+        bl.cdNum = 3.0 * bl.area;
+        bl.cpNum = glm::dvec3(2.0 * a, -1.0 * b, 0.5);   // linear, so bilinear is exact
+        return bl;
+    };
     int calls = 0;
-    const auto counted = [&](double a, double b) { calls++; return exact(a, b); };
+    const auto counted = [&](double a, double b) { calls++; return exactBill(a, b); };
     CHECK_TRUE(memo.fillAround(0.11, -0.31, 4, counted) == 4,
                "a fresh cell fills its four corners");
     CHECK_TRUE(calls == 4, "each node computed once");
@@ -3426,11 +3585,25 @@ static void test_silhouetteMemo() {
     CHECK_TRUE(memo.lookup(0.13, -0.29, out), "still a hit");
     CHECK_TRUE(calls == 0, "a hit computes nothing");
     CHECK_NEAR(out, exact(0.13, -0.29), 1e-6, "hit reads the cached surface");
+    /* The rest of the bill rides the same four nodes, and the coefficient is their
+       RATIO: cdNum blends to 3 x area, so the mean is 3 whatever the blend weights
+       -- which is the property the hull law depends on (a blended cdNum over a
+       blended area must still be a cd, and the cp must be a point, not a mix of two
+       different flow planes' coordinates). */
+    {
+        SilhouetteBill bl;
+        CHECK_TRUE(memo.lookup(0.13, -0.29, bl), "the bill hits with the area");
+        CHECK_NEAR(bl.cdNum, 3.0 * bl.area, 1e-6, "the cd numerator blends on the area");
+        CHECK_NEAR(bl.cdNum / bl.area, 3.0, 1e-6, "so the coefficient survives the blend");
+        const SilhouetteBill want = exactBill(0.13, -0.29);
+        CHECK_NEAR(glm::length(bl.cpNum - want.cpNum), 0.0, 1e-5 * glm::length(want.cpNum),
+                   "and so does the cp numerator (same basis at every node)");
+    }
 
     /* Lazy allocation: a geometry change bumps a counter, it does not buy a table.
-       The 961-node table (7.7 kB) appears the first time the ship actually asks
-       for a direction, so the ships that never fly -- parked, in orbit, the ones
-       the player never looks at -- carry nothing. */
+       The 961-node table (41 kB with the bill) appears the first time the ship
+       actually asks for a direction, so the ships that never fly -- parked, in
+       orbit, the ones the player never looks at -- carry nothing. */
     memo.clear();
     CHECK_TRUE(memo.empty(), "clear frees the table");
     memo.invalidate();
@@ -3461,8 +3634,8 @@ static void test_silhouetteMemo() {
     const double corner = -SilhouetteMemo::kHalf + 0.05;
     CHECK_TRUE(memo.fillAround(corner, corner, 4, counted) == 4,
                "the corner cell fills");
-    const float saved = memo.area[0];
-    CHECK_TRUE(saved != 0.0f, "and its (0,0) node holds a number");
+    const double saved = memo.area[0];
+    CHECK_TRUE(saved != 0.0, "and its (0,0) node holds a number");
     memo.invalidate();
     CHECK_TRUE(!memo.lookup(corner, corner, out),
                "a generation bump invalidates every node at once");
@@ -4286,6 +4459,8 @@ int main() {
     test_zeroTolerance();
     printf("\n");
     test_unionArea();
+    printf("\n");
+    test_silhouetteBill();
     printf("\n");
     test_cp_silhouette();
     printf("\n");

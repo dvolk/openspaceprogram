@@ -1,5 +1,5 @@
 NAME elevator-trim
-CLAIM The same 569 kg skiff, with 12 deg of elevator trim authored on the parts and nothing else changed, holds +4.8..+5.8 deg of angle of attack through its phugoid with the stick released: the download that trims this airframe comes from deflection, and the standing bill is real (0.33-0.43 m2 of induced CdA while the hull is pointing into the flow, 0.82 the instant the rudder is kicked). The gravity-keyed bed spawns it at 80 m/s of GROUND speed, and Kerbin's column is worth 31.6 m/s at that band -- 19 deg off the spawn heading -- so the hull arrives with 52 m/s of air and this run stays inside its envelope and settles back after the kick.
+CLAIM The same 569 kg skiff, with 12 deg of elevator trim authored on the parts and nothing else changed, holds +4.8..+6.4 deg of angle of attack through its phugoid with the stick released: the download that trims this airframe comes from deflection, and the standing bill is real (0.34-0.51 m2 of induced CdA while the hull is pointing into the flow, 0.87 the instant the rudder is kicked). The gravity-keyed bed spawns it at 80 m/s of GROUND speed, and Kerbin's column is worth 31.6 m/s at that band -- 19 deg off the spawn heading -- so the hull arrives with 52 m/s of air and this run stays inside its envelope and settles back after the kick.
 KIND golden
 ARGS --time-accel 1 --startship skiff_trim,res/ships/skiff_trim.json,Kerbin,flying-cruise
 # --no-paint: every assertion here parses [drag]/[mass] rows, so the 3D pass buys
@@ -27,16 +27,20 @@ CHECK len(drag) >= 40
 # #686 moved the air, and the hold came down and flattened with it. The bed sits at 8.5 km
 # now (0.1 x an 85 km top, #682) in a troposphere instead of one isothermal 188 K column:
 # rho 0.480-0.503 kg/m3, T 231-234 K, a 305-307 m/s.
-# Kerbin carrying its own column moved the arc as well: the ground speed runs 51.6..81.9
-# m/s while the AIR one runs 23.8..54.6, because this bed keys to the body's circular speed
+# Kerbin carrying its own column moved the arc as well: the ground speed ran 51.6..81.9
+# m/s while the AIR one ran 23.8..54.6 (both before #945; see the note below), because this
+# bed keys to the body's circular speed
 # and never to its air (#693) and the spawn heads 19 deg off a 31.6 m/s tailwind. Fast end:
 # Mach 0.176, CLa 170.05. Slow end: Mach 0.077, CLa 167.70. So the band tilts back the other
-# way -- it peaks at the slow end (5.8 deg at t=15) and sags to 4.8 at the fast -- which is
+# way -- it peaks at the slow end (6.4 deg at t=15) and sags to 4.8 at the fast -- which is
 # what A5's slope law does to an air 28 m/s slower than the unwinded bed handed it. This
 # case pins that a 12 deg tab still buys ONE band across the exchange; why the band tilts is
 # not re-litigated here.
-CHECK all(4.7 < d["aoa"] < 5.9 for d in drag if d["aoa"] is not None and d["t"] < 25.0)
-# The exchange, pre-kick: 51.6..81.9 m/s of GROUND speed (23.8..54.6 of air) inside 313 m
+# #945 raised the top of the band 5.8 -> 6.4: the hull went Cd 0.58 -> 0.42, so the exchange
+# runs deeper and the slow end of it asks more of the tab. The arc's own speed now reads
+# 48.2..82.4 over the ground (20.1..55.3 through the air).
+CHECK all(4.7 < d["aoa"] < 6.5 for d in drag if d["aoa"] is not None and d["t"] < 25.0)
+# The exchange, pre-kick: 48.2..82.4 m/s of GROUND speed (20.1..55.3 of air) inside 330 m
 # of height, and the whole 50 s run stays inside that. This floor is NOT a stall floor, and
 # that is worth saying out loud:
 # res/ships/README.md's 23.1 m/s is arithmetic at low Mach (5.45 kN of weight over the
@@ -44,8 +48,8 @@ CHECK all(4.7 < d["aoa"] < 5.9 for d in drag if d["aoa"] is not None and d["t"] 
 # number was written against. The same arithmetic in #686's air prints 17.7 m/s back at
 # 7 km (rho 0.594, which is the row README carries now) and near 19 m/s up HERE, at the
 # 8.5 km bed in rho 0.502 -- the two differ by 1/sqrt(rho), not by a law. The
-# slow rows are not equilibrium flight anyway: at 23.8 m/s of air -- 51.6 m/s over the
-# ground, the difference being the column -- the hull bills |L| = 1.75 kN against a 5.6 kN
+# slow rows are not equilibrium flight anyway: at 20.7 m/s of air -- 48.2 m/s over the
+# ground, the difference being the column -- the hull bills |L| = 1.45 kN against a 5.6 kN
 # weight, which is a hull trading speed for height rather than one
 # holding it. (Every |L| quoted in this file is post-#699 and says HULL, not WING: the
 # column now carries the tab's download too, so the same rows used to read 2.4 kN here,
@@ -53,10 +57,12 @@ CHECK all(4.7 < d["aoa"] < 5.9 for d in drag if d["aoa"] is not None and d["t"] 
 # guards is the arc
 # punching clean through the bottom of the exchange -- a wing whose slope DROPPED would
 # fly a shallower one, and this row would
-# rise -- so it sits 1.6 m/s under the slowest pre-kick row rather than being tuned to it.
-# With the air moving, read that floor for what it is: |v| is the GROUND speed, so it can
-# never fall below the column, and the wing's own bottom is the 23.8 m/s of air above.
-CHECK min(d["v"] for d in drag if d["t"] < 25.0) > 50.0
+# rise -- so it sits 1.7 m/s under the slowest pre-kick row rather than being tuned to it.
+# #945 moved that row: the arc's bottom was 51.6 and is 48.2, because the hull the air
+# meets is now the pod's disc alone and the exchange runs deeper. With the air moving, read
+# that floor for what it is: |v| is the GROUND speed, so it can
+# never fall below the column, and the wing's own bottom is the 20.7 m/s of air above.
+CHECK min(d["v"] for d in drag if d["t"] < 25.0) > 46.5
 CHECK max(d["alt_asl"] for d in drag) - min(d["alt_asl"] for d in drag) < 450.0
 # THE DEPARTURE THAT STOPPED HAPPENING. Unwinded, this bed spawned the hull at 80 m/s of air
 # against a near 41 m/s trimmed glide -- 1.9x -- so the zoom climb that answers it ate the
@@ -66,13 +72,13 @@ CHECK max(d["alt_asl"] for d in drag) - min(d["alt_asl"] for d in drag) < 450.0
 # the last sentence of the note above: the bed keys to the body's circular speed, so Kerbin
 # taking up a 31.6 m/s column at that band took ~28 m/s off the air the hull arrived with
 # (52 m/s against a 41 m/s glide: 1.27x, not 1.9x). What this run still shows is a hull that
-# leaves trim inside the envelope -- 5.8 deg, 0.82 m2 of induced the instant the rudder is
+# leaves trim inside the envelope -- 5.0 deg, 0.87 m2 of induced the instant the rudder is
 # kicked -- and settles back on its own. What it no longer shows is a departure, and it will
 # not show one again until that bed stops being gravity-keyed (#693).
 CHECK all(d["aoa"] > 4.5 for d in drag if d["aoa"] is not None and d["t"] >= 34.0)
 CHECK min(d["v"] for d in drag if d["t"] >= 34.0) > 25.0
 # 12 deg of standing deflection, and the bill follows the command: the rows that point
-# into the flow before the kick bill 0.33-0.43 m2 of induced. The history of that number
+# into the flow before the kick bill 0.34-0.51 m2 of induced. The history of that number
 # is the history of the airframe: #567 took 0.13 m2 off the hold and 0.26 off the kick row
 # when the span went 12 m -> 16 m, because inducedCd charges a lifting system
 # (cl x A)^2 / (pi x 0.8 x span^2); #543 A5 put 0.02-0.07 m2 back on the hold by pricing
@@ -80,14 +86,17 @@ CHECK min(d["v"] for d in drag if d["t"] >= 34.0) > 25.0
 # the arc asks less of the wing at the top of its swing than the old one did -- and the
 # kick row from 0.94 to 0.80 (t=26, Beta -7.1). Kerbin's column moved the band up by
 # 0.06-0.08 m2 (0.333..0.431, t=26 now 0.823 at Beta -7.3): the same tab, flown through air
-# 28 m/s slower than this bed used to hand it, is asked for more of its lift.
-# The kick rows (|Beta| >= 4) sit outside the band on purpose: they run 0.50-0.82, the top
-# being the t=26 row a breath after the kick (Beta -7.3, rudder still off neutral). A
+# 28 m/s slower than this bed used to hand it, is asked for more of its lift. #945 lifts
+# the top again, to 0.505: the hold is 0.335..0.505 now because a 35% cheaper hull lets the
+# exchange reach 6.4 deg instead of 5.8, and induced goes as the square of what the tab is
+# asked for.
+# The kick rows (|Beta| >= 4) sit outside the band on purpose: they run 0.51-0.87, the top
+# being the t=26 row a breath after the kick (Beta -7.9, rudder still off neutral). A
 # steered surface pays induced drag at its own mount (#494), which is what the max row
 # below is for; it no longer has to be a clean row to prove it.
-# Pinned on the PITCH axis, because this run also kicks the rudder (Beta swings -7.3..5.4)
+# Pinned on the PITCH axis, because this run also kicks the rudder (Beta swings -7.9..5.6)
 # and an unpinned "any surface is well off neutral" would pass on that alone.
-CHECK all(0.30 < d["induced"] < 0.45 for d in drag if d.get("induced") is not None and d.get("beta") is not None and abs(d["beta"]) < 4.0 and d["t"] < 25.0)
+CHECK all(0.30 < d["induced"] < 0.52 for d in drag if d.get("induced") is not None and d.get("beta") is not None and abs(d["beta"]) < 4.0 and d["t"] < 25.0)
 # Not vacuous (#653's trap, and #787 widened it): the two Beta windows in this case select
 # on Beta being a number, and Beta now dashes on a test of its own -- a flow can have a
 # heading and no yaw -- so a selection can shrink without any CHECK noticing. Measured in
@@ -96,7 +105,7 @@ CHECK len([d for d in drag if d.get("beta") is not None and abs(d["beta"]) < 4.0
 # ... and on the OTHER side of the departure. The `t < 25.0` cutoff above stops at the
 # kick, which is also what would hide a drift in the half this run reaches after recovery:
 # the pre-kick band says nothing once the airframe has come back, and its rows would still
-# pass at 0.39. So read the settled tail too: from t=40 s on the tab bills 0.333..0.390 m2
+# pass at 0.39. So read the settled tail too: from t=40 s on the tab bills 0.338..0.342 m2
 # (11 rows, |Beta| < 4), the same standing bill it carried INTO the excursion. "It
 # recovers" is pinned above on AoA and speed; this says it recovers TRIMMED, with the
 # trim download the tab has been paying all along still the one paying it.
@@ -105,9 +114,12 @@ CHECK len([d for d in drag if d.get("beta") is not None and abs(d["beta"]) < 4.0
 CHECK max(d["induced"] for d in drag if d.get("induced") is not None) > 0.75
 # Ld= (#694): the air's force SPLIT ABOUT THE FLOW -- its component perpendicular to the
 # air-relative flow over its component along it -- which is the ratio a glide ratio equals.
-# Through the hold it reads 6.64..7.28, median 7.17. The same hull in a settled 200 s
+# Through the hold it reads 7.83..8.44, median 8.28. #945 lifted it ~15%: the along-flow
+# half of the split lost every hull m^2 that sits in another part's shadow (Cd 0.58 -> 0.42
+# at the same A). The same hull in a settled 200 s
 # engines-off glide prints 7.19 against the 7.28 its own ground track measures (41.20 m/s over
-# 5.66 m/s of sink) -- this row is not the glide and does not claim to be. Pinned on the hold,
+# 5.66 m/s of sink) -- that pair predates #945 and would read higher too; this row is not the
+# glide and does not claim to be. Pinned on the hold,
 # where the rows point into the flow; the departure rows sit outside it on purpose -- by t=29
 # the hull is falling at 0.8 and the ratio means little.
 # #699 is why the row now agrees with itself. |L| used to leave the control loop's deflection
@@ -116,28 +128,32 @@ CHECK max(d["induced"] for d in drag if d.get("induced") is not None) > 0.75
 # 1.22), and the ratio built off it -- |L| over the bills this line prints, (Cd*A + Induced +
 # Profile) x q -- came out 8.24..8.80, median 8.68, which is the 8.6 res/ships/README.md's
 # skiff row still quotes. Measured on this run since #699:
-#   * |L| over the CHARGED bills, q x (1.2 CdA + Induced + Profile): 6.67..7.27, median 7.17 --
+#   * |L| over the CHARGED bills, q x (1.2 CdA + Induced + Profile): 7.78..8.50, median 8.27 --
 #     this row's Ld, to the digit. The multiplier matters: A= and Cd= print the RAW hull product
 #     while the force charges drag_cd x them (1.2 by default; Induced= and Profile= already
 #     carry it). At t=1 the two bill sets are 2096 N and 2239 N against 2236 N of measured
-#     along-flow force, and at --drag-cd 1 they agree to the watt (1898 N both).
-#   * |L| over the RAW printed bills: 7.14..7.76, median 7.66 -- the same statement 6 % high
+#     along-flow force, and at --drag-cd 1 they agree to the watt (1898 N both) -- those three
+#     numbers are the pre-#945 run's, since when the hull term inside both sets is a third
+#     smaller; the identity they argue is not one of the things #945 moved.
+#   * |L| over the RAW printed bills: 8.16..8.91, median 8.68 -- the same statement 5 % high
 #     because it skips that multiplier.
 # So README's 8.6 is stale twice over now: it predates #699 and it reads the raw bills. Which
-# of these it should lead with is still #694's open call, not this case's.
+# of these it should lead with is still #694's open call, not this case's. Worth knowing that
+# #945 put the RAW ratio back on top of README's 8.6 (8.68) without anyone touching the file --
+# coincidence, and #694 should not read it as agreement.
 # The bound that would have caught #699: over EVERY row of this run -- hold, kick, fall
 # and recovery -- the lift part never outweighs the whole aero force it came from.
 # Pre-#699, 47 of these 50 rows broke it, by up to 22 %. Treat it as a tell rather than a
 # law: each surface stands in its OWN flow (#483), so a hull pitching hard enough for
 # w x r to matter leaks across the split, and this airframe's margin is only ~1 % at
-# Ld 7.17 (worst row here 0.9912). A hull with a much better L/D could reach |L| == |F|
+# Ld 8.28 (worst row here 0.9933). A hull with a much better L/D could reach |L| == |F|
 # at two decimals -- if that happens, do NOT widen this band; compare the logged force
 # VECTORS (lastForceVecs' kForceLift / kForceCtrl) instead of a sum of magnitudes.
 CHECK all(d["L"] <= d["F"] for d in drag)
 # Not vacuous: |L| is an optional column in the parser, so a row that stopped printing it
 # would make the CHECK above agree with nothing (#653).
 CHECK len([d for d in drag if d.get("L") is not None and d.get("F") is not None]) == len(drag)
-CHECK all(6.5 < d["ld"] < 7.5 for d in drag if d.get("ld") is not None and d.get("beta") is not None and abs(d["beta"]) < 4.0 and d["t"] < 25.0)
+CHECK all(7.7 < d["ld"] < 8.6 for d in drag if d.get("ld") is not None and d.get("beta") is not None and abs(d["beta"]) < 4.0 and d["t"] < 25.0)
 # Not vacuous: every row in this run prints a numbered Ld, because the air and the flow
 # are there the whole time (the dash means no flow to score, or the air PUSHING the hull).
 CHECK len([d for d in drag if d.get("ld") is not None]) == len(drag)

@@ -11,6 +11,7 @@
 // other shipped body still does not, so there the air remains at rest.
 
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <cmath>
 #include <cstdint>
@@ -1001,11 +1002,30 @@ inline double projectedArea(const std::vector<glm::dvec3> &hullVerts,
 
    Costs edge-pair work per direction, so it belongs at cache-node time, not in
    the substep loop; see SilhouetteMemo. */
-inline double unionProjectedArea(const std::vector<std::vector<glm::dvec2>> &polys) {
+
+/* One slab's cut of ONE polygon, keeping which polygon it came from (#945). The
+   merged measure the union wants does not care; crediting a strip of the
+   silhouette to the part the air actually meets is the whole of that question. */
+struct SilhouetteBand {
+    double lo, hi;
+    size_t poly;
+};
+
+/* The vertical decomposition of a set of convex polygons, walked one slab at a
+   time: atSlab(x0, x1, bands) sees the cuts of the plane at that slab's MIDPOINT.
+   The x breakpoints are every vertex x and every place two polygons' edges cross,
+   inside one slab no two active edges cross, so every band's height is linear in x
+   and the merged measure is linear too -- which is what makes the midpoint rule
+   exact rather than a sample. Convex rings only: the contract on projectHull.
+   Scratch is thread_local because this runs at cache-node time, never in the
+   substep loop; `bands` is reused per slab, so a caller must not keep it. */
+template <class AtSlab>
+inline void forEachSilhouetteSlab(const std::vector<std::vector<glm::dvec2>> &polys,
+                                 AtSlab &&atSlab) {
     struct Span { size_t poly; double lo, hi; };
     static thread_local std::vector<Span> spans;
     static thread_local std::vector<double> xs;
-    static thread_local std::vector<std::pair<double, double>> bands;
+    static thread_local std::vector<SilhouetteBand> bands;
     spans.clear();
     xs.clear();
     for(size_t i = 0; i < polys.size(); i++) {
@@ -1018,7 +1038,7 @@ inline double unionProjectedArea(const std::vector<std::vector<glm::dvec2>> &pol
         spans.push_back(sp);
         for(const glm::dvec2 &v : polys[i]) { xs.push_back(v.x); }
     }
-    if(spans.empty()) { return 0.0; }
+    if(spans.empty()) { return; }
     // Polygon-pair edge crossings: the only places the merged measure can change
     // curvature. The x-range tests reject most pairs of a ship's hulls cheaply.
     for(size_t a = 0; a < spans.size(); a++) {
@@ -1062,7 +1082,6 @@ inline double unionProjectedArea(const std::vector<std::vector<glm::dvec2>> &pol
     for(size_t i = 0; i < xs.size(); i++) {
         if(n == 0 || xs[i] - xs[n - 1] > eps) { xs[n++] = xs[i]; }
     }
-    double area = 0.0;
     for(size_t k = 0; k + 1 < n; k++) {
         const double x0 = xs[k], x1 = xs[k + 1];
         if(!(x1 > x0)) { continue; }
@@ -1090,29 +1109,141 @@ inline double unionProjectedArea(const std::vector<std::vector<glm::dvec2>> &pol
                     }
                 }
             }
-            if(hit && hi > lo) { bands.push_back({lo, hi}); }
+            if(hit && hi > lo) { bands.push_back({lo, hi, sp.poly}); }
         }
         if(bands.empty()) { continue; }
-        std::sort(bands.begin(), bands.end());
+        atSlab(x0, x1, bands);
+    }
+}
+
+inline double unionProjectedArea(const std::vector<std::vector<glm::dvec2>> &polys) {
+    double area = 0.0;
+    forEachSilhouetteSlab(polys, [&](double x0, double x1,
+                                     std::vector<SilhouetteBand> &bands) {
+        std::sort(bands.begin(), bands.end(),
+                  [](const SilhouetteBand &a, const SilhouetteBand &b) {
+                      return a.lo < b.lo || (a.lo == b.lo && a.hi < b.hi);
+                  });
         double measure = 0.0;
-        double clo = bands[0].first, chi = bands[0].second;
+        double clo = bands[0].lo, chi = bands[0].hi;
         for(size_t i = 1; i < bands.size(); i++) {
-            if(bands[i].first > chi) {
+            if(bands[i].lo > chi) {
                 measure += chi - clo;
-                clo = bands[i].first;
-                chi = bands[i].second;
-            } else if(bands[i].second > chi) {
-                chi = bands[i].second;
+                clo = bands[i].lo;
+                chi = bands[i].hi;
+            } else if(bands[i].hi > chi) {
+                chi = bands[i].hi;
             }
         }
         measure += chi - clo;
         area += measure * (x1 - x0);
-    }
+    });
     return area;
 }
 
-/* The silhouette area as a function of the flow DIRECTION only (#463). Speed and
-   density multiply the force, never its shape, so the union above is worth
+/* Everything one silhouette owes the air, measured on ONE area (#945).
+
+   The union answer and the coefficient used to be built against different areas:
+   the force paid on the UNION of the parts' silhouettes while the cd mean was
+   weighted by each part's OWN projected area, so a part buried behind its
+   neighbours contributed nothing to the area and its full weight to the
+   coefficient. On mars_explorer_mk1 axially that is 366.7 m^2 of vote against a
+   79.0 m^2 silhouette -- 4.6x of parts arguing cd the air cannot see (the
+   OSP_SHIP_DUMP=1 audit prints the pair).
+
+   So each strip of the silhouette is credited to exactly ONE part: the slab's
+   bands are cut at their own endpoint set into atomic intervals, and each interval
+   goes to the upwind-most band covering it. That makes the credits a partition of
+   the union -- SUM of the visible areas IS the union, by construction rather than
+   by check -- and the coefficient and the centre of pressure are then means over
+   the same area the force is billed on.
+
+   WHAT each part brings to that credit, per polygon and in the same order:
+   `cd` is the part's partCd AS IT FACES THIS FLOW DIRECTION; `depth` is how far
+   upwind it reaches along the flow (larger = the air meets it first) -- a single
+   scalar per part is exact whenever one part's depth range lies wholly ahead of its
+   neighbour's, which is the stacked-rocket case, and is a choice rather than a fact
+   where two parts' depth ranges interleave along the flow, so there the credit flips
+   between them as the ship yaws; and `cp` is where the part's silhouette pushes, in
+   the COMPOUND's own axes -- never in the flow plane's, whose reference axis swaps
+   at |d.x| < 0.9 (see flowPlane), which would make two neighbouring nodes'
+   coordinates incomparable.
+
+   `visible`, when given, must already be sized to polys AND zeroed: credits are
+   added, never written, so a part that keeps nothing stays at whatever it started
+   at. It is the column the design audit reads to show which parts stopped voting. */
+struct SilhouettePart {
+    double cd = 0.0;
+    double depth = 0.0;
+    glm::dvec3 cp = glm::dvec3(0.0);
+};
+
+struct SilhouetteBill {
+    double area = 0.0;
+    double cdNum = 0.0;              // SUM visible_i * cd_i
+    glm::dvec3 cpNum = glm::dvec3(0.0);   // SUM visible_i * cp_i
+};
+
+inline SilhouetteBill silhouetteBill(const std::vector<std::vector<glm::dvec2>> &polys,
+                                    const std::vector<SilhouettePart> &atts,
+                                    std::vector<double> *visible = nullptr) {
+    assert(atts.size() == polys.size());
+    if(visible) { assert(visible->size() == polys.size()); }
+    SilhouetteBill b;
+    static thread_local std::vector<size_t> order;
+    static thread_local std::vector<double> ys;
+    forEachSilhouetteSlab(polys, [&](double x0, double x1,
+                                     std::vector<SilhouetteBand> &bands) {
+        const double dx = x1 - x0;
+        // Upwind-most first: the first band that covers an interval keeps it.
+        order.resize(bands.size());
+        for(size_t i = 0; i < bands.size(); i++) { order[i] = i; }
+        std::sort(order.begin(), order.end(), [&](size_t a, size_t z) {
+            const double da = atts[bands[a].poly].depth;
+            const double dz = atts[bands[z].poly].depth;
+            if(da != dz) { return da > dz; }
+            /* Equal depth -- a duplicated part on one mount, mirrored twins sharing a
+               station -- has no upwind-most answer, and std::sort is not stable, so
+               without a tie-break the winner can change between slabs and between
+               builds: a cd that moves with the optimizer is unpinable. One band per
+               polygon per slab, so `poly` is a total order here. */
+            return bands[a].poly < bands[z].poly;
+        });
+        ys.clear();
+        ys.reserve(bands.size() * 2);
+        for(const SilhouetteBand &bd : bands) { ys.push_back(bd.lo); ys.push_back(bd.hi); }
+        std::sort(ys.begin(), ys.end());
+        size_t n = 0;
+        for(size_t i = 0; i < ys.size(); i++) {
+            if(n == 0 || ys[i] != ys[n - 1]) { ys[n++] = ys[i]; }
+        }
+        for(size_t k = 0; k + 1 < n; k++) {
+            const double y0 = ys[k], y1 = ys[k + 1];
+            if(!(y1 > y0)) { continue; }
+            /* The interval's MIDPOINT decides who covers it, for the same reason the
+               slab midpoint does: every band endpoint is in `ys`, so a band either
+               spans this whole interval or does not overlap it -- testing the middle
+               is exact, and it survives two endpoints that differ by a rounding hair
+               (a strip that thin is worth ~1e-16 m^2 whichever way it goes). */
+            const double ym = 0.5 * (y0 + y1);
+            for(size_t oi = 0; oi < order.size(); oi++) {
+                const SilhouetteBand &bd = bands[order[oi]];
+                if(ym < bd.lo || ym > bd.hi) { continue; }
+                const double w = (y1 - y0) * dx;
+                const SilhouettePart &pa = atts[bd.poly];
+                b.area += w;
+                b.cdNum += w * pa.cd;
+                b.cpNum += w * pa.cp;
+                if(visible) { (*visible)[bd.poly] += w; }
+                break;
+            }
+        }
+    });
+    return b;
+}
+
+/* The silhouette BILL as a function of the flow DIRECTION only (#463, #945). Speed
+   and density multiply the force, never its shape, so the union above is worth
    computing once per direction rather than once per substep: measured on the
    shipped jet, a union pass costs about 0.5 ms over its 13 hulls (3.3k verts),
    and the convex-hull balloon it replaces cost 1.7 ms at the 33k-vert balloon.
@@ -1127,13 +1258,29 @@ inline double unionProjectedArea(const std::vector<std::vector<glm::dvec2>> &pol
    is cleared.
 
    A cell whose corners are not all filled reports a MISS and the caller uses the
-   exact area for the direction it is already flying -- which the per-part
-   projections it computes anyway give for free. So a MISS is never wrong, but it
-   is not free either: the substep pays its own exact pass PLUS up to `budget` node
+   exact bill for the direction it is already flying -- a full projection pass, the
+   same one it used to pay every substep. So a MISS is never wrong, but it is not
+   free either: the substep pays its own exact pass PLUS up to `budget` node
    evaluations. Filling trades this substep's time for later hits; the caller keeps
-   the budget small. Cost of one node pass, measured on a pod-plus-two-plates hull:
-   0.009 ms at 13 parts, 0.18 ms at 100, 0.58 ms at 200 -- the overlap prune is
-   pair-wise, so it grows quadratically with the part count. */
+   the budget small. Cost of one node pass, measured on a pod-plus-two-plates hull
+   before #945: 0.009 ms at 13 parts, 0.18 ms at 100, 0.58 ms at 200 -- the overlap
+   prune is pair-wise, so it grows quadratically with the part count. Crediting the
+   strips (the bill) instead of only merging them adds to that pass, measured on
+   seeded overlapping boxes with tmp/bench_sil945.cpp: 1.28x at 13 parts, 1.35x at
+   100, 2.87x at 200. The strip scan is bands x intervals per slab, so it is
+   quadratic in how many parts OVERLAP at one station -- which is exactly the case
+   #945 exists for. A coverage sweep over `ys` instead of a rescan would make it
+   linear; not done yet, and worth doing before part counts grow.
+
+   What a HIT is worth changed with #945: the coefficient and the centre of pressure
+   now come out of this table too, so a hitting substep projects nothing at all --
+   the per-part loop used to run every substep to feed them. The cost of that is
+   honest to state: the table's other entries are interpolated like the area, and the
+   coefficient is a RATIO of interpolations, so wherever the area jumps across a
+   cell (the 8.3% rim note below) the coefficient jumps harder -- on
+   mars_explorer_mk1, one 15.8 m^2 decoupler sliding out from under a nose cap moves
+   the mean by about 0.15, a third of it. The same 5 deg cells that smooth a 4 m^2
+   plate do not smooth that. */
 struct SilhouetteMemo {
     // 5 deg nodes over +-75 deg in both angles. kFoldHalf is the atan2 chart's
     // own bound: past +-90 the flow comes from behind, and both angles enter a
@@ -1157,12 +1304,26 @@ struct SilhouetteMemo {
     static constexpr double kStep = (2.0 * kHalf) / (kSteps - 1);
     static_assert(kHalf <= kFoldHalf, "the chart may not exceed the fold's own chart");
 
-    std::vector<float> area;       // [m^2]; node (i, j) at j * kSteps + i
-    std::vector<uint32_t> stamp;   // the generation the node was filled at
-    uint32_t gen = 0;              // bump to invalidate every node at once
+    /* The bill at a node, at full precision. These are double rather than float
+       because the coefficient and the cp are QUOTIENTS of two cached numbers: a
+       float numerator leaves ~1e-7 on cd/A even where the answer is exact by
+       construction, and tests/test_aerosweep.cpp pins lastDragCd == 0.35 at 1e-12
+       through this table -- with float cdNum that pin read 0.349999994 and died
+       (#945). The table is 41 kB a ship, which is not worth a precision fight. */
+    std::vector<double> area;  // [m^2]; node (i, j) at j * kSteps + i
+    std::vector<double> cdNum; // SUM visible_i * cd_i at that node
+    /* SUM visible_i * cpLocal_i, in the COMPOUND's own axes -- not the node's flow
+       plane. Two neighbouring nodes build their plane bases from different reference
+       axes once |d.x| crosses 0.9 (flowPlane), so plane coordinates cannot be blended
+       across nodes; the compound frame is the one frame every node shares. */
+    std::array<std::vector<double>, 3> cpNum;
+    std::vector<uint32_t> stamp; // the generation the node was filled at
+    uint32_t gen = 0;            // bump to invalidate every node at once
 
     void reset() {
-        area.assign(kSteps * kSteps, 0.0f);
+        area.assign(kSteps * kSteps, 0.0);
+        cdNum.assign(kSteps * kSteps, 0.0);
+        for(std::vector<double> &c : cpNum) { c.assign(kSteps * kSteps, 0.0); }
         stamp.assign(kSteps * kSteps, 0u);
         gen = 1;                   // 0 means "never filled"
     }
@@ -1172,13 +1333,15 @@ struct SilhouetteMemo {
        projected to zero area. Frees the buffer on purpose -- this is called when
        a ship is absorbed, and the shell may live on. */
     void clear() {
-        std::vector<float>().swap(area);
+        std::vector<double>().swap(area);
+        std::vector<double>().swap(cdNum);
+        for(std::vector<double> &c : cpNum) { std::vector<double>().swap(c); }
         std::vector<uint32_t>().swap(stamp);
         gen = 0;
     }
     // Geometry changed: nothing in the table is trustworthy. No allocation here --
     // a parked or orbital ship that never flies in a direction should not pay
-    // 7.7 kB for a table it never consults (fillAround allocates on first use).
+    // 41 kB for a table it never consults (fillAround allocates on first use).
     void invalidate() {
         gen++;
         if(gen == 0) { gen = 1; }   // skip 0: it means "never filled"
@@ -1233,10 +1396,10 @@ struct SilhouetteMemo {
     }
 
     /* A hit: all four corners of the cell were filled at this generation, so
-       bilinear between them. Anything else (no table, a NaN angle, a direction
-       outside the cached range, a corner not yet filled) is a MISS and leaves
-       `out` alone. */
-    bool lookup(double alpha, double beta, double &out) const {
+       bilinear between them -- for every entry of the bill, not just the area.
+       Anything else (no table, a NaN angle, a direction outside the cached range,
+       a corner not yet filled) is a MISS and leaves `out` alone. */
+    bool lookup(double alpha, double beta, SilhouetteBill &out) const {
         if(area.empty() || !std::isfinite(alpha) || !std::isfinite(beta)) { return false; }
         fold(alpha, beta);
         if(!charted(alpha, beta)) { return false; }
@@ -1247,29 +1410,39 @@ struct SilhouetteMemo {
         }
         const int i0 = cellOf(alpha), j0 = cellOf(beta);
         const double wa = weight(alpha, i0), wb = weight(beta, j0);
-        const double a00 = area[k00], a10 = area[k00 + 1];
-        const double a01 = area[k00 + kSteps], a11 = area[k00 + kSteps + 1];
-        out = (a00 * (1.0 - wa) + a10 * wa) * (1.0 - wb)
-            + (a01 * (1.0 - wa) + a11 * wa) * wb;
+        const auto bl = [&](const std::vector<double> &v) {
+            const double a00 = v[k00], a10 = v[k00 + 1];
+            const double a01 = v[k00 + kSteps], a11 = v[k00 + kSteps + 1];
+            return (a00 * (1.0 - wa) + a10 * wa) * (1.0 - wb)
+                 + (a01 * (1.0 - wa) + a11 * wa) * wb;
+        };
+        out.area = bl(area);
+        out.cdNum = bl(cdNum);
+        out.cpNum = glm::dvec3(bl(cpNum[0]), bl(cpNum[1]), bl(cpNum[2]));
+        return true;
+    }
+    // The area alone, for callers (and pins) that only care about the shape.
+    bool lookup(double alpha, double beta, double &out) const {
+        SilhouetteBill b;
+        if(!lookup(alpha, beta, b)) { return false; }
+        out = b.area;
         return true;
     }
 
     /* Fill this cell's missing corners, at most `budget` of them -- the caller
-       spreads the cost over substeps. `exact(alpha, beta)` computes the area at
+       spreads the cost over substeps. `exact(alpha, beta)` computes the bill at
        a node; the caller holds the parts, the ship frame and the union. Returns
        how many nodes were filled. A direction outside the cached range fills
-       nothing: it is answered by the caller's exact union instead. */
+       nothing: it is answered by the caller's exact bill instead. */
     template <class ExactFn>
     int fillAround(double alpha, double beta, int budget, ExactFn exact) {
         if(budget <= 0 || !std::isfinite(alpha) || !std::isfinite(beta)) { return 0; }
         fold(alpha, beta);
         if(!charted(alpha, beta)) { return 0; }
         /* The table appears the first time a ship actually asks for a direction.
-           A ship that never flies in one never pays for it (7.7 kB each). */
+           A ship that never flies in one never pays for it (41 kB each). */
         if(area.empty()) {
-            area.assign(kSteps * kSteps, 0.0f);
-            stamp.assign(kSteps * kSteps, 0u);
-            if(gen == 0) { gen = 1; }
+            reset();
         }
         const int i0 = cellOf(alpha), j0 = cellOf(beta);
         int filled = 0;
@@ -1279,7 +1452,12 @@ struct SilhouetteMemo {
                 const int i = i0 + di, j = j0 + dj;
                 const size_t k = (size_t)j * kSteps + i;
                 if(stamp[k] == gen) { continue; }
-                area[k] = (float)exact(alphaAt(i), betaAt(j));
+                const SilhouetteBill nb = exact(alphaAt(i), betaAt(j));
+                area[k] = nb.area;
+                cdNum[k] = nb.cdNum;
+                cpNum[0][k] = nb.cpNum.x;
+                cpNum[1][k] = nb.cpNum.y;
+                cpNum[2][k] = nb.cpNum.z;
                 stamp[k] = gen;
                 filled++;
                 budget--;

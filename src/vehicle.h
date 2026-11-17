@@ -253,22 +253,33 @@ public:
        rebuild-scoped: map a hit back through this. */
     std::vector<Part *> compoundParts;
 
-    /* What the ship presents to the air (#463). AREA is rotation-invariant, so
+    /* What the ship presents to the air (#463, #945). AREA is rotation-invariant, so
        the whole ship is projected through ONE flow plane in frame S;
-       `aeroSilParts` holds each part's silhouette polygon for the CURRENT flow
-       in that shared 2-D basis, reused between substeps (their areas also give
-       the centre of pressure and the cd mean, so nothing projects twice). The
-       union of those polygons -- not a convex hull drawn over the merged
-       vertices, which invents airframe between the parts -- is the drag area;
-       SilhouetteMemo caches that area per flow DIRECTION, filling nodes lazily
-       and going stale by generation counter when the geometry changes.
-       Geometry = the part set + their mounts: mass (fuel burn, the usual reason
-       refreshCompound rebuilds) does NOT change the silhouette, so the cache
-       invalidation is fingerprint-gated. */
+       `aeroSilParts` holds each part's silhouette polygon in that shared 2-D basis,
+       reused between substeps. Not "the CURRENT flow's" polygons, though: a chart
+       HIT writes nothing here, so on a hitting substep these are whatever the last
+       MISS projected, and only the cached bill is current. `aeroSilPartAtt` is the
+       parallel array of what each of those polygons brings to the bill -- its cd as
+       it faces this flow, how far upwind it reaches, and where it pushes -- because
+       #945 charges the coefficient and the centre of pressure on the area the air
+       can SEE, not on each part's own. The union of the polygons -- not a convex hull
+       drawn over the merged vertices, which invents airframe between the parts -- is
+       the drag area, and it is the SAME number the coefficient is averaged over.
+       SilhouetteMemo caches the whole bill per flow DIRECTION, filling nodes lazily
+       and going stale by generation counter when the geometry changes, so a hitting
+       substep projects nothing at all.
+       Geometry = the part set + their mounts + their drag anchors: mass (fuel burn,
+       the usual reason refreshCompound rebuilds) does NOT change the silhouette, so
+       the cache invalidation is fingerprint-gated. */
     std::vector<std::vector<glm::dvec2>> aeroSilParts;
+    std::vector<SilhouettePart> aeroSilPartAtt;
+    /* Each polygon's unoccluded area, filled only when the OSP_SHIP_DUMP audit asks
+       for it -- the column that shows which parts stopped voting (#945). */
+    std::vector<double> aeroSilPartVis;
     // Scratch for filling cache nodes: those polygons belong to the cell
     // corners' flow directions, not the substep's, so they need their own set.
     std::vector<std::vector<glm::dvec2>> aeroSilNode;
+    std::vector<SilhouettePart> aeroSilNodeAtt;
     SilhouetteMemo aeroSil;
     uint64_t aeroGeomKey = 0;      // fingerprint the silhouette cache is keyed to
     bool aeroGeomValid = false;    // false = no geometry cached yet
@@ -768,14 +779,21 @@ public:
                                 // #455 the union refuses any part with lift_area or
                                 // control_area, so this is what the hull stops, not
                                 // what the airframe presents
-    double lastDragCd = 0.0;    // area-weighted mean of the BODY parts' cds
+    double lastDragCd = 0.0;    // the parts' cds, meaned over the area each one CONTRIBUTES
+                                // to the union (#945) -- a part behind another does not vote
     /* The hull's weathervane lever: (cp - com) . nose, metres; + = cp AHEAD of the
        COM. #486 made hull drag answer to the flow AT cp, and two different things
        ride on that. The sweep of the flow OPPOSES a rotation whatever the sign of
        this; what the sign decides is the other half -- hull drag acting AT AN ANGLE
        of attack sends the nose back into the flow only with cp BEHIND the COM, and
        diverges it with cp ahead. Printed as CpL= in the drag log because it is the
-       quantity #454's static margin is made of and nothing else shows it. */
+       quantity #454's static margin is made of and nothing else shows it.
+       #945 made this lever longer: the push now lands on the parts the air can see,
+       so on a nose-first stack it sits at the nose caps rather than at an area blend
+       that included what was hidden behind them. On the ascending rocket that is
+       +0.80 -> +3.30 m. A stack of frontal discs really does push at its front; what
+       is missing is the SIDE of a hidden body paying for the crossflow over it,
+       which is the aft push this wants and what #947 is for. */
     double lastCpLever = 0.0;
     /* #455's companion to CpL: the lever of the WHOLE airframe's form drag -- the
        hull union AND every surface's own planform bill, weighted by the CdA each one

@@ -34,6 +34,19 @@ CHECK all(abs(b["r"] - 6107800) < 1 for b in bldg if b["id"]=="venus_cloud_platf
 # the building itself drifts 1.7 km per log step above.
 CHECK "bubble" in orbit[-1]["frame"]
 CHECK sum(p*p for p in dbg[-1]["pos"]) < 10000
-CHECK abs(dbg[-1]["v"]) < 1.0
+# |v| here is the frame-local speed at the sampling instant, which for a hull on landing gear is
+# contact-solver jitter rather than motion, and it is not stable between runs: the last three
+# rows read 0.40 / 0.13 / 0.28 before #945 and 0.40 / 0.17 / 1.01 after it (a re-run of the same
+# build lands 0.52). The row that went red printed vel = [-0.98 -0.04 -0.26] |v| = 1.01 beside a
+# pos of [-38.9 -0.0 1.6] -- the SAME point as the row before it, so nothing moved in those 20 s.
+# #945 leaves the parts behind others out of the hull's cd vote (the billed area is unchanged), so
+# the wind's force on a parked hull and the point it acts at both move, and the gear jitter with
+# them; the band goes 1.0 -> 1.5 to cover a spread this case cannot control. The claim the band
+# was standing in for is REST, so it is pinned below directly, as displacement across the last two
+# log steps: measured 0.3 m over 40 s, against the platform's own 3450 m in the same span. What
+# the ship does before that (before #945 too) is creep -4.8 m per step from x=-5.0 to x=-38.9 and
+# stop.
+CHECK abs(dbg[-1]["v"]) < 1.5
+CHECK (lambda d: sum((d[-1]["pos"][i]-d[-3]["pos"][i])**2 for i in (0,1,2))**0.5 < 8.0)(dbg)
 CHECK all(abs(o["r"] - 6107800) < 100 for o in orbit)
 FORBID error:
