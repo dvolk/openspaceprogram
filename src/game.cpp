@@ -452,6 +452,16 @@ void Game::dropVehicleRefs(Vehicle *v) {
        and the map fits a dead hull's conic. Same aliasing hazard as map.fit_ship
        above, one line to close (#810). */
     if(hud.view.ship == v) { hud.view.ship = nullptr; }
+    /* The camera's ground latch and the pose-jitter latch stamp themselves the
+       same way, from whichever hull was active when render last ran (render.cpp:530,
+       1137). They are only ever compared, never read, so retiring v never
+       dereferences them -- but a Vehicle allocated later on v's block reads back as
+       "still the same ship", and the camera keeps a dead hull's ground frame and the
+       jitter its last pose. game.cpp:1426/1508 clear both at reset; retire() now
+       runs from the sim loop (cullFarDebris, #939) as well as from the UI, so the
+       per-hull clear belongs here. */
+    if(cam_ground_ship == v) { cam_ground_ship = nullptr; }
+    if(pose_jitter_prev_ship == v) { pose_jitter_prev_ship = nullptr; }
 }
 
 /* The one door from the Guidance window's fields to a flying mission: a Go click
@@ -2182,7 +2192,13 @@ void Game::updateProximity() {
         }
         if(!s->onRails) {
             any_engaged = true;
-            if(d < r_on && rate < -args.prox_close_v) { bearing_down = true; }
+            /* < 0 is the sentinel ("any neighbour inside the radius"), NOT a
+               speed: writing this as rate < -prox_close_v with a negative dial
+               turns it into a window that also matches a neighbour RECEDING at
+               up to |prox_close_v|. 0 stays "closing at all". */
+            if(d < r_on && (args.prox_close_v < 0.0 || rate < -args.prox_close_v)) {
+                bearing_down = true;
+            }
         }
     }
 
@@ -2276,11 +2292,18 @@ void Game::updateProximity() {
    #938's residency proposal); this is about the other half -- nothing bounds how
    many hulls a session carries.
 
-   The guards are ui_remove_vehicle's (game.cpp:2482, the manual verb): a walking
-   kerbal, a hull with anyone aboard, or a hull tied to another by a seam is never
-   cut loose, and neither is the active ship. A GROUNDED hulk is kept on purpose:
-   it parks frozen on the rails (cheap) and it is a landmark the player can fly
-   back to. So the rule is exactly "airborne, worthless, and out of sight". */
+   The guards are ui_remove_vehicle's (game.cpp:2482, the manual verb) plus one
+   the manual verb does not need: a walking kerbal, a hull with anyone aboard, a
+   CREW-CAPABLE hull, or a hull tied to another by a seam is never cut loose, and
+   neither is the active ship. Crew-capable matters because firstVehicleSeat
+   answers "is anyone aboard", not "could anyone fly this": the capsule a player
+   evacuated and means to come back for sails through that guard EMPTY. Today
+   crew_capacity exists only on capsules and fuselages (there are no probe
+   cores), so "no seat anywhere in this hull" means pure hardware -- booster,
+   tank, decoupler -- which is exactly the population #938 measured. A GROUNDED
+   hulk is kept on purpose: it parks frozen on the rails (cheap) and it is a
+   landmark the player can fly back to. So the rule is "airborne, unflyable,
+   worthless, and out of sight". */
 void Game::cullFarDebris() {
     if(args.cull_radius <= 0.0 || ship == nullptr) { return; }
     std::vector<std::pair<Vehicle *, double>> loose;
@@ -2288,14 +2311,31 @@ void Game::cullFarDebris() {
         if(v == ship) { continue; }
         if(v->isEva()) { continue; }
         if(firstVehicleSeat(v) != nullptr) { continue; }
+        bool flyable_by_anyone = false;
+        for(Part *p : v->parts) {
+            if(p->def != nullptr && p->def->crew_capacity > 0) { flyable_by_anyone = true; break; }
+        }
+        if(flyable_by_anyone) { continue; }
         if(!v->seams.empty()) { continue; }
         if(v->canRail()) { continue; }   // parkable already: grounded, or vacuum
         const double d = ship->distanceTo(v);
         if(d <= args.cull_radius) { continue; }
         loose.push_back({v, d});
     }
-    /* Retire AFTER the walk: retire() erases from `vehicles`, which would void
-       the iterators this loop is holding. */
+    /* Deleting a hull the player could see is a destructive verb, so it says so
+       in the game and not only on stdout -- the same courtesy ui_remove_vehicle
+       pays. One toast for the pass, not one per hull: a press can put four
+       boosters past the radius on the same tick. And before the retire loop:
+       retire() only frees on the frame's sweep, but a name read is not worth
+       borrowing that lifetime. */
+    if(loose.size() == 1) {
+        toast("Cut loose '%s' -- %.0f km away and nothing left to fly it",
+              loose[0].first->displayName().c_str(), loose[0].second / 1000.0);
+    } else if(loose.size() > 1) {
+        toast("Cut loose %d distant stages", (int)loose.size());
+    }
+    /* Retire AFTER the walk above: retire() erases from `vehicles`, which would
+       void the iterators that walk is holding. */
     for(auto &[v, d] : loose) {
         const double alt = v->m_parent
             ? glm::length(v->posInBodyRot(v->comPos())) - v->m_parent->seaLevelRadius()

@@ -235,7 +235,10 @@ private:
    write still goes out, because the lever latches and a law that stops mid-burn
    without putting it back has left an engine open. */
 class Vehicle;
-bool flyAscent(Vehicle &v, AscentLaw &law, double dt, bool *want_stage = nullptr);
+/* want_stage is NOT optional: the law spends its once-per-stage press latch the
+   tick it asks (#928), so a caller that cannot act on the ask strands that stage
+   for the rest of the mission and never hears about it. */
+bool flyAscent(Vehicle &v, AscentLaw &law, double dt, bool *want_stage);
 
 /* Let go of a hull, once: releases the SlewFree latch and closes the throttle
    lever (unless a throttle key is down -- #400 F3's yield rule, and the player's

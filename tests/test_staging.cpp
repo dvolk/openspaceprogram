@@ -507,6 +507,18 @@ static void test_press_due_on_asparagus_stack() {
                partFuel(btank), partFuel(ctank), (int)s.v->stageIsDue());
         CHECK_TRUE(s.v->stageIsDue(),
                    "a dry booster drops even though the core tank is still full");
+        /* ...and the stamp must not fall off because something ELSE changed. The
+           identity is this stage's drop set, not the whole hull: a crate ejected
+           or a kerbal stepping aboard moves parts.size() while the drop set is
+           exactly what it was, and re-deriving the target at that moment reads the
+           boosters' empty tanks and flips to "burn everything first" -- the bug
+           above wearing the same clothes again, mid-burn, after the press was
+           already owed. */
+        const size_t nparts = s.v->parts.size();
+        addPart(s, s.v->parts[0], 2, false, "crate");
+        CHECK_TRUE(s.v->parts.size() == nparts + 1, "the hull grew by one part");
+        CHECK_TRUE(s.v->stageIsDue(),
+                   "a hull change that leaves the drop set alone keeps the press due");
         destroyShip(s);
     }
     {   // the other branch: this press drops nothing drinkable, so the stage

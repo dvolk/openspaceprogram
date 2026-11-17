@@ -166,13 +166,15 @@ struct GameArgs {
     double prox_warp = 1.0;         // max time accel while a ship is engaged
     /* The closing speed (m/s) that makes an engaged neighbour an APPROACH worth
        slowing the clock for (#937). Inside the engage radius AND closing faster
-       than this. Negative = always an approach, which is what the proximity e2e
+       than this. 0 = any closing at all; negative is the sentinel "any
+       neighbour inside the radius counts", which is what the proximity e2e
        cases use to pin the cap on a co-orbital pair. */
     double prox_close_v = 50.0;
-    /* Distance (m) beyond which a hull the sim CANNOT park -- airborne, no crew,
-       not docked, not the active ship -- is cut loose rather than simulated
-       forever (#939). 0 disables. Default 25 km: well outside --prox-fly-off
-       (10 km) and far enough that the player has no view of it worth keeping. */
+    /* Distance (m) beyond which a hull the sim can neither park nor anyone fly
+       -- airborne, no crew aboard, no seat anywhere in it, not docked, not the
+       active ship -- is cut loose rather than simulated forever (#939). 0
+       disables. Default 25 km: well outside --prox-fly-off (10 km) and far
+       enough that the player has no view of it worth keeping. */
     double cull_radius = 25000.0;
     bool compound_check = false;   // the ship-as-one-rigid-body gate
 

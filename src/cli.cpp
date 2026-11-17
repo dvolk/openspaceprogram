@@ -824,16 +824,18 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "approach, so the one that trips --prox-warp: inside the "
                    "engage radius and closing faster than this. A stage that "
                    "just left pays the parent's velocity, so it reads ~0 and "
-                   "never trips it (default 50; negative treats any neighbour "
-                   "as approaching, which is what the proximity e2e cases use)");
+                   "never trips it (default 50; 0 = any closing at all; "
+                   "negative = any neighbour inside the radius, which is what "
+                   "the proximity e2e cases use)");
     app.add_option("--cull-radius", args.cull_radius,
                    "Cut loose (delete) a hull that is beyond this distance (m) "
-                   "from the active ship AND that the sim cannot park: airborne, "
-                   "uncrewed, not docked, not the active ship. Such a hull is "
+                   "from the active ship AND that the sim can neither park nor "
+                   "anyone fly: airborne, nobody aboard, no seat anywhere in "
+                   "it, not docked, not the active ship. Such a hull is "
                    "simulated forever today -- canRail() refuses anything "
                    "airborne -- and #938 measured it walking through the ground "
                    "at 18 km deep. 0 disables (default 25000). Each cut prints "
-                   "one [cull] line.");
+                   "one [cull] line and the pass toasts once.");
 
     app.add_flag("--compound-check", args.compound_check,
                  "Periodically print, for every ship, how far the part poses "

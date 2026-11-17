@@ -6013,10 +6013,13 @@ bool Vehicle::stageIsDue() {
        hold a stage. */
     const double kStageEmptyKg = 1e-3;
     /* Stamped once per stage (see the header of this function): what the VAB would
-       see for this row at the moment its burn starts. A part-set change -- docking,
-       another press -- re-stamps, because then it is a different drop set. */
-    if(stageStamp_.stage != as || stageStamp_.nParts != parts.size()) {
-        stageStamp_ = {as, parts.size(),
+       see for this row at the moment its burn starts. The identity is the DROP SET,
+       not the hull -- a crate ejected or a kerbal stepping aboard changes
+       parts.size() and leaves this stage's drop set exactly as it was, and
+       re-stamping at that moment re-derives the target from a drop set that has
+       already run dry, which is the bug above wearing #928's clothes again. */
+    if(stageStamp_.stage != as || stageStamp_.nDropParts != drop.size()) {
+        stageStamp_ = {as, drop.size(),
                        drop.empty() || dropFuel <= kStageEmptyKg};
     }
     return (stageStamp_.drainAll ? allFuel : dropFuel) <= kStageEmptyKg;

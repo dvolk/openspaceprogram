@@ -1,0 +1,28 @@
+# The other half of #939's claim. A dropped stage on Moho has the same shape as
+# the one on Kerbin and the same 5 km cull radius, and it must NOT be cut loose:
+# vacuum means canRail() is true, so the proximity pass can park it past
+# --prox-fly-off (frozen, forceless, silhouette-free) and it stays a landmark.
+# The population the cull is allowed to delete is exactly the one the sim CANNOT
+# park -- airborne inside an atmosphere -- and this case is what pins that the
+# !canRail() guard is a guard and not a coincidence. flight/939-far-stage-is-cut-
+# loose shows the fire; this one shows the non-fire on identical geometry.
+NAME far-stage-in-vacuum-is-parked-not-cut
+CLAIM A dropped stage the sim is able to park is never cut loose.
+KIND invariant
+ARGS --startship stager,res/ships/stager.json,Moho,pad --ascent 100e3 --time-accel 10
+ARGS --ascent-log --prox-log --orbit-log --orbit-interval 5 --cull-radius 5000
+ARGS --sim-steps 6000 --timeout 200 --no-paint
+LIMIT 60
+# The press happened, so the absence of a cut below is about a dropped stage.
+EXPECT autopilot press: staged
+EXPECT Stage: dropped 1 ship(s) / 3 part(s); now on stage 1 of 2
+FORBID [cull]
+FORBID Cut loose
+# And the neighbour is still in the world well past the radius. It matters that
+# it is listed as LIVE rather than parked: --prox-fly-off is 10 km, so at the
+# 5.4-9.5 km these rows cover the hull has not been released yet either. The
+# non-fire is therefore the canRail() guard doing its job, not hysteresis
+# happening to keep it close, and not the sim having given up on it.
+EXPECT stager Decoupler (2m) dist=
+EXPECT LIVE
+CHECK last(orbit)["peri_asl"] > 99e3

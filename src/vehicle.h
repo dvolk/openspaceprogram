@@ -1502,11 +1502,14 @@ public:
        `drainAll`, which staging.cpp strikes at the START of a row's burn. Re-reading
        it per tick is what kept mars_explorer_mk1's dry boosters aboard (#928
        follow-up), because an asparagus drop set that has just emptied looks exactly
-       like a drop set that never held fuel. Re-stamped when the counter moves or the
-       part set changes: either makes it a different drop set. */
+       like a drop set that never held fuel. Re-stamped when the counter moves or
+       when THIS STAGE'S DROP SET changes size. Not the whole-hull part count: a
+       crate ejected or a kerbal stepped aboard changes the hull, not the drop set,
+       and re-stamping then re-derives the target from a drop set that has already
+       run dry -- which is the #928 bug reintroduced mid-burn. */
     struct StageStamp {
         int stage = -1;
-        size_t nParts = 0;
+        size_t nDropParts = 0;
         bool drainAll = false;
     } stageStamp_;
 
