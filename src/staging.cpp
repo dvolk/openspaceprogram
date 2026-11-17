@@ -636,6 +636,10 @@ std::vector<StageRow> computeStaging(const BuildShip &ship, double g,
     assert(seed.dryKg.empty() || seed.dryKg.size() == n);
     Sim sim;
     sim.parts.resize(n);
+    /* The id -> index map exists only to resolve ship.fuelLinks further down. 30
+       of the 32 shipped ships author no fuel link, so paying one map node per
+       part -- ~31 a rebuild, 755 rebuilds an ascent -- was dead work (#963). */
+    const bool resolveLinks = !ship.fuelLinks.empty();
     std::map<std::string, int> idIndex;
     int minStage = ship.parts[0].stage;
     int maxStage = minStage;
@@ -646,7 +650,7 @@ std::vector<StageRow> computeStaging(const BuildShip &ship, double g,
     for(size_t i = 0; i < n; i++) {
         const BuildPart &bp = ship.parts[i];
         SimPart &sp = sim.parts[i];
-        idIndex[bp.id] = (int)i;
+        if(resolveLinks) { idIndex[bp.id] = (int)i; }
         /* BuildShip::recomputePoses asserts every parent is an earlier part, so
            the snapshot cannot be torn here (partitionFuelGroups asserts it too). */
         sp.parent = bp.parent;
@@ -680,6 +684,7 @@ std::vector<StageRow> computeStaging(const BuildShip &ship, double g,
 
     struct LinkRef { int from, to; };
     std::vector<LinkRef> links;
+    /* This loop only runs when resolveLinks was true, so idIndex is populated. */
     for(size_t k = 0; k < ship.fuelLinks.size(); k++) {
         const BuildShip::FuelLink &fl = ship.fuelLinks[k];
         std::map<std::string, int>::const_iterator f = idIndex.find(fl.from);
