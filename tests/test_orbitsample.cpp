@@ -10,8 +10,7 @@
 #include <cmath>
 
 #include <cstdio>
-
-static int g_failures = 0;
+#include "tchecks.h"
 
 static void check(bool cond, const char *what) {
     if(!cond) {

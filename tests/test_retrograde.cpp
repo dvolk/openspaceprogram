@@ -47,10 +47,9 @@
 #include <string>
 
 #include <nlohmann/json.hpp>
+#include "tchecks.h"
 
 static constexpr double PI = std::numbers::pi;
-
-static int g_failures = 0;
 
 static void check(bool cond, const char *what) {
     if(!cond) {

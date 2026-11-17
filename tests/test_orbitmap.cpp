@@ -10,8 +10,7 @@
 #include <cmath>
 
 #include <cstdio>
-
-static int g_failures = 0;
+#include "tchecks.h"
 
 static void expect_near(double got, double want, const char *what) {
     if(!std::isfinite(got) || !std::isfinite(want) || std::fabs(got - want) > 1e-9) {

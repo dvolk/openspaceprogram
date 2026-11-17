@@ -51,8 +51,7 @@
 #include <vector>
 
 #include <nlohmann/json.hpp>
-
-static int failures = 0;
+#include "tchecks.h"
 
 // The semi-major axis a body's authored rail implies.
 static double semi_major(const TerrainBody *b) {
@@ -556,13 +555,13 @@ static void expect_refuses(const char *label, const std::string &text,
         load_system(path.c_str(), nullptr, nullptr);
         printf("  %s: a body with a %s mix LOADED -- this is a load error, not a"
                " flight hazard\n", path.c_str(), label);
-        failures++;
+        g_failures++;
     } catch(const std::exception &e) {
         const std::string what = e.what();
         if(want_sub != nullptr && what.find(want_sub) == std::string::npos) {
             printf("  %s: refused, but not with the reason the test names (%s):"
                    " %s\n", path.c_str(), want_sub, what.c_str());
-            failures++;
+            g_failures++;
         }
     }
 }
@@ -587,18 +586,18 @@ static void expect_loads(const char *label, const std::string &text,
         }
         if(found == nullptr) {
             printf("  %s: body '%s' is not in the loaded system\n", path.c_str(), body);
-            failures++;
+            g_failures++;
             return;
         }
         const size_t got = found->surface.atmosphere.wind.size();
         if(got != want_rows) {
             printf("  %s: %s loaded %zu wind rows, want %zu -- the file and the loaded"
                    " body disagree\n", path.c_str(), body, got, want_rows);
-            failures++;
+            g_failures++;
         }
     } catch(const std::exception &e) {
         printf("  %s: a legal patch was REFUSED: %s\n", path.c_str(), e.what());
-        failures++;
+        g_failures++;
     }
 }
 
@@ -607,7 +606,7 @@ static void check_composition() {
     std::ifstream f(src);
     if(!f.is_open()) {
         printf("  cannot open %s (run from the repo root)\n", src);
-        failures++;
+        g_failures++;
         return;
     }
     const nlohmann::json base = nlohmann::json::parse(f);
@@ -722,7 +721,7 @@ static void check_composition() {
         const size_t at = txt.find("\"fraction\":");   // dump() puts no space after the colon
         if(at == std::string::npos) {
             printf("  huge_fraction: the mutated file lost its fraction\n");
-            failures++;
+            g_failures++;
         } else {
             size_t v = at + 11;   // past "fraction":
             size_t end = v;
@@ -770,20 +769,20 @@ static void check_composition() {
     } catch(const std::exception &e) {
         printf("  %s: a body with no composition failed to load: %s\n",
                dflt.c_str(), e.what());
-        failures++;
+        g_failures++;
         return;
     }
     TerrainBody *eve = find_body(sys, "Eve");
     if(eve == nullptr) {
         printf("  %s: Eve vanished from the mutated system\n", dflt.c_str());
-        failures++;
+        g_failures++;
         return;
     }
     const AtmosphereParams &a = eve->surface.atmosphere;
     if(!(std::fabs(a.oxidizer_share - dryAirOxidizerShare()) <= 0.0)) {
         printf("  %s: Eve with no mix reads oxidizer %.8f, not the dry-air default"
                " %.8f\n", dflt.c_str(), a.oxidizer_share, dryAirOxidizerShare());
-        failures++;
+        g_failures++;
     }
     // 0.0289649583: dry air's mix resolved by hand, NOT constants.h's 0.028964 --
     // the loader derives the scalars from the mix even when the mix is the default,
@@ -792,7 +791,7 @@ static void check_composition() {
         printf("  %s: the default mix resolved to %.10f kg/mol, want 0.0289649583"
                " (hand-computed from N2 78.084 / O2 20.946 / Ar 0.934 / CO2 0.033"
                " %% by mole)\n", dflt.c_str(), a.molar_mass);
-        failures++;
+        g_failures++;
     }
     /* gamma is the assertion that PROVES the loader ran the arithmetic. AtmosphereParams
        starts life at constants.h's typed 1.4 and dryAirOxidizerShare() -- so the
@@ -803,7 +802,7 @@ static void check_composition() {
         printf("  %s: the default mix resolved to gamma %.10f, want 1.4014568506"
                " (mole-weighted heat capacity, not a typed 1.4)\n",
                dflt.c_str(), a.gamma);
-        failures++;
+        g_failures++;
     }
     printf("  %s: a body with no composition gets dry air -- M %.7f kg/mol,"
            " gamma %.7f, oxidizer %.6f\n", dflt.c_str(), a.molar_mass, a.gamma,
@@ -823,7 +822,7 @@ static void check_wind() {
     std::ifstream f(src);
     if(!f.is_open()) {
         printf("  cannot open %s (run from the repo root)\n", src);
-        failures++;
+        g_failures++;
         return;
     }
     const nlohmann::json base = nlohmann::json::parse(f);
@@ -1196,7 +1195,7 @@ static void check_wind() {
         std::ifstream sf(path);
         if(!sf.is_open()) {
             printf("  cannot open %s (run from the repo root)\n", path);
-            failures++;
+            g_failures++;
             continue;
         }
         const nlohmann::json j = nlohmann::json::parse(sf);
@@ -1221,7 +1220,7 @@ static void check_wind() {
                            " non-empty array -- the loader refuses that at load, so the"
                            " shipped game will not start\n",
                            path, bname.c_str());
-                    failures++;
+                    g_failures++;
                 } else if(authored) {
                     printf("  %s: %s authors atmosphere.wind while every shipped flight"
                            " golden on it still assumes none -- add a case that pins"
@@ -1229,7 +1228,7 @@ static void check_wind() {
                            " airspeed or a drag figure, and name it in kWindsAuthored,"
                            " all in the same commit\n",
                            path, bname.c_str());
-                    failures++;
+                    g_failures++;
                 }
                 continue;
             }
@@ -1242,7 +1241,7 @@ static void check_wind() {
                        " wind rows -- the generated variants have to agree, since an"
                        " e2e case pins only one of them\n",
                        path, bname.c_str());
-                failures++;
+                g_failures++;
             }
         }
     }
@@ -1258,7 +1257,7 @@ static void check_raised_sea() {
     std::ifstream f(src);
     if(!f.is_open()) {
         printf("  cannot open %s (run from the repo root)\n", src);
-        failures++;
+        g_failures++;
         return;
     }
     nlohmann::json j = nlohmann::json::parse(f);
@@ -1267,7 +1266,7 @@ static void check_raised_sea() {
     dry_b = find_body(dry, "Kerbin");
     if(dry_b == nullptr) {
         printf("  %s: no Kerbin to raise the sea on\n", src);
-        failures++;
+        g_failures++;
         return;
     }
     const double dry_sea = dry_b->seaLevelRadius();
@@ -1284,7 +1283,7 @@ static void check_raised_sea() {
     }
     if(!patched) {
         printf("  %s: no Kerbin entry to patch\n", src);
-        failures++;
+        g_failures++;
         return;
     }
     std::filesystem::create_directories("tmp");
@@ -1298,19 +1297,19 @@ static void check_raised_sea() {
         wet = load_system(tmp.c_str(), nullptr, nullptr);
     } catch(const std::exception &e) {
         printf("  a body with a 12 km sea level fails to load: %s\n", e.what());
-        failures++;
+        g_failures++;
         return;
     }
     TerrainBody *b = find_body(wet, "Kerbin");
     if(b == nullptr) {
         printf("  %s: Kerbin vanished from the mutated system\n", tmp.c_str());
-        failures++;
+        g_failures++;
         return;
     }
     if(b->seaLevelRadius() != dry_sea + wet_sea_m) {
         printf("  Kerbin datum %.1f, expected %.1f (sea_level did not reach the body)\n",
                b->seaLevelRadius(), dry_sea + wet_sea_m);
-        failures++;
+        g_failures++;
     }
     // The shell rides with the datum...
     if(b->rot_frame->soi != dry_soi + wet_sea_m) {
@@ -1318,14 +1317,14 @@ static void check_raised_sea() {
                "the datum (off by %+.1f m)\n",
                b->rot_frame->soi, dry_soi + wet_sea_m,
                b->rot_frame->soi - (dry_soi + wet_sea_m));
-        failures++;
+        g_failures++;
     }
     // ...so the cut over mean sea, and with it the science tiers, hold still.
     const double wet_cut = orbitCutAlt(b->rot_frame->soi, b->seaLevelRadius());
     if(wet_cut != dry_cut) {
         printf("  Kerbin's low/high orbit cut moved %.1f m with the datum: %.1f -> %.1f\n",
                wet_cut - dry_cut, dry_cut, wet_cut);
-        failures++;
+        g_failures++;
     }
     // The air must be weighed in the field AT the sphere it starts on (#697). This
     // datum sits 12 km further out than any shipped world's, so the field its air is
@@ -1351,12 +1350,12 @@ static void check_raised_sea() {
         printf("  Kerbin's air 12 km above a 12 km sea is %.7f kg/m3, expected"
                " 0.3435085: the column was weighed at the MEAN radius"
                " instead of the field at the datum (atmo.h, #697/#708)\n", rho12);
-        failures++;
+        g_failures++;
     }
     printf("  %s: its air is weighed in g %.4f at the datum, not the %.4f at the"
            " mean radius\n",
            tmp.c_str(), wda.gravity, b->g);
-    if(check_datum(tmp.c_str(), wet)) { failures++; }
+    if(check_datum(tmp.c_str(), wet)) { g_failures++; }
     printf("  %s: a 12 km sea lifts Kerbin's shell with the datum and holds the "
            "orbit cut at %.0f m\n", tmp.c_str(), dry_cut);
 }
@@ -1379,7 +1378,7 @@ static void check_exponential_anchor() {
     std::ifstream f("res/systems/ksp_system.json");
     if(!f.is_open()) {
         printf("  cannot open res/systems/ksp_system.json (run from the repo root)\n");
-        failures++;
+        g_failures++;
         return;
     }
     nlohmann::json j = nlohmann::json::parse(f);
@@ -1405,7 +1404,7 @@ static void check_exponential_anchor() {
     }
     if(!patched || !(p0 > 0.0)) {
         printf("  res/systems/ksp_system.json: no exponential air body to anchor\n");
-        failures++;
+        g_failures++;
         return;
     }
     std::filesystem::create_directories("tmp");
@@ -1419,13 +1418,13 @@ static void check_exponential_anchor() {
         wet = load_system(tmp.c_str(), nullptr, nullptr);
     } catch(const std::exception &e) {
         printf("  an exponential body with a 12 km sea fails to load: %s\n", e.what());
-        failures++;
+        g_failures++;
         return;
     }
     TerrainBody *b = find_body(wet, "Duna");
     if(b == nullptr) {
         printf("  %s: Duna vanished from the mutated system\n", tmp.c_str());
-        failures++;
+        g_failures++;
         return;
     }
     const AtmosphereParams &a = b->surface.atmosphere;
@@ -1442,12 +1441,12 @@ static void check_exponential_anchor() {
                " p0 %.4f / (g %.5f at the datum * H %.0f): the anchor was inverted with"
                " the MEAN-RADIUS g, or not inverted at all (#739)\n",
                a.sea_level_density, want, p0, g_datum, H);
-        failures++;
+        g_failures++;
     }
     if(!(std::fabs(want / typed - 1.0) > 1e-4)) {
         printf("  %s: a 12 km sea moves Duna's datum g by %.2g%% -- this check is"
                " measuring nothing\n", tmp.c_str(), 100.0 * (want / typed - 1.0));
-        failures++;
+        g_failures++;
     }
     printf("  %s: Duna's authored %.3f Pa over a 12 km sea resolves %.6f kg/m3 at its"
            " datum; weighing it at the mean radius would have read %.6f\n",
@@ -1486,7 +1485,7 @@ static void check_gravity_derived() {
         std::ifstream f(path);
         if(!f.is_open()) {
             printf("  cannot open %s (run from the repo root)\n", path);
-            failures++;
+            g_failures++;
             continue;
         }
         const nlohmann::json base = nlohmann::json::parse(f);
@@ -1495,7 +1494,7 @@ static void check_gravity_derived() {
             sys = load_system(path, nullptr, nullptr);
         } catch(const std::exception &e) {
             printf("  %s failed to load: %s\n", path, e.what());
-            failures++;
+            g_failures++;
             continue;
         }
         int n = 0;
@@ -1510,7 +1509,7 @@ static void check_gravity_derived() {
                            " radius give -- an authored row is still being read, or"
                            " the wrong radius is (#708)\n",
                            path, b->name.c_str(), b->g, want);
-                    failures++;
+                    g_failures++;
                 }
                 n++;
             }
@@ -1523,7 +1522,7 @@ static void check_gravity_derived() {
     }
     if(ker == nullptr || !(ker->surface.atmosphere.sea_level_density > 0.0)) {
         printf("  ksp_system.json loaded without Kerbin's air\n");
-        failures++;
+        g_failures++;
         return;
     }
     printf("  %d shipped bodies carry a derived surface gravity (Kerbin %.5f, against"
@@ -1574,7 +1573,7 @@ static void check_fixture_air() {
         if(!fa.is_open() || !fs.is_open()) {
             printf("  cannot open %s or res/systems/ksp_system.json (run from the repo root)\n",
                    path);
-            failures++;
+            g_failures++;
             continue;
         }
         const nlohmann::json fix = nlohmann::json::parse(fa);
@@ -1636,7 +1635,7 @@ static void check_fixture_air() {
             printf("  %s: %d field(s) drifted from res/systems/ksp_system.json. The note "
                    "promises the shipped bodies plus one sea_level; a fixture testing a world "
                    "the game no longer ships tests nothing.\n", path, drift);
-            failures++;
+            g_failures++;
         } else {
             printf("  %s: air profile matches the shipped bodies it copies\n", path);
         }
@@ -1659,7 +1658,7 @@ static void check_body_claims() {
     std::ifstream f(src);
     if(!f.is_open()) {
         printf("  cannot open %s (run from the repo root)\n", src);
-        failures++;
+        g_failures++;
         return;
     }
     const nlohmann::json base = nlohmann::json::parse(f);
@@ -2100,7 +2099,7 @@ static void check_body_claims() {
             if(b == nullptr) {
                 printf("  %s: %s vanished from the mutated system\n",
                        path.c_str(), m.body);
-                failures++;
+                g_failures++;
                 continue;
             }
             size_t bad = 0;
@@ -2172,11 +2171,11 @@ static void check_body_claims() {
             if(bad) {
                 printf("  %s: a legal %s claim loaded but did not reach the body\n",
                        path.c_str(), m.label);
-                failures++;
+                g_failures++;
             }
         } catch(const std::exception &e) {
             printf("  %s: a LEGAL body claim was refused: %s\n", path.c_str(), e.what());
-            failures++;
+            g_failures++;
         }
     }
 }
@@ -2194,7 +2193,7 @@ static void check_system(const char *path) {
         const double a = semi_major(b);
         if(a <= 0.0) {
             printf("  %s: %s has no rail to derive a from\n", path, planet.c_str());
-            failures++;
+            g_failures++;
             continue;
         }
         const ScenarioDef *sc = scenario_by_name(sname);
@@ -2203,7 +2202,7 @@ static void check_system(const char *path) {
             printf("  %s: scenario '%s' abs_r = %.6g m but %s's rail implies "
                    "%.6g m (%.3f%% off)\n",
                    path, sname.c_str(), sc->abs_r, planet.c_str(), a, rel * 100.0);
-            failures++;
+            g_failures++;
         }
         checked++;
     }
@@ -2214,11 +2213,11 @@ static void check_system(const char *path) {
     if(checked == 0) {
         printf("  %s: no heli-* bed matched a body here (expected at least one "
                "for a solar-system file)\n", path);
-        failures++;
+        g_failures++;
     } else {
         printf("  %s: %d heli-* beds match their rails\n", path, checked);
     }
-    if(datum_bad) { failures += datum_bad; }
+    if(datum_bad) { g_failures += datum_bad; }
 }
 
 /* The VAB dropdown's dev gate. The dropdown shows only the non-dev beds, so the
@@ -2235,25 +2234,25 @@ static void check_vab_gate() {
                 printf("  scenario '%s' is not dev-only: the VAB dropdown would "
                        "offer it to a player without --dev-scenarios\n",
                        sname.c_str());
-                failures++;
+                g_failures++;
             }
         }
         try {
             if(scenario_by_name(sname) == nullptr) {
                 printf("  scenario '%s' is enumerated but does not resolve\n",
                        sname.c_str());
-                failures++;
+                g_failures++;
             }
         } catch(const std::exception &e) {
             printf("  scenario '%s' is enumerated but does not resolve: %s\n",
                    sname.c_str(), e.what());
-            failures++;
+            g_failures++;
         }
     }
     if(shown == 0) {
         printf("  no scenario is player-facing: the VAB dropdown would be "
                "empty even without --dev-scenarios\n");
-        failures++;
+        g_failures++;
     }
     printf("  %d of %zu beds show in the VAB without --dev-scenarios\n",
            shown, scenario_count());
@@ -2279,24 +2278,24 @@ static void check_flying_beds() {
         trim = scenario_by_name("flying-trim");
     } catch(const std::exception &e) {
         printf("  a flying bed does not resolve: %s\n", e.what());
-        failures++;
+        g_failures++;
         return;
     }
     if(low->speed_frac != 0.0 || high->speed_frac != 0.0) {
         printf("  flying-low/high are no longer circular: the science bands stop "
                "holding altitude and the chute entry cases stop having an entry\n");
-        failures++;
+        g_failures++;
     }
     if(!(slow->speed_frac > 0.0 && slow->speed_frac < 1.0)) {
         printf("  flying-slow speed_frac = %g: it must be suborbital but moving\n",
                slow->speed_frac);
-        failures++;
+        g_failures++;
     }
     if(!slow->atmo_frac || slow->alt_frac != low->alt_frac) {
         printf("  flying-slow is not flying-low's altitude (alt_frac %g, atmo_frac %d): "
                "it must sit in the same air, only slower\n",
                slow->alt_frac, slow->atmo_frac ? 1 : 0);
-        failures++;
+        g_failures++;
     }
     /* flying-trim (#693) is flying-cruise with the speed keyed to the airframe instead
        of to gravity, so the two must agree on everything but the speed law -- that is
@@ -2310,14 +2309,14 @@ static void check_flying_beds() {
         printf("  flying-trim is not load-keyed (speed_frac %g, speed_load %g): the "
                "point of this bed is that gravity does not set its speed\n",
                trim->speed_frac, trim->speed_load);
-        failures++;
+        g_failures++;
     }
     if(trim->alt_frac != cruise->alt_frac || trim->atmo_frac != cruise->atmo_frac
        || trim->polar != cruise->polar || trim->eq_plane != cruise->eq_plane) {
         printf("  flying-trim is not flying-cruise's height band (alt_frac %g vs %g): "
                "the pair is only an A/B if the air they spawn in is the same\n",
                trim->alt_frac, cruise->alt_frac);
-        failures++;
+        g_failures++;
     }
     /* A bed carries at most ONE speed key, and whichever it is needs a circular speed in
        air to describe it: speed_frac is a fraction of a circular speed, and speed_load
@@ -2339,7 +2338,7 @@ static void check_flying_beds() {
                    "esc_frac %g, atmo_frac %d, on_pad %d, abs_r %g)\n",
                    sname.c_str(), d->speed_frac, d->speed_load, d->ell_phase,
                    d->esc_frac, d->atmo_frac ? 1 : 0, d->on_pad ? 1 : 0, d->abs_r);
-            failures++;
+            g_failures++;
         }
     }
     printf("  flying beds: low/high circular (entry rigs), slow at %.2f x the "
@@ -2369,7 +2368,7 @@ static void check_abs_r_beds() {
             printf("  scenario '%s' has abs_r = %g: a negative pinned radius reads as "
                    "\"unset\" to spawn_vehicle, which falls back to alt_frac\n",
                    sname.c_str(), d->abs_r);
-            failures++;
+            g_failures++;
             continue;
         }
         if(d->abs_r == 0.0) { continue; }
@@ -2381,7 +2380,7 @@ static void check_abs_r_beds() {
                    "radius throws alt_frac away and an ellipse bed never reads abs_r\n",
                    sname.c_str(), d->abs_r, d->alt_frac, d->atmo_frac ? 1 : 0,
                    d->ell_phase, d->peri_alt, d->apo_alt);
-            failures++;
+            g_failures++;
         }
     }
     printf("  abs_r beds: %d, each radius-pinned and circular\n", n);
@@ -2402,7 +2401,7 @@ static void check_ellipse_beds() {
                 printf("  scenario '%s' authors peri_alt %g / apo_alt %g on a circular "
                        "bed (ell_phase %d): the apsides are never read\n",
                        sname.c_str(), d->peri_alt, d->apo_alt, d->ell_phase);
-                failures++;
+                g_failures++;
             }
             continue;
         }
@@ -2413,7 +2412,7 @@ static void check_ellipse_beds() {
                    "comes from its own apsides, so those are dead\n",
                    sname.c_str(), d->ell_phase, d->peri_alt, d->apo_alt, d->alt_frac,
                    d->atmo_frac ? 1 : 0, d->abs_r);
-            failures++;
+            g_failures++;
         }
     }
     printf("  ellipse beds: %d, each with apsides and no radius/air slots\n", n);
@@ -2479,7 +2478,7 @@ static void check_bed_turn() {
                    "v_out (%.6f, %.6f, %.6f) want (%.6f, %.6f, %.6f)\n",
                    r.what, tilt, r.tilt, len, radial,
                    vh.x, vh.y, vh.z, r.vhat_out.x, r.vhat_out.y, r.vhat_out.z);
-            failures++;
+            g_failures++;
         }
     }
     printf("  bed turn: %d hand-computed turns pinned, the biggest a %.0f deg plane "
@@ -2504,11 +2503,11 @@ static void check_spawn_attitude() {
     if(up_kept > 0.1) {
         printf("  faceAlong's roll survived a %.1f deg dir tilt: the test below is "
                "not pinning the hazard (up axes still %.3f apart)\n", tilt * 57.29578, up_kept);
-        failures++;
+        g_failures++;
     }
     if(nose_kept < 0.999) {
         printf("  faceAlong stopped holding the nose on dir: cos = %.6f\n", nose_kept);
-        failures++;
+        g_failures++;
     }
     // The up_ref form: +Y along the local vertical once its component along the
     // nose is removed -- so it sits tilt degrees off true up, no further. Nose
@@ -2520,7 +2519,7 @@ static void check_spawn_attitude() {
     if(y_up < std::cos(tilt) - 1e-9 || nose_dir < 0.9999 || right < 0.9999) {
         printf("  faceAlong(dir, up) is not level: up=%.6f (want %.6f) nose=%.6f "
                "right=%.6f\n", y_up, std::cos(tilt), nose_dir, right);
-        failures++;
+        g_failures++;
     }
     printf("  spawn attitude: faceAlong's axis pick rolls %.0f deg over a %.1f deg "
            "tilt; the up_ref form holds the wings level\n",
@@ -2548,14 +2547,14 @@ int main() {
     for(const char *p : { "res/systems/ksp_system.json",
                           "res/systems/old_system.json" }) {
         System sys = load_system(p, nullptr, nullptr);
-        if(check_datum(p, sys)) failures++;
-        if(check_air(p, sys)) failures++;
+        if(check_datum(p, sys)) g_failures++;
+        if(check_air(p, sys)) g_failures++;
     }
     // ...and the air bodies whose composition is authored (H2 giants, CO2 worlds) live
     // in the solar files, so the air check runs there too.
     for(const char *p : { "res/systems/solar_system.json" }) {
         System sys = load_system(p, nullptr, nullptr);
-        if(check_air(p, sys)) failures++;
+        if(check_air(p, sys)) g_failures++;
     }
     check_composition();
     check_wind();
@@ -2564,8 +2563,8 @@ int main() {
     check_raised_sea();
     check_exponential_anchor();
     check_fixture_air();
-    if(failures) {
-        printf("test_scenarios: %d FAILED\n", failures);
+    if(g_failures) {
+        printf("test_scenarios: %d FAILED\n", g_failures);
         return 1;
     }
     printf("test_scenarios: OK\n");

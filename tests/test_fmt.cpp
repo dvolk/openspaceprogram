@@ -11,15 +11,15 @@
 #include <cstring>
 #include <cmath>      // std::nan: a gravity readout must not render it as "0 m/s2"
 #include <numbers>
+#include "tchecks.h"
 
-static int failures = 0;
 #define CHECK_DIST(meters, want) do { \
         char _b[64]; \
         const char *_g = fmt_dist(meters, _b, sizeof _b); \
         if(std::strcmp(_g, (want)) != 0) { \
             printf("FAIL %s:%d: fmt_dist(%s) = \"%s\", want \"%s\"\n", \
                    __FILE__, __LINE__, #meters, _g, (want)); \
-            failures++; \
+            g_failures++; \
         } \
     } while(0)
 
@@ -29,7 +29,7 @@ static int failures = 0;
         if(std::strcmp(_g, (want)) != 0) { \
             printf("FAIL %s:%d: fmt_time(%s) = \"%s\", want \"%s\"\n", \
                    __FILE__, __LINE__, #s, _g, (want)); \
-            failures++; \
+            g_failures++; \
         } \
     } while(0)
 
@@ -41,7 +41,7 @@ static int failures = 0;
         if(std::strcmp(_g, (want)) != 0) { \
             printf("FAIL %s:%d: %s(%s) = \"%s\", want \"%s\"\n", \
                    __FILE__, __LINE__, #fn, #arg, _g, (want)); \
-            failures++; \
+            g_failures++; \
         } \
     } while(0)
 
@@ -113,7 +113,7 @@ int main() {
             if(std::strcmp(wide, call) != 0) {
                 printf("FAIL %s:%d: fmt_speed(%g) = \"%s\" does not fit the 32 chars"
                        " every call site passes\n", __FILE__, __LINE__, v, wide);
-                failures++;
+                g_failures++;
             }
         }
     }
@@ -161,15 +161,15 @@ int main() {
             if(std::strcmp(wide, call) != 0) {
                 printf("FAIL %s:%d: fmt_accel(%g) = \"%s\" does not fit the 32 chars"
                        " every call site passes\n", __FILE__, __LINE__, v, wide);
-                failures++;
+                g_failures++;
             }
         }
     }
 
-    if(failures == 0) {
+    if(g_failures == 0) {
         printf("test_fmt: all checks passed\n");
         return 0;
     }
-    printf("test_fmt: %d FAILURE(S)\n", failures);
+    printf("test_fmt: %d FAILURE(S)\n", g_failures);
     return 1;
 }

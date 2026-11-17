@@ -39,8 +39,7 @@
 #include <cstdio>
 #include <cstring>
 #include <string>
-
-static int failures = 0;
+#include "tchecks.h"
 
 #define CHECK_ROW(sample, want) do { \
         char _b[1024];   /* tick.cpp's row buffer: if the grammar outgrows the \
@@ -49,7 +48,7 @@ static int failures = 0;
         if(_n < 0 || std::strcmp(_b, (want)) != 0) { \
             printf("FAIL %s:%d: recRow wrote %s, want \"%s\"\n", \
                    __FILE__, __LINE__, (_n < 0 ? "(refused)" : _b), (want)); \
-            failures++; \
+            g_failures++; \
         } \
     } while(0)
 
@@ -220,7 +219,7 @@ int main() {
         const int n = recRow(cruise(), buf, sizeof buf);
         if(n < 0) {
             printf("FAIL %s:%d: a full row was refused\n", __FILE__, __LINE__);
-            failures++;
+            g_failures++;
         } else {
             const std::string row(buf);
             size_t after = 0;
@@ -232,7 +231,7 @@ int main() {
                 if(at == std::string::npos) {
                     printf("FAIL %s:%d: channel \"%s\" is not in the row (out of "
                            "order or missing): %s\n", __FILE__, __LINE__, k.c_str(), buf);
-                    failures++;
+                    g_failures++;
                     break;
                 }
                 after = at + want.size();
@@ -247,7 +246,7 @@ int main() {
             if(keys != channels) {
                 printf("FAIL %s:%d: %zu channels in the header, %zu keys in the row\n",
                        __FILE__, __LINE__, channels, keys);
-                failures++;
+                g_failures++;
             }
             // The tail spelled at the top of this file is the same tail the row
             // prints -- so a column added to the header without the row, or in a
@@ -255,7 +254,7 @@ int main() {
             if(row.find(kTail) == std::string::npos) {
                 printf("FAIL %s:%d: the row does not end in the pinned v3 tail"
                        " (\"%s\"): %s\n", __FILE__, __LINE__, kTail, buf);
-                failures++;
+                g_failures++;
             }
         }
     }
@@ -265,14 +264,14 @@ int main() {
         char small[32];
         if(recRow(cruise(), small, sizeof small) >= 0) {
             printf("FAIL %s:%d: a 32-byte buffer accepted a full row\n", __FILE__, __LINE__);
-            failures++;
+            g_failures++;
         }
     }
 
-    if(failures == 0) {
+    if(g_failures == 0) {
         printf("test_recorder: all checks passed\n");
         return 0;
     }
-    printf("test_recorder: %d FAILURE(S)\n", failures);
+    printf("test_recorder: %d FAILURE(S)\n", g_failures);
     return 1;
 }
