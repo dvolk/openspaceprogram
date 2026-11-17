@@ -607,9 +607,11 @@ uint64_t stagingSignature(const BuildShip &ship, double g, double exhaust_scale)
         fnv::mix(h, (uint64_t)(bp.parent + 1));
         fnv::mix(h, (uint64_t)bp.stage);
         /* The ID, not just the shape: computeStaging resolves every fuel link
-           through an id -> index map (staging.cpp:452), so swapping the ids of
-           two same-def parts can move a link across a fuel barrier and change
-           the rows. Loading design B over design A must not show A's numbers. */
+           through an id -> index map (built only for ships that author links),
+           so swapping the ids of two same-def parts can move a link across a
+           fuel barrier and change the rows. Loading design B over design A must
+           not show A's numbers -- so ids stay mixed in even for link-free ships,
+           where they cost a hash apiece and nothing else. */
         fnv::mixText(h, bp.id);
     }
     for(size_t k = 0; k < ship.fuelLinks.size(); k++) {
@@ -636,11 +638,6 @@ std::vector<StageRow> computeStaging(const BuildShip &ship, double g,
     assert(seed.dryKg.empty() || seed.dryKg.size() == n);
     Sim sim;
     sim.parts.resize(n);
-    /* The id -> index map exists only to resolve ship.fuelLinks further down. 30
-       of the 32 shipped ships author no fuel link, so paying one map node per
-       part -- ~31 a rebuild, 755 rebuilds an ascent -- was dead work (#963). */
-    const bool resolveLinks = !ship.fuelLinks.empty();
-    std::map<std::string, int> idIndex;
     int minStage = ship.parts[0].stage;
     int maxStage = minStage;
 
@@ -650,7 +647,6 @@ std::vector<StageRow> computeStaging(const BuildShip &ship, double g,
     for(size_t i = 0; i < n; i++) {
         const BuildPart &bp = ship.parts[i];
         SimPart &sp = sim.parts[i];
-        if(resolveLinks) { idIndex[bp.id] = (int)i; }
         /* BuildShip::recomputePoses asserts every parent is an earlier part, so
            the snapshot cannot be torn here (partitionFuelGroups asserts it too). */
         sp.parent = bp.parent;
@@ -684,16 +680,23 @@ std::vector<StageRow> computeStaging(const BuildShip &ship, double g,
 
     struct LinkRef { int from, to; };
     std::vector<LinkRef> links;
-    /* This loop only runs when resolveLinks was true, so idIndex is populated. */
-    for(size_t k = 0; k < ship.fuelLinks.size(); k++) {
-        const BuildShip::FuelLink &fl = ship.fuelLinks[k];
-        std::map<std::string, int>::const_iterator f = idIndex.find(fl.from);
-        std::map<std::string, int>::const_iterator t = idIndex.find(fl.to);
-        if(f == idIndex.end() || t == idIndex.end()) { continue; }
-        LinkRef lr;
-        lr.from = f->second;
-        lr.to = t->second;
-        links.push_back(lr);
+    /* The id -> index map exists only to resolve the links below, so it lives in
+       their scope. A ship that authors no fuel link -- every shipped one but
+       heavy_asp and heavy_two -- never builds one: a node per part was ~26 a
+       rebuild, 755 rebuilds an ascent, buying a lookup that never ran (#963). */
+    if(!ship.fuelLinks.empty()) {
+        std::map<std::string, int> idIndex;
+        for(size_t i = 0; i < n; i++) { idIndex[ship.parts[i].id] = (int)i; }
+        for(size_t k = 0; k < ship.fuelLinks.size(); k++) {
+            const BuildShip::FuelLink &fl = ship.fuelLinks[k];
+            std::map<std::string, int>::const_iterator f = idIndex.find(fl.from);
+            std::map<std::string, int>::const_iterator t = idIndex.find(fl.to);
+            if(f == idIndex.end() || t == idIndex.end()) { continue; }
+            LinkRef lr;
+            lr.from = f->second;
+            lr.to = t->second;
+            links.push_back(lr);
+        }
     }
 
     auto refreshFuel = [&]() {
