@@ -9,14 +9,7 @@
 
 #include <cstdio>
 #include <string>
-
-static int failures = 0;
-#define CHECK(cond) do { \
-        if(!(cond)) { \
-            printf("FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond); \
-            failures++; \
-        } \
-    } while(0)
+#include "tchecks.h"
 
 int main() {
     // --- begin: first observe seeds start + an "entered" for the body ---
@@ -103,10 +96,10 @@ int main() {
         CHECK(log.events[4].enter && log.events[4].body == "Kerbin");
     }
 
-    if(failures == 0) {
+    if(g_failures == 0) {
         printf("test_flightlog: all checks passed\n");
         return 0;
     }
-    printf("test_flightlog: %d FAILURE(S)\n", failures);
+    printf("test_flightlog: %d FAILURE(S)\n", g_failures);
     return 1;
 }

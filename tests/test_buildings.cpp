@@ -41,14 +41,7 @@
 #include "equirect.h"
 #include "system.h"
 #include "terrain.h"
-
-static int failures = 0;
-#define CHECK(cond) do { \
-        if(!(cond)) { \
-            printf("FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond); \
-            failures++; \
-        } \
-    } while(0)
+#include "tchecks.h"
 
 static bool expect_throw(const std::function<void()> &fn) {
     try { fn(); }
@@ -103,13 +96,13 @@ static void check_pad_grounding(const std::string &logical,
         printf("FAIL %s: pad '%s' deck sits %g m BELOW the ground across its "
                "footprint (a pad ship would spawn inside the terrain)\n",
                logical.c_str(), w.id.c_str(), -lo);
-        failures++;
+        g_failures++;
     }
     if(hi >= slabDepth) {
         printf("FAIL %s: pad '%s' deck sits %g m above the lowest ground on "
                "its footprint, past the %g m slab -- a corner floats\n",
                logical.c_str(), w.id.c_str(), hi, slabDepth);
-        failures++;
+        g_failures++;
     }
 }
 
@@ -562,7 +555,7 @@ int main() {
             sys = load_system(logical.c_str(), nullptr, nullptr);
         } catch(const std::exception &e) {
             printf("FAIL %s: load threw: %s\n", logical.c_str(), e.what());
-            failures++;
+            g_failures++;
             continue;
         }
         CHECK(sys.world_buildings.size() >= 1);
@@ -588,7 +581,7 @@ int main() {
             if(wb == nullptr) {
                 printf("FAIL %s: '%s' names unknown body '%s'\n",
                        logical.c_str(), w.id.c_str(), w.body.c_str());
-                failures++;
+                g_failures++;
             }
             if(sys.home != nullptr && w.body == sys.home->name
                && w.hasFlag("VAB_LAUNCH_PAD")) {
@@ -598,7 +591,7 @@ int main() {
             if(cat.find(w.type) == nullptr) {
                 printf("FAIL %s: '%s' has unknown type '%s'\n",
                        logical.c_str(), w.id.c_str(), w.type.c_str());
-                failures++;
+                g_failures++;
             }
             /* The Surface Map projects a site as equirectLonLat(p->dir), the
                inverse of the equirectDir that built dir from these degrees.
@@ -629,7 +622,7 @@ int main() {
                            logical.c_str(), w.id.c_str(), rlat_deg,
                            rlon * 180.0 / std::numbers::pi,
                            w.lat_deg, w.lon_deg);
-                    failures++;
+                    g_failures++;
                 }
             }
             // ... and the deck it puts on that body reaches the ground
@@ -695,7 +688,7 @@ int main() {
                     printf("FAIL %s: pads '%s' and '%s' sit %g m apart on %s\n",
                            logical.c_str(), a.id.c_str(), b.id.c_str(), m,
                            a.body.c_str());
-                    failures++;
+                    g_failures++;
                 }
             }
         }
@@ -718,14 +711,14 @@ int main() {
                     printf("FAIL %s: '%s' and another building in this system "
                            "both answer to \"%s\"\n",
                            logical.c_str(), w.id.c_str(), base.c_str());
-                    failures++;
+                    g_failures++;
                 }
             }
         }
         if(!homePad) {
             printf("FAIL %s: no VAB_LAUNCH_PAD on home '%s'\n",
                    logical.c_str(), sys.home ? sys.home->name.c_str() : "(none)");
-            failures++;
+            g_failures++;
         }
     }
 
@@ -754,8 +747,8 @@ int main() {
               == "Science outpost #2 #3");
     }
 
-    if(failures) {
-        printf("test_buildings: %d FAILED\n", failures);
+    if(g_failures) {
+        printf("test_buildings: %d FAILED\n", g_failures);
         return 1;
     }
     printf("test_buildings: OK\n");

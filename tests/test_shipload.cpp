@@ -28,14 +28,7 @@
 #include <unistd.h>
 
 #include <glm/gtc/quaternion.hpp>   // angleAxis / mat3_cast (the symmetry test)
-
-static int failures = 0;
-#define CHECK(cond) do { \
-        if(!(cond)) { \
-            printf("FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond); \
-            failures++; \
-        } \
-    } while(0)
+#include "tchecks.h"
 
 static bool expect_throw(const std::function<void()> &fn) {
     try { fn(); }
@@ -3675,9 +3668,8 @@ int main() {
         CHECK(std::find(all.begin(), all.end(), std::string("ranger")) != all.end());
     }
 
-
-    if(failures) {
-        printf("test_shipload: %d FAILURES\n", failures);
+    if(g_failures) {
+        printf("test_shipload: %d FAILURES\n", g_failures);
         return 1;
     }
     printf("test_shipload: all tests passed\n");

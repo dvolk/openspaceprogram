@@ -38,14 +38,7 @@
 #include <memory>
 #include <string>
 #include <vector>
-
-static int failures = 0;
-#define CHECK(cond) do { \
-        if(!(cond)) { \
-            printf("FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond); \
-            failures++; \
-        } \
-    } while(0)
+#include "tchecks.h"
 
 // Distinct addresses, never dereferenced: the row helpers only compare them.
 static Vehicle *fakeV(int n) { return reinterpret_cast<Vehicle *>(0x1000 + n); }
@@ -269,6 +262,6 @@ int main() {
     test_drop_question();
     test_answer_closes_first();
     test_answer_noop_without_card();
-    if(failures == 0) { printf("test_hooks: OK\n"); }
-    return failures == 0 ? 0 : 1;
+    if(g_failures == 0) { printf("test_hooks: OK\n"); }
+    return g_failures == 0 ? 0 : 1;
 }

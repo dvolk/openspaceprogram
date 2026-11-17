@@ -19,15 +19,7 @@
 #include "body.h"    // Body (pointer members only, no Bullet include)
 #include "camera.h"  // Camera
 #include "pick.h"
-
-static int failures = 0;
-#define CHECK(cond)                                                    \
-    do {                                                               \
-        if(!(cond)) {                                                  \
-            printf("FAIL: %s (line %d)\n", #cond, __LINE__);           \
-            failures++;                                                \
-        }                                                              \
-    } while(0)
+#include "tchecks.h"
 
 static bool near(double a, double b, double eps) {
     return std::fabs(a - b) <= eps;
@@ -157,8 +149,8 @@ static void testPickBody() {
 int main() {
     testPickRay();
     testPickBody();
-    if(failures) {
-        printf("%d FAILURES\n", failures);
+    if(g_failures) {
+        printf("%d FAILURES\n", g_failures);
         return 1;
     }
     printf("test_pick: all passed\n");

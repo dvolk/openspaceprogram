@@ -24,14 +24,7 @@
 #include <functional>
 #include <stdexcept>
 #include <string>
-
-static int failures = 0;
-#define CHECK(cond) do { \
-        if(!(cond)) { \
-            printf("FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond); \
-            failures++; \
-        } \
-    } while(0)
+#include "tchecks.h"
 
 /* Matching the message, not just the throw: a def can be refused by a
    neighbouring rule for an unrelated reason and the test would still pass. */
@@ -79,8 +72,8 @@ int main() {
     CHECK(refused_saying([&] { load_suit_def("e2e/vehicles/one_capsule.json", cat); },
                          "not a kerbal suit"));
 
-    if(failures) {
-        printf("test_suitdef: %d FAILURES\n", failures);
+    if(g_failures) {
+        printf("test_suitdef: %d FAILURES\n", g_failures);
         return 1;
     }
     printf("test_suitdef: OK\n");

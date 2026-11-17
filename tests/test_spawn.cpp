@@ -25,18 +25,7 @@
 
 #include "frame.h"
 #include "orbit.h"
-
-static int g_failures = 0;
-static int g_checks = 0;
-
-#define CHECK_TRUE(cond, msg)                                                  \
-    do {                                                                       \
-        g_checks++;                                                            \
-        if (!(cond)) {                                                         \
-            g_failures++;                                                      \
-            printf("FAIL: %s\n", msg);                                         \
-        }                                                                      \
-    } while (0)
+#include "tchecks.h"
 
 // The exact algorithm from spawn_vehicle (src/main.cpp).
 static Frame *resolve_frame_by_soi(Frame *root, glm::dvec3 worldPos) {

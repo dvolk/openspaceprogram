@@ -33,18 +33,7 @@
 #include <vector>
 
 #include "vehicle.h"   // Vehicle + Part (inline); pulls in Bullet (btcommon.h)
-
-static int g_failures = 0;
-static int g_checks = 0;
-
-#define CHECK_TRUE(cond, msg)                                                  \
-    do {                                                                       \
-        g_checks++;                                                            \
-        if (!(cond)) {                                                         \
-            g_failures++;                                                      \
-            printf("FAIL: %s\n", msg);                                         \
-        }                                                                      \
-    } while (0)
+#include "tchecks.h"
 
 /* A hand-built ship. `defs` is a deque, not a vector: push_back on a vector
    reallocates and would dangle every Part::def handed out so far, while a

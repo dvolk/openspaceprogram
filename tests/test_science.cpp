@@ -15,14 +15,7 @@
 #include <map>
 #include <string>
 #include <vector>
-
-static int failures = 0;
-#define CHECK(cond) do { \
-        if(!(cond)) { \
-            printf("FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond); \
-            failures++; \
-        } \
-    } while(0)
+#include "tchecks.h"
 
 static Experiment obs(const char *body, SciSituation sit, const char *biome) {
     Experiment e;
@@ -650,16 +643,16 @@ int main() {
             loadExperimentDefs("res/data/experiments.json");
         } catch(const std::exception &e) {
             printf("FAIL restore: %s\n", e.what());
-            failures++;
+            g_failures++;
         }
         CHECK(defFor("barometer") != nullptr);
         CHECK(defFor("thermometer") != nullptr);
     }
 
-    if(failures == 0) {
+    if(g_failures == 0) {
         printf("test_science: all OK\n");
         return 0;
     }
-    printf("test_science: %d failure(s)\n", failures);
+    printf("test_science: %d failure(s)\n", g_failures);
     return 1;
 }

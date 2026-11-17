@@ -26,14 +26,7 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
-
-static int failures = 0;
-#define CHECK(cond) do { \
-        if(!(cond)) { \
-            printf("FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond); \
-            failures++; \
-        } \
-    } while(0)
+#include "tchecks.h"
 
 static bool near(double a, double b) { return std::fabs(a - b) < 1e-9; }
 static bool vnear(const glm::dvec3 &a, const glm::dvec3 &b) {
@@ -1828,8 +1821,8 @@ int main() {
         fs::remove_all(base);
     }
 
-    if(failures) {
-        printf("test_save: %d FAILURE(S)\n", failures);
+    if(g_failures) {
+        printf("test_save: %d FAILURE(S)\n", g_failures);
         return 1;
     }
     printf("test_save: OK\n");

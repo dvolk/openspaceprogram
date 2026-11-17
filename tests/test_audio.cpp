@@ -21,18 +21,7 @@
 #include "audio.h"
 
 #include <glm/glm.hpp>
-
-static int g_failures = 0;
-static int g_checks = 0;
-
-#define CHECK_TRUE(cond, msg)                                                 \
-    do {                                                                      \
-        g_checks++;                                                           \
-        if (!(cond)) {                                                        \
-            g_failures++;                                                     \
-            printf("FAIL: %s\n", msg);                                        \
-        }                                                                     \
-    } while (0)
+#include "tchecks.h"
 
 #define CHECK_VEC(actual, ex, ey, ez, msg)                                    \
     do {                                                                      \

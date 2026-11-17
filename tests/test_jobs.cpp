@@ -19,14 +19,7 @@
 #include <string>
 #include <thread>
 #include <vector>
-
-static int failures = 0;
-#define CHECK(cond) do { \
-        if(!(cond)) { \
-            printf("FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond); \
-            failures++; \
-        } \
-    } while(0)
+#include "tchecks.h"
 
 static long tid() {
     return (long)std::hash<std::thread::id>{}(std::this_thread::get_id());
@@ -334,10 +327,10 @@ int main() {
         CHECK(new_job == 1);    // the new job ran on the restarted worker
     }
 
-    if(failures == 0) {
+    if(g_failures == 0) {
         printf("test_jobs: all checks passed\n");
         return 0;
     }
-    printf("test_jobs: %d FAILURES\n", failures);
+    printf("test_jobs: %d FAILURES\n", g_failures);
     return 1;
 }

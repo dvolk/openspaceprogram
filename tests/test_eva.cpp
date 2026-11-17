@@ -16,11 +16,7 @@
 
 #include <cmath>
 #include <cstdio>
-
-static int failures = 0;
-#define CHECK(cond) do { \
-    if(!(cond)) { printf("FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond); failures++; } \
-} while(0)
+#include "tchecks.h"
 
 static double mlen(const glm::dmat3 &m) {
     double s = 0;
@@ -114,10 +110,10 @@ int main() {
                           - glm::dvec3(1, 2, 0)) < 1e-9);
     }
 
-    if(failures == 0) {
+    if(g_failures == 0) {
         printf("test_eva: all checks passed\n");
         return 0;
     }
-    printf("test_eva: %d FAILURES\n", failures);
+    printf("test_eva: %d FAILURES\n", g_failures);
     return 1;
 }

@@ -23,18 +23,7 @@
 #include <glm/glm.hpp>
 
 #include "rcs.h"
-
-static int g_failures = 0;
-static int g_checks = 0;
-
-#define CHECK_TRUE(cond, msg)                                                 \
-    do {                                                                      \
-        g_checks++;                                                           \
-        if (!(cond)) {                                                        \
-            g_failures++;                                                     \
-            printf("FAIL: %s\n", msg);                                        \
-        }                                                                     \
-    } while (0)
+#include "tchecks.h"
 
 static bool near(double a, double b, double tol) { return std::fabs(a - b) < tol; }
 

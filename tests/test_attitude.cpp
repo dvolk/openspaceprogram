@@ -66,18 +66,7 @@
 #include <cstdio>
 
 #include "timestep.h"   // substepCount() -- the tick loop's substep plan
-
-static int g_failures = 0;
-static int g_checks = 0;
-
-#define CHECK_TRUE(cond, msg)                                                  \
-    do {                                                                       \
-        g_checks++;                                                            \
-        if (!(cond)) {                                                         \
-            g_failures++;                                                      \
-            printf("FAIL: %s\n", msg);                                         \
-        }                                                                      \
-    } while (0)
+#include "tchecks.h"
 
 struct RunResult {
     bool converged;

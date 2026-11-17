@@ -19,14 +19,7 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
-
-static int failures = 0;
-#define CHECK(cond) do { \
-        if(!(cond)) { \
-            printf("FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond); \
-            failures++; \
-        } \
-    } while(0)
+#include "tchecks.h"
 
 static bool expect_throw(const std::function<void()> &fn) {
     try { fn(); }
@@ -107,7 +100,7 @@ int main() {
             writeFile(path.c_str(), b.body);
             if(!expect_throw([&](){ load_crew_roster(path.c_str()); })) {
                 printf("FAIL roster accepted bad data: %s\n", b.name);
-                failures++;
+                g_failures++;
             }
             std::remove(path.c_str());
         }
@@ -291,10 +284,10 @@ int main() {
         CHECK(!saveShipToJson(ship).contains("profile_id"));
     }
 
-    if(failures == 0) {
+    if(g_failures == 0) {
         printf("test_roster: all checks passed\n");
         return 0;
     }
-    printf("test_roster: %d FAILURE(S)\n", failures);
+    printf("test_roster: %d FAILURE(S)\n", g_failures);
     return 1;
 }

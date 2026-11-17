@@ -47,18 +47,7 @@
 
 #include "cli.h"       // GameArgs (the shipped --physics-hz default)
 #include "timestep.h"  // substepCount() -- the tick loop's substep plan
-
-static int g_failures = 0;
-static int g_checks = 0;
-
-#define CHECK_TRUE(cond, msg)                                                  \
-    do {                                                                       \
-        g_checks++;                                                            \
-        if (!(cond)) {                                                         \
-            g_failures++;                                                      \
-            printf("FAIL: %s\n", msg);                                         \
-        }                                                                      \
-    } while (0)
+#include "tchecks.h"
 
 // ---- minimal 3-vector / 3x3 math (no external deps) ----------------------
 struct V3 { double x, y, z; };

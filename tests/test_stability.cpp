@@ -19,20 +19,13 @@
 #include <cstdio>
 #include <string>
 #include <vector>
-
-static int failures = 0;
-#define CHECK(cond) do { \
-        if(!(cond)) { \
-            printf("FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond); \
-            failures++; \
-        } \
-    } while(0)
+#include "tchecks.h"
 
 static void check_near(const char *what, double got, double want, double tol) {
     if(!(std::fabs(got - want) <= tol)) {
         printf("FAIL %s:%d: %s: got %.4f, want %.4f +/- %.4f\n",
                __FILE__, __LINE__, what, got, want, tol);
-        failures++;
+        g_failures++;
     }
 }
 
@@ -197,8 +190,8 @@ int main() {
     test_rig_flips_the_verdict(f);
     test_nothing_lifts_dashes(f);
     test_empty_build(f);
-    if(failures) {
-        printf("test_stability: %d failure(s)\n", failures);
+    if(g_failures) {
+        printf("test_stability: %d failure(s)\n", g_failures);
         return 1;
     }
     printf("test_stability: all tests passed\n");
