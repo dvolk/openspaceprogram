@@ -80,13 +80,17 @@ struct AscentAsk {
    Crediting the whole column to a hull at 56 km scheduled a 40 km turn around a ship
    that had 60 km to climb and 5300 kg/m^2, not 1.04e6, to push back.
 
-   These are not per-tick readings, which is why they are not in GuidanceState: the
-   body a launch is armed on does not change mid-flight, and a state struct whose
-   neighbours all move makes these look like live readings. It also removes the trap
-   the pair used to be -- both defaulted to 0 in a struct the driver had to fill, and
-   0 means "fly the airless schedule", so a caller that filled one and not the other
-   flew a plausible mission with a quietly different profile. Here the arming door
-   answers and the compiler asks. */
+   These are not per-tick readings, which is why they are not in GuidanceState: they
+   describe the LAUNCH, not the flight. m_parent is not immutable -- Vehicle::setSoi()
+   re-homes it when a patched hull crosses an SOI -- so a flight that leaves its launch
+   body keeps that body's air while mu and sea_r follow the new parent. That is the v1
+   assumption: the schedule was sized for the pad it started at, and a body already
+   left behind has no more air to fly in. Re-reading the sky per tick would instead
+   make a patched flight turn at a schedule that changes under it. It also removes the
+   trap the pair used to be -- both defaulted to 0 in a struct the driver had to fill,
+   and 0 means "fly the airless schedule", so a caller that filled one and not the
+   other flew a plausible mission with a quietly different profile. Here the arming
+   door answers and the compiler asks. */
 struct AirFacts {
     double overhead = 0.0;   // [m] of air above the launch point, up to the air top
     double column = 0.0;     // [kg/m^2] of THAT air: the weight that can push back
@@ -354,15 +358,16 @@ bool flyAscent(Vehicle &v, AscentLaw &law, double dt, bool *want_stage);
 void releaseAscent(Vehicle &v);
 
 /* What v1 does NOT do, stated here so the next phase is a decision and not a
-   discovery: the law still bills no drag and reads no pressure. GuidanceState
-   carries the air's HEIGHT (#960), because that is all the pitch schedule needs
-   to know, and nothing else about the air: no q, no flight-path closure, no
-   throttle response to drag. No descent or landing -- a hull that comes back to
-   the ground FAILS with that reason rather than being flown again (#931), no
-   transfers, no plane change after launch (the inclination is set by the launch
-   heading, not steered), and no mid-course re-burn -- if the circularisation
-   cutoff is missed, the orbit is what it is and the law reports Done/Failed
-   rather than trying again.
+   discovery: the law still bills no drag. It reads the air only as TWO arm-time
+   numbers -- how much of it is overhead and what that weighs (AirFacts, #960's
+   height and #962's profile reading at the hull) -- because that is all the pitch
+   schedule needs. Nothing else about the air reaches the law: no q, no
+   flight-path closure, no throttle response to drag. No descent or landing -- a
+   hull that comes back to the ground FAILS with that reason rather than being
+   flown again (#931), no transfers, no plane change after launch (the inclination
+   is set by the launch heading, not steered), and no mid-course re-burn -- if the
+   circularisation cutoff is missed, the orbit is what it is and the law reports
+   Done/Failed rather than trying again.
    Staging landed with #928, as an ASK only: the law presses when the hull says
    the stage is due (Vehicle::stageIsDue, the VAB's own criterion) or has run dry
    with presses left. It does not resequence the plan, choose a drop for

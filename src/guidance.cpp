@@ -22,35 +22,40 @@ static const double kFlatHalf = 0.03;  // pitch-over half-angle altitude, as a f
 /* Flight-tuned like the line above, and still under 1 so the scheduled turn ends INSIDE
    the air it was sized from: at and above the air top lastDynPressure is exactly 0, so a
    turn that outlasts the sky is flying blind in vacuum. Capped by the ask in pathAngle(). */
-static const double kFlatAir = 0.40;   // ... and as a fraction of the body's air top (#960)
-/* The air column (kg per m^2 above the datum, p0/g) at which a sky counts FULLY in the
+static const double kFlatAir = 0.40;   // ... and as a fraction of the air OVERHEAD (#960, #962)
+/* The air column (kg per m^2 above the launch point) at which a sky counts FULLY in the
    schedule above. Not flight-tuned: it is where "air that can push back" starts, and the
-   authored bodies leave a wide gap around it. Out: Pluto 2, Mars 171, Duna 204. In and
-   saturated: Kerbin 10328, Earth 10318, Shay 11267, Eve 11904, Jool 12743, Laythe 12910,
+   authored bodies leave a wide gap around it. The roster below quotes each body's DATUM
+   column (p0/g) -- what the law weighed before #962 -- because that is the figure the
+   threshold was chosen against. Out: Pluto 2, Mars 171, Duna 204. In and saturated:
+   Kerbin 10328, Earth 10318, Shay 11267, Eve 11904, Jool 12743, Laythe 12910,
    Uranus 11102, Titan 106000, Venus 1.04e6. Between: Jupiter 3858, Neptune 8870, Saturn
    8940, which get that fraction of the bend -- correct for what their columns are worth,
    and none of the three has a launch pad yet (#960 review).
 
-   Two honesty notes. The column is a profile reading, not the whole sky: since #962 the
-   law weighs airPressure(pad altitude)/g_datum, which is what sits ABOVE the launch point,
-   so a body whose authored `height` cuts the profile early no longer gets credited with
-   air above its own ceiling, and a launch that starts at 56 km of a 116 km air is weighed
-   at the 47 kPa still over it rather than at the 9.2 MPa under it. (The old reading, p0/g,
-   agreed with the integral over [0, height] to 0.1-3.8% on the shipped bodies except Pluto,
-   whose 20 km cut left a third of the column above its own ceiling -- 2.1 against 1.4,
-   which changed nothing five thousand-fold under the threshold.) And the ceiling itself is
-   unflown: Venus is the only padded body far past saturation, so whether 0.40 x the
-   overhead is the right bend in air 100x Kerbin's thick is a guess this term does not
-   argue for.
+   Reading from the hull moves some of those figures a long way: Venus has exactly one
+   pad, the cloud deck at 56 km, and it arms at 5,274 kg/m^2 -- weight 0.53, no longer
+   saturated. Which leaves the ceiling question unflown: whether 0.40 x the overhead is
+   the right bend in air 100x Kerbin's thick is a guess this term does not argue for.
 
-   One more thing the hull-relative reading exposes: the roster's margins are not all
-   wide. Kerbin's datum column is 10,328 kg/m^2, three percent over this threshold, and
-   the shipped pad sits 270 m up it, so what the law weighs at Kerbin is 10,002 --
-   0.02% of slack. Retune Kerbin's relief a few hundred metres, or move a pad, and the
-   Kerbin bend stops saturating and falls a percent or two. That is not a bug in the
-   measurement; it says the threshold's placement is untested in exactly the band where
-   the flagship body lives, and #978 owns the decision (move the line into the roster's
-   empty 204..3858 band, or make the weight smooth rather than a step). */
+   Two honesty notes on what the hull-relative reading does and does not fix. The HEIGHT
+   half now stops at the authored ceiling (overhead = top - launch altitude). The WEIGHT
+   half is airPressure(launch)/g_datum -- the hydrostatic integral of the profile as
+   authored -- so it still counts air above that ceiling: Pluto reads 2.11 kg/m^2 by this
+   rule against 1.41 inside its own 20 km cut, which is the same 0.1-3.8% agreement the
+   old p0/g reading had, five thousand-fold under the threshold. What #962 did fix is the
+   other direction: a launch that starts at 56 km of a 116 km air is weighed at the 47 kPa
+   still over it rather than the 9.2 MPa under it.
+
+   And the roster's margins are not all wide. Kerbin's datum column is 10,328 kg/m^2,
+   three percent over this threshold, and its shipped pad sits some 265 m up it, so what
+   the law weighs at Kerbin is 10,002 for mars_explorer_mk1 and heavy_one, 10,009 for
+   racer, 10,013 for kerbal -- the reading follows the hull's COM, not the pad, so the
+   slack is 0.02% to 0.13%. Retune Kerbin's relief a few hundred metres and the
+   flagship body's bend stops saturating and falls a percent or two. That is not a bug
+   in the measurement; it says the threshold's placement is untested in exactly the band
+   where the flagship body lives, and #978 owns the decision (move the line into the
+   roster's empty 204..3858 band, or make the weight smooth rather than a step). */
 static const double kAirColumnFull = 10e3;
 static const double kLeadFrac = 0.5;   // node burn starts this fraction of its length early
 /* #941: how long the law waits before asking for a press it was refused. Logic
@@ -93,7 +98,8 @@ static const int kPressRetryTicks = 60;
    harder than the point-mass model their defaults are tuned against.
 
    The air term only ever DELAYS the flatten: kFlatHalf * ask stays the floor and
-   air_top is 0 on a body with no atmosphere, so an airless flight -- and every shape
+   air.overhead is 0 on a body with no atmosphere, or on one whose air is all below
+   the launch point, so an airless flight -- and every shape
    pinned in tests/test_guidance.cpp -- is bit for bit what it used to be (the Moho
    control flight still ends at peri 100068 m, apo 101120 m). What it does not fix is
    the SHAPE of the answer: at these values the profile now reaches its node and
@@ -126,9 +132,12 @@ static double pathAngle(double alt, double ask_alt, const AirFacts &air) {
        air OVERHEAD -- top minus where the launch began, and the profile's own pressure
        there -- so a deck that starts inside its own sky sizes its turn from the 60 km
        left to climb and the 5300 kg/m^2 left to push back, instead of the 116 km and
-       1.04e6 kg/m^2 of the whole body. A ground pad is under all but its own height,
-       which on Kerbin is 270 m: 84,730 m and 10,002 kg/m^2 rather than 85 km and
-       10,328, a 0.1% trim of the turn and 1% of the flown apoapsis. */
+       1.04e6 kg/m^2 of the whole body. A ground pad is under all but the 270 m its own
+       hull sits at, so Kerbin reads 84,730 m and 10,002 kg/m^2 instead of 85 km and
+       10,328 -- still over kAirColumnFull, so the weight term does not move at all and
+       the only effect is 0.4 x 270 = 108 m off a 34 km turn. 0.3% of the turn moved the
+       standard bed flight's peak apoapsis from 170.0 to 168.4 km, which says how
+       sensitive the profile is to this number. */
     const double weight = std::min(1.0, std::max(air.column, 0.0) / kAirColumnFull);
     const double h_air = kFlatAir * weight
                        * std::min(std::max(air.overhead, 0.0), std::max(ask_alt, 0.0));
@@ -504,15 +513,21 @@ const char *AscentLaw::phaseName() const {
    overhead, not the 9.2 MPa under the deck, so the turn is sized at half a Kerbin's
    bend over 60 km instead of a full one over 116.
 
-   A ground pad is under all but its own height, and that is NOT nothing: Kerbin's pad
-   sits 270 m up the datum, so the reading there is 84,730 m and 10,002 kg/m^2 against
-   the body's 85 km and 10,328. Trimming 40 m off a 34 km turn moved the standard bed
-   flight's peak apoapsis from 170.0 to 168.4 km and its dv by 0.03% -- the profile is
-   the same mission, one notch less bent. */
+   A ground pad is under all but the height its own hull sits at, and that is NOT
+   nothing: Kerbin's pad is 270 m up the datum, so the reading there is 84,730 m and
+   10,002 kg/m^2 against the body's 85 km and 10,328. It is the hull's centre, not the
+   pad's plaque, that sets it -- racer reads 10,009 at the same site where
+   mars_explorer_mk1 reads 10,002. The column stays over kAirColumnFull either way, so
+   only the height moves the schedule: 108 m off a 34 km turn, which moved the standard
+   bed flight's peak apoapsis from 170.0 to 168.4 km and its dv by 0.03% -- the same
+   mission, one notch less bent. */
 AirFacts airAboveHull(const Vehicle &v) {
     if(v.m_parent == nullptr) { return AirFacts(); }
     const AtmosphereParams &atmo = v.m_parent->surface.atmosphere;
     if(!atmo.physical()) { return AirFacts(); }
+    /* A body with air is a body to fly in, so by here the mission needs a built hull:
+       comPos() below walks its bullet body. A frameless fixture returned earlier. */
+    assert(v.hull != nullptr);
     /* Metres above the datum, from the body's ROTATING frame. A building bubble's
        origin is the building, not the body centre (#850), so |com| at kerbin_dock
        would read a few hundred metres and credit a hull that is above every kilometre
@@ -575,7 +590,7 @@ bool flyAscent(Vehicle &v, AscentLaw &law, double dt, bool *want_stage) {
     s.mu = v.m_parent->mu;
     s.sea_r = v.m_parent->seaLevelRadius();
     /* Nothing about the air is read here any more (#961): the law holds what it was
-       armed with, from airAboveHull() below. This stays a snapshot of what MOVES. */
+       armed with, from airAboveHull() above. This stays a snapshot of what MOVES. */
     s.grounded = v.isGrounded();
     s.railed = v.onRails;
     s.accel_max = v.availableAccel();

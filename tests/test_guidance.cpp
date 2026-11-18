@@ -971,10 +971,12 @@ static void test_the_air_holds_the_nose_up() {
        starts at 56 km, so its first tick asks 35 deg and #930's apex_alt_ ratchet
        means it can never ask for steeper. Measured from the deck it has 60 km left
        and 47 kPa of it overhead, which is a 12.7 deg start.
-   The game agrees with the second half: arming on venus_cloud_platform now prints
-   "59990 m of air overhead, 5269 kg/m^2" and its first [ascent] row says pitch=12.7.
-   (Flown numbers are a hair under the round ones here: the deck's own altitude is
-   56,010 m and the profile reads 46.7 kPa there.) */
+   The game agrees with the second half: arming on venus_cloud_platform prints
+   "59996 m of air overhead, 5274 kg/m^2" for racer and "59990 m ... 5269 kg/m^2"
+   for mars_explorer_mk1, and the first [ascent] row says pitch=12.7. The two hulls
+   differ because the reading is the hull's centre, not the platform's plaque: racer
+   floats 56,004 m up and marsex 56,010 m, and the profile reads 46.8 kPa and 46.7 kPa
+   there. Flown numbers are a hair under the round ones quoted here. */
 static void test_the_air_is_measured_above_the_hull() {
     printf("== the air is overhead, not the whole body: a deck inside its own sky ==\n");
     const AirFacts deck = airOverhead(116e3, 56e3, 47e3, 8.87);
@@ -985,9 +987,11 @@ static void test_the_air_is_measured_above_the_hull() {
 
     /* At the datum the two readings are the SAME statement, which is what every
        flight quoted by pathAngle() was flown with. A real pad is not at the datum --
-       Kerbin's sits 270 m up it, and the law weighs 84,730 m and 10,002 kg/m^2 there
-       rather than 85 km and 10,328: a 0.1% trim of the turn, measured as 170.0 ->
-       168.4 km of peak apoapsis on the standard bed and 0.03% of its dv. */
+       Kerbin's hull sits 270 m up it, and the law weighs 84,730 m and 10,002 kg/m^2
+       there rather than 85 km and 10,328. The column is still past kAirColumnFull, so
+       the weight half does not move; the only effect is 0.4 x 270 = 108 m off a 34 km
+       turn, and that 0.3% is measured as 170.0 -> 168.4 km of peak apoapsis on the
+       standard bed, with 0.03% of its dv. */
     const AirFacts floor = airOverhead(116e3, 0.0, 9.2e6, 8.87);
     CHECK_NEAR(floor.overhead, 116e3, 1e-9, "a launch under everything gets everything");
     CHECK_NEAR(floor.column, 9.2e6 / 8.87, 1e-6, "...and the whole column to weigh it with");
@@ -1008,6 +1012,15 @@ static void test_the_air_is_measured_above_the_hull() {
        rather than a plausible number. */
     CHECK_NEAR(airOverhead(85e3, 0.0, 9.8e6, 0.0).column, 0.0, 0.0, "no field, no weight");
     CHECK_NEAR(airOverhead(0.0, 0.0, 9.8e6, 9.81).overhead, 0.0, 0.0, "no air, no overhead");
+    /* And a NaN reading answers zero rather than NaN, because every gate here is
+       written `!(x > 0.0)`, which NaN fails. Written the obvious way -- `x <= 0.0` --
+       a NaN air top sails through and hands atan2 a NaN overhead, which is a NaN on
+       the control channel. A NaN ALTITUDE is caught by the same comparison (it reads
+       as a datum launch), and the law's ctor asserts isfinite on the pair regardless. */
+    CHECK_NEAR(airOverhead(std::nan(""), 0.0, 9.8e6, 9.81).overhead, 0.0, 0.0, "a NaN air top is no air");
+    CHECK_NEAR(airOverhead(std::nan(""), 0.0, 9.8e6, 9.81).column, 0.0, 0.0, "...and no weight either");
+    CHECK_NEAR(airOverhead(85e3, 0.0, std::nan(""), 9.81).column, 0.0, 0.0, "a NaN pressure weighs nothing");
+    CHECK_NEAR(airOverhead(85e3, std::nan(""), 9.8e6, 9.81).overhead, 85e3, 1e-9, "a NaN altitude reads as the datum, not as NaN");
 
     /* The schedule consequence the ticket measures, on a 100 km ask from the deck. */
     AscentTarget t; t.apo_asl = t.peri_asl = 100e3; t.inc_rad = -1.0;
@@ -1018,13 +1031,21 @@ static void test_the_air_is_measured_above_the_hull() {
     CHECK_NEAR(credited, 35.5, 0.3, "crediting the whole body starts a deck launch 35 deg up");
     CHECK_NEAR(honest, 12.8, 0.4, "measuring the overhead starts it at a quarter of that");
     CHECK_TRUE(honest < credited * 0.5, "and the difference is not a rounding matter");
-    /* The turn now ends inside the air it was sized from (#960's reason for the cap):
-       the flatten is 12.7 km of climb out of the 60 km overhead, not 40 km of a sky
-       the hull is already 56 km inside. */
-    CHECK_TRUE(56e3 * std::tan(glm::radians(honest)) < deck.overhead,
-               "the deck's turn ends below the top of the air it is flying in");
-    CHECK_TRUE(56e3 * std::tan(glm::radians(credited)) > 0.65 * deck.overhead,
-               "crediting the body spends two thirds of the deck's whole climbable air on the turn");
+    /* Where each turn LANDS, in metres of climb -- the pitch checks above cannot see
+       this, since they say nothing about the air the deck actually has. The honest
+       flatten is 12.7 km of climb inside the 60 km of air left overhead; the credited
+       one is 40 km, most of a sky the hull is already 56 km inside (#960's reason for
+       the cap). */
+    const double honest_turn = 56e3 * std::tan(glm::radians(honest));
+    const double credited_turn = 56e3 * std::tan(glm::radians(credited));
+    printf("   [turn size] honest %.1f km of the %.0f km overhead, credited %.1f km\n",
+           honest_turn / 1e3, deck.overhead / 1e3, credited_turn / 1e3);
+    CHECK_TRUE(honest_turn < 0.25 * deck.overhead,
+               "measuring the deck turns inside a quarter of the air it has left to climb");
+    CHECK_TRUE(credited_turn > 2.5 * honest_turn,
+               "crediting the body turns two and a half times as far for the same ask");
+    CHECK_TRUE(credited_turn > 0.6 * deck.overhead,
+               "...and spends most of the deck's whole climbable air doing it");
 }
 
 int main() {
