@@ -3314,21 +3314,18 @@ void drawUIReadouts(Game &g) {
            the mass the parts actually carry. This used to be getDeltaV(), one ideal
            burn of everything the ship holds at the ve of the FIRST rocket in part
            order, so a mixed-Isp ship priced 69t of chemical propellant at the
-           nuclear engine's Isp, and the figure ROSE when a stage separated. The rows
-           below are the stage labels still aboard, in the order the stage counter
-           will fly them; a press removes one row and re-prices the rest (#952), so
-           this is a plan, not a bank balance. */
+           nuclear engine's Isp, and the figure ROSE when a stage separated. It is a
+           plan, not a bank balance: a press drops one stage's worth and re-prices
+           the rest (#952).
+           Only the TOTAL goes here (#969). This window used to list the per-stage
+           rows under it, capped at six with a "... N more" tail -- so a 9-stage hull
+           silently lost stages 7+ and said nothing about the loss, and the rows
+           duplicated the per-stage table the VAB's Staging window already draws.
+           Per-stage detail belongs in a staging window of its own (#970). */
         const std::vector<StageRow> &srows = ship->stagedRows();
         double staged = 0.0;
         for(const StageRow &r : srows) { staged += r.deltaV; }
         ImGui::Text("Delta-v: %.1fm/s staged", staged);
-        for(size_t i = 0; i < srows.size() && i < 6; i++) {
-            const StageRow &r = srows[i];
-            ImGui::Text("  %d:%8.0f m/s %2d eng%s", r.stage, r.deltaV, r.engines,
-                        r.drops ? "" : " *");
-        }
-        if(srows.size() > 6) { ImGui::Text("  ... %zu more", srows.size() - 6); }
-        if(!srows.empty() && !srows.back().drops) { ImGui::TextDisabled("  * no separation"); }
         /* "Throttle", not "Thrust Util": the engine command value R/F ramp (0..1), not a
            utilisation ratio. */
         ImGui::Text("Throttle: %.0f%%", ship->throttle() * 100);
