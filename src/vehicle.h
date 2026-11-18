@@ -85,6 +85,27 @@ enum SlewMode {
     SlewKillRot      /* kill the spin */
 };
 
+/* One spelling of what a mode is CALLED (#616): the [slew] trace's mode= field and the
+   line Game::select_vehicle prints when a mission parks were keeping separate word
+   lists for the same state, which is how a log and the CHECK that reads it drift apart
+   without anything noticing. Keep these words -- e2e cases match on them. */
+inline const char *slewModeName(SlewMode m) {
+    switch(m) {
+        case SlewNone:       return "none";
+        case SlewPrograde:   return "prograde";
+        case SlewRetrograde: return "retrograde";
+        case SlewRadialOut:  return "radial-out";
+        case SlewRadialIn:   return "radial-in";
+        case SlewNormal:     return "normal";
+        case SlewAntiNormal: return "anti-normal";
+        /* Named, not the fallback: an e2e CHECK on a free-aim law reads these rows,
+           and a nameless row cannot be told apart from a construction bug (#606). */
+        case SlewFree:       return "free";
+        case SlewKillRot:    return "killrot";
+    }
+    return "slew";   // an int outside the enum, which Command() cannot produce
+}
+
 
 // One ship-control command. Command() is the only control -> physics path.
 enum ShipCmdType {

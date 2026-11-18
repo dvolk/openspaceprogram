@@ -1,0 +1,48 @@
+# Switching to another ship parks the ascent mission on the hull it was armed on
+# (#616). tick.cpp only flies the law while `g.ship == g.ascent_ship` (#610's review,
+# keeping a mission off a ship the player never armed), so the thinking already stopped
+# at the switch; what survived was the law's last commands, which are hull STATE -- the
+# SlewFree latch and the aim under it. releaseControl() takes the lever, the stick, the
+# thrust and the RCS but deliberately NOT a latched mode, because a latched mode is a
+# decision, and for a player that decision outlives looking away. A law's latch is not a
+# decision anyone made: it is one tick of a program that just stopped running.
+#
+# Measured with a temporary per-ship probe (marsex + tanker, Kerbin pad; racer +
+# tanker, Moho). The parked hull holds req=SlewFree with its last aim for the rest of a
+# 500 s Kerbin run, and holds it on a railed Moho hull for 40 s. It does NOT steer
+# itself: applySlewRequest() runs for the ACTIVE ship only (tick.cpp:188), so a parked
+# hull's engaged copy stays SlewNone, and canRail() = isGrounded() || !inAtmosphere()
+# let the Moho hull rail straight through the latch. The ticket's "keeps steering / never
+# rails" does not reproduce. What does: the latch is waiting, and the tick the player
+# switches back, applySlewRequest engages it at the stale aim BEFORE the law has
+# re-aimed.
+#
+# So the rule pinned here is: switching PARKS, it does not cancel. The mission is still
+# armed, still flies its hull, and finishes its burn after the detour.
+NAME switching-away-parks-the-ascent-mission
+CLAIM Switching to another ship parks an armed ascent mission and releases its hold on that hull; switching back resumes the same mission.
+KIND invariant
+ARGS --system res/systems/ksp_system.json --startship racer,res/ships/racer.json,Moho,pad --startship tanker,res/ships/tanker.json,Moho,inertial-orbit --ascent 100e3 --time-accel 10 --sim-steps 1500 --no-paint --ascent-log
+ARGS --sim-press 1500,0,F6,4000,0,F6
+LIMIT 60
+EXPECT Autopilot: ascent armed on 'racer'
+# The line states the latch as MEASURED after the release, not as intended: a build that
+# stops letting go of the hull prints "latch now free" here and fails this case.
+EXPECT Autopilot: ascent parked on 'racer' -- not the selected ship (latch now none
+EXPECT Autopilot: ascent resumed on 'racer'
+FORBID phase=failed
+FORBID error:
+CHECK 'latch now free' not in out
+CHECK out.index('ascent parked on') < out.index('ascent resumed on')
+# Parked, not cancelled: the law resumes and the ascent completes on its own terms --
+# first row climbing, last row already through the cutoff and coasting at the ask. Moho
+# has no air, so the turn is the law's own profile and 1500 ticks at warp 10 is enough
+# to cross the 100 km apoapsis line (the rows run t=10.0 ascent, ~t=35 resumed,
+# t=80.2 coast with apo 101.4 km).
+CHECK ascent[0]['phase'] == 'ascent'
+CHECK ascent[-1]['phase'] == 'coast'
+CHECK max(a['apo_asl'] for a in ascent) > 100e3
+# The parked window prints no [ascent] rows at all: the hull is not being flown, and a
+# row per tick for a ship nobody is steering would be exactly the "steering itself" this
+# case exists to rule out. 1500 steps at 10x is 250 s of sim, which rows every ~10 s.
+CHECK len(ascent) > 10

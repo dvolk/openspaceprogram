@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 406 |
+| `invariant` | a behaviour or a player route the game must keep | 407 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 50 |
 | `harness` | CLI/test-engine plumbing, not game spec | 16 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **476** |
+| | **total** | **477** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -18,7 +18,7 @@ paces a run: how much e2e a change deserves is the caller's
 judgement. Select by number, name or path, e.g.
 `python3 e2e/run.py save/172 262`.
 
-## flight (147)
+## flight (148)
 
 | case | kind | pins |
 |---|---|---|
@@ -112,6 +112,7 @@ judgement. Select by number, name or path, e.g.
 | `flight/595-rcs-turns-a-wheel-less-hull.txt` | invariant | With no wheels and no engine, a thruster ring holds prograde: it has authority, spends hydrazine to use it, and closes a stick disturbance. |
 | `flight/610-ascent-100km.txt` | invariant | The ascent law flies a pad ship into a circular 100 km orbit on an airless body. |
 | `flight/615-hull-under-its-own-weight.txt` | invariant | A pad hull whose thrust is below its own weight is refused on the first logged tick, not flown until the tanks empty on the ground. |
+| `flight/616-switching-away-parks-the-ascent-mission.txt` | invariant | Switching to another ship parks an armed ascent mission and releases its hold on that hull; switching back resumes the same mission. |
 | `flight/631-earth-air-in-flight.txt` | invariant | A hull flying through a body that authors atmosphere.layers gets that profile -- T, p and a change with altitude, stay mutually consistent, bill drag, and move both the hull's own lift slope and its airframe's profile CdA across Mach 1. |
 | `flight/647-warped-hull-spends-electricity.txt` | invariant | A hull coasting on rails bills its generation and life support, can run its pool dry while warped, bills no wheel draw because no control pass runs out there, and says so once when the pool crosses empty. |
 | `flight/648-killing-the-spin-stops-costing-power.txt` | invariant | Wheels bill what they deliver: this hull pays its full wheel rating while its drums carry the ask, and stops paying once an autopilot has arrived -- with its key still held down. |

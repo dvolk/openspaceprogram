@@ -1692,6 +1692,48 @@ void Game::select_vehicle(Vehicle *v) {
     }
     v->leaveRails();
     ship = v;
+    /* An armed ascent mission follows its HULL, not the camera, and switching ships
+       must leave a hull that nobody is flying alone (#616). tick.cpp already stops
+       the law from thinking here -- it only calls flyAscent() while
+       g.ship == g.ascent_ship, which is #610's review keeping the mission off a ship
+       the player never armed -- but the law's last commands are hull STATE: the
+       SlewFree latch and the aim under it. releaseControl() above took the lever,
+       the stick, the thrust and the RCS; the latch is deliberately not in that set,
+       because for a PLAYER a latched mode is a decision that outlives looking away.
+       A LAW's latch is not a decision anyone made: it is one tick of a program that
+       has just stopped running.
+
+       Measured rather than assumed, while writing this (marsex + tanker, Kerbin pad,
+       F6 at t~4 s, 500 s run): the abandoned hull held req=SlewFree with
+       aim=(0.02,0.00,1.00) for the rest of the run -- and on Moho the same latch sat
+       frozen on a railed hull for 40 s. It did not steer: applySlewRequest() runs for
+       the ACTIVE ship only (tick.cpp:188), so a parked hull's engaged copy stays
+       SlewNone, and canRail() let the Moho hull rail through the latch. So this
+       ticket's "keeps steering at the heading it was last given / never rails" does
+       not reproduce today. What does survive is a latch with no owner, which becomes
+       steering again on the tick the player switches back -- applySlewRequest engages
+       it BEFORE the law has re-aimed -- and which the Autopilot window reports as a
+       mode nobody is flying.
+
+       The rule: switching PARKS the mission. The law stays armed with its phase, its
+       apex ratchet (#930) and its launch datum (#979) intact, so switching back
+       resumes the same mission; only its grip on the hull goes. flyAscent() re-latches
+       on its own next tick (guidance.cpp:662 sends Sas/SlewFree only when the mode is
+       NOT latched), and releaseAscent() is the same call a verdict and a Cancel make,
+       both halves idempotent. */
+    if(ascent && ascent->active() && ascent_ship != nullptr) {
+        if(ascent_ship != v) {
+            releaseAscent(*ascent_ship);
+            /* The measured state AFTER the release, not the intention: a build that
+               stops letting go prints a different word here, which is what the e2e
+               case that holds this rule reads. */
+            printf("Autopilot: ascent parked on '%s' -- not the selected ship (latch now %s, mission still armed)\n",
+                   ascent_ship->displayName().c_str(),
+                   slewModeName(ascent_ship->slewRequestMode()));
+        } else {
+            printf("Autopilot: ascent resumed on '%s'\n", v->displayName().c_str());
+        }
+    }
     /* A plan belongs to the hull it was solved FROM as much as to its target
        (#809), so it does not survive this line. Clearing it here rather than
        waiting for the planner's next update matters because of frame phase: a

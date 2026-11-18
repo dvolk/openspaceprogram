@@ -5158,19 +5158,7 @@ void Vehicle::slew_log(double time) {
         return;
     }
     glm::dvec3 target = slewTargetDir();
-    const char *mode;
-    switch(slew) {
-        case SlewPrograde:   mode = "prograde"; break;
-        case SlewRetrograde: mode = "retrograde"; break;
-        case SlewRadialOut:  mode = "radial-out"; break;
-        case SlewRadialIn:   mode = "radial-in"; break;
-        case SlewNormal:     mode = "normal"; break;
-        case SlewAntiNormal: mode = "anti-normal"; break;
-        /* Named, not the "slew" default: an e2e CHECK on a free-aim law reads these
-           rows, and a nameless row cannot be told apart from a construction bug (#606). */
-        case SlewFree:       mode = "free"; break;
-        default:             mode = "slew"; break;
-    }
+    const char *mode = slewModeName(slew);
     /* One answer with the law (#400), the target test included -- they used to be two
        copies, and the log's was looser: at 0.5 it dropped a target the law was busy
        steering toward, and normalizing what was left (a zero vector) made E and axis
