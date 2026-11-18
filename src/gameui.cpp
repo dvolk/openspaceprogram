@@ -3023,24 +3023,33 @@ void drawUIReadouts(Game &g) {
         /* The body's own wind at THIS altitude and THIS place. Interpolated from the table
            the way the aero law interpolates it (#688), and since #767 the hull's lat/lon are
            part of the question: a row can answer for one band of the body and not for the
-           ground under the ship. Printed only on a body that authors wind: the row is a fact
-           about the world rather than about the hull, and 20 of the shipped bodies would
-           carry a permanent dash. Ground-relative like the rows -- this is how fast the air
+           ground under the ship. Ground-relative like the rows -- this is how fast the air
            crosses the ground, which is why it is not the difference between Hs and Tas (that
            difference is the wind projected onto the hull's heading, and heading is Hdg's
            business). The rising component (#767) has no row of its own here: nothing in
            utils/rss/html publishes one, so every authored table answers 0, and a permanent
            "up 0.0" on a ship's instrument is a decoration. [surfinfo] prints it anyway.
-           Gated on the air being HERE, not just on the body authoring wind (#788): the
-           table has no ceiling row, so this same line read "Wind: 40.0m/s E" at a hull
-           915 km above Kerbin's air top. A wind belongs to the air, and above the air
-           the honest answer is no row at all. */
-        if(b->surface.atmosphere.has_wind()
-           && airDensity(dragAtm(b->surface.atmosphere, *b), altAsl) > 0.0) {
-            const glm::dvec3 wnd = windAt(b->surface.atmosphere.wind, altAsl,
-                                          glm::degrees(latitude), glm::degrees(longitude));
-            ImGui::Text("Wind: %.1fm/s %s", std::hypot(wnd.x, wnd.y),
-                        windToward(wnd.x, wnd.y));
+           The row is DRAWN ALWAYS (#968), dashed with the reason when the world cannot fill
+           it, because every other row in this window keeps its line whether or not there is
+           something to read -- a row that appears and disappears moves Lat/Lon/Hdg under it,
+           and a pilot learns the window by where the numbers sit. Two different absences,
+           kept apart the way the Surface Map keeps them (#726): "no air HERE" and "this
+           body's file states no wind".
+           What #788 fixed still stands, and is the reason the two are not one dash: the
+           NUMBER only appears where there is air. The wind table has no ceiling row, so this
+           same line once read "Wind: 40.0m/s E" at a hull 915 km above Kerbin's air top. A
+           wind belongs to the air; above the air the answer is the dash, not the number. */
+        if(airDensity(dragAtm(b->surface.atmosphere, *b), altAsl) > 0.0) {
+            if(b->surface.atmosphere.has_wind()) {
+                const glm::dvec3 wnd = windAt(b->surface.atmosphere.wind, altAsl,
+                                              glm::degrees(latitude), glm::degrees(longitude));
+                uiText("Wind: %.1fm/s %s", std::hypot(wnd.x, wnd.y),
+                       windToward(wnd.x, wnd.y));
+            } else {
+                uiText("Wind: - (no wind)");
+            }
+        } else {
+            uiText("Wind: - (no air)");
         }
         ImGui::Text("Lat: %.4f", glm::degrees(latitude));
         ImGui::Text("Lon: %.4f", glm::degrees(longitude));

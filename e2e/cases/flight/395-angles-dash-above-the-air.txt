@@ -1,8 +1,9 @@
 NAME angles-dash-above-the-air
 CLAIM Every column the SURFACE window reads off the air dashes together where the hull has no air to read it from -- the angle of attack, the sideslip, the air-relative prograde, the air-relative speed, the stability pair and the wind -- on a body whose air and wind are fully authored, so a dash means "no flow HERE" and not "this body has no wind".
 KIND invariant
-ARGS --info-log --time-accel 1 --timeout 3 --startship racer,res/ships/racer.json,Kerbin,ellipse-apo --no-paint
+ARGS --info-log --time-accel 1 --sim-steps 240 --ui-list 1500 --startship racer,res/ships/racer.json,Kerbin,ellipse-apo --no-paint
 FORBID error:
+EXPECT [uilist] window="Surface" label="Wind: - (no air)"
 # ellipse-apo drops the hull at apoapsis: 1.0e6 m over Kerbin, 915 km clear of the top of an
 # atmosphere the file authors in full (sea level 101325 Pa, top at 85 km). So this is the same
 # body, the same hull and the same code path as flight/395, one hundred times deeper into the
@@ -37,3 +38,11 @@ CHECK all(abs(s["vs"]) < 5.0 for s in surf)
 CHECK all(s["wind_east"] is None for s in surf)
 CHECK all(s["wind_north"] is None for s in surf)
 CHECK all(s["wind_up"] is None for s in surf)
+# The window row follows the log column (#968). The Wind: line used to be drawn only when the
+# body authored a wind AND there was air, so at apoapsis it vanished outright and every row under
+# it (Lat/Lon/Hdg/...) moved up a line. Now the row is always there and dashes with its reason:
+# "- (no air)" here, "- (no wind)" on a body whose file states no wind (no shipped body does
+# that yet -- the branch is the Surface Map's split, #726, kept for when one does). The number
+# still only appears inside the air, which is #788's rule. --ui-list dumps the live widget
+# registry at 1500 ms of SIM time, so --timeout (wall clock) became --sim-steps: the dump has to
+# land at the same sim moment every run.
