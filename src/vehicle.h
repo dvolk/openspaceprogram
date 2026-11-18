@@ -451,6 +451,20 @@ public:
        debating for hull mass. */
     mutable std::vector<std::vector<int> > drainRev_;
 
+    /* Which parts of each fuel group are TANKS, as a CSR (#974): group g owns
+       memberIdx_[memberStart_[g] .. memberStart_[g+1]], holding indices into `parts`.
+       The drain loops used to sweep EVERY part of the hull once per reachable group to
+       find them -- O(parts x groups) per ask, so a 286-part stack with ten groups
+       looked at 2,860 slots to touch the ~40 tanks it wanted, again per engine per
+       substep. The staging preview has kept this table since before #965; flight now
+       keeps its own, built by buildFuelGroups(), the only writer of Part::fuelGroup
+       (and every writer of `parts` order renumbers right after: spawn, init,
+       absorbShip, extractSubtreeAsShip). Members stay in `parts` order within a group,
+       so the drain sums land bit-for-bit where they did with the scan. tests/test_fuel.cpp
+       pins the table against a plain scan, including after a renumbering. */
+    std::vector<int> memberStart_;   // nGroups + 1 boundaries
+    std::vector<int> memberIdx_;     // part indices, grouped, `parts` order within a group
+
     /* --drain-log state. drainSample() runs on every tick the sim steps this
        ship, so the interval a rate describes is SIM time and means the same at
        any warp (#376). What accumulates is everything since the last PRINT --

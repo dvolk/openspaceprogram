@@ -34,6 +34,9 @@
 //     it already walked, and that the passed mass really is the denominator (#384);
 //   * the drain-layer CSR both the live drain and the staging preview now share: furthest
 //     layer first, ascending group id within a layer, the engine's own group last (#965);
+//   * the group -> tanks table the drain walks instead of scanning the hull: same members
+//     as a scan, in scan order, and re-listed by every renumbering -- including one that
+//     leaves the group COUNT alone (#974);
 //   * a tank whose contents went negative nets into BOTH answers to "what can this engine
 //     draw" -- availableResourceMass and the drain-or-nothing gate -- while the drain loop
 //     itself skips it.
@@ -1351,6 +1354,96 @@ static void test_negative_tank_nets_in_both_sums() {
     destroyShip(s);
 }
 
+/* #974: the drain loops reach a group's tanks through memberStart_/memberIdx_ instead of
+   filtering every part of the hull once per reachable group. That shortcut is only safe if
+   the table says exactly what a scan says -- same members, same parts order (the fp sums
+   are the order), and rebuilt by every renumbering. A stale row drains a tank that left
+   with a stage, or skips one that just joined, and the totals stay plausible either way, so
+   this pins it directly: table vs scan, before, after a draw, and across a renumbering that
+   both moves a tank past a fuel wall and adds a new one. */
+static void test_group_tank_table_matches_a_scan() {
+    printf("== Group -> tanks table: the drain's shortcut (#974) ==\n");
+    Ship s; s.v = new Vehicle;
+    Part *engA = addPart(s, 0, 0, true);        // 0: root, not a tank
+    Part *tA   = addPart(s, 100, 0);            // 1
+    Part *tA2  = addPart(s, 20, 0);             // 2
+    Part *wall = addPart(s, 50, 0, false, true);// 3: a wall that is ALSO a tank
+    Part *tB   = addPart(s, 70, 0);             // 4: behind the wall
+    Part *pod  = addPart(s, 0, 0);              // 5: in the group, not a tank
+    Part *tC   = addPart(s, 30, 0);             // 6: behind the wall too
+    link(s, engA, tA);
+    link(s, tA, tA2);
+    link(s, engA, wall);
+    link(s, wall, tB);
+    link(s, tB, tC);
+    link(s, engA, pod);
+    initShip(s);
+
+    /* Table vs scan, for every group and for the total. A lambda because the same
+       question is asked at three numberings, and each ask names the one it describes. */
+    auto tableMatchesScan = [&](const char *when) {
+        int listed = 0;
+        for(int g = 0; g + 1 < (int)s.v->memberStart_.size(); g++) {
+            std::vector<int> want, got;
+            for(size_t i = 0; i < s.v->parts.size(); i++) {
+                if(s.v->parts[i]->isTank() && s.v->parts[i]->fuelGroup == g) { want.push_back((int)i); }
+            }
+            got.assign(s.v->memberIdx_.begin() + s.v->memberStart_[(size_t)g],
+                       s.v->memberIdx_.begin() + s.v->memberStart_[(size_t)g + 1]);
+            CHECK_TRUE(want == got, when);
+            listed += (int)got.size();
+        }
+        int grouped = 0;
+        for(size_t i = 0; i < s.v->parts.size(); i++) {
+            if(s.v->parts[i]->isTank() && s.v->parts[i]->fuelGroup >= 0) { grouped++; }
+        }
+        CHECK_TRUE(listed == grouped, when);
+    };
+    tableMatchesScan("the first numbering lists each group's tanks in parts order");
+    CHECK_TRUE(wall->isTank() && wall->fuelGroup < 0,
+               "the wall is a tank with no group, so it is in no list");
+
+    /* What the walk means: the engine sees its own group's two tanks, and neither the
+       wall's fuel nor the group behind it. */
+    CHECK_NEAR(s.v->availableResourceMass(ResourceType::Hydrogen, engA), 120.0, 1e-9,
+               "reachable fuel = this group's tanks only");
+    CHECK_TRUE(s.v->consumeResourceMass(ResourceType::Hydrogen, 60.0, engA), "draw 60 kg");
+    CHECK_NEAR(tA->resources.current[(int)ResourceType::Hydrogen], 50.0, 1e-9,
+               "the draw spread pro-rata over exactly those two tanks");
+    CHECK_NEAR(tA2->resources.current[(int)ResourceType::Hydrogen], 10.0, 1e-9,
+               "both of them, by their own share");
+    CHECK_NEAR(wall->resources.current[(int)ResourceType::Hydrogen], 50.0, 1e-9,
+               "and touched nothing else: not the wall");
+    CHECK_NEAR(tB->resources.current[(int)ResourceType::Hydrogen], 70.0, 1e-9,
+               "not the group behind it");
+    CHECK_NEAR(tC->resources.current[(int)ResourceType::Hydrogen], 30.0, 1e-9,
+               "nor the one behind that");
+
+    /* Renumber the way a decouple does: tA2 goes behind the wall, and a fresh tank joins
+       the engine's group. buildFuelGroups() is the only writer of Part::fuelGroup, so it
+       is also the only place this table could go stale. */
+    tA2->parent = wall;
+    Part *tD = addPart(s, 40, 0);               // 7
+    link(s, engA, tD);
+    tD->fillTanks();   // a part added after init() seeds itself, like any fresh tank
+    s.v->buildFuelGroups();
+    tableMatchesScan("after a renumbering the lists still match a scan");
+    CHECK_NEAR(s.v->availableResourceMass(ResourceType::Hydrogen, engA), 90.0, 1e-9,
+               "the engine now sees tA + the new tank, and has lost the one that moved");
+
+    /* A second renumbering, this one moving a tank WITHOUT changing how many groups
+       there are (tD follows tA2 behind the wall; the group it leaves and the group it
+       joins both still exist). A table that decided it was already built because the
+       group count had not moved would keep serving the old membership here, and the
+       engine would drink from a tank that is no longer its own. */
+    tD->parent = tB;
+    s.v->buildFuelGroups();
+    tableMatchesScan("a renumbering at the same group count re-lists too");
+    CHECK_NEAR(s.v->availableResourceMass(ResourceType::Hydrogen, engA), 50.0, 1e-9,
+               "and the engine is left with tA alone");
+    destroyShip(s);
+}
+
 int main() {
     test_prorata_in_group();
     printf("\n");
@@ -1397,6 +1490,8 @@ int main() {
     test_drain_layers_shape();
     printf("\n");
     test_negative_tank_nets_in_both_sums();
+    printf("\n");
+    test_group_tank_table_matches_a_scan();
 
     printf("\n%d checks, %d failures\n", g_checks, g_failures);
     if(g_failures == 0) {

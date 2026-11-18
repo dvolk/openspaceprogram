@@ -2486,6 +2486,29 @@ void Vehicle::buildFuelGroups() {
        only thing that changes the count (four call sites: spawn, init, decouple,
        dock -- not a per-tick cost). */
     drainLayers_.assign((size_t)nGroups, FuelLayers());
+    /* The group -> tanks table the drain loops walk (#974), so they touch each tank
+       once instead of every part once per reachable group. Two passes over `parts`
+       with a per-group cursor: counting then placing keeps each group's members in
+       `parts` order, which is the order the old scan summed them in. */
+    memberStart_.assign((size_t)nGroups + 1, 0);
+    for(size_t i = 0; i < parts.size(); i++) {
+        const int g = parts[i]->fuelGroup;
+        if(g >= 0 && parts[i]->isTank()) { memberStart_[(size_t)g + 1]++; }
+    }
+    for(int g = 0; g < nGroups; g++) {
+        memberStart_[(size_t)g + 1] += memberStart_[(size_t)g];
+    }
+    memberIdx_.resize((size_t)memberStart_[(size_t)nGroups]);
+    {
+        std::vector<int> cursor = memberStart_;
+        for(size_t i = 0; i < parts.size(); i++) {
+            const int g = parts[i]->fuelGroup;
+            if(g >= 0 && parts[i]->isTank()) {
+                memberIdx_[(size_t)cursor[(size_t)g]++] = (int)i;
+            }
+        }
+        assert(cursor[(size_t)nGroups] == (int)memberIdx_.size());
+    }
 }
 
 const FuelLayers &Vehicle::fuelDrainLayers(Part *engine) const {
@@ -2531,7 +2554,11 @@ Vehicle::FuelDraw Vehicle::consumeResourceMass(enum ResourceType type, double am
        and same fp sums. `avail` follows availableResourceMass' rule (every tank's
        contents, whatever the sign) because that is what the gate compared before;
        `layerTotals` follows the drain's (only positive, since a share of a negative
-       tank is not a thing). */
+       tank is not a thing).
+
+       Since #974 the tanks of a group come from memberStart_/memberIdx_ rather than a
+       scan of the hull, so the pass is O(tanks reachable) not O(parts x groups); the
+       sums are unchanged because that table lists each group's tanks in `parts` order. */
     static thread_local std::vector<double> layerTotals;
     layerTotals.assign(nLayers, 0.0);
     double avail = 0.0;
@@ -2539,8 +2566,9 @@ Vehicle::FuelDraw Vehicle::consumeResourceMass(enum ResourceType type, double am
         double t = 0.0;
         for(int k = layers.layerStart[li]; k < layers.layerStart[li + 1]; k++) {
             const int grp = layers.groupOf[(size_t)k];
-            for(Part *p : parts) {
-                if(!p->isTank() || p->fuelGroup != grp) { continue; }
+            assert(grp >= 0 && grp + 1 < (int)memberStart_.size());
+            for(int m = memberStart_[(size_t)grp]; m < memberStart_[(size_t)grp + 1]; m++) {
+                Part *p = parts[(size_t)memberIdx_[(size_t)m]];
                 const double have = p->resources.current[(int)type];
                 avail += have;
                 if(have > 0.0) { t += have; }
@@ -2563,8 +2591,9 @@ Vehicle::FuelDraw Vehicle::consumeResourceMass(enum ResourceType type, double am
         const double take = owed < layerTotal ? owed : layerTotal;
         for(int k = layers.layerStart[li]; k < layers.layerStart[li + 1]; k++) {
             const int grp = layers.groupOf[(size_t)k];
-            for(Part *p : parts) {
-                if(!p->isTank() || p->fuelGroup != grp) { continue; }
+            assert(grp >= 0 && grp + 1 < (int)memberStart_.size());
+            for(int m = memberStart_[(size_t)grp]; m < memberStart_[(size_t)grp + 1]; m++) {
+                Part *p = parts[(size_t)memberIdx_[(size_t)m]];
                 const double have = p->resources.current[(int)type];
                 if(have <= 0.0) { continue; }
                 double share = take * have / layerTotal;
@@ -2583,13 +2612,14 @@ double Vehicle::availableResourceMass(enum ResourceType type, Part *engine) cons
     double total = 0.0;
     /* Every reachable group once, in layer order: groupOf is the whole CSR, so the
        layer boundaries do not matter here -- only the order of the fp sum does, and
-       that is the same furthest-first, ascending-within-a-layer order as before. */
+       that is the same furthest-first, ascending-within-a-layer, parts-order-within-a-
+       group order as before (#974 swapped the hull scan for the group's tank list). */
     for(size_t li = 0; li + 1 < layers.layerStart.size(); li++) {
         for(int k = layers.layerStart[li]; k < layers.layerStart[li + 1]; k++) {
             const int grp = layers.groupOf[(size_t)k];
-            for(Part *p : parts) {
-                if(!p->isTank() || p->fuelGroup != grp) { continue; }
-                total += p->resources.current[(int)type];
+            assert(grp >= 0 && grp + 1 < (int)memberStart_.size());
+            for(int m = memberStart_[(size_t)grp]; m < memberStart_[(size_t)grp + 1]; m++) {
+                total += parts[(size_t)memberIdx_[(size_t)m]]->resources.current[(int)type];
             }
         }
     }
@@ -2598,7 +2628,8 @@ double Vehicle::availableResourceMass(enum ResourceType type, Part *engine) cons
 
 /* One sweep of the engine's layers totalling every wanted resource (#934): the same
    loop availableResourceMass runs, with the resource moved inside it. A rocket's two
-   propellants used to cost two full sweeps of layers x groups x every part. */
+   propellants used to cost two full sweeps of layers x groups x every part; #974 turned
+   the inner step into the group's own tank list. */
 void Vehicle::layerFuelTotals(Part *engine, const bool *want, double *out) const {
     for(int r = 0; r < (int)ResourceType::Num; r++) { out[r] = 0.0; }
     int wanted[(int)ResourceType::Num];
@@ -2609,8 +2640,9 @@ void Vehicle::layerFuelTotals(Part *engine, const bool *want, double *out) const
     for(size_t li = 0; li + 1 < layers.layerStart.size(); li++) {
         for(int k = layers.layerStart[li]; k < layers.layerStart[li + 1]; k++) {
             const int grp = layers.groupOf[(size_t)k];
-            for(Part *p : parts) {
-                if(!p->isTank() || p->fuelGroup != grp) { continue; }
+            assert(grp >= 0 && grp + 1 < (int)memberStart_.size());
+            for(int m = memberStart_[(size_t)grp]; m < memberStart_[(size_t)grp + 1]; m++) {
+                const Part *p = parts[(size_t)memberIdx_[(size_t)m]];
                 for(int i = 0; i < nw; i++) {
                     out[wanted[i]] += p->resources.current[wanted[i]];
                 }
