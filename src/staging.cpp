@@ -1079,15 +1079,54 @@ std::vector<StageRow> computeStaging(const BuildShip &ship, double g,
         const bool drainAll = !row.drops || sim.drainableIn(drop) <= 1e-12;
         BurnAcc burn;
         runBurn(sim, g, drainAll, drop, burn, burnRate, burnRatio);
+        row.engines = sim.litRocketCount();   // the lit set THIS row opens with (#529)
+
+        /* A separation on the LOWEST label does not end the accounting (#529). The period
+           above stops when the DROP set runs dry, which is right for every label but this
+           one: no later label exists to bill what survived that separation, so a decoupler
+           at minStage deletes the survivor's burn from the plan -- the row keeps a number,
+           just a much too small one, and its mass column agrees with the lie. 1 is the
+           DEFAULT label (the VAB stage box takes 1..10000 and starts there), so the common
+           trigger is a hull nobody has staged at all.
+           So the last period is "separate, then burn what is still aboard", folded into the
+           SAME row: rows are stage LABELS, and this hull has one. That also changes what
+           massEnd means for this shape alone -- it is now the mass AFTER the separation the
+           row performs, because there is no later row left to report what remained. Every
+           other row keeps the old shape: massEnd pre-drop, the next row's massStart carries
+           the drop.
+           The follow-on period is unconditional rather than guarded on "fuel left": runBurn's
+           ready() already answers that, and an unconditional kill-then-drain is what keeps
+           this row's massEnd meaning one thing for every separating final label. */
+        bool finalDrop = false;
+        if(isFinal && !drainAll) {
+            sim.kill(drop);
+            refreshFuel();
+            finalDrop = true;
+            BurnAcc rest;
+            runBurn(sim, g, true, drop, rest, burnRate, burnRatio);
+            burn.dv += rest.dv;
+            /* TWR of the whole stage: the worst ratio either half flies, and the best. The
+               second half ignites lighter but with fewer engines, so its opening sample can
+               be the stage's worst ratio -- which is the number a pilot wants under min. */
+            if(rest.anyTWR) {
+                if(!burn.anyTWR) {
+                    burn.minTWR = rest.minTWR;
+                    burn.maxTWR = rest.maxTWR;
+                    burn.anyTWR = true;
+                } else {
+                    if(rest.minTWR < burn.minTWR) { burn.minTWR = rest.minTWR; }
+                    if(rest.maxTWR > burn.maxTWR) { burn.maxTWR = rest.maxTWR; }
+                }
+            }
+        }
 
         row.deltaV = burn.dv;
         row.massEnd = totalMass(sim.parts);
         row.minTWR = burn.minTWR;
         row.maxTWR = burn.maxTWR;
-        row.engines = sim.litRocketCount();
         rows.push_back(row);
 
-        if(!drop.empty()) {
+        if(!drop.empty() && !finalDrop) {
             sim.kill(drop);
             refreshFuel();
         }

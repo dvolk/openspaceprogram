@@ -989,6 +989,68 @@ static void test_a_sealed_drop_does_not_hold_the_burn_open() {
                "one engine, the fuel that is left");
 }
 
+/* #529: a decoupler on the LOWEST label. The walk calls that label the final period and a
+   final period ends when the DROP set runs dry, so the survivor's own tank -- lit engine,
+   most of the ship's propellant -- is never billed. The table shows one row, a plausible
+   number ~5x too small here, and a mass column that agrees with it. 1 is the DEFAULT stage
+   label, so this is what a hull looks like when nobody has touched the VAB's stage box, and
+   it is why the ticket is High: silent, confident, and the common new-player shape.
+
+   Shape: every part carries label 1, so period 1 is the whole walk. The decoupler is a fuel
+   wall, so the booster's 50 kg and the core's 200 kg are separate groups; both engines are
+   lit (label 1 == maxStage), so the period runs 50 s at 2 kg/s -- the booster's 50 kg and
+   50 kg of the core's -- and the drop is then ready. What follows is the core's remaining
+   150 kg, which belongs to this row: after the separation (5 + 50 + 10 = 65 kg leaves) the
+   core burns 210 -> 60, so the row is 1000*ln(375/275) + 1000*ln(210/60).
+
+   One row, not two: a row is a stage LABEL and this hull has one label. So the last period
+   is "separate, then burn what is still aboard", and its massEnd is the mass AFTER the
+   separation it performs -- there is no later row left to say what actually remained. */
+static void test_a_decoupler_on_the_last_label_does_not_end_the_accounting() {
+    Catalog cat;
+    BuildShip bs;
+    const int core = addPart(bs, cat.tank(50, 100, 100), "coreTank", -1, 1);
+    addPart(bs, cat.engine(10, 0.5, 1000.0), "coreEng", core, 1);
+    const int dec = addPart(bs, cat.decoupler(5), "dec", core, 1);
+    const int btank = addPart(bs, cat.tank(50, 25, 25), "boostTank", dec, 1);
+    addPart(bs, cat.engine(10, 0.5, 1000.0), "boostEng", btank, 1);
+    (void)dec;
+
+    const std::vector<StageRow> rows = computeStaging(bs, 10.0);
+    CHECK_TRUE(rows.size() == 1, "one label, one row");
+    if(rows.size() != 1) { return; }
+    CHECK_TRUE(rows[0].stage == 1 && rows[0].drops, "label 1 separates");
+    CHECK_REL(rows[0].massStart, 375.0, 1e-9, "all aboard");
+    CHECK_REL(rows[0].massEnd, 60.0, 1e-9, "every burnable kg is gone: 50 + 10 of core dry");
+    CHECK_REL(rows[0].deltaV, 1000.0 * (std::log(375.0 / 275.0) + std::log(210.0 / 60.0)),
+              1e-9, "the drop's burn AND the survivor's burn, in one row");
+    CHECK_TRUE(rows[0].engines == 2, "both engines light for the period");
+    /* TWR across the merged period: the first period ignites at 2000 N against 375 kg, the
+       second at 1000 N against the 210 kg that survived the separation -- and 1000/(210*10)
+       is the worst ratio the stage ever flies, so min follows it. Max is the core running
+       light at the end. */
+    CHECK_REL(rows[0].minTWR, 1000.0 / (210.0 * 10.0), 1e-9, "min TWR = the lighter ignition");
+    CHECK_REL(rows[0].maxTWR, 1000.0 / (60.0 * 10.0), 1e-9, "max TWR = the lightest mass");
+
+    /* The follow-on burn invents nothing: the same hull with an empty core tank still pays
+       exactly the booster's burn, and no period is spent chasing a tank that is dry. */
+    Catalog cat2;
+    BuildShip es;
+    const int ecore = addPart(es, cat2.tank(50, 0, 0), "coreTank", -1, 1);
+    addPart(es, cat2.engine(10, 0.5, 1000.0), "coreEng", ecore, 1);
+    const int edec = addPart(es, cat2.decoupler(5), "dec", ecore, 1);
+    const int ebt = addPart(es, cat2.tank(50, 25, 25), "boostTank", edec, 1);
+    addPart(es, cat2.engine(10, 0.5, 1000.0), "boostEng", ebt, 1);
+    (void)edec;
+    const std::vector<StageRow> erows = computeStaging(es, 10.0);
+    CHECK_TRUE(erows.size() == 1, "empty core: still one row");
+    if(erows.size() != 1) { return; }
+    CHECK_REL(erows[0].massStart, 175.0, 1e-9, "empty core, full booster");
+    CHECK_REL(erows[0].deltaV, 1000.0 * std::log(175.0 / 125.0), 1e-9,
+              "empty core: the booster's burn and nothing more");
+    CHECK_REL(erows[0].massEnd, 60.0, 1e-9, "empty core: the separation still leaves");
+}
+
 /* Two separating periods, which is the shape that makes reachability marks a LIFETIME
    question rather than a per-call one: period 2 inherits the mark buffer from period 1,
    and after period 1's kill the groups are renumbered, so a stale mark can land on a
@@ -1574,6 +1636,7 @@ int main() {
     test_drop_walk_takes_only_the_decouplers_side();
     test_a_self_parent_walks_once();
     test_a_sealed_drop_does_not_hold_the_burn_open();
+    test_a_decoupler_on_the_last_label_does_not_end_the_accounting();
     test_reachability_survives_a_renumbering();
     test_a_linked_tank_in_a_drop_holds_the_burn_open();
     test_an_unlit_engine_does_not_open_a_burn();
