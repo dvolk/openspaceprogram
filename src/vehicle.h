@@ -1472,6 +1472,12 @@ public:
        call it per tick from a new site without reading that gate. */
     const std::vector<StageRow> &stagedRows();
 
+    /* How many times that plan has actually been walked (#966). The gate in
+       stagedRows() is the difference between ~755 walks a flight and one per frame
+       (~42,000), and a widened gate is invisible in the numbers -- it just costs. The
+       count makes it testable instead of heaptrack-only, like ApplyThrust_TESTONLY. */
+    uint64_t stagedRebuildCount() const { return stagedRebuilds_; }
+
     /* Sum of stagedRows(): the ship's remaining delta-v, staged. */
     double stagedDeltaV() {
         double dv = 0.0;
@@ -1590,6 +1596,9 @@ public:
     std::vector<StageRow> stagedRows_;
     double stagedFuel_ = -1.0, stagedMass_ = -1.0;
     double stagedG_ = -1.0, stagedExhaust_ = -1.0;
+    /* Walks performed, not asks answered (#966). One counter on the cache itself, so
+       the pin reads the same `moved` branch that decides the cost. */
+    uint64_t stagedRebuilds_ = 0;
 
     int activeStage();
     /* Step to the previous stage (clamped at the lowest one). */

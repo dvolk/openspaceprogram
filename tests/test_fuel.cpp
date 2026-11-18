@@ -26,7 +26,9 @@
 //     layer that comes up short passes the remainder down instead of dropping it
 //     (#531);
 //   * the staged delta-v plan a flying hull shows (Vehicle::stagedRows) is priced on
-//     the tanks as they are now, and re-keys when fuel burns or hardware leaves (#948).
+//     the tanks as they are now, and re-keys when fuel burns or hardware leaves (#948);
+//   * HOW OFTEN that plan is re-walked: the 0.2% band plus the structure key, counted,
+//     so a widened gate reddens a test instead of showing up in a heaptrack run (#966).
 //
 // Links the REAL SetMass (src/physics.cpp, as test_thrust.cpp does), so the
 // part-mass shedding + Bullet inertia update is exercised too. No GL context
@@ -1076,6 +1078,78 @@ static void test_staged_plan_tracks_a_live_hull() {
     destroyShip(s);
 }
 
+/* #966: HOW OFTEN the plan is walked, not just what it says. The gate in
+   Vehicle::stagedRows() is what keeps a flight at ~755 staging walks instead of one per
+   frame (~42,000 -- 250k allocations, which is what #963 just spent five pushes removing).
+   Its effect is invisible in the rows: widen the band, add a per-frame invalidation, and
+   every number still looks right. So this pins the count itself, on the branch that
+   decides it.
+   The same hull as the case above, asked the way flight asks it: Vessel Info reads it
+   every frame, so 600 asks with nothing changed is a 10 s coast at 60 Hz. */
+static void test_staged_plan_rebuild_gate() {
+    printf("== Staged plan: the rebuild count, not just the rows (#966) ==\n");
+    Ship s; s.v = new Vehicle;
+    Part *engUp = addPart(s, 0, 0, true);
+    Part *tankUp = addPart(s, 50, 50);
+    Part *dec = addPart(s, 0, 0, false, false, 0.0, 0.0, 2, true);
+    Part *tankLo = addPart(s, 100, 100, false, false, 0.0, 0.0, 2);
+    Part *engLo = addPart(s, 0, 0, true, false, 0.0, 0.0, 2);
+    link(s, engUp, tankUp);
+    link(s, tankUp, dec);
+    link(s, dec, tankLo);
+    link(s, tankLo, engLo);
+    initShip(s);
+    (void)tankUp;
+    TerrainBody *pad = new TerrainBody;
+    pad->name = "pad";
+    pad->g = 10.0;
+    s.v->m_parent = pad;
+
+    CHECK_TRUE(s.v->stagedRebuildCount() == 0, "nobody asked, nothing walked");
+    s.v->stagedRows();
+    CHECK_TRUE(s.v->stagedRebuildCount() == 1, "the first ask walks the plan once");
+    for(int i = 0; i < 600; i++) { s.v->stagedRows(); }
+    CHECK_TRUE(s.v->stagedRebuildCount() == 1,
+               "600 asks with nothing changed cost no walk at all");
+
+    /* Inside the band: 0.5 kg of a 300 kg load is 0.17%, under kStagedRefreshFrac, so
+       the cached rows stand. This is deliberately tight -- it is the same dribble the
+       case above pins on its VALUES, now pinned on the CACHE. */
+    CHECK_TRUE(s.v->consumeResourceMass(ResourceType::Hydrogen, 0.5f, engLo), "draw 0.5 kg");
+    s.v->stagedRows();
+    CHECK_TRUE(s.v->stagedRebuildCount() == 1, "a sub-band dribble keeps the cached plan");
+
+    /* Past the band: a real burn. 40 kg is 13% of the load. */
+    CHECK_TRUE(s.v->consumeResourceMass(ResourceType::Hydrogen, 40.0f, engLo), "draw 40 kg");
+    s.v->stagedRows();
+    CHECK_TRUE(s.v->stagedRebuildCount() == 2, "a burn past the band re-prices once");
+
+    /* The two scalars the gate reads that no structure test would catch: pad g feeds the
+       rows' TWR, exhaust_scale feeds their thrust. Both are outside the snapshot, so
+       they need their own term -- and their own pin. */
+    pad->g = 5.0;
+    s.v->stagedRows();
+    CHECK_TRUE(s.v->stagedRebuildCount() == 3, "a new body's g re-prices the plan");
+    s.v->exhaust_scale = 0.5;
+    s.v->stagedRows();
+    CHECK_TRUE(s.v->stagedRebuildCount() == 4, "--exhaust-scale mid-flight re-prices the plan");
+
+    /* Structure: a stage label moved, which is the identity half of the gate rather
+       than the totals half. */
+    tankLo->stage = 3;
+    s.v->stagedRows();
+    CHECK_TRUE(s.v->stagedRebuildCount() == 5, "a relabelled part re-keys the plan");
+
+    /* And the re-key itself is one walk, not one per ask: the next call reads the
+       snapshot it just took, so the count stands still. */
+    s.v->stagedRows();
+    CHECK_TRUE(s.v->stagedRebuildCount() == 5, "a plain re-ask after a re-key does not walk twice");
+
+    printf("   asked 606 times, walked 5\n");
+    delete pad;
+    destroyShip(s);
+}
+
 int main() {
     test_prorata_in_group();
     printf("\n");
@@ -1114,6 +1188,8 @@ int main() {
     test_force_overlay_recording();
     printf("\n");
     test_staged_plan_tracks_a_live_hull();
+    printf("\n");
+    test_staged_plan_rebuild_gate();
 
     printf("\n%d checks, %d failures\n", g_checks, g_failures);
     if(g_failures == 0) {

@@ -2766,6 +2766,7 @@ const std::vector<StageRow> &Vehicle::stagedRows() {
                     || std::fabs(massTot - stagedMass_) > kStagedRefreshFrac * std::max(massTot, 1.0)
                     || stagedG_ != m_parent->g || stagedExhaust_ != exhaust_scale;
     if(moved) {
+        stagedRebuilds_++;
         stagedRows_ = computeStaging(stagedSnap_, m_parent->g, exhaust_scale, stagedSeed_);
         /* The seeded pair has to add up to the hull the model is billed on: the first
            row's ignition mass IS the ship's mass. That is the invariant the seed
