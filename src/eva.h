@@ -34,10 +34,14 @@ struct Kerbal : Vehicle {
        ships. "The control law arms the state once per tick and the laws run it per
        substep" used to be only a comment: a TU-level free function (evaArmCommands)
        assigned these fields from outside the class, and the jump key was a bare
-       `k->jumpPressed = true` in events.cpp. armInput() is the only PER-TICK writer
-       and applyEva() the reader; settleContact() is the loader's writer of
+       `k->jumpPressed = true` in events.cpp. armInput() and disarm() are the PER-TICK
+       writers -- a live, off-rails kerbal gets one or the other every tick, #215 --
+       applyEva() the reader, and settleContact() is the loader's writer of
        mode/grounded (a load starts paused, so it cannot wait for the first tick), and
-       the doors below are what anyone else uses.
+       the doors below are what anyone else uses. settleContact()'s rule is the weaker
+       one -- pose only, no Bullet contact, because a hull freshly added to the world has
+       no manifolds yet -- and after the first tick that steps physics it is overwritten
+       by updateContact(); it only earns its keep on a loaded hull that stays on rails.
          mode / grounded     which regime the laws run in this tick
          jumping             post-jump: ignore grounded until the outward kick is spent
          jumpPressed         the jump key's down EDGE: pressJump() raises it and
@@ -71,6 +75,19 @@ public:
        is the tick's SlotProbe (keys.h), handed by reference rather than as a
        std::function so arming the suit allocates nothing (#581). */
     void armInput(Game &g, const SlotProbe &active);
+
+    /* Neutralize one tick for a kerbal that armInput() did NOT run on (#215). The
+       laws below run per substep for every live hull in the fleet, so a suit whose arm
+       stopped running -- the player switched to another ship, went to free cam, or is
+       in a scene that does not pilot -- otherwise keeps the last law it wore: a stale
+       walkDir drives it at kWalkSpeed, a stale rcsDir burns hydrazine until the tank is
+       dry, and a suit that was never armed at all wears the constructor's "standing"
+       default and brakes an orbital kerbal at kWalkAccel. No demands, and the regime
+       re-derived from the pose rather than remembered (remembering it IS the bug).
+       tick.cpp calls this every tick for every live, off-rails kerbal when the tick
+       steps physics, before the arm; game.cpp's proximity pass calls it on a suit it
+       wakes later in the same tick. */
+    void disarm();
 
     /* The jump key went down (events.cpp). The rule lives on jumpPressed above. */
     void pressJump() { jumpPressed = true; }
@@ -147,4 +164,8 @@ private:
     // Authority-bounded PD slew toward `target` (braking-curve rate, torque
     // capped).
     void slewTo(const glm::dmat3 &target, double h, double authority);
+
+    /* mode/grounded from the pose and Bullet contact, keys aside: the half of
+       armInput() that disarm() needs too (#215). */
+    void updateContact();
 };

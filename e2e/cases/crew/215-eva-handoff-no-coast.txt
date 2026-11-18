@@ -1,0 +1,24 @@
+NAME eva-handoff-no-coast
+CLAIM Handing control back from a spacewalker stops it walking: the suit stands still while nobody pilots it.
+KIND invariant
+ARGS --time-accel 1 --timeout 12 --eva-log --mass-log --compound-check --orbit-interval 0.5 --frame-cap 30 --sim-press 1000,0,V,2000,4000,W,6000,0,V --startship racer,res/ships/racer.json,Kerbin,pad
+# #215. 'racer' launches with one crew seat, so Ash is out on EVA as ship 2: V at 1 s
+# takes the suit, W 2 s -> 6 s walks it at kWalkSpeed, V at 6 s hands control back. A
+# handover releases the SHIP-level armed state (Vehicle::releaseControl drops throttle,
+# thrust, rotCmd and rcsDir), but the walk demand is Kerbal state and nothing released
+# it: before the fix the kerbal kept walking for the 5 s nobody was looking, drifting
+# ~9 m across the pad at 2.5 m/s and spinning.
+# --eva-log cannot see any of this (it prints for the ACTIVE hull only) and --mass-log
+# has no motion in it, so the witness is --compound-check, which walks every hull and is
+# the only channel that reports an inactive ship's velocity.
+EXPECT EVA: 'Ash' out of 'racer' part 0
+EXPECT Active ship 2 of 2: Ash
+EXPECT Active ship 1 of 2: racer
+FORBID error:
+CHECK len(mass) > 10
+# The witness below reads --compound-check rows, and a hull parked ON rails reports
+# |v|=0 for free. --mass-log carries railed=, so pin that the suit was live in the
+# sampled window; otherwise this quietly becomes a rails test.
+CHECK all(m["railed"] == 0 for m in mass if m["ship"] == "Ash" and m["t"] > 7.0)
+CHECK max((e["vel"][0]**2 + e["vel"][1]**2 + e["vel"][2]**2)**0.5 for e in eva) > 1.5
+CHECK all(float(v) < 0.5 for t, v in re.findall(r"\[compound\] t=([\d.]+)s ship=Ash \S+ mass=[-\d.]+ kg com=\[[-\d. ]+\] \|v\|=([-\d.]+)", out) if float(t) > 7.0)

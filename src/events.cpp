@@ -350,7 +350,11 @@ void flightKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
     }
     if(slotFired(Slot::Space, ksc, kmod, g.binds)) {
         // EVA: space is the jump key (an edge the arm consumes; eva.h pressJump).
-        if(!repeat && g.ship && g.ship->isEva()) {
+        // Not from free cam: nothing arms a suit there, so the edge would sit in
+        // jumpPressed until the camera came back and then fire an unasked 2.5 m/s
+        // hop (#215, the same class as #578's landing hop). Pause is different on
+        // purpose -- there the press waits for the sim, like every held key.
+        if(!repeat && g.ship && g.ship->isEva() && g.camera->mode != CAM_FREE) {
             static_cast<Kerbal *>(g.ship)->pressJump();
         }
         // No staging from free cam or with time stopped.

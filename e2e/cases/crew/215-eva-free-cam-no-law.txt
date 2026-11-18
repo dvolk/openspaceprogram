@@ -1,0 +1,19 @@
+NAME eva-free-cam-no-law
+CLAIM Free cam over an orbital kerbal leaves it coasting: the suit does not claim to be standing, and nothing brakes the orbit.
+KIND invariant
+ARGS --time-accel 1 --timeout 8 --eva-log --orbit-log --orbit-interval 0.5 --frame-cap 30 --free-cam-pos 0 0 700000 --startship kerbal,res/ships/kerbal.json,Kerbin,inertial-orbit
+# #215. Free cam arms nothing ("a flier: no sticks"), but the suit's laws still run per
+# substep, so before the fix this kerbal wore the constructor's default -- mode=ground,
+# grounded=1 at 127 km -- and the walk law's brake pulled 10 m/s^2 out of a 2.2 km/s
+# orbit: ecc 0.0033 -> 0.069 and sma 725,089 -> 680,473 m in 7.7 s, with nobody at the
+# controls. disarm() gives a suit no arm ran a neutral tick and re-derives the regime.
+EXPECT Spawn 'inertial-orbit' around Kerbin
+EXPECT mode=space grounded=0
+FORBID mode=ground
+CHECK len(eva) > 5
+# The two physical CHECKs walk `orbit`, and an empty all() is a note that cannot redden
+# a case, so the channel itself needs a guard.
+CHECK len(orbit) > 5
+CHECK all(e["mode"] == "space" for e in eva)
+CHECK all(o["ecc"] < 0.001 for o in orbit if o["t"] > 1.0)
+CHECK all(o["v"] > 2200.0 for o in orbit if o["t"] > 1.0)

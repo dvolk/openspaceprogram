@@ -91,15 +91,11 @@ void Kerbal::settleContact() {
     mode = grounded ? EVA_GROUND : EVA_SPACE;
 }
 
-void Kerbal::armInput(Game &g, const SlotProbe &active) {
-    const Camera *cam = g.camera;
-
-    // Camera positions/directions live in the render frame (= the kerbal's frame).
-    const glm::dvec3 fwd = glm::normalize(cam->forward);
-    const glm::dvec3 up = glm::normalize(evaOntoPlane(cam->up, fwd));
-    const glm::dvec3 sright = evaScreenRight(fwd, up);
-    camBasis = evaCamBasis(fwd, up);
-
+/* The tick's regime, keys aside (#215): armed or disarmed, a suit asks the same
+   question -- is it standing, or is it falling/flying? Bullet contact first, because
+   the meshes are only there at max-LOD leaves, with the analytic height as the guard
+   (and the deck's own floor inside a platform bubble, #850). */
+void Kerbal::updateContact() {
     const glm::dvec3 radial = groundUp();
     const double alt = groundAltAt(get_center_of_mass());
     const double rest = restAlt();
@@ -117,6 +113,25 @@ void Kerbal::armInput(Game &g, const SlotProbe &active) {
         else { jumping = false; }
     }
     mode = grounded ? EVA_GROUND : EVA_SPACE;
+}
+
+void Kerbal::armInput(Game &g, const SlotProbe &active) {
+    const Camera *cam = g.camera;
+
+    // Camera positions/directions live in the render frame (= the kerbal's frame).
+    const glm::dvec3 fwd = glm::normalize(cam->forward);
+    const glm::dvec3 up = glm::normalize(evaOntoPlane(cam->up, fwd));
+    const glm::dvec3 sright = evaScreenRight(fwd, up);
+    camBasis = evaCamBasis(fwd, up);
+
+    const glm::dvec3 radial = groundUp();
+    /* tick.cpp disarms every live suit BEFORE it arms this one, so the regime has
+       already been derived once this tick from the same pose -- nothing between the two
+       calls moves pos, vel or frame, and updateContact()'s only side effect (spending
+       the `jumping` latch) is monotone, so the second call cannot disagree with the
+       first. Derived here anyway to keep armInput() self-contained: it costs one extra
+       terrain sample and one contactTest per tick, on one hull. */
+    updateContact();
     /* Spend the jump edge whichever mode is running (#578). It used to be read only on
        the ground branch, so a press during a spacewalk survived the tick and fired on
        the next landing: SPACE is the staging key for every ship, so tapping it out of
@@ -154,6 +169,24 @@ void Kerbal::armInput(Game &g, const SlotProbe &active) {
         if(active.held(Slot::EvaYawRight)) { yaw -= 1.0; }
         viewYaw += yaw * kYawRate * g.dt;
     }
+}
+
+/* A tick with no arm on this suit (#215). applyEva() runs per substep for every live
+   hull, and these fields are the only thing deciding what it does with them, so the
+   tick loop owes every kerbal it did NOT arm a neutral set -- the same rule that makes
+   the ships clearThrust/clearRotCmd/clearRcs every tick. The regime is re-derived
+   rather than kept: the constructor's defaults are "standing on the ground", which on
+   an orbital suit means the walk law's brake pulls 10 m/s^2 out of a 2.2 km/s orbit.
+   camBasis and viewYaw deliberately survive: they are the pose the suit was facing,
+   and the space law holds it instead of hunting for a view nobody is driving. */
+void Kerbal::disarm() {
+    updateContact();
+    walkDir = glm::dvec3(0.0);
+    /* Not armRcs(): clearRcs() is the whole armed-translation state -- the demand, the
+       request the window writes, and the rcsFiring flag the render pass gates the puff
+       on -- and a suit with no pilot should hold none of it. */
+    clearRcs();
+    jumpRequested = false;
 }
 
 void Kerbal::applyEva(double h) {

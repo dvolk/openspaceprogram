@@ -2178,6 +2178,11 @@ void Game::updateProximity() {
                rotating frame only INSIDE the atmosphere shell -- above the shell
                the rotating frame's SOI ends and the ship stays inertial. */
             s->switchFrames(time);
+            /* A woken suit also loses its last armed law (#215): releaseControl is a
+               Vehicle method and knows nothing about walkDir/mode/grounded, and
+               tick.cpp's per-tick disarm pass already walked past this hull while it was
+               on rails, so without this the substeps later in THIS tick would run it. */
+            if(s->isEva()) { static_cast<Kerbal *>(s)->disarm(); }
             if(args.prox_log) { printf("[prox] t=%.3f %s ENGAGED at %.1f m (< %.1f m, %s)\n",
                                        time, s->displayName().c_str(), d, r_on,
                                        grounded ? "ground" : "fly"); }
@@ -2213,6 +2218,10 @@ void Game::updateProximity() {
     if(any_engaged && a->onRails) {
         a->leaveRails();
         a->switchFrames(time);   // same epoch-consistency as the neighbor wake
+        /* As at the neighbour wake above: this happens AFTER tick.cpp's disarm pass and
+           AFTER this tick's arm, so the substeps that follow would run whatever law the
+           suit wore on the rails (#215). Next tick arms it properly from the live pose. */
+        if(a->isEva()) { static_cast<Kerbal *>(a)->disarm(); }
         if(args.prox_log) { printf("[prox] t=%.3f active %s WOKEN from rails\n",
                                    time, a->displayName().c_str()); }
     }

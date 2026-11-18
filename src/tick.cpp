@@ -102,6 +102,27 @@ void tick(Game &g) {
             g.ship->clearRotCmd();
             g.ship->clearRcs();
         }
+        /* The suit's half of that rule (#215). A kerbal's laws run per substep for
+           EVERY live hull, but its control state is armed once a tick for one ship
+           only -- g.ship, below, and only in a piloting scene outside free cam. So
+           every live kerbal is neutralized here and the arm below re-arms the one it
+           owns: without this, switching away from a spacewalker leaves it walking on
+           the demand it last had, and free cam leaves even the ACTIVE suit wearing the
+           constructor's "standing" default, whose walk brake pulls 10 m/s^2 out of an
+           orbit. (A stale rcsDir is the same hazard and burns hydrazine doing it; a
+           handover already clears it -- Vehicle::releaseControl, #580 -- but nothing
+           else cleared it, and free cam is not a handover.)
+           Skipped while paused and while railed, for the same reason the substep loop
+           skips them: no substeps, no law to neutralize. That leaves one window INSIDE
+           this tick -- the proximity pass below takes hulls off the rails after this
+           loop has passed them -- so game.cpp::updateProximity() disarms each suit as
+           it wakes it. */
+        if(g.time_accel != 0) {
+            for(Vehicle *s : vehicles) {
+                if(s->onRails || !s->isEva()) { continue; }
+                static_cast<Kerbal *>(s)->disarm();
+            }
+        }
 
         const bool *key = SDL_GetKeyboardState(nullptr);
         const Uint16 modState = SDL_GetModState();

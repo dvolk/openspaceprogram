@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 402 |
+| `invariant` | a behaviour or a player route the game must keep | 404 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 50 |
 | `harness` | CLI/test-engine plumbing, not game spec | 16 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **472** |
+| | **total** | **474** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -168,7 +168,7 @@ judgement. Select by number, name or path, e.g.
 | `flight/948-staged-dv-plan-never-rises.txt` | invariant | The flight delta-v readout is the ship's staged plan: it never rises across a stage press, it starts at the VAB's figure for the same build (minus the mass a flown ship carries and an authored build does not), and with one engine type left it agrees with the coarse single-burn figure. |
 | `flight/960-atmospheric-ascent-gets-out-of-the-air.txt` | invariant | An autopilot ascent through Kerbin's air climbs out of the air and stays near the ask, instead of dying inside it. |
 
-## crew (27)
+## crew (29)
 
 | case | kind | pins |
 |---|---|---|
@@ -192,6 +192,8 @@ judgement. Select by number, name or path, e.g.
 | `crew/211-crew-name-clash.txt` | invariant | A ship may not take a kerbal's display name. |
 | `crew/212-save-name-clash.txt` | invariant | A save with two ships named alike is refused rather than merged. |
 | `crew/215-eva-board-round-trip.txt` | invariant | EVA out and board again leaves exactly one vessel and the suit parked as a seat. |
+| `crew/215-eva-free-cam-no-law.txt` | invariant | Free cam over an orbital kerbal leaves it coasting: the suit does not claim to be standing, and nothing brakes the orbit. |
+| `crew/215-eva-handoff-no-coast.txt` | invariant | Handing control back from a spacewalker stops it walking: the suit stands still while nobody pilots it. |
 | `crew/224-ui-board-button.txt` | invariant | The part window's Board button returns a walking kerbal to its capsule. |
 | `crew/225-startship-kerbal-multidef.txt` | invariant | A kerbal def with more than one part is refused at boot. |
 | `crew/226-vab-launch-kerbal-multidef.txt` | invariant | The VAB refuses to launch a multi-part kerbal with a toast. |
