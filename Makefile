@@ -722,6 +722,14 @@ test-gen: lint
 	python3 utils/ground_model.py --self-test
 	python3 utils/check_atmo_band.py --self-test
 	python3 utils/check_atmo_band.py res/systems/*.json
+# #153: a "surface" attach whose contact is off the parent's skin. A shorthand edge lands
+# on the parent's WIDEST slice, so on a cone the part floats -- 24 shipped rows do today,
+# waived at the value each was measured at. The gate is that a new floating mount, or a
+# waived row that got worse, fails. It re-spells the loader's ray rule instead of calling
+# into it (the check_atmo_band / atmo_profile reasoning): a gate built on the loader's own
+# numbers could only catch a bad authoring value, not the rule itself drifting.
+	python3 utils/check_ship_skin.py --self-test
+	python3 utils/check_ship_skin.py
 # Parses EVERY case file, so a stale fixture path fails here -- on every commit
 # -- instead of waiting for someone to spend an e2e run on it (#360). The index
 # must match the cases anyway, so this costs one more pure-stdlib pass.
