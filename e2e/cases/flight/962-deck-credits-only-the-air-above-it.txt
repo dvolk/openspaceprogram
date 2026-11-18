@@ -1,0 +1,36 @@
+# An autopilot armed on Venus's cloud deck must size its turn from the air ABOVE the
+# deck, not from the whole sky the body happens to have (#962). The deck holds 56 km
+# of a 116 km air (res/data/venus_launch_sites.json, res/systems/solar_system.json),
+# so the hull starts with 60 km to climb and the ~47 kPa still over it -- about
+# 5300 kg/m^2 in Venus's 8.87 m/s^2 -- to push back. Credited the body, the law saw
+# 116 km and 1.04e6 kg/m^2 and scheduled a 40 km turn around a ship that was born
+# 56 km inside its own sky.
+#
+# This case exists for the GLUE: airAboveHull() reads the two numbers off a hull, a
+# body and a building bubble frame, none of which tests/test_guidance.cpp can reach
+# (the law is pure). The arm line prints what the law holds (#961), so a driver that
+# measured from the datum, or from |com| inside a bubble (#850), fails here.
+#
+# The numbers are bounded, not exact: the deck's own altitude is wherever the balloon
+# happens to be (56,004 m in the run this was written from) and the pressure comes off
+# the profile at that height.
+NAME deck-credits-only-the-air-above-it
+CLAIM An autopilot armed on an air platform schedules against the air above the deck, not the body's whole atmosphere.
+KIND invariant
+ARGS --system res/systems/solar_system.json --startship racer,res/ships/racer.json,Venus,pad,site=venus_cloud_platform --ascent 100e3 --time-accel 10 --sim-steps 900 --no-paint --ascent-log
+LIMIT 60
+EXPECT Autopilot: ascent armed on 'racer'
+CHECK float(re.search(r"([\d.]+) m of air overhead", out).group(1)) > 58e3
+CHECK float(re.search(r"([\d.]+) m of air overhead", out).group(1)) < 62e3
+CHECK float(re.search(r"of air overhead, ([\d.]+) kg/m\^2", out).group(1)) > 4500
+CHECK float(re.search(r"of air overhead, ([\d.]+) kg/m\^2", out).group(1)) < 6000
+# The schedule the hull is flown on: 0.4 x 60 km weighted 5300/10000 is a 12.7 km
+# turn, so the rows sit at 12-13 deg. Crediting the whole body starts the same tick
+# at 35.5 deg, and #930's apex_alt_ ratchet makes that first tick the steepest the
+# mission can ever ask for -- a wrong reading here is not a transient.
+CHECK max(a["pitch"] for a in ascent) < 20.0
+CHECK min(a["pitch"] for a in ascent) > 5.0
+# The hull never leaves the deck in this run: phase=failed, why="the ship came back
+# down", alt_asl parked at 56 km with dv 3 m/s. That is the spawn settle on an air
+# platform tripping #931's return rule -- #977, filed off this case -- and unrelated
+# to the two numbers above, which are settled at arm time.

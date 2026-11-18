@@ -24,6 +24,7 @@
 #define GUIDANCE_H
 
 #include <cassert>
+#include <cmath>     // std::isfinite, on the air facts the ctor guards
 #include <glm/glm.hpp>
 #include "orbit.h"
 
@@ -70,6 +71,46 @@ struct AscentAsk {
     }
 };
 
+/* The air a mission starts inside, measured ONCE from the hull it is armed on and
+   held by the law for the whole flight (#961). Both numbers count UP from the launch
+   point (#962): "how much air is above this hull", not "how much air does this body
+   have". A pad under the whole sky therefore gets the body's own figures, and a hull
+   that begins inside its own sky -- Venus's cloud deck sits at 56 km of a 116 km air,
+   kerbin_dock sits above all 85 km of Kerbin's -- gets only what is left above it.
+   Crediting the whole column to a hull at 56 km scheduled a 40 km turn around a ship
+   that had 60 km to climb and 5300 kg/m^2, not 1.04e6, to push back.
+
+   These are not per-tick readings, which is why they are not in GuidanceState: the
+   body a launch is armed on does not change mid-flight, and a state struct whose
+   neighbours all move makes these look like live readings. It also removes the trap
+   the pair used to be -- both defaulted to 0 in a struct the driver had to fill, and
+   0 means "fly the airless schedule", so a caller that filled one and not the other
+   flew a plausible mission with a quietly different profile. Here the arming door
+   answers and the compiler asks. */
+struct AirFacts {
+    double overhead = 0.0;   // [m] of air above the launch point, up to the air top
+    double column = 0.0;     // [kg/m^2] of THAT air: the weight that can push back
+};
+
+/* The arithmetic half, on its own so a test can weigh a deck without a hull, a body
+   or a frame. `launch_alt_asl` is metres above the body's datum (negative = under it,
+   which buys the same overhead as the datum: the profile is flat below it, #245), and
+   `pressure_at_launch` is the profile's own [Pa] there -- dividing by the datum's g is
+   the same hydrostatic reading the loader and dragAtm() weigh air with (#697), so the
+   law cannot size its turn from a different figure than the one that bills a hull.
+   Guards fail CLOSED on the !(x > 0.0) shape: a NaN top or pressure answers "no air"
+   rather than walking into the schedule (src/angmath.h). */
+inline AirFacts airOverhead(double air_top_asl, double launch_alt_asl,
+                            double pressure_at_launch, double datum_g) {
+    AirFacts a;
+    if(!(air_top_asl > 0.0) || !(datum_g > 0.0)) { return a; }
+    const double alt = launch_alt_asl > 0.0 ? launch_alt_asl : 0.0;
+    if(air_top_asl <= alt) { return a; }   // born at or above the sky: nothing overhead
+    a.overhead = air_top_asl - alt;
+    a.column = pressure_at_launch > 0.0 ? pressure_at_launch / datum_g : 0.0;
+    return a;
+}
+
 enum class AscentPhase {
     Pad,      // still on the ground (or just cleared it): vertical
     Ascent,   // burning, commanding a path angle, until Ap reaches the ask
@@ -79,8 +120,9 @@ enum class AscentPhase {
     Failed    // gave up; why() says how
 };
 
-/* A snapshot of what the ship knows about itself and its sky, all in the
-   non-rotating frame of the body it is launching from. */
+/* A snapshot of what the ship knows about itself, all in the non-rotating frame of
+   the body it is launching from. Everything here MOVES; the sky it launches into is
+   arm-time furniture and lives in AscentLaw as AirFacts (#961). */
 struct GuidanceState {
     glm::dvec3 pos = glm::dvec3(0.0);   // m from the body centre
     glm::dvec3 vel = glm::dvec3(0.0);   // m/s, ORBITAL (conic) velocity
@@ -91,23 +133,6 @@ struct GuidanceState {
                                         // all the same, and it is what "east" and
                                         // the asked inclination are measured from.
     double accel_max = 0.0;             // availableAccel(), m/s^2 at full throttle
-    /* The body's air top, metres above the same datum as sea_r, or 0 when the body has
-       no atmosphere at all. The law still models no drag and reads no pressure: this is
-       ONE number, answering ONE question -- how much of the climb happens inside air,
-       and therefore how late the pitch schedule may flatten (pathAngle, #960). It never
-       changes mid-flight, so it is arguably the law's to hold rather than the tick's to
-       carry; it rides here because GuidanceState is the only way in. The driver MUST
-       fill it from the body's AtmosphereParams -- the default is the AIRLESS schedule,
-       so a caller that forgets flies a Kerbin climb like a Moho one. */
-    double air_top_asl = 0.0;
-    /* Kilograms of air per square metre above the datum -- the hydrostatic column, p0/g,
-       which is what the drag integral actually sees. 0 with no air. This is the PAIR of
-       air_top_asl, filled from the same AtmosphereParams: HEIGHT says how much of the
-       climb happens inside air, WEIGHT says whether that air can push back. Duna's sky
-       is 50 km tall and holds 2% of Kerbin's mass per square metre, so a schedule keyed
-       on height alone steers a Duna ascent like a Kerbin one and flies it out of fuel
-       (#960 review). */
-    double air_column = 0.0;
     bool has_propellant = true;         // THIS stage can actually burn: the driver
                                         // fills it from Vehicle::canBurn(), which asks
                                         // per ignited engine whether every resource it
@@ -156,13 +181,25 @@ enum class PressRefusal { None, Crew, Root };
 
 class AscentLaw {
 public:
-    AscentLaw(const AscentTarget &t) : target(t) {
+    /* The ask, and the air the hull starts in. Neither is optional (#961): a law
+       built without the sky silently flies the airless schedule, which is the exact
+       mistake the pair used to make from inside GuidanceState. airAboveHull() reads
+       the second argument off a hull at arm time; a caller with no air to speak of
+       says so with AirFacts{}. */
+    AscentLaw(const AscentTarget &t, const AirFacts &air) : target(t), air_(air) {
         /* The two apsides are a floor and a ceiling. Swapped, the climb ends at
            once (apoapsis is past the ask before it starts) and the node burn has
            no periapsis it can catch, so the law coasts for ever looking for a
            verdict that cannot arrive. The Guidance window refuses the pair at
            the field; this is the contract for every other caller. */
         assert(t.peri_asl <= t.apo_asl);
+        /* 0 means no air overhead; a negative or NaN one is not a thing. NaN is
+           worth naming here because min/max SWALLOW it: min(1.0, NaN) answers 1.0,
+           so a NaN column would buy the FULL Kerbin bend -- the worst of the silent
+           answers (#960 review, now checked once at arm time rather than a tick
+           later, because the number cannot move after the law exists). */
+        assert(std::isfinite(air_.overhead) && air_.overhead >= 0.0);
+        assert(std::isfinite(air_.column) && air_.column >= 0.0);
     }
 
     /* One call per logic tick. The law takes no dt: nothing it computes scales
@@ -198,6 +235,11 @@ public:
     bool active() const { return phase_ != AscentPhase::Done && phase_ != AscentPhase::Failed; }
     const char *phaseName() const;
     const char *why() const { return why_; }
+    /* The air this mission starts inside, as the law holds it (#961). The Guidance
+       window is where a player would want to read it -- "85 km of air weighing 10328
+       kg/m^2 above this pad, so the turn is scheduled at 34 km" -- and printing from
+       here means the readout and the schedule cannot quote different skies. */
+    AirFacts airFacts() const { return air_; }
     OrbitElements elements() const { return last_el_; }   // the tick's conic
     /* Is elements() this tick's conic? step() bails before solving one when the
        hull is railed or the body has no mu, and last_el_ would otherwise be a
@@ -209,6 +251,10 @@ public:
 
 private:
     AscentTarget target;
+    /* The air overhead, settled when the mission was armed (#961/#962). Nothing in
+       the flight can change it -- the law is thrown away and rebuilt to fly
+       somewhere else -- so it is not a thing step() re-reads. */
+    AirFacts air_;
     AscentPhase phase_ = AscentPhase::Pad;
     OrbitElements last_el_ = {};
     bool conic_ok_ = false;
@@ -286,6 +332,15 @@ private:
    write still goes out, because the lever latches and a law that stops mid-burn
    without putting it back has left an engine open. */
 class Vehicle;
+/* Read the air above THIS hull, once, at the moment a mission is armed (#961's
+   fill, #962's measurement). It asks the body the same questions the aero pass asks
+   -- physical() for "is there air here", dragAtm()'s profile for the pressure at the
+   hull, airGravity() for what that air weighs -- so the schedule cannot be sized from
+   a different air than the one that will bill the flight. Answers AirFacts{} for a
+   hull with no body, no air, or no air left above it (kerbin_dock at 300 km is over
+   all of Kerbin's sky, and a mission armed there gets the airless bend rather than
+   Kerbin's 34 km one). */
+AirFacts airAboveHull(const Vehicle &v);
 /* want_stage is NOT optional: the law spends its once-per-stage press latch the
    tick it asks (#928), so a caller that cannot act on the ask strands that stage
    for the rest of the mission and never hears about it. */

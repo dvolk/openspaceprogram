@@ -31,13 +31,26 @@ static const double kFlatAir = 0.40;   // ... and as a fraction of the body's ai
    8940, which get that fraction of the bend -- correct for what their columns are worth,
    and none of the three has a launch pad yet (#960 review).
 
-   Two honesty notes. p0/g is the WHOLE column, so a body whose authored `height` cuts the
-   profile early is credited with air above its own ceiling: integrating each shipped
-   profile over [0, height] agrees with p0/g to 0.1-3.8% everywhere except Pluto, whose 20
-   km cut leaves a third of the column above it (2.1 against 1.4) -- which changes nothing
-   five thousand-fold under the threshold. And the ceiling itself is unflown: Venus is the
-   only padded body far past saturation, so whether 0.40 x 116 km is the right bend in air
-   100x Kerbin's thick is a guess this term does not argue for. */
+   Two honesty notes. The column is a profile reading, not the whole sky: since #962 the
+   law weighs airPressure(pad altitude)/g_datum, which is what sits ABOVE the launch point,
+   so a body whose authored `height` cuts the profile early no longer gets credited with
+   air above its own ceiling, and a launch that starts at 56 km of a 116 km air is weighed
+   at the 47 kPa still over it rather than at the 9.2 MPa under it. (The old reading, p0/g,
+   agreed with the integral over [0, height] to 0.1-3.8% on the shipped bodies except Pluto,
+   whose 20 km cut left a third of the column above its own ceiling -- 2.1 against 1.4,
+   which changed nothing five thousand-fold under the threshold.) And the ceiling itself is
+   unflown: Venus is the only padded body far past saturation, so whether 0.40 x the
+   overhead is the right bend in air 100x Kerbin's thick is a guess this term does not
+   argue for.
+
+   One more thing the hull-relative reading exposes: the roster's margins are not all
+   wide. Kerbin's datum column is 10,328 kg/m^2, three percent over this threshold, and
+   the shipped pad sits 270 m up it, so what the law weighs at Kerbin is 10,002 --
+   0.02% of slack. Retune Kerbin's relief a few hundred metres, or move a pad, and the
+   Kerbin bend stops saturating and falls a percent or two. That is not a bug in the
+   measurement; it says the threshold's placement is untested in exactly the band where
+   the flagship body lives, and #978 owns the decision (move the line into the roster's
+   empty 204..3858 band, or make the weight smooth rather than a step). */
 static const double kAirColumnFull = 10e3;
 static const double kLeadFrac = 0.5;   // node burn starts this fraction of its length early
 /* #941: how long the law waits before asking for a press it was refused. Logic
@@ -94,7 +107,7 @@ static const int kPressRetryTicks = 60;
    while the ship sank, ending parked on the surface at 1 cm/s with the lever at
    1.00. A schedule over a coordinate is two-way in time; only the profile's
    history says which way the flight is going. */
-static double pathAngle(double alt, double ask_alt, double air_top, double air_column) {
+static double pathAngle(double alt, double ask_alt, const AirFacts &air) {
     const double h_ask = kFlatHalf * std::max(ask_alt, 0.0);
     /* Two bounds on the air term, both measured, both found on Duna -- 50 km of sky
        over a 20 km mission.
@@ -108,10 +121,17 @@ static double pathAngle(double alt, double ask_alt, double air_top, double air_c
        bills its MASS: (CdA/m) * integral(rho v ds). Duna's column is 204 kg per square
        metre against Kerbin's 10328 (p0/g, hydrostatic, from res/systems/ksp_system.json),
        so the air there bills a fiftieth of what the term pays for. A thin sky buys no
-       trajectory, so it gets none: below kAirColumnFull it stops counting at all. */
-    const double weight = std::min(1.0, std::max(air_column, 0.0) / kAirColumnFull);
+       trajectory, so it gets none: below kAirColumnFull it stops counting at all.
+         MEASURED FROM THE HULL, not from the datum (#962). Both numbers here are the
+       air OVERHEAD -- top minus where the launch began, and the profile's own pressure
+       there -- so a deck that starts inside its own sky sizes its turn from the 60 km
+       left to climb and the 5300 kg/m^2 left to push back, instead of the 116 km and
+       1.04e6 kg/m^2 of the whole body. A ground pad is under all but its own height,
+       which on Kerbin is 270 m: 84,730 m and 10,002 kg/m^2 rather than 85 km and
+       10,328, a 0.1% trim of the turn and 1% of the flown apoapsis. */
+    const double weight = std::min(1.0, std::max(air.column, 0.0) / kAirColumnFull);
     const double h_air = kFlatAir * weight
-                       * std::min(std::max(air_top, 0.0), std::max(ask_alt, 0.0));
+                       * std::min(std::max(air.overhead, 0.0), std::max(ask_alt, 0.0));
     const double h_half = std::max(1000.0, std::max(h_ask, h_air));
     return std::atan2(h_half, std::max(0.0, alt));   // 90 deg at the pad, -> 0 as we climb
 }
@@ -219,11 +239,6 @@ void AscentLaw::pressRefused(PressRefusal kind) {
 AscentCommand AscentLaw::step(const GuidanceState &s) {
     AscentCommand c;
     assert(s.sea_r >= 0.0);   // a datum below the centre would make altitudes lie
-    /* 0 means no air; a negative or NaN top is not a thing. NaN is worth naming here
-       because min/max SWALLOW it: min(1.0, NaN) answers 1.0, so a NaN column would
-       silently buy the FULL Kerbin bend -- the worst of the silent answers (#960 review). */
-    assert(s.air_top_asl >= 0.0 && std::isfinite(s.air_top_asl));
-    assert(s.air_column >= 0.0 && std::isfinite(s.air_column));
     conic_ok_ = false;
     if(!active()) { return c; }
     if(s.railed) {
@@ -438,7 +453,7 @@ AscentCommand AscentLaw::step(const GuidanceState &s) {
            altitude gives, so a vacuum profile is untouched -- what it stops is
            the nose swinging back up when the hull sinks. */
         if(apex_alt_ < 0.0 || alt > apex_alt_) { apex_alt_ = alt; }
-        const double gamma = pathAngle(apex_alt_, target.apo_asl, s.air_top_asl, s.air_column);
+        const double gamma = pathAngle(apex_alt_, target.apo_asl, air_);
         pitch_ = glm::degrees(gamma);
         /* Until the ship is actually moving downrange, "horizontal" is the
            heading we chose for the target inclination. After that it is where
@@ -469,6 +484,50 @@ const char *AscentLaw::phaseName() const {
         case AscentPhase::Failed:   return "failed";
     }
     return "?";
+}
+
+/* The air a mission is armed inside, read off the hull once (#961 moves it off the
+   tick, #962 moves it from the datum to the hull).
+
+   The height half is how much of the climb happens inside air -- a pitch schedule
+   that flattens at 4.5 km inside an 85 km air spent 82% of the mission's delta-v
+   pushing air out of the way (the before/after flights are quoted by pathAngle()).
+   NOT atmosphere.enabled, which is the LOADER's flag: physical() is this repo's one
+   answer to "is there air here?" -- the aero pass and the rails gate ask it too, so
+   the law cannot disagree with them. An airless body hands the law zeros and gets the
+   schedule it has always had.
+
+   The weight half is the profile's own pressure ABOVE the hull, weighed the same way
+   the loader and dragAtm() weigh air (#697, #739): dividing by airGravity() turns Pa
+   into the kg per m^2 that the drag integral gets to spend. Reading it at the hull is
+   what makes Venus's cloud deck honest -- at 56 km of a 116 km air there is 47 kPa
+   overhead, not the 9.2 MPa under the deck, so the turn is sized at half a Kerbin's
+   bend over 60 km instead of a full one over 116.
+
+   A ground pad is under all but its own height, and that is NOT nothing: Kerbin's pad
+   sits 270 m up the datum, so the reading there is 84,730 m and 10,002 kg/m^2 against
+   the body's 85 km and 10,328. Trimming 40 m off a 34 km turn moved the standard bed
+   flight's peak apoapsis from 170.0 to 168.4 km and its dv by 0.03% -- the profile is
+   the same mission, one notch less bent. */
+AirFacts airAboveHull(const Vehicle &v) {
+    if(v.m_parent == nullptr) { return AirFacts(); }
+    const AtmosphereParams &atmo = v.m_parent->surface.atmosphere;
+    if(!atmo.physical()) { return AirFacts(); }
+    /* Metres above the datum, from the body's ROTATING frame. A building bubble's
+       origin is the building, not the body centre (#850), so |com| at kerbin_dock
+       would read a few hundred metres and credit a hull that is above every kilometre
+       of Kerbin's air with all of it. */
+    const double r = glm::length(v.posInBodyRot(v.comPos()));
+    const double alt_asl = r - v.m_parent->seaLevelRadius();
+    const double air_g = v.m_parent->airGravity();
+    /* Same rule as dragAtm's (#708): air needs a field to be weighed in. A loaded
+       body always has a mu, so this only fires on a hand-built one. */
+    assert(air_g > 0.0);
+    /* One profile read, at arm time. The aero pass builds its DragAtmosphere per hull
+       per substep; this builds one once per mission, and it is the same copy so the
+       pressure cannot come from a different profile than the drag will bill. */
+    const DragAtmosphere atm = dragAtm(atmo, *v.m_parent);
+    return airOverhead(atmo.top(), alt_asl, airPressure(atm, alt_asl), air_g);
 }
 
 /* The SlewFree latch, and only the latch. Idempotent: Command's Sas case TOGGLES,
@@ -515,31 +574,8 @@ bool flyAscent(Vehicle &v, AscentLaw &law, double dt, bool *want_stage) {
     v.comStateIn(inertial, s.pos, s.vel);
     s.mu = v.m_parent->mu;
     s.sea_r = v.m_parent->seaLevelRadius();
-    /* The air top, and nothing else about the air (#960). The law still bills no drag
-       and reads no pressure; it only needs to know how tall the atmosphere is, because
-       a pitch schedule that flattens at 4.5 km inside an 85 km air spent 82% of the
-       mission's delta-v pushing air out of the way (the before/after flights are quoted
-       by pathAngle() below). NOT atmosphere.enabled, which is the LOADER's flag:
-       physical() is this repo's one answer to "is there air here?" -- the aero pass and
-       the rails gate ask it too, so the law cannot disagree with them. An airless body
-       hands the law 0 and gets the schedule it has always had. */
-    s.air_top_asl = v.m_parent->surface.atmosphere.physical()
-                  ? v.m_parent->surface.atmosphere.top() : 0.0;
-    /* ...and how much air that height contains. This is the same fact the loader
-       authors: #739 makes sea_level_pressure "the weight of the column at the datum,
-       in Pa", so dividing by the gravity AT THE DATUM SPHERE gives that column in kg per
-       m^2 -- the mass the drag integral gets to spend, with no profile reading, no walk
-       over the layers table and no scale height (only Titan authors one). airGravity()
-       is the call the loader and dragAtm() weigh the air with (#697), so the law cannot
-       size its turn from a different field than the one that bills a hull for the air. */
-    s.air_column = 0.0;
-    if(s.air_top_asl > 0.0) {
-        const double air_g = v.m_parent->airGravity();
-        /* Same rule as dragAtm's (#708): air needs a field to be weighed in. A loaded
-           body always has a mu, so this only fires on a hand-built one. */
-        assert(air_g > 0.0);
-        s.air_column = v.m_parent->surface.atmosphere.sea_level_pressure / air_g;
-    }
+    /* Nothing about the air is read here any more (#961): the law holds what it was
+       armed with, from airAboveHull() below. This stays a snapshot of what MOVES. */
     s.grounded = v.isGrounded();
     s.railed = v.onRails;
     s.accel_max = v.availableAccel();

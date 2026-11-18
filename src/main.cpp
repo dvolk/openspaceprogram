@@ -954,9 +954,21 @@ int main(int argc, char **argv)
             game.armAscent(first);
             const std::string inc_txt = inc_given
                 ? " at inc " + std::to_string(inc) + " deg" : std::string();
-            printf("Autopilot: ascent armed on '%s' -- %.6g m circular%s (body %s)\n",
+            /* The air from the law, not re-derived here (#961): this line and the
+               schedule the hull flies now quote one sky. A deck launch reads what is
+               ABOVE the deck -- Venus's cloud platform says 60 km / 5300 kg/m^2, not
+               the 116 km / 1.04e6 of the whole body (#962). */
+            const AirFacts air = game.ascent ? game.ascent->airFacts() : AirFacts();
+            char air_txt[80];
+            if(air.overhead > 0.0) {
+                snprintf(air_txt, sizeof(air_txt), "%.0f m of air overhead, %.0f kg/m^2",
+                         air.overhead, air.column);
+            } else {
+                snprintf(air_txt, sizeof(air_txt), "no air overhead");
+            }
+            printf("Autopilot: ascent armed on '%s' -- %.6g m circular%s (body %s; %s)\n",
                    first->displayName().c_str(), alt, inc_txt.c_str(),
-                   first->m_parent ? first->m_parent->name.c_str() : "?");
+                   first->m_parent ? first->m_parent->name.c_str() : "?", air_txt);
         }
     } else if(!args.ascent.empty() || !args.autopilot.empty()) {
         /* The whole block above -- the start ships, --autopilot and --ascent --

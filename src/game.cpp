@@ -475,7 +475,11 @@ void Game::armAscent(Vehicle *v) {
        same rule stated for the next caller, and the descent law (#612) is the
        one that will forget it. */
     assert(!(ascent && ascent->active()));
-    ascent = AscentLaw(ascent_ask.target());
+    /* The air is read HERE, once, off the hull this mission starts on (#961): it is a
+       fact about the body and the launch point, not a per-tick reading, and the law
+       cannot be built without answering it. #962 makes it the air ABOVE this hull, so a
+       cloud deck or an orbital dock is not credited with the sky under it. */
+    ascent = AscentLaw(ascent_ask.target(), airAboveHull(*v));
     ascent_ship = v;
 }
 

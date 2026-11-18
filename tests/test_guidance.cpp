@@ -26,6 +26,10 @@ static const double THRUST  = 50000.0;              // racer: one engine part
 static const double M_FULL  = 2670.23;              // capsule+wheel+tank+engine
 static const double MDOT    = 11.36;                // hydrogen 5.68 + lox 5.68 kg/s
 static const double PROPPANT = 840.0;             // racer: one fuel_tank of h2+lox
+/* The closed-loop runs below fly Moho, which has no air, and the law now asks which
+   sky it is armed under instead of letting a state field default to one (#961). The
+   air cases name their own AirFacts. */
+static const AirFacts kNoAir;
 
 struct Flight {
     bool done = false;
@@ -55,7 +59,7 @@ static Flight simulate(const AscentTarget &target, double dt = 1.0/120.0,
                        glm::dvec3 start = glm::dvec3(R_MOHO + 1.0, 0.0, 0.0),
                        double thrust = THRUST) {
     Flight f;
-    AscentLaw law(target);
+    AscentLaw law(target, kNoAir);
     glm::dvec3 pos = start;
     glm::dvec3 vel(0.0, 0.0, 0.0);
     double mass = M_FULL;
@@ -220,7 +224,7 @@ static void test_degenerate_geometry_still_points_somewhere_horizontal() {
     for(const Site &site : sites) {
         for(double inc : {-1.0, 45.0}) {
             AscentTarget t; t.apo_asl = t.peri_asl = 100e3; t.inc_rad = inc;
-            AscentLaw law(t);
+            AscentLaw law(t, kNoAir);
             GuidanceState s; s.pos = site.pos; s.vel = glm::dvec3(0.0);
             s.mu = MU_MOHO; s.sea_r = R_MOHO; s.spin_axis = site.spin;
             s.accel_max = 18.0; s.grounded = true;
@@ -245,7 +249,7 @@ static void test_degenerate_geometry_still_points_somewhere_horizontal() {
 static void test_the_heading_has_a_sense_and_a_working_cos_lat() {
     printf("== the heading: due east, and a site that is not on the equator ==\n");
     AscentTarget t; t.apo_asl = t.peri_asl = 100e3; t.inc_rad = -1.0;
-    AscentLaw law(t);
+    AscentLaw law(t, kNoAir);
     GuidanceState s; s.pos = glm::dvec3(R_MOHO, 0.0, 0.0); s.vel = glm::dvec3(0.0);
     s.mu = MU_MOHO; s.sea_r = R_MOHO; s.spin_axis = glm::dvec3(0.0, 0.0, 1.0);
     s.accel_max = 18.0; s.grounded = true;
@@ -263,7 +267,7 @@ static void test_the_heading_has_a_sense_and_a_working_cos_lat() {
     const double lat = glm::radians(45.0);
     const glm::dvec3 start(R_MOHO * std::cos(lat), 0.0, R_MOHO * std::sin(lat));
     AscentTarget ask; ask.apo_asl = ask.peri_asl = 100e3; ask.inc_rad = glm::radians(60.0);
-    AscentLaw law45(ask);
+    AscentLaw law45(ask, kNoAir);
     GuidanceState s45; s45.pos = start; s45.vel = glm::dvec3(0.0);
     s45.mu = MU_MOHO; s45.sea_r = R_MOHO; s45.spin_axis = glm::dvec3(0.0, 0.0, 1.0);
     s45.accel_max = 18.0; s45.grounded = true;
@@ -331,7 +335,7 @@ static void test_the_launch_heading_buys_the_inclination() {
        angle from due east (the law measures azimuth from east because east is
        what falls out of the cross product, not from north). */
     AscentTarget t; t.apo_asl = t.peri_asl = 100e3; t.inc_rad = glm::radians(45.0);
-    AscentLaw law(t);
+    AscentLaw law(t, kNoAir);
     GuidanceState s; s.pos = glm::dvec3(R_MOHO, 0.0, 0.0); s.vel = glm::dvec3(0.0);
     s.mu = MU_MOHO; s.sea_r = R_MOHO; s.spin_axis = glm::dvec3(0.0, 0.0, 1.0);
     s.accel_max = 18.0; s.grounded = true;
@@ -350,7 +354,7 @@ static void test_the_launch_heading_buys_the_inclination() {
 static void test_a_hull_that_lands_is_a_failed_mission() {
     printf("== a hull that comes back down ==\n");
     AscentTarget t; t.apo_asl = t.peri_asl = 100e3; t.inc_rad = -1.0;
-    AscentLaw law(t);
+    AscentLaw law(t, kNoAir);
     GuidanceState s; s.pos = glm::dvec3(R_MOHO, 0.0, 0.0); s.vel = glm::dvec3(0.0);
     s.mu = MU_MOHO; s.sea_r = R_MOHO; s.spin_axis = glm::dvec3(0.0, 0.0, 1.0);
     s.accel_max = 18.0; s.grounded = true;
@@ -377,7 +381,7 @@ static void test_a_hull_that_lands_is_a_failed_mission() {
 
     /* The ordering, pinned: a hull that is both parked and dry must not be
        blamed for the tanks. */
-    AscentLaw law2(t);
+    AscentLaw law2(t, kNoAir);
     GuidanceState s2 = s; s2.grounded = false; s2.has_propellant = true;
     law2.step(s2);                          // leave the pad
     s2.grounded = true; s2.has_propellant = false;
@@ -395,7 +399,7 @@ static void test_a_hull_that_lands_is_a_failed_mission() {
 static void test_a_sinking_ship_does_not_get_its_nose_back() {
     printf("== the pitch schedule cannot walk backwards ==\n");
     AscentTarget t; t.apo_asl = t.peri_asl = 100e3; t.inc_rad = -1.0;
-    AscentLaw law(t);
+    AscentLaw law(t, kNoAir);
     GuidanceState s; s.vel = glm::dvec3(0.0, 300.0, 0.0);
     s.mu = MU_MOHO; s.sea_r = R_MOHO; s.spin_axis = glm::dvec3(0.0, 0.0, 1.0);
     s.accel_max = 18.0; s.grounded = false;
@@ -425,7 +429,7 @@ static void test_a_sinking_ship_does_not_get_its_nose_back() {
 static void test_the_law_asks_for_a_press_and_asks_once() {
     printf("== the press request: once per stage number ==\n");
     AscentTarget t; t.apo_asl = t.peri_asl = 100e3; t.inc_rad = -1.0;
-    AscentLaw law(t);
+    AscentLaw law(t, kNoAir);
     GuidanceState s; s.pos = glm::dvec3(R_MOHO + 20000.0, 0.0, 0.0);
     s.vel = glm::dvec3(0.0, 400.0, 0.0);
     s.mu = MU_MOHO; s.sea_r = R_MOHO; s.spin_axis = glm::dvec3(0.0, 0.0, 1.0);
@@ -451,7 +455,7 @@ static void test_the_law_asks_for_a_press_and_asks_once() {
 
     /* The other direction, which is the one that used to end a mission: a stage
        that has run dry with presses still unasked is a press, not a failure. */
-    AscentLaw law2(t);
+    AscentLaw law2(t, kNoAir);
     GuidanceState s2 = s; s2.has_propellant = true;
     s2.stages_left = 2; s2.stage_due = false;
     law2.step(s2);
@@ -469,7 +473,7 @@ static void test_the_law_asks_for_a_press_and_asks_once() {
     /* A press that separated nothing still stepped the counter (#545's shape), so a
        later press is askable again -- the law is keyed to the number, not to whether
        the last one dropped anything. */
-    AscentLaw law3(t);
+    AscentLaw law3(t, kNoAir);
     GuidanceState s3 = s; s3.has_propellant = true;
     s3.stages_left = 3; s3.stage_due = true;
     CHECK_TRUE(law3.step(s3).want_stage, "asked at three presses left");
@@ -490,7 +494,7 @@ static void test_the_law_asks_for_a_press_and_asks_once() {
 static void test_a_reported_refusal_is_retried_and_named() {
     printf("== a reported refusal: retried, throttled, named ==\n");
     AscentTarget t; t.apo_asl = t.peri_asl = 100e3; t.inc_rad = -1.0;
-    AscentLaw law(t);
+    AscentLaw law(t, kNoAir);
     GuidanceState s; s.pos = glm::dvec3(R_MOHO + 20000.0, 0.0, 0.0);
     s.vel = glm::dvec3(0.0, 400.0, 0.0);
     s.mu = MU_MOHO; s.sea_r = R_MOHO; s.spin_axis = glm::dvec3(0.0, 0.0, 1.0);
@@ -525,7 +529,7 @@ static void test_a_reported_refusal_is_retried_and_named() {
     /* A root seam is not fixable mid-flight -- which side of a decoupler is the
        ship's root is decided in the VAB -- so it is remembered and never re-asked:
        one refusal line for the flight, not one a second. */
-    AscentLaw law2(t);
+    AscentLaw law2(t, kNoAir);
     GuidanceState s2 = s; s2.has_propellant = true; s2.stages_left = 3; s2.stage_due = true;
     CHECK_TRUE(law2.step(s2).want_stage, "asked at three presses left");
     law2.pressRefused(PressRefusal::Root);
@@ -540,7 +544,7 @@ static void test_a_reported_refusal_is_retried_and_named() {
 
     /* The memory lasts as long as the refusal does. Once stages_left moves, a press
        HAS happened, and an old no is not why the stack is still together. */
-    AscentLaw law3(t);
+    AscentLaw law3(t, kNoAir);
     GuidanceState s3 = s; s3.has_propellant = true; s3.stages_left = 2; s3.stage_due = true;
     law3.step(s3);
     law3.pressRefused(PressRefusal::Crew);
@@ -590,7 +594,7 @@ static StagedFlight simulateStaged(const AscentTarget &target, const StageSpec *
                                    int nStage, double baseDry, bool allow_press,
                                    double dt = 1.0/120.0, int max_s = 900) {
     StagedFlight f;
-    AscentLaw law(target);
+    AscentLaw law(target, kNoAir);
     std::vector<double> prop(nStage);
     for(int i = 0; i < nStage; i++) { prop[i] = st[i].prop; }
     int cur = 0;                        // which stage is lit (0 = the pad stage)
@@ -665,7 +669,7 @@ static void test_a_staged_hull_flies_and_an_unstaged_one_does_not() {
 static void test_the_law_fails_loudly_not_silently() {
     printf("== the doors: rails, a dead stage, no conic ==\n");
     AscentTarget t; t.apo_asl = t.peri_asl = 100e3; t.inc_rad = -1.0;
-    AscentLaw law(t);
+    AscentLaw law(t, kNoAir);
     GuidanceState s; s.pos = glm::dvec3(R_MOHO, 0.0, 0.0); s.vel = glm::dvec3(0.0, 1.0, 0.0);
     s.mu = MU_MOHO; s.sea_r = R_MOHO; s.spin_axis = glm::dvec3(0.0, 0.0, 1.0);
     s.accel_max = 18.0;
@@ -688,7 +692,7 @@ static void test_the_law_fails_loudly_not_silently() {
     /* The hole the potential read leaves: engines rated 18 m/s^2 and nothing to
        burn. availableAccel() says healthy, so without the driver's tanks check
        the law would aim and arm a burn that does nothing, for ever. */
-    AscentLaw law_dry(t);
+    AscentLaw law_dry(t, kNoAir);
     s.accel_max = 18.0; s.has_propellant = false;
     const AscentCommand dry = law_dry.step(s);
     CHECK_NEAR(glm::length(dry.aim), 0.0, 0.0, "a dry stage buys no aim");
@@ -696,7 +700,7 @@ static void test_the_law_fails_loudly_not_silently() {
     CHECK_TRUE(std::string(law_dry.why()).find("dry") != std::string::npos,
                "naming the tanks rather than the engines");
 
-    AscentLaw law2(t);
+    AscentLaw law2(t, kNoAir);
     s.accel_max = 18.0; s.has_propellant = true; s.mu = 0.0;
     law2.step(s);
     CHECK_TRUE(law2.phase() == AscentPhase::Failed, "no mu, no mission");
@@ -706,7 +710,7 @@ static void test_the_law_fails_loudly_not_silently() {
        phase machine has no way to find this out for itself -- it waits for an
        apoapsis the hull can never build -- so before the gate the player's only
        answer was an empty tank and a ship that never moved. */
-    AscentLaw law_weak(t);
+    AscentLaw law_weak(t, kNoAir);
     s.mu = MU_MOHO; s.accel_max = 1.0; s.has_propellant = true; s.grounded = true;
     const AscentCommand weak = law_weak.step(s);
     printf("   [grounded, 1.0 m/s^2 on Moho] phase=%s why=\"%s\"\n",
@@ -718,7 +722,7 @@ static void test_the_law_fails_loudly_not_silently() {
 
     /* The other side of the inequality: a stage with TWR 6.7 on the same pad
        must still be allowed to fly, so the gate cannot just be "grounded". */
-    AscentLaw law_ok(t);
+    AscentLaw law_ok(t, kNoAir);
     s.accel_max = 18.0;
     const AscentCommand able = law_ok.step(s);
     CHECK_TRUE(law_ok.phase() == AscentPhase::Pad, "a stage that can lift off is still flying");
@@ -728,7 +732,7 @@ static void test_the_law_fails_loudly_not_silently() {
 static void test_done_is_a_periapsis_not_a_speed() {
     printf("== Done means the ground is cleared, not that the ship is fast ==\n");
     AscentTarget t; t.apo_asl = t.peri_asl = 100e3; t.inc_rad = -1.0;
-    AscentLaw law(t);
+    AscentLaw law(t, kNoAir);
     GuidanceState s; s.mu = MU_MOHO; s.sea_r = R_MOHO; s.accel_max = 18.0;
     s.spin_axis = glm::dvec3(0.0, 0.0, 1.0);
     s.pos = glm::dvec3(R_MOHO + 100e3, 0.0, 0.0);
@@ -743,7 +747,7 @@ static void test_done_is_a_periapsis_not_a_speed() {
     // Faster than orbital but still bound: periapsis sits AT the ask, apoapsis
     // 1500 km past it. A rule that only looked for periapsis >= ask would call
     // this mission accomplished.
-    AscentLaw law3(t);
+    AscentLaw law3(t, kNoAir);
     s.vel = glm::dvec3(0.0, 900.0, 0.0);
     law3.step(s);
     printf("   [900 m/s at the ask] peri=%.1f km apo=%.1f km phase=%s\n",
@@ -754,7 +758,7 @@ static void test_done_is_a_periapsis_not_a_speed() {
     CHECK_TRUE(law3.phase() != AscentPhase::Done, "so a 100 x 1850 km orbit is not a 100 x 100 km orbit");
     s.vel = glm::dvec3(0.0, 900.0, 0.0);
 
-    AscentLaw law2(t);
+    AscentLaw law2(t, kNoAir);
     const double v_circ = std::sqrt(MU_MOHO / (R_MOHO + 100e3));
     s.pos = glm::dvec3(R_MOHO + 100e3, 0.0, 0.0);
     s.vel = glm::dvec3(0.0, v_circ, 0.0);   // a made orbit at the ask
@@ -766,7 +770,7 @@ static void test_done_is_a_periapsis_not_a_speed() {
 static void test_a_pad_ship_aims_at_the_sky_and_never_at_nan() {
     printf("== the pad: no velocity, no NaN ==\n");
     AscentTarget t; t.apo_asl = t.peri_asl = 100e3; t.inc_rad = -1.0;
-    AscentLaw law(t);
+    AscentLaw law(t, kNoAir);
     GuidanceState s; s.pos = glm::dvec3(R_MOHO, 0.0, 0.0); s.vel = glm::dvec3(0.0);
     s.mu = MU_MOHO; s.sea_r = R_MOHO; s.spin_axis = glm::dvec3(0.0, 0.0, 1.0);
     s.accel_max = 18.0; s.grounded = true;
@@ -860,8 +864,11 @@ static void test_letting_go_closes_both_channels() {
        this), which is the whole empty band the shipped bodies offer.
    (The 1000 m floor in h_half is NOT pinned here -- it shows up in
    test_asks_it_cannot_land_say_so, on a 10 km Moho ask.) */
-static double schedPitch(const AscentTarget &t, double air_top, double air_column, double alt) {
-    AscentLaw law(t);
+static double schedPitch(const AscentTarget &t, double air_overhead, double air_column, double alt) {
+    /* The air rides with the ask, at the ctor (#961): a law cannot be flown against a
+       sky it was not built with, and the pair is the air OVERHEAD -- above wherever this
+       schedule starts -- not the body's whole atmosphere (#962). */
+    AscentLaw law(t, AirFacts{air_overhead, air_column});
     GuidanceState s;
     /* A slow climb, so the apoapsis stays put and the law keeps answering with its
        schedule instead of moving to Coast and aiming prograde. */
@@ -869,14 +876,12 @@ static double schedPitch(const AscentTarget &t, double air_top, double air_colum
     s.vel = glm::dvec3(0.0, 30.0, 0.0);
     s.mu = MU_MOHO; s.sea_r = R_MOHO; s.spin_axis = glm::dvec3(0.0, 0.0, 1.0);
     s.accel_max = 19.0; s.has_propellant = true;
-    s.air_top_asl = air_top;
-    s.air_column = air_column;
     law.step(s);
     return law.pitch_deg();
 }
 
-static double schedHHalf(const AscentTarget &t, double air_top, double air_column, double alt) {
-    return alt * std::tan(glm::radians(schedPitch(t, air_top, air_column, alt)));
+static double schedHHalf(const AscentTarget &t, double air_overhead, double air_column, double alt) {
+    return alt * std::tan(glm::radians(schedPitch(t, air_overhead, air_column, alt)));
 }
 
 static void test_the_air_holds_the_nose_up() {
@@ -954,6 +959,74 @@ static void test_the_air_holds_the_nose_up() {
                "Kerbin's own sky is already past the point where more air buys nothing");
 }
 
+/* The air the law is armed with is the air ABOVE the hull, not the body's whole
+   atmosphere, and it is settled once at the ctor instead of riding the tick
+   (#961, #962). Two halves:
+     * airOverhead()'s arithmetic, on shipped numbers -- Venus's cloud deck (56 km of
+       a 116 km air, 9.2 MPa at the datum, g 8.87), an orbital dock above the whole
+       sky, and a launch under everything, where the answer must still be the body's
+       own figures because that is what every flight quoted by pathAngle() flew.
+     * what the schedule does with it. Credited the whole body, the deck is born past
+       its own flatten: 0.4 x min(116 km, 100 km) = a 40 km turn around a hull that
+       starts at 56 km, so its first tick asks 35 deg and #930's apex_alt_ ratchet
+       means it can never ask for steeper. Measured from the deck it has 60 km left
+       and 47 kPa of it overhead, which is a 12.7 deg start.
+   The game agrees with the second half: arming on venus_cloud_platform now prints
+   "59990 m of air overhead, 5269 kg/m^2" and its first [ascent] row says pitch=12.7.
+   (Flown numbers are a hair under the round ones here: the deck's own altitude is
+   56,010 m and the profile reads 46.7 kPa there.) */
+static void test_the_air_is_measured_above_the_hull() {
+    printf("== the air is overhead, not the whole body: a deck inside its own sky ==\n");
+    const AirFacts deck = airOverhead(116e3, 56e3, 47e3, 8.87);
+    printf("   [venus deck, 56 km of a 116 km air] overhead %.1f km, column %.0f kg/m^2\n",
+           deck.overhead / 1e3, deck.column);
+    CHECK_NEAR(deck.overhead, 60e3, 1.0, "the deck has 60 km of air left to climb, not 116");
+    CHECK_NEAR(deck.column, 5300.0, 5.0, "and weighs the 47 kPa still over it, in the datum's field");
+
+    /* At the datum the two readings are the SAME statement, which is what every
+       flight quoted by pathAngle() was flown with. A real pad is not at the datum --
+       Kerbin's sits 270 m up it, and the law weighs 84,730 m and 10,002 kg/m^2 there
+       rather than 85 km and 10,328: a 0.1% trim of the turn, measured as 170.0 ->
+       168.4 km of peak apoapsis on the standard bed and 0.03% of its dv. */
+    const AirFacts floor = airOverhead(116e3, 0.0, 9.2e6, 8.87);
+    CHECK_NEAR(floor.overhead, 116e3, 1e-9, "a launch under everything gets everything");
+    CHECK_NEAR(floor.column, 9.2e6 / 8.87, 1e-6, "...and the whole column to weigh it with");
+
+    /* Above the sky there is no air to schedule a turn around. kerbin_dock is at
+       300 km; Kerbin's air tops at 85 km, so a mission armed there gets the ask's own
+       schedule -- the near-prograde answer the old arithmetic also reached, but from
+       the air that is actually there rather than from the 85 km under the hull. */
+    const AirFacts dock = airOverhead(85e3, 300e3, 0.0, 9.81);
+    CHECK_NEAR(dock.overhead, 0.0, 0.0, "a dock above the air gets no air overhead");
+    CHECK_NEAR(dock.column, 0.0, 0.0, "...and no weight, so the air term is out");
+
+    /* A launch below the datum (a has_sea body's sea bed) must not buy more overhead
+       than the sky has: the profile is FLAT below the datum (#245). */
+    const AirFacts bed = airOverhead(85e3, -4e3, 9.8e6, 9.81);
+    CHECK_NEAR(bed.overhead, 85e3, 1e-9, "under the datum the overhead stays the air top");
+    /* And a profile with no field to weigh it in, or no air at all, answers zero
+       rather than a plausible number. */
+    CHECK_NEAR(airOverhead(85e3, 0.0, 9.8e6, 0.0).column, 0.0, 0.0, "no field, no weight");
+    CHECK_NEAR(airOverhead(0.0, 0.0, 9.8e6, 9.81).overhead, 0.0, 0.0, "no air, no overhead");
+
+    /* The schedule consequence the ticket measures, on a 100 km ask from the deck. */
+    AscentTarget t; t.apo_asl = t.peri_asl = 100e3; t.inc_rad = -1.0;
+    const double credited = schedPitch(t, 116e3, 9.2e6 / 8.87, 56e3);
+    const double honest = schedPitch(t, deck.overhead, deck.column, 56e3);
+    printf("   [first tick off the deck] crediting the body %5.1f deg, measuring the deck %5.1f deg\n",
+           credited, honest);
+    CHECK_NEAR(credited, 35.5, 0.3, "crediting the whole body starts a deck launch 35 deg up");
+    CHECK_NEAR(honest, 12.8, 0.4, "measuring the overhead starts it at a quarter of that");
+    CHECK_TRUE(honest < credited * 0.5, "and the difference is not a rounding matter");
+    /* The turn now ends inside the air it was sized from (#960's reason for the cap):
+       the flatten is 12.7 km of climb out of the 60 km overhead, not 40 km of a sky
+       the hull is already 56 km inside. */
+    CHECK_TRUE(56e3 * std::tan(glm::radians(honest)) < deck.overhead,
+               "the deck's turn ends below the top of the air it is flying in");
+    CHECK_TRUE(56e3 * std::tan(glm::radians(credited)) > 0.65 * deck.overhead,
+               "crediting the body spends two thirds of the deck's whole climbable air on the turn");
+}
+
 int main() {
     test_a_pad_ship_aims_at_the_sky_and_never_at_nan();
     test_a_hull_that_lands_is_a_failed_mission();
@@ -974,6 +1047,7 @@ int main() {
     test_a_reported_refusal_is_retried_and_named();
     test_a_staged_hull_flies_and_an_unstaged_one_does_not();
     test_the_air_holds_the_nose_up();
+    test_the_air_is_measured_above_the_hull();
     printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures ? 1 : 0;
 }

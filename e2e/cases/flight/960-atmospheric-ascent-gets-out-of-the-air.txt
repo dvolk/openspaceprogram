@@ -4,8 +4,9 @@
 # 1.84 MN against ~47 m^2 of CdA, which puts its sea-level airspeed ceiling at
 # ~250 m/s -- never passed 9.4 km of apoapsis, billed 11.7 km/s of drag and
 # ended "the tanks are dry" at t=1109 s (#960). The law now asks how TALL and
-# how HEAVY the air is (GuidanceState::air_top_asl / air_column, which the
-# driver fills off the body's AtmosphereParams) and the same hull on the same
+# how HEAVY the air is (AirFacts overhead / column, which the arming door reads
+# off the body once -- airAboveHull(); #961 moved the pair off the tick and #962
+# moved the measurement from the datum to the hull) and the same hull on the same
 # bed reaches 150 x 159 km for 4.8 km/s.
 #
 # This case exists because nothing else in the suite touches that wiring. Case
