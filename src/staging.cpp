@@ -6,7 +6,7 @@
 #include <cassert>
 #include <cmath>
 #include <cstdint>
-#include <map>
+#include <string_view>
 
 #include "hash.h"   // the staging cache key's FNV-1a mixer
 
@@ -43,6 +43,11 @@ struct Layers {
     std::vector<int> layerStart;   // nLayers + 1 entries, [0] = 0
 };
 
+/* A fuel link resolved to part indices (both ends alive when the snapshot was taken;
+   refreshFuel() re-checks liveness every renumbering, since a separation can kill an
+   endpoint). */
+struct LinkRef { int from, to; };
+
 // Groups the parts, returning the group count (ids are dense from 0).
 int buildFuelGroups(std::vector<SimPart> &parts) {
     /* The one partition (shipdef.h, #292). A DEAD part is a wall too, keeping
@@ -53,13 +58,19 @@ int buildFuelGroups(std::vector<SimPart> &parts) {
        it. No reachable state needs this term -- it is here so a hand-built def
        (or a future non-decoupler way to kill a part) cannot leave a dead part
        sharing a live group. */
-    std::vector<int> parent(parts.size());
-    std::vector<bool> wall(parts.size());
+    /* These three ride between calls (#963): this runs once per fuel renumbering --
+       ~940 times an ascent -- and each entry is written before it is read, so
+       resize()-then-write is the whole reset. partitionFuelGroups() assigns `group` in
+       full (its contract, shipdef.h), so that one needs no clear of its own. */
+    static thread_local std::vector<int> parent;
+    static thread_local std::vector<bool> wall;
+    static thread_local std::vector<int> group;
+    parent.resize(parts.size());
+    wall.resize(parts.size());
     for(size_t i = 0; i < parts.size(); i++) {
         parent[i] = parts[i].parent;
         wall[i] = parts[i].isBarrier || !parts[i].alive;
     }
-    std::vector<int> group;
     const int n = partitionFuelGroups(parent, wall, group);
     for(size_t i = 0; i < parts.size(); i++) { parts[i].group = group[i]; }
     return n;
@@ -68,7 +79,7 @@ int buildFuelGroups(std::vector<SimPart> &parts) {
 /* Group buckets by reverse-hop distance, furthest first: outer groups drain first, as
    in Vehicle::fuelDrainLayers (that flight-side copy still builds the same layers out
    of a std::map -- same rule, two shapes now, and it is the one the LIVE drain uses).
-   `out` is the caller's (a layersOf node) and is fully overwritten.
+   `out` is the caller's (a layersOf entry) and is fully overwritten.
 
    The group ids are dense from 0 (buildFuelGroups' contract), so the hop table is a
    vector indexed by group rather than a std::map keyed by it, and the layers are a
@@ -81,7 +92,7 @@ int buildFuelGroups(std::vector<SimPart> &parts) {
    live difference: it can only reach that fp sum, and filling in BFS order instead
    changed no row on any shipped hull and failed no check (measured, #963's review). It
    costs a sort of the reachable set, which is never larger than the walk already did. */
-void drainLayersFor(const std::map<int, std::vector<int> > &rev, int group,
+void drainLayersFor(const std::vector<std::vector<int> > &rev, int group,
                     int nGroups, Layers &out) {
     /* These three ride between calls (#963): this runs once per group that holds a lit
        engine, and every one is overwritten before anything reads it. The body calls
@@ -91,6 +102,7 @@ void drainLayersFor(const std::map<int, std::vector<int> > &rev, int group,
     static thread_local std::vector<int> queue;  // reachable groups, ascending on use
     static thread_local std::vector<int> cnt;    // per layer: count, then write cursor
     assert(group >= 0 && group < nGroups);
+    assert(rev.size() >= (size_t)nGroups);   // refreshFuel() grows it to the numbering
     /* The exit below leaves dist ALL -1 again, so there is no clear pass here: the walk
        touches only entries it marked, which keeps this function O(reachable) rather
        than O(nGroups) -- a ship with many groups and short reach (a ring of unlinked
@@ -109,10 +121,9 @@ void drainLayersFor(const std::map<int, std::vector<int> > &rev, int group,
     int maxDist = 0;
     for(size_t qi = 0; qi < queue.size(); qi++) {
         const int u = queue[qi];
-        std::map<int, std::vector<int> >::const_iterator it = rev.find(u);
-        if(it == rev.end()) { continue; }
-        for(size_t i = 0; i < it->second.size(); i++) {
-            const int v = it->second[i];
+        const std::vector<int> &feed = rev[(size_t)u];   // empty unless something feeds u
+        for(size_t i = 0; i < feed.size(); i++) {
+            const int v = feed[i];
             assert(v >= 0 && v < nGroups);
             if(dist[v] != -1) { continue; }
             dist[v] = dist[u] + 1;
@@ -170,7 +181,18 @@ void buildBuckets(int nBuckets, int nItems, const Key &key,
         start[(size_t)b + 1] += start[(size_t)b];
     }
     items.assign((size_t)nItems, 0);
-    std::vector<int> cursor = start;
+    /* The write cursor is a copy of `start`, so it used to be a fresh container per call;
+       this runs twice a fuel renumbering and both sizes are the part or group count
+       (#963). Assigned rather than rebuilt, so only a growing bucket/item count costs
+       anything. Note that this static belongs to the INSTANTIATION, not to the thread:
+       the two call sites pass different key closures, so they already have two separate
+       cursors. That is not what makes nesting safe -- a third caller that reused one
+       key type and nested inside a buildBuckets call would share this buffer and corrupt
+       the outer fill. The body calls nothing but key(), asserts and vector ops, so the
+       only way to nest it is a caller whose key() calls buildBuckets; that would need its
+       own cursor passed in. */
+    static thread_local std::vector<int> cursor;
+    cursor = start;
     for(int i = 0; i < nItems; i++) {
         const int b = key(i);
         if(b < 0) { continue; }
@@ -191,8 +213,38 @@ void buildBuckets(int nBuckets, int nItems, const Key &key,
 struct Sim {
     std::vector<SimPart> parts;
     std::vector<SimEngine> engines;
-    std::map<int, std::vector<int> > revLinks;
-    std::map<int, Layers> layersOf;
+    /* group -> the groups that feed it, indexed by group id (#963). Group ids are dense
+       from 0, and this is rewritten from scratch at every refreshFuel(); the std::map it
+       replaces billed a node per linked group and a vector per key, per renumbering.
+       `resize` keeps the inner vectors' capacity, so only a growing group count costs
+       anything; every one is cleared before the links are written. */
+    std::vector<std::vector<int> > revOf;
+    /* Drain layers per group, indexed by group id and generation-stamped (#963) -- the
+       same epoch idiom as reachEpoch below. layersOf[g].epoch == layersEpoch means
+       "THIS numbering's", and a renumbering costs one integer bump instead of freeing
+       every cached layer set: the Layers' two buffers then carry their capacity across
+       renumberings and across passes, where the old map<int, Layers> billed a node plus
+       a vector per layer per cached group (15,126 allocations an ascent).
+       A returned `const Layers *` outlives nothing that could move it: the only holders
+       are computeRates() (one engine's layer walk) and markReachable() (one marking
+       loop), and refreshFuel() -- the only resize of this table, and it runs BOTH before
+       the walk and again after a mid-pass kill() -- is called only after both have
+       returned. It has to be that way: a vector element that is reallocated MOVES, so an
+       outstanding Layers * would dangle outright rather than read stale data, unlike the
+       map whose nodes never moved.
+       The table grows only, so an entry past nGroups keeps the previous numbering's
+       layers; layersFor() is only ever asked for a group id below nGroups, and asserts as
+       much. */
+    struct LayerCache {
+        uint32_t epoch = 0;
+        Layers layers;
+    };
+    std::vector<LayerCache> layersOf;
+    /* 1, not 0: epoch 0 means "no generation yet", so a LayerCache that resize() just
+       default-constructed is never current however the two lines in refreshFuel() are
+       ordered. The assert there turns a counter wrap into a crash rather than a cache
+       that reads the pre-wrap numbering (#963). */
+    uint32_t layersEpoch = 1;
     /* group -> its parts, flat: group g owns memberOf[memberStart[g] ..
        memberStart[g+1]). Built once per refreshFuel (#293): the drain loop used
        to rescan the whole ship for every group in every layer, which made a
@@ -202,6 +254,55 @@ struct Sim {
     int nGroups = 0;
     std::vector<int> memberStart;
     std::vector<int> memberOf;
+
+    /* One Sim now serves every pass (#963): a flight rebuilds the plan 755 times and
+       each container here is sized to the part or group count, so the last pass's
+       capacity is exactly what the next one wants. The bargain this strikes is the one
+       the epoch buffers above already strike -- a stale entry here is a wrong PLAN
+       rather than a crash, so the reset list has to be complete. What is covered where:
+         parts        resize() keeps capacity; the snapshot loop writes dry, fuel,
+                      thrust, mdot and alive itself (resize() only initializes slots
+                      ADDED since the last pass). `group` is the exception: it belongs
+                      to buildFuelGroups(), which writes every entry.
+         engines      cleared here (the pass push_backs, and appending to the previous
+                      ship's engines would light engines that are not aboard);
+         litCount     zeroed here; markLitCount back to its fresh-Sim -1, so a
+                      drainableIn() that ran without this pass's markReachable() still
+                      trips. That last one is insurance a test cannot reach (dropping it
+                      leaves all 383 checks green, measured): the reused Sim would
+                      otherwise quietly lose a fresh one's tripwire, so it is restored
+                      and stated as unpinnable rather than dropped.
+         revOf        cleared at refreshFuel(), then refilled from the links;
+         layersOf     generation bump at refreshFuel(), no free (see above);
+         memberStart/memberOf, childStart/childOf, seenEpoch and reachEpoch are
+                      assigned over their whole range by rebuildMembers(),
+                      buildChildren() and refreshFuel().
+       Not reset, because nothing can read the old value before it is rewritten: nGroups
+       (refreshFuel() assigns it before the walk, and the link block above reads only
+       ids) and dropStack (droppedAt() drains it on every path and asserts it is empty on
+       entry, which is the assert that guards the use -- repeating it here would only put
+       the same invariant in two places).
+       buildChildren() is what restarts seenTick, and refreshFuel() reachTick and
+       layersEpoch, because those are where the sizes are decided. */
+    void resetFor(size_t nParts) {
+        parts.resize(nParts);
+        engines.clear();
+        litCount = 0;
+        markLitCount = -1;
+        stageLabels.clear();   // the label loop below push_backs into it
+        linkRefs.clear();      // so does the fuel-link lookup (#963)
+    }
+
+    /* The stage labels this pass walks (#517), the drop list, the burn buffers and the
+       resolved fuel links: one set per Sim instead of one per call site (#963). Each is
+       cleared where it is filled -- droppedAt() clears the drop list, computeRates()
+       overwrites the rate buffer in full, resetFor() empties the label list and the link
+       list -- so none of them can carry an answer from the previous pass. */
+    std::vector<int> stageLabels;
+    std::vector<int> dropList;
+    std::vector<double> burnRate;
+    std::vector<double> burnRatio;
+    std::vector<LinkRef> linkRefs;
 
     void rebuildMembers() {
         buildBuckets(nGroups, (int)parts.size(),
@@ -322,17 +423,19 @@ struct Sim {
        that holds a lit engine is ever asked for, and computing them for every
        group -- a BFS each, over a graph as big as the group set -- was the bulk
        of a deep asparagus build's cost once the drain loop stopped rescanning.
-       layersOf must stay a node-stable container: the drain loop holds the
-       returned pointer across a whole layer walk while later engines insert. The
-       Layers' own two buffers live in that node, so they stay put for the same
-       reason (#963 made them vectors rather than the node's sub-vectors, which
-       would have put an allocation per layer back). */
+       The returned pointer has to outlive later writes to the cache: the drain
+       loop holds it across a whole layer walk while later engines insert. A dense
+       LayerCache does NOT give that for free -- a resize moves elements -- it holds
+       only because no resize happens while a pointer is outstanding (the layersOf
+       field above names the holders and when). What the dense table does buy is the
+       end of the node-per-group and vector-per-layer the map billed (#963). */
     const Layers *layersFor(int g) {
-        std::map<int, Layers>::const_iterator it = layersOf.find(g);
-        if(it != layersOf.end()) { return &it->second; }
-        Layers b;
-        drainLayersFor(revLinks, g, nGroups, b);
-        return &layersOf.insert(it, std::make_pair(g, std::move(b)))->second;
+        assert(g >= 0 && g < nGroups && g < (int)layersOf.size());
+        LayerCache &c = layersOf[(size_t)g];
+        if(c.epoch == layersEpoch) { return &c.layers; }
+        c.epoch = layersEpoch;
+        drainLayersFor(revOf, g, nGroups, c.layers);
+        return &c.layers;
     }
 
     // Per-tank drain rates (kg/s) from every lit engine with fuel in its layers.
@@ -690,9 +793,9 @@ uint64_t stagingSignature(const BuildShip &ship, double g, double exhaust_scale)
         fnv::mix(h, (uint64_t)(uintptr_t)bp.def);
         fnv::mix(h, (uint64_t)(bp.parent + 1));
         fnv::mix(h, (uint64_t)bp.stage);
-        /* The ID, not just the shape: computeStaging resolves every fuel link
-           through an id -> index map (built only for ships that author links),
-           so swapping the ids of two same-def parts can move a link across a
+        /* The ID, not just the shape: computeStaging resolves every fuel link by
+           looking its endpoint ids up among the parts (only for ships that author
+           links), so swapping the ids of two same-def parts can move a link across a
            fuel barrier and change the rows. Loading design B over design A must
            not show A's numbers -- so ids stay mixed in even for link-free ships,
            where they cost a hash apiece and nothing else. */
@@ -720,8 +823,16 @@ std::vector<StageRow> computeStaging(const BuildShip &ship, double g,
     const size_t n = ship.parts.size();
     assert(seed.fuelKg.empty() || seed.fuelKg.size() == n);
     assert(seed.dryKg.empty() || seed.dryKg.size() == n);
-    Sim sim;
-    sim.parts.resize(n);
+    /* One Sim for every pass (#963). The plan is recomputed ~755 times a flight and the
+       Sim is the biggest set of containers in the path -- parts, engines, child and
+       member tables, epoch marks, cached drain layers -- so letting it die at `return`
+       threw away exactly the capacity the next pass wanted. thread_local because the
+       cache is only sound if the resets in resetFor() pair with the epoch resets, and
+       only staging.cpp reads any of it; a per-Sim scratch held by Vehicle::stagedRows
+       would put the same bargain behind a public type for one caller. See resetFor()
+       for the field-by-field story of what survives and what cannot. */
+    static thread_local Sim sim;
+    sim.resetFor(n);
     int minStage = ship.parts[0].stage;
     int maxStage = minStage;
 
@@ -740,6 +851,21 @@ std::vector<StageRow> computeStaging(const BuildShip &ship, double g,
            so spelling out `decoupler` here is a second rule free to drift (#292). */
         sp.isBarrier = (bp.def != nullptr) && bp.def->isFuelBarrier();
         sp.isDec = (bp.def != nullptr) && bp.def->decoupler;
+        /* Written here rather than left to SimPart's defaults, because a Sim now rides
+           between passes (#963): resize() only value-initializes parts ADDED since the
+           last pass, so this slot still holds the previous ship's verdict. `alive` is
+           what kill() clears; dry, fuel, thrust and mdot are only assigned below for
+           parts that have a def (or qualify as engines), so a slot that carried mass
+           last pass must be zeroed BEFORE those tests, not after. `group` is the one
+           field NOT reset here: buildFuelGroups() writes every entry of it before
+           anything can read one, which is why removing this write changes no check in
+           the suite -- the mutation table says so rather than claiming a reset that is
+           not load-bearing. */
+        sp.alive = true;
+        sp.dry = 0.0;
+        sp.fuel = 0.0;
+        sp.thrust = 0.0;
+        sp.mdot = 0.0;
         if(bp.def != nullptr) {
             /* Seeded figures are already the ship's own accounting (a live part's
                effectiveMass split by the burn mask), so they override the def's
@@ -762,24 +888,62 @@ std::vector<StageRow> computeStaging(const BuildShip &ship, double g,
     }
     sim.buildChildren();   // the parent links are fixed by the snapshot (#520)
 
-    struct LinkRef { int from, to; };
-    std::vector<LinkRef> links;
-    /* The id -> index map exists only to resolve the links below, so it lives in
-       their scope. A ship that authors no fuel link -- every shipped one but
-       heavy_asp and heavy_two -- never builds one: a node per part was ~26 a
-       rebuild, 755 rebuilds an ascent, buying a lookup that never ran (#963). */
+    /* Resolving a fuel link means turning an authored part id into an index. The
+       std::map that used to do it held one node PER PART, built on every pass that has
+       any link at all: 975 of the 978 allocations a 1,060-part linked build pays, and
+       253 of 256 for its 268-part little brother (#963 measured; the same shape without
+       links costs 3). A sorted vector of string_views into the parts' own ids costs one
+       scratch buffer that is reused between passes and no node per part.
+       The rule that had to survive is WHICH part wins when an id is duplicated:
+       `idIndex[id] = i` over the parts in order left the LAST one, so the lookup uses
+       upper_bound and steps back one. That is only equivalent because the sort below
+       tie-breaks on the index -- std::sort is NOT stable, so ordering the ids alone
+       leaves a duplicate's position inside its block unspecified, and a 22-entry probe
+       of that version picked the FIRST duplicate: the opposite rule, and silently, since
+       it changes which fuel link crosses a barrier rather than crashing (#963's review).
+       With the tie-break the order is total, so the last entry of a block IS the highest
+       index. The loaders reject duplicate ids (shipdef.cpp), so this is a kept rule
+       rather than reachable state.
+       The views dangle between passes -- cleared before use, never read between calls,
+       like the other scratch here. A ship that authors no fuel link (every shipped hull
+       but heavy_asp and heavy_two) never sorts at all. */
     if(!ship.fuelLinks.empty()) {
-        std::map<std::string, int> idIndex;
-        for(size_t i = 0; i < n; i++) { idIndex[ship.parts[i].id] = (int)i; }
+        static thread_local std::vector<std::pair<std::string_view, int> > byId;
+        byId.clear();
+        byId.reserve(n);
+        for(size_t i = 0; i < n; i++) {
+            byId.push_back(std::make_pair(std::string_view(ship.parts[i].id), (int)i));
+        }
+        std::sort(byId.begin(), byId.end(),
+                  [](const std::pair<std::string_view, int> &a,
+                     const std::pair<std::string_view, int> &b) {
+                      /* compare() rather than != then <: it walks the bytes once. */
+                      const int c = a.first.compare(b.first);
+                      return c < 0 || (c == 0 && a.second < b.second);
+                  });
+        /* The last entry whose id equals `id`, or -1 if no part carries it. No capture:
+           byId is a static, not an automatic variable. */
+        auto findLast = [](const std::string &id) -> int {
+            const std::string_view sv(id);
+            auto hi = std::upper_bound(
+                byId.begin(), byId.end(), sv,
+                [](const std::string_view &v, const std::pair<std::string_view, int> &e) {
+                    return v < e.first;
+                });
+            if(hi == byId.begin()) { return -1; }
+            --hi;
+            return hi->first == sv ? hi->second : -1;
+        };
+        sim.linkRefs.reserve(ship.fuelLinks.size());   // an upper bound; free after pass 1
         for(size_t k = 0; k < ship.fuelLinks.size(); k++) {
             const BuildShip::FuelLink &fl = ship.fuelLinks[k];
-            std::map<std::string, int>::const_iterator f = idIndex.find(fl.from);
-            std::map<std::string, int>::const_iterator t = idIndex.find(fl.to);
-            if(f == idIndex.end() || t == idIndex.end()) { continue; }
+            const int f = findLast(fl.from);
+            const int t = findLast(fl.to);
+            if(f < 0 || t < 0) { continue; }
             LinkRef lr;
-            lr.from = f->second;
-            lr.to = t->second;
-            links.push_back(lr);
+            lr.from = f;
+            lr.to = t;
+            sim.linkRefs.push_back(lr);
         }
     }
 
@@ -790,15 +954,28 @@ std::vector<StageRow> computeStaging(const BuildShip &ship, double g,
            restart the epoch over the new group count (#536). */
         sim.reachEpoch.assign((size_t)sim.nGroups, 0);
         sim.reachTick = 0;
-        sim.revLinks.clear();
-        for(size_t k = 0; k < links.size(); k++) {
-            if(!sim.parts[links[k].from].alive || !sim.parts[links[k].to].alive) { continue; }
-            const int a = sim.parts[links[k].from].group;
-            const int b = sim.parts[links[k].to].group;
+        /* Group ids are dense, so the reverse-hop table is indexed rather than keyed
+           (#963). Grow only: resize() keeps each inner vector's capacity, which is what
+           the next pass's links want, and a mid-pass kill can leave the table wider
+           than the new numbering -- rows past nGroups are stale, and nothing reads them
+           because every index the walk can form is below nGroups. The entries it CAN
+           reach are exactly the ones cleared here. */
+        if(sim.revOf.size() < (size_t)sim.nGroups) { sim.revOf.resize((size_t)sim.nGroups); }
+        for(int g = 0; g < sim.nGroups; g++) { sim.revOf[(size_t)g].clear(); }
+        for(size_t k = 0; k < sim.linkRefs.size(); k++) {
+            if(!sim.parts[sim.linkRefs[k].from].alive || !sim.parts[sim.linkRefs[k].to].alive) { continue; }
+            const int a = sim.parts[sim.linkRefs[k].from].group;
+            const int b = sim.parts[sim.linkRefs[k].to].group;
             if(a < 0 || b < 0 || a == b) { continue; }
-            sim.revLinks[b].push_back(a);
+            sim.revOf[(size_t)b].push_back(a);
         }
-        sim.layersOf.clear();   // the layers follow the groups, so they are stale
+        /* The layers follow the groups, so every cached set is stale. Bump the
+           generation instead of clearing: the Layers keep their capacity, which is the
+           half of the win (#963). An entry that survived a counter wrap would be read
+           as THIS numbering's, i.e. a silently wrong plan, hence the assert. */
+        ++sim.layersEpoch;
+        assert(sim.layersEpoch != 0);
+        if(sim.layersOf.size() < (size_t)sim.nGroups) { sim.layersOf.resize((size_t)sim.nGroups); }
     };
 
     for(size_t i = 0; i < n; i++) {
@@ -832,24 +1009,27 @@ std::vector<StageRow> computeStaging(const BuildShip &ship, double g,
        (Labels past kMaxStage are unreachable through the loaders, but the pass should
        not care.) Stage numbers are labels, so a ship numbered 1 and 9000 now costs
        what a ship numbered 1 and 2 costs. */
-    std::vector<int> walk;
-    walk.reserve(n);
-    for(size_t i = 0; i < n; i++) { walk.push_back(sim.parts[i].stage); }
-    std::sort(walk.begin(), walk.end());
-    walk.erase(std::unique(walk.begin(), walk.end()), walk.end());
+    sim.stageLabels.reserve(n);   // free after the first pass; capacity rides along (#963)
+    for(size_t i = 0; i < n; i++) { sim.stageLabels.push_back(sim.parts[i].stage); }
+    std::sort(sim.stageLabels.begin(), sim.stageLabels.end());
+    sim.stageLabels.erase(std::unique(sim.stageLabels.begin(), sim.stageLabels.end()),
+                          sim.stageLabels.end());
     /* The whole equivalence argument is that these are minStage/maxStage's only
        members, visited in the same order the dense loop visited its integers. */
-    assert(walk.size() >= 1 && walk.front() == minStage && walk.back() == maxStage);
+    assert(sim.stageLabels.size() >= 1 && sim.stageLabels.front() == minStage
+           && sim.stageLabels.back() == maxStage);
 
     /* Reused across the label loop, which is the only reason they are cheap: one drop
-       list and one pair of burn buffers per PASS, not per label (#963). `drop` is
-       dead by the time the next label refills it -- kill() reads it and refreshFuel()
-       runs before the loop turns over. */
-    std::vector<int> drop;
-    std::vector<double> burnRate, burnRatio;
+       list and one pair of burn buffers per PASS, not per label (#963) -- and on the Sim,
+       which is what keeps that capacity between passes too. `dropList` is dead by the
+       time the next label refills it: kill() reads it and refreshFuel() runs before the
+       loop turns over. */
+    std::vector<int> &drop = sim.dropList;
+    std::vector<double> &burnRate = sim.burnRate;
+    std::vector<double> &burnRatio = sim.burnRatio;
 
-    for(std::vector<int>::const_reverse_iterator it = walk.rbegin();
-        it != walk.rend(); ++it) {
+    for(std::vector<int>::const_reverse_iterator it = sim.stageLabels.rbegin();
+        it != sim.stageLabels.rend(); ++it) {
         const int s = *it;
         if(s < maxStage) {
             for(size_t ei = 0; ei < sim.engines.size(); ei++) {

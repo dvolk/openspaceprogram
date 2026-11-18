@@ -17,6 +17,11 @@
 //     period ends on its own layer, by hop distance rather than part order;
 //     the buffers that walk them are reused between calls, so the second ship in
 //     a process must answer for its own graph (#963).
+//   * the whole simulation snapshot is reused that way too: a small ship planned after
+//     a big one carries neither the big one's dead parts nor its engine list, and the
+//     big one after it still grows back (#963).
+//   * a fuel link's endpoint id resolves to the LAST part that carries it, as the old
+//     id map did; with a duplicated id that decides whether the link is real (#963).
 //   * stage numbers are LABELS: the walk visits the labels the ship carries, highest
 //     first, and a gap between two labels costs nothing (#517).
 //
@@ -493,9 +498,9 @@ static void test_signature() {
        different hash" but "different ROWS, different hash". This pair is the
        shape that broke it once: identical part order, defs, parents and stages,
        identical link strings -- only the ids of two same-def tanks are swapped,
-       and because computeStaging resolves a link through an id -> index map,
-       that moves the link across the decoupler. Loading one over the other has
-       to refresh the table.
+       and because computeStaging resolves a link by looking its endpoint ids up
+       among the parts, that moves the link across the decoupler. Loading one
+       over the other has to refresh the table.
 
        The decoupler has to sit on the SAME stage as the engine: put it on a
        later stage and its branch is gone before anything burns, the link stops
@@ -1406,6 +1411,151 @@ static void test_a_three_hop_string_drains_one_layer_per_period() {
               "the same plan out of a reused hop table");
 }
 
+/* One Sim now answers every computeStaging call in the process (#963), so a ship's
+   snapshot must not inherit anything from the ship planned before it. BIG is the
+   three-hop string above -- seven parts, three labels, three fuel groups, an engine at
+   index 1, and it ends with five parts dead. SMALL is deliberately NOT that shape: four
+   parts, one label, one fuel group, an inert tank where BIG's engine sat, and a part
+   with no def at all where BIG's 55 kg mid tank sat (a legal BuildShip -- the snapshot
+   loop has a branch for it). What a missed reset does, measured by deleting it and
+   running the suite (an abort is named by the assert that fires, or by its signal):
+     sp.alive        SMALL's engine sits where BIG killed decA, i.e. an 85 kg hull with
+                     nothing lit. The suite aborts before this fixture, at
+                     markReachable's "litSeen == litCount" assert.
+     sp.thrust/mdot  SMALL's inert tank sits where BIG's engine sat, so a phantom engine
+                     joins the burn: engines reads 2 and both TWRs double AT THE SAME DV.
+                     29 checks red, 4 of them here -- the masses alone would not catch
+                     it, which is why TWR is pinned.
+     sp.dry/fuel     SMALL's def-less part sits where BIG's fueled mid tank sat, so the
+                     row bills 150 kg to a 95 kg hull. 7 checks red, all 7 here.
+     engines         the previous ship's engine list survives and lights: same abort.
+     litCount        ditto.
+     layersEpoch     SMALL has one fuel group where BIG had three, so a cached layer set
+                     answers with BIG's groups. 105 checks red, 6 here.
+     stageLabels     SMALL carries label 1 alone, so BIG's 2 and 3 trip the walk's own
+                     "labels end at maxStage" assert.
+     revOf           the previous ship's feeders still stand: abort in drainLayersFor.
+     buildBuckets' cursor copy, and buildFuelGroups' resize: segfault (the scratch still
+                     holds the previous fill / is sized for a smaller ship).
+     markLitCount    NOT pinned -- green. Every caller in staging.cpp marks before it
+                     asks, so only a future one would notice; the line is restored so a
+                     reused Sim keeps a fresh Sim's tripwire, and said out loud rather
+                     than counted as a win.
+   Some of those land on an assert rather than a number, which is the point: a surviving
+   buffer is exactly where a wrong plan rather than a crash is the danger, so the numbers
+   are pinned too. SMALL runs before BIG in this fixture, so its rows are the reference
+   that the two reused passes are compared against -- and by here the Sim has already
+   served a dozen other ships, so even that first pass is a reused one. The last pair is
+   the case where parts.resize() GROWS rather than reuses, covering both halves of the
+   buffer's life. */
+static void test_a_small_ship_planned_after_a_big_one_is_only_itself() {
+    const double g = 10.0;
+
+    Catalog catA;
+    BuildShip big;
+    const int core = addPart(big, catA.tank(20, 30, 30), "coreTank", -1, 1);
+    addPart(big, catA.engine(10, 0.5, 1000.0), "coreEng", core, 3);
+    const int decA = addPart(big, catA.decoupler(5), "decA", core, 2);
+    const int mid = addPart(big, catA.tank(15, 20, 20), "midTank", decA, 2);
+    const int decB = addPart(big, catA.decoupler(5), "decB", mid, 3);
+    addPart(big, catA.tank(10, 15, 15), "outTank", decB, 3);
+    addPart(big, catA.tank(10, 5, 5), "outTank2", decB, 3);
+    addLink(big, "midTank", "coreTank");
+    addLink(big, "outTank", "midTank");
+    addLink(big, "outTank2", "midTank");
+
+    Catalog catB;
+    BuildShip small;
+    const int stank = addPart(small, catB.tank(20, 30, 30), "tank", -1, 1);
+    addPart(small, catB.tank(5, 0, 0), "frame", stank, 1);   // inert, where BIG's engine sat
+    addPart(small, catB.engine(10, 0.5, 1000.0), "eng", stank, 1);
+    BuildPart loose;                  // no def: legal, and the pass has a branch for it
+    loose.id = "noDef";
+    loose.parent = stank;
+    loose.stage = 1;
+    small.parts.push_back(loose);
+
+    /* 95 kg aboard (80 + 5 + 10 + 0), one lit engine at 1000 N, dry at 35 kg. */
+    const std::vector<StageRow> solo = computeStaging(small, g);
+    CHECK_TRUE(solo.size() == 1, "one label, one period");
+    if(solo.size() != 1) { return; }
+    CHECK_REL(solo[0].massStart, 95.0, 1e-9, "95 kg of small ship");
+    CHECK_REL(solo[0].massEnd, 35.0, 1e-9, "its 60 kg burned");
+    CHECK_REL(solo[0].deltaV, 1000.0 * std::log(95.0 / 35.0), 1e-9, "small ship dv");
+    CHECK_TRUE(solo[0].engines == 1, "one engine aboard");
+    CHECK_REL(solo[0].minTWR, 1000.0 / (95.0 * g), 1e-9, "small ignition TWR");
+    CHECK_REL(solo[0].maxTWR, 1000.0 / (35.0 * g), 1e-9, "small cutoff TWR");
+
+    const std::vector<StageRow> bigRows = computeStaging(big, g);
+    CHECK_TRUE(bigRows.size() == 3, "the big ship keeps its three periods");
+    CHECK_REL(bigRows[0].massEnd, 175.0, 1e-9, "the outer layer, as the fixture above");
+
+    const std::vector<StageRow> again = computeStaging(small, g);
+    CHECK_TRUE(again.size() == 1, "still one period after the big ship");
+    if(again.size() != 1) { return; }
+    CHECK_REL(again[0].massStart, 95.0, 1e-9, "95 kg, not BIG's leftovers");
+    CHECK_REL(again[0].massEnd, 35.0, 1e-9, "the same burn");
+    CHECK_REL(again[0].deltaV, solo[0].deltaV, 1e-12, "the same dv");
+    CHECK_TRUE(again[0].engines == 1, "one engine, not BIG's engine list");
+    CHECK_REL(again[0].minTWR, solo[0].minTWR, 1e-12, "one engine's thrust");
+
+    const std::vector<StageRow> bigAgain = computeStaging(big, g);
+    CHECK_TRUE(bigAgain.size() == 3, "the big ship again, three periods");
+    if(bigAgain.size() != 3) { return; }
+    CHECK_REL(bigAgain[0].massStart, bigRows[0].massStart, 1e-12, "same first period");
+    CHECK_REL(bigAgain[0].massEnd, bigRows[0].massEnd, 1e-12, "same outer drain");
+    CHECK_REL(bigAgain[2].massEnd, bigRows[2].massEnd, 1e-12, "same core at the end");
+    CHECK_REL(bigAgain[0].deltaV + bigAgain[1].deltaV + bigAgain[2].deltaV,
+              bigRows[0].deltaV + bigRows[1].deltaV + bigRows[2].deltaV, 1e-12,
+              "the same plan out of a buffer that grew back");
+}
+
+/* Fuel links name their endpoints by part ID, and the loaders turn that name into an
+   index. #963 replaced the id -> index std::map with a sorted index vector, and the one
+   rule that had to survive is WHICH part wins when an id is duplicated: `idIndex[id] = i`
+   over each part in order left the LAST one, and upper_bound + a step back here does the
+   same -- but ONLY because the sort tie-breaks on the index. std::sort is not stable, so
+   comparing ids alone leaves a duplicate's place inside its block unspecified, and the
+   answer then depends on the standard library's sort internals. The loaders refuse
+   duplicate ids, so this is a kept rule rather than reachable state; it is pinned because
+   a link resolving to the wrong part silently changes which fuel group the engine can
+   reach, with no crash:
+     last wins  : "dup" is part 17, which shares the engine's group, so the link joins a
+                  group to itself and is dropped. 80 kg of the 225 aboard burns, dv 439.
+     first wins : "dup" is part 0, one hop across the barrier, so its 30 kg burns too --
+                  110 kg, and the pair of checks below reads 115 / 671 instead.
+   The ship is deliberately 18 parts, not 5: libstdc++'s introsort sorts 16 or fewer
+   elements with insertion sort, which happens to be stable, so a short fixture passes with
+   OR without the tie-break and pins nothing. Measured -- an 18-part ship with the tie-break
+   dropped fails the two pins below; the same mutant at 5 parts stayed green. */
+static void test_a_duplicate_id_resolves_to_the_last_part() {
+    Catalog cat;
+    BuildShip bs;
+    addPart(bs, cat.tank(10, 15, 15), "dup", -1, 1);            // 40 kg, 30 kg fuel
+    addPart(bs, cat.barrier(5), "wall", 0, 1);                  // a fuel wall, not a decoupler
+    addPart(bs, cat.tank(20, 30, 30), "core", 1, 1);            // 80 kg, 60 kg fuel
+    addPart(bs, cat.engine(10, 0.5, 1000.0), "eng", 2, 1);      // in the core's group
+    /* Ballast to push the part count over the insertion-sort threshold. Inert (no fuel)
+       so it cannot change what drains, only what the hull weighs. */
+    char bid[16];
+    for(int i = 0; i < 13; i++) {
+        std::snprintf(bid, sizeof bid, "ballast%02d", i);
+        addPart(bs, cat.tank(5, 0, 0), bid, 2, 1);              // 5 kg each
+    }
+    addPart(bs, cat.tank(5, 10, 10), "dup", 2, 1);              // 25 kg, 20 kg fuel
+    addLink(bs, "dup", "core");
+    CHECK_TRUE(bs.parts.size() == 18, "18 parts, past the stable-sort coincidence");
+
+    const double g = 10.0;
+    const std::vector<StageRow> rows = computeStaging(bs, g);
+    CHECK_TRUE(rows.size() == 1, "no decoupler, one period");
+    if(rows.size() != 1) { return; }
+    CHECK_REL(rows[0].massStart, 225.0, 1e-9, "all 18 parts aboard");
+    CHECK_REL(rows[0].massEnd, 145.0, 1e-9, "only the engine's own group drained");
+    CHECK_REL(rows[0].deltaV, 1000.0 * std::log(225.0 / 145.0), 1e-9, "last-wins dv");
+    CHECK_TRUE(rows[0].engines == 1, "one engine");
+}
+
 int main() {
     test_two_stage();
     test_single_stage();
@@ -1431,6 +1581,8 @@ int main() {
     test_a_live_decoupler_above_a_dead_tank_does_not_adopt_its_fuel();
     test_a_separation_does_not_relist_an_already_dead_subtree();
     test_a_three_hop_string_drains_one_layer_per_period();
+    test_a_small_ship_planned_after_a_big_one_is_only_itself();
+    test_a_duplicate_id_resolves_to_the_last_part();
     test_seed_the_fuel_and_mass_a_live_ship_carries();
 
     printf("test_staging_dv: %d checks, %d failures\n", g_checks, g_failures);
