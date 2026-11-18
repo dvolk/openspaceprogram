@@ -19,7 +19,13 @@
    burn and is charged to none. The gap that IS left is the integrator's, and it is
    pinned to shrink with the timestep rather than to a number that quietly grows.
 
-   Header-only module, so this links nothing but itself. */
+   Header-only module, so this links nothing but itself.
+
+   The four terms are signed, not tallied. A descending burn charges gravity
+   NEGATIVE, because on the way down the body gives speed back -- which is what
+   makes "dv minus the losses" a speed change at all. A readout that refuses to show
+   a refund clamps at the reader; pinning the sign here keeps that a display choice
+   rather than an arithmetic one (#959). */
 #include "losses.h"
 
 #include <cmath>
@@ -51,12 +57,14 @@ struct Flown {
 /* Fly it. `tilt` is how far the nozzle points off the velocity line, rad (0 =
    dead prograde, so the steering loss has a known answer: none). `dragK` is a
    quadratic air bill, -dragK |v| v; 0 = vacuum. The burns run [0, t1) and
-   [t2, t3); a coast between them is what tests the burn gate. */
+   [t2, t3); a coast between them is what tests the burn gate. `alt0` is the
+   starting height and `vdown0` a downward speed: the descent case (#959) needs
+   room to fall in, and a pad run does not. */
 static Flown fly(double dt, double t1, double t2, double t3, double tilt,
-                 double dragK) {
+                 double dragK, double alt0 = 1.0, double vdown0 = 0.0) {
     Flown f;
-    glm::dvec3 pos(R_MOHO + 1.0, 0.0, 0.0);
-    glm::dvec3 vel(0.0, 0.0, 0.0);
+    glm::dvec3 pos(R_MOHO + alt0, 0.0, 0.0);
+    glm::dvec3 vel(-vdown0, 0.0, 0.0);   // -x is local down from that pos
     double mass = M_FULL;
     const int steps = (int)(t3 / dt);
     for(int i = 0; i < steps; i++) {
@@ -145,6 +153,22 @@ int main() {
     CHECK_TRUE(a.L.grav > 0.0, "climbing costs gravity loss");
     CHECK_TRUE(a.L.grav < (MU_MOHO / (R_MOHO * R_MOHO)) * a.L.burn_s,
                "and only the component along the path: g x burn time is the whole pull, not the loss");
+
+    // --- and falling, it is NEGATIVE, on purpose (#959) --------------------
+    // The term is a signed integral along the velocity line, which is what makes the
+    // four totals one decomposition rather than four tallies. On the way down the
+    // body is a supplier, not a cost, and grav says so. Clamping each substep at zero
+    // would look friendlier on a readout and break the identity below; if the player
+    // facing display wants "a loss never refunds", that clamp belongs at the reader
+    // (#675's graph), not in the arithmetic. So the sign is a decision recorded here.
+    const Flown d = fly(dt, 20.0, 40.0, 60.0, 0.0, 0.0, 60e3, 300.0);
+    printf("[fall 60km 300m/s] dv=%.1f grav=%.1f drag=%.1f steer=%.1f speed gain lit=%.2f\n",
+           d.L.dv, d.L.grav, d.L.drag, d.L.steer, d.gain_lit);
+    CHECK_TRUE(d.L.grav < 0.0, "a descending burn charges gravity NEGATIVE: the body gave speed back");
+    CHECK_NEAR(d.L.dv - d.L.steer - d.L.grav - d.L.drag, d.gain_lit, 0.25,
+               "and the four terms still close with one of them negative");
+    CHECK_TRUE(d.gain_lit > d.L.dv,
+               "the burn plus the fall bought more than the tanks paid -- what a negative term means");
 
     // --- the tanks' side of the same number --------------------------------
     CHECK_NEAR(a.L.dv, a.dv_summed, 1e-9, "dv is |F| h / m summed on the integrator's mass");
