@@ -160,6 +160,46 @@ int main() {
     CHECK(out.wheels_enabled == false);
     CHECK(out.surfaces_enabled == false);
     CHECK(out.tvc_enabled == false);
+    /* A seam whose ONLY exception is the dial: switches all open, ceiling capped. The
+       writer groups the five keys behind one "anything non-default?" gate, so a gate that
+       forgets the dial drops it here while every check above stays green -- and the dial
+       is the figure a hull commands its laws with after the undock. */
+    {
+        SaveDock d; d.port = 7; d.root = 8; d.name = "probe";
+        d.sas_turn_rate = 1.25;
+        SaveShip s2; s2.name = "host"; s2.docks.push_back(d);
+        SaveShip o2 = saveShipFromJson(saveShipToJson(s2));
+        CHECK(o2.docks.size() == 1);
+        if(o2.docks.size() == 1) {
+            CHECK(o2.docks[0].wheels_enabled && o2.docks[0].surfaces_enabled
+                  && o2.docks[0].rcs_attitude_enabled && o2.docks[0].tvc_enabled);
+            CHECK(near(o2.docks[0].sas_turn_rate, 1.25));
+        }
+    }
+    /* Wrong-typed seam keys are ignored, exactly as on the ship: a quoted "false" must
+       not silently become true, and must not throw. */
+    {
+        nlohmann::json j = saveShipToJson(ship);
+        j["docks"] = nlohmann::json::array();
+        j["docks"].push_back(nlohmann::json{{"port", 101}, {"root", 101},
+                                            {"wheels_enabled", "false"},
+                                            {"sas_turn_rate", "1.5"}});
+        SaveShip o = saveShipFromJson(j);
+        CHECK(o.docks.size() == 1);
+        if(o.docks.size() == 1) {
+            CHECK(o.docks[0].wheels_enabled);   // the bad value did not land
+            CHECK(near(o.docks[0].sas_turn_rate, 0.0));
+        }
+    }
+    /* And the sentences the loader says for a bad ceiling (#678, #657). The check runs
+       for the ship and for every seam on it; refuseSavedSasRate lives in save.h so its
+       wording can be pinned here. */
+    CHECK(refuseSavedSasRate(-0.5) == "SAS turn rate -0.500000, which is not a rate");
+    CHECK(refuseSavedSasRate(0.0).empty());
+    CHECK(refuseSavedSasRate(1.5).empty());
+    CHECK_TRUE(refuseSavedSasRate(std::nan("rate"))
+               == "SAS turn rate nan, which is not a rate",
+               "a NaN ceiling is refused, not read as unlimited");
     CHECK(out.docks.size() == ship.docks.size());
     if(out.docks.size() == 1 && ship.docks.size() == 1) {
         CHECK(out.docks[0].port == ship.docks[0].port);

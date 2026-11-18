@@ -5738,10 +5738,12 @@ void Vehicle::absorbShip(Vehicle *B, Part *portA) {
        dock (B) first. */
     seams.insert(seams.end(), B->seams.begin(), B->seams.end());
     B->seams.clear();
-    seams.push_back(DockSeam{ portA, bRoot, bName,
-                              B->wheels_enabled, B->surfaces_enabled,
-                              B->rcs_attitude_enabled, B->tvc_enabled,
-                              B->sas_turn_rate });
+    seams.push_back(DockSeam{ .port = portA, .root = bRoot, .name = bName,
+                              .wheels_enabled = B->wheels_enabled,
+                              .surfaces_enabled = B->surfaces_enabled,
+                              .rcs_attitude_enabled = B->rcs_attitude_enabled,
+                              .tvc_enabled = B->tvc_enabled,
+                              .sas_turn_rate = B->sas_turn_rate });
 
     // Rebuild as the union and regroup fuel: the ports are fuel barriers, so the two
     // fuel systems stay separate.
@@ -5828,16 +5830,28 @@ Vehicle * Vehicle::extractSubtreeAsShip(Part *root, const std::string &name, dou
        quietly re-open a door the player shut, and the readouts then quote authority the
        pilot declined to spend. Latent since #425 D-2 because nothing could write either
        mask until #649 put a handle on them.
-       By DEFAULT the orders that cross are the FLYING hull's, which is right for a stage
-       split -- the subtree leaving is part of this hull, and this hull's switches are the
-       last anyone set for it. An UNDOCK is the exception (#657): the hull leaving was a
-       vessel in its own right before the dock, so the seam pass below hands it its own
-       orders back. */
+       By DEFAULT the orders that cross are the FLYING hull's: the subtree leaving is
+       part of this hull, and this hull's switches are the last anyone set for it. The
+       exception is a cut at a SEAM ROOT (#657) -- the edge being broken is a dock joint,
+       and the hull on the far side of it was a vessel in its own right, so the seam pass
+       below hands it the orders IT arrived with. An UNDOCK is that cut. So is a stage
+       press on a docked vessel whose own root part is the staged decoupler:
+       Game::stageVehicle (game.cpp) extracts at the decoupler itself, not at its child,
+       and since the VAB's root part is simply whatever was placed first, a player can
+       build that vessel. It gets the same answer, which is the right one -- it is the
+       same edge, and those are the same switches. */
     nv->wheels_enabled = wheels_enabled;
     nv->surfaces_enabled = surfaces_enabled;
     nv->rcs_attitude_enabled = rcs_attitude_enabled;   // #595's door travels too
     nv->tvc_enabled = tvc_enabled;                     // #768's door travels too
     nv->sas_turn_rate = sas_turn_rate;                 // #678's dial travels too
+    /* What still does NOT travel is the rest of the per-hull control state: brakesOn,
+       throttle and the latched slew mode are per-hull and ARE saved (save.cpp), yet a
+       hull that docks -- or stages -- comes back out resting, lever idle, SAS unlatched.
+       Not decided here, and not this ticket's question: the orders above are the ones a
+       player sets and expects to find as left, whereas a throttle and an aim belong to a
+       program that stopped running. (The journal side of "what a split owes a vessel's
+       history" is #49.) */
 
     /* Keep the original order (parent before child): the save format resolves parents
        by reference. Rebase the poses into S'. */
@@ -5907,10 +5921,18 @@ Vehicle * Vehicle::extractSubtreeAsShip(Part *root, const std::string &name, dou
         if(portIn && rootIn) { nvSeams.push_back(seams[k]); }
         else if(!portIn && !rootIn) { keepSeams.push_back(seams[k]); }
         else if(rootIn && seams[k].root == root) {
-            /* THIS is the dock being undone: the joint is this subtree's own root and
+            /* The seam is cut at ITS root end: the joint is this subtree's own root and
                the port is left behind. Its frozen orders go to the hull that leaves
                (#657), not to us -- the survivor was never flown on them. Copied, not
-               pointed at: `seams` is reassigned below. */
+               pointed at: `seams` is reassigned below.
+               The `root == root` test restates what the two flags already say, and that
+               is deliberate: absorbShip hangs seam.root directly off seam.port, and
+               `Part::parent` is written in only three places in src/ (Vehicle::attach,
+               absorbShip, and this function's own re-root of the split), so a dropped
+               subtree that holds a port always holds the child hung off it. A crossing
+               seam is therefore always a root-end cut. Said here because the alternative
+               is a reader enumerating four cases to work out that the fifth cannot
+               happen. */
             cut = seams[k];
             cutFound = true;
         }

@@ -821,15 +821,10 @@ static std::string validateShipParts(const SaveShip &s, const PartsCatalog &cat,
         return "load: saved ship '" + s.name + "' latches autopilot mode "
                + std::to_string(s.slew_request) + ", which is not a mode";
     }
-    /* #678's dial, from the same hand-editable source. `!(x >= 0.0)` is the NaN test as
-       well as the negative one: a negative ceiling would clamp every law to a negative
-       rate, i.e. command a reversal of its own aim forever, and a NaN would poison the
-       comparison and let the law through uncapped while every readout printed NaN.
-       There is no upper bound to refuse: a ceiling above what the hardware can lever
-       simply never binds, which is the same state as unlimited. */
-    if(!(s.sas_turn_rate >= 0.0)) {
-        return "load: saved ship '" + s.name + "' has SAS turn rate "
-               + std::to_string(s.sas_turn_rate) + ", which is not a rate";
+    /* #678's dial, from the same hand-editable source. The why and its NaN test live
+       in refuseSavedSasRate (save.h) so a test can pin the sentence. */
+    if(std::string why = refuseSavedSasRate(s.sas_turn_rate); !why.empty()) {
+        return "load: saved ship '" + s.name + "' has " + why;
     }
     for(const SaveFuelLink &fl : s.fuel_links) {
         if(prior.count(fl.from) == 0 || prior.count(fl.to) == 0) {
@@ -845,11 +840,12 @@ static std::string validateShipParts(const SaveShip &s, const PartsCatalog &cat,
                    + ") naming parts it does not have";
         }
         /* The seam carries a hull's orders (#657), so its dial faces the same test as
-           the ship's above: the figure is copied onto the hull that undocks, and a
-           poisoned one would poison that hull's laws from then on. */
-        if(!(d.sas_turn_rate >= 0.0)) {
-            return "load: saved ship '" + s.name + "' has a dock seam with SAS turn rate "
-                   + std::to_string(d.sas_turn_rate) + ", which is not a rate";
+           the ship's above: the figure is copied onto the hull that leaves, and a
+           poisoned one would poison that hull's laws from then on. Named by the same
+           two uids as the check above -- a three-seam ship needs to say WHICH seam. */
+        if(std::string why = refuseSavedSasRate(d.sas_turn_rate); !why.empty()) {
+            return "load: saved ship '" + s.name + "' has a dock seam ("
+                   + std::to_string(d.port) + ", " + std::to_string(d.root) + ") with " + why;
         }
     }
     return "";
@@ -1157,12 +1153,16 @@ Vehicle *buildShipFromSaveParts(Game &g, const LoadWorld &w, const SaveShip &s,
             throw std::runtime_error("load: saved ship '" + s.name + "' has a dock seam ("
                                      + s.docks[k].name + ") naming a part it does not have");
         }
-        v->seams.push_back(Vehicle::DockSeam{ portIt->second, rootIt->second, s.docks[k].name,
-                                              s.docks[k].wheels_enabled,
-                                              s.docks[k].surfaces_enabled,
-                                              s.docks[k].rcs_attitude_enabled,
-                                              s.docks[k].tvc_enabled,
-                                              s.docks[k].sas_turn_rate });
+        /* Named designators: eight fields, five of them the same type, so a positional
+           list here mis-assigns silently if a field is ever inserted in the middle.
+           scene.cpp set the precedent. */
+        v->seams.push_back(Vehicle::DockSeam{ .port = portIt->second, .root = rootIt->second,
+                                              .name = s.docks[k].name,
+                                              .wheels_enabled = s.docks[k].wheels_enabled,
+                                              .surfaces_enabled = s.docks[k].surfaces_enabled,
+                                              .rcs_attitude_enabled = s.docks[k].rcs_attitude_enabled,
+                                              .tvc_enabled = s.docks[k].tvc_enabled,
+                                              .sas_turn_rate = s.docks[k].sas_turn_rate });
     }
     return v;
 }

@@ -142,9 +142,11 @@ struct SaveDock {
        it names nothing in the save, so it needs no slug (#266). */
     std::string name;
     /* The absorbed vessel's orders, frozen at the dock (#657). They do not apply to
-       the merged hull -- they wait for the hull that leaves on an undock. All five
-       are optional here: absent reads as the default, which is both an all-default
-       seam and a save written before #657. */
+       the merged hull -- they wait for the hull that leaves when this seam is cut.
+       All five are optional here: absent reads as the default, which is both an
+       all-default seam and a save written before #657. For an old save that is a
+       FALLBACK, not a restore: that build handed the leaving hull the SURVIVOR's
+       orders, and the probe's own figures were never recorded anywhere to recover. */
     bool wheels_enabled = true;
     bool surfaces_enabled = true;
     bool rcs_attitude_enabled = true;
@@ -621,6 +623,22 @@ inline std::string refuseSavedStage(int stage, int maxStage) {
     if(stage < 1 || stage > maxStage) {
         return "has \"stage\" " + std::to_string(stage)
              + ", outside 1.." + std::to_string(maxStage);
+    }
+    return "";
+}
+
+/* The turn-rate verdict (#678), spelled the same way for the same reason: the sentence
+   is worth pinning, and the test is worth running TWICE -- once for the ship and once
+   for every seam on it (#657), because a seam's figure is copied onto the hull that
+   undocks and from then on commands that hull's laws. `!(rate >= 0.0)` is the NaN test
+   as well as the negative one: a negative ceiling clamps every law to a reversal of its
+   own aim forever, and a NaN poisons the comparison so the law runs uncapped while every
+   readout prints NaN. Refused, not clamped -- there is no upper bound to refuse, since a
+   ceiling above what the hardware can lever simply never binds, which is the same state
+   as unlimited. Empty string = the rate is fine. */
+inline std::string refuseSavedSasRate(double rate) {
+    if(!(rate >= 0.0)) {
+        return "SAS turn rate " + std::to_string(rate) + ", which is not a rate";
     }
     return "";
 }

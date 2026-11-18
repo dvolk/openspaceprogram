@@ -2147,10 +2147,13 @@ public:
            (#657). A dock does not carry orders across into the merged hull -- that one
            is flown from the survivor's switches -- but nothing else can address them
            afterwards either, because the vessel that had them no longer exists. So they
-           are neither applied nor thrown away: they wait here, and an undock hands them
-           back to the hull they belong to. Saved with the seam (save.h); a seam from an
-           older save carries the constructor defaults, which is how that build behaved
-           at the cut. */
+           are neither applied nor thrown away: they wait here, and cutting this seam at
+           its root end -- an undock, or a stage press that puts a decoupler exactly at
+           that joint -- hands them back to the hull they belong to. Saved with the seam
+           (save.h). A seam from a save written before #657 carries the constructor
+           defaults, which is a FALLBACK rather than a restore: that build handed the
+           leaving hull the survivor's orders, and this vessel's own figures were never
+           recorded anywhere to recover. */
         bool wheels_enabled = true;
         bool surfaces_enabled = true;
         bool rcs_attitude_enabled = true;

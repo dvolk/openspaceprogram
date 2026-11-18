@@ -339,13 +339,15 @@ static void test_orders_return_on_undock() {
     B.v->init();
     B.v->placeShip(glm::dvec3(0.0, 0.0, -1.875), glm::dmat3(1.0));
 
-    /* Everything the pilot can shut on that probe, and its dial (#678 -- #876's leak
-       was a merge copying a ceiling the player had capped). */
+    /* Everything the pilot can shut on that probe, and its dial (#678). */
     B.v->wheels_enabled = false;
     B.v->surfaces_enabled = false;
     B.v->rcs_attitude_enabled = false;   // #595
     B.v->tvc_enabled = false;            // #768
     B.v->sas_turn_rate = 0.75;
+    /* A's own dial, DIFFERENT from B's, so the checks on A below can tell a leak from
+       B apart from a reset of A: both readings would land on the same figure otherwise. */
+    A.v->sas_turn_rate = 1.5;
 
     A.v->absorbShip(B.v, portA);
     CHECK_TRUE(A.v->wheels_enabled && A.v->surfaces_enabled && A.v->rcs_attitude_enabled
@@ -370,11 +372,117 @@ static void test_orders_return_on_undock() {
     CHECK_NEAR(out->sas_turn_rate, 0.75, 1e-9, "and comes back capped as it was capped");
     CHECK_TRUE(A.v->wheels_enabled && A.v->surfaces_enabled && A.v->rcs_attitude_enabled
                && A.v->tvc_enabled, "the station keeps its own orders throughout");
-    CHECK_NEAR(A.v->sas_turn_rate, 0.0, 1e-9, "including unlimited where it had none");
+    CHECK_NEAR(A.v->sas_turn_rate, 1.5, 1e-9, "and its dial is neither overwritten nor cleared");
     CHECK_TRUE(A.v->seams.empty() && out->seams.empty(), "the cut seam is on neither side");
 
     destroyShip(out);
     destroyShip(B.v);   // the empty shell absorbShip left behind
+    destroyShip(A.v);
+}
+
+/* --- a stage press whose decoupler IS the seam root (#657) ------------------- */
+/* Game::stageVehicle extracts at the DECOUPLER itself, not at its child, so a docked
+   vessel whose own root part is the staged decoupler puts a stage press exactly on the
+   joint absorbShip recorded. Reaching it needs a vessel rooted on a decoupler: the
+   catalog's port and decoupler defs are disjoint (3 and 4 of them), and of the 32
+   res/ships hulls none is -- their roots are capsules, tanks, an RCS pod, a kerbal and
+   once a docking port -- but the VAB's root part is simply whatever was placed first, so
+   a player build can be. The seam-root rule answers it the same way it answers an
+   undock, and that is the right answer rather than an accident: same edge, same
+   switches. Pinned so the rule is what the code says, not a guess about what today's
+   catalog can reach. */
+static void test_a_stage_cut_at_a_seam_root() {
+    printf("== a stage press whose decoupler IS the seam root ==\n");
+
+    Ship A; A.v = new Vehicle; A.v->name = "A";
+    Part *tankA = mkPart(A, "tankA", 1000.0, 1.0, 1.0, kTankHz, false);
+    Part *portA = mkPart(A, "portA",   50.0, 1.0, 1.0, kPortHz, true);
+    A.v->setRoot(tankA);
+    A.v->attachDown(portA);
+    A.v->controller = tankA;
+    A.v->init();
+    A.v->placeShip(glm::dvec3(0.0), glm::dmat3(1.0));
+
+    /* B, rooted on its own decoupler: the decoupler is parts[0], so it is what
+       absorbShip hangs off A's port and therefore what the seam names as `root`. */
+    Ship B; B.v = new Vehicle; B.v->name = "B";
+    Part *decopB = mkPart(B, "decoupler", 50.0, 1.0, 1.0, kPortHz, false, true);
+    Part *tankB  = mkPart(B, "tankB",   1000.0, 1.0, 1.0, kTankHz, false);
+    B.v->setRoot(decopB);
+    B.v->attachDown(tankB);
+    B.v->controller = decopB;
+    B.v->init();
+    B.v->placeShip(glm::dvec3(0.0, 0.0, -1.875), glm::dmat3(1.0));
+
+    B.v->tvc_enabled = false;      // the probe's pilot shut its nozzles
+    B.v->sas_turn_rate = 0.6;
+    A.v->sas_turn_rate = 1.5;      // the station's own, different
+
+    A.v->absorbShip(B.v, portA);
+    CHECK_TRUE(A.v->seams.size() == 1 && A.v->seams[0].root == decopB,
+               "stage-at-root: the seam's root IS the decoupler");
+
+    Vehicle *out = A.v->extractSubtreeAsShip(decopB, "staged");   // the press's call
+    CHECK_TRUE(out != nullptr, "stage-at-root: the split succeeded");
+    if(out == nullptr) { destroyShip(B.v); destroyShip(A.v); return; }
+    CHECK_TRUE(!out->tvc_enabled,
+               "the staged hull leaves with the docked vessel's shut door, not ours");
+    CHECK_NEAR(out->sas_turn_rate, 0.6, 1e-9, "and with the ceiling that vessel was capped at");
+    CHECK_TRUE(A.v->tvc_enabled, "the survivor keeps its own open door");
+    CHECK_NEAR(A.v->sas_turn_rate, 1.5, 1e-9, "and its own ceiling");
+    CHECK_TRUE(A.v->seams.empty() && out->seams.empty(), "the cut seam is on neither side");
+
+    destroyShip(out);
+    destroyShip(B.v);   // the empty shell absorbShip left behind
+    destroyShip(A.v);
+}
+
+/* --- what a seam with NO records hands back (#657) --------------------------- */
+/* A seam written before #657 carries the constructor defaults, and so does one made by
+   a vessel whose pilot had everything open. In both cases the leaving hull comes back
+   OPEN even if the hull it was docked to has a door shut. That is a fallback, not a
+   restore: the pre-#657 build handed the leaving hull the SURVIVOR's orders, and the
+   vessel's own figures were never recorded anywhere, so there is nothing to recover --
+   and "as the constructor would have built it" beats "as the station happens to be". */
+static void test_a_seam_with_no_records_falls_back_to_defaults() {
+    printf("== a seam with no frozen orders falls back to the defaults ==\n");
+
+    Ship A; A.v = new Vehicle; A.v->name = "A";
+    Part *tankA = mkPart(A, "tankA", 1000.0, 1.0, 1.0, kTankHz, false);
+    Part *portA = mkPart(A, "portA",   50.0, 1.0, 1.0, kPortHz, true);
+    A.v->setRoot(tankA);
+    A.v->attachDown(portA);
+    A.v->controller = tankA;
+    A.v->init();
+    A.v->placeShip(glm::dvec3(0.0), glm::dmat3(1.0));
+
+    Ship B; B.v = new Vehicle; B.v->name = "B";
+    Part *portB = mkPart(B, "portB",   50.0, 1.0, 1.0, kPortHz, true);
+    Part *tankB = mkPart(B, "tankB", 1000.0, 1.0, 1.0, kTankHz, false);
+    B.v->setRoot(portB);
+    B.v->attachDown(tankB);
+    B.v->controller = portB;
+    B.v->init();
+    B.v->placeShip(glm::dvec3(0.0, 0.0, -1.875), glm::dmat3(1.0));
+
+    /* Only A has shut anything. */
+    A.v->wheels_enabled = false;
+    A.v->tvc_enabled = false;
+
+    A.v->absorbShip(B.v, portA);
+    CHECK_TRUE(A.v->seams.size() == 1 && A.v->seams[0].wheels_enabled
+               && A.v->seams[0].tvc_enabled,
+               "no records: the seam froze the donor's OPEN switches");
+
+    Vehicle *out = A.v->extractSubtreeAsShip(portB, "B");
+    CHECK_TRUE(out != nullptr, "no records: the split succeeded");
+    if(out == nullptr) { destroyShip(B.v); destroyShip(A.v); return; }
+    CHECK_TRUE(out->wheels_enabled && out->tvc_enabled,
+               "no records: it comes back open, not on the station's shut doors");
+    CHECK_TRUE(!A.v->wheels_enabled && !A.v->tvc_enabled, "and the station keeps them shut");
+
+    destroyShip(out);
+    destroyShip(B.v);
     destroyShip(A.v);
 }
 
@@ -651,6 +759,11 @@ static void test_seam_staging() {
     if(out->seams.size() == 1) {
         CHECK_TRUE(out->seams[0].port == portA, "staging: split-off seam's port");
         CHECK_TRUE(out->seams[0].root == portB, "staging: split-off seam's root");
+        /* The seam moved with the ship, and it moved with B's record -- open doors,
+           though the hull carrying it is flown on A's shut ones. This is what lets that
+           hull undock B later and answer for B (#657). */
+        CHECK_TRUE(out->seams[0].wheels_enabled && out->seams[0].tvc_enabled,
+                   "staging: a seam that travels keeps what it froze off the donor");
     }
 
     /* Both sides of a split come from filtering the SAME vector (vehicle.cpp builds the
@@ -719,10 +832,17 @@ static void test_seam_nested_dock() {
     B.v->init();
     B.v->placeShip(glm::dvec3(0.0, 0.0, 1.0), glm::dmat3(1.0));
 
+    /* Every vessel gets a DIFFERENT pilot's mark, so each hand-off below can be told
+       apart (#657): C shut its wheels, B its plates, A its nozzles, and all three dials
+       differ. */
+    C.v->wheels_enabled = false;
+    C.v->sas_turn_rate = 0.25;
     B.v->absorbShip(C.v, portB);
     CHECK_TRUE(B.v->seams.size() == 1, "nested: B holds the C seam after the dock");
     CHECK_TRUE(B.v->seams[0].port == portB, "nested: B-C seam port is B's port");
     CHECK_TRUE(B.v->seams[0].root == portC, "nested: B-C seam root is C's root");
+    CHECK_TRUE(!B.v->seams[0].wheels_enabled, "nested: the B-C seam froze C's shut wheels");
+    CHECK_NEAR(B.v->seams[0].sas_turn_rate, 0.25, 1e-9, "nested: and C's ceiling");
 
     /* A: tank (root) + port, absorbs B (which already holds C). */
     Ship A; A.v = new Vehicle; A.v->name = "A";
@@ -734,6 +854,10 @@ static void test_seam_nested_dock() {
     A.v->init();
     A.v->placeShip(glm::dvec3(0.0), glm::dmat3(1.0));
 
+    B.v->surfaces_enabled = false;
+    B.v->sas_turn_rate = 0.5;
+    A.v->tvc_enabled = false;
+    A.v->sas_turn_rate = 1.5;
     A.v->absorbShip(B.v, portA);
 
     /* All six parts in A now. */
@@ -747,6 +871,16 @@ static void test_seam_nested_dock() {
                    "nested: the A-B seam is the outer one (last)");
         CHECK_TRUE(A.v->seams[0].port == portB && A.v->seams[0].root == portC,
                    "nested: the B-C seam was moved in, not orphaned");
+        /* Two seams, two different donors, so a merge that overwrote the moved seam with
+           the survivor's figures -- or with the donor it is about to absorb -- shows up. */
+        CHECK_TRUE(!A.v->seams[0].wheels_enabled && A.v->seams[0].surfaces_enabled
+                   && A.v->seams[0].tvc_enabled,
+                   "nested: the moved B-C seam still holds C's orders, not B's or A's");
+        CHECK_NEAR(A.v->seams[0].sas_turn_rate, 0.25, 1e-9, "nested: and C's ceiling");
+        CHECK_TRUE(!A.v->seams[1].surfaces_enabled && A.v->seams[1].wheels_enabled
+                   && A.v->seams[1].tvc_enabled,
+                   "nested: the new A-B seam holds B's orders, not C's or A's");
+        CHECK_NEAR(A.v->seams[1].sas_turn_rate, 0.5, 1e-9, "nested: and B's ceiling");
     }
 
     /* Undock B: B and its docked C come off together; the B-C seam follows,
@@ -759,9 +893,38 @@ static void test_seam_nested_dock() {
         if(out->seams.size() == 1) {
             CHECK_TRUE(out->seams[0].port == portB && out->seams[0].root == portC,
                        "nested: B can still undock C");
+            CHECK_TRUE(!out->seams[0].wheels_enabled && out->seams[0].surfaces_enabled
+                       && out->seams[0].tvc_enabled,
+                       "nested: and it carries C's record through the merge and the split");
+            CHECK_NEAR(out->seams[0].sas_turn_rate, 0.25, 1e-9, "nested: C's ceiling included");
         }
+        /* B leaves on B's own orders (its shut plates, its 0.5 ceiling), not A's shut
+           nozzles, and A is left with A's. C's turn comes when B undocks it, using the
+           record that followed B here. */
+        CHECK_TRUE(!out->surfaces_enabled && out->wheels_enabled && out->tvc_enabled,
+                   "nested: B comes back on B's orders");
+        CHECK_NEAR(out->sas_turn_rate, 0.5, 1e-9, "nested: capped as B was capped");
+        CHECK_TRUE(!A.v->tvc_enabled && A.v->wheels_enabled && A.v->surfaces_enabled,
+                   "nested: the survivor is untouched by either donor");
+        CHECK_NEAR(A.v->sas_turn_rate, 1.5, 1e-9, "nested: including A's own ceiling");
         CHECK_TRUE(A.v->parts.size() == 2, "nested: A keeps its two parts");
         CHECK_TRUE(out->parts.size() == 4, "nested: B+C come off as four parts");
+        /* And the inner dock still answers for C, one step later: undock C from the ship
+           B came back as. Two nested docks, three hulls, each on its own pilot's
+           switches at the end. */
+        Vehicle *outC = out->extractSubtreeAsShip(portC, "C");
+        CHECK_TRUE(outC != nullptr, "nested: undocking C from B still works");
+        if(outC != nullptr) {
+            CHECK_TRUE(!outC->wheels_enabled && outC->surfaces_enabled && outC->tvc_enabled,
+                       "nested: C comes back on C's own shut wheels");
+            CHECK_NEAR(outC->sas_turn_rate, 0.25, 1e-9, "nested: and C's ceiling");
+            CHECK_TRUE(!out->surfaces_enabled && out->wheels_enabled && out->tvc_enabled,
+                       "nested: B still flies B's orders after handing C back");
+            CHECK_NEAR(out->sas_turn_rate, 0.5, 1e-9, "nested: and B's ceiling");
+            CHECK_TRUE(out->seams.empty() && outC->seams.empty(),
+                       "nested: the inner cut seam is on neither side");
+            destroyShip(outC);
+        }
         destroyShip(out);
     }
 
@@ -803,6 +966,11 @@ static void test_seam_kept_across_stage() {
     B.v->placeShip(glm::dvec3(0.0, 0.0, -2.0), glm::dmat3(1.0));
 
     A.v->absorbShip(B.v, portA);
+    /* Shut a door on the FLYING hull after the dock (#657's other half): the seam must
+       keep what it froze off B -- B's doors are all open -- so the checks below can tell
+       a record from a leak. */
+    A.v->wheels_enabled = false;
+    A.v->sas_turn_rate = 2.0;
     CHECK_TRUE(A.v->seams.size() == 1, "kept: one seam after the dock");
     CHECK_TRUE(A.v->seams[0].port == portA && A.v->seams[0].root == bRoot,
                "kept: seam is {P, bRoot}");
@@ -818,8 +986,15 @@ static void test_seam_kept_across_stage() {
     if(A.v->seams.size() == 1) {
         CHECK_TRUE(A.v->seams[0].port == portA && A.v->seams[0].root == bRoot,
                    "kept: the kept seam is still {P, bRoot}");
+        CHECK_TRUE(A.v->seams[0].wheels_enabled,
+                   "kept: a kept seam holds the donor's open door, not ours");
     }
     CHECK_TRUE(out->seams.empty(), "kept: the split-off ship holds no seam");
+    /* This cut is at a decoupler INSIDE the docked vessel, not at the seam's root end,
+       so #649's rule still decides it: the hull leaving is flown on this hull's switches,
+       shut ones included. */
+    CHECK_TRUE(!out->wheels_enabled, "kept: a stage cut away from the seam root takes our orders");
+    CHECK_NEAR(out->sas_turn_rate, 2.0, 1e-9, "kept: and our ceiling");
     CHECK_TRUE(A.v->parts.size() == 3, "kept: survivor keeps capsule, port, bRoot");
     CHECK_TRUE(out->parts.size() == 2, "kept: split-off holds decoupler + tank");
 
@@ -831,6 +1006,9 @@ static void test_seam_kept_across_stage() {
     CHECK_TRUE(out2 != nullptr, "kept: undock after the stage still works");
     if(out2 != nullptr) {
         CHECK_TRUE(A.v->seams.empty(), "kept: the undock dropped the seam");
+        CHECK_TRUE(out2->wheels_enabled, "kept: this cut IS the seam root, so bRoot leaves open");
+        CHECK_NEAR(out2->sas_turn_rate, 0.0, 1e-9, "kept: uncapped, as B ever was");
+        CHECK_TRUE(!A.v->wheels_enabled, "kept: and the survivor keeps its own shut door");
         CHECK_TRUE(A.v->parts.size() == 2, "kept: survivor keeps capsule + port");
         CHECK_TRUE(out2->parts.size() == 1, "kept: bRoot comes off alone (the stage already took the rest)");
         destroyShip(out2);
@@ -978,6 +1156,8 @@ static void test_dock_mass_door() {
 int main() {
     test_absorb();
     test_orders_return_on_undock();
+    test_a_stage_cut_at_a_seam_root();
+    test_a_seam_with_no_records_falls_back_to_defaults();
     test_roundtrip();
     test_uid();
     test_seam_staging();
