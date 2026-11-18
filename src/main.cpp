@@ -1995,7 +1995,13 @@ int main(int argc, char **argv)
     if(game.rec.f != nullptr) {
         std::fclose(game.rec.f);
         game.rec.f = nullptr;
-        printf("record: %ld rows -> %s\n", game.rec.rows, game.rec.path.c_str());
+        /* ring= is the OTHER sink (#972): the history buffer the Recorder window
+           reads, printed here so the two agree on camera. Same gate, one sample,
+           so an equal count is the cheap witness that a plot did not grow its own
+           sampling path. It legitimately trails rows when a load cleared the ring
+           while the file stayed open (Game::clearEphemeralState). */
+        printf("record: %ld rows, ring=%d -> %s\n", game.rec.rows,
+               game.rec.ring.count, game.rec.path.c_str());
         fflush(stdout);
     }
 

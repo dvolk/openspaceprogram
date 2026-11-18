@@ -807,6 +807,14 @@ struct Game {
         std::string path;
         Uint32 started_ms = 0;     // the log clock when the trace opened
         long rows = 0;
+        /* The Recorder window's history (#972). Filled at the same gate and from
+           the same sampler as the rows, whether or not --record is on: a player
+           in a GUI run has no flag to pass, and two samplers is how a graph and
+           a trace start disagreeing. ring_t0_ms is the RING's own baseline (its
+           first sample), because the trace may never open. */
+        RecRing ring;
+        bool ring_armed = false;
+        Uint32 ring_t0_ms = 0;
     };
     Recorder rec;
     /* Open the trace (game.cpp): called from the tick, the first time a row is

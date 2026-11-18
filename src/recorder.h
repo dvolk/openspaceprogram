@@ -13,10 +13,12 @@
 
 #pragma once
 
+#include <cassert>
 #include <cmath>
 #include <cstddef>
 #include <cstdio>
 #include <initializer_list>
+#include <vector>
 
 // v2 (#674) added the frame readouts: the altitude pair, the three speeds, position,
 // attitude, delta-v and felt acceleration. Nothing was renamed or removed, so a v1
@@ -184,3 +186,68 @@ inline int recRow(const RecSample &s, char *buf, size_t n) {
     if(wrote < 0 || (size_t)wrote >= n) { return -1; }
     return wrote;
 }
+
+/* --- the Recorder window's history (#972) --------------------------------
+   The same samples the rows above are made of: ONE sampler feeds both sinks,
+   because this file's rule is that a recorded number and a logged number cannot
+   disagree. A second sampling path for a plot is therefore not on the table --
+   the plot reads this ring, and the trace prints the sample that went into it.
+
+   sim_t is the mission clock (g.time) at the sample. The window plots against
+   it, so a warp coast stays proportional; the SAMPLING GATE stays run time
+   (--record-interval, and #987 is the comment that misstates it), which is why
+   the points are sparser under warp rather than more numerous. RecSample::t
+   keeps the run-clock meaning the file's rows have always had, so nothing here
+   changes the v3 grammar.
+
+   PLOT sim_t, NEVER s.t. s.t is the column the FILE prints, counted from the
+   trace's opening (tick.cpp rewrites it per row); a graph that reads it is
+   silently back on the run clock, which is the one property this field exists to
+   buy. Nothing at compile time keeps a step-2 author from making that mistake,
+   hence the emphasis. */
+struct RecPoint {
+    RecSample s;
+    double sim_t = 0.0;
+};
+
+struct RecRing {
+    /* Cap is a MISSION-TIME decision, not a byte one: the ring has to hold a
+       whole ascent, or the window drops the launch while the hull is still
+       climbing. test_guidance's own ascent runs ~480 s to a 100 km periapsis, so
+       at the default 0.25 s gate 4096 samples is ~17 min of mission time -- one
+       ascent plus its descent, with headroom for a warped coast (which thins the
+       samples rather than adding them). 4096 x 312 B = 1.28 MB on the heap: the
+       same order as the eight TimeSeries HudState already carries (2 MB).
+       constexpr, not const: a class static with an in-class initializer needs it
+       the first time someone odr-uses Cap (std::min(count, RecRing::Cap)). */
+    static constexpr int Cap = 4096;
+    std::vector<RecPoint> p;   // sized on the first push
+    int head = 0;              // next write slot
+    int count = 0;             // samples held, never above Cap
+
+    void push(const RecPoint &pt) {
+        if(p.empty()) { p.resize(Cap); }
+        const int last = (head - 1 + Cap) % Cap;
+        /* A paused tick does not advance the mission clock. Refreshing the last
+           point rather than storing a second one at the same x is what
+           TimeSeries does (siminput.h), and it keeps a long pause from eating
+           the ring. Not an assert on a backwards sim_t: a load clears the ring
+           (Game::clearEphemeralState), and anything else that moves the clock
+           is the plot's problem, not a reason to stop the sim. */
+        if(count > 0 && p[last].sim_t == pt.sim_t) { p[last] = pt; return; }
+        p[head] = pt;
+        head = (head + 1) % Cap;
+        if(count < Cap) { count++; }
+    }
+
+    // Oldest first: at(0) is the oldest sample still held.
+    const RecPoint &at(int i) const {
+        // count > 0 implies p was sized by the push that set it, so there is
+        // nothing separate to guard here.
+        assert(i >= 0 && i < count);
+        return p[(head - count + i + Cap) % Cap];
+    }
+
+    // Keeps the allocation; count is the only reader, as in TimeSeries.
+    void clear() { head = 0; count = 0; }
+};

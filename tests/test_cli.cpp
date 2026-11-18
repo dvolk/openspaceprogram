@@ -159,16 +159,21 @@ int main() {
         assert(!ok);
         assert(code == 1);
     }
-    // An unused knob is not worth refusing, same as the floor's rule (#662): the
-    // ceiling belongs to the recorder, so without --record the value parses. The
-    // helper below is what keeps even that case out of UB.
+    /* "An unused knob is not worth refusing" (#662) no longer covers
+       --record-interval: since #972 the same gate fills the flight recorder's
+       history buffer that the Recorder window reads, and a GUI run never passes
+       --record. A 1e12 s interval would leave that window empty for the whole
+       session, so the ceiling applies whether or not --record was asked for.
+       --perf-interval below keeps the old pass: without --perf there is nothing
+       for it to feed. */
     {
         const char *argv[] = {"osp", "--record-interval", "1e12"};
         GameArgs args;
-        bool ok = false;
+        bool ok = true;
         int code = -1;
         run(3, (char **)argv, args, ok, code);
-        assert(ok);
+        assert(!ok);
+        assert(code == 1);
     }
     // A [perf] window (#676) is a frame reading gated the same way, so it takes
     // the same ceiling -- and the same "unused knob" pass. It is NOT held to the

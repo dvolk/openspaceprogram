@@ -1460,6 +1460,18 @@ void Game::clearEphemeralState() {
        deliberately left alone. */
     hud.view.energy_series.clear();
     hud.view.angmom_series.clear();
+    /* Same reason for the recorder ring (#972): its x is g.time, so the world
+       that is about to die cannot share a plot with the one arriving. The FILE
+       deliberately does not close here -- its identity is the run's, not the
+       world's (see the Recorder comment in game.h) -- so a trace can span a
+       load while the ring starts again. A ring also survives a mission that
+       ENDS inside a world (recover, landing): at the Space Center it still shows
+       the flight that just happened, which is what a player wants to look at.
+       What must not happen is a NEW mission appending onto a dead one, and that
+       is covered by select_vehicle -- a VAB launch hands control through it
+       (vab.cpp) -- rather than by this world hook. */
+    rec.ring.clear();
+    rec.ring_armed = false;
     // A rebind grab is a live input grab on a UI that is going away.
     rebind_capture_slot = -1;
     /* The VAB is an editor over the world that is going away: its build's
@@ -1693,6 +1705,18 @@ void Game::select_vehicle(Vehicle *v) {
     }
     v->leaveRails();
     ship = v;
+    /* A hand-off starts a new story for the Recorder window (#972). The samples
+       the old hull made are not this hull's ascent, and the four loss channels
+       are per-hull sums that restart on the new one (losses.h), so one line
+       across the seam would draw a cliff the player never flew. Staging does NOT
+       come through here -- stageVehicle never reassigns Game::ship, which
+       tick.cpp's autopilot stage press asserts -- so an ascent that presses
+       stages keeps its history.
+       A VAB launch DOES (vab.cpp), which is what stops a dead flight being
+       spliced in front of a new one. An EVA round-trip (V) clears it too: the
+       accepted cost of one rule in one place. */
+    rec.ring.clear();
+    rec.ring_armed = false;
     /* An armed ascent mission follows its HULL, not the camera, and switching ships
        must leave a hull that nobody is flying alone (#616). tick.cpp already stops
        the law from thinking here -- it only calls flyAscent() while

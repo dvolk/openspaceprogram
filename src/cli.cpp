@@ -549,11 +549,13 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                  "vessel.");
 
     app.add_option("--record-interval", args.record_interval,
-                   "Run time between recorded rows, in seconds (default 0.25). "
-                   "The same clock every periodic log gates on, so it is sim time "
-                   "under --sim-steps and wall time live: at warp the rows are "
-                   "further apart in mission time. Never shorter than one "
-                   "--physics-hz tick: a recorder cannot sample faster than the "
+                   "Run time between recorder samples, in seconds (default 0.25). "
+                   "Feeds both the --record trace and the in-game history the "
+                   "Recorder window reads (#972), so it has an effect without "
+                   "--record. The same clock every periodic log gates on, so it is "
+                   "sim time under --sim-steps and wall time live: at warp the "
+                   "samples are further apart in mission time. Never shorter than "
+                   "one --physics-hz tick: a recorder cannot sample faster than the "
                    "sim steps; never longer than 3600s: past that the gate's "
                    "millisecond count wraps instead of getting quieter")
         ->check(CLI::PositiveNumber);
@@ -1177,9 +1179,13 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
             *exit_code = 1;
             return false;
         }
-        /* The recorder's own cadence answers to the same law (#662). Only when
-           it is asked for: an unused knob is not worth refusing. */
-        if(args.record && args.record_interval < tick_s) {
+        /* The recorder's own cadence answers to the same law (#662). It used to
+           be refused only under --record, on the "an unused knob is not worth
+           refusing" rule -- no longer true (#972): the same gate feeds the flight
+           recorder's history buffer that the Recorder window reads, and a GUI run
+           has no --record to pass. A bad interval is now a silent window, empty at
+           one end and 17 s wide at the other, so the law applies either way. */
+        if(args.record_interval < tick_s) {
             printf("error: --record-interval %g s is shorter than one physics "
                    "tick (1/%g Hz = %g s); a recorder cannot sample faster than "
                    "the sim steps\n", args.record_interval, args.physics_hz, tick_s);
@@ -1199,7 +1205,7 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
             *exit_code = 1;
             return false;
         }
-        if(args.record && args.record_interval > kIntervalCeilingS) {
+        if(args.record_interval > kIntervalCeilingS) {
             printf("error: --record-interval %g s is longer than the %g s a log gate "
                    "can wait; past that the millisecond count wraps instead of "
                    "getting quieter\n", args.record_interval, kIntervalCeilingS);

@@ -32,6 +32,12 @@
 //   written short: a half-written row is a parse error in someone else's script.
 //   The buffer below is the SAME size tick.cpp gives the writer, so this also
 //   pins that the row still fits the game's own buffer.
+//
+//   The v3 ring (#972) is the other sink for the same sample: the Recorder
+//   window's history. It is pinned here rather than in a UI test because its
+//   contract is storage, not pixels -- the cap and wrap order, a NaN staying a
+//   gap, a same-x push refreshing instead of appending, and a stage change being
+//   data inside one span rather than a reset.
 #include "recorder.h"
 
 #include <algorithm>
@@ -266,6 +272,114 @@ int main() {
             printf("FAIL %s:%d: a 32-byte buffer accepted a full row\n", __FILE__, __LINE__);
             g_failures++;
         }
+    }
+
+    // --- the Recorder window's ring (#972) --------------------------------
+    // The plot reads this ring and the rows above come from the same sample, so
+    // the ring has to hold the same NaN-dashes and the same stage marks.
+    {
+        // Cap is a MISSION-TIME decision: the ring has to hold a whole ascent or
+        // the window drops the launch while the hull is still climbing. 480 s is
+        // what test_guidance's own ascent takes to a 100 km periapsis, at the
+        // 0.25 s default of --record-interval. Pinned as a span rather than only
+        // as bytes, because a Cap that quietly halves is invisible in a bytes
+        // check. The byte half still matters: RecRing lives on Game for the whole
+        // run, and the eight TimeSeries HudState carries are the yardstick (2 MB).
+        CHECK(RecRing::Cap * 0.25 >= 480.0, "the ring no longer spans an ascent");
+        CHECK(sizeof(RecPoint) * RecRing::Cap <= 2 * 1024 * 1024,
+              "the recorder ring blew its memory budget");
+
+        RecRing r;
+        CHECK(r.count == 0, "a fresh ring holds nothing");
+
+        // Fill past the cap, one mission second apart, with a stage press
+        // half-way through the span.
+        for(int i = 0; i < RecRing::Cap + 7; i++) {
+            RecPoint pt;
+            pt.sim_t = 10.0 + i;
+            pt.s.t = i * 0.25;                        // the run-clock column
+            pt.s.alt_asl = 1000.0 + i;
+            pt.s.stg = (i < RecRing::Cap / 2) ? 1 : 2;
+            r.push(pt);
+        }
+        CHECK(r.count == RecRing::Cap, "the ring stops at Cap");
+        // push() must not grow the vector after the first one: step 2 will hand
+        // the plot pointers taken from at(), and a reallocation dangles them.
+        CHECK(r.p.capacity() == (size_t)RecRing::Cap, "push() never reallocates");
+        // The whole sample travels, not only its x.
+        CHECK_NEAR(r.at(0).s.t, 7 * 0.25, 1e-12, "the sample's own columns survive");
+        CHECK_NEAR(r.at(0).s.alt_asl, 1007.0, 1e-12, "channel values survive the wrap");
+        CHECK_NEAR(r.at(0).sim_t, 17.0, 1e-12, "the 7 oldest fell off");
+        CHECK_NEAR(r.at(RecRing::Cap - 1).sim_t, 10.0 + RecRing::Cap + 6, 1e-12,
+                   "at() ends on the newest sample");
+        bool mono = true;
+        for(int i = 1; i < r.count; i++) {
+            if(!(r.at(i).sim_t > r.at(i - 1).sim_t)) { mono = false; break; }
+        }
+        CHECK(mono, "at() is oldest-first across the wrap");
+        // The stage press is DATA inside the span, not a reset and not a split:
+        // an ascent that goes through staging is one story. The ring is blind to
+        // stg by design; this is the pin for whoever is tempted to make it
+        // stage-aware because "a new hull needs a new plot" (it does not --
+        // staging keeps Game::ship, see game.cpp's select_vehicle comment).
+        int stage_edges = 0;
+        for(int i = 1; i < r.count; i++) {
+            if(r.at(i).s.stg != r.at(i - 1).s.stg) { stage_edges++; }
+        }
+        CHECK(stage_edges == 1, "a stage change neither clears nor splits the ring");
+
+        // A NaN survives as a NaN -- it is how a channel says "no reading" (aoa
+        // waits for a flow worth reading), and the plot needs the gap rather than
+        // a zero, which is what recRow's dashes do for the file.
+        RecPoint dash;
+        dash.sim_t = 5000.0;
+        dash.s.aoa = NAN; dash.s.gamma = NAN; dash.s.beta = NAN;
+        dash.s.alt_asl = 0.0;
+        r.push(dash);
+        CHECK(std::isnan(r.at(r.count - 1).s.aoa), "a dashed channel keeps its gap");
+        CHECK(std::isnan(r.at(r.count - 1).s.gamma), "gamma keeps its own gap");
+        CHECK(!std::isnan(r.at(r.count - 1).s.alt_asl), "a plain 0 stays a reading");
+        CHECK(r.count == RecRing::Cap, "the ring never exceeds Cap");
+
+        // Paused: the mission clock does not advance, so the last point is
+        // refreshed rather than duplicated -- what TimeSeries does (siminput.h),
+        // and what keeps a long pause from eating the ring.
+        const int before = r.count;
+        RecPoint held;
+        held.sim_t = r.at(before - 1).sim_t;
+        held.s.alt_asl = 4242.0;
+        r.push(held);
+        CHECK(r.count == before, "a paused tick adds no point at the same x");
+        CHECK_NEAR(r.at(r.count - 1).s.alt_asl, 4242.0, 1e-12,
+                   "a same-x push refreshes rather than appends");
+
+        // A load clears: g.time runs backwards across one (#304), so samples kept
+        // from the dead world would leave a non-monotonic x axis.
+        r.clear();
+        CHECK(r.count == 0, "clear empties the ring");
+        RecPoint fresh;
+        fresh.sim_t = 0.5; fresh.s.alt_asl = 5.0;
+        r.push(fresh);
+        CHECK(r.count == 1, "pushing after clear starts again at the oldest slot");
+        CHECK_NEAR(r.at(0).sim_t, 0.5, 1e-12);
+
+        /* A backwards sim_t is not refused, so pin what it DOES instead: the point
+           appends and the ring holds a non-monotonic x (recorder.h says this is
+           deliberate -- no assert). It should be unreachable: g.time moves only at
+           tick.cpp's `g.time += g.dt * g.time_accel` and Game::setTime, and every
+           setTime caller is followed by clearEphemeralState. So this is the pin for
+           that invariant, written from the ring's side -- if a future refactor does
+           move the clock under a live ring, the window sees a stroke back over
+           itself, which is loud, rather than a silently re-sorted plot. */
+        r.clear();
+        RecPoint up;
+        up.sim_t = 5.0; up.s.alt_asl = 1.0;
+        RecPoint back;
+        back.sim_t = 4.0; back.s.alt_asl = 2.0;
+        r.push(up);
+        r.push(back);
+        CHECK(r.count == 2, "a backwards push still appends");
+        CHECK_NEAR(r.at(1).sim_t, 4.0, 1e-12, "at() stays write order, never x order");
     }
 
     if(g_failures == 0) {

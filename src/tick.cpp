@@ -16,6 +16,96 @@
 #include "physics.h"             // physics_tick()
 #include "timestep.h"            // substepCount()
 
+/* The flight recorder's ONE sampler (#662, #674, #675, #972). Every channel is a
+   number the game already publishes for the tick it is sampled in -- the physics
+   pass's readouts and the ShipView snapshot the SURFACE and ORBITAL windows draw --
+   so a recorded value and a logged value cannot disagree (#665's seam). It is a
+   function now because one sample has two sinks: --record's rows, and the ring the
+   Recorder window draws (#972). One sampler is not a style preference -- a second
+   path built for the plot is exactly how a graph and a trace start telling
+   different stories about the same flight.
+
+   Two cadences share a sample, on purpose. The aero block's fields are the last
+   SUBSTEP's; the frame group is the last REFRESH's (sc.refresh fills hud.view
+   after the logic phase, main.cpp:1780), so those ten columns lag the physics by
+   part of a frame. That is not sloppiness: they are what the pilot's own windows
+   were showing at that instant, and the lag is centimetres at 4 Hz.
+
+   t= is the run-clock delta the CALLER counts from -- the file from the trace's
+   opening (started_ms), the ring from its own first sample (ring_t0_ms) -- so both
+   sinks can stamp their own baseline off the one sample. The ring also carries
+   g.time, which is what its plot is against. */
+static RecSample recSample(Vehicle &v, const ShipView &view, double t) {
+    RecSample s;
+    s.t = t;
+    s.alt_asl = v.lastDragAlt;
+    s.v = glm::length(v.GetVel());
+    s.dv = v.getDeltaV();
+    s.acc = v.feltAccel();
+    /* The windows' own numbers. A snapshot taken for some other hull --
+       or never taken at all, since an unfilled ShipView reads zeros
+       (#235) -- quotes nothing: the group dashes together on one test,
+       because a 0 in a log gets read as a measurement. */
+    if(view.ship == &v) {
+        s.alt_agl = view.alt_agl;
+        s.v_surf = glm::length(view.surf_vel);
+        s.v_orb = view.speed;
+        s.vs = view.ver_speed;
+        s.hs = view.hor_speed2;
+        s.lat = glm::degrees(view.latitude);
+        s.lon = glm::degrees(view.longitude);
+        s.pitch = glm::degrees(view.pitch);
+        s.roll = glm::degrees(view.roll);
+        s.hdg = glm::degrees(view.heading);
+    } else {
+        s.alt_agl = s.v_surf = s.v_orb = s.vs = s.hs = NAN;
+        s.lat = s.lon = s.pitch = s.roll = s.hdg = NAN;
+    }
+    s.rho = v.lastDragRho;
+    s.F = glm::length(v.lastAeroForce);
+    s.L = glm::length(v.lastLiftForce);
+    s.Cd = v.lastDragCd;
+    s.A = v.lastDragArea;
+    s.chute = v.lastChuteCdA;
+    if(v.lastDragAlphaValid) {
+        s.aoa = glm::degrees(v.lastDragAlpha);
+        s.cpl = v.lastCpLever;
+        s.ind = v.lastInducedCdA;
+    } else {
+        s.aoa = s.cpl = s.ind = NAN;
+    }
+    /* Beta has its own floor: the flow that gives AoA a direction need not
+       give yaw one (AeroFrame::betaValid, #787). A recorded NaN prints as
+       "-" in the flight log, which is what a row with no sideslip means. */
+    s.beta = v.lastDragBetaValid ? glm::degrees(v.lastDragBeta) : NAN;
+    if(v.lastDragRho > 0.0) {
+        s.T = v.lastAirT;
+        s.p = v.lastAirP;
+        s.a = v.lastAirA;
+        s.mach = v.lastAirV / v.lastAirA;
+    } else {
+        s.T = s.p = s.a = s.mach = NAN;
+    }
+    s.mass = v.getMass();
+    s.thr = v.throttle();
+    s.stg = v.activeStage();
+    /* #675: the ascent profile. q and the four totals are the hull's own
+       last substep, so they ride no gate -- 0 is what they read with no
+       air and with no burn. gamma is ShipView's, so it takes the
+       snapshot test like the frame group above it, and it is already NaN
+       for a state with no flight path (orbit.h), which prints as "-"
+       rather than as level flight. */
+    s.q = v.lastDynPressure;
+    s.gamma = (view.ship == &v) ? glm::degrees(view.flight_path) : NAN;
+    const AscentLosses &loss = v.ascentLosses();
+    s.dv_exp = loss.dv;
+    s.grav = loss.grav;
+    s.drag = loss.drag;
+    s.steer = loss.steer;
+    s.burns = loss.burns;
+    return s;
+}
+
 void tick(Game &g) {
     /* --sim-steps (#472): exactly one tick per frame, decided by the sim rather
        than by how long this frame happened to take. Wall-clock stepping is what
@@ -1396,104 +1486,44 @@ void tick(Game &g) {
             }
         }
 
-        /* --record: the flight recorder (#662, #674). Every channel is a number the
-           game already publishes for the tick it is sampled in -- the physics pass's
-           readouts and the ShipView snapshot the SURFACE and ORBITAL windows draw --
-           so a recorded value and a logged value cannot disagree (#665's seam). It
-           is gated on its own clock (--record-interval) because the log rate and the
-           trace rate want different things: a trace at 1 s rows is useless next to a
-           burn, and one per tick is a 3 MB file.
-           Two cadences share a row, on purpose. The aero block's fields are the last
-           SUBSTEP's; the frame group is the last REFRESH's (sc.refresh fills hud.view
-           after the logic phase, main.cpp:1392), so those ten columns lag the physics
-           by part of a frame. That is not sloppiness: they are what the pilot's own
-           windows were showing at that instant, and the lag is centimetres at 4 Hz.
+        /* --record and the recorder ring (#662, #674, #972): ONE sample per due
+           tick, two sinks. It is gated on its own clock (--record-interval)
+           because the log rate and the trace rate want different things: a trace
+           at 1 s rows is useless next to a burn, and one per tick is a 3 MB file.
+           The RING fills whether or not --record was passed -- the window a player
+           opens has no flag to pass -- while the FILE keeps its
+           open-on-first-due-sample rule, so a run that never flies leaves no empty
+           trace behind, and a failed open says so once and the recorder stays off.
            t= counts the LOG clock (run time), not g.time: a load moves the mission
            clock backwards (#304) and would otherwise drop rows out of order in the
            middle of the file. The header's t0= is g.time at the first sample, which
-           maps one onto the other. */
-        if(g.args.record && g.ship != nullptr) {
+           maps one onto the other. The ring carries g.time alongside it (#972)
+           because the window plots MISSION time, so a warp coast stays proportional
+           even though the gate is run time; and a load clears the ring
+           (Game::clearEphemeralState), so the backwards clock is not the plot's
+           problem either. */
+        if(g.ship != nullptr) {
             const Uint32 now_ms = g.logClockMs();
-            /* The first due sample opens the file (Game::openRecorder): by then
-               the run has claimed a game dir if it was going to, and a run that
-               never flies leaves no empty trace behind. A failed open says so once
-               and the recorder stays off. */
-            if(g.logDue(kGateRec, now_ms, g.record_interval_ms) &&
-               (g.rec.f != nullptr || (!g.rec.failed && g.openRecorder(now_ms)))) {
-                Vehicle *v = g.ship;
-                const ShipView &view = g.hud.view;
-                RecSample s;
-                s.t = (now_ms - g.rec.started_ms) / 1000.0;
-                s.alt_asl = v->lastDragAlt;
-                s.v = glm::length(v->GetVel());
-                s.dv = v->getDeltaV();
-                s.acc = v->feltAccel();
-                /* The windows' own numbers. A snapshot taken for some other hull --
-                   or never taken at all, since an unfilled ShipView reads zeros
-                   (#235) -- quotes nothing: the group dashes together on one test,
-                   because a 0 in a log gets read as a measurement. */
-                if(view.ship == v) {
-                    s.alt_agl = view.alt_agl;
-                    s.v_surf = glm::length(view.surf_vel);
-                    s.v_orb = view.speed;
-                    s.vs = view.ver_speed;
-                    s.hs = view.hor_speed2;
-                    s.lat = glm::degrees(view.latitude);
-                    s.lon = glm::degrees(view.longitude);
-                    s.pitch = glm::degrees(view.pitch);
-                    s.roll = glm::degrees(view.roll);
-                    s.hdg = glm::degrees(view.heading);
-                } else {
-                    s.alt_agl = s.v_surf = s.v_orb = s.vs = s.hs = NAN;
-                    s.lat = s.lon = s.pitch = s.roll = s.hdg = NAN;
+            if(g.logDue(kGateRec, now_ms, g.record_interval_ms)) {
+                // The ring's clock starts at ITS first sample: the trace's
+                // started_ms only exists if --record opened a file.
+                if(!g.rec.ring_armed) {
+                    g.rec.ring_armed = true;
+                    g.rec.ring_t0_ms = now_ms;
                 }
-                s.rho = v->lastDragRho;
-                s.F = glm::length(v->lastAeroForce);
-                s.L = glm::length(v->lastLiftForce);
-                s.Cd = v->lastDragCd;
-                s.A = v->lastDragArea;
-                s.chute = v->lastChuteCdA;
-                if(v->lastDragAlphaValid) {
-                    s.aoa = glm::degrees(v->lastDragAlpha);
-                    s.cpl = v->lastCpLever;
-                    s.ind = v->lastInducedCdA;
-                } else {
-                    s.aoa = s.cpl = s.ind = NAN;
-                }
-                /* Beta has its own floor: the flow that gives AoA a direction need not
-                   give yaw one (AeroFrame::betaValid, #787). A recorded NaN prints as
-                   "-" in the flight log, which is what a row with no sideslip means. */
-                s.beta = v->lastDragBetaValid ? glm::degrees(v->lastDragBeta) : NAN;
-                if(v->lastDragRho > 0.0) {
-                    s.T = v->lastAirT;
-                    s.p = v->lastAirP;
-                    s.a = v->lastAirA;
-                    s.mach = v->lastAirV / v->lastAirA;
-                } else {
-                    s.T = s.p = s.a = s.mach = NAN;
-                }
-                s.mass = v->getMass();
-                s.thr = v->throttle();
-                s.stg = v->activeStage();
-                /* #675: the ascent profile. q and the four totals are the hull's own
-                   last substep, so they ride no gate -- 0 is what they read with no
-                   air and with no burn. gamma is ShipView's, so it takes the
-                   snapshot test like the frame group above it, and it is already NaN
-                   for a state with no flight path (orbit.h), which prints as "-"
-                   rather than as level flight. */
-                s.q = v->lastDynPressure;
-                s.gamma = (view.ship == v) ? glm::degrees(view.flight_path) : NAN;
-                const AscentLosses &loss = v->ascentLosses();
-                s.dv_exp = loss.dv;
-                s.grav = loss.grav;
-                s.drag = loss.drag;
-                s.steer = loss.steer;
-                s.burns = loss.burns;
-                char row[1024];
-                const int wrote = recRow(s, row, sizeof row);
-                if(wrote > 0) {   // -1 = the row did not fit, so none was written
-                    fprintf(g.rec.f, "[rec] %s\n", row);
-                    g.rec.rows++;
+                RecSample s = recSample(*g.ship, g.hud.view,
+                                        (now_ms - g.rec.ring_t0_ms) / 1000.0);
+                g.rec.ring.push(RecPoint{.s = s, .sim_t = g.time});
+                if(g.args.record &&
+                   (g.rec.f != nullptr ||
+                    (!g.rec.failed && g.openRecorder(now_ms)))) {
+                    s.t = (now_ms - g.rec.started_ms) / 1000.0;
+                    char row[1024];
+                    const int wrote = recRow(s, row, sizeof row);
+                    if(wrote > 0) {   // -1 = the row did not fit, so none was written
+                        fprintf(g.rec.f, "[rec] %s\n", row);
+                        g.rec.rows++;
+                    }
                 }
             }
         }

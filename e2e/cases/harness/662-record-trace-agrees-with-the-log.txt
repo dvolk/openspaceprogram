@@ -14,7 +14,11 @@ ARGS --sim-press 500,3000,R
 ARGS --sim-press 500,20000,T
 EXPECT record:
 EXPECT (one row per 250 ms)
-EXPECT 60 rows ->
+EXPECT 60 rows
+# ring= is the other sink (#972): the history buffer a Recorder window would draw.
+# Same gate, one sampler, no load in this run, so the two counts are the same
+# number -- the cheap witness that the plot did not grow its own sampling path.
+EXPECT ring=60 ->
 # The cadence: --orbit-interval gates [drag] at 1 s, --record-interval the trace at
 # 0.25 s, both on the same scripted clock and both armed at tick 0.
 CHECK len(drag) >= 10
