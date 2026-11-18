@@ -30,7 +30,9 @@
 //   * HOW OFTEN that plan is re-walked: the 0.2% band plus the structure key, counted,
 //     so a widened gate reddens a test instead of showing up in a heaptrack run (#966);
 //   * the TWR ratios give the same answer when the caller hands down the mass and thrust
-//     it already walked, and that the passed mass really is the denominator (#384).
+//     it already walked, and that the passed mass really is the denominator (#384);
+//   * the drain-layer CSR both the live drain and the staging preview now share: furthest
+//     layer first, ascending group id within a layer, the engine's own group last (#965).
 //
 // Links the REAL SetMass (src/physics.cpp, as test_thrust.cpp does), so the
 // part-mass shedding + Bullet inertia update is exercised too. No GL context
@@ -1212,6 +1214,86 @@ static void test_twr_ratios_take_the_walked_figs() {
     destroyShip(s);
 }
 
+/* #965: the live drain and the staging preview walk the fuel graph with ONE function now
+   (src/fuelgraph.h), so "do the two copies agree" is no longer a question a test can ask.
+   What still needs pinning is the SHAPE that function promises both callers: layers
+   furthest-first, each layer in ascending group id (#533 -- a layer's tanks are summed in
+   iteration order), the engine's own group last, every reachable group exactly once.
+   The dual-chain and star fixtures above pin what a drain DOES with those layers; this
+   pins what the layers ARE, so a rewrite that keeps the behavior but reorders a layer
+   shows up here rather than in an ulp of fuel somewhere. */
+static void test_drain_layers_shape() {
+    printf("== Drain layers: the CSR shape both callers share (#965) ==\n");
+    {   /* C->B->A, D->E->A. Groups as buildFuelGroups numbers them: A(engA+tankA)=0,
+           B=1, C=2, D=3, E=4. Hop distances from A: B and E at 1, C and D at 2. */
+        Ship s; s.v = new Vehicle;
+        Part *engA = addPart(s, 0, 0, true);
+        Part *tankA = addPart(s, 100, 100);
+        Part *tankB = addPart(s, 100, 100);
+        Part *tankC = addPart(s, 100, 100);
+        Part *tankD = addPart(s, 100, 100);
+        Part *tankE = addPart(s, 100, 100);
+        link(s, engA, tankA);
+        initShip(s);
+        s.v->fuelLinks.push_back(Vehicle::FuelLink{tankC, tankB});
+        s.v->fuelLinks.push_back(Vehicle::FuelLink{tankB, engA});
+        s.v->fuelLinks.push_back(Vehicle::FuelLink{tankD, tankE});
+        s.v->fuelLinks.push_back(Vehicle::FuelLink{tankE, engA});
+
+        const int wantOf[] = {2, 3, 1, 4, 0};     /* C,D | B,E | A */
+        const int wantStart[] = {0, 2, 4, 5};
+        const FuelLayers &L = s.v->fuelDrainLayers(engA);
+        /* layerStart carries one boundary per layer plus the end, like every other
+           CSR here: 3 layers -> 4 boundaries. */
+        CHECK_TRUE(L.layerStart.size() == 4, "three layers: two hops out to the engine");
+        if(L.layerStart.size() == 4) {
+            for(int i = 0; i < 4; i++) {
+                CHECK_TRUE(L.layerStart[(size_t)i] == wantStart[i], "layer boundaries");
+            }
+            CHECK_TRUE((int)L.groupOf.size() == 5, "every reachable group once");
+            for(size_t k = 0; k < L.groupOf.size() && k < 5; k++) {
+                CHECK_TRUE(L.groupOf[k] == wantOf[k],
+                           "furthest layer first, ascending group id within a layer");
+            }
+        }
+        /* The pool the engine drinks from is the same group seen the other way: tanks
+           only, so engA's own group here is tankA alone (the engine is not a tank). */
+        CHECK_TRUE(s.v->fuelPool(engA).size() == 1, "the engine's group holds one tank");
+        destroyShip(s);
+    }
+    {   /* A star: two arms one hop out, both feeding the root by FUEL LINK (the arms
+           are separate trees, exactly as they are on a shipped asparagus hull -- tree
+           links would put them in the root's own group). One outer layer holding both
+           arms together, which is what makes an asparagus ship drain evenly, then the
+           root. */
+        Ship s; s.v = new Vehicle;
+        Part *engR = addPart(s, 0, 0, true);
+        Part *root = addPart(s, 100, 100);
+        Part *arm1 = addPart(s, 100, 100);
+        Part *arm2 = addPart(s, 100, 100);
+        link(s, engR, root);
+        initShip(s);   /* tree groups: 0 (engR+root), 1 (arm1), 2 (arm2) */
+        /* Deliberately the wrong way round: the links arrive furthest-arm-first, so the
+           BFS visits 2 before 1. A layer listed in visit order would read {2,1}; the
+           promise is ascending group id, which is what the layer's fuel sum adds up in
+           (#533). #963 measured that visit order changed no shipped hull's numbers, so
+           this is the pin that keeps the insurance paid for. */
+        s.v->fuelLinks.push_back(Vehicle::FuelLink{arm2, engR});
+        s.v->fuelLinks.push_back(Vehicle::FuelLink{arm1, engR});
+
+        const FuelLayers &L = s.v->fuelDrainLayers(engR);
+        CHECK_TRUE(L.layerStart.size() == 3, "two layers: the arms, then the root");
+        CHECK_TRUE(L.groupOf.size() == 3, "three groups reachable");
+        if(L.layerStart.size() == 3 && L.groupOf.size() == 3) {
+            CHECK_TRUE(L.layerStart[0] == 0 && L.layerStart[1] == 2 && L.layerStart[2] == 3,
+                       "the outer layer holds both arms");
+            CHECK_TRUE(L.groupOf[0] == 1 && L.groupOf[1] == 2, "arms ascend together");
+            CHECK_TRUE(L.groupOf[2] == 0, "the engine's own group drains last");
+        }
+        destroyShip(s);
+    }
+}
+
 int main() {
     test_prorata_in_group();
     printf("\n");
@@ -1254,6 +1336,8 @@ int main() {
     test_staged_plan_rebuild_gate();
     printf("\n");
     test_twr_ratios_take_the_walked_figs();
+    printf("\n");
+    test_drain_layers_shape();
 
     printf("\n%d checks, %d failures\n", g_checks, g_failures);
     if(g_failures == 0) {

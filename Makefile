@@ -326,10 +326,12 @@ TSYS  = $(if $(filter windows,$(OS)),,-lGL) $(SDL3_SYS)
 # tick's SlotProbe, whose held() lives there. staging.o since #948: Vehicle::stagedRows()
 # answers the flight delta-v readout with the VAB's burn model, so vehicle.o now has an
 # undefined reference into it -- and a test that links vehicle.o must link the model too.
+# fuelgraph.o since #965: the drain-layer walk left staging.cpp and both sides call it,
+# so vehicle.o and staging.o both need it.
 TCOMMON_OBJS = $(TESTDIR)/obj/physics.o $(TESTDIR)/obj/body.o $(TESTDIR)/obj/vehicle.o \
                $(TESTDIR)/obj/eva.o $(TESTDIR)/obj/crew.o $(TESTDIR)/obj/inventory.o \
                $(TESTDIR)/obj/part.o $(TESTDIR)/obj/shipdef.o $(TESTDIR)/obj/frame.o \
-               $(TESTDIR)/obj/staging.o \
+               $(TESTDIR)/obj/staging.o $(TESTDIR)/obj/fuelgraph.o \
                $(TESTDIR)/obj/terrain.o \
                $(TESTDIR)/obj/shader.o $(TESTDIR)/obj/camera.o $(TESTDIR)/obj/mesh.o \
                $(TESTDIR)/obj/texture.o $(TESTDIR)/obj/gldebug.o $(TESTDIR)/obj/buildings.o \
@@ -429,7 +431,7 @@ $(TESTDIR)/test_power: $(TESTDIR)/obj/test_power.o $(TBASE)
 $(TESTDIR)/test_staging: $(TESTDIR)/obj/test_staging.o $(TBASE)
 	$(CXX) -O2 -Wl,--gc-sections -o $@ $^ $(TSYS)
 
-$(TESTDIR)/test_staging_dv: $(TESTDIR)/obj/test_staging_dv.o $(TESTDIR)/obj/staging.o $(TESTDIR)/obj/shipdef.o
+$(TESTDIR)/test_staging_dv: $(TESTDIR)/obj/test_staging_dv.o $(TESTDIR)/obj/staging.o $(TESTDIR)/obj/fuelgraph.o $(TESTDIR)/obj/shipdef.o
 	$(CXX) -o $@ $^
 
 # Headless (init() rebuilds the compound, never enterWorld).

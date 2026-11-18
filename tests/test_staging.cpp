@@ -51,6 +51,10 @@ static Part *addPart(Ship &s, Part *parent, int stage, bool decoupler,
     PartDef &d = s.defs.back();
     d.name = name;
     d.decoupler = decoupler;
+    /* The parser forces a fuel wall on every decoupler (shipdef.cpp), so a def this
+       file hands Vehicle is a wall too -- without it buildFuelGroups() numbers the
+       stack one group and the press-due cases below are not the shape they claim. */
+    d.fuel_barrier = decoupler;
     d.mass = 100.0f;
     d.radius = 1.0f;
     d.height = 2.0f;
@@ -534,6 +538,14 @@ static void test_press_due_on_asparagus_stack() {
         Part *btank = addTank(s, dec, 2, "booster_tank", 1, 500.0, 500.0);
         addEngine(s, btank, 2, "booster_engine", 1);
         s.v->totalStages_ = 2; s.v->minStage_ = 1; s.v->activeStage_ = 2;
+        /* Run the real renumbering, not just the hand-written ids above: the live
+           drain caches its layers per group, and a hand-assigned id leaves that cache
+           keyed to a tree nobody walked (#965 -- fuelDrainLayers asserts a part's
+           fuelGroup came from buildFuelGroups). These are the same integers the
+           fixture writes by hand, which the check below pins. */
+        s.v->buildFuelGroups();
+        CHECK_TRUE(ctank->fuelGroup == 0 && btank->fuelGroup == 1,
+                   "the decoupler splits the stack into fuel groups 0 and 1");
 
         // This first call is also the stamp: it records what the drop set held
         // when the stage lit, which is the decision staging.cpp makes once a burn.
@@ -568,6 +580,8 @@ static void test_press_due_on_asparagus_stack() {
         Part *fdec  = addPart(f, f.v->parts[0], 2, true, "dec_fairing");
         addPart(f, fdec, 2, false, "fairing");   // comes off, holds nothing to burn
         f.v->totalStages_ = 2; f.v->minStage_ = 1; f.v->activeStage_ = 2;
+        f.v->buildFuelGroups();   // as above: the cache keys on the real numbering
+        CHECK_TRUE(ftank->fuelGroup == 0, "the core tank sits in the ship's own group");
 
         CHECK_TRUE(!f.v->stageIsDue(),
                    "a press that drops no fuel waits while the stage can still burn");

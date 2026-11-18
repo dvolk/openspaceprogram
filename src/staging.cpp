@@ -9,6 +9,7 @@
 #include <string_view>
 
 #include "hash.h"   // the staging cache key's FNV-1a mixer
+#include "fuelgraph.h"  // the drain-layer walk, shared with the live drain (#965)
 
 namespace {
 
@@ -31,16 +32,6 @@ struct SimEngine {
     double mdot = 0.0;
     bool lit = false;
     bool fed = false;
-};
-
-/* One group's drain layers, flat: layer li owns groupOf[layerStart[li] ..
-   layerStart[li+1]), furthest layer first. It used to be a vector of vectors, which
-   pays an allocation per layer on top of the outer one, for every cached group in
-   every staging pass (#963). The layer COUNT stays data rather than structure, so the
-   cache's per-group cost is two buffers whatever the shape of the ship. */
-struct Layers {
-    std::vector<int> groupOf;
-    std::vector<int> layerStart;   // nLayers + 1 entries, [0] = 0
 };
 
 /* A fuel link resolved to part indices (both ends alive when the snapshot was taken;
@@ -74,84 +65,6 @@ int buildFuelGroups(std::vector<SimPart> &parts) {
     const int n = partitionFuelGroups(parent, wall, group);
     for(size_t i = 0; i < parts.size(); i++) { parts[i].group = group[i]; }
     return n;
-}
-
-/* Group buckets by reverse-hop distance, furthest first: outer groups drain first, as
-   in Vehicle::fuelDrainLayers (that flight-side copy still builds the same layers out
-   of a std::map -- same rule, two shapes now, and it is the one the LIVE drain uses).
-   `out` is the caller's (a layersOf entry) and is fully overwritten.
-
-   The group ids are dense from 0 (buildFuelGroups' contract), so the hop table is a
-   vector indexed by group rather than a std::map keyed by it, and the layers are a
-   count-then-fill CSR rather than a map of vectors. Both used to bill a tree node per
-   reachable group and per layer: 35,280 allocations over an ascent's 755 staging
-   passes -- ~47 a pass, on a hull with three fuel groups (#963).
-
-   Listing each layer in ASCENDING group id is what the map-of-vectors gave, and
-   computeRates sums a layer's fuel in that order. The order is insurance rather than a
-   live difference: it can only reach that fp sum, and filling in BFS order instead
-   changed no row on any shipped hull and failed no check (measured, #963's review). It
-   costs a sort of the reachable set, which is never larger than the walk already did. */
-void drainLayersFor(const std::vector<std::vector<int> > &rev, int group,
-                    int nGroups, Layers &out) {
-    /* These three ride between calls (#963): this runs once per group that holds a lit
-       engine, and every one is overwritten before anything reads it. The body calls
-       nothing but vector ops and asserts, so there is no reentrant caller to worry
-       about; one that wanted the hop table WHILE this ran would need its own. */
-    static thread_local std::vector<int> dist;   // group -> hops, -1 = not reachable
-    static thread_local std::vector<int> queue;  // reachable groups, ascending on use
-    static thread_local std::vector<int> cnt;    // per layer: count, then write cursor
-    assert(group >= 0 && group < nGroups);
-    assert(rev.size() >= (size_t)nGroups);   // refreshFuel() grows it to the numbering
-    /* The exit below leaves dist ALL -1 again, so there is no clear pass here: the walk
-       touches only entries it marked, which keeps this function O(reachable) rather
-       than O(nGroups) -- a ship with many groups and short reach (a ring of unlinked
-       boosters) asks for one layer set per group, and scanning the whole group set for
-       each was 40% slower than the map it replaced. A grown tail starts unseen, or 0
-       would leak into the next call on a bigger ship reading as "this group IS the one
-       with the lit engine". */
-    const size_t had = dist.size();
-    if(had < (size_t)nGroups) {
-        dist.resize((size_t)nGroups);
-        std::fill(dist.begin() + had, dist.end(), -1);
-    }
-    queue.clear();
-    dist[group] = 0;
-    queue.push_back(group);
-    int maxDist = 0;
-    for(size_t qi = 0; qi < queue.size(); qi++) {
-        const int u = queue[qi];
-        const std::vector<int> &feed = rev[(size_t)u];   // empty unless something feeds u
-        for(size_t i = 0; i < feed.size(); i++) {
-            const int v = feed[i];
-            assert(v >= 0 && v < nGroups);
-            if(dist[v] != -1) { continue; }
-            dist[v] = dist[u] + 1;
-            if(dist[v] > maxDist) { maxDist = dist[v]; }
-            queue.push_back(v);
-        }
-    }
-    /* Every hop count from 0 to maxDist has a group (a group at distance d was reached
-       through one at d - 1), so there are exactly maxDist + 1 layers and none is empty.
-       Layer li carries the groups maxDist - li hops out, so li 0 is the outermost. */
-    const size_t nLayers = (size_t)maxDist + 1;
-    std::sort(queue.begin(), queue.end());
-    cnt.assign(nLayers, 0);
-    for(size_t k = 0; k < queue.size(); k++) { cnt[(size_t)(maxDist - dist[queue[k]])]++; }
-    out.layerStart.resize(nLayers + 1);
-    out.layerStart[0] = 0;
-    for(size_t li = 0; li < nLayers; li++) {
-        out.layerStart[li + 1] = out.layerStart[li] + cnt[li];
-    }
-    out.groupOf.resize(queue.size());
-    assert(out.layerStart[nLayers] == (int)queue.size());   // each reachable group once
-    for(size_t li = 0; li < nLayers; li++) { cnt[li] = out.layerStart[li]; }
-    for(size_t k = 0; k < queue.size(); k++) {
-        const int g = queue[k];                       // ascending: the layer's order
-        const size_t li = (size_t)(maxDist - dist[g]);
-        out.groupOf[(size_t)cnt[li]++] = g;
-    }
-    for(size_t k = 0; k < queue.size(); k++) { dist[queue[k]] = -1; }
 }
 
 double totalMass(const std::vector<SimPart> &parts) {
@@ -222,22 +135,22 @@ struct Sim {
     /* Drain layers per group, indexed by group id and generation-stamped (#963) -- the
        same epoch idiom as reachEpoch below. layersOf[g].epoch == layersEpoch means
        "THIS numbering's", and a renumbering costs one integer bump instead of freeing
-       every cached layer set: the Layers' two buffers then carry their capacity across
-       renumberings and across passes, where the old map<int, Layers> billed a node plus
+       every cached layer set: the FuelLayers' two buffers then carry their capacity across
+       renumberings and across passes, where the old map<int, FuelLayers> billed a node plus
        a vector per layer per cached group (15,126 allocations an ascent).
-       A returned `const Layers *` outlives nothing that could move it: the only holders
+       A returned `const FuelLayers *` outlives nothing that could move it: the only holders
        are computeRates() (one engine's layer walk) and markReachable() (one marking
        loop), and refreshFuel() -- the only resize of this table, and it runs BOTH before
        the walk and again after a mid-pass kill() -- is called only after both have
        returned. It has to be that way: a vector element that is reallocated MOVES, so an
-       outstanding Layers * would dangle outright rather than read stale data, unlike the
+       outstanding FuelLayers * would dangle outright rather than read stale data, unlike the
        map whose nodes never moved.
        The table grows only, so an entry past nGroups keeps the previous numbering's
        layers; layersFor() is only ever asked for a group id below nGroups, and asserts as
        much. */
     struct LayerCache {
         uint32_t epoch = 0;
-        Layers layers;
+        FuelLayers layers;
     };
     std::vector<LayerCache> layersOf;
     /* 1, not 0: epoch 0 means "no generation yet", so a LayerCache that resize() just
@@ -429,7 +342,7 @@ struct Sim {
        only because no resize happens while a pointer is outstanding (the layersOf
        field above names the holders and when). What the dense table does buy is the
        end of the node-per-group and vector-per-layer the map billed (#963). */
-    const Layers *layersFor(int g) {
+    const FuelLayers *layersFor(int g) {
         assert(g >= 0 && g < nGroups && g < (int)layersOf.size());
         LayerCache &c = layersOf[(size_t)g];
         if(c.epoch == layersEpoch) { return &c.layers; }
@@ -450,7 +363,7 @@ struct Sim {
             if(e.part < 0 || e.part >= (int)parts.size() || !parts[e.part].alive) { continue; }
             const int g = parts[e.part].group;
             if(g < 0) { continue; }
-            const Layers *lit = layersFor(g);
+            const FuelLayers *lit = layersFor(g);
             double need = e.mdot;
             for(size_t li = 0; li + 1 < lit->layerStart.size() && need > 0.0; li++) {
                 const int b0 = lit->layerStart[li];
@@ -539,7 +452,7 @@ struct Sim {
             litSeen++;
             const int g = parts[e.part].group;
             if(g < 0) { continue; }
-            const Layers *layers = layersFor(g);
+            const FuelLayers *layers = layersFor(g);
             /* The flat list IS the union of the layers, so marking needs no layer
                boundaries -- and order does not matter here, unlike in computeRates. */
             for(size_t k = 0; k < layers->groupOf.size(); k++) {
@@ -970,7 +883,7 @@ std::vector<StageRow> computeStaging(const BuildShip &ship, double g,
             sim.revOf[(size_t)b].push_back(a);
         }
         /* The layers follow the groups, so every cached set is stale. Bump the
-           generation instead of clearing: the Layers keep their capacity, which is the
+           generation instead of clearing: the FuelLayers keep their capacity, which is the
            half of the win (#963). An entry that survived a counter wrap would be read
            as THIS numbering's, i.e. a silently wrong plan, hence the assert. */
         ++sim.layersEpoch;

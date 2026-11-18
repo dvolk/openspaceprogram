@@ -2452,6 +2452,7 @@ bool Vehicle::isEva() const { return false; }
 void Vehicle::buildFuelGroups() {
     // The groups change, so the cached drain layers are stale -- drop them.
     drainLayers_.clear();
+    drainRev_.clear();
     /* The one partition (shipdef.h, #292): index the parts so the tree can be
        handed over as parent indices, exactly like the staging snapshot and the
        VAB's loop check do. A parent outside this ship would be a torn tree --
@@ -2477,8 +2478,14 @@ void Vehicle::buildFuelGroups() {
         wall[i] = p->isFuelBarrier();   /* a wall: stays -1 */
     }
     std::vector<int> group;
-    partitionFuelGroups(parent, wall, group);
+    const int nGroups = partitionFuelGroups(parent, wall, group);
     for(size_t i = 0; i < parts.size(); i++) { parts[i]->fuelGroup = group[i]; }
+    /* One slot per group, every one unwalked; fuelDrainLayers() fills a slot on the
+       first ask for it. Sized here rather than grown on ask so that no reference it
+       handed out can be moved by a later resize, and because the renumbering is the
+       only thing that changes the count (four call sites: spawn, init, decouple,
+       dock -- not a per-tick cost). */
+    drainLayers_.assign((size_t)nGroups, FuelLayers());
 }
 
 std::vector<Part *> Vehicle::fuelPool(Part *engine) const {
@@ -2493,56 +2500,40 @@ std::vector<Part *> Vehicle::fuelPool(Part *engine) const {
     return pool;
 }
 
-const std::vector<std::vector<int> > &Vehicle::fuelDrainLayers(Part *engine) const {
+const FuelLayers &Vehicle::fuelDrainLayers(Part *engine) const {
+    static const FuelLayers none;    // a walled-off engine: no layers, no walk
     const int g = engine->fuelGroup;
-    if(g < 0) {
-        static const std::vector<std::vector<int> > empty;
-        return empty;
-    }
-    // Cached per group: a repeat call is a map lookup, not a BFS (hot while thrusting).
-    auto it = drainLayers_.find(g);
-    if(it != drainLayers_.end()) { return it->second; }
-    std::vector<std::vector<int> > layers;
-    /* reverse adjacency over fuel groups: rev[Y] = { X : X feeds Y }. */
-    std::map<int, std::vector<int> > rev;
-    for(size_t k = 0; k < fuelLinks.size(); k++) {
-        int a = fuelLinks[k].from->fuelGroup;
-        int b = fuelLinks[k].to->fuelGroup;
-        if(a < 0 || b < 0 || a == b) { continue; }
-        rev[b].push_back(a);
-    }
-    /* BFS from G in the reverse graph; dist[X] = hops from X to G. */
-    std::map<int, int> dist;
-    dist[g] = 0;
-    std::vector<int> queue;
-    queue.push_back(g);
-    for(size_t qi = 0; qi < queue.size(); qi++) {
-        int u = queue[qi];
-        std::map<int, std::vector<int> >::const_iterator it = rev.find(u);
-        if(it == rev.end()) { continue; }
-        for(size_t i = 0; i < it->second.size(); i++) {
-            int v = it->second[i];
-            if(dist.count(v)) { continue; }
-            dist[v] = dist[u] + 1;
-            queue.push_back(v);
+    if(g < 0) { return none; }
+    assert(g < (int)drainLayers_.size());   // every fuelGroup comes from a renumbering
+    FuelLayers &slot = drainLayers_[(size_t)g];
+    // Cached per group: a repeat call is an index, not a BFS (hot while thrusting).
+    if(!slot.layerStart.empty()) { return slot; }
+    if(drainRev_.empty()) {
+        /* Reverse adjacency over fuel groups: rev[Y] = { X : X feeds Y }. Once per
+           renumbering now; the std::map version rebuilt the same graph again for every
+           group that was asked, which on an asparagus hull means once per engine. */
+        drainRev_.assign(drainLayers_.size(), std::vector<int>());
+        for(size_t k = 0; k < fuelLinks.size(); k++) {
+            int a = fuelLinks[k].from->fuelGroup;
+            int b = fuelLinks[k].to->fuelGroup;
+            if(a < 0 || b < 0 || a == b) { continue; }
+            drainRev_[(size_t)b].push_back(a);
         }
     }
-    // Bucket by distance, then take the buckets furthest-first (map walks ascending).
-    std::map<int, std::vector<int> > byDist;
-    for(std::map<int, int>::const_iterator it = dist.begin(); it != dist.end(); ++it) {
-        byDist[it->second].push_back(it->first);
-    }
-    for(std::map<int, std::vector<int> >::const_reverse_iterator it = byDist.rbegin();
-        it != byDist.rend(); ++it) {
-        layers.push_back(it->second);
-    }
-    auto res = drainLayers_.emplace(g, std::move(layers));
-    return res.first->second;
+    /* The same walk the staging preview runs (#965): hop table by group id, layers as
+       a CSR, each layer in ascending group id -- the order the map-of-vectors used to
+       give, and the order these sums accumulated in before. */
+    drainLayersFor(drainRev_, g, (int)drainLayers_.size(), slot);
+    return slot;
 }
 
 Vehicle::FuelDraw Vehicle::consumeResourceMass(enum ResourceType type, double amt, Part *engine) {
-    const std::vector<std::vector<int> > &layers = fuelDrainLayers(engine);
-    if(layers.empty()) { return {false, 0.0}; }
+    const FuelLayers &layers = fuelDrainLayers(engine);
+    /* A walked set always has layerStart[0] = 0 and one boundary per layer, so fewer
+       than two boundaries means no layers at all: an engine walled off by a fuel
+       barrier, or a hull with no groups. */
+    if(layers.layerStart.size() < 2) { return {false, 0.0}; }
+    const size_t nLayers = layers.layerStart.size() - 1;
     /* ONE totals pass, not two (#384). The drain-or-nothing gate and the drain loop
        below want the same per-layer sums and each used to sweep every part of every
        group in the engine's layers to get them: the gate through availableResourceMass
@@ -2554,12 +2545,12 @@ Vehicle::FuelDraw Vehicle::consumeResourceMass(enum ResourceType type, double am
        `layerTotals` follows the drain's (only positive, since a share of a negative
        tank is not a thing). */
     static thread_local std::vector<double> layerTotals;
-    layerTotals.assign(layers.size(), 0.0);
+    layerTotals.assign(nLayers, 0.0);
     double avail = 0.0;
-    for(size_t li = 0; li < layers.size(); li++) {
+    for(size_t li = 0; li < nLayers; li++) {
         double t = 0.0;
-        for(size_t gi = 0; gi < layers[li].size(); gi++) {
-            const int grp = layers[li][gi];
+        for(int k = layers.layerStart[li]; k < layers.layerStart[li + 1]; k++) {
+            const int grp = layers.groupOf[(size_t)k];
             for(Part *p : parts) {
                 if(!p->isTank() || p->fuelGroup != grp) { continue; }
                 const double have = p->resources.current[(int)type];
@@ -2577,13 +2568,13 @@ Vehicle::FuelDraw Vehicle::consumeResourceMass(enum ResourceType type, double am
        level and leave the layer a hair short, and that remainder belongs to the next
        layer rather than being dropped on the floor (#531). */
     double drawn = 0.0;
-    for(size_t li = 0; li < layers.size() && drawn < amt; li++) {
+    for(size_t li = 0; li < nLayers && drawn < amt; li++) {
         const double layerTotal = layerTotals[li];
         if(layerTotal <= 0.0) { continue; }
         const double owed = amt - drawn;
         const double take = owed < layerTotal ? owed : layerTotal;
-        for(size_t gi = 0; gi < layers[li].size(); gi++) {
-            const int grp = layers[li][gi];
+        for(int k = layers.layerStart[li]; k < layers.layerStart[li + 1]; k++) {
+            const int grp = layers.groupOf[(size_t)k];
             for(Part *p : parts) {
                 if(!p->isTank() || p->fuelGroup != grp) { continue; }
                 const double have = p->resources.current[(int)type];
@@ -2600,9 +2591,14 @@ Vehicle::FuelDraw Vehicle::consumeResourceMass(enum ResourceType type, double am
 }
 
 double Vehicle::availableResourceMass(enum ResourceType type, Part *engine) const {
+    const FuelLayers &layers = fuelDrainLayers(engine);
     double total = 0.0;
-    for(const std::vector<int> &layer : fuelDrainLayers(engine)) {
-        for(const int grp : layer) {
+    /* Every reachable group once, in layer order: groupOf is the whole CSR, so the
+       layer boundaries do not matter here -- only the order of the fp sum does, and
+       that is the same furthest-first, ascending-within-a-layer order as before. */
+    for(size_t li = 0; li + 1 < layers.layerStart.size(); li++) {
+        for(int k = layers.layerStart[li]; k < layers.layerStart[li + 1]; k++) {
+            const int grp = layers.groupOf[(size_t)k];
             for(Part *p : parts) {
                 if(!p->isTank() || p->fuelGroup != grp) { continue; }
                 total += p->resources.current[(int)type];
@@ -6289,9 +6285,10 @@ bool Vehicle::stageIsDue() {
             if(p->def->propellant_rate[r] > 0.0) { burn[r] = true; }
         }
         if(p->fuelGroup < 0) { continue; }   // walled off: no drain layers at all
-        for(const std::vector<int> &layer : fuelDrainLayers(p)) {
-            for(int g : layer) { reach.push_back(g); }
-        }
+        /* groupOf is every group the engine can drink from, once, whatever layer it
+           sits in -- the layer boundaries only matter to a pro-rata drain. */
+        const FuelLayers &layers = fuelDrainLayers(p);
+        reach.insert(reach.end(), layers.groupOf.begin(), layers.groupOf.end());
     }
     std::sort(reach.begin(), reach.end());
     reach.erase(std::unique(reach.begin(), reach.end()), reach.end());

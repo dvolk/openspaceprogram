@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "flightlog.h" // FlightLog
+#include "fuelgraph.h" // FuelLayers: the drain layers the live drain walks (#965)
 #include "sas_policy.h" // SasPolicy: pilot vs. law (#421)
 #include "losses.h"    // AscentLosses: what a burn spent, not what it did (#675)
 
@@ -431,8 +432,16 @@ public:
     struct FuelLink { Part *from; Part *to; };
     std::vector<FuelLink> fuelLinks;
 
-    /* Cached per group; buildFuelGroups clears them. */
-    mutable std::map<int, std::vector<std::vector<int> > > drainLayers_;
+    /* Drain layers per fuel group, dense by group id, walked on first use and dropped
+       by buildFuelGroups. The map this replaces billed a tree node per cached group;
+       the shape is the staging preview's CSR, from fuelgraph.h, so the live drain and
+       the preview walk the SAME code (#965). An empty layerStart means "not walked
+       yet", and a slot's reference stays good because nothing resizes this while a
+       caller holds one (buildFuelGroups is not reachable from a drain). */
+    mutable std::vector<FuelLayers> drainLayers_;
+    /* rev[Y] = { X : X feeds Y }, from fuelLinks, built once per renumbering by the
+       first layer ask rather than once per group as the map version did. */
+    mutable std::vector<std::vector<int> > drainRev_;
 
     /* --drain-log state. drainSample() runs on every tick the sim steps this
        ship, so the interval a rate describes is SIM time and means the same at
@@ -1401,9 +1410,11 @@ public:
 
     std::vector<Part *> fuelPool(Part *engine) const;
 
-    /* The engine's fuel groups in LAYERS by hop distance, furthest first. A layer
-       drains TOGETHER (pro-rata). Cached; do not mutate the reference. */
-    const std::vector<std::vector<int> > &fuelDrainLayers(Part *engine) const;
+    /* The engine's fuel groups in LAYERS by hop distance, furthest first (fuelgraph.h).
+       A layer drains TOGETHER (pro-rata). Cached; do not mutate the reference. An
+       engine walled off by a fuel barrier (fuelGroup -1) gets an empty FuelLayers: no
+       layers, no walk, and every layer loop below runs zero times. */
+    const FuelLayers &fuelDrainLayers(Part *engine) const;
 
     /* What a draw DID, as opposed to what it was asked for (#531). `drawn` is the kg
        that actually left resources.current; a refused draw moved nothing, so it drew 0.
