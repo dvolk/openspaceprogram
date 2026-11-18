@@ -1662,6 +1662,19 @@ void Game::installSystem(System &&newSys, const std::string &path,
 void Game::settleVehicles(Vehicle *active) {
     // Ships sharing an orbit scenario are spaced by slot.
     apply_scenarios(*this);
+    /* Pose and gate the driven buildings BEFORE anything asks what is under a
+       hull. A spawn on a driven building (an air platform, a space dock) is
+       standing on its deck only once that deck is in the physics world, and
+       gateBuildingColliders() is what puts it there; the tick loop runs the
+       ships' own pass first (tick.cpp:235) and gates at :325, so on the first
+       tick a bubble is a hole in the world. Measured on venus_cloud_platform:
+       the down-ray in isGrounded() missed the deck on tick 0 and hit on tick 1,
+       which read as "airborne, then back down" and failed the mission inside a
+       second (#977, through #931's return rule). The rails loop below asks the
+       same question, so it is affected too: a ship parked on a deck was refused
+       the rails as if it were flying. */
+    driveBuildingPoses();
+    gateBuildingColliders();
     /* Idle ships park on rails: clear of the air they coast on their conic,
        pad ships freeze. A ship in the air stays in physics. */
     for(auto *s : vehicles) {

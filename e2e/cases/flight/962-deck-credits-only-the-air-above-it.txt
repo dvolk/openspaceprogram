@@ -30,7 +30,12 @@ CHECK float(re.search(r"of air overhead, ([\d.]+) kg/m\^2", out).group(1)) < 600
 # mission can ever ask for -- a wrong reading here is not a transient.
 CHECK max(a["pitch"] for a in ascent) < 20.0
 CHECK min(a["pitch"] for a in ascent) > 5.0
-# The hull never leaves the deck in this run: phase=failed, why="the ship came back
-# down", alt_asl parked at 56 km with dv 3 m/s. That is the spawn settle on an air
-# platform tripping #931's return rule -- #977, filed off this case -- and unrelated
-# to the two numbers above, which are settled at arm time.
+# What this case does NOT pin is the mission's fate. When it was written the run
+# ended at t=1.0 with why="the ship came back down" -- a spawn on a driven building
+# had no collider in the world yet on the first tick (#977) -- so the deck launch
+# never actually flew and only the arm-time numbers could be checked. That ordering
+# is fixed; the rows here now carry a flown burn, and the deck start is pinned by
+# flight/977-deck-launch-starts-on-its-deck. This run still ends phase=failed, near
+# t=81 s with why="the tanks are dry": a `racer` cannot climb out of 47 kPa of
+# Venusian air on 1.6 km/s when ~1.4 km/s of it goes to drag. A hull-versus-body
+# question, not an air-numbers one.

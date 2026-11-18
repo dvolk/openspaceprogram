@@ -1,0 +1,42 @@
+# A mission armed on an air platform must start standing ON its deck (#977).
+#
+# A driven building's collider is in the physics world only while the proximity
+# gate keeps it there (Game::gateBuildingColliders), and the tick loop runs the
+# ships' own pass BEFORE that gate: flyAscent at tick.cpp:235, the gate at :325.
+# So on the first tick of a run spawned at venus_cloud_platform the deck was a
+# hole in the world. Measured with a temporary probe in Vehicle::isGrounded(): the
+# down-ray from the COM missed the platform on tick 0 (`hit=0`, nothing in the
+# world to hit) and hit it on tick 1 -- same COM (-0.00,-0.00,3.93), |GetVel|
+# 0.000 m/s, so neither the settle nor the speed gate was involved. The law read
+# that one tick as "airborne", took its one-way Pad -> Ascent edge, and #931's
+# return rule ended the mission on the next tick:
+#
+#   [ascent] t=1.0s phase=failed ... why="the ship came back down" alt_asl=56003.9 dv=0.3
+#
+# Every autopilot launch on Venus failed inside its first logged second, which
+# made the body's only pad (and its default site) unusable, and blocked the
+# flight half of #962. The rails loop in Game::settleVehicles asked the same
+# question against the same ungated world, so a ship parked on a deck read as
+# flying there too.
+#
+# The fix is ordering, not a softer rule: settleVehicles() now poses and gates the
+# driven buildings after the spawns are positioned and before anything asks what
+# is under a hull. A hull that really does come back to the ground still ends its
+# mission (#931 stands).
+NAME deck-launch-starts-on-its-deck
+CLAIM An autopilot mission armed on an air platform starts grounded on the deck instead of failing in its first second.
+KIND invariant
+ARGS --system res/systems/solar_system.json --startship racer,res/ships/racer.json,Venus,pad,site=venus_cloud_platform --ascent 100e3 --time-accel 10 --sim-steps 300 --no-paint --ascent-log
+LIMIT 60
+EXPECT Autopilot: ascent armed on 'racer'
+FORBID the ship came back down
+# Pre-fix, "failed at t=1.0 with dv 0.3" is the ONLY row the run produces. Here
+# the burn is flown: the lever open the whole way and about a km/s spent by the
+# cutoff, on the 12.7 deg schedule #962's hull-relative air gives the deck.
+CHECK ascent and ascent[0]["phase"] == "ascent"
+CHECK all(a["phase"] != "failed" for a in ascent)
+CHECK all(a["lever"] > 0.9 for a in ascent)
+CHECK last(ascent)["dv_exp"] > 800.0
+# What this case does NOT claim: that a `racer` can reach orbit from 56 km of
+# Venus. Its tanks are dry near t=96 s with ~1.4 km/s of the 1.6 km/s spent on
+# drag, which is a hull-versus-body question rather than this one.
