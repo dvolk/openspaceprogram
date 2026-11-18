@@ -1519,7 +1519,13 @@ void tick(Game &g) {
                 }
                 RecSample s = recSample(*g.ship, g.hud.view,
                                         (now_ms - g.rec.ring_t0_ms) / 1000.0);
-                g.rec.ring.push(RecPoint{.s = s, .sim_t = g.time});
+                /* The window's Pause drops the ring copy only: the file goes on,
+                   and the sampler runs either way, so resuming continues from the
+                   state the hull is in NOW rather than leaving a hole the size of
+                   the pause. One sampler, two sinks (#972). */
+                if(!g.rec.paused) {
+                    g.rec.ring.push(RecPoint{.s = s, .sim_t = g.time});
+                }
                 if(g.args.record &&
                    (g.rec.f != nullptr ||
                     (!g.rec.failed && g.openRecorder(now_ms)))) {

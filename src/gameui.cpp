@@ -5128,6 +5128,312 @@ void drawUIMap(Game &g) {
     });
 }
 
+/* --- the flight recorder's window (#972) ---------------------------------
+   Step 1 built the sampler and the ring; this is the window that reads the ring.
+   Telemetry stays the debug half of #966 (F2, off the Windows panel, physics
+   counters). This is the player's half: the flight they just flew, read as a
+   profile rather than as a stream of numbers.
+   Its own entry point, called after drawUIMap, because the layout anchors on the
+   map: BottomLeft is taken, so the graph runs to its right along the bottom. */
+
+/* Each visible channel stretched onto its OWN min..max, which is what lets one
+   graph carry channels three decades apart in unit terms (an ascent touches
+   100 km of altitude, 30 kPa of q and 2.5 km/s of v). Nothing on the window turns
+   0.7 back into 22 kPa -- that gap is #990, and it cannot be closed with a legend
+   string (kRecChans spells why). Normalising means the ring's samples can no
+   longer be plotted where they lie, hence a getter rather than a strided
+   PlotLine -- and still no second buffer to drift away from the trace, which is
+   recorder.h's whole rule. The range itself comes from recorder.h's recExtent, so
+   the graph and its tests agree on what a channel's min/max means. */
+struct RecNorm {
+    const RecPoint *base;            // this span's first sample
+    double RecSample::*get;          // the channel
+    double mn;                       // the channel's own minimum, in its own units
+    double lo;                       // where mn lands on the 0..1 axis
+    double k;                        // 1 / (max - mn); 0 for a flat channel
+};
+
+static ImPlotPoint recNormPoint(int i, void *user) {
+    const RecNorm &n = *(const RecNorm *)user;
+    const double v = n.base[i].s.*(n.get);
+    /* A NaN reading stays NaN through this, and implot leaves a gap there (with
+       ImPlotLineFlags_SkipNaN) -- the same claim the trace's "-" makes. */
+    return ImPlotPoint(n.base[i].sim_t, n.lo + (v - n.mn) * n.k);
+}
+
+/* One margin, both axes: x gets 2% of the flight the ring holds, y gets 2% of the
+   normalised height -- which, being normalised, is always exactly 1.0. A channel's
+   own min and max land on the axis ends, so without a margin the top and bottom of
+   every line draw half their width off the frame. */
+static constexpr double kRecMargin = 0.02;
+
+void drawUIRecorder(Game &g) {
+    drawWin(g, W_Recorder, [&] {
+        RecRing &ring = g.rec.ring;
+        HudState &hud = g.hud;
+        /* The default channel set lives in recorder.h beside the channel names, so
+           the table stays the one place that knows what a graph means. Session
+           state, not save state (HudState::rec_chan). */
+        if(!hud.rec_seeded) {
+            for(int i = 0; i < kRecNumCh; i++) { hud.rec_chan[i] = kRecChans[i].dflt; }
+            hud.rec_seeded = true;
+        }
+
+        if(ImGui::Button("Start")) {
+            ring.clear();
+            /* Re-arms the run-clock baseline the RING samples carry (RecSample::t).
+               It is not what the graph counts: the plot's x is RecPoint::sim_t, so
+               Start empties the history without restarting the clock -- and the file
+               has its own baseline (rec.started_ms), which this does not touch. */
+            g.rec.ring_armed = false;
+            g.rec.paused = false;
+            printf("[recwin] start\n");
+        }
+        ImGui::SameLine();
+        /* Greyed until there is something to hold. The recorder starts held
+           (Recorder::paused), so the first move in this window is Start; and a
+           control that only appears once it is useful is a control that could not
+           be found when it was not. */
+        ImGui::BeginDisabled(ring.count == 0);
+        if(ImGui::Button(g.rec.paused ? "Resume" : "Pause")) {
+            g.rec.paused = !g.rec.paused;
+            /* n=/span= because "the hold froze the ring" is a claim about how much
+               flight the picture keeps, and span= in MISSION seconds is also the only
+               place the plot's x axis gets pinned now that the window opens with an
+               empty ring: a window counting the file's run-clock column would print
+               span=5s here, not the 4x worth of mission time the samples cover. */
+            const double held = ring.count > 1
+                              ? ring.at(ring.count - 1).sim_t - ring.at(0).sim_t : 0.0;
+            printf("[recwin] paused=%d n=%d span=%.0fs\n", g.rec.paused ? 1 : 0,
+                   ring.count, held);
+        }
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+        if(ImGui::Button("Clear")) {
+            ring.clear();
+            g.rec.ring_armed = false;
+            printf("[recwin] clear\n");
+        }
+        ImGui::SameLine();
+        /* Fit only has meaning because the auto-fit below exists: scrolling or
+           dragging the graph gives the view to the pilot, and this takes it back. */
+        if(ImGui::Button("Fit")) { hud.rec_fit = true; printf("[recwin] fit=on\n"); }
+        ImGui::SameLine();
+        /* Whose flight this is: the ring follows the active hull and empties when
+           the selection changes (Game::select_vehicle), so naming it is the whole
+           difference between "my ascent" and "some ascent". The clause after it is
+           here because the y axis no longer says it: both axes are undecorated to
+           buy plot, and four lines sharing a frame are only honest if something
+           states that each one has its own scale (#990 puts numbers back). */
+        ImGui::TextDisabled("%s: each line on its own min..max",
+                            g.ship ? g.ship->name.c_str() : "(no hull)");
+
+        /* Thirteen toggles are wider than the window, and imgui's SameLine draws
+           past the right edge without complaining -- so the row is broken by hand,
+           against the measured width of the next box plus its label. The label is
+           the channel KEY -- the same string the graph's legend row and the trace's
+           column use, so the three cannot drift. Units are nowhere on this window:
+           the y axis is each channel's own min..max, so "m/s" on a toggle names a
+           scale the axis does not carry, and it is what stopped the 13 labels
+           fitting two rows.
+           SameLine places an item after the previous one no matter what the
+           estimate said, so an estimate can only break a row early -- never overlap
+           two boxes. Running past the edge is the failure, and it comes from
+           forgetting the inter-item gap on the way out of a row. */
+        const float left = ImGui::GetCursorPosX();
+        /* The frame's own width rather than the content region: the graph spans the
+           full width, so the content region still carries last frame's plot and a
+           row runs off the edge -- which is how the last four toggles came out
+           clipped at 560 px. */
+        const float right = ImGui::GetWindowWidth() - ImGui::GetStyle().WindowPadding.x;
+        const float ispace = ImGui::GetStyle().ItemSpacing.x;
+        const float box = ImGui::GetFrameHeight() + ImGui::GetStyle().ItemInnerSpacing.x;
+        float line_end = left;
+        int nvis = 0;
+        for(int i = 0; i < kRecNumCh; i++) {
+            const float w = box + ImGui::CalcTextSize(kRecChans[i].key).x;
+            if(i && line_end + ispace + w <= right) {
+                ImGui::SameLine();
+                line_end += ispace;
+            } else {
+                line_end = left;
+            }
+            ImGui::Checkbox(kRecChans[i].key, &hud.rec_chan[i]);
+            line_end += w;
+            if(hud.rec_chan[i]) { nvis++; }
+        }
+
+        int idx[2], len[2];
+        const int nspans = ring.spans(idx, len);
+        double stage_xs[kRecMarkMax], seam_xs[kRecMarkMax];
+        const int nstage = recMarks(ring, false, stage_xs, kRecMarkMax);
+        const int nseam = recMarks(ring, true, seam_xs, kRecMarkMax);
+
+        if(ring.count < 2) {
+            /* Two samples, not one: a single point has no width to fit, and implot
+               would lock the x axis onto it (which is how the first version of this
+               window ended up showing a graph pinned near 0,0). Held and empty is a
+               different thing from recording and empty: one needs a keypress, the
+               other needs a few hundred milliseconds. */
+            ImGui::TextDisabled(g.rec.paused ? "(not recording - press Start)"
+                                             : "(no samples yet)");
+        } else if(nvis == 0) {
+            ImGui::TextDisabled("(no channels on)");
+        } else {
+            int nempty = 0;   // visible channels the ring holds no reading for; said under the plot
+            if(ImPlot::BeginPlot("##rec", ImVec2(-1.0f, -1.0f))) {
+                /* Neither axis draws a label, tick mark or tick number. The pilot
+                   reads coordinates from implot's own hover text, and only its x half
+                   means anything here -- y is 0..1 of each line's own range (#990).
+                   What it buys is the graph: an axis with no label and no tick labels
+                   reserves no gutter (implot.cpp:1667 PadAndDatumAxesX,
+                   implot_internal.h:906 WillRender), so the plot rect is the whole
+                   frame. No grid lines either, deliberately: the only vertical lines
+                   in this graph should be the chapter marks below, and an unlabeled
+                   grid is indistinguishable from them. */
+                ImPlot::SetupAxis(ImAxis_X1, nullptr, ImPlotAxisFlags_NoDecorations);
+                /* x spans the flight the ring holds, and it is asked for EVERY
+                   frame. implot fits an axis once, on the frame the plot first
+                   appears (implot.cpp:2535, CanInitFit), so a live recorder
+                   otherwise locks onto however much flight the ring held when the
+                   window opened: eight samples, the first two seconds of an ascent,
+                   with the flight itself off the right-hand edge -- which is what
+                   "the plot is stuck at 0,0" was. Spelling the range out with
+                   recTimeExtent rather than asking implot to fit it also skips the
+                   full re-scan of every plotted item that a fit costs; kRecMargin
+                   keeps the newest sample off the edge of the frame. Once the
+                   pilot scrolls or drags, hud.rec_fit stands down and the view they
+                   left is kept until the Fit button. */
+                if(hud.rec_fit) {
+                    double t0 = 0.0, t1 = 0.0;
+                    recTimeExtent(ring, &t0, &t1);
+                    const double pad = (t1 - t0) * kRecMargin;
+                    ImPlot::SetupAxisLimits(ImAxis_X1, t0 - pad, t1 + pad,
+                                            ImPlotCond_Always);
+                }
+                /* The y limits stay pinned even with the axis hidden: they ARE the
+                   normalisation, and a view with no unit cannot be dragged into one. */
+                ImPlot::SetupAxis(ImAxis_Y1, nullptr, ImPlotAxisFlags_NoDecorations);
+                ImPlot::SetupAxisLimits(ImAxis_Y1, -kRecMargin, 1.0 + kRecMargin,
+                                        ImPlotCond_Always);
+                /* South, because an East legend eats the plot's width in a window
+                   this narrow. NoButtons because the checkboxes above are the
+                   toggles: a second way to hide a line -- one the harness cannot
+                   reach and that would not move hud.rec_chan -- is how a legend and
+                   a window end up disagreeing about what is drawn. */
+                ImPlot::SetupLegend(ImPlotLocation_South, ImPlotLegendFlags_NoButtons);
+                for(int i = 0; i < kRecNumCh; i++) {
+                    if(!hud.rec_chan[i]) { continue; }
+                    double mn = 0.0, mx = 0.0;
+                    int nread = 0;
+                    recExtent(ring, kRecChans[i].get, &mn, &mx, &nread);
+                    if(nread == 0) {
+                        /* Nothing to draw, and no line to fake: an all-dash channel
+                           (aoa with no flow yet, gamma under the conic floor) has no
+                           range, so a flat line would claim a reading the file
+                           cannot back up. Counted and said under the plot instead --
+                           the legend row cannot say it, because a label has to stay
+                           static text. */
+                        nempty++;
+                        continue;
+                    }
+                    /* The KEY verbatim, and not one character of live text. ImPlot
+                       hashes the whole label to identify a plot item, so a label
+                       carrying min..max made a NEW item every frame: each one
+                       just_created, so it took the next colormap colour -- the graph
+                       changed hue mid-flight -- while the plot's item pool and
+                       legend buffer grew by an entry per channel per frame for as
+                       long as the window stayed open. kRecChans spells the trap;
+                       #990 carries the ways to put numbers back without it. The same
+                       label on both runs of a wrapped ring gives them one colour and
+                       ONE legend row; it does not join them geometrically, so a
+                       wrapped ring still has the one-sample gap at the wrap that
+                       recorder.h names. */
+                    RecNorm norm;
+                    norm.get = kRecChans[i].get;
+                    norm.mn = mn;
+                    const double range = mx - mn;
+                    /* A flat channel (throttle held at 1 through the whole ring) has
+                       no range to divide by; it draws across the middle rather than
+                       vanishing at the bottom, which is what a flat reading looks
+                       like on every other graph. */
+                    norm.lo = range > 0.0 ? 0.0 : 0.5;
+                    norm.k = range > 0.0 ? 1.0 / range : 0.0;
+                    ImPlotSpec spec;
+                    /* SkipNaN, not the default strip: implot's default line renderer
+                       draws a segment INTO a NaN point (RendererLineStrip does not
+                       test it, implot_items.cpp:989), so a dashed gamma or aoa would
+                       jump the line instead of leaving the gap the trace's "-"
+                       promises. */
+                    spec.Flags = ImPlotLineFlags_SkipNaN;
+                    for(int s = 0; s < nspans; s++) {
+                        norm.base = ring.p.data() + idx[s];
+                        ImPlot::PlotLineG(kRecChans[i].key, recNormPoint, &norm, len[s], spec);
+                    }
+                }
+                /* Marks, not points: a stage press and a hull-size change are TIMES. */
+                if(nstage > 0) {
+                    ImPlotSpec ms;
+                    ms.LineColor = ImVec4(1.0f, 0.75f, 0.20f, 0.70f);
+                    ImPlot::PlotInfLines("stage", stage_xs, nstage, ms);
+                }
+                if(nseam > 0) {
+                    ImPlotSpec ms;
+                    ms.LineColor = ImVec4(0.55f, 0.85f, 1.0f, 0.70f);
+                    ImPlot::PlotInfLines("hull size", seam_xs, nseam, ms);
+                }
+                /* The pilot took the view: a scroll or a drag, not any press, so a
+                   click that goes nowhere does not steal the fit. This must be read
+                   inside the Begin/End pair (after EndPlot there is no current plot
+                   to ask); it is current, not a frame late, because implot settles
+                   plot.Hovered in SetupFinish, which SetupLock reaches at the plot's
+                   first item. */
+                if(hud.rec_fit && ImPlot::IsPlotHovered() &&
+                   (ImGui::GetIO().MouseWheel != 0.0f
+                    || ImGui::IsMouseDragging(ImGuiMouseButton_Left)
+                    || ImGui::IsMouseDragging(ImGuiMouseButton_Right))) {
+                    hud.rec_fit = false;
+                    printf("[recwin] fit=off\n");
+                }
+                ImPlot::EndPlot();
+            }
+            /* A ticked channel that draws nothing is otherwise indistinguishable
+               from a broken graph: the toggles say it is on, so the window says why
+               it is not. */
+            if(nempty > 0) {
+                ImGui::TextDisabled("(%d visible channel%s had no reading in the ring)",
+                                    nempty, nempty == 1 ? "" : "s");
+            }
+            /* The mark cap is a lie by omission if nothing says it: a hull that
+               mated and separated a hundred times looks like a flight with 64
+               chapter marks and no more, because the later ones were dropped. */
+            if(nstage >= kRecMarkMax || nseam >= kRecMarkMax) {
+                ImGui::TextDisabled("(only the first %d chapter marks are drawn)",
+                                    kRecMarkMax);
+            }
+        }
+        /* Printed once when the window appears, so a test has something to EXPECT
+           without flooding the log at frame rate: how much flight is in the
+           buffer, what is drawn, and what the plot is missing. The ring is
+           rolling -- at Cap the launch has aged out while the window still looks
+           continuous, so say so instead of letting the graph lie by omission. */
+        if(ImGui::IsWindowAppearing()) {
+            const double span = ring.count > 1
+                              ? ring.at(ring.count - 1).sim_t - ring.at(0).sim_t : 0.0;
+            /* at=/size= because the anchor is the part of this window a test cannot
+               see from a widget list: a BottomCenter window that lost its anchor
+               silently becomes a centred one, and the only sign is the graph
+               covering the map. */
+            const ImVec2 wp = ImGui::GetWindowPos();
+            const ImVec2 ws = ImGui::GetWindowSize();
+            printf("[recwin] samples=%d span=%.0fs chans=%d marks=%d+%d at=%.0f,%.0f size=%.0f,%.0f%s%s\n",
+                   ring.count, span, nvis, nstage, nseam, wp.x, wp.y, ws.x, ws.y,
+                   g.rec.paused ? " paused" : "",
+                   ring.count >= RecRing::Cap ? " rolling:oldest_dropped" : "");
+        }
+    });
+}
+
 /* The modal scrim: a full-viewport window drawn UNDER the card so a pending question
    cannot be clicked through (#234). It carries no widgets, but imgui hit-tests it.
 

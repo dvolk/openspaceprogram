@@ -1472,6 +1472,10 @@ void Game::clearEphemeralState() {
        (vab.cpp) -- rather than by this world hook. */
     rec.ring.clear();
     rec.ring_armed = false;
+    /* paused goes with the ring, not with the run: a new mission starts with the
+       recorder held, exactly as a cold game does (Recorder::paused), so the ring
+       collects only once the player presses Start in this mission's window. */
+    rec.paused = true;
     // A rebind grab is a live input grab on a UI that is going away.
     rebind_capture_slot = -1;
     /* The VAB is an editor over the world that is going away: its build's
@@ -1717,6 +1721,7 @@ void Game::select_vehicle(Vehicle *v) {
        accepted cost of one rule in one place. */
     rec.ring.clear();
     rec.ring_armed = false;
+    rec.paused = true;   // the next hull's flight gets recorded when the player says so
     /* An armed ascent mission follows its HULL, not the camera, and switching ships
        must leave a hull that nobody is flying alone (#616). tick.cpp already stops
        the law from thinking here -- it only calls flyAscent() while

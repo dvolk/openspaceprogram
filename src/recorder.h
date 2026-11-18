@@ -199,6 +199,60 @@ inline int recRow(const RecSample &s, char *buf, size_t n) {
     return wrote;
 }
 
+/* --- the channels the Recorder window can draw (#972) --------------------
+   The keys are the trace's own channel names, so a legend row and a log column
+   cannot mean different things: the same one-seam law as the sampler itself.
+   `get` is a pointer to the member instead of a switch, so a channel is one row
+   here (plus its slot in recRow's format string) and the two cannot drift apart
+   silently -- test_recorder checks every key below is one of recChannels()'s.
+
+   There is deliberately NO axis assignment here. One graph was the design, and
+   these channels sit three decades apart in unit terms -- an ascent touches
+   100 km of altitude, 30 kPa of q and 2.5 km/s of v -- so any shared unit axis
+   (one, two, or three of them) draws two of those three flat against the floor.
+   The window therefore plots each visible channel against its OWN min..max: the
+   shape and its timing read true, the value does not, and recovering the value
+   is #990. Which axis a channel belongs to stops being a fact anywhere.
+
+   ONE string per channel, used verbatim as the toggle label, the legend row and
+   the plot item's label, and it must stay static text. ImPlot keys a plot item
+   by hashing the whole label (implot_items.cpp:413 RegisterOrGetItem ->
+   ImPlotItemGroup::GetItemID), and "##" only truncates what gets DISPLAYED
+   (imgui.cpp:3880 FindRenderedTextEnd) -- it is not an id override. The first
+   version of this window put live numbers in the label ("q Pa 20..2.3e3"), which
+   registered a fresh item every frame: each one was just_created, so it took the
+   next colormap colour and the graph changed hue mid-flight, while the plot's
+   item pool and legend buffer grew by an entry per channel per frame for as long
+   as the window stayed open. Units go with the numbers: on a normalised axis
+   "m/s" names a scale the axis does not carry, and it is what stopped the 13
+   toggles fitting in two rows. A key must never contain '#', since both imgui and
+   implot cut display text at "##" -- test_recorder pins that.
+
+   Curated, not all 40 columns: this is what an ascent or a re-entry is read
+   from. A channel that is in the trace and not here is still in the file. */
+struct RecChan {
+    const char *key;                 // the trace channel name; the toggle, the legend row, and the plot item's label -- the same static string three times over
+    double RecSample::*get;          // the reading itself
+    bool dflt;                       // visible when the window first opens
+};
+
+static const RecChan kRecChans[] = {
+    {"alt_asl", &RecSample::alt_asl, true},
+    {"v",       &RecSample::v,       true},
+    {"q",       &RecSample::q,       true},
+    {"aoa",     &RecSample::aoa,     true},
+    {"vs",      &RecSample::vs,      false},
+    {"gamma",   &RecSample::gamma,   false},
+    {"acc",     &RecSample::acc,     false},
+    {"dv",      &RecSample::dv,      false},
+    {"thr",     &RecSample::thr,     false},
+    {"dv_exp",  &RecSample::dv_exp,  false},
+    {"grav",    &RecSample::grav,    false},
+    {"drag",    &RecSample::drag,    false},
+    {"steer",   &RecSample::steer,   false},
+};
+static const int kRecNumCh = (int)(sizeof(kRecChans) / sizeof(kRecChans[0]));
+
 /* --- the Recorder window's history (#972) --------------------------------
    The same samples the rows above are made of: ONE sampler feeds both sinks,
    because this file's rule is that a recorded number and a logged number cannot
@@ -261,6 +315,121 @@ struct RecRing {
         return p[(head - count + i + Cap) % Cap];
     }
 
+    /* The samples as the vector actually holds them: ONE run of slots,
+       oldest-first, while the ring has not wrapped -- and TWO runs once it has,
+       because then the oldest sits at `head`, where the next write lands. A plot
+       that walked at() across the wrap would join the newest sample to the oldest
+       and streak one long line straight across the flight, so this hands back the
+       runs to draw separately. Fills idx[]/len[] (at most two) and returns how
+       many: 0 empty, 1 unwrapped, 2 wrapped. Drawing them separately has a cost
+       worth naming: the one segment between the last sample of run 0 and the
+       first of run 1 goes undrawn, so a wrapped ring has a gap exactly one sample
+       wide -- 0.25 s of mission time, which at a 560 px plot and a 17 min ring is
+       well under a pixel. Worth knowing before someone "fixes" it by joining them. */
+    int spans(int *idx, int *len) const {
+        const int o = count ? (head - count + Cap) % Cap : 0;
+        if(o + count <= Cap) {
+            idx[0] = o;
+            len[0] = count;
+            return count ? 1 : 0;
+        }
+        idx[0] = o;   len[0] = Cap - o;
+        idx[1] = 0;   len[1] = count - (Cap - o);
+        return 2;
+    }
+
     // Keeps the allocation; count is the only reader, as in TimeSeries.
     void clear() { head = 0; count = 0; }
 };
+
+/* The extent of one channel across the ring: min/max over the readings that are
+   numbers, with *nread counting them so a caller can tell "flat at 0" from
+   "nothing was ever readable here" (a dash is not a zero, which is the same
+   distinction the row grammar spends its dash rules on).
+   Whole ring rather than per span, because the window scales both runs of a
+   wrapped ring by the same range -- scale each run by its own and the line
+   breaks at the wrap. */
+inline void recExtent(const RecRing &ring, double RecSample::*get,
+                      double *mn, double *mx, int *nread) {
+    int idx[2], len[2];
+    const int nspans = ring.spans(idx, len);
+    double lo = 0.0, hi = 0.0;
+    int n = 0;
+    for(int s = 0; s < nspans; s++) {
+        const RecPoint *b = ring.p.data() + idx[s];
+        for(int i = 0; i < len[s]; i++) {
+            const double v = b[i].s.*(get);
+            if(std::isnan(v)) { continue; }
+            if(n == 0) { lo = hi = v; }
+            else {
+                if(v < lo) { lo = v; }
+                if(v > hi) { hi = v; }
+            }
+            n++;
+        }
+    }
+    *mn = lo;
+    *mx = hi;
+    *nread = n;
+}
+
+/* The mission-time extent of what the ring holds. Spelled out rather than left to
+   implot's fitter, because a fit asked of implot happens once per plot (its
+   CanInitFit) and otherwise re-scans every plotted item every frame. min/max
+   rather than first/last: the ring keeps WRITE order, and a load can move the
+   mission clock underneath it (see RecRing::push), which read as ends would pass
+   while clipping half the flight. */
+inline void recTimeExtent(const RecRing &ring, double *t0, double *t1) {
+    int idx[2], len[2];
+    const int nspans = ring.spans(idx, len);
+    double lo = 0.0, hi = 0.0;
+    int n = 0;
+    for(int s = 0; s < nspans; s++) {
+        const RecPoint *b = ring.p.data() + idx[s];
+        for(int i = 0; i < len[s]; i++) {
+            const double t = b[i].sim_t;
+            if(n == 0) { lo = hi = t; }
+            else {
+                if(t < lo) { lo = t; }
+                if(t > hi) { hi = t; }
+            }
+            n++;
+        }
+    }
+    *t0 = lo;
+    *t1 = hi;
+}
+
+/* Chapter marks: the times at which the flight's own story turned a page.
+   seams = true asks where the dock count changed (v4's seams=), false where the
+   stage about to fire changed (stg=). "Differs from the sample before it" is the
+   whole test, because both counters go DOWN as well as up: a fresh hull restarts
+   the stage index and an undock removes a seam, so a set of the values seen would
+   mark one chapter twice and miss the transitions that matter.
+   Bounded at max: a hull that mates and separates two hundred times would
+   otherwise draw a black wall instead of a graph. Returns how many it stored, so a
+   caller that means to admit the truncation has something to compare against.
+   Walks the same runs spans() hands back rather than at(), because the caller is
+   about to plot those runs anyway. */
+static const int kRecMarkMax = 64;
+
+inline int recMarks(const RecRing &ring, bool seams, double *xs, int max) {
+    int idx[2], len[2];
+    const int nspans = ring.spans(idx, len);
+    if(nspans == 0) { return 0; }
+    const RecPoint *first = ring.p.data() + idx[0];
+    int prev = seams ? first[0].s.seams : first[0].s.stg;
+    int n = 0;
+    for(int s = 0; s < nspans; s++) {
+        const RecPoint *b = ring.p.data() + idx[s];
+        // The oldest sample is the first one's neighbour, not a transition.
+        for(int i = (s == 0 ? 1 : 0); i < len[s]; i++) {
+            const int now = seams ? b[i].s.seams : b[i].s.stg;
+            if(now != prev) {
+                if(n < max) { xs[n++] = b[i].sim_t; }
+                prev = now;
+            }
+        }
+    }
+    return n;
+}

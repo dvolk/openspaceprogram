@@ -251,6 +251,23 @@ struct HudState {
     TimeSeries perf_present;
     // Which series each Telemetry cell shows (0..7, see kSeries in gameui.cpp).
     int telemetry_sel[4] = {0, 1, 2, 3};
+    /* Which channels the Recorder window draws (#972), indexed by kRecChans. State
+       rather than a static in the window body so the harness can see a player's
+       choice is real state and not a draw-time accident, and so the window's own
+       Start/Clear cannot be confused with it. Nothing resets it: a layout reset
+       (F10) re-places windows, and a new game keeps the channel picks the player
+       last chose -- which is the point of a preference, and worth knowing before
+       someone adds a reset they did not ask for. Seeded from the table on the
+       window's first draw -- the table in recorder.h is the one place the defaults
+       are spelled. */
+    bool rec_chan[kRecNumCh] = {};
+    bool rec_seeded = false;
+    /* Whether the Recorder plot still follows the ring (#972). The x range is
+       re-asked every frame -- implot fits an axis once, on the plot's first frame,
+       which is what left the first version of this window stuck near 0,0 -- and
+       this stands down the moment the pilot scrolls or drags the graph, with the
+       window's Fit button handing it back. */
+    bool rec_fit = true;
 };
 
 /* VAB editor SESSION state (Game::vab), not save state: the build tree round-trips
@@ -815,6 +832,18 @@ struct Game {
         RecRing ring;
         bool ring_armed = false;
         Uint32 ring_t0_ms = 0;
+        /* The Recorder window's transport (#972). Only the ring answers to it: the
+           trace file keeps writing whether or not a plot is frozen, because a run
+           that recorded nothing is a run with no evidence. While paused the sampler
+           still runs and the sample is dropped, so resuming picks up the CURRENT
+           state rather than a hole the size of the pause.
+           It starts PAUSED: the ring collects only after the player presses Start
+           in the window, so the graph holds the flight they chose rather than
+           whatever the last 4096 samples happened to cover. The cost of that
+           choice is worth stating -- open the window after liftoff and the ascent
+           is not there, and no button gets it back. #990 may revisit this once the
+           window carries values rather than shapes. */
+        bool paused = true;
     };
     Recorder rec;
     /* Open the trace (game.cpp): called from the tick, the first time a row is

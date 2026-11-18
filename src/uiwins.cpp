@@ -230,6 +230,27 @@ const WinDef kWins[W_Count] = {
                   .closable = true, .default_open = false },
         .role = WinRole::Persistent, .inList = false,
     },
+    [W_Recorder] = {
+        // The flight recorder's history (#972): one graph over the samples the trace
+        // already writes, for READING a flight -- where an ascent went through max-q,
+        // where the losses went, when the hull changed size. Telemetry stays
+        // debug-only, so this is the window a player opens.
+        /* Along the bottom, because the readouts a pilot needs stay above it:
+           BottomLeft is the map and BottomRight is Vessel Info/Systems, so the graph
+           runs between them. right_of is not decoration -- ui::Window CENTRES a
+           window that is closed by default and has no anchor (ui.h), so the slot
+           below would be a lie the first time anyone opened this. A closed anchor
+           costs nothing: ui::Manager leaves the slot placement standing then.
+           560 wide is what that gap actually measures on a 1280x720 screen: the map
+           ends near x=488 and Vessel Info begins near x=1090, so 640 would have
+           crossed onto the readouts. Drawn after drawUIMap, which is what makes the
+           anchor real rather than a hope. */
+        .name = "Recorder", .label = "Recorder",
+        .opts = { .slot = ui::Slot::BottomCenter, .right_of = "Orbital Map",
+                  .initial_size = ImVec2(560.0f, 340.0f),
+                  .closable = true, .default_open = false },
+        .role = WinRole::Persistent, .inList = true,
+    },
     // --- title -----------------------------------------------------------
     [W_TitleMenu] = {
         .name = "Title Menu", .label = "Title Menu",
@@ -341,6 +362,9 @@ static const Win kFlightWinIds[] = {
     W_SurfaceMap, W_VesselInfo, W_Systems, W_ShipList, W_Autopilot, W_Guidance,
     W_Target,
     W_Porkchop,
+    // #972: in the list and drawn in flight. Unlike Telemetry -- a debug surface,
+    // F2 only -- this is the window for the flight the player just flew.
+    W_Recorder,
     W_Settings, W_Controls, W_Debug, W_Telemetry, W_SaveLoad,
 };
 // The set, not a guard in each window's body, is what hides the flight

@@ -43,6 +43,15 @@
 //   contract is storage, not pixels -- the cap and wrap order, a NaN staying a
 //   gap, a same-x push refreshing instead of appending, and a stage change being
 //   data inside one span rather than a reset.
+//
+//   Step 2 of #972 puts the window's DRAWING inputs in this header too, so they
+//   get pinned here rather than in a UI test: kRecChans (the toggles, the legend
+//   rows and the plot item ids all come from it, so a key must be a real trace
+//   column and unique) and the ring's three read-outs -- recExtent (the min..max
+//   each line is scaled by, since one graph carries thirteen units), spans() (the
+//   one or two runs the plot draws, oldest-first), recTimeExtent (the x range the
+//   axis pins to) and recMarks (where stg= or seams= changed, drawn as vertical
+//   lines, bounded so a docking port does not become a black wall).
 #include "recorder.h"
 
 #include <algorithm>
@@ -406,6 +415,251 @@ int main() {
         r.push(back);
         CHECK(r.count == 2, "a backwards push still appends");
         CHECK_NEAR(r.at(1).sim_t, 4.0, 1e-12, "at() stays write order, never x order");
+    }
+
+    /* --- the channels the window can draw (#972 step 2) -------------------
+       kRecChans is what the Recorder window's toggles, legend rows and scaling
+       are built from, so a table entry that is not a trace column is a graph
+       showing a number the file cannot back up. The keys must also be distinct:
+       one key is the toggle label, the legend row and the plot item's label at
+       once, and implot identifies an item by hashing that whole string -- a
+       duplicate would quietly draw two channels as one line. */
+    {
+        const std::string chans = recChannels();
+        for(int i = 0; i < kRecNumCh; i++) {
+            const std::string key(kRecChans[i].key);
+            /* Whole-word, not substring: "v" lives inside "v_surf" and "dv"
+               inside "dv_exp", so a bare find() would pass an entry naming no
+               column of the trace at all. */
+            bool whole = false;
+            for(size_t p = chans.find(key); p != std::string::npos; p = chans.find(key, p + 1)) {
+                const bool left_ok = p == 0 || chans[p - 1] == ' ';
+                const size_t e = p + key.size();
+                if(left_ok && (e == chans.size() || chans[e] == ' ')) { whole = true; break; }
+            }
+            CHECK(whole, "every kRecChans key is a recChannels() column");
+            for(int j = i + 1; j < kRecNumCh; j++) {
+                CHECK(key != std::string(kRecChans[j].key), "channel keys are unique");
+            }
+            /* Non-empty, because the whole-word scan above passes an empty key: ""
+               is "found" at position 0 of every string. It is a checkbox label and
+               a plot item label, so an empty one is a widget nobody can read. */
+            CHECK(!key.empty(), "a channel key is a readable label");
+            /* And no '#' anywhere: the key goes verbatim to ImGui::Checkbox and to
+               ImPlot::PlotLineG, and both cut display text at "##"
+               (imgui.cpp:3880 FindRenderedTextEnd), so a key carrying one would
+               render a blank toggle and an item with no legend row. */
+            CHECK(key.find('#') == std::string::npos,
+                  "a channel key survives imgui's and implot's label grammar");
+        }
+        /* Curated on purpose (recorder.h): the trace has more columns than the
+           window offers, and a table that grew to all of them would be a list of
+           38 checkboxes no pilot reads. */
+        CHECK(kRecNumCh < 20, "the window's channel list stays a subset of the trace");
+    }
+
+    /* --- recExtent: the range the plot scales by, and the legend's numbers --
+       One graph over thirteen units means every line is drawn against its own
+       min..max, so this is the arithmetic the graph is made of -- and the two
+       traps are the ones the row grammar already refuses: a dash is not a zero,
+       and a flat reading has no range to divide by. */
+    {
+        double mn = 0.0, mx = 0.0;
+        int nread = 0;
+
+        RecRing r;
+        const double vals[3] = {10.0, -3.5, 7.25};
+        for(int i = 0; i < 3; i++) {
+            RecPoint p;
+            p.sim_t = (double)i; p.s.vs = vals[i];
+            r.push(p);
+        }
+        recExtent(r, &RecSample::vs, &mn, &mx, &nread);
+        CHECK_NEAR(mn, -3.5, 1e-12, "the extent starts at the smallest reading");
+        CHECK_NEAR(mx, 10.0, 1e-12, "the extent ends at the largest");
+        CHECK(nread == 3, "every number counts");
+
+        // A dash must never become the minimum: 0 is a reading and NaN is not.
+        RecPoint dash;
+        dash.sim_t = 3.0; dash.s.vs = NAN;
+        r.push(dash);
+        recExtent(r, &RecSample::vs, &mn, &mx, &nread);
+        CHECK_NEAR(mn, -3.5, 1e-12, "a NaN reading never sets the min");
+        CHECK(nread == 3, "a dash is not a reading");
+
+        // A channel that has never been readable says so rather than plotting a
+        // flat line at 0 (the window prints "(no reading)" on nread == 0).
+        r.clear();
+        RecPoint only_dash;
+        only_dash.sim_t = 1.0; only_dash.s.gamma = NAN;
+        r.push(only_dash);
+        recExtent(r, &RecSample::gamma, &mn, &mx, &nread);
+        CHECK(nread == 0, "an all-dash channel has no extent");
+
+        // A flat channel has no range: the window must not divide by it, and the
+        // legend still has to print the value it is flat at.
+        RecRing flat;
+        for(int i = 0; i < 3; i++) {
+            RecPoint p;
+            p.sim_t = (double)i; p.s.thr = 1.0;
+            flat.push(p);
+        }
+        recExtent(flat, &RecSample::thr, &mn, &mx, &nread);
+        CHECK_NEAR(mx - mn, 0.0, 1e-12, "a flat channel has no range");
+        CHECK_NEAR(mn, 1.0, 1e-12, "and its extent still names the value");
+
+        /* Across the wrap both runs count, and each held sample counts exactly
+           once: the window scales the two runs by the SAME range (recorder.h), so
+           an extent that read only one of them would bend the line at the seam. */
+        RecRing w;
+        for(int i = 0; i < RecRing::Cap + 5; i++) {
+            RecPoint p;
+            p.sim_t = (double)i; p.s.q = (double)i;
+            w.push(p);
+        }
+        CHECK(w.count == RecRing::Cap, "the wrap test filled the ring");
+        recExtent(w, &RecSample::q, &mn, &mx, &nread);
+        CHECK(nread == RecRing::Cap, "a wrapped ring counts each held sample once");
+        CHECK_NEAR(mn, 5.0, 1e-12, "the aged-out samples leave the extent with the ring");
+        CHECK_NEAR(mx, (double)RecRing::Cap + 4, 1e-12, "the newest sample sets the max");
+    }
+
+    /* --- spans(): the runs the plot actually draws (the window plots each one
+       separately, so the contract is index math, not pixels) --------------- */
+    {
+        RecRing r;
+        int idx[2], len[2];
+        CHECK(r.spans(idx, len) == 0, "an empty ring hands back no runs");
+
+        for(int i = 0; i < 3; i++) {
+            RecPoint p;
+            p.sim_t = (double)i; p.s.q = (double)i;
+            r.push(p);
+        }
+        CHECK(r.spans(idx, len) == 1, "an unwrapped ring is one run");
+        CHECK(idx[0] == 0 && len[0] == 3, "the run is the whole ring, oldest first");
+
+        /* Filled exactly to Cap is NOT wrapped: head has come round to 0 and the
+           ring is one contiguous run again. Getting this wrong draws the newest
+           sample first, which is a stroke back across the flight. */
+        while(r.count < RecRing::Cap) {
+            RecPoint p;
+            p.sim_t = (double)r.count; p.s.q = (double)r.count;
+            r.push(p);
+        }
+        CHECK(r.spans(idx, len) == 1, "a full but unwrapped ring stays one run");
+        CHECK(idx[0] == 0 && len[0] == RecRing::Cap, "and it holds every slot");
+
+        for(int i = 0; i < 5; i++) {
+            RecPoint p;
+            p.sim_t = (double)(RecRing::Cap + i); p.s.q = (double)(RecRing::Cap + i);
+            r.push(p);
+        }
+        CHECK(r.spans(idx, len) == 2, "past Cap the ring is two runs");
+        CHECK(len[0] + len[1] == r.count, "the two runs are the ring, with no gap or overlap");
+        CHECK(idx[0] == 5 && len[0] == RecRing::Cap - 5, "the older run starts where the next write lands");
+        CHECK(idx[1] == 0 && len[1] == 5, "the newer run is the head of the vector");
+        // Reading the runs in order must agree with at(), which is the definition
+        // of oldest-first the window relies on.
+        int k = 0;
+        bool same = true;
+        for(int s = 0; s < 2; s++) {
+            for(int i = 0; i < len[s]; i++) {
+                if(r.p[(size_t)idx[s] + (size_t)i].sim_t != r.at(k).sim_t) { same = false; }
+                k++;
+            }
+        }
+        CHECK(same && k == r.count, "spans walk == at() walk");
+    }
+
+    /* --- recMarks(): where the flight's chapters turn over ----------------
+       The window draws these as vertical lines. They are data logic, not pixels,
+       so they belong with the ring: a mark is a CHANGE in stg= or seams=, which is
+       the same rule that made v4 append seams= to the row in the first place. */
+    {
+        auto push_at = [](RecRing &r, double t, int stg, int seams) {
+            RecPoint p;
+            p.sim_t = t; p.s.stg = stg; p.s.seams = seams;
+            r.push(p);
+        };
+        double xs[8];
+
+        RecRing r;
+        push_at(r, 0.0, 1, 0);
+        push_at(r, 1.0, 1, 0);
+        push_at(r, 2.0, 2, 0);      // stage about to fire moved: a mark at t=2
+        push_at(r, 3.0, 2, 1);      // hull grew a joint: a seam mark at t=3
+        push_at(r, 4.0, 2, 0);      // and shrank one: another seam mark at t=4
+        CHECK(recMarks(r, false, xs, 8) == 1, "one stage change makes one mark");
+        CHECK_NEAR(xs[0], 2.0, 1e-12, "and it lands on the sample that changed");
+        CHECK(recMarks(r, true, xs, 8) == 2, "a mate and a separation are both marks");
+        CHECK_NEAR(xs[0], 3.0, 1e-12, "seam marks ignore the stage change");
+        CHECK_NEAR(xs[1], 4.0, 1e-12, "seams go down as well as up, so a set of values would miss it");
+
+        // Nothing changed: no marks, and the ring is not misread as one big change.
+        RecRing flat;
+        for(int i = 0; i < 6; i++) { push_at(flat, (double)i, 2, 1); }
+        CHECK(recMarks(flat, false, xs, 8) == 0, "a steady stage draws no line");
+        CHECK(recMarks(flat, true, xs, 8) == 0, "a steady hull size draws no line");
+
+        /* The cap: it bounds the drawing, and returning max is how the caller knows
+           to admit that later chapter changes were dropped. */
+        RecRing many;
+        for(int i = 0; i < 20; i++) { push_at(many, (double)i, i, 0); }
+        CHECK(recMarks(many, false, xs, 4) == 4, "the cap bounds the marks");
+        CHECK_NEAR(xs[0], 1.0, 1e-12, "and keeps the earliest ones");
+
+        // Across the wrap the marks are still oldest-first, and the transition that
+        // straddles the seam is still found.
+        RecRing w;
+        for(int i = 0; i < RecRing::Cap + 3; i++) { push_at(w, (double)i, i / 100, 0); }
+        double big[256];
+        const int n = recMarks(w, false, big, 256);
+        CHECK(n > 0, "a wrapped ring still has its marks");
+        bool asc = true;
+        for(int i = 1; i < n; i++) { if(big[i] <= big[i - 1]) { asc = false; } }
+        CHECK(asc, "and they come out in mission-time order");
+        CHECK(recMarks(w, true, big, 256) == 0, "seams that never moved draw nothing across a wrap");
+
+        // Empty ring: no marks, and nothing is read out of the vector.
+        RecRing empty;
+        CHECK(recMarks(empty, false, xs, 8) == 0, "an empty ring has no marks");
+    }
+
+    /* --- recTimeExtent(): the x range the plot pins its axis to ----------- */
+    {
+        RecRing r;
+        double t0 = 0.0, t1 = 0.0;
+        for(int i = 0; i < 4; i++) {
+            RecPoint p;
+            p.sim_t = 10.0 + (double)i;
+            r.push(p);
+        }
+        recTimeExtent(r, &t0, &t1);
+        CHECK_NEAR(t0, 10.0, 1e-12, "the axis starts at the oldest sample");
+        CHECK_NEAR(t1, 13.0, 1e-12, "and ends at the newest");
+
+        /* min/max rather than ends: the ring keeps write order, and a load moves
+           the mission clock underneath it, so reading the ends would clip half the
+           flight instead of showing the stroke back (recorder.h says the ring does
+           not refuse a backwards push). */
+        RecPoint back;
+        back.sim_t = 8.0;
+        r.push(back);
+        recTimeExtent(r, &t0, &t1);
+        CHECK_NEAR(t0, 8.0, 1e-12, "a backwards sample still sets the low end");
+        CHECK_NEAR(t1, 13.0, 1e-12, "and the high end stays");
+
+        // Across the wrap both runs count.
+        RecRing w;
+        for(int i = 0; i < RecRing::Cap + 7; i++) {
+            RecPoint p;
+            p.sim_t = (double)i;
+            w.push(p);
+        }
+        recTimeExtent(w, &t0, &t1);
+        CHECK_NEAR(t0, 7.0, 1e-12, "the run that aged out leaves the range");
+        CHECK_NEAR(t1, (double)RecRing::Cap + 6, 1e-12, "the newest run sets the top");
     }
 
     if(g_failures == 0) {

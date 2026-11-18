@@ -1,0 +1,58 @@
+# The Recorder window (#972 step 2): the same sample the trace prints, held in a
+# ring so a pilot can look at the flight they chose rather than read a stream of
+# counters. Five claims, and all of them are about the SINKS, the CLOCK and the
+# TRANSPORT -- the pixels are for the eye:
+#
+#   1. It opens from the Windows panel by its label, "Recorder" -- the same word as
+#      the title bar, which is why the click path is Windows/Recorder rather than
+#      the longer phrase this window was first registered with. That is how a
+#      player reaches it: unlike TELEMETRY, which stays a debug surface (off the
+#      list, F2 only), this window is the player's half of #966.
+#
+#   2. It opens EMPTY and says so. The recorder starts held (Recorder::paused) and
+#      the ring collects only after the player presses Start, so at 2 s into a
+#      flight that is already logging trace rows the window reports samples=0 and
+#      "paused". Always-on would have made the graph a 4096-sample sliding window
+#      over whatever happened to come last; choosing the flight is the point, and
+#      the cost of that choice -- open late and the ascent is simply not there --
+#      is spelled out in game.h rather than left for a player to discover.
+#
+#   3. Start arms it, and the ring then holds MISSION seconds. 20 samples taken on
+#      the 0.25 s run gate between the Start and Pause clicks cover 19 s of
+#      mission time at --time-accel 4: a window counting the file's t= column
+#      would print span=5s. That is RecPoint::sim_t, which recorder.h spells out
+#      in capitals -- a warp coast has to stay proportional.
+#      This also pins the transport chain: Pause/Resume is greyed while the ring
+#      is empty, so if Start failed to arm the recorder, the 8 s click would hit a
+#      disabled button and the paused= line would never print.
+#
+#   4. Pause freezes the RING and not the file: 60 trace rows against 20 ring
+#      samples. One sampler feeds both sinks, and only one of them is a picture
+#      someone might want to hold still; a recorder that stopped logging because a
+#      plot was paused would be throwing away evidence.
+#
+#   5. marks= is the chapter marks on the graph -- a stage press today, and since
+#      v4's seams= a dock or undock -- so an ascent that came apart mid-flight has
+#      a line saying where instead of a cliff in mass nobody explained. The stage
+#      press lands after Start here, which is what puts it inside the ring at all.
+#
+# at=/size= is pinned because the window anchors right_of the Orbital Map, and a
+# layout that loses an anchor fails silently -- ui::Manager lets the slot
+# placement stand, so the graph simply moves to the middle of the screen and
+# covers the map. No widget list shows that; the window's own rect does.
+NAME recorder-window-reads-the-ring
+CLAIM The Recorder window opens empty, records only after Start, holds the ring against the mission clock, and Pause freezes the ring while the trace keeps writing.
+KIND invariant
+ARGS --time-accel 4 --width 1280 --height 720 --startship stager,res/ships/stager.json,Kerbin,pad
+ARGS --sim-steps 900 --record --record-interval 0.25
+ARGS --sim-press 4000,100,SPACE
+ARGS --ui-click 2000,"Windows/Recorder"
+ARGS --ui-click 3000,"Recorder/Start"
+ARGS --ui-click 8000,"Recorder/Pause"
+EXPECT [recwin] samples=0 span=0s chans=4 marks=0+0 at=496,372 size=560,340 paused
+EXPECT [recwin] start
+EXPECT [recwin] paused=1 n=20 span=19s
+EXPECT record: 60 rows, ring=20 ->
+EXPECT Stage: dropped
+FORBID FAILED
+FORBID error:

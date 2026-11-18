@@ -8,6 +8,9 @@
 void drawUIReadouts(Game &g);
 void drawPartWindows(Game &g);
 void drawUIMap(Game &g);
+// The flight recorder's window (#972). Its own entry point rather than a block in
+// drawUIReadouts because it anchors on the map, so it must draw AFTER drawUIMap.
+void drawUIRecorder(Game &g);
 
 void drawTitleMenu(Game &g);
 void drawSpaceCenterMenu(Game &g);

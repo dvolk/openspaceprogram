@@ -24,6 +24,8 @@ void floorExit(Game &) {}
 void flightDrawUi(Game &g) {
     drawUIReadouts(g);
     drawUIMap(g);
+    // After the map: the recorder window anchors on it (uiwins.cpp).
+    drawUIRecorder(g);
     drawPartWindows(g);
     drawSaveLoad(g);
 }
