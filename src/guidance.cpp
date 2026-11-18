@@ -70,9 +70,9 @@ static const int kPressRetryTicks = 60;
 
    That altitude is metres of CLIMB SINCE THE LAUNCH, not height above the datum
    (#979). For every flight written down in this file the two differ by the pad's
-   own height -- 265 m on Kerbin, 911 m at moho_pad -- so the datum spelling hid it.
-   A launch born inside its sky does not: at 56 km of a 116 km air, reading the
-   datum put the deck 56 km INTO its own 12.7 km turn, so its first tick asked
+   own height -- 270 m on Kerbin, about 130 m at moho_pad -- so the datum spelling
+   hid it. A launch born inside its sky does not: at 56 km of a 116 km air, reading
+   the datum put the deck 56 km INTO its own 12.7 km turn, so its first tick asked
    12.7 deg, #930's ratchet kept it there for the whole flight, and the hull sank
    below the deck with 1.4 km/s of its 1.6 km/s spent on drag.
 
@@ -468,19 +468,35 @@ AscentCommand AscentLaw::step(const GuidanceState &s) {
         if(!c.burn) { return c; }
     } else {
         const double alt = r - s.sea_r;
-        /* The schedule measures its turn from where THIS mission started, so the
-           first tick the schedule runs fixes the zero (#979). For a pad launch that
-           is the pad, and every flight written down in this file moves by its own
-           pad height and nothing more (265 m on Kerbin, 911 m at moho_pad). A hull
-           born at 56 km of a 116 km air starts at 0 m of its own 12.7 km turn rather
-           than 56 km inside it, which is the difference between climbing out of
-           Venus's air and drying the tanks 3 km below the deck. */
-        if(launch_alt_ < 0.0) { launch_alt_ = alt; }
-        /* The schedule reads the high-water mark, not this tick's height: see
-           pathAngle()'s note. On a climb this is the same number the live
-           altitude gives, so a vacuum profile is untouched -- what it stops is
-           the nose swinging back up when the hull sinks. */
-        if(apex_alt_ < 0.0 || alt > apex_alt_) { apex_alt_ = alt; }
+        /* The turn's zero, set ONCE, on the first tick the schedule runs (#979). The
+           question is "what ground did this hull come from", which is not the same
+           question as "where was it when the mission was armed".
+
+           A hull that was ON the ground at that tick -- a pad, or an air platform's
+           deck (#977) -- came from its own height, so the zero is that height. On the
+           shipped pads the two spellings differ by well under a degree (Kerbin's pad is
+           270 m up, Moho's about 130 m), so every flight written down in this file
+           moves a little and nothing more. On Venus's deck at 56 km it is everything:
+           the datum reading put the hull 56 km INTO its own 12.7 km turn, asking 12.7
+           deg on its first tick, and #930's ratchet means it can never ask steeper.
+
+           A hull that was already FLYING did not start there, and its climb is read
+           from the datum -- which is what "45 deg at h_half metres of climb" means for
+           a ship that lifted off the surface. Reading the arm tick as a launch instead
+           holds a hull at 30 km and 1.7 km/s at exactly 90 deg, because the ratchet
+           cannot flatten it while the hull is LOSING height, and it spends a kilometre
+           a second of the speed the mission needed: in 40 s its apoapsis went 29,977 ->
+           29,067 m and its periapsis buried itself 565 km underground (#982). */
+        if(apex_alt_ < 0.0) {
+            apex_alt_ = alt;
+            launch_alt_ = s.grounded ? alt : 0.0;
+        } else if(alt > apex_alt_) {
+            /* The schedule reads the high-water mark, not this tick's height: see
+               pathAngle()'s note. On a climb this is the same number the live
+               altitude gives, so a vacuum profile is untouched -- what it stops is
+               the nose swinging back up when the hull sinks. */
+            apex_alt_ = alt;
+        }
         const double gamma = pathAngle(apex_alt_ - launch_alt_, target.apo_asl, air_);
         pitch_ = glm::degrees(gamma);
         /* Until the ship is actually moving downrange, "horizontal" is the

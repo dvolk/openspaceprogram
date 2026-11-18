@@ -1686,6 +1686,7 @@ void Game::select_vehicle(Vehicle *v) {
     if(v == nullptr || v == ship) { return; }
     // Every Vehicle is controllable: a seated kerbal is not one (part.h).
     // The old active ship (null when launching from the orbit-view state).
+    Vehicle *was = ship;
     if(ship != nullptr) {
         ship->releaseControl();
         ship->goOnRails();
@@ -1720,9 +1721,15 @@ void Game::select_vehicle(Vehicle *v) {
        resumes the same mission; only its grip on the hull goes. flyAscent() re-latches
        on its own next tick (guidance.cpp:662 sends Sas/SlewFree only when the mode is
        NOT latched), and releaseAscent() is the same call a verdict and a Cancel make,
-       both halves idempotent. */
+       both halves idempotent.
+
+       The edge is the OUTGOING hull, not "any switch that is not the mission's". With
+       the mission parked on A, a B->C switch has nothing left to let go of -- A gave it
+       up at the first switch -- so re-releasing and re-printing every unrelated switch
+       is noise: a three-ship fleet and five F6 presses used to print the line four
+       times. */
     if(ascent && ascent->active() && ascent_ship != nullptr) {
-        if(ascent_ship != v) {
+        if(ascent_ship == was) {
             releaseAscent(*ascent_ship);
             /* The measured state AFTER the release, not the intention: a build that
                stops letting go prints a different word here, which is what the e2e
@@ -1730,7 +1737,7 @@ void Game::select_vehicle(Vehicle *v) {
             printf("Autopilot: ascent parked on '%s' -- not the selected ship (latch now %s, mission still armed)\n",
                    ascent_ship->displayName().c_str(),
                    slewModeName(ascent_ship->slewRequestMode()));
-        } else {
+        } else if(ascent_ship == v) {
             printf("Autopilot: ascent resumed on '%s'\n", v->displayName().c_str());
         }
     }

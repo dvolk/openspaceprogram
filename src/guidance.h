@@ -267,16 +267,20 @@ private:
     double pitch_ = 90.0;
     const char *why_ = "";
     /* Highest altitude the pitch schedule has seen (m above the datum), -1 until
-       the first aim tick. pathAngle() is a schedule over a coordinate, so a hull
-       that loses height would be told to point further up than it did at the pad
-       (#930); the schedule reads this ratchet instead of the live altitude. */
+       the first aim tick. pathAngle() is a schedule over CLIMB, so the schedule only
+       flattens while the hull nets height over where it started; a hull that loses
+       height would otherwise be told to point further up than it did at the pad, and
+       an arm made mid-flight would be told to fly straight up forever (#930, #982).
+       The schedule reads this ratchet instead of the live altitude. */
     double apex_alt_ = -1.0;
     /* The altitude the pitch schedule measures its turn FROM (m above the datum),
-       set on the first tick the schedule runs, -1 before that. pathAngle()'s
-       denominator is metres of CLIMB SINCE THE LAUNCH: a mission born high -- an air
-       platform riding at 56 km of a 116 km air -- would otherwise start 56 km inside
-       its own 12.7 km turn and be told to fly nearly flat for the whole flight
-       (#979). For a pad launch the two spellings differ by the pad's height alone. */
+       written once with apex_alt_ on the first tick the schedule runs -- its -1 is a
+       marker, never a sentinel the code tests, so a first tick below the datum cannot
+       re-arm it (#982 review). pathAngle()'s denominator is metres of CLIMB SINCE THE
+       LAUNCH: a mission born high -- an air platform riding at 56 km of a 116 km air --
+       would otherwise start 56 km inside its own 12.7 km turn and be told to fly nearly
+       flat for the whole flight (#979). A hull that was NOT on the ground at that tick
+       came from the surface instead, so its zero is the datum (#982). */
     double launch_alt_ = -1.0;
 
     /* The stages_left value this law last asked for a press at (#928), -1 until it

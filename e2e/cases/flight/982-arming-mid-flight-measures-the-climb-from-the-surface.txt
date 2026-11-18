@@ -1,0 +1,36 @@
+# An ascent mission armed on a hull that is ALREADY FLYING must not be told it has
+# climbed nothing yet (#982, found while reviewing #979). #979 made pathAngle()'s
+# denominator "metres of climb since the launch" and took the launch as wherever the
+# schedule's first tick happened. For a hull on the ground that is right -- a pad, or
+# Venus's cloud deck (#977) -- and for a hull the player found mid-climb it is wrong:
+# the arm tick is not a launch.
+#
+# The ratchet makes it unrecoverable. `apex_alt_` (#930) only grows, so a hull that is
+# LOSING height keeps the schedule pinned at climb 0, which is straight up, forever.
+# Measured on the pre-fix build with marsex at Kerbin 30 km and 1742 m/s: `pitch=90.0`
+# on every row for the first 40 s, v_orb 1742 -> 772 m/s, apoapsis 29,977 -> 29,067 m.
+# It spent the horizontal speed the mission needed climbing away from nothing.
+#
+# Moho here, no air, so the ask is the schedule's own shape: a 150 km ask sizes a 4.5 km
+# turn (kFlatHalf), and a hull 100 km up has spent 100 km of climb getting there, so it
+# is asked for atan2(4500, 100000) = 2.6 deg. On the arm-tick-as-launch reading it was
+# asked 90.0 instead.
+NAME arming-mid-flight-measures-the-climb-from-the-surface
+CLAIM An ascent mission armed on a hull already in orbit measures its turn from the surface, not from the tick it was armed on, and keeps the speed it had.
+KIND invariant
+ARGS --startship racer,res/ships/racer.json,Moho,inertial-orbit,alt=100e3 --ascent 150e3 --time-accel 10 --sim-steps 4000 --no-paint --ascent-log
+LIMIT 60
+EXPECT Autopilot: ascent armed on 'racer'
+FORBID phase=failed
+FORBID error:
+CHECK max(a['pitch'] for a in ascent) < 10.0
+CHECK ascent[0]['pitch'] < 5.0
+# The player-visible half: a hull pointed at the sky at 18 m/s^2 bleeds its downrange
+# speed. The orbit's own variation here is ~4%, so 0.85 x the opening speed is a mile
+# of room and still a mile away from the stall the pre-fix profile produced (772 of
+# 1742 m/s).
+CHECK min(a['v_orb'] for a in ascent) > 0.85 * ascent[0]['v_orb']
+# And the mission is still a mission: the cutoff fired (apoapsis at the 150 km ask), so
+# the law is coasting to its node burn rather than holding a pitch it cannot leave.
+CHECK any(a['phase'] == 'coast' for a in ascent)
+CHECK max(a['apo_asl'] for a in ascent) > 150e3

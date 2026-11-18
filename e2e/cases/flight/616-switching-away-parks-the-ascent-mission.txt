@@ -37,12 +37,16 @@ CHECK out.index('ascent parked on') < out.index('ascent resumed on')
 # Parked, not cancelled: the law resumes and the ascent completes on its own terms --
 # first row climbing, last row already through the cutoff and coasting at the ask. Moho
 # has no air, so the turn is the law's own profile and 1500 ticks at warp 10 is enough
-# to cross the 100 km apoapsis line (the rows run t=10.0 ascent, ~t=35 resumed,
-# t=80.2 coast with apo 101.4 km).
+# to cross the 100 km apoapsis line (the rows run t=10.0 ascent, resumed at the second
+# press which lands at sim t~40 s, then t=40.2 onward, coast from t=80.2 with apo
+# 101.4 km).
 CHECK ascent[0]['phase'] == 'ascent'
 CHECK ascent[-1]['phase'] == 'coast'
 CHECK max(a['apo_asl'] for a in ascent) > 100e3
-# The parked window prints no [ascent] rows at all: the hull is not being flown, and a
-# row per tick for a ship nobody is steering would be exactly the "steering itself" this
-# case exists to rule out. 1500 steps at 10x is 250 s of sim, which rows every ~10 s.
-CHECK len(ascent) > 10
+# The parked window prints no [ascent] rows at all: 1500 steps at 10x rows every ~10 s
+# of sim, and the two presses (tick-clocked under --sim-steps, so this is the same on
+# every machine -- three runs gave 10.0, 40.2, 50.2 ...) leave t=20.2 and t=30.2
+# unprinted. That is the #610 print gate (`g.ship == g.ascent_ship`), not the release
+# below it, but it is the half of "parked" a player would notice: no row per tick for a
+# ship nobody is steering.
+CHECK len([a for a in ascent if 15 < a['t'] < 40]) == 0

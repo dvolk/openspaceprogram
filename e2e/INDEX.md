@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 407 |
+| `invariant` | a behaviour or a player route the game must keep | 408 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 50 |
 | `harness` | CLI/test-engine plumbing, not game spec | 16 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **477** |
+| | **total** | **478** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -18,7 +18,7 @@ paces a run: how much e2e a change deserves is the caller's
 judgement. Select by number, name or path, e.g.
 `python3 e2e/run.py save/172 262`.
 
-## flight (148)
+## flight (149)
 
 | case | kind | pins |
 |---|---|---|
@@ -170,6 +170,7 @@ judgement. Select by number, name or path, e.g.
 | `flight/960-atmospheric-ascent-gets-out-of-the-air.txt` | invariant | An autopilot ascent through Kerbin's air climbs out of the air and stays near the ask, instead of dying inside it. |
 | `flight/962-deck-credits-only-the-air-above-it.txt` | invariant | An autopilot armed on an air platform schedules against the air above the deck, not the body's whole atmosphere. |
 | `flight/977-deck-launch-starts-on-its-deck.txt` | invariant | An autopilot mission armed on an air platform starts grounded on the deck instead of failing in its first second. |
+| `flight/982-arming-mid-flight-measures-the-climb-from-the-surface.txt` | invariant | An ascent mission armed on a hull already in orbit measures its turn from the surface, not from the tick it was armed on, and keeps the speed it had. |
 
 ## crew (29)
 

@@ -403,10 +403,15 @@ static void test_a_sinking_ship_does_not_get_its_nose_back() {
     AscentLaw law(t, kNoAir);
     GuidanceState s; s.vel = glm::dvec3(0.0, 300.0, 0.0);
     s.mu = MU_MOHO; s.sea_r = R_MOHO; s.spin_axis = glm::dvec3(0.0, 0.0, 1.0);
-    s.accel_max = 18.0; s.grounded = false;
+    s.accel_max = 18.0;
+    /* The loop's first tick is a launch, so it is the only grounded one: #982 reads a
+       grounded first tick as "this hull started its climb here", and #931's return rule
+       would fail the mission outright if the ground came back under it later. */
+    bool launch_tick = true;
     double prev = 1e9;
     bool fell = false;
     for(double alt : {2e3, 3e3, 5e3, 8e3, 4e3, 2e3, 0.5e3}) {
+        s.grounded = launch_tick; launch_tick = false;
         s.pos = glm::dvec3(R_MOHO + alt, 0.0, 0.0);
         law.step(s);
         const double pitch = law.pitch_deg();
@@ -868,7 +873,7 @@ static void test_letting_go_closes_both_channels() {
    (The 1000 m floor in h_half is NOT pinned here -- it shows up in
    test_asks_it_cannot_land_say_so, on a 10 km Moho ask.) */
 static double schedPitch(const AscentTarget &t, double air_overhead, double air_column, double alt,
-                         double launch_alt = 0.0) {
+                         double launch_alt = 0.0, bool launched = true) {
     /* The air rides with the ask, at the ctor (#961): a law cannot be flown against a
        sky it was not built with, and the pair is the air OVERHEAD -- above wherever this
        schedule starts -- not the body's whole atmosphere (#962). */
@@ -884,16 +889,31 @@ static double schedPitch(const AscentTarget &t, double air_overhead, double air_
        that wants the pitch at `alt` has to have started somewhere below it: one tick
        at the launch altitude is what sets the schedule's zero. With launch_alt == alt
        that tick is the same tick, and the answer is 90 deg -- which is what a launch
-       born at that height really is asked to do. */
-    if(launch_alt != alt) { law.step(s); }
+       born at that height really is asked to do.
+
+       `launched` is what decides that zero (#982): TRUE for a hull that was on the
+       ground -- a pad, or an air platform's deck -- which starts its climb there;
+       FALSE for a mission armed on a hull already flying, whose climb is measured from
+       the datum because the surface is the ground it came from. A grounded first tick
+       also has to be the ONLY grounded tick: #931's return rule fails a mission that
+       comes back down, so the fixture puts the hull back in the air straight after. */
+    s.grounded = launched;
+    assert(launch_alt <= alt);   // a negative climb is not a climb
+    law.step(s);                 // the tick that fixes the schedule's zero
+    s.grounded = false;
     s.pos = glm::dvec3(R_MOHO + alt, 0.0, 0.0);
     law.step(s);
     return law.pitch_deg();
 }
 
+/* h_half, the 45-degrees-of-climb distance: read off the schedule at `alt` rather
+   than written down, so a change to the schedule's SHAPE shows here and a change to
+   the constant alone does not (it is tan(atan2()) algebra, so what it measures is the
+   denominator's zero and nothing else). */
 static double schedHHalf(const AscentTarget &t, double air_overhead, double air_column, double alt,
-                         double launch_alt = 0.0) {
-    return (alt - launch_alt) * std::tan(glm::radians(schedPitch(t, air_overhead, air_column, alt, launch_alt)));
+                         double launch_alt = 0.0, bool launched = true) {
+    assert(launch_alt <= alt);
+    return (alt - launch_alt) * std::tan(glm::radians(schedPitch(t, air_overhead, air_column, alt, launch_alt, launched)));
 }
 
 static void test_the_air_holds_the_nose_up() {
@@ -1069,11 +1089,43 @@ static void test_the_air_is_measured_above_the_hull() {
        of the datum changes a Kerbin pad's schedule by well under a degree. That is the
        whole blast radius on a ground launch -- this is a born-high fix, not a retune. */
     const double datum_pad = schedPitch(t, 85e3, 10328.0, 10e3, 0.0);
-    const double real_pad = schedPitch(t, 85e3, 10328.0, 10e3, 265.0);
-    printf("   [pad height] datum start %5.2f deg vs 265 m up %5.2f deg, at 10 km\n",
+    const double real_pad = schedPitch(t, 85e3, 10328.0, 10e3, 270.0);
+    printf("   [pad height] datum start %5.2f deg vs 270 m up %5.2f deg, at 10 km\n",
            datum_pad, real_pad);
     CHECK_TRUE(std::fabs(real_pad - datum_pad) < 1.0,
                "a ground pad barely knows the difference, so the bed flights can't move much");
+}
+
+/* #982: the other half of "where did this hull come from". A mission armed on a hull
+   that is ALREADY FLYING -- the Guidance window's Go mid-climb, or an --ascent on a
+   ship spawned in orbit -- did not start at the arm tick, and taking it as the launch
+   tells the hull it has climbed nothing yet. Measured in the game, marsex at 30 km and
+   1742 m/s off Kerbin: pitch 90.0 deg on every row for the first 40 s, because #930's
+   ratchet cannot flatten a schedule whose hull is LOSING height, and the burn spent
+   1742 -> 772 m/s of the horizontal speed the mission needed while its periapsis went
+   565 km underground. The datum is the right zero for that hull: the surface is the
+   ground it came from. */
+static void test_a_mission_armed_in_flight_measures_from_the_datum() {
+    printf("== a mission armed mid-flight does not get told to fly straight up ==\n");
+    AscentTarget t; t.apo_asl = t.peri_asl = 100e3; t.inc_rad = -1.0;
+    const double flying = schedPitch(t, 0.0, 0.0, 30e3, 30e3, /*launched=*/false);
+    const double sitting = schedPitch(t, 0.0, 0.0, 30e3, 30e3, /*launched=*/true);
+    const double datum = schedPitch(t, 0.0, 0.0, 30e3);   // a launch at the datum, 30 km up
+    printf("   [arm at 30 km] flying %5.2f deg, on the ground %5.2f deg, datum launch %5.2f deg\n",
+           flying, sitting, datum);
+    /* The airless 100 km ask sizes a 3 km turn (kFlatHalf), so a hull 30 km into its
+       climb is asked for 5.7 deg -- the pre-#979 answer, and the one that keeps the
+       ship flying. */
+    CHECK_NEAR(flying, std::atan2(3000.0, 30e3) * 180.0 / 3.14159265358979, 1e-6,
+               "an arm on a flying hull reads its climb from the datum");
+    CHECK_TRUE(std::fabs(flying - datum) < 1e-9,
+               "...which is the same schedule a launch from the datum is flown on");
+    CHECK_NEAR(sitting, 90.0, 0.1,
+               "...while the same ALTITUDE with the ground under it is a fresh launch, straight up");
+    CHECK_TRUE(flying < 10.0, "and mid-flight is not asked to point at the sky");
+    /* The deck (#977) rides the grounded branch: it IS the ground, at 56 km. */
+    const double deck = schedPitch(t, 0.0, 0.0, 56e3, 56e3, /*launched=*/true);
+    CHECK_NEAR(deck, 90.0, 0.1, "a hull born on an air platform is a launch, not an arm mid-flight");
 }
 
 int main() {
@@ -1097,6 +1149,7 @@ int main() {
     test_a_staged_hull_flies_and_an_unstaged_one_does_not();
     test_the_air_holds_the_nose_up();
     test_the_air_is_measured_above_the_hull();
+    test_a_mission_armed_in_flight_measures_from_the_datum();
     printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures ? 1 : 0;
 }

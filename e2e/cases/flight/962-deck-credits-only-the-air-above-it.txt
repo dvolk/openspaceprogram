@@ -33,14 +33,17 @@ CHECK float(re.search(r"of air overhead, ([\d.]+) kg/m\^2", out).group(1)) < 600
 # 70+ deg; and measuring the turn from the DATUM (#979's bug) put a hull at 56 km
 # fifty-six kilometres into its own 12.7 km turn, so its first tick asked 12.7 deg
 # and #930's apex_alt_ ratchet kept it there -- the profile that sank below the deck.
-CHECK max(a["pitch"] for a in ascent) > 80.0
-CHECK max(a["pitch"] for a in ascent if a["alt_asl"] > 68e3) < 50.0
-CHECK min(a["pitch"] for a in ascent) > 30.0
+# Flown rows only: after the verdict the mission keeps printing rows with the pitch
+# frozen at the verdict tick's ask, and a Coast row prints pitch=0.0, so a walk over ALL
+# rows measures what a dead law last said rather than what the profile asked.
+CHECK max(a["pitch"] for a in ascent if a["phase"] == "ascent") > 80.0
+CHECK max(a["pitch"] for a in ascent if a["phase"] == "ascent" and a["alt_asl"] > 68e3) < 50.0
+CHECK min(a["pitch"] for a in ascent if a["phase"] == "ascent") > 30.0
 # What this case does NOT pin is the mission's fate. It ends phase=failed at t=74.3 s
 # with why="the tanks are dry", having climbed from 56.0 to 71.8 km with apoapsis
-# 78.5 km: a `racer` cannot buy 100 km on Venus out of 1.6 km/s when ~1.4 km/s of it
-# goes to drag. A hull-versus-body question, not an air-numbers one. (When this case
-# was written the run died at t=1.0 with why="the ship came back down" instead -- a
-# spawn on a driven building had no collider in the world yet on the first tick,
-# #977 -- so nothing was being flown at all and only the arm-time numbers could be
-# checked.)
+# 78.5 km, billed dv=1582.3 m/s of which grav 445.7, drag 429.8 and steer 165.9: a
+# `racer` cannot buy 100 km on Venus out of 1.6 km/s. A hull-versus-body question, not
+# an air-numbers one, and filed as #981. (When this case was written the run died at
+# t=1.0 with why="the ship came back down" instead -- a spawn on a driven building had
+# no collider in the world yet on the first tick, #977 -- so nothing was being flown at
+# all and only the arm-time numbers could be checked.)
