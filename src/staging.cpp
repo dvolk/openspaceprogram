@@ -33,7 +33,15 @@ struct SimEngine {
     bool fed = false;
 };
 
-typedef std::vector<std::vector<int> > Bucket;
+/* One group's drain layers, flat: layer li owns groupOf[layerStart[li] ..
+   layerStart[li+1]), furthest layer first. It used to be a vector of vectors, which
+   pays an allocation per layer on top of the outer one, for every cached group in
+   every staging pass (#963). The layer COUNT stays data rather than structure, so the
+   cache's per-group cost is two buffers whatever the shape of the ship. */
+struct Layers {
+    std::vector<int> groupOf;
+    std::vector<int> layerStart;   // nLayers + 1 entries, [0] = 0
+};
 
 // Groups the parts, returning the group count (ids are dense from 0).
 int buildFuelGroups(std::vector<SimPart> &parts) {
@@ -57,34 +65,82 @@ int buildFuelGroups(std::vector<SimPart> &parts) {
     return n;
 }
 
-// Group buckets by reverse-hop distance, furthest first: outer groups drain
-// first, as in Vehicle::fuelDrainLayers.
-Bucket drainLayersFor(const std::map<int, std::vector<int> > &rev, int group) {
-    std::map<int, int> dist;
+/* Group buckets by reverse-hop distance, furthest first: outer groups drain first, as
+   in Vehicle::fuelDrainLayers (that flight-side copy still builds the same layers out
+   of a std::map -- same rule, two shapes now, and it is the one the LIVE drain uses).
+   `out` is the caller's (a layersOf node) and is fully overwritten.
+
+   The group ids are dense from 0 (buildFuelGroups' contract), so the hop table is a
+   vector indexed by group rather than a std::map keyed by it, and the layers are a
+   count-then-fill CSR rather than a map of vectors. Both used to bill a tree node per
+   reachable group and per layer: 35,280 allocations over an ascent's 755 staging
+   passes -- ~47 a pass, on a hull with three fuel groups (#963).
+
+   Listing each layer in ASCENDING group id is what the map-of-vectors gave, and
+   computeRates sums a layer's fuel in that order. The order is insurance rather than a
+   live difference: it can only reach that fp sum, and filling in BFS order instead
+   changed no row on any shipped hull and failed no check (measured, #963's review). It
+   costs a sort of the reachable set, which is never larger than the walk already did. */
+void drainLayersFor(const std::map<int, std::vector<int> > &rev, int group,
+                    int nGroups, Layers &out) {
+    /* These three ride between calls (#963): this runs once per group that holds a lit
+       engine, and every one is overwritten before anything reads it. The body calls
+       nothing but vector ops and asserts, so there is no reentrant caller to worry
+       about; one that wanted the hop table WHILE this ran would need its own. */
+    static thread_local std::vector<int> dist;   // group -> hops, -1 = not reachable
+    static thread_local std::vector<int> queue;  // reachable groups, ascending on use
+    static thread_local std::vector<int> cnt;    // per layer: count, then write cursor
+    assert(group >= 0 && group < nGroups);
+    /* The exit below leaves dist ALL -1 again, so there is no clear pass here: the walk
+       touches only entries it marked, which keeps this function O(reachable) rather
+       than O(nGroups) -- a ship with many groups and short reach (a ring of unlinked
+       boosters) asks for one layer set per group, and scanning the whole group set for
+       each was 40% slower than the map it replaced. A grown tail starts unseen, or 0
+       would leak into the next call on a bigger ship reading as "this group IS the one
+       with the lit engine". */
+    const size_t had = dist.size();
+    if(had < (size_t)nGroups) {
+        dist.resize((size_t)nGroups);
+        std::fill(dist.begin() + had, dist.end(), -1);
+    }
+    queue.clear();
     dist[group] = 0;
-    std::vector<int> queue;
     queue.push_back(group);
+    int maxDist = 0;
     for(size_t qi = 0; qi < queue.size(); qi++) {
         const int u = queue[qi];
         std::map<int, std::vector<int> >::const_iterator it = rev.find(u);
         if(it == rev.end()) { continue; }
         for(size_t i = 0; i < it->second.size(); i++) {
             const int v = it->second[i];
-            if(dist.count(v)) { continue; }
+            assert(v >= 0 && v < nGroups);
+            if(dist[v] != -1) { continue; }
             dist[v] = dist[u] + 1;
+            if(dist[v] > maxDist) { maxDist = dist[v]; }
             queue.push_back(v);
         }
     }
-    std::map<int, std::vector<int> > byDist;
-    for(std::map<int, int>::const_iterator it = dist.begin(); it != dist.end(); ++it) {
-        byDist[it->second].push_back(it->first);
+    /* Every hop count from 0 to maxDist has a group (a group at distance d was reached
+       through one at d - 1), so there are exactly maxDist + 1 layers and none is empty.
+       Layer li carries the groups maxDist - li hops out, so li 0 is the outermost. */
+    const size_t nLayers = (size_t)maxDist + 1;
+    std::sort(queue.begin(), queue.end());
+    cnt.assign(nLayers, 0);
+    for(size_t k = 0; k < queue.size(); k++) { cnt[(size_t)(maxDist - dist[queue[k]])]++; }
+    out.layerStart.resize(nLayers + 1);
+    out.layerStart[0] = 0;
+    for(size_t li = 0; li < nLayers; li++) {
+        out.layerStart[li + 1] = out.layerStart[li] + cnt[li];
     }
-    Bucket layers;
-    for(std::map<int, std::vector<int> >::const_reverse_iterator it = byDist.rbegin();
-        it != byDist.rend(); ++it) {
-        layers.push_back(it->second);
+    out.groupOf.resize(queue.size());
+    assert(out.layerStart[nLayers] == (int)queue.size());   // each reachable group once
+    for(size_t li = 0; li < nLayers; li++) { cnt[li] = out.layerStart[li]; }
+    for(size_t k = 0; k < queue.size(); k++) {
+        const int g = queue[k];                       // ascending: the layer's order
+        const size_t li = (size_t)(maxDist - dist[g]);
+        out.groupOf[(size_t)cnt[li]++] = g;
     }
-    return layers;
+    for(size_t k = 0; k < queue.size(); k++) { dist[queue[k]] = -1; }
 }
 
 double totalMass(const std::vector<SimPart> &parts) {
@@ -136,7 +192,7 @@ struct Sim {
     std::vector<SimPart> parts;
     std::vector<SimEngine> engines;
     std::map<int, std::vector<int> > revLinks;
-    std::map<int, Bucket> layersOf;
+    std::map<int, Layers> layersOf;
     /* group -> its parts, flat: group g owns memberOf[memberStart[g] ..
        memberStart[g+1]). Built once per refreshFuel (#293): the drain loop used
        to rescan the whole ship for every group in every layer, which made a
@@ -173,6 +229,11 @@ struct Sim {
        live epoch, so a fresh vector starts clean. */
     std::vector<uint32_t> seenEpoch;
     uint32_t seenTick = 0;
+    /* The drop walk's LIFO (#963). Part of the Sim rather than a local because the walk
+       runs once per stage label; the walk drains it, so it is empty whenever it is next
+       entered -- asserted, not cleared, so a walk that leaves a seed's children standing
+       shows up instead of leaking into the next label. */
+    std::vector<int> dropStack;
 
     /* The same epoch trick for drainableIn (#536): which groups a LIT engine can draw
        from, stamped once per burn instead of rebuilt into a std::set per query (#538).
@@ -207,8 +268,13 @@ struct Sim {
     /* Decoupler-on-stage drop: the decouplers carrying this label plus everything
        on their child side (Vehicle::droppedPartsAtStage). Ascending part order, which
        is what the std::set this used to return gave: drainableIn sums fuel in iteration
-       order, so keeping the order keeps the rows bit-identical (#533). */
-    std::vector<int> droppedAt(int stage) {
+       order, so keeping the order keeps the rows bit-identical (#533).
+
+       Fills `dropped` (cleared first) rather than returning it, and walks on the Sim's
+       own stack (#963): one walk per stage label inside a pass that runs 755 times an
+       ascent, and the caller declares its vector outside the label loop, so both
+       buffers' capacity is what gets reused instead of being remade per label. */
+    void droppedAt(int stage, std::vector<int> &dropped) {
         /* Only proves the tables match the part count -- that buildChildren() ran
            at all and nothing resized parts afterwards. A table built BEFORE the
            snapshot has the right size and the wrong edges, so keep the call in
@@ -220,15 +286,15 @@ struct Sim {
            buildChildren() restarts it with the snapshot. Asserted, not handled. */
         ++seenTick;
         assert(seenTick != 0);
-        std::vector<int> dropped;
-        std::vector<int> stack;   // one allocation per walk: the drain below empties it
+        dropped.clear();
+        assert(dropStack.empty());   // the walk below drains it; nothing else touches it
         for(size_t i = 0; i < parts.size(); i++) {
             if(!parts[i].alive || !parts[i].isDec || parts[i].stage != stage) { continue; }
             if(seenEpoch[i] != seenTick) { seenEpoch[i] = seenTick; dropped.push_back((int)i); }
-            for(int k = childStart[i]; k < childStart[i + 1]; k++) { stack.push_back(childOf[k]); }
-            while(!stack.empty()) {
-                const int q = stack.back();
-                stack.pop_back();
+            for(int k = childStart[i]; k < childStart[i + 1]; k++) { dropStack.push_back(childOf[k]); }
+            while(!dropStack.empty()) {
+                const int q = dropStack.back();
+                dropStack.pop_back();
                 if(seenEpoch[(size_t)q] == seenTick) { continue; }
                 seenEpoch[(size_t)q] = seenTick;
                 // The child table is built before any kill(), so a live seed's subtree
@@ -241,7 +307,7 @@ struct Sim {
                 // by the seed's own stamp.
                 if(parts[(size_t)q].alive) { dropped.push_back(q); }
                 for(int k = childStart[(size_t)q]; k < childStart[(size_t)q + 1]; k++) {
-                    stack.push_back(childOf[k]);
+                    dropStack.push_back(childOf[k]);
                 }
             }
         }
@@ -250,7 +316,6 @@ struct Sim {
            either way (measured), so this is insurance for a big drop set with inexact
            sums, not a live difference. */
         std::sort(dropped.begin(), dropped.end());
-        return dropped;
     }
 
     /* Drain layers for one group, computed on first use (#293). Only a group
@@ -258,11 +323,15 @@ struct Sim {
        group -- a BFS each, over a graph as big as the group set -- was the bulk
        of a deep asparagus build's cost once the drain loop stopped rescanning.
        layersOf must stay a node-stable container: the drain loop holds the
-       returned pointer across a whole layer walk while later engines insert. */
-    const Bucket *layersFor(int g) {
-        std::map<int, Bucket>::const_iterator it = layersOf.find(g);
+       returned pointer across a whole layer walk while later engines insert. The
+       Layers' own two buffers live in that node, so they stay put for the same
+       reason (#963 made them vectors rather than the node's sub-vectors, which
+       would have put an allocation per layer back). */
+    const Layers *layersFor(int g) {
+        std::map<int, Layers>::const_iterator it = layersOf.find(g);
         if(it != layersOf.end()) { return &it->second; }
-        Bucket b = drainLayersFor(revLinks, g);
+        Layers b;
+        drainLayersFor(revLinks, g, nGroups, b);
         return &layersOf.insert(it, std::make_pair(g, std::move(b)))->second;
     }
 
@@ -278,27 +347,28 @@ struct Sim {
             if(e.part < 0 || e.part >= (int)parts.size() || !parts[e.part].alive) { continue; }
             const int g = parts[e.part].group;
             if(g < 0) { continue; }
-            const Bucket *lit = layersFor(g);
+            const Layers *lit = layersFor(g);
             double need = e.mdot;
-            for(size_t li = 0; li < lit->size() && need > 0.0; li++) {
-                const std::vector<int> &bucket = (*lit)[li];
+            for(size_t li = 0; li + 1 < lit->layerStart.size() && need > 0.0; li++) {
+                const int b0 = lit->layerStart[li];
+                const int b1 = lit->layerStart[li + 1];
                 double layerFuel = 0.0;
-                for(size_t gi = 0; gi < bucket.size(); gi++) {
-                    const int b = bucket[gi];
-                    // Every bucket entry is a revLinks key or value: a real group id.
+                for(int k = b0; k < b1; k++) {
+                    const int b = lit->groupOf[(size_t)k];
+                    // Every groupOf entry is a revLinks key or value: a real group id.
                     assert(b >= 0 && b < nGroups);
-                    for(size_t k = (size_t)memberStart[(size_t)b];
-                        k < (size_t)memberStart[(size_t)b + 1]; k++) {
-                        layerFuel += parts[(size_t)memberOf[k]].fuel;
+                    for(size_t m = (size_t)memberStart[(size_t)b];
+                        m < (size_t)memberStart[(size_t)b + 1]; m++) {
+                        layerFuel += parts[(size_t)memberOf[m]].fuel;
                     }
                 }
                 if(layerFuel <= 0.0) { continue; }
-                for(size_t gi = 0; gi < bucket.size(); gi++) {
-                    const int b = bucket[gi];
+                for(int k = b0; k < b1; k++) {
+                    const int b = lit->groupOf[(size_t)k];
                     assert(b >= 0 && b < nGroups);
-                    for(size_t k = (size_t)memberStart[(size_t)b];
-                        k < (size_t)memberStart[(size_t)b + 1]; k++) {
-                        const size_t pi = (size_t)memberOf[k];
+                    for(size_t m = (size_t)memberStart[(size_t)b];
+                        m < (size_t)memberStart[(size_t)b + 1]; m++) {
+                        const size_t pi = (size_t)memberOf[m];
                         const double have = parts[pi].fuel;
                         if(have <= 0.0) { continue; }
                         rate[pi] += need * (have / layerFuel);
@@ -310,9 +380,15 @@ struct Sim {
         }
     }
 
+    /* computeRates' buffer for fedThrust alone (#963), which runs at both ends of a
+       burn rather than once a pass. runBurn's drain loop keeps its own rate vector, so
+       the two hold separate rows: fedThrust answers off engines[].fed, which
+       computeRates writes, and no caller of either reads a rate after it returns. That
+       separation is a convention, so runBurn asserts its buffers are not this one. */
+    std::vector<double> fedRate;
+
     double fedThrust() {
-        std::vector<double> tmp;
-        computeRates(tmp);
+        computeRates(fedRate);   // the Sim's buffer: fedThrust runs per burn sample (#963)
         double F = 0.0;
         for(size_t ei = 0; ei < engines.size(); ei++) {
             if(engines[ei].fed) { F += engines[ei].thrust; }
@@ -360,13 +436,13 @@ struct Sim {
             litSeen++;
             const int g = parts[e.part].group;
             if(g < 0) { continue; }
-            const Bucket *layers = layersFor(g);
-            for(size_t li = 0; li < layers->size(); li++) {
-                for(size_t gi = 0; gi < (*layers)[li].size(); gi++) {
-                    const int rg = (*layers)[li][gi];   // a GROUP, not a part
-                    assert(rg >= 0 && rg < (int)reachEpoch.size());
-                    reachEpoch[(size_t)rg] = reachTick;
-                }
+            const Layers *layers = layersFor(g);
+            /* The flat list IS the union of the layers, so marking needs no layer
+               boundaries -- and order does not matter here, unlike in computeRates. */
+            for(size_t k = 0; k < layers->groupOf.size(); k++) {
+                const int rg = layers->groupOf[k];   // a GROUP, not a part
+                assert(rg >= 0 && rg < (int)reachEpoch.size());
+                reachEpoch[(size_t)rg] = reachTick;
             }
         }
         /* litCount is the writers' running count, litSeen is what this loop actually
@@ -451,8 +527,18 @@ struct BurnAcc {
 
 // Drain until `watch` is empty of drainable fuel, or -- when `drainAll`
 // -- until no lit engine can draw more. Events are tank-empty boundaries.
+/* `rate` and `ratio` come from the caller (#963): a pass runs one burn per stage
+   label and both are sized to the part count, so declaring them outside the label loop
+   is what keeps that capacity. computeRates overwrites rate in full; ratio is written
+   only where rate > 0 and read only there, so neither can carry a stale answer. What
+   they must NOT be is the Sim's own fedThrust buffer: the ignition sample below calls
+   computeRates(sim.fedRate) from inside this loop, so an aliased rate would be zeroed
+   mid-burn and the period would end early with plausible-looking rows. Asserted rather
+   than left to the comment at fedRate. */
 void runBurn(Sim &sim, double g, bool drainAll,
-             const std::vector<int> &watch, BurnAcc &acc) {
+             const std::vector<int> &watch, BurnAcc &acc,
+             std::vector<double> &rate, std::vector<double> &ratio) {
+    assert(&rate != &sim.fedRate && &ratio != &sim.fedRate);
     acc.m0 = totalMass(sim.parts);
     acc.m = acc.m0;
     acc.dv = 0.0;
@@ -466,8 +552,6 @@ void runBurn(Sim &sim, double g, bool drainAll,
     acc.sampleTWR(sim.fedThrust(), acc.m, g, true);
 
     const int kMaxSteps = (int)sim.parts.size() * 8 + 32;
-    std::vector<double> rate;    // this plan's per-part drain rates
-    std::vector<double> ratio;   // part fuel / part rate = when that tank empties
     int step = 0;
     for(; step < kMaxSteps && ready(); step++) {
         sim.computeRates(rate);
@@ -757,6 +841,13 @@ std::vector<StageRow> computeStaging(const BuildShip &ship, double g,
        members, visited in the same order the dense loop visited its integers. */
     assert(walk.size() >= 1 && walk.front() == minStage && walk.back() == maxStage);
 
+    /* Reused across the label loop, which is the only reason they are cheap: one drop
+       list and one pair of burn buffers per PASS, not per label (#963). `drop` is
+       dead by the time the next label refills it -- kill() reads it and refreshFuel()
+       runs before the loop turns over. */
+    std::vector<int> drop;
+    std::vector<double> burnRate, burnRatio;
+
     for(std::vector<int>::const_reverse_iterator it = walk.rbegin();
         it != walk.rend(); ++it) {
         const int s = *it;
@@ -780,7 +871,7 @@ std::vector<StageRow> computeStaging(const BuildShip &ship, double g,
            kill skip it, so no row can tell. It stays so that everything reading `drop`
            reads only parts the separation really takes. #537: this used to be a second
            filter HERE, over the returned vector, and the two copies hid each other. */
-        const std::vector<int> drop = sim.droppedAt(s);
+        sim.droppedAt(s, drop);
 
         // A stage that separates nothing and is not the last only lights
         // engines (the counter steps through it); no burn of its own.
@@ -807,7 +898,7 @@ std::vector<StageRow> computeStaging(const BuildShip &ship, double g,
         // the survivor's burn, so fall back to draining everything reachable.
         const bool drainAll = !row.drops || sim.drainableIn(drop) <= 1e-12;
         BurnAcc burn;
-        runBurn(sim, g, drainAll, drop, burn);
+        runBurn(sim, g, drainAll, drop, burn, burnRate, burnRatio);
 
         row.deltaV = burn.dv;
         row.massEnd = totalMass(sim.parts);

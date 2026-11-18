@@ -11,8 +11,12 @@
 //   * asparagus (outer -> inner fuel links): the outer booster's tanks
 //     empty first (shared with the core engine), the stage drops when
 //     THEY are empty, and the core keeps burning afterwards;
-//   * decouplers are fuel barriers (the core engine cannot drain a
-//     booster's tanks without an explicit link).
+//   * decouplers are fuel barriers (the core engine cannot drain a booster's
+//     tanks without an explicit link).
+//   * drain layers: a lit engine drains the FURTHEST link layer first and each
+//     period ends on its own layer, by hop distance rather than part order;
+//     the buffers that walk them are reused between calls, so the second ship in
+//     a process must answer for its own graph (#963).
 //   * stage numbers are LABELS: the walk visits the labels the ship carries, highest
 //     first, and a gap between two labels costs nothing (#517).
 //
@@ -1321,6 +1325,87 @@ static void test_seed_the_fuel_and_mass_a_live_ship_carries() {
     CHECK_TRUE(dry[0].engines == 1 && dry[0].drops, "the stage-2 engine is lit and the drop still happens");
 }
 
+/* THREE drain layers, so the layer indexing has to be right rather than merely
+   two-deep: the core engine's set is [outTank, outTank2] (2 hops), [midTank] (1 hop),
+   [coreTank] (0), furthest first, and each period ends on its own layer because the
+   drop set is that layer. The hop distance, not the part order, decides what burns:
+   outTank2 is built three parts after midTank and hangs two tree levels off it, yet
+   drains in the first period, while the core's own tank -- one part from the engine --
+   waits for the last. Nearest-first (layer li carrying dist li rather than maxDist -
+   li) spends everything in the first period: row 0 reads 215 -> 75 and rows 1 and 2
+   burn nothing, because draining midTank and coreTank never lowers the drop set's
+   drainable fuel, so the burn chases on until the ship is dry.
+   Derived: wet 215 = coreTank 80 + coreEng 10 + decA 5 + midTank 55 + decB 5
+   + outTank 40 + outTank2 20. One engine, mdot 1 kg/s, ve 1000. Dead parts leave the
+   mass, so each row starts 25 kg / 20 kg under the last one's end -- the dry of the
+   separation that just happened, fuel already spent.
+     label 3 (decB + its two tanks): the outer layer holds 30 + 10 kg, pro-rated
+       0.75 / 0.25, both empty at t = 40 s -> massEnd 175.
+     label 2 (decA + midTank): 150 after decB's subtree goes (its 5 + 10 + 10 dry),
+       40 kg burns -> 110.
+     label 1 (final, drainAll): 90 after decA's and midTank's dry goes, the core's
+       60 kg burn -> 30. */
+static void test_a_three_hop_string_drains_one_layer_per_period() {
+    Catalog cat;
+    BuildShip bs;
+    const int core = addPart(bs, cat.tank(20, 30, 30), "coreTank", -1, 1);
+    addPart(bs, cat.engine(10, 0.5, 1000.0), "coreEng", core, 3);
+    const int decA = addPart(bs, cat.decoupler(5), "decA", core, 2);
+    const int mid = addPart(bs, cat.tank(15, 20, 20), "midTank", decA, 2);
+    const int decB = addPart(bs, cat.decoupler(5), "decB", mid, 3);
+    addPart(bs, cat.tank(10, 15, 15), "outTank", decB, 3);
+    addPart(bs, cat.tank(10, 5, 5), "outTank2", decB, 3);
+    addLink(bs, "midTank", "coreTank");
+    addLink(bs, "outTank", "midTank");
+    addLink(bs, "outTank2", "midTank");
+
+    const double g = 10.0;
+    const std::vector<StageRow> rows = computeStaging(bs, g);
+    CHECK_TRUE(rows.size() == 3, "three labels, three rows");
+    if(rows.size() != 3) { return; }
+
+    CHECK_TRUE(rows[0].drops && rows[1].drops && !rows[2].drops, "two separations, then the end");
+    CHECK_REL(rows[0].massStart, 215.0, 1e-9, "all aboard");
+    CHECK_REL(rows[0].massEnd, 175.0, 1e-9, "the 2-hop layer only");
+    CHECK_REL(rows[0].deltaV, 1000.0 * std::log(215.0 / 175.0), 1e-9, "label 3 dv");
+    CHECK_REL(rows[1].massStart, 150.0, 1e-9, "decB's dry came with its tanks");
+    CHECK_REL(rows[1].massEnd, 110.0, 1e-9, "the 1-hop layer");
+    CHECK_REL(rows[1].deltaV, 1000.0 * std::log(150.0 / 110.0), 1e-9, "label 2 dv");
+    CHECK_REL(rows[2].massStart, 90.0, 1e-9, "the core's own tank is the last layer");
+    CHECK_REL(rows[2].massEnd, 30.0, 1e-9, "and it is the last to empty");
+    CHECK_REL(rows[2].deltaV, 1000.0 * std::log(90.0 / 30.0), 1e-9, "label 1 dv");
+    CHECK_TRUE(rows[0].engines == 1 && rows[1].engines == 1 && rows[2].engines == 1,
+               "one engine reaches every layer");
+
+    /* The hop table drainLayersFor reuses is static, so it outlives the call that
+       filled it (#963), and this file computes a dozen ships in one process. Dropping
+       the walk's exit clear leaves marks standing for the next one: 39 checks go red,
+       9 of them in this fixture, starting at the pass above (row 0 reads 215 -> 155
+       because the BFS finds midTank already marked and never walks out to the 2-hop
+       layer). The same rule's other half -- a table that GROWS must start its new
+       entries unseen, since 0 means "this group is the one with the lit engine" -- is
+       caught by the deep chain's "a second pass reads the same rows" check further up
+       this file; the one-group ship here just keeps the shapes varied, since a smaller
+       ship cannot make the table grow. */
+    Catalog cat2;
+    BuildShip alone;
+    const int t1 = addPart(alone, cat2.tank(20, 30, 30), "tank", -1, 1);
+    addPart(alone, cat2.engine(10, 0.5, 1000.0), "eng", t1, 1);
+    const std::vector<StageRow> single = computeStaging(alone, g);
+    CHECK_TRUE(single.size() == 1, "no decoupler, one period");
+    CHECK_REL(single[0].deltaV, 1000.0 * std::log(90.0 / 30.0), 1e-9, "alone dv");
+
+    const std::vector<StageRow> again = computeStaging(bs, g);
+    CHECK_TRUE(again.size() == 3, "the same ship, again, still three rows");
+    if(again.size() != 3) { return; }
+    CHECK_REL(again[0].massEnd, 175.0, 1e-9, "the outer layer drained first, again");
+    CHECK_REL(again[1].massEnd, 110.0, 1e-9, "the middle layer, again");
+    CHECK_REL(again[2].massEnd, 30.0, 1e-9, "the core last, again");
+    CHECK_REL(again[0].deltaV + again[1].deltaV + again[2].deltaV,
+              rows[0].deltaV + rows[1].deltaV + rows[2].deltaV, 1e-12,
+              "the same plan out of a reused hop table");
+}
+
 int main() {
     test_two_stage();
     test_single_stage();
@@ -1345,6 +1430,7 @@ int main() {
     test_a_newly_lit_engine_outside_the_drop_reaches_inside_it();
     test_a_live_decoupler_above_a_dead_tank_does_not_adopt_its_fuel();
     test_a_separation_does_not_relist_an_already_dead_subtree();
+    test_a_three_hop_string_drains_one_layer_per_period();
     test_seed_the_fuel_and_mass_a_live_ship_carries();
 
     printf("test_staging_dv: %d checks, %d failures\n", g_checks, g_failures);
