@@ -271,6 +271,13 @@ private:
        that loses height would be told to point further up than it did at the pad
        (#930); the schedule reads this ratchet instead of the live altitude. */
     double apex_alt_ = -1.0;
+    /* The altitude the pitch schedule measures its turn FROM (m above the datum),
+       set on the first tick the schedule runs, -1 before that. pathAngle()'s
+       denominator is metres of CLIMB SINCE THE LAUNCH: a mission born high -- an air
+       platform riding at 56 km of a 116 km air -- would otherwise start 56 km inside
+       its own 12.7 km turn and be told to fly nearly flat for the whole flight
+       (#979). For a pad launch the two spellings differ by the pad's height alone. */
+    double launch_alt_ = -1.0;
 
     /* The stages_left value this law last asked for a press at (#928), -1 until it
        asks. One ask per value is the retry policy for everything the caller does NOT

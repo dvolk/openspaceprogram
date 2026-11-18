@@ -390,10 +390,11 @@ static void test_a_hull_that_lands_is_a_failed_mission() {
                "the landing outranks the dry tanks");
 }
 
-/* #930: pathAngle() is a schedule over ALTITUDE, so a hull that loses height is
-   told to point further up than it did at the pad. On Kerbin the commanded pitch
-   climbed from 34 deg back to 87.1 deg while the ship sank, and the flight ended
-   parked on the surface. The schedule reads the high-water mark instead, so the
+/* #930: pathAngle() is a schedule over CLIMB SINCE THE LAUNCH, so a hull that
+   loses height is not told to point further up than it did at the pad. On Kerbin the
+   commanded pitch climbed from 34 deg back to 87.1 deg while the ship sank, and the
+   flight ended parked on the surface. The schedule reads the high-water mark
+   instead, so the
    pitch the law asks for can only flatten as the flight goes on. Pinning the
    property rather than the number keeps it true whatever profile v2 picks. */
 static void test_a_sinking_ship_does_not_get_its_nose_back() {
@@ -415,8 +416,10 @@ static void test_a_sinking_ship_does_not_get_its_nose_back() {
         prev = pitch;
     }
     CHECK_TRUE(fell, "the test really flew DOWN from above the apex it had reached");
-    CHECK_NEAR(prev, std::atan2(3000.0, 8000.0) * 180.0 / 3.14159265358979, 1e-6,
-               "and it holds the pitch the HIGHEST altitude asked for, not the current one");
+    /* The turn is measured from where the loop started climbing -- its first tick, at
+       2 km (#979) -- so the high-water mark this holds is 8 km minus that 2 km. */
+    CHECK_NEAR(prev, std::atan2(3000.0, 8000.0 - 2e3) * 180.0 / 3.14159265358979, 1e-6,
+               "and it holds the pitch the HIGHEST CLIMB asked for, not the current height");
 }
 
 /* #928: the law asks for a press, and asks ONCE per stage number.
@@ -864,7 +867,8 @@ static void test_letting_go_closes_both_channels() {
        this), which is the whole empty band the shipped bodies offer.
    (The 1000 m floor in h_half is NOT pinned here -- it shows up in
    test_asks_it_cannot_land_say_so, on a 10 km Moho ask.) */
-static double schedPitch(const AscentTarget &t, double air_overhead, double air_column, double alt) {
+static double schedPitch(const AscentTarget &t, double air_overhead, double air_column, double alt,
+                         double launch_alt = 0.0) {
     /* The air rides with the ask, at the ctor (#961): a law cannot be flown against a
        sky it was not built with, and the pair is the air OVERHEAD -- above wherever this
        schedule starts -- not the body's whole atmosphere (#962). */
@@ -872,16 +876,24 @@ static double schedPitch(const AscentTarget &t, double air_overhead, double air_
     GuidanceState s;
     /* A slow climb, so the apoapsis stays put and the law keeps answering with its
        schedule instead of moving to Coast and aiming prograde. */
-    s.pos = glm::dvec3(R_MOHO + alt, 0.0, 0.0);
+    s.pos = glm::dvec3(R_MOHO + launch_alt, 0.0, 0.0);
     s.vel = glm::dvec3(0.0, 30.0, 0.0);
     s.mu = MU_MOHO; s.sea_r = R_MOHO; s.spin_axis = glm::dvec3(0.0, 0.0, 1.0);
     s.accel_max = 19.0; s.has_propellant = true;
+    /* The turn is measured in metres of climb SINCE THE LAUNCH (#979), so a fixture
+       that wants the pitch at `alt` has to have started somewhere below it: one tick
+       at the launch altitude is what sets the schedule's zero. With launch_alt == alt
+       that tick is the same tick, and the answer is 90 deg -- which is what a launch
+       born at that height really is asked to do. */
+    if(launch_alt != alt) { law.step(s); }
+    s.pos = glm::dvec3(R_MOHO + alt, 0.0, 0.0);
     law.step(s);
     return law.pitch_deg();
 }
 
-static double schedHHalf(const AscentTarget &t, double air_overhead, double air_column, double alt) {
-    return alt * std::tan(glm::radians(schedPitch(t, air_overhead, air_column, alt)));
+static double schedHHalf(const AscentTarget &t, double air_overhead, double air_column, double alt,
+                         double launch_alt = 0.0) {
+    return (alt - launch_alt) * std::tan(glm::radians(schedPitch(t, air_overhead, air_column, alt, launch_alt)));
 }
 
 static void test_the_air_holds_the_nose_up() {
@@ -985,13 +997,13 @@ static void test_the_air_is_measured_above_the_hull() {
     CHECK_NEAR(deck.overhead, 60e3, 1.0, "the deck has 60 km of air left to climb, not 116");
     CHECK_NEAR(deck.column, 5300.0, 5.0, "and weighs the 47 kPa still over it, in the datum's field");
 
-    /* At the datum the two readings are the SAME statement, which is what every
-       flight quoted by pathAngle() was flown with. A real pad is not at the datum --
-       Kerbin's hull sits 270 m up it, and the law weighs 84,730 m and 10,002 kg/m^2
-       there rather than 85 km and 10,328. The column is still past kAirColumnFull, so
-       the weight half does not move; the only effect is 0.4 x 270 = 108 m off a 34 km
-       turn, and that 0.3% is measured as 170.0 -> 168.4 km of peak apoapsis on the
-       standard bed, with 0.03% of its dv. */
+    /* At the datum the two readings are the SAME statement. A real pad is not at the
+       datum -- Kerbin's hull sits 270 m up it, and the law weighs 84,730 m and
+       10,002 kg/m^2 there rather than 85 km and 10,328. The column is still past
+       kAirColumnFull, so the weight half does not move and the height enters only as
+       0.4 x 270 = 108 m off a 34 km turn. It used to enter twice, though: the schedule
+       read the pad's height as climb too, and taking that out (#979) is worth 168.4 ->
+       178.1 km of peak apoapsis on the standard bed -- six times this term. */
     const AirFacts floor = airOverhead(116e3, 0.0, 9.2e6, 8.87);
     CHECK_NEAR(floor.overhead, 116e3, 1e-9, "a launch under everything gets everything");
     CHECK_NEAR(floor.column, 9.2e6 / 8.87, 1e-6, "...and the whole column to weigh it with");
@@ -1022,30 +1034,46 @@ static void test_the_air_is_measured_above_the_hull() {
     CHECK_NEAR(airOverhead(85e3, 0.0, std::nan(""), 9.81).column, 0.0, 0.0, "a NaN pressure weighs nothing");
     CHECK_NEAR(airOverhead(85e3, std::nan(""), 9.8e6, 9.81).overhead, 85e3, 1e-9, "a NaN altitude reads as the datum, not as NaN");
 
-    /* The schedule consequence the ticket measures, on a 100 km ask from the deck. */
+    /* The schedule consequence, on a 100 km ask from the deck. What the two readings
+       differ on is the SIZE of the turn: 0.4 x min(overhead, ask) x weight -- 12.7 km
+       on the deck's own air against 40 km credited to the body (#960's reason for the
+       cap). It is quoted as a turn rather than as a first-tick pitch because of #979:
+       the turn is measured from where the launch begins, so both readings start at
+       90 deg and the difference shows up 12.7 km or 40 km of climb later. */
     AscentTarget t; t.apo_asl = t.peri_asl = 100e3; t.inc_rad = -1.0;
-    const double credited = schedPitch(t, 116e3, 9.2e6 / 8.87, 56e3);
-    const double honest = schedPitch(t, deck.overhead, deck.column, 56e3);
-    printf("   [first tick off the deck] crediting the body %5.1f deg, measuring the deck %5.1f deg\n",
-           credited, honest);
-    CHECK_NEAR(credited, 35.5, 0.3, "crediting the whole body starts a deck launch 35 deg up");
-    CHECK_NEAR(honest, 12.8, 0.4, "measuring the overhead starts it at a quarter of that");
-    CHECK_TRUE(honest < credited * 0.5, "and the difference is not a rounding matter");
-    /* Where each turn LANDS, in metres of climb -- the pitch checks above cannot see
-       this, since they say nothing about the air the deck actually has. The honest
-       flatten is 12.7 km of climb inside the 60 km of air left overhead; the credited
-       one is 40 km, most of a sky the hull is already 56 km inside (#960's reason for
-       the cap). */
-    const double honest_turn = 56e3 * std::tan(glm::radians(honest));
-    const double credited_turn = 56e3 * std::tan(glm::radians(credited));
-    printf("   [turn size] honest %.1f km of the %.0f km overhead, credited %.1f km\n",
+    const double honest_turn = schedHHalf(t, deck.overhead, deck.column, 66e3, 56e3);
+    const double credited_turn = schedHHalf(t, 116e3, 9.2e6 / 8.87, 66e3, 56e3);
+    printf("   [deck turn] honest %.1f km of the %.0f km overhead, credited %.1f km\n",
            honest_turn / 1e3, deck.overhead / 1e3, credited_turn / 1e3);
+    CHECK_NEAR(honest_turn, 12.7e3, 100.0, "the deck's own air sizes a 12.7 km turn");
+    CHECK_NEAR(credited_turn, 40e3, 100.0, "...and crediting the whole body sizes 40 km");
     CHECK_TRUE(honest_turn < 0.25 * deck.overhead,
                "measuring the deck turns inside a quarter of the air it has left to climb");
     CHECK_TRUE(credited_turn > 2.5 * honest_turn,
                "crediting the body turns two and a half times as far for the same ask");
     CHECK_TRUE(credited_turn > 0.6 * deck.overhead,
                "...and spends most of the deck's whole climbable air doing it");
+    /* #979 itself, which is what the deck flight was dying of. The turn's zero is the
+       launch, so the first tick off the deck asks for the sky and is 45 deg by its own
+       h_half. Measuring from the datum instead put a hull at 56 km FIFTY-SIX KILOMETRES
+       into a 12.7 km turn -- 12.7 deg from the first tick -- and #930's apex_alt_
+       ratchet means it can never ask for steeper: that is the flown profile that dried
+       a racer's tanks 3 km below the deck with 1.4 of its 1.6 km/s spent on drag. */
+    const double first = schedPitch(t, deck.overhead, deck.column, 56e3, 56e3);
+    const double at_half = schedPitch(t, deck.overhead, deck.column, 56e3 + 12.7e3, 56e3);
+    printf("   [deck start] first tick %5.1f deg, %5.1f deg 12.7 km up\n", first, at_half);
+    CHECK_NEAR(first, 90.0, 0.1, "a launch born inside its air starts straight up");
+    CHECK_NEAR(at_half, 45.0, 0.5, "...and is 45 deg over at one h_half of climb");
+    /* And what this moves for the launches that already worked: a ground pad sits a
+       few hundred metres up the datum, so measuring the turn from the launch instead
+       of the datum changes a Kerbin pad's schedule by well under a degree. That is the
+       whole blast radius on a ground launch -- this is a born-high fix, not a retune. */
+    const double datum_pad = schedPitch(t, 85e3, 10328.0, 10e3, 0.0);
+    const double real_pad = schedPitch(t, 85e3, 10328.0, 10e3, 265.0);
+    printf("   [pad height] datum start %5.2f deg vs 265 m up %5.2f deg, at 10 km\n",
+           datum_pad, real_pad);
+    CHECK_TRUE(std::fabs(real_pad - datum_pad) < 1.0,
+               "a ground pad barely knows the difference, so the bed flights can't move much");
 }
 
 int main() {

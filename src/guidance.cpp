@@ -68,6 +68,14 @@ static const int kPressRetryTicks = 60;
 /* The pitch schedule: a commanded PATH ANGLE against ALTITUDE. 90 deg (straight
    up) off the pad, 45 deg at h_half metres of climb, -> 0 as we climb.
 
+   That altitude is metres of CLIMB SINCE THE LAUNCH, not height above the datum
+   (#979). For every flight written down in this file the two differ by the pad's
+   own height -- 265 m on Kerbin, 911 m at moho_pad -- so the datum spelling hid it.
+   A launch born inside its sky does not: at 56 km of a 116 km air, reading the
+   datum put the deck 56 km INTO its own 12.7 km turn, so its first tick asked
+   12.7 deg, #930's ratchet kept it there for the whole flight, and the hull sank
+   below the deck with 1.4 km/s of its 1.6 km/s spent on drag.
+
    Two failure modes this replaced. Keyed to a fraction of the target apoapsis
    (alt / 0.25 * ask), it flew nearly vertical for 25 km and 34 s: periapsis at
    the body's CENTRE, no downrange speed, no way to circularise at any amount of
@@ -106,14 +114,14 @@ static const int kPressRetryTicks = 60;
    overshoots the asked apoapsis by 6-70% depending on the ask, which is the finite-burn
    question #611 owns.
 
-   The caller feeds this the HIGH-WATER altitude, not the live one (#930). Measured
+   The caller feeds this the HIGH-WATER CLIMB, not the live height (#930). Measured
    on Kerbin with mars_explorer_mk1 (reports/autopilot-v22026_11_16/927_probe_kerbin.log):
    apoapsis peaked at 6.7 km, drag took the hull back down, and the schedule asked
    for the pad's own nose again -- commanded pitch climbed from 34 deg back to 87.1
    while the ship sank, ending parked on the surface at 1 cm/s with the lever at
    1.00. A schedule over a coordinate is two-way in time; only the profile's
    history says which way the flight is going. */
-static double pathAngle(double alt, double ask_alt, const AirFacts &air) {
+static double pathAngle(double climb, double ask_alt, const AirFacts &air) {
     const double h_ask = kFlatHalf * std::max(ask_alt, 0.0);
     /* Two bounds on the air term, both measured, both found on Duna -- 50 km of sky
        over a 20 km mission.
@@ -135,14 +143,17 @@ static double pathAngle(double alt, double ask_alt, const AirFacts &air) {
        1.04e6 kg/m^2 of the whole body. A ground pad is under all but the 270 m its own
        hull sits at, so Kerbin reads 84,730 m and 10,002 kg/m^2 instead of 85 km and
        10,328 -- still over kAirColumnFull, so the weight term does not move at all and
-       the only effect is 0.4 x 270 = 108 m off a 34 km turn. 0.3% of the turn moved the
-       standard bed flight's peak apoapsis from 170.0 to 168.4 km, which says how
-       sensitive the profile is to this number. */
+       the only effect is 0.4 x 270 = 108 m off a 34 km turn. That 0.3% is worth taking
+       seriously, because this term is sensitive: on the datum denominator that trim
+       moved the standard bed flight's peak apoapsis 1.6 km (170.0 -> 168.4 km), and
+       #979 -- taking the pad's own height out of the turn's PROGRESS, the same 270 m --
+       moved it 5.8% the other way. The current bed (mars_explorer_mk1, 100 km ask,
+       42000 steps at 10x) peaks at 178.1 km having spent 4803.6 m/s. */
     const double weight = std::min(1.0, std::max(air.column, 0.0) / kAirColumnFull);
     const double h_air = kFlatAir * weight
                        * std::min(std::max(air.overhead, 0.0), std::max(ask_alt, 0.0));
     const double h_half = std::max(1000.0, std::max(h_ask, h_air));
-    return std::atan2(h_half, std::max(0.0, alt));   // 90 deg at the pad, -> 0 as we climb
+    return std::atan2(h_half, std::max(0.0, climb));   // 90 deg at launch, -> 0 as we climb
 }
 
 /* The speed ceiling: how fast the ship may go at this radius and still have its
@@ -457,12 +468,20 @@ AscentCommand AscentLaw::step(const GuidanceState &s) {
         if(!c.burn) { return c; }
     } else {
         const double alt = r - s.sea_r;
+        /* The schedule measures its turn from where THIS mission started, so the
+           first tick the schedule runs fixes the zero (#979). For a pad launch that
+           is the pad, and every flight written down in this file moves by its own
+           pad height and nothing more (265 m on Kerbin, 911 m at moho_pad). A hull
+           born at 56 km of a 116 km air starts at 0 m of its own 12.7 km turn rather
+           than 56 km inside it, which is the difference between climbing out of
+           Venus's air and drying the tanks 3 km below the deck. */
+        if(launch_alt_ < 0.0) { launch_alt_ = alt; }
         /* The schedule reads the high-water mark, not this tick's height: see
            pathAngle()'s note. On a climb this is the same number the live
            altitude gives, so a vacuum profile is untouched -- what it stops is
            the nose swinging back up when the hull sinks. */
         if(apex_alt_ < 0.0 || alt > apex_alt_) { apex_alt_ = alt; }
-        const double gamma = pathAngle(apex_alt_, target.apo_asl, air_);
+        const double gamma = pathAngle(apex_alt_ - launch_alt_, target.apo_asl, air_);
         pitch_ = glm::degrees(gamma);
         /* Until the ship is actually moving downrange, "horizontal" is the
            heading we chose for the target inclination. After that it is where
@@ -518,9 +537,10 @@ const char *AscentLaw::phaseName() const {
    10,002 kg/m^2 against the body's 85 km and 10,328. It is the hull's centre, not the
    pad's plaque, that sets it -- racer reads 10,009 at the same site where
    mars_explorer_mk1 reads 10,002. The column stays over kAirColumnFull either way, so
-   only the height moves the schedule: 108 m off a 34 km turn, which moved the standard
-   bed flight's peak apoapsis from 170.0 to 168.4 km and its dv by 0.03% -- the same
-   mission, one notch less bent. */
+   only the height moves the schedule, and only through this overhead: 0.4 x 270 =
+   108 m off a 34 km turn. It used to enter twice, because the schedule also counted
+   the pad's own height as climb, which is why the same 270 m moved the bed flight's
+   peak apoapsis 1.6 km through this term and 5.8% through that one (#979). */
 AirFacts airAboveHull(const Vehicle &v) {
     if(v.m_parent == nullptr) { return AirFacts(); }
     const AtmosphereParams &atmo = v.m_parent->surface.atmosphere;

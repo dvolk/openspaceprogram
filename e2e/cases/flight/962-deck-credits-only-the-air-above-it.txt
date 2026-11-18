@@ -24,18 +24,23 @@ CHECK float(re.search(r"([\d.]+) m of air overhead", out).group(1)) > 58e3
 CHECK float(re.search(r"([\d.]+) m of air overhead", out).group(1)) < 62e3
 CHECK float(re.search(r"of air overhead, ([\d.]+) kg/m\^2", out).group(1)) > 4500
 CHECK float(re.search(r"of air overhead, ([\d.]+) kg/m\^2", out).group(1)) < 6000
-# The schedule the hull is flown on: 0.4 x 60 km weighted 5300/10000 is a 12.7 km
-# turn, so the rows sit at 12-13 deg. Crediting the whole body starts the same tick
-# at 35.5 deg, and #930's apex_alt_ ratchet makes that first tick the steepest the
-# mission can ever ask for -- a wrong reading here is not a transient.
-CHECK max(a["pitch"] for a in ascent) < 20.0
-CHECK min(a["pitch"] for a in ascent) > 5.0
-# What this case does NOT pin is the mission's fate. When it was written the run
-# ended at t=1.0 with why="the ship came back down" -- a spawn on a driven building
-# had no collider in the world yet on the first tick (#977) -- so the deck launch
-# never actually flew and only the arm-time numbers could be checked. That ordering
-# is fixed; the rows here now carry a flown burn, and the deck start is pinned by
-# flight/977-deck-launch-starts-on-its-deck. This run still ends phase=failed, near
-# t=81 s with why="the tanks are dry": a `racer` cannot climb out of 47 kPa of
-# Venusian air on 1.6 km/s when ~1.4 km/s of it goes to drag. A hull-versus-body
-# question, not an air-numbers one.
+# The schedule the hull is flown on. The deck's own air -- 0.4 x min(60 km overhead,
+# 100 km ask), weighted 5300/10000 -- sizes a 12.7 km turn, and since the turn is
+# measured from where the launch begins (#979) the hull starts near vertical and is
+# 45 deg over about 13 km up: the rows run 87.9, 74.2, 56.8, 39.3 as it climbs from
+# 56.0 to 71.8 km. Two wrong readings are excluded by these bounds. Crediting the
+# whole body sizes a 40 km turn, which at those same heights would still be asking
+# 70+ deg; and measuring the turn from the DATUM (#979's bug) put a hull at 56 km
+# fifty-six kilometres into its own 12.7 km turn, so its first tick asked 12.7 deg
+# and #930's apex_alt_ ratchet kept it there -- the profile that sank below the deck.
+CHECK max(a["pitch"] for a in ascent) > 80.0
+CHECK max(a["pitch"] for a in ascent if a["alt_asl"] > 68e3) < 50.0
+CHECK min(a["pitch"] for a in ascent) > 30.0
+# What this case does NOT pin is the mission's fate. It ends phase=failed at t=74.3 s
+# with why="the tanks are dry", having climbed from 56.0 to 71.8 km with apoapsis
+# 78.5 km: a `racer` cannot buy 100 km on Venus out of 1.6 km/s when ~1.4 km/s of it
+# goes to drag. A hull-versus-body question, not an air-numbers one. (When this case
+# was written the run died at t=1.0 with why="the ship came back down" instead -- a
+# spawn on a driven building had no collider in the world yet on the first tick,
+# #977 -- so nothing was being flown at all and only the arm-time numbers could be
+# checked.)
