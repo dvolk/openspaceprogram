@@ -28,7 +28,9 @@
 //   * the staged delta-v plan a flying hull shows (Vehicle::stagedRows) is priced on
 //     the tanks as they are now, and re-keys when fuel burns or hardware leaves (#948);
 //   * HOW OFTEN that plan is re-walked: the 0.2% band plus the structure key, counted,
-//     so a widened gate reddens a test instead of showing up in a heaptrack run (#966).
+//     so a widened gate reddens a test instead of showing up in a heaptrack run (#966);
+//   * the TWR ratios give the same answer when the caller hands down the mass and thrust
+//     it already walked, and that the passed mass really is the denominator (#384).
 //
 // Links the REAL SetMass (src/physics.cpp, as test_thrust.cpp does), so the
 // part-mass shedding + Bullet inertia update is exercised too. No GL context
@@ -1150,6 +1152,66 @@ static void test_staged_plan_rebuild_gate() {
     destroyShip(s);
 }
 
+/* #384: the TWR ratios on figures the caller already walked. Mass, produced thrust and
+   available thrust are each a pass over the whole hull, and Vessel Info prints all three
+   plus the ratios a line apart, so it hands them down instead of asking again. These
+   overloads are NOT a cache -- the window takes fresh figures every frame -- so what has
+   to hold is the pairing, not a stored value:
+     * the two routes agree on the same frame;
+     * the mass argument IS the denominator (a fresh hull walk would ignore it);
+     * max TWR still divides by the DRY mass, which is the one ratio where the passed
+       mass gets reduced rather than used as-is.
+   The unit test cannot reach the window itself, so it pins the contract the window relies
+   on and the stale-figure hazard that comes with it. */
+static void test_twr_ratios_take_the_walked_figs() {
+    printf("== TWR ratios: same answer from figures handed down (#384) ==\n");
+    Ship s; s.v = new Vehicle;
+    Part *eng = addPart(s, 0, 0, /*engine=*/true);
+    Part *tank = addPart(s, 100, 100);
+    link(s, eng, tank);
+    initShip(s);
+
+    TerrainBody *pad = new TerrainBody;
+    pad->name = "pad";
+    pad->g = 10.0;
+    s.v->m_parent = pad;
+
+    const double mass = s.v->getMass();
+    const double thrust = s.v->producedThrust();
+    const double avail = s.v->availableThrust();
+    CHECK_TRUE(mass > 0.0 && thrust > 0.0 && avail > 0.0, "the hull can thrust");
+
+    CHECK_REL(s.v->getTWR(thrust, mass), s.v->getTWR(), 1e-12,
+              "current TWR is the same ratio either route");
+    CHECK_REL(s.v->getFullThrustTWR(avail, mass), s.v->getFullThrustTWR(), 1e-12,
+              "full-thrust TWR is the same ratio either route");
+    CHECK_REL(s.v->getMaxTWR(avail, mass), s.v->getMaxTWR(), 1e-12,
+              "max TWR is the same ratio either route");
+
+    /* The passed mass is the denominator, not a hint: doubling it halves the ratio.
+       If the overload ever went back to walking the hull itself, this goes red. */
+    CHECK_REL(s.v->getTWR(thrust, mass * 2.0), s.v->getTWR(thrust, mass) * 0.5, 1e-12,
+              "the mass argument is what the ratio divides by");
+    CHECK_REL(s.v->getFullThrustTWR(avail, mass * 2.0), s.v->getFullThrustTWR(avail, mass) * 0.5,
+              1e-12, "same for the full-thrust row");
+
+    /* Max TWR burns the propellant away first: the denominator is the caller's mass
+       MINUS the rocket propellant aboard (100 hydrogen + 100 oxidizer here). */
+    CHECK_REL(s.v->getMaxTWR(avail, mass), avail / ((mass - 200.0) * pad->g), 1e-12,
+              "max TWR sits at the dry mass of the caller's figure");
+    CHECK_TRUE(s.v->getMaxTWR(avail, mass) >= s.v->getFullThrustTWR(avail, mass),
+               "max TWR is never below the as-flown ratio");
+
+    /* And the hazard the doc warns about: figures from an earlier frame read as this
+       frame's. A 40 kg draw lifts the true ratio; the stale mass does not follow it. */
+    CHECK_TRUE(s.v->consumeResourceMass(ResourceType::Hydrogen, 40.0f, eng), "draw 40 kg");
+    CHECK_TRUE(s.v->getTWR() > s.v->getTWR(thrust, mass),
+               "a stale mass reads a lower TWR than the hull now has");
+
+    delete pad;
+    destroyShip(s);
+}
+
 int main() {
     test_prorata_in_group();
     printf("\n");
@@ -1190,6 +1252,8 @@ int main() {
     test_staged_plan_tracks_a_live_hull();
     printf("\n");
     test_staged_plan_rebuild_gate();
+    printf("\n");
+    test_twr_ratios_take_the_walked_figs();
 
     printf("\n%d checks, %d failures\n", g_checks, g_failures);
     if(g_failures == 0) {

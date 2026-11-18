@@ -1738,6 +1738,18 @@ public:
     // empty TWR
     double getMaxTWR();
 
+    /* Variants for a caller that already walked the hull this frame (#384). Mass,
+       produced thrust and available thrust are each a pass over every part and what
+       is parked inside it, and the Vessel Info window reads all three a line apart --
+       so it hands them down rather than asking three more times. NOT a store: the
+       window takes its own fresh figures every frame. attitudeAuthorityRows() writes
+       down why the same kind of readout walk stays uncached (#649's review pass); the
+       mass behind these ratios moves inside a tick too, so a held copy would be last
+       substep's hull wearing this one's label. */
+    double getTWR(double thrustN, double mass);
+    double getFullThrustTWR(double availThrustN, double mass);
+    double getMaxTWR(double availThrustN, double mass);
+
     void setVelocity(glm::dvec3 vel);
 
     /* The hull's transform origin. O(1). */

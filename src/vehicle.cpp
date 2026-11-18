@@ -2543,8 +2543,34 @@ const std::vector<std::vector<int> > &Vehicle::fuelDrainLayers(Part *engine) con
 Vehicle::FuelDraw Vehicle::consumeResourceMass(enum ResourceType type, double amt, Part *engine) {
     const std::vector<std::vector<int> > &layers = fuelDrainLayers(engine);
     if(layers.empty()) { return {false, 0.0}; }
+    /* ONE totals pass, not two (#384). The drain-or-nothing gate and the drain loop
+       below want the same per-layer sums and each used to sweep every part of every
+       group in the engine's layers to get them: the gate through availableResourceMass
+       (the grand total), the drain loop layer by layer. A group lands in exactly one
+       layer (the BFS answers one hop distance per group), so draining layer li cannot
+       move layer lj's total: measuring them all up front stays identical, same order
+       and same fp sums. `avail` follows availableResourceMass' rule (every tank's
+       contents, whatever the sign) because that is what the gate compared before;
+       `layerTotals` follows the drain's (only positive, since a share of a negative
+       tank is not a thing). */
+    static thread_local std::vector<double> layerTotals;
+    layerTotals.assign(layers.size(), 0.0);
+    double avail = 0.0;
+    for(size_t li = 0; li < layers.size(); li++) {
+        double t = 0.0;
+        for(size_t gi = 0; gi < layers[li].size(); gi++) {
+            const int grp = layers[li][gi];
+            for(Part *p : parts) {
+                if(!p->isTank() || p->fuelGroup != grp) { continue; }
+                const double have = p->resources.current[(int)type];
+                avail += have;
+                if(have > 0.0) { t += have; }
+            }
+        }
+        layerTotals[li] = t;
+    }
     // Drain-or-nothing: no partial burn if the layers cannot cover the request.
-    if(availableResourceMass(type, engine) < amt) { return {false, 0.0}; }
+    if(avail < amt) { return {false, 0.0}; }
     /* Drain layer by layer (furthest first), pro-rata across the layer's tanks.
        Each layer is sized from what is still OWED (amt - drawn), not from a running
        budget advanced by what was asked: the pro-rata shares can clamp at a tank's own
@@ -2552,16 +2578,7 @@ Vehicle::FuelDraw Vehicle::consumeResourceMass(enum ResourceType type, double am
        layer rather than being dropped on the floor (#531). */
     double drawn = 0.0;
     for(size_t li = 0; li < layers.size() && drawn < amt; li++) {
-        double layerTotal = 0;
-        for(size_t gi = 0; gi < layers[li].size(); gi++) {
-            const int grp = layers[li][gi];
-            for(Part *p : parts) {
-                if(!p->isTank() || p->fuelGroup != grp) { continue; }
-                if(p->resources.current[(int)type] > 0.0) {
-                    layerTotal += p->resources.current[(int)type];
-                }
-            }
-        }
+        const double layerTotal = layerTotals[li];
         if(layerTotal <= 0.0) { continue; }
         const double owed = amt - drawn;
         const double take = owed < layerTotal ? owed : layerTotal;
@@ -2637,8 +2654,10 @@ double Vehicle::getDeltaV() {
     const double remaining_fuel = fuelMassMasked(burn); /* kg */
     double ve = 0;   // first ROCKET thruster's exhaust velocity
     for(Part *p : parts) { if(p->isThruster() && !p->isJet()) { ve = p->exhaustVelocity(); break; } }
-    // Tsiolkovsky: dv = ve * ln(m_fueled / m_dry).
-    return ve * exhaust_scale * log(getMass() / (getMass() - remaining_fuel));
+    // Tsiolkovsky: dv = ve * ln(m_fueled / m_dry). One mass walk, not two (#384) --
+    // the same figure on both sides of the ratio.
+    const double mass = getMass();
+    return ve * exhaust_scale * log(mass / (mass - remaining_fuel));
 }
 
 /* BuildShip view of a live Vehicle, for the staging model (#948): the same tree with
@@ -3089,19 +3108,35 @@ double Vehicle::producedThrust() {
 }
 
 double Vehicle::getTWR() {
-    return producedThrust() / (getMass() * m_parent->g);
+    return getTWR(producedThrust(), getMass());
 }
 
 double Vehicle::getFullThrustTWR() {
-    return availableThrust() / (getMass() * m_parent->g);
+    return getFullThrustTWR(availableThrust(), getMass());
 }
 
 double Vehicle::getMaxTWR() {
+    return getMaxTWR(availableThrust(), getMass());
+}
+
+/* The same three ratios on figures the caller already walked for (#384). Mass,
+   produced thrust and available thrust are each a pass over every part and what is
+   parked inside it; a readout pass that prints Mass, Thrust and TWR takes them a line
+   apart anyway, so it hands them down instead of paying three more times. */
+double Vehicle::getTWR(double thrustN, double mass) {
+    return thrustN / (mass * m_parent->g);
+}
+
+double Vehicle::getFullThrustTWR(double availThrustN, double mass) {
+    return availThrustN / (mass * m_parent->g);
+}
+
+double Vehicle::getMaxTWR(double availThrustN, double mass) {
     // ALL burnable propellant (rocket and jet): max TWR is at the lightest mass.
     bool burn[(int)ResourceType::Num];
     enginePropellantMask(burn, /*includeJets=*/true);
     const double remaining_fuel = fuelMassMasked(burn); /* kg */
-    return availableThrust() / ((getMass() - remaining_fuel) * m_parent->g);
+    return availThrustN / ((mass - remaining_fuel) * m_parent->g);
 }
 
 void Vehicle::setVelocity(glm::dvec3 vel) {
@@ -4145,6 +4180,9 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
 
     // CHUTE drag (PartDef.chute_area): a FIXED Cd·A per chute. The deployed canopy is
     // not a collision shape, so it cannot join the hull's cd mean.
+    double chuteMass = -1.0;   // walked once, at the first deployed canopy (#384): the
+                               // hull's mass cannot move inside this loop, and a hull
+                               // with no chute open pays nothing for it.
     for(Part *p : parts) {
         if(p->chute != ChuteDeployed || !p->isChute()) { continue; }
         // The canopy anchor (PartDef::chuteCanopyOffset): its offset from the COM is the
@@ -4165,8 +4203,9 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
         // Deployment limiter (kChuteAccelLimit): the canopy never pulls harder than
         // a_lim -- physical, and it caps the weathervane torque inside the substep's
         // stability envelope.
+        if(chuteMass < 0.0) { chuteMass = getMass(); }
         const double area = std::min(p->def->chute_area,
-                                     kChuteAccelLimit * getMass() / qpt);
+                                     kChuteAccelLimit * chuteMass / qpt);
         const glm::dvec3 fchute = -(lf.vp / vpl) * (qpt * area);
         ApplyForce(hull, ri, fchute);            // translation + (ri x fchute)
         moment += glm::cross(ri, fchute);

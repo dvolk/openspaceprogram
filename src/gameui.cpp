@@ -3317,7 +3317,13 @@ void drawUIReadouts(Game &g) {
         ImGui::Text("Ship: %s", ship->displayName().c_str());
         ImGui::Text("Stage: %d / %d",
                     ship->activeStage(), ship->numStages());
-        ImGui::Text("Mass: %.3fkg", ship->getMass());
+        /* Mass, produced thrust and available thrust are each a walk over every part
+           and whatever is parked inside it, and this window prints all three plus the
+           TWR ratios a line apart -- so they are taken once here and handed down
+           (#384). Above the interactive rows on purpose: nothing in this frame can
+           change the hull between here and the ratio rows. */
+        const double massNow = ship->getMass();
+        ImGui::Text("Mass: %.3fkg", massNow);
         /* #948: the staged plan for what is still aboard -- the same burn model the
            VAB's Staging window runs, seeded from the fuel actually in the tanks and
            the mass the parts actually carry. This used to be getDeltaV(), one ideal
@@ -3346,10 +3352,12 @@ void drawUIReadouts(Game &g) {
         /* Produced / available, the same current-over-full shape as the TWR row
            below it (#400): a coasting ship reads 0.00 here and 49984.00 there, which
            is what tells a builder the engine is fine and the throttle is not. */
-        ImGui::Text("Thrust: %.2f/%.2fN", ship->producedThrust(),
-                    ship->availableThrust());
-        ImGui::Text("Current TWR: %.2f/%.2f", ship->getTWR(), ship->getFullThrustTWR());
-        ImGui::Text("Max TWR: %.2f", ship->getMaxTWR());
+        const double thrustNow = ship->producedThrust();
+        const double thrustAvail = ship->availableThrust();
+        ImGui::Text("Thrust: %.2f/%.2fN", thrustNow, thrustAvail);
+        ImGui::Text("Current TWR: %.2f/%.2f", ship->getTWR(thrustNow, massNow),
+                    ship->getFullThrustTWR(thrustAvail, massNow));
+        ImGui::Text("Max TWR: %.2f", ship->getMaxTWR(thrustAvail, massNow));
         /* The per-axis actuator rows -- wheels, gimbals, fins (#426, #572, #599) -- all
            live in the Game Debug window now (2026_11_05 UI pass): three rating-and-spend
            rows is anatomy, and what a pilot reads flying is whether the hull turns, which
