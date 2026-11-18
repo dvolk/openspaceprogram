@@ -26,7 +26,11 @@ void drainLayersFor(const std::vector<std::vector<int> > &rev, int group,
     /* These three ride between calls (#963): this runs once per group that holds a lit
        engine, and every one is overwritten before anything reads it. The body calls
        nothing but vector ops and asserts, so there is no reentrant caller to worry
-       about; one that wanted the hop table WHILE this ran would need its own. */
+       about; one that wanted the hop table WHILE this ran would need its own. That is
+       a live rule, not a note: since #965 the staging preview and the flight drain
+       share this one scratch set, so a preview walk that asked Vehicle for a group's
+       layers halfway through (or the other way round) would corrupt the outer walk's
+       hop table. Neither path does it today. */
     static thread_local std::vector<int> dist;   // group -> hops, -1 = not reachable
     static thread_local std::vector<int> queue;  // reachable groups, ascending on use
     static thread_local std::vector<int> cnt;    // per layer: count, then write cursor

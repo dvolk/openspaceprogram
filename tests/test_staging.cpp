@@ -478,11 +478,13 @@ static void test_child_below() {
    stage lit.
 
    No init() here, unlike test_fuel.cpp: this file's ships have no Bodies and
-   init() builds the rigid body. So the fuel groups stageIsDue() walks are set by
-   hand -- the same integers buildFuelGroups() assigns, given that every shipped
-   decoupler carries fuel_barrier and therefore splits the stack it joins. With no
-   fuelLinks, an engine's drain layers are its own group, which is all these cases
-   need: the tanks sit beside the engines that drink them. */
+   init() builds the rigid body. The group id addFuelPart stamps is only a
+   placeholder: the staging preview numbers parts inside its own Sim
+   (staging.cpp:43), and the live drain caches layers against the numbering
+   buildFuelGroups() assigns -- so the press-due cases below call it before
+   asking, and pin what it produced. With no fuelLinks, an engine's drain
+   layers are its own group, which is all these cases need: the tanks sit
+   beside the engines that drink them. */
 static Part *addFuelPart(Ship &s, Part *parent, int stage, const char *name,
                          int group, double h2, double lox, double rate,
                          double ve) {

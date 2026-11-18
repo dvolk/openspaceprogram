@@ -436,11 +436,19 @@ public:
        by buildFuelGroups. The map this replaces billed a tree node per cached group;
        the shape is the staging preview's CSR, from fuelgraph.h, so the live drain and
        the preview walk the SAME code (#965). An empty layerStart means "not walked
-       yet", and a slot's reference stays good because nothing resizes this while a
-       caller holds one (buildFuelGroups is not reachable from a drain). */
+       yet". A caller may hold the returned reference across its own loop because no
+       consumer does it across a buildFuelGroups() -- the hazard is not vector growth
+       but a silent drop, so a future caller must re-ask rather than keep a slot
+       through anything that could renumber. */
     mutable std::vector<FuelLayers> drainLayers_;
     /* rev[Y] = { X : X feeds Y }, from fuelLinks, built once per renumbering by the
-       first layer ask rather than once per group as the map version did. */
+       first layer ask rather than once per group as the map version did. That is
+       only sound because every writer of fuelLinks (spawn, save load, the VAB build
+       record, absorbShip, extractSubtreeAsShip, stagedRows' hidden Sim) renumbers
+       before that ship drains, so a numbering never sees a link edit. The map
+       version partly self-healed by rebuilding rev per missed group; if a live link
+       edit ever becomes legal, this graph wants the same version counter #973 is
+       debating for hull mass. */
     mutable std::vector<std::vector<int> > drainRev_;
 
     /* --drain-log state. drainSample() runs on every tick the sim steps this

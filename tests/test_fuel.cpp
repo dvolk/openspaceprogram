@@ -32,7 +32,10 @@
 //   * the TWR ratios give the same answer when the caller hands down the mass and thrust
 //     it already walked, and that the passed mass really is the denominator (#384);
 //   * the drain-layer CSR both the live drain and the staging preview now share: furthest
-//     layer first, ascending group id within a layer, the engine's own group last (#965).
+//     layer first, ascending group id within a layer, the engine's own group last (#965);
+//   * a tank whose contents went negative nets into BOTH answers to "what can this engine
+//     draw" -- availableResourceMass and the drain-or-nothing gate -- while the drain loop
+//     itself skips it.
 //
 // Links the REAL SetMass (src/physics.cpp, as test_thrust.cpp does), so the
 // part-mass shedding + Bullet inertia update is exercised too. No GL context
@@ -1294,6 +1297,51 @@ static void test_drain_layers_shape() {
     }
 }
 
+/* "How much can this engine draw" is answered in two places -- the drain-or-nothing gate
+   inside consumeResourceMass, and availableResourceMass for the readouts and the thrust
+   sizing -- and a tank whose contents went NEGATIVE tells them apart. A negative tank is
+   reachable: sub-ULP draws (#382) and a hand-edited or corrupt save can leave one, and
+   #384 fused the gate's sums into the drain loop, so the gate now owns its own copy of
+   the rule. Both sums net a negative tank rather than clamp it; only the DRAIN skips it,
+   because a share of a debt is not a thing. Nothing else in this file has a negative
+   tank, so without this case a rewrite that clamped one of the two sums would move a
+   Vessel Info row against a refusal, and the suite would stay green. */
+static void test_negative_tank_nets_in_both_sums() {
+    printf("== A negative tank: gate and readout net it the same way ==\n");
+    Ship s; s.v = new Vehicle;
+    Part *eng  = addPart(s, 0, 0, /*engine=*/true);
+    Part *good = addPart(s, 100, 0);
+    Part *owed = addPart(s, 100, 0);
+    link(s, eng, good);
+    link(s, good, owed);
+    initShip(s);
+    owed->resources.current[(int)ResourceType::Hydrogen] = -40.0;
+
+    CHECK_REL(s.v->availableResourceMass(ResourceType::Hydrogen, eng), 60.0, 1e-12,
+              "the readout nets the negative tank rather than clamping it");
+
+    /* Same figure the gate compares, so 80 kg is refused even though the positive tank
+       alone could cover it -- and a refusal moves nothing. */
+    Vehicle::FuelDraw tooBig = s.v->consumeResourceMass(ResourceType::Hydrogen, 80.0, eng);
+    CHECK_TRUE(!tooBig.ok, "the gate nets too: 80 kg is refused at a net 60 kg");
+    CHECK_TRUE(tooBig.drawn == 0.0, "a refused draw moves nothing");
+    CHECK_REL(good->resources.current[(int)ResourceType::Hydrogen], 100.0, 1e-12,
+              "the positive tank is untouched by the refusal");
+
+    /* A legal draw takes it all from the positive tank: the layer total counts only
+       positives, so the negative one never receives a share and never digs deeper. */
+    Vehicle::FuelDraw draw = s.v->consumeResourceMass(ResourceType::Hydrogen, 50.0, eng);
+    CHECK_TRUE(draw.ok, "50 kg fits inside a net 60 kg");
+    CHECK_REL(draw.drawn, 50.0, 1e-12, "and all 50 kg arrived");
+    CHECK_REL(good->resources.current[(int)ResourceType::Hydrogen], 50.0, 1e-12,
+              "the positive tank paid the whole share");
+    CHECK_TRUE(owed->resources.current[(int)ResourceType::Hydrogen] == -40.0,
+               "the negative tank is skipped, not drained further");
+    CHECK_REL(s.v->availableResourceMass(ResourceType::Hydrogen, eng), 10.0, 1e-12,
+              "and the readout nets the same way afterwards");
+    destroyShip(s);
+}
+
 int main() {
     test_prorata_in_group();
     printf("\n");
@@ -1338,6 +1386,8 @@ int main() {
     test_twr_ratios_take_the_walked_figs();
     printf("\n");
     test_drain_layers_shape();
+    printf("\n");
+    test_negative_tank_nets_in_both_sums();
 
     printf("\n%d checks, %d failures\n", g_checks, g_failures);
     if(g_failures == 0) {
