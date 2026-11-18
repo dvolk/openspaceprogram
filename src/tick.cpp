@@ -103,6 +103,12 @@ static RecSample recSample(Vehicle &v, const ShipView &view, double t) {
     s.drag = loss.drag;
     s.steer = loss.steer;
     s.burns = loss.burns;
+    /* #972: the hull's own dock count, so a trace can say WHERE it changed size.
+       A reading, not a derivation: Game::undock mints a vessel by extractSubtreeAsShip
+       and updateDocking's absorbShip retires the target, and neither reassigns
+       Game::ship -- so this column is the only thing that marks those seams, on the
+       plot or in the file. */
+    s.seams = (int)v.seams.size();
     return s;
 }
 

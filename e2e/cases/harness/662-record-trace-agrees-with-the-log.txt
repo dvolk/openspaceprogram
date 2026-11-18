@@ -61,7 +61,14 @@ CHECK all(r["q"] > 0.0 for r in rec)
 CHECK all(abs(r["gamma"]) <= 90.0 for r in rec)
 CHECK all(r["dv_exp"] >= r["steer"] and r["grav"] is not None and r["drag"] is not None for r in rec)
 CHECK all(a["dv_exp"] <= b["dv_exp"] and a["burns"] <= b["burns"] for a, b in zip(rec, rec[1:]))
+# seams= (v4, #972) is live here too. This run never docks, so every row says one
+# free hull -- 0, which is a reading and not a gap. What is pinned is that the column
+# carries the hull's count at all: a header channel the row forgets breaks the order
+# check above, and a channel the sampler never fills reads 0 forever, which this case
+# cannot tell from a genuine free hull -- so the non-zero half lives in the unit test's
+# docked fixture instead.
+CHECK all(r["seams"] == 0 for r in rec)
 # What the recorder says it captured, in its own words on stdout.
-FILE flights/*.log "#rec v3 channels=t alt_asl alt_agl v v_surf v_orb vs hs lat lon pitch roll hdg dv acc rho F L Cd A aoa beta cpl ind chute T p a mach mass thr stg q gamma dv_exp grav drag steer burns" "#ship=\"skiff\" interval_ms=250" "[rec] t=0.00 "
+FILE flights/*.log "#rec v4 channels=t alt_asl alt_agl v v_surf v_orb vs hs lat lon pitch roll hdg dv acc rho F L Cd A aoa beta cpl ind chute T p a mach mass thr stg q gamma dv_exp grav drag steer burns seams" "#ship=\"skiff\" interval_ms=250" "[rec] t=0.00 "
 FORBID error:
 FORBID record: FAILED

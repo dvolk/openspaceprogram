@@ -26,13 +26,19 @@
 // v3 (#675) added the ascent-profile numbers the physics did not publish until now:
 // q, the flight-path angle, and the four burn totals -- all of them a reading the
 // flight model keeps, none of them computed here.
-static const int kRecVersion = 3;
+// v4 (#972) added seams: how many dock joints the hull carries. A recorder row has
+// always said WHICH stage was about to fire, and never said when the hull itself
+// changed size -- so a dock or an undock shows up as a cliff in mass, area, Cd and dv
+// with nothing marking it. seams= is the game's own count (Vehicle::seams), appended
+// like every earlier version did: nothing renamed, nothing removed, so a v3 reader
+// keeps every key it knew.
+static const int kRecVersion = 4;
 
 // The channels, in row order: the header line's contract with a reader.
 inline const char *recChannels() {
     return "t alt_asl alt_agl v v_surf v_orb vs hs lat lon pitch roll hdg dv acc"
            " rho F L Cd A aoa beta cpl ind chute T p a mach mass thr stg"
-           " q gamma dv_exp grav drag steer burns";
+           " q gamma dv_exp grav drag steer burns seams";
 }
 
 // The dash rules come from where a number comes from, not from how sure the pass
@@ -97,6 +103,12 @@ struct RecSample {
     double drag = 0.0;
     double steer = 0.0;
     int burns = 0;
+    /* #972: how many dock joints the hull carries (Vehicle::seams). Always a number,
+       never dashed: a hull mated to nothing IS 0 joints, and that is a reading. A
+       change in it is where the hull itself grew or shrank, which is the mark stg=
+       gives a stage press and a dock or undock has never had: mass, A, Cd, chute and
+       dv all jump there, and a plot showing that jump cannot say why it jumped. */
+    int seams = 0;
 };
 
 // One row, no newline, into buf. Returns the row's length, or -1 when it did not
@@ -175,14 +187,14 @@ inline int recRow(const RecSample &s, char *buf, size_t n) {
                                " Cd=%.3f A=%.2f aoa=%s beta=%s cpl=%s ind=%s chute=%.2f"
                                " T=%s p=%s a=%s mach=%s mass=%.1f thr=%.2f stg=%d"
                                " q=%.1f gamma=%s dv_exp=%.1f grav=%.1f drag=%.1f"
-                               " steer=%.1f burns=%d",
+                               " steer=%.1f burns=%d seams=%d",
                                s.t, s.alt_asl, agl_txt, s.v, vsurf_txt, vorb_txt,
                                vs_txt, hs_txt, lat_txt, lon_txt, pit_txt, rol_txt,
                                hdg_txt, s.dv, s.acc, s.rho, s.F, s.L, s.Cd, s.A,
                                aoa_txt, beta_txt, cpl_txt, ind_txt, s.chute,
                                t_txt, p_txt, a_txt, mach_txt, s.mass, s.thr, s.stg,
                                s.q, gam_txt, s.dv_exp, s.grav, s.drag, s.steer,
-                               s.burns);
+                               s.burns, s.seams);
     if(wrote < 0 || (size_t)wrote >= n) { return -1; }
     return wrote;
 }
@@ -198,7 +210,7 @@ inline int recRow(const RecSample &s, char *buf, size_t n) {
    (--record-interval, and #987 is the comment that misstates it), which is why
    the points are sparser under warp rather than more numerous. RecSample::t
    keeps the run-clock meaning the file's rows have always had, so nothing here
-   changes the v3 grammar.
+   changes the file's grammar.
 
    PLOT sim_t, NEVER s.t. s.t is the column the FILE prints, counted from the
    trace's opening (tick.cpp rewrites it per row); a graph that reads it is
@@ -216,8 +228,9 @@ struct RecRing {
        climbing. test_guidance's own ascent runs ~480 s to a 100 km periapsis, so
        at the default 0.25 s gate 4096 samples is ~17 min of mission time -- one
        ascent plus its descent, with headroom for a warped coast (which thins the
-       samples rather than adding them). 4096 x 312 B = 1.28 MB on the heap: the
-       same order as the eight TimeSeries HudState already carries (2 MB).
+       samples rather than adding them). 4096 x sizeof(RecPoint) = 4096 x 320 B =
+       1.25 MB on the heap: the same order as the eight TimeSeries HudState already
+       carries (2 MB).
        constexpr, not const: a class static with an in-class initializer needs it
        the first time someone odr-uses Cap (std::min(count, RecRing::Cap)). */
     static constexpr int Cap = 4096;

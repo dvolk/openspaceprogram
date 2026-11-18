@@ -28,12 +28,17 @@
 //   flight path even in a frame the windows describe perfectly, and dashing the
 //   group with it would throw away ten good columns to say one thing.
 //
+//   v4 (#972) added seams: the hull's own dock count, which is where a dock or an
+//   undock leaves its mark. Those events never change WHICH hull is recorded, so they
+//   are not gaps -- they are one hull whose parts jumped, and mass/area/Cd/dv move
+//   with nothing saying where. Like the totals, it is a count and never dashes.
+//
 //   A row that does not fit its buffer is refused (returns -1) rather than
 //   written short: a half-written row is a parse error in someone else's script.
 //   The buffer below is the SAME size tick.cpp gives the writer, so this also
 //   pins that the row still fits the game's own buffer.
 //
-//   The v3 ring (#972) is the other sink for the same sample: the Recorder
+//   The ring (#972) is the other sink for the same sample: the Recorder
 //   window's history. It is pinned here rather than in a UI test because its
 //   contract is storage, not pixels -- the cap and wrap order, a NaN staying a
 //   gap, a same-x push refreshing instead of appending, and a stage change being
@@ -80,13 +85,14 @@ static RecSample cruise() {
     s.q = 3720.5; s.gamma = 12.50;
     s.dv_exp = 2380.5; s.grav = 612.4; s.drag = 140.7; s.steer = 38.5;
     s.burns = 3;
+    s.seams = 0;   // a single hull, mated to nothing
     return s;
 }
 
-// The v3 tail of a full reading, spelled once so the six rows below cannot drift
+// The v4 tail of a full reading, spelled once so the six rows below cannot drift
 // apart from each other by a digit and hide a real ordering bug.
 static const char *kTail = " q=3720.5 gamma=12.50 dv_exp=2380.5 grav=612.4"
-                           " drag=140.7 steer=38.5 burns=3";
+                           " drag=140.7 steer=38.5 burns=3 seams=0";
 
 int main() {
     // --- a full reading, exactly as printed -------------------------------
@@ -101,7 +107,7 @@ int main() {
               "A=3.20 aoa=2.3 beta=-1.0 cpl=0.25 ind=0.020 chute=0.00 "
               "T=288.1 p=101325 a=340.3 mach=0.100 mass=6000.0 thr=0.75 stg=2"
               " q=3720.5 gamma=12.50 dv_exp=2380.5 grav=612.4 drag=140.7"
-              " steer=38.5 burns=3");
+              " steer=38.5 burns=3 seams=0");
 
     // --- on the ground: no air, so no flow group either -------------------
     // The air-relative readings are meaningless with rho = 0, and the flow
@@ -132,7 +138,27 @@ int main() {
               "rho=0 F=0.00 L=0.00 Cd=0.950 A=3.20 "
               "aoa=- beta=- cpl=- ind=- chute=0.00 T=- p=- a=- mach=- "
               "mass=6000.0 thr=0.00 stg=0"
-              " q=0.0 gamma=- dv_exp=0.0 grav=0.0 drag=0.0 steer=0.0 burns=0");
+              " q=0.0 gamma=- dv_exp=0.0 grav=0.0 drag=0.0 steer=0.0 burns=0 seams=0");
+
+    // --- seams= marks where the hull itself changed size (#972) ----------
+    /* A dock or an undock does not change which hull is sampled: updateDocking's
+       absorber IS the flown ship and retire() takes the target, and undock mints a
+       new vessel with extractSubtreeAsShip while leaving Game::ship alone. So unlike
+       a hand-off of control, this is not a gap in the recorder's history -- it is
+       one hull with different parts, and mass, A, Cd, chute and dv jump without
+       anything in the row saying where. seams= is that mark, and it is a count, so
+       it never dashes: a free hull reads 0 and 0 IS the reading. */
+    {
+        RecSample docked = cruise();
+        docked.seams = 2;   // two joints: a truss mated at both ends counts twice
+        char buf[1024];
+        const int n = recRow(docked, buf, sizeof buf);
+        if(n < 0 || std::strstr(buf, " burns=3 seams=2") == nullptr) {
+            printf("FAIL %s:%d: seams= did not print the hull's dock count: %s\n",
+                   __FILE__, __LINE__, (n < 0 ? "(refused)" : buf));
+            g_failures++;
+        }
+    }
 
     // --- air, but no lifting surfaces to define the flow frame ------------
     RecSample ball = cruise();
@@ -146,7 +172,7 @@ int main() {
               "A=3.20 aoa=- beta=- cpl=- ind=- chute=0.00 "
               "T=288.1 p=101325 a=340.3 mach=0.100 mass=6000.0 thr=0.75 stg=2"
               " q=3720.5 gamma=12.50 dv_exp=2380.5 grav=612.4 drag=140.7"
-              " steer=38.5 burns=3");
+              " steer=38.5 burns=3 seams=0");
 
     // --- a zero is a reading, not a gap ----------------------------------
     // The same rule the v3 columns follow: a hull with nothing spent prints 0 for
@@ -161,7 +187,7 @@ int main() {
               "A=3.20 aoa=2.3 beta=0.0 cpl=0.25 ind=0.000 chute=0.00 "
               "T=288.1 p=101325 a=340.3 mach=0.100 mass=6000.0 thr=0.75 stg=2"
               " q=3720.5 gamma=12.50 dv_exp=2380.5 grav=612.4 drag=140.7"
-              " steer=38.5 burns=3");
+              " steer=38.5 burns=3 seams=0");
 
     /* --- a flow with AoA but no yaw (#787) --------------------------------
        Beta's floor is not AoA's: a hull parked nose-up in wind has plenty of flow
@@ -178,7 +204,7 @@ int main() {
               "A=3.20 aoa=2.3 beta=- cpl=0.25 ind=0.020 chute=0.00 "
               "T=288.1 p=101325 a=340.3 mach=0.100 mass=6000.0 thr=0.75 stg=2"
               " q=3720.5 gamma=12.50 dv_exp=2380.5 grav=612.4 drag=140.7"
-              " steer=38.5 burns=3");
+              " steer=38.5 burns=3 seams=0");
 
     /* --- a flight path to report, and none (#675) --------------------------
        gamma's floor is not the snapshot's. A hull sitting on a body that does not
@@ -197,7 +223,7 @@ int main() {
               "A=3.20 aoa=2.3 beta=-1.0 cpl=0.25 ind=0.020 chute=0.00 "
               "T=288.1 p=101325 a=340.3 mach=0.100 mass=6000.0 thr=0.75 stg=2"
               " q=3720.5 gamma=- dv_exp=2380.5 grav=612.4 drag=140.7"
-              " steer=38.5 burns=3");
+              " steer=38.5 burns=3 seams=0");
 
     // --- no snapshot for this hull: the frame group dashes, together ------
     // The physics group is untouched: lastDrag* belongs to the hull whatever the
@@ -217,7 +243,7 @@ int main() {
               "A=3.20 aoa=2.3 beta=-1.0 cpl=0.25 ind=0.020 chute=0.00 "
               "T=288.1 p=101325 a=340.3 mach=0.100 mass=6000.0 thr=0.75 stg=2"
               " q=3720.5 gamma=- dv_exp=2380.5 grav=612.4 drag=140.7"
-              " steer=38.5 burns=3");
+              " steer=38.5 burns=3 seams=0");
 
     // --- the header's channel list and the row's keys are the same list ----
     {
@@ -258,7 +284,7 @@ int main() {
             // prints -- so a column added to the header without the row, or in a
             // different order, fails here as well as above.
             if(row.find(kTail) == std::string::npos) {
-                printf("FAIL %s:%d: the row does not end in the pinned v3 tail"
+                printf("FAIL %s:%d: the row does not end in the pinned v4 tail"
                        " (\"%s\"): %s\n", __FILE__, __LINE__, kTail, buf);
                 g_failures++;
             }
