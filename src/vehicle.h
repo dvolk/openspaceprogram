@@ -2143,6 +2143,19 @@ public:
         Part *port;
         Part *root;
         std::string name;
+        /* The absorbed vessel's own ORDERS, frozen the tick it stopped being a hull
+           (#657). A dock does not carry orders across into the merged hull -- that one
+           is flown from the survivor's switches -- but nothing else can address them
+           afterwards either, because the vessel that had them no longer exists. So they
+           are neither applied nor thrown away: they wait here, and an undock hands them
+           back to the hull they belong to. Saved with the seam (save.h); a seam from an
+           older save carries the constructor defaults, which is how that build behaved
+           at the cut. */
+        bool wheels_enabled = true;
+        bool surfaces_enabled = true;
+        bool rcs_attitude_enabled = true;
+        bool tvc_enabled = true;
+        double sas_turn_rate = 0.0;   // #678's dial; 0 = unlimited
     };
     /* Absorbed docks, innermost first -- the LAST is the one undock selects. */
     std::vector<DockSeam> seams;

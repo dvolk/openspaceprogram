@@ -311,6 +311,73 @@ static void test_absorb() {
     destroyShip(A.v);
 }
 
+/* --- the orders a dock froze come back with the hull that had them (#657) --- */
+/* The ticket's repro, in one merge and one undock: dock a probe whose pilot shut every
+   switch to a station that has them all open, undock, and the probe must not come back
+   flying on the station's orders. absorbShip pins the merge direction (A keeps A's);
+   test_seam_staging pins the other split rule (a decoupler's subtree keeps the flying
+   hull's). What was missing is the third case: an UNDOCK, where the hull leaving was a
+   vessel in its own right and its orders waited on the seam. */
+static void test_orders_return_on_undock() {
+    printf("== a docked vessel's orders survive the merge and return on undock ==\n");
+
+    Ship A; A.v = new Vehicle; A.v->name = "A";
+    Part *tankA = mkPart(A, "tankA", 1000.0, 1.0, 1.0, kTankHz, false);
+    Part *portA = mkPart(A, "portA",   50.0, 1.0, 1.0, kPortHz, true);
+    A.v->setRoot(tankA);
+    A.v->attachDown(portA);
+    A.v->controller = tankA;
+    A.v->init();
+    A.v->placeShip(glm::dvec3(0.0), glm::dmat3(1.0));
+
+    Ship B; B.v = new Vehicle; B.v->name = "B";
+    Part *portB = mkPart(B, "portB",   50.0, 1.0, 1.0, kPortHz, true);
+    Part *tankB = mkPart(B, "tankB", 1000.0, 1.0, 1.0, kTankHz, false);
+    B.v->setRoot(portB);
+    B.v->attachDown(tankB);
+    B.v->controller = portB;
+    B.v->init();
+    B.v->placeShip(glm::dvec3(0.0, 0.0, -1.875), glm::dmat3(1.0));
+
+    /* Everything the pilot can shut on that probe, and its dial (#678 -- #876's leak
+       was a merge copying a ceiling the player had capped). */
+    B.v->wheels_enabled = false;
+    B.v->surfaces_enabled = false;
+    B.v->rcs_attitude_enabled = false;   // #595
+    B.v->tvc_enabled = false;            // #768
+    B.v->sas_turn_rate = 0.75;
+
+    A.v->absorbShip(B.v, portA);
+    CHECK_TRUE(A.v->wheels_enabled && A.v->surfaces_enabled && A.v->rcs_attitude_enabled
+               && A.v->tvc_enabled,
+               "undock orders: the merged hull is still flown on the survivor's switches");
+
+    /* Frozen ON the seam: not applied to the merge, not lost with the hull. */
+    CHECK_TRUE(A.v->seams.size() == 1, "undock orders: one seam recorded");
+    if(A.v->seams.size() == 1) {
+        const Vehicle::DockSeam &s = A.v->seams[0];
+        CHECK_TRUE(!s.wheels_enabled && !s.surfaces_enabled && !s.rcs_attitude_enabled
+                   && !s.tvc_enabled, "the seam holds the absorbed hull's orders, not ours");
+        CHECK_NEAR(s.sas_turn_rate, 0.75, 1e-9, "and its turn-rate ceiling");
+    }
+
+    Vehicle *out = A.v->extractSubtreeAsShip(portB, "B");   // Game::undock's call
+    CHECK_TRUE(out != nullptr, "undock orders: the split succeeded");
+    if(out == nullptr) { destroyShip(B.v); destroyShip(A.v); return; }
+    CHECK_TRUE(!out->wheels_enabled && !out->surfaces_enabled && !out->rcs_attitude_enabled
+               && !out->tvc_enabled,
+               "the probe comes back with its switches as ITS pilot left them (#657)");
+    CHECK_NEAR(out->sas_turn_rate, 0.75, 1e-9, "and comes back capped as it was capped");
+    CHECK_TRUE(A.v->wheels_enabled && A.v->surfaces_enabled && A.v->rcs_attitude_enabled
+               && A.v->tvc_enabled, "the station keeps its own orders throughout");
+    CHECK_NEAR(A.v->sas_turn_rate, 0.0, 1e-9, "including unlimited where it had none");
+    CHECK_TRUE(A.v->seams.empty() && out->seams.empty(), "the cut seam is on neither side");
+
+    destroyShip(out);
+    destroyShip(B.v);   // the empty shell absorbShip left behind
+    destroyShip(A.v);
+}
+
 /* --- round-trip: absorb then extract restores both ships' geometry ------- */
 static void test_roundtrip() {
     printf("== extractSubtreeAsShip: undock round-trip ==\n");
@@ -910,6 +977,7 @@ static void test_dock_mass_door() {
 
 int main() {
     test_absorb();
+    test_orders_return_on_undock();
     test_roundtrip();
     test_uid();
     test_seam_staging();

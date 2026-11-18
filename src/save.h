@@ -141,6 +141,15 @@ struct SaveDock {
        used to name the ship undock splits off. Display text, NOT a reference:
        it names nothing in the save, so it needs no slug (#266). */
     std::string name;
+    /* The absorbed vessel's orders, frozen at the dock (#657). They do not apply to
+       the merged hull -- they wait for the hull that leaves on an undock. All five
+       are optional here: absent reads as the default, which is both an all-default
+       seam and a save written before #657. */
+    bool wheels_enabled = true;
+    bool surfaces_enabled = true;
+    bool rcs_attitude_enabled = true;
+    bool tvc_enabled = true;
+    double sas_turn_rate = 0.0;   // 0 = unlimited, exactly as on the ship
 };
 
 /* One roster entry as saved (save.json's "roster"). Identity only: WHO is where
@@ -827,6 +836,17 @@ inline nlohmann::json saveShipToJson(const SaveShip &s) {
         nlohmann::json docks = nlohmann::json::array();
         for(auto &&d : s.docks) {
             nlohmann::json dj; dj["port"] = d.port; dj["root"] = d.root; dj["name"] = d.name;
+            /* The orders frozen at the dock (#657), written only when they are not the
+               defaults: an ordinary seam stays three keys, and the exceptions are what
+               a reader (and a hand-edit) sees. */
+            if(!d.wheels_enabled || !d.surfaces_enabled || !d.rcs_attitude_enabled
+               || !d.tvc_enabled || d.sas_turn_rate > 0.0) {
+                dj["wheels_enabled"] = d.wheels_enabled;
+                dj["surfaces_enabled"] = d.surfaces_enabled;
+                dj["rcs_attitude_enabled"] = d.rcs_attitude_enabled;
+                dj["tvc_enabled"] = d.tvc_enabled;
+                dj["sas_turn_rate"] = d.sas_turn_rate;
+            }
             docks.push_back(dj);
         }
         j["docks"] = docks;
@@ -926,6 +946,14 @@ inline SaveShip saveShipFromJson(const nlohmann::json &j) {
             dk.port = readUid(d, "port");
             dk.root = readUid(d, "root");
             if(d.contains("name") && d["name"].is_string()) { dk.name = d["name"].get<std::string>(); }
+            /* The orders frozen at the dock (#657). Same optional-field rule as on the
+               ship: absent or wrong-typed keeps the default, so a save from before
+               #657 loads as "that seam changed nothing", which is what it did. */
+            if(d.contains("wheels_enabled") && d["wheels_enabled"].is_boolean()) { dk.wheels_enabled = d["wheels_enabled"].get<bool>(); }
+            if(d.contains("surfaces_enabled") && d["surfaces_enabled"].is_boolean()) { dk.surfaces_enabled = d["surfaces_enabled"].get<bool>(); }
+            if(d.contains("rcs_attitude_enabled") && d["rcs_attitude_enabled"].is_boolean()) { dk.rcs_attitude_enabled = d["rcs_attitude_enabled"].get<bool>(); }
+            if(d.contains("tvc_enabled") && d["tvc_enabled"].is_boolean()) { dk.tvc_enabled = d["tvc_enabled"].get<bool>(); }
+            if(d.contains("sas_turn_rate") && d["sas_turn_rate"].is_number()) { dk.sas_turn_rate = d["sas_turn_rate"].get<double>(); }
             s.docks.push_back(dk);
         }
     }

@@ -5660,11 +5660,12 @@ void Vehicle::absorbShip(Vehicle *B, Part *portA) {
     if(portA == nullptr || !portA->isDockingPort()) { return; }
     /* THE ORDERS DO NOT CROSS A DOCK. The merged hull is flown from A, so A's enable
        switches (#425 D-2, #649) are the ones the laws consult; B stops being a hull and
-       its switches die with it. That is a decision, not an oversight, and it has a
-       consequence the pilot can trip over: dock a drums-off probe to a drums-on station,
-       undock, and the probe's drums are on again -- the split copies the FLYING hull's
-       orders (extractSubtreeAsShip), not the ones that probe once had. Per-vessel orders
-       that survive a merge is the open question (#657), not something to half-fix here. */
+       nothing can address its switches again -- there is no window for a hull that is
+       parts of another one. What B had is therefore frozen ON THE SEAM (#657): not
+       applied to the merge, not thrown away, and handed back to the hull that leaves if
+       the pilot undocks it. Without that, dock a drums-off probe to a drums-on station,
+       undock, and the probe flies with its drums on again -- an order the player gave
+       lost across a merge, while a save and a stage split both keep it. */
     /* Before any part surgery: displayName() reads parts[0] for a kerbal. */
     const std::string bName = B->displayName();
 
@@ -5737,7 +5738,10 @@ void Vehicle::absorbShip(Vehicle *B, Part *portA) {
        dock (B) first. */
     seams.insert(seams.end(), B->seams.begin(), B->seams.end());
     B->seams.clear();
-    seams.push_back(DockSeam{ portA, bRoot, bName });
+    seams.push_back(DockSeam{ portA, bRoot, bName,
+                              B->wheels_enabled, B->surfaces_enabled,
+                              B->rcs_attitude_enabled, B->tvc_enabled,
+                              B->sas_turn_rate });
 
     // Rebuild as the union and regroup fuel: the ports are fuel barriers, so the two
     // fuel systems stay separate.
@@ -5823,10 +5827,12 @@ Vehicle * Vehicle::extractSubtreeAsShip(Part *root, const std::string &name, dou
        off across a staging event or an undock. Left out, the constructor's defaults
        quietly re-open a door the player shut, and the readouts then quote authority the
        pilot declined to spend. Latent since #425 D-2 because nothing could write either
-       mask until #649 put a handle on them. Note the other half of this: what crosses is
-       the FLYING hull's orders, so a vessel that lost its own at a dock gets the
-       survivor's back -- absorbShip above states that law, and #657 asks whether it
-       should hold. */
+       mask until #649 put a handle on them.
+       By DEFAULT the orders that cross are the FLYING hull's, which is right for a stage
+       split -- the subtree leaving is part of this hull, and this hull's switches are the
+       last anyone set for it. An UNDOCK is the exception (#657): the hull leaving was a
+       vessel in its own right before the dock, so the seam pass below hands it its own
+       orders back. */
     nv->wheels_enabled = wheels_enabled;
     nv->surfaces_enabled = surfaces_enabled;
     nv->rcs_attitude_enabled = rcs_attitude_enabled;   // #595's door travels too
@@ -5893,14 +5899,31 @@ Vehicle * Vehicle::extractSubtreeAsShip(Part *root, const std::string &name, dou
 
     /* seams: the same containment rule as fuel links. */
     std::vector<DockSeam> nvSeams, keepSeams;
+    DockSeam cut{};   // {} so the unused port/root/name are not indeterminate
+    bool cutFound = false;
     for(size_t k = 0; k < seams.size(); k++) {
         const bool portIn = droppedSet.count(seams[k].port) > 0;
         const bool rootIn = droppedSet.count(seams[k].root) > 0;
         if(portIn && rootIn) { nvSeams.push_back(seams[k]); }
         else if(!portIn && !rootIn) { keepSeams.push_back(seams[k]); }
+        else if(rootIn && seams[k].root == root) {
+            /* THIS is the dock being undone: the joint is this subtree's own root and
+               the port is left behind. Its frozen orders go to the hull that leaves
+               (#657), not to us -- the survivor was never flown on them. Copied, not
+               pointed at: `seams` is reassigned below. */
+            cut = seams[k];
+            cutFound = true;
+        }
     }
     nv->seams = nvSeams;
     seams = keepSeams;
+    if(cutFound) {
+        nv->wheels_enabled = cut.wheels_enabled;
+        nv->surfaces_enabled = cut.surfaces_enabled;
+        nv->rcs_attitude_enabled = cut.rcs_attitude_enabled;
+        nv->tvc_enabled = cut.tvc_enabled;
+        nv->sas_turn_rate = cut.sas_turn_rate;
+    }
 
     /* A kerbal follows its capsule automatically: the seat is containment on
        the capsule Part, which the split above already routed. */

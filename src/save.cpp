@@ -556,6 +556,13 @@ SaveShip saveShipFromVehicle(Vehicle *v,
         dk.port = v->seams[k].port->uid;
         dk.root = v->seams[k].root->uid;
         dk.name = v->seams[k].name;
+        /* The docked vessel's orders ride the seam (#657), so a save between the
+           dock and the undock does not silently reset what comes back. */
+        dk.wheels_enabled = v->seams[k].wheels_enabled;
+        dk.surfaces_enabled = v->seams[k].surfaces_enabled;
+        dk.rcs_attitude_enabled = v->seams[k].rcs_attitude_enabled;
+        dk.tvc_enabled = v->seams[k].tvc_enabled;
+        dk.sas_turn_rate = v->seams[k].sas_turn_rate;
         s.docks.push_back(dk);
     }
     /* Every ship delete clears the other ships' dock intents first (game.cpp),
@@ -836,6 +843,13 @@ static std::string validateShipParts(const SaveShip &s, const PartsCatalog &cat,
             return "load: saved ship '" + s.name + "' has a dock seam ("
                    + std::to_string(d.port) + ", " + std::to_string(d.root)
                    + ") naming parts it does not have";
+        }
+        /* The seam carries a hull's orders (#657), so its dial faces the same test as
+           the ship's above: the figure is copied onto the hull that undocks, and a
+           poisoned one would poison that hull's laws from then on. */
+        if(!(d.sas_turn_rate >= 0.0)) {
+            return "load: saved ship '" + s.name + "' has a dock seam with SAS turn rate "
+                   + std::to_string(d.sas_turn_rate) + ", which is not a rate";
         }
     }
     return "";
@@ -1143,7 +1157,12 @@ Vehicle *buildShipFromSaveParts(Game &g, const LoadWorld &w, const SaveShip &s,
             throw std::runtime_error("load: saved ship '" + s.name + "' has a dock seam ("
                                      + s.docks[k].name + ") naming a part it does not have");
         }
-        v->seams.push_back(Vehicle::DockSeam{ portIt->second, rootIt->second, s.docks[k].name });
+        v->seams.push_back(Vehicle::DockSeam{ portIt->second, rootIt->second, s.docks[k].name,
+                                              s.docks[k].wheels_enabled,
+                                              s.docks[k].surfaces_enabled,
+                                              s.docks[k].rcs_attitude_enabled,
+                                              s.docks[k].tvc_enabled,
+                                              s.docks[k].sas_turn_rate });
     }
     return v;
 }

@@ -102,7 +102,14 @@ int main() {
     ship.wheels_enabled = false;   // the wheels' enable mask travels with the vessel (#425 D-2)
     ship.surfaces_enabled = false;  // and so does the aero one (#649)
     ship.tvc_enabled = false;       // and the nozzle door (#768)
-    ship.docks.push_back(SaveDock{ 101, 101, "station" });   // a seam LABEL, not a key
+    SaveDock seam; seam.port = 101; seam.root = 101; seam.name = "station";
+    /* A seam carries the absorbed vessel's ORDERS (#657), so a save between the dock
+       and the undock must not reset what the undock hands back. Non-defaults here, and
+       the all-default case is checked below as an old save. */
+    seam.wheels_enabled = false; seam.surfaces_enabled = false;
+    seam.rcs_attitude_enabled = false; seam.tvc_enabled = false;
+    seam.sas_turn_rate = 1.25;
+    ship.docks.push_back(seam);   // the seam is still a LABEL, not a key
     ship.dock_target_ship = "v1";   // a SAVE SLUG, not a display name (#266)
     ship.dock_target_port = 103;   // a part uid on the TARGET ship
     ship.dock_arm_port = 101;
@@ -158,6 +165,27 @@ int main() {
         CHECK(out.docks[0].port == ship.docks[0].port);
         CHECK(out.docks[0].root == ship.docks[0].root);
         CHECK(out.docks[0].name == ship.docks[0].name);
+        CHECK(out.docks[0].wheels_enabled == false);
+        CHECK(out.docks[0].surfaces_enabled == false);
+        CHECK(out.docks[0].rcs_attitude_enabled == false);
+        CHECK(out.docks[0].tvc_enabled == false);
+        CHECK(near(out.docks[0].sas_turn_rate, 1.25));
+    }
+    /* And the other direction of the same optional-field rule: a save written before
+       #657 has no order keys on its seams at all. They must read as the defaults --
+       which is exactly what that build did at the cut -- not as zeroed switches. */
+    {
+        nlohmann::json oldj = saveShipToJson(ship);
+        oldj["docks"] = nlohmann::json::array();
+        oldj["docks"].push_back(nlohmann::json{{"port", 101}, {"root", 101},
+                                               {"name", "station"}});
+        SaveShip old = saveShipFromJson(oldj);
+        CHECK(old.docks.size() == 1);
+        if(old.docks.size() == 1) {
+            CHECK(old.docks[0].wheels_enabled && old.docks[0].surfaces_enabled
+                  && old.docks[0].rcs_attitude_enabled && old.docks[0].tvc_enabled);
+            CHECK(near(old.docks[0].sas_turn_rate, 0.0));
+        }
     }
     CHECK(out.dock_target_ship == ship.dock_target_ship);
     CHECK(out.dock_target_port == ship.dock_target_port);
