@@ -1441,6 +1441,15 @@ public:
        draining. */
     double availableResourceMass(enum ResourceType type, Part *engine) const;
 
+    /* The same sums for SEVERAL resources in one walk (#934). Each
+       availableResourceMass call re-sweeps the engine's layers, groups and the whole
+       part list to total one resource, and a rocket asks for two -- so a caller that
+       wants the whole propellant set asks once. `want` and `out` are
+       ResourceType::Num long; `out` is zeroed here and only the wanted slots are
+       written. The per-tank order is the same as availableResourceMass', so a sum here
+       is bit-for-bit the sum that function would build. */
+    void layerFuelTotals(Part *engine, const bool *want, double *out) const;
+
     /* How much of ONE TICK's draw the pools can cover -- the share both ApplyThrust
        branches size their burn with (#638). 0 means no burn this tick: nothing available,
        or a zero-length/zero-desired tick (which is what the rocket branch has always

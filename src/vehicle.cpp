@@ -10,6 +10,7 @@
 #include <functional>
 #include <limits>
 #include <map>
+
 #include <numbers>
 #include <stdexcept>
 
@@ -2606,6 +2607,29 @@ double Vehicle::availableResourceMass(enum ResourceType type, Part *engine) cons
         }
     }
     return total;
+}
+
+/* One sweep of the engine's layers totalling every wanted resource (#934): the same
+   loop availableResourceMass runs, with the resource moved inside it. A rocket's two
+   propellants used to cost two full sweeps of layers x groups x every part. */
+void Vehicle::layerFuelTotals(Part *engine, const bool *want, double *out) const {
+    for(int r = 0; r < (int)ResourceType::Num; r++) { out[r] = 0.0; }
+    int wanted[(int)ResourceType::Num];
+    int nw = 0;
+    for(int r = 0; r < (int)ResourceType::Num; r++) { if(want[r]) { wanted[nw++] = r; } }
+    if(nw == 0) { return; }
+    const FuelLayers &layers = fuelDrainLayers(engine);
+    for(size_t li = 0; li + 1 < layers.layerStart.size(); li++) {
+        for(int k = layers.layerStart[li]; k < layers.layerStart[li + 1]; k++) {
+            const int grp = layers.groupOf[(size_t)k];
+            for(Part *p : parts) {
+                if(!p->isTank() || p->fuelGroup != grp) { continue; }
+                for(int i = 0; i < nw; i++) {
+                    out[wanted[i]] += p->resources.current[wanted[i]];
+                }
+            }
+        }
+    }
 }
 
 double Vehicle::burnShare(double available, double desired) {
@@ -6221,12 +6245,19 @@ bool Vehicle::canBurn() {
        engine walled off by a fuel barrier has no drain layers at all (fuelDrainLayers,
        group -1) and reads false while the stacks are full. */
     const int as = activeStage();
+    bool want[(int)ResourceType::Num];
+    double total[(int)ResourceType::Num];
     for(Part *p : parts) {
         if(!p->isThruster() || p->stage < as) { continue; }
+        for(int r = 0; r < (int)ResourceType::Num; r++) {
+            want[r] = p->def->propellant_rate[r] > 0.0;
+        }
+        /* One sweep for the engine's whole propellant set rather than one per
+           propellant (#934); the sums are the same ones availableResourceMass builds. */
+        layerFuelTotals(p, want, total);
         bool has_every = true;
         for(int r = 0; r < (int)ResourceType::Num; r++) {
-            if(p->def->propellant_rate[r] <= 0.0) { continue; }
-            if(availableResourceMass((ResourceType)r, p) <= 0.0) { has_every = false; break; }
+            if(want[r] && total[r] <= 0.0) { has_every = false; break; }
         }
         if(has_every) { return true; }   // isThruster() already means one rate > 0
     }
@@ -6389,11 +6420,20 @@ void Vehicle::ApplyThrust(double step) {
            propellants it can get and then failing on one it cannot (#371). */
         double s = 1.0;
         double avail[(int)ResourceType::Num] = {0.0};
+        /* One sweep of the layers for the engine's whole propellant set (#934): the
+           loop below asked availableResourceMass once per propellant, and each ask
+           re-walked this engine's layers, groups and every part on the hull -- per
+           substep, per engine. Same sums, same per-tank order, so the clamp further
+           down still sees exactly the figure it saw before. */
+        bool want[(int)ResourceType::Num];
+        for(int r = 0; r < (int)ResourceType::Num; r++) {
+            want[r] = p->def->propellant_rate[r] > 0.0;
+        }
+        layerFuelTotals(p, want, avail);
         for(int r = 0; r < (int)ResourceType::Num; r++) {
             const double rate_r = p->def->propellant_rate[r];
             if(rate_r <= 0.0) { continue; }
             const double desired = rate_r * (double)thruster_util * step;
-            avail[r] = availableResourceMass((ResourceType)r, p);
             // desired <= 0: a zero-length tick
             const double si = burnShare(avail[r], desired);
             if(si < s) { s = si; }
