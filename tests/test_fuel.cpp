@@ -1,5 +1,6 @@
 //
-// Headless test for Vehicle::consumeResourceMass / fuelPool (src/vehicle.h).
+// Headless test for Vehicle::consumeResourceMass / availableResourceMass /
+// fuelDrainLayers (src/vehicle.h).
 //
 // The fuel model is CONNECTION-based, not stage-based: an engine draws the
 // propellant of its FUEL GROUP (buildFuelGroups) -- the connected component
@@ -1259,9 +1260,17 @@ static void test_drain_layers_shape() {
                            "furthest layer first, ascending group id within a layer");
             }
         }
-        /* The pool the engine drinks from is the same group seen the other way: tanks
-           only, so engA's own group here is tankA alone (the engine is not a tank). */
-        CHECK_TRUE(s.v->fuelPool(engA).size() == 1, "the engine's group holds one tank");
+        /* The pool an engine drinks from is its own group seen from the parts side. The
+           shape above already pins that group drains last (groupOf[4] == 0); this pins
+           who is IN it. Read off Part::fuelGroup rather than through an accessor --
+           #975 deleted Vehicle::fuelPool, which no src/ caller used and which scanned
+           every part per engine, the pattern #974 wants gone. */
+        int ownTanks = 0;
+        for(size_t i = 0; i < s.v->parts.size(); i++) {
+            Part *p = s.v->parts[i];
+            if(p->isTank() && p->fuelGroup == engA->fuelGroup) { ownTanks++; }
+        }
+        CHECK_TRUE(ownTanks == 1, "the engine's group holds one tank");
         destroyShip(s);
     }
     {   /* A star: two arms one hop out, both feeding the root by FUEL LINK (the arms

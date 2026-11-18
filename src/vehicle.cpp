@@ -2488,18 +2488,6 @@ void Vehicle::buildFuelGroups() {
     drainLayers_.assign((size_t)nGroups, FuelLayers());
 }
 
-std::vector<Part *> Vehicle::fuelPool(Part *engine) const {
-    std::vector<Part *> pool;
-    const int g = engine->fuelGroup;
-    for(size_t i = 0; i < parts.size(); i++) {
-        Part *p = parts[i];
-        if(!p->isTank()) { continue; }
-        if(p->fuelGroup != g) { continue; }
-        pool.push_back(p);
-    }
-    return pool;
-}
-
 const FuelLayers &Vehicle::fuelDrainLayers(Part *engine) const {
     static const FuelLayers none;    // a walled-off engine: no layers, no walk
     const int g = engine->fuelGroup;

@@ -1416,9 +1416,7 @@ public:
        Recompute after a stage split. */
     void buildFuelGroups();
 
-    std::vector<Part *> fuelPool(Part *engine) const;
-
-    /* The engine's fuel groups in LAYERS by hop distance, furthest first (fuelgraph.h).
+    /* The engine's fuel groups in LAYERS by hop distance, furthest first (src/fuelgraph.h).
        A layer drains TOGETHER (pro-rata). Cached; do not mutate the reference. An
        engine walled off by a fuel barrier (fuelGroup -1) gets an empty FuelLayers: no
        layers, no walk, and every layer loop below runs zero times. */
