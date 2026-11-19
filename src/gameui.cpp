@@ -7460,13 +7460,26 @@ void drawVabUI(Game &g) {
            whole stack, and the undo covers whichever of the two moved the label. */
         if(ImGui::Button("Auto-stage")) {
             StagingPlan plan = autoStage(g.vab.build);
+            /* A plan's note is about the SHAPE of the stack -- which part, which label, what
+               the tree cannot see -- and it runs past 160 characters, which in the toast font
+               is about twice the width of the screen (#1027): the player gets the middle of a
+               sentence and nothing to do about it. So the banner says only what happened and
+               the note goes to the log, where --fleet-report prints the same text. The tag is
+               [autostage], not [toast]: Game::toast's mirror is what the e2e `toast` list
+               reads as "what the player saw", so logging under [toast] would put the note back
+               on screen for the tests to bless. */
+            auto logNotes = [&plan] {
+                for(const std::string &n : plan.notes) { printf("[autostage] %s\n", n.c_str()); }
+                fflush(stdout);
+            };
             if(!plan.applied) {
-                /* The build is untouched; say which of the refusals it was. A plan that
-                   cannot be worked out is not recorded, so Undo still points at the
-                   player's own last edit. */
-                for(const std::string &n : plan.notes) { g.toast("%s", n.c_str()); }
+                /* The build is untouched. A plan that cannot be worked out is not recorded, so
+                   Undo still points at the player's own last edit. */
+                g.toast("Can't auto-stage this ship");
+                logNotes();
             } else if(plan.changes.empty()) {
                 g.toast("Auto-stage: those labels already match the stack");
+                logNotes();
             } else {
                 /* The plan IS the undo record: changes() already names part, id, from, to.
                    Not `typed`, so it never merges with the hand edit above it -- a plan that
@@ -7476,7 +7489,7 @@ void drawVabUI(Game &g) {
                 recordStagingEdit(g.vab.stagingUndo, std::move(plan.changes), false);
                 g.toast("Auto-staged %d part%s from the stack -- Ctrl+Z to take it back",
                         moved, moved == 1 ? "" : "s");
-                for(const std::string &n : plan.notes) { g.toast("%s", n.c_str()); }
+                logNotes();
             }
         }
         ImGui::SameLine();
