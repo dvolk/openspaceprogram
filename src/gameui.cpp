@@ -5156,9 +5156,9 @@ struct RecNorm {
 static ImPlotPoint recNormPoint(int i, void *user) {
     const RecNorm &n = *(const RecNorm *)user;
     const double v = n.base[i].s.*(n.get);
-    /* A NaN reading stays NaN through this, and the default line renderer drops both
-       segments that touch it -- the gap the trace's "-" claims. SkipNaN would do the
-       opposite; see the spec where the line is drawn. */
+    /* A NaN reading stays NaN through this, and leaves both segments that touch it
+       undrawn -- the gap the trace's "-" claims, and why it happens two different ways
+       is spelled out where the line is drawn. SkipNaN would do the opposite. */
     return ImPlotPoint(n.base[i].sim_t, n.lo + (v - n.mn) * n.k);
 }
 
@@ -5299,7 +5299,7 @@ void drawUIRecorder(Game &g) {
                below the reserved area (measuring there gave a rect whose bottom was
                above its top). Saved for the NEXT frame's gesture test, which has to
                run ahead of the axis setup because any ImPlot query calls SetupLock
-               (implot.cpp:2223 asserts a Setup call afterwards). The rect is a hair
+               (implot.cpp:2222 asserts a Setup call afterwards). The rect is a hair
                larger than implot's own plot rect -- Style.PlotPadding only, since
                neither axis reserves a gutter -- close enough for "the pilot gestured
                AT the graph", and being wrong by a few pixels only yields the fit a
@@ -5330,8 +5330,12 @@ void drawUIRecorder(Game &g) {
                     printf("[recwin] fit=off\n");
                 }
                 /* Neither axis draws a label, tick mark or tick number. The pilot
-                   reads coordinates from implot's own hover text, and only its x half
-                   means anything here -- y is 0..1 of each line's own range (#990).
+                   reads coordinates from implot's own hover text -- NoDecorations does
+                   not hide that, it is gated on NoMouseText -- and only its x half
+                   means anything here, since y is 0..1 of each line's own range
+                   (#990). Since v1.1 the readout also survives a held drag
+                   (implot.cpp:3057, where v1.0 stopped at plot.Hovered), so panning
+                   the graph no longer blanks the number being panned.
                    What it buys is the graph: an axis with no label and no tick labels
                    reserves no gutter (implot.cpp:1709 PadAndDatumAxesX,
                    implot_internal.h:945 WillRender), so the plot rect is the whole
@@ -5411,17 +5415,27 @@ void drawUIRecorder(Game &g) {
                     norm.lo = range > 0.0 ? 0.0 : 0.5;
                     norm.k = range > 0.0 ? 1.0 / range : 0.0;
                     ImPlotSpec spec;
-                    /* NO SkipNaN -- that is the flag which BRIDGES a dash. The default
-                       RendererLineStrip leaves P1 sitting on the NaN when a segment
-                       fails its cull test, and a NaN endpoint always fails it (ImMin/
-                       ImMax propagate NaN), so both segments touching the dash go
-                       undrawn: the gap the trace's "-" promises. SkipNaN selects
+                    /* NO SkipNaN -- that is the flag which BRIDGES a dash. Both
+                       segments touching a NaN sample end up invisible, by two
+                       different routes: the segment INTO the dash is culled, because
+                       ImMin/ImMax on ImVec2 compare with < and >=, so a NaN operand
+                       takes the false branch and the cull rect collapses onto NaN
+                       (implot_items.cpp:979-981, imgui_internal.h:523-524); the
+                       segment OUT of the dash carries P1 = NaN, which flips both
+                       comparators the other way, so that rect is ordinary and
+                       PrimLine submits a quad whose four vertices are NaN. Nothing
+                       rasterizes either way. SkipNaN selects
                        RendererLineStripSkip, which instead keeps P1 at the last good
                        point (implot_items.cpp:1010-1022), so the two neighbours are
                        joined by one real line across a stretch the file prints "-"
                        for. Checked against the draw list rather than the flag's name:
                        a NaN sample in the middle of five draws a 313 px segment under
-                       SkipNaN and nothing under the default (tmp/night5/probe2.cpp). */
+                       SkipNaN and nothing visible under the default
+                       (tmp/night5/probe2.cpp, re-run against both pins by
+                       tmp/night5/ab_implot.sh). An Inf sample is invisible the same
+                       way but is NOT culled -- it submits a quad with an infinite
+                       endpoint -- and it cannot bridge either, since both touching
+                       segments carry the Inf. */
                     for(int s = 0; s < nspans; s++) {
                         norm.base = ring.p.data() + idx[s];
                         ImPlot::PlotLineG(kRecChans[i].key, recNormPoint, &norm, len[s], spec);
