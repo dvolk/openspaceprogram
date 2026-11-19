@@ -34,6 +34,9 @@ LIMIT 60
 EXPECT [vab] loaded misstaged (8 parts)
 EXPECT [toast] Auto-staged 4 parts from the stack
 EXPECT [vab] undo: 4 label(s) back
+# The banner carries the count. The per-part names -- which the undo log prints when an entry
+# cannot be reconciled -- run past the screen in the toast font, so they stay in the log (#1027).
+EXPECT [toast] Undo: 4 parts back to their previous labels
 # Back where the loaded file had them.
 EXPECT [stagetree] 4 dec_boost def=decoupler_r1 parent=eng_up stage=5 responds=decoupler
 EXPECT [stagetree] 7 dec_pod def=decoupler_radial parent=capsule_1 stage=1 responds=decoupler

@@ -431,7 +431,7 @@ judgement. Select by number, name or path, e.g.
 | `ui/1022-a-the-staging-window-is-a-ladder-of-labels.txt` | invariant | The Staging window lists the labels the build carries in rocket order and the parts that answer at each, and the cost table is its own window. |
 | `ui/1022-b-a-step-button-moves-a-part-one-rung.txt` | invariant | A Staging-window step button moves one part exactly one label, and Undo takes a run of steps back as one edit. |
 | `ui/1022-c-a-rung-shift-moves-everything-on-the-label.txt` | invariant | The ladder's rung buttons step every part carrying a label by one (no-op at the floor), and Undo takes the whole rung back as one edit. |
-| `ui/1027-a-an-auto-stage-refusal-says-one-short-line.txt` | invariant | Auto-stage on a stack it refuses toasts one short line and logs the technical reason instead of painting it. |
+| `ui/1027-a-auto-stage-says-one-short-line-and-logs-its-detail.txt` | invariant | Auto-stage toasts one short line per outcome and logs its technical detail instead of painting it. |
 
 ## render (89)
 

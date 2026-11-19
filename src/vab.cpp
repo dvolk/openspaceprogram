@@ -555,8 +555,7 @@ void vabUndoStaging(Game &g) {
     const int back = (int)undoStagingEdit(g.vab.build, g.vab.stagingUndo, notes);
     printf("[vab] undo: %d label(s) back\n", back);
     /* A bulk undo over a hull the player has been editing for an hour can fail to reach
-       every part. The count is the sentence and the first few names are the detail; past
-       that the toast queue (bounded) and the log both turn into a wall. */
+       every part. The log names the first few; past that it turns into a wall. */
     const size_t shown = notes.size() < 4 ? notes.size() : 4;
     for(size_t i = 0; i < shown; i++) { printf("[vab] undo: %s\n", notes[i].c_str()); }
     if(notes.size() > shown) {
@@ -564,10 +563,16 @@ void vabUndoStaging(Game &g) {
                (int)(notes.size() - shown));
     }
     fflush(stdout);
-    if(back == 0) { g.toast("Undo: nothing left in the build to take back"); }
+    /* The names do NOT reach the banner: each one runs to ~95 characters, wider than the
+       screen in the toast font -- the defect #1027 fixed on the Auto-stage side -- and a part
+       id shown for three seconds is not actionable. The count is: part of the edit did not
+       come back. */
+    if(!notes.empty()) {
+        g.toast("Undo: %d part%s back -- %d left as they are", back, back == 1 ? "" : "s",
+                (int)notes.size());
+    } else if(back == 0) { g.toast("Undo: nothing left in the build to take back"); }
     else if(back == 1) { g.toast("Undo: 1 part back to its previous label"); }
     else { g.toast("Undo: %d parts back to their previous labels", back); }
-    for(size_t i = 0; i < shown; i++) { g.toast("%s", notes[i].c_str()); }
 }
 
 /* The ladder's step buttons (#1022) are the same two calls the unit tests exercise

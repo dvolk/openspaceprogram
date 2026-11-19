@@ -2192,6 +2192,10 @@ static void test_auto_stager_refuses_a_build_with_no_decoupler() {
     CHECK_TRUE(plan.changes.empty(), "and nothing moved");
     CHECK_TRUE(labelsOf(bs) == std::vector<int>({3, 1}), "the build is left exactly as it was");
     CHECK_TRUE(has_note(plan, "refuse:") && has_note(plan, "no decoupler"), "and it says why");
+    /* The kind is what a one-line banner says with (#1027): this shape is a one-stage rocket,
+       not a broken one, so the generic "can't" would be the wrong sentence. */
+    CHECK_TRUE(plan.refusal == StagingPlan::Refusal::NoDecoupler,
+               "and it names the refusal whose short verdict differs");
 
     std::vector<std::string> w;
     validateStaging(bs, w);
@@ -2299,6 +2303,10 @@ static void test_auto_stager_refuses_to_move_an_engine_off_launch() {
                    && has_note(plan, "lights at launch"),
                "and the refusal names the engine and the fact");
     CHECK_TRUE(labelsOf(bs) == std::vector<int>({1, 3, 2, 2, 3}), "untouched");
+    /* The default kind: the banner's generic line is the honest answer for a shape a short
+       sentence cannot describe (#1027). */
+    CHECK_TRUE(plan.refusal == StagingPlan::Refusal::Other,
+               "a refusal the short verdict cannot name falls back to the generic one");
 
     /* The same stack with nothing numbered: no intent to contradict, so the plan runs -- and
        a booster engine moves ONTO launch, which the stack does imply (a group cut on the

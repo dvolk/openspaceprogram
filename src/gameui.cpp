@@ -7474,8 +7474,15 @@ void drawVabUI(Game &g) {
             };
             if(!plan.applied) {
                 /* The build is untouched. A plan that cannot be worked out is not recorded, so
-                   Undo still points at the player's own last edit. */
-                g.toast("Can't auto-stage this ship");
+                   Undo still points at the player's own last edit. Two verdicts rather than
+                   one: a ship with no decoupler is not broken, it is a single stage, and "can't"
+                   on it reads as a broken feature -- that is the commonest refusal by a wide
+                   margin (25 of 32 shipped hulls, --fleet-report). */
+                if(plan.refusal == StagingPlan::Refusal::NoDecoupler) {
+                    g.toast("Auto-stage: this ship has no decoupler to split");
+                } else {
+                    g.toast("Can't auto-stage this ship");
+                }
                 logNotes();
             } else if(plan.changes.empty()) {
                 g.toast("Auto-stage: those labels already match the stack");

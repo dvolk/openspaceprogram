@@ -1366,11 +1366,14 @@ StagingPlan autoStage(BuildShip &ship) {
 
     if(decs.empty()) {
         /* One label, and the checker has nothing to say about it. Assigning anything else
-           would invent presses that separate nothing. */
+           would invent presses that separate nothing. The kind is named because it is the
+           refusal a short banner would get WRONG: nothing is broken here, the ship is a
+           single stage, and this is 25 of the 32 shipped hulls (--fleet-report). */
         std::snprintf(buf, sizeof buf,
                       "refuse: no decoupler in the build -- one label is the answer, so there "
                       "is nothing to assign");
         plan.notes.push_back(buf);
+        plan.refusal = StagingPlan::Refusal::NoDecoupler;
         return plan;
     }
 

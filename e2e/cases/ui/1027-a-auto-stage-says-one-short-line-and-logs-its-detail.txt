@@ -1,0 +1,65 @@
+# #1027: what the Auto-stage button says. Its plan notes explain the SHAPE of the stack --
+# which part, which label, what the tree cannot see -- and they run past 160 characters, which
+# in the toast font (2x --font-size, ~16.8 px per mono cell) is about twice the width of a 1280
+# screen: the player reads the middle of a sentence and loses the end of it. The notes now go
+# to stdout under [autostage] -- the same text --fleet-report prints -- and the banner carries
+# one short line. The tag is deliberately not [toast], because Game::toast's mirror is what the
+# harness reads as "what the player saw".
+#
+# Three clicks, one per outcome the button has:
+#   heavy_asp      refused, and the ship IS multi-stage: its core engine lights at launch and
+#                  the stack's shape would hand it to a later press (#1020 is the WIP fix)
+#   skiff          refused for the commonest reason of all -- no decoupler anywhere, 25 of the
+#                  32 shipped hulls -- where "can't" would call a one-stage ship broken
+#   central_radial applied, with a note that two engines that shared a label now light apart:
+#                  a real change, still detail, so it is a log line and not a second banner
+#
+# No --width/--height: a small window stops the VAB top bar taking clicks (#1017), and every
+# step here is a click.
+NAME auto-stage-says-one-short-line-and-logs-its-detail
+CLAIM Auto-stage toasts one short line per outcome and logs its technical detail instead of painting it.
+KIND invariant
+ARGS --ui-click 1000,"Title Menu/New Game"
+ARGS --ui-click 1600,"New Game/Start"
+ARGS --sim-press 2600,0,4
+ARGS --ui-type 3200,"VAB TopBar/##vehfilter",heavy_asp
+ARGS --ui-click 3800,"VAB TopBar/##vabload"
+ARGS --ui-click 4400,"heavy_asp"
+ARGS --ui-click 5000,"VAB TopBar/Load"
+ARGS --ui-click 5600,"Staging/Auto-stage"
+ARGS --stage-dump 6400
+ARGS --ui-type 7200,"VAB TopBar/##vehfilter",skiff
+ARGS --ui-click 7800,"VAB TopBar/##vabload"
+ARGS --ui-click 8400,"skiff"
+ARGS --ui-click 9000,"VAB TopBar/Load"
+ARGS --ui-click 9600,"Staging/Auto-stage"
+# central_radial is a "testship" def, so the picker only lists it once Game Debug's
+# dev-vehicles switch is on -- the same two presses 1012-b spends to get there.
+ARGS --sim-press 10400,0,F1
+ARGS --ui-click 10900,"Game Debug/Dev vehicles in the VAB picker"
+ARGS --sim-press 11400,0,F1
+ARGS --ui-type 11900,"VAB TopBar/##vehfilter",central_radial
+ARGS --ui-click 12500,"VAB TopBar/##vabload"
+ARGS --ui-click 13100,"central_radial"
+ARGS --ui-click 13700,"VAB TopBar/Load"
+ARGS --ui-click 14300,"Staging/Auto-stage"
+ARGS --timeout 18
+LIMIT 70
+EXPECT [vab] loaded heavy_asp (45 parts)
+# The refusal, and the build left alone: engine_central still carries the label the hull
+# authored, which is the thing the refusal is about.
+EXPECT [stagetree] 14 engine_central def=engine_r2.25h4.5 parent=big_tank2 stage=6 responds=engine
+EXPECT [toast] Can't auto-stage this ship
+EXPECT [autostage] refuse: 'engine_central' lights at launch as built
+# The other kind of refusal, said differently because that ship is not broken.
+EXPECT [toast] Auto-stage: this ship has no decoupler to split
+EXPECT [autostage] refuse: no decoupler in the build
+# The outcome that DOES change the build, and its caveat in the log rather than on screen.
+EXPECT [toast] Auto-staged 3 parts from the stack
+EXPECT [autostage] note: 1 engine pair(s) carried one label and would now light apart
+# Nothing technical reaches the banner, and nothing painted is wider than the screen: at a
+# 28 px mono face ~16.8 px per cell, so 72 characters is the 1280 edge.
+CHECK all("refuse:" not in t and "note:" not in t for t in toast)
+CHECK all(len(t) < 72 for t in toast)
+FORBID error:
+FORBID FAILED

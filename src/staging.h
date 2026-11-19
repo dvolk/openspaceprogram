@@ -165,7 +165,17 @@ struct StagingChange {
 struct StagingPlan {
     bool applied = false;                  // false = refused: `ship` is untouched
     std::vector<StagingChange> changes;    // empty when applied with nothing to fix
-    std::vector<std::string> notes;        // "refuse: ..." on a refusal, else player-facing caveats
+    std::vector<std::string> notes;        // "refuse: ..." on a refusal, else plan caveats
+
+    /* Which refusal, for a caller that has to say something in ONE short line. `notes` is the
+       full sentence -- 160+ characters, about twice the width of a screen once drawToasts puts
+       it in the big font (#1027) -- so it belongs in the log and --fleet-report, not in a
+       three-second banner. Named kinds are only where the generic verdict would be WRONG:
+       a build with no decoupler is a one-stage rocket, not a broken one, and that is 25 of the
+       32 shipped hulls (--fleet-report). Every other refusal says the stack has a shape the
+       short line cannot carry, which is why the detail stays in the log. */
+    enum class Refusal : unsigned { Other, NoDecoupler };
+    Refusal refusal = Refusal::Other;
 };
 StagingPlan autoStage(BuildShip &ship);
 
