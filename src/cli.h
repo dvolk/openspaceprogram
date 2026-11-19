@@ -113,6 +113,14 @@ struct GameArgs {
     int hold_jobs_to_ms = -1;
     int atlas_dump_ms = -1;          // print the System Atlas rows + dossiers
     int staff_dump_ms = -1;          // print the Staff Lounge roster + locations
+    /* #1009: print the staging tree at this loop time in ms -- one [stagetree]
+       line per part with its stage label and what a press DOES to it
+       (engine / decoupler / chute / nothing), then the label span and the press
+       count it implies. The VAB build when the editor holds one, otherwise the
+       active hull, so a scripted VAB edit and a shipped hull file are pinned by
+       the same lines. Before this nothing printed a per-part label at all, so a
+       staging change had no witness. */
+    int stage_dump_ms = -1;
     int map_plane = -1;              // the orbit map's plane combo (0 equ, 1 ecl, 2 orb, 3 tgt)
     int map_dump_ms = -1;            // print the map's plane basis per slot
 

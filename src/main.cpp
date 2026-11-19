@@ -321,6 +321,15 @@ static void installHeadlessHooks(Game &game) {
         game.addHook(kHookPreScene, args.staff_dump_ms, nullptr,
                      [](Game &g) { dumpStaff(g); });
     }
+    /* --stage-dump: the staging tree as text (#1009). Reads g.vab.build, or the
+       active hull when the editor holds nothing, so it works from any scene and
+       needs no window open. Pre-scene like the others: a scripted case clicks a
+       stage control at one time and dumps at a later one, and the parts vector
+       is not reordered by a label edit, so there is no ordering to get wrong. */
+    if(args.stage_dump_ms >= 0) {
+        game.addHook(kHookPreScene, args.stage_dump_ms, nullptr,
+                     [](Game &g) { dumpStageTree(g); });
+    }
     /* --map-dump: the orbit map's plane basis per combo slot. Its phase is
        AFTER the state pass -- sc.refresh is what fills Game::hud.view, so
        dumping before it silently reports a plausible-but-wrong basis. Needs

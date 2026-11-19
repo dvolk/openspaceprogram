@@ -31,6 +31,7 @@
 //   make test   (or: ./test_staging_dv)
 
 #include "staging.h"
+#include "part.h"   // Part's live predicates, which stageRoles() must not drift from (#1009)
 
 #include <algorithm>
 #include <chrono>
@@ -82,6 +83,14 @@ struct Catalog {
         defs.back().mass = mass;
         defs.back().decoupler = true;
         defs.back().fuel_barrier = true;
+        return &defs.back();
+    }
+    // A parachute: chute_area > 0 is the whole predicate (part.h:216), and the
+    // only thing that makes a label mean "deploy" at a press (vehicle.cpp:3136).
+    const PartDef *chute(double mass, double area) {
+        defs.push_back(PartDef());
+        defs.back().mass = mass;
+        defs.back().chute_area = area;
         return &defs.back();
     }
     // A fuel wall that is NOT a decoupler: it splits fuel groups but can never be
@@ -1618,6 +1627,78 @@ static void test_a_duplicate_id_resolves_to_the_last_part() {
     CHECK_TRUE(rows[0].engines == 1, "one engine");
 }
 
+/* What a stage label MEANS, derived from the def (shipdef.h, StageRole). #1009's dump
+   prints this and #1011's window will dim a part that has none, because the VAB has no
+   other way to show that a part carries a label the sim will ignore. A label has three
+   readings in flight and no more: a thruster lights when the descending counter reaches
+   its label, a decoupler separates and a chute deploys only when it EQUALS the label.
+
+   What is pinned is the DERIVATION, so the dump cannot lie about a part: the two halves
+   of the thruster test are checked separately, and the engine half is checked against
+   what the staging analysis beside it counts as lit. A fuel wall is deliberately NOT a
+   role -- it splits fuel groups but a press can never fire it, so it reads "-" (see
+   test_barrier_no_link for what walls do instead). */
+static void test_a_stage_label_means_exactly_three_things() {
+    Catalog cat;
+    constexpr unsigned kEng = (unsigned)StageRole::Engine;
+    constexpr unsigned kDec = (unsigned)StageRole::Decoupler;
+    constexpr unsigned kChute = (unsigned)StageRole::Chute;
+
+    CHECK_TRUE(stageRoles(nullptr) == 0u, "no def answers nothing");
+    CHECK_TRUE(stageRoles(cat.tank(10, 5, 5)) == 0u, "a tank is not fireable");
+    CHECK_TRUE(stageRoles(cat.barrier(4)) == 0u, "a fuel wall is not fireable");
+    CHECK_TRUE(stageRoles(cat.mono(10, 20)) == 0u, "a hydrazine tank is not a thruster");
+    CHECK_TRUE(stageRoles(cat.decoupler(5)) == kDec, "a decoupler separates");
+    CHECK_TRUE(stageRoles(cat.chute(3, 20.0)) == kChute, "a chute deploys");
+    CHECK_TRUE(stageRoles(cat.engine(10, 0.5, 1000.0)) == kEng, "an engine lights");
+    CHECK_TRUE(stageRoles(cat.nuclearEngine(10, 0.5, 800.0)) == kEng,
+               "one propellant is still a thruster");
+
+    /* Both halves of the thruster test matter on their own: these are what a mis-typed
+       table entry looks like, and both are inert mass that still costs a press. Built
+       inline because no shipped part is shaped like either -- the def, not the name in
+       the picker, is what decides. */
+    PartDef veOnly;
+    veOnly.mass = 10.0;
+    veOnly.exhaust_velocity = 1000.0;
+    CHECK_TRUE(stageRoles(&veOnly) == 0u, "an exhaust velocity with nothing to push");
+    PartDef flowOnly;
+    flowOnly.mass = 10.0;
+    flowOnly.setPropellantRate(ResourceType::Hydrogen, 0.5);
+    CHECK_TRUE(stageRoles(&flowOnly) == 0u, "a flow with nowhere to push it out");
+
+    /* The two fakes are inert mass that still costs a press, and the analysis beside the
+       dump agrees: they ride at the real engine's label and exactly one engine lights
+       there. Note the reading is not identical on either side. Flight's gate is
+       Part::isThruster (vehicle.cpp:6451, and the jet branch under it), so a jet engine
+       answers "engine" to a press; the row's count is litRocketCount(), which excludes
+       jets (staging.cpp:791). The dump follows flight, not the row. (This binary cannot
+       instantiate a Part to compare against -- ~Part reaches Body, which would drag
+       Bullet into a pure-math test.) */
+    {
+        BuildShip bs;
+        const int tk = addPart(bs, cat.tank(10, 20, 20), "tk", -1, 1);
+        addPart(bs, cat.engine(10, 0.5, 1000.0), "eng", tk, 1);
+        addPart(bs, &veOnly, "ve_only", tk, 1);
+        addPart(bs, &flowOnly, "flow_only", tk, 1);
+        const std::vector<StageRow> rows = computeStaging(bs, 10.0);
+        CHECK_TRUE(rows.size() == 1, "one label, one burn");
+        if(rows.size() == 1) { CHECK_TRUE(rows[0].engines == 1, "only the real engine lit"); }
+    }
+
+    /* The words the dump and the window show. Order comes from the mask, not from
+       whatever order the bits were set, so one build prints one string twice. */
+    CHECK_TRUE(std::string(stageRoleName(0u)) == "-", "no role prints a dash");
+    CHECK_TRUE(std::string(stageRoleName(kEng)) == "engine", "engine");
+    CHECK_TRUE(std::string(stageRoleName(kDec)) == "decoupler", "decoupler");
+    CHECK_TRUE(std::string(stageRoleName(kChute)) == "chute", "chute");
+    CHECK_TRUE(std::string(stageRoleName(kEng | kDec)) == "engine+decoupler", "engine+decoupler");
+    CHECK_TRUE(std::string(stageRoleName(kEng | kChute)) == "engine+chute", "engine+chute");
+    CHECK_TRUE(std::string(stageRoleName(kChute | kDec)) == "decoupler+chute", "decoupler+chute");
+    CHECK_TRUE(std::string(stageRoleName(kEng | kDec | kChute)) == "engine+decoupler+chute",
+               "all three");
+}
+
 int main() {
     test_two_stage();
     test_single_stage();
@@ -1647,6 +1728,7 @@ int main() {
     test_a_small_ship_planned_after_a_big_one_is_only_itself();
     test_a_duplicate_id_resolves_to_the_last_part();
     test_seed_the_fuel_and_mass_a_live_ship_carries();
+    test_a_stage_label_means_exactly_three_things();
 
     printf("test_staging_dv: %d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;

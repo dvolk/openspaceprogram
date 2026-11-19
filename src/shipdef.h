@@ -713,6 +713,50 @@ struct ShipDef {
 int partitionFuelGroups(const std::vector<int> &parent,
                         const std::vector<bool> &wall, std::vector<int> &group);
 
+/* What a stage press DOES to a part -- derived from the def, and deliberately
+   NOT an authored `stageable` flag (#970). The label only ever means one of
+   these three things, because these are the only places the sim reads it: a
+   thruster lights when the descending counter reaches its label and stays lit
+   (`if(p->stage < as) continue;`, vehicle.cpp:6451), a decoupler separates and a
+   chute deploys only when the counter EQUALS the label (vehicle.cpp:5573 and
+   :3136). Anything else carries a label that does nothing at a press, and that
+   is worth showing rather than hiding -- it is how a mis-staged build becomes
+   visible instead of merely flying badly. A part can hold two at once (a chute
+   riding a decoupler), hence flags. */
+enum class StageRole : unsigned { None = 0, Engine = 1u, Decoupler = 2u, Chute = 4u };
+
+inline unsigned stageRoles(const PartDef *def) {
+    if(def == nullptr) { return 0u; }
+    unsigned r = 0u;
+    /* The same predicate flight uses (Part::isThruster, part.h:202): a thruster
+       is a propellant flow and an exhaust velocity, never a part whose name
+       happens to contain "engine". */
+    if(def->totalPropellantRate() > 0.0 && def->exhaust_velocity > 0.0) {
+        r |= (unsigned)StageRole::Engine;
+    }
+    if(def->decoupler) { r |= (unsigned)StageRole::Decoupler; }
+    if(def->chute_area > 0.0) { r |= (unsigned)StageRole::Chute; }
+    return r;
+}
+
+/* The word for a dump or a dimmed window row: "engine", "chute+decoupler", "-".
+   Order is fixed by the mask, so two runs of one build print one string. */
+inline const char *stageRoleName(unsigned roles) {
+    constexpr unsigned kEng = (unsigned)StageRole::Engine;
+    constexpr unsigned kDec = (unsigned)StageRole::Decoupler;
+    constexpr unsigned kChute = (unsigned)StageRole::Chute;
+    switch(roles) {
+        case 0u:              return "-";
+        case kEng:            return "engine";
+        case kDec:            return "decoupler";
+        case kChute:          return "chute";
+        case kEng | kDec:     return "engine+decoupler";
+        case kEng | kChute:   return "engine+chute";
+        case kDec | kChute:   return "decoupler+chute";
+        default:              return "engine+decoupler+chute";
+    }
+}
+
 /* ---- VAB build tree (physics-free authoring representation) -------------
    The editor edits THIS, not the flight Vehicle; launch converts it via
    build_ship. Poses come from solveEdge, the same solver flight uses. */

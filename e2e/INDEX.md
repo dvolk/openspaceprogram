@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 410 |
+| `invariant` | a behaviour or a player route the game must keep | 412 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 50 |
 | `harness` | CLI/test-engine plumbing, not game spec | 16 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **480** |
+| | **total** | **482** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -18,7 +18,7 @@ paces a run: how much e2e a change deserves is the caller's
 judgement. Select by number, name or path, e.g.
 `python3 e2e/run.py save/172 262`.
 
-## flight (151)
+## flight (152)
 
 | case | kind | pins |
 |---|---|---|
@@ -173,6 +173,7 @@ judgement. Select by number, name or path, e.g.
 | `flight/977-deck-launch-starts-on-its-deck.txt` | invariant | An autopilot mission armed on an air platform starts grounded on the deck instead of failing in its first second. |
 | `flight/982-arming-mid-flight-measures-the-climb-from-the-surface.txt` | invariant | An ascent mission armed on a hull already in orbit measures its turn from the surface, not from the tick it was armed on, and keeps the speed it had. |
 | `flight/990-recorder-readout-puts-numbers-back.txt` | invariant | Clicking the Recorder graph pins a readout of that sample's readings on the mission clock, a toggled-on channel appears in it, Unpin releases it, and a drag pans without pinning. |
+| `flight/1009-a-stage-dump-of-a-shipped-hull.txt` | invariant | --stage-dump prints every part's label and what a press does to it. |
 
 ## crew (29)
 
@@ -354,7 +355,7 @@ judgement. Select by number, name or path, e.g.
 | `save/612-ask-survives-a-round-trip.txt` | invariant | A saved Guidance ask loads back into the game and is written out again. |
 | `save/867-cross-system-bubble-load.txt` | invariant | A save with a ship in a building's bubble loads from the title across systems. |
 
-## ui (63)
+## ui (64)
 
 | case | kind | pins |
 |---|---|---|
@@ -421,6 +422,7 @@ judgement. Select by number, name or path, e.g.
 | `ui/885-orbital-map-legend-fits-one-line.txt` | invariant | The orbital map's eight legend entries draw on one line, inside the window, at the default window size. |
 | `ui/886-the-atlas-lists-every-station.txt` | invariant | The System Atlas lists every station as its own row under the body it belongs to, and says on the body row that it has one, so a player who wants to visit a station can find out that it exists and where it is. |
 | `ui/896-charging-hull-dashes-its-hours.txt` | invariant | A hull that generates more than it draws prints Aboard: - instead of an hours figure. |
+| `ui/1009-b-stage-dump-of-the-vab-build.txt` | invariant | --stage-dump reads the VAB build and agrees with the shipped file it loaded. |
 
 ## render (89)
 

@@ -1,0 +1,36 @@
+# The same dump on the other source: the VAB build rather than a shipped file. This is
+# the shape the staging editor (#1012-#1014) will need -- a way to watch what a bulk
+# renumber did without reading a widget -- so the format is pinned here before that work
+# starts, on the path a player actually reaches: New Game, the 4 key, filter the roster,
+# Load the def, dump.
+#
+# Both sources print the same seven rows for the same ship, which is the point: an
+# authored file and the build it loads into must not disagree about labels. The header
+# line differs (src=vab, no counter -- the editor has no active stage), and the dump
+# names which it read, so a test can tell an empty editor from a missing hull.
+#
+# No --width/--height: at 640x360 the VAB top bar's widgets stop taking hover
+# (see the issue filed alongside this case), and the clicks below are the point.
+NAME stage-dump-of-the-vab-build
+CLAIM --stage-dump reads the VAB build and agrees with the shipped file it loaded.
+KIND invariant
+ARGS --ui-click 1000,"Title Menu/New Game"
+ARGS --ui-click 1600,"New Game/Start"
+ARGS --sim-press 2600,0,4
+ARGS --ui-type 3200,"VAB TopBar/##vehfilter",stager
+ARGS --ui-click 3800,"VAB TopBar/##vabload"
+ARGS --ui-click 4400,"stager"
+ARGS --ui-click 5000,"VAB TopBar/Load"
+ARGS --stage-dump 6500 --timeout 12
+LIMIT 60
+EXPECT [vab] loaded stager (7 parts)
+# src=vab, and no stage=x/y: the counter belongs to a flying hull, not the editor.
+EXPECT [stagetree] src=vab hull=stager parts=7
+EXPECT [stagetree] 4 dec_1 def=decoupler_r1 parent=engine_upper stage=2 responds=decoupler
+EXPECT [stagetree] 5 tank_boost def=fuel_tank parent=dec_1 stage=2 responds=-
+EXPECT [stagetree] 6 engine_boost def=engine parent=tank_boost stage=2 responds=engine
+EXPECT [stagetree] labels=1..2 presses=1 silent=4/7
+FORBID src=hull
+FORBID src=none
+FORBID error:
+FORBID FAILED

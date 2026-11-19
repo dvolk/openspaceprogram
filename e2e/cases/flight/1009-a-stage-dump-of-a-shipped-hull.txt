@@ -1,0 +1,32 @@
+# --stage-dump on the hull side: what a shipped file says about staging, in text a
+# test can assert against. Before this, nothing printed a per-part stage label at all,
+# so a loader rule or a future bulk renumber had no witness, and the only staging
+# witness was pixels in the VAB window.
+#
+# `stager` is the one shipped hull whose labels actually mean something in a way this
+# shows: two labels, one decoupler between them, an engine under each. The
+# `responds=` column is the point -- four of the seven parts carry a label that answers
+# to nothing at a press (capsule, wheel, both tanks), and that is exactly the kind of
+# thing a player cannot discover by flying, so it gets printed rather than hidden.
+NAME stage-dump-of-a-shipped-hull
+CLAIM --stage-dump prints every part's label and what a press does to it.
+KIND invariant
+ARGS --startship stager,res/ships/stager.json,Kerbin,pad --stage-dump 1 --sim-steps 5
+ARGS --width 640 --height 360 --no-paint
+LIMIT 60
+# Which source the dump read, and the counter it found. Under --sim-steps the hook
+# clock is the scripted TICK count, hence --stage-dump 1 rather than a millisecond.
+EXPECT [stagetree] src=hull hull=stager parts=7 stage=2/2
+# Parent before child (BuildShip/Vehicle part order is construction order), and the
+# three readings: this decoupler separates, both engines light, the tank in between
+# does nothing but ride.
+EXPECT [stagetree] 0 capsule_1 def=capsule parent=- stage=1 responds=-
+EXPECT [stagetree] 3 engine_upper def=engine parent=tank_upper stage=1 responds=engine
+EXPECT [stagetree] 4 dec_1 def=decoupler_r1 parent=engine_upper stage=2 responds=decoupler
+EXPECT [stagetree] 6 engine_boost def=engine parent=tank_boost stage=2 responds=engine
+# The press count the labels imply (highest minus lowest), and how many parts are
+# silent. One press between labels 1 and 2; four parts answer to nothing.
+EXPECT [stagetree] labels=1..2 presses=1 silent=4/7
+FORBID src=vab
+FORBID error:
+FORBID FAILED

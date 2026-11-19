@@ -31,6 +31,10 @@ void researchLabEnter(Game &g);
 void drawStaffLounge(Game &g);
 void dumpStaff(Game &g);
 
+/* --stage-dump: every part of the VAB build (or, with no build, the active
+   hull) with its stage label and what a press does to it (#1009). */
+void dumpStageTree(Game &g);
+
 // A load adopts the game's identity, so the next save lands in its dir.
 void drawSaveLoad(Game &g);
 

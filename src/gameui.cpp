@@ -9228,3 +9228,79 @@ void dumpStaff(Game &g) {
     fflush(stdout);
 }
 
+/* --stage-dump (#1009): the staging tree as text. One [stagetree] line per part
+   with its label and what a press would actually DO to it, then one summary line.
+
+   Why: nothing printed a per-part stage label before, so a change to staging --
+   a loader rule, a future editor's bulk renumber -- had no witness a test could
+   assert against, and the only way to observe a VAB staging edit was to click
+   pixels and read the widget. The `responds=` column is what makes a mis-staged
+   build legible: most labels are decoration today, and a label that answers to
+   nothing is exactly the thing a player cannot discover by flying.
+
+   Two sources behind one format, because the two things worth pinning differ: the
+   VAB build (what an edit did) and the active hull (what a shipped file says).
+   The VAB build wins when it holds parts, and every dump names which it read.
+   `BuildShip::parts` is construction order, so a parent line always precedes its
+   children (shipdef.h's BuildShip note, asserted by the staging walk at
+   staging.cpp:758-759).
+
+   Neither pass goes through a ShipDef: a ShipDef's parts array also carries the
+   fuel-link pseudo-parts, and toShipDef hands each of those stage=1
+   (shipdef.cpp:1972-1978), which would print as phantom rows. */
+void dumpStageTree(Game &g) {
+    unsigned lo = 0u, hi = 0u, nParts = 0u, nSilent = 0u;
+    auto note = [&](int stage) {
+        const unsigned s = (unsigned)(stage < 1 ? 1 : stage);
+        if(nParts == 0u || s < lo) { lo = s; }
+        if(nParts == 0u || s > hi) { hi = s; }
+        nParts++;
+    };
+
+    if(!g.vab.build.parts.empty()) {
+        const BuildShip &b = g.vab.build;
+        printf("[stagetree] src=vab hull=%s parts=%zu\n",
+               b.name.c_str(), b.parts.size());
+        for(size_t i = 0; i < b.parts.size(); i++) {
+            const BuildPart &p = b.parts[i];
+            const unsigned roles = stageRoles(p.def);
+            if(roles == 0u) { nSilent++; }
+            note(p.stage);
+            const char *pid = (p.parent >= 0 && (size_t)p.parent < b.parts.size())
+                              ? b.parts[(size_t)p.parent].id.c_str() : "-";
+            printf("[stagetree] %zu %s def=%s parent=%s stage=%d responds=%s\n",
+                   i, p.id.c_str(), p.def != nullptr ? p.def->name.c_str() : "?",
+                   pid, p.stage, stageRoleName(roles));
+        }
+    } else if(g.ship != nullptr) {
+        Vehicle &v = *g.ship;   // not const: activeStage()/numStages() are not qualified
+        printf("[stagetree] src=hull hull=%s parts=%zu stage=%d/%d\n",
+               v.displayName().c_str(), v.parts.size(), v.activeStage(),
+               v.numStages());
+        for(size_t i = 0; i < v.parts.size(); i++) {
+            const Part *p = v.parts[i];
+            const unsigned roles = stageRoles(p->def);
+            if(roles == 0u) { nSilent++; }
+            note(p->stage);
+            printf("[stagetree] %zu %s def=%s parent=%s stage=%d responds=%s\n",
+                   i, p->id.c_str(), p->def != nullptr ? p->def->name.c_str() : "?",
+                   p->parent != nullptr ? p->parent->id.c_str() : "-",
+                   p->stage, stageRoleName(roles));
+        }
+    } else {
+        printf("[stagetree] src=none -- the VAB holds nothing and no hull is active\n");
+        fflush(stdout);
+        return;
+    }
+
+    /* The press count the labels imply. The counter starts at the highest label
+       and steps down one per press, stopping at the lowest (vehicle.cpp:2457-2458
+       and advanceStage at :3128), so a stray 9 on a ship whose parts answer at 1
+       and 2 is EIGHT presses -- seven of them doing nothing, and no engine lit
+       until the counter grinds down. That is what the box cannot show a player
+       (#1015), so the dump says it. */
+    printf("[stagetree] labels=%u..%u presses=%u silent=%u/%u\n",
+           lo, hi, hi > lo ? hi - lo : 0u, nSilent, nParts);
+    fflush(stdout);
+}
+

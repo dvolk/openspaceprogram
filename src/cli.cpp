@@ -480,6 +480,18 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "The same strings the Staff Lounge window draws "
                    "(test hook; -1 = never)");
 
+    app.add_option("--stage-dump", args.stage_dump_ms,
+                   "Print the staging tree at this loop time in ms: one "
+                   "[stagetree] line per part -- index, part id, def name, "
+                   "parent id, stage label, and what a stage press DOES to it "
+                   "(engine / decoupler / chute / nothing) -- then a summary "
+                   "with the label span, the press count that implies, and how "
+                   "many parts carry a label that answers to nothing. Reads the "
+                   "VAB build when the editor holds one, otherwise the active "
+                   "hull; the line names which. The roles are derived from the "
+                   "part def, never authored, and are the only readings of a "
+                   "label the sim has (#1009; test hook; -1 = never)");
+
     app.add_option("--map-plane", args.map_plane,
                    "Test hook: start the orbit map in this plane slot "
                    "(0 equatorial, 1 ecliptic, 2 orbital, 3 target orbit -- "
