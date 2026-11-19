@@ -1,0 +1,31 @@
+# The checker on the editor's own build (#1010), which is where a player would read it.
+# `misstaged` lives in e2e/vehicles/ -- kFixtureVehicleRoot -- so the Load picker lists it
+# once Game Debug's dev-vehicles switch is on, and the VAB's build is then the bad ladder
+# rather than a file on disk. The dump says src=vab and prints no stage=x/y: the press
+# counter belongs to a flying hull, not to the editor (1009 pins that difference).
+#
+# No --width/--height: at a small window the VAB top bar's widgets stop taking hover
+# (#1017), and these clicks are the point.
+NAME staging-checker-flags-the-vabs-own-build
+CLAIM The staging checker runs on the VAB build and names the same two faults there.
+KIND invariant
+ARGS --ui-click 1000,"Title Menu/New Game"
+ARGS --ui-click 1600,"New Game/Start"
+ARGS --sim-press 2600,0,4
+ARGS --sim-press 3000,0,F1
+ARGS --ui-click 3400,"Game Debug/Dev vehicles in the VAB picker"
+ARGS --sim-press 3800,0,F1
+ARGS --ui-type 4200,"VAB TopBar/##vehfilter",misstaged
+ARGS --ui-click 4800,"VAB TopBar/##vabload"
+ARGS --ui-click 5400,"misstaged"
+ARGS --ui-click 6000,"VAB TopBar/Load"
+ARGS --stage-dump 6800 --timeout 14
+LIMIT 60
+EXPECT [vab] loaded misstaged (8 parts)
+EXPECT [stagetree] src=vab hull=misstaged parts=8
+EXPECT [stagetree] warn: 3 of 4 presses do nothing -- no part carries 2-4
+EXPECT [stagetree] warn: a decoupler rides label 1, the lowest: the counter never stands there, so it needs a press past the ladder
+FORBID src=hull
+FORBID src=none
+FORBID error:
+FORBID FAILED

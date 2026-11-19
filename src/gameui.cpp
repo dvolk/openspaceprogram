@@ -6888,8 +6888,13 @@ static void ensureStagingCache(Game &g, uint64_t sig, double gLaunch) {
     /* And the verdict on the ORDER, on the same key: both describe the same build or
        neither does. Cheap next to the burn simulation above -- one pass over the parts
        with no simulation -- and this is the only place an editor edit can be told
-       apart from a mis-staged one (#1010). */
-    validateStaging(g.vab.build, g.vab.stagingWarns);
+       apart from a mis-staged one (#1010). Into a fresh vector: validateStaging appends,
+       and this cache body runs again on every later edit. */
+    {
+        std::vector<std::string> warns;
+        validateStaging(g.vab.build, warns);
+        g.vab.stagingWarns = std::move(warns);
+    }
     g.vab.partIndex.clear();
     for(size_t i = 0; i < g.vab.build.parts.size(); i++) {
         // Last match wins, which is what the overlay's whole-vector scan did. Part ids
@@ -9261,7 +9266,7 @@ void dumpStaff(Game &g) {
    fuel-link pseudo-parts, and toShipDef hands each of those stage=1
    (shipdef.cpp:1972-1978), which would print as phantom rows. */
 void dumpStageTree(Game &g) {
-    unsigned lo = 0u, hi = 0u, nParts = 0u, nSilent = 0u;
+    unsigned lo = 0u, hi = 0u, nParts = 0u, nInert = 0u;
     BuildShip hullView;                 // the active hull, as the checker reads it
     const BuildShip *checkSrc = nullptr;
     auto note = [&](int stage) {
@@ -9279,7 +9284,7 @@ void dumpStageTree(Game &g) {
         for(size_t i = 0; i < b.parts.size(); i++) {
             const BuildPart &p = b.parts[i];
             const unsigned roles = stageRoles(p.def);
-            if(roles == 0u) { nSilent++; }
+            if(roles == 0u) { nInert++; }
             note(p.stage);
             const char *pid = (p.parent >= 0 && (size_t)p.parent < b.parts.size())
                               ? b.parts[(size_t)p.parent].id.c_str() : "-";
@@ -9295,7 +9300,7 @@ void dumpStageTree(Game &g) {
         for(size_t i = 0; i < v.parts.size(); i++) {
             const Part *p = v.parts[i];
             const unsigned roles = stageRoles(p->def);
-            if(roles == 0u) { nSilent++; }
+            if(roles == 0u) { nInert++; }
             note(p->stage);
             printf("[stagetree] %zu %s def=%s parent=%s stage=%d responds=%s\n",
                    i, p->id.c_str(), p->def != nullptr ? p->def->name.c_str() : "?",
@@ -9330,9 +9335,14 @@ void dumpStageTree(Game &g) {
        and advanceStage at :3128), so a stray 9 on a ship whose parts answer at 1
        and 2 is EIGHT presses -- seven of them doing nothing, and no engine lit
        until the counter grinds down. That is what the box cannot show a player
-       (#1015), so the dump says it. */
-    printf("[stagetree] labels=%u..%u presses=%u silent=%u/%u\n",
-           lo, hi, hi > lo ? hi - lo : 0u, nSilent, nParts);
+       (#1015), so the dump says it.
+
+       "inert_parts", not "silent": the checker below uses silent for LABELS that no
+       press can act on, and this counts PARTS that answer to nothing -- a hull can
+       have ten inert parts and no dead press. Two lines apart, one witness, so the
+       two names have to differ. */
+    printf("[stagetree] labels=%u..%u presses=%u inert_parts=%u/%u\n",
+           lo, hi, hi > lo ? hi - lo : 0u, nInert, nParts);
 
     /* And the verdict on that order (#1010) -- the rows above say what the ship costs,
        these say whether the numbering does what the author meant. Same prefix so one

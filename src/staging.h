@@ -61,9 +61,10 @@ void stagingPropellantMask(const BuildShip &ship, bool *burn);
    is about presses: the counter starts at the highest label and steps down one
    integer per press, and the presses a ship can make are the integers hi down to
    lo+1. Reports a press that does nothing (a gap, or a label whose parts answer to
-   nothing), a decoupler or chute riding the lowest label (the counter stops there,
-   so it needs a press past the last one counted), and a decoupler that is the root
-   part (the split is refused and the label is spent, #541). Warn-only and
+   nothing), a DECOUPLER riding the lowest label (the counter never stands there, so
+   it needs a press past the last one counted -- a chute there is the normal way to
+   author one, so it is not reported), and a decoupler whose side is every part in
+   the ship (the split is refused and the label is spent, #541). Warn-only and
    deliberately so -- see the comment at the definition for what a refuse would
    punish today and which rule is the candidate. */
 void validateStaging(const BuildShip &ship, std::vector<std::string> &warns);

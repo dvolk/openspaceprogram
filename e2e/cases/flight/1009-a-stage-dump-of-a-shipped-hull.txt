@@ -26,7 +26,7 @@ EXPECT [stagetree] 4 dec_1 def=decoupler_r1 parent=engine_upper stage=2 responds
 EXPECT [stagetree] 6 engine_boost def=engine parent=tank_boost stage=2 responds=engine
 # The press count the labels imply (highest minus lowest), and how many parts are
 # silent. One press between labels 1 and 2; four parts answer to nothing.
-EXPECT [stagetree] labels=1..2 presses=1 silent=4/7
+EXPECT [stagetree] labels=1..2 presses=1 inert_parts=4/7
 FORBID src=vab
 FORBID error:
 FORBID FAILED

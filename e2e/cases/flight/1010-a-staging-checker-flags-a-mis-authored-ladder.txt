@@ -13,13 +13,13 @@ ARGS --startship misstaged,e2e/vehicles/misstaged.json,Kerbin,pad --stage-dump 1
 ARGS --width 640 --height 360 --no-paint
 LIMIT 60
 EXPECT [stagetree] src=hull hull=misstaged parts=8 stage=5/5
-EXPECT [stagetree] labels=1..5 presses=4 silent=4/8
+EXPECT [stagetree] labels=1..5 presses=4 inert_parts=4/8
 # The gap: presses at 4, 3 and 2 have no part on the label that stands there. One line,
 # the run compressed -- a ladder numbered 2..300 must not print 299 lines.
 EXPECT [stagetree] warn: 3 of 4 presses do nothing -- no part carries 2-4
 # The floor decoupler: the counter stops at label 1, so dec_pod needs one press more than
 # stagesLeft() counts, and the ascent law will never make it.
-EXPECT [stagetree] warn: label 1 is the lowest, and its decoupler/chute needs a press past the last one the counter counts
+EXPECT [stagetree] warn: a decoupler rides label 1, the lowest: the counter never stands there, so it needs a press past the ladder
 # The label-5 decoupler is NOT a fault: it separates on the first press like any other
 # (#1018's point that a high label is first in order, not late). Its row says so.
 EXPECT [stagetree] 4 dec_boost def=decoupler_r1 parent=eng_up stage=5 responds=decoupler

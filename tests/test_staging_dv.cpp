@@ -1827,8 +1827,26 @@ static void test_the_staging_checker_names_the_presses_that_do_nothing() {
         std::vector<std::string> w;
         validateStaging(bs, w);
         CHECK_TRUE(w.size() == 1, "one verdict, for the decoupler on the floor");
-        CHECK_TRUE(has_warn(w, "label 1 is the lowest"), "and it names the label");
-        CHECK_TRUE(has_warn(w, "past the last one the counter counts"), "and says why");
+        CHECK_TRUE(has_warn(w, "a decoupler rides label 1, the lowest"), "and it names the label");
+        CHECK_TRUE(has_warn(w, "needs a press past the ladder"), "and says why");
+    }
+
+    /* ...and the shape that IS correct authoring, which the rule above must not touch. A chute
+       belongs at the end of the sequence: the player cuts the chutes with one press past the
+       ladder, and deployChutes fires at whatever label stands (game.cpp:2640). Flagging it
+       would put an orange verdict on every normal capsule and train the player to ignore the
+       window. */
+    {
+        BuildShip bs;
+        const int c1 = addPart(bs, cat.tank(50, 25, 25), "pod_tank", -1, 1);
+        addPart(bs, cat.chute(2, 30.0), "pod_chute", c1, 1);
+        addPart(bs, cat.engine(10, 0.5, 1000.0), "pod_eng", c1, 1);
+        const int d = addPart(bs, cat.decoupler(5), "dec", c1, 2);
+        const int t2 = addPart(bs, cat.tank(50, 75, 75), "lo_tank", d, 2);
+        addPart(bs, cat.engine(10, 2.0, 1000.0), "lo_eng", t2, 2);
+        std::vector<std::string> w;
+        validateStaging(bs, w);
+        CHECK_TRUE(w.empty(), "a chute on the lowest label is the way to author one");
     }
 
     /* A decoupler whose side is the whole ship. The press is refused and the label is
@@ -1847,10 +1865,12 @@ static void test_the_staging_checker_names_the_presses_that_do_nothing() {
         CHECK_TRUE(has_warn(w, "the label is spent"), "and says what the press costs");
     }
 
-    /* ...and the false positive that rule would have had. A ship FILE may author several
-       parentless stacks in one vessel (heavy_asp, heavy_one and heavy_two do), so a
-       parentless decoupler is NOT the same as a whole-ship decoupler: its side is only its
-       own stack, and that separates fine. The rule therefore counts the subtree, the way
+    /* ...and the false positive that rule would have had. A BuildShip is a forest in
+       principle -- detachSubtree and graftTree hand out one-root views of a bigger build, and a
+       test can build two stacks directly (this one does; a loaded SHIP file cannot, because
+       shipdef.cpp:1024 parents each entry to the previous one unless told otherwise). So a
+       parentless decoupler is NOT the same as a whole-ship decoupler: its side is only its own
+       stack, and that separates fine. The rule therefore counts the subtree, the way
        extractSubtreeAsShip does. */
     {
         BuildShip bs;
@@ -1862,6 +1882,74 @@ static void test_the_staging_checker_names_the_presses_that_do_nothing() {
         std::vector<std::string> w;
         validateStaging(bs, w);
         CHECK_TRUE(w.empty(), "a parentless decoupler over one stack says nothing");
+    }
+
+    /* A label's roles are OR'd over the parts riding it, not taken from one of them. The
+       control's working ship lists an inert part on a label that also carries an engine: if the
+       scan kept only the last part's role, or only the first, this label would read inert and
+       the player would be told to fix a stage that is fine. */
+    {
+        BuildShip bs;
+        const int t1 = addPart(bs, cat.tank(50, 25, 25), "up_tank", -1, 1);
+        addPart(bs, cat.engine(10, 0.5, 1000.0), "up_eng", t1, 1);
+        const int d = addPart(bs, cat.decoupler(5), "dec", t1, 2);
+        const int t2 = addPart(bs, cat.tank(50, 75, 75), "lo_tank", d, 2);
+        addPart(bs, cat.engine(10, 2.0, 1000.0), "lo_eng", t2, 2);
+        addPart(bs, cat.tank(20, 0, 0), "lo_strut", t2, 2);   // inert, listed LAST
+        std::vector<std::string> w;
+        validateStaging(bs, w);
+        CHECK_TRUE(w.empty(), "an inert part riding a label that also burns says nothing");
+    }
+
+    /* The LOWEST label is never pressed, so parts riding it answer to nothing and that is not a
+       fault: it is the payload, or a tank still feeding the engine one label up. Only labels
+       above lo can be silent faults. */
+    {
+        BuildShip bs;
+        const int t1 = addPart(bs, cat.tank(50, 25, 25), "pod_tank", -1, 1);   // nothing inert
+        addPart(bs, cat.tank(50, 0, 0), "pod_ballast", t1, 1);                 // ... except this
+        const int d = addPart(bs, cat.decoupler(5), "dec", t1, 2);
+        const int t2 = addPart(bs, cat.tank(50, 75, 75), "lo_tank", d, 2);
+        addPart(bs, cat.engine(10, 2.0, 1000.0), "lo_eng", t2, 2);
+        std::vector<std::string> w;
+        validateStaging(bs, w);
+        CHECK_TRUE(w.empty(), "an inert part on the floor label is not a dead press");
+    }
+
+    /* Several gaps, listed as runs, and the run list capped so a ladder with a hole in every
+       step cannot print a page. Labels 1,3,5,7,9,11: five single-integer runs, of which the
+       line names four and admits the rest. */
+    {
+        BuildShip bs;
+        const int t1 = addPart(bs, cat.tank(50, 25, 25), "up_tank", -1, 1);
+        addPart(bs, cat.engine(10, 0.5, 1000.0), "up_eng", t1, 1);
+        int prev = t1;
+        for(int s = 3; s <= 11; s += 2) {
+            prev = addPart(bs, cat.engine(10, 0.2, 1000.0), "eng_at_" + std::to_string(s), prev, s);
+        }
+        std::vector<std::string> w;
+        validateStaging(bs, w);
+        CHECK_TRUE(w.size() == 1, "one verdict however many runs");
+        CHECK_TRUE(has_warn(w, "5 of 10 presses do nothing"), "and it still counts every press");
+        CHECK_TRUE(has_warn(w, "no part carries 2, 4, 6, 8, ..."),
+                   "four runs named, the rest admitted, not five lines");
+    }
+
+    /* The compressed-run wording has to close at the label that IS carried. This is the bug
+       the first version shipped with: walking integers left a run open across a carried label,
+       so 1/3/7 printed "2-6" and blamed label 3, which carries parts. */
+    {
+        BuildShip bs;
+        const int t1 = addPart(bs, cat.tank(50, 25, 25), "up_tank", -1, 1);
+        addPart(bs, cat.engine(10, 0.5, 1000.0), "up_eng", t1, 1);
+        const int d = addPart(bs, cat.decoupler(5), "dec_3", t1, 3);
+        addPart(bs, cat.engine(10, 0.4, 1000.0), "eng_3", d, 3);
+        addPart(bs, cat.engine(10, 0.2, 1000.0), "eng_7", d, 7);
+        std::vector<std::string> w;
+        validateStaging(bs, w);
+        CHECK_TRUE(w.size() == 1, "one verdict, for the two runs");
+        CHECK_TRUE(has_warn(w, "no part carries 2, 4-6"),
+                   "the run closes before the carried label, not at the top");
     }
 }
 

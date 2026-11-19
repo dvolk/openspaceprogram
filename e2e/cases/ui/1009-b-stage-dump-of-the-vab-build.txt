@@ -29,7 +29,7 @@ EXPECT [stagetree] src=vab hull=stager parts=7
 EXPECT [stagetree] 4 dec_1 def=decoupler_r1 parent=engine_upper stage=2 responds=decoupler
 EXPECT [stagetree] 5 tank_boost def=fuel_tank parent=dec_1 stage=2 responds=-
 EXPECT [stagetree] 6 engine_boost def=engine parent=tank_boost stage=2 responds=engine
-EXPECT [stagetree] labels=1..2 presses=1 silent=4/7
+EXPECT [stagetree] labels=1..2 presses=1 inert_parts=4/7
 FORBID src=hull
 FORBID src=none
 FORBID error:

@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 413 |
+| `invariant` | a behaviour or a player route the game must keep | 415 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 50 |
 | `harness` | CLI/test-engine plumbing, not game spec | 16 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **483** |
+| | **total** | **485** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -18,7 +18,7 @@ paces a run: how much e2e a change deserves is the caller's
 judgement. Select by number, name or path, e.g.
 `python3 e2e/run.py save/172 262`.
 
-## flight (153)
+## flight (154)
 
 | case | kind | pins |
 |---|---|---|
@@ -175,6 +175,7 @@ judgement. Select by number, name or path, e.g.
 | `flight/990-recorder-readout-puts-numbers-back.txt` | invariant | Clicking the Recorder graph pins a readout of that sample's readings on the mission clock, a toggled-on channel appears in it, Unpin releases it, and a drag pans without pinning. |
 | `flight/1009-a-stage-dump-of-a-shipped-hull.txt` | invariant | --stage-dump prints every part's label and what a press does to it. |
 | `flight/1010-a-staging-checker-flags-a-mis-authored-ladder.txt` | invariant | The staging checker counts the presses a bad ladder wastes and names the floor decoupler. |
+| `flight/1010-b-fleet-report-checks-the-order-of-every-shipped-hull.txt` | invariant | --fleet-report runs the staging checker over every hull and reports how many it flagged. |
 
 ## crew (29)
 
@@ -356,7 +357,7 @@ judgement. Select by number, name or path, e.g.
 | `save/612-ask-survives-a-round-trip.txt` | invariant | A saved Guidance ask loads back into the game and is written out again. |
 | `save/867-cross-system-bubble-load.txt` | invariant | A save with a ship in a building's bubble loads from the title across systems. |
 
-## ui (64)
+## ui (65)
 
 | case | kind | pins |
 |---|---|---|
@@ -424,6 +425,7 @@ judgement. Select by number, name or path, e.g.
 | `ui/886-the-atlas-lists-every-station.txt` | invariant | The System Atlas lists every station as its own row under the body it belongs to, and says on the body row that it has one, so a player who wants to visit a station can find out that it exists and where it is. |
 | `ui/896-charging-hull-dashes-its-hours.txt` | invariant | A hull that generates more than it draws prints Aboard: - instead of an hours figure. |
 | `ui/1009-b-stage-dump-of-the-vab-build.txt` | invariant | --stage-dump reads the VAB build and agrees with the shipped file it loaded. |
+| `ui/1010-c-staging-checker-flags-the-vabs-own-build.txt` | invariant | The staging checker runs on the VAB build and names the same two faults there. |
 
 ## render (89)
 

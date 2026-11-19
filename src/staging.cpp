@@ -1073,12 +1073,10 @@ std::vector<StageRow> computeStaging(const BuildShip &ship, double g,
    the launch is not ruined -- but once #1011's window shows the part, a refuse there is the
    better answer, and it is noted rather than decided here. */
 void validateStaging(const BuildShip &ship, std::vector<std::string> &warns) {
-    warns.clear();      // a cache key guards the rows next door; guard these the same way
     struct PerLabel {
         int stage = 1;
         unsigned responds = 0u;   // StageRole bits of everything riding this label
-        int parts = 0;
-        int fireables = 0;        // decouplers + chutes here
+        int decs = 0;             // decouplers here (a chute is not one -- see rule 2)
     };
 
     /* Fewer entries than parts, ascending by label. A sorted vector probed in place beats a
@@ -1095,8 +1093,7 @@ void validateStaging(const BuildShip &ship, std::vector<std::string> &warns) {
         }
         const unsigned r = stageRoles(p.def);
         it->responds |= r;
-        it->parts++;
-        if(r & ((unsigned)StageRole::Decoupler | (unsigned)StageRole::Chute)) { it->fireables++; }
+        if(r & (unsigned)StageRole::Decoupler) { it->decs++; }
     }
     if(labels.empty()) { return; }
 
@@ -1114,31 +1111,26 @@ void validateStaging(const BuildShip &ship, std::vector<std::string> &warns) {
            a label carried only by parts that answer to nothing (the author meant something
            there and picked parts that do not respond). Runs of the first are compressed: a
            ladder numbered 2..300 has 299 of them, and what a reader needs is the shape. */
+        /* Read the gaps off the labels that EXIST, not off a walk over every integer between
+           lo and hi. #517 deleted that walk from computeStaging for the same reason (#695's
+           10000-label ship), and it is also where the ranges went wrong: an integer walk left
+           a run open across a label that DOES carry parts, so a ship labelled 1/3/7 printed
+           "no part carries 2-6" and told the author to fix a label that was already right.
+           Two carried labels a < b with b > a + 1 delimit exactly one run, a + 1 .. b - 1. */
         constexpr int kRuns = 4;      // gap runs listed before "..."
         int gapCount = 0, gapRuns = 0;
         std::string gapText;
-        int runStart = -1, runEnd = -1;
-        auto flushRun = [&]() {
-            if(runStart < 0) { return; }
+        for(size_t k = 0; k + 1 < labels.size(); k++) {
+            const int a = labels[k].stage, b = labels[k + 1].stage;
+            if(b <= a + 1) { continue; }
+            gapCount += b - a - 1;
             gapRuns++;
             if(gapRuns <= kRuns) {
                 if(gapRuns > 1) { gapText += ", "; }
-                if(runStart == runEnd) { gapText += std::to_string(runStart); }
-                else { gapText += std::to_string(runStart) + "-" + std::to_string(runEnd); }
+                if(b == a + 2) { gapText += std::to_string(a + 1); }
+                else { gapText += std::to_string(a + 1) + "-" + std::to_string(b - 1); }
             }
-            runStart = runEnd = -1;
-        };
-        /* labels is ascending and starts at lo, so the cursor has to be walked past every
-           label below the first press before it can mean "carried". */
-        size_t li = 0;
-        while(li < labels.size() && labels[li].stage <= lo) { li++; }
-        for(int s = lo + 1; s <= hi; s++) {
-            if(li < labels.size() && labels[li].stage == s) { li++; continue; }
-            gapCount++;
-            if(runStart < 0) { runStart = s; }
-            runEnd = s;
         }
-        flushRun();
         if(gapRuns > kRuns) { gapText += ", ..."; }
 
         constexpr int kSilent = 4;    // silent labels listed before "..."
@@ -1168,21 +1160,27 @@ void validateStaging(const BuildShip &ship, std::vector<std::string> &warns) {
         }
     }
 
-    /* 2. A decoupler or chute riding the LOWEST label of a multi-label ship. The press acts at
-       the counter's current value and only THEN steps, so a ladder hi..lo spends its advancing
+    /* 2. A DECOUPLER riding the LOWEST label of a multi-label ship. The press acts at the
+       counter's current value and only THEN steps, so a ladder hi..lo spends its advancing
        presses at hi, hi-1, ... lo+1 and the label at lo waits for one more press that no longer
        moves anything. The player can still make that press; the ascent law cannot -- guidance
        presses only while stagesLeft() > 0 (guidance.cpp:336-339) and stageIsDue() refuses to say
        a stage is due there (vehicle.cpp:6373). So this is "the autopilot stops one short", not
-       "can never fire". A single-label ship (hi == lo) is skipped: there the FIRST press stands
-       on that label, which is how a one-stage chuted capsule is meant to work. #529 covers the
-       preview side, where lo is the final period. */
+       "can never fire": flown by hand it works, flown by the law the stage below rides along.
+
+       A CHUTE on the floor label is deliberately NOT a warning. The chute is the part you want
+       at the end of the sequence, deployChutes fires at whatever label stands (game.cpp:2640),
+       and a human pressing once past the ladder to cut the chutes is normal play -- a
+       capsule-and-booster ship with the chute on the capsule's label is the correct way to
+       author it, and an orange verdict on correct work trains the player to ignore the window.
+       A single-label ship (hi == lo) is skipped for the same reason: there the FIRST press
+       stands on that label. #529 covers the preview side, where lo is the final period. */
     if(hi > lo) {
         for(const PerLabel &l : labels) {
-            if(l.stage != lo || l.fireables == 0) { continue; }
+            if(l.stage != lo || l.decs == 0) { continue; }
             std::snprintf(buf, sizeof buf,
-                          "warn: label %d is the lowest, and its decoupler/chute needs a press "
-                          "past the last one the counter counts", lo);
+                          "warn: a decoupler rides label %d, the lowest: the counter never "
+                          "stands there, so it needs a press past the ladder", l.stage);
             warns.push_back(buf);
             break;
         }
@@ -1193,12 +1191,14 @@ void validateStaging(const BuildShip &ship, std::vector<std::string> &warns) {
        the counter, so the label is spent and the part is inert for the rest of the flight
        (#541, e2e 541-booster-root-decoupler).
 
-       Test the condition the extract tests, not "parent == -1". For a single-tree ship they
-       are the same thing, and the VAB guarantees a single tree (vab.cpp grafts), but a SHIP
-       FILE may author several parentless stacks in one vessel -- heavy_asp, heavy_one and
-       heavy_two do -- and there a parentless decoupler's side is only its own stack, which
-       separates fine. Saying "it is the root part" about one of those would be the lie
-       vehicle.cpp:5808 traps. */
+       Count the side instead of asking "does it have a parent". They agree for every loaded
+       ship -- shipdef.cpp:1024 defaults a part's parent to the entry before it, so a file is
+       one tree and a --stage-dump of the fleet shows exactly one root row -- but a BuildShip is
+       a forest in principle (graftTree/detachSubtree hand out one-root views, the VAB grafts a
+       loaded hull into a bigger build, and tests build stacks directly), and the question that
+       stays true there is the one the extract asks: does THIS decoupler's side reach every
+       part? Counting also keeps the checker and the press from drifting apart, which is what
+       vehicle.cpp:5808's assert is for. */
     {
         const size_t n = ship.parts.size();
         std::vector<std::vector<int>> children(n);
@@ -1214,12 +1214,19 @@ void validateStaging(const BuildShip &ship, std::vector<std::string> &warns) {
             if(!(stageRoles(p.def) & (unsigned)StageRole::Decoupler)) { continue; }
             stack.clear();
             stack.push_back((int)i);
-            size_t covered = 0;
-            for(size_t k = 0; k < stack.size(); k++) {   // BFS by index
-                covered++;
-                for(int c : children[(size_t)stack[k]]) { stack.push_back(c); }
+            size_t covered = 1;
+            bool cyclic = false;
+            for(size_t k = 0; k < stack.size() && !cyclic; k++) {   // BFS by index
+                for(int c : children[(size_t)stack[k]]) {
+                    stack.push_back(c);
+                    /* A parent chain is a tree, so reaching n+1 means something upstream broke
+                       (shipdef.cpp:1021 builds parent-before-child). Say so instead of
+                       following the loop forever; release builds skip the decoupler. */
+                    if(++covered > n) { cyclic = true; break; }
+                }
             }
-            if(covered != n) { continue; }
+            assert(!cyclic);
+            if(cyclic || covered != n) { continue; }
             std::snprintf(buf, sizeof buf,
                           "warn: decoupler '%s' at label %d would have to take the whole ship "
                           "with it -- the press is refused and the label is spent",

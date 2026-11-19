@@ -1,0 +1,18 @@
+# `--fleet-report` is the one place every shipped hull is walked, so it is where the staging
+# checker (#1010) gets to speak about content nobody flies. The cost verdicts above it ask
+# whether a hull CAN fly; this line asks whether the author numbered it the way they meant to,
+# and it prints even at zero so a report can tell "checked and clean" from "not checked".
+#
+# It does NOT assert zero: a warning is a note, not a failure, and shipping a hull that carries
+# one is a legitimate call. It asserts the verdict line exists and that no hull's load broke.
+NAME fleet-report-checks-the-order-of-every-shipped-hull
+CLAIM --fleet-report runs the staging checker over every hull and reports how many it flagged.
+KIND invariant
+ARGS --fleet-report
+LIMIT 60
+EXPECT === fleet report:
+EXPECT hulls vs Kerbin (pad g 9.81 m/s2, surface orbit 2426 m/s) ===
+EXPECT carry a staging-order warning above.
+FORBID error:
+FORBID FAILED
+FORBID def(s) failed to load

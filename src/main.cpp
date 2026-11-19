@@ -442,10 +442,9 @@ static int printFleetReport(const Game &game, const GameArgs &args,
            no_engine, grounded, short_hull, floor, solvent);
     /* Counted apart because it is a different question: the lines above ask whether a
        hull CAN fly, this asks whether the author numbered it the way they meant to
-       (#1010). A hull can be solvent and still be mis-staged. */
-    if(flagged > 0) {
-        printf("%d hull(s) carry a staging-order warning above.\n", flagged);
-    }
+       (#1010). A hull can be solvent and still be mis-staged. Printed even at zero: a
+       report that only speaks when it is unhappy cannot tell "clean" from "not checked". */
+    printf("%d of %d hull(s) carry a staging-order warning above.\n", flagged, (int)hulls.size());
     if(broken > 0) { printf("%d def(s) failed to load.\n", broken); }
     return 0;
 }
