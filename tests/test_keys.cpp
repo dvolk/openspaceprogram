@@ -75,6 +75,20 @@ int main() {
     assert(!slotFired(Slot::ToggleFreeCam, SDL_SCANCODE_C, 0, kb));
     assert(slotGroup(Slot::ToggleFreeCam) == SlotGroup::Game);
 
+    // 1d) The VAB's staging undo (#1013) is Ctrl+Z, both ctrl sides, and NOT plain Z. Plain
+    //     Z is SlewPrograde in flight, so a plain binding here would collide with it -- and
+    //     it would make the undo reachable from --sim-press, which it is not: the e2e drives
+    //     the Staging window's Undo button instead. Nothing else pins this slot, so without
+    //     these lines a plain-Z binding would pass the suite silently.
+    assert(hasCombo(Slot::UndoStaging, SDL_SCANCODE_Z, SDL_KMOD_LCTRL));
+    assert(hasCombo(Slot::UndoStaging, SDL_SCANCODE_Z, SDL_KMOD_RCTRL));
+    assert(!hasPlain(Slot::UndoStaging, SDL_SCANCODE_Z));
+    assert(slotFired(Slot::UndoStaging, SDL_SCANCODE_Z, SDL_KMOD_LCTRL, kb));
+    assert(slotFired(Slot::UndoStaging, SDL_SCANCODE_Z, SDL_KMOD_RCTRL, kb));
+    assert(!slotFired(Slot::UndoStaging, SDL_SCANCODE_Z, 0, kb));
+    assert(!slotSimKey(Slot::UndoStaging, SDL_SCANCODE_Z, kb));
+    assert(slotGroup(Slot::UndoStaging) == SlotGroup::Game);
+
     // 2) slotFired: exact-modifier match. A plain binding fires with no
     //    modifier and NOT with one held; a different key does not fire.
     assert(slotFired(Slot::Thrust, SDL_SCANCODE_T, 0, kb));

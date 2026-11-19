@@ -7232,11 +7232,9 @@ void drawVabUI(Game &g) {
                 if(st != bp.stage) {
                     /* Recorded before it is written, by ID rather than `sel`: the ops under
                        this box swap the parts vector, and so does whatever the player does
-                       next frame, so an index is not a name (#1013). Holding the arrow
-                       repeats this call every frame; recordStagingEdit folds a run of
-                       same-part retypes into one entry, so a hold is one undo rather than
-                       however many frames it spanned. */
-                    recordStagingEdit(g.vab.stagingUndo, {{sel, bp.id, bp.stage, st}});
+                       next frame, so an index is not a name (#1013). `typed` is what makes a
+                       held arrow one undo rather than one per repeat frame. */
+                    recordStagingEdit(g.vab.stagingUndo, {{sel, bp.id, bp.stage, st}}, true);
                     bp.stage = st;
                 }
             }
@@ -7422,7 +7420,15 @@ void drawVabUI(Game &g) {
     /* One signature per frame, whichever reader asks first. It costs 2.5 / 5.1 /
        11.4 / 21.3 us at 59 / 120 / 268 / 500 parts, which is the same scale as the
        per-frame lookups it guards: computing it at both readers made the default
-       case (Staging window open, links present) slower than the scan it replaced. */
+       case (Staging window open, links present) slower than the scan it replaced.
+
+       Memoising is only sound while nothing between the two readers edits the build, and
+       the Staging window body now holds two things that DO (Auto-stage, Undo staging).
+       They sit above that body's own ensureStagingCache call, so a click lands before the
+       key is taken and both readers agree about which build they describe. Anything that
+       mutates the build below that call, or a reader added before the buttons, breaks it --
+       and the assert at the overlay below cannot see that case, because a label edit leaves
+       both the part count and the id map alone. */
     uint64_t frameSig = 0;
     bool frameSigDone = false;
     auto frameSigOnce = [&]() {
@@ -7460,9 +7466,12 @@ void drawVabUI(Game &g) {
             } else if(plan.changes.empty()) {
                 g.toast("Auto-stage: those labels already match the stack");
             } else {
-                /* The plan IS the undo record: changes() already names part, id, from, to. */
+                /* The plan IS the undo record: changes() already names part, id, from, to.
+                   Not `typed`, so it never merges with the hand edit above it -- a plan that
+                   happens to move one part is still a plan, and one Ctrl+Z must not take
+                   back the player's own retype as well. */
                 const int moved = (int)plan.changes.size();
-                recordStagingEdit(g.vab.stagingUndo, std::move(plan.changes));
+                recordStagingEdit(g.vab.stagingUndo, std::move(plan.changes), false);
                 g.toast("Auto-staged %d part%s from the stack -- Ctrl+Z to take it back",
                         moved, moved == 1 ? "" : "s");
                 for(const std::string &n : plan.notes) { g.toast("%s", n.c_str()); }

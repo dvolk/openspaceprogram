@@ -1545,40 +1545,45 @@ StagingPlan autoStage(BuildShip &ship) {
     return plan;
 }
 
-void recordStagingEdit(StagingUndoStack &stack, std::vector<StagingChange> edit) {
-    if(edit.empty()) { return; }
-    if(edit.size() == 1 && !stack.empty()) {
-        /* Chain onto the edit above only if that edit touched nothing else and ended where
-           this one starts -- the number box's arrow-repeat, or a retype of a retype. A plan
-           (many parts) never merges with anything: taking a bulk renumber back is one
-           decision, and undoing half of it is not what anyone asked for. */
-        std::vector<StagingChange> &top = stack.back();
-        if(top.size() == 1 && top[0].id == edit[0].id && top[0].to == edit[0].from) {
-            top[0].to = edit[0].to;
-            if(top[0].from == top[0].to) { stack.pop_back(); }   // back where it started
+void recordStagingEdit(StagingUndo &undo, std::vector<StagingChange> changes, bool typed) {
+    /* A change that did not change anything is not a step. The box guards this itself (it
+       only records when the clamped value differs), so this is the belt: an entry that
+       cannot move a label makes the Undo button answer "done" while the build sits still. */
+    changes.erase(std::remove_if(changes.begin(), changes.end(),
+                                 [](const StagingChange &c) { return c.from == c.to; }),
+                  changes.end());
+    if(changes.empty()) { return; }
+
+    if(typed && changes.size() == 1 && !undo.empty()) {
+        StagingEdit &top = undo.back();
+        /* Only a TYPED entry above, and only one part on each side: the number box's
+           arrow-repeat, or a retype of a retype. A plan entry below stays a plan entry. */
+        if(top.typed && top.changes.size() == 1
+           && top.changes[0].id == changes[0].id && top.changes[0].to == changes[0].from) {
+            top.changes[0].to = changes[0].to;
+            if(top.changes[0].from == top.changes[0].to) { undo.pop_back(); }  // back where it started
             return;
         }
     }
-    stack.push_back(std::move(edit));
+    undo.push_back({std::move(changes), typed});
 }
 
-size_t undoStagingEdit(BuildShip &ship, StagingUndoStack &stack,
+size_t undoStagingEdit(BuildShip &ship, StagingUndo &undo,
                        std::vector<std::string> &notes) {
-    if(stack.empty()) { return 0; }
-    const std::vector<StagingChange> edit = std::move(stack.back());
-    stack.pop_back();
+    if(undo.empty()) { return 0; }
+    const StagingEdit edit = std::move(undo.back());
+    undo.pop_back();
     char buf[256];
     size_t done = 0;
-    for(const StagingChange &c : edit) {
+    for(const StagingChange &c : edit.changes) {
         /* By id, not c.part: the vector renumbers under the player whenever a part is
            placed, deleted or detached, and a stale index would put the label back on a
-           different part. The recorded index is still worth trying first: ids are not
-           unique (computeStaging resolves a duplicated id to the LAST part carrying it,
-           pinned by test_a_duplicate_id_resolves_to_the_last_part), and an index that
-           still names the same id is exact where a scan can only guess. Fall back to the
-           LAST match for the same reason. Linear scan is fine here -- this runs on a
-           button press, not a frame, and the editor's id->index memo is keyed to a
-           signature that the edit itself invalidates. */
+           different part. The recorded index is tried first because when it still names the
+           same id it is exact, where a scan is a search; the scan is what makes the entry
+           survive the renumbering, and it takes the LAST match so this function and
+           computeStaging cannot point at different parts of the same build. Linear is fine
+           here -- this runs on a button press, not a frame, and the editor's id->index memo
+           is keyed to a signature that the edit itself invalidates. */
         size_t at = ship.parts.size();
         if(c.part >= 0 && (size_t)c.part < ship.parts.size()
            && ship.parts[(size_t)c.part].id == c.id) {

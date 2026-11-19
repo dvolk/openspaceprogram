@@ -31,7 +31,9 @@
 //   * a staging edit takes itself back: the change list an edit performed is the undo
 //     record, so an undo finds parts by id (the vector renumbers under it), leaves a label
 //     that something else moved since, says which parts it could not reach, and moves
-//     stagingSignature so the Staging window's cache notices for free (#1013).
+//     stagingSignature so the Staging window's cache notices for free (#1013). One step is
+//     one decision: a run of number-box retypes on one part merges into a step, and a bulk
+//     plan never merges with anything, not even when it moves exactly one part.
 //
 // Pure math over BuildShip -- no GL, no Bullet.
 //
@@ -2442,8 +2444,8 @@ static void test_undo_takes_an_auto_stage_back_to_the_authored_labels() {
 
     StagingPlan plan = autoStage(bs);
     CHECK_TRUE(plan.applied && plan.changes.size() == 6, "a stack numbered from the tree, to take back");
-    StagingUndoStack stack;
-    recordStagingEdit(stack, plan.changes);
+    StagingUndo stack;
+    recordStagingEdit(stack, plan.changes, false);
     CHECK_TRUE(stack.size() == 1, "a plan is ONE undo step, not one per part");
 
     std::vector<std::string> notes;
@@ -2488,8 +2490,8 @@ static void test_undo_reaches_a_part_by_id_not_by_the_index_it_had() {
        lands on the wrong part shows up in the label row at the end. */
     CHECK_TRUE(plan.applied && plan.changes.size() == 4,
                "the tree moves four of the six labels here");
-    StagingUndoStack stack;
-    recordStagingEdit(stack, plan.changes);
+    StagingUndo stack;
+    recordStagingEdit(stack, plan.changes, false);
 
     eraseLeaf(bs, 2);
     CHECK_TRUE(bs.parts.size() == 5, "the mid-array leaf is gone, shifting every part below it up by one");
@@ -2518,8 +2520,8 @@ static void test_undo_leaves_a_label_that_moved_since_alone() {
 
     StagingPlan plan = autoStage(bs);
     CHECK_TRUE(plan.applied && !plan.changes.empty(), "something to take back");
-    StagingUndoStack stack;
-    recordStagingEdit(stack, plan.changes);
+    StagingUndo stack;
+    recordStagingEdit(stack, plan.changes, false);
 
     /* Something newer than the entry touched this part (a hand edit the stack never saw, or
        a part re-added under the same id). The entry describes a build that no longer
@@ -2534,22 +2536,25 @@ static void test_undo_leaves_a_label_that_moved_since_alone() {
 }
 
 static void test_a_run_of_same_part_retyping_is_one_undo() {
-    StagingUndoStack stack;
-    recordStagingEdit(stack, {});
-    CHECK_TRUE(stack.empty(), "a box edit that changed nothing is not a step");
+    StagingUndo stack;
+    recordStagingEdit(stack, {}, true);
+    CHECK_TRUE(stack.empty(), "a box edit with nothing in it is not a step");
+    recordStagingEdit(stack, {{0, "pod", 3, 3}}, true);
+    CHECK_TRUE(stack.empty(), "nor is one whose two labels are equal -- an entry that cannot "
+                              "move anything is an Undo button that lies");
 
     /* The number box fires once per frame while the arrow is held, so one decision arrives
        as several edits. They have to be one step: the player's question afterwards is "what
        did this part say before I started", not "how many frames did my finger stay down". */
-    recordStagingEdit(stack, {{0, "pod", 1, 2}});
-    recordStagingEdit(stack, {{0, "pod", 2, 3}});
-    recordStagingEdit(stack, {{0, "pod", 3, 4}});
+    recordStagingEdit(stack, {{0, "pod", 1, 2}}, true);
+    recordStagingEdit(stack, {{0, "pod", 2, 3}}, true);
+    recordStagingEdit(stack, {{0, "pod", 3, 4}}, true);
     CHECK_TRUE(stack.size() == 1, "a held arrow is one step");
-    CHECK_TRUE(stack[0][0].from == 1 && stack[0][0].to == 4, "and it remembers where it started");
+    CHECK_TRUE(stack[0].changes[0].from == 1 && stack[0].changes[0].to == 4, "and it remembers where it started");
 
-    recordStagingEdit(stack, {{1, "tank_1", 1, 2}});
+    recordStagingEdit(stack, {{1, "tank_1", 1, 2}}, true);
     CHECK_TRUE(stack.size() == 2, "a different part is a different step");
-    recordStagingEdit(stack, {{1, "tank_1", 2, 1}});
+    recordStagingEdit(stack, {{1, "tank_1", 2, 1}}, true);
     CHECK_TRUE(stack.size() == 1, "typing it back to where it started is not a step either");
 
     Catalog cat;
@@ -2562,6 +2567,71 @@ static void test_a_run_of_same_part_retyping_is_one_undo() {
     CHECK_TRUE(stack.empty(), "and the stack is empty again");
 }
 
+/* Two retypes on DIFFERENT parts whose values happen to chain (A 1->2, then B 2->3) are two
+   steps. The merge rule reads the part id, and nothing here would notice if it stopped: the
+   second edit would be folded into the first, and Ctrl+Z would move A while B's edit
+   vanished -- the shape that makes this its own test. */
+static void test_two_retys_on_different_parts_are_two_steps() {
+    StagingUndo stack;
+    recordStagingEdit(stack, {{0, "pod", 1, 2}}, true);
+    recordStagingEdit(stack, {{1, "tank_1", 2, 3}}, true);
+    // Read the ids through a bounds check: if the merge stops looking at the id it eats this
+    // entry, and indexing stack[1] off the end crashes the binary before it can print which
+    // decision was swallowed.
+    auto idAt = [&](size_t i) -> std::string {
+        return i < stack.size() && !stack[i].changes.empty() ? stack[i].changes[0].id
+                                                             : std::string();
+    };
+    CHECK_TRUE(stack.size() == 2, "the values chain but the parts do not: two steps");
+    CHECK(idAt(0) == "pod", "step 1 names the pod");
+    CHECK(idAt(1) == "tank_1", "step 2 names the tank");
+
+    Catalog cat;
+    BuildShip bs;
+    addPart(bs, cat.mono(100, 0), "pod", -1, 2);
+    addPart(bs, cat.tank(50, 25, 25), "tank_1", 0, 3);
+    std::vector<std::string> notes;
+    CHECK_TRUE(undoStagingEdit(bs, stack, notes) == 1, "one undo, one part");
+    CHECK_TRUE(labelsOf(bs) == std::vector<int>({2, 2}), "the later retype goes back, the earlier stays");
+    CHECK_TRUE(undoStagingEdit(bs, stack, notes) == 1, "and the earlier one is still there to undo");
+    CHECK_TRUE(labelsOf(bs) == std::vector<int>({1, 2}), "in order");
+}
+
+/* A plan that happens to move ONE part is still a bulk edit. Keying the merge on how many
+   parts moved -- rather than on who made the edit -- folds it into the hand edit above it,
+   and one Ctrl+Z then rewinds two decisions: the toast promised "Ctrl+Z to take it back"
+   and what comes back is the plan AND the player's own retype, with nothing left under the
+   button. */
+static void test_a_one_part_plan_is_its_own_undo_step() {
+    Catalog cat;
+    BuildShip bs;
+    /* Already numbered except for the core cut: the plan has exactly one part to move. */
+    const int pod = addPart(bs, cat.mono(100, 0), "pod", -1, 1);
+    const int dCore = addPart(bs, cat.decoupler(5), "d_core", pod, 1);
+    const int upTank = addPart(bs, cat.tank(50, 25, 25), "up_tank", dCore, 2);
+    addPart(bs, cat.engine(10, 0.5, 1000.0), "up_eng", upTank, 2);
+
+    StagingPlan plan = autoStage(bs);
+    CHECK_TRUE(plan.applied && plan.changes.size() == 1, "a plan with one part in it");
+    CHECK_TRUE(bs.parts[dCore].stage == 2, "which moved d_core onto the cut");
+
+    StagingUndo stack;
+    recordStagingEdit(stack, plan.changes, false);
+    CHECK_TRUE(stack.size() == 1, "the plan is a step");
+
+    /* The player then nudges that same part by hand. */
+    bs.parts[dCore].stage = 3;
+    recordStagingEdit(stack, {{dCore, "d_core", 2, 3}}, true);
+    CHECK_TRUE(stack.size() == 2, "and does not merge into the plan below it");
+
+    std::vector<std::string> notes;
+    CHECK_TRUE(undoStagingEdit(bs, stack, notes) == 1, "one undo");
+    CHECK_TRUE(bs.parts[dCore].stage == 2, "takes back the hand nudge, leaving the plan's label");
+    CHECK_TRUE(undoStagingEdit(bs, stack, notes) == 1, "and the plan is still there to take back");
+    CHECK_TRUE(bs.parts[dCore].stage == 1, "back to what was authored");
+    CHECK_TRUE(stack.empty(), "two decisions, two undos");
+}
+
 static void test_undo_with_nothing_recorded_changes_nothing() {
     Catalog cat;
     BuildShip bs;
@@ -2569,7 +2639,7 @@ static void test_undo_with_nothing_recorded_changes_nothing() {
     addPart(bs, cat.decoupler(5), "d_core", 0, 1);
     const std::vector<int> before = labelsOf(bs);
 
-    StagingUndoStack stack;
+    StagingUndo stack;
     std::vector<std::string> notes;
     CHECK_TRUE(undoStagingEdit(bs, stack, notes) == 0, "an empty stack undoes nothing");
     CHECK_TRUE(labelsOf(bs) == before, "and leaves the build alone");
@@ -2625,6 +2695,8 @@ int main() {
     test_undo_reaches_a_part_by_id_not_by_the_index_it_had();
     test_undo_leaves_a_label_that_moved_since_alone();
     test_a_run_of_same_part_retyping_is_one_undo();
+    test_two_retys_on_different_parts_are_two_steps();
+    test_a_one_part_plan_is_its_own_undo_step();
     test_undo_with_nothing_recorded_changes_nothing();
 
     printf("test_staging_dv: %d checks, %d failures\n", g_checks, g_failures);

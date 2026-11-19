@@ -386,7 +386,7 @@ struct VabState {
        is the scope #1013 chose rather than a shortfall in this one. Cleared with the other
        caches whenever a load or a clear replaces the build, because every entry names a
        part of the build it was recorded against. */
-    StagingUndoStack stagingUndo;
+    StagingUndo stagingUndo;
     /* id -> index into vab.build.parts, rebuilt with the rows above and keyed by the
        same signature (#527). The fuel-link overlay draws every frame and used to
        resolve both ends of every link by scanning every part and comparing std::string
