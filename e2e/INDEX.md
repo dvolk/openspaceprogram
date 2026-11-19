@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 409 |
+| `invariant` | a behaviour or a player route the game must keep | 410 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 50 |
 | `harness` | CLI/test-engine plumbing, not game spec | 16 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **479** |
+| | **total** | **480** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -18,7 +18,7 @@ paces a run: how much e2e a change deserves is the caller's
 judgement. Select by number, name or path, e.g.
 `python3 e2e/run.py save/172 262`.
 
-## flight (150)
+## flight (151)
 
 | case | kind | pins |
 |---|---|---|
@@ -172,6 +172,7 @@ judgement. Select by number, name or path, e.g.
 | `flight/972-recorder-window-reads-the-ring.txt` | invariant | The Recorder window opens empty, records only after Start, holds the ring against the mission clock, and Pause freezes the ring while the trace keeps writing. |
 | `flight/977-deck-launch-starts-on-its-deck.txt` | invariant | An autopilot mission armed on an air platform starts grounded on the deck instead of failing in its first second. |
 | `flight/982-arming-mid-flight-measures-the-climb-from-the-surface.txt` | invariant | An ascent mission armed on a hull already in orbit measures its turn from the surface, not from the tick it was armed on, and keeps the speed it had. |
+| `flight/990-recorder-readout-puts-numbers-back.txt` | invariant | Clicking the Recorder graph pins a readout of that sample's readings on the mission clock, a toggled-on channel appears in it, and clicking the same sample again releases it. |
 
 ## crew (29)
 

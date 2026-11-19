@@ -234,22 +234,29 @@ struct RecChan {
     const char *key;                 // the trace channel name; the toggle, the legend row, and the plot item's label -- the same static string three times over
     double RecSample::*get;          // the reading itself
     bool dflt;                       // visible when the window first opens
+    /* The unit, for the readout ONLY (#990). Never with the key: the toggles and
+       the legend row stay the bare key, because on a normalised axis a unit names
+       a scale the axis does not carry, and it is what stopped the 13 labels
+       fitting two rows. The readout is different -- there the number is absolute,
+       so a bare "45210" asks which of metres, seconds or pascals it is.
+       "" for a dimensionless ratio (throttle). */
+    const char *unit;
 };
 
 static const RecChan kRecChans[] = {
-    {"alt_asl", &RecSample::alt_asl, true},
-    {"v",       &RecSample::v,       true},
-    {"q",       &RecSample::q,       true},
-    {"aoa",     &RecSample::aoa,     true},
-    {"vs",      &RecSample::vs,      false},
-    {"gamma",   &RecSample::gamma,   false},
-    {"acc",     &RecSample::acc,     false},
-    {"dv",      &RecSample::dv,      false},
-    {"thr",     &RecSample::thr,     false},
-    {"dv_exp",  &RecSample::dv_exp,  false},
-    {"grav",    &RecSample::grav,    false},
-    {"drag",    &RecSample::drag,    false},
-    {"steer",   &RecSample::steer,   false},
+    {"alt_asl", &RecSample::alt_asl, true,  "m"},
+    {"v",       &RecSample::v,       true,  "m/s"},
+    {"q",       &RecSample::q,       true,  "Pa"},
+    {"aoa",     &RecSample::aoa,     true,  "deg"},
+    {"vs",      &RecSample::vs,      false, "m/s"},
+    {"gamma",   &RecSample::gamma,   false, "deg"},
+    {"acc",     &RecSample::acc,     false, "m/s2"},
+    {"dv",      &RecSample::dv,      false, "m/s"},
+    {"thr",     &RecSample::thr,     false, ""},
+    {"dv_exp",  &RecSample::dv_exp,  false, "m/s"},
+    {"grav",    &RecSample::grav,    false, "m/s"},
+    {"drag",    &RecSample::drag,    false, "m/s"},
+    {"steer",   &RecSample::steer,   false, "m/s"},
 };
 static const int kRecNumCh = (int)(sizeof(kRecChans) / sizeof(kRecChans[0]));
 
@@ -402,6 +409,39 @@ inline void recTimeExtent(const RecRing &ring, double *t0, double *t1) {
     }
     *t0 = lo;
     *t1 = hi;
+}
+
+/* The sample nearest a mission time (#990: the readout has to answer "what was
+   q WHEN", and the graph only carries x). at()-order is chronological, so a walk
+   finds the nearest; it runs once per frame, not once per point, so the 4096
+   sample worst case is noise beside the ~50k vertices the plot submits.
+   Clamped to the nearest END rather than returning -1 when the time is outside
+   what the ring holds (the pilot panned past it, or the ring rolled): the readout
+   then says what the closest reading IS, and the marker sits on a real sample
+   instead of floating in a gap. Only an empty ring gives -1. */
+inline int recNearSample(const RecRing &ring, double t) {
+    if(ring.count == 0) { return -1; }
+    int best = 0;
+    double bestD = -1.0;
+    for(int i = 0; i < ring.count; i++) {
+        const double d = std::fabs(ring.at(i).sim_t - t);
+        if(bestD < 0.0 || d < bestD) { bestD = d; best = i; }
+    }
+    return best;
+}
+
+/* One reading in the readout's format. %.6g because a pilot comparing two samples
+   needs to tell 45210 from 45211, and a fixed %.1f would print 123456.7 next to
+   0.0 for two channels decades apart. A non-finite reading gets the trace's dash:
+   recExtent() already refuses to build a range out of one, and a window showing
+   "inf" where the file prints "-" is the disagreement this file's dash rules exist
+   to prevent. Both the drawn rows and the [recwin] pin line go through here, so
+   the picture and the log cannot report different numbers for one sample. */
+inline void recFmtReading(const RecChan &c, const RecSample &s, char *buf, size_t n) {
+    assert(buf != nullptr && n > 0);
+    const double v = s.*(c.get);
+    if(!std::isfinite(v)) { snprintf(buf, n, "-"); return; }
+    snprintf(buf, n, "%.6g", v);
 }
 
 /* Chapter marks: the times at which the flight's own story turned a page.

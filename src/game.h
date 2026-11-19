@@ -268,6 +268,14 @@ struct HudState {
        this stands down the moment the pilot scrolls or drags the graph, with the
        window's Fit button handing it back. */
     bool rec_fit = true;
+    /* #990: the sample the Recorder readout is frozen on. A MISSION time
+       (RecPoint::sim_t), not a ring index: the ring is a moving window, so an
+       index written this frame names a different sample once it wraps or rolls.
+       Unpinned, the readout follows the mouse and disappears when the mouse
+       leaves the graph; pinned, it stays so a pilot can move the pointer away,
+       compare it with another window, or screenshot it. */
+    bool rec_pinned = false;
+    double rec_pin = 0.0;
 };
 
 /* VAB editor SESSION state (Game::vab), not save state: the build tree round-trips

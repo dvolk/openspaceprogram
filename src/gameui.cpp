@@ -5138,9 +5138,10 @@ void drawUIMap(Game &g) {
 
 /* Each visible channel stretched onto its OWN min..max, which is what lets one
    graph carry channels three decades apart in unit terms (an ascent touches
-   100 km of altitude, 30 kPa of q and 2.5 km/s of v). Nothing on the window turns
-   0.7 back into 22 kPa -- that gap is #990, and it cannot be closed with a legend
-   string (kRecChans spells why). Normalising means the ring's samples can no
+   100 km of altitude, 30 kPa of q and 2.5 km/s of v). Nothing on the AXIS turns
+   0.7 back into 22 kPa, and nothing in a legend string can (kRecChans spells why);
+   #990 closes it from the other side, by anchoring a readout to one sample and
+   printing that sample's readings. Normalising means the ring's samples can no
    longer be plotted where they lie, hence a getter rather than a strided
    PlotLine -- and still no second buffer to drift away from the trace, which is
    recorder.h's whole rule. The range itself comes from recorder.h's recExtent, so
@@ -5165,7 +5166,8 @@ static ImPlotPoint recNormPoint(int i, void *user) {
 /* One margin, both axes: x gets 2% of the flight the ring holds, y gets 2% of the
    normalised height -- which, being normalised, is always exactly 1.0. A channel's
    own min and max land on the axis ends, so without a margin the top and bottom of
-   every line draw half their width off the frame. */
+   every line draw half their width off the frame. Also the y span the readout's
+   marker line runs across (#990), since that is what the pinned axis limits are. */
 static constexpr double kRecMargin = 0.02;
 
 /* The Recorder plot's frame rect, written every frame it draws and read by the
@@ -5174,6 +5176,41 @@ static constexpr double kRecMargin = 0.02;
    can see. */
 static ImVec2 gRecFrameMin = ImVec2(0.0f, 0.0f);
 static ImVec2 gRecFrameMax = ImVec2(0.0f, 0.0f);
+
+/* Where a left press went down inside the graph, so a release can tell a click
+   (pin the readout) from the start of a pan. Frame-local like the rect above. */
+static bool gRecPress = false;
+static ImVec2 gRecPressPos = ImVec2(0.0f, 0.0f);
+
+/* One fixed colour per channel index (#990). ImPlot picks a line's colour by ITEM
+   CREATION ORDER, so with the static labels kRecChans insists on, a channel
+   switched off and back on reappears in a different hue: the graph's colours then
+   depend on the order the player toggled things, and a readout row has nothing
+   honest to colour itself with. Pinning LineColor per channel index fixes the
+   legend swatch, the line and the readout row to one number.
+   Hues step by the golden ratio, so table neighbours -- v and vs, dv and dv_exp,
+   the four loss totals -- never land next to each other on the wheel. */
+static ImVec4 recChanColor(int i) {
+    float r = 0.0f, g = 0.0f, b = 0.0f;
+    ImGui::ColorConvertHSVtoRGB(std::fmod(i * 0.618034f, 1.0f), 0.62f, 0.92f, r, g, b);
+    return ImVec4(r, g, b, 1.0f);
+}
+
+/* The [recwin] pin line: the visible channels only, through the same formatter the
+   drawn rows use, so the log and the picture report one number per channel per
+   sample -- and a test can EXPECT exactly what a pilot sees. */
+static void recPrintPin(const RecRing &ring, int sel, const bool *vis) {
+    const RecSample &s = ring.at(sel).s;
+    char buf[512];
+    int n = snprintf(buf, sizeof buf, "[recwin] pin t=%.2f", ring.at(sel).sim_t);
+    for(int i = 0; i < kRecNumCh && n < (int)sizeof buf; i++) {
+        if(!vis[i]) { continue; }
+        char val[32];
+        recFmtReading(kRecChans[i], s, val, sizeof val);
+        n += snprintf(buf + n, sizeof buf - n, " %s=%s", kRecChans[i].key, val);
+    }
+    printf("%s\n", buf);
+}
 
 void drawUIRecorder(Game &g) {
     drawWin(g, W_Recorder, [&] {
@@ -5200,6 +5237,7 @@ void drawUIRecorder(Game &g) {
 
         if(ImGui::Button("Start")) {
             ring.clear();
+            hud.rec_pinned = false;    // a fresh recording has nothing to hold still
             /* Re-arms the run-clock baseline the RING samples carry (RecSample::t).
                It is not what the graph counts: the plot's x is RecPoint::sim_t, so
                Start empties the history without restarting the clock -- and the file
@@ -5230,6 +5268,7 @@ void drawUIRecorder(Game &g) {
         ImGui::SameLine();
         if(ImGui::Button("Clear")) {
             ring.clear();
+            hud.rec_pinned = false;    // the pinned sample is gone with it
             g.rec.ring_armed = false;
             printf("[recwin] clear\n");
         }
@@ -5415,6 +5454,13 @@ void drawUIRecorder(Game &g) {
                     norm.lo = range > 0.0 ? 0.0 : 0.5;
                     norm.k = range > 0.0 ? 1.0 / range : 0.0;
                     ImPlotSpec spec;
+                    /* Pinned to the channel's index in kRecChans rather than left to
+                       implot, which colours items by CREATION order: a channel
+                       switched off and back on came home in a different hue, and the
+                       readout below has to put a colour on a row that the line still
+                       agrees with. ImPlot's own legend swatch takes this too, so
+                       toggle, legend, line and readout are one colour. */
+                    spec.LineColor = recChanColor(i);
                     /* NO SkipNaN -- that is the flag which BRIDGES a dash. Both
                        segments touching a NaN sample end up invisible, by two
                        different routes: the segment INTO the dash is culled, because
@@ -5451,6 +5497,146 @@ void drawUIRecorder(Game &g) {
                     ImPlotSpec ms;
                     ms.LineColor = ImVec4(0.55f, 0.85f, 1.0f, 0.70f);
                     ImPlot::PlotInfLines("hull size", seam_xs, nseam, ms);
+                }
+                /* #990: the numbers. Neither axis can carry them (both are
+                   undecorated to buy plot, and y is each line's own min..max), and a
+                   label cannot carry them either (implot hashes the whole label --
+                   kRecChans spells the trap). So a value belongs to a SAMPLE: point
+                   at the graph and the window prints that sample's own readings,
+                   taken from the ring through recFmtReading, which is what makes the
+                   dash a dash here exactly as it is a dash in the trace. A click pins
+                   them so the pointer can move away, the cursor can be parked on the
+                   other monitor and the numbers still be there; the same sample again
+                   lets go.
+                   ImPlot's own hover readout (NoMouseText is not set) says where the
+                   pointer is; it cannot say what any of the four lines is worth there,
+                   because it speaks in axis units and this y axis is 0..1. */
+                /* Which sample the pointer is over. NOT ImPlot::IsPlotHovered():
+                   implot computes plot.Hovered in UpdateInput (implot.cpp:1935,
+                   ButtonBehavior over the plot rect), which SetupFinish calls at
+                   :2748 -- after the items have been submitted, so a caller reading
+                   it mid-plot gets LAST frame's answer. Measured: on the frame the
+                   simulated cursor first lands inside the graph, IsPlotHovered() is
+                   still false (tmp/night5/probe_990f.log), so a click issued without
+                   an idle frame before it never sees a hover. The frame rect measured
+                   above IS current. The wheel and drag test further up reads the same
+                   rect for the same reason; IsWindowHovered() is there so a click that
+                   landed on some window sitting on top of the graph is not stolen. */
+                const ImVec2 mpos = ImGui::GetMousePos();
+                const bool overPlot = ImGui::IsWindowHovered()
+                        && mpos.x >= gRecFrameMin.x && mpos.x <= gRecFrameMax.x
+                        && mpos.y >= gRecFrameMin.y && mpos.y <= gRecFrameMax.y;
+                if(ImGui::IsMouseClicked(ImGuiMouseButton_Left) && overPlot) {
+                    gRecPress = true;
+                    gRecPressPos = mpos;
+                }
+                if(gRecPress && ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+                    gRecPress = false;
+                    const ImVec2 rel = ImGui::GetMousePos();
+                    const float dx = rel.x - gRecPressPos.x, dy = rel.y - gRecPressPos.y;
+                    /* A pan and a pin both begin with a left press, and implot pans on
+                       the drag, so only a press that went nowhere counts -- and that is
+                       also why the release asks NOTHING about hover. A press and its
+                       release are handled on consecutive frames, and while the button
+                       is held ImGui::IsWindowHovered() reads false for the frame
+                       between them (measured: press frame hov=1, release frame hov=0
+                       with GetHoveredID() moved to the plot's own id,
+                       tmp/night5/probe_990g.log). A release-side hover test therefore
+                       drops exactly the click that was meant to pin. The travel test is
+                       the guard that means: either the release is at the press pixel,
+                       or the pilot dragged the graph. */
+                    const int hit = recNearSample(ring, ImPlot::GetPlotMousePos().x);
+                    if(hit >= 0 && dx * dx + dy * dy <= 16.0f) {
+                        if(hud.rec_pinned && recNearSample(ring, hud.rec_pin) == hit) {
+                            hud.rec_pinned = false;
+                            printf("[recwin] unpin\n");
+                        } else {
+                            hud.rec_pinned = true;
+                            hud.rec_pin = ring.at(hit).sim_t;
+                            recPrintPin(ring, hit, hud.rec_chan);
+                        }
+                    }
+                }
+                int sel = -1;
+                if(hud.rec_pinned) {
+                    sel = recNearSample(ring, hud.rec_pin);
+                } else if(overPlot) {
+                    sel = recNearSample(ring, ImPlot::GetPlotMousePos().x);
+                }
+                if(sel >= 0) {
+                    const RecPoint &pt = ring.at(sel);
+                    ImDrawList *dl = ImPlot::GetPlotDrawList();
+                    /* The marker is the whole argument for drawing this inside the
+                       plot: it ties the numbers to a place on the graph, so a pinned
+                       readout does not become a caption for something else. */
+                    const ImVec2 mA = ImPlot::PlotToPixels(pt.sim_t, -kRecMargin);
+                    const ImVec2 mB = ImPlot::PlotToPixels(pt.sim_t, 1.0 + kRecMargin);
+                    dl->AddLine(mA, mB, hud.rec_pinned ? IM_COL32(255, 255, 255, 130)
+                                                       : IM_COL32(255, 255, 255, 70), 1.0f);
+                    /* Rows in table order, packed -- so the channel each row belongs
+                       to travels WITH it. Drawing off the channel index instead would
+                       read rowTxt slots that were never filled whenever the player has
+                       some channels off, which is most of the time. */
+                    char rowTxt[kRecNumCh][48];
+                    int rowCh[kRecNumCh];
+                    int rows = 0;
+                    for(int i = 0; i < kRecNumCh; i++) {
+                        if(!hud.rec_chan[i]) { continue; }
+                        char val[32];
+                        recFmtReading(kRecChans[i], pt.s, val, sizeof val);
+                        snprintf(rowTxt[rows], sizeof rowTxt[rows], "%s %s%s%s",
+                                 kRecChans[i].key, val,
+                                 kRecChans[i].unit[0] ? " " : "", kRecChans[i].unit);
+                        rowCh[rows] = i;
+                        rows++;
+                    }
+                    const float lineH = ImGui::GetTextLineHeight();
+                    const float sw = 12.0f, gap = 5.0f, pad = 5.0f, colgap = 14.0f;
+                    char head[64];
+                    snprintf(head, sizeof head, "t=%.2f s%s", pt.sim_t,
+                             hud.rec_pinned ? "  (pinned)" : "");
+                    /* Columns, because thirteen rows do not fit the height of a window
+                       this short: the plot is ~230 px here and thirteen rows plus the
+                       time line is ~240, so the last channel would simply be missing.
+                       At most three columns: past that the box would be wider than the
+                       plot, which is a worse way to lose a row than a clipped one, and
+                       a plot shorter than three rows is not a plot anyone reads. */
+                    const float availH = (gRecFrameMax.y - gRecFrameMin.y) - 16.0f;
+                    const int perCol = ImMax(1, int((availH - pad * 2) / lineH) - 1);
+                    int ncol = 1;
+                    while(ncol < 3 && (rows + ncol - 1) / ncol > perCol) { ncol++; }
+                    const int first = (rows + ncol - 1) / ncol;
+                    const int shown = ImMin(rows, first * ncol);
+                    float cw[kRecNumCh];
+                    float wsum = 0.0f;
+                    for(int c = 0; c < ncol; c++) {
+                        cw[c] = ImGui::CalcTextSize(head).x;
+                        for(int r = c * first; r < shown && r < (c + 1) * first; r++) {
+                            cw[c] = ImMax(cw[c], ImGui::CalcTextSize(rowTxt[r]).x);
+                        }
+                        wsum += cw[c];
+                    }
+                    if(shown < rows) {
+                        snprintf(head + strlen(head), sizeof head - strlen(head),
+                                 "  (%d of %d)", shown, rows);
+                    }
+                    const ImVec2 p0(gRecFrameMin.x + 8.0f, gRecFrameMin.y + 8.0f);
+                    dl->AddRectFilled(p0,
+                                      ImVec2(p0.x + pad * 2 + ncol * (sw + gap) + wsum
+                                             + (ncol - 1) * colgap,
+                                             p0.y + pad * 2 + (ImMin(first, rows) + 1) * lineH),
+                                      IM_COL32(0, 0, 0, 150));
+                    dl->AddText(ImVec2(p0.x + pad, p0.y + pad),
+                                IM_COL32(235, 235, 235, 230), head);
+                    for(int r = 0; r < shown; r++) {
+                        const int c = r / first, k = r % first;
+                        const float x = p0.x + pad + c * (sw + gap + cw[c] + colgap);
+                        const float y = p0.y + pad + (k + 1) * lineH;
+                        const ImU32 cc = ImGui::GetColorU32(recChanColor(rowCh[r]));
+                        dl->AddLine(ImVec2(x, y + lineH * 0.5f),
+                                    ImVec2(x + sw, y + lineH * 0.5f), cc, 3.0f);
+                        dl->AddText(ImVec2(x + sw + gap, y), cc, rowTxt[r]);
+                    }
                 }
                 ImPlot::EndPlot();
             }

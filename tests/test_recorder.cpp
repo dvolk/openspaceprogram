@@ -52,6 +52,11 @@
 //   one or two runs the plot draws, oldest-first), recTimeExtent (the x range the
 //   axis pins to) and recMarks (where stg= or seams= changed, drawn as vertical
 //   lines, bounded so a docking port does not become a black wall).
+//
+//   #990 adds the other half of the window: what a point on the graph is WORTH.
+//   That is recNearSample (which sample a pointer selects, across a wrap and off
+//   the ends) and recFmtReading (the one formatter behind both the drawn row and
+//   the [recwin] pin line, so the picture and the log cannot disagree).
 #include "recorder.h"
 
 #include <algorithm>
@@ -456,6 +461,93 @@ int main() {
            window offers, and a table that grew to all of them would be a list of
            38 checkboxes no pilot reads. */
         CHECK(kRecNumCh < 20, "the window's channel list stays a subset of the trace");
+    }
+
+    /* --- the readout (#990) ------------------------------------------------
+       The graph answers "when"; the readout answers "what". Both are built from
+       kRecChans, and the readout is the only place a channel's UNIT is drawn --
+       nowhere else has an absolute number to attach it to. Two things are worth
+       pinning about a unit: it is short (one row per channel, in a window 560 px
+       wide, and a runaway string pushes the plot out) and it is plain text like
+       the key, because it is drawn with the same AddText call. */
+    {
+        for(int i = 0; i < kRecNumCh; i++) {
+            const std::string u(kRecChans[i].unit);
+            CHECK(u.size() <= 4, "a channel unit fits one readout row");
+            CHECK(u.find('#') == std::string::npos, "a channel unit is plain text");
+        }
+    }
+
+    /* One reading, as the readout prints it and as the [recwin] pin line prints
+       it. The dash is the whole point: the trace prints "-" for a NaN, and a
+       window showing "nan" or "inf" beside that same file is the disagreement
+       recorder.h's dash rules exist to prevent. The format is %.6g, so a pilot
+       comparing 45210 against 45211 can tell them apart -- which a fixed %.1f
+       across channels decades apart cannot. */
+    {
+        const RecChan *alt = nullptr, *gam = nullptr, *q = nullptr;
+        for(int i = 0; i < kRecNumCh; i++) {
+            if(0 == strcmp(kRecChans[i].key, "alt_asl")) { alt = &kRecChans[i]; }
+            if(0 == strcmp(kRecChans[i].key, "gamma")) { gam = &kRecChans[i]; }
+            if(0 == strcmp(kRecChans[i].key, "q")) { q = &kRecChans[i]; }
+        }
+        CHECK(alt != nullptr && gam != nullptr && q != nullptr,
+              "the readout's channels are findable by key");
+        char buf[32];
+        RecSample s;
+        s.alt_asl = 45210.3;
+        recFmtReading(*alt, s, buf, sizeof buf);
+        CHECK(0 == strcmp(buf, "45210.3"), "a reading keeps its digits");
+        s.gamma = NAN;
+        recFmtReading(*gam, s, buf, sizeof buf);
+        CHECK(0 == strcmp(buf, "-"), "a NaN reads as a dash, the trace's way");
+        s.q = INFINITY;
+        recFmtReading(*q, s, buf, sizeof buf);
+        CHECK(0 == strcmp(buf, "-"), "an Inf reads as a dash too");
+        s.q = 0.0;
+        recFmtReading(*q, s, buf, sizeof buf);
+        CHECK(0 == strcmp(buf, "0"), "zero is a reading, not a dash");
+        s.alt_asl = -12.5;
+        recFmtReading(*alt, s, buf, sizeof buf);
+        CHECK(0 == strcmp(buf, "-12.5"), "a negative reading keeps its sign");
+    }
+
+    /* Which sample a pointer selects. The graph's x is the mission clock and the
+       pointer is a pixel, so "the sample nearest that time" is the only honest
+       answer, and it has to survive the ring's own traps: a wrapped ring whose
+       at() order is oldest-first, and a pan outside the flight the ring still
+       holds -- which clamps to the nearest end rather than showing nothing, so
+       the marker always sits on a real sample. The index returned is an at()
+       index, not a vector slot, which is what the wrapped case pins. */
+    {
+        RecRing r;
+        CHECK(recNearSample(r, 5.0) == -1, "an empty ring has nothing to point at");
+        for(int i = 0; i < 5; i++) {
+            RecPoint p;
+            p.sim_t = 2.0 * i; p.s.v = (double)i;
+            r.push(p);
+        }
+        CHECK(recNearSample(r, 4.0) == 2, "a time that is a sample finds that sample");
+        CHECK(recNearSample(r, 4.4) == 2, "still nearest the sample it came from");
+        CHECK(recNearSample(r, 5.4) == 3, "past the midpoint it moves to the next");
+        CHECK(recNearSample(r, 5.0) == 2, "an exact tie takes the older sample");
+        CHECK(recNearSample(r, -100.0) == 0, "a pan left of the flight clamps to the oldest");
+        CHECK(recNearSample(r, 900.0) == 4, "a pan right of it clamps to the newest");
+    }
+    {
+        RecRing w;
+        for(int i = 0; i < RecRing::Cap + 5; i++) {
+            RecPoint p;
+            p.sim_t = (double)i; p.s.v = (double)i;
+            w.push(p);
+        }
+        const int oldest = recNearSample(w, 5.0);
+        const int newest = recNearSample(w, (double)RecRing::Cap + 4);
+        CHECK(oldest == 0, "an at() index, not a vector slot, across a wrap");
+        CHECK(newest == w.count - 1, "and the newest sample is the last of at()");
+        CHECK_NEAR(w.at(oldest).sim_t, 5.0, 1e-12, "the aged-out end is off the graph");
+        CHECK(recNearSample(w, (double)RecRing::Cap / 2) == RecRing::Cap / 2 - 5,
+              "the middle of a wrapped ring answers in at() order too");
     }
 
     /* --- recExtent: the range the plot scales by, and the legend's numbers --

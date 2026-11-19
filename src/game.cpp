@@ -1483,6 +1483,7 @@ void Game::clearEphemeralState() {
        outside the retained x range, which draws an empty graph with the toggles
        on and no axis left on screen to hint at the reason. */
     hud.rec_fit = true;
+    hud.rec_pinned = false;   // the pinned sample went with the ring it came from (#990)
     // A rebind grab is a live input grab on a UI that is going away.
     rebind_capture_slot = -1;
     /* The VAB is an editor over the world that is going away: its build's
@@ -1733,6 +1734,7 @@ void Game::select_vehicle(Vehicle *v) {
     rec.ring_armed = false;
     rec.paused = true;   // the next hull's flight gets recorded when the player says so
     hud.rec_fit = true;  // and on the new hull's time range, not the old one's window
+    hud.rec_pinned = false;   // ... nor a sample from the old hull's ring (#990)
     /* An armed ascent mission follows its HULL, not the camera, and switching ships
        must leave a hull that nobody is flying alone (#616). tick.cpp already stops
        the law from thinking here -- it only calls flyAscent() while
@@ -2797,6 +2799,7 @@ bool Game::ui_remove_vehicle(Vehicle *v) {
             rec.ring_armed = false;
             rec.paused = true;
             hud.rec_fit = true;
+            hud.rec_pinned = false;   // and a pin into the removed hull's ring (#990)
             if(time_accel >= kRailsWarp) {
                 time_accel = 10;
                 toast("Active ship: %s, warp 10x", ship->displayName().c_str());
