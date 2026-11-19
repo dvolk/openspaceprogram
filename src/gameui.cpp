@@ -6887,15 +6887,16 @@ static void ensureStagingCache(Game &g, uint64_t sig, double gLaunch) {
     g.vab.stagingRows = computeStaging(g.vab.build, gLaunch, g.args.exhaust_scale);
     /* And the verdict on the ORDER, on the same key: both describe the same build or
        neither does. Cheap next to the burn simulation above -- one pass over the parts
-       with no simulation -- and this is the only place an editor edit can be told
-       apart from a mis-staged one (#1010). Into a fresh vector: validateStaging appends,
-       and this cache body runs again on every later edit. */
+       with no simulation -- and this is the only place an editor edit can be told apart
+       from a mis-staged one (#1010). One grouping for both: the checker and the window's
+       by-label view read the same StagingLabel list, so the walk happens once per edit
+       rather than once each. */
+    g.vab.stagingGroups = stagingLabels(g.vab.build);
     {
         std::vector<std::string> warns;
-        validateStaging(g.vab.build, warns);
+        validateStaging(g.vab.build, g.vab.stagingGroups, warns);
         g.vab.stagingWarns = std::move(warns);
     }
-    g.vab.stagingGroups = stagingLabels(g.vab.build);
     g.vab.partIndex.clear();
     for(size_t i = 0; i < g.vab.build.parts.size(); i++) {
         // Last match wins, which is what the overlay's whole-vector scan did. Part ids
@@ -7511,79 +7512,99 @@ void drawVabUI(Game &g) {
             if(!grp.empty()) {
                 const int gLo = grp.front().stage, gHi = grp.back().stage;
                 ImGui::Separator();
-                ImGui::TextDisabled("%d label%s, %d down to %d -- one press per step, top of "
-                                    "the list first", (int)grp.size(), grp.size() == 1 ? "" : "s",
-                                    gHi, gLo);
+                /* One sentence about what a press does, said once instead of in every group
+                   cell: a cell clips, and a sentence that stops at a column edge is worse
+                   than none. It has to be said somewhere -- the counter's position and a
+                   part's timing are NOT the same moment, and a reader who takes "press 3"
+                   as "the engine starts at press 3" has mis-paired an engine with the press
+                   above it. */
+                ImGui::TextDisabled("the counter starts at %d and steps down one label per "
+                                    "press, so its presses stand on %d down to %d. A decoupler "
+                                    "or chute fires on the press standing on its label; an "
+                                    "engine lights when the counter steps down onto its label "
+                                    "and burns from then on. Nothing advances onto %d: only a "
+                                    "press past the ladder reaches the label at the bottom.",
+                                    gHi, gHi, gHi > gLo ? gLo + 1 : gHi, gLo);
                 if(ImGui::BeginTable("staging_parts", 4,
                                      ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg
                                      | ImGuiTableFlags_SizingStretchSame)) {
+                    /* No ScrollY / outer_size here, though a long hull would want one: a
+                       scrolling table becomes its own ui host window, and the rows then
+                       register under "Staging/staging_parts_<hash>" -- an id no test should
+                       lean on. The window is taller instead (uiwins.cpp: W_Staging), and
+                       beyond that the whole window scrolls like every other list here. */
                     ImGui::TableSetupColumn("Part", ImGuiTableColumnFlags_WidthStretch);
                     ImGui::TableSetupColumn("Def", ImGuiTableColumnFlags_WidthStretch);
                     ImGui::TableSetupColumn("Parent", ImGuiTableColumnFlags_WidthStretch);
                     ImGui::TableSetupColumn("Answers to", ImGuiTableColumnFlags_WidthStretch);
                     ImGui::TableHeadersRow();
+                    /* One place for the two axes this table draws: dim/plain (does the label
+                       answer to anything) and registered/plain (can --ui-list see this row).
+                       Both branches take an already-formatted const char* so nothing
+                       allocates: the table redraws every frame, and a hull that could be
+                       hundreds of parts is hundreds of strings per frame otherwise. */
+                    auto cell = [&](const char *text, bool dim, bool reg) {
+                        if(dim) {
+                            if(reg) { uiTextDisabled("%s", text); }
+                            else { ImGui::TextDisabled("%s", text); }
+                        } else {
+                            if(reg) { uiText("%s", text); }
+                            else { ImGui::Text("%s", text); }
+                        }
+                    };
+                    size_t grouped = 0;
                     for(size_t gi = grp.size(); gi-- > 0;) {
                         const StagingLabel &L = grp[gi];
                         const bool inert = L.responds == 0u;
+                        grouped += L.parts.size();
+                        char lbuf[32], nbuf[32];
+                        snprintf(lbuf, sizeof(lbuf), "label %d", L.stage);
+                        snprintf(nbuf, sizeof(nbuf), "%d parts", (int)L.parts.size());
                         ImGui::TableNextRow();
                         ImGui::TableNextColumn();
                         /* The group line goes through uiText so --ui-list can see it
                            (#741's trick): the part rows below are too many to register on a
                            500-part hull, but the handful of labels is what a test needs to
                            know that the view drew the right grouping in the right order. */
-                        if(inert) {
-                            uiTextDisabled("label %d", L.stage);
-                        } else {
-                            uiText("label %d", L.stage);
-                        }
+                        cell(lbuf, inert, true);
                         ImGui::TableNextColumn();
-                        {
-                            std::string note;
-                            if(gHi == gLo) {
-                                /* One label: the counter has nowhere to advance, but the
-                                   FIRST press stands right here -- which is how a one-stage
-                                   chuted capsule works, and why the checker does not flag a
-                                   decoupler at the bottom of such a ship (#1010 rule 2). */
-                                note = "the only label: the first press stands here";
-                            } else if(L.stage > gLo) {
-                                note = "press " + std::to_string(gHi - L.stage + 1)
-                                     + " of " + std::to_string(gHi - gLo);
-                            } else {
-                                note = "the floor: no advancing press stands here";
-                            }
-                            /* Also registered: this cell is the view's whole point -- what a
-                               label is worth in presses -- and it is the one part of the
-                               number box (#1015) that a player cannot otherwise derive. */
-                            uiTextDisabled("%d part%s -- %s", (int)L.parts.size(),
-                                           L.parts.size() == 1 ? "" : "s", note.c_str());
-                        }
+                        cell(nbuf, inert, true);
+                        ImGui::TableNextColumn();
+                        /* Registered too, and kept short: a table cell clips, and a sentence
+                           that stops at a column edge reads as a broken sentence. This is
+                           the cell that says what the label is worth in presses -- the one
+                           thing the part's number box cannot show (#1015) -- and the words
+                           come from staging.cpp so the unit tests can hold them to the
+                           counter. The timing rule sits above the table instead. */
+                        cell(stagingPressNote(gLo, gHi, L.stage).c_str(), inert, true);
                         ImGui::TableNextColumn();
                         ImGui::TableNextColumn();
-                        for(int pi : L.parts) {
-                            const BuildPart &bp = g.vab.build.parts[(size_t)pi];
+                        for(size_t k = 0; k < L.parts.size(); k++) {
+                            const BuildPart &bp = g.vab.build.parts[(size_t)L.parts[k]];
+                            const bool reg = k == 0;   // one registered row per group
                             ImGui::TableNextRow();
                             ImGui::TableNextColumn();
-                            if(inert) { ImGui::TextDisabled("%s", bp.id.c_str()); }
-                            else { ImGui::Text("%s", bp.id.c_str()); }
+                            cell(bp.id.c_str(), inert, reg);
                             ImGui::TableNextColumn();
-                            if(inert) {
-                                ImGui::TextDisabled("%s",
-                                                    bp.def != nullptr ? bp.def->name.c_str() : "?");
-                            } else {
-                                ImGui::Text("%s", bp.def != nullptr ? bp.def->name.c_str() : "?");
-                            }
+                            /* The display label, not the catalog machine name: the part card
+                               and the selected-part line both read "Capsule (2m)", and two
+                               words for one part in one window is its own bug. */
+                            cell(bp.def != nullptr ? bp.def->label().c_str() : "?", inert, reg);
                             ImGui::TableNextColumn();
                             if(bp.parent >= 0 && (size_t)bp.parent < g.vab.build.parts.size()) {
-                                ImGui::TextDisabled("%s",
-                                                    g.vab.build.parts[(size_t)bp.parent].id.c_str());
+                                cell(g.vab.build.parts[(size_t)bp.parent].id.c_str(), true, false);
                             } else {
-                                ImGui::TextDisabled("--");
+                                cell("--", true, false);
                             }
                             ImGui::TableNextColumn();
-                            ImGui::Text("%s", stageRoleName(bp.def != nullptr
-                                                               ? stageRoles(bp.def) : 0u));
+                            cell(stageRoleName(inert ? 0u : stageRoles(bp.def)), inert, reg);
                         }
                     }
+                    /* The groups are keyed to this build by stagingSignature, and they hold
+                       raw indices into parts. The overlay next door asserts the same thing
+                       about its own cached indices (gameui.cpp's partIndex memo, #527); this
+                       is the reader that most needs it, because it dereferences them. */
+                    assert(grouped == g.vab.build.parts.size());
                     ImGui::EndTable();
                 }
             }

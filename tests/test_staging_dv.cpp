@@ -2000,6 +2000,57 @@ static void test_the_label_groups_read_as_press_order() {
 
     BuildShip empty;
     CHECK_TRUE(stagingLabels(empty).empty(), "an empty build groups to nothing");
+
+    /* A part with no def still rides a label. Nothing live builds one -- the loader throws
+       on an unknown def and the VAB mints parts from the catalog -- but stagingLabels is
+       now the single source of the ladder's edges, so pin what a hole in it does rather
+       than leave the answer to chance: the group exists, answers to nothing, and the
+       checker spends presses on it like any other. */
+    {
+        BuildShip hole;
+        addPart(hole, cat.tank(50, 25, 25), "tank", -1, 1);
+        addPart(hole, cat.engine(10, 2.0, 1000.0), "eng", 0, 1);
+        BuildPart ghost;
+        ghost.id = "ghost";
+        ghost.parent = 0;
+        ghost.stage = 4;
+        hole.parts.push_back(ghost);
+        std::vector<StagingLabel> hg = stagingLabels(hole);
+        CHECK_TRUE(hg.size() == 2 && hg[1].stage == 4 && hg[1].parts.size() == 1
+                       && hg[1].responds == 0u,
+                   "a def-less part still opens a label, and answers to nothing");
+        std::vector<std::string> w;
+        validateStaging(hole, w);
+        CHECK_TRUE(w.size() == 1, "and the checker reads that ladder");
+        CHECK_TRUE(has_warn(w, "3 of 3 presses do nothing"), "two holes and a silent top");
+        CHECK_TRUE(has_warn(w, "no part carries 2-3"), "the run between the real labels");
+        CHECK_TRUE(has_warn(w, "nothing answers at 4"), "and the label only a ghost rides");
+    }
+}
+
+/* stagingPressNote (#1011 review): the few words the Staging window puts in a table cell to
+   say where the counter stands. Short by design -- a cell clips, so a long sentence reads as
+   a broken one -- but the arithmetic has to be exactly the counter's, and the two branches
+   that are not "press N of M" are the ones a player cannot derive: the floor, which no
+   advancing press ever reaches, and the one-label ship, where the first press DOES stand
+   there (which is why #1010 rule 2 stays quiet about it). */
+static void test_the_press_note_says_where_the_counter_stands() {
+    /* Labels 1..5: the four advancing presses stand at 5, 4, 3, 2. */
+    CHECK_TRUE(stagingPressNote(1, 5, 5) == "press 1 of 4", "the top label is press 1");
+    CHECK_TRUE(stagingPressNote(1, 5, 4) == "press 2 of 4", "no off-by-one at the top");
+    CHECK_TRUE(stagingPressNote(1, 5, 3) == "press 3 of 4", "a carried label in the middle");
+    CHECK_TRUE(stagingPressNote(1, 5, 2) == "press 4 of 4", "the last advancing press");
+    CHECK_TRUE(stagingPressNote(1, 5, 1) == "the floor",
+               "the bottom label, which no advancing press stands on");
+
+    /* A two-label ladder, the common case: one press, and it stands on the top label. */
+    CHECK_TRUE(stagingPressNote(1, 2, 2) == "press 1 of 1", "two labels, one press");
+    CHECK_TRUE(stagingPressNote(1, 2, 1) == "the floor", "and the bottom waits");
+
+    /* One label: the counter has nowhere to advance, but the first press stands here. */
+    CHECK_TRUE(stagingPressNote(1, 1, 1) == "only label: press 1", "a one-label ship");
+    CHECK_TRUE(stagingPressNote(4, 4, 4) == "only label: press 1",
+               "and the label values do not matter, only the span");
 }
 
 int main() {
@@ -2035,6 +2086,7 @@ int main() {
     test_a_stage_label_is_order_not_height();
     test_the_staging_checker_names_the_presses_that_do_nothing();
     test_the_label_groups_read_as_press_order();
+    test_the_press_note_says_where_the_counter_stands();
 
     printf("test_staging_dv: %d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;

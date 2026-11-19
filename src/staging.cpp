@@ -1088,13 +1088,30 @@ std::vector<StagingLabel> stagingLabels(const BuildShip &ship) {
             it->stage = p.stage;
         }
         it->parts.push_back((int)i);
-        if(p.def != nullptr) { it->responds |= stageRoles(p.def); }
+        /* No null-def guard: stageRoles() answers 0 for a null def (shipdef.h:729), and a
+           part with no def still rides a label -- it just answers to nothing, which is
+           exactly what the group's `responds` is for. Labels themselves are 1..kMaxStage
+           for anything the loader or the VAB produces (shipdef.cpp:1192-1201 refuses the
+           rest), so the group edges need no clamping here. */
+        it->responds |= stageRoles(p.def);
     }
     return labels;
 }
 
+std::string stagingPressNote(int lo, int hi, int stage) {
+    if(hi == lo) { return "only label: press 1"; }
+    if(stage > lo) {
+        return "press " + std::to_string(hi - stage + 1) + " of " + std::to_string(hi - lo);
+    }
+    return "the floor";
+}
+
 void validateStaging(const BuildShip &ship, std::vector<std::string> &warns) {
-    const std::vector<StagingLabel> labels = stagingLabels(ship);
+    validateStaging(ship, stagingLabels(ship), warns);
+}
+
+void validateStaging(const BuildShip &ship, const std::vector<StagingLabel> &labels,
+                     std::vector<std::string> &warns) {
     if(labels.empty()) { return; }
 
     char buf[512];

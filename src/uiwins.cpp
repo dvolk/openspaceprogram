@@ -345,8 +345,9 @@ const WinDef kWins[W_Count] = {
     },
     [W_Staging] = {
         .name = "Staging", .label = "Staging",
-        // Per-stage delta-v / TWR table.
-        .opts = { .slot = ui::Slot::BottomLeft, .initial_size = ImVec2(520.0f, 280.0f),
+        // Per-stage delta-v / TWR table plus the by-label view (#1011), which is a row per
+        // part -- hence the extra height over the old cost-table-only 280.
+        .opts = { .slot = ui::Slot::BottomLeft, .initial_size = ImVec2(560.0f, 460.0f),
                   .closable = true, .default_open = true },
         .role = WinRole::Persistent, .inList = false,
     },

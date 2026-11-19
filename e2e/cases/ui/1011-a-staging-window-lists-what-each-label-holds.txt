@@ -1,13 +1,19 @@
 # The by-label view (#1011): the Staging window says what a stage is WORTH; this is the half
-# that says what is IN it. The group lines go through uiText so --ui-list can see them
-# (#741's trick) -- on a 500-part hull the part rows are too many to register, but the
-# handful of labels is exactly what a test needs: one group per authored label, and in the
-# order a press meets them, which is back-to-front on the label number (vehicle.cpp:2458
-# starts the counter at the highest label).
+# that says what is IN it. The group lines and the first part row of each group go through
+# uiText so --ui-list can see them (#741's trick) -- on a 500-part hull every part row would
+# be registered, but the handful of labels plus one part per label is what a test needs: one
+# group per authored label, in the order a press meets them, which is back-to-front on the
+# label number (vehicle.cpp:2458 starts the counter at the highest label).
 #
 # `misstaged` (e2e/vehicles/, so it needs Game Debug's dev-vehicles switch) is a 2-label
 # hull: label 5 is the booster's decoupler and burns, label 1 is the floor where no advancing
-# press ever stands. 1010-c pins what the checker says about it; this pins what the VIEW says.
+# press ever stands. 1010-c pins what the CHECKER says about it; this pins what the VIEW says.
+#
+# The cells are pinned word for word because they are the sentences a player reads -- and
+# because a table cell clips. The review pass found the press note drawn 1029 px wide inside a
+# 560-px window: --ui-list prints the RAW rect and tags only a FULLY clipped item, so the old
+# EXPECTs passed while the sentence stopped mid-thought at a column edge. Hence the width
+# CHECK: the note is a few words, and if it ever grows into a paragraph this case says so.
 #
 # No --width/--height: a small window stops the VAB top bar taking clicks (#1017).
 NAME staging-window-lists-what-each-label-holds
@@ -32,13 +38,29 @@ EXPECT [uilist] window="Staging" label="label 1"
 EXPECT [uilist] window="Staging" label="Answers to"
 # What each label is worth in presses -- the thing the part's number box cannot show
 # (#1015). Label 5 is where the first press stands; label 1 is the floor, which no advancing
-# press reaches, and that is exactly what the checker above it warns about.
-EXPECT [uilist] window="Staging" label="3 parts -- press 1 of 4"
-EXPECT [uilist] window="Staging" label="5 parts -- the floor: no advancing press stands here"
+# press reaches, and that is the same fact the checker above the table warns about.
+EXPECT [uilist] window="Staging" label="3 parts"
+EXPECT [uilist] window="Staging" label="press 1 of 4"
+EXPECT [uilist] window="Staging" label="5 parts"
+EXPECT [uilist] window="Staging" label="the floor"
+# The first part row of each group is registered too, so the view names parts and does not
+# merely count them. dec_boost tops label 5 and capsule_1 tops label 1: inside a label the
+# order is build order, which is parent before child (shipdef.h:610-612).
+EXPECT [uilist] window="Staging" label="dec_boost"
+EXPECT [uilist] window="Staging" label="capsule_1"
 # Press order, not array order: the counter starts at the top.
 CHECK out.index('label="label 5"') < out.index('label="label 1"')
 # A dense ladder is not a second group: misstaged carries 1 and 5 only, so a view that
 # grouped by integer instead of by label would print 2, 3 and 4 too.
 CHECK len(re.findall(r'window="Staging" label="label \d+"', out)) == 2
+# Two presses' worth of wording, one per group, and nothing in this window fully clipped.
+CHECK len(re.findall(r'window="Staging" label="(the floor|press \d+ of \d+)"', out)) == 2
+CHECK len([ln for ln in out.splitlines() if 'window="Staging"' in ln and ' clipped' in ln]) == 0
+# No cell in this table ran past the edge of its column. --ui-list prints the RAW text extent
+# and tags only a FULLY clipped item, so the word EXPECTs above cannot catch a sentence that
+# stops mid-word at a column edge -- the review pass measured one at 1029 px inside a 560-px
+# window. The header cells span their columns, so the widest header edge IS the table's inner
+# right edge; every registered text row must stay inside it. rect= is "x,y-x,y".
+CHECK max(int(ln.split('rect=')[1].split(' ')[0].split('-')[1].split(',')[0]) for ln in out.splitlines() if 'window="Staging"' in ln and ' text' in ln) <= max(int(ln.split('rect=')[1].split(' ')[0].split('-')[1].split(',')[0]) for ln in out.splitlines() if 'window="Staging"' in ln and ('label="Part"' in ln or 'label="Def"' in ln or 'label="Parent"' in ln or 'label="Answers to"' in ln))
 FORBID error:
 FORBID FAILED

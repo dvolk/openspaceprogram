@@ -596,6 +596,12 @@ static void forgetBuildTargets(Game &g) {
     g.vab.partWinPlaced = false;
     g.vab.stagingSig = 0;
     g.vab.stagingRows.clear();
+    /* The other two caches on that key derive from the same build, and 0 is not a real
+       invalidation (it is a legal FNV value), so clear them with the rows instead of
+       leaving a replaced build's verdicts and part indices lying around. stagingGroups
+       is the one holding raw indices into `parts`. */
+    g.vab.stagingWarns.clear();
+    g.vab.stagingGroups.clear();
     // 0 is "no cache", but it is also a legal FNV value, so make the map
     // unconditionally empty rather than relying on the sentinel.
     g.vab.partIndex.clear();
