@@ -188,6 +188,10 @@ echo "=== building GLEW (static, $GLEW_VER) ==="
 # script keep claiming 2.2.0 while the tree on disk had quietly moved to 2.3.1.
 if ! grep -q "^VERSION $GLEW_VER$" middleware/glew/include/GL/glew.h 2>/dev/null; then
     if [ ! -f tmp/glew-$GLEW_VER.tgz ]; then
+        # tmp/ is gitignored, so on a fresh clone it does not exist yet and curl
+        # fails with (23) writing into a missing directory -- which set -e turns
+        # into a dead bootstrap.
+        mkdir -p tmp
         curl -fsSL -o tmp/glew-$GLEW_VER.tgz \
             "https://sourceforge.net/projects/glew/files/glew/$GLEW_VER/glew-$GLEW_VER.tgz"
     fi
