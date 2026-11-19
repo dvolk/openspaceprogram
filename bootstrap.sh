@@ -176,14 +176,31 @@ cmake -S middleware/sdl-mixer -B "$MWROOT/sdl-mixer" \
     -DCMAKE_C_FLAGS="$SECT $LTO $ARCH" -DCMAKE_CXX_FLAGS="$SECT $LTO $ARCH"
 cmake --build "$MWROOT/sdl-mixer" -j"$JOBS"
 
-echo "=== building GLEW (static, 2.2.0) ==="
-# GLEW git has no generated glew.c -- vendor the official 2.2.0 tarball (cached in tmp/).
-if [ ! -f middleware/glew/src/glew.c ]; then
-    mkdir -p tmp
-    curl -fsSL -o tmp/glew_2.2.0.orig.tar.xz \
-        'http://archive.ubuntu.com/ubuntu/pool/universe/g/glew/glew_2.2.0.orig.tar.xz'
+# GLEW's git tree has no generated glew.c (the release process builds it from
+# core/*.c), so vendor the official release tarball. SourceForge is where upstream
+# publishes it; 2.2.0 used to come from Ubuntu's universe pool, which made our GL
+# loader's version a distro choice served off a mirror that can vanish (#999).
+# Cached in tmp/ as before.
+GLEW_VER=2.3.1
+GLEW_SHA=b64790f94b926acd7e8f84c5d6000a86cb43967bd1e688b03089079799c9e889
+echo "=== building GLEW (static, $GLEW_VER) ==="
+# Guard is the version string, not "does src/glew.c exist" -- that check let this
+# script keep claiming 2.2.0 while the tree on disk had quietly moved to 2.3.1.
+if ! grep -q "^VERSION $GLEW_VER$" middleware/glew/include/GL/glew.h 2>/dev/null; then
+    if [ ! -f tmp/glew-$GLEW_VER.tgz ]; then
+        curl -fsSL -o tmp/glew-$GLEW_VER.tgz \
+            "https://sourceforge.net/projects/glew/files/glew/$GLEW_VER/glew-$GLEW_VER.tgz"
+    fi
+    # SourceForge hands us a redirect to a random mirror, so check we got the
+    # release archive before extracting it over our GL loader.
+    echo "$GLEW_SHA  tmp/glew-$GLEW_VER.tgz" | sha256sum -c - \
+        || { echo "error: tmp/glew-$GLEW_VER.tgz is not the GLEW $GLEW_VER release" >&2; exit 1; }
+    # Extract into an empty tree rather than over the old one: a GLEW tree with files
+    # from two releases is a phantom-extension bug waiting to happen. Old tree goes to
+    # tmp/, it does not get deleted.
+    if [ -d middleware/glew ]; then mv middleware/glew "tmp/glew-pre-$GLEW_VER"; fi
     mkdir -p middleware/glew
-    tar xJf tmp/glew_2.2.0.orig.tar.xz -C middleware/glew --strip-components=1
+    tar xzf tmp/glew-$GLEW_VER.tgz -C middleware/glew --strip-components=1
 fi
 # cmake project is build/cmake (no root CMakeLists); static target -> libGLEW.a.
 cmake -S middleware/glew/build/cmake -B "$MWROOT/glew" \
