@@ -1465,8 +1465,10 @@ void Game::clearEphemeralState() {
        deliberately does not close here -- its identity is the run's, not the
        world's (see the Recorder comment in game.h) -- so a trace can span a
        load while the ring starts again. A ring also survives a mission that
-       ENDS inside a world (recover, landing): at the Space Center it still shows
-       the flight that just happened, which is what a player wants to look at.
+       ENDS inside a world (recover, landing): the window is only drawn in the
+       Flight scene (kFlightWinIds in uiwins.cpp), so the Space Center shows
+       nothing -- but the flight is still there for whoever comes back to Flight
+       to look at it.
        What must not happen is a NEW mission appending onto a dead one, and that
        is covered by select_vehicle -- a VAB launch hands control through it
        (vab.cpp) -- rather than by this world hook. */
@@ -1476,6 +1478,11 @@ void Game::clearEphemeralState() {
        recorder held, exactly as a cold game does (Recorder::paused), so the ring
        collects only once the player presses Start in this mission's window. */
     rec.paused = true;
+    /* rec_fit goes with them too. A view the pilot parked mid-flight belongs to
+       the flight that just ended; leaving it parked means a new ring arriving
+       outside the retained x range, which draws an empty graph with the toggles
+       on and no axis left on screen to hint at the reason. */
+    hud.rec_fit = true;
     // A rebind grab is a live input grab on a UI that is going away.
     rebind_capture_slot = -1;
     /* The VAB is an editor over the world that is going away: its build's
@@ -1717,11 +1724,15 @@ void Game::select_vehicle(Vehicle *v) {
        tick.cpp's autopilot stage press asserts -- so an ascent that presses
        stages keeps its history.
        A VAB launch DOES (vab.cpp), which is what stops a dead flight being
-       spliced in front of a new one. An EVA round-trip (V) clears it too: the
-       accepted cost of one rule in one place. */
+       spliced in front of a new one. An EVA round-trip (V) clears it too, and
+       since #972's held-by-default it also RE-ARMS the hold there: V out and back
+       mid-mission leaves the window saying "(not recording - press Start)" rather
+       than refilling itself. That is the accepted cost of one rule in one place,
+       and worth knowing before someone calls the re-pause a bug. */
     rec.ring.clear();
     rec.ring_armed = false;
     rec.paused = true;   // the next hull's flight gets recorded when the player says so
+    hud.rec_fit = true;  // and on the new hull's time range, not the old one's window
     /* An armed ascent mission follows its HULL, not the camera, and switching ships
        must leave a hull that nobody is flying alone (#616). tick.cpp already stops
        the law from thinking here -- it only calls flyAscent() while
@@ -2774,8 +2785,18 @@ bool Game::ui_remove_vehicle(Vehicle *v) {
             /* The latch is per-active-ship and this handoff does not go through
                select_vehicle (dropVehicleRefs already nulled `ship`), so it has
                to clear its own: a successor inheriting it ignites on the next
-               tick with nobody holding thrust. */
+               tick with nobody holding thrust. The recorder ring (#972) is the
+               same shape for the same reason -- the removed hull's samples are
+               not the successor's flight, its four loss channels restart at zero,
+               and nothing guarantees the join is also a stg=/seams= change, so
+               the graph would draw a cliff nobody flew with no chapter mark on
+               it. This is the one active-hull handoff select_vehicle does not
+               cover. */
             thrust_latched = false;
+            rec.ring.clear();
+            rec.ring_armed = false;
+            rec.paused = true;
+            hud.rec_fit = true;
             if(time_accel >= kRailsWarp) {
                 time_accel = 10;
                 toast("Active ship: %s, warp 10x", ship->displayName().c_str());

@@ -359,7 +359,10 @@ inline void recExtent(const RecRing &ring, double RecSample::*get,
         const RecPoint *b = ring.p.data() + idx[s];
         for(int i = 0; i < len[s]; i++) {
             const double v = b[i].s.*(get);
-            if(std::isnan(v)) { continue; }
+            /* An Inf is not a number either: one in the ring makes the range itself
+               NaN, and a NaN range normalises the whole line away while nread still
+               reports readings. */
+            if(std::isnan(v) || std::isinf(v)) { continue; }
             if(n == 0) { lo = hi = v; }
             else {
                 if(v < lo) { lo = v; }
@@ -374,8 +377,9 @@ inline void recExtent(const RecRing &ring, double RecSample::*get,
 }
 
 /* The mission-time extent of what the ring holds. Spelled out rather than left to
-   implot's fitter, because a fit asked of implot happens once per plot (its
-   CanInitFit) and otherwise re-scans every plotted item every frame. min/max
+   implot's fitter because implot fits an axis ONCE, on the frame the plot first
+   appears (implot.cpp:2535, CanInitFit): a live recorder would otherwise stay
+   pinned to however much flight the ring held when the window opened. min/max
    rather than first/last: the ring keeps WRITE order, and a load can move the
    mission clock underneath it (see RecRing::push), which read as ends would pass
    while clipping half the flight. */

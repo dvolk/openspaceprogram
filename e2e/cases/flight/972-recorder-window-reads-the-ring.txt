@@ -51,7 +51,7 @@ ARGS --ui-click 3000,"Recorder/Start"
 ARGS --ui-click 8000,"Recorder/Pause"
 EXPECT [recwin] samples=0 span=0s chans=4 marks=0+0 at=496,372 size=560,340 paused
 EXPECT [recwin] start
-EXPECT [recwin] paused=1 n=20 span=19s
+EXPECT [recwin] paused=1 n=20 span=19s marks=1+0
 EXPECT record: 60 rows, ring=20 ->
 EXPECT Stage: dropped
 FORBID FAILED

@@ -5156,8 +5156,9 @@ struct RecNorm {
 static ImPlotPoint recNormPoint(int i, void *user) {
     const RecNorm &n = *(const RecNorm *)user;
     const double v = n.base[i].s.*(n.get);
-    /* A NaN reading stays NaN through this, and implot leaves a gap there (with
-       ImPlotLineFlags_SkipNaN) -- the same claim the trace's "-" makes. */
+    /* A NaN reading stays NaN through this, and the default line renderer drops both
+       segments that touch it -- the gap the trace's "-" claims. SkipNaN would do the
+       opposite; see the spec where the line is drawn. */
     return ImPlotPoint(n.base[i].sim_t, n.lo + (v - n.mn) * n.k);
 }
 
@@ -5166,6 +5167,13 @@ static ImPlotPoint recNormPoint(int i, void *user) {
    own min and max land on the axis ends, so without a margin the top and bottom of
    every line draw half their width off the frame. */
 static constexpr double kRecMargin = 0.02;
+
+/* The Recorder plot's frame rect, written every frame it draws and read by the
+   NEXT frame's gesture test. Frame-local rather than HudState because it is pixel
+   geometry of a window that may be closed, not anything the simulation or a save
+   can see. */
+static ImVec2 gRecFrameMin = ImVec2(0.0f, 0.0f);
+static ImVec2 gRecFrameMax = ImVec2(0.0f, 0.0f);
 
 void drawUIRecorder(Game &g) {
     drawWin(g, W_Recorder, [&] {
@@ -5178,6 +5186,17 @@ void drawUIRecorder(Game &g) {
             for(int i = 0; i < kRecNumCh; i++) { hud.rec_chan[i] = kRecChans[i].dflt; }
             hud.rec_seeded = true;
         }
+
+        /* What the ring holds, computed once for the frame: the runs the plot draws
+           and the chapter marks it draws over them. Asked before the controls, not
+           inside the plot branch, because the Pause print below reports the marks too
+           -- and a mark only means anything if it is inside the stretch the ring
+           holds, which is the one part of the chapter-mark claim a test can see. */
+        int idx[2], len[2];
+        const int nspans = ring.spans(idx, len);
+        double stage_xs[kRecMarkMax], seam_xs[kRecMarkMax];
+        const int nstage = recMarks(ring, false, stage_xs, kRecMarkMax);
+        const int nseam = recMarks(ring, true, seam_xs, kRecMarkMax);
 
         if(ImGui::Button("Start")) {
             ring.clear();
@@ -5204,8 +5223,8 @@ void drawUIRecorder(Game &g) {
                span=5s here, not the 4x worth of mission time the samples cover. */
             const double held = ring.count > 1
                               ? ring.at(ring.count - 1).sim_t - ring.at(0).sim_t : 0.0;
-            printf("[recwin] paused=%d n=%d span=%.0fs\n", g.rec.paused ? 1 : 0,
-                   ring.count, held);
+            printf("[recwin] paused=%d n=%d span=%.0fs marks=%d+%d\n",
+                   g.rec.paused ? 1 : 0, ring.count, held, nstage, nseam);
         }
         ImGui::EndDisabled();
         ImGui::SameLine();
@@ -5263,12 +5282,6 @@ void drawUIRecorder(Game &g) {
             if(hud.rec_chan[i]) { nvis++; }
         }
 
-        int idx[2], len[2];
-        const int nspans = ring.spans(idx, len);
-        double stage_xs[kRecMarkMax], seam_xs[kRecMarkMax];
-        const int nstage = recMarks(ring, false, stage_xs, kRecMarkMax);
-        const int nseam = recMarks(ring, true, seam_xs, kRecMarkMax);
-
         if(ring.count < 2) {
             /* Two samples, not one: a single point has no width to fit, and implot
                would lock the x axis onto it (which is how the first version of this
@@ -5281,7 +5294,40 @@ void drawUIRecorder(Game &g) {
             ImGui::TextDisabled("(no channels on)");
         } else {
             int nempty = 0;   // visible channels the ring holds no reading for; said under the plot
-            if(ImPlot::BeginPlot("##rec", ImVec2(-1.0f, -1.0f))) {
+            /* The plot takes everything left in the window, and that frame rect has
+               to be measured BEFORE BeginPlot: after it, imgui's cursor already sits
+               below the reserved area (measuring there gave a rect whose bottom was
+               above its top). Saved for the NEXT frame's gesture test, which has to
+               run ahead of the axis setup because any ImPlot query calls SetupLock
+               (implot.cpp:2175 asserts a Setup call afterwards). The rect is a hair
+               larger than implot's own plot rect -- Style.PlotPadding only, since
+               neither axis reserves a gutter -- close enough for "the pilot gestured
+               AT the graph", and being wrong by a few pixels only yields the fit a
+               frame early. */
+            ImVec2 fr0 = ImGui::GetCursorScreenPos();
+            ImVec2 frs = ImGui::GetContentRegionAvail();
+            gRecFrameMin = fr0;
+            gRecFrameMax = ImVec2(fr0.x + frs.x, fr0.y + frs.y);
+            if(ImPlot::BeginPlot("##rec", ImVec2(-1.0f, -1.0f), ImPlotFlags_NoMenus)) {
+                /* The pilot took the view: a scroll or a drag, not any press, so a
+                   click that goes nowhere does not steal the fit. Asked BEFORE the
+                   limits below, because pinning them with ImPlotCond_Always in the
+                   same frame is what swallows the gesture: IsInputLocked() reads
+                   exactly that (implot_internal.h:912-918), so a pinned axis refuses
+                   the wheel and the notch is simply lost. Releasing first lets this
+                   frame pan or zoom. The Fit button hands the follow back. */
+                const ImGuiIO &io = ImGui::GetIO();
+                const bool overGraph = io.MousePos.x >= gRecFrameMin.x &&
+                                       io.MousePos.y >= gRecFrameMin.y &&
+                                       io.MousePos.x <= gRecFrameMax.x &&
+                                       io.MousePos.y <= gRecFrameMax.y;
+                if(hud.rec_fit && overGraph &&
+                   (io.MouseWheel != 0.0f
+                    || ImGui::IsMouseDragging(ImGuiMouseButton_Left)
+                    || ImGui::IsMouseDragging(ImGuiMouseButton_Right))) {
+                    hud.rec_fit = false;
+                    printf("[recwin] fit=off\n");
+                }
                 /* Neither axis draws a label, tick mark or tick number. The pilot
                    reads coordinates from implot's own hover text, and only its x half
                    means anything here -- y is 0..1 of each line's own range (#990).
@@ -5290,20 +5336,23 @@ void drawUIRecorder(Game &g) {
                    implot_internal.h:906 WillRender), so the plot rect is the whole
                    frame. No grid lines either, deliberately: the only vertical lines
                    in this graph should be the chapter marks below, and an unlabeled
-                   grid is indistinguishable from them. */
-                ImPlot::SetupAxis(ImAxis_X1, nullptr, ImPlotAxisFlags_NoDecorations);
+                   grid is indistinguishable from them. NoMenus (here and on BeginPlot)
+                   because a right-click menu writes axis.Flags directly, and SetupAxis
+                   rewrites flags only when they differ from last frame's
+                   (implot.cpp:2183) -- so an Invert or Grid Lines chosen from a menu
+                   would stick for the rest of the session while this window keeps
+                   handing over the same flags. Telemetry (gameui.cpp:759) keeps its
+                   menus; that one is the debug surface. */
+                ImPlot::SetupAxis(ImAxis_X1, nullptr, ImPlotAxisFlags_NoDecorations |
+                                                         ImPlotAxisFlags_NoMenus);
                 /* x spans the flight the ring holds, and it is asked for EVERY
                    frame. implot fits an axis once, on the frame the plot first
                    appears (implot.cpp:2535, CanInitFit), so a live recorder
                    otherwise locks onto however much flight the ring held when the
                    window opened: eight samples, the first two seconds of an ascent,
                    with the flight itself off the right-hand edge -- which is what
-                   "the plot is stuck at 0,0" was. Spelling the range out with
-                   recTimeExtent rather than asking implot to fit it also skips the
-                   full re-scan of every plotted item that a fit costs; kRecMargin
-                   keeps the newest sample off the edge of the frame. Once the
-                   pilot scrolls or drags, hud.rec_fit stands down and the view they
-                   left is kept until the Fit button. */
+                   "the plot is stuck at 0,0" was. kRecMargin keeps the newest sample
+                   off the edge of the frame. */
                 if(hud.rec_fit) {
                     double t0 = 0.0, t1 = 0.0;
                     recTimeExtent(ring, &t0, &t1);
@@ -5313,7 +5362,8 @@ void drawUIRecorder(Game &g) {
                 }
                 /* The y limits stay pinned even with the axis hidden: they ARE the
                    normalisation, and a view with no unit cannot be dragged into one. */
-                ImPlot::SetupAxis(ImAxis_Y1, nullptr, ImPlotAxisFlags_NoDecorations);
+                ImPlot::SetupAxis(ImAxis_Y1, nullptr, ImPlotAxisFlags_NoDecorations |
+                                                         ImPlotAxisFlags_NoMenus);
                 ImPlot::SetupAxisLimits(ImAxis_Y1, -kRecMargin, 1.0 + kRecMargin,
                                         ImPlotCond_Always);
                 /* South, because an East legend eats the plot's width in a window
@@ -5360,12 +5410,17 @@ void drawUIRecorder(Game &g) {
                     norm.lo = range > 0.0 ? 0.0 : 0.5;
                     norm.k = range > 0.0 ? 1.0 / range : 0.0;
                     ImPlotSpec spec;
-                    /* SkipNaN, not the default strip: implot's default line renderer
-                       draws a segment INTO a NaN point (RendererLineStrip does not
-                       test it, implot_items.cpp:989), so a dashed gamma or aoa would
-                       jump the line instead of leaving the gap the trace's "-"
-                       promises. */
-                    spec.Flags = ImPlotLineFlags_SkipNaN;
+                    /* NO SkipNaN -- that is the flag which BRIDGES a dash. The default
+                       RendererLineStrip leaves P1 sitting on the NaN when a segment
+                       fails its cull test, and a NaN endpoint always fails it (ImMin/
+                       ImMax propagate NaN), so both segments touching the dash go
+                       undrawn: the gap the trace's "-" promises. SkipNaN selects
+                       RendererLineStripSkip, which instead keeps P1 at the last good
+                       point (implot_items.cpp:1009-1027), so the two neighbours are
+                       joined by one real line across a stretch the file prints "-"
+                       for. Checked against the draw list rather than the flag's name:
+                       a NaN sample in the middle of five draws a 313 px segment under
+                       SkipNaN and nothing under the default (tmp/night5/probe2.cpp). */
                     for(int s = 0; s < nspans; s++) {
                         norm.base = ring.p.data() + idx[s];
                         ImPlot::PlotLineG(kRecChans[i].key, recNormPoint, &norm, len[s], spec);
@@ -5382,19 +5437,6 @@ void drawUIRecorder(Game &g) {
                     ms.LineColor = ImVec4(0.55f, 0.85f, 1.0f, 0.70f);
                     ImPlot::PlotInfLines("hull size", seam_xs, nseam, ms);
                 }
-                /* The pilot took the view: a scroll or a drag, not any press, so a
-                   click that goes nowhere does not steal the fit. This must be read
-                   inside the Begin/End pair (after EndPlot there is no current plot
-                   to ask); it is current, not a frame late, because implot settles
-                   plot.Hovered in SetupFinish, which SetupLock reaches at the plot's
-                   first item. */
-                if(hud.rec_fit && ImPlot::IsPlotHovered() &&
-                   (ImGui::GetIO().MouseWheel != 0.0f
-                    || ImGui::IsMouseDragging(ImGuiMouseButton_Left)
-                    || ImGui::IsMouseDragging(ImGuiMouseButton_Right))) {
-                    hud.rec_fit = false;
-                    printf("[recwin] fit=off\n");
-                }
                 ImPlot::EndPlot();
             }
             /* A ticked channel that draws nothing is otherwise indistinguishable
@@ -5410,6 +5452,12 @@ void drawUIRecorder(Game &g) {
             if(nstage >= kRecMarkMax || nseam >= kRecMarkMax) {
                 ImGui::TextDisabled("(only the first %d chapter marks are drawn)",
                                     kRecMarkMax);
+            }
+            /* The ring rolls. A graph that keeps looking continuous while the launch
+               ages out of it is a lie by omission, and the stdout line only speaks at
+               window-appearing time -- so this says it where the eye already is. */
+            if(ring.count >= RecRing::Cap) {
+                ImGui::TextDisabled("(the ring is full: the oldest samples age out)");
             }
         }
         /* Printed once when the window appears, so a test has something to EXPECT

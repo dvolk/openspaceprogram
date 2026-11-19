@@ -487,8 +487,22 @@ int main() {
         CHECK_NEAR(mn, -3.5, 1e-12, "a NaN reading never sets the min");
         CHECK(nread == 3, "a dash is not a reading");
 
+        // Nor is an Inf. It is worse than a dash if it gets through: one Inf makes
+        // the RANGE itself NaN, and a NaN range normalises the whole line away
+        // (k = 0) while nread still reports readings -- so the graph would draw
+        // nothing and the window would say nothing either.
+        RecPoint inf_pt;
+        inf_pt.sim_t = 4.0; inf_pt.s.vs = INFINITY;
+        r.push(inf_pt);
+        recExtent(r, &RecSample::vs, &mn, &mx, &nread);
+        CHECK_NEAR(mx, 10.0, 1e-12, "an Inf reading never sets the max");
+        CHECK(mx - mn == 13.5, "the range stays a number with an Inf in the ring");
+        CHECK(nread == 3, "an Inf is not a reading either");
+
         // A channel that has never been readable says so rather than plotting a
-        // flat line at 0 (the window prints "(no reading)" on nread == 0).
+        // flat line at 0 (the window counts these and prints how many under the
+        // plot -- it cannot say it in the legend row, where the label has to stay
+        // static text).
         r.clear();
         RecPoint only_dash;
         only_dash.sim_t = 1.0; only_dash.s.gamma = NAN;
