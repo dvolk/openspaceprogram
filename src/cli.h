@@ -126,7 +126,8 @@ struct GameArgs {
     bool record = false;
     /* Run-time seconds between recorded rows, like every other periodic log
        (Game::logClockMs), so at warp the rows are further apart in MISSION time.
-       --record-interval's help spells the same rule; #987. */
+       A --sim-steps run is the exception the help spells out: there that clock is
+       the scripted tick count, so run time IS sim time. #987. */
     double record_interval = 0.25;
     bool dbg_log = false;
     bool info_log = false;       // dump Orbit/Surface Info to stdout

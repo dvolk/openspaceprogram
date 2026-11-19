@@ -109,12 +109,15 @@ static void check_pad_grounding(const std::string &logical,
     }
 }
 
-/* A pad deck's height above the body's sea-level DATUM: what alt_asl reports for
-   a hull sitting on it (#850), and therefore what any comment quoting "the pad
-   stands N m" has to match. height_m lifts the deck off the terrain sampled at
-   the pad's own dir, and that terrain is GENERATED, so the number is not
-   authored anywhere -- it moves when the noise does. #983: three comments quoted
-   Moho's pad at 911 m while this build spawns a hull there at ~130 m. */
+/* A pad deck's height above the body's sea-level DATUM: height_m lifts the deck
+   clear of the surface sampled at the pad's own dir, and seaLevelRadius() is the
+   sphere the air column and the ocean shell are weighed against (#850). So this is
+   the DECK's own altitude; a hull parked on it rides a few metres higher still,
+   because build_ship shifts it by the support margin (vehicle.cpp:209) -- which is
+   why an in-game spawn at moho_pad reads ~130 m while the deck is 125.9. The
+   number is not authored anywhere: it is generated terrain, so it moves when the
+   noise does. #983: comments quoted Moho's pad at 911 m while this build puts the
+   deck at 125.9 m. */
 static double padDeckAsl(const WorldBuilding &w, const TerrainBody *hb) {
     const glm::dvec3 up = w.dir();
     return w.height_m + (double)hb->GetTerrainHeight(glm::vec3(up))
@@ -591,6 +594,26 @@ int main() {
             CHECK(sys.world_buildings.size() == 2);
         }
         bool homePad = false;
+        /* Pad decks the prose quotes (#983), and the accounting that makes the pin
+           hard to lose. They are GENERATED -- terrain height at the pad's own dir
+           plus its authored height_m -- so nothing else watches them, and "moho_pad
+           stands 911 m" sat in comments while this build put its deck at 126 m. A
+           noise or coordinate change now fails HERE with the new value printed just
+           above it. The seen[] half is the point of writing it this way: matching
+           ids alone leaves a renamed or deleted pad pinning NOTHING, and the test
+           still says OK (proven: renaming moho_pad to moho_site in a scratch copy
+           of the data left this test green). polar_pad is deliberately absent -- its
+           deck sits below Kerbin's sea level, which is #1007, a question rather
+           than a fact to freeze. */
+        struct PadWant { const char *id; double asl; };
+        static const PadWant kWant[] = {
+            {"main_space_port", 260.1},
+            {"ksc_runway", 249.6},
+            {"moho_pad", 125.9},
+            {"duna_pad", 65.0},
+        };
+        const bool pinHere = logical == "res/systems/ksp_system.json";
+        bool seen[sizeof(kWant) / sizeof(kWant[0])] = {};
         for(const WorldBuilding &w : sys.world_buildings) {
             TerrainBody *wb = sys.find(w.body);
             if(wb == nullptr) {
@@ -643,38 +666,52 @@ int main() {
             // ... and the deck it puts on that body reaches the ground
             if(!w.orbital && !w.air && wb != nullptr) {
                 check_pad_grounding(logical, w, wb);
-                /* The number, printed rather than hidden behind a pass: the
-                   comments that quote one are the thing #983 found stale. */
+                /* The number, printed where it earns its keep: the pinned pads, so
+                   a stale one sits on the line above its own failure, and any deck
+                   under its body's sea level -- three shipped pads do (#1007), and
+                   that is worth a permanent line rather than a one-off audit. All
+                   69 of them every run is noise the suite does not need (#1000 was
+                   about exactly this). */
                 const double asl = padDeckAsl(w, wb);
-                printf("[padalt] %-28s %-8s %-18s deck_asl=%.1f\n",
-                       logical.c_str(), w.body.c_str(), w.id.c_str(), asl);
-                /* Pin the ones prose quotes. They are GENERATED -- terrain
-                   height at the pad's own dir plus its authored height_m --
-                   so nothing else watches them, and "moho_pad stands 911 m"
-                   sat in three places while this build put its deck at 126 m.
-                   A terrain-noise or pad-coordinate change now fails HERE with
-                   the new value printed just above it, which is the whole
-                   point: the comment goes stale loudly or not at all.
-                   polar_pad is deliberately absent -- its deck sits below
-                   Kerbin's sea level, which is a question, not a fact to
-                   freeze. */
-                if(logical == "res/systems/ksp_system.json") {
-                    static const struct { const char *id; double asl; } want[] = {
-                        {"main_space_port", 260.1},
-                        {"ksc_runway", 249.6},
-                        {"moho_pad", 125.9},
-                        {"duna_pad", 65.0},
-                    };
-                    for(const auto &e : want) {
-                        if(w.id != e.id) { continue; }
-                        if(std::fabs(asl - e.asl) > 2.0) {
-                            printf("FAIL %s: pad '%s' deck is at %.1f m above "
-                                   "the datum, not the %.1f m the prose quotes "
-                                   "-- fix the comment or re-measure the pin\n",
-                                   logical.c_str(), w.id.c_str(), asl, e.asl);
-                            g_failures++;
-                        }
+                bool pinned = false;
+                for(size_t k = 0; k < sizeof(kWant) / sizeof(kWant[0]); k++) {
+                    if(pinHere && w.id == kWant[k].id) {
+                        seen[k] = true;
+                        pinned = true;
                     }
+                }
+                if(pinned || asl < 0.0) {
+                    printf("[padalt] %-28s %-8s %-18s deck_asl=%.1f%s\n",
+                           logical.c_str(), w.body.c_str(), w.id.c_str(), asl,
+                           asl < 0.0 ? "  BELOW SEA LEVEL" : "");
+                }
+                if(!pinHere) { continue; }
+                for(const auto &e : kWant) {
+                    if(w.id != e.id) { continue; }
+                    if(std::fabs(asl - e.asl) > 2.0) {
+                        printf("FAIL %s: pad '%s' deck is at %.1f m above "
+                               "the datum, not the %.1f m the prose quotes "
+                               "-- fix the comment or re-measure the pin\n",
+                               logical.c_str(), w.id.c_str(), asl, e.asl);
+                        g_failures++;
+                    }
+                }
+            }
+        }
+        /* Every pinned id has to have been SEEN, or the pin above compared nothing.
+           The same rule covers the discriminator itself: the want list is keyed to
+           this one file because main_space_port also exists on Eerbon, at -166.5 m,
+           so without it the test would fail for the wrong reason -- and if the file
+           were renamed, both this pin and the ksp-specific counts above would go
+           away silently. */
+        if(pinHere) {
+            for(size_t k = 0; k < sizeof(kWant) / sizeof(kWant[0]); k++) {
+                if(!seen[k]) {
+                    printf("FAIL %s: no pad '%s' to pin -- renamed, removed, or no "
+                           "longer a surface building, so the pin and the prose it "
+                           "protects silently vanished\n",
+                           logical.c_str(), kWant[k].id);
+                    g_failures++;
                 }
             }
         }

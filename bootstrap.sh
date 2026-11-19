@@ -114,26 +114,42 @@ cmake --build "$MWROOT/sdl3" -j"$JOBS"
 #
 # The archive's OWN definitions are subtracted before the deny list runs, because
 # `nm -u` on an archive reports symbols one member wants that another member
-# supplies: libassimp.a asks for unzOpen2 and answers it itself. Without that the
-# check cries wolf on its own middleware. (#1004)
+# supplies: libassimp.a asks for unzOpen2 and answers it itself (2 undef lines, 8
+# defined). Without the subtraction the check cries wolf on its own middleware --
+# measured, it changes nothing for these four lists today, so it is insurance
+# rather than a live fix. (#1004)
 #
-# Skipped on a windows cross-build: the host nm is not guaranteed to read the PE
-# archive $CROSS produced.
+# Each deny list mirrors what THAT build pins OFF below, not what the link line
+# provides: a hit means cmake picked up something the script refuses, even when
+# another archive or SDL3_SYS would happen to answer it. The lists are anchored
+# against any number of leading _, so a Mach-O host (one underscore on every name,
+# two on a mangled C++ one) is not silently immune.
 no_stray_symbols() {
-    local arc="$1" label="$2" deny="$3" undef defs stray
+    if [ "$OS" = windows ]; then return 0; fi   # host nm vs the PE archive $CROSS built
+    if [ "$#" -ne 3 ]; then
+        echo "error: no_stray_symbols wants archive, label, deny-regex" >&2
+        exit 1
+    fi
+    local arc="$1" label="$2" deny="$3" u d stray
     if [ ! -f "$arc" ]; then
         echo "error: $arc missing -- cmake built no static archive" >&2
         exit 1
     fi
-    nm -u "$arc" 2>/dev/null | awk '$1 == "U" {print $2}' | sort -u > /tmp/nm_u.$$ ||
-        { echo "error: nm -u $arc failed (binutils installed?)" >&2; rm -f /tmp/nm_u.$$; exit 1; }
+    u=$(mktemp) || { echo "error: mktemp failed" >&2; exit 1; }
+    d=$(mktemp) || { rm -f "$u"; echo "error: mktemp failed" >&2; exit 1; }
+    trap 'rm -f "$u" "$d"' RETURN
+    nm -u "$arc" 2>/dev/null | awk '$1 == "U" || $1 == "w" {print $2}' | sort -u > "$u" ||
+        { echo "error: nm -u $arc failed (binutils installed?)" >&2; exit 1; }
     nm --defined-only -g "$arc" 2>/dev/null |
-        awk '$1 != "U" && $3 != "" {print $3}' | sort -u > /tmp/nm_d.$$ || true
-    undef=$(cat /tmp/nm_u.$$)
-    defs=$(cat /tmp/nm_d.$$)
-    rm -f /tmp/nm_u.$$ /tmp/nm_d.$$
-    stray=$(comm -23 <(printf '%s\n' "$undef") <(printf '%s\n' "$defs") |
-            { grep -E "$deny" || true; } | sort -u)
+        awk '$1 != "U" && $3 != "" {print $3}' | sort -u > "$d" || true
+    # An empty undef set means nm read something other than a real object archive
+    # (thin archive, wrong format, no binutils for this target). Passing on that is
+    # worse than not running the guard at all.
+    if [ ! -s "$u" ]; then
+        echo "error: nm -u $arc named no undefined symbols -- refusing to call that clean" >&2
+        exit 1
+    fi
+    stray=$(comm -23 "$u" "$d" | { grep -E "^_*($deny)" || true; } | sort -u)
     if [ -n "$stray" ]; then
         echo "error: $label needs system libs the Makefile does not link:" >&2
         sed 's/^/  /' <<<"$stray" >&2
@@ -144,12 +160,8 @@ no_stray_symbols() {
 
 # SDL3 auto-detects more optional system libs than the pins above cover, and
 # SDL_DEPS_SHARED=OFF makes the ones it does not dlopen direct link deps that
-# SDL3_SYS lacks. Catch a new one here, not at the osp link (or, worse, deep
-# inside `make deb`'s dpkg-buildpackage).
-if [ "$OS" != windows ]; then
-    no_stray_symbols "$MWROOT/sdl3/libSDL3.a" libSDL3.a \
-                     '^(fribidi_|th_|pw_|decor_)'
-fi
+# SDL3_SYS lacks.
+no_stray_symbols "$MWROOT/sdl3/libSDL3.a" libSDL3.a 'fribidi_|th_|pw_|decor_'
 
 echo "=== building SDL_image3 (static, PNG-only) ==="
 # PNG-only (the game loads/saves PNG). Vendored libpng+zlib; SDL3_DIR pins our SDL3.
@@ -175,12 +187,11 @@ git -C middleware/sdl3-image/external/libpng checkout -- config.guess config.sub
 # Everything but PNG is pinned OFF above, so a codec symbol here means cmake found
 # one on the system. png_* is deliberately NOT on the list: the vendored libpng is
 # a SEPARATE archive (PNG_A) that the Makefile links right next to this one, so
-# those symbols have an answer -- and most of libSDL3_image.a's 203 undefined
-# symbols are exactly that.
-if [ "$OS" != windows ]; then
-    no_stray_symbols "$MWROOT/sdl3-image/libSDL3_image.a" libSDL3_image.a \
-                     '^(jpeg_|tiff_|TIFF_|webp_|jxl_|avif_|aom_|dav1d|libjxl)'
-fi
+# those symbols have an answer. Measured over libSDL3_image.a's 203 undefined
+# symbols: 45 png_*, 81 IMG_* (its own cross-member calls, which the subtraction
+# above removes), 75 SDL_* (answered by libSDL3.a), 2 anything else.
+no_stray_symbols "$MWROOT/sdl3-image/libSDL3_image.a" libSDL3_image.a \
+                 'jpeg_|tiff_|TIFF_|webp_|jxl_|avif_|aom_|dav1d|libjxl|gif_|DGif|openGIF'
 
 echo "=== building SDL3_mixer (static, WAV + stb_vorbis only) ==="
 # WAV + stb_vorbis only (the game's two formats); all else off, so no external deps.
@@ -210,10 +221,13 @@ cmake --build "$MWROOT/sdl-mixer" -j"$JOBS"
 # Every decoder but WAV and stb_vorbis is pinned OFF above. A symbol from one of
 # them -- or from an audio backend, which SDL3 owns and SDL3_SYS already links --
 # means cmake picked up a system library.
-if [ "$OS" != windows ]; then
-    no_stray_symbols "$MWROOT/sdl-mixer/libSDL3_mixer.a" libSDL3_mixer.a \
-                     '^(FLAC_|mpg123|mad_|vorbis|ov_|opus_|op_|wavpack|Wavpack|fluid_|fluidsynth|xmp_|timidity|gme_|Game_Music|pa_simple_|pa_|snd_)'
-fi
+# Every decoder but WAV and stb_vorbis is pinned OFF above. A symbol from one of
+# them means cmake picked up a system library. The pa_/snd_ terms are not decoder
+# options: only SDL3 is allowed to open an audio backend, so SDL3_SYS carries
+# -lasound/-lpulse and a hit here is config drift rather than a link break -- it
+# still wants a human, and libpulse-simple (pa_simple_*) is not among what we link.
+no_stray_symbols "$MWROOT/sdl-mixer/libSDL3_mixer.a" libSDL3_mixer.a \
+                 'FLAC_|mpg123|mad_|vorbis|ov_|opus_|op_|wavpack|Wavpack|fluid_|fluidsynth|xmp_|timidity|gme_|Game_Music|pa_simple_|pa_|snd_'
 
 # GLEW's git tree has no generated glew.c (the release process builds it from
 # core/*.c), so vendor the official release tarball. SourceForge is where upstream
@@ -292,11 +306,12 @@ cmake --build "$MWROOT/assimp" -j"$JOBS"
 # OBJ-only, and only zlib is on the link line behind it (assimp's own unzip code is
 # IN libassimp.a -- nm asks for unzOpen2 and answers it, which is why the guard
 # subtracts what an archive defines before it denies anything). An xml2, bz2, zstd,
-# pugixml or boost symbol means a loader or a fallback crept in.
-if [ "$OS" != windows ]; then
-    no_stray_symbols "$MWROOT/assimp/lib/libassimp.a" libassimp.a \
-                     '^(xml(Read|Free|Create)|BZ2_|ZSTD_|_ZN4pugi|_ZN5boost|dr_flac)'
-fi
+# pugixml or boost symbol means a loader or a fallback crept in. The ZN/ZTV/...
+# terms are how a C++ dependency actually shows up: an undefined const member
+# function mangles to _ZNK5boost..., a vtable to _ZTV5boost -- plain _ZN5boost
+# would miss every one of them (libassimp.a itself carries 468 _ZNK names).
+no_stray_symbols "$MWROOT/assimp/lib/libassimp.a" libassimp.a \
+                 'xml(Read|Free|Create)|BZ2_|ZSTD_|dr_flac|Z(N|NK|TV|TI|GV|TS)[0-9]+(boost|pugi)'
 
 echo
 if [ "$OS" = windows ]; then
