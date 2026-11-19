@@ -1,0 +1,44 @@
+# The by-label view (#1011): the Staging window says what a stage is WORTH; this is the half
+# that says what is IN it. The group lines go through uiText so --ui-list can see them
+# (#741's trick) -- on a 500-part hull the part rows are too many to register, but the
+# handful of labels is exactly what a test needs: one group per authored label, and in the
+# order a press meets them, which is back-to-front on the label number (vehicle.cpp:2458
+# starts the counter at the highest label).
+#
+# `misstaged` (e2e/vehicles/, so it needs Game Debug's dev-vehicles switch) is a 2-label
+# hull: label 5 is the booster's decoupler and burns, label 1 is the floor where no advancing
+# press ever stands. 1010-c pins what the checker says about it; this pins what the VIEW says.
+#
+# No --width/--height: a small window stops the VAB top bar taking clicks (#1017).
+NAME staging-window-lists-what-each-label-holds
+CLAIM The Staging window groups every authored label in press order, not just their cost.
+KIND invariant
+ARGS --ui-click 1000,"Title Menu/New Game"
+ARGS --ui-click 1600,"New Game/Start"
+ARGS --sim-press 2600,0,4
+ARGS --sim-press 3000,0,F1
+ARGS --ui-click 3400,"Game Debug/Dev vehicles in the VAB picker"
+ARGS --sim-press 3800,0,F1
+ARGS --ui-type 4200,"VAB TopBar/##vehfilter",misstaged
+ARGS --ui-click 4800,"VAB TopBar/##vabload"
+ARGS --ui-click 5400,"misstaged"
+ARGS --ui-click 6000,"VAB TopBar/Load"
+ARGS --ui-list 7200 --timeout 12
+LIMIT 60
+EXPECT [vab] loaded misstaged (8 parts)
+# One group line per authored label, and the table's own header for the per-part columns.
+EXPECT [uilist] window="Staging" label="label 5"
+EXPECT [uilist] window="Staging" label="label 1"
+EXPECT [uilist] window="Staging" label="Answers to"
+# What each label is worth in presses -- the thing the part's number box cannot show
+# (#1015). Label 5 is where the first press stands; label 1 is the floor, which no advancing
+# press reaches, and that is exactly what the checker above it warns about.
+EXPECT [uilist] window="Staging" label="3 parts -- press 1 of 4"
+EXPECT [uilist] window="Staging" label="5 parts -- the floor: no advancing press stands here"
+# Press order, not array order: the counter starts at the top.
+CHECK out.index('label="label 5"') < out.index('label="label 1"')
+# A dense ladder is not a second group: misstaged carries 1 and 5 only, so a view that
+# grouped by integer instead of by label would print 2, 3 and 4 too.
+CHECK len(re.findall(r'window="Staging" label="label \d+"', out)) == 2
+FORBID error:
+FORBID FAILED

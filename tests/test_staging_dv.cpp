@@ -1953,6 +1953,55 @@ static void test_the_staging_checker_names_the_presses_that_do_nothing() {
     }
 }
 
+/* The shared grouping (#1011): one pass that the checker, the VAB's by-label view and the
+   auto-stager all read, so the shape of it is pinned once rather than in three readers.
+   The order is the load-bearing part -- groups ascending, parts in build order inside a
+   group -- because a reader that walks the groups back-to-front is claiming to print the
+   PRESS order. */
+static void test_the_label_groups_read_as_press_order() {
+    Catalog cat;
+    BuildShip bs;
+    // Deliberately out of label order in the array, so a reader cannot rely on insertion.
+    const int t1 = addPart(bs, cat.tank(50, 25, 25), "up_tank", -1, 5);
+    addPart(bs, cat.engine(10, 0.5, 1000.0), "up_eng", t1, 5);
+    const int d = addPart(bs, cat.decoupler(5), "dec", t1, 3);
+    addPart(bs, cat.tank(20, 10, 10), "ballast", t1, 1);
+    const int t2 = addPart(bs, cat.tank(50, 75, 75), "lo_tank", d, 1);
+    addPart(bs, cat.engine(10, 2.0, 1000.0), "lo_eng", t2, 1);
+
+    std::vector<StagingLabel> g = stagingLabels(bs);
+    CHECK_TRUE(g.size() == 3, "three distinct labels");
+    CHECK_TRUE(g[0].stage == 1 && g[1].stage == 3 && g[2].stage == 5, "ascending");
+    CHECK_TRUE(g[0].parts.size() == 3 && g[1].parts.size() == 1
+                   && g[2].parts.size() == 2,
+               "every part in exactly one group");
+    size_t seen = 0;
+    for(const StagingLabel &l : g) { seen += l.parts.size(); }
+    CHECK_TRUE(seen == bs.parts.size(), "no part dropped, none twice");
+    // Build order holds inside a group, which in a real build is parent before child:
+    // lo_tank (index 4) comes before its child lo_eng (5).
+    CHECK_TRUE(g[0].parts[1] == 4 && g[0].parts[2] == 5, "build order inside a group");
+    CHECK_TRUE((g[0].responds & (unsigned)StageRole::Engine) != 0u,
+               "the floor label burns, so it is not dimmed");
+    CHECK_TRUE((g[0].responds & (unsigned)StageRole::Decoupler) == 0u,
+               "and it carries no decoupler");
+    CHECK_TRUE(g[1].responds == (unsigned)StageRole::Decoupler,
+               "the middle label carries only the decoupler");
+    CHECK_TRUE(g[2].responds == (unsigned)StageRole::Engine, "the top label burns");
+
+    /* And the two readers agree on the same pass: the groups' edges are exactly what the
+       checker counts presses over. Labels 1/3/7 here means 4 presses, of which the two
+       single-integer holes are dead. */
+    std::vector<std::string> w;
+    validateStaging(bs, w);
+    CHECK_TRUE(w.size() == 1, "one verdict, for the two holes");
+    CHECK_TRUE(has_warn(w, "2 of 4 presses do nothing"), "counted off the group edges");
+    CHECK_TRUE(has_warn(w, "no part carries 2, 4"), "two runs, not one merged range");
+
+    BuildShip empty;
+    CHECK_TRUE(stagingLabels(empty).empty(), "an empty build groups to nothing");
+}
+
 int main() {
     test_two_stage();
     test_single_stage();
@@ -1985,6 +2034,7 @@ int main() {
     test_a_stage_label_means_exactly_three_things();
     test_a_stage_label_is_order_not_height();
     test_the_staging_checker_names_the_presses_that_do_nothing();
+    test_the_label_groups_read_as_press_order();
 
     printf("test_staging_dv: %d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;

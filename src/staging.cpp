@@ -1072,32 +1072,32 @@ std::vector<StageRow> computeStaging(const BuildShip &ship, double g,
    split, and game.cpp already refuses it at the press and spends the label anyway (#541), so
    the launch is not ruined -- but once #1011's window shows the part, a refuse there is the
    better answer, and it is noted rather than decided here. */
-void validateStaging(const BuildShip &ship, std::vector<std::string> &warns) {
-    struct PerLabel {
-        int stage = 1;
-        unsigned responds = 0u;   // StageRole bits of everything riding this label
-        int decs = 0;             // decouplers here (a chute is not one -- see rule 2)
-    };
-
+std::vector<StagingLabel> stagingLabels(const BuildShip &ship) {
     /* Fewer entries than parts, ascending by label. A sorted vector probed in place beats a
        map here: this runs on an editor edit and in an offline report, never per tick, and the
-       label count is small enough that the probe is a handful of compares. */
-    std::vector<PerLabel> labels;
-    for(const BuildPart &p : ship.parts) {
-        if(p.def == nullptr) { continue; }
+       label count is small enough that the probe is a handful of compares. Pushing the index
+       rather than the part keeps the build's parent-before-child order inside a group, which
+       is what makes reading a group read like the rocket. */
+    std::vector<StagingLabel> labels;
+    for(size_t i = 0; i < ship.parts.size(); i++) {
+        const BuildPart &p = ship.parts[i];
         auto it = std::lower_bound(labels.begin(), labels.end(), p.stage,
-                                   [](const PerLabel &l, int s) { return l.stage < s; });
+                                   [](const StagingLabel &l, int s) { return l.stage < s; });
         if(it == labels.end() || it->stage != p.stage) {
-            it = labels.insert(it, PerLabel{});
+            it = labels.insert(it, StagingLabel{});
             it->stage = p.stage;
         }
-        const unsigned r = stageRoles(p.def);
-        it->responds |= r;
-        if(r & (unsigned)StageRole::Decoupler) { it->decs++; }
+        it->parts.push_back((int)i);
+        if(p.def != nullptr) { it->responds |= stageRoles(p.def); }
     }
+    return labels;
+}
+
+void validateStaging(const BuildShip &ship, std::vector<std::string> &warns) {
+    const std::vector<StagingLabel> labels = stagingLabels(ship);
     if(labels.empty()) { return; }
 
-    char buf[256];
+    char buf[512];
     const int lo = labels.front().stage, hi = labels.back().stage;
     const int presses = hi > lo ? hi - lo : 0;
 
@@ -1136,7 +1136,7 @@ void validateStaging(const BuildShip &ship, std::vector<std::string> &warns) {
         constexpr int kSilent = 4;    // silent labels listed before "..."
         int silentCount = 0;
         std::string silentText;
-        for(const PerLabel &l : labels) {
+        for(const StagingLabel &l : labels) {
             if(l.stage <= lo || l.responds != 0u) { continue; }
             silentCount++;
             if(silentCount <= kSilent) {
@@ -1176,8 +1176,8 @@ void validateStaging(const BuildShip &ship, std::vector<std::string> &warns) {
        A single-label ship (hi == lo) is skipped for the same reason: there the FIRST press
        stands on that label. #529 covers the preview side, where lo is the final period. */
     if(hi > lo) {
-        for(const PerLabel &l : labels) {
-            if(l.stage != lo || l.decs == 0) { continue; }
+        for(const StagingLabel &l : labels) {
+            if(l.stage != lo || !(l.responds & (unsigned)StageRole::Decoupler)) { continue; }
             std::snprintf(buf, sizeof buf,
                           "warn: a decoupler rides label %d, the lowest: the counter never "
                           "stands there, so it needs a press past the ladder", l.stage);

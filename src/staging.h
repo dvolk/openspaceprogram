@@ -37,14 +37,30 @@ struct StagingSeed {
 
 // Simulate the staged burn of `ship` against surface
 // gravity `g` (0 skips TWR). `exhaust_scale` scales thrust only, never the
-// fuel burn. Stage periods: the stage numbers carrying a decoupler, PLUS the highest
-// and the lowest whether or not they carry one (the walk asserts it spans
-// minStage..maxStage, and a label with nothing to separate is skipped later -- which is
-// why a ship can fly N labels while the table lists fewer rows).
+// fuel burn. Stage periods: the labels that actually separate something, PLUS the
+// lowest label whether or not it separates (the walk spans minStage..maxStage and
+// skips a label with nothing to separate -- so the HIGHEST label gets no row at all
+// unless it carries a decoupler, which is why a ship can fly N labels while the table
+// lists fewer rows; pinned in tests/test_staging_dv.cpp by test_a_gap_costs_nothing).
 // Without `seed`, tanks start FULL -- the VAB's question.
 std::vector<StageRow> computeStaging(const BuildShip &ship, double g,
                                      double exhaust_scale = 1.0,
                                      const StagingSeed &seed = {});
+
+/* The build grouped by authored label, ASCENDING: which parts ride each label and what
+   they answer to at a press (the StageRole bits, shipdef.h). One pass, two readers --
+   validateStaging's rules below and the Staging window's by-label view (#1011) -- so the
+   grouping is not walked twice per edit. Parts inside a label keep build order, which is
+   parent before child (shipdef.h:610-612), so reading a group reads like the rocket;
+   reading the groups back-to-front gives the press order, because the counter starts at
+   the highest label. A label the build carries but no press can reach (the lowest) is
+   still a group: the parts are there, and the view has to be able to say so. */
+struct StagingLabel {
+    int stage = 1;
+    unsigned responds = 0u;   // stageRoles() OR'd over the group; 0 = nothing answers
+    std::vector<int> parts;   // indices into ship.parts, build order
+};
+std::vector<StagingLabel> stagingLabels(const BuildShip &ship);
 
 /* Which resources the staged burn may spend: the union over the build's rocket
    engines, jets excluded. A caller filling StagingSeed::fuelKg MUST weigh the

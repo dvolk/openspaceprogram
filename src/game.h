@@ -374,6 +374,11 @@ struct VabState {
        with the rows on the same signature key so the table and the verdicts cannot
        disagree about which build they describe. */
     std::vector<std::string> stagingWarns;
+    /* The same build grouped by authored label, ascending (#1011): which parts ride each
+       label and what they answer to. The window's by-label view draws this back-to-front,
+       which is the press order; the checker reads it the other way. Rebuilt with the rows
+       on the same key, so all three describe one build. */
+    std::vector<StagingLabel> stagingGroups;
     /* id -> index into vab.build.parts, rebuilt with the rows above and keyed by the
        same signature (#527). The fuel-link overlay draws every frame and used to
        resolve both ends of every link by scanning every part and comparing std::string

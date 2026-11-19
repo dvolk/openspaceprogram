@@ -6895,6 +6895,7 @@ static void ensureStagingCache(Game &g, uint64_t sig, double gLaunch) {
         validateStaging(g.vab.build, warns);
         g.vab.stagingWarns = std::move(warns);
     }
+    g.vab.stagingGroups = stagingLabels(g.vab.build);
     g.vab.partIndex.clear();
     for(size_t i = 0; i < g.vab.build.parts.size(); i++) {
         // Last match wins, which is what the overlay's whole-vector scan did. Part ids
@@ -7492,6 +7493,99 @@ void drawVabUI(Game &g) {
                that looks fine. Cached with the rows, so an edit redraws them together. */
             for(const std::string &w : g.vab.stagingWarns) {
                 ImGui::TextColored(ImVec4(1.0f, 0.55f, 0.35f, 1.0f), "%s", w.c_str());
+            }
+
+            /* The same labels read the other way: not what they are WORTH but what is IN
+               them (#1011). Until now the only place a label was visible per part was the
+               selected part's number box, so "what comes off at stage 3" had no answer
+               short of clicking every part and reading its box. Back-to-front, because the
+               press counter starts at the highest label and steps down (vehicle.cpp:2458,
+               :3128), and inside a label in build order, which is parent before child
+               (shipdef.h:610-612) -- so each group reads like the rocket.
+
+               A group whose parts answer to NOTHING is dimmed: most labels are decoration
+               today, and this is the view where that should show. The press number is what
+               the label costs in SPACE presses -- the label at the bottom is the floor,
+               where no advancing press ever stands, which is rule 2 above. */
+            const std::vector<StagingLabel> &grp = g.vab.stagingGroups;
+            if(!grp.empty()) {
+                const int gLo = grp.front().stage, gHi = grp.back().stage;
+                ImGui::Separator();
+                ImGui::TextDisabled("%d label%s, %d down to %d -- one press per step, top of "
+                                    "the list first", (int)grp.size(), grp.size() == 1 ? "" : "s",
+                                    gHi, gLo);
+                if(ImGui::BeginTable("staging_parts", 4,
+                                     ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg
+                                     | ImGuiTableFlags_SizingStretchSame)) {
+                    ImGui::TableSetupColumn("Part", ImGuiTableColumnFlags_WidthStretch);
+                    ImGui::TableSetupColumn("Def", ImGuiTableColumnFlags_WidthStretch);
+                    ImGui::TableSetupColumn("Parent", ImGuiTableColumnFlags_WidthStretch);
+                    ImGui::TableSetupColumn("Answers to", ImGuiTableColumnFlags_WidthStretch);
+                    ImGui::TableHeadersRow();
+                    for(size_t gi = grp.size(); gi-- > 0;) {
+                        const StagingLabel &L = grp[gi];
+                        const bool inert = L.responds == 0u;
+                        ImGui::TableNextRow();
+                        ImGui::TableNextColumn();
+                        /* The group line goes through uiText so --ui-list can see it
+                           (#741's trick): the part rows below are too many to register on a
+                           500-part hull, but the handful of labels is what a test needs to
+                           know that the view drew the right grouping in the right order. */
+                        if(inert) {
+                            uiTextDisabled("label %d", L.stage);
+                        } else {
+                            uiText("label %d", L.stage);
+                        }
+                        ImGui::TableNextColumn();
+                        {
+                            std::string note;
+                            if(gHi == gLo) {
+                                /* One label: the counter has nowhere to advance, but the
+                                   FIRST press stands right here -- which is how a one-stage
+                                   chuted capsule works, and why the checker does not flag a
+                                   decoupler at the bottom of such a ship (#1010 rule 2). */
+                                note = "the only label: the first press stands here";
+                            } else if(L.stage > gLo) {
+                                note = "press " + std::to_string(gHi - L.stage + 1)
+                                     + " of " + std::to_string(gHi - gLo);
+                            } else {
+                                note = "the floor: no advancing press stands here";
+                            }
+                            /* Also registered: this cell is the view's whole point -- what a
+                               label is worth in presses -- and it is the one part of the
+                               number box (#1015) that a player cannot otherwise derive. */
+                            uiTextDisabled("%d part%s -- %s", (int)L.parts.size(),
+                                           L.parts.size() == 1 ? "" : "s", note.c_str());
+                        }
+                        ImGui::TableNextColumn();
+                        ImGui::TableNextColumn();
+                        for(int pi : L.parts) {
+                            const BuildPart &bp = g.vab.build.parts[(size_t)pi];
+                            ImGui::TableNextRow();
+                            ImGui::TableNextColumn();
+                            if(inert) { ImGui::TextDisabled("%s", bp.id.c_str()); }
+                            else { ImGui::Text("%s", bp.id.c_str()); }
+                            ImGui::TableNextColumn();
+                            if(inert) {
+                                ImGui::TextDisabled("%s",
+                                                    bp.def != nullptr ? bp.def->name.c_str() : "?");
+                            } else {
+                                ImGui::Text("%s", bp.def != nullptr ? bp.def->name.c_str() : "?");
+                            }
+                            ImGui::TableNextColumn();
+                            if(bp.parent >= 0 && (size_t)bp.parent < g.vab.build.parts.size()) {
+                                ImGui::TextDisabled("%s",
+                                                    g.vab.build.parts[(size_t)bp.parent].id.c_str());
+                            } else {
+                                ImGui::TextDisabled("--");
+                            }
+                            ImGui::TableNextColumn();
+                            ImGui::Text("%s", stageRoleName(bp.def != nullptr
+                                                               ? stageRoles(bp.def) : 0u));
+                        }
+                    }
+                    ImGui::EndTable();
+                }
             }
         }
     });
