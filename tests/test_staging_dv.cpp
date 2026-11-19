@@ -1638,9 +1638,10 @@ static void test_a_duplicate_id_resolves_to_the_last_part() {
 }
 
 /* What a stage label MEANS, derived from the def (shipdef.h, StageRole). #1009's dump
-   prints this and #1011's window will dim a part that has none, because the VAB has no
-   other way to show that a part carries a label the sim will ignore. A label has three
-   readings in flight and no more: a thruster lights when the descending counter reaches
+   prints this, and the Staging ladder leaves a part with NONE out of the table altogether
+   (#1022) -- which is exactly why the derivation has to be right, since a wrong bit hides a
+   part that fires or shows a row for one that does not. A label has three readings in
+   flight and no more: a thruster lights when the descending counter reaches
    its label, a decoupler separates and a chute deploys only when it EQUALS the label.
 
    What is pinned is the DERIVATION, so the dump cannot lie about a part: the two halves
@@ -1963,8 +1964,8 @@ static void test_the_staging_checker_names_the_presses_that_do_nothing() {
     }
 }
 
-/* The shared grouping (#1011): one pass that the checker, the VAB's by-label view and the
-   auto-stager all read, so the shape of it is pinned once rather than in three readers.
+/* The shared grouping (#1011): one pass that the checker, the Staging ladder (#1022) and
+   the auto-stager all read, so the shape of it is pinned once rather than in three readers.
    The order is the load-bearing part -- groups ascending, parts in build order inside a
    group -- because a reader that walks the groups back-to-front is claiming to print the
    PRESS order. */
@@ -2038,9 +2039,10 @@ static void test_the_label_groups_read_as_press_order() {
     }
 }
 
-/* stagingPressNote (#1011 review): the few words the Staging window puts in a table cell to
-   say where the counter stands. Short by design -- a cell clips, so a long sentence reads as
-   a broken one -- but the arithmetic has to be exactly the counter's, and the two branches
+/* stagingPressNote (#1011 review): the few words that say where the counter stands. Nobody
+   prints them since #1022 took the prose out of the Staging window -- this test is what keeps
+   the arithmetic honest until #1015's number box takes the sentence (or someone deletes it).
+   Short by design: whoever prints it prints into a narrow column. The two branches
    that are not "press N of M" are the ones a player cannot derive: the floor, which no
    advancing press ever reaches, and the one-label ship, where the first press DOES stand
    there (which is why #1010 rule 2 stays quiet about it). */
@@ -2646,6 +2648,98 @@ static void test_undo_with_nothing_recorded_changes_nothing() {
     CHECK_TRUE(notes.empty(), "saying so is the editor's job (vabUndoStaging), not this one's");
 }
 
+/* The Staging ladder's step buttons (#1022), tested as data rather than as widgets. The
+   window's job is to put the right button next to the right row; what these two own is what
+   a click does to the build, and the part a player cannot see going wrong: a rung shift that
+   took only the parts the ladder SHOWS would strand a tank or a capsule on the label its
+   neighbours left, and the ladder draws no row for those parts to notice it in. */
+static void test_a_rung_step_moves_every_part_carrying_the_label() {
+    Catalog cat;
+    BuildShip bs;
+    const int pod = addPart(bs, cat.mono(100, 0), "pod", -1, 1);        // answers nothing
+    addPart(bs, cat.tank(50, 25, 25), "tank_1", pod, 1);                // answers nothing
+    addPart(bs, cat.decoupler(5), "d_core", pod, 1);                    // answers the press
+    addPart(bs, cat.engine(10, 0.5, 1000.0), "up_eng", 2, 3);           // a different rung
+    addPart(bs, cat.decoupler(5), "d_boost", 3, 3);
+
+    StagingUndo stack;
+    const size_t moved = rungStepStage(bs, stack, 1, +1);
+    CHECK_TRUE(moved == 3, "three parts carry rung 1");
+    CHECK_TRUE(labelsOf(bs) == std::vector<int>({2, 2, 2, 3, 3}),
+               "the whole rung moves, the parts that answer nothing included, and the rung "
+               "above is untouched");
+    CHECK_TRUE(stack.size() == 1, "the rung is ONE undo step, not one per part");
+    CHECK_TRUE(stack[0].changes.size() == 3, "and its entry names all three");
+    CHECK_TRUE(!stack[0].typed,
+               "a rung shift is a bulk edit: it must not chain onto a part's own steps");
+
+    std::vector<std::string> notes;
+    CHECK_TRUE(undoStagingEdit(bs, stack, notes) == 3, "one Ctrl+Z takes the whole rung back");
+    CHECK_TRUE(labelsOf(bs) == std::vector<int>({1, 1, 1, 3, 3}), "back where they stood");
+
+    /* A rung that no part carries is not a rung the ladder drew, so this is the caller's
+       mistake rather than the player's -- but it must still be a no-op, not an empty entry
+       that makes the Undo button answer "done" while the build sits still. */
+    CHECK_TRUE(rungStepStage(bs, stack, 7, +1) == 0, "a label nothing carries moves nothing");
+    CHECK_TRUE(stack.empty(), "and records nothing");
+}
+
+static void test_the_ladder_steps_clamp_at_the_ends_of_the_save_range() {
+    Catalog cat;
+    BuildShip bs;
+    const int pod = addPart(bs, cat.mono(100, 0), "pod", -1, 1);
+    addPart(bs, cat.decoupler(5), "d_core", pod, 1);
+    addPart(bs, cat.engine(10, 0.5, 1000.0), "up_eng", 1, kMaxStage);
+
+    StagingUndo stack;
+    /* The floor: a fresh build is ONE rung at label 1, so the ladder's first rung has
+       nowhere to go DOWN -- and holding a button at the end must not fill the stack. */
+    CHECK_TRUE(rungStepStage(bs, stack, 1, -1) == 0, "the floor rung cannot step down");
+    CHECK_TRUE(partStepStage(bs, stack, pod, -1) == 0, "nor can a part on it");
+    CHECK_TRUE(stack.empty(), "a step that cannot move is not an undo step");
+    /* The ceiling, and it is kMaxStage rather than the rungs the build carries: separating a
+       stack by hand has to work when autoStage refuses to read it, so a part has to be able
+       to travel past the labels that exist today. */
+    CHECK_TRUE(rungStepStage(bs, stack, kMaxStage, +1) == 0, "the top rung cannot step up");
+    CHECK_TRUE(labelsOf(bs) == std::vector<int>({1, 1, kMaxStage}), "the build is untouched");
+    CHECK_TRUE(rungStepStage(bs, stack, kMaxStage, -1) == 1, "but it can come back down");
+    CHECK_TRUE(labelsOf(bs) == std::vector<int>({1, 1, kMaxStage - 1}), "one label at a time");
+}
+
+static void test_a_part_step_is_one_typed_decision() {
+    Catalog cat;
+    BuildShip bs;
+    const int pod = addPart(bs, cat.mono(100, 0), "pod", -1, 1);
+    addPart(bs, cat.decoupler(5), "d_core", pod, 1);
+    const int eng = addPart(bs, cat.engine(10, 0.5, 1000.0), "up_eng", 1, 1);
+
+    StagingUndo stack;
+    /* Holding the button repeats the call on the same part, and "where was this engine
+       before I started nudging it" has one answer. */
+    for(int i = 0; i < 3; i++) {
+        CHECK_TRUE(partStepStage(bs, stack, eng, +1) == 1, "one label per click");
+    }
+    CHECK_TRUE(stack.size() == 1, "three clicks on one part are one undo step");
+    CHECK_TRUE(stack[0].typed, "and it is the typed kind, so it chains, not accumulates");
+    CHECK_TRUE(labelsOf(bs) == std::vector<int>({1, 1, 4}), "and the part is three labels up");
+
+    /* Out-of-range index: the window builds these from its own cached groups, so a bad index
+       means the cache and the build disagree (#527's tripwire) -- but the step must not be
+       the thing that reads past the vector. */
+    CHECK_TRUE(partStepStage(bs, stack, -1, +1) == 0, "no part before the build");
+    CHECK_TRUE(partStepStage(bs, stack, (int)bs.parts.size(), +1) == 0, "and none past its end");
+    CHECK_TRUE(stack.size() == 1, "neither records an edit");
+
+    /* A rung step lands on top of a typed entry and must NOT merge into it: the player who
+       nudged one engine and then moved a whole rung wants two undoes, not one confused one. */
+    CHECK_TRUE(rungStepStage(bs, stack, 1, +1) == 2, "the parts still on rung 1 move together");
+    CHECK_TRUE(stack.size() == 2, "as their own step");
+    std::vector<std::string> notes;
+    CHECK_TRUE(undoStagingEdit(bs, stack, notes) == 2, "one undo takes the rung back");
+    CHECK_TRUE(labelsOf(bs) == std::vector<int>({1, 1, 4}),
+               "and leaves the nudged engine where the player left it");
+}
+
 int main() {
     test_two_stage();
     test_single_stage();
@@ -2698,6 +2792,9 @@ int main() {
     test_two_retys_on_different_parts_are_two_steps();
     test_a_one_part_plan_is_its_own_undo_step();
     test_undo_with_nothing_recorded_changes_nothing();
+    test_a_rung_step_moves_every_part_carrying_the_label();
+    test_the_ladder_steps_clamp_at_the_ends_of_the_save_range();
+    test_a_part_step_is_one_typed_decision();
 
     printf("test_staging_dv: %d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;

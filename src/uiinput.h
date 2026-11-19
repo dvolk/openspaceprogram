@@ -46,3 +46,12 @@ void uiText(const char *fmt, ...) IM_FMTARGS(1);
    number the harness cannot see is a number that quietly stops being true (#601, #741).
    The colour comes from the style, so this is the SAME colour ImGui itself uses. */
 void uiTextDisabled(const char *fmt, ...) IM_FMTARGS(1);
+
+/* A row that needs an id the player must not see. imgui hides the "##" tail of a WIDGET
+   label, but TextEx renders what it is given verbatim ("we don't hide text after ## in this
+   end-user function", imgui_widgets.cpp:191) -- so uiText("%s##%s", name, id) puts the id on
+   screen. This draws `shown` and registers "<shown>##<id>", which is what a Selectable's
+   label already looks like to the harness (the Palette's "Capsule (2m)##capsule", #165's
+   uniqueness rule), and the registered rect is the DRAWN text, so a clipping check measures
+   what is actually on screen. Same rule as uiText: never a click target. */
+void uiTextId(const char *shown, const char *id);

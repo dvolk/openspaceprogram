@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 419 |
+| `invariant` | a behaviour or a player route the game must keep | 420 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 50 |
 | `harness` | CLI/test-engine plumbing, not game spec | 16 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **489** |
+| | **total** | **490** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -357,7 +357,7 @@ judgement. Select by number, name or path, e.g.
 | `save/612-ask-survives-a-round-trip.txt` | invariant | A saved Guidance ask loads back into the game and is written out again. |
 | `save/867-cross-system-bubble-load.txt` | invariant | A save with a ship in a building's bubble loads from the title across systems. |
 
-## ui (69)
+## ui (70)
 
 | case | kind | pins |
 |---|---|---|
@@ -430,6 +430,7 @@ judgement. Select by number, name or path, e.g.
 | `ui/1013-a-undo-takes-a-bulk-renumber-back.txt` | invariant | The Staging window's Undo button reverses an auto-stage, label for label. |
 | `ui/1022-a-the-staging-window-is-a-ladder-of-labels.txt` | invariant | The Staging window lists the labels the build carries in rocket order and the parts that answer at each, and the cost table is its own window. |
 | `ui/1022-b-a-step-button-moves-a-part-one-rung.txt` | invariant | A Staging-window step button moves one part exactly one label, and Undo takes a run of steps back as one edit. |
+| `ui/1022-c-a-rung-shift-moves-everything-on-the-label.txt` | invariant | The ladder's rung buttons step every part carrying a label by one (no-op at the floor), and Undo takes the whole rung back as one edit. |
 
 ## render (89)
 

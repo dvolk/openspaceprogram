@@ -49,7 +49,8 @@ std::vector<StageRow> computeStaging(const BuildShip &ship, double g,
 
 /* The build grouped by authored label, ASCENDING: which parts ride each label and what
    they answer to at a press (the StageRole bits, shipdef.h). One pass, two readers --
-   validateStaging's rules below and the Staging window's by-label view (#1011) -- so the
+   validateStaging's rules below and the Staging ladder's rungs (#1022, which draws a rung
+   per group and lists only the parts its `responds` bit says answer) -- so the
    grouping is not walked twice per edit. Parts inside a label keep build order, which is
    parent before child (shipdef.h:610-612), so reading a group reads like the rocket;
    reading the groups back-to-front gives the press order, because the counter starts at
@@ -65,17 +66,21 @@ std::vector<StagingLabel> stagingLabels(const BuildShip &ship);
 /* Three words saying where the press counter stands relative to `stage`, for a build whose
    labels run from `lo` to `hi` (a StagingLabel vector's ends -- the same edges finalize()
    seeds, vehicle.cpp:2457-2458): "press 3 of 4", "the floor", or for a one-label build
-   "only label: press 1". Out of the window and in here because the window is not the only
-   reader that needs it (#1015's number box does the same job for one part), and because
-   this is the sentence that can be WRONG: an advancing press acts at the value the counter
-   already holds and only then steps (game.cpp:2612 reads activeStage, :2702 steps), so the
-   presses that stand anywhere are hi, hi-1, ... lo+1 and the label at lo waits for a press
-   past them.
+   "only label: press 1".
 
-   Deliberately short: it lives in a table cell, and a cell clips -- a longer sentence is
-   worse than none, because it stops mid-thought at the column edge (pinned by the ui/1011
-   e2e case). What a part on that label DOES at that press is a separate sentence, said once
-   above the table rather than repeated per row (gameui.cpp, W_Staging). */
+   NOBODY PRINTS THIS TODAY. It was the Staging window's cell (#1011); #1022 turned that
+   window into a ladder and dropped the prose with it, so what is left is the arithmetic and
+   the test that pins it. The candidate reader is #1015's part-window number box, which asks
+   the same question about one part and currently accepts a value up to 10000 while the ladder
+   it sits beside is four rungs long. If #1015 does not want it either, delete this rather than
+   keep a tested sentence nobody says.
+
+   The arithmetic is the part worth keeping, and it can be WRONG: an advancing press acts at
+   the value the counter already holds and only then steps (game.cpp:2612 reads activeStage,
+   :2702 steps), so the presses that stand anywhere are hi, hi-1, ... lo+1 and the label at lo
+   waits for a press past them. Deliberately short, for the same reason as before: whoever
+   prints it is printing into a narrow column, and a sentence that clips mid-thought is worse
+   than none. */
 std::string stagingPressNote(int lo, int hi, int stage);
 
 /* Which resources the staged burn may spend: the union over the build's rocket
@@ -87,9 +92,11 @@ void stagingPropellantMask(const BuildShip &ship, bool *burn);
 /* What a build's authored labels DO, as opposed to what computeStaging says they
    COST (#1010). Appends one short human-readable line per problem to `warns`
    (empty after the call means the order works); it does not sort or clear the
-   caller's list. The first form computes the grouping itself; the second takes one
-   the caller already has -- the VAB reads the groups for its own view, so it must
-   not pay for that walk twice on an edit.
+   caller's list. It computes the grouping itself -- (#1022) took the VAB's second
+   reader away, so there is no longer a caller that has the groups on hand and must
+   not pay for the walk twice; the grouping-taking form is static in staging.cpp and
+   this is the only entry point anyone uses: --fleet-report, --stage-dump, and the
+   tests.
 
    A label is a position on the press counter and nothing else, so every rule here
    is about presses: the counter starts at the highest label and steps down one
@@ -102,8 +109,6 @@ void stagingPropellantMask(const BuildShip &ship, bool *burn);
    deliberately so -- see the comment at the definition for what a refuse would
    punish today and which rule is the candidate. */
 void validateStaging(const BuildShip &ship, std::vector<std::string> &warns);
-void validateStaging(const BuildShip &ship, const std::vector<StagingLabel> &labels,
-                     std::vector<std::string> &warns);
 
 /* Number the labels from the tree instead of by hand (#1012). A placed part gets label 1
    and stays there until a player types over it, so a two-stage rocket is currently built
@@ -211,6 +216,28 @@ void recordStagingEdit(StagingUndo &undo, std::vector<StagingChange> changes, bo
    so. */
 size_t undoStagingEdit(BuildShip &ship, StagingUndo &undo,
                        std::vector<std::string> &notes);
+
+/* The Staging ladder's step buttons (#1022), as data rather than widgets. Both move labels
+   by `delta` and record the edit they performed, returning how many parts moved so a caller
+   can tell a click that did something from one that did not.
+
+   `partStep` moves ONE part; `rungStep` moves EVERY part carrying one label -- which
+   includes parts with no stage role: they are attached to whatever moved, and stranding one
+   on another label is a mess even while it changes nothing today (#1023 is where such labels
+   stop mattering at all).
+
+   Both clamp to the SAVE range [1, kMaxStage], not to the rungs the build happens to carry:
+   a fresh build is ONE rung (every part starts at label 1) and autoStage refuses the shapes
+   it cannot read, so separating a stack by hand has to be possible from the ladder alone.
+   A step is +/-1 by construction, which is what keeps the ladder dense however long a button
+   is held.
+
+   The part step records as TYPED (a held button repeats it, and "where was this part before
+   I started nudging it" has one answer); a rung shift records as one bulk entry, because the
+   rung IS the decision and taking back half of a group's move is not a thing anyone means.
+   A click that moves nothing records nothing: an Undo button that undoes nothing is a lie. */
+size_t partStepStage(BuildShip &ship, StagingUndo &undo, int part, int delta);
+size_t rungStepStage(BuildShip &ship, StagingUndo &undo, int label, int delta);
 
 /* A content hash of everything computeStaging reads about `ship`, plus the two
    scalars. The Staging window redraws every frame on a build that only changes

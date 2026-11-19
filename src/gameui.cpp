@@ -6900,6 +6900,11 @@ static void ensureStagingCache(Game &g, uint64_t sig, double gLaunch) {
 }
 
 void drawVabUI(Game &g) {
+    /* A ladder row sets the hover tint; nothing in the ladder runs to clear it once the
+       window is gone -- hidden by TAB or closed by its own X -- so clear it here, above
+       every gate, rather than strand a tint on an index of a build that may change under
+       it. The ladder body clears it again as it draws (rows set it as the mouse passes). */
+    if(!g.ui_visible || !winOpen(W_Staging)) { g.vab.listHover = -1; }
     /* TAB. The top bar is a registered window and drawWin already suppresses it, but the
        two panels below are raw ImGui::Begin calls -- not in the window table -- so this is
        their only gate. */
@@ -7416,13 +7421,14 @@ void drawVabUI(Game &g) {
        case (Staging window open, links present) slower than the scan it replaced.
 
        Memoising is only sound while nothing between the two readers edits the build, and the
-       Staging window DOES edit it (Auto-stage, Undo staging, the ladder's step buttons). So
-       that window is drawn FIRST here (draw order is call order, uiwins.h:21): its buttons
-       write before it takes the key, and the Delta-v table and the fuel-link overlay below
-       both reuse the key it took, so every reader describes the same build. Anything that
-       mutates the build after this window's cache call, or a reader placed above the
-       buttons, breaks that -- and the assert at the overlay cannot see a label edit, which
-       leaves the part count and the id map alone. */
+       Staging window DOES edit it. The two whole-stack buttons (Auto-stage, Undo staging) sit
+       above this window's cache call, so they write before it takes the key. The ladder's step
+       buttons cannot: the ladder draws from the cache, so it must read first and write after,
+       which is why the ladder sets `ladderEdited` and the frame drops the memo below it (#1022
+       review). The Delta-v table and the fuel-link overlay sit below both, so every reader
+       still describes the same build. Anything that mutates the build after this window without
+       going through one of those four handlers breaks that -- and the assert at the overlay
+       cannot see a label edit, which leaves the part count and the id map alone. */
     uint64_t frameSig = 0;
     bool frameSigDone = false;
     auto frameSigOnce = [&]() {
@@ -7432,17 +7438,14 @@ void drawVabUI(Game &g) {
         }
         return frameSig;
     };
-    /* A ladder row sets the hover tint; with the window closed nothing runs to clear it, so
-       clear it here rather than strand an index into a build that may change under it. */
-    if(!winOpen(W_Staging)) { g.vab.listHover = -1; }
     /* The ladder (#1022): one rung per label the build carries, and under each rung the
        parts that DO something at that press. It reads bottom-up the way the rocket stands:
        the floor label at the top of the window, the FIRST press at the bottom rung.
 
        Drawn BEFORE the Delta-v table because draw order is call order (uiwins.h:21) and the
-       frame's staging signature is memoised: this window's buttons write to the build, so
-       it has to take the key first or the cost rows get drawn against the build the player
-       just left. */
+       frame's staging signature is memoised: this window writes to the build, so it takes the
+       key first and hands on what its own step buttons changed. */
+    bool ladderEdited = false;
     drawWin(g, W_Staging, [&] {
         /* Rows set this as the mouse passes them; clearing it at the top of the body is what
            stops a tint outliving the row it came from. */
@@ -7495,34 +7498,48 @@ void drawVabUI(Game &g) {
         ensureStagingCache(g, frameSigOnce(), gLaunch);
         const std::vector<StagingLabel> &grp = g.vab.stagingGroups;
         if(grp.empty()) { return; }
+        /* The groups hold raw indices into parts -- the same tripwire as the overlay's
+           partIndex memo (#527). Count them BEFORE the loop that dereferences them: an assert
+           placed after the loop is a post-mortem, not a guard. Every group entry names a part
+           and every part sits in exactly one group. */
+        size_t grouped = 0;
+        for(const StagingLabel &L : grp) { grouped += L.parts.size(); }
+        assert(grouped == g.vab.build.parts.size());
         if(ImGui::BeginTable("staging_ladder", 3,
                              ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg
                              | ImGuiTableFlags_SizingStretchProp)) {
             /* One column of names and two of step buttons: the window is the rocket, not a
                spreadsheet, and what tells a part from its neighbour is hovering the row (the
-               part tints on the ship, gameui -> render.cpp). */
+               part tints on the ship, gameui -> render.cpp).
+
+               No scroll bar, deliberately: a scrollable table registers its rows under
+               staging_ladder_<hash> ids, and a --ui-click path built on a hash is a test that
+               breaks whenever this table changes shape. A very large hull buys a very tall
+               window instead; if that ever hurts, the fix is a stable row id, not scroll. */
             ImGui::TableSetupColumn("Stage", ImGuiTableColumnFlags_WidthStretch);
             ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 26.0f);
             ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 26.0f);
             /* Ascending, so the first press lands on the bottom rung -- the inverse of the
                order this window used to have, and the same thing the rocket looks like
-               (#1022). A row's buttons write into the build the moment they are clicked, so
-               the rest of the window still shows the rung the part left until the next frame:
-               the rows come from the cache this frame built, and this is the only writer. */
-            size_t grouped = 0;
+               (#1022). */
             for(size_t gi = 0; gi < grp.size(); gi++) {
                 const StagingLabel &L = grp[gi];
                 char bid[64];
-                grouped += L.parts.size();
                 ImGui::TableNextRow();
                 ImGui::TableNextColumn();
                 uiText("label %d", L.stage);
                 ImGui::TableNextColumn();
                 snprintf(bid, sizeof bid, "^##rung%d", L.stage);
-                if(ImGui::SmallButton(bid)) { vabStepStageRung(g, L.stage, -1); }
+                if(ImGui::SmallButton(bid)) {
+                    vabStepStageRung(g, L.stage, -1);
+                    ladderEdited = true;
+                }
                 ImGui::TableNextColumn();
                 snprintf(bid, sizeof bid, "v##rung%d", L.stage);
-                if(ImGui::SmallButton(bid)) { vabStepStageRung(g, L.stage, +1); }
+                if(ImGui::SmallButton(bid)) {
+                    vabStepStageRung(g, L.stage, +1);
+                    ladderEdited = true;
+                }
                 for(size_t k = 0; k < L.parts.size(); k++) {
                     const int idx = L.parts[k];
                     const BuildPart &bp = g.vab.build.parts[(size_t)idx];
@@ -7530,31 +7547,47 @@ void drawVabUI(Game &g) {
                        nothing, so its row was noise; it is NOT inert at the ladder's ends,
                        which is #1023's problem rather than this table's. */
                     if(stageRoles(bp.def) == 0u) { continue; }
+                    bool rowHover = false;
                     ImGui::TableNextRow();
                     ImGui::TableNextColumn();
                     /* The display label, not the machine name and not the id: the part card
-                       and the selected-part line both read "Capsule (2m)". The ## suffix is
-                       the part id, hidden on screen -- two rows of the same def would
+                       and the selected-part line both read "Capsule (2m)". The id rides the
+                       REGISTRY only (uiTextId, #1022) -- two rows of the same def would
                        otherwise register identically, which is what #165 removed from the
                        Controls list, and the Palette already does this ("Capsule (2m)##capsule"). */
-                    uiText("%s##%s", bp.def != nullptr ? bp.def->label().c_str() : "?",
-                           bp.id.c_str());
-                    if(ImGui::IsItemHovered()) { g.vab.listHover = idx; }
+                    uiTextId(bp.def != nullptr ? bp.def->label().c_str() : "?",
+                             bp.id.c_str());
+                    if(ImGui::IsItemHovered()) { rowHover = true; }
                     ImGui::TableNextColumn();
                     snprintf(bid, sizeof bid, "^##%s", bp.id.c_str());
-                    if(ImGui::SmallButton(bid)) { vabStepStage(g, idx, -1); }
+                    if(ImGui::SmallButton(bid)) {
+                        vabStepStage(g, idx, -1);
+                        ladderEdited = true;
+                    }
+                    if(ImGui::IsItemHovered()) { rowHover = true; }
                     ImGui::TableNextColumn();
                     snprintf(bid, sizeof bid, "v##%s", bp.id.c_str());
-                    if(ImGui::SmallButton(bid)) { vabStepStage(g, idx, +1); }
+                    if(ImGui::SmallButton(bid)) {
+                        vabStepStage(g, idx, +1);
+                        ladderEdited = true;
+                    }
+                    /* The whole row, not just the name: the buttons are the part of the row a
+                       hand is actually over, and a tint that drops out there reads as "this
+                       engine is not that engine". */
+                    if(ImGui::IsItemHovered()) { rowHover = true; }
+                    if(rowHover) { g.vab.listHover = idx; }
                 }
             }
-            /* The groups come from the cache and hold raw indices into parts -- the same
-               tripwire as the overlay's partIndex memo (#527), and this reader dereferences
-               them. */
-            assert(grouped == g.vab.build.parts.size());
             ImGui::EndTable();
         }
     });
+    /* A step button writes AFTER this window takes the frame's key -- the ladder has to read
+       the rows before it can put a button next to one -- so hand the change on instead of
+       letting the Delta-v table and the fuel-link overlay reuse a pre-click signature. The
+       ladder itself still shows the rung the part left until next frame: its rows are this
+       frame's cache, and a one-frame lag on the row that moved is cheaper than rebuilding the
+       groups twice per click. */
+    if(ladderEdited) { frameSigDone = false; }
 
     /* What each stage COSTS (#948). The labels themselves, the parts that answer at each
        and the verdicts on the ordering all moved out of this window (#1022, #1010): a
@@ -7600,9 +7633,13 @@ void drawVabUI(Game &g) {
                 totalDv += r.deltaV;
                 ImGui::TableNextRow();
                 ImGui::TableNextColumn();
-                ImGui::Text("%d%s", r.stage, r.drops ? "" : " *");
+                /* The label cell registers, the numbers do not: what a test needs to pin is
+                   which order the presses come out in, and a stage number is the one cell here
+                   that is unique per row. Plain ImGui::Text rows are invisible to --ui-list
+                   (uiinput.cpp), which is what made the inversion unpinnable when it landed. */
+                uiText("%d%s", r.stage, r.drops ? "" : " *");
                 ImGui::TableNextColumn();
-                ImGui::Text("%.0f", r.deltaV);
+                uiText("%.0f", r.deltaV);
                 ImGui::TableNextColumn();
                 if(r.minTWR > 0.0) {
                     // Red when the stack cannot lift off the pad.
@@ -7643,12 +7680,12 @@ void drawVabUI(Game &g) {
            same pair of parts, which is what makes the comparison mean anything. */
         ensureStagingCache(g, frameSigOnce(), gLaunch);
         /* The frame's signature is memoised, which is only sound while nothing between
-           the two readers edits the build. The staging window body above DOES edit it now
-           (Auto-stage, Undo staging), but both buttons run before that body takes the
-           key, and this reader reuses the key it took -- so neither can see a build the
-           other did not. Anything that mutates the build below the buttons, or a reader
-           inserted above them, breaks that. This is the tripwire: a stale key would
-           leave indices past the end of `parts`. */
+           the two readers edits the build. The staging window body above DOES edit it (the
+           Auto-stage and Undo buttons write before that body takes the key; the ladder's
+           step buttons write after it and clear the memo on the way out). This reader sits
+           below both, so it cannot see a build the ladder did not. Anything that mutates
+           the build below the staging window without clearing the memo breaks that. This is
+           the tripwire: a stale key would leave indices past the end of `parts`. */
         assert(g.vab.partIndex.size() == g.vab.build.parts.size());
         ImDrawList *dl = ImGui::GetForegroundDrawList();
         for(size_t i = 0; i < g.vab.build.fuelLinks.size(); i++) {

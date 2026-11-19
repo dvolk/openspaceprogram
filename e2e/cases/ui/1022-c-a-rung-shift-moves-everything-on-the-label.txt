@@ -1,0 +1,61 @@
+# A rung shift (#1014's "shift a stage up / down by one", shipped with the ladder in #1022).
+# `^` / `v` on a RUNG row moves every part carrying that label, as ONE undo step. The parts
+# the ladder does not draw move with it: a label is a position on the press counter, not a
+# property of the parts the window chose to list, and stranding a capsule on a label its
+# decoupler left is a mess the window cannot see. That half is the whole point of this case --
+# the review pass on #1022 found a mutant that moved only the parts WITH a stage role and it
+# passed 1022-a and 1022-b, because neither one ever asks where the capsule went.
+#
+# The other half is the sign. `^` means UP the rocket, which is the LATER press, which is the
+# SMALLER label; at label 1 there is nothing below, so `^##rung1` must be a no-op that records
+# nothing -- the Undo button stays grey. Swap the two rung buttons and this case says so.
+#
+# misstaged (e2e/vehicles/, so it needs Game Debug's dev-vehicles switch) carries labels 1 and
+# 5: five parts on rung 1 (capsule, wheel, tank, engine, radial decoupler) and three on rung 5.
+# One --stage-dump only (CLI11 caps it), so the undo is witnessed by its own log line plus the
+# Undo button going grey again -- which is how it tells one rung entry from five part entries.
+#
+# No --width/--height: a small window stops the VAB top bar taking clicks (#1017).
+NAME a-rung-shift-moves-everything-on-the-label-and-one-undo-takes-the-rung-back
+CLAIM The ladder's rung buttons step every part carrying a label by one (no-op at the floor), and Undo takes the whole rung back as one edit.
+KIND invariant
+ARGS --ui-click 1000,"Title Menu/New Game"
+ARGS --ui-click 1600,"New Game/Start"
+ARGS --sim-press 2600,0,4
+ARGS --sim-press 3000,0,F1
+ARGS --ui-click 3400,"Game Debug/Dev vehicles in the VAB picker"
+ARGS --sim-press 3800,0,F1
+ARGS --ui-type 4200,"VAB TopBar/##vehfilter",misstaged
+ARGS --ui-click 4800,"VAB TopBar/##vabload"
+ARGS --ui-click 5400,"misstaged"
+ARGS --ui-click 6000,"VAB TopBar/Load"
+ARGS --ui-click 7000,"Staging/^##rung1"
+ARGS --ui-list 7400
+LIMIT 60
+EXPECT [vab] loaded misstaged (8 parts)
+# Nothing to take back: the floor rung cannot step down, and a click that moves nothing is
+# not an undo step (recordStagingEdit refuses from==to rather than leaving a button that lies).
+CHECK ' disabled' in [ln for ln in out.splitlines() if 'label="Undo staging"' in ln][-1]
+ARGS --ui-click 8000,"Staging/v##rung1"
+ARGS --stage-dump 8600
+# All FIVE parts that carried label 1 now carry 2 -- the capsule, wheel and tank have no row
+# in the ladder at all, so these lines are the only place their move is visible. Label 5 is
+# untouched: a rung shift moves one label, not everything below it.
+EXPECT [stagetree] 0 capsule_1 def=capsule parent=- stage=2 responds=-
+EXPECT [stagetree] 1 wheel_1 def=reaction_wheel parent=capsule_1 stage=2 responds=-
+EXPECT [stagetree] 2 tank_up def=fuel_tank parent=wheel_1 stage=2 responds=-
+EXPECT [stagetree] 3 eng_up def=engine parent=tank_up stage=2 responds=engine
+EXPECT [stagetree] 7 dec_pod def=decoupler_radial parent=capsule_1 stage=2 responds=decoupler
+EXPECT [stagetree] 4 dec_boost def=decoupler_r1 parent=eng_up stage=5 responds=decoupler
+# The ladder has no gap: label 1 is gone because nothing carries it any more, so the press
+# counter starts at 5 and stands at 4, 3 and 2.
+EXPECT [stagetree] labels=2..5 presses=3
+ARGS --ui-click 9200,"Staging/Undo staging"
+ARGS --ui-list 9900 --timeout 16
+# ONE undo for FIVE parts: the rung is the decision, so its entry is a bulk edit (#1013's
+# rule that a plan never merges with a player's own one-part nudges). Grey again afterwards:
+# the stack is empty, so the shift left exactly one entry rather than one per part.
+EXPECT [vab] undo: 5 label(s) back
+CHECK ' disabled' in [ln for ln in out.splitlines() if 'label="Undo staging"' in ln][-1]
+FORBID error:
+FORBID FAILED

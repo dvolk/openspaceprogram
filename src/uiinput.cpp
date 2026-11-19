@@ -649,6 +649,19 @@ void uiText(const char *fmt, ...) {
     registerTextRow(beg, end);
 }
 
+void uiTextId(const char *shown, const char *id) {
+    /* Two strings, deliberately: what the player reads and what the harness aims at.
+       TextEx draws its argument verbatim -- the "##" a widget label hides is painted here
+       (imgui_widgets.cpp:191) -- so the id goes into the registry entry alone, and the
+       rect stays the drawn text's, which is what the clipping checks in the ui/ cases
+       measure (#1022 shipped this wrong: its rows read "Engine (2m)##eng_up" on screen). */
+    ImGui::TextUnformatted(shown);
+    std::string full(shown);
+    full += "##";
+    full += id;
+    registerTextRow(full.data(), full.data() + full.size());
+}
+
 void uiTextDisabled(const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);

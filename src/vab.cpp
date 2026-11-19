@@ -5,7 +5,6 @@
 
 #include "vab.h"
 
-#include <algorithm>   // std::clamp (the ladder's ends, #1022)
 #include <cassert>
 #include <cmath>
 #include <cstdio>
@@ -571,38 +570,16 @@ void vabUndoStaging(Game &g) {
     for(size_t i = 0; i < shown; i++) { g.toast("%s", notes[i].c_str()); }
 }
 
-/* One part, one rung along the ladder (#1022). The step is +/-1 by construction, so it
-   cannot skip a label and the ladder stays dense however long a button is held. The bounds
-   are the save range rather than the rungs the build happens to carry: a fresh build is ONE
-   rung (every part starts at label 1) and autoStage refuses the shapes it cannot read, so
-   separating a stack by hand has to be possible from the ladder alone.
-   Recorded as a TYPED edit -- holding the button repeats this call, and "where was this part
-   before I started nudging it" has one answer. No toast: the row shows the move. */
+/* The ladder's step buttons (#1022) are the same two calls the unit tests exercise
+   (staging.h: partStepStage / rungStepStage); these only say which build and which undo
+   stack they act on. The clamps, the "a rung moves EVERY part carrying the label" rule and
+   the typed-vs-bulk recording all live with the data, where a test can reach them. */
 void vabStepStage(Game &g, int part, int delta) {
-    if(part < 0 || (size_t)part >= g.vab.build.parts.size()) { return; }
-    BuildPart &bp = g.vab.build.parts[(size_t)part];
-    const int to = std::clamp(bp.stage + delta, 1, kMaxStage);
-    if(to == bp.stage) { return; }   // off the end of the range: nothing moved, nothing to undo
-    recordStagingEdit(g.vab.stagingUndo, {{part, bp.id, bp.stage, to}}, true);
-    bp.stage = to;
+    partStepStage(g.vab.build, g.vab.stagingUndo, part, delta);
 }
 
-/* A whole rung, one step (#1014's "shift a stage up / down by one"). One undo step, because
-   the rung is the decision: taking back half of a group's move is not a thing anyone means.
-   Everything carrying the label moves, including parts with no stage role -- they are
-   attached, and stranding one on another label is a mess even while it changes nothing
-   (#1023 is where such labels stop mattering at all). */
 void vabStepStageRung(Game &g, int label, int delta) {
-    const int to = std::clamp(label + delta, 1, kMaxStage);
-    if(to == label) { return; }
-    std::vector<StagingChange> moves;
-    for(size_t i = 0; i < g.vab.build.parts.size(); i++) {
-        const BuildPart &bp = g.vab.build.parts[i];
-        if(bp.stage == label) { moves.push_back({(int)i, bp.id, bp.stage, to}); }
-    }
-    if(moves.empty()) { return; }
-    for(const StagingChange &m : moves) { g.vab.build.parts[(size_t)m.part].stage = to; }
-    recordStagingEdit(g.vab.stagingUndo, std::move(moves), false);
+    rungStepStage(g.vab.build, g.vab.stagingUndo, label, delta);
 }
 
 namespace {

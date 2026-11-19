@@ -357,8 +357,10 @@ const WinDef kWins[W_Count] = {
         .name = "Delta-v table", .label = "Delta-v table",
         // Cost only: five columns plus the total and the legend. The ladder that used to
         // share this window moved to W_Staging (#1022), which is why the height came back
-        // down towards the pre-#1011 280.
-        .opts = { .slot = ui::Slot::BottomLeft, .initial_size = ImVec2(460.0f, 300.0f),
+        // down towards the pre-#1011 280. 290 rather than 300 because the raw "VAB" panel
+        // ends at y=418 and this slot starts at y=412 at 1280x720: at 300 the two chrome
+        // rectangles overlap by 6 px, which reads as one window with a notch out of it.
+        .opts = { .slot = ui::Slot::BottomLeft, .initial_size = ImVec2(460.0f, 290.0f),
                   .closable = true, .default_open = true },
         .role = WinRole::Persistent, .inList = false,
     },

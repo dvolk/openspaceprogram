@@ -740,8 +740,10 @@ inline unsigned stageRoles(const PartDef *def) {
     return r;
 }
 
-/* The word for a dump or a dimmed window row: "engine", "chute+decoupler", "-".
-   Order is fixed by the mask, so two runs of one build print one string. */
+/* The word the dumps print: "engine", "chute+decoupler", "-". The 0 case ("--") lost its
+   window row when #1022 left non-responders out of the ladder, so what reads this now is
+   --stage-dump and --fleet-report. Order is fixed by the mask, so two runs of one build
+   print one string. */
 inline const char *stageRoleName(unsigned roles) {
     constexpr unsigned kEng = (unsigned)StageRole::Engine;
     constexpr unsigned kDec = (unsigned)StageRole::Decoupler;

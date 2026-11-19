@@ -61,5 +61,11 @@ CHECK len([ln for ln in out.splitlines() if 'window="Staging"' in ln and ' text'
 # window, which is why the slim ladder gets this check instead of a wide table.
 CHECK max(int(ln.split('rect=')[1].split(' ')[0].split('-')[1].split(',')[0]) for ln in out.splitlines() if 'window="Staging"' in ln and ' text' in ln) <= min(int(ln.split('rect=')[1].split(' ')[0].split('-')[0].split(',')[0]) for ln in out.splitlines() if 'window="Staging"' in ln and ('"^##' in ln or '"v##' in ln))
 CHECK len([ln for ln in out.splitlines() if 'window="Staging"' in ln and ' clipped' in ln]) == 0
+# The id must stay OFF the screen. The registry label above carries "##dec_pod" on purpose,
+# but a text row's rect is what was DRAWN, and imgui's TextEx paints its argument verbatim
+# ("we don't hide text after ## in this end-user function", imgui_widgets.cpp:191) -- so a
+# row built by uiText("%s##%s", ...) would show the id and measure much wider. "Radial
+# Decoupler" draws 116 px here; the same row with "##dec_pod" painted measured 182 px.
+CHECK max(int(ln.split('rect=')[1].split(' ')[0].split('-')[1].split(',')[0]) - int(ln.split('rect=')[1].split(' ')[0].split('-')[0].split(',')[0]) for ln in out.splitlines() if 'window="Staging"' in ln and ' text' in ln) < 140
 FORBID error:
 FORBID FAILED

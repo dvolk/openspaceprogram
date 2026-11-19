@@ -1170,12 +1170,20 @@ static void subtreeSizes(const std::vector<int> &order,
     }
 }
 
+/* The grouping-taking form is static: the one reader that already had the groups on hand
+   was the VAB's staging window, and #1022 turned that window into a ladder that never calls
+   the checker. Anyone else asks the question cold, through the public entry below. */
+static void validateStagingGroups(const BuildShip &ship,
+                                  const std::vector<StagingLabel> &labels,
+                                  std::vector<std::string> &warns);
+
 void validateStaging(const BuildShip &ship, std::vector<std::string> &warns) {
-    validateStaging(ship, stagingLabels(ship), warns);
+    validateStagingGroups(ship, stagingLabels(ship), warns);
 }
 
-void validateStaging(const BuildShip &ship, const std::vector<StagingLabel> &labels,
-                     std::vector<std::string> &warns) {
+static void validateStagingGroups(const BuildShip &ship,
+                                  const std::vector<StagingLabel> &labels,
+                                  std::vector<std::string> &warns) {
     if(labels.empty()) { return; }
 
     char buf[512];
@@ -1615,4 +1623,31 @@ size_t undoStagingEdit(BuildShip &ship, StagingUndo &undo,
         done++;
     }
     return done;
+}
+
+size_t partStepStage(BuildShip &ship, StagingUndo &undo, int part, int delta) {
+    if(part < 0 || (size_t)part >= ship.parts.size()) { return 0; }
+    BuildPart &bp = ship.parts[(size_t)part];
+    const int to = std::clamp(bp.stage + delta, 1, kMaxStage);
+    if(to == bp.stage) { return 0; }   // off the end of the range: nothing moved, nothing to undo
+    recordStagingEdit(undo, {{part, bp.id, bp.stage, to}}, true);
+    bp.stage = to;
+    return 1;
+}
+
+size_t rungStepStage(BuildShip &ship, StagingUndo &undo, int label, int delta) {
+    const int to = std::clamp(label + delta, 1, kMaxStage);
+    if(to == label) { return 0; }
+    std::vector<StagingChange> moves;
+    for(size_t i = 0; i < ship.parts.size(); i++) {
+        const BuildPart &bp = ship.parts[i];
+        if(bp.stage == label) { moves.push_back({(int)i, bp.id, bp.stage, to}); }
+    }
+    if(moves.empty()) { return 0; }
+    for(const StagingChange &m : moves) { ship.parts[(size_t)m.part].stage = to; }
+    /* Count before the move: recordStagingEdit takes the list by value, and reading a
+       moved-from vector's size is unspecified. */
+    const size_t moved = moves.size();
+    recordStagingEdit(undo, std::move(moves), false);
+    return moved;
 }
