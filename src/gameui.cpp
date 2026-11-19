@@ -6885,18 +6885,11 @@ static void ensureStagingCache(Game &g, uint64_t sig, double gLaunch) {
     if(g.vab.stagingSig == sig) { return; }
     g.vab.stagingSig = sig;
     g.vab.stagingRows = computeStaging(g.vab.build, gLaunch, g.args.exhaust_scale);
-    /* And the verdict on the ORDER, on the same key: both describe the same build or
-       neither does. Cheap next to the burn simulation above -- one pass over the parts
-       with no simulation -- and this is the only place an editor edit can be told apart
-       from a mis-staged one (#1010). One grouping for both: the checker and the window's
-       by-label view read the same StagingLabel list, so the walk happens once per edit
-       rather than once each. */
+    /* The grouping the ladder draws, on the same key: rows and groups describe the same
+       build or neither does. (#1022 dropped the third thing that used to sit on this key,
+       validateStaging's verdicts, with the window that printed them -- the checker still
+       runs where it is read: --stage-dump above, --fleet-report in main.cpp.) */
     g.vab.stagingGroups = stagingLabels(g.vab.build);
-    {
-        std::vector<std::string> warns;
-        validateStaging(g.vab.build, g.vab.stagingGroups, warns);
-        g.vab.stagingWarns = std::move(warns);
-    }
     g.vab.partIndex.clear();
     for(size_t i = 0; i < g.vab.build.parts.size(); i++) {
         // Last match wins, which is what the overlay's whole-vector scan did. Part ids
@@ -7422,13 +7415,14 @@ void drawVabUI(Game &g) {
        per-frame lookups it guards: computing it at both readers made the default
        case (Staging window open, links present) slower than the scan it replaced.
 
-       Memoising is only sound while nothing between the two readers edits the build, and
-       the Staging window body now holds two things that DO (Auto-stage, Undo staging).
-       They sit above that body's own ensureStagingCache call, so a click lands before the
-       key is taken and both readers agree about which build they describe. Anything that
-       mutates the build below that call, or a reader added before the buttons, breaks it --
-       and the assert at the overlay below cannot see that case, because a label edit leaves
-       both the part count and the id map alone. */
+       Memoising is only sound while nothing between the two readers edits the build, and the
+       Staging window DOES edit it (Auto-stage, Undo staging, the ladder's step buttons). So
+       that window is drawn FIRST here (draw order is call order, uiwins.h:21): its buttons
+       write before it takes the key, and the Delta-v table and the fuel-link overlay below
+       both reuse the key it took, so every reader describes the same build. Anything that
+       mutates the build after this window's cache call, or a reader placed above the
+       buttons, breaks that -- and the assert at the overlay cannot see a label edit, which
+       leaves the part count and the id map alone. */
     uint64_t frameSig = 0;
     bool frameSigDone = false;
     auto frameSigOnce = [&]() {
@@ -7438,24 +7432,29 @@ void drawVabUI(Game &g) {
         }
         return frameSig;
     };
+    /* A ladder row sets the hover tint; with the window closed nothing runs to clear it, so
+       clear it here rather than strand an index into a build that may change under it. */
+    if(!winOpen(W_Staging)) { g.vab.listHover = -1; }
+    /* The ladder (#1022): one rung per label the build carries, and under each rung the
+       parts that DO something at that press. It reads bottom-up the way the rocket stands:
+       the floor label at the top of the window, the FIRST press at the bottom rung.
+
+       Drawn BEFORE the Delta-v table because draw order is call order (uiwins.h:21) and the
+       frame's staging signature is memoised: this window's buttons write to the build, so
+       it has to take the key first or the cost rows get drawn against the build the player
+       just left. */
     drawWin(g, W_Staging, [&] {
-        char gbuf[32];
-        ImGui::Text("TWR on %s  (g = %s)",
-                    lbody != nullptr ? lbody->name.c_str() : "?",
-                    fmt_accel(gLaunch, gbuf, sizeof gbuf));
+        /* Rows set this as the mouse passes them; clearing it at the top of the body is what
+           stops a tint outliving the row it came from. */
+        g.vab.listHover = -1;
         if(g.vab.build.parts.empty()) {
             ImGui::TextDisabled("empty build -- place a part");
             return;
         }
-        /* The two buttons that make this window an EDITOR rather than a read-out: number
-           the labels from the stack (#1012) and take the last staging edit back (#1013).
-           Above the tables, and drawn before the cache refresh below, so the click and the
-           rows it changes land in the same frame -- a renumber that showed up a frame late
-           would let the verdicts be read against the build the player just left.
-
-           Both edits live here rather than next to the part's number box because they answer
-           different questions: that box is one part, this is the whole stack, and the undo
-           covers whichever of the two moved the label. */
+        /* The two buttons that number the whole stack at once (#1012) or take the last
+           staging edit back (#1013). They live here rather than next to the part's number
+           box because they answer a different question: that box is one part, this is the
+           whole stack, and the undo covers whichever of the two moved the label. */
         if(ImGui::Button("Auto-stage")) {
             StagingPlan plan = autoStage(g.vab.build);
             if(!plan.applied) {
@@ -7486,7 +7485,89 @@ void drawVabUI(Game &g) {
         if(ImGui::Button("Undo staging")) { vabUndoStaging(g); }
         if(!canUndo) { ImGui::EndDisabled(); }
         ImGui::SameLine();
-        ImGui::TextDisabled("Ctrl+Z");
+        /* The chord this button answers to, read out of the key map instead of spelled out:
+           the slot is rebindable, so a hardcoded "Ctrl+Z" starts lying the moment the player
+           rebinds it. Same as the flight readout's "Brakes: on (Space)". */
+        {
+            const auto &bb = g.binds.perSlot[(size_t)Slot::UndoStaging];
+            ImGui::TextDisabled("%s", bb.empty() ? "(unbound)" : bindLabel(bb[0]).c_str());
+        }
+        ensureStagingCache(g, frameSigOnce(), gLaunch);
+        const std::vector<StagingLabel> &grp = g.vab.stagingGroups;
+        if(grp.empty()) { return; }
+        if(ImGui::BeginTable("staging_ladder", 3,
+                             ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg
+                             | ImGuiTableFlags_SizingStretchProp)) {
+            /* One column of names and two of step buttons: the window is the rocket, not a
+               spreadsheet, and what tells a part from its neighbour is hovering the row (the
+               part tints on the ship, gameui -> render.cpp). */
+            ImGui::TableSetupColumn("Stage", ImGuiTableColumnFlags_WidthStretch);
+            ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 26.0f);
+            ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 26.0f);
+            /* Ascending, so the first press lands on the bottom rung -- the inverse of the
+               order this window used to have, and the same thing the rocket looks like
+               (#1022). A row's buttons write into the build the moment they are clicked, so
+               the rest of the window still shows the rung the part left until the next frame:
+               the rows come from the cache this frame built, and this is the only writer. */
+            size_t grouped = 0;
+            for(size_t gi = 0; gi < grp.size(); gi++) {
+                const StagingLabel &L = grp[gi];
+                char bid[64];
+                grouped += L.parts.size();
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                uiText("label %d", L.stage);
+                ImGui::TableNextColumn();
+                snprintf(bid, sizeof bid, "^##rung%d", L.stage);
+                if(ImGui::SmallButton(bid)) { vabStepStageRung(g, L.stage, -1); }
+                ImGui::TableNextColumn();
+                snprintf(bid, sizeof bid, "v##rung%d", L.stage);
+                if(ImGui::SmallButton(bid)) { vabStepStageRung(g, L.stage, +1); }
+                for(size_t k = 0; k < L.parts.size(); k++) {
+                    const int idx = L.parts[k];
+                    const BuildPart &bp = g.vab.build.parts[(size_t)idx];
+                    /* Only the parts that answer at a press. A label on anything else fires
+                       nothing, so its row was noise; it is NOT inert at the ladder's ends,
+                       which is #1023's problem rather than this table's. */
+                    if(stageRoles(bp.def) == 0u) { continue; }
+                    ImGui::TableNextRow();
+                    ImGui::TableNextColumn();
+                    /* The display label, not the machine name and not the id: the part card
+                       and the selected-part line both read "Capsule (2m)". The ## suffix is
+                       the part id, hidden on screen -- two rows of the same def would
+                       otherwise register identically, which is what #165 removed from the
+                       Controls list, and the Palette already does this ("Capsule (2m)##capsule"). */
+                    uiText("%s##%s", bp.def != nullptr ? bp.def->label().c_str() : "?",
+                           bp.id.c_str());
+                    if(ImGui::IsItemHovered()) { g.vab.listHover = idx; }
+                    ImGui::TableNextColumn();
+                    snprintf(bid, sizeof bid, "^##%s", bp.id.c_str());
+                    if(ImGui::SmallButton(bid)) { vabStepStage(g, idx, -1); }
+                    ImGui::TableNextColumn();
+                    snprintf(bid, sizeof bid, "v##%s", bp.id.c_str());
+                    if(ImGui::SmallButton(bid)) { vabStepStage(g, idx, +1); }
+                }
+            }
+            /* The groups come from the cache and hold raw indices into parts -- the same
+               tripwire as the overlay's partIndex memo (#527), and this reader dereferences
+               them. */
+            assert(grouped == g.vab.build.parts.size());
+            ImGui::EndTable();
+        }
+    });
+
+    /* What each stage COSTS (#948). The labels themselves, the parts that answer at each
+       and the verdicts on the ordering all moved out of this window (#1022, #1010): a
+       read-out and an editor want different shapes. */
+    drawWin(g, W_DeltaV, [&] {
+        char gbuf[32];
+        ImGui::Text("TWR on %s  (g = %s)",
+                    lbody != nullptr ? lbody->name.c_str() : "?",
+                    fmt_accel(gLaunch, gbuf, sizeof gbuf));
+        if(g.vab.build.parts.empty()) {
+            ImGui::TextDisabled("empty build -- place a part");
+            return;
+        }
         /* Recompute only when the build changed (#293): this redraws every
            frame, and the burn simulation is the most expensive thing in the
            editor. The signature hashes exactly what computeStaging reads --
@@ -7511,7 +7592,10 @@ void drawVabUI(Game &g) {
             ImGui::TableSetupColumn("mass kg", ImGuiTableColumnFlags_WidthStretch);
             ImGui::TableHeadersRow();
             double totalDv = 0.0;
-            for(size_t i = 0; i < rows.size(); i++) {
+            /* Bottom-up. rows[] is FLIGHT order -- rows[0] is the first press -- so drawing
+               it back-to-front puts the boosters at the bottom of the window, the way the
+               rocket stands on the pad (#1022). Nothing about a row itself changes. */
+            for(size_t i = rows.size(); i-- > 0;) {
                 const StageRow &r = rows[i];
                 totalDv += r.deltaV;
                 ImGui::TableNextRow();
@@ -7543,126 +7627,10 @@ void drawVabUI(Game &g) {
             ImGui::EndTable();
             ImGui::Text("total dv: %.0f m/s", totalDv);
             ImGui::TextDisabled("* final burn (no separation)");
-            /* The ORDER verdict, under the cost table (#1010). The rows above answer
-               "what does each stage cost"; these answer "does the numbering do what you
-               meant", which the table cannot show -- a press that does nothing has a row
-               that looks fine. Cached with the rows, so an edit redraws them together. */
-            for(const std::string &w : g.vab.stagingWarns) {
-                ImGui::TextColored(ImVec4(1.0f, 0.55f, 0.35f, 1.0f), "%s", w.c_str());
-            }
-
-            /* The same labels read the other way: not what they are WORTH but what is IN
-               them (#1011). Until now the only place a label was visible per part was the
-               selected part's number box, so "what comes off at stage 3" had no answer
-               short of clicking every part and reading its box. Back-to-front, because the
-               press counter starts at the highest label and steps down (vehicle.cpp:2458,
-               :3128), and inside a label in build order, which is parent before child
-               (shipdef.h:610-612) -- so each group reads like the rocket.
-
-               A group whose parts answer to NOTHING is dimmed: most labels are decoration
-               today, and this is the view where that should show. The press number is what
-               the label costs in SPACE presses -- the label at the bottom is the floor,
-               where no advancing press ever stands, which is rule 2 above. */
-            const std::vector<StagingLabel> &grp = g.vab.stagingGroups;
-            if(!grp.empty()) {
-                const int gLo = grp.front().stage, gHi = grp.back().stage;
-                ImGui::Separator();
-                /* One sentence about what a press does, said once instead of in every group
-                   cell: a cell clips, and a sentence that stops at a column edge is worse
-                   than none. It has to be said somewhere -- the counter's position and a
-                   part's timing are NOT the same moment, and a reader who takes "press 3"
-                   as "the engine starts at press 3" has mis-paired an engine with the press
-                   above it. */
-                ImGui::TextDisabled("the counter starts at %d and steps down one label per "
-                                    "press, so its presses stand on %d down to %d. A decoupler "
-                                    "or chute fires on the press standing on its label; an "
-                                    "engine lights when the counter steps down onto its label "
-                                    "and burns from then on. Nothing advances onto %d: only a "
-                                    "press past the ladder reaches the label at the bottom.",
-                                    gHi, gHi, gHi > gLo ? gLo + 1 : gHi, gLo);
-                if(ImGui::BeginTable("staging_parts", 4,
-                                     ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg
-                                     | ImGuiTableFlags_SizingStretchSame)) {
-                    /* No ScrollY / outer_size here, though a long hull would want one: a
-                       scrolling table becomes its own ui host window, and the rows then
-                       register under "Staging/staging_parts_<hash>" -- an id no test should
-                       lean on. The window is taller instead (uiwins.cpp: W_Staging), and
-                       beyond that the whole window scrolls like every other list here. */
-                    ImGui::TableSetupColumn("Part", ImGuiTableColumnFlags_WidthStretch);
-                    ImGui::TableSetupColumn("Def", ImGuiTableColumnFlags_WidthStretch);
-                    ImGui::TableSetupColumn("Parent", ImGuiTableColumnFlags_WidthStretch);
-                    ImGui::TableSetupColumn("Answers to", ImGuiTableColumnFlags_WidthStretch);
-                    ImGui::TableHeadersRow();
-                    /* One place for the two axes this table draws: dim/plain (does the label
-                       answer to anything) and registered/plain (can --ui-list see this row).
-                       Both branches take an already-formatted const char* so nothing
-                       allocates: the table redraws every frame, and a hull that could be
-                       hundreds of parts is hundreds of strings per frame otherwise. */
-                    auto cell = [&](const char *text, bool dim, bool reg) {
-                        if(dim) {
-                            if(reg) { uiTextDisabled("%s", text); }
-                            else { ImGui::TextDisabled("%s", text); }
-                        } else {
-                            if(reg) { uiText("%s", text); }
-                            else { ImGui::Text("%s", text); }
-                        }
-                    };
-                    size_t grouped = 0;
-                    for(size_t gi = grp.size(); gi-- > 0;) {
-                        const StagingLabel &L = grp[gi];
-                        const bool inert = L.responds == 0u;
-                        grouped += L.parts.size();
-                        char lbuf[32], nbuf[32];
-                        snprintf(lbuf, sizeof(lbuf), "label %d", L.stage);
-                        snprintf(nbuf, sizeof(nbuf), "%d parts", (int)L.parts.size());
-                        ImGui::TableNextRow();
-                        ImGui::TableNextColumn();
-                        /* The group line goes through uiText so --ui-list can see it
-                           (#741's trick): the part rows below are too many to register on a
-                           500-part hull, but the handful of labels is what a test needs to
-                           know that the view drew the right grouping in the right order. */
-                        cell(lbuf, inert, true);
-                        ImGui::TableNextColumn();
-                        cell(nbuf, inert, true);
-                        ImGui::TableNextColumn();
-                        /* Registered too, and kept short: a table cell clips, and a sentence
-                           that stops at a column edge reads as a broken sentence. This is
-                           the cell that says what the label is worth in presses -- the one
-                           thing the part's number box cannot show (#1015) -- and the words
-                           come from staging.cpp so the unit tests can hold them to the
-                           counter. The timing rule sits above the table instead. */
-                        cell(stagingPressNote(gLo, gHi, L.stage).c_str(), inert, true);
-                        ImGui::TableNextColumn();
-                        ImGui::TableNextColumn();
-                        for(size_t k = 0; k < L.parts.size(); k++) {
-                            const BuildPart &bp = g.vab.build.parts[(size_t)L.parts[k]];
-                            const bool reg = k == 0;   // one registered row per group
-                            ImGui::TableNextRow();
-                            ImGui::TableNextColumn();
-                            cell(bp.id.c_str(), inert, reg);
-                            ImGui::TableNextColumn();
-                            /* The display label, not the catalog machine name: the part card
-                               and the selected-part line both read "Capsule (2m)", and two
-                               words for one part in one window is its own bug. */
-                            cell(bp.def != nullptr ? bp.def->label().c_str() : "?", inert, reg);
-                            ImGui::TableNextColumn();
-                            if(bp.parent >= 0 && (size_t)bp.parent < g.vab.build.parts.size()) {
-                                cell(g.vab.build.parts[(size_t)bp.parent].id.c_str(), true, false);
-                            } else {
-                                cell("--", true, false);
-                            }
-                            ImGui::TableNextColumn();
-                            cell(stageRoleName(inert ? 0u : stageRoles(bp.def)), inert, reg);
-                        }
-                    }
-                    /* The groups are keyed to this build by stagingSignature, and they hold
-                       raw indices into parts. The overlay next door asserts the same thing
-                       about its own cached indices (gameui.cpp's partIndex memo, #527); this
-                       is the reader that most needs it, because it dereferences them. */
-                    assert(grouped == g.vab.build.parts.size());
-                    ImGui::EndTable();
-                }
-            }
+            /* The order verdicts (#1010) and the by-label view (#1011) used to print under
+               this table. The view is the Staging window now (#1022); the verdicts stay in
+               validateStaging and still reach the log through --stage-dump and
+               --fleet-report, which is where a numbering gets fixed. */
         }
     });
 
@@ -7675,9 +7643,12 @@ void drawVabUI(Game &g) {
            same pair of parts, which is what makes the comparison mean anything. */
         ensureStagingCache(g, frameSigOnce(), gLaunch);
         /* The frame's signature is memoised, which is only sound while nothing between
-           the two readers edits the build -- the staging window body above is a table
-           and two text lines, so nothing does today. This is the tripwire if that
-           changes: a stale key would leave indices past the end of `parts`. */
+           the two readers edits the build. The staging window body above DOES edit it now
+           (Auto-stage, Undo staging), but both buttons run before that body takes the
+           key, and this reader reuses the key it took -- so neither can see a build the
+           other did not. Anything that mutates the build below the buttons, or a reader
+           inserted above them, breaks that. This is the tripwire: a stale key would
+           leave indices past the end of `parts`. */
         assert(g.vab.partIndex.size() == g.vab.build.parts.size());
         ImDrawList *dl = ImGui::GetForegroundDrawList();
         for(size_t i = 0; i < g.vab.build.fuelLinks.size(); i++) {

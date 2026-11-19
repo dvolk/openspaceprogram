@@ -345,9 +345,20 @@ const WinDef kWins[W_Count] = {
     },
     [W_Staging] = {
         .name = "Staging", .label = "Staging",
-        // Per-stage delta-v / TWR table plus the by-label view (#1011), which is a row per
-        // part -- hence the extra height over the old cost-table-only 280.
-        .opts = { .slot = ui::Slot::BottomLeft, .initial_size = ImVec2(560.0f, 460.0f),
+        /* The ladder (#1022): a rung per label, the parts that answer at each, and a step
+           button per row. Slim and tall because it reads as the rocket -- the first press
+           is the bottom rung -- and the part column is one name wide. BottomCenter keeps it
+           clear of the VAB panel (top-left), the Palette (top-right) and Delta-v (bottom-left). */
+        .opts = { .slot = ui::Slot::BottomCenter, .initial_size = ImVec2(300.0f, 430.0f),
+                  .closable = true, .default_open = true },
+        .role = WinRole::Persistent, .inList = false,
+    },
+    [W_DeltaV] = {
+        .name = "Delta-v table", .label = "Delta-v table",
+        // Cost only: five columns plus the total and the legend. The ladder that used to
+        // share this window moved to W_Staging (#1022), which is why the height came back
+        // down towards the pre-#1011 280.
+        .opts = { .slot = ui::Slot::BottomLeft, .initial_size = ImVec2(460.0f, 300.0f),
                   .closable = true, .default_open = true },
         .role = WinRole::Persistent, .inList = false,
     },
@@ -376,7 +387,7 @@ static const Win kTitleWinIds[] = {
 };
 // The VAB has no menu of its own.
 static const Win kVabWinIds[] = {
-    W_VabTopBar, W_Staging, W_Settings, W_Controls, W_Debug, W_SaveLoad,
+    W_VabTopBar, W_Staging, W_DeltaV, W_Settings, W_Controls, W_Debug, W_SaveLoad,
 };
 // No flight readouts -- the top bar is career state, not a vessel's.
 static const Win kSpaceCenterWinIds[] = {

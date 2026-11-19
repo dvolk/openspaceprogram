@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 418 |
+| `invariant` | a behaviour or a player route the game must keep | 419 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 50 |
 | `harness` | CLI/test-engine plumbing, not game spec | 16 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **488** |
+| | **total** | **489** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -357,7 +357,7 @@ judgement. Select by number, name or path, e.g.
 | `save/612-ask-survives-a-round-trip.txt` | invariant | A saved Guidance ask loads back into the game and is written out again. |
 | `save/867-cross-system-bubble-load.txt` | invariant | A save with a ship in a building's bubble loads from the title across systems. |
 
-## ui (68)
+## ui (69)
 
 | case | kind | pins |
 |---|---|---|
@@ -426,9 +426,10 @@ judgement. Select by number, name or path, e.g.
 | `ui/896-charging-hull-dashes-its-hours.txt` | invariant | A hull that generates more than it draws prints Aboard: - instead of an hours figure. |
 | `ui/1009-b-stage-dump-of-the-vab-build.txt` | invariant | --stage-dump reads the VAB build and agrees with the shipped file it loaded. |
 | `ui/1010-c-staging-checker-flags-the-vabs-own-build.txt` | invariant | The staging checker runs on the VAB build and names the same two faults there. |
-| `ui/1011-a-staging-window-lists-what-each-label-holds.txt` | invariant | The Staging window groups every authored label in press order, not just their cost. |
 | `ui/1012-b-auto-stage-numbers-the-vabs-own-build.txt` | invariant | The Staging window's Auto-stage button renumbers the VAB build so the checker goes quiet. |
 | `ui/1013-a-undo-takes-a-bulk-renumber-back.txt` | invariant | The Staging window's Undo button reverses an auto-stage, label for label. |
+| `ui/1022-a-the-staging-window-is-a-ladder-of-labels.txt` | invariant | The Staging window lists the labels the build carries in rocket order and the parts that answer at each, and the cost table is its own window. |
+| `ui/1022-b-a-step-button-moves-a-part-one-rung.txt` | invariant | A Staging-window step button moves one part exactly one label, and Undo takes a run of steps back as one edit. |
 
 ## render (89)
 

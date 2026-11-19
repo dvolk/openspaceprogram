@@ -297,6 +297,12 @@ struct VabState {
     // Build-part indices; -1 = none.
     int hover = -1;
     int selected = -1;
+    /* The part a staging-ladder row is under the mouse (#1022): the row's hover, kept
+       separate because the 3D pick owns `hover` and a list must not overwrite it (same
+       reason as the Palette's note in gameui.cpp). It is what lets a ladder row identify
+       its part without printing the part id -- tint the ship, not the text. Draw-only:
+       no editor op reads it. */
+    int listHover = -1;
     std::string armed;     // catalog part name armed from the palette ("" = none)
     int hoverNode = -1;    // stack-node index on the hover parent
     int hoverParent = -1;  // the build-part the ghost would attach to
@@ -369,15 +375,10 @@ struct VabState {
        one edit behind -- never a wrong launch. */
     uint64_t stagingSig = 0;
     std::vector<StageRow> stagingRows;
-    /* What the authored labels DO, as against what the rows above say they cost
-       (#1010). One short line per problem, empty when the order works, recomputed
-       with the rows on the same signature key so the table and the verdicts cannot
-       disagree about which build they describe. */
-    std::vector<std::string> stagingWarns;
-    /* The same build grouped by authored label, ascending (#1011): which parts ride each
-       label and what they answer to. The window's by-label view draws this back-to-front,
-       which is the press order; the checker reads it the other way. Rebuilt with the rows
-       on the same key, so all three describe one build. */
+    /* The build grouped by authored label, ascending (#1011): which parts ride each label
+       and what they answer to. The Staging window's ladder draws it top-to-bottom, so the
+       first press sits on the bottom rung (#1022). Rebuilt with the rows on the same key,
+       so rows and groups always describe the same build. */
     std::vector<StagingLabel> stagingGroups;
     /* Staging edits taken back by Ctrl+Z / the Staging window's Undo (#1013). One entry
        per edit, oldest first, each entry the labels that edit moved -- so an auto-stage

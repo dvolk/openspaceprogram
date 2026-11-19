@@ -1,0 +1,61 @@
+# Moving a part between stages is one click (#1022, and #1014's "shift a stage up / down by
+# one"). `dec_pod` loads on label 1; one click of its `v` button puts it on label 2, which is
+# a rung the hull did not have before -- so the step is exactly one label, and the ladder
+# stays dense. Two clicks then ONE Undo take it all the way home: a run of steps on one part
+# is one decision (the same typed rule the part window's number box follows, #1013), and the
+# Undo button is grey again after that single Undo -- which is how this case tells one merged
+# entry from two entries that both happened to land on the same label.
+#
+# The `##` suffix on each button is the part id, so the click names one part rather than an
+# ambiguous "Staging/v" (uiinput.cpp keeps imgui's ## suffix in the registered label).
+#
+# --stage-dump after the Undo: the label is back where the file had it, and the two verdicts
+# 1010-c pins for this hull are back with it -- they print into the log, not the window
+# (#1022 took them out of the editor).
+#
+# No --width/--height: a small window stops the VAB top bar taking clicks (#1017).
+NAME a-step-button-moves-a-part-one-rung-and-one-undo-takes-the-run-back
+CLAIM A Staging-window step button moves one part exactly one label, and Undo takes a run of steps back as one edit.
+KIND invariant
+ARGS --ui-click 1000,"Title Menu/New Game"
+ARGS --ui-click 1600,"New Game/Start"
+ARGS --sim-press 2600,0,4
+ARGS --sim-press 3000,0,F1
+ARGS --ui-click 3400,"Game Debug/Dev vehicles in the VAB picker"
+ARGS --sim-press 3800,0,F1
+ARGS --ui-type 4200,"VAB TopBar/##vehfilter",misstaged
+ARGS --ui-click 4800,"VAB TopBar/##vabload"
+ARGS --ui-click 5400,"misstaged"
+ARGS --ui-click 6000,"VAB TopBar/Load"
+ARGS --ui-click 7000,"Staging/v##dec_pod"
+ARGS --ui-list 7400
+# A rung this hull never had, drawn where label 2 belongs, with the part under it. Scoped
+# to the window's own rows: the [uiclick] echo above the dump repeats label="v##dec_pod",
+# so indexing the whole output finds that line first.
+EXPECT [uilist] window="Staging" label="label 2"
+# Three rungs in the dump after the click, two in the dump after the Undo: the step created
+# exactly one new label and the undo removed it. Sliced per dump -- "[uilist] loop=" heads
+# each one, so counting across both would add them up.
+CHECK len(re.findall(r'window="Staging" label="label \d+"', out.split('[uilist] loop=')[1])) == 3
+CHECK len(re.findall(r'window="Staging" label="label \d+"', out.split('[uilist] loop=')[2])) == 2
+CHECK (lambda rows: rows.index('"label 1"') < rows.index('"label 2"') < rows.index('"v##dec_pod"') < rows.index('"label 5"'))([ln.split(' label=')[1].split(' rect=')[0] for ln in out.splitlines() if ln.startswith('[uilist] window="Staging"')])
+# And there is now something to take back -- 1013-a pins the same row DISABLED before an edit.
+CHECK ' disabled' not in [ln for ln in out.splitlines() if 'label="Undo staging"' in ln][0]
+ARGS --ui-click 7600,"Staging/v##dec_pod"
+ARGS --ui-click 8200,"Staging/Undo staging"
+ARGS --ui-list 8700
+ARGS --stage-dump 9600 --timeout 16
+LIMIT 60
+EXPECT [vab] loaded misstaged (8 parts)
+EXPECT [vab] undo: 1 label(s) back
+# After ONE Undo the button is grey again, so the two step clicks left ONE entry on the
+# stack rather than two. (The second dump is what says so: the row's first state, above, was
+# live.) The empty-stack toast only the keyboard path can reach -- the gate closes the button.
+CHECK ' disabled' in [ln for ln in out.splitlines() if 'label="Undo staging"' in ln][-1]
+# Home: label 1, as the file authored it, with this hull's two verdicts back on top of it.
+EXPECT [stagetree] 7 dec_pod def=decoupler_radial parent=capsule_1 stage=1 responds=decoupler
+EXPECT [stagetree] labels=1..5 presses=4 inert_parts=4/8
+EXPECT [stagetree] warn: 3 of 4 presses do nothing -- no part carries 2-4
+EXPECT [stagetree] warn: a decoupler rides label 1, the lowest: the counter never stands there, so it needs a press past the ladder
+FORBID error:
+FORBID FAILED

@@ -1528,7 +1528,11 @@ void paintVab(Game &g) {
         DrawOpts opts;
         opts.flat = 0.8f;   // mostly studio light, a touch of bias (the editor look)
         if((int)i == g.vab.selected) { opts.tint = glm::vec3(1.0f, 0.75f, 0.2f); }
-        else if((int)i == g.vab.hover) { opts.tint = glm::vec3(0.6f, 1.0f, 0.6f); }
+        /* The 3D hover and a staging-ladder row point at the same thing: "this part". The
+           row has no id to read, so the ship answers instead (#1022). */
+        else if((int)i == g.vab.hover || (int)i == g.vab.listHover) {
+            opts.tint = glm::vec3(0.6f, 1.0f, 0.6f);
+        }
         DrawModelAt(cam, m, g.partsshader, t, model, sunlight, 1.0f,
                     glm::dmat4(1.0), opts);
 

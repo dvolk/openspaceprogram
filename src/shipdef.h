@@ -719,9 +719,10 @@ int partitionFuelGroups(const std::vector<int> &parent,
    thruster lights when the descending counter reaches its label and stays lit
    (`if(p->stage < as) continue;`, vehicle.cpp:6451), a decoupler separates and a
    chute deploys only when the counter EQUALS the label (vehicle.cpp:5573 and
-   :3136). Anything else carries a label that does nothing at a press, and that
-   is worth showing rather than hiding -- it is how a mis-staged build becomes
-   visible instead of merely flying badly. A part can hold two at once (a chute
+   :3136). Anything else carries a label that fires nothing at a press, so the Staging
+   window's ladder leaves those parts out (#1022) -- their rows were noise. "Fires nothing
+   at a press" is not the same as "does nothing", though: such a label still moves where
+   the press counter starts, and that is #1023. A part can hold two roles at once (a chute
    riding a decoupler), hence flags. */
 enum class StageRole : unsigned { None = 0, Engine = 1u, Decoupler = 2u, Chute = 4u };
 

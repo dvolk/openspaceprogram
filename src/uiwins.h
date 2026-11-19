@@ -39,7 +39,8 @@ enum Win : int {
     W_StaffLounge,
     // editor
     W_VabTopBar,
-    W_Staging,
+    W_Staging,   // the ladder: the parts that answer at each press, and moving them (#1022)
+    W_DeltaV,    // what each stage costs (#948); it used to share the ladder's window
     W_Count
 };
 

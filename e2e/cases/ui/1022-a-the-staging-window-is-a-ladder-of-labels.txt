@@ -1,0 +1,65 @@
+# The ladder (#1022). The Staging window used to be a read-out with a four-column part
+# table in it; it is now the editor, and this pins what it draws. One rung per label the
+# build carries, ASCENDING down the window, so the first press sits on the bottom rung and
+# the window reads like the rocket standing on the pad. Under each rung only the parts that
+# ANSWER at a press (`stageRoles(def) != 0`, shipdef.h:728) -- a tank's label fires nothing,
+# so its row was noise -- and every row carries the buttons that move it.
+#
+# `misstaged` (e2e/vehicles/, so it needs Game Debug's dev-vehicles switch) carries labels
+# 1 and 5 only: a dense ladder, so a view that grouped by integer rather than by label would
+# print rungs 2, 3 and 4 as well. 1010-c pins what the CHECKER says about this hull; the
+# checker still prints into --stage-dump, it just no longer shares a window with the editor.
+#
+# Rows go through uiText so --ui-list can see them (#741's trick), and the step buttons are
+# registered with the part id as their ## suffix -- which is what makes a specific part's
+# button clickable in 1022-b rather than an ambiguous "Staging/v".
+#
+# No --width/--height: a small window stops the VAB top bar taking clicks (#1017).
+NAME the-staging-window-is-a-ladder-of-labels
+CLAIM The Staging window lists the labels the build carries in rocket order and the parts that answer at each, and the cost table is its own window.
+KIND invariant
+ARGS --ui-click 1000,"Title Menu/New Game"
+ARGS --ui-click 1600,"New Game/Start"
+ARGS --sim-press 2600,0,4
+ARGS --sim-press 3000,0,F1
+ARGS --ui-click 3400,"Game Debug/Dev vehicles in the VAB picker"
+ARGS --sim-press 3800,0,F1
+ARGS --ui-type 4200,"VAB TopBar/##vehfilter",misstaged
+ARGS --ui-click 4800,"VAB TopBar/##vabload"
+ARGS --ui-click 5400,"misstaged"
+ARGS --ui-click 6000,"VAB TopBar/Load"
+ARGS --ui-list 7200 --timeout 12
+LIMIT 60
+EXPECT [vab] loaded misstaged (8 parts)
+# The two rungs this hull carries, and one step pair per rung.
+EXPECT [uilist] window="Staging" label="label 1"
+EXPECT [uilist] window="Staging" label="label 5"
+EXPECT [uilist] window="Staging" label="^##rung1"
+EXPECT [uilist] window="Staging" label="v##rung5"
+# The parts that answer: two engines, a radial decoupler, a stack decoupler -- by display
+# label, not by part id (#1022: the id in a row names nothing a player recognises). The ##
+# suffix is the id, hidden on screen and unique in the registry: two "Engine (2m)" rows would
+# otherwise be identical, which is what #165 fixed in the Controls list.
+EXPECT [uilist] window="Staging" label="Radial Decoupler##dec_pod"
+EXPECT [uilist] window="Staging" label="Decoupler (2m)##dec_boost"
+EXPECT [uilist] window="Staging" label="v##eng_boost"
+# The cost read-out is a separate window now, so the two can be placed and sized apart.
+EXPECT [uilist] window="Delta-v table" label="dv m/s"
+# Rocket order, not array order: the floor label is the top rung and the FIRST press -- label
+# 5, where the counter starts -- is the bottom one.
+CHECK out.index('label="label 1"') < out.index('label="label 5"')
+# One rung per label the build carries, not one per integer in the range.
+CHECK len(re.findall(r'window="Staging" label="label \d+"', out)) == 2
+# Two rungs plus the four parts that answer at a press, and nothing else. The other four
+# parts of this hull (capsule, wheel, two tanks) answer to nothing: their rows used to be
+# dimmed here, and now they are not drawn at all.
+CHECK len([ln for ln in out.splitlines() if 'window="Staging"' in ln and ' text' in ln]) == 6
+# Nothing ran past its column: the widest name must stay left of the step buttons, which sit
+# in the next column of the same row (rect= is "x,y-x,y"). --ui-list prints the RAW text
+# extent and tags only a FULLY clipped item, so the word EXPECTs above cannot catch a name
+# that stops mid-word -- the review pass on #1011 measured one at 1029 px inside a 560-px
+# window, which is why the slim ladder gets this check instead of a wide table.
+CHECK max(int(ln.split('rect=')[1].split(' ')[0].split('-')[1].split(',')[0]) for ln in out.splitlines() if 'window="Staging"' in ln and ' text' in ln) <= min(int(ln.split('rect=')[1].split(' ')[0].split('-')[0].split(',')[0]) for ln in out.splitlines() if 'window="Staging"' in ln and ('"^##' in ln or '"v##' in ln))
+CHECK len([ln for ln in out.splitlines() if 'window="Staging"' in ln and ' clipped' in ln]) == 0
+FORBID error:
+FORBID FAILED

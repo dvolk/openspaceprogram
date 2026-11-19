@@ -5,6 +5,7 @@
 
 #include "vab.h"
 
+#include <algorithm>   // std::clamp (the ladder's ends, #1022)
 #include <cassert>
 #include <cmath>
 #include <cstdio>
@@ -570,6 +571,40 @@ void vabUndoStaging(Game &g) {
     for(size_t i = 0; i < shown; i++) { g.toast("%s", notes[i].c_str()); }
 }
 
+/* One part, one rung along the ladder (#1022). The step is +/-1 by construction, so it
+   cannot skip a label and the ladder stays dense however long a button is held. The bounds
+   are the save range rather than the rungs the build happens to carry: a fresh build is ONE
+   rung (every part starts at label 1) and autoStage refuses the shapes it cannot read, so
+   separating a stack by hand has to be possible from the ladder alone.
+   Recorded as a TYPED edit -- holding the button repeats this call, and "where was this part
+   before I started nudging it" has one answer. No toast: the row shows the move. */
+void vabStepStage(Game &g, int part, int delta) {
+    if(part < 0 || (size_t)part >= g.vab.build.parts.size()) { return; }
+    BuildPart &bp = g.vab.build.parts[(size_t)part];
+    const int to = std::clamp(bp.stage + delta, 1, kMaxStage);
+    if(to == bp.stage) { return; }   // off the end of the range: nothing moved, nothing to undo
+    recordStagingEdit(g.vab.stagingUndo, {{part, bp.id, bp.stage, to}}, true);
+    bp.stage = to;
+}
+
+/* A whole rung, one step (#1014's "shift a stage up / down by one"). One undo step, because
+   the rung is the decision: taking back half of a group's move is not a thing anyone means.
+   Everything carrying the label moves, including parts with no stage role -- they are
+   attached, and stranding one on another label is a mess even while it changes nothing
+   (#1023 is where such labels stop mattering at all). */
+void vabStepStageRung(Game &g, int label, int delta) {
+    const int to = std::clamp(label + delta, 1, kMaxStage);
+    if(to == label) { return; }
+    std::vector<StagingChange> moves;
+    for(size_t i = 0; i < g.vab.build.parts.size(); i++) {
+        const BuildPart &bp = g.vab.build.parts[i];
+        if(bp.stage == label) { moves.push_back({(int)i, bp.id, bp.stage, to}); }
+    }
+    if(moves.empty()) { return; }
+    for(const StagingChange &m : moves) { g.vab.build.parts[(size_t)m.part].stage = to; }
+    recordStagingEdit(g.vab.stagingUndo, std::move(moves), false);
+}
+
 namespace {
 
 // Ship-def identity for the VAB is a NAME ("racer"). Paths and ".json" are
@@ -632,16 +667,18 @@ static void forgetBuildTargets(Game &g) {
     g.vab.partWinPlaced = false;
     g.vab.stagingSig = 0;
     g.vab.stagingRows.clear();
-    /* The other two caches on that key derive from the same build, and 0 is not a real
+    /* The other caches on that key derive from the same build, and 0 is not a real
        invalidation (it is a legal FNV value), so clear them with the rows instead of
-       leaving a replaced build's verdicts and part indices lying around. stagingGroups
-       is the one holding raw indices into `parts`. */
-    g.vab.stagingWarns.clear();
+       leaving a replaced build's part indices lying around. stagingGroups is the one
+       holding raw indices into `parts`. */
     g.vab.stagingGroups.clear();
     /* Every entry here names a part of the build being replaced, and an undo of a build
        that is no longer here is how a load starts putting old numbers on new parts
        (#1013). */
     g.vab.stagingUndo.clear();
+    /* An index into the build the ladder row was pointing at (#1022) -- the window clears
+       it every frame it is open, so this is the case where the build goes away under it. */
+    g.vab.listHover = -1;
     // 0 is "no cache", but it is also a legal FNV value, so make the map
     // unconditionally empty rather than relying on the sentinel.
     g.vab.partIndex.clear();

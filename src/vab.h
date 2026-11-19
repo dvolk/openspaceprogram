@@ -58,6 +58,12 @@ void vabDetachSelected(Game &g);
    under the edit: a part that has gone is reported, not invented. */
 void vabUndoStaging(Game &g);
 
+/* The Staging window's step buttons (#1022): move one part, or a whole label's group, one
+   rung along the ladder. Each call is one undo step -- a held button chains into one entry
+   like the part window's number box does, a rung shift is one entry for the group. */
+void vabStepStage(Game &g, int part, int delta);
+void vabStepStageRung(Game &g, int label, int delta);
+
 // `name` is the ship's identity ("racer"), not a path.
 void vabSave(Game &g, const char *name);
 
