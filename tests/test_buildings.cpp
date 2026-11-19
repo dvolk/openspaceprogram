@@ -19,6 +19,9 @@
 //   - every pad's lat/lon round-trips through the equirect projection the
 //     Surface Map marks sites with,
 //   - every pad's deck actually reaches the ground under its footprint,
+//   - where the shipped fictional system's pad decks stand above their body's
+//     sea-level datum, because comments elsewhere quote those numbers as if
+//     they were authored (#983),
 //   - no two buildings in one system answer to the same label, and no shipped
 //     world needs the placement-time rename that keeps labels unique (#883).
 
@@ -104,6 +107,18 @@ static void check_pad_grounding(const std::string &logical,
                logical.c_str(), w.id.c_str(), hi, slabDepth);
         g_failures++;
     }
+}
+
+/* A pad deck's height above the body's sea-level DATUM: what alt_asl reports for
+   a hull sitting on it (#850), and therefore what any comment quoting "the pad
+   stands N m" has to match. height_m lifts the deck off the terrain sampled at
+   the pad's own dir, and that terrain is GENERATED, so the number is not
+   authored anywhere -- it moves when the noise does. #983: three comments quoted
+   Moho's pad at 911 m while this build spawns a hull there at ~130 m. */
+static double padDeckAsl(const WorldBuilding &w, const TerrainBody *hb) {
+    const glm::dvec3 up = w.dir();
+    return w.height_m + (double)hb->GetTerrainHeight(glm::vec3(up))
+           - hb->seaLevelRadius();
 }
 
 int main() {
@@ -628,6 +643,39 @@ int main() {
             // ... and the deck it puts on that body reaches the ground
             if(!w.orbital && !w.air && wb != nullptr) {
                 check_pad_grounding(logical, w, wb);
+                /* The number, printed rather than hidden behind a pass: the
+                   comments that quote one are the thing #983 found stale. */
+                const double asl = padDeckAsl(w, wb);
+                printf("[padalt] %-28s %-8s %-18s deck_asl=%.1f\n",
+                       logical.c_str(), w.body.c_str(), w.id.c_str(), asl);
+                /* Pin the ones prose quotes. They are GENERATED -- terrain
+                   height at the pad's own dir plus its authored height_m --
+                   so nothing else watches them, and "moho_pad stands 911 m"
+                   sat in three places while this build put its deck at 126 m.
+                   A terrain-noise or pad-coordinate change now fails HERE with
+                   the new value printed just above it, which is the whole
+                   point: the comment goes stale loudly or not at all.
+                   polar_pad is deliberately absent -- its deck sits below
+                   Kerbin's sea level, which is a question, not a fact to
+                   freeze. */
+                if(logical == "res/systems/ksp_system.json") {
+                    static const struct { const char *id; double asl; } want[] = {
+                        {"main_space_port", 260.1},
+                        {"ksc_runway", 249.6},
+                        {"moho_pad", 125.9},
+                        {"duna_pad", 65.0},
+                    };
+                    for(const auto &e : want) {
+                        if(w.id != e.id) { continue; }
+                        if(std::fabs(asl - e.asl) > 2.0) {
+                            printf("FAIL %s: pad '%s' deck is at %.1f m above "
+                                   "the datum, not the %.1f m the prose quotes "
+                                   "-- fix the comment or re-measure the pin\n",
+                                   logical.c_str(), w.id.c_str(), asl, e.asl);
+                            g_failures++;
+                        }
+                    }
+                }
             }
         }
         /* A body's DEFAULT site is the first VAB_LAUNCH_PAD ON THAT BODY

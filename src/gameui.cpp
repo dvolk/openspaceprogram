@@ -793,10 +793,14 @@ static double ascentDvNeed(const TerrainBody &b, double apo_asl) {
 /* How far above the measured terrain an ask has to sit to be armable (#614).
    The law flies a pitch schedule, not a terrain-following path, so a periapsis
    down in the hills is a mission that ends on a mountain. `surface.max_height`
-   is the highest TERRAIN relief above mean sea -- it does not know about pads and
-   buildings, which is why the number the window quotes is not the tallest thing
-   on the body (moho_pad stands 911 m while Moho's measured relief is 721 m). The
-   margin is what stands in for everything the measurement leaves out. */
+   is the highest TERRAIN relief above mean sea: it says nothing about pads and
+   buildings, and it says nothing about where a pad's DECK lands, because that
+   height is generated terrain sampled at the pad's own dir, not a surveyed
+   number -- moho_pad's deck is at ~126 m on a body with 721 m of relief, and
+   Kerbin's polar pad sits BELOW its sea level. test_buildings prints every
+   shipped pad's deck as [padalt] and pins the fictional system's four, so a
+   comment quoting one of these can be checked. The margin is what stands in for
+   everything the measurement leaves out. */
 static constexpr double kGuidanceTerrainMargin = 500.0;
 
 /* What the Guidance window can arm, in the order its "type" combo lists them

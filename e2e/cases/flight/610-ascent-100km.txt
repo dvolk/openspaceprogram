@@ -64,7 +64,9 @@ CHECK min(a["t"] for a in ascent if a["phase"]=="ascent") < min(a["t"] for a in 
 # ground check these rows offer: the transfer's PERIAPSIS is meant to be
 # underground mid-flight (-177 km at the cutoff) -- raising it is what the node
 # burn is for -- so a periapsis floor here would pin the wrong physics.
-# The t >= 20 filter is not decoration. moho_pad sits 911 m above the datum, so
+# The t >= 20 filter is not decoration. moho_pad's deck sits ~126 m above the
+# datum -- generated terrain sampled at the pad's own dir, plus its 5 m height_m;
+# test_buildings prints every shipped pad's deck_asl and pins this one -- so
 # the earliest row (t=10, still on the vertical climb) is the lowest radius the
 # flight ever reports; a floor over the whole flight just re-measures the launch
 # site. From 20 s the ship is some 6 km up and climbing, so the rows below 251 km
