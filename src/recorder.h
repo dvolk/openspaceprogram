@@ -216,7 +216,7 @@ inline int recRow(const RecSample &s, char *buf, size_t n) {
 
    ONE string per channel, used verbatim as the toggle label, the legend row and
    the plot item's label, and it must stay static text. ImPlot keys a plot item
-   by hashing the whole label (implot_items.cpp:413 RegisterOrGetItem ->
+   by hashing the whole label (implot_items.cpp:410 RegisterOrGetItem ->
    ImPlotItemGroup::GetItemID), and "##" only truncates what gets DISPLAYED
    (imgui.cpp:3880 FindRenderedTextEnd) -- it is not an id override. The first
    version of this window put live numbers in the label ("q Pa 20..2.3e3"), which
@@ -378,7 +378,7 @@ inline void recExtent(const RecRing &ring, double RecSample::*get,
 
 /* The mission-time extent of what the ring holds. Spelled out rather than left to
    implot's fitter because implot fits an axis ONCE, on the frame the plot first
-   appears (implot.cpp:2535, CanInitFit): a live recorder would otherwise stay
+   appears (implot.cpp:2584, CanInitFit): a live recorder would otherwise stay
    pinned to however much flight the ring held when the window opened. min/max
    rather than first/last: the ring keeps WRITE order, and a load can move the
    mission clock underneath it (see RecRing::push), which read as ends would pass

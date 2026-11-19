@@ -5299,7 +5299,7 @@ void drawUIRecorder(Game &g) {
                below the reserved area (measuring there gave a rect whose bottom was
                above its top). Saved for the NEXT frame's gesture test, which has to
                run ahead of the axis setup because any ImPlot query calls SetupLock
-               (implot.cpp:2175 asserts a Setup call afterwards). The rect is a hair
+               (implot.cpp:2223 asserts a Setup call afterwards). The rect is a hair
                larger than implot's own plot rect -- Style.PlotPadding only, since
                neither axis reserves a gutter -- close enough for "the pilot gestured
                AT the graph", and being wrong by a few pixels only yields the fit a
@@ -5313,9 +5313,10 @@ void drawUIRecorder(Game &g) {
                    click that goes nowhere does not steal the fit. Asked BEFORE the
                    limits below, because pinning them with ImPlotCond_Always in the
                    same frame is what swallows the gesture: IsInputLocked() reads
-                   exactly that (implot_internal.h:912-918), so a pinned axis refuses
-                   the wheel and the notch is simply lost. Releasing first lets this
-                   frame pan or zoom. The Fit button hands the follow back. */
+                   exactly that (implot_internal.h:951 IsRangeLocked -> :957
+                   IsInputLocked), so a pinned axis refuses the wheel and the notch
+                   is simply lost. Releasing first lets this frame pan or zoom. The
+                   Fit button hands the follow back. */
                 const ImGuiIO &io = ImGui::GetIO();
                 const bool overGraph = io.MousePos.x >= gRecFrameMin.x &&
                                        io.MousePos.y >= gRecFrameMin.y &&
@@ -5332,14 +5333,14 @@ void drawUIRecorder(Game &g) {
                    reads coordinates from implot's own hover text, and only its x half
                    means anything here -- y is 0..1 of each line's own range (#990).
                    What it buys is the graph: an axis with no label and no tick labels
-                   reserves no gutter (implot.cpp:1667 PadAndDatumAxesX,
-                   implot_internal.h:906 WillRender), so the plot rect is the whole
+                   reserves no gutter (implot.cpp:1709 PadAndDatumAxesX,
+                   implot_internal.h:945 WillRender), so the plot rect is the whole
                    frame. No grid lines either, deliberately: the only vertical lines
                    in this graph should be the chapter marks below, and an unlabeled
                    grid is indistinguishable from them. NoMenus (here and on BeginPlot)
                    because a right-click menu writes axis.Flags directly, and SetupAxis
                    rewrites flags only when they differ from last frame's
-                   (implot.cpp:2183) -- so an Invert or Grid Lines chosen from a menu
+                   (implot.cpp:2230) -- so an Invert or Grid Lines chosen from a menu
                    would stick for the rest of the session while this window keeps
                    handing over the same flags. Telemetry (gameui.cpp:759) keeps its
                    menus; that one is the debug surface. */
@@ -5347,7 +5348,7 @@ void drawUIRecorder(Game &g) {
                                                          ImPlotAxisFlags_NoMenus);
                 /* x spans the flight the ring holds, and it is asked for EVERY
                    frame. implot fits an axis once, on the frame the plot first
-                   appears (implot.cpp:2535, CanInitFit), so a live recorder
+                   appears (implot.cpp:2584, CanInitFit), so a live recorder
                    otherwise locks onto however much flight the ring held when the
                    window opened: eight samples, the first two seconds of an ascent,
                    with the flight itself off the right-hand edge -- which is what
@@ -5416,7 +5417,7 @@ void drawUIRecorder(Game &g) {
                        ImMax propagate NaN), so both segments touching the dash go
                        undrawn: the gap the trace's "-" promises. SkipNaN selects
                        RendererLineStripSkip, which instead keeps P1 at the last good
-                       point (implot_items.cpp:1009-1027), so the two neighbours are
+                       point (implot_items.cpp:1010-1022), so the two neighbours are
                        joined by one real line across a stretch the file prints "-"
                        for. Checked against the draw list rather than the flag's name:
                        a NaN sample in the middle of five draws a 313 px segment under
