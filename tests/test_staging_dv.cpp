@@ -1699,6 +1699,58 @@ static void test_a_stage_label_means_exactly_three_things() {
                "all three");
 }
 
+/* A stage label is a position in the press order, nothing more.
+
+   Nobody had written this down, and a reader can easily assume the opposite: that a label
+   is a height, so a booster labelled 301 instead of 2 carries a number the sim can never
+   reach and the booster rides all the way up. It doesn't. The walk visits the labels the
+   ship CARRIES (sim.stageLabels, sorted descending), and the setup pass lights every engine
+   at maxStage before the first period, so a high label is first in flight order exactly
+   like a low one: same two rows, same mass, same burn, same separation, same TWR at the
+   pad. #517's sparse-label rule already pins the wide case (1,9000 == 1,2); this pins the
+   narrow one -- a high label is not merely cheap, it is not late.
+
+   What a high label DOES cost is a flight-side property, not one of this pass: the counter
+   steps down one integer per press, so a gap is a press the player or the ascent law has to
+   spend. Measured and ticketed as #1018. */
+static void test_a_stage_label_is_order_not_height() {
+    Catalog cat;
+    const double g = 10.0;
+
+    /* A two-stage stack, one engine under each label. The booster engine is sized to
+       clear unity at the pad (4 kg/s * 1000 m/s = 4000 N against 325 kg at g = 10),
+       because the last check below states that the TOP row is the pad burn and it lifts. */
+    BuildShip dense;
+    const int dt = addPart(dense, cat.tank(50, 25, 25), "tank_up", -1, 1);
+    addPart(dense, cat.engine(10, 0.5, 1000.0), "eng_up", dt, 1);
+    const int dd = addPart(dense, cat.decoupler(5), "dec", dt, 2);
+    const int dl = addPart(dense, cat.tank(50, 75, 75), "tank_low", dd, 2);
+    addPart(dense, cat.engine(10, 2.0, 1000.0), "eng_low", dl, 2);
+
+    BuildShip tall = dense;   // the same physical ship, one label written 301
+    for(BuildPart &p : tall.parts) {
+        p.id = "t_" + p.id;
+        if(p.stage == 2) { p.stage = 301; }
+    }
+
+    const std::vector<StageRow> rd = computeStaging(dense, g);
+    const std::vector<StageRow> rt = computeStaging(tall, g);
+    CHECK_TRUE(rd.size() == 2 && rt.size() == 2, "two periods either way");
+    if(rd.size() != 2 || rt.size() != 2) { return; }
+
+    CHECK_TRUE(rd[0].stage == 2, "the dense ladder's first row is label 2");
+    CHECK_TRUE(rt[0].stage == 301, "the tall ladder's first row is label 301, not a skipped row");
+    CHECK_TRUE(rt[1].stage == 1, "and the pad stage is still last");
+    for(size_t i = 0; i < rd.size(); i++) { same_rows(rd[i], rt[i]); }
+
+    /* The pad row, stated rather than compared: the 301 row is the one that has to lift
+       the whole 325 kg, and it does. If a high label ever read as unreachable, this is the
+       pair of numbers that would go to zero. */
+    CHECK_REL(rt[0].massStart, 325.0, 1e-9, "301 ignites with everything aboard");
+    CHECK_TRUE(rt[0].engines == 1 && rt[0].drops, "and it burns and separates");
+    CHECK_TRUE(rt[0].minTWR > 1.0, "a 301 label still lifts off the pad");
+}
+
 int main() {
     test_two_stage();
     test_single_stage();
@@ -1729,6 +1781,7 @@ int main() {
     test_a_duplicate_id_resolves_to_the_last_part();
     test_seed_the_fuel_and_mass_a_live_ship_carries();
     test_a_stage_label_means_exactly_three_things();
+    test_a_stage_label_is_order_not_height();
 
     printf("test_staging_dv: %d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
