@@ -24,10 +24,10 @@
 //     id map did; with a duplicated id that decides whether the link is real (#963).
 //   * stage numbers are LABELS: the walk visits the labels the ship carries, highest
 //     first, and a gap between two labels costs nothing (#517).
-//   * autoStage assigns those labels from the tree instead of by hand, and refuses where
-//     the tree cannot see the author's intent -- no decoupler, a cut that would drop
-//     everything, an engine re-sequenced relative to another, or a launch-lit core the
-//     depth rule would hand to a later press (#1012).
+//   * autoStage assigns those labels from the tree instead of by hand, keeps an authored cut
+//     sequence over the tree's depth guess (#1020), keeps an engine lit that the build lights
+//     from the pad, and refuses where the tree cannot read the stack at all -- no decoupler, a
+//     cut that would drop everything, an engine re-sequenced relative to another (#1012).
 //   * a staging edit takes itself back: the change list an edit performed is the undo
 //     record, so an undo finds parts by id (the vector renumbers under it), leaves a label
 //     that something else moved since, says which parts it could not reach, and moves
@@ -2168,17 +2168,20 @@ static void test_auto_stager_gives_a_ring_one_press() {
     CHECK_TRUE(labelsOf(nest) == std::vector<int>({1, 2, 2, 2, 2, 2, 2, 3, 3}),
                "and everything below the inner cut rides it");
 
-    /* The same edit on the build that was already numbered as a ring: refused. Adding a cut
-       below it moves the ring's engines off launch (they carried the top label, and the top
-       is now 3), which is the launch-lit guard, not a bug in the ring rule. */
+    /* The same edit on the build that was already numbered as a ring. The new cut carries the
+       default label, so the ladder is half-numbered and DEPTH orders it (the inner cut first);
+       and deepening the ladder takes the ring's engines off the top label they were lit from,
+       which the plan now keeps instead of refusing (#1020). */
     const int dIn2 = addPart(bs, cat.decoupler(5), "d_inner", bTank, 1);
     addPart(bs, cat.tank(20, 10, 10), "inner_tank", dIn2, 1);
     (void)dIn2;
     StagingPlan edited = autoStage(bs);
-    CHECK_TRUE(!edited.applied, "deepening a numbered stack is not a free renumber");
-    CHECK_TRUE(has_note(edited, "lights at launch"), "and it says which engine the change would cost");
-    CHECK_TRUE(labelsOf(bs) == std::vector<int>({1, 2, 2, 2, 2, 2, 2, 1, 1}),
-               "the ring keeps what it had, new parts and all");
+    CHECK_TRUE(edited.applied, "deepening a numbered stack is a renumber, not a refusal");
+    CHECK_TRUE(has_note(edited, "stay lit at launch"),
+               "and it says which engines it kept lit at the pad while doing it");
+    CHECK_TRUE(labelsOf(bs) == std::vector<int>({1, 2, 2, 2, 3, 2, 3, 3, 3}),
+               "the ring keeps one press, the inner cut takes the new top label, and the "
+               "booster engines ride that top label because the build lights them at the pad");
 }
 
 static void test_auto_stager_refuses_a_build_with_no_decoupler() {
@@ -2214,6 +2217,10 @@ static void test_auto_stager_refuses_a_cut_that_would_drop_everything() {
     CHECK_TRUE(has_note(plan, "whole ship"), "named as the reason");
     CHECK_TRUE(has_note(plan, "'d_root'"), "and named by part");
     CHECK_TRUE(labelsOf(bs) == std::vector<int>({1, 1, 1}), "untouched");
+    /* The default kind: the banner's generic line is the honest answer for a shape a short
+       sentence cannot describe (#1027). */
+    CHECK_TRUE(plan.refusal == StagingPlan::Refusal::Other,
+               "a refusal the short verdict cannot name falls back to the generic one");
     (void)d;
 }
 
@@ -2283,34 +2290,37 @@ static void test_auto_stager_says_what_a_chute_on_the_floor_needs() {
     CHECK_TRUE(w.empty(), "#1010 rule 2 does not call a floor chute a fault, and neither does this");
 }
 
-static void test_auto_stager_refuses_to_move_an_engine_off_launch() {
+static void test_auto_stager_keeps_a_launch_lit_engine_at_the_pad() {
     Catalog cat;
     /* The shape heavy_asp ships with, miniature: a core that burns the whole flight while a
-       booster falls away first. The tree sees a serial stack and hands the core engine to a
-       later press; the author lit it at launch. Only the author knows which, so the plan
-       steps back -- and says which engine. */
+       booster falls away first. The tree says when a part FALLS and never when an engine
+       STARTS, so the stack hands the core engine to a later press while the author lit it at
+       launch. That is the one piece of ignition intent the plan cannot derive, so it keeps it
+       (#1020) instead of refusing the way it used to. */
     BuildShip bs;
     const int coreTank = addPart(bs, cat.tank(50, 25, 25), "core_tank", -1, 1);
     const int coreEng = addPart(bs, cat.engine(10, 0.5, 1000.0), "core_eng", coreTank, 3);
     const int d = addPart(bs, cat.decoupler(5), "d_boost", coreTank, 2);
     const int boTank = addPart(bs, cat.tank(50, 75, 75), "bo_tank", d, 2);
-    addPart(bs, cat.engine(10, 0.5, 1000.0), "bo_eng", d, 3);
-    (void)coreTank; (void)d; (void)boTank;
+    addPart(bs, cat.engine(10, 0.5, 1000.0), "bo_eng", boTank, 3);
+    (void)coreTank; (void)boTank;
 
     StagingPlan plan = autoStage(bs);
-    CHECK_TRUE(!plan.applied, "a launch-lit engine is authored intent the stack cannot see");
-    CHECK_TRUE(has_note(plan, "refuse:") && has_note(plan, "'core_eng'")
-                   && has_note(plan, "lights at launch"),
-               "and the refusal names the engine and the fact");
-    CHECK_TRUE(labelsOf(bs) == std::vector<int>({1, 3, 2, 2, 3}), "untouched");
-    /* The default kind: the banner's generic line is the honest answer for a shape a short
-       sentence cannot describe (#1027). */
-    CHECK_TRUE(plan.refusal == StagingPlan::Refusal::Other,
-               "a refusal the short verdict cannot name falls back to the generic one");
+    CHECK_TRUE(plan.applied, "a launch-lit engine no longer stops the plan (#1020)");
+    /* One cut, so hi = 2 and the counter starts there. Both engines the build lit from the pad
+       end up on that label: the plan moved their numbers and kept what they MEAN. */
+    CHECK_TRUE(labelsOf(bs) == std::vector<int>({1, 2, 2, 2, 2}),
+               "the pad-lit engines land on hi and the tanks follow their cut");
+    CHECK_TRUE(bs.parts[coreEng].stage == 2, "the core still lights at launch");
+    CHECK_TRUE(has_note(plan, "stay lit at launch"),
+               "and the plan says out loud that it kept an ignition it cannot derive");
+    std::vector<std::string> w;
+    validateStaging(bs, w);
+    CHECK_TRUE(w.empty(), "and the re-numbered stack leaves #1010's checker nothing to say");
 
-    /* The same stack with nothing numbered: no intent to contradict, so the plan runs -- and
-       a booster engine moves ONTO launch, which the stack does imply (a group cut on the
-       first press has to burn before it, or never burns at all). */
+    /* The same stack with nothing numbered: no intent to keep, so nothing is pinned -- and a
+       booster engine moves ONTO launch, which the stack does imply (a group cut on the first
+       press has to burn before it, or never burns at all). */
     BuildShip bare;
     const int t2 = addPart(bare, cat.tank(50, 25, 25), "core_tank", -1, 1);
     addPart(bare, cat.engine(10, 0.5, 1000.0), "core_eng", t2, 1);
@@ -2321,6 +2331,71 @@ static void test_auto_stager_refuses_to_move_an_engine_off_launch() {
     CHECK_TRUE(open.applied, "an un-numbered stack numbers");
     CHECK_TRUE(bare.parts[boEng].stage == 2, "the booster engine ends on launch (hi = 2)");
     CHECK_TRUE(labelsOf(bare) == std::vector<int>({1, 1, 2, 2, 2}), "floor and cut");
+    CHECK_TRUE(!has_note(open, "stay lit at launch"),
+               "and a build that numbered nothing has no ignition to keep, so no such note");
+}
+
+/* #1020: the author's number orders the cuts; the tree's depth orders them only where the
+   author said nothing. heavy_asp hangs six boosters off one core tank, all at ONE tree depth,
+   and sequences them 6/5/4 so opposite boosters drop together -- a depth sort could not keep
+   that and used to resequence it. */
+static void test_auto_stager_keeps_an_authored_asparagus_sequence() {
+    Catalog cat;
+    /* pod / d_core / core tank + core engine / three radial boosters off the core tank: two
+       outboard share a press (label 4), one inboard waits a press (3), and every engine is lit
+       from the pad (4). Authored densely, so a plan that reads the shape right moves nothing. */
+    BuildShip bs;
+    const int pod = addPart(bs, cat.mono(100, 0), "pod", -1, 1);
+    const int dCore = addPart(bs, cat.decoupler(5), "d_core", pod, 2);
+    const int coreTank = addPart(bs, cat.tank(50, 25, 25), "core_tank", dCore, 2);
+    const int coreEng = addPart(bs, cat.engine(10, 0.5, 1000.0), "core_eng", coreTank, 4);
+    const int dOut1 = addPart(bs, cat.decoupler(5), "d_out1", coreTank, 4);
+    const int bo1Tank = addPart(bs, cat.tank(50, 25, 25), "bo1_tank", dOut1, 4);
+    addPart(bs, cat.engine(10, 0.5, 1000.0), "bo1_eng", bo1Tank, 4);
+    const int dOut2 = addPart(bs, cat.decoupler(5), "d_out2", coreTank, 4);
+    const int bo2Tank = addPart(bs, cat.tank(50, 25, 25), "bo2_tank", dOut2, 4);
+    addPart(bs, cat.engine(10, 0.5, 1000.0), "bo2_eng", bo2Tank, 4);
+    const int dIn1 = addPart(bs, cat.decoupler(5), "d_in1", coreTank, 3);
+    const int bo3Tank = addPart(bs, cat.tank(50, 25, 25), "bo3_tank", dIn1, 3);
+    const int bo3Eng = addPart(bs, cat.engine(10, 0.5, 1000.0), "bo3_eng", bo3Tank, 4);
+    (void)pod; (void)dCore; (void)coreTank; (void)dOut1; (void)dOut2;
+
+    StagingPlan plan = autoStage(bs);
+    CHECK_TRUE(plan.applied, "an authored asparagus stack is numberable (#1020)");
+    CHECK_TRUE(plan.changes.empty(), "and the plan agrees with the author: nothing to move");
+    CHECK_TRUE(bs.parts[coreEng].stage == 4 && bs.parts[bo3Eng].stage == 4,
+               "the pad-lit engines keep the top of a ladder whose hi the author set");
+    CHECK_TRUE(bs.parts[dIn1].stage == 3, "the inboard booster waits a press for its cut");
+    CHECK_TRUE(bs.parts[dOut1].stage == 4 && bs.parts[dOut2].stage == 4,
+               "the outboard pair shares one press, as authored");
+    CHECK_TRUE(has_note(plan, "stay lit at launch"),
+               "the engines the tree would have dimmed are named once");
+    std::vector<std::string> w;
+    validateStaging(bs, w);
+    CHECK_TRUE(w.empty(), "an authored 4/3/2 ladder is dense and every rung answers");
+}
+
+/* Where the author's sequence and the tree's depth disagree, the author wins. This is
+   heavy_asp's inversion in miniature: the shallower cut is numbered HIGHER than the deeper
+   one, so a depth sort would run the presses the other way round. */
+static void test_auto_stager_orders_cuts_by_the_authored_label_not_depth() {
+    Catalog cat;
+    BuildShip bs;
+    const int pod = addPart(bs, cat.mono(100, 0), "pod", -1, 1);
+    const int dHigh = addPart(bs, cat.decoupler(5), "d_shallow", pod, 5);   // depth 1
+    const int tankA = addPart(bs, cat.tank(50, 25, 25), "tank_a", dHigh, 4);
+    const int dLow = addPart(bs, cat.decoupler(5), "d_deep", tankA, 4);     // depth 2
+    const int tankB = addPart(bs, cat.tank(50, 25, 25), "tank_b", dLow, 1);
+    addPart(bs, cat.engine(10, 0.5, 1000.0), "eng", tankB, 1);
+    (void)pod; (void)tankA; (void)tankB;
+
+    StagingPlan plan = autoStage(bs);
+    CHECK_TRUE(plan.applied, "a numbered stack whose tree disagrees still numbers (#1020)");
+    CHECK_TRUE(bs.parts[dHigh].stage == 3 && bs.parts[dLow].stage == 2,
+               "the shallower cut fires first because the author put it higher, not last");
+    std::vector<std::string> w;
+    validateStaging(bs, w);
+    CHECK_TRUE(w.empty(), "and re-spacing to 1..3 is dense, so the checker stays quiet");
 }
 
 /* The plan walks the parent GRAPH rather than the part index, and refuses when the graph
@@ -2787,7 +2862,9 @@ int main() {
     test_auto_stager_refuses_a_build_with_no_decoupler();
     test_auto_stager_refuses_a_cut_that_would_drop_everything();
     test_auto_stager_keeps_two_engines_relative_to_each_other();
-    test_auto_stager_refuses_to_move_an_engine_off_launch();
+    test_auto_stager_keeps_a_launch_lit_engine_at_the_pad();
+    test_auto_stager_keeps_an_authored_asparagus_sequence();
+    test_auto_stager_orders_cuts_by_the_authored_label_not_depth();
     test_auto_stager_says_what_a_chute_on_the_floor_needs();
     test_auto_stager_reads_the_graph_not_the_part_order();
     test_auto_stager_refuses_a_parent_chain_that_loops();

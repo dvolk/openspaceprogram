@@ -1,0 +1,44 @@
+# #1020: the author's numbers order the cuts; the tree's depth orders them only where the
+# author said nothing. heavy_asp is the hull that used to be refused. Six radial boosters hang
+# off one core tank -- all six cuts at the SAME tree depth -- chained to each other and to the
+# core by fuel links, and the author sequences them 6/5/4 so opposite boosters drop together as
+# the fuel chain empties. A depth sort could not keep that (it dropped all six on one press),
+# and the launch-lit core guard refused the whole plan because the tree wanted to light the core
+# at its own separation instead of at the pad.
+#
+# Now the plan reads the same 6/5/4 the author wrote, keeps every pad-lit engine lit at the pad,
+# and finds nothing to move: the toast is the "already matches" one and the ladder survives.
+NAME auto-stage-keeps-an-authored-asparagus-sequence
+CLAIM Auto-stage on heavy_asp agrees with the authored ladder and moves no label.
+KIND invariant
+ARGS --ui-click 1000,"Title Menu/New Game"
+ARGS --ui-click 1600,"New Game/Start"
+ARGS --sim-press 2600,0,4
+ARGS --ui-type 3200,"VAB TopBar/##vehfilter",heavy_asp
+ARGS --ui-click 3800,"VAB TopBar/##vabload"
+ARGS --ui-click 4400,"heavy_asp"
+ARGS --ui-click 5000,"VAB TopBar/Load"
+ARGS --ui-click 5600,"Staging/Auto-stage"
+ARGS --stage-dump 6400 --timeout 14
+LIMIT 60
+EXPECT [vab] loaded heavy_asp (45 parts)
+EXPECT [toast] Auto-stage: those labels already match the stack
+EXPECT [autostage] note: 5 engine(s) stay lit at launch
+# The authored sequence survives: three pairs of opposite boosters on three presses, then the
+# two serial cuts. A depth sort cannot see any of this -- all six share one tree depth.
+EXPECT [stagetree] 15 dec_1c def=decoupler_r1.5 parent=big_tank1 stage=6 responds=decoupler
+EXPECT [stagetree] 20 dec_1b def=decoupler_r1.5 parent=big_tank1 stage=5 responds=decoupler
+EXPECT [stagetree] 25 dec_1a def=decoupler_r1.5 parent=big_tank1 stage=4 responds=decoupler
+EXPECT [stagetree] 9 dec_2 def=decoupler_r1.5 parent=engine_2 stage=3 responds=decoupler
+EXPECT [stagetree] 4 dec_3 def=decoupler_r1 parent=engine_1 stage=2 responds=decoupler
+# And the core still lights at the pad, six labels up, rather than at the press that cuts its
+# own tanks away -- the reading the tree cannot derive.
+EXPECT [stagetree] 14 engine_central def=engine_r2.25h4.5 parent=big_tank2 stage=6 responds=engine
+# Six labels, five presses, and nothing dead among them: the dense re-spacing cannot leave a
+# label the counter never stands on. (28 of the 45 parts answer to no press -- they are carried
+# along, which is #1023's subject, not this ladder's.)
+EXPECT [stagetree] labels=1..6 presses=5 inert_parts=28/45
+FORBID [autostage] refuse:
+FORBID [stagetree] warn:
+FORBID error:
+FORBID FAILED

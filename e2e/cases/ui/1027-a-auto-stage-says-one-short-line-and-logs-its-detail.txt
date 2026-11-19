@@ -7,50 +7,49 @@
 # harness reads as "what the player saw".
 #
 # Three clicks, one per outcome the button has:
-#   heavy_asp      refused, and the ship IS multi-stage: its core engine lights at launch and
-#                  the stack's shape would hand it to a later press (#1020 is the WIP fix)
+#   rootcut        refused: its only decoupler would have to take the whole ship, and that press
+#                  is refused in flight, so the label would be spent on nothing (#541)
 #   skiff          refused for the commonest reason of all -- no decoupler anywhere, 25 of the
 #                  32 shipped hulls -- where "can't" would call a one-stage ship broken
 #   central_radial applied, with a note that two engines that shared a label now light apart:
 #                  a real change, still detail, so it is a log line and not a second banner
 #
-# No --width/--height: a small window stops the VAB top bar taking clicks (#1017), and every
-# step here is a click.
+# rootcut and central_radial need Game Debug's dev-vehicles switch (a fixture, a testship),
+# flipped once and left on. No --width/--height: a small window stops the VAB top bar taking
+# clicks (#1017), and every step here is a click.
 NAME auto-stage-says-one-short-line-and-logs-its-detail
 CLAIM Auto-stage toasts one short line per outcome and logs its technical detail instead of painting it.
 KIND invariant
 ARGS --ui-click 1000,"Title Menu/New Game"
 ARGS --ui-click 1600,"New Game/Start"
 ARGS --sim-press 2600,0,4
-ARGS --ui-type 3200,"VAB TopBar/##vehfilter",heavy_asp
-ARGS --ui-click 3800,"VAB TopBar/##vabload"
-ARGS --ui-click 4400,"heavy_asp"
-ARGS --ui-click 5000,"VAB TopBar/Load"
-ARGS --ui-click 5600,"Staging/Auto-stage"
-ARGS --stage-dump 6400
-ARGS --ui-type 7200,"VAB TopBar/##vehfilter",skiff
-ARGS --ui-click 7800,"VAB TopBar/##vabload"
-ARGS --ui-click 8400,"skiff"
-ARGS --ui-click 9000,"VAB TopBar/Load"
-ARGS --ui-click 9600,"Staging/Auto-stage"
-# central_radial is a "testship" def, so the picker only lists it once Game Debug's
-# dev-vehicles switch is on -- the same two presses 1012-b spends to get there.
-ARGS --sim-press 10400,0,F1
-ARGS --ui-click 10900,"Game Debug/Dev vehicles in the VAB picker"
-ARGS --sim-press 11400,0,F1
-ARGS --ui-type 11900,"VAB TopBar/##vehfilter",central_radial
-ARGS --ui-click 12500,"VAB TopBar/##vabload"
-ARGS --ui-click 13100,"central_radial"
-ARGS --ui-click 13700,"VAB TopBar/Load"
-ARGS --ui-click 14300,"Staging/Auto-stage"
+ARGS --sim-press 3200,0,F1
+ARGS --ui-click 3700,"Game Debug/Dev vehicles in the VAB picker"
+ARGS --sim-press 4200,0,F1
+ARGS --ui-type 4700,"VAB TopBar/##vehfilter",rootcut
+ARGS --ui-click 5300,"VAB TopBar/##vabload"
+ARGS --ui-click 5900,"rootcut"
+ARGS --ui-click 6500,"VAB TopBar/Load"
+ARGS --ui-click 7100,"Staging/Auto-stage"
+# Dump once, while the refused build is still up: the plan is not just quiet, it left the
+# decoupler on label 1 -- the label that has no press under it.
+ARGS --stage-dump 7700
+ARGS --ui-type 8500,"VAB TopBar/##vehfilter",skiff
+ARGS --ui-click 9100,"VAB TopBar/##vabload"
+ARGS --ui-click 9700,"skiff"
+ARGS --ui-click 10300,"VAB TopBar/Load"
+ARGS --ui-click 10900,"Staging/Auto-stage"
+ARGS --ui-type 11700,"VAB TopBar/##vehfilter",central_radial
+ARGS --ui-click 12300,"VAB TopBar/##vabload"
+ARGS --ui-click 12900,"central_radial"
+ARGS --ui-click 13500,"VAB TopBar/Load"
+ARGS --ui-click 14100,"Staging/Auto-stage"
 ARGS --timeout 18
 LIMIT 70
-EXPECT [vab] loaded heavy_asp (45 parts)
-# The refusal, and the build left alone: engine_central still carries the label the hull
-# authored, which is the thing the refusal is about.
-EXPECT [stagetree] 14 engine_central def=engine_r2.25h4.5 parent=big_tank2 stage=6 responds=engine
+EXPECT [vab] loaded rootcut (3 parts)
+EXPECT [stagetree] 0 dec_root def=decoupler_r1 parent=- stage=1 responds=decoupler
 EXPECT [toast] Can't auto-stage this ship
-EXPECT [autostage] refuse: 'engine_central' lights at launch as built
+EXPECT [autostage] refuse: 'dec_root' would have to take the whole ship
 # The other kind of refusal, said differently because that ship is not broken.
 EXPECT [toast] Auto-stage: this ship has no decoupler to split
 EXPECT [autostage] refuse: no decoupler in the build

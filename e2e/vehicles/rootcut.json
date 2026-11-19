@@ -1,0 +1,8 @@
+{
+  "name": "rootcut",
+  "parts": [
+    { "part": "decoupler_r1", "id": "dec_root" },
+    { "part": "fuel_tank",    "id": "tank_1",   "parent": "dec_root" },
+    { "part": "engine",       "id": "eng_1",    "parent": "tank_1" }
+  ]
+}

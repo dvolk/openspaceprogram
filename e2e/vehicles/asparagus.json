@@ -1,0 +1,26 @@
+{
+  "name": "asparagus",
+  "controller": "pod_1",
+  "parts": [
+    { "part": "capsule",          "id": "pod_1" },
+    { "part": "decoupler_r1",     "id": "dec_core", "parent": "pod_1" },
+    { "part": "fuel_tank",        "id": "core_tank", "parent": "dec_core" },
+    { "part": "engine",           "id": "core_eng",  "parent": "core_tank" },
+
+    { "part": "decoupler_radial", "id": "dec_a",   "parent": "core_tank" },
+    { "part": "fuel_tank",        "id": "a_tank",  "parent": "dec_a" },
+    { "part": "engine",           "id": "a_eng",   "parent": "a_tank" },
+
+    { "part": "decoupler_radial", "id": "dec_b",   "parent": "core_tank" },
+    { "part": "fuel_tank",        "id": "b_tank",  "parent": "dec_b" },
+    { "part": "engine",           "id": "b_eng",   "parent": "b_tank" },
+
+    { "part": "decoupler_radial", "id": "dec_c",   "parent": "core_tank" },
+    { "part": "fuel_tank",        "id": "c_tank",  "parent": "dec_c" },
+    { "part": "engine",           "id": "c_eng",   "parent": "c_tank" },
+
+    { "part": "fuel_link", "id": "fl_a_b",    "from": "a_tank",   "to": "b_tank" },
+    { "part": "fuel_link", "id": "fl_b_c",    "from": "b_tank",   "to": "c_tank" },
+    { "part": "fuel_link", "id": "fl_c_core", "from": "c_tank",   "to": "core_tank" }
+  ]
+}

@@ -1390,34 +1390,59 @@ StagingPlan autoStage(BuildShip &ship) {
         return plan;
     }
 
-    /* Distinct decoupler depths, ascending: the deepest cut is the one the FIRST press
-       makes, and the counter starts high, so depth order maps straight onto labels --
-       level j from the top of the ladder is j + 2, which puts the deepest cut at
-       hi = levels + 1 and the innermost at 2. The floor, 1, is therefore never a cut:
-       that is #1010 rule 2 made structural rather than warned about. Decouplers at one
-       depth share their label, which is how a ring is authored (#540 counts them on 4 of
-       29 shipped hulls), and the labels come out contiguous, so the result can never
-       trip rule 1's gap check either. */
-    std::vector<int> levels;
-    levels.reserve(decs.size());
-    for(int d : decs) { levels.push_back(depth[d]); }
-    std::sort(levels.begin(), levels.end());
-    levels.erase(std::unique(levels.begin(), levels.end()), levels.end());
-    const int hi = (int)levels.size() + 1;
+    /* Which cut fires first is not only a question about the tree (#1020).
+
+       Where EVERY cut carries a number, that number is the answer, and the sort key is the
+       pair (authored label, depth), biggest = earliest press. heavy_asp is the shape: six
+       radial boosters hang off one core tank, all at the SAME tree depth, authored 6/5/4 so
+       opposite boosters drop together as the fuel chain empties -- a depth-only sort drops all
+       six on one press and loses that. Where the build was placed and never numbered, every
+       authored label is equal and the pair falls back to depth: the deepest cut is the one the
+       FIRST press makes, and the counter starts high. Ties share a label either way, which is
+       how a ring is authored (#540 counts them on 4 of 29 shipped hulls).
+
+       EVERY, deliberately: a placed part sits at the default label 1 until the player types
+       over it, so a half-numbered set of cuts has no complete order to keep. Sorting by it
+       would read a fresh cut's 1 as "the last press" and drop a new booster onto the floor
+       instead of where the tree puts it, so one untouched cut and the ladder falls back to
+       depth. That is also the case where the authored numbers are least trustworthy: they
+       predate the edit that made the ladder incomplete.
+
+       Labels run dense from hi down to 2, so the floor, 1, is never a cut -- that is #1010
+       rule 2 made structural rather than warned about -- and there are no gaps, so rule 1's
+       gap check can never fire either. Dense is also how a stray 9 in the middle of a ladder
+       stops being seven dead presses (#1023). */
+    bool authoredCuts = true;
+    for(int d : decs) { if(authored[d] <= 1) { authoredCuts = false; break; } }
+    // True when j starts a rung: the same key the sort below uses, spelled once.
+    auto keyDiffers = [&](int a, int b) {
+        if(authoredCuts && authored[a] != authored[b]) { return true; }
+        return depth[a] != depth[b];
+    };
+    std::vector<int> cuts = decs;
+    std::sort(cuts.begin(), cuts.end(), [&](int a, int b) {
+        if(authoredCuts && authored[a] != authored[b]) { return authored[a] > authored[b]; }
+        return depth[a] > depth[b];
+    });
+    auto newRung = [&](size_t j) {
+        return j == 0 || keyDiffers(cuts[j], cuts[j - 1]);
+    };
+    int levels = 0;
+    for(size_t j = 0; j < cuts.size(); j++) { if(newRung(j)) { levels++; } }
+    const int hi = levels + 1;
     if(hi > kMaxStage) {
         /* Labels are 1..kMaxStage on both sides of the save (shipdef.cpp:1192-1201 throws
            for anything else), so a build with this many cuts cannot be numbered here. */
         std::snprintf(buf, sizeof buf,
                       "refuse: %d decoupler levels, more than the %d labels a ship can carry",
-                      (int)levels.size(), kMaxStage);
+                      levels, kMaxStage);
         plan.notes.push_back(buf);
         return plan;
     }
     std::vector<int> decLabel(n, 0);
-    for(size_t j = 0; j < levels.size(); j++) {
-        for(int d : decs) {
-            if(depth[d] == levels[j]) { decLabel[d] = (int)j + 2; }
-        }
+    for(size_t j = 0, rung = 0; j < cuts.size(); j++) {
+        if(j > 0 && newRung(j)) { rung++; }
+        decLabel[cuts[j]] = hi - (int)rung;
     }
 
     /* Every other part takes the label of the decoupler that separates it, which is the
@@ -1458,31 +1483,29 @@ StagingPlan autoStage(BuildShip &ship) {
     std::vector<int> engs;
     for(size_t i = 0; i < n; i++) { if(isEng[i]) { engs.push_back((int)i); } }
 
-    /* The sharper version of the same objection, and the one a real hull walks into: an
-       engine the build lights FROM THE PAD burns while it is still attached, and the tree
-       says only when it FALLS, never when it starts. Measured over res/ships, heavy_asp
-       lights 'engine_central' at its top label and burns the core through every separation,
-       which is not a serial stage waiting its turn -- the depth rule hands it to a later
-       press. So a plan that takes a launch-lit engine off launch is refused, unless the build
-       was never numbered at all (every part one label), which is the case autoStage exists
-       for and which carries no intent to contradict. Moving an engine the OTHER way -- onto
-       launch -- is implied by the tree: a group cut on the first press has to burn before
-       that press or it never burns at all. */
+    /* An engine the build lights FROM THE PAD stays lit at the pad (#1020). The tree says when
+       a part FALLS and never when an engine STARTS, and those are two different rockets:
+       heavy_asp lights 'engine_central' at its top label and burns the core through all six
+       booster separations, while the cut that releases the core's tanks is three presses later.
+       Measured over res/ships, heavy_asp, heavy_two and mars_explorer_mk1 are all this shape.
+       The top of the build's own numbering is the one piece of ignition intent that cannot be
+       derived from the stack, so it is the one the plan keeps -- at the plan's hi, which is
+       where the counter starts, so re-spacing a gappy ladder does not dim it. Every other
+       engine follows the cut that releases its stage, and nothing is pinned where the build was
+       never numbered (every part one label), which is the case autoStage exists for and carries
+       no intent to contradict. Moving an engine the OTHER way -- onto launch -- stays allowed:
+       a group cut on the first press has to burn before that press or it never burns at all. */
     int authoredHi = authored[0], authoredLo = authored[0];
     for(int s : authored) {
         authoredHi = std::max(authoredHi, s);
         authoredLo = std::min(authoredLo, s);
     }
+    int litAtPad = 0;
     if(authoredHi > authoredLo) {
         for(int e : engs) {
             if(authored[e] != authoredHi || label[e] == hi) { continue; }
-            std::snprintf(buf, sizeof buf,
-                          "refuse: '%s' lights at launch as built and the stack would light it "
-                          "at label %d -- a core that burns the whole flight is not something "
-                          "the tree can see",
-                          ship.parts[(size_t)e].id.c_str(), label[e]);
-            plan.notes.push_back(buf);
-            return plan;
+            label[e] = hi;
+            litAtPad++;
         }
     }
 
@@ -1534,9 +1557,16 @@ StagingPlan autoStage(BuildShip &ship) {
     }
     plan.applied = true;
 
-    /* Two caveats, said once instead of left for the player to notice mid-flight. Neither is
-       a refusal: the numbering is right for the stack, and the stack is what the tree says
+    /* Three caveats, said once instead of left for the player to notice mid-flight. None is a
+       refusal: the numbering is right for the stack, and the stack is what the tree says
        it is. */
+    if(litAtPad > 0) {
+        std::snprintf(buf, sizeof buf,
+                      "note: %d engine(s) stay lit at launch -- the build lights them from the "
+                      "pad, and the stack only says when a part falls, never when an engine "
+                      "starts (#1020)", litAtPad);
+        plan.notes.push_back(buf);
+    }
     if(apart > 0) {
         std::snprintf(buf, sizeof buf,
                       "note: %d engine pair(s) carried one label and would now light apart -- "

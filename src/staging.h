@@ -116,20 +116,34 @@ void validateStaging(const BuildShip &ship, std::vector<std::string> &warns);
    checker exists to notice. The tree already knows the answer, because a label is only
    ever a position on the press counter:
 
-   order the decouplers by their DEPTH from the tree root, deepest first (the deepest cut is
-   the one the first press makes, and the counter starts high). Depth is also what #540 uses
-   to order decouplers WITHIN one press; ordering cuts ACROSS presses is this function's own
-   guess, and #1020 tracks where it goes wrong -- an asparagus hull sequences its cuts by the
-   fuel schedule, not by depth. Give each distinct depth one label running from
-   hi = levels + 1 down to 2, and give every other part the label of the decoupler that
+   Order the cuts by the pair (the author's label, the part's DEPTH from the tree root),
+   biggest first = earliest press (#1020). Where EVERY cut carries a number, that order IS the
+   answer: an asparagus hull empties its radial boosters on a fuel schedule the tree cannot
+   see, and heavy_asp is the shape -- six boosters hang off one core tank at the SAME tree
+   depth, so a depth-only sort drops all six on one press and throws away the authored 6/5/4
+   pairing that keeps opposite boosters dropping together. Half-numbered is the fallback, not
+   the mixed case: a placed part sits at label 1 until the player types over it, so a fresh cut
+   would read as "the last press" and land on the floor rather than where the tree puts it.
+   Where the build was placed and never numbered, every authored label is equal and the pair
+   falls back to depth: the deepest cut is the one the first press makes, because the counter
+   starts high. Depth is also what #540 uses to order decouplers WITHIN one press; ordering
+   cuts ACROSS presses is where the author's number wins. Give each distinct key one label running
+   from hi = levels + 1 down to 2, and give every other part the label of the decoupler that
    separates it -- walking up its parent chain. A decoupler separates ITSELF: the press drops
    the decoupler with its stage (Vehicle::droppedPartsAtStage), so it rides its own label.
    What nothing separates gets the floor, 1 -- which is why no decoupler can land there, and
    why the labels come out contiguous: an auto-staged build leaves #1010's checker nothing to
-   say, and --fleet-report checks that over every shipped hull.
+   say, and --fleet-report checks that over every shipped hull. Re-spacing is dense, which is
+   also how a stray 9 in the middle of a ladder stops being seven dead presses (#1023).
 
-   Decouplers at the same depth SHARE a label on purpose. A ring of four is one press, and
+   Decouplers at the same key SHARE a label on purpose. A ring of four is one press, and
    it is shipped, not hypothetical -- #540 counts them on 4 of 29 hulls.
+
+   An engine the build lights FROM THE PAD stays lit at the pad, pinned to the plan's hi. The
+   tree says when a part FALLS and never when an engine STARTS, and those are two different
+   rockets: heavy_asp burns engine_central through all six booster separations, while the cut
+   that releases its tanks is three presses later. Nothing is pinned when the build carries one
+   label everywhere -- that is the case autoStage exists for, with no intent to contradict.
 
    Refuses rather than guesses: leaves the build exactly as it was and says why in `notes`.
    The refusals are the places where the tree cannot see the player's intent, or cannot read
@@ -142,10 +156,8 @@ void validateStaging(const BuildShip &ship, std::vector<std::string> &warns);
    * a build whose every root is a decoupler, which would leave the LOWEST label carrying a
      cut -- exactly what #1010 rule 2 reports;
    * more cut levels than the label range (1..kMaxStage), past which a save would not load;
-   * an engine pair the build ordered that the tree would re-sequence;
-   * an engine the build lights at launch that the plan would move off launch, unless nothing
-     was numbered at all. heavy_asp does this on purpose: its core burns through every
-     separation, and the tree only says when an engine FALLS, never when it starts.
+   * an engine pair the build ordered that the tree would re-sequence. (An engine the build
+     lights from the pad is NOT a refusal any more -- the plan keeps it lit at the pad, above.)
 
    A chute is left with its part even when that lands it on the floor: a floor chute is the
    normal way to author one (#1010 rule 2), so `notes` says what the player has to do about
