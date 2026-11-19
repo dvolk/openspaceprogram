@@ -373,10 +373,26 @@ TCOMMON_OBJS = $(TESTDIR)/obj/physics.o $(TESTDIR)/obj/body.o $(TESTDIR)/obj/veh
 # and the test links fail). Measured on this box: 33 s for the tier, 0.5 s per
 # test link, and -ffunction-sections here plus --gc-sections there keeps the
 # binaries the size they were (5.8 MB), instead of inheriting all 18 MB of tier.
+# -Wno-odr: bullet3 declares GIM_CONTACT twice and the copies disagree only in
+# signedness (btContactProcessingStructs.h:47 `int m_feature1` vs gim_contact.h:64
+# `GUINT`, a #define for unsigned int in gim_math.h:40) -- same size, same offsets,
+# and those fields are Gimpact face indices that never meet a sentinel comparison.
+# It only surfaces HERE, because this is where the two TUs' copies get compared
+# (#1000; still present in bullet3 3.25, the newest release). Not our ODR bug, so
+# silencing it keeps the #991/#994 promise that a warning means something.
+# What is NOT silenced: `ld.bfd: warning: incremental linking of LTO and non-LTO
+# objects; using -flinker-output=nolto-rel`. That one is inherent -- the archives
+# are LTO bytecode and the tier TUs are deliberately not (see the note above). The
+# two ways to shut it up were both measured and both rejected: -Wl,--no-warnings
+# hides linker ERRORS too (binutils' own wording: "Do not display any warning or
+# error messages"), and passing -flinker-output=nolto-rel to the driver changes
+# codegen -- btConeTwistConstraint calcAngleInfo2/getInfo2NonVirtual/
+# solveConstraintObsolete grew 208/34/500 bytes, tier 18,311,760 -> 18,316,440.
+# So one known line remains here; a NEW warning still stands out.
 TBASE = $(TESTDIR)/obj/tbase.o
 $(TBASE): $(TCOMMON_OBJS) $(TARCH)
 	@mkdir -p $(TESTDIR)/obj
-	$(CXX) -O2 $(LTO) -ffunction-sections -fdata-sections -r -o $@ $(TCOMMON_OBJS) -Wl,--whole-archive $(TARCH) -Wl,--no-whole-archive
+	$(CXX) -O2 $(LTO) -Wno-odr -ffunction-sections -fdata-sections -r -o $@ $(TCOMMON_OBJS) -Wl,--whole-archive $(TARCH) -Wl,--no-whole-archive
 
 $(TESTDIR)/obj/%.o: src/%.cpp
 	@mkdir -p $(TESTDIR)/obj
