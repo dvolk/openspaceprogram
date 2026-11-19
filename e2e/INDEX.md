@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 412 |
+| `invariant` | a behaviour or a player route the game must keep | 413 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 50 |
 | `harness` | CLI/test-engine plumbing, not game spec | 16 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **482** |
+| | **total** | **483** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -18,7 +18,7 @@ paces a run: how much e2e a change deserves is the caller's
 judgement. Select by number, name or path, e.g.
 `python3 e2e/run.py save/172 262`.
 
-## flight (152)
+## flight (153)
 
 | case | kind | pins |
 |---|---|---|
@@ -174,6 +174,7 @@ judgement. Select by number, name or path, e.g.
 | `flight/982-arming-mid-flight-measures-the-climb-from-the-surface.txt` | invariant | An ascent mission armed on a hull already in orbit measures its turn from the surface, not from the tick it was armed on, and keeps the speed it had. |
 | `flight/990-recorder-readout-puts-numbers-back.txt` | invariant | Clicking the Recorder graph pins a readout of that sample's readings on the mission clock, a toggled-on channel appears in it, Unpin releases it, and a drag pans without pinning. |
 | `flight/1009-a-stage-dump-of-a-shipped-hull.txt` | invariant | --stage-dump prints every part's label and what a press does to it. |
+| `flight/1010-a-staging-checker-flags-a-mis-authored-ladder.txt` | invariant | The staging checker counts the presses a bad ladder wastes and names the floor decoupler. |
 
 ## crew (29)
 

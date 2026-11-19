@@ -1,0 +1,14 @@
+{
+  "name": "misstaged",
+  "controller": "capsule_1",
+  "parts": [
+    { "part": "capsule",          "id": "capsule_1",  "stage": 1 },
+    { "part": "reaction_wheel",   "id": "wheel_1",    "parent": "capsule_1",   "stage": 1 },
+    { "part": "fuel_tank",        "id": "tank_up",    "parent": "wheel_1",     "stage": 1 },
+    { "part": "engine",           "id": "eng_up",     "parent": "tank_up",     "stage": 1 },
+    { "part": "decoupler_r1",     "id": "dec_boost",  "parent": "eng_up",      "stage": 5 },
+    { "part": "fuel_tank",        "id": "tank_boost", "parent": "dec_boost",   "stage": 5 },
+    { "part": "engine",           "id": "eng_boost",  "parent": "tank_boost",  "stage": 5 },
+    { "part": "decoupler_radial", "id": "dec_pod",    "parent": "capsule_1",   "stage": 1 }
+  ]
+}

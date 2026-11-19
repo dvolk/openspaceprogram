@@ -6,6 +6,8 @@
 #include <cassert>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
+#include <string>
 #include <string_view>
 
 #include "hash.h"   // the staging cache key's FNV-1a mixer
@@ -1050,4 +1052,179 @@ std::vector<StageRow> computeStaging(const BuildShip &ship, double g,
     assert(sim.litCount == sim.litRocketCount());
 
     return rows;
+}
+
+/* What a build's authored labels DO, as opposed to what computeStaging says they COST.
+
+   Everything here is about the press counter, because a press is the only thing that ever
+   reads a label. finalize() starts the counter at the highest label the parts carry and
+   advanceStage() steps it down ONE integer per press (vehicle.cpp:2458, :3128), so the
+   presses a ship can make are the integers hi, hi-1, ... lo+1: a decoupler or chute fires on
+   the press that stands at its label (the == tests at :5573 and :3136), and an engine is
+   thrusting from the moment the counter comes down to its label and stays lit (:6451, lit
+   here by the same test at the max label). Nothing anywhere compares a label to a height --
+   a big label is first in order, not late (pinned by test_a_stage_label_is_order_not_height)
+   -- but a wide ladder is presses the player or the ascent law has to spend, which is #1018.
+
+   Deliberately warn-only. A refuse today would mostly punish content: --fleet-report calls 7
+   of 32 hulls GROUNDED and 25 of the 32 are "testship" fixtures hidden from the picker
+   (#950). The one rule that could become a refuse is the root-part decoupler: it can never
+   split, and game.cpp already refuses it at the press and spends the label anyway (#541), so
+   the launch is not ruined -- but once #1011's window shows the part, a refuse there is the
+   better answer, and it is noted rather than decided here. */
+void validateStaging(const BuildShip &ship, std::vector<std::string> &warns) {
+    warns.clear();      // a cache key guards the rows next door; guard these the same way
+    struct PerLabel {
+        int stage = 1;
+        unsigned responds = 0u;   // StageRole bits of everything riding this label
+        int parts = 0;
+        int fireables = 0;        // decouplers + chutes here
+    };
+
+    /* Fewer entries than parts, ascending by label. A sorted vector probed in place beats a
+       map here: this runs on an editor edit and in an offline report, never per tick, and the
+       label count is small enough that the probe is a handful of compares. */
+    std::vector<PerLabel> labels;
+    for(const BuildPart &p : ship.parts) {
+        if(p.def == nullptr) { continue; }
+        auto it = std::lower_bound(labels.begin(), labels.end(), p.stage,
+                                   [](const PerLabel &l, int s) { return l.stage < s; });
+        if(it == labels.end() || it->stage != p.stage) {
+            it = labels.insert(it, PerLabel{});
+            it->stage = p.stage;
+        }
+        const unsigned r = stageRoles(p.def);
+        it->responds |= r;
+        it->parts++;
+        if(r & ((unsigned)StageRole::Decoupler | (unsigned)StageRole::Chute)) { it->fireables++; }
+    }
+    if(labels.empty()) { return; }
+
+    char buf[256];
+    const int lo = labels.front().stage, hi = labels.back().stage;
+    const int presses = hi > lo ? hi - lo : 0;
+
+    /* 1. Presses that do nothing: a label no part carries (a gap), or a label carried only by
+       parts that answer to nothing. Both cost a press, and #517's "a gap costs nothing" is
+       only about the preview's cost -- see #1018 for what the presses cost in flight. Listed
+       to a cap so a 1..10000 ladder cannot print 9998 lines. */
+    if(presses > 0) {
+        /* Two shapes of dead press, and they want different cures, so they are counted apart:
+           an integer NO PART carries (a gap in the ladder -- the author skipped a number), and
+           a label carried only by parts that answer to nothing (the author meant something
+           there and picked parts that do not respond). Runs of the first are compressed: a
+           ladder numbered 2..300 has 299 of them, and what a reader needs is the shape. */
+        constexpr int kRuns = 4;      // gap runs listed before "..."
+        int gapCount = 0, gapRuns = 0;
+        std::string gapText;
+        int runStart = -1, runEnd = -1;
+        auto flushRun = [&]() {
+            if(runStart < 0) { return; }
+            gapRuns++;
+            if(gapRuns <= kRuns) {
+                if(gapRuns > 1) { gapText += ", "; }
+                if(runStart == runEnd) { gapText += std::to_string(runStart); }
+                else { gapText += std::to_string(runStart) + "-" + std::to_string(runEnd); }
+            }
+            runStart = runEnd = -1;
+        };
+        /* labels is ascending and starts at lo, so the cursor has to be walked past every
+           label below the first press before it can mean "carried". */
+        size_t li = 0;
+        while(li < labels.size() && labels[li].stage <= lo) { li++; }
+        for(int s = lo + 1; s <= hi; s++) {
+            if(li < labels.size() && labels[li].stage == s) { li++; continue; }
+            gapCount++;
+            if(runStart < 0) { runStart = s; }
+            runEnd = s;
+        }
+        flushRun();
+        if(gapRuns > kRuns) { gapText += ", ..."; }
+
+        constexpr int kSilent = 4;    // silent labels listed before "..."
+        int silentCount = 0;
+        std::string silentText;
+        for(const PerLabel &l : labels) {
+            if(l.stage <= lo || l.responds != 0u) { continue; }
+            silentCount++;
+            if(silentCount <= kSilent) {
+                if(silentCount > 1) { silentText += ", "; }
+                silentText += std::to_string(l.stage);
+            }
+        }
+        if(silentCount > kSilent) { silentText += ", ..."; }
+
+        const int dead = gapCount + silentCount;
+        if(dead > 0) {
+            std::string at;
+            if(gapCount > 0) { at = "no part carries " + gapText; }
+            if(silentCount > 0) {
+                if(!at.empty()) { at += "; "; }
+                at += "nothing answers at " + silentText;
+            }
+            std::snprintf(buf, sizeof buf,
+                          "warn: %d of %d presses do nothing -- %s", dead, presses, at.c_str());
+            warns.push_back(buf);
+        }
+    }
+
+    /* 2. A decoupler or chute riding the LOWEST label of a multi-label ship. The press acts at
+       the counter's current value and only THEN steps, so a ladder hi..lo spends its advancing
+       presses at hi, hi-1, ... lo+1 and the label at lo waits for one more press that no longer
+       moves anything. The player can still make that press; the ascent law cannot -- guidance
+       presses only while stagesLeft() > 0 (guidance.cpp:336-339) and stageIsDue() refuses to say
+       a stage is due there (vehicle.cpp:6373). So this is "the autopilot stops one short", not
+       "can never fire". A single-label ship (hi == lo) is skipped: there the FIRST press stands
+       on that label, which is how a one-stage chuted capsule is meant to work. #529 covers the
+       preview side, where lo is the final period. */
+    if(hi > lo) {
+        for(const PerLabel &l : labels) {
+            if(l.stage != lo || l.fireables == 0) { continue; }
+            std::snprintf(buf, sizeof buf,
+                          "warn: label %d is the lowest, and its decoupler/chute needs a press "
+                          "past the last one the counter counts", lo);
+            warns.push_back(buf);
+            break;
+        }
+    }
+
+    /* 3. A decoupler whose side is the WHOLE ship. extractSubtreeAsShip refuses exactly that
+       (droppedSet.size() == parts.size(), vehicle.cpp:5803-5810) while the press still steps
+       the counter, so the label is spent and the part is inert for the rest of the flight
+       (#541, e2e 541-booster-root-decoupler).
+
+       Test the condition the extract tests, not "parent == -1". For a single-tree ship they
+       are the same thing, and the VAB guarantees a single tree (vab.cpp grafts), but a SHIP
+       FILE may author several parentless stacks in one vessel -- heavy_asp, heavy_one and
+       heavy_two do -- and there a parentless decoupler's side is only its own stack, which
+       separates fine. Saying "it is the root part" about one of those would be the lie
+       vehicle.cpp:5808 traps. */
+    {
+        const size_t n = ship.parts.size();
+        std::vector<std::vector<int>> children(n);
+        for(size_t i = 0; i < n; i++) {
+            if(ship.parts[i].parent >= 0 && (size_t)ship.parts[i].parent < n) {
+                children[(size_t)ship.parts[i].parent].push_back((int)i);
+            }
+        }
+        std::vector<int> stack;
+        for(size_t i = 0; i < n; i++) {
+            const BuildPart &p = ship.parts[i];
+            if(p.def == nullptr) { continue; }
+            if(!(stageRoles(p.def) & (unsigned)StageRole::Decoupler)) { continue; }
+            stack.clear();
+            stack.push_back((int)i);
+            size_t covered = 0;
+            for(size_t k = 0; k < stack.size(); k++) {   // BFS by index
+                covered++;
+                for(int c : children[(size_t)stack[k]]) { stack.push_back(c); }
+            }
+            if(covered != n) { continue; }
+            std::snprintf(buf, sizeof buf,
+                          "warn: decoupler '%s' at label %d would have to take the whole ship "
+                          "with it -- the press is refused and the label is spent",
+                          p.id.c_str(), p.stage);
+            warns.push_back(buf);
+        }
+    }
 }

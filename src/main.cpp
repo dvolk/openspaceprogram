@@ -381,7 +381,7 @@ static int printFleetReport(const Game &game, const GameArgs &args,
     printf("%-24s %5s %9s %8s %7s  %s\n",
            "hull", "parts", "wet kg", "dv m/s", "liftoff", "verdict");
 
-    int broken = 0, no_engine = 0, grounded = 0, short_hull = 0, solvent = 0;
+    int broken = 0, no_engine = 0, grounded = 0, short_hull = 0, solvent = 0, flagged = 0;
     for(auto &[name, path]: hulls) {
         ShipDef def;
         try {
@@ -423,12 +423,29 @@ static int printFleetReport(const Game &game, const GameArgs &args,
                    r.stage, r.massStart, r.massEnd, r.deltaV, r.minTWR, r.maxTWR,
                    r.engines, r.engines == 1 ? "" : "s", r.drops ? ", drops" : "");
         }
+        /* The ORDER verdict, next to the cost verdict above (#1010). A hull reads
+           solvent on paper and can still be authored so that half its presses do
+           nothing, or with a decoupler that can never separate; this is the one
+           place every shipped hull gets walked, so it is where that shows up
+           without flying 32 of them. */
+        std::vector<std::string> warns;
+        validateStaging(build, warns);
+        if(!warns.empty()) {
+            flagged++;
+            for(const std::string &w : warns) { printf("    %s\n", w.c_str()); }
+        }
     }
     printf("%d no engine, %d grounded (TWR < 1 at the pad), %d lift off but book "
            "less than the %.0f m/s floor, %d solvent on paper. dv is VACUUM and the "
            "floor ignores drag and gravity loss, so solvent here is necessary, not "
            "enough.\n",
            no_engine, grounded, short_hull, floor, solvent);
+    /* Counted apart because it is a different question: the lines above ask whether a
+       hull CAN fly, this asks whether the author numbered it the way they meant to
+       (#1010). A hull can be solvent and still be mis-staged. */
+    if(flagged > 0) {
+        printf("%d hull(s) carry a staging-order warning above.\n", flagged);
+    }
     if(broken > 0) { printf("%d def(s) failed to load.\n", broken); }
     return 0;
 }

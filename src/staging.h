@@ -6,6 +6,7 @@
 
 #include <cassert>
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #include "shipdef.h"   // BuildShip, PartDef, ResourceType
@@ -50,6 +51,22 @@ std::vector<StageRow> computeStaging(const BuildShip &ship, double g,
    part with this same rule, or a live ship's rows disagree with the VAB's.
    Same #41 limitation as computeStaging: ship-wide, not per fuel group. */
 void stagingPropellantMask(const BuildShip &ship, bool *burn);
+
+/* What a build's authored labels DO, as opposed to what computeStaging says they
+   COST (#1010). Appends one short human-readable line per problem to `warns`
+   (empty after the call means the order works); it does not sort or clear the
+   caller's list.
+
+   A label is a position on the press counter and nothing else, so every rule here
+   is about presses: the counter starts at the highest label and steps down one
+   integer per press, and the presses a ship can make are the integers hi down to
+   lo+1. Reports a press that does nothing (a gap, or a label whose parts answer to
+   nothing), a decoupler or chute riding the lowest label (the counter stops there,
+   so it needs a press past the last one counted), and a decoupler that is the root
+   part (the split is refused and the label is spent, #541). Warn-only and
+   deliberately so -- see the comment at the definition for what a refuse would
+   punish today and which rule is the candidate. */
+void validateStaging(const BuildShip &ship, std::vector<std::string> &warns);
 
 /* A content hash of everything computeStaging reads about `ship`, plus the two
    scalars. The Staging window redraws every frame on a build that only changes

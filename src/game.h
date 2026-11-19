@@ -369,6 +369,11 @@ struct VabState {
        one edit behind -- never a wrong launch. */
     uint64_t stagingSig = 0;
     std::vector<StageRow> stagingRows;
+    /* What the authored labels DO, as against what the rows above say they cost
+       (#1010). One short line per problem, empty when the order works, recomputed
+       with the rows on the same signature key so the table and the verdicts cannot
+       disagree about which build they describe. */
+    std::vector<std::string> stagingWarns;
     /* id -> index into vab.build.parts, rebuilt with the rows above and keyed by the
        same signature (#527). The fuel-link overlay draws every frame and used to
        resolve both ends of every link by scanning every part and comparing std::string

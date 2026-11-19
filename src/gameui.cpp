@@ -6885,6 +6885,11 @@ static void ensureStagingCache(Game &g, uint64_t sig, double gLaunch) {
     if(g.vab.stagingSig == sig) { return; }
     g.vab.stagingSig = sig;
     g.vab.stagingRows = computeStaging(g.vab.build, gLaunch, g.args.exhaust_scale);
+    /* And the verdict on the ORDER, on the same key: both describe the same build or
+       neither does. Cheap next to the burn simulation above -- one pass over the parts
+       with no simulation -- and this is the only place an editor edit can be told
+       apart from a mis-staged one (#1010). */
+    validateStaging(g.vab.build, g.vab.stagingWarns);
     g.vab.partIndex.clear();
     for(size_t i = 0; i < g.vab.build.parts.size(); i++) {
         // Last match wins, which is what the overlay's whole-vector scan did. Part ids
@@ -7476,6 +7481,13 @@ void drawVabUI(Game &g) {
             ImGui::EndTable();
             ImGui::Text("total dv: %.0f m/s", totalDv);
             ImGui::TextDisabled("* final burn (no separation)");
+            /* The ORDER verdict, under the cost table (#1010). The rows above answer
+               "what does each stage cost"; these answer "does the numbering do what you
+               meant", which the table cannot show -- a press that does nothing has a row
+               that looks fine. Cached with the rows, so an edit redraws them together. */
+            for(const std::string &w : g.vab.stagingWarns) {
+                ImGui::TextColored(ImVec4(1.0f, 0.55f, 0.35f, 1.0f), "%s", w.c_str());
+            }
         }
     });
 
@@ -9250,6 +9262,8 @@ void dumpStaff(Game &g) {
    (shipdef.cpp:1972-1978), which would print as phantom rows. */
 void dumpStageTree(Game &g) {
     unsigned lo = 0u, hi = 0u, nParts = 0u, nSilent = 0u;
+    BuildShip hullView;                 // the active hull, as the checker reads it
+    const BuildShip *checkSrc = nullptr;
     auto note = [&](int stage) {
         const unsigned s = (unsigned)(stage < 1 ? 1 : stage);
         if(nParts == 0u || s < lo) { lo = s; }
@@ -9259,6 +9273,7 @@ void dumpStageTree(Game &g) {
 
     if(!g.vab.build.parts.empty()) {
         const BuildShip &b = g.vab.build;
+        checkSrc = &b;
         printf("[stagetree] src=vab hull=%s parts=%zu\n",
                b.name.c_str(), b.parts.size());
         for(size_t i = 0; i < b.parts.size(); i++) {
@@ -9287,6 +9302,23 @@ void dumpStageTree(Game &g) {
                    p->parent != nullptr ? p->parent->id.c_str() : "-",
                    p->stage, stageRoleName(roles));
         }
+        /* A BuildShip view of the hull, so the checker below runs on the live ship as
+           well as on an editor build. It reads def, parent and stage only -- the same
+           three stageSnapshot() (vehicle.cpp) feeds the staging plan -- and `parts` is
+           parent-before-child, so an index map resolves every edge. */
+        std::map<const Part *, int> idx;
+        for(size_t i = 0; i < v.parts.size(); i++) { idx[v.parts[i]] = (int)i; }
+        hullView.parts.clear();
+        for(const Part *p : v.parts) {
+            BuildPart bp;
+            bp.def = p->def;
+            bp.id = p->id;
+            bp.stage = p->stage;
+            auto it = p->parent != nullptr ? idx.find(p->parent) : idx.end();
+            bp.parent = it != idx.end() ? it->second : -1;
+            hullView.parts.push_back(bp);
+        }
+        checkSrc = &hullView;
     } else {
         printf("[stagetree] src=none -- the VAB holds nothing and no hull is active\n");
         fflush(stdout);
@@ -9301,6 +9333,15 @@ void dumpStageTree(Game &g) {
        (#1015), so the dump says it. */
     printf("[stagetree] labels=%u..%u presses=%u silent=%u/%u\n",
            lo, hi, hi > lo ? hi - lo : 0u, nSilent, nParts);
+
+    /* And the verdict on that order (#1010) -- the rows above say what the ship costs,
+       these say whether the numbering does what the author meant. Same prefix so one
+       witness covers both. */
+    if(checkSrc != nullptr) {
+        std::vector<std::string> warns;
+        validateStaging(*checkSrc, warns);
+        for(const std::string &w : warns) { printf("[stagetree] %s\n", w.c_str()); }
+    }
     fflush(stdout);
 }
 

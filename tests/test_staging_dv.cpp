@@ -1751,6 +1751,120 @@ static void test_a_stage_label_is_order_not_height() {
     CHECK_TRUE(rt[0].minTWR > 1.0, "a 301 label still lifts off the pad");
 }
 
+/* validateStaging (#1010): a verdict on the authored ORDER, not on the cost. The
+   fixtures below differ from a working ship by exactly one authored thing, and each
+   says which press that breaks. Phrases are matched, not whole lines: the numbers in
+   the line are the point and a reword should not redden the test, but the count of
+   verdicts is pinned -- a checker that starts silent is the failure mode this has to
+   catch. */
+static bool has_warn(const std::vector<std::string> &w, const char *phrase) {
+    for(const std::string &s : w) {
+        if(s.find(phrase) != std::string::npos) { return true; }
+    }
+    return false;
+}
+
+static void test_the_staging_checker_names_the_presses_that_do_nothing() {
+    Catalog cat;
+
+    /* The control: labels 1 and 2, something answering at each, the decoupler well
+       above the lowest label, the root part a tank. Nothing to say. */
+    {
+        BuildShip ok;
+        const int t1 = addPart(ok, cat.tank(50, 25, 25), "up_tank", -1, 1);
+        addPart(ok, cat.engine(10, 0.5, 1000.0), "up_eng", t1, 1);
+        const int d = addPart(ok, cat.decoupler(5), "dec", t1, 2);
+        const int t2 = addPart(ok, cat.tank(50, 75, 75), "lo_tank", d, 2);
+        addPart(ok, cat.engine(10, 2.0, 1000.0), "lo_eng", t2, 2);
+        std::vector<std::string> w;
+        validateStaging(ok, w);
+        CHECK_TRUE(w.empty(), "a dense ladder with a job at every label says nothing");
+    }
+
+    /* A gap. The same ship with the lower label written 5 instead of 2: the press
+       order is unchanged (#1018's pin above), but the counter has to walk 4 down to
+       2, and those three presses have nothing on the label that stands there. */
+    {
+        BuildShip bs;
+        const int t1 = addPart(bs, cat.tank(50, 25, 25), "up_tank", -1, 1);
+        addPart(bs, cat.engine(10, 0.5, 1000.0), "up_eng", t1, 1);
+        const int d = addPart(bs, cat.decoupler(5), "dec", t1, 5);
+        const int t2 = addPart(bs, cat.tank(50, 75, 75), "lo_tank", d, 5);
+        addPart(bs, cat.engine(10, 2.0, 1000.0), "lo_eng", t2, 5);
+        std::vector<std::string> w;
+        validateStaging(bs, w);
+        CHECK_TRUE(w.size() == 1, "one verdict, for the gap");
+        CHECK_TRUE(has_warn(w, "3 of 4 presses do nothing"), "and it counts the presses");
+        CHECK_TRUE(has_warn(w, "no part carries 2-4"), "one compressed run, not three lines");
+    }
+
+    /* A label carried by parts that answer to nothing. The press stands there, and
+       the tank just rides: this is what a player cannot discover by flying. */
+    {
+        BuildShip bs;
+        const int t1 = addPart(bs, cat.tank(50, 25, 25), "up_tank", -1, 1);
+        addPart(bs, cat.engine(10, 0.5, 1000.0), "up_eng", t1, 1);
+        addPart(bs, cat.tank(20, 10, 10), "rider", t1, 3);
+        const int d = addPart(bs, cat.decoupler(5), "dec", t1, 2);
+        const int t2 = addPart(bs, cat.tank(50, 75, 75), "lo_tank", d, 2);
+        addPart(bs, cat.engine(10, 2.0, 1000.0), "lo_eng", t2, 2);
+        std::vector<std::string> w;
+        validateStaging(bs, w);
+        CHECK_TRUE(w.size() == 1, "one verdict, for the silent label");
+        CHECK_TRUE(has_warn(w, "1 of 2 presses do nothing"), "presses 3 and 2, one dead");
+        CHECK_TRUE(has_warn(w, "nothing answers at 3"), "and it says the label IS carried");
+    }
+
+    /* A decoupler on the lowest label. The counter stops there, so an advancing press
+       never stands on it: it needs one press more than stagesLeft() counts (#529). */
+    {
+        BuildShip bs;
+        const int t1 = addPart(bs, cat.tank(50, 25, 25), "up_tank", -1, 1);
+        addPart(bs, cat.engine(10, 0.5, 1000.0), "up_eng", t1, 1);
+        const int d = addPart(bs, cat.decoupler(5), "dec", t1, 1);
+        const int t2 = addPart(bs, cat.tank(50, 75, 75), "lo_tank", d, 2);
+        addPart(bs, cat.engine(10, 2.0, 1000.0), "lo_eng", t2, 2);
+        std::vector<std::string> w;
+        validateStaging(bs, w);
+        CHECK_TRUE(w.size() == 1, "one verdict, for the decoupler on the floor");
+        CHECK_TRUE(has_warn(w, "label 1 is the lowest"), "and it names the label");
+        CHECK_TRUE(has_warn(w, "past the last one the counter counts"), "and says why");
+    }
+
+    /* A decoupler whose side is the whole ship. The press is refused and the label is
+       spent anyway (#541), so it can never do its job. Named, because the part is what
+       the player has to move. */
+    {
+        BuildShip bs;
+        const int d = addPart(bs, cat.decoupler(5), "root_dec", -1, 2);
+        const int t2 = addPart(bs, cat.tank(50, 75, 75), "lo_tank", d, 2);
+        addPart(bs, cat.engine(10, 2.0, 1000.0), "lo_eng", t2, 2);
+        std::vector<std::string> w;
+        validateStaging(bs, w);
+        CHECK_TRUE(w.size() == 1, "one verdict, for the whole-ship decoupler");
+        CHECK_TRUE(has_warn(w, "decoupler 'root_dec' at label 2 would have to take the whole "
+                               "ship with it"), "named by id, in the extract's own words");
+        CHECK_TRUE(has_warn(w, "the label is spent"), "and says what the press costs");
+    }
+
+    /* ...and the false positive that rule would have had. A ship FILE may author several
+       parentless stacks in one vessel (heavy_asp, heavy_one and heavy_two do), so a
+       parentless decoupler is NOT the same as a whole-ship decoupler: its side is only its
+       own stack, and that separates fine. The rule therefore counts the subtree, the way
+       extractSubtreeAsShip does. */
+    {
+        BuildShip bs;
+        const int t1 = addPart(bs, cat.tank(50, 25, 25), "up_tank", -1, 1);
+        addPart(bs, cat.engine(10, 0.5, 1000.0), "up_eng", t1, 1);
+        const int d = addPart(bs, cat.decoupler(5), "booster_dec", -1, 2);   // a second tree
+        const int t2 = addPart(bs, cat.tank(50, 75, 75), "lo_tank", d, 2);
+        addPart(bs, cat.engine(10, 2.0, 1000.0), "lo_eng", t2, 2);
+        std::vector<std::string> w;
+        validateStaging(bs, w);
+        CHECK_TRUE(w.empty(), "a parentless decoupler over one stack says nothing");
+    }
+}
+
 int main() {
     test_two_stage();
     test_single_stage();
@@ -1782,6 +1896,7 @@ int main() {
     test_seed_the_fuel_and_mass_a_live_ship_carries();
     test_a_stage_label_means_exactly_three_things();
     test_a_stage_label_is_order_not_height();
+    test_the_staging_checker_names_the_presses_that_do_nothing();
 
     printf("test_staging_dv: %d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
