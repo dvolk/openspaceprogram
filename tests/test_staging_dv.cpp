@@ -24,6 +24,10 @@
 //     id map did; with a duplicated id that decides whether the link is real (#963).
 //   * stage numbers are LABELS: the walk visits the labels the ship carries, highest
 //     first, and a gap between two labels costs nothing (#517).
+//   * autoStage assigns those labels from the tree instead of by hand, and refuses where
+//     the tree cannot see the author's intent -- no decoupler, a cut that would drop
+//     everything, an engine re-sequenced relative to another, or a launch-lit core the
+//     depth rule would hand to a later press (#1012).
 //
 // Pure math over BuildShip -- no GL, no Bullet.
 //
@@ -2053,6 +2057,253 @@ static void test_the_press_note_says_where_the_counter_stands() {
                "and the label values do not matter, only the span");
 }
 
+/* autoStage (#1012): the tree already knows the press order, so hand-numbering every part is
+   the thing that goes wrong. What the plan has to get right, in the order the rules bite:
+   the deepest cut fires first so it gets the highest label; a decoupler rides its OWN label
+   (the press drops the decoupler with its stage, vehicle.cpp:5577); decouplers at one depth
+   are ONE press, not several (#540); what nothing separates is the floor; and a plan that
+   would re-sequence two engines the player ordered is refused rather than guessed. */
+static std::vector<int> labelsOf(const BuildShip &bs) {
+    std::vector<int> out;
+    for(const BuildPart &p : bs.parts) { out.push_back(p.stage); }
+    return out;
+}
+
+static bool has_note(const StagingPlan &plan, const char *phrase) {
+    for(const std::string &n : plan.notes) {
+        if(n.find(phrase) != std::string::npos) { return true; }
+    }
+    return false;
+}
+
+static void test_auto_stager_numbers_the_tree_from_its_decouplers() {
+    Catalog cat;
+    BuildShip bs;
+    /* Placed, not authored: every part still carries the default label 1 (vab.cpp:320). */
+    const int pod = addPart(bs, cat.mono(100, 0), "pod", -1, 1);
+    const int dCore = addPart(bs, cat.decoupler(5), "d_core", pod, 1);
+    const int upTank = addPart(bs, cat.tank(50, 25, 25), "up_tank", dCore, 1);
+    const int upEng = addPart(bs, cat.engine(10, 0.5, 1000.0), "up_eng", upTank, 1);
+    const int dBoost = addPart(bs, cat.decoupler(5), "d_boost", upEng, 1);
+    const int boTank = addPart(bs, cat.tank(50, 75, 75), "bo_tank", dBoost, 1);
+    const int boEng = addPart(bs, cat.engine(10, 0.5, 1000.0), "bo_eng", boTank, 1);
+
+    StagingPlan plan = autoStage(bs);
+    CHECK_TRUE(plan.applied, "a stack with two cuts numbers itself");
+    CHECK_TRUE(labelsOf(bs) == std::vector<int>({1, 2, 2, 2, 3, 3, 3}),
+               "the floor, the core cut, the booster cut");
+    CHECK_TRUE(plan.changes.size() == 6, "every part but the pod moved");
+    CHECK_TRUE(plan.changes[0].part == dCore && plan.changes[0].from == 1 && plan.changes[0].to == 2,
+               "and the change list says what it did to which part");
+    /* The decoupler part rides the press that drops it, not the side it stays on. */
+    CHECK_TRUE(bs.parts[dCore].stage == 2 && bs.parts[dBoost].stage == 3,
+               "a decoupler separates itself (vehicle.cpp:5577)");
+    /* The order a press meets them: deepest cut first (label 3), then 2, and the floor is
+       never stood on -- which is #1010 rule 2 made structural. */
+    CHECK_TRUE(bs.parts[dBoost].stage > bs.parts[dCore].stage, "the deepest cut fires first");
+    CHECK_TRUE(bs.parts[pod].stage == 1, "what nothing separates keeps the floor");
+    CHECK_TRUE(bs.parts[upTank].stage == 2 && bs.parts[upEng].stage == 2,
+               "a part takes the label of the cut that separates it");
+    (void)boEng;
+
+    std::vector<std::string> w;
+    validateStaging(bs, w);
+    CHECK_TRUE(w.empty(), "an auto-staged build carries no staging warning (#1010)");
+
+    StagingPlan again = autoStage(bs);
+    CHECK_TRUE(again.applied && again.changes.empty(), "numbered once: a second pass changes nothing");
+
+    /* The engines were labelled together (all at the default), so the plan had no order to
+       keep -- and it says which pair it pulled apart, because that IS a behaviour change. */
+    CHECK_TRUE(has_note(plan, "light apart"), "it reports re-sequencing engines it was allowed to do");
+    CHECK_TRUE(has_note(plan, "'up_eng' at 2") && has_note(plan, "'bo_eng' at 3"),
+               "and names the pair with the labels it gave them");
+}
+
+static void test_auto_stager_gives_a_ring_one_press() {
+    Catalog cat;
+    BuildShip bs;
+    const int pod = addPart(bs, cat.mono(100, 0), "pod", -1, 1);
+    const int dA = addPart(bs, cat.decoupler(5), "d_a", pod, 1);
+    const int dB = addPart(bs, cat.decoupler(5), "d_b", pod, 1);
+    const int aTank = addPart(bs, cat.tank(50, 25, 25), "a_tank", dA, 1);
+    addPart(bs, cat.engine(10, 0.5, 1000.0), "a_eng", aTank, 1);
+    const int bTank = addPart(bs, cat.tank(50, 25, 25), "b_tank", dB, 1);
+    addPart(bs, cat.engine(10, 0.5, 1000.0), "b_eng", bTank, 1);
+
+    StagingPlan plan = autoStage(bs);
+    CHECK_TRUE(plan.applied, "two side boosters number");
+    CHECK_TRUE(labelsOf(bs) == std::vector<int>({1, 2, 2, 2, 2, 2, 2}),
+               "one depth is one press: a 2-ring is not two stages (#540)");
+
+    /* A cut nested below one branch: it fires BEFORE the ring, so it takes the higher label,
+       and the ring keeps one label between them. Built fresh, because adding it to the build
+       above and re-running is a different question -- pinned below. */
+    BuildShip nest;
+    const int npod = addPart(nest, cat.mono(100, 0), "pod", -1, 1);
+    const int nA = addPart(nest, cat.decoupler(5), "d_a", npod, 1);
+    const int nB = addPart(nest, cat.decoupler(5), "d_b", npod, 1);
+    const int nATank = addPart(nest, cat.tank(50, 25, 25), "a_tank", nA, 1);
+    addPart(nest, cat.engine(10, 0.5, 1000.0), "a_eng", nATank, 1);
+    const int nBTank = addPart(nest, cat.tank(50, 25, 25), "b_tank", nB, 1);
+    addPart(nest, cat.engine(10, 0.5, 1000.0), "b_eng", nBTank, 1);
+    const int dIn = addPart(nest, cat.decoupler(5), "d_inner", nBTank, 1);
+    const int innerTank = addPart(nest, cat.tank(20, 10, 10), "inner_tank", dIn, 1);
+    (void)innerTank;
+    StagingPlan deeper = autoStage(nest);
+    CHECK_TRUE(deeper.applied, "a nested cut numbers too");
+    CHECK_TRUE(nest.parts[dIn].stage == 3, "the innermost cut fires first, so it is the top label");
+    CHECK_TRUE(nest.parts[nA].stage == 2 && nest.parts[nB].stage == 2, "the ring stays one press");
+    CHECK_TRUE(labelsOf(nest) == std::vector<int>({1, 2, 2, 2, 2, 2, 2, 3, 3}),
+               "and everything below the inner cut rides it");
+
+    /* The same edit on the build that was already numbered as a ring: refused. Adding a cut
+       below it moves the ring's engines off launch (they carried the top label, and the top
+       is now 3), which is the launch-lit guard, not a bug in the ring rule. */
+    const int dIn2 = addPart(bs, cat.decoupler(5), "d_inner", bTank, 1);
+    addPart(bs, cat.tank(20, 10, 10), "inner_tank", dIn2, 1);
+    (void)dIn2;
+    StagingPlan edited = autoStage(bs);
+    CHECK_TRUE(!edited.applied, "deepening a numbered stack is not a free renumber");
+    CHECK_TRUE(has_note(edited, "lights at launch"), "and it says which engine the change would cost");
+    CHECK_TRUE(labelsOf(bs) == std::vector<int>({1, 2, 2, 2, 2, 2, 2, 1, 1}),
+               "the ring keeps what it had, new parts and all");
+}
+
+static void test_auto_stager_refuses_a_build_with_no_decoupler() {
+    Catalog cat;
+    BuildShip bs;
+    const int tank = addPart(bs, cat.tank(50, 25, 25), "tank", -1, 3);
+    addPart(bs, cat.engine(10, 0.5, 1000.0), "eng", tank, 1);
+
+    StagingPlan plan = autoStage(bs);
+    CHECK_TRUE(!plan.applied, "no decoupler: there is nothing to assign");
+    CHECK_TRUE(plan.changes.empty(), "and nothing moved");
+    CHECK_TRUE(labelsOf(bs) == std::vector<int>({3, 1}), "the build is left exactly as it was");
+    CHECK_TRUE(has_note(plan, "refuse:") && has_note(plan, "no decoupler"), "and it says why");
+
+    std::vector<std::string> w;
+    validateStaging(bs, w);
+    CHECK_TRUE(!w.empty(), "refusing hides nothing: the checker still makes the same argument");
+}
+
+static void test_auto_stager_refuses_a_cut_that_would_drop_everything() {
+    Catalog cat;
+    BuildShip bs;
+    const int d = addPart(bs, cat.decoupler(5), "d_root", -1, 1);   // the ROOT is a decoupler
+    const int tank = addPart(bs, cat.tank(50, 25, 25), "tank", d, 1);
+    addPart(bs, cat.engine(10, 0.5, 1000.0), "eng", tank, 1);
+
+    StagingPlan plan = autoStage(bs);
+    CHECK_TRUE(!plan.applied, "a decoupler whose side is every part cannot be labelled");
+    CHECK_TRUE(has_note(plan, "whole ship"), "named as the reason");
+    CHECK_TRUE(has_note(plan, "'d_root'"), "and named by part");
+    CHECK_TRUE(labelsOf(bs) == std::vector<int>({1, 1, 1}), "untouched");
+    (void)d;
+}
+
+static void test_auto_stager_keeps_two_engines_relative_to_each_other() {
+    Catalog cat;
+    /* Two cuts, so the stack says the low stage burns first and the mid stage after it. The
+       build orders those two engines the other way round, which is a fact about intent the
+       tree cannot see -- so the plan steps back and names both engines rather than picking. */
+    BuildShip bs;
+    const int pod = addPart(bs, cat.mono(100, 0), "pod", -1, 5);
+    const int dUp = addPart(bs, cat.decoupler(5), "d_up", pod, 5);
+    const int midTank = addPart(bs, cat.tank(50, 25, 25), "mid_tank", dUp, 5);
+    const int midEng = addPart(bs, cat.engine(10, 0.5, 1000.0), "mid_eng", midTank, 3);
+    const int dLow = addPart(bs, cat.decoupler(5), "d_low", midEng, 5);
+    const int loTank = addPart(bs, cat.tank(50, 75, 75), "low_tank", dLow, 5);
+    const int loEng = addPart(bs, cat.engine(10, 0.5, 1000.0), "low_eng", loTank, 1);
+    (void)pod; (void)dUp; (void)midTank; (void)dLow; (void)loTank;
+
+    StagingPlan plan = autoStage(bs);
+    CHECK_TRUE(!plan.applied, "the build lights mid_eng first; the stack would light it last");
+    CHECK_TRUE(has_note(plan, "refuse:") && has_note(plan, "'mid_eng'") && has_note(plan, "'low_eng'"),
+               "and the refusal names both engines");
+    CHECK_TRUE(labelsOf(bs) == std::vector<int>({5, 5, 5, 3, 5, 5, 1}), "untouched");
+    CHECK_TRUE(bs.parts[midEng].stage > bs.parts[loEng].stage,
+               "authored: mid_eng first, low_eng later -- the stack says the opposite");
+
+    /* The same stack authored the way the stack reads it: accepted, and the core lights last. */
+    BuildShip ok;
+    const int t2 = addPart(ok, cat.tank(50, 25, 25), "core_tank", -1, 1);
+    addPart(ok, cat.engine(10, 0.5, 1000.0), "core_eng", t2, 1);
+    const int d2 = addPart(ok, cat.decoupler(5), "d_boost", t2, 4);
+    addPart(ok, cat.tank(50, 75, 75), "bo_tank", d2, 4);
+    addPart(ok, cat.engine(10, 0.5, 1000.0), "bo_eng", d2, 4);
+    StagingPlan good = autoStage(ok);
+    CHECK_TRUE(good.applied, "authored in the order the stack implies: the plan agrees");
+    CHECK_TRUE(labelsOf(ok) == std::vector<int>({1, 1, 2, 2, 2}), "one cut: the floor and the cut");
+    CHECK_TRUE(good.changes.size() == 3, "only the parts the cut takes moved");
+    std::vector<std::string> w;
+    validateStaging(ok, w);
+    CHECK_TRUE(w.empty(), "and the result is clean");
+
+    /* Two engines the build labelled together carry no order to keep -- that is the default a
+       placed part gets, and refusing on it would refuse every stack out of the VAB -- so the
+       plan may pull them apart, and says so (first test above). The reversal here is what it
+       refuses. */
+    CHECK_TRUE(good.notes.empty(), "an accepted renumber with no behaviour to warn about says nothing");
+}
+
+static void test_auto_stager_says_what_a_chute_on_the_floor_needs() {
+    Catalog cat;
+    BuildShip bs;
+    const int pod = addPart(bs, cat.mono(100, 0), "pod", -1, 1);
+    addPart(bs, cat.chute(5, 30.0), "chute", pod, 1);
+    const int d = addPart(bs, cat.decoupler(5), "d_boost", pod, 1);
+    const int boTank = addPart(bs, cat.tank(50, 75, 75), "bo_tank", d, 1);
+    addPart(bs, cat.engine(10, 0.5, 1000.0), "bo_eng", boTank, 1);
+    (void)boTank;
+
+    StagingPlan plan = autoStage(bs);
+    CHECK_TRUE(plan.applied, "a chute does not stop the build numbering");
+    CHECK_TRUE(labelsOf(bs) == std::vector<int>({1, 1, 2, 2, 2}),
+               "the chute rides the hull it stays on, at the floor");
+    CHECK_TRUE(has_note(plan, "chute") && has_note(plan, "past the ladder"),
+               "and the plan says what a floor chute costs: one press past the ladder");
+    std::vector<std::string> w;
+    validateStaging(bs, w);
+    CHECK_TRUE(w.empty(), "#1010 rule 2 does not call a floor chute a fault, and neither does this");
+}
+
+static void test_auto_stager_refuses_to_move_an_engine_off_launch() {
+    Catalog cat;
+    /* The shape heavy_asp ships with, miniature: a core that burns the whole flight while a
+       booster falls away first. The tree sees a serial stack and hands the core engine to a
+       later press; the author lit it at launch. Only the author knows which, so the plan
+       steps back -- and says which engine. */
+    BuildShip bs;
+    const int coreTank = addPart(bs, cat.tank(50, 25, 25), "core_tank", -1, 1);
+    const int coreEng = addPart(bs, cat.engine(10, 0.5, 1000.0), "core_eng", coreTank, 3);
+    const int d = addPart(bs, cat.decoupler(5), "d_boost", coreTank, 2);
+    const int boTank = addPart(bs, cat.tank(50, 75, 75), "bo_tank", d, 2);
+    addPart(bs, cat.engine(10, 0.5, 1000.0), "bo_eng", d, 3);
+    (void)coreTank; (void)d; (void)boTank;
+
+    StagingPlan plan = autoStage(bs);
+    CHECK_TRUE(!plan.applied, "a launch-lit engine is authored intent the stack cannot see");
+    CHECK_TRUE(has_note(plan, "refuse:") && has_note(plan, "'core_eng'")
+                   && has_note(plan, "lights at launch"),
+               "and the refusal names the engine and the fact");
+    CHECK_TRUE(labelsOf(bs) == std::vector<int>({1, 3, 2, 2, 3}), "untouched");
+
+    /* The same stack with nothing numbered: no intent to contradict, so the plan runs -- and
+       a booster engine moves ONTO launch, which the stack does imply (a group cut on the
+       first press has to burn before it, or never burns at all). */
+    BuildShip bare;
+    const int t2 = addPart(bare, cat.tank(50, 25, 25), "core_tank", -1, 1);
+    addPart(bare, cat.engine(10, 0.5, 1000.0), "core_eng", t2, 1);
+    const int d2 = addPart(bare, cat.decoupler(5), "d_boost", t2, 1);
+    addPart(bare, cat.tank(50, 75, 75), "bo_tank", d2, 1);
+    const int boEng = addPart(bare, cat.engine(10, 0.5, 1000.0), "bo_eng", d2, 1);
+    StagingPlan open = autoStage(bare);
+    CHECK_TRUE(open.applied, "an un-numbered stack numbers");
+    CHECK_TRUE(bare.parts[boEng].stage == 2, "the booster engine ends on launch (hi = 2)");
+    CHECK_TRUE(labelsOf(bare) == std::vector<int>({1, 1, 2, 2, 2}), "floor and cut");
+}
+
 int main() {
     test_two_stage();
     test_single_stage();
@@ -2087,6 +2338,13 @@ int main() {
     test_the_staging_checker_names_the_presses_that_do_nothing();
     test_the_label_groups_read_as_press_order();
     test_the_press_note_says_where_the_counter_stands();
+    test_auto_stager_numbers_the_tree_from_its_decouplers();
+    test_auto_stager_gives_a_ring_one_press();
+    test_auto_stager_refuses_a_build_with_no_decoupler();
+    test_auto_stager_refuses_a_cut_that_would_drop_everything();
+    test_auto_stager_keeps_two_engines_relative_to_each_other();
+    test_auto_stager_refuses_to_move_an_engine_off_launch();
+    test_auto_stager_says_what_a_chute_on_the_floor_needs();
 
     printf("test_staging_dv: %d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;

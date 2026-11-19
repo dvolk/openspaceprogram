@@ -5,14 +5,21 @@
 #
 # It does NOT assert zero: a warning is a note, not a failure, and shipping a hull that carries
 # one is a legitimate call. It asserts the verdict line exists and that no hull's load broke.
+#
+# The auto-stage line (#1012) is the same argument from the other side: what the STACK implies,
+# printed on a copy so nothing rewrites res/ships. Its FORBID is an invariant rather than a
+# count -- a plan that applies must leave the checker with nothing to say, and over 32 hulls
+# that is cheaper than a test and far less likely to drift.
 NAME fleet-report-checks-the-order-of-every-shipped-hull
-CLAIM --fleet-report runs the staging checker over every hull and reports how many it flagged.
+CLAIM --fleet-report runs the staging checker and the auto-stager over every hull and reports both verdicts.
 KIND invariant
 ARGS --fleet-report
 LIMIT 60
 EXPECT === fleet report:
 EXPECT hulls vs Kerbin (pad g 9.81 m/s2, surface orbit 2426 m/s) ===
 EXPECT carry a staging-order warning above.
+EXPECT would change under auto-staging
 FORBID error:
 FORBID FAILED
 FORBID def(s) failed to load
+FORBID auto-stage LEFT A FAULT

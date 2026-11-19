@@ -1106,6 +1106,40 @@ std::string stagingPressNote(int lo, int hi, int stage) {
     return "the floor";
 }
 
+/* The parts under each part, keyed by index. A BuildShip is one tree for anything the loader
+   produces (shipdef.cpp:1024 defaults a part's parent to the entry before it) but a forest in
+   principle -- graftTree/detachSubtree hand out one-root views, the VAB grafts a loaded hull
+   into a bigger build, and tests build stacks directly -- so an out-of-range parent is simply
+   no edge, which is what makes a parentless part a root. */
+static void childIndex(const BuildShip &ship, std::vector<std::vector<int>> &children) {
+    const size_t n = ship.parts.size();
+    children.assign(n, {});
+    for(size_t i = 0; i < n; i++) {
+        if(ship.parts[i].parent >= 0 && (size_t)ship.parts[i].parent < n) {
+            children[(size_t)ship.parts[i].parent].push_back((int)i);
+        }
+    }
+}
+
+/* How many parts a decoupler's press takes: the subtree rooted at the decoupler ITSELF,
+   because the press drops the decoupler with its stage (vehicle.cpp:5577). Answers n+1 for a
+   parent chain that loops -- no loader builds one (shipdef.cpp:1021 builds parent before
+   child), and both callers assert rather than follow it forever. Two readers, one definition:
+   validateStaging's rule 3 and autoStage's refusal both ask the question the extract itself
+   asks (vehicle.cpp:5803-5810), and they must not drift. */
+static size_t dropSideSize(int root, const std::vector<std::vector<int>> &children, size_t n) {
+    std::vector<int> walk;
+    walk.push_back(root);
+    size_t covered = 1;
+    for(size_t k = 0; k < walk.size(); k++) {   // BFS by index
+        for(int c : children[(size_t)walk[k]]) {
+            walk.push_back(c);
+            if(++covered > n) { return n + 1; }
+        }
+    }
+    return covered;
+}
+
 void validateStaging(const BuildShip &ship, std::vector<std::string> &warns) {
     validateStaging(ship, stagingLabels(ship), warns);
 }
@@ -1218,32 +1252,15 @@ void validateStaging(const BuildShip &ship, const std::vector<StagingLabel> &lab
        vehicle.cpp:5808's assert is for. */
     {
         const size_t n = ship.parts.size();
-        std::vector<std::vector<int>> children(n);
-        for(size_t i = 0; i < n; i++) {
-            if(ship.parts[i].parent >= 0 && (size_t)ship.parts[i].parent < n) {
-                children[(size_t)ship.parts[i].parent].push_back((int)i);
-            }
-        }
-        std::vector<int> stack;
+        std::vector<std::vector<int>> children;
+        childIndex(ship, children);
         for(size_t i = 0; i < n; i++) {
             const BuildPart &p = ship.parts[i];
             if(p.def == nullptr) { continue; }
             if(!(stageRoles(p.def) & (unsigned)StageRole::Decoupler)) { continue; }
-            stack.clear();
-            stack.push_back((int)i);
-            size_t covered = 1;
-            bool cyclic = false;
-            for(size_t k = 0; k < stack.size() && !cyclic; k++) {   // BFS by index
-                for(int c : children[(size_t)stack[k]]) {
-                    stack.push_back(c);
-                    /* A parent chain is a tree, so reaching n+1 means something upstream broke
-                       (shipdef.cpp:1021 builds parent-before-child). Say so instead of
-                       following the loop forever; release builds skip the decoupler. */
-                    if(++covered > n) { cyclic = true; break; }
-                }
-            }
-            assert(!cyclic);
-            if(cyclic || covered != n) { continue; }
+            const size_t side = dropSideSize((int)i, children, n);
+            assert(side <= n);   // a looped parent chain: see dropSideSize
+            if(side != n) { continue; }
             std::snprintf(buf, sizeof buf,
                           "warn: decoupler '%s' at label %d would have to take the whole ship "
                           "with it -- the press is refused and the label is spent",
@@ -1251,4 +1268,201 @@ void validateStaging(const BuildShip &ship, const std::vector<StagingLabel> &lab
             warns.push_back(buf);
         }
     }
+}
+
+StagingPlan autoStage(BuildShip &ship) {
+    StagingPlan plan;
+    const size_t n = ship.parts.size();
+    char buf[512];
+    if(n == 0) {
+        plan.notes.push_back("refuse: nothing to stage -- the build has no parts");
+        return plan;
+    }
+
+    std::vector<std::vector<int>> children;
+    childIndex(ship, children);
+
+    /* authored[] is the build's own numbering, kept for the two questions that compare
+       against it: whether re-numbering would re-sequence the engines, and which engines the
+       plan pulls apart. The rest of the function never reads a label again. */
+    std::vector<int> authored(n);
+    std::vector<char> isDec(n, 0), isEng(n, 0), isChute(n, 0);
+    std::vector<int> depth(n, 0);
+    std::vector<int> decs;
+    for(size_t i = 0; i < n; i++) {
+        authored[i] = ship.parts[i].stage;
+        const unsigned roles = stageRoles(ship.parts[i].def);
+        if(roles & (unsigned)StageRole::Decoupler) { isDec[i] = 1; decs.push_back((int)i); }
+        if(roles & (unsigned)StageRole::Engine) { isEng[i] = 1; }
+        if(roles & (unsigned)StageRole::Chute) { isChute[i] = 1; }
+        /* Parent before child is the build's contract (shipdef.cpp:1021 for a loaded file;
+           the VAB only ever parents to a part that is already in the list), so one index pass
+           gives every part its depth. A self or forward parent -- which tests do build --
+           makes the part a root rather than reading a depth nobody computed; the whole-ship
+           guard and the strictly-decreasing parent walk below both stay safe either way. */
+        if(ship.parts[i].parent >= 0 && (size_t)ship.parts[i].parent < i) {
+            depth[i] = depth[(size_t)ship.parts[i].parent] + 1;
+        }
+    }
+
+    if(decs.empty()) {
+        /* One label, and the checker has nothing to say about it. Assigning anything else
+           would invent presses that separate nothing. */
+        std::snprintf(buf, sizeof buf,
+                      "refuse: no decoupler in the build -- one label is the answer, so there "
+                      "is nothing to assign");
+        plan.notes.push_back(buf);
+        return plan;
+    }
+
+    /* A decoupler that would take every part is refused by the press itself, so no label
+       could make it mean anything (#541). Numbering it would hide the shape the player has
+       to fix in the stack view instead. */
+    for(int d : decs) {
+        const size_t side = dropSideSize(d, children, n);
+        assert(side <= n);   // a looped parent chain: see dropSideSize
+        if(side != n) { continue; }
+        std::snprintf(buf, sizeof buf,
+                      "refuse: '%s' would have to take the whole ship with it, so no label "
+                      "would do anything -- the press itself refuses (#541)",
+                      ship.parts[(size_t)d].id.c_str());
+        plan.notes.push_back(buf);
+        return plan;
+    }
+
+    /* Distinct decoupler depths, ascending: the deepest cut is the one the FIRST press
+       makes, and the counter starts high, so depth order maps straight onto labels --
+       level j from the top of the ladder is j + 2, which puts the deepest cut at
+       hi = levels + 1 and the innermost at 2. The floor, 1, is therefore never a cut:
+       that is #1010 rule 2 made structural rather than warned about. Decouplers at one
+       depth share their label, which is how a ring is authored (#540 counts them on 4 of
+       29 shipped hulls), and the labels come out contiguous, so the result can never
+       trip rule 1's gap check either. */
+    std::vector<int> levels;
+    levels.reserve(decs.size());
+    for(int d : decs) { levels.push_back(depth[d]); }
+    std::sort(levels.begin(), levels.end());
+    levels.erase(std::unique(levels.begin(), levels.end()), levels.end());
+    const int hi = (int)levels.size() + 1;
+    if(hi > kMaxStage) {
+        /* Labels are 1..kMaxStage on both sides of the save (shipdef.cpp:1192-1201 throws
+           for anything else), so a build with this many cuts cannot be numbered here. */
+        std::snprintf(buf, sizeof buf,
+                      "refuse: %d decoupler levels, more than the %d labels a ship can carry",
+                      (int)levels.size(), kMaxStage);
+        plan.notes.push_back(buf);
+        return plan;
+    }
+    std::vector<int> decLabel(n, 0);
+    for(size_t j = 0; j < levels.size(); j++) {
+        for(int d : decs) {
+            if(depth[d] == levels[j]) { decLabel[d] = (int)j + 2; }
+        }
+    }
+
+    /* Every other part takes the label of the decoupler that separates it, which is the
+       nearest one walking up its parent chain -- so the answer propagates down from the
+       parent in one index pass, and a part with no decoupler above it lands on the floor
+       with the hull it stays on to the end. */
+    std::vector<int> label(n, 1);
+    for(size_t i = 0; i < n; i++) {
+        if(isDec[i]) { label[i] = decLabel[i]; continue; }
+        const int par = ship.parts[i].parent;
+        label[i] = (par >= 0 && (size_t)par < i) ? label[(size_t)par] : 1;
+    }
+    for(int d : decs) { assert(label[d] >= 2); }   // the floor never carries a cut
+
+    /* The tree says WHO separates and nothing about WHEN an engine was meant to light: an
+       engine lights when the counter steps down onto its label (vehicle.cpp:6451), so its
+       label IS its ignition. Where the build ordered two engines -- distinct labels -- that
+       order is authored intent, and if the tree implies the opposite the two readings of the
+       build disagree, so autoStage steps back rather than choose. Engines the build labelled
+       the same carry no order to keep: that is the default a placed part gets, not a
+       statement, and refusing on it would refuse every stack straight out of the VAB. What
+       the plan does to them is reported below instead. */
+    std::vector<int> engs;
+    for(size_t i = 0; i < n; i++) { if(isEng[i]) { engs.push_back((int)i); } }
+
+    /* The sharper version of the same objection, and the one a real hull walks into: an
+       engine the build lights FROM THE PAD burns while it is still attached, and the tree
+       says only when it FALLS, never when it starts. Measured over res/ships, heavy_asp
+       lights 'engine_central' at its top label and burns the core through every separation,
+       which is not a serial stage waiting its turn -- the depth rule hands it to a later
+       press. So a plan that takes a launch-lit engine off launch is refused, unless the build
+       was never numbered at all (every part one label), which is the case autoStage exists
+       for and which carries no intent to contradict. Moving an engine the OTHER way -- onto
+       launch -- is implied by the tree: a group cut on the first press has to burn before
+       that press or it never burns at all. */
+    int authoredHi = authored[0], authoredLo = authored[0];
+    for(int s : authored) {
+        authoredHi = std::max(authoredHi, s);
+        authoredLo = std::min(authoredLo, s);
+    }
+    if(authoredHi > authoredLo) {
+        for(int e : engs) {
+            if(authored[e] != authoredHi || label[e] == hi) { continue; }
+            std::snprintf(buf, sizeof buf,
+                          "refuse: '%s' lights at launch as built and the stack would light it "
+                          "at label %d -- a core that burns the whole flight is not something "
+                          "the tree can see",
+                          ship.parts[(size_t)e].id.c_str(), label[e]);
+            plan.notes.push_back(buf);
+            return plan;
+        }
+    }
+
+    for(size_t a = 0; a < engs.size(); a++) {
+        for(size_t b = a + 1; b < engs.size(); b++) {
+            const int ea = engs[a], eb = engs[b];
+            if(authored[ea] == authored[eb]) { continue; }
+            const bool authoredFirst = authored[ea] > authored[eb];
+            const bool plannedFirst = label[ea] > label[eb];
+            if(authoredFirst == plannedFirst) { continue; }
+            std::snprintf(buf, sizeof buf,
+                          "refuse: as built, '%s' lights before '%s'; the stack would light it "
+                          "after -- fix the stack, or number the labels by hand",
+                          ship.parts[(size_t)ea].id.c_str(), ship.parts[(size_t)eb].id.c_str());
+            plan.notes.push_back(buf);
+            return plan;
+        }
+    }
+
+    for(size_t i = 0; i < n; i++) {
+        if(label[i] == ship.parts[i].stage) { continue; }
+        plan.changes.push_back({(int)i, ship.parts[i].stage, label[i]});
+        ship.parts[i].stage = label[i];
+    }
+    plan.applied = true;
+
+    /* Two things the player should know the plan did, said once instead of leaving them to
+       notice mid-flight. Both are caveats, not refusals: the numbering is right for the
+       stack, and the stack is what the tree says it is. */
+    size_t apart = 0;
+    int pa = -1, pb = -1;
+    for(size_t a = 0; a < engs.size(); a++) {
+        for(size_t b = a + 1; b < engs.size(); b++) {
+            if(authored[engs[a]] != authored[engs[b]] || label[engs[a]] == label[engs[b]]) {
+                continue;
+            }
+            if(pa < 0) { pa = engs[a]; pb = engs[b]; }
+            apart++;
+        }
+    }
+    if(apart > 0) {
+        std::snprintf(buf, sizeof buf,
+                      "note: %d engine pair(s) carried one label and would now light apart -- "
+                      "'%s' at %d, '%s' at %d; an engine lights when the counter steps down "
+                      "onto its label", (int)apart, ship.parts[(size_t)pa].id.c_str(),
+                      label[pa], ship.parts[(size_t)pb].id.c_str(), label[pb]);
+        plan.notes.push_back(buf);
+    }
+    for(size_t i = 0; i < n; i++) {
+        if(!isChute[i] || label[i] > 1 || hi <= 1) { continue; }
+        std::snprintf(buf, sizeof buf,
+                      "note: a chute rides label %d, the floor: it deploys on a press past the "
+                      "ladder", label[i]);
+        plan.notes.push_back(buf);
+        break;
+    }
+    return plan;
 }

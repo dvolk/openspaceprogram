@@ -105,6 +105,45 @@ void validateStaging(const BuildShip &ship, std::vector<std::string> &warns);
 void validateStaging(const BuildShip &ship, const std::vector<StagingLabel> &labels,
                      std::vector<std::string> &warns);
 
+/* Number the labels from the tree instead of by hand (#1012). A placed part gets label 1
+   and stays there until a player types over it, so a two-stage rocket is currently built
+   by hand-numbering every part -- and getting it wrong is quiet, which is what #1010's
+   checker exists to notice. The tree already knows the answer, because a label is only
+   ever a position on the press counter:
+
+   order the decouplers by their DEPTH from the tree root, deepest first (the deepest cut
+   is the one a press makes first, and the counter starts high; flight already reads
+   separation order that way, #540), give each distinct depth one label running from
+   hi = levels + 1 down to 2, and give every other part the label of the decoupler that
+   separates it -- walking up its parent chain. A decoupler separates ITSELF: the press
+   drops the decoupler with its stage (vehicle.cpp:5577), so it rides its own label. What
+   nothing separates gets the floor, 1 -- which is why no decoupler can land there, and
+   why the labels come out contiguous: an auto-staged build never trips #1010's rules.
+
+   Decouplers at the same depth SHARE a label on purpose. A ring of four is one press, and
+   it is shipped, not hypothetical -- #540 counts them on 4 of 29 hulls.
+
+   Refuses rather than guesses: leaves the build exactly as it was and says why in `notes`.
+   The three refusals are the places where the tree cannot see the player's intent -- no
+   decoupler at all (one label is the answer, and renumbering would invent presses); a
+   decoupler whose side is every part (the press is refused in flight, so the label would
+   be spent on nothing, #541); and a renumber that moves an engine's ignition relative to
+   another engine, since which engine was meant to light at launch is authored meaning that
+   no parent chain implies. A chute is left with its part even when that lands it on the
+   floor: a floor chute is the normal way to author one (#1010 rule 2), so `notes` says
+   what the player has to do about it rather than the plan quietly moving it. */
+struct StagingChange {
+    int part = 0;      // index into ship.parts
+    int from = 1;      // label it had
+    int to = 1;        // label it got
+};
+struct StagingPlan {
+    bool applied = false;                  // false = refused: `ship` is untouched
+    std::vector<StagingChange> changes;    // empty when applied with nothing to fix
+    std::vector<std::string> notes;        // "refuse: ..." on a refusal, else player-facing caveats
+};
+StagingPlan autoStage(BuildShip &ship);
+
 /* A content hash of everything computeStaging reads about `ship`, plus the two
    scalars. The Staging window redraws every frame on a build that only changes
    when the player edits it, so its rows are cached against this (#293):

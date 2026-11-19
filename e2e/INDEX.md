@@ -175,7 +175,7 @@ judgement. Select by number, name or path, e.g.
 | `flight/990-recorder-readout-puts-numbers-back.txt` | invariant | Clicking the Recorder graph pins a readout of that sample's readings on the mission clock, a toggled-on channel appears in it, Unpin releases it, and a drag pans without pinning. |
 | `flight/1009-a-stage-dump-of-a-shipped-hull.txt` | invariant | --stage-dump prints every part's label and what a press does to it. |
 | `flight/1010-a-staging-checker-flags-a-mis-authored-ladder.txt` | invariant | The staging checker counts the presses a bad ladder wastes and names the floor decoupler. |
-| `flight/1010-b-fleet-report-checks-the-order-of-every-shipped-hull.txt` | invariant | --fleet-report runs the staging checker over every hull and reports how many it flagged. |
+| `flight/1010-b-fleet-report-checks-the-order-of-every-shipped-hull.txt` | invariant | --fleet-report runs the staging checker and the auto-stager over every hull and reports both verdicts. |
 
 ## crew (29)
 

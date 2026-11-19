@@ -382,6 +382,7 @@ static int printFleetReport(const Game &game, const GameArgs &args,
            "hull", "parts", "wet kg", "dv m/s", "liftoff", "verdict");
 
     int broken = 0, no_engine = 0, grounded = 0, short_hull = 0, solvent = 0, flagged = 0;
+    int refused = 0, restaged = 0, moved = 0;
     for(auto &[name, path]: hulls) {
         ShipDef def;
         try {
@@ -434,6 +435,37 @@ static int printFleetReport(const Game &game, const GameArgs &args,
             flagged++;
             for(const std::string &w : warns) { printf("    %s\n", w.c_str()); }
         }
+
+        /* And what numbering the STACK implies, next to what the author typed (#1012). On a
+           copy: --fleet-report reads res/ships, it never rewrites one. This is the measure of
+           whether autoStage's rule matches how hulls really get numbered -- a refusal is the
+           report telling us the rule missed something about that shape, not that the hull is
+           broken. */
+        BuildShip trial = build;
+        const StagingPlan plan = autoStage(trial);
+        if(!plan.applied) {
+            refused++;
+            for(const std::string &n : plan.notes) { printf("    %s\n", n.c_str()); }
+        } else {
+            if(!plan.changes.empty()) { restaged++; moved += (int)plan.changes.size(); }
+            for(const std::string &n : plan.notes) { printf("    %s\n", n.c_str()); }
+            for(size_t k = 0; k < plan.changes.size(); k++) {
+                if(k == 5) {
+                    printf("    auto-stage: ... and %zu more part(s)\n", plan.changes.size() - k);
+                    break;
+                }
+                const StagingChange &c = plan.changes[k];
+                printf("    auto-stage: '%s' label %d -> %d\n",
+                       trial.parts[(size_t)c.part].id.c_str(), c.from, c.to);
+            }
+            /* An auto-staged build should have nothing left for the checker to say -- the
+               labels come out contiguous, no cut lands on the floor, and a cut that would
+               take everything was refused above. Over 32 hulls that is cheaper than a test
+               and much less likely to drift. */
+            std::vector<std::string> after;
+            validateStaging(trial, after);
+            for(const std::string &w : after) { printf("    auto-stage LEFT A FAULT: %s\n", w.c_str()); }
+        }
     }
     printf("%d no engine, %d grounded (TWR < 1 at the pad), %d lift off but book "
            "less than the %.0f m/s floor, %d solvent on paper. dv is VACUUM and the "
@@ -445,6 +477,11 @@ static int printFleetReport(const Game &game, const GameArgs &args,
        (#1010). A hull can be solvent and still be mis-staged. Printed even at zero: a
        report that only speaks when it is unhappy cannot tell "clean" from "not checked". */
     printf("%d of %d hull(s) carry a staging-order warning above.\n", flagged, (int)hulls.size());
+    /* The other question about the numbering, asked here because the fleet is the only big
+       sample there is (#1012): would auto-staging change this hull, and if it refused, why.
+       Printed even at zero, for the same reason as the line above. */
+    printf("%d of %d hull(s) would change under auto-staging (%d label(s) move); %d refuse.\n",
+           restaged, (int)hulls.size(), moved, refused);
     if(broken > 0) { printf("%d def(s) failed to load.\n", broken); }
     return 0;
 }
