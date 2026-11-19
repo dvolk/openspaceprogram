@@ -9,7 +9,7 @@
 # the rows -- which is what makes a dash a dash here exactly as it is a dash in the
 # file.
 #
-# Three claims, all of them about the number rather than the pixels:
+# Four claims, all of them about the number rather than the pixels:
 #
 #   1. The click lands on the sample the pointer is over, on the MISSION clock:
 #      t=23.00 s sits inside the ring's 19 s span, the same x axis the plot pins to.
@@ -21,10 +21,25 @@
 #      the flight log wrote at that moment, not a second reading taken for the
 #      picture. They print as %.6g, enough digits to tell 45210 from 45211.
 #
-#   3. A channel toggled on appears in the pinned line, and a second click on the
-#      same sample lets go. The toggle is the same hud.rec_chan state the checkboxes
-#      set, so the printed line and the picture agree about what is drawn -- the
-#      readout lists the visible subset, in table order.
+#   3. A channel toggled on appears in the pinned line -- gamma= is here because the
+#      click came after the toggle. The toggle is the same hud.rec_chan state the
+#      checkboxes set, so the printed line and the picture agree about what is drawn:
+#      the readout lists the visible subset, in table order.
+#
+#   4. Unpin releases it, and a DRAG does not pin anything. Both halves begin as the
+#      same gesture, so the window has to tell them apart: a press that never
+#      travelled parks the pin, a press that travelled has already been handed to
+#      implot to pan the graph with. The drag at 9400 ms proves the second half -- it
+#      prints fit=off, which is what a real pan prints, and the pin count stays at 1.
+#      It runs AFTER the numbered claims above so a view that drifts under a scripted
+#      drag cannot move the digits asserted there.
+#
+# Release is a button rather than a second click because this window cannot promise
+# what a pixel means once the pilot has taken the view. Measured in
+# tmp/night5/probe_990j.log: after one scripted pan, two clicks in the SAME pixel
+# 600 ms apart pinned t=29.00 and then t=22.00, because the x range implot holds
+# moved between those frames. A pin that appears to refuse to let go is worse than
+# one extra button, and Unpin is greyed while nothing is pinned, exactly like Pause.
 #
 # The click is scripted with --sim-mouse pixels rather than --ui-click because the
 # plot is not a widget, so there is no label to name. The pixel comes from the
@@ -36,9 +51,9 @@
 #
 # Why not assert the hover readout instead of the pinned one: hover draws the same
 # rows but prints nothing, so it is the eye's business. Pinning is the half that
-# leaves evidence, and it is the half a player uses to move the pointer away.
+# leaves evidence, and it is the half a pilot uses to move the pointer away.
 NAME recorder-readout-puts-numbers-back
-CLAIM Clicking the Recorder graph pins a readout of that sample's readings on the mission clock, a toggled-on channel appears in it, and clicking the same sample again releases it.
+CLAIM Clicking the Recorder graph pins a readout of that sample's readings on the mission clock, a toggled-on channel appears in it, Unpin releases it, and a drag pans without pinning.
 KIND invariant
 ARGS --time-accel 4 --width 1280 --height 720 --startship stager,res/ships/stager.json,Kerbin,pad
 ARGS --sim-steps 900 --record --record-interval 0.25
@@ -48,8 +63,12 @@ ARGS --ui-click 3000,"Recorder/Start"
 ARGS --ui-click 7000,"Recorder/gamma"
 ARGS --ui-click 8000,"Recorder/Pause"
 ARGS --sim-mouse 8400,0,776,620,1
-ARGS --sim-mouse 8800,0,776,620,1
+ARGS --ui-click 9000,"Recorder/Unpin"
+ARGS --sim-mouse 9400,600,700,560,1
+ARGS --sim-mouse 9600,0,950,560,0
 EXPECT [recwin] pin t=23.00 alt_asl=268.469 v=0.0281101 q=20.1511 aoa=-89.9779 gamma=0.000653727
 EXPECT [recwin] unpin
+EXPECT [recwin] fit=off
+CHECK out.count("[recwin] pin ") == 1
 FORBID FAILED
 FORBID error:

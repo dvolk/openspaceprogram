@@ -172,7 +172,7 @@ judgement. Select by number, name or path, e.g.
 | `flight/972-recorder-window-reads-the-ring.txt` | invariant | The Recorder window opens empty, records only after Start, holds the ring against the mission clock, and Pause freezes the ring while the trace keeps writing. |
 | `flight/977-deck-launch-starts-on-its-deck.txt` | invariant | An autopilot mission armed on an air platform starts grounded on the deck instead of failing in its first second. |
 | `flight/982-arming-mid-flight-measures-the-climb-from-the-surface.txt` | invariant | An ascent mission armed on a hull already in orbit measures its turn from the surface, not from the tick it was armed on, and keeps the speed it had. |
-| `flight/990-recorder-readout-puts-numbers-back.txt` | invariant | Clicking the Recorder graph pins a readout of that sample's readings on the mission clock, a toggled-on channel appears in it, and clicking the same sample again releases it. |
+| `flight/990-recorder-readout-puts-numbers-back.txt` | invariant | Clicking the Recorder graph pins a readout of that sample's readings on the mission clock, a toggled-on channel appears in it, Unpin releases it, and a drag pans without pinning. |
 
 ## crew (29)
 
