@@ -184,33 +184,51 @@ cmake --build "$MWROOT/sdl-mixer" -j"$JOBS"
 GLEW_VER=2.3.1
 GLEW_SHA=b64790f94b926acd7e8f84c5d6000a86cb43967bd1e688b03089079799c9e889
 echo "=== building GLEW (static, $GLEW_VER) ==="
-# Guard is the version string, not "does src/glew.c exist" -- that check let this
-# script keep claiming 2.2.0 while the tree on disk had quietly moved to 2.3.1.
-if ! grep -q "^VERSION $GLEW_VER$" middleware/glew/include/GL/glew.h 2>/dev/null; then
-    if [ ! -f tmp/glew-$GLEW_VER.tgz ]; then
-        # tmp/ is gitignored, so on a fresh clone it does not exist yet and curl
-        # fails with (23) writing into a missing directory -- which set -e turns
-        # into a dead bootstrap.
+# The guard is upstream's own version file (GLEW's cmake reads config/version the
+# same way), not "does src/glew.c exist" -- that check let this script keep saying
+# 2.2.0 while the tree on disk had quietly moved to 2.3.1. Never use
+# GLEW_VERSION_MAJOR/MINOR/MICRO from glew.h: those are glewGetString() error codes
+# (1..4), identical in every release.
+glew_have=$(awk -F' *= *' '/^GLEW_(MAJOR|MINOR|MICRO) /{v[n++]=$2}
+                         END{printf "%s.%s.%s", v[0], v[1], v[2]}' \
+             middleware/glew/config/version 2>/dev/null)
+if [ "$glew_have" != "$GLEW_VER" ]; then
+    glew_tgz=tmp/glew-$GLEW_VER.tgz
+    if [ ! -f "$glew_tgz" ]; then
+        # tmp/ is gitignored, so a fresh clone has no such directory and curl dies
+        # with (23) writing into it. --remove-on-error matters because a truncated
+        # file left in the cache makes every later run fail the sha check below,
+        # and only a manual rm recovers.
         mkdir -p tmp
-        curl -fsSL -o tmp/glew-$GLEW_VER.tgz \
+        curl -fsSL --remove-on-error -o "$glew_tgz" \
             "https://sourceforge.net/projects/glew/files/glew/$GLEW_VER/glew-$GLEW_VER.tgz"
     fi
-    # SourceForge hands us a redirect to a random mirror, so check we got the
-    # release archive before extracting it over our GL loader.
-    echo "$GLEW_SHA  tmp/glew-$GLEW_VER.tgz" | sha256sum -c - \
-        || { echo "error: tmp/glew-$GLEW_VER.tgz is not the GLEW $GLEW_VER release" >&2; exit 1; }
-    # Extract into an empty tree rather than over the old one: a GLEW tree with files
-    # from two releases is a phantom-extension bug waiting to happen. Old tree goes to
-    # tmp/, it does not get deleted.
-    if [ -d middleware/glew ]; then mv middleware/glew "tmp/glew-pre-$GLEW_VER"; fi
+    # SourceForge redirects to a mirror picked for us, so verify before extracting,
+    # and delete a bad cache -- the next run cannot fix it on its own.
+    echo "$GLEW_SHA  $glew_tgz" | sha256sum -c - \
+        || { rm -f "$glew_tgz"
+             echo "error: $glew_tgz is not the GLEW $GLEW_VER release (removed; re-run to refetch)" >&2
+             exit 1; }
+    # Extract into an empty tree rather than over the old one: a GLEW tree with
+    # files from two releases is a phantom-extension bug waiting to happen. Old tree
+    # goes to tmp/, it does not get deleted -- and the $$ suffix is load bearing,
+    # because `mv src dst` into an existing dst nests instead of replacing, and the
+    # move after that fails outright.
+    if [ -d middleware/glew ]; then
+        glew_old=tmp/glew-pre-$GLEW_VER
+        [ -e "$glew_old" ] && glew_old="$glew_old.$$"
+        mv middleware/glew "$glew_old"
+    fi
     mkdir -p middleware/glew
-    tar xzf tmp/glew-$GLEW_VER.tgz -C middleware/glew --strip-components=1
+    tar xzf "$glew_tgz" -C middleware/glew --strip-components=1
 fi
 # cmake project is build/cmake (no root CMakeLists); static target -> libGLEW.a.
+# BUILD_SHARED_LIBS defaults ON in 2.3.1 -- we link libglew32.a, so do not build a
+# .so nobody uses (and do not leave old-version .so files lying in the build dir).
 cmake -S middleware/glew/build/cmake -B "$MWROOT/glew" \
     $CROSS \
     -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
-    -DBUILD_UTILS=OFF \
+    -DBUILD_UTILS=OFF -DBUILD_SHARED_LIBS=OFF \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_C_FLAGS="$SECT $LTO $ARCH" -DCMAKE_CXX_FLAGS="$SECT $LTO $ARCH"
 cmake --build "$MWROOT/glew" -j"$JOBS"

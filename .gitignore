@@ -10,8 +10,10 @@ dist/
 # built config's binary (the Makefile's `all` target).
 osp
 # GLEW: the official git repo ships only the code *generator* (glew.c is
-# generated from the Khronos registry), so bootstrap.sh fetches the
-# official 2.2.0 source tarball instead and extracts it here.
+# generated from the Khronos registry), so bootstrap.sh fetches the pinned
+# upstream release tarball (GLEW_VER in bootstrap.sh) instead and extracts it
+# here. Nothing in git records this tree's version -- that is why bootstrap
+# checks config/version rather than assuming the directory is right.
 middleware/glew/
 
 # Runtime-generated
