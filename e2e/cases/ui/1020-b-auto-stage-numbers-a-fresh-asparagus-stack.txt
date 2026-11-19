@@ -8,6 +8,10 @@
 # sits a press below them. The core engine then lights as its stage separates rather than at
 # the pad -- which is the tree's answer, and the honest one for a build that never said
 # otherwise (compare 1020-a, where the authored ladder says otherwise and is kept).
+#
+# The fuel links make this a real asparagus stack to FLY, but they move no number: autoStage
+# reads the part tree, not the drain graph, so the ladder is the same with the links deleted.
+# Sequencing an un-numbered ring by its feed chain is #1031, not this case.
 NAME auto-stage-numbers-a-fresh-asparagus-stack
 CLAIM Auto-stage numbers a placed, un-numbered asparagus stack: the booster ring on one press, the core's cut a press below it, and the checker left nothing to say.
 KIND invariant

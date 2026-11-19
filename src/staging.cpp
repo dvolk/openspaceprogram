@@ -9,6 +9,7 @@
 #include <cstdio>
 #include <string>
 #include <string_view>
+#include <utility>   // cutKey's pair, compared lexicographically
 
 #include "hash.h"   // the staging cache key's FNV-1a mixer
 #include "fuelgraph.h"  // the drain-layer walk, shared with the live drain (#965)
@@ -1390,43 +1391,47 @@ StagingPlan autoStage(BuildShip &ship) {
         return plan;
     }
 
-    /* Which cut fires first is not only a question about the tree (#1020).
+    /* Which cut fires first is not only a question about the tree (#1020) -- the rule is in
+       staging.h -- and two parts of it are worth the WHY here.
 
-       Where EVERY cut carries a number, that number is the answer, and the sort key is the
-       pair (authored label, depth), biggest = earliest press. heavy_asp is the shape: six
-       radial boosters hang off one core tank, all at the SAME tree depth, authored 6/5/4 so
-       opposite boosters drop together as the fuel chain empties -- a depth-only sort drops all
-       six on one press and loses that. Where the build was placed and never numbered, every
-       authored label is equal and the pair falls back to depth: the deepest cut is the one the
-       FIRST press makes, and the counter starts high. Ties share a label either way, which is
-       how a ring is authored (#540 counts them on 4 of 29 shipped hulls).
+       The author's number beats the tree's depth where EVERY cut carries one: heavy_asp's six
+       radial boosters hang at ONE tree depth and are authored 6/5/4 so opposite pairs drop
+       together as the fuel chain empties, and a depth-only sort loses that. EVERY, deliberately:
+       a placed part sits at the default label 1 until the player types over it, so a
+       half-numbered set has no order to keep and one untouched cut sends the ladder back to depth
+       -- which is also where the numbers are least trustworthy, having been typed before the edit
+       that made the ladder incomplete.
 
-       EVERY, deliberately: a placed part sits at the default label 1 until the player types
-       over it, so a half-numbered set of cuts has no complete order to keep. Sorting by it
-       would read a fresh cut's 1 as "the last press" and drop a new booster onto the floor
-       instead of where the tree puts it, so one untouched cut and the ladder falls back to
-       depth. That is also the case where the authored numbers are least trustworthy: they
-       predate the edit that made the ladder incomplete.
-
-       Labels run dense from hi down to 2, so the floor, 1, is never a cut -- that is #1010
-       rule 2 made structural rather than warned about -- and there are no gaps, so rule 1's
-       gap check can never fire either. Dense is also how a stray 9 in the middle of a ladder
-       stops being seven dead presses (#1023). */
+       And no cut may fire AFTER a cut inside it: the press that separates an outer cut takes its
+       whole subtree, inner cut included (Vehicle::droppedPartsAtStage), so an authored order that
+       runs the other way across such a pair is a sequence the stack cannot fly. The outer number
+       is read down to the inner one, and the depth tie-break then puts the inner cut on the
+       higher label -- the only order that works. Reported, not fixed silently. Labels run dense
+       from hi down to 2, so the floor, 1, is never a cut (#1010 rule 2 made structural) and there
+       are no gaps (rule 1's gap check can never fire); dense is also how a stray 9 in the middle
+       of a ladder stops being seven dead presses (#1023). */
     bool authoredCuts = true;
     for(int d : decs) { if(authored[d] <= 1) { authoredCuts = false; break; } }
-    // True when j starts a rung: the same key the sort below uses, spelled once.
-    auto keyDiffers = [&](int a, int b) {
-        if(authoredCuts && authored[a] != authored[b]) { return true; }
-        return depth[a] != depth[b];
-    };
+    std::vector<int> cutAuth = authored;
+    int swallowed = 0;
+    if(authoredCuts) {
+        /* Walking `order` backwards visits every child before its parent, so a repaired number
+           climbs a chain of nested cuts in one pass. */
+        for(size_t k = order.size(); k-- > 0; ) {
+            const int d = order[k];
+            if(!isDec[d]) { continue; }
+            for(int par = ship.parts[(size_t)d].parent; par >= 0 && (size_t)par < n;
+                par = ship.parts[(size_t)par].parent) {
+                if(isDec[par] && cutAuth[par] > cutAuth[d]) { cutAuth[par] = cutAuth[d]; }
+            }
+        }
+        for(int d : decs) { if(cutAuth[d] != authored[d]) { swallowed++; } }
+    }
+    // One key for both the sort and the rung count, so they cannot drift apart.
+    auto cutKey = [&](int i) { return std::pair<int, int>{authoredCuts ? cutAuth[i] : 1, depth[i]}; };
     std::vector<int> cuts = decs;
-    std::sort(cuts.begin(), cuts.end(), [&](int a, int b) {
-        if(authoredCuts && authored[a] != authored[b]) { return authored[a] > authored[b]; }
-        return depth[a] > depth[b];
-    });
-    auto newRung = [&](size_t j) {
-        return j == 0 || keyDiffers(cuts[j], cuts[j - 1]);
-    };
+    std::sort(cuts.begin(), cuts.end(), [&](int a, int b) { return cutKey(a) > cutKey(b); });
+    auto newRung = [&](size_t j) { return j == 0 || cutKey(cuts[j]) != cutKey(cuts[j - 1]); };
     int levels = 0;
     for(size_t j = 0; j < cuts.size(); j++) { if(newRung(j)) { levels++; } }
     const int hi = levels + 1;
@@ -1434,7 +1439,7 @@ StagingPlan autoStage(BuildShip &ship) {
         /* Labels are 1..kMaxStage on both sides of the save (shipdef.cpp:1192-1201 throws
            for anything else), so a build with this many cuts cannot be numbered here. */
         std::snprintf(buf, sizeof buf,
-                      "refuse: %d decoupler levels, more than the %d labels a ship can carry",
+                      "refuse: %d decoupler rungs, more than the %d labels a ship can carry",
                       levels, kMaxStage);
         plan.notes.push_back(buf);
         return plan;
@@ -1451,15 +1456,25 @@ StagingPlan autoStage(BuildShip &ship) {
        `order` than its child, which an index pass can only assume. A part with no decoupler
        above it lands on the floor, with the hull it stays on to the end. */
     std::vector<int> label(n, 1);
-    bool floorUsed = false;
+    int floorParts = 0;
     for(int p : order) {
         if(isDec[p]) { label[p] = decLabel[p]; continue; }
         const int par = ship.parts[p].parent;
         label[p] = (par >= 0 && (size_t)par < n) ? label[(size_t)par] : 1;
-        if(label[p] == 1) { floorUsed = true; }
+        if(label[p] == 1) { floorParts++; }
     }
-    for(int d : decs) { assert(label[d] >= 2); }   // the floor never carries a cut
-    if(!floorUsed) {
+    for(int d : decs) {
+        assert(label[d] >= 2);   // the floor never carries a cut
+        /* And a cut never rides a press inside its own ancestor's: pressing the ancestor would
+           take the cut with it, leaving a label that answers to nothing in flight while the
+           ladder says it does (#1020). Depth orders this for free; authored numbers have to be
+           clamped to, which is what the cutAuth pass above is. */
+        for(int par = ship.parts[(size_t)d].parent; par >= 0 && (size_t)par < n;
+            par = ship.parts[(size_t)par].parent) {
+            assert(!isDec[par] || label[d] >= label[par]);
+        }
+    }
+    if(!floorParts) {
         /* Every root is a decoupler, so no part would carry label 1 and the LOWEST label in
            the build would be a cut -- which is what #1010 rule 2 reports, the counter never
            standing there. A plan that applies must leave the checker with nothing to say, so
@@ -1500,14 +1515,32 @@ StagingPlan autoStage(BuildShip &ship) {
         authoredHi = std::max(authoredHi, s);
         authoredLo = std::min(authoredLo, s);
     }
-    int litAtPad = 0;
+    std::vector<int> pin;
+    int pinFromFloor = 0;
+    bool pinGivenUp = false;
     if(authoredHi > authoredLo) {
         for(int e : engs) {
             if(authored[e] != authoredHi || label[e] == hi) { continue; }
-            label[e] = hi;
-            litAtPad++;
+            /* A part that is ALSO a cut or a chute carries a label the plan owns for the other
+               reason: lifting a combined engine+decoupler puts its separation at the pad, and
+               lifting an engine+chute deploys the chute on the first press. No shipped def
+               carries two roles (measured over res/data/parts.json), so this is the cliff rather
+               than a live shape. */
+            if(isDec[e] || isChute[e]) { continue; }
+            pin.push_back(e);
+            if(label[e] == 1) { pinFromFloor++; }
+        }
+        /* Pinning the LAST part on the floor empties label 1, and then the lowest label the build
+           carries is a cut -- the #1010 rule 2 fault the refusal above exists to prevent. An
+           engine left on its own cut still burns until that press, so the ladder keeps working
+           and it is the ignition intent that gets given up. */
+        if(pinFromFloor >= floorParts) {
+            pinGivenUp = !pin.empty();
+            pin.clear();
         }
     }
+    for(int e : pin) { label[e] = hi; }
+    const int litAtPad = (int)pin.size();
 
     /* Engines, both remaining questions in one pass over the pairs. (a) A pair the build
        ORDERS -- distinct labels -- is authored intent, and if the tree implies the opposite
@@ -1557,14 +1590,28 @@ StagingPlan autoStage(BuildShip &ship) {
     }
     plan.applied = true;
 
-    /* Three caveats, said once instead of left for the player to notice mid-flight. None is a
-       refusal: the numbering is right for the stack, and the stack is what the tree says
-       it is. */
+    /* The plan's caveats, said once instead of left for the player to notice mid-flight. None
+       is a refusal: the numbering is right for the stack, and the stack is what the tree says
+       it is. All of them go to the log and --fleet-report, not to a toast (#1027). */
     if(litAtPad > 0) {
         std::snprintf(buf, sizeof buf,
-                      "note: %d engine(s) stay lit at launch -- the build lights them from the "
-                      "pad, and the stack only says when a part falls, never when an engine "
-                      "starts (#1020)", litAtPad);
+                      "note: %d engine(s) kept lit at the pad that the stack would have dimmed "
+                      "-- '%s' at label %d; the tree says when a part falls, never when an "
+                      "engine starts (#1020)", litAtPad, ship.parts[(size_t)pin[0]].id.c_str(),
+                      hi);
+        plan.notes.push_back(buf);
+    }
+    if(pinGivenUp) {
+        std::snprintf(buf, sizeof buf,
+                      "note: the build lights an engine from the pad, but it is the only part on "
+                      "label 1, so the pin is dropped -- pinning it would leave the lowest label "
+                      "carrying a cut (#1010 rule 2)");
+        plan.notes.push_back(buf);
+    }
+    if(swallowed > 0) {
+        std::snprintf(buf, sizeof buf,
+                      "note: %d cut(s) numbered above a cut they contain, which no press order "
+                      "can fly -- the inner cut separates first (#1020)", swallowed);
         plan.notes.push_back(buf);
     }
     if(apart > 0) {

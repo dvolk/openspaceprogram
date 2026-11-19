@@ -25,9 +25,11 @@
 //   * stage numbers are LABELS: the walk visits the labels the ship carries, highest
 //     first, and a gap between two labels costs nothing (#517).
 //   * autoStage assigns those labels from the tree instead of by hand, keeps an authored cut
-//     sequence over the tree's depth guess (#1020), keeps an engine lit that the build lights
-//     from the pad, and refuses where the tree cannot read the stack at all -- no decoupler, a
-//     cut that would drop everything, an engine re-sequenced relative to another (#1012).
+//     sequence over the tree's depth guess but clamps it so no cut rides a press inside a cut
+//     that contains it (#1020), keeps an engine lit that the build lights from the pad unless
+//     that would empty the floor label, and refuses where the tree cannot read the stack at all
+//     -- no decoupler, a cut that would drop everything, an engine re-sequenced relative to
+//     another (#1012).
 //   * a staging edit takes itself back: the change list an edit performed is the undo
 //     record, so an undo finds parts by id (the vector renumbers under it), leaves a label
 //     that something else moved since, says which parts it could not reach, and moves
@@ -2066,11 +2068,13 @@ static void test_the_press_note_says_where_the_counter_stands() {
 }
 
 /* autoStage (#1012): the tree already knows the press order, so hand-numbering every part is
-   the thing that goes wrong. What the plan has to get right, in the order the rules bite:
-   the deepest cut fires first so it gets the highest label; a decoupler rides its OWN label
-   (the press drops the decoupler with its stage, vehicle.cpp:5577); decouplers at one depth
-   are ONE press, not several (#540); what nothing separates is the floor; and a plan that
-   would re-sequence two engines the player ordered is refused rather than guessed. */
+   the thing that goes wrong. What the plan has to get right, in the order the rules bite: cuts
+   are ordered by the pair (the author's number, the tree's depth), the author first only when
+   every cut carries one (#1020) and clamped so no cut rides a press inside a cut that contains
+   it; a decoupler rides its OWN label (the press drops the decoupler with its stage,
+   vehicle.cpp:5577); decouplers at one key are ONE press, not several (#540); what nothing
+   separates is the floor, and the floor still has to carry a part after the pad-lit pin; and a
+   plan that would re-sequence two engines the player ordered is refused rather than guessed. */
 static std::vector<int> labelsOf(const BuildShip &bs) {
     std::vector<int> out;
     for(const BuildPart &p : bs.parts) { out.push_back(p.stage); }
@@ -2177,7 +2181,7 @@ static void test_auto_stager_gives_a_ring_one_press() {
     (void)dIn2;
     StagingPlan edited = autoStage(bs);
     CHECK_TRUE(edited.applied, "deepening a numbered stack is a renumber, not a refusal");
-    CHECK_TRUE(has_note(edited, "stay lit at launch"),
+    CHECK_TRUE(has_note(edited, "kept lit at the pad"),
                "and it says which engines it kept lit at the pad while doing it");
     CHECK_TRUE(labelsOf(bs) == std::vector<int>({1, 2, 2, 2, 3, 2, 3, 3, 3}),
                "the ring keeps one press, the inner cut takes the new top label, and the "
@@ -2312,7 +2316,7 @@ static void test_auto_stager_keeps_a_launch_lit_engine_at_the_pad() {
     CHECK_TRUE(labelsOf(bs) == std::vector<int>({1, 2, 2, 2, 2}),
                "the pad-lit engines land on hi and the tanks follow their cut");
     CHECK_TRUE(bs.parts[coreEng].stage == 2, "the core still lights at launch");
-    CHECK_TRUE(has_note(plan, "stay lit at launch"),
+    CHECK_TRUE(has_note(plan, "kept lit at the pad"),
                "and the plan says out loud that it kept an ignition it cannot derive");
     std::vector<std::string> w;
     validateStaging(bs, w);
@@ -2331,7 +2335,7 @@ static void test_auto_stager_keeps_a_launch_lit_engine_at_the_pad() {
     CHECK_TRUE(open.applied, "an un-numbered stack numbers");
     CHECK_TRUE(bare.parts[boEng].stage == 2, "the booster engine ends on launch (hi = 2)");
     CHECK_TRUE(labelsOf(bare) == std::vector<int>({1, 1, 2, 2, 2}), "floor and cut");
-    CHECK_TRUE(!has_note(open, "stay lit at launch"),
+    CHECK_TRUE(!has_note(open, "kept lit at the pad"),
                "and a build that numbered nothing has no ignition to keep, so no such note");
 }
 
@@ -2368,34 +2372,91 @@ static void test_auto_stager_keeps_an_authored_asparagus_sequence() {
     CHECK_TRUE(bs.parts[dIn1].stage == 3, "the inboard booster waits a press for its cut");
     CHECK_TRUE(bs.parts[dOut1].stage == 4 && bs.parts[dOut2].stage == 4,
                "the outboard pair shares one press, as authored");
-    CHECK_TRUE(has_note(plan, "stay lit at launch"),
-               "the engines the tree would have dimmed are named once");
+    CHECK_TRUE(has_note(plan, "2 engine(s) kept lit at the pad"),
+               "exactly the two the tree would have dimmed, counted once");
     std::vector<std::string> w;
     validateStaging(bs, w);
     CHECK_TRUE(w.empty(), "an authored 4/3/2 ladder is dense and every rung answers");
 }
 
-/* Where the author's sequence and the tree's depth disagree, the author wins. This is
-   heavy_asp's inversion in miniature: the shallower cut is numbered HIGHER than the deeper
-   one, so a depth sort would run the presses the other way round. */
+/* Where the author's sequence and the tree's depth disagree, the author wins -- provided neither
+   cut sits inside the other. heavy_asp is the case at scale: six boosters at ONE depth, three
+   authored numbers. Here the two cuts are in different branches, so no press can swallow either
+   one and the authored order is the answer; a depth sort would run the presses the other way
+   round. The nested case is the test below, where no authored order is answerable. */
 static void test_auto_stager_orders_cuts_by_the_authored_label_not_depth() {
     Catalog cat;
     BuildShip bs;
     const int pod = addPart(bs, cat.mono(100, 0), "pod", -1, 1);
     const int dHigh = addPart(bs, cat.decoupler(5), "d_shallow", pod, 5);   // depth 1
-    const int tankA = addPart(bs, cat.tank(50, 25, 25), "tank_a", dHigh, 4);
-    const int dLow = addPart(bs, cat.decoupler(5), "d_deep", tankA, 4);     // depth 2
-    const int tankB = addPart(bs, cat.tank(50, 25, 25), "tank_b", dLow, 1);
-    addPart(bs, cat.engine(10, 0.5, 1000.0), "eng", tankB, 1);
-    (void)pod; (void)tankA; (void)tankB;
+    addPart(bs, cat.tank(50, 25, 25), "tank_a", dHigh, 5);
+    const int strut = addPart(bs, cat.mono(50, 1), "strut", pod, 3);        // depth 1
+    const int dLow = addPart(bs, cat.decoupler(5), "d_deep", strut, 3);     // depth 2, other arm
+    addPart(bs, cat.tank(50, 25, 25), "tank_b", dLow, 3);
+    (void)pod; (void)strut;
 
     StagingPlan plan = autoStage(bs);
     CHECK_TRUE(plan.applied, "a numbered stack whose tree disagrees still numbers (#1020)");
     CHECK_TRUE(bs.parts[dHigh].stage == 3 && bs.parts[dLow].stage == 2,
                "the shallower cut fires first because the author put it higher, not last");
+    CHECK_TRUE(labelsOf(bs) == std::vector<int>({1, 3, 3, 1, 2, 2}),
+               "and the strut between them is what nothing separates: the floor");
     std::vector<std::string> w;
     validateStaging(bs, w);
     CHECK_TRUE(w.empty(), "and re-spacing to 1..3 is dense, so the checker stays quiet");
+}
+
+/* No cut may ride a press INSIDE the press of a cut that contains it (#1020): the outer press
+   takes the inner cut with it, so an authored ladder that runs outer-first across a nested pair
+   is a sequence the stack cannot fly. The outer number is read down to the inner one and the
+   depth tie-break splits them the only working way. The checker cannot see this shape at all --
+   a decoupler does answer at the label it is left on -- so the plan has to. */
+static void test_auto_stager_never_puts_a_cut_above_the_cut_that_contains_it() {
+    Catalog cat;
+    BuildShip bs;
+    const int pod = addPart(bs, cat.mono(100, 0), "pod", -1, 1);
+    const int dOuter = addPart(bs, cat.decoupler(5), "d_outer", pod, 5);      // depth 1
+    const int tankA = addPart(bs, cat.tank(50, 25, 25), "tank_a", dOuter, 5);
+    const int dInner = addPart(bs, cat.decoupler(5), "d_inner", tankA, 4);    // depth 2, inside
+    const int tankB = addPart(bs, cat.tank(50, 25, 25), "tank_b", dInner, 4);
+    addPart(bs, cat.engine(10, 0.5, 1000.0), "eng", tankB, 4);
+    (void)pod; (void)tankA; (void)tankB;
+
+    StagingPlan plan = autoStage(bs);
+    CHECK_TRUE(plan.applied, "an authored inversion is repaired, not refused");
+    CHECK_TRUE(bs.parts[dInner].stage > bs.parts[dOuter].stage,
+               "the inner cut separates first, whatever the numbers said");
+    CHECK_TRUE(labelsOf(bs) == std::vector<int>({1, 2, 2, 3, 3, 3}),
+               "the outer cut drops to a press below the inner one");
+    CHECK_TRUE(has_note(plan, "numbered above a cut they contain"),
+               "and the plan says it bent an authored number instead of hiding it");
+    std::vector<std::string> w;
+    validateStaging(bs, w);
+    CHECK_TRUE(w.empty(), "the checker stays quiet about exactly the thing this repairs (#1030)");
+}
+
+/* The pad-lit pin gives up rather than empty the floor. Here the ONLY part that would sit on
+   label 1 is the pad-lit engine itself, so lifting it to hi leaves the lowest label the build
+   carries being a cut -- #1010 rule 2, the fault the plan refuses to number into existence
+   wherever else it meets it. The engine follows its own cut instead and still burns until that
+   press, so what gets given up is the ignition, not the ladder. */
+static void test_auto_stager_gives_up_the_pad_pin_rather_than_empty_the_floor() {
+    Catalog cat;
+    BuildShip bs;
+    const int topEng = addPart(bs, cat.engine(10, 0.5, 1000.0), "top_eng", -1, 5);  // the ROOT
+    const int dA = addPart(bs, cat.decoupler(5), "d_a", topEng, 3);
+    const int tankA = addPart(bs, cat.tank(50, 25, 25), "tank_a", dA, 3);
+    const int dB = addPart(bs, cat.decoupler(5), "d_b", tankA, 4);
+    addPart(bs, cat.tank(50, 25, 25), "tank_b", dB, 4);
+    (void)dA; (void)tankA; (void)dB;
+
+    StagingPlan plan = autoStage(bs);
+    CHECK_TRUE(plan.applied, "the plan runs -- it just declines this pin");
+    CHECK_TRUE(bs.parts[topEng].stage == 1, "the engine stays on the floor, where it is needed");
+    CHECK_TRUE(has_note(plan, "the pin is dropped"), "and says why rather than leaving a fault");
+    std::vector<std::string> w;
+    validateStaging(bs, w);
+    CHECK_TRUE(w.empty(), "which is the point: an empty label 1 would put a cut on the floor");
 }
 
 /* The plan walks the parent GRAPH rather than the part index, and refuses when the graph
@@ -2865,6 +2926,8 @@ int main() {
     test_auto_stager_keeps_a_launch_lit_engine_at_the_pad();
     test_auto_stager_keeps_an_authored_asparagus_sequence();
     test_auto_stager_orders_cuts_by_the_authored_label_not_depth();
+    test_auto_stager_never_puts_a_cut_above_the_cut_that_contains_it();
+    test_auto_stager_gives_up_the_pad_pin_rather_than_empty_the_floor();
     test_auto_stager_says_what_a_chute_on_the_floor_needs();
     test_auto_stager_reads_the_graph_not_the_part_order();
     test_auto_stager_refuses_a_parent_chain_that_loops();

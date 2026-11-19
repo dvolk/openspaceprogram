@@ -31,8 +31,9 @@ ARGS --ui-click 5300,"VAB TopBar/##vabload"
 ARGS --ui-click 5900,"rootcut"
 ARGS --ui-click 6500,"VAB TopBar/Load"
 ARGS --ui-click 7100,"Staging/Auto-stage"
-# Dump once, while the refused build is still up: the plan is not just quiet, it left the
-# decoupler on label 1 -- the label that has no press under it.
+# Dump once, while the refused build is still up: the plan is not just quiet, it left dec_root on
+# the one label the build carries -- every part does, and that is the shape it refused: the press
+# under that label would take the whole ship (#541).
 ARGS --stage-dump 7700
 ARGS --ui-type 8500,"VAB TopBar/##vehfilter",skiff
 ARGS --ui-click 9100,"VAB TopBar/##vabload"

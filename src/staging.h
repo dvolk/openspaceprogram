@@ -137,13 +137,27 @@ void validateStaging(const BuildShip &ship, std::vector<std::string> &warns);
    also how a stray 9 in the middle of a ladder stops being seven dead presses (#1023).
 
    Decouplers at the same key SHARE a label on purpose. A ring of four is one press, and
-   it is shipped, not hypothetical -- #540 counts them on 4 of 29 hulls.
+   it is shipped, not hypothetical -- #540 counts them on 4 of 32 hulls.
+
+   No cut may ride a press INSIDE the press of a cut that contains it. The outer press takes the
+   inner cut with it (droppedPartsAtStage spans the whole subtree), so an authored pair running the
+   other way across a containment relation is not an order the stack can fly: the outer number is
+   read down to the inner one, and the depth tie-break then puts the inner cut higher -- the only
+   order that works. Depth gets this for free; authored numbers are clamped to it, and the plan
+   says how many it bent rather than bending them silently.
 
    An engine the build lights FROM THE PAD stays lit at the pad, pinned to the plan's hi. The
    tree says when a part FALLS and never when an engine STARTS, and those are two different
    rockets: heavy_asp burns engine_central through all six booster separations, while the cut
    that releases its tanks is three presses later. Nothing is pinned when the build carries one
-   label everywhere -- that is the case autoStage exists for, with no intent to contradict.
+   label everywhere -- that is the case autoStage exists for, with no intent to contradict. The
+   pin reads ONE part's number while the ordering insists on all of them, deliberately: a sequence
+   needs every member numbered to mean anything, and "this engine lights at the pad" is one part's
+   own statement. Two limits on it: a part that is ALSO a cut or a chute is left alone (that label
+   belongs to the separation, and a pinned chute would open on the first press), and the pin is
+   dropped when the pinned engine is the last part on the floor -- an empty label 1 would leave the
+   lowest label the build carries being a cut, which is #1010 rule 2, and an engine on its own cut
+   still burns until that press.
 
    Refuses rather than guesses: leaves the build exactly as it was and says why in `notes`.
    The refusals are the places where the tree cannot see the player's intent, or cannot read
