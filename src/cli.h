@@ -124,7 +124,10 @@ struct GameArgs {
        the game has claimed a game dir and under the data dir's flights/ when it
        has not. Rows land on the recorder's own gate, not --orbit-interval's. */
     bool record = false;
-    double record_interval = 0.25;   // seconds of sim between recorded rows
+    /* Run-time seconds between recorded rows, like every other periodic log
+       (Game::logClockMs), so at warp the rows are further apart in MISSION time.
+       --record-interval's help spells the same rule; #987. */
+    double record_interval = 0.25;
     bool dbg_log = false;
     bool info_log = false;       // dump Orbit/Surface Info to stdout
     bool debug_accel = false;   // per-substep thrust/velocity dump
