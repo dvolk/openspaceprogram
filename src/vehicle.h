@@ -2453,29 +2453,41 @@ void build_ship(Vehicle *ship, const ShipDef &def, Shader *partsshader,
 
 /* Starting scenario (a CLI choice). Pad beds are set up in main; orbit beds are
    circular about the home body; ellipse-* and escape-* set their own apsides
-   and speed; abs_r pins an ABSOLUTE radius. */
+   and speed; abs_r pins an ABSOLUTE radius.
+   The three fields WITHOUT a default member initializer -- name, dev_only,
+   ell_phase -- are the ones a kScenarios row must state (#715). Omitting one is
+   now the only -Wmissing-field-initializers this table can emit, where it used to
+   print 266 lines and bury it (#991). Two caveats before trusting that arm: g++
+   repeats each omission TWICE and blames the table's closing brace, not the row,
+   and `make test` compiles src without -Wall at all. The runtime nets are the
+   durable ones -- check_vab_gate() and check_ellipse_beds() ask about rows off the
+   table, and spawn_vehicle() asserts what a row must mean. Everything else
+   defaults to what omitting it already meant in the table's static storage, so no
+   bed's numbers changed. */
 struct ScenarioDef {
     const char *name;
     /* Dev-only beds stay out of the VAB dropdown unless --dev-scenarios. The
        name resolves either way: --startship, saves and the
        e2e fixtures all name dev beds, so this gates the picker, not the
-       scenario. WRITE IT ON EVERY ROW (#715): a designated initializer that
-       omits it compiles and yields false, which hands the bed to the player.
-       check_vab_gate() is the net -- it fails if any bed other than "pad" is
-       not dev-only. */
+       scenario. WRITE IT ON EVERY ROW (#715): it has NO default member
+       initializer on purpose, so a row that omits it -- handing a dev bed to the
+       player -- is the warning this struct still emits. check_vab_gate() is the
+       net -- it fails if any bed other than "pad" is not dev-only. */
     bool dev_only;
-    bool on_pad;
-    double alt_frac; // circular: fraction of the near-body shell (rot SOI -
-                     // TerrainBody::seaLevelRadius()), or of the atmosphere
-                     // top if atmo_frac
-    bool polar;
-    int ell_phase;   // -1: circular; 0: periapsis; 1: apoapsis; 2: 90 deg
-    double peri_alt; // ellipse: periapsis ABOVE MEAN SEA LEVEL (m), i.e. a
-                     // radius minus TerrainBody::seaLevelRadius() (#404)
-    double apo_alt;  // ellipse: apoapsis above mean sea level (m)
-    double esc_frac; // escape: launch speed in local escape velocities (0 = not escape)
-    double abs_r;    // > 0: absolute circular-orbit radius from the body
-                     // centre (m), overriding alt_frac
+    bool on_pad = false;
+    double alt_frac = 0.0; // circular: fraction of the near-body shell (rot SOI -
+                           // TerrainBody::seaLevelRadius()), or of the atmosphere
+                           // top if atmo_frac
+    bool polar = false;
+    int ell_phase;   // -1: circular; 0: periapsis; 1: apoapsis; 2: 90 deg.
+                     // Deliberately no default: 0 is periapsis, not circular, so
+                     // an omitted one is a wrong bed rather than a plain one.
+    double peri_alt = 0.0; // ellipse: periapsis ABOVE MEAN SEA LEVEL (m), i.e. a
+                           // radius minus TerrainBody::seaLevelRadius() (#404)
+    double apo_alt = 0.0;  // ellipse: apoapsis above mean sea level (m)
+    double esc_frac = 0.0; // escape: launch speed in local escape velocities (0 = not escape)
+    double abs_r = 0.0;    // > 0: absolute circular-orbit radius from the body
+                           // centre (m), overriding alt_frac
     bool atmo_frac = false; // alt_frac scales the atmosphere top() instead, so
                      // the flying beds land in their science band
     /* Which plane a non-polar orbit bed sits in (#182). False (default) is the

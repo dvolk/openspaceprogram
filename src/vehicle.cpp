@@ -232,14 +232,24 @@ static Frame *resolve_frame_by_soi(Frame *root, glm::dvec3 worldPos) {
 /* Starting scenarios (see ScenarioDef in vehicle.h). Named members (#715): a
    misspelled one is a compile error, where a positional row handed a value to the wrong
    slot and still built -- and every flight golden in e2e/cases/flight/ was tuned off one
-   of these rows, so a silent slot shift is expensive to notice. Members left out are zero
-   (static storage), which is why ell_phase is ALWAYS written: its zero means periapsis,
-   not circular. Members must also stay in STRUCT ORDER: writing .alt_frac after
-   .ell_phase is "designator order ... does not match declaration order", which is worth
-   knowing before a row looks mis-sorted. Only "pad" -- dev_only left false -- shows in the
-   VAB dropdown without --dev-scenarios. */
+   of these rows, so a silent slot shift is expensive to notice. Members left out keep the
+   default member initializer they show in vehicle.h, which is what static storage used to
+   give them, so a row reads as its differences from a plain circular bed. name, dev_only
+   and ell_phase have NO default and are written on every row: ell_phase because its zero
+   means periapsis rather than circular, dev_only because an omitted one hands a dev bed to
+   the player. That is the only -Wmissing-field-initializers this table can still emit, where
+   it used to emit 266 and nobody read any of them (#991). It is a narrow arm: it blames this
+   closing brace rather than the row, and not at all under `make test`, which compiles src
+   without -Wall. So the table's real guards are the ones that run -- check_vab_gate() and
+   check_ellipse_beds() in test_scenarios, and spawn_vehicle()'s assert on the apsides, which
+   an ellipse row cannot get wrong by omission now that peri_alt/apo_alt default to 0. Note
+   that 0 is a LEGAL periapsis (exactly at the mean-sea datum), so an apsis can never read as
+   "unused". Members must also stay in STRUCT ORDER: writing .alt_frac after .ell_phase is
+   "designator order ... does not match declaration order", which is worth knowing before a
+   row looks mis-sorted. Only "pad" -- dev_only written false -- shows in the VAB dropdown
+   without --dev-scenarios. */
 static const ScenarioDef kScenarios[] = {
-    {.name = "pad", .on_pad = true, .ell_phase = -1},
+    {.name = "pad", .dev_only = false, .on_pad = true, .ell_phase = -1},
     {.name = "rot-orbit", .dev_only = true, .alt_frac = 0.85, .ell_phase = -1},
     /* Same bed about the EQUATOR rather than the rail plane (#182): they differ by
        exactly the axial tilt. */
@@ -563,6 +573,15 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
            build radii from seaLevelRadius(), not the bare radius. */
         const double rp = home->seaLevelRadius() + sc.peri_alt;
         const double ra = home->seaLevelRadius() + sc.apo_alt;
+        /* The apsides ARE the bed, and the phase branch below reads them in order.
+           ra == rp gives e = 0 and a spawn exactly ON the mean-sea datum -- under the
+           ground wherever there is relief -- and rp <= 0 puts periapsis at the centre,
+           where h/rp is 0/0. A row now gets 0 for a left-out apsis by default (#991),
+           so this is what says so instead of the old warning wall: no NDEBUG in any
+           config, so it fires in release too. check_ellipse_beds asks the same
+           question off the table, since it needs no launch to answer it. */
+        assert(rp > 0.0);
+        assert(ra > rp);
         const double p = 2.0 * rp * ra / (rp + ra); // semi-latus rectum a(1-e^2)
         const double e = (ra - rp) / (ra + rp);
         const double h = sqrt(home->mu * p);        // specific angular momentum

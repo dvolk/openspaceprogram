@@ -2406,6 +2406,20 @@ static void check_ellipse_beds() {
             continue;
         }
         n++;
+        /* The apsides are the whole bed, so ask for them here rather than trust the
+           row. apo <= peri is not a thin ellipse: spawn_vehicle turns it into e = 0
+           and puts the hull ON the mean-sea datum, underground wherever there is
+           relief (its own assert says so at launch). Asking off the table is the
+           cheaper arm -- and the only one, since the compile-time hint for a missing
+           apsis is gone now that the field defaults to 0 (#991), and a left-over 0 is
+           also a LEGAL periapsis exactly at the datum, so 0 cannot mean "unused". */
+        if(d->apo_alt <= d->peri_alt) {
+            printf("  scenario '%s' is an ellipse bed (ell_phase %d) with apsides "
+                   "%g/%g: apoapsis must sit above periapsis, or the conic is a circle "
+                   "at the sea-level datum rather than an ellipse\n",
+                   sname.c_str(), d->ell_phase, d->peri_alt, d->apo_alt);
+            g_failures++;
+        }
         if(d->alt_frac != 0.0 || d->atmo_frac || d->abs_r > 0.0) {
             printf("  scenario '%s' is an ellipse bed (ell_phase %d, apsides %g/%g) and "
                    "also sets alt_frac %g / atmo_frac %d / abs_r %g: an ellipse's radius "
