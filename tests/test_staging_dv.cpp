@@ -2435,25 +2435,60 @@ static void test_auto_stager_never_puts_a_cut_above_the_cut_that_contains_it() {
     CHECK_TRUE(w.empty(), "the checker stays quiet about exactly the thing this repairs (#1030)");
 }
 
-/* The pad-lit pin gives up rather than empty the floor. Here the ONLY part that would sit on
-   label 1 is the pad-lit engine itself, so lifting it to hi leaves the lowest label the build
-   carries being a cut -- #1010 rule 2, the fault the plan refuses to number into existence
-   wherever else it meets it. The engine follows its own cut instead and still burns until that
-   press, so what gets given up is the ignition, not the ladder. */
+/* And the clamp reaches PAST the pair it repairs: bending an outer cut's number moves it relative
+   to the unrelated cuts it used to sit beside. Here a sibling cut is authored 5, between the outer
+   6 and the nested 2, so the unrepaired sort runs outer-sibling-inner and the repair runs
+   sibling-inner-outer. The labels tell the two apart, which the previous test's shape does not. */
+static void test_auto_stager_clamps_an_outer_cut_against_its_neighbours() {
+    Catalog cat;
+    BuildShip bs;
+    const int pod = addPart(bs, cat.mono(100, 0), "pod", -1, 1);
+    const int dOut = addPart(bs, cat.decoupler(5), "d_outer", pod, 6);      // depth 1
+    const int tankA = addPart(bs, cat.tank(50, 25, 25), "tank_a", dOut, 6);
+    const int dIn = addPart(bs, cat.decoupler(5), "d_inner", tankA, 2);     // depth 3, inside
+    addPart(bs, cat.tank(50, 25, 25), "tank_b", dIn, 2);
+    const int dSib = addPart(bs, cat.decoupler(5), "d_sibling", pod, 5);    // depth 1, other arm
+    addPart(bs, cat.tank(50, 25, 25), "tank_c", dSib, 5);
+    (void)pod; (void)tankA;
+
+    StagingPlan plan = autoStage(bs);
+    CHECK_TRUE(plan.applied, "the stack numbers -- with one authored number bent");
+    CHECK_TRUE(labelsOf(bs) == std::vector<int>({1, 2, 2, 3, 3, 4, 4}),
+               "the sibling takes the top rung, the inner cut the next, the outer cut the last");
+    CHECK_TRUE(bs.parts[dSib].stage == 4, "the sibling was never the problem and keeps its press");
+    CHECK_TRUE(has_note(plan, "1 cut(s) numbered above a cut they contain"),
+               "exactly one number bent, and the plan says which kind of bend it was");
+    std::vector<std::string> w;
+    validateStaging(bs, w);
+    CHECK_TRUE(w.empty(), "three dense rungs, each answering to a cut");
+}
+
+/* The pad-lit pin gives up rather than empty the floor -- and gives up only for the engines
+   standing there. A part reaches the floor only when no cut is above it, so the root engine below
+   is all label 1 carries; lifting it would leave the lowest label the build carries being a cut,
+   which is #1010 rule 2 -- the fault the plan refuses to number into existence wherever else it
+   meets it. The other pad-lit engine hangs under a cut, cannot hurt the floor, and is pinned
+   anyway. */
 static void test_auto_stager_gives_up_the_pad_pin_rather_than_empty_the_floor() {
     Catalog cat;
     BuildShip bs;
     const int topEng = addPart(bs, cat.engine(10, 0.5, 1000.0), "top_eng", -1, 5);  // the ROOT
     const int dA = addPart(bs, cat.decoupler(5), "d_a", topEng, 3);
     const int tankA = addPart(bs, cat.tank(50, 25, 25), "tank_a", dA, 3);
+    const int safeEng = addPart(bs, cat.engine(10, 0.5, 1000.0), "safe_eng", tankA, 5);
     const int dB = addPart(bs, cat.decoupler(5), "d_b", tankA, 4);
     addPart(bs, cat.tank(50, 25, 25), "tank_b", dB, 4);
     (void)dA; (void)tankA; (void)dB;
 
     StagingPlan plan = autoStage(bs);
-    CHECK_TRUE(plan.applied, "the plan runs -- it just declines this pin");
-    CHECK_TRUE(bs.parts[topEng].stage == 1, "the engine stays on the floor, where it is needed");
-    CHECK_TRUE(has_note(plan, "the pin is dropped"), "and says why rather than leaving a fault");
+    CHECK_TRUE(plan.applied, "the plan runs -- it just declines one pin");
+    CHECK_TRUE(bs.parts[topEng].stage == 1, "the root engine stays on the floor, where it is needed");
+    CHECK_TRUE(bs.parts[safeEng].stage == 3, "and the engine that cannot hurt the floor is pinned");
+    CHECK_TRUE(labelsOf(bs) == std::vector<int>({1, 2, 2, 3, 3, 3}),
+               "one floor part, two rungs, and the pinning that was safe about it");
+    CHECK_TRUE(has_note(plan, "stay on label 1"), "it says which engines it declined to lift");
+    CHECK_TRUE(has_note(plan, "a press past the ladder"),
+               "and what that costs: as numbered, they light only past the last rung");
     std::vector<std::string> w;
     validateStaging(bs, w);
     CHECK_TRUE(w.empty(), "which is the point: an empty label 1 would put a cut on the floor");
@@ -2927,6 +2962,7 @@ int main() {
     test_auto_stager_keeps_an_authored_asparagus_sequence();
     test_auto_stager_orders_cuts_by_the_authored_label_not_depth();
     test_auto_stager_never_puts_a_cut_above_the_cut_that_contains_it();
+    test_auto_stager_clamps_an_outer_cut_against_its_neighbours();
     test_auto_stager_gives_up_the_pad_pin_rather_than_empty_the_floor();
     test_auto_stager_says_what_a_chute_on_the_floor_needs();
     test_auto_stager_reads_the_graph_not_the_part_order();

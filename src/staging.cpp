@@ -1412,20 +1412,32 @@ StagingPlan autoStage(BuildShip &ship) {
        of a ladder stops being seven dead presses (#1023). */
     bool authoredCuts = true;
     for(int d : decs) { if(authored[d] <= 1) { authoredCuts = false; break; } }
+    /* nearDec[p] = the nearest decoupler at or above p, read in the same parent-before-child
+       order the label walk below uses. The containment clamp and the containment assert then cost
+       one step per part rather than a chain walk per cut: on a stack of serial cuts the walk
+       version is quadratic (measured: 4001 parts with a cut every other part, 16 ms for the two
+       walks against 0.29 ms at 501), and a hull only stays this big until the game scales up. */
+    std::vector<int> nearDec(n, -1);
+    for(int p : order) {
+        const int par = ship.parts[(size_t)p].parent;
+        nearDec[p] = isDec[p] ? p
+                   : (par >= 0 && (size_t)par < n ? nearDec[(size_t)par] : -1);
+    }
+
     std::vector<int> cutAuth = authored;
     int swallowed = 0;
     if(authoredCuts) {
         /* Walking `order` backwards visits every child before its parent, so a repaired number
-           climbs a chain of nested cuts in one pass. */
+           climbs a chain of nested cuts one nearest-cut link at a time. */
         for(size_t k = order.size(); k-- > 0; ) {
             const int d = order[k];
             if(!isDec[d]) { continue; }
-            for(int par = ship.parts[(size_t)d].parent; par >= 0 && (size_t)par < n;
-                par = ship.parts[(size_t)par].parent) {
-                if(isDec[par] && cutAuth[par] > cutAuth[d]) { cutAuth[par] = cutAuth[d]; }
-            }
+            const int par = ship.parts[(size_t)d].parent;
+            if(par < 0 || (size_t)par >= n) { continue; }
+            const int a = nearDec[(size_t)par];   // the nearest cut d sits inside
+            if(a >= 0 && cutAuth[a] > cutAuth[d]) { cutAuth[a] = cutAuth[d]; }
         }
-        for(int d : decs) { if(cutAuth[d] != authored[d]) { swallowed++; } }
+        for(int d : decs) { if(cutAuth[d] != authored[d]) { swallowed++; } }   // per cut, not per pair
     }
     // One key for both the sort and the rung count, so they cannot drift apart.
     auto cutKey = [&](int i) { return std::pair<int, int>{authoredCuts ? cutAuth[i] : 1, depth[i]}; };
@@ -1468,11 +1480,12 @@ StagingPlan autoStage(BuildShip &ship) {
         /* And a cut never rides a press inside its own ancestor's: pressing the ancestor would
            take the cut with it, leaving a label that answers to nothing in flight while the
            ladder says it does (#1020). Depth orders this for free; authored numbers have to be
-           clamped to, which is what the cutAuth pass above is. */
-        for(int par = ship.parts[(size_t)d].parent; par >= 0 && (size_t)par < n;
-            par = ship.parts[(size_t)par].parent) {
-            assert(!isDec[par] || label[d] >= label[par]);
-        }
+           clamped to, which is what the cutAuth pass above is. The nearest cut is enough to
+           check: the relation is transitive along the chain of nearest-cut links, and every link
+           gets checked by the cut at its foot. */
+        const int par = ship.parts[(size_t)d].parent;
+        const int a = (par >= 0 && (size_t)par < n) ? nearDec[(size_t)par] : -1;
+        assert(a < 0 || label[d] >= label[a]);
     }
     if(!floorParts) {
         /* Every root is a decoupler, so no part would carry label 1 and the LOWEST label in
@@ -1516,8 +1529,7 @@ StagingPlan autoStage(BuildShip &ship) {
         authoredLo = std::min(authoredLo, s);
     }
     std::vector<int> pin;
-    int pinFromFloor = 0;
-    bool pinGivenUp = false;
+    int floorPins = 0, floorPinsGivenUp = 0;
     if(authoredHi > authoredLo) {
         for(int e : engs) {
             if(authored[e] != authoredHi || label[e] == hi) { continue; }
@@ -1527,16 +1539,15 @@ StagingPlan autoStage(BuildShip &ship) {
                carries two roles (measured over res/data/parts.json), so this is the cliff rather
                than a live shape. */
             if(isDec[e] || isChute[e]) { continue; }
+            /* Only a pin standing on the floor can hurt, and only one of them can hurt twice: the
+               floor has to keep ONE part, or the lowest label the build carries becomes a cut --
+               the #1010 rule 2 fault the refusal above exists to prevent. Pins standing anywhere
+               else are left alone, so giving up is per engine and not per plan. */
+            if(label[e] == 1) {
+                if(floorPins + 1 >= floorParts) { floorPinsGivenUp++; continue; }
+                floorPins++;
+            }
             pin.push_back(e);
-            if(label[e] == 1) { pinFromFloor++; }
-        }
-        /* Pinning the LAST part on the floor empties label 1, and then the lowest label the build
-           carries is a cut -- the #1010 rule 2 fault the refusal above exists to prevent. An
-           engine left on its own cut still burns until that press, so the ladder keeps working
-           and it is the ignition intent that gets given up. */
-        if(pinFromFloor >= floorParts) {
-            pinGivenUp = !pin.empty();
-            pin.clear();
         }
     }
     for(int e : pin) { label[e] = hi; }
@@ -1601,11 +1612,12 @@ StagingPlan autoStage(BuildShip &ship) {
                       hi);
         plan.notes.push_back(buf);
     }
-    if(pinGivenUp) {
+    if(floorPinsGivenUp > 0) {
         std::snprintf(buf, sizeof buf,
-                      "note: the build lights an engine from the pad, but it is the only part on "
-                      "label 1, so the pin is dropped -- pinning it would leave the lowest label "
-                      "carrying a cut (#1010 rule 2)");
+                      "note: %d engine(s) the build lights from the pad stay on label 1 because "
+                      "they are all %d part(s) the floor carries -- lifting them would leave the "
+                      "lowest label carrying a cut (#1010 rule 2), and as numbered they light "
+                      "only on a press past the ladder", floorPinsGivenUp, floorParts);
         plan.notes.push_back(buf);
     }
     if(swallowed > 0) {

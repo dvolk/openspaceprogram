@@ -144,7 +144,9 @@ void validateStaging(const BuildShip &ship, std::vector<std::string> &warns);
    other way across a containment relation is not an order the stack can fly: the outer number is
    read down to the inner one, and the depth tie-break then puts the inner cut higher -- the only
    order that works. Depth gets this for free; authored numbers are clamped to it, and the plan
-   says how many it bent rather than bending them silently.
+   says how many it bent rather than bending them silently. A bent number moves that cut relative to
+   the unrelated cuts it used to sit beside, and can split a press the author shared or add a rung,
+   so the too-many-rungs refusal is measured AFTER the repair.
 
    An engine the build lights FROM THE PAD stays lit at the pad, pinned to the plan's hi. The
    tree says when a part FALLS and never when an engine STARTS, and those are two different
@@ -154,10 +156,12 @@ void validateStaging(const BuildShip &ship, std::vector<std::string> &warns);
    pin reads ONE part's number while the ordering insists on all of them, deliberately: a sequence
    needs every member numbered to mean anything, and "this engine lights at the pad" is one part's
    own statement. Two limits on it: a part that is ALSO a cut or a chute is left alone (that label
-   belongs to the separation, and a pinned chute would open on the first press), and the pin is
-   dropped when the pinned engine is the last part on the floor -- an empty label 1 would leave the
-   lowest label the build carries being a cut, which is #1010 rule 2, and an engine on its own cut
-   still burns until that press.
+   belongs to the separation, and a pinned chute would open on the first press), and a pin standing
+   on the floor is declined once only one part would be left there -- an empty label 1 leaves the
+   lowest label the build carries being a cut, which is #1010 rule 2. A part reaches the floor only
+   when NO cut is above it, so an engine given up this way lights only on a press past the ladder:
+   both choices cost the player something, and the plan protects the ladder. Pins standing anywhere
+   else are unaffected.
 
    Refuses rather than guesses: leaves the build exactly as it was and says why in `notes`.
    The refusals are the places where the tree cannot see the player's intent, or cannot read
