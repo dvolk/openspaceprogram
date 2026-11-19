@@ -2093,11 +2093,14 @@ static void test_auto_stager_numbers_the_tree_from_its_decouplers() {
     CHECK_TRUE(labelsOf(bs) == std::vector<int>({1, 2, 2, 2, 3, 3, 3}),
                "the floor, the core cut, the booster cut");
     CHECK_TRUE(plan.changes.size() == 6, "every part but the pod moved");
+    if(plan.changes.size() != 6) { return; }   // CHECK does not bail; indexing it would only segfault
     CHECK_TRUE(plan.changes[0].part == dCore && plan.changes[0].from == 1 && plan.changes[0].to == 2,
                "and the change list says what it did to which part");
+    CHECK_TRUE(plan.changes[0].id == "d_core",
+               "and carries the id, which survives the part vector moving (#1013's undo)");
     /* The decoupler part rides the press that drops it, not the side it stays on. */
     CHECK_TRUE(bs.parts[dCore].stage == 2 && bs.parts[dBoost].stage == 3,
-               "a decoupler separates itself (vehicle.cpp:5577)");
+               "a decoupler separates itself (Vehicle::droppedPartsAtStage)");
     /* The order a press meets them: deepest cut first (label 3), then 2, and the floor is
        never stood on -- which is #1010 rule 2 made structural. */
     CHECK_TRUE(bs.parts[dBoost].stage > bs.parts[dCore].stage, "the deepest cut fires first");
@@ -2304,6 +2307,96 @@ static void test_auto_stager_refuses_to_move_an_engine_off_launch() {
     CHECK_TRUE(labelsOf(bare) == std::vector<int>({1, 1, 2, 2, 2}), "floor and cut");
 }
 
+/* The plan walks the parent GRAPH rather than the part index, and refuses when the graph
+   cannot be read. Each shape below is one the extract or the checker already has to survive;
+   an index-based walk gets them wrong quietly. */
+static void test_auto_stager_reads_the_graph_not_the_part_order() {
+    Catalog cat;
+    /* Built in the wrong order on purpose: the booster engine is listed BEFORE its parent,
+       which an index pass would read as a second root -- and then it would sit on the floor
+       while the cut that flight drops it with sits one press above. */
+    BuildShip bs;
+    const int eng = addPart(bs, cat.engine(10, 0.5, 1000.0), "bo_eng", 2, 1);   // parent = index 2
+    const int pod = addPart(bs, cat.mono(100, 0), "pod", -1, 1);
+    const int d = addPart(bs, cat.decoupler(5), "d_boost", pod, 1);
+    (void)pod;
+
+    StagingPlan plan = autoStage(bs);
+    CHECK_TRUE(plan.applied, "a part listed before its parent still numbers");
+    CHECK_TRUE(labelsOf(bs) == std::vector<int>({2, 1, 2}),
+               "the graph decides who hangs off whom, not the list order");
+    CHECK_TRUE(plan.changes.size() == 2 && plan.changes[0].id == "bo_eng",
+               "and the change list names what it moved");
+    (void)eng; (void)d;
+}
+
+static void test_auto_stager_refuses_a_parent_chain_that_loops() {
+    Catalog cat;
+    BuildShip bs;
+    const int d = addPart(bs, cat.decoupler(5), "d_loop", 0, 1);   // its own parent
+    addPart(bs, cat.tank(50, 25, 25), "tank", d, 1);
+    (void)d;
+
+    StagingPlan plan = autoStage(bs);
+    CHECK_TRUE(!plan.applied, "a chain that loops cannot be walked, so it cannot be numbered");
+    CHECK_TRUE(has_note(plan, "parent chain that loops"), "and it says so in those words");
+    CHECK_TRUE(labelsOf(bs) == std::vector<int>({1, 1}), "untouched");
+
+    std::vector<std::string> w;
+    validateStaging(bs, w);
+    CHECK_TRUE(has_warn(w, "parent chain that loops"),
+               "the checker sees the same thing: one graph, one answer, no assert in between");
+}
+
+static void test_auto_stager_refuses_a_forest_whose_every_root_is_a_cut() {
+    Catalog cat;
+    /* Two independent stacks, each entered through a decoupler, one with a nested cut. No
+       part would carry label 1, so the LOWEST label the build carries would be a cut -- the
+       exact thing #1010 rule 2 reports. A plan that applies has to leave the checker quiet,
+       so this shape is refused rather than numbered into a ship whose bottom cut needs a
+       press past the ladder. */
+    BuildShip bs;
+    const int dA = addPart(bs, cat.decoupler(5), "d_a", -1, 1);
+    addPart(bs, cat.tank(50, 25, 25), "a_tank", dA, 1);
+    const int dB = addPart(bs, cat.decoupler(5), "d_b", -1, 1);
+    const int bTank = addPart(bs, cat.tank(50, 25, 25), "b_tank", dB, 1);
+    const int dIn = addPart(bs, cat.decoupler(5), "d_inner", bTank, 1);
+    addPart(bs, cat.tank(20, 10, 10), "inner_tank", dIn, 1);
+    (void)dB; (void)bTank; (void)dIn;
+
+    StagingPlan plan = autoStage(bs);
+    CHECK_TRUE(!plan.applied, "nothing would hold the floor, so the plan steps back");
+    CHECK_TRUE(has_note(plan, "every root"), "and names the shape");
+    CHECK_TRUE(labelsOf(bs) == std::vector<int>({1, 1, 1, 1, 1, 1}), "untouched");
+
+    /* The labels it would have produced, set by hand, are what the checker then objects to:
+       proof the refusal is about a fault a player would fly, not a tidy rule. */
+    for(BuildPart &p : bs.parts) { p.stage = 2; }
+    bs.parts[4].stage = 3;
+    bs.parts[5].stage = 3;
+    std::vector<std::string> w;
+    validateStaging(bs, w);
+    CHECK_TRUE(has_warn(w, "a decoupler rides label 2, the lowest"),
+               "the shape it refuses is the shape rule 2 reports");
+}
+
+static void test_auto_stager_refuses_more_cuts_than_labels_exist() {
+    Catalog cat;
+    /* A non-decoupler root and then one decoupler per depth: the ladder wants
+       hi = kMaxStage + 1, and labels run 1..kMaxStage on both sides of a save
+       (shipdef.cpp:1192-1201 throws for the rest). Also a check that the tree walk is
+       iterative -- a recursive one dies here instead of answering. */
+    BuildShip bs;
+    int par = addPart(bs, cat.tank(10, 0, 0), "root_tank", -1, 1);
+    for(int i = 0; i < kMaxStage; i++) { par = addPart(bs, cat.decoupler(1), "d", par, 1); }
+    CHECK_TRUE((int)bs.parts.size() == kMaxStage + 1, "the build is the size it says it is");
+
+    StagingPlan plan = autoStage(bs);
+    CHECK_TRUE(!plan.applied, "the label range runs out before the cuts do");
+    CHECK_TRUE(has_note(plan, "labels a ship can carry"), "and says the range is the reason");
+    CHECK_TRUE(par >= 0, "the chain was built");
+}
+
 int main() {
     test_two_stage();
     test_single_stage();
@@ -2345,6 +2438,10 @@ int main() {
     test_auto_stager_keeps_two_engines_relative_to_each_other();
     test_auto_stager_refuses_to_move_an_engine_off_launch();
     test_auto_stager_says_what_a_chute_on_the_floor_needs();
+    test_auto_stager_reads_the_graph_not_the_part_order();
+    test_auto_stager_refuses_a_parent_chain_that_loops();
+    test_auto_stager_refuses_a_forest_whose_every_root_is_a_cut();
+    test_auto_stager_refuses_more_cuts_than_labels_exist();
 
     printf("test_staging_dv: %d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;

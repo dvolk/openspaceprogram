@@ -382,7 +382,7 @@ static int printFleetReport(const Game &game, const GameArgs &args,
            "hull", "parts", "wet kg", "dv m/s", "liftoff", "verdict");
 
     int broken = 0, no_engine = 0, grounded = 0, short_hull = 0, solvent = 0, flagged = 0;
-    int refused = 0, restaged = 0, moved = 0;
+    int refused = 0, restaged = 0, moved = 0, planned = 0, faults = 0;
     for(auto &[name, path]: hulls) {
         ShipDef def;
         try {
@@ -447,6 +447,7 @@ static int printFleetReport(const Game &game, const GameArgs &args,
             refused++;
             for(const std::string &n : plan.notes) { printf("    %s\n", n.c_str()); }
         } else {
+            planned++;
             if(!plan.changes.empty()) { restaged++; moved += (int)plan.changes.size(); }
             for(const std::string &n : plan.notes) { printf("    %s\n", n.c_str()); }
             for(size_t k = 0; k < plan.changes.size(); k++) {
@@ -455,15 +456,16 @@ static int printFleetReport(const Game &game, const GameArgs &args,
                     break;
                 }
                 const StagingChange &c = plan.changes[k];
-                printf("    auto-stage: '%s' label %d -> %d\n",
-                       trial.parts[(size_t)c.part].id.c_str(), c.from, c.to);
+                printf("    auto-stage: '%s' label %d -> %d\n", c.id.c_str(), c.from, c.to);
             }
-            /* An auto-staged build should have nothing left for the checker to say -- the
-               labels come out contiguous, no cut lands on the floor, and a cut that would
-               take everything was refused above. Over 32 hulls that is cheaper than a test
-               and much less likely to drift. */
+            /* An applied plan should leave the checker nothing to say -- the labels come out
+               contiguous, no cut lands on the floor, and a cut that would take everything was
+               refused above. Counted on every hull the plan APPLIES to and printed even at
+               zero, because "no hull broke it" and "it only ran on four hulls" are different
+               claims, and the second one is the honest description of this fleet today. */
             std::vector<std::string> after;
             validateStaging(trial, after);
+            faults += (int)after.size();
             for(const std::string &w : after) { printf("    auto-stage LEFT A FAULT: %s\n", w.c_str()); }
         }
     }
@@ -479,9 +481,12 @@ static int printFleetReport(const Game &game, const GameArgs &args,
     printf("%d of %d hull(s) carry a staging-order warning above.\n", flagged, (int)hulls.size());
     /* The other question about the numbering, asked here because the fleet is the only big
        sample there is (#1012): would auto-staging change this hull, and if it refused, why.
-       Printed even at zero, for the same reason as the line above. */
-    printf("%d of %d hull(s) would change under auto-staging (%d label(s) move); %d refuse.\n",
-           restaged, (int)hulls.size(), moved, refused);
+       The last two numbers are the reach of the invariant rather than a verdict -- a plan
+       that applies must leave the checker quiet, and only the hulls the plan applies to get
+       asked. Printed even at zero, for the same reason as the line above. */
+    printf("%d of %d hull(s) would change under auto-staging (%d label(s) move), %d number as "
+           "authored, %d refuse; %d hull(s) applied, %d fault(s) left behind.\n",
+           restaged, (int)hulls.size(), moved, planned - restaged, refused, planned, faults);
     if(broken > 0) { printf("%d def(s) failed to load.\n", broken); }
     return 0;
 }

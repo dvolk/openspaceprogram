@@ -1107,7 +1107,7 @@ std::string stagingPressNote(int lo, int hi, int stage) {
 }
 
 /* The parts under each part, keyed by index. A BuildShip is one tree for anything the loader
-   produces (shipdef.cpp:1024 defaults a part's parent to the entry before it) but a forest in
+   produces (shipdef.cpp:1023 defaults a part's parent to the entry before it) but a forest in
    principle -- graftTree/detachSubtree hand out one-root views, the VAB grafts a loaded hull
    into a bigger build, and tests build stacks directly -- so an out-of-range parent is simply
    no edge, which is what makes a parentless part a root. */
@@ -1121,23 +1121,53 @@ static void childIndex(const BuildShip &ship, std::vector<std::vector<int>> &chi
     }
 }
 
-/* How many parts a decoupler's press takes: the subtree rooted at the decoupler ITSELF,
-   because the press drops the decoupler with its stage (vehicle.cpp:5577). Answers n+1 for a
-   parent chain that loops -- no loader builds one (shipdef.cpp:1021 builds parent before
-   child), and both callers assert rather than follow it forever. Two readers, one definition:
-   validateStaging's rule 3 and autoStage's refusal both ask the question the extract itself
-   asks (vehicle.cpp:5803-5810), and they must not drift. */
-static size_t dropSideSize(int root, const std::vector<std::vector<int>> &children, size_t n) {
-    std::vector<int> walk;
-    walk.push_back(root);
-    size_t covered = 1;
-    for(size_t k = 0; k < walk.size(); k++) {   // BFS by index
-        for(int c : children[(size_t)walk[k]]) {
-            walk.push_back(c);
-            if(++covered > n) { return n + 1; }
+/* Every part in parent-before-child order, entering from each part no edge points at. The
+   GRAPH decides who hangs off whom, not the part index: an index pass would quietly call a
+   part a root because its parent happens to sit later in the list, and the answer would then
+   disagree with the drop walk (Vehicle::droppedPartsAtStage walks this same graph). Each part
+   has one parent field, so each is pushed once and `order` holds each reachable part exactly
+   once. A part the walk never reaches sits on a parent chain that loops -- a self-parent, or
+   two parts parenting each other -- and is left out, which is how both callers spot one. The
+   stack is a vector rather than recursion because a 10000-deep chain is legal here. */
+static void treeOrder(const std::vector<std::vector<int>> &children, std::vector<int> &order,
+                      std::vector<int> *depth) {
+    const size_t n = children.size();
+    std::vector<char> hasParent(n, 0);
+    for(size_t i = 0; i < n; i++) {
+        for(int c : children[i]) { hasParent[(size_t)c] = 1; }
+    }
+    if(depth != nullptr) { depth->assign(n, 0); }
+    order.clear();
+    order.reserve(n);
+    std::vector<std::pair<int, int>> stack;
+    for(size_t i = 0; i < n; i++) {
+        if(hasParent[i]) { continue; }
+        stack.push_back({(int)i, 0});
+        while(!stack.empty()) {
+            const auto [p, d] = stack.back();
+            stack.pop_back();
+            order.push_back(p);
+            if(depth != nullptr) { (*depth)[(size_t)p] = d; }
+            for(int c : children[(size_t)p]) { stack.push_back({c, d + 1}); }
         }
     }
-    return covered;
+}
+
+/* Parts under each part, itself included, filled by reading that order back-to-front. 0 marks
+   a part the order never reached. This is what a decoupler's press takes: the press drops the
+   decoupler WITH its stage (Vehicle::droppedPartsAtStage), so the subtree is rooted at the
+   decoupler. validateStaging's rule 3 and autoStage's refusal both ask the question the
+   extract itself asks (vehicle.cpp:5803-5810), so they read one shared definition. */
+static void subtreeSizes(const std::vector<int> &order,
+                         const std::vector<std::vector<int>> &children,
+                         std::vector<size_t> &sizes) {
+    sizes.assign(children.size(), 0);
+    for(size_t k = order.size(); k-- > 0;) {
+        const int p = order[k];
+        size_t s = 1;
+        for(int c : children[(size_t)p]) { s += sizes[(size_t)c]; }
+        sizes[(size_t)p] = s;
+    }
 }
 
 void validateStaging(const BuildShip &ship, std::vector<std::string> &warns) {
@@ -1254,13 +1284,25 @@ void validateStaging(const BuildShip &ship, const std::vector<StagingLabel> &lab
         const size_t n = ship.parts.size();
         std::vector<std::vector<int>> children;
         childIndex(ship, children);
+        std::vector<int> order;
+        treeOrder(children, order, nullptr);
+        std::vector<size_t> sizes;
+        subtreeSizes(order, children, sizes);
+        if(order.size() != n) {
+            /* A part no walk reaches is on a chain that loops, so nothing can ever separate
+               it. No writer produces one today (shipdef.cpp:1021-1038 requires a parent that
+               is already defined), and tests build self-parented shapes for other functions,
+               so say it in words rather than assert -- the shipped binary asserts. */
+            std::snprintf(buf, sizeof buf,
+                          "warn: %d part(s) sit on a parent chain that loops -- nothing can "
+                          "separate them", (int)(n - order.size()));
+            warns.push_back(buf);
+        }
         for(size_t i = 0; i < n; i++) {
             const BuildPart &p = ship.parts[i];
             if(p.def == nullptr) { continue; }
             if(!(stageRoles(p.def) & (unsigned)StageRole::Decoupler)) { continue; }
-            const size_t side = dropSideSize((int)i, children, n);
-            assert(side <= n);   // a looped parent chain: see dropSideSize
-            if(side != n) { continue; }
+            if(sizes[i] != n) { continue; }
             std::snprintf(buf, sizeof buf,
                           "warn: decoupler '%s' at label %d would have to take the whole ship "
                           "with it -- the press is refused and the label is spent",
@@ -1281,13 +1323,17 @@ StagingPlan autoStage(BuildShip &ship) {
 
     std::vector<std::vector<int>> children;
     childIndex(ship, children);
+    std::vector<int> order;
+    std::vector<int> depth;
+    treeOrder(children, order, &depth);
+    std::vector<size_t> sizes;
+    subtreeSizes(order, children, sizes);
 
     /* authored[] is the build's own numbering, kept for the two questions that compare
        against it: whether re-numbering would re-sequence the engines, and which engines the
        plan pulls apart. The rest of the function never reads a label again. */
     std::vector<int> authored(n);
     std::vector<char> isDec(n, 0), isEng(n, 0), isChute(n, 0);
-    std::vector<int> depth(n, 0);
     std::vector<int> decs;
     for(size_t i = 0; i < n; i++) {
         authored[i] = ship.parts[i].stage;
@@ -1295,14 +1341,19 @@ StagingPlan autoStage(BuildShip &ship) {
         if(roles & (unsigned)StageRole::Decoupler) { isDec[i] = 1; decs.push_back((int)i); }
         if(roles & (unsigned)StageRole::Engine) { isEng[i] = 1; }
         if(roles & (unsigned)StageRole::Chute) { isChute[i] = 1; }
-        /* Parent before child is the build's contract (shipdef.cpp:1021 for a loaded file;
-           the VAB only ever parents to a part that is already in the list), so one index pass
-           gives every part its depth. A self or forward parent -- which tests do build --
-           makes the part a root rather than reading a depth nobody computed; the whole-ship
-           guard and the strictly-decreasing parent walk below both stay safe either way. */
-        if(ship.parts[i].parent >= 0 && (size_t)ship.parts[i].parent < i) {
-            depth[i] = depth[(size_t)ship.parts[i].parent] + 1;
-        }
+    }
+
+    if(order.size() != n) {
+        /* Parts on a chain that loops were skipped by the walk, so any label here would be a
+           guess about a stack that cannot be read. Said rather than asserted: the shipped
+           binary asserts, and a self-parented BuildShip is a shape the test suite builds for
+           other functions -- no loader produces one (shipdef.cpp:1021-1038 requires a parent
+           that is already defined), but autoStage is headed for a mouse button (#1013). */
+        std::snprintf(buf, sizeof buf,
+                      "refuse: %d part(s) sit on a parent chain that loops -- the stack cannot "
+                      "be read, let alone numbered", (int)(n - order.size()));
+        plan.notes.push_back(buf);
+        return plan;
     }
 
     if(decs.empty()) {
@@ -1319,9 +1370,7 @@ StagingPlan autoStage(BuildShip &ship) {
        could make it mean anything (#541). Numbering it would hide the shape the player has
        to fix in the stack view instead. */
     for(int d : decs) {
-        const size_t side = dropSideSize(d, children, n);
-        assert(side <= n);   // a looped parent chain: see dropSideSize
-        if(side != n) { continue; }
+        if(sizes[(size_t)d] != n) { continue; }
         std::snprintf(buf, sizeof buf,
                       "refuse: '%s' would have to take the whole ship with it, so no label "
                       "would do anything -- the press itself refuses (#541)",
@@ -1361,16 +1410,31 @@ StagingPlan autoStage(BuildShip &ship) {
     }
 
     /* Every other part takes the label of the decoupler that separates it, which is the
-       nearest one walking up its parent chain -- so the answer propagates down from the
-       parent in one index pass, and a part with no decoupler above it lands on the floor
-       with the hull it stays on to the end. */
+       nearest one walking up its parent chain. Reading the walk's ORDER makes that one pass
+       and correct whatever order the parts happen to be in: a parent is always earlier in
+       `order` than its child, which an index pass can only assume. A part with no decoupler
+       above it lands on the floor, with the hull it stays on to the end. */
     std::vector<int> label(n, 1);
-    for(size_t i = 0; i < n; i++) {
-        if(isDec[i]) { label[i] = decLabel[i]; continue; }
-        const int par = ship.parts[i].parent;
-        label[i] = (par >= 0 && (size_t)par < i) ? label[(size_t)par] : 1;
+    bool floorUsed = false;
+    for(int p : order) {
+        if(isDec[p]) { label[p] = decLabel[p]; continue; }
+        const int par = ship.parts[p].parent;
+        label[p] = (par >= 0 && (size_t)par < n) ? label[(size_t)par] : 1;
+        if(label[p] == 1) { floorUsed = true; }
     }
     for(int d : decs) { assert(label[d] >= 2); }   // the floor never carries a cut
+    if(!floorUsed) {
+        /* Every root is a decoupler, so no part would carry label 1 and the LOWEST label in
+           the build would be a cut -- which is what #1010 rule 2 reports, the counter never
+           standing there. A plan that applies must leave the checker with nothing to say, so
+           this shape is refused rather than numbered into a ship whose bottom cut needs a
+           press past the ladder. */
+        std::snprintf(buf, sizeof buf,
+                      "refuse: every root of this build is a decoupler, so the lowest label "
+                      "would carry a cut -- the counter never stands there (#1010 rule 2)");
+        plan.notes.push_back(buf);
+        return plan;
+    }
 
     /* The tree says WHO separates and nothing about WHEN an engine was meant to light: an
        engine lights when the counter steps down onto its label (vehicle.cpp:6451), so its
@@ -1411,17 +1475,42 @@ StagingPlan autoStage(BuildShip &ship) {
         }
     }
 
+    /* Engines, both remaining questions in one pass over the pairs. (a) A pair the build
+       ORDERS -- distinct labels -- is authored intent, and if the tree implies the opposite
+       then the two readings of the build disagree and the plan steps back. (b) A pair the
+       build labelled TOGETHER carries no order to keep (that is the default a placed part
+       gets, and refusing on it would refuse every stack straight out of the VAB), but pulling
+       it apart IS a behaviour change, so it is counted and reported rather than hidden. */
+    int splitA = -1, splitB = -1;
+    size_t apart = 0;
     for(size_t a = 0; a < engs.size(); a++) {
         for(size_t b = a + 1; b < engs.size(); b++) {
             const int ea = engs[a], eb = engs[b];
-            if(authored[ea] == authored[eb]) { continue; }
+            if(authored[ea] == authored[eb]) {
+                if(label[ea] != label[eb]) {
+                    if(splitA < 0) { splitA = ea; splitB = eb; }
+                    apart++;
+                }
+                continue;
+            }
             const bool authoredFirst = authored[ea] > authored[eb];
             const bool plannedFirst = label[ea] > label[eb];
             if(authoredFirst == plannedFirst) { continue; }
-            std::snprintf(buf, sizeof buf,
-                          "refuse: as built, '%s' lights before '%s'; the stack would light it "
-                          "after -- fix the stack, or number the labels by hand",
-                          ship.parts[(size_t)ea].id.c_str(), ship.parts[(size_t)eb].id.c_str());
+            if(label[ea] == label[eb]) {
+                /* Worded apart because "it would light after" is the wrong sentence for a plan
+                   that would light the two together. */
+                std::snprintf(buf, sizeof buf,
+                              "refuse: '%s' lights before '%s' as built; the stack would light "
+                              "them together -- fix the stack, or number the labels by hand",
+                              ship.parts[(size_t)ea].id.c_str(),
+                              ship.parts[(size_t)eb].id.c_str());
+            } else {
+                std::snprintf(buf, sizeof buf,
+                              "refuse: as built, '%s' lights before '%s'; the stack would light "
+                              "it after -- fix the stack, or number the labels by hand",
+                              ship.parts[(size_t)ea].id.c_str(),
+                              ship.parts[(size_t)eb].id.c_str());
+            }
             plan.notes.push_back(buf);
             return plan;
         }
@@ -1429,35 +1518,24 @@ StagingPlan autoStage(BuildShip &ship) {
 
     for(size_t i = 0; i < n; i++) {
         if(label[i] == ship.parts[i].stage) { continue; }
-        plan.changes.push_back({(int)i, ship.parts[i].stage, label[i]});
+        plan.changes.push_back({(int)i, ship.parts[i].id, ship.parts[i].stage, label[i]});
         ship.parts[i].stage = label[i];
     }
     plan.applied = true;
 
-    /* Two things the player should know the plan did, said once instead of leaving them to
-       notice mid-flight. Both are caveats, not refusals: the numbering is right for the
-       stack, and the stack is what the tree says it is. */
-    size_t apart = 0;
-    int pa = -1, pb = -1;
-    for(size_t a = 0; a < engs.size(); a++) {
-        for(size_t b = a + 1; b < engs.size(); b++) {
-            if(authored[engs[a]] != authored[engs[b]] || label[engs[a]] == label[engs[b]]) {
-                continue;
-            }
-            if(pa < 0) { pa = engs[a]; pb = engs[b]; }
-            apart++;
-        }
-    }
+    /* Two caveats, said once instead of left for the player to notice mid-flight. Neither is
+       a refusal: the numbering is right for the stack, and the stack is what the tree says
+       it is. */
     if(apart > 0) {
         std::snprintf(buf, sizeof buf,
                       "note: %d engine pair(s) carried one label and would now light apart -- "
                       "'%s' at %d, '%s' at %d; an engine lights when the counter steps down "
-                      "onto its label", (int)apart, ship.parts[(size_t)pa].id.c_str(),
-                      label[pa], ship.parts[(size_t)pb].id.c_str(), label[pb]);
+                      "onto its label", (int)apart, ship.parts[(size_t)splitA].id.c_str(),
+                      label[splitA], ship.parts[(size_t)splitB].id.c_str(), label[splitB]);
         plan.notes.push_back(buf);
     }
     for(size_t i = 0; i < n; i++) {
-        if(!isChute[i] || label[i] > 1 || hi <= 1) { continue; }
+        if(!isChute[i] || label[i] > 1) { continue; }
         std::snprintf(buf, sizeof buf,
                       "note: a chute rides label %d, the floor: it deploys on a press past the "
                       "ladder", label[i]);

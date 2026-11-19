@@ -111,31 +111,51 @@ void validateStaging(const BuildShip &ship, const std::vector<StagingLabel> &lab
    checker exists to notice. The tree already knows the answer, because a label is only
    ever a position on the press counter:
 
-   order the decouplers by their DEPTH from the tree root, deepest first (the deepest cut
-   is the one a press makes first, and the counter starts high; flight already reads
-   separation order that way, #540), give each distinct depth one label running from
+   order the decouplers by their DEPTH from the tree root, deepest first (the deepest cut is
+   the one the first press makes, and the counter starts high). Depth is also what #540 uses
+   to order decouplers WITHIN one press; ordering cuts ACROSS presses is this function's own
+   guess, and #1020 tracks where it goes wrong -- an asparagus hull sequences its cuts by the
+   fuel schedule, not by depth. Give each distinct depth one label running from
    hi = levels + 1 down to 2, and give every other part the label of the decoupler that
-   separates it -- walking up its parent chain. A decoupler separates ITSELF: the press
-   drops the decoupler with its stage (vehicle.cpp:5577), so it rides its own label. What
-   nothing separates gets the floor, 1 -- which is why no decoupler can land there, and
-   why the labels come out contiguous: an auto-staged build never trips #1010's rules.
+   separates it -- walking up its parent chain. A decoupler separates ITSELF: the press drops
+   the decoupler with its stage (Vehicle::droppedPartsAtStage), so it rides its own label.
+   What nothing separates gets the floor, 1 -- which is why no decoupler can land there, and
+   why the labels come out contiguous: an auto-staged build leaves #1010's checker nothing to
+   say, and --fleet-report checks that over every shipped hull.
 
    Decouplers at the same depth SHARE a label on purpose. A ring of four is one press, and
    it is shipped, not hypothetical -- #540 counts them on 4 of 29 hulls.
 
    Refuses rather than guesses: leaves the build exactly as it was and says why in `notes`.
-   The three refusals are the places where the tree cannot see the player's intent -- no
-   decoupler at all (one label is the answer, and renumbering would invent presses); a
-   decoupler whose side is every part (the press is refused in flight, so the label would
-   be spent on nothing, #541); and a renumber that moves an engine's ignition relative to
-   another engine, since which engine was meant to light at launch is authored meaning that
-   no parent chain implies. A chute is left with its part even when that lands it on the
-   floor: a floor chute is the normal way to author one (#1010 rule 2), so `notes` says
-   what the player has to do about it rather than the plan quietly moving it. */
+   The refusals are the places where the tree cannot see the player's intent, or cannot read
+   the stack at all:
+
+   * no decoupler at all -- one label is the answer, and renumbering would invent presses;
+   * a parent chain that loops (a self-parent: nothing could ever separate those parts);
+   * a decoupler whose side is every part -- the press is refused in flight, so the label
+     would be spent on nothing (#541);
+   * a build whose every root is a decoupler, which would leave the LOWEST label carrying a
+     cut -- exactly what #1010 rule 2 reports;
+   * more cut levels than the label range (1..kMaxStage), past which a save would not load;
+   * an engine pair the build ordered that the tree would re-sequence;
+   * an engine the build lights at launch that the plan would move off launch, unless nothing
+     was numbered at all. heavy_asp does this on purpose: its core burns through every
+     separation, and the tree only says when an engine FALLS, never when it starts.
+
+   A chute is left with its part even when that lands it on the floor: a floor chute is the
+   normal way to author one (#1010 rule 2), so `notes` says what the player has to do about
+   it rather than the plan quietly moving it.
+
+   One call plans AND applies. A dry run copies the BuildShip (cheap: indices, strings and
+   const PartDef*, no self-references) the way --fleet-report does; #1013's undo wants to keep
+   a plan and replay it, which is why the change list carries the part id rather than making a
+   caller re-derive it. `part` indexes the vector as it was when the plan ran and is invalid
+   once parts are added or removed -- use `id`. */
 struct StagingChange {
-    int part = 0;      // index into ship.parts
-    int from = 1;      // label it had
-    int to = 1;        // label it got
+    int part = 0;              // index into ship.parts, valid only for the build as planned
+    std::string id;            // the part's id, which survives the vector moving
+    int from = 1;              // label it had
+    int to = 1;                // label it got
 };
 struct StagingPlan {
     bool applied = false;                  // false = refused: `ship` is untouched
