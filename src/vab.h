@@ -52,6 +52,12 @@ void vabDeleteSelected(Game &g);
 // deleted instead (the palette already has it). Root refuses.
 void vabDetachSelected(Game &g);
 
+/* Ctrl+Z / the Staging window's Undo button (#1013): take the newest STAGING edit back --
+   the part window's stage box, or an Auto-stage plan. Labels only; place, delete, detach
+   and clear destroy parts and are not on this stack. Tolerates the tree having changed
+   under the edit: a part that has gone is reported, not invented. */
+void vabUndoStaging(Game &g);
+
 // `name` is the ship's identity ("racer"), not a path.
 void vabSave(Game &g, const char *name);
 

@@ -48,6 +48,11 @@ void KeyBindings::resetDefaults() {
     add(Slot::GoFlight,      SDL_SCANCODE_2);
     add(Slot::GoTracking,    SDL_SCANCODE_3);
     add(Slot::GoVab,         SDL_SCANCODE_4);
+    /* The VAB's undo (#1013). Both ctrl sides, like ToggleFreeCam's shift: a binding names
+       one concrete side, so naming only the left one would make the right-hand chord do
+       nothing. No Ctrl+Y: autoStage is deterministic, so pressing it again IS the redo. */
+    perSlot[(size_t)Slot::UndoStaging].push_back(KeyBind{SDL_SCANCODE_Z, SDL_KMOD_LCTRL});
+    perSlot[(size_t)Slot::UndoStaging].push_back(KeyBind{SDL_SCANCODE_Z, SDL_KMOD_RCTRL});
 
     // Flight (piloting: orbit / first person, tick.cpp)
     add(Slot::PitchUp,       SDL_SCANCODE_W);
@@ -172,6 +177,7 @@ const char *slotName(Slot s) {
         case Slot::GoFlight:       return "go_flight";
         case Slot::GoTracking:     return "go_tracking";
         case Slot::GoVab:          return "go_vab";
+        case Slot::UndoStaging:    return "undo_staging";
         case Slot::PitchUp:        return "pitch_up";
         case Slot::PitchDown:      return "pitch_down";
         case Slot::YawLeft:        return "yaw_left";
@@ -252,6 +258,7 @@ const char *slotLabel(Slot s) {
         case Slot::GoFlight:       return "Go to flight";
         case Slot::GoTracking:     return "Go to Tracking Station";
         case Slot::GoVab:          return "Go to VAB";
+        case Slot::UndoStaging:    return "Undo staging edit (VAB)";
         case Slot::PitchUp:        return "Pitch up";
         case Slot::PitchDown:      return "Pitch down";
         case Slot::YawLeft:        return "Yaw left";
@@ -307,6 +314,7 @@ SlotGroup slotGroup(Slot s) {
         case Slot::ToggleForceOverlay:
         case Slot::GoSpaceCenter: case Slot::GoFlight:
         case Slot::GoTracking: case Slot::GoVab:
+        case Slot::UndoStaging:
             return SlotGroup::Game;
         case Slot::PitchUp: case Slot::PitchDown:
         case Slot::YawLeft: case Slot::YawRight:

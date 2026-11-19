@@ -7229,7 +7229,16 @@ void drawVabUI(Game &g) {
                    stage any part carries (vehicle.cpp:1650-1658). #517 removed the cost
                    reason for this ceiling, not the reason. */
                 st = std::clamp(st, 1, kMaxStage);
-                bp.stage = st;
+                if(st != bp.stage) {
+                    /* Recorded before it is written, by ID rather than `sel`: the ops under
+                       this box swap the parts vector, and so does whatever the player does
+                       next frame, so an index is not a name (#1013). Holding the arrow
+                       repeats this call every frame; recordStagingEdit folds a run of
+                       same-part retypes into one entry, so a hold is one undo rather than
+                       however many frames it spanned. */
+                    recordStagingEdit(g.vab.stagingUndo, {{sel, bp.id, bp.stage, st}});
+                    bp.stage = st;
+                }
             }
             // The vab ops swap the parts vector (the bp reference dies with it).
             if(ImGui::Button("Detach subtree")) { vabDetachSelected(g); }
@@ -7432,6 +7441,43 @@ void drawVabUI(Game &g) {
             ImGui::TextDisabled("empty build -- place a part");
             return;
         }
+        /* The two buttons that make this window an EDITOR rather than a read-out: number
+           the labels from the stack (#1012) and take the last staging edit back (#1013).
+           Above the tables, and drawn before the cache refresh below, so the click and the
+           rows it changes land in the same frame -- a renumber that showed up a frame late
+           would let the verdicts be read against the build the player just left.
+
+           Both edits live here rather than next to the part's number box because they answer
+           different questions: that box is one part, this is the whole stack, and the undo
+           covers whichever of the two moved the label. */
+        if(ImGui::Button("Auto-stage")) {
+            StagingPlan plan = autoStage(g.vab.build);
+            if(!plan.applied) {
+                /* The build is untouched; say which of the refusals it was. A plan that
+                   cannot be worked out is not recorded, so Undo still points at the
+                   player's own last edit. */
+                for(const std::string &n : plan.notes) { g.toast("%s", n.c_str()); }
+            } else if(plan.changes.empty()) {
+                g.toast("Auto-stage: those labels already match the stack");
+            } else {
+                /* The plan IS the undo record: changes() already names part, id, from, to. */
+                const int moved = (int)plan.changes.size();
+                recordStagingEdit(g.vab.stagingUndo, std::move(plan.changes));
+                g.toast("Auto-staged %d part%s from the stack -- Ctrl+Z to take it back",
+                        moved, moved == 1 ? "" : "s");
+                for(const std::string &n : plan.notes) { g.toast("%s", n.c_str()); }
+            }
+        }
+        ImGui::SameLine();
+        /* The stack is read BEFORE the click: taking the last edit back empties it, and
+           EndDisabled() would then never run -- imgui asserts on that (the first run of
+           this button crashed the editor). */
+        const bool canUndo = !g.vab.stagingUndo.empty();
+        if(!canUndo) { ImGui::BeginDisabled(); }
+        if(ImGui::Button("Undo staging")) { vabUndoStaging(g); }
+        if(!canUndo) { ImGui::EndDisabled(); }
+        ImGui::SameLine();
+        ImGui::TextDisabled("Ctrl+Z");
         /* Recompute only when the build changed (#293): this redraws every
            frame, and the burn simulation is the most expensive thing in the
            editor. The signature hashes exactly what computeStaging reads --

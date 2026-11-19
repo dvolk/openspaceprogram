@@ -147,8 +147,8 @@ void validateStaging(const BuildShip &ship, const std::vector<StagingLabel> &lab
    it rather than the plan quietly moving it.
 
    One call plans AND applies. A dry run copies the BuildShip (cheap: indices, strings and
-   const PartDef*, no self-references) the way --fleet-report does; #1013's undo wants to keep
-   a plan and replay it, which is why the change list carries the part id rather than making a
+   const PartDef*, no self-references) the way --fleet-report does; the undo below replays a
+   plan backwards, which is why the change list carries the part id rather than making a
    caller re-derive it. `part` indexes the vector as it was when the plan ran and is invalid
    once parts are added or removed -- use `id`. */
 struct StagingChange {
@@ -163,6 +163,39 @@ struct StagingPlan {
     std::vector<std::string> notes;        // "refuse: ..." on a refusal, else player-facing caveats
 };
 StagingPlan autoStage(BuildShip &ship);
+
+/* Taking a staging edit back (#1013), scoped to LABELS. The VAB has no undo for place,
+   delete, detach or clear -- those destroy parts, and undoing them is a feature of its own
+   (#1013's own note about scope). A label is an inert int, so a staging edit needs no
+   snapshot of the build: it needs the list of (part, from, to) it performed, which is
+   exactly what a StagingPlan already carries. An auto-stage plan is therefore its own undo
+   record, and the part window's number box records a one-element list.
+
+   Newest last, and the stack only ever describes the build it was recorded against: a load
+   or a clear REPLACES the build, and whoever does that clears the stack with it.
+
+   Recorded by ID because the parts vector moves under the player: placing grafts, deleting
+   and detaching renumber everything below them, and a change that remembered index 7 would
+   put a label back on whatever part now sits at 7. */
+using StagingUndoStack = std::vector<std::vector<StagingChange>>;
+
+/* Record one edit (empty = nothing happened, so nothing to take back). Consecutive edits of
+   the SAME part merge into one entry: the box fires once per arrow-repeat frame, so a hold
+   that walks a label 1 -> 2 -> ... -> 9 is one decision, not eight, and the question the
+   player asks afterwards is "what did this part say before I started". A merge that lands
+   back on the original label leaves nothing changed, so the entry goes away rather than
+   sitting under the button as an Undo that does nothing. */
+void recordStagingEdit(StagingUndoStack &stack, std::vector<StagingChange> edit);
+
+/* Reverse the newest edit. Returns how many parts got their label back, and appends a line
+   to `notes` for each that did not: a part the player has since deleted, or one whose label
+   something else has moved. Both are left alone rather than forced -- the stack is LIFO, so
+   a label that disagrees with the entry means the entry describes a build that no longer
+   exists, and guessing a number for it is how an undo starts destroying work. The entry is
+   popped either way: an edit that cannot be applied a second time is stale, and a button that
+   keeps answering "undone" while changing nothing is worse than one that says so. */
+size_t undoStagingEdit(BuildShip &ship, StagingUndoStack &stack,
+                       std::vector<std::string> &notes);
 
 /* A content hash of everything computeStaging reads about `ship`, plus the two
    scalars. The Staging window redraws every frame on a build that only changes

@@ -425,6 +425,16 @@ void vabKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
     if(ImGui::GetIO().WantCaptureKeyboard) { return; }
     if(ksc == SDL_SCANCODE_Q) { vabRotate(g, -5.0); }
     if(ksc == SDL_SCANCODE_E) { vabRotate(g, +5.0); }
+    /* Ctrl+Z (#1013), a Slot like the game's other one-shot edges rather than one of the
+       fixed editor scancodes above: the player has to be able to find it in the key map and
+       move it, and an undo is not VAB-scene-only for long. It still only fires here, in
+       vabKeyActions, because a staging edit only exists in the editor.
+
+       Not reachable from --sim-press, which carries no modifiers (keys.h's slotSimKey), so
+       the e2e drives the Staging window's Undo button instead -- same vabUndoStaging, same
+       reconciliation. No Ctrl+Y: autoStage is deterministic, so pressing it again is the
+       redo, and a single retype is still a retype. */
+    if(slotFired(Slot::UndoStaging, ksc, kmod, g.binds) && !repeat) { vabUndoStaging(g); }
     if((ksc == SDL_SCANCODE_DELETE || ksc == SDL_SCANCODE_X) && !repeat) {
         /* Del DETACHES the selected subtree (Shift+Del truly deletes). A
            lone part is not a subassembly, so Del deletes it too. */

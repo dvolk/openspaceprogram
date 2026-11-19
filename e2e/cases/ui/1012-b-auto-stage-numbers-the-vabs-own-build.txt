@@ -1,0 +1,42 @@
+# The button (#1012). autoStage is unit-tested; this is the half a player reaches: the
+# Staging window's Auto-stage button numbers the VAB's build from the stack, and the
+# checker then has nothing to say about it -- which is the whole claim of #1012, that
+# numbering from the tree leaves no dead press and no cut on the floor.
+#
+# `misstaged` (e2e/vehicles/, so Game Debug's dev-vehicles switch) is the hull 1010-c
+# pins as badly numbered: labels 1 and 5, four presses of which three do nothing, and a
+# decoupler riding the floor. The tree has two cuts -- dec_boost under the upper engine,
+# dec_pod on the capsule's side -- so the numbered build carries 1, 2, 3 and spends two
+# presses, each of which drops something.
+#
+# No --width/--height: a small window stops the VAB top bar taking clicks (#1017), and
+# every step here is a click.
+NAME auto-stage-numbers-the-vabs-own-build
+CLAIM The Staging window's Auto-stage button renumbers the VAB build so the checker goes quiet.
+KIND invariant
+ARGS --ui-click 1000,"Title Menu/New Game"
+ARGS --ui-click 1600,"New Game/Start"
+ARGS --sim-press 2600,0,4
+ARGS --sim-press 3000,0,F1
+ARGS --ui-click 3400,"Game Debug/Dev vehicles in the VAB picker"
+ARGS --sim-press 3800,0,F1
+ARGS --ui-type 4200,"VAB TopBar/##vehfilter",misstaged
+ARGS --ui-click 4800,"VAB TopBar/##vabload"
+ARGS --ui-click 5400,"misstaged"
+ARGS --ui-click 6000,"VAB TopBar/Load"
+ARGS --ui-click 6600,"Staging/Auto-stage"
+ARGS --stage-dump 7400 --timeout 14
+LIMIT 60
+EXPECT [vab] loaded misstaged (8 parts)
+EXPECT [toast] Auto-staged 4 parts from the stack
+# The deepest cut is the first press (label 3) and it rides its own label, because the
+# press drops the decoupler with its stage. dec_pod, one level up, is label 2.
+EXPECT [stagetree] 4 dec_boost def=decoupler_r1 parent=eng_up stage=3 responds=decoupler
+EXPECT [stagetree] 7 dec_pod def=decoupler_radial parent=capsule_1 stage=2 responds=decoupler
+# Four presses became two, and the ladder is dense.
+EXPECT [stagetree] labels=1..3 presses=2 inert_parts=4/8
+# The verdicts 1010-c pins on this hull are gone: an auto-staged build gives the checker
+# nothing to report.
+FORBID [stagetree] warn:
+FORBID error:
+FORBID FAILED

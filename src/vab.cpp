@@ -23,6 +23,7 @@
 #include "part.h"     // Part (a standing suit's kerbal id, on the pad's crew line)
 #include "resdir.h"   // resdir::path
 #include "shipdef.h"  // PartsCatalog (resolve the armed palette name)
+#include "staging.h"  // undoStagingEdit (the staging-only undo, #1013)
 #include "btcommon.h" // complete Bullet types (the ghost hulls + collision objects)
 
 namespace {
@@ -534,6 +535,31 @@ void vabDetachSelected(Game &g) {
     g.toast("Detached %s (+%d) to Subassemblies", rootId.c_str(), n - 1);
 }
 
+/* Take the newest staging edit back (#1013) -- labels, and all of one edit at once, since
+   half a renumber is not a thing the player meant to undo. The pure half (staging.cpp)
+   reconciles rather than overwriting: a part deleted since the edit stays gone, and a part
+   whose label moved since the edit stays where it is, each named in its own toast. A label
+   that disagrees with the entry means the entry describes a build that no longer exists,
+   and inventing a number for it is how an undo starts destroying work.
+
+   No redo, deliberately: autoStage is deterministic, so taking its plan back and pressing
+   Auto-stage again IS the redo, and a single retype is still a retype. */
+void vabUndoStaging(Game &g) {
+    if(g.vab.stagingUndo.empty()) {
+        g.toast("Nothing to undo -- no staging edit since this build was loaded");
+        return;
+    }
+    std::vector<std::string> notes;
+    const int back = (int)undoStagingEdit(g.vab.build, g.vab.stagingUndo, notes);
+    printf("[vab] undo: %d label(s) back\n", back);
+    for(const std::string &n : notes) { printf("[vab] undo: %s\n", n.c_str()); }
+    fflush(stdout);
+    if(back == 0) { g.toast("Undo: nothing left in the build to take back"); }
+    else if(back == 1) { g.toast("Undo: 1 part back to its previous label"); }
+    else { g.toast("Undo: %d parts back to their previous labels", back); }
+    for(const std::string &n : notes) { g.toast("%s", n.c_str()); }
+}
+
 namespace {
 
 // Ship-def identity for the VAB is a NAME ("racer"). Paths and ".json" are
@@ -602,6 +628,10 @@ static void forgetBuildTargets(Game &g) {
        is the one holding raw indices into `parts`. */
     g.vab.stagingWarns.clear();
     g.vab.stagingGroups.clear();
+    /* Every entry here names a part of the build being replaced, and an undo of a build
+       that is no longer here is how a load starts putting old numbers on new parts
+       (#1013). */
+    g.vab.stagingUndo.clear();
     // 0 is "no cache", but it is also a legal FNV value, so make the map
     // unconditionally empty rather than relying on the sentinel.
     g.vab.partIndex.clear();

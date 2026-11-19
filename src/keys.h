@@ -48,6 +48,7 @@ enum class Slot {
     GoFlight,      // '2'  flight (the cockpit)
     GoTracking,    // '3'  Tracking Station
     GoVab,         // '4'  VAB (the editor)
+    UndoStaging,   // 'LCtrl+z' / 'RCtrl+z'  VAB only: take the last staging edit back (#1013)
     // --- Flight: held commands while piloting (tick.cpp) -------------------
     PitchUp,
     PitchDown,

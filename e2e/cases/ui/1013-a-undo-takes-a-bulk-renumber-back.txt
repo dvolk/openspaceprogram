@@ -1,0 +1,46 @@
+# The way back (#1013). A bulk renumber under a mouse button is the thing the undo ticket
+# says needs a way back, so this case does one round trip on the hull 1010-c pins as
+# mis-numbered: Auto-stage moves four labels, Undo puts all four back, and the dump after
+# the undo is the build as it was loaded -- right down to the two verdicts the authored
+# numbering earns, which only exist if every label came home.
+#
+# The Undo button is what a test drives, not Ctrl+Z: --sim-press carries no modifiers
+# (keys.h's slotSimKey), so a chord cannot be sent. Both paths call vabUndoStaging.
+#
+# No --width/--height: a small window stops the VAB top bar taking clicks (#1017).
+NAME undo-takes-a-bulk-renumber-back
+CLAIM The Staging window's Undo button reverses an auto-stage, label for label.
+KIND invariant
+ARGS --ui-click 1000,"Title Menu/New Game"
+ARGS --ui-click 1600,"New Game/Start"
+ARGS --sim-press 2600,0,4
+ARGS --sim-press 3000,0,F1
+ARGS --ui-click 3400,"Game Debug/Dev vehicles in the VAB picker"
+ARGS --sim-press 3800,0,F1
+ARGS --ui-type 4200,"VAB TopBar/##vehfilter",misstaged
+ARGS --ui-click 4800,"VAB TopBar/##vabload"
+ARGS --ui-click 5400,"misstaged"
+ARGS --ui-click 6000,"VAB TopBar/Load"
+# Nothing has been edited yet, so the button is there and inert: a disabled item registers,
+# gets a rect and refuses a click (uiinput.cpp), which is what a player sees and what stops
+# an empty Ctrl+Z from being a mystery.
+ARGS --ui-list 6500
+EXPECT [uilist] window="Staging" label="Undo staging" rect=
+CHECK ' disabled' in [ln for ln in out.splitlines() if 'label="Undo staging"' in ln][0]
+ARGS --ui-click 7000,"Staging/Auto-stage"
+ARGS --ui-click 7600,"Staging/Undo staging"
+ARGS --stage-dump 8400 --timeout 16
+LIMIT 60
+EXPECT [vab] loaded misstaged (8 parts)
+EXPECT [toast] Auto-staged 4 parts from the stack
+EXPECT [vab] undo: 4 label(s) back
+# Back where the loaded file had them.
+EXPECT [stagetree] 4 dec_boost def=decoupler_r1 parent=eng_up stage=5 responds=decoupler
+EXPECT [stagetree] 7 dec_pod def=decoupler_radial parent=capsule_1 stage=1 responds=decoupler
+EXPECT [stagetree] labels=1..5 presses=4 inert_parts=4/8
+# And the checker is angry again in exactly the words 1010-c pins. A single label left on
+# the plan's value would change one of these two lines or make them vanish.
+EXPECT [stagetree] warn: 3 of 4 presses do nothing -- no part carries 2-4
+EXPECT [stagetree] warn: a decoupler rides label 1, the lowest: the counter never stands there, so it needs a press past the ladder
+FORBID error:
+FORBID FAILED

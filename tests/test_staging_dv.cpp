@@ -28,6 +28,10 @@
 //     the tree cannot see the author's intent -- no decoupler, a cut that would drop
 //     everything, an engine re-sequenced relative to another, or a launch-lit core the
 //     depth rule would hand to a later press (#1012).
+//   * a staging edit takes itself back: the change list an edit performed is the undo
+//     record, so an undo finds parts by id (the vector renumbers under it), leaves a label
+//     that something else moved since, says which parts it could not reach, and moves
+//     stagingSignature so the Staging window's cache notices for free (#1013).
 //
 // Pure math over BuildShip -- no GL, no Bullet.
 //
@@ -2397,6 +2401,181 @@ static void test_auto_stager_refuses_more_cuts_than_labels_exist() {
     CHECK_TRUE(par >= 0, "the chain was built");
 }
 
+/* undoStagingEdit + recordStagingEdit (#1013): the VAB cannot undo placing or deleting a
+   part, and does not try here. It CAN undo a LABEL, because a staging edit is nothing but
+   the list of (part, from, to) it performed -- which is the shape autoStage already returns.
+   What has to hold for that to be safe at a mouse button: an undo lands every label back
+   where it was; it reaches parts by ID, because placing, deleting and detaching renumber the
+   vector under a change list recorded earlier; a part that has gone, or whose label moved
+   since, is reported instead of guessed for; and the edit's record moves stagingSignature,
+   which is the ticket's "verify the window refreshes rather than assume it". */
+static bool has_line(const std::vector<std::string> &v, const char *phrase) {
+    for(const std::string &s : v) {
+        if(s.find(phrase) != std::string::npos) { return true; }
+    }
+    return false;
+}
+
+/* Stand-in for BuildShip::removePart deleting a LEAF: the same index remap, without the
+   pose solve that function ends in (which needs real attach-node names, and these
+   hand-built parts have none). What the undo cares about is that the indices moved. */
+static void eraseLeaf(BuildShip &bs, int idx) {
+    bs.parts.erase(bs.parts.begin() + idx);
+    for(BuildPart &p : bs.parts) {
+        if(p.parent > idx) { p.parent--; }
+    }
+}
+
+static void test_undo_takes_an_auto_stage_back_to_the_authored_labels() {
+    Catalog cat;
+    BuildShip bs;
+    const int pod = addPart(bs, cat.mono(100, 0), "pod", -1, 1);
+    addPart(bs, cat.decoupler(5), "d_core", pod, 1);
+    addPart(bs, cat.tank(50, 25, 25), "up_tank", 1, 1);
+    addPart(bs, cat.engine(10, 0.5, 1000.0), "up_eng", 2, 1);
+    addPart(bs, cat.decoupler(5), "d_boost", 3, 1);
+    addPart(bs, cat.tank(50, 75, 75), "bo_tank", 4, 1);
+    addPart(bs, cat.engine(10, 0.5, 1000.0), "bo_eng", 5, 1);
+
+    const std::vector<int> authored = labelsOf(bs);
+    const uint64_t sigBefore = stagingSignature(bs, 9.81, 1.0);
+
+    StagingPlan plan = autoStage(bs);
+    CHECK_TRUE(plan.applied && plan.changes.size() == 6, "a stack numbered from the tree, to take back");
+    StagingUndoStack stack;
+    recordStagingEdit(stack, plan.changes);
+    CHECK_TRUE(stack.size() == 1, "a plan is ONE undo step, not one per part");
+
+    std::vector<std::string> notes;
+    const size_t back = undoStagingEdit(bs, stack, notes);
+    CHECK_TRUE(back == 6, "six parts came back");
+    CHECK_TRUE(labelsOf(bs) == authored, "each to the label it had before the plan ran");
+    CHECK_TRUE(stack.empty(), "one step, one undo -- the same edit cannot be undone twice");
+    CHECK_TRUE(notes.empty(), "and nothing had to be reported on the way back");
+
+    /* The Staging window caches its rows, its verdicts, its label groups and its id map
+       against this hash (#293). An undo that left the hash alone would keep drawing the
+       build the player just left. */
+    CHECK_TRUE(stagingSignature(bs, 9.81, 1.0) == sigBefore,
+               "stagingSignature notices an undo, so the window refreshes without extra work");
+
+    /* Why there is no redo stack: the tree did not change when the plan was taken back, so
+       the same button pressed again reproduces it. */
+    StagingPlan again = autoStage(bs);
+    bool same = again.applied && again.changes.size() == plan.changes.size();
+    for(size_t i = 0; same && i < plan.changes.size(); i++) {
+        same = again.changes[i].id == plan.changes[i].id
+            && again.changes[i].from == plan.changes[i].from
+            && again.changes[i].to == plan.changes[i].to;
+    }
+    CHECK_TRUE(same, "pressing Auto-stage again IS the redo");
+}
+
+static void test_undo_reaches_a_part_by_id_not_by_the_index_it_had() {
+    Catalog cat;
+    BuildShip bs;
+    const int pod = addPart(bs, cat.mono(100, 0), "pod", -1, 4);
+    addPart(bs, cat.decoupler(5), "d_core", pod, 1);
+    /* A leaf sitting in the middle of the array, so deleting it shifts every later part up
+       by one -- exactly what a delete does to a change list that remembered indices. */
+    addPart(bs, cat.chute(10, 500), "chute_1", pod, 4);
+    addPart(bs, cat.tank(50, 25, 25), "up_tank", 1, 2);
+    addPart(bs, cat.decoupler(5), "d_boost", 3, 3);
+    addPart(bs, cat.engine(10, 0.5, 1000.0), "bo_eng", 4, 2);
+
+    StagingPlan plan = autoStage(bs);
+    /* The authored labels are deliberately all different (4,1,4,2,3,2), so a change that
+       lands on the wrong part shows up in the label row at the end. */
+    CHECK_TRUE(plan.applied && plan.changes.size() == 4,
+               "the tree moves four of the six labels here");
+    StagingUndoStack stack;
+    recordStagingEdit(stack, plan.changes);
+
+    eraseLeaf(bs, 2);
+    CHECK_TRUE(bs.parts.size() == 5, "the mid-array leaf is gone, shifting every part below it up by one");
+    CHECK_TRUE(bs.parts[2].id == "up_tank" && bs.parts[4].id == "bo_eng",
+               "which is exactly what a delete does to a change list that remembered indices");
+
+    std::vector<std::string> notes;
+    const size_t back = undoStagingEdit(bs, stack, notes);
+    CHECK_TRUE(back == 3, "three of the four come back; the fourth part is gone");
+    /* {4,1,2,3,2}: pod, d_core, up_tank, d_boost, bo_eng. Distinct values on purpose -- if
+       the undo aimed by index it would land d_boost's or bo_eng's label on the wrong hull
+       member and this row would read differently. */
+    CHECK_TRUE(labelsOf(bs) == std::vector<int>({4, 1, 2, 3, 2}),
+               "each survivor keeps the label the authored build gave it");
+    CHECK_TRUE(has_line(notes, "chute_1") && has_line(notes, "no longer in the build"),
+               "and the player is told which part the undo could not reach");
+}
+
+static void test_undo_leaves_a_label_that_moved_since_alone() {
+    Catalog cat;
+    BuildShip bs;
+    const int pod = addPart(bs, cat.mono(100, 0), "pod", -1, 1);
+    addPart(bs, cat.decoupler(5), "d_core", pod, 1);
+    addPart(bs, cat.tank(50, 25, 25), "up_tank", 1, 1);
+    addPart(bs, cat.engine(10, 0.5, 1000.0), "up_eng", 2, 1);
+
+    StagingPlan plan = autoStage(bs);
+    CHECK_TRUE(plan.applied && !plan.changes.empty(), "something to take back");
+    StagingUndoStack stack;
+    recordStagingEdit(stack, plan.changes);
+
+    /* Something newer than the entry touched this part (a hand edit the stack never saw, or
+       a part re-added under the same id). The entry describes a build that no longer
+       exists, so it gets a say about the parts it still recognises and none about this. */
+    bs.parts[2].stage = 7;
+
+    std::vector<std::string> notes;
+    const size_t back = undoStagingEdit(bs, stack, notes);
+    CHECK_TRUE(bs.parts[2].stage == 7, "the newer value is left alone, not overwritten");
+    CHECK_TRUE(has_line(notes, "'up_tank' now carries label 7"), "and the disagreement is named");
+    CHECK_TRUE(back == plan.changes.size() - 1, "the rest of the edit still takes effect");
+}
+
+static void test_a_run_of_same_part_retyping_is_one_undo() {
+    StagingUndoStack stack;
+    recordStagingEdit(stack, {});
+    CHECK_TRUE(stack.empty(), "a box edit that changed nothing is not a step");
+
+    /* The number box fires once per frame while the arrow is held, so one decision arrives
+       as several edits. They have to be one step: the player's question afterwards is "what
+       did this part say before I started", not "how many frames did my finger stay down". */
+    recordStagingEdit(stack, {{0, "pod", 1, 2}});
+    recordStagingEdit(stack, {{0, "pod", 2, 3}});
+    recordStagingEdit(stack, {{0, "pod", 3, 4}});
+    CHECK_TRUE(stack.size() == 1, "a held arrow is one step");
+    CHECK_TRUE(stack[0][0].from == 1 && stack[0][0].to == 4, "and it remembers where it started");
+
+    recordStagingEdit(stack, {{1, "tank_1", 1, 2}});
+    CHECK_TRUE(stack.size() == 2, "a different part is a different step");
+    recordStagingEdit(stack, {{1, "tank_1", 2, 1}});
+    CHECK_TRUE(stack.size() == 1, "typing it back to where it started is not a step either");
+
+    Catalog cat;
+    BuildShip bs;
+    addPart(bs, cat.mono(100, 0), "pod", -1, 4);
+    addPart(bs, cat.tank(50, 25, 25), "tank_1", 0, 1);
+    std::vector<std::string> notes;
+    CHECK_TRUE(undoStagingEdit(bs, stack, notes) == 1, "one undo puts the one part back");
+    CHECK_TRUE(labelsOf(bs) == std::vector<int>({1, 1}), "back to the authored floor");
+    CHECK_TRUE(stack.empty(), "and the stack is empty again");
+}
+
+static void test_undo_with_nothing_recorded_changes_nothing() {
+    Catalog cat;
+    BuildShip bs;
+    addPart(bs, cat.mono(100, 0), "pod", -1, 1);
+    addPart(bs, cat.decoupler(5), "d_core", 0, 1);
+    const std::vector<int> before = labelsOf(bs);
+
+    StagingUndoStack stack;
+    std::vector<std::string> notes;
+    CHECK_TRUE(undoStagingEdit(bs, stack, notes) == 0, "an empty stack undoes nothing");
+    CHECK_TRUE(labelsOf(bs) == before, "and leaves the build alone");
+    CHECK_TRUE(notes.empty(), "saying so is the editor's job (vabUndoStaging), not this one's");
+}
+
 int main() {
     test_two_stage();
     test_single_stage();
@@ -2442,6 +2621,11 @@ int main() {
     test_auto_stager_refuses_a_parent_chain_that_loops();
     test_auto_stager_refuses_a_forest_whose_every_root_is_a_cut();
     test_auto_stager_refuses_more_cuts_than_labels_exist();
+    test_undo_takes_an_auto_stage_back_to_the_authored_labels();
+    test_undo_reaches_a_part_by_id_not_by_the_index_it_had();
+    test_undo_leaves_a_label_that_moved_since_alone();
+    test_a_run_of_same_part_retyping_is_one_undo();
+    test_undo_with_nothing_recorded_changes_nothing();
 
     printf("test_staging_dv: %d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;

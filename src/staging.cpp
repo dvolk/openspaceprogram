@@ -1348,7 +1348,7 @@ StagingPlan autoStage(BuildShip &ship) {
            guess about a stack that cannot be read. Said rather than asserted: the shipped
            binary asserts, and a self-parented BuildShip is a shape the test suite builds for
            other functions -- no loader produces one (shipdef.cpp:1021-1038 requires a parent
-           that is already defined), but autoStage is headed for a mouse button (#1013). */
+           that is already defined), but autoStage now sits behind a mouse button (#1012). */
         std::snprintf(buf, sizeof buf,
                       "refuse: %d part(s) sit on a parent chain that loops -- the stack cannot "
                       "be read, let alone numbered", (int)(n - order.size()));
@@ -1543,4 +1543,71 @@ StagingPlan autoStage(BuildShip &ship) {
         break;
     }
     return plan;
+}
+
+void recordStagingEdit(StagingUndoStack &stack, std::vector<StagingChange> edit) {
+    if(edit.empty()) { return; }
+    if(edit.size() == 1 && !stack.empty()) {
+        /* Chain onto the edit above only if that edit touched nothing else and ended where
+           this one starts -- the number box's arrow-repeat, or a retype of a retype. A plan
+           (many parts) never merges with anything: taking a bulk renumber back is one
+           decision, and undoing half of it is not what anyone asked for. */
+        std::vector<StagingChange> &top = stack.back();
+        if(top.size() == 1 && top[0].id == edit[0].id && top[0].to == edit[0].from) {
+            top[0].to = edit[0].to;
+            if(top[0].from == top[0].to) { stack.pop_back(); }   // back where it started
+            return;
+        }
+    }
+    stack.push_back(std::move(edit));
+}
+
+size_t undoStagingEdit(BuildShip &ship, StagingUndoStack &stack,
+                       std::vector<std::string> &notes) {
+    if(stack.empty()) { return 0; }
+    const std::vector<StagingChange> edit = std::move(stack.back());
+    stack.pop_back();
+    char buf[256];
+    size_t done = 0;
+    for(const StagingChange &c : edit) {
+        /* By id, not c.part: the vector renumbers under the player whenever a part is
+           placed, deleted or detached, and a stale index would put the label back on a
+           different part. The recorded index is still worth trying first: ids are not
+           unique (computeStaging resolves a duplicated id to the LAST part carrying it,
+           pinned by test_a_duplicate_id_resolves_to_the_last_part), and an index that
+           still names the same id is exact where a scan can only guess. Fall back to the
+           LAST match for the same reason. Linear scan is fine here -- this runs on a
+           button press, not a frame, and the editor's id->index memo is keyed to a
+           signature that the edit itself invalidates. */
+        size_t at = ship.parts.size();
+        if(c.part >= 0 && (size_t)c.part < ship.parts.size()
+           && ship.parts[(size_t)c.part].id == c.id) {
+            at = (size_t)c.part;
+        } else {
+            for(size_t i = 0; i < ship.parts.size(); i++) {
+                if(ship.parts[i].id == c.id) { at = i; }   // last wins
+            }
+        }
+        if(at == ship.parts.size()) {
+            std::snprintf(buf, sizeof buf,
+                          "'%s' is no longer in the build -- its label went with it",
+                          c.id.c_str());
+            notes.push_back(buf);
+            continue;
+        }
+        BuildPart &bp = ship.parts[at];
+        if(bp.stage != c.to) {
+            /* Something newer than this entry changed it (an edit the stack never saw, or a
+               part re-added under the same id). Forcing `from` over it would undo the
+               player's later work rather than this edit. */
+            std::snprintf(buf, sizeof buf,
+                          "'%s' now carries label %d, not the %d this edit left -- left as it "
+                          "is", c.id.c_str(), bp.stage, c.to);
+            notes.push_back(buf);
+            continue;
+        }
+        bp.stage = c.from;
+        done++;
+    }
+    return done;
 }

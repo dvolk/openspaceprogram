@@ -379,6 +379,14 @@ struct VabState {
        which is the press order; the checker reads it the other way. Rebuilt with the rows
        on the same key, so all three describe one build. */
     std::vector<StagingLabel> stagingGroups;
+    /* Staging edits taken back by Ctrl+Z / the Staging window's Undo (#1013). One entry
+       per edit, oldest first, each entry the labels that edit moved -- so an auto-stage
+       plan is its own undo record and the part window's number box records one line.
+       Labels only: place, delete, detach and clear destroy parts and have no undo, which
+       is the scope #1013 chose rather than a shortfall in this one. Cleared with the other
+       caches whenever a load or a clear replaces the build, because every entry names a
+       part of the build it was recorded against. */
+    StagingUndoStack stagingUndo;
     /* id -> index into vab.build.parts, rebuilt with the rows above and keyed by the
        same signature (#527). The fuel-link overlay draws every frame and used to
        resolve both ends of every link by scanning every part and comparing std::string
