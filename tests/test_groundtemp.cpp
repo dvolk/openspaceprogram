@@ -104,7 +104,7 @@ int main() {
                "more light, warmer ground -- the swing is monotone in the cosine");
 
     /* ---- the seam: the authored knobs, applied here, land back on their pairs --------
-       The pairs are the ones res/systems/*.json ships, not a remembered fit. The Moon's row
+       The pairs are the ones res/systems ships, not a remembered fit. The Moon's row
        used to carry the FIRST solve (270.33 K / 0.0152517), which lands the day end at
        381.2 K -- inside the fit's 8 % gate, so the test stayed green while auditing a pair
        no shipped file contains. When the generator changes the solve, re-derive the row

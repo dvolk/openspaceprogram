@@ -10,15 +10,18 @@
 // quaternion round-trip that is immune to the row/col-major ambiguity.
 //
 // Build & run (from repo root):
-//   B=build/linux-v2-znver3/middleware/bullet3/src
-//   g++ -O2 -std=c++20 -DBT_USE_DOUBLE_PRECISION \
-//       -I./src -I./middleware/glm/ -I./middleware/bullet3/src \
-//       tests/test_orient.cpp -o test_orient \
-//       $B/BulletDynamics/libBulletDynamics.a $B/BulletCollision/libBulletCollision.a \
-//       $B/Bullet3Collision/libBullet3Collision.a $B/BulletInverseDynamics/libBulletInverseDynamics.a \
-//       $B/Bullet3Geometry/libBullet3Geometry.a $B/LinearMath/libLinearMath.a $B/Bullet3Common/libBullet3Common.a
-//   ./test_orient
-
+/*   B=build/linux-v2-znver3/middleware/bullet3/src
+     g++ -O2 -std=c++20 \
+         -I./src -I./middleware/glm/ -I./middleware/bullet3/src \
+         tests/test_orient.cpp -o test_orient \
+         $B/BulletDynamics/libBulletDynamics.a $B/BulletCollision/libBulletCollision.a \
+         $B/LinearMath/libLinearMath.a
+     ./test_orient */
+// No -DBT_USE_DOUBLE_PRECISION here: btcommon.h, included below, is what sets that
+// ABI switch project-wide (#775), and passing -D as well would redefine it. The three
+// archives are the whole set we link against (#992); the recipe used to list the
+// dead Bullet3 and InverseDynamics ones.
+//
 #include "btcommon.h"
 #include <cstdio>
 #include <cmath>

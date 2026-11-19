@@ -1236,7 +1236,7 @@ int main() {
     //    direction the mesh builds at phi MUST be the direction the bake
     //    writes into the column the shader's u names.
     {
-        const int W = 64, H = 32;
+        const int W = 64;   // columns only: this bridge is longitude, no rows
         bool ok = true;
         for(int k = 0; k < 16 && ok; k++) {
             const float phi = 2.0f * (float)M_PI * (float)k / 16.0f;

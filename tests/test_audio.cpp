@@ -141,7 +141,6 @@ static void testOrthonormality() {
         { 0.0, -6.5, 0.0 }, { 12.0, 12.0, -12.0 },
     };
     for(const auto &c : cases) {
-        const glm::dvec3 f = glm::normalize(c.f);
         glm::dvec3 up = glm::normalize(c.up);
         // The function normalizes f itself; keep up as given.
         const glm::dvec3 L(0.0);

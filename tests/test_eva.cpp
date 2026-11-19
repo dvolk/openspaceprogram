@@ -8,9 +8,9 @@
 // the e2e crew/eva cases.
 //
 // Build & run (from repo root):
-//   g++ -O2 -std=c++20 -I./src -I./middleware/glm/ tests/test_eva.cpp \
-//       -o test_eva
-//   ./test_eva
+/*   g++ -O2 -std=c++20 -I./src -I./middleware/glm/ tests/test_eva.cpp \
+       -o test_eva
+     ./test_eva */
 
 #include "evamath.h"
 

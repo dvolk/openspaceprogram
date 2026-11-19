@@ -17,9 +17,9 @@
 // escaped fov, or a stale aspect.
 //
 // Build & run (from repo root):
-//   g++ -O2 -std=c++20 -I./src -I./middleware/glm/ tests/test_orbitcam.cpp \
-//       src/camera.cpp -o test_orbitcam
-//   ./test_orbitcam
+/*   g++ -O2 -std=c++20 -I./src -I./middleware/glm/ tests/test_orbitcam.cpp \
+       src/camera.cpp -o test_orbitcam
+     ./test_orbitcam */
 
 #include "camera.h"
 #include <cstdio>

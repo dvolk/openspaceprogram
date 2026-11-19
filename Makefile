@@ -322,7 +322,17 @@ $(OBJDIR)/implot/%.o: $(IMPLLOT_DIR)/%.cpp
 
 # TCC carries the imgui define: src TUs compiled here include
 # imgui_internal.h, whose status-flag enum changes with it.
-TCC   = -O2 -std=c++20 -DGLEW_STATIC -DIMGUI_ENABLE_TEST_ENGINE
+# The warning set matches the game build (#994). Before this, `make test` compiled
+# every src/ and tests/ TU with NO warning flags at all, so the suite that runs on
+# every change was the one build that saw none -- and #715's "write dev_only on
+# every row" arm (a -Wmissing-field-initializers hint) could only ever fire on a
+# local `make`. Cost to get here: 8 warnings across 65 test files (six -Wcomment
+# from g++ recipes ending in a trailing backslash -- in a // comment that splices
+# the NEXT line in, so a recipe could silently stop matching the code it documents;
+# those are now inside /* */ blocks, and test_orient's recipe was listing archives
+# #992 dropped -- plus two dead variables that had no check behind them).
+# make does not track flags, so flipping this needs: touch tests/*.cpp src/*.cpp
+TCC   = -O2 -std=c++20 -DGLEW_STATIC -DIMGUI_ENABLE_TEST_ENGINE -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-deprecated-enum-enum-conversion
 TINC  = -I./src -I./middleware/glm/ -I./middleware/bullet3/src \
         -I./middleware/imgui/ -I./middleware/ -I$(MWROOT)/assimp/include/ -I./middleware/assimp/include/ \
         -I./middleware/sdl3/include -I./middleware/sdl3-image/include -I./middleware/sdl-mixer/include -I./middleware/glew/include
@@ -630,8 +640,14 @@ $(TESTDIR)/test_cli: $(TESTDIR)/obj/test_cli.o $(TESTDIR)/obj/cli.o $(TESTDIR)/o
 # row-major, GLM column-major. This pins the quaternion round trip AND the
 # physical rotation it produces, so a "cleanup" that goes back to element-wise
 # conversion fails loudly. Bullet only -- no GL, no SDL.
-$(TESTDIR)/test_orient: $(TESTDIR)/obj/test_orient.o $(BULLET3_OBJS)
-	$(CXX) -o $@ $^ $(TLIBS)
+# On the tier, like every other Bullet test (#994): it used to list $(BULLET3_OBJS)
+# as a prerequisite AND take $(TLIBS), so the archives appeared twice on the link, and
+# it was the one test link mixing plain objects with raw LTO archives -- which is what
+# made ld print "incremental linking of LTO and non-LTO objects ... bypass whole program
+# optimization", and what re-ran the LTO partition over BulletCollision on every relink,
+# where -Wodr reports GIM_CONTACT's two declarations (int vs GUINT m_feature1).
+$(TESTDIR)/test_orient: $(TESTDIR)/obj/test_orient.o $(TBASE)
+	$(CXX) -O2 -Wl,--gc-sections -o $@ $^ $(TSYS)
 
 TESTS = test_frames test_spawn test_attitude test_slew3d test_gimbal test_actuators test_wheels test_buildingorbit test_buildingair test_angmath test_inlinevec test_rcs test_thrust test_guidance test_fuel \
         test_power test_staging test_staging_dv test_dock test_authority test_aerosweep test_contain test_inertia test_inventory \
