@@ -90,10 +90,29 @@ else
 GL_LIBS=$(SDLIMG_A) $(SDLMIXER_A) $(SDL3_A) $(GLEW_A) -lGL $(PNG_A) $(ZLIB_A) $(SDL3_SYS)
 endif
 # bullet3 archives: per-component src/<Lib>/ on linux, lib/ on windows.
+# Only the three we actually pull from (#992). cmake builds ten components and the
+# rest were dead weight on every link: nm over our objects plus every test object
+# finds no undefined symbol in BulletSoftBody, Bullet3OpenCL_clew,
+# Bullet3Collision/Dynamics/Geometry, Bullet2FileLoader or BulletInverseDynamics --
+# nothing of ours mentions btSoftBody, a multibody, the .bullet loader, inverse
+# dynamics or b3*. (Bullet3Common's only consumer is BulletInverseDynamics, so the
+# pair dies together.) ~12 MB of the ~25 MB of bullet archives, and these members
+# are LTO bytecode, so the dead ones cost resolution/LTO-reading work in every test
+# link and in TBASE (#663) while contributing zero code: the game binary is
+# byte-identical with and without them, since an archive only yields members that
+# resolve an undefined symbol and --gc-sections was already trimming.
+# It also removes all 6 -Wodr lines `make test` used to print, and the ld
+# nolto-rel note: bullet defines file-local structs of the same name in the
+# Bullet2 and Bullet3 families (BroadphaseRayTester, BroadphaseAabbTester) and GCC
+# compares them by name -- it could only do that with the dead family in hand.
+# If a feature wants one back, add it HERE, keeping dependents before dependencies
+# (Dynamics -> Collision -> LinearMath): soft bodies -> libBulletSoftBody;
+# .bullet loading -> libBullet2FileLoader. Re-derive the dead list with nm -- it is
+# a property of our code, not of bullet.
 ifeq ($(OS),windows)
-BULLET3_OBJS=$(MWROOT)/bullet3/lib/libBulletDynamics.a $(MWROOT)/bullet3/lib/libBulletCollision.a $(MWROOT)/bullet3/lib/libBulletSoftBody.a $(MWROOT)/bullet3/lib/libBullet3Geometry.a $(MWROOT)/bullet3/lib/libBulletInverseDynamics.a $(MWROOT)/bullet3/lib/libBullet3Common.a $(MWROOT)/bullet3/lib/libBullet3Collision.a $(MWROOT)/bullet3/lib/libLinearMath.a $(MWROOT)/bullet3/lib/libBullet2FileLoader.a $(MWROOT)/bullet3/lib/libBullet3OpenCL_clew.a $(MWROOT)/bullet3/lib/libBullet3Dynamics.a
+BULLET3_OBJS=$(MWROOT)/bullet3/lib/libBulletDynamics.a $(MWROOT)/bullet3/lib/libBulletCollision.a $(MWROOT)/bullet3/lib/libLinearMath.a
 else
-BULLET3_OBJS=$(MWROOT)/bullet3/src/BulletDynamics/libBulletDynamics.a $(MWROOT)/bullet3/src/BulletCollision/libBulletCollision.a $(MWROOT)/bullet3/src/BulletSoftBody/libBulletSoftBody.a $(MWROOT)/bullet3/src/Bullet3Geometry/libBullet3Geometry.a $(MWROOT)/bullet3/src/BulletInverseDynamics/libBulletInverseDynamics.a $(MWROOT)/bullet3/src/Bullet3Common/libBullet3Common.a $(MWROOT)/bullet3/src/Bullet3Collision/libBullet3Collision.a $(MWROOT)/bullet3/src/LinearMath/libLinearMath.a $(MWROOT)/bullet3/src/Bullet3Serialize/Bullet2FileLoader/libBullet2FileLoader.a $(MWROOT)/bullet3/src/Bullet3OpenCL/libBullet3OpenCL_clew.a $(MWROOT)/bullet3/src/Bullet3Dynamics/libBullet3Dynamics.a
+BULLET3_OBJS=$(MWROOT)/bullet3/src/BulletDynamics/libBulletDynamics.a $(MWROOT)/bullet3/src/BulletCollision/libBulletCollision.a $(MWROOT)/bullet3/src/LinearMath/libLinearMath.a
 endif
 
 # windows: fully static exe (no runtime DLLs).
