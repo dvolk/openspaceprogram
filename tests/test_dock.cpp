@@ -10,6 +10,12 @@
 //     survivor's COM (hence hull transform) shifts to take on the new mass.
 //     The re-base is pinned by value too: Part::localPos lives in the OWNING
 //     vehicle's S, so B's root leaves S_B's origin for z = -1.875 in A's S.
+//   - MOMENTUM (#366): the capture is inelastic and mass-weighted. The merged hull leaves
+//     at (mA*vA + mB*vB)/(mA + mB), read off the hull the game actually flies after
+//     rebuildCompound. Nothing else in the suite crosses a merge with velocity, and a
+//     capture that braked or flung the pair feels like normal flying while every later
+//     delta-v plan is wrong. The angular half is NOT symmetric -- the merge takes the
+//     survivor's spin -- and is filed as #1053 rather than pinned here as a rule.
 //   - SEAM: the joint is recorded (survivor port, absorbed root, its name),
 //     which is what undock splits back apart.
 //   - TOPOLOGY: the absorbed ship's root now hangs off the survivor's port;
@@ -71,6 +77,7 @@
 #include "vehicle.h"   // Vehicle + Part (inline); pulls in Bullet (btcommon.h)
 #include "frame.h"     // Frame: the dock gate will not measure across two of them
 #include "physics.h"   // SetAngVelocity: a spinning hull, a moving port (#1026)
+                           // SetVelocity/GetVelocity: the merge keeps m*v (#366)
 #include "tchecks.h"
 
 /* A hand-built ship. `defs` is a deque, not a vector: push_back on a vector
@@ -323,6 +330,68 @@ static void test_absorb() {
     CHECK_NEAR(A.v->hull->mass, 2100.0, 1e-6, "absorb: hull mass is the union");
 
     destroyShip(B.v);   // empty shell (its old compound references, not owns)
+    destroyShip(A.v);
+}
+
+/* --- the capture keeps the pair's momentum (#366) ------------------------- */
+/* Two hulls become one and the one must leave where their masses said, not where either
+   of them was going. The merge is inelastic by design -- a dock does not bounce -- but it
+   is still a law, and it was unasserted: a merge that kept the survivor's v, or averaged
+   the two hulls equally, or wrote the blend before rebuildCompound swapped the hull out
+   from under it, all feel identical in flight and corrupt every delta-v plan measured
+   from the capture. The angular half is NOT symmetric (the merge takes the survivor's
+   spin) and is filed as #1053 rather than pinned here as intended. */
+static void test_a_dock_keeps_the_pair_s_momentum() {
+    printf("== a dock keeps the pair's m*v ==\n");
+
+    /* Unequal masses on purpose. With equal ones, "keep the survivor's v", "split the
+       difference" and "mass-weight" differ only in the size of the answer, and a midpoint
+       looks plausible enough to ship. */
+    Ship A; A.v = new Vehicle; A.v->name = "A";
+    Part *tankA = mkPart(A, "tankA", 1000.0, 1.0, 1.0, kTankHz, false);
+    Part *portA = mkPart(A, "portA",   50.0, 1.0, 1.0, kPortHz, true);
+    A.v->setRoot(tankA);
+    A.v->attachDown(portA);
+    A.v->controller = tankA;
+    A.v->init();
+    A.v->placeShip(glm::dvec3(0.0), glm::dmat3(1.0));
+
+    Ship B; B.v = new Vehicle; B.v->name = "B";
+    Part *portB = mkPart(B, "portB",   50.0, 1.0, 1.0, kPortHz, true);
+    Part *tankB = mkPart(B, "tankB",  200.0, 1.0, 1.0, kTankHz, false);
+    B.v->setRoot(portB);
+    B.v->attachDown(tankB);
+    B.v->controller = portB;
+    B.v->init();
+    B.v->placeShip(glm::dvec3(0.0, 0.0, -1.875), glm::dmat3(1.0));
+
+    const double mA = A.v->getMass();
+    const double mB = B.v->getMass();
+    CHECK_NEAR(mA, 1050.0, 1e-9, "momentum: the absorbing hull weighs its parts");
+    CHECK_NEAR(mB, 250.0, 1e-9, "momentum: the absorbed hull weighs its parts");
+
+    /* Three live components, not one axis: a merge that dropped or rescaled a single
+       axis would keep passing an along-one-axis check. The numbers are orbital-scale
+       (a pair co-moving near Kerbin's ~7.8 km/s) with the closing rate inside the gate. */
+    const glm::dvec3 vA(1200.0, -3.5, 7.25);
+    const glm::dvec3 vB(1150.0, 6.0, -4.0);
+    SetVelocity(A.v->hull, vA);
+    SetVelocity(B.v->hull, vB);
+
+    A.v->absorbShip(B.v, portA);
+
+    const glm::dvec3 want = (mA * vA + mB * vB) / (mA + mB);
+    const glm::dvec3 got = GetVelocity(A.v->hull);
+    CHECK_NEAR(got.x, want.x, 1e-9, "absorb: x momentum kept");
+    CHECK_NEAR(got.y, want.y, 1e-9, "absorb: y momentum kept");
+    CHECK_NEAR(got.z, want.z, 1e-9, "absorb: z momentum kept");
+    /* Said as values, because the shape of the answer is the point: 1190.3846... is
+       nearer A's 1200 than B's 1150 by exactly the mass ratio. "Keep the survivor's"
+       would read 1200, "average the hulls" 1175, "weight by part count" something
+       else again -- and only the first two look like nothing happened. */
+    CHECK_NEAR(want.x, 1547500.0 / 1300.0, 1e-9, "absorb: the blend is mass-weighted");
+
+    destroyShip(B.v);
     destroyShip(A.v);
 }
 
@@ -1680,6 +1749,7 @@ static void test_a_sideways_port_moves_the_dial_but_not_the_verdict() {
 
 int main() {
     test_absorb();
+    test_a_dock_keeps_the_pair_s_momentum();
     test_orders_return_on_undock();
     test_a_stage_cut_at_a_seam_root();
     test_a_seam_with_no_records_falls_back_to_defaults();
