@@ -2206,7 +2206,10 @@ public:
            which is what shutAxis tests for MY face, so the dial draws it as a circle at
            acos(kDockAlign) on its degree scale. `push*` compared against
            range*sin(kDockAlign) is the same gate for THEIR face, drawn as the cone circle
-           on the metre scale: two circles, both halves of shutAxis.
+           on the metre scale: two circles, both halves of shutAxis. Both pairs are
+           PROJECTIONS onto the two keys that act on them -- the third component, along the
+           nose, has no key -- so a marker's bearing comes from these figures while its
+           radius comes from the angle and distance the gate compares.
            `push*` is how far my port centre sits off the OTHER port's bore line -- the
            approach path. It has to be their line: the joining line runs through both ports,
            so by construction it has no offset to report.

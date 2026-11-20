@@ -5716,7 +5716,10 @@ Vehicle::DockRead Vehicle::dockRead(const Part *pa, const Vehicle *b,
        there (RcsRight along keyR[0], RcsUp along keyR[1], per rcsWorldDir). That distance
        IS range * sin(their axis error), so comparing it against range * sin(kDockAlign)
        is exactly their half of shutAxis -- which is why the dial can draw that circle in
-       metres and it cannot disagree with the gate. */
+       metres and it cannot disagree with the gate. What THIS pair holds is the distance's
+       PROJECTION onto the two push keys, so hypot(pushRight, pushUp) is smaller than the
+       distance whenever part of it lies along the nose; the dial takes its radius from the
+       true distance and only its bearing from these. */
     const glm::dvec3 rel = paP - pbP;
     const glm::dvec3 off = rel - axisB * glm::dot(rel, axisB);
     r.pushRight = -glm::dot(off, keyR[0]);
