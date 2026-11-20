@@ -25,9 +25,10 @@ DockTestShips build_dock_test_ships(const std::string &mode,
     const PartDef *defRw   = part_catalog.find("reaction_wheel");
     const PartDef *defTank = part_catalog.find("tank_r1h3");
     const PartDef *defEng  = part_catalog.find("engine");
+    const PartDef *defDec  = part_catalog.find("decoupler_r1");
     if(defPort == nullptr || defCap == nullptr || defRcs == nullptr
        || defMono == nullptr || defRw == nullptr
-       || defTank == nullptr || defEng == nullptr) {
+       || defTank == nullptr || defEng == nullptr || defDec == nullptr) {
         throw std::runtime_error("--dock-test: a part the pair needs is "
                                  "missing from the parts catalog");
     }
@@ -40,11 +41,16 @@ DockTestShips build_dock_test_ships(const std::string &mode,
        kDockAlign cone. The Docking window's end-to-end case needs a pair the gate refuses
        -- with the other two modes it opens at once and the panel has nothing to explain. */
     double yawDeg = 0.0;
+    /* #1040: which half of the docking intent goes stale, and how. Same pair, same
+       geometry; only the ARMED port moves, onto a part the stage press hands to a new
+       vessel. See the probe block below. */
+    bool shedArm = false;
     if(mode == "approach") { gap = 2.0; }
     else if(mode == "misaligned") { yawDeg = 40.0; }
+    else if(mode == "stale-arm") { yawDeg = 40.0; shedArm = true; }
     else if(mode != "near") {
         throw std::runtime_error("--dock-test: unknown mode '" + mode
-                                 + "' (near | approach | misaligned)");
+                                 + "' (near | approach | misaligned | stale-arm)");
     }
 
     const ScenarioDef *sc = scenario_by_name("rot-orbit");
@@ -104,6 +110,23 @@ DockTestShips build_dock_test_ships(const std::string &mode,
     probe->attachDown(prRw);
     probe->attachDown(prTank);
     probe->attachDown(prEng);      // engine at the rear, thrusting +Z
+    /* #1040: the ARMED half of the intent rides a stage that leaves. A second port, hung
+       under a decoupler at the tail, is the port this mode arms -- so one stage press
+       hands it to a new vessel (Game::stageVehicle -> extractSubtreeAsShip) while this
+       hull keeps the nose port it was built with. Vehicle::dockSituation() then answers
+       ArmGone, and what Game::updateDocking() does with that (drop the arm, keep the
+       target) is readable on [dockwin]: the rows after the press blame the arm while b=
+       still names dockstation.
+       The nose port is deliberately left alone: the arc spacing below is built from it,
+       and 1026's pair is the fixture this one borrows. */
+    Part *prArm = prPort;
+    if(shedArm) {
+        Part *prDec  = makePart(defDec);   // stage 1, like every part here
+        Part *prTail = makePart(defPort);  // armed, and on the side that gets cut
+        probe->attachDown(prDec);
+        probe->attachDown(prTail);
+        prArm = prTail;
+    }
     probe->controller = prRw;
     probe->init();
 
@@ -170,8 +193,9 @@ DockTestShips build_dock_test_ships(const std::string &mode,
 
     /* Docking is intent-driven (Game::updateDocking needs BOTH halves): the
        probe's port is armed, the station's port targeted -- what the player
-       does with "Arm for docking" / "Target for docking". */
-    probe->dockArmPort = prPort;
+       does with "Arm for docking" / "Target for docking". In stale-arm the armed
+       one is the tail port on the decoupler (#1040). */
+    probe->dockArmPort = prArm;
     probe->dockTargetShip = station;
     probe->dockTargetPort = stPort;
 
@@ -190,6 +214,14 @@ DockTestShips build_dock_test_ships(const std::string &mode,
                "yaw %.0f deg about the port, |v| = %.1f m/s\n",
                mode.c_str(), station->name.c_str(), probe->name.c_str(),
                gap, yawDeg, glm::length(GetVelocity(station->hull)));
+    }
+    /* A second line for stale-arm, naming the mechanism rather than the geometry: in
+       this mode the question is not where the ports are, it is which half of the intent
+       a stage press cuts off. What the gate then DOES with the half-left-over is the
+       [dockwin] column's business, not this banner's. */
+    if(shedArm) {
+        printf("Dock-test (stale-arm): the armed port rides a stage-1 decoupler, so one "
+               "press cuts it off this hull\n");
     }
 
     DockTestShips d;

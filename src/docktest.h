@@ -15,8 +15,11 @@ struct DockTestShips {
     Vehicle *station;  // the target (root = its engine, port at the tail)
 };
 
-/* Build the pair for the given --dock-test mode (near | approach | misaligned).
-   Both start co-moving on the same circular orbit. Throws if parts are missing. */
+/* Build the pair for the given --dock-test mode (near | approach | misaligned |
+   stale-arm). Both start co-moving on the same circular orbit. Throws if parts are
+   missing. stale-arm is misaligned's geometry plus a second port hung under a stage-1
+   decoupler, and THAT port is the armed one, so one stage press makes the arm stale
+   while the target stays (#1040). */
 DockTestShips build_dock_test_ships(const std::string &mode,
                                     const PartsCatalog &part_catalog,
                                     TerrainBody *home,

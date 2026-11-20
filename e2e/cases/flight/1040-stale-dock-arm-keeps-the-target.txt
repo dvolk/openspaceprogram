@@ -1,0 +1,55 @@
+# Game::updateDocking() (src/game.cpp) does not only NAME a stale docking intent, it ACTS
+# on it, and the three stale states get three different policies on purpose:
+#
+#   TargetGone  clears dockTargetShip AND dockTargetPort
+#   ArmGone     clears dockArmPort ONLY -- "keep the target: a re-arm retries"
+#   Mass        clears all three and toasts #583's sentence
+#
+# tests/test_dock.cpp pins which state Vehicle::dockSituation() NAMES. Nothing pinned what
+# the gate then DOES, so a refactor that cleared the target on ArmGone too would leave
+# every test green and make the pilot re-pick both halves after every stage press. #1040.
+#
+# --dock-test stale-arm is the fixture that makes this observable: misaligned's pair, plus
+# a second docking port hung under a stage-1 decoupler, and THAT tail port is the one the
+# fixture arms. So the sequence is a player's, not a surgery:
+#
+#   [dockwin] ... why=misaligned ...      both halves live; the gate refuses on geometry
+#   Stage: dropped 1 ship(s) / 2 part(s)  a SPACE press cuts the decoupler and its port
+#   [dockwin] ... why=noarm ...           the gate dropped the half that went
+#   [dockwin] a="dockprobe" b="dockstation"  ...and still names the target it kept
+#
+# Note there is no `why=armgone` row. That verdict is the GATE's: updateDocking() runs
+# before the panel draws, so the panel never gets to print armgone -- it shows what the
+# gate DID instead. Which is exactly the thing worth pinning, and the reason this is an
+# e2e on the window rather than another unit test on dockSituation().
+#
+# Clearing both halves (the wrong policy) still prints why=noarm, because dockSituation()
+# asks about the arm BEFORE the target: the token cannot tell "no arm" from "no arm and no
+# target". The b= column is what carries the policy, so the case reads that. Verified both
+# ways: patching the ArmGone branch to clear the target too reddens this case on
+# `all(r["b"] == "dockstation" ...)` and on the EXPECT line -- and on nothing else, which is
+# why the why=notarget FORBID stays: it is the other wrong policy (drop the target, keep
+# the arm) that token does catch.
+NAME stale-dock-arm-keeps-the-target
+CLAIM Cutting the armed port off the active hull drops only that half of the docking intent: the panel keeps naming the same target.
+KIND invariant
+ARGS --dock-test stale-arm --width 1280 --height 720 --timeout 5
+ARGS --ui-click 200,"Windows/Docking"
+ARGS --sim-press 2500,0,SPACE
+EXPECT Dock-test (stale-arm)
+EXPECT Stage: dropped 1 ship(s)
+# at=/size= is the anchor pin (as in 1026-a/b): this window hangs below Resources, and a
+# lost anchor centres it silently.
+EXPECT [dockwin] a="dockprobe" b="dockstation" why=noarm at=821,144 size=451,470
+CHECK len(dockwin) >= 6
+# Both halves were live before the press: the row blames neither half of the intent, and
+# names the target. (Not `noarm`: if the fixture never armed anything, this case proves
+# nothing about what a stale arm costs.)
+CHECK dockwin[0]["b"] == "dockstation"
+CHECK dockwin[0]["why"] not in ("noarm", "notarget")
+# And after: the arm is gone, the target is not.
+CHECK dockwin[-1]["why"] == "noarm"
+CHECK all(r["b"] == "dockstation" for r in dockwin)
+FORBID why=notarget
+FORBID [dock] t=
+FORBID FAILED
