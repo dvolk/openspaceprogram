@@ -601,7 +601,13 @@ CTRL_ITEM_RE = re.compile(r"([^\s\[]+)\[(\d+)\]\((\w+)\)=([-+]\d+\.\d+)deg")
 # for a wing or tailplane, right for a fin), NOT each mount's own convention, so a mirrored
 # twin pair reads alike and a pair that actually differs is the signal, not the noise.
 SURFACE_ITEM_RE = re.compile(
-    r"(\S+) a=([-+]\d+(?:\.\d+)?) q=(\d+(?:\.\d+)?)"
+    # #732: the angle carries its own dash when the part met the aero pass but the
+    # law has no lift frame to measure it in (a plate broadside to the flow). It has
+    # to be a PARSED absence, not a dropped item: every [surface] reader walks these
+    # rows by position -- flight/485 and flight/730 both assume the ten items under a
+    # [drag] row are the ten parts -- so an unparseable token silently shortens the
+    # list and misaligns every later pairing rather than failing.
+    r"(\S+) a=(-|[-+]\d+(?:\.\d+)?) q=(\d+(?:\.\d+)?)"
     # #552 A3: this surface's OWN Mach number (its flow speed over the sound speed
     # its air implies). Optional so a run captured before the field still parses.
     r"(?: mach=(\d+(?:\.\d+)?))?"
@@ -1921,7 +1927,8 @@ def parse_surface(out):
             for name, a, q, mach, watts in SURFACE_ITEM_RE.findall(line):
                 # findall hands back "" (not None) for a group that did not
                 # participate, so the optional mach= and watts= test truthy.
-                rows.append({"t": t, "name": name, "a": float(a), "q": float(q),
+                rows.append({"t": t, "name": name,
+                             "a": None if a == "-" else float(a), "q": float(q),
                              "mach": float(mach) if mach else None,
                              "watts": float(watts) if watts else None})
         elif line.startswith("[drag]"):
@@ -3087,6 +3094,25 @@ def self_test():
     for word in ("inf", "-nan", "INF", "prg=+nan deg", "eta=inf s", "hdg=nan,"):
         if not NONFINITE_RE.search(word):
             fails.append("NONFINITE_RE missed %r" % word)
+    # #732 put a dash in the [surface] ANGLE ("a=-") for a part the aero pass billed but
+    # whose law has no lift frame to measure it in (a plate broadside to the flow). It has
+    # to parse as an absence rather than vanish: flight/485 and flight/730 walk these items
+    # BY POSITION, assuming the ten items under a [drag] row are the ten parts, so one
+    # unparseable token silently shortens the list and misaligns every pairing after it --
+    # a wrong answer that still prints PASS. The row's other figures must survive: a
+    # refused angle says nothing about the q, Mach and watts the same part paid.
+    surf_num = ('[surface] wing_l a=+11.8 q=1234 mach=0.200 watts=50'
+                ' wing_r a=-3.4 q=1200 mach=0.190 watts=40')
+    surf_dash = ('[surface] wing_l a=- q=1234 mach=0.200 watts=50'
+                 ' wing_r a=+3.4 q=1200 mach=0.190 watts=40')
+    if [r["a"] for r in parse_surface(surf_num)] != [11.8, -3.4]:
+        fails.append("a numeric [surface] pair parsed as %r" % (parse_surface(surf_num),))
+    dashed = parse_surface(surf_dash)
+    if len(dashed) != 2 or dashed[0]["a"] is not None or dashed[1]["a"] != 3.4:
+        fails.append("a [surface] row carrying a=- parsed as %r; the dashed angle must "
+                     "read as an absence and keep its neighbour" % (dashed,))
+    if any(dashed[0][k] is None for k in ("q", "mach", "watts")):
+        fails.append("the dashed-angle [surface] item lost its own figures: %r" % (dashed[0],))
 
     # #870: a hull resting on a world that does not turn has no conic prograde and no
     # plane normal, so both files print "-" where a direction used to be. The parse has
@@ -3360,6 +3386,8 @@ def self_test():
           "walked an empty input recorded as a note that cannot redden the case; a "
           "printed row dropped because its number reads inf/nan named, and "
           "[ascent]'s dashed fields parsed as None while its nan row is named too; "
+          "[surface]'s dashed angle parsed as an absence that keeps its row and the "
+          "other figures on it; "
           "every world-scoped row stamped with the vessel that was active when it "
           "printed, in line order, and [mass]'s own ship= kept; a scripted UI action "
           "the game never reported, and a FAILED line with no EXPECT behind it, both "
