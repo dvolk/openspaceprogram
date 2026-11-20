@@ -2492,6 +2492,13 @@ void Game::updateDocking() {
         /* A stale half of the intent is dropped, not waited out, so that a re-arm
            retries instead of the game holding a part that no longer exists. */
         case Vehicle::DockSit::TargetGone:
+            /* #1062 found the route this branch was suspected of not having: it is not a
+               hull death (Game::retire() clears the intent first, vehicle.cpp's "belt
+               rather than the braces"), it is a STAGE PRESS ON THE OTHER HULL. Control
+               over (Ship List), SPACE, and the targeted port leaves on the extracted
+               vessel while the pilot's arm stays put -- so both target halves go here and
+               the arm does not, pinned end to end by
+               e2e/cases/flight/1062-stale-dock-target-leaves-with-the-port-it-aimed-at. */
             a->dockTargetShip = nullptr;
             a->dockTargetPort = nullptr;
             return;
@@ -2500,7 +2507,15 @@ void Game::updateDocking() {
             return;
         case Vehicle::DockSit::Mass: {
             /* #583's door. Drop the WHOLE intent, not just the arm: two hulls this
-               heavy never fit, so re-arming would only toast once a tick. */
+               heavy never fit, so re-arming would only toast once a tick.
+               The one policy here with no end-to-end pin, because a running game cannot
+               reach it: btScalar is a float, so rebuildCompound()/refreshMassProps()
+               already refuse a ship whose OWN total passes ~3.4e38 kg (#547), and two
+               hulls under that cap add to an unremarkable double. tests/test_dock.cpp
+               builds the overflowing pair out of hand-made Parts, where no Bullet compound
+               has to hold it, and pins the sentence plus both ships intact; what this
+               branch DOES stays unobservable from the game. #1062 asked for that pin --
+               this comment is the answer, so the next reader does not spend the hour. */
             const std::string bName = s.b->displayName();
             a->dockTargetShip = nullptr;
             a->dockTargetPort = nullptr;

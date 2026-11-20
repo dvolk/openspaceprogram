@@ -201,8 +201,10 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
     // Docking pair: probe (active) + station, nose-to-nose (see src/docktest.cpp).
     app.add_option("--dock-test", args.dock_test,
                    "Build the docking pair (probe + station) instead of the "
-                   "start ships: near | approach | misaligned | stale-arm")
-        ->check(CLI::IsMember({"near", "approach", "misaligned", "stale-arm"}));
+                   "start ships: near | approach | misaligned | stale-arm"
+                   " | stale-target")
+        ->check(CLI::IsMember({"near", "approach", "misaligned", "stale-arm",
+                               "stale-target"}));
 
     app.add_option("-t,--time-accel", args.initial_time_accel,
                    "Initial time acceleration (0 = paused, default 1)")

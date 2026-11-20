@@ -1,0 +1,57 @@
+# Game::updateDocking() (src/game.cpp) ACTS on a stale docking intent, and TargetGone is
+# the half #1040 could not reach: it clears dockTargetShip AND dockTargetPort and keeps
+# the arm, so a re-target retries with the pilot's own port still armed. Nothing pinned
+# that. tests/test_dock.cpp pins which state Vehicle::dockSituation() NAMES and #1040
+# pinned the ArmGone policy. Mass, the third, has no end-to-end pin and cannot get one --
+# a running game cannot make a pair heavy enough, as the comment on that branch explains.
+# #1062.
+#
+# The route is a player's, not surgery. Game::stage() stages the ACTIVE hull only
+# (stageVehicle(ship)), so the targeted port leaves the OTHER hull only while that hull
+# is flying: open the Ship List, take the station, press SPACE, take the probe back. The
+# fixture is --dock-test stale-target -- misaligned's geometry plus a decoupler-and-port
+# stack hung under the station, and THAT far port is the one the probe targets.
+#
+#   [dockwin] a="dockprobe"   b="dockstation" why=misaligned   both halves live
+#   [dockwin] a="dockstation" b=""            why=noarm        control moved
+#   Stage: dropped 1 ship(s) / 2 part(s)                       the targeted port leaves
+#   [dockwin] a="dockprobe"   b=""            why=notarget     the gate dropped both
+#
+# There is no `why=targetgone` row, for #1040's same reason: updateDocking() runs before
+# the panel draws, so the panel shows what the gate DID rather than the verdict it gave.
+# And the surviving half shows up by absence: dockSituation() asks about the arm FIRST, so
+# a row that blames the target is only possible while the arm is still armed.
+#
+# Both wrong policies are caught. Clearing the arm as well -- or all three, the Mass
+# policy -- prints why=noarm, which the last CHECK refuses. Clearing nothing leaves the
+# panel naming targetgone (the FORBID), and leaves the gate pointing at a hull that no
+# longer carries the port it is aiming at.
+NAME stale-dock-target-leaves-with-the-port-it-aimed-at
+CLAIM Switching to the target hull and staging it drops both halves of the docking target and keeps the armed port.
+KIND invariant
+ARGS --dock-test stale-target --width 1280 --height 720 --timeout 9
+ARGS --ui-click 200,"Windows/Ship List"
+ARGS --ui-click 800,"Windows/Docking"
+ARGS --ui-click 1500,"Ship List/dockstation"
+ARGS --sim-press 3000,0,SPACE
+ARGS --ui-click 4200,"Ship List/dockprobe"
+EXPECT Dock-test (stale-target)
+EXPECT Stage: dropped 1 ship(s)
+EXPECT [dockwin] a="dockprobe" b="" why=notarget at=821,144 size=451,470
+CHECK len(dockwin) >= 10
+# Both halves were live to begin with: the row names the target and blames neither half
+# of the intent. (If the fixture never targeted anything, the rows below prove nothing
+# about what a stale target costs.)
+CHECK dockwin[0]["a"] == "dockprobe"
+CHECK dockwin[0]["b"] == "dockstation"
+CHECK dockwin[0]["why"] not in ("noarm", "notarget")
+# The control hand-off really happened -- the panel prints the ACTIVE ship, so a station
+# row means the Ship List click reached select_vehicle rather than missing its row.
+CHECK any(r["a"] == "dockstation" for r in dockwin)
+# And back on the probe: no target, arm still armed.
+CHECK dockwin[-1]["a"] == "dockprobe"
+CHECK dockwin[-1]["b"] == ""
+CHECK dockwin[-1]["why"] == "notarget"
+FORBID why=targetgone
+FORBID [dock] t=
+FORBID FAILED

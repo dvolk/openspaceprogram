@@ -45,12 +45,19 @@ DockTestShips build_dock_test_ships(const std::string &mode,
        geometry; only the ARMED port moves, onto a part the stage press hands to a new
        vessel. See the probe block below. */
     bool shedArm = false;
+    /* #1062: the same trick on the OTHER hull. The station's targeted port rides the
+       station's own stage-1 decoupler, so a stage press while the station is the active
+       ship hands that port to a new vessel and the probe's intent points at a hull that
+       no longer carries it. */
+    bool shedTarget = false;
     if(mode == "approach") { gap = 2.0; }
     else if(mode == "misaligned") { yawDeg = 40.0; }
     else if(mode == "stale-arm") { yawDeg = 40.0; shedArm = true; }
+    else if(mode == "stale-target") { yawDeg = 40.0; shedTarget = true; }
     else if(mode != "near") {
         throw std::runtime_error("--dock-test: unknown mode '" + mode
-                                 + "' (near | approach | misaligned | stale-arm)");
+                                 + "' (near | approach | misaligned | stale-arm"
+                                 + " | stale-target)");
     }
 
     const ScenarioDef *sc = scenario_by_name("rot-orbit");
@@ -83,6 +90,18 @@ DockTestShips build_dock_test_ships(const std::string &mode,
     station->attachDown(stRcs);
     station->attachDown(stCap);
     station->attachDown(stPort);   // port on the tail (-Z), facing the probe
+    /* The port the probe TARGETS. In stale-target the station wears one more stack
+       below its own tail port -- decoupler then port -- and that far one is the
+       targeted half, so a stage press on THIS hull hands it to a new vessel while the
+       station keeps the port the arc spacing below is built from. */
+    Part *stTarget = stPort;
+    if(shedTarget) {
+        Part *stDec  = makePart(defDec);   // stage 1, like every part here
+        Part *stTail = makePart(defPort);
+        station->attachDown(stDec);
+        station->attachDown(stTail);
+        stTarget = stTail;
+    }
     station->controller = stRw;
     station->init();
     station->enterWorld();
@@ -194,10 +213,11 @@ DockTestShips build_dock_test_ships(const std::string &mode,
     /* Docking is intent-driven (Game::updateDocking needs BOTH halves): the
        probe's port is armed, the station's port targeted -- what the player
        does with "Arm for docking" / "Target for docking". In stale-arm the armed
-       one is the tail port on the decoupler (#1040). */
+       one is the tail port on the decoupler (#1040); in stale-target the TARGETED
+       one is, and it is the other hull that wears the decoupler (#1062). */
     probe->dockArmPort = prArm;
     probe->dockTargetShip = station;
-    probe->dockTargetPort = stPort;
+    probe->dockTargetPort = stTarget;
 
     /* The banner says what the FIXTURE asked for, not what the ports ended up at: the arc
        is built for the aligned stacks, so a yawed probe's face gap is whatever the yaw
@@ -222,6 +242,14 @@ DockTestShips build_dock_test_ships(const std::string &mode,
     if(shedArm) {
         printf("Dock-test (stale-arm): the armed port rides a stage-1 decoupler, so one "
                "press cuts it off this hull\n");
+    }
+    /* stale-target names the same mechanism one hull over, and says which hull has to
+       be flying when the press comes: the gate only ever weighs the ACTIVE ship's
+       intent, so the probe's rows reappear once control is handed back to it. */
+    if(shedTarget) {
+        printf("Dock-test (stale-target): the targeted port rides %s's stage-1 decoupler, "
+               "so a press on that hull cuts it away from the intent\n",
+               station->name.c_str());
     }
 
     DockTestShips d;
