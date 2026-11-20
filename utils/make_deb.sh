@@ -14,6 +14,12 @@ trap cleanup EXIT
 rm -rf debian
 cp -a utils/debian debian
 
+# The licence texts of everything the binary links static ride with it (#1002). The
+# fragment deliberately lives OUTSIDE utils/debian/: dpkg reads debian/<name>.install as
+# the file list of a binary package called <name>, so a fragment parked there would ask
+# dpkg-buildpackage to build a package named "third-party".
+cat utils/third-party.install >> debian/install
+
 # Debian allows one '-'; map the rest to '~': v0.0.1-38-gX -> 0.0.1~38~gX-1.
 VER=$(sed -n 's/^#define VERSION "\(.*\)"/\1/p' src/version.h)
 if [ -z "$VER" ]; then

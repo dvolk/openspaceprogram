@@ -808,6 +808,11 @@ PY_MISSING = $(shell python3 -c "import importlib.util as u; print(' '.join(m fo
 
 .PHONY: test-py
 test-py: test-gen
+	@# What the binary statically links, and under what licence (#1002): the record is
+	@# generated from the gitlinks, bootstrap.sh's GLEW pin and the vendored headers' own
+	@# version macros, so a submodule bump that forgets it goes red here rather than
+	@# shipping a stale attribution in the .deb. No optional modules needed.
+	python3 utils/gen_third_party.py --check
 	@if [ -n "$(PY_MISSING)" ]; then \
 		echo "test-py: SKIP parts/mesh/heightmap/skybox pins -- missing python module(s): $(PY_MISSING)" >&2; \
 		echo "         (pip install trimesh numpy pillow, or run these in CI)" >&2; \
@@ -817,6 +822,12 @@ test-py: test-gen
 		python3 utils/heightmaps/gen_earth_hm.py --verify && \
 		python3 utils/skybox/make_skybox.py --verify --out res/skybox/dsm_1024_g3_ds2; \
 	fi
+
+# Regenerate the third-party record (#1002) -- THIRD-PARTY.md and the .deb's licence-text
+# install list. `make test-py` checks it; this writes it.
+.PHONY: third-party
+third-party:
+	python3 utils/gen_third_party.py
 
 # E2E runner (e2e/run.py). Headless via xvfb-run when no display.
 # CASES names the cases. `make e2e-all` is the whole battery -- slow enough
@@ -897,10 +908,13 @@ APPIMAGETOOL=tmp/appimagetool-x86_64.AppImage
 WINE_CASES ?= harness/01-smoke vab/52-vab-launch vab/57-vab-launch-orbit vab/58-vab-launch-body
 
 # Package only (no test/e2e gates). Version from `version` target; dirty
-# trees keep -dirty in the name.
+# trees keep -dirty in the name. Each archive carries LICENSE.md, THIRD-PARTY.md and the
+# per-library notice texts under third-party/: these tarballs link the same static
+# libraries as the .deb, so the same texts have to travel (#1002).
 .PHONY: artifacts
 artifacts: icon-check
 	@$(MAKE) --no-print-directory version
+	@python3 utils/gen_third_party.py --check
 	@$(MAKE) --no-print-directory all
 	@$(MAKE) --no-print-directory OS=windows all
 	@x86_64-w64-mingw32-objdump -h "$(WINDOWS_BIN)" | grep -q '\.rsrc' || \
@@ -920,7 +934,9 @@ artifacts: icon-check
 	for layout in osp-$$VER-linux osp-$$VER-windows osp-$$VER-linux+windows; do \
 		mkdir -p "$$STAGE/$$layout"; \
 		cp -r res "$$STAGE/$$layout/"; \
-		cp LICENSE.md release/README.md "$$STAGE/$$layout/"; \
+		cp LICENSE.md THIRD-PARTY.md release/README.md "$$STAGE/$$layout/"; \
+		mkdir -p "$$STAGE/$$layout/third-party"; \
+		cp THIRD-PARTY/* "$$STAGE/$$layout/third-party/"; \
 	done; \
 	cp "$(LINUX_BIN)"   "$$STAGE/osp-$$VER-linux/"; \
 	cp "$(WINDOWS_BIN)" "$$STAGE/osp-$$VER-windows/"; \
@@ -959,6 +975,9 @@ appimage:
 deb:
 	@$(MAKE) --no-print-directory version
 	@$(MAKE) --no-print-directory all
+	@# The package carries THIRD-PARTY.md and the licence texts of everything statically
+	@# linked, so the record has to match the tree it was built from (#1002).
+	@python3 utils/gen_third_party.py --check
 	bash utils/make_deb.sh $(DISTDIR) "$(LINUX_BIN)"
 
 # Gates first (unit + the whole e2e battery + wine parity smoke), then package.

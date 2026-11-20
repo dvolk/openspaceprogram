@@ -17,7 +17,10 @@ turned off. After the baseline was cleaned, 758 trailing-whitespace lines remain
 middleware/: 751 in utils/rss/ (scraped third-party HTML -- their whitespace, not ours)
 and 7 under reports/, which are immutable snapshots (QWEN.md). e2e/fixtures/ are
 byte-pinned inputs, some deliberately malformed (save_bad_format/save.json), where a
-missing final newline may be part of the pin.
+missing final newline may be part of the pin. THIRD-PARTY/ holds verbatim copies of other
+libraries' licence texts (#1002): reproducing the text IS the obligation, so glew's and
+sdl3's trailing spaces stay, and gen_third_party.py --check compares those copies with the
+upstream file byte for byte -- "tidying" them would fail a different gate instead.
 
 That skip list is HYGIENE only. The secret scan runs on every tracked text file, the
 scraped and pinned trees included -- those are exactly where a credential gets pasted: a
@@ -74,7 +77,13 @@ import sys
 # as they appear in `git ls-files`, so anything not tracked (dist/, build/) does not need
 # listing -- and if someone ever does track build output, the size gate and hygiene should
 # both see it.
-HYGIENE_SKIP = ("middleware/", "reports/", "utils/rss/", "e2e/fixtures/", "staging/")
+HYGIENE_SKIP = ("middleware/", "reports/", "utils/rss/", "e2e/fixtures/", "staging/",
+                # Verbatim copies of other libraries' notices (#1002). Reproducing the text
+                # IS the obligation, so house style cannot touch its bytes -- glew and sdl3
+                # ship trailing spaces. gen_third_party.py --check compares these byte for
+                # byte with the upstream file, so "cleaning" them would fail a different
+                # gate instead.
+                "THIRD-PARTY/")
 # Full paths, not basenames: a basename match would exempt every file named `rules` that
 # anyone ever adds.
 TAB_OK = {"Makefile", ".gitmodules", "utils/debian/rules"}
@@ -405,13 +414,14 @@ def self_test():
     # the reintroduced bug keep printing "self-test ok".
     leak = 'pass' + "word = hunter2hunter2x\n"
     for path in ("reports/x/y.md", "utils/rss/z.html", "e2e/fixtures/save_bad_format/save.json",
-                 "src/gameui.cpp", "utils/ci_lint.py"):
+                 "THIRD-PARTY/glm-copying.txt", "src/gameui.cpp", "utils/ci_lint.py"):
         f = {g: [] for g in ("hygiene", "size", "json", "secret", "unread")}
         scan_file(path, leak, f)
         if len(f["secret"]) != 1:
             bad.append("scan_file lost the planted credential in %s -> %r" % (path, f["secret"]))
     for path, want in [("reports/x/y.md", 0), ("utils/rss/z.html", 0),
                        ("e2e/fixtures/save_bad_format/save.json", 0),
+                       ("THIRD-PARTY/glm-copying.txt", 0),
                        ("src/gameui.cpp", 1), ("utils/ci_lint.py", 1)]:
         f = {g: [] for g in ("hygiene", "size", "json", "secret", "unread")}
         scan_file(path, "int x = 1;   \n", f)
