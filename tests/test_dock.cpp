@@ -14,8 +14,12 @@
 //     at (mA*vA + mB*vB)/(mA + mB), read off the hull the game actually flies after
 //     rebuildCompound. Nothing else in the suite crosses a merge with velocity, and a
 //     capture that braked or flung the pair feels like normal flying while every later
-//     delta-v plan is wrong. The angular half is NOT symmetric -- the merge takes the
-//     survivor's spin -- and is filed as #1053 rather than pinned here as a rule.
+//     delta-v plan is wrong.
+//   - ANGULAR MOMENTUM (#1053): the other half of the same sentence. The merge may lose
+//     each hull's OWN spin, but not the pair's L about their shared centre -- spin terms
+//     AND the r x m v of an off-axis capture -- and the merged hull's re-solved inertia is
+//     what divides it. This used to be `SetAngVelocity(hull, wA)`, which deleted the
+//     absorbed hull's rotation at contact.
 //   - SEAM: the joint is recorded (survivor port, absorbed root, its name),
 //     which is what undock splits back apart.
 //   - TOPOLOGY: the absorbed ship's root now hangs off the survivor's port;
@@ -364,8 +368,7 @@ static void test_absorb() {
    is still a law, and it was unasserted: a merge that kept the survivor's v, or averaged
    the two hulls equally, or wrote the blend before rebuildCompound swapped the hull out
    from under it, all feel identical in flight and corrupt every delta-v plan measured
-   from the capture. The angular half is NOT symmetric (the merge takes the survivor's
-   spin) and is filed as #1053 rather than pinned here as intended. */
+   from the capture. The angular half has its own test below (#1053). */
 static void test_a_dock_keeps_the_pair_s_momentum() {
     printf("== a dock keeps the pair's m*v ==\n");
 
@@ -415,6 +418,97 @@ static void test_a_dock_keeps_the_pair_s_momentum() {
        would read 1200, "average the hulls" 1175, "weight by part count" something
        else again -- and only the first two look like nothing happened. */
     CHECK_NEAR(want.x, 1547500.0 / 1300.0, 1e-9, "absorb: the blend is mass-weighted");
+
+    destroyShip(B.v);
+    destroyShip(A.v);
+}
+
+/* --- the capture keeps the pair's angular momentum (#1053) -----------------
+   The merge used to end `SetAngVelocity(hull, wA)`: the survivor's spin, the absorbed
+   hull's gone. A rigid weld is entitled to lose each body's OWN spin -- that is what
+   inelastic means, and it is why the linear half blends instead of bouncing -- but it is
+   not entitled to lose the pair's angular momentum. Station-keeping is the player-facing
+   case: dock a still probe nose-first to a hull that is turning, and the turn used to be
+   deleted on contact, with no torque anywhere to have caused it.
+
+   The pin is CONSERVATION rather than a number, because the merged hull's inertia comes
+   out of calculatePrincipalAxisTransform and the test has no business repeating that
+   solve: it reads the same tensor the merge divides by. */
+static void test_a_dock_keeps_the_pair_s_spin() {
+    printf("== a dock keeps the pair's angular momentum ==\n");
+
+    Ship A; A.v = new Vehicle; A.v->name = "A";
+    Part *tankA = mkPart(A, "tankA", 1000.0, 1.0, 1.0, kTankHz, false);
+    Part *portA = mkPart(A, "portA",   50.0, 1.0, 1.0, kPortHz, true);
+    A.v->setRoot(tankA);
+    A.v->attachDown(portA);
+    A.v->controller = tankA;
+    A.v->init();
+    A.v->placeShip(glm::dvec3(0.0), glm::dmat3(1.0));
+
+    Ship B; B.v = new Vehicle; B.v->name = "B";
+    Part *portB = mkPart(B, "portB",   50.0, 1.0, 1.0, kPortHz, true);
+    Part *tankB = mkPart(B, "tankB",  200.0, 1.0, 1.0, kTankHz, false);
+    B.v->setRoot(portB);
+    B.v->attachDown(tankB);
+    B.v->controller = portB;
+    B.v->init();
+    B.v->placeShip(glm::dvec3(0.0, 0.0, -1.875), glm::dmat3(1.0));
+
+    const double mA = A.v->getMass();
+    const double mB = B.v->getMass();
+
+    /* Opposite spins about the port axis -- the ticket's repro. The signs are the point:
+       a merge that kept the survivor's spin and one that split the difference both look
+       plausible inside a same-sign pair, while 0.5 and -0.4 cannot be confused. */
+    const glm::dvec3 wA(0.0, 0.0, 0.5);
+    const glm::dvec3 wB(0.0, 0.0, -0.4);
+    SetAngVelocity(A.v->hull, wA);
+    SetAngVelocity(B.v->hull, wB);
+    /* And a closing rate with a lateral component, so the capture is not purely head-on:
+       that is what makes the orbital term r x m v nonzero about the shared centre, and it
+       is the half of L that a spin-only merge would still get wrong. */
+    const glm::dvec3 vA(0.0, 0.6, -0.9);
+    const glm::dvec3 vB(0.0, -0.4, 0.3);
+    SetVelocity(A.v->hull, vA);
+    SetVelocity(B.v->hull, vB);
+
+    /* Read everything while there are still two hulls to read it from. */
+    const glm::dmat3 iA = A.v->hullInertiaWorld();
+    const glm::dmat3 iB = B.v->hullInertiaWorld();
+    const glm::dvec3 cA = A.v->comPos();
+    const glm::dvec3 cB = B.v->comPos();
+    const glm::dvec3 com = (mA * cA + mB * cB) / (mA + mB);
+    const glm::dvec3 vOut = (mA * vA + mB * vB) / (mA + mB);
+    const glm::dvec3 Lwant = iA * wA + iB * wB
+                           + glm::cross(cA - com, mA * (vA - vOut))
+                           + glm::cross(cB - com, mB * (vB - vOut));
+    CHECK_TRUE(std::fabs(Lwant.z) > 1.0,
+               "the pair really does carry spin angular momentum here");
+
+    A.v->absorbShip(B.v, portA);
+
+    const glm::dvec3 w = GetAngVelocity(A.v->hull);
+    const glm::dvec3 Lgot = A.v->hullInertiaWorld() * w;
+    CHECK_REL(Lgot.x, Lwant.x, 1e-9, "absorb: x angular momentum kept");
+    CHECK_REL(Lgot.y, Lwant.y, 1e-9, "absorb: y angular momentum kept");
+    CHECK_REL(Lgot.z, Lwant.z, 1e-9, "absorb: z angular momentum kept");
+
+    /* Said as a rate too, because that is what the pilot sees: B's -0.4 has to land in
+       the answer, so the merged spin sits between the two and is NOT the survivor's. */
+    CHECK_TRUE(w.z < 0.5 && w.z > -0.4,
+               "the merged spin lies between the pair's, not at one end of them");
+    CHECK_TRUE(std::fabs(w.z - wA.z) > 1e-3,
+               "and it is not the survivor's spin, which is what the merge used to write");
+    /* The lateral closing has to show up as a turn about a DIFFERENT axis than the spins:
+       without the orbital terms this component would be 0 on both hulls' z-axis spin. */
+    CHECK_TRUE(std::fabs(w.x) > 1e-4,
+               "the off-axis capture starts the merged hull turning about x as well");
+    /* The figures, printed: the old merge answered exactly wA for all three. */
+    printf("merged spin (%.4f, %.4f, %.4f) rad/s from A (%.1f, %.1f, %.1f) and B (%.1f, %.1f, %.1f)\n",
+           w.x, w.y, w.z, wA.x, wA.y, wA.z, wB.x, wB.y, wB.z);
+    printf("L about the shared centre: (%.1f, %.1f, %.1f) kg m^2/s, kept to %.4g\n",
+           Lwant.x, Lwant.y, Lwant.z, glm::length(Lgot - Lwant));
 
     destroyShip(B.v);
     destroyShip(A.v);
@@ -1775,6 +1869,8 @@ static void test_a_sideways_port_moves_the_dial_but_not_the_verdict() {
 int main() {
     test_absorb();
     test_a_dock_keeps_the_pair_s_momentum();
+    printf("\n");
+    test_a_dock_keeps_the_pair_s_spin();
     test_orders_return_on_undock();
     test_a_stage_cut_at_a_seam_root();
     test_a_seam_with_no_records_falls_back_to_defaults();

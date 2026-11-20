@@ -373,6 +373,19 @@ public:
     /* The COM: the hull transform's origin, in world coordinates. O(1). */
     glm::dvec3 comPos() const;
 
+    /* The compound's inertia tensor in WORLD axes (#1053). Bullet keeps the solve's
+       diagonal in the hull's PRINCIPAL frame plus the pose that carries it -- the same
+       pair refreshMassProps() audits against Bullet's cached inverse (#438) -- so this is
+       two rotates, not a solve. Public because anything that moves angular momentum
+       through a merge has to know what each hull carried into it. */
+    glm::dmat3 hullInertiaWorld() const;
+
+    /* The spin this hull would have if it carried the world angular momentum `L` about
+       its own COM: w = I^-1 L, done in the principal frame (two rotates and three
+       divides) instead of solving a 3x3. An axis whose diagonal is zero is immovable and
+       answers no spin for it, which is what Bullet does with such a body too. */
+    glm::dvec3 spinForAngularMomentum(const glm::dvec3 &L) const;
+
     /* Place the ship: frame S at (sPos, sRot). Leaves BOTH velocities alone. */
     void placeShip(const glm::dvec3 &sPos, const glm::dmat3 &sRot);
 

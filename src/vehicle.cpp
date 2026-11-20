@@ -1506,6 +1506,39 @@ glm::dvec3 Vehicle::comPos() const {
     return glm::dvec3(o.getX(), o.getY(), o.getZ());
 }
 
+/* The principal diagonal Bullet carries for a hull, in double. rebuildCompound() sets it
+   from calculatePrincipalAxisTransform, next to the pose that carries it, and
+   refreshMassProps() asserts the two stay consistent with the tensor Bullet answers
+   torque with (#438) -- so these two readers use the same source of truth rather than
+   keeping a fourth copy of the ship's mass distribution. (physics.h's getInertiaDiag() is
+   NOT the same thing: it integrates the collision SHAPE, which is not the compound's
+   principal solve.) */
+static glm::dvec3 localInertiaDiag(const Body *hull) {
+    const btVector3 li = hull->btBody->getLocalInertia();
+    return glm::dvec3((double)li.getX(), (double)li.getY(), (double)li.getZ());
+}
+
+glm::dmat3 Vehicle::hullInertiaWorld() const {
+    glm::dvec3 pos; glm::dmat3 rot;
+    fromBt(hull->btBody->getWorldTransform(), pos, rot);
+    const glm::dvec3 d = localInertiaDiag(hull);
+    return rot * glm::dmat3(d.x, 0.0, 0.0, 0.0, d.y, 0.0, 0.0, 0.0, d.z)
+              * glm::transpose(rot);
+}
+
+glm::dvec3 Vehicle::spinForAngularMomentum(const glm::dvec3 &L) const {
+    glm::dvec3 pos; glm::dmat3 rot;
+    fromBt(hull->btBody->getWorldTransform(), pos, rot);
+    const glm::dvec3 d = localInertiaDiag(hull);
+    // I^-1 in the principal frame is just the reciprocal diagonal; a zero axis is a body
+    // that cannot be turned about it, so that component answers no spin rather than inf.
+    const glm::dvec3 Ll = glm::transpose(rot) * L;
+    const glm::dvec3 wLocal((d.x > 0.0) ? Ll.x / d.x : 0.0,
+                            (d.y > 0.0) ? Ll.y / d.y : 0.0,
+                            (d.z > 0.0) ? Ll.z / d.z : 0.0);
+    return rot * wLocal;
+}
+
 void Vehicle::placeShip(const glm::dvec3 &sPos, const glm::dmat3 &sRot) {
     glm::dvec3 pOrigin; glm::dmat3 pBasis;
     fromBt(principal, pOrigin, pBasis);
@@ -5865,6 +5898,16 @@ void Vehicle::absorbShip(Vehicle *B, Part *portA) {
     const glm::dvec3 vA = GetVelocity(hull);
     const glm::dvec3 vB = GetVelocity(B->hull);
     const glm::dvec3 wA = GetAngVelocity(hull);
+    const glm::dvec3 wB = GetAngVelocity(B->hull);
+    /* The angular half of the same bookkeeping (#1053), read while there are still two
+       bodies to read it from: each compound's inertia about its own COM, and where those
+       COMs sit. The merge is rigid and keeps every part's world pose, so the pair's
+       mass-weighted centre IS the merged hull's COM, and the angular momentum about it is
+       what the single body has to carry when it wakes up. */
+    const glm::dmat3 iA = hullInertiaWorld();
+    const glm::dmat3 iB = B->hullInertiaWorld();
+    const glm::dvec3 cA = comPos();
+    const glm::dvec3 cB = B->comPos();
 
     /* Topology: B's root hangs off this ship's port part -- the ports are the joint. */
     Part *bRoot = B->rootPart();
@@ -5936,8 +5979,25 @@ void Vehicle::absorbShip(Vehicle *B, Part *portA) {
     // The merge renumbered the groups AND brought in tanks this ship never
     // sampled, so --drain-log has no valid baseline for them.
     dropDrainWindow();
-    SetVelocity(hull, (mA * vA + mB * vB) / (mA + mB));
-    SetAngVelocity(hull, wA);
+    const glm::dvec3 vOut = (mA * vA + mB * vB) / (mA + mB);
+    SetVelocity(hull, vOut);
+    /* #1053: and the spin comes from the pair's angular momentum about that same centre,
+       not from A's alone. A rigid merge is entitled to lose each body's OWN spin -- the
+       weld is inelastic, which is why the linear half blends rather than bounces -- but it
+       is not entitled to lose angular momentum, and until now the absorbed hull's I*w
+       simply disappeared: dock a still probe nose-first into a station that turns for
+       artificial gravity and the station's rotation was deleted at contact, with no
+       torque and no toast. The orbital terms belong to the same law: an off-axis capture
+       carries r x m v about the shared centre. For the head-on approach the ports demand
+       they are ~0 (r and v lie along the same line), so they only bite on a glancing
+       capture -- which is exactly when the merged hull should start turning.
+       What this does NOT do is invent a rotation: the pair's L, over the merged hull's own
+       I, which rebuildCompound() above has just re-solved from the union. */
+    const glm::dvec3 com = (mA * cA + mB * cB) / (mA + mB);
+    const glm::dvec3 L = iA * wA + iB * wB
+                       + glm::cross(cA - com, mA * (vA - vOut))
+                       + glm::cross(cB - com, mB * (vB - vOut));
+    SetAngVelocity(hull, spinForAngularMomentum(L));
 }
 
 Vehicle * Vehicle::extractSubtreeAsShip(Part *root, const std::string &name, double t) {
