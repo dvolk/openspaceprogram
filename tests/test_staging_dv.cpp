@@ -2910,6 +2910,96 @@ static void test_auto_stager_leaves_the_last_part_on_the_floor() {
     CHECK_TRUE(w.empty(), "and the checker agrees there is no cut on the lowest label");
 }
 
+/* The rule reads the SHALLOWEST cut under an engine, not the deepest: what keeps an engine from
+   burning is the last thing still under it, and of the cuts below, the shallowest is the one that
+   fires last. Every other fixture has at most one cut under an engine, so a fold taking the deepest
+   cut instead passes them all and gets this shape one press wrong. */
+static void test_auto_stager_frees_an_engine_at_the_shallowest_cut_under_it() {
+    Catalog cat;
+    BuildShip bs;
+    const int tank = addPart(bs, cat.tank(50, 25, 25), "tank", -1, 1);
+    const int eng = addPart(bs, cat.engine(10, 0.5, 1000.0), "eng", tank, 1);
+    const int dNear = addPart(bs, cat.decoupler(5), "d_near", eng, 1);   // one press under the engine
+    addPart(bs, cat.tank(50, 25, 25), "t_near", dNear, 1);
+    const int mid = addPart(bs, cat.tank(50, 25, 25), "mid", eng, 1);
+    const int dDeep = addPart(bs, cat.decoupler(5), "d_deep", mid, 1);   // a rung deeper again
+    addPart(bs, cat.tank(50, 25, 25), "t_deep", dDeep, 1);
+    (void)tank; (void)dNear; (void)mid; (void)dDeep;
+
+    StagingPlan plan = autoStage(bs);
+    CHECK_TRUE(plan.applied, "a stack with two rungs under one engine numbers");
+    CHECK_TRUE(labelsMatch(bs, std::vector<int>({1, 1, 2, 2, 1, 3, 3}), "labels"),
+               "the two cuts separate at 3 and 2");
+    CHECK_TRUE(bs.parts[eng].stage == 1,
+               "and the engine starts after the SHALLOWEST cut under it: it is still standing on "
+               "d_near when d_deep goes, so it is not free until press 2 (#1033)");
+    CHECK_TRUE(!has_note(plan, "lit as soon as"), "which is where its stage already puts it");
+}
+
+/* An engine the numbered-pair limit declines never moves, so it must not spend the floor budget:
+   label 1 still holds it, and the next engine can come up. The floor check used to run first, so the
+   second engine was declined for a reason that was no longer true of it. */
+static void test_auto_stager_does_not_charge_the_floor_for_an_engine_it_declines() {
+    Catalog cat;
+    BuildShip bs;
+    const int cling = addPart(bs, cat.engine(10, 0.5, 1000.0), "cling", -1, 1);
+    const int mover = addPart(bs, cat.engine(10, 0.5, 1000.0), "mover", -1, 1);
+    const int dTop = addPart(bs, cat.decoupler(5), "d_top", mover, 1);
+    const int numEng = addPart(bs, cat.engine(10, 0.5, 1000.0), "num_eng", dTop, 3);
+    const int dLow = addPart(bs, cat.decoupler(5), "d_low", -1, 1);
+    addPart(bs, cat.tank(50, 25, 25), "t_low", dLow, 1);
+    (void)dTop; (void)dLow;
+
+    StagingPlan plan = autoStage(bs);
+    CHECK_TRUE(plan.applied, "two islands and one numbered engine still number");
+    CHECK_TRUE(labelsMatch(bs, std::vector<int>({1, 2, 3, 3, 2, 2}), "labels"),
+               "the engine standing on a cut comes up one press and the rest of the ladder stands");
+    CHECK_TRUE(bs.parts[mover].stage == 2, "mover moves, floor and all");
+    CHECK_TRUE(bs.parts[cling].stage == 1,
+               "cling is the one the numbered num_eng blocks, so it holds label 1 for both of them");
+    CHECK_TRUE(has_note(plan, "start them on top of an engine the ship's own numbers order"),
+               "one decline, and the note names the pair reason");
+    CHECK_TRUE(!has_note(plan, "label 1 holds"), "the floor is not the reason for anything here");
+    std::vector<std::string> w;
+    validateStaging(bs, w);
+    CHECK_TRUE(w.empty(), "and #1010 rule 2 has nothing to say: label 1 still carries a part");
+    CHECK_TRUE(bs.parts[numEng].stage == 3, "the numbered engine keeps its press untouched");
+}
+
+/* A player presses Auto-stage, flies the stack, and presses it again. The second pass reads the
+   first pass's labels as the ship's numbers, so the free rule's own inference comes back dressed as
+   an instruction. Where the lifted label is the top one the pad-lit pin (#1020) happens to put it
+   back; where it is a middle label it does not, and the second pass moves the engine somewhere else
+   again -- in other shapes it splits a pair and the engine-order guard refuses the stack the player
+   just auto-staged (#1034). A number equal to what this rule derives cannot be contradicted by
+   writing it, so the second pass lands on the same ladder. */
+static void test_auto_stager_presses_twice_over_its_own_ladder() {
+    Catalog cat;
+    BuildShip bs;
+    const int pod = addPart(bs, cat.mono(100, 0), "pod", -1, 1);
+    const int dTop = addPart(bs, cat.decoupler(5), "d_top", pod, 1);        // shallowest rung
+    const int core = addPart(bs, cat.tank(50, 25, 25), "core", dTop, 1);
+    const int engX = addPart(bs, cat.engine(10, 0.5, 1000.0), "eng_x", core, 1);
+    const int tX = addPart(bs, cat.tank(50, 25, 25), "t_x", engX, 1);
+    const int dDeep = addPart(bs, cat.decoupler(5), "d_deep", tX, 1);       // deepest rung
+    addPart(bs, cat.tank(50, 25, 25), "t_deep", dDeep, 1);
+    const int dMid = addPart(bs, cat.decoupler(5), "d_mid", core, 1);       // the rung between
+    addPart(bs, cat.tank(50, 25, 25), "t_mid", dMid, 1);
+    (void)pod; (void)dTop; (void)core; (void)tX; (void)dDeep; (void)dMid;
+
+    StagingPlan first = autoStage(bs);
+    CHECK_TRUE(first.applied, "the first press numbers the stack");
+    CHECK_TRUE(bs.parts[engX].stage == 3,
+               "eng_x is loose the press d_deep goes, so it comes up to the middle label 3");
+    const std::vector<int> once = labelsOf(bs);
+
+    StagingPlan second = autoStage(bs);
+    CHECK_TRUE(second.applied, "pressing it again over its own ladder is not a refusal");
+    CHECK_TRUE(labelsMatch(bs, once, "labels"),
+               "and moves nothing: eng_x's 3 is now a number on the ship, but it is the number this "
+               "rule would derive too, so it is not read as a reason to move it (#1034)");
+}
+
 /* The one protection "Stage from scratch" removes that no label vector shows on its own: the
    pad-lit pin. Same shape as the test below -- a root engine and one under a cut, both authored at
    the top label so the build lights them at the pad. The default path lifts the safe one; the mode
@@ -3460,6 +3550,9 @@ int main() {
     test_auto_stager_lights_an_unnumbered_engine_as_soon_as_it_is_free();
     test_auto_stager_does_not_free_an_engine_across_one_the_player_numbered();
     test_auto_stager_leaves_the_last_part_on_the_floor();
+    test_auto_stager_frees_an_engine_at_the_shallowest_cut_under_it();
+    test_auto_stager_does_not_charge_the_floor_for_an_engine_it_declines();
+    test_auto_stager_presses_twice_over_its_own_ladder();
     test_auto_stager_gives_up_the_pad_pin_rather_than_empty_the_floor();
     test_auto_stager_says_what_a_chute_on_the_floor_needs();
     test_auto_stager_reads_the_graph_not_the_part_order();

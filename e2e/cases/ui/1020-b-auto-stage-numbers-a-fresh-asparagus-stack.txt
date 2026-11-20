@@ -30,7 +30,7 @@ ARGS --stage-dump 7900 --timeout 14
 LIMIT 60
 EXPECT [vab] loaded asparagus (13 parts)
 EXPECT [toast] Auto-staged 12 parts from the stack
-EXPECT [autostage] note: 1 engine(s) lit as soon as the stack leaves them free
+EXPECT [autostage] note: 1 engine(s) lit as soon as the stack cuts them loose
 # The ring is one press: three cuts, one tree depth, nothing authored to separate them.
 EXPECT [stagetree] 4 dec_a def=decoupler_radial parent=core_tank stage=3 responds=decoupler
 EXPECT [stagetree] 7 dec_b def=decoupler_radial parent=core_tank stage=3 responds=decoupler
