@@ -5,21 +5,25 @@
 # --dock-test misaligned builds the shipped docking pair and yaws the probe 40 deg about
 # its OWN PORT, so the port axes leave the kDockAlign cone (15 deg) while the faces start
 # inside kDockCapture (1.5 m). 40 rather than the 16 that would do: nothing flies the
-# probe, so the pair wanders -- the face gap reads 1.2 m on the first panel line and 4.3 m
-# on the last, and the misalignment drifts 38 -> 46 deg. `why=misaligned` for every line
-# of that, because the gate asks the axis before the distance: this case pins that order
-# from the other side of 1026-b, where a rails state outranks the same geometry.
-# This is the one state where a player is doing everything they
-# can see -- closing on a port they can line up by eye -- and nothing tells them the
-# answer is rotation. The window prints `why=misaligned` for it, and the unit tests in
-# tests/test_dock.cpp pin the cone boundary itself from the constant.
+# probe, so the pair wanders -- the face gap reads 1.2 m on the first panel line and about
+# 4.2 m on the last some 2.5 s later, while the misalignment drifts 38 -> 46 deg. The
+# verdict is `misaligned` for every line of that because the gate asks the axis before the
+# distance, so this case pins that order from the other side of 1026-b, where a rails
+# state outranks the same geometry.
+# This is the state where a player is doing everything they can see -- closing on a port
+# they line up by eye -- and nothing tells them the answer is rotation. The window prints
+# `why=misaligned` for it, and the unit tests in tests/test_dock.cpp pin the cone boundary
+# itself from the constant.
 #
 # The refusal is the point, so it is FORBIDden as well: the mate must really not happen.
 # A window that names a gate while the hulls dock anyway is a window lying.
 #
 # at=/size= is the anchor pin, as in 972: this window hangs below the Resources window
 # (uiwins.cpp), and ui::Manager lets a lost anchor stand -- the panel just moves to the
-# middle of the view, which no widget list shows.
+# middle of the view, which no widget list shows. The size is the window's declared
+# initial_size rather than whatever the widest line happened to measure, so both this case
+# and 1026-b pin the same rect, and it only moves when someone changes uiwins.cpp or the
+# Resources bar above it on purpose.
 NAME docking-window-says-why-a-dock-refuses
 CLAIM The Docking window names the gate that stopped a mate, and the pair it calls refused really does not mate.
 KIND invariant

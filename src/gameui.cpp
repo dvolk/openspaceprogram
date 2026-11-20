@@ -5807,10 +5807,11 @@ static constexpr double kDockReadSec = 0.5;
    judges it. Hand-drawn rather than a progress bar because a progress bar reads "more
    is better", and here the last cell IS the shut gate. So the numbers carry the truth
    and the meter is only the glance.
-   `shut` is handed in rather than derived from now/limit: the three gates compare with
-   three different operators (an axis fails BELOW the cosine, a gap at or ABOVE the
-   capture distance, a speed strictly ABOVE the limit), and a meter that re-derived the
-   boundary would be a second gate that can disagree with the first at its edge. */
+   `shut` comes in from DockRead rather than being derived from now/limit: the three gates
+   compare with three different operators (an axis fails BELOW the cosine, a gap at or
+   ABOVE the capture distance, a speed strictly ABOVE the limit), and a meter that
+   re-derived the boundary would be a second gate that can disagree with the first at its
+   edge. */
 static void dockMeter(double now, double limit, bool shut) {
     const int cells = 12;
     int lit = 0;
@@ -5888,13 +5889,13 @@ void drawUIDock(Game &g) {
                rounding, and it surprises nobody until they see it. */
             const double alignDeg = acosUnit(Vehicle::kDockAlign) * rad2deg;
             dockGateRow("axis mine", acosUnit(s.read.axisCosA) * rad2deg, alignDeg,
-                        s.read.axisCosA < Vehicle::kDockAlign, "deg", 1);
+                        s.read.shutAxis, "deg", 1);
             dockGateRow("axis tgt", acosUnit(s.read.axisCosB) * rad2deg, alignDeg,
-                        s.read.axisCosB < Vehicle::kDockAlign, "deg", 1);
+                        s.read.shutAxis, "deg", 1);
             dockGateRow("face gap", s.read.faceGap, Vehicle::kDockCapture,
-                        s.read.faceGap >= Vehicle::kDockCapture, "m", 2);
+                        s.read.shutGap, "m", 2);
             dockGateRow("port speed", s.read.relSpeed, Vehicle::kDockMaxV,
-                        s.read.relSpeed > Vehicle::kDockMaxV, "m/s", 2);
+                        s.read.shutSpeed, "m/s", 2);
             ImGui::Spacing();
             /* And the part no gate has: which way to nudge. A gate that only says "no"
                leaves the pilot guessing whether they are short, high, or already past

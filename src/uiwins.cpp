@@ -259,10 +259,18 @@ const WinDef kWins[W_Count] = {
            TopRight, under the resource bars: the map owns BottomLeft, the recorder
            BottomCenter and the flight readouts TopLeft, and a docking panel is read in
            glances while the pilot watches the target -- it must not sit over the middle
-           of the view. Content-fit, so the number columns size themselves.
+           of the view.
+           A declared size rather than a content fit: the fit is ONE-SHOT (ui.h:264-268),
+           so it sizes the window to the rows that happened to be up the frame it appears.
+           Measured: opened on a hull whose target was still on the rails it fitted to
+           three rows (364x122), and when the target woke the gate rows and the nudge rows
+           arrived below the fold -- the panel the player clicked for, hidden. 451x238 is
+           what the full readout measures in flight (the %-10s %8s %-4s / %8s column plus
+           the 12-cell meter), and the player can still resize it.
            Closed by default: with no port armed it has one row to say. */
         .name = "Docking", .label = "Docking",
         .opts = { .slot = ui::Slot::TopRight, .below = "Resources",
+                  .initial_size = ImVec2(451.0f, 238.0f),
                   .closable = true, .default_open = false },
         .role = WinRole::Persistent, .inList = true,
     },

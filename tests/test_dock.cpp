@@ -1229,17 +1229,21 @@ static void test_the_dock_situation_says_why_a_pair_will_not_mate() {
     CHECK_TRUE(s.why == Vehicle::DockSit::Go, "two flipped ports still mate");
     A.v->placeShip(glm::dvec3(0.0), glm::dmat3(1.0));
 
-    /* The face is at HALF the part height along the presented axis, not at the part
-       centre: move the other hull a whole port diameter away and the gap that grows is
-       that whole diameter, because both faces moved with their parts. */
+    /* The face sits at HALF the part height along the presented axis, not at the part
+       centre: move the other hull back 1.5 m and the gap that grows is exactly that 1.5 m,
+       because both faces moved with their parts. */
     B.v->placeShip(glm::dvec3(0.0, 0.0, -(2.0 * kPortHz) - 1.5), glm::dmat3(1.0));
     s = A.v->dockSituation();
     CHECK_NEAR(s.read.faceGap, 1.5, 1e-12, "the gap is measured face to face");
     CHECK_TRUE(s.read.faceGap >= Vehicle::kDockCapture,
                "and that distance is the number the capture gate tests");
 
-    /* Too far: 1.5 m more than the capture limit. */
-    CHECK_TRUE(s.why == Vehicle::DockSit::TooWide, "too far apart says so, quietly as ever");
+    /* And it lands EXACTLY on kDockCapture, which is the valuable part: the gate tests
+       `>=`, so this is the pair that separates it from a `>`. Pinned against the constant
+       rather than a literal, and again below with the 1% pair. */
+    CHECK_NEAR(s.read.faceGap, Vehicle::kDockCapture, 1e-12,
+               "on the boundary, not near it");
+    CHECK_TRUE(s.why == Vehicle::DockSit::TooWide, "on the limit is outside it, quietly");
 
     /* Off-axis: turn B 25 deg about its own port, which is the one rotation that moves
        the FACE without moving either port centre. cos 25 = 0.906 is outside the cone,
@@ -1268,13 +1272,41 @@ static void test_the_dock_situation_says_why_a_pair_will_not_mate() {
     CHECK_TRUE(A.v->dockSituation().why == Vehicle::DockSit::Misaligned,
                "just outside it: MISALIGNED, and neither answer is a rounding coin flip");
 
+    /* The capture boundary the same way, since the window prints that row too: 1% inside
+       fits, 1% outside does not. Together with the exact-on-limit row above, this pins the
+       gate's `>=` against a `>` and against a bare `<`. */
+    B.v->placeShip(glm::dvec3(0.0, 0.0, -(2.0 * kPortHz) - Vehicle::kDockCapture * 0.99),
+                   glm::dmat3(1.0));
+    s = A.v->dockSituation();
+    CHECK_TRUE(!s.read.shutGap, "1% inside capture: the gap lamp stays green");
+    CHECK_TRUE(s.why == Vehicle::DockSit::Go, "and the pair mates");
+    B.v->placeShip(glm::dvec3(0.0, 0.0, -(2.0 * kPortHz) - Vehicle::kDockCapture * 1.01),
+                   glm::dmat3(1.0));
+    s = A.v->dockSituation();
+    CHECK_TRUE(s.read.shutGap, "1% outside: the lamp the window lights");
+    CHECK_TRUE(s.why == Vehicle::DockSit::TooWide, "and the verdict agrees with the lamp");
+
     /* Too fast, with everything else open. */
     B.v->placeShip(glm::dvec3(0.0, 0.0, -(2.0 * kPortHz)), glm::dmat3(1.0));
     A.v->setVelocity(glm::dvec3(0.0, 5.0, 0.0));
     s = A.v->dockSituation();
     CHECK_NEAR(s.read.relSpeed, 5.0, 1e-12, "the port speed is the two ports' relative speed");
+    CHECK_TRUE(s.read.shutSpeed, "too fast, by the gate's own answer");
     CHECK_TRUE(s.why == Vehicle::DockSit::TooFast, "too fast says so too");
     A.v->setVelocity(glm::dvec3(0.0, 0.0, 0.0));
+
+    /* The RELATIVE in relative speed: every other velocity fixture here moves MY hull, so
+       a read that subtracted nothing from partVel(pa) -- forgetting the target entirely --
+       still measured 5.0 and passed. Move only theirs, and read the sign too: theirs going
+       down the line is the two ports separating, not closing. */
+    B.v->setVelocity(glm::dvec3(0.0, 0.0, -5.0));
+    s = A.v->dockSituation();
+    CHECK_NEAR(s.read.relSpeed, 5.0, 1e-12, "their hull moving is the same gate");
+    CHECK_NEAR(s.read.closing, -5.0, 1e-12, "and it reads as separating, not approaching");
+    CHECK_TRUE(s.why == Vehicle::DockSit::TooFast, "so a fast target is refused as fast");
+    B.v->setVelocity(glm::dvec3(0.0, 0.0, 0.0));
+    CHECK_TRUE(A.v->dockSituation().why == Vehicle::DockSit::Go,
+               "braked: open again, and no leftover velocity in the fixture");
 
     /* Signed, because faceGap cannot tell "still short" from "already past the socket"
        -- and the capture gate has no lower bound, so past it is a state a pilot reaches.
@@ -1327,18 +1359,41 @@ static void test_the_dock_situation_says_why_a_pair_will_not_mate() {
        what lets a re-arm retry. */
     A.v->dockTargetPort = portA;      // "my own port" -- the target check rules out self
     CHECK_TRUE(A.v->dockSituation().why == Vehicle::DockSit::TargetGone,
-               "targeting this same hull is not a target");
-    Part *notAPort = mkPart(A, "tankA", 500.0, 1.0, 1.0, 1.0, false);
-    A.v->dockTargetPort = notAPort;   // not aboard B at all
-    CHECK_TRUE(A.v->dockSituation().why == Vehicle::DockSit::TargetGone,
-               "a targeted part that is not a port aboard that hull is gone");
+               "targeting a port on this same hull is not a target");
     A.v->dockTargetPort = portB;
-    A.v->dockArmPort = notAPort;      // aboard, but not a port
-    CHECK_TRUE(A.v->dockSituation().why == Vehicle::DockSit::ArmGone,
-               "an armed part that is not a port is gone, and the target stays");
     A.v->dockArmPort = portA;
     CHECK_TRUE(A.v->dockSituation().why == Vehicle::DockSit::Go,
                "and a clean intent answers GO again, not a stale complaint");
+
+    /* The two guards that ask whether the part is a PORT at all. The A/B pair cannot reach
+       them: the "not a port" part an earlier version of this test built was never attached
+       to anything, so every row landed in the identity scan instead of the port test, and
+       deleting isDockingPort() from either loop kept all 222 checks green. Two-part hulls
+       here, so the tanks are genuinely aboard and genuinely not ports. */
+    Ship R; Part *tankR, *portR;
+    mkTankPort(R, "R", 0.0, true, &tankR, &portR);
+    Ship Sq; Part *tankSq, *portSq;
+    mkTankPort(Sq, "Sq", -(2.0 * kPortHz), true, &tankSq, &portSq);
+    R.v->dockArmPort = portR;
+    R.v->dockTargetShip = Sq.v;
+    R.v->dockTargetPort = portSq;
+    CHECK_TRUE(R.v->dockSituation().why == Vehicle::DockSit::Go,
+               "guards: two real ports two port-heights apart, intent accepted");
+    R.v->dockTargetPort = tankSq;     // aboard Sq, but not a port
+    CHECK_TRUE(R.v->dockSituation().why == Vehicle::DockSit::TargetGone,
+               "guards: a targeted part that is aboard and is not a port is gone");
+    R.v->dockTargetPort = tankR;      // aboard the WRONG hull
+    CHECK_TRUE(R.v->dockSituation().why == Vehicle::DockSit::TargetGone,
+               "guards: a targeted part aboard some other hull is gone too");
+    R.v->dockTargetPort = portSq;
+    R.v->dockArmPort = tankR;         // aboard R, but not a port
+    CHECK_TRUE(R.v->dockSituation().why == Vehicle::DockSit::ArmGone,
+               "guards: an armed part that is aboard and is not a port is gone");
+    R.v->dockArmPort = portR;
+    CHECK_TRUE(R.v->dockSituation().why == Vehicle::DockSit::Go,
+               "guards: and a clean intent on the same pair answers GO");
+    destroyShip(Sq.v);
+    destroyShip(R.v);
 
     /* Yaw MINE, not theirs. The shipped --dock-test misaligned fixture turns the ARMED
        port, while every fixture above turns the target's; the window prints those as two
@@ -1356,25 +1411,36 @@ static void test_the_dock_situation_says_why_a_pair_will_not_mate() {
 
     /* No line, therefore no numbers. Two port CENTRES at one point have no direction to
        measure along, so the read stays unmeasurable and the window prints no gate rows --
-       it would otherwise show a 0.00 m gap and a GO for two ships occupying one spot. */
-    B.v->placeShip(glm::dvec3(0.0), glm::dmat3(1.0));
+       it would otherwise show a 0.00 m gap and a GO for two ships occupying one spot.
+       B is turned 180 deg about its own port to make this fixture worth having: two ports
+       at one point FACING the same way present the same face, so faceGap and along read
+       0.0 even with the guard gone. Flipped, an unguarded read would invent a 0.25 m gap
+       and a -0.25 m nudge out of a division by zero. */
+    B.v->placeShip(glm::dvec3(0.0),
+                   glm::mat3_cast(glm::angleAxis(std::numbers::pi,
+                                                 glm::dvec3(0.0, 1.0, 0.0))));
     s = A.v->dockSituation();
     CHECK_TRUE(!s.read.measurable, "coincident port centres: nothing to measure");
     CHECK_TRUE(s.why == Vehicle::DockSit::Unmeasurable,
                "and it says so rather than inventing a touching pair");
     CHECK_NEAR(s.read.faceGap, 0.0, 1e-12, "no distance invented for an unmeasurable pair");
     CHECK_NEAR(s.read.along, 0.0, 1e-12, "and no nudge direction invented either");
+    CHECK_NEAR(s.read.axisCosA, 1.0, 1e-12, "no cosine invented either -- the normals are 0/0");
+    CHECK_NEAR(s.read.axisCosB, 1.0, 1e-12, "same on their side");
+    CHECK_TRUE(!s.read.shutAxis && !s.read.shutGap && !s.read.shutSpeed,
+               "and no lamp lit from a figure that was never measured");
     B.v->placeShip(glm::dvec3(0.0, 0.0, -(2.0 * kPortHz)), glm::dmat3(1.0));
 
     /* Another frame: the gate cannot measure a pair that is not in one place, so it does
        not try. Every fixture above leaves both hulls on the null frame the test never
        sets, so this is the first time that comparison is not trivially equal. */
     Frame other;
+    Frame *savedFrame = B.v->frame;
     B.v->frame = &other;
     s = A.v->dockSituation();
     CHECK_TRUE(s.why == Vehicle::DockSit::OtherFrame,
                "a target in another frame waits, whatever its ports look like");
-    B.v->frame = nullptr;
+    B.v->frame = savedFrame;
     CHECK_TRUE(A.v->dockSituation().why == Vehicle::DockSit::Go,
                "back in one frame: GO, not a leftover complaint");
 
@@ -1418,13 +1484,29 @@ static void test_the_dock_situation_says_why_a_pair_will_not_mate() {
     CHECK_NEAR(s.read.closing, 0.0, 1e-9, "a sweep sideways is not a closing rate");
     CHECK_TRUE(s.why == Vehicle::DockSit::TooFast,
                "and a spinning station is refused on speed, not on luck");
-    SetAngVelocity(E.v->hull, glm::dvec3(0.0));
 
-    /* THE ORDER the questions are asked in. The verdict is a single word, so which gate
-       answers first is the advice the pilot gets: a pair 3 m out and absurdly heavy is
-       too FAR, and only once it is close does the mass door (#583) have anything to say.
-       Move the mass door up this list and every approach in a heavy game opens with a
-       weight complaint the player cannot act on. */
+    /* Both spinning: what matters is the two ports' DIFFERENCE, so a read that asked only
+       the armed port's velocity (or only the target's) reads 4.6 here instead of 3.1. The
+       target's rate is NEGATIVE because these two hulls hang their ports on opposite sides
+       of their own centres of mass -- E's root is the tank, F's is the port -- so the same
+       signed rate sweeps their ports opposite ways, and matching directions takes speed off. */
+    const double rF = glm::length(F.v->partPos(portF) - F.v->comPos());
+    SetAngVelocity(F.v->hull, glm::dvec3(-1.0, 0.0, 0.0));
+    s = E.v->dockSituation();
+    CHECK_NEAR(s.read.relSpeed, 3.0 * rE - 1.0 * rF, 1e-9,
+               "their port sweeping the same way takes speed OFF, not adds a second number");
+    CHECK_TRUE(s.why == Vehicle::DockSit::TooFast, "still over the limit, now by 3.1 m/s");
+    SetAngVelocity(E.v->hull, glm::dvec3(0.0));
+    SetAngVelocity(F.v->hull, glm::dvec3(0.0));
+    CHECK_TRUE(E.v->dockSituation().why == Vehicle::DockSit::Go,
+               "spin both off: the pair mates again, nothing left in the body");
+
+    /* THE ORDER the questions are asked in: axis, then distance, then speed, then the mass
+       door. The verdict is ONE word, so which gate answers first is the advice the pilot
+       gets, and every row below pairs two reasons that could have answered and pins which
+       one did. A pair 3 m out and absurdly heavy is too FAR, and only once it is close does
+       the mass door (#583) have anything to say: move that door up the list and every
+       approach in a heavy game opens with a weight complaint the player cannot act on. */
     Ship G; G.v = new Vehicle; G.v->name = "G";
     Part *portG = mkPart(G, "portG", 1.7e308, 1.0, 1.0, kPortHz, true);
     G.v->setRoot(portG);
@@ -1440,9 +1522,14 @@ static void test_the_dock_situation_says_why_a_pair_will_not_mate() {
     G.v->dockTargetShip = H.v;
     G.v->dockTargetPort = portH;
 
-    H.v->placeShip(glm::dvec3(0.0, 0.0, -(2.0 * kPortHz) - 3.0), glm::dmat3(1.0));    s = G.v->dockSituation();
+    H.v->placeShip(glm::dvec3(0.0, 0.0, -(2.0 * kPortHz) - 3.0), glm::dmat3(1.0));
+    s = G.v->dockSituation();
     CHECK_TRUE(s.why == Vehicle::DockSit::TooWide,
                "far away AND an impossible pair: the distance answers, not the mass");
+    G.v->setVelocity(glm::dvec3(0.0, 5.0, 0.0));
+    CHECK_TRUE(G.v->dockSituation().why == Vehicle::DockSit::TooWide,
+               "far away AND moving: still the distance -- speed is not asked first");
+    G.v->setVelocity(glm::dvec3(0.0));
     H.v->placeShip(glm::dvec3(0.0, 0.0, -(2.0 * kPortHz) - 3.0),
                    glm::mat3_cast(glm::angleAxis(cone * 1.01, glm::dvec3(0.0, 1.0, 0.0))));
     CHECK_TRUE(G.v->dockSituation().why == Vehicle::DockSit::Misaligned,
@@ -1451,7 +1538,12 @@ static void test_the_dock_situation_says_why_a_pair_will_not_mate() {
     G.v->setVelocity(glm::dvec3(0.0, 5.0, 0.0));
     CHECK_TRUE(G.v->dockSituation().why == Vehicle::DockSit::TooFast,
                "in range but moving: speed answers before the mass door");
+    H.v->placeShip(glm::dvec3(0.0, 0.0, -(2.0 * kPortHz)),
+                   glm::mat3_cast(glm::angleAxis(cone * 1.01, glm::dvec3(0.0, 1.0, 0.0))));
+    CHECK_TRUE(G.v->dockSituation().why == Vehicle::DockSit::Misaligned,
+               "in range, moving AND off-axis: the axis still answers first");
     G.v->setVelocity(glm::dvec3(0.0));
+    H.v->placeShip(glm::dvec3(0.0, 0.0, -(2.0 * kPortHz)), glm::dmat3(1.0));   // unyaw, unshift
     s = G.v->dockSituation();
     CHECK_TRUE(s.read.faceGap < Vehicle::kDockCapture, "order: now inside capture");
     CHECK_TRUE(s.why == Vehicle::DockSit::Mass,

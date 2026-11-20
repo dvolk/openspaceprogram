@@ -16,7 +16,7 @@ CLAIM A dock whose target is still on the rails is reported as a rails state, in
 KIND invariant
 ARGS --dock-test misaligned --time-accel 0 --width 1280 --height 720 --timeout 2
 ARGS --ui-click 300,"Windows/Docking"
-EXPECT [dockwin] a="dockprobe" b="dockstation" why=targetrails at=908,144 size=364,122
+EXPECT [dockwin] a="dockprobe" b="dockstation" why=targetrails at=821,144 size=451,238
 FORBID why=misaligned
 FORBID [dock] t=
 FORBID FAILED

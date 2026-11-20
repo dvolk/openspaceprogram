@@ -5694,6 +5694,13 @@ Vehicle::DockRead Vehicle::dockRead(const Part *pa, const Vehicle *b,
     r.along = glm::dot(gap, axisA);
     r.lateral = glm::length(gap - axisA * r.along);
     r.closing = glm::dot(rv, n);
+    /* The three gates, compared ONCE, each with the operator it actually uses: an axis
+       fails below the cosine, a gap at or above the limit, a speed strictly above it. The
+       Docking window lights its lamps from these instead of comparing the figures again,
+       so a row cannot disagree with the verdict that refused the mate. */
+    r.shutAxis = r.axisCosA < kDockAlign || r.axisCosB < kDockAlign;
+    r.shutGap = r.faceGap >= kDockCapture;
+    r.shutSpeed = r.relSpeed > kDockMaxV;
     return r;
 }
 
@@ -5733,11 +5740,9 @@ Vehicle::DockSit Vehicle::dockSituation() {
     if(!armOk) { s.why = DockSit::ArmGone; return s; }
     s.read = dockRead(s.arm, s.b, s.target);
     if(!s.read.measurable) { s.why = DockSit::Unmeasurable; return s; }
-    if(s.read.axisCosA < kDockAlign || s.read.axisCosB < kDockAlign) {
-        s.why = DockSit::Misaligned; return s;
-    }
-    if(s.read.faceGap >= kDockCapture) { s.why = DockSit::TooWide; return s; }
-    if(s.read.relSpeed > kDockMaxV) { s.why = DockSit::TooFast; return s; }
+    if(s.read.shutAxis) { s.why = DockSit::Misaligned; return s; }
+    if(s.read.shutGap) { s.why = DockSit::TooWide; return s; }
+    if(s.read.shutSpeed) { s.why = DockSit::TooFast; return s; }
     s.massWhy = refuseDockWith(s.b);
     if(!s.massWhy.empty()) { s.why = DockSit::Mass; return s; }
     s.why = DockSit::Go;

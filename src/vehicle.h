@@ -2180,9 +2180,9 @@ public:
 
     /* What these two ports look like to each other (#1026). ONE pass, shared by the
        dock gate and the Docking window, so a row a pilot reads cannot disagree with the
-       rule that actually mates the hulls. Raw figures only: the thresholds they are
-       judged against are the three constants just above, and the window prints them
-       beside the figures. */
+       rule that actually mates the hulls: the figures AND the three gate verdicts come
+       out of here, and the thresholds they are judged against are the constants just
+       above, which the window prints beside the figures. */
     struct DockRead {
         /* False when the two port centres coincide: there is no line to measure along,
            so nothing below means anything yet. */
@@ -2194,6 +2194,13 @@ public:
         double axisCosA = 1.0, axisCosB = 1.0;
         double faceGap = 0.0;   // m between the two presented faces (kDockCapture)
         double relSpeed = 0.0;  // m/s at the two ports (kDockMaxV)
+        /* The three gates as THIS pass judged them, so nobody downstream re-compares the
+           figures against a threshold of their own. Each boundary is a different operator
+           -- an axis fails BELOW the cosine, a gap AT or ABOVE it, a speed strictly ABOVE
+           -- and a window that guessed would disagree with the gate right at the edge,
+           which is the only kind of drift this struct exists to prevent. dockSituation()
+           and the Docking window's lamps both read these. */
+        bool shutAxis = false, shutGap = false, shutSpeed = false;
         /* In the ARMED port's frame, +Z out of its presented face. NOT gates: they say
            which way to nudge once a gate is shut, which is the part a pilot cannot
            infer from three yes/no lamps. */
