@@ -5327,21 +5327,23 @@ void Vehicle::att_log(double time) {
     assert(ref != nullptr);   // rootPart() falls back to parts[0], so non-empty means non-null
     const glm::dmat3 axes = partRot(ref);
     const glm::dvec3 w = hullAngVel();
-    /* railed= says where the row came from (#1056, and #375's discipline for a hull
-       outside the physics world). A railed hull is not being integrated by Bullet, so
-       without this column the row reads like a substep answer: axes from the rail pose,
-       rate from rail_omega. Both are the rail model's own answer now -- the conic
-       advances the pos/vel and advanceRailOrient turns the hull by the carried spin --
-       but they are a MODEL's answer, and a reader comparing this row against a
-       --spin-log row for the same hull should be able to see they are not the same kind
-       of number. */
+    /* Which model produced this row (#1056, and #375's discipline for a hull outside
+       the physics world). railed=0: Bullet integrated it this substep. railed=1: the
+       hull coasts on its conic -- axes from the rail pose, rate from rail_omega, and
+       since #1056 the rails TURN the hull by that spin, so the two halves agree.
+       railed=2: a frozen park (grounded, or pinned in a building bubble). Its pose rides
+       the node rather than any integration, and the rate beside it is the angular
+       velocity the hull's Bullet body happened to hold when it left the world -- a
+       number nothing is spending, which is the shape #1056 complained about. Filed
+       separately; the marker at least says the row is not to be read the way 1 is. */
+    const int railModel = onRails ? (railFrozen ? 2 : 1) : 0;
     printf("[attlog] t=%.3fs nose=[%+.4f %+.4f %+.4f] "
            "right=[%+.4f %+.4f %+.4f] up=[%+.4f %+.4f %+.4f] "
            "w=[%+.4f %+.4f %+.4f] |w|=%.4f rad/s railed=%d\n",
            time, axes[2].x, axes[2].y, axes[2].z,
            axes[0].x, axes[0].y, axes[0].z,
            axes[1].x, axes[1].y, axes[1].z,
-           w.x, w.y, w.z, glm::length(w), onRails ? 1 : 0);
+           w.x, w.y, w.z, glm::length(w), railModel);
     fflush(stdout);
 }
 

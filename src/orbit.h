@@ -609,7 +609,8 @@ inline void propagateKepler(glm::dvec3 pos0, glm::dvec3 vel0,
    what makes it stable at a warp-sized step (500 s at 10000x, i.e. tens of radians).
    `orient` is park-frame axes expressed in the frame the conic lives in and `omega` is
    in that same frame -- the rails' inertial node, which Vehicle::railAdvance() asserts
-   (frame->omega_total == 0) -- so the turn pre-multiplies: it happens in that frame,
+   for a COASTING hull (frame->omega_total == 0; the frozen park returns before that
+   assert and never hops) -- so the turn pre-multiplies: it happens in that frame,
    not in the hull's.
    What is NOT modelled is torque-free PRECECTION: for a hull whose three principal
    moments differ, omega itself wanders (about the conserved L) while the hull turns.
@@ -618,6 +619,8 @@ inline void propagateKepler(glm::dvec3 pos0, glm::dvec3 vel0,
 inline glm::dmat3 advanceRailOrient(const glm::dmat3 &orient, const glm::dvec3 &omega,
                                     const double step) {
     const double rate = glm::length(omega);
+    /* A NaN here would poison every pose composed from orient, silently and forever. */
+    assert(std::isfinite(rate));
     if(rate == 0.0 || step == 0.0) { return orient; }
     return glm::mat3_cast(glm::angleAxis(rate * step, omega / rate)) * orient;
 }

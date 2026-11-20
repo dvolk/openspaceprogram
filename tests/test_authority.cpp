@@ -2000,6 +2000,9 @@ static void test_a_lifting_plate_answers_its_own_angle() {
     Rig a = mkRig(100.0, 0.0);
     PartDef &wing = a.defs.back();
     wing.control_area = 0.0;   // unsteered: the control walk skips this plate entirely
+    wing.max_deflection = 0.0; // ... and the loader pairs these two: shipdef.cpp throws
+                               // on a part with one and not the other, so leave the
+                               // fixture a shape a ship file could actually hold
     wing.lift_area = 1.0;      // the lift loop's own gate (d->lift_area > 0)
     wing.drag_forward = 0.02;
     wing.drag_side = 1.0;

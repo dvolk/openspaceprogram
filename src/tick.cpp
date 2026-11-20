@@ -1465,15 +1465,19 @@ void tick(Game &g) {
                         if(!p->aeroValid || p->def == nullptr) { continue; }
                         char a[8];
                         int an = 0;
-                        if(p->aeroAngleValid) {
+                        /* A non-finite angle fits an 8-char field as "+inf"/"-inf" and
+                           then breaks the runner's ITEM grammar, shifting every part
+                           after it -- so the printer, not the parser, is where a garbage
+                           number has to stop. The dash already means "no angle". */
+                        if(p->aeroAngleValid && std::isfinite(p->aeroAlphaDeg)) {
                             an = std::snprintf(a, sizeof a, "%+.1f", p->aeroAlphaDeg);
                         } else {
                             an = std::snprintf(a, sizeof a, "-");
                         }
                         /* snprintf returns the length it WANTED, so a clipped angle is
-                           visible here rather than printed as a truncated token that the
-                           runner reads as an angle anyway. The part window asserts the
-                           same width (gameui.cpp); #732's dash is 1 char. */
+                           visible here rather than reaching the runner as a token that
+                           still parses as an angle. The HUD's own AoA field carries the
+                           same length assert (gameui.cpp:3167); #732's dash is 1 char. */
                         assert(an > 0 && an < (int)sizeof a);
                         if(!any) { printf("[surface]"); any = true; }
                         printf(" %s a=%s q=%.0f mach=%.3f watts=%.0f",

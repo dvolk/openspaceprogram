@@ -5,34 +5,50 @@
 # described a body whose printed attitude refused to spend it, and the hull woke pointing
 # exactly where it fell asleep.
 #
-# This rig parks on rails immediately -- 100x is above kRailsWarp, so every [attlog] row
-# below is a railed hull, and the railed=1 column #1056 adds says that ON the row rather
-# than leaving the reader to infer it. The spin it carries, 0.0003 rad/s, is the inertial
-# spin of the rotating frame it parked out of; over the 505 s between the first and last
-# rows that is a turn of ~0.15 rad. Rotating about +y takes +x toward -z, so the nose's z
-# component shows the turn directly.
+# This rig parks on rails immediately -- 100x is above kRailsWarp (game.h), so every
+# [attlog] row below is a coasting hull, and `railed=1` says that ON the row rather than
+# leaving the reader to infer it. (The column has three values: 0 Bullet, 1 the coasting
+# conic, 2 a frozen park -- and a frozen park's row prints a rate nothing is spending, so
+# a heading pin asks for 1.) The spin it carries, printed 0.0003 rad/s, is Kerbin's
+# authored rot_ang_speed 0.00029157665354214053: the inertial spin of the rotating frame
+# it parked out of. Over the ~505 s between the first and last rows that is a turn of
+# ~0.15 rad. Rotating about +y takes +x toward -z, so the nose's z component shows it.
 #
 # Before the fix the same run prints nose=[+1.0000 -0.0000 +0.0000] on all six rows: not a
-# small drift, exactly nothing. So the lower bound below carries the whole defect, and the
-# band around |w| x elapsed is there for the wrong-scale mistakes -- a hop counted in wall
-# seconds rather than sim seconds overshoots by the warp factor. The band is deliberately
-# loose: the printed |w| is 4 dp, which on 0.0003 is ~10% by itself. Measured: the turn is
-# 0.135 rad against |w| x elapsed = 0.152, i.e. 0.89x.
+# small drift, exactly nothing.
+#
+# NOTHING below is an absolute slide, deliberately. [attlog] rows are wall-gated (one per
+# 1000 ms of wall clock, tick.cpp), while the SIM time each row carries depends on how much
+# the machine delivers -- so the slide itself scales with load. Measured: nominal spans of
+# 503-507 s give 0.1348-0.1357 rad; at --frame-cap 3 the span is ~250 s and the slide
+# ~0.067, which a fixed "> 0.08" would call a failure on a healthy game (main.cpp's own
+# note measures 99% delivery alone, 61% under xvfb). Hence a span floor plus a band around
+# |w| x elapsed, both self-normalising. The band stays loose on purpose: the printed |w| is
+# 4 dp, and anything printing as 0.0003 is within 17% of what it printed (this fixture's
+# own is 2.9% high). Measured ratio: 0.135 rad against |w| x elapsed = 0.152, i.e. 0.89x.
 NAME rails-coast-turns-the-heading-it-parked-with
-CLAIM A hull coasting on its conic turns through the spin it carries: its heading moves by about |w| x the time spent, monotone, and every row says the rails produced it.
+CLAIM A hull coasting on its conic turns through the spin it carries: its heading moves by about |w| x the time spent, monotone, and every row says the coasting rails produced it.
 KIND invariant
 ARGS --time-accel 100 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
 ARGS --att-log --timeout 6
 EXPECT @@@ racer parked on rails around Kerbin
 FORBID FAILED
-CHECK len(att) >= 5
+# One row per 1000 ms of wall clock, so this counts delivered FRAMES rather than sim time:
+# 6 rows at full speed, 5 at --frame-cap 3. Four leaves a row of margin and still gives the
+# monotone check below something to walk.
+CHECK len(att) >= 4
 CHECK all(a["railed"] == 1 for a in att)
-# The hull really is turning. Without this the band below could be satisfied by a rig
-# that never spins and never moves -- the discipline #1042's case learnt the hard way.
-CHECK all(a["wnorm"] > 2e-4 for a in att)
-# The heading moves (#1056's defect: six rows, identical to 4 dp).
-CHECK abs(att[-1]["nose"][2] - att[0]["nose"][2]) > 0.08
-# ... at the rate the rows report, neither a warp factor too big nor nothing at all.
+# The hull really is turning, at the spin it parked with. Without these the band below
+# could be satisfied by a rig that never spins and never moves -- the discipline #1042's
+# case learnt the hard way. Kerbin's authored rate is 2.916e-4 rad/s, so the band here is
+# tight rather than a floor alone: losing part of the carried spin is #1042's defect.
+CHECK all(a["wnorm"] > 2.7e-4 for a in att)
+CHECK all(a["wnorm"] < 3.1e-4 for a in att)
+# Enough delivered sim time that the band below weighs something (at 3 fps this window
+# still spans ~250 s).
+CHECK att[-1]["t"] - att[0]["t"] > 100
+# The heading moves (#1056's defect: six rows, identical to 4 dp) at the rate the rows
+# report -- neither a warp factor too big nor nothing at all.
 CHECK abs(att[-1]["nose"][2] - att[0]["nose"][2]) > 0.5 * att[0]["wnorm"] * (att[-1]["t"] - att[0]["t"])
 CHECK abs(att[-1]["nose"][2] - att[0]["nose"][2]) < 2.0 * att[0]["wnorm"] * (att[-1]["t"] - att[0]["t"])
 # One direction, no jitter: a single axis at a constant rate.

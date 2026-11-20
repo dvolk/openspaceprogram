@@ -467,9 +467,10 @@ ATT_RE = re.compile(
     r"up=\[([-+\d.]+) ([-+\d.]+) ([-+\d.]+)\]\s+"
     r"w=\[([-+\d.]+) ([-+\d.]+) ([-+\d.]+)\]\s+"
     r"\|w\|=([-\d.]+) rad/s"
-    # #1056: where the row came from. Optional so the pre-marker grammar still parses
-    # (the point of the marker is that a railed hull's row is a MODEL's answer, not a
-    # Bullet one; a case that does not care reads it as None).
+    # #1056: WHICH model wrote the row -- 0 Bullet integrated it, 1 it coasted on its
+    # conic, 2 it is a frozen park (pose pinned to the node, rate left over from the
+    # world it left). Optional, so the pre-marker grammar still parses and a case that
+    # does not care reads None.
     r"(?:\s+railed=(\d))?"
 )
 EVA_RE = re.compile(
@@ -1622,10 +1623,10 @@ def parse_att(out):
             # generator resolve against globals, not the locals namespace.
             "wroll": wroll, "wpitch": wpitch, "wyaw": wyaw,
             "awroll": abs(wroll), "awpitch": abs(wpitch), "awyaw": abs(wyaw),
-            # 1 when the hull was coasting on its conic rather than being
-            # integrated (#1056). The axes and the rate are then the rail
-            # model's answer; a case pinning a heading turn wants to know it
-            # is reading the rails, not Bullet.
+            # 0 under physics, 1 coasting on the conic, 2 a frozen park (#1056). The
+            # rails' own answer is trustworthy on 1 -- the conic moves the hull and
+            # advanceRailOrient turns it -- while a 2 row prints a rate nothing is
+            # spending, so a heading pin that wants a moving hull asks for 1.
             "railed": None if railed is None else int(railed),
         })
     return rows
@@ -3133,7 +3134,12 @@ def self_test():
                'w=[-0.0001 +0.0003 +0.0001] |w|=0.0003 rad/s railed=1')
     marked = parse_att(att_row)
     if len(marked) != 1 or marked[0]["railed"] != 1:
-        fails.append("an [attlog] row carrying railed= parsed as %r" % (marked,))
+        fails.append("an [attlog] row carrying railed=1 parsed as %r" % (marked,))
+    # 2 is a frozen park, whose row prints a rate nothing is spending; a heading pin
+    # that wants a turning hull has to be able to tell the two rail states apart.
+    frozen = parse_att(att_row.replace("railed=1", "railed=2"))
+    if len(frozen) != 1 or frozen[0]["railed"] != 2:
+        fails.append("an [attlog] row carrying railed=2 parsed as %r" % (frozen,))
     unmarked = parse_att(att_row.replace(" railed=1", ""))
     if len(unmarked) != 1 or unmarked[0]["railed"] is not None \
             or abs(unmarked[0]["wnorm"] - 0.0003) > 1e-12:
