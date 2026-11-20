@@ -20,22 +20,6 @@
     "res/data/earth_launch_sites.json",
     "res/data/venus_launch_sites.json"
   ],
-  "world_buildings": [
-    {
-      "id": "polar_pad",
-      "type": "space_port",
-      "display_name": "Polar pad",
-      "body": "Earth",
-      "lat_deg": 90.0,
-      "lon_deg": 0.0,
-      "height_m": 5.0,
-      "heading_deg": 0.0,
-      "flags": [
-        "VAB_LAUNCH_PAD",
-        "POLAR_PAD"
-      ]
-    }
-  ],
   "bodies": [
     {
       "name": "Sun",

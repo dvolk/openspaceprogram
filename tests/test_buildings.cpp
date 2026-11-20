@@ -438,19 +438,13 @@ int main() {
 
     // --- world_buildings_files: named fragments merge in ------------------
     {
-        // The shipped Earth table reaches the solar systems, and the merge
-        // order survives: the merged list's first VAB_LAUNCH_PAD IS the
-        // game's default site (find_launch_site's fallback), so the inline
-        // pole pad must not come first.
+        // The shipped Earth table reaches the solar systems in full, and the
+        // table's own order survives: its first VAB_LAUNCH_PAD IS the game's
+        // default site (find_launch_site's fallback).
         const std::string p = "res/systems/solar_system.json";
         std::vector<WorldBuilding> ws = parse_world_buildings_all(read_json(p.c_str()), p);
-        CHECK(ws.size() >= 15);   // 14 real sites + the pole pad
+        CHECK(ws.size() >= 15);   // 14 Earth ranges + Venus's cloud platform
         CHECK(!ws.empty() && ws[0].id == "baikonur");
-        bool pole = false;
-        for(const WorldBuilding &w : ws) {
-            if(w.id == "polar_pad") { pole = true; }
-        }
-        CHECK(pole);
         // The table's own coordinates survive the parse (lon is east-positive,
         // so a west site is negative -- equirectDir takes either spelling).
         for(const WorldBuilding &w : ws) {
@@ -459,6 +453,26 @@ int main() {
             CHECK(vnear(w.dir(), equirectDir(-44.4175 * std::numbers::pi / 180.0,
                                              -2.3394 * std::numbers::pi / 180.0)));
         }
+    }
+    {
+        /* Merge order, said directly instead of borrowed from shipped data: no
+           system carries an inline pad since #1063 deleted the polar one, so the
+           rule that the polar pad used to demonstrate -- a fragment's pads come
+           BEFORE the system's own "world_buildings", which is what keeps the
+           table's first VAB_LAUNCH_PAD as the default site -- had no witness
+           left. Build the shape rather than ship a pad for it. */
+        nlohmann::json doc;
+        doc["world_buildings_files"] = { "res/data/earth_launch_sites.json" };
+        doc["world_buildings"] = { nlohmann::json{
+            {"id", "inline_pad"}, {"type", "space_port"},
+            {"display_name", "Inline pad"}, {"body", "Earth"},
+            {"lat_deg", 10.0}, {"lon_deg", 10.0}, {"height_m", 5.0},
+            {"flags", nlohmann::json::array({"VAB_LAUNCH_PAD"})},
+        } };
+        std::vector<WorldBuilding> ws = parse_world_buildings_all(doc, "mem");
+        CHECK(ws.size() == 15);              // 14 from the table + the inline one
+        CHECK(ws.front().id == "baikonur");  // the table still owns the default
+        CHECK(ws.back().id == "inline_pad");
     }
     CHECK(expect_throw([]() {
         nlohmann::json doc = nlohmann::json::parse(
@@ -478,8 +492,9 @@ int main() {
     }
     {
         // A named file with no pads at all is a typo, whether the key is
-        // missing or the array is empty: either way the system would quietly
-        // fall back to its inline pads.
+        // missing or the array is empty: either way the system loses its whole
+        // site list, since no shipped system has an inline pad to fall back on
+        // any more (#1063).
         std::filesystem::create_directories("tmp");
         const std::string bare = "tmp/test_buildings_bare.json";
         const std::string empty = "tmp/test_buildings_empty.json";
@@ -579,9 +594,9 @@ int main() {
         };
         mk("scenic", {"NOT_A_PAD"});
         mk("main", {"VAB_LAUNCH_PAD"});
-        mk("pole", {"VAB_LAUNCH_PAD", "POLAR_PAD"});
+        mk("second", {"VAB_LAUNCH_PAD"});
         CHECK(find_launch_site(&tb, "")->id == "main");        // default = first
-        CHECK(find_launch_site(&tb, "pole")->id == "pole");    // any named pad
+        CHECK(find_launch_site(&tb, "second")->id == "second");  // any named pad
         CHECK(find_launch_site(&tb, "scenic") == nullptr);     // not a pad
         CHECK(find_launch_site(&tb, "nope") == nullptr);
         CHECK(find_launch_site(nullptr, "") == nullptr);
@@ -606,19 +621,21 @@ int main() {
         CHECK(sys.world_buildings.size() >= 1);
         // Every solar_system variant names the same site file, so each must
         // carry the whole table: the >= 1 above and homePad below would both
-        // pass on the inline pole pad alone if a variant lost the reference.
+        // pass on a single pad if a variant lost the reference.
         if(logical.find("solar_system") != std::string::npos) {
-            CHECK(sys.world_buildings.size() >= 15);
+            CHECK(sys.world_buildings.size() >= 15);   // 14 Earth ranges + Venus's platform
         }
-        // The fictional systems name a site fragment too (#226): 6 Kerbol
-        // sites (pad, runway, station, dock, Moho, Duna) + its inline pole pad,
-        // 1 Eerbon site + its own. Exact counts so a fragment that stops loading
-        // is a failure, not a smaller pass.
+        // The fictional systems name a site fragment too (#226): 6 Kerbol sites
+        // (pad, runway, station, dock, Moho, Duna) and 1 Eerbon site. Exact
+        // counts so a fragment that stops loading is a failure, not a smaller
+        // pass. Since #1063 deleted the inline polar pads these tables ARE the
+        // whole list, so the count is also the number of rows the pad selector
+        // offers on that world.
         if(logical == "res/systems/ksp_system.json") {
-            CHECK(sys.world_buildings.size() == 7);
+            CHECK(sys.world_buildings.size() == 6);
         }
         if(logical == "res/systems/old_system.json") {
-            CHECK(sys.world_buildings.size() == 2);
+            CHECK(sys.world_buildings.size() == 1);
         }
         bool homePad = false;
         /* Pad decks the prose quotes (#983), and the accounting that makes the pin
@@ -629,17 +646,15 @@ int main() {
            above it. The seen[] half is the point of writing it this way: matching
            ids alone leaves a renamed or deleted pad pinning NOTHING, and the test
            still says OK (proven: renaming moho_pad to moho_site in a scratch copy
-           of the data left this test green). polar_pad joins the list now that it
-           stands on dry ground: it used to sit 323 m under Kerbin's sea, which is
-           what #1007 moved it out of, and a pad whose deck is under water is a
-           fact worth freezing just as much as the dry ones. */
+           of the data left this test green). polar_pad was in here at 50.1 m -- the
+           dry deck #1007 moved it to from under Kerbin's sea -- and #1063 deleted
+           the pad, so the pin went with it instead of haunting an id no system has. */
         struct PadWant { const char *id; double asl; };
         static const PadWant kWant[] = {
             {"main_space_port", 260.1},
             {"ksc_runway", 249.6},
             {"moho_pad", 125.9},
             {"duna_pad", 65.0},
-            {"polar_pad", 50.1},
         };
         const bool pinHere = logical == "res/systems/ksp_system.json";
         bool seen[sizeof(kWant) / sizeof(kWant[0])] = {};
@@ -665,9 +680,13 @@ int main() {
                Pin the round-trip: a convention slip (lon sign, degrees vs
                radians, rotating vs non-rotating frame) would put a marker on
                the far side of the planet, and nothing else watches it. The
-               pole pad is the interesting case -- cos(90 deg) is ~6e-17, not
-               0, so its longitude survives atan2 and lands back where it was
-               authored rather than at an arbitrary meridian.
+               half that bites is the wrap: Earth's west-negative sites are
+               authored as negative lon and project back one turn later
+               (alcantara -44.4175 -> 315.5825). The pole pad used to be the
+               other interesting one -- cos(90 deg) is ~6e-17, not 0, so its
+               longitude survived atan2 rather than landing on an arbitrary
+               meridian -- and no shipped pad sits at a pole since #1063 took
+               it out.
                Driven buildings (orbital, air) have no fixed surface lat/lon:
                skip the projection and the deck-grounding check for them -- an
                air entry carries lat/lon but floats 56 km up, not on the ground. */
@@ -699,7 +718,7 @@ int main() {
                    a stale one sits on the line above its own failure, and any deck
                    under its body's sea level -- the state #1007 moved three shipped
                    pads out of, and a permanent line beats a one-off audit if it ever
-                   comes back. All 69 of them every run is noise the suite does not
+                   comes back. All 63 of them every run is noise the suite does not
                    need (#1000 was about exactly this). */
                 const double asl = padDeckAsl(w, wb);
                 bool pinned = false;
@@ -766,8 +785,9 @@ int main() {
            (find_launch_site filters by body, and so does the VAB dropdown),
            with fragments merged before a system's inline pads -- so on the
            home world this is exactly what the "(default)" entry and a bare
-           LAUNCH mean. A home defaulting to the pole is a merge-order bug:
-           the polar pad lives in the inline array precisely so it cannot. */
+           LAUNCH mean. Nothing ships an inline pad since #1063, so the merge
+           order that keeps an inline pad out of this race is pinned on its own
+           above, with a synthetic list. */
         const WorldBuilding *dflt = nullptr;
         if(sys.home != nullptr) {
             for(const WorldBuilding &w : sys.world_buildings) {
@@ -779,7 +799,6 @@ int main() {
         }
         CHECK(dflt != nullptr);
         if(dflt != nullptr) {
-            CHECK(!dflt->hasFlag("POLAR_PAD"));
             if(logical.find("solar_system") != std::string::npos) {
                 CHECK(dflt->id == "baikonur");
             } else if(logical == "res/systems/ksp_system.json"
@@ -802,7 +821,7 @@ int main() {
                (wind_playground.json, #767/#775); pinning a catalogue pad's id and
                degrees there would be a rule about data nobody ships. What still
                holds for ANY listable system is above: it loads, the default site is
-               on home, is a VAB pad, is not the pole, and projects back to the
+               on home, is a VAB pad, and projects back to the
                degrees it was authored with. */
         }
         // Two pads on one body must not overlap: a deck is 26 x 56 m and pad

@@ -3,8 +3,9 @@
 # Source of truth for the committed JSONs; --check verifies no drift.
 # One exception: the launch SITES are hand-authored fragments under
 # res/data/ (res/data/{old,ksp}_launch_sites.json). This script names them via
-# "world_buildings_files" and emits each system's inline polar pad, but never
-# writes a site table -- pads used to be hand-edited inside generated output,
+# "world_buildings_files" and adds no pads of its own -- every pad lives in a
+# site table (#1063 retired the last inline one, the polar pad). Pads used to be
+# hand-edited inside generated output,
 # where a regenerate silently dropped them and --check never looked (#226).
 # SOIs are NOT emitted: the loader derives the near-body shells and the
 # inertial spheres from physics -- "soi_law": "patched_conic" reproduces the
@@ -176,27 +177,13 @@ eerbon = {
     # fragment that the loader merges (src/buildings.cpp); this script names
     # the file and never writes it, so regenerating the system JSON cannot
     # clobber a coordinate -- which is how the pads went stale in the first
-    # place, being hand-edited inside generated output. Merged fragments come
-    # BEFORE the inline array below, and the merged list's first
-    # VAB_LAUNCH_PAD is the game's default site.
+    # place, being hand-edited inside generated output. The merged list's
+    # first VAB_LAUNCH_PAD is the game's default site, so the table's order is
+    # deliberate. This system adds no inline pads: #1063 dropped the inline
+    # polar pad, which was already 708 km from the pole once #1007 moved it off
+    # Eerbon's sea (its pole ground sits 77 m under water), and both the CLI's
+    # site= and the VAB dropdown reach any pad by name.
     "world_buildings_files": ["res/data/old_launch_sites.json"],
-    # A second pad near the north pole (flag POLAR_PAD). Inline
-    # because it belongs to THIS system, not to the site table -- and inline
-    # keeps it out of the default-site race, since the merged fragment's first
-    # VAB_LAUNCH_PAD is the game's default. NOT at lat 90: Eerbon's pole ground
-    # sits 77 m under that world's own sea, and a pad a player can pick must
-    # stand above the water they can see (#1007). 86.9/235.7 is the nearest spot
-    # whose deck is dry (50.0 m ASL) AND flat enough for the 26x56 m slab --
-    # measured off the generated terrain, which is what tests/test_buildings.cpp
-    # now refuses. The pad is 708 km from the pole, so POLAR_PAD here is a region
-    # label: no shipped pad sits at a pole any more.
-    "world_buildings": [
-        {"id": "polar_pad", "type": "space_port",
-         "display_name": "Polar pad", "body": "Eerbon",
-         "lat_deg": 86.9, "lon_deg": 235.7, "height_m": 5.0,
-         "heading_deg": 0.0,
-         "flags": ["VAB_LAUNCH_PAD", "POLAR_PAD"]},
-    ],
     "bodies": [
         {
             "name": "Sun",
@@ -724,24 +711,15 @@ ksp = {
     # bodies (Kerbin, Moho, Duna), so it is named for the system, while
     # res/data/earth_launch_sites.json is named for the one body it serves.
     "world_buildings_files": ["res/data/ksp_launch_sites.json"],
-    # A second pad near the north pole (flag POLAR_PAD). Inline
-    # because it belongs to THIS system, not to the site table -- and inline
-    # keeps it out of the default-site race, since the merged fragment's first
-    # VAB_LAUNCH_PAD is the game's default. NOT at lat 90: Kerbin's pole ground
-    # sits 328 m under Kerbin's own sea, and a pad the VAB offers must stand above
-    # the water line a player can see (#1007). 88.8/171.4 is the nearest spot whose
-    # deck is both dry (50.1 m ASL) and flat enough for the 26x56 m slab, measured
-    # off the generated terrain; tests/test_buildings.cpp refuses any shipped pad
-    # under its body's sea now. It is 240 km from the pole, so no shipped pad sits
-    # at a pole any more -- the four cases that parked a hull at |omega x r| -> 0
-    # author the pole instead (e2e/fixtures/systems/870-kerbin-polar-pad.json).
-    "world_buildings": [
-        {"id": "polar_pad", "type": "space_port",
-         "display_name": "Polar pad", "body": "Kerbin",
-         "lat_deg": 88.8, "lon_deg": 171.4, "height_m": 5.0,
-         "heading_deg": 0.0,
-         "flags": ["VAB_LAUNCH_PAD", "POLAR_PAD"]},
-    ],
+    # No inline pads here either (#1063). Kerbin's sites are main_space_port,
+    # ksc_runway and the orbital kerbin_dock, all in the table above. The inline
+    # polar pad earned its keep only while it stood at lat 90: a hull parked
+    # there has |omega x r| -> 0 on a world that DOES turn, which is what four
+    # e2e cases wanted. #1007 moved it 240 km off the pole to dry ground --
+    # Kerbin's pole ground sits 328 m under Kerbin's own sea -- and #1063
+    # dropped it, since the CLI's site= and the VAB dropdown already pick a
+    # pad. That polar state is authored by
+    # e2e/fixtures/systems/870-kerbin-polar-pad.json now.
     "bodies": [
         ksp_body(*row) for row in K
     ],

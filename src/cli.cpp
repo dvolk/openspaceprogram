@@ -73,7 +73,7 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
     app.add_option("--startship", args.startship,
                    "One start ship: name,def,body,scenario[,site] -- the "
                    "first four required, the fifth an optional pad id (e.g. "
-                   "racer,res/ships/racer.json,Kerbin,pad,polar_pad). Named "
+                   "racer,res/ships/racer.json,Kerbin,pad,ksc_runway). Named "
                    "params work too, in any order: site=, lat=/lon= (deg) to "
                    "put an AIR spawn over a map point instead of the bed's "
                    "own place -- lat,lon as on the atlas and as a world pad "

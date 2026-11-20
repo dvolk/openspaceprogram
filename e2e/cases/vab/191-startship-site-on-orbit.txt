@@ -3,10 +3,13 @@
 # what it rests on -- a lie when the base comes from terrain, so place_vehicle
 # asserts site == nullptr || sc->on_pad (vehicle.cpp). Reject it at boot rather
 # than trusting the assert: an -O2 build has no assert to fire.
+#
+# Any real pad id makes the point; main_space_port is used now that #1063
+# deleted the polar pad this case was written against.
 NAME startship-site-on-orbit
 CLAIM A pad id on an orbit bed is refused at boot.
 KIND invariant
-ARGS --timeout 4 --startship racer,res/ships/racer.json,Kerbin,rot-orbit,polar_pad
+ARGS --timeout 4 --startship racer,res/ships/racer.json,Kerbin,rot-orbit,main_space_port
 EXPECT error: start ships: entry 0: "site" needs an on_pad scenario, not 'rot-orbit'
 EXIT 1
 FORBID [vab] launched

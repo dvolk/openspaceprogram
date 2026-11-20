@@ -1,13 +1,15 @@
 # The VAB's site dropdown was never under test: the retired --vab-site hook took
 # a world-building id, the dropdown shows pad NAMES, and no case could reach the
 # second pad. Now the case does what a player does -- open the dropdown, pick
-# "Polar pad" -- and the launch lands where that pad stands.
+# "KSC runway" -- and the launch lands where that pad stands.
 #
-# lat=90 is the oracle: the default pad stands at lat 0.29 / lon 270.3, so a
-# dropdown pick that never reached the launch would leave the ship at the equator
-# and fail the CHECK. The polar pad stands over ocean (alt_asl is negative,
-# bme="ocean"), which is the other half of what the case pins: the site decides
-# the ground under the ship, not just a label.
+# The degrees are the oracle: the default pad (main_space_port) stands at lat
+# 0.286473 / lon 270.286477 and the runway at 0.34377 / 270.03819, so a dropdown
+# pick that never reached the launch leaves the ship at the main port's spot and
+# fails the CHECK. That is a 2.7 km question where it used to be a 240 km one --
+# the picked pad was the polar one at lat 90, and #1063 deleted it once #1007
+# had already moved it off Kerbin's sea. The rule it pins does not care how far
+# apart the two decks are; the pair just has to be two decks.
 #
 # Rows are the pads' display names; their ids are PushID'd so two pads sharing a
 # name would make this path ambiguous and --ui-click would refuse rather than pick
@@ -18,7 +20,7 @@ CLAIM The VAB site dropdown launches on the named pad.
 KIND invariant
 ARGS --timeout 15 --info-log --orbit-interval 1
 ARGS --ui-click 8000,"VAB TopBar/##vabsite"
-ARGS --ui-click 8500,"##Combo_00/Polar pad"
+ARGS --ui-click 8500,"##Combo_00/KSC runway"
 ARGS --ui-click 9500,"VAB TopBar/LAUNCH"
 # Reached the way a player reaches the editor: Title Menu -> New Game -> Start, then
 # the 4 key.
@@ -40,7 +42,8 @@ ARGS --ui-click 6300,"VAB TopBar/Load"
 EXPECT [vab] launched 'racer' (4 parts)
 EXPECT [scene] vab -> flight (enterFlight)
 CHECK len(surf) >= 3
-CHECK all(abs(s["lat"] - 90.0) < 0.01 for s in surf)
+CHECK all(abs(s["lat"] - 0.34377) < 0.01 for s in surf)
+CHECK all(abs(s["lon"] - 270.03819) < 0.01 for s in surf)
 CHECK all(s["sit"] == "landed" for s in surf)
 FORBID FAILED
 FORBID error:

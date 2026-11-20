@@ -267,7 +267,7 @@ judgement. Select by number, name or path, e.g.
 | `vab/78-vab-detach-asm.txt` | invariant | Detaching a subtree root stashes it and launches only what remains. |
 | `vab/132-vab-save-rename.txt` | invariant | Save-as renames the ship identity in the file and on reload. |
 | `vab/164-vab-pad-occupied.txt` | invariant | A launch onto an occupied pad asks before placing a second ship. |
-| `vab/165-vab-pad-neighbour-clear.txt` | invariant | Occupancy is per pad: a ship on the polar pad does not block the main port. |
+| `vab/165-vab-pad-neighbour-clear.txt` | invariant | Occupancy is per pad: a ship on the KSC runway does not block the main port. |
 | `vab/183-vab-launch-no-ship.txt` | invariant | Launching from a shipless VAB does not sample NaN terrain. |
 | `vab/184-vab-pad-launch-no-ship.txt` | invariant | A pad launch from a shipless VAB survives the first frame. |
 | `vab/190-startship-bad-site.txt` | invariant | A bad --startship site fails at boot and lists the body's pads. |

@@ -4303,18 +4303,14 @@ def emit(base_bodies, moons, pred, out_path, label, sheets, dry=False, asteroids
            # per body.
            'world_buildings_files': ['res/data/earth_launch_sites.json',
                                      'res/data/venus_launch_sites.json'],
-           # A second pad at the geographic north pole (flag POLAR_PAD),
-           # where the flat-sea clamp puts the Arctic ice exactly at sea
-           # level. Inline because it belongs to this system, not to the
-           # real-world table -- and inline keeps it out of the default-site
-           # race.
-           'world_buildings': [
-               {'id': 'polar_pad', 'type': 'space_port',
-                'display_name': 'Polar pad', 'body': 'Earth',
-                'lat_deg': 90.0, 'lon_deg': 0.0, 'height_m': 5.0,
-                'heading_deg': 0.0,
-                'flags': ['VAB_LAUNCH_PAD', 'POLAR_PAD']},
-           ],
+           # No inline pads (#1063). The north-pole pad that used to sit here
+           # -- where the flat-sea clamp puts the Arctic ice exactly at sea
+           # level -- was worth an exception only while a game with one pad per
+           # body needed a second one; the site table has fourteen real ranges
+           # now and both launch doors pick a pad by name. Inline pads still
+           # sort AFTER the merged tables, so an inline one can never win the
+           # default-site race (src/buildings.cpp, pinned by
+           # tests/test_buildings.cpp).
            'bodies': bodies}
     stamp_science_mults(doc)
     if dry:
