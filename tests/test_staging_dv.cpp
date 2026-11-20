@@ -26,10 +26,11 @@
 //     first, and a gap between two labels costs nothing (#517).
 //   * autoStage assigns those labels from the tree instead of by hand, keeps an authored cut
 //     sequence over the tree's depth guess but clamps it so no cut rides a press inside a cut
-//     that contains it (#1020), keeps an engine lit that the build lights from the pad unless
-//     that would empty the floor label, and refuses where the tree cannot read the stack at all
-//     -- no decoupler, a cut that would drop everything, an engine re-sequenced relative to
-//     another (#1012).
+//     that contains it (#1020), ranks the cuts by the fuel chain instead when the player asks
+//     for it (#1031), keeps an engine lit that the build lights from the pad unless that would
+//     empty the floor label, and refuses where the tree cannot read the stack at all -- no
+//     decoupler, a cut that would drop everything, an engine re-sequenced relative to another
+//     (#1012).
 //   * a staging edit takes itself back: the change list an edit performed is the undo
 //     record, so an undo finds parts by id (the vector renumbers under it), leaves a label
 //     that something else moved since, says which parts it could not reach, and moves
@@ -2428,7 +2429,7 @@ static void test_auto_stager_never_puts_a_cut_above_the_cut_that_contains_it() {
                "the inner cut separates first, whatever the numbers said");
     CHECK_TRUE(labelsOf(bs) == std::vector<int>({1, 2, 2, 3, 3, 3}),
                "the outer cut drops to a press below the inner one");
-    CHECK_TRUE(has_note(plan, "numbered above a cut they contain"),
+    CHECK_TRUE(has_note(plan, "ordered above a cut they contain"),
                "and the plan says it bent an authored number instead of hiding it");
     std::vector<std::string> w;
     validateStaging(bs, w);
@@ -2456,11 +2457,121 @@ static void test_auto_stager_clamps_an_outer_cut_against_its_neighbours() {
     CHECK_TRUE(labelsOf(bs) == std::vector<int>({1, 2, 2, 3, 3, 4, 4}),
                "the sibling takes the top rung, the inner cut the next, the outer cut the last");
     CHECK_TRUE(bs.parts[dSib].stage == 4, "the sibling was never the problem and keeps its press");
-    CHECK_TRUE(has_note(plan, "1 cut(s) numbered above a cut they contain"),
+    CHECK_TRUE(has_note(plan, "1 cut(s) ordered above a cut they contain"),
                "exactly one number bent, and the plan says which kind of bend it was");
     std::vector<std::string> w;
     validateStaging(bs, w);
     CHECK_TRUE(w.empty(), "three dense rungs, each answering to a cut");
+}
+
+/* #1031: the "Fuel link staging" switch -- the drain graph orders the cuts instead of the part
+   tree. A core stage with three radial boosters chained into it (a -> b -> c -> core tank) is
+   the shape most rockets will have, placed here without a number on anything. Off, the three
+   cuts sit at one tree depth and share the first press. On, the chain says which fuel is still
+   feeding the engine and from how far off: the outboard booster's is three hops away and burns
+   first, so the ring comes apart into three presses -- the ladder heavy_asp's author typed by
+   hand, derived instead of typed. */
+static void test_auto_stager_orders_cuts_by_the_fuel_chain_when_asked() {
+    Catalog cat;
+    /* Built twice on purpose: a plan WRITES labels, and the next plan reads whatever labels the
+       build carries as its authored intent. Asking the two questions on one build would let the
+       second answer be shaped by the first, which is a separate (and filed) quirk, not this. */
+    auto build = [&](BuildShip &bs) {
+        const int pod = addPart(bs, cat.mono(100, 0), "pod", -1, 1);
+        const int dCore = addPart(bs, cat.decoupler(5), "dec_core", pod, 1);
+        const int coreTank = addPart(bs, cat.tank(50, 25, 25), "core_tank", dCore, 1);
+        addPart(bs, cat.engine(10, 0.5, 1000.0), "core_eng", coreTank, 1);
+        const int dA = addPart(bs, cat.decoupler(5), "dec_a", coreTank, 1);
+        const int aTank = addPart(bs, cat.tank(50, 25, 25), "a_tank", dA, 1);
+        addPart(bs, cat.engine(10, 0.5, 1000.0), "a_eng", aTank, 1);
+        const int dB = addPart(bs, cat.decoupler(5), "dec_b", coreTank, 1);
+        const int bTank = addPart(bs, cat.tank(50, 25, 25), "b_tank", dB, 1);
+        addPart(bs, cat.engine(10, 0.5, 1000.0), "b_eng", bTank, 1);
+        const int dC = addPart(bs, cat.decoupler(5), "dec_c", coreTank, 1);
+        const int cTank = addPart(bs, cat.tank(50, 25, 25), "c_tank", dC, 1);
+        addPart(bs, cat.engine(10, 0.5, 1000.0), "c_eng", cTank, 1);
+        addLink(bs, "a_tank", "b_tank");
+        addLink(bs, "b_tank", "c_tank");
+        addLink(bs, "c_tank", "core_tank");
+        (void)pod; (void)dCore; (void)coreTank; (void)aTank; (void)bTank; (void)cTank;
+        return dCore;
+    };
+
+    BuildShip plain;
+    build(plain);
+    StagingPlan off = autoStage(plain);
+    CHECK_TRUE(off.applied, "an un-numbered stack numbers either way");
+    CHECK_TRUE(labelsOf(plain) == std::vector<int>({1, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3}),
+               "off: the ring's three cuts share one press, and the core's cut sits below");
+    CHECK_TRUE(!has_note(off, "ranked by the fuel chain"), "off says nothing about the chain");
+    std::vector<std::string> wOff;
+    validateStaging(plain, wOff);
+    CHECK_TRUE(wOff.empty(), "off leaves the checker quiet (the ring's one press answers)");
+
+    BuildShip bs;
+    const int dCore = build(bs);
+    StagingPlan on = autoStage(bs, true);
+    CHECK_TRUE(on.applied, "the chain's answer is a plan too");
+    CHECK_TRUE(labelsOf(bs) == std::vector<int>({1, 2, 2, 2, 5, 5, 5, 4, 4, 4, 3, 3, 3}),
+               "three hops, three presses, outboard first, and every part of a stage rides it");
+    CHECK_TRUE(bs.parts[dCore].stage == 2,
+               "the core ranks 0 -- it burns its own fuel -- so it stays a press below");
+    CHECK_TRUE(has_note(on, "3 cut(s) ranked by the fuel chain"),
+               "and the plan says the chain ordered them, not the tree");
+    std::vector<std::string> w;
+    validateStaging(bs, w);
+    CHECK_TRUE(w.empty(), "four dense rungs, each answering to a cut");
+}
+
+/* The links are the only thing the switch can read, so on a stack without one it moves nothing
+   and says nothing. That is what makes drawing the checkbox always (rather than only when the
+   build has links) honest. */
+static void test_auto_stager_fuel_link_switch_is_inert_without_links() {
+    Catalog cat;
+    BuildShip bs;
+    const int tank = addPart(bs, cat.tank(50, 25, 25), "tank", -1, 1);
+    addPart(bs, cat.engine(10, 0.5, 1000.0), "eng", tank, 1);
+    const int d = addPart(bs, cat.decoupler(5), "d_boost", tank, 1);
+    addPart(bs, cat.tank(50, 75, 75), "bo_tank", d, 1);
+    addPart(bs, cat.engine(10, 0.5, 1000.0), "bo_eng", d, 1);
+    (void)tank;
+    StagingPlan ask = autoStage(bs, true);
+    CHECK_TRUE(ask.applied, "the switch does not make a stack unnumberable");
+    CHECK_TRUE(labelsOf(bs) == std::vector<int>({1, 1, 2, 2, 2}), "and moves no label");
+    CHECK_TRUE(!has_note(ask, "ranked by the fuel chain"), "nor claims the chain ordered anything");
+}
+
+/* A chain can rank a stage further from an engine than a cut NESTED inside it, and that order
+   cannot fly either -- the outer press takes the inner cut with it. The same repair as the
+   authored clamp applies to the rank: the outer rank comes down to the inner one, the depth
+   tie-break puts the inner cut first, and the plan counts what it bent. Shape: the outer
+   stage's booster feeds an engine ABOVE the outer stage (two hops), while the innermost cut's
+   own stage feeds nothing -- so the raw chain would fire the outer stage before the cut inside
+   it. */
+static void test_auto_stager_clamps_a_fuel_rank_above_a_cut_it_contains() {
+    Catalog cat;
+    BuildShip bs;
+    const int pod = addPart(bs, cat.mono(100, 0), "pod", -1, 1);
+    const int engTop = addPart(bs, cat.engine(10, 0.5, 1000.0), "eng_top", pod, 1);
+    const int decO = addPart(bs, cat.decoupler(5), "dec_outer", engTop, 1);
+    const int tankO = addPart(bs, cat.tank(50, 25, 25), "tank_o", decO, 1);
+    const int decA = addPart(bs, cat.decoupler(5), "dec_a", tankO, 1);
+    const int tankA = addPart(bs, cat.tank(50, 25, 25), "a_tank", decA, 1);
+    const int decI = addPart(bs, cat.decoupler(5), "dec_inner", tankA, 1);
+    addPart(bs, cat.tank(50, 25, 25), "inner_tank", decI, 1);
+    addLink(bs, "a_tank", "tank_o");
+    addLink(bs, "tank_o", "pod");   // the leg that leaves the outer stage, up to eng_top's group
+    (void)pod; (void)engTop; (void)tankO; (void)tankA;
+
+    StagingPlan plan = autoStage(bs, true);
+    CHECK_TRUE(plan.applied, "the shape numbers -- with the chain bent");
+    CHECK_TRUE(bs.parts[decI].stage == 4 && bs.parts[decA].stage == 3 && bs.parts[decO].stage == 2,
+               "inner first, then its container, then the outer stage -- depth, not the chain");
+    CHECK_TRUE(has_note(plan, "2 cut(s) ordered above a cut they contain"),
+               "the two ranks the clamp had to bring down");
+    std::vector<std::string> w;
+    validateStaging(bs, w);
+    CHECK_TRUE(w.empty(), "and a ladder with no dead press in it");
 }
 
 /* The pad-lit pin gives up rather than empty the floor -- and gives up only for the engines
@@ -2963,6 +3074,9 @@ int main() {
     test_auto_stager_orders_cuts_by_the_authored_label_not_depth();
     test_auto_stager_never_puts_a_cut_above_the_cut_that_contains_it();
     test_auto_stager_clamps_an_outer_cut_against_its_neighbours();
+    test_auto_stager_orders_cuts_by_the_fuel_chain_when_asked();
+    test_auto_stager_fuel_link_switch_is_inert_without_links();
+    test_auto_stager_clamps_a_fuel_rank_above_a_cut_it_contains();
     test_auto_stager_gives_up_the_pad_pin_rather_than_empty_the_floor();
     test_auto_stager_says_what_a_chute_on_the_floor_needs();
     test_auto_stager_reads_the_graph_not_the_part_order();

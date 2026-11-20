@@ -1,0 +1,43 @@
+# #1031: the "Fuel link staging" row under the Staging window's buttons. The player who builds
+# the asparagus shape and never types a number used to get the whole booster ring on ONE press,
+# because part depth cannot tell three chained boosters from three independent ones. The links
+# already say the order -- the drain walk flight burns through gives each stage its hop distance
+# from the engine it feeds -- so the switch puts that rank in front of depth.
+#
+# asparagus.json (e2e/vehicles/, so it needs Game Debug's dev-vehicles switch) is a capsule, a
+# core stage, and three radial boosters chained a -> b -> c -> core tank, every part left at the
+# default label 1. Compare 1020-b, the same fixture with the switch OFF: the ring shares one
+# press and the ladder is three labels long. Here it is five, and each booster falls on its own.
+NAME fuel-link-staging-sequences-an-unnumbered-asparagus-stack
+CLAIM With Fuel link staging on, Auto-stage sequences the chained boosters one press apart instead of dropping the ring at once.
+KIND invariant
+ARGS --ui-click 1000,"Title Menu/New Game"
+ARGS --ui-click 1600,"New Game/Start"
+ARGS --sim-press 2600,0,4
+ARGS --sim-press 3200,0,F1
+ARGS --ui-click 3700,"Game Debug/Dev vehicles in the VAB picker"
+ARGS --sim-press 4200,0,F1
+ARGS --ui-type 4700,"VAB TopBar/##vehfilter",asparagus
+ARGS --ui-click 5300,"VAB TopBar/##vabload"
+ARGS --ui-click 5900,"asparagus"
+ARGS --ui-click 6500,"VAB TopBar/Load"
+ARGS --ui-click 7100,"Staging/Fuel link staging"
+ARGS --ui-click 7700,"Staging/Auto-stage"
+ARGS --stage-dump 8500 --timeout 14
+LIMIT 60
+EXPECT [vab] loaded asparagus (13 parts)
+EXPECT [toast] Auto-staged 12 parts from the stack
+EXPECT [autostage] note: 3 cut(s) ranked by the fuel chain
+# The chain, outboard first: a is three hops from the core engine, b two, c one.
+EXPECT [stagetree] 4 dec_a def=decoupler_radial parent=core_tank stage=5 responds=decoupler
+EXPECT [stagetree] 7 dec_b def=decoupler_radial parent=core_tank stage=4 responds=decoupler
+EXPECT [stagetree] 10 dec_c def=decoupler_radial parent=core_tank stage=3 responds=decoupler
+# The core stage ranks 0 -- it burns its own fuel, so the chain has no opinion on it -- and keeps
+# the press below the chain, exactly where the switch-off rule left it.
+EXPECT [stagetree] 1 dec_core def=decoupler_r1 parent=pod_1 stage=2 responds=decoupler
+EXPECT [stagetree] 0 pod_1 def=capsule parent=- stage=1 responds=-
+EXPECT [stagetree] labels=1..5 presses=4 inert_parts=5/13
+FORBID [autostage] refuse:
+FORBID [stagetree] warn:
+FORBID error:
+FORBID FAILED

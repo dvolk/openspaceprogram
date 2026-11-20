@@ -207,7 +207,19 @@ struct StagingPlan {
     enum class Refusal : unsigned { Other, NoDecoupler };
     Refusal refusal = Refusal::Other;
 };
-StagingPlan autoStage(BuildShip &ship);
+/* `fuelStaging` (#1031) puts the fuel chain in front of the cut ordering instead of the part
+   tree: a cut ranks by the FURTHEST fuel leg the stage it releases still has to supply -- link
+   hops from a group inside the stage out to an engine outside it, the same walk flight drains
+   through -- and that rank leads the sort key. The chain has an opinion only where fuel crosses
+   the cut boundary, so a stage that feeds nothing outside itself ranks 0 and orders by depth
+   exactly as it does with the switch off; and a rank that would stand a cut above one nested
+   inside it is clamped down, the same repair an authored number gets.
+
+   Measured over res/ships, the two hulls carrying links (heavy_asp, heavy_two) already have
+   their authors' cut numbers equal to these ranks, so on the shipped fleet the switch changes
+   nothing. It is for the asparagus stack a player builds in the VAB and never numbers: a chain
+   three hops long comes out three presses apart rather than one press for the whole ring. */
+StagingPlan autoStage(BuildShip &ship, bool fuelStaging = false);
 
 /* Taking a staging edit back (#1013), scoped to LABELS. The VAB has no undo for place,
    delete, detach or clear -- those destroy parts, and undoing them is a feature of its own

@@ -383,6 +383,7 @@ static int printFleetReport(const Game &game, const GameArgs &args,
 
     int broken = 0, no_engine = 0, grounded = 0, short_hull = 0, solvent = 0, flagged = 0;
     int refused = 0, restaged = 0, moved = 0, planned = 0, faults = 0;
+    int linkHulls = 0, fuelDiff = 0;   // the #1031 switch, measured apart
     for(auto &[name, path]: hulls) {
         ShipDef def;
         try {
@@ -468,6 +469,21 @@ static int printFleetReport(const Game &game, const GameArgs &args,
             faults += (int)after.size();
             for(const std::string &w : after) { printf("    auto-stage LEFT A FAULT: %s\n", w.c_str()); }
         }
+        /* The same question with the fuel chain leading the cut order (#1031), asked only of the
+           hulls that have links to answer it. Reported as a difference against the plain plan
+           rather than a second wall of rows: on this fleet the switch should be quiet -- both
+           linked hulls already number their cuts the way their chains drain -- so a non-zero
+           count is the finding, and the plan text would just be noise. */
+        if(!build.fuelLinks.empty()) {
+            linkHulls++;
+            BuildShip fuel = build;
+            const StagingPlan fp = autoStage(fuel, true);
+            if(fp.applied != plan.applied || fp.changes.size() != plan.changes.size()) {
+                fuelDiff++;
+                printf("    fuel link staging would number this hull differently: %d change(s) "
+                       "against %d\n", (int)fp.changes.size(), (int)plan.changes.size());
+            }
+        }
     }
     printf("%d no engine, %d grounded (TWR < 1 at the pad), %d lift off but book "
            "less than the %.0f m/s floor, %d solvent on paper. dv is VACUUM and the "
@@ -487,6 +503,10 @@ static int printFleetReport(const Game &game, const GameArgs &args,
     printf("%d of %d hull(s) would change under auto-staging (%d label(s) move), %d number as "
            "authored, %d refuse; %d hull(s) applied, %d fault(s) left behind.\n",
            restaged, (int)hulls.size(), moved, planned - restaged, refused, planned, faults);
+    /* Printed even when nothing differs: "%d hull(s) carry links" is the reach of the #1031
+       switch, and a reader cannot tell a quiet switch from an unmeasured one without it. */
+    printf("%d hull(s) carry fuel links; Fuel link staging would number %d of them "
+           "differently (#1031).\n", linkHulls, fuelDiff);
     if(broken > 0) { printf("%d def(s) failed to load.\n", broken); }
     return 0;
 }

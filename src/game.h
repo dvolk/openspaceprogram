@@ -388,6 +388,11 @@ struct VabState {
        caches whenever a load or a clear replaces the build, because every entry names a
        part of the build it was recorded against. */
     StagingUndo stagingUndo;
+    /* The Staging window's "Fuel link staging" switch (#1031): when on, Auto-stage ranks its
+       cuts by the fuel chain rather than guessing the order from part depth (see autoStage's
+       doc). Editor state, not ship state -- it is how the player asked the question, and the
+       ship file already carries the answer once the plan has run. */
+    bool fuelStaging = false;
     /* id -> index into vab.build.parts, rebuilt with the rows above and keyed by the
        same signature (#527). The fuel-link overlay draws every frame and used to
        resolve both ends of every link by scanning every part and comparing std::string
