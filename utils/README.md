@@ -1,0 +1,80 @@
+# utils/
+
+Tooling, not shipped code -- nothing here compiles into the game. The coupling points the other
+way: comments in `src/` and `tests/` name these scripts as the second spelling of a number or a
+law (`atmo.h` / `atmo_units.py`, `groundtemp.h` / `ground_model.py`, `constants.h` /
+`check_atmo_band.py`) -- 48 such mentions in `src/` and `tests/` alone, 101 across the repo
+outside `reports/`. Renaming or moving a script breaks seam documentation, not just a path.
+
+## Gates
+
+- `make lint` -- `ci_lint.py --self-test`, then `ci_lint.py` (hygiene, file size, JSON
+  parseability, secret shapes), then a byte-compile pass over `utils` and `e2e`. `HYGIENE_SKIP`
+  inside `ci_lint.py` is hygiene-only: the size gate and the secret scan still see every tracked
+  file.
+- `make test-gen` -- `lint`, then the pins that need only stdlib: `sci_phase`, `sci_dist
+  --self-test` and `--check res/systems/*.json`, `sysdiff`, `gen_systems --check`,
+  `make_solar_system --check`, `ground_model --self-test`, `check_atmo_band` x2,
+  `check_ship_skin` x2, `e2e/index.py --check`, `e2e/run.py --self-test`.
+- `make test-py` -- `test-gen`, then the three that import third-party modules: `gen_parts
+  --check`, `heightmaps/gen_earth_hm.py --verify`, `skybox/make_skybox.py --verify --out
+  res/skybox/dsm_1024_g3_ds2`. Without trimesh/numpy/PIL they are reported as skipped, never
+  silently vanished (#220).
+- `make test-parts` -- `gen_parts.py --check` on its own, same skip guard.
+
+`make test` runs `test-gen` and `test-parts` alongside the unit tests, and the CI job
+(`.gitea/workflows/lint.yml`) runs exactly `make test-gen` -- so a gate that fails CI is a gate
+you can reproduce here. Packaging: `make appimage` / `make deb`, which build first and then call
+`make_appimage.sh`, `make_deb.sh` and `debian/`.
+
+## Regenerating an asset
+
+`make_solar_system.py`, `gen_systems.py` and `gen_parts.py` write their own file with no
+arguments and weigh the committed file against themselves with `--check`. That `--check` is the
+drift pin: #186 was a Kuiper radius sitting 1.5x out for two days because nothing regenerated it.
+
+- `res/systems/*.json` -- run `make_solar_system.py` **first**, then `gen_systems.py`, always in
+  that order. `gen_systems.py` reads the committed `solar_system.json` and re-derives the air-mass
+  calibration from it (#749), so regenerating ksp first silently bakes the old calibration in.
+  `--check` catches a stale pair; it cannot catch a wrong order. Between them they own
+  `solar_system{,_measured,_named,_full}.json`, `ksp_system.json` and `old_system.json`;
+  `lag_playground.json` and `wind_playground.json` are hand-authored and no generator owns them.
+- `res/data/parts.json` -- `gen_parts.py`. Its part sizes come from whatever meshes ship in
+  `res/meshes`, only some of which have a generator here. `check_ship_skin.py` is a separate
+  thing: it weighs `surface` attach points against their parent's skin, for round parents only
+  (a plate's contact lands on the face by construction), with 28 of 83 shipped rows waived at the
+  value each was measured at.
+- `heightmaps/gen_earth_hm.py` and `skybox/make_skybox.py` carry `--verify`/`--check` but read
+  untracked sources under `staging/**/data` (GeoTIFFs, EXRs), so they do not run on a fresh clone.
+  `make_skybox.py` also writes into `staging/skybox/bakes/` unless you name `--out`, which is why
+  the gate passes `--out res/skybox/dsm_1024_g3_ds2`.
+- The `gen_*` mesh and texture tools have **no `--check`**. Four of them -- `gen_gear.py`,
+  `gen_kerbal.py`, `gen_platform.py`, `gen_station.py` -- take no destination argument and rewrite
+  shipped files in place: `res/meshes/gear.obj`; `kerbal.obj` + `textures/kerbal.png`;
+  `balloon_platform.obj` + `_deck.obj`; `station.obj` + `spacedock.obj`. The other nine want a
+  path. Nothing weighs these meshes against their generators, so a stray run is silent either way
+  (#1051).
+
+## Data that lives here
+
+- `rss/` -- scraped NASA NSSDC / JPL sheets plus the WGCC rotation standard: 297 tracked files,
+  9.8 MB. `rss/html` (19 files, 223 KB) is a **build dependency** -- `make_solar_system.py --check`
+  parses it on every commit -- so it stays tracked.
+- `rss/asteroids/raw/` is mostly **tracked** (266 files: SBDB JSONs, the extracted LCDB column
+  reference, the by-size and TNO lists). Only `lc_*.csv`, `lcdb_pds_readme.pdf` and `mpcorb/` are
+  gitignored; `mpcorb/` is 175 MB of that and stays out on purpose (983 MB as text, reissued
+  daily). Do not clean this directory wholesale.
+- `ksp_bodies.csv` -- tracked, read by `gen_systems.py` (orbits and thermal columns);
+  `gen_ksp_csv.py` rebuilds it from the wiki, merging axial tilt from `ksp_system.csv`, which is
+  the older hand-maintained table and is gitignored.
+- `parts_wiki/` -- `gen_parts_wiki.py` output, gitignored; re-run to refresh.
+
+## Conventions
+
+- Sibling data is `os.path.join(HERE, ...)`, with `HERE = os.path.dirname(os.path.abspath(__file__))`.
+  The repo root is two `dirname()`s up at the top level and three inside `heightmaps/` and `skybox/`.
+  Move a script deeper without fixing that and it writes into `utils/res/`: the checked generators
+  fail loudly, the four in-place mesh writers above do not.
+- A module opens by saying what it generates and where its source of truth is. 27 of the 32
+  top-level scripts use a docstring and 5 a `#` header; either is fine, having neither is not.
+- `check_mesh.py` inspects one mesh; `rescale_obj.py` rewrites one. No gate runs either.

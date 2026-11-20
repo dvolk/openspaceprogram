@@ -1,3 +1,7 @@
+#!/usr/bin/env python3
+"""One-off inspection of a mesh file: finite geometry, consistent winding, and -- unless
+--open -- watertightness and positive volume. Per-corner splits are merged first so the
+watertight test sees true topology. No gate runs this; needs trimesh."""
 import sys
 import numpy as np
 import trimesh
