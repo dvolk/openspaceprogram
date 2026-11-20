@@ -6,8 +6,8 @@
       "type": "space_port",
       "display_name": "Main space port",
       "body": "Eerbon",
-      "lat_deg": 0.286473,
-      "lon_deg": 270.286477,
+      "lat_deg": -1.9135,
+      "lon_deg": 267.8,
       "height_m": 5.0,
       "heading_deg": 0.0,
       "flags": [

@@ -12,9 +12,15 @@
 #
 # The floor is not a mute: once the ascent law has built real tangential speed the inclination
 # reads again, and for a launch off a polar pad the right reading is 90 deg.
+#
+# That polar pad is authored, not shipped: e2e/fixtures/systems/870-kerbin-polar-pad.json is
+# the shipped Kerbin verbatim with one pad at lat 90. #1007 moved the shipped polar_pad 240 km
+# off the pole to dry ground -- the pole itself stands 328 m under Kerbin's sea -- and a launch
+# from there reads 88.8 deg, not 90. Same body, same air, so the |h| and r quoted above stand.
 NAME ascent-row-dashes-an-inclination-without-a-plane
 CLAIM [ascent] dashes inc_eq while the state has no plane, on rows whose conic fields are numbers, and reads the polar 90 deg once the hull earns tangential speed.
 KIND invariant
+ARGS --system e2e/fixtures/systems/870-kerbin-polar-pad.json
 ARGS --startship racer,res/ships/racer.json,Kerbin,pad,polar_pad
 ARGS --time-accel 1 --timeout 4 --ascent 100000 --ascent-log --orbit-interval 1
 LIMIT 200

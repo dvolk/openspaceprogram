@@ -1,11 +1,19 @@
 # Kerbin turns, so a hull parked on it has the ground's own motion (~175 m/s at the
 # equator) to call prograde -- except at a pole, where |omega x r| goes to zero and all
-# that is left is the contact solver's residue. Parked on the SHIPPED polar pad
-# (res/data/ksp_launch_sites.json, lat 90, no fixture involved) the conic speed measures
+# that is left is the contact solver's residue. Parked on a pad authored at lat 90 on the
+# shipped Kerbin -- e2e/fixtures/systems/870-kerbin-polar-pad.json, the shipped Kerbol and
+# Kerbin verbatim plus that one building -- the conic speed measures
 # 3.9e-04 .. 3.4e-03 m/s, and the bearing built from it wandered 90.02 -> 85.68 deg between
 # rows one second apart (tmp/night3/870_polar.log, printed while the floor was still
 # 1e-3). #870: that is not a slow ship, it is a ship with no heading, and the HUD said
 # "90 deg" with full confidence.
+#
+# This used to be the shipped-content half of the pair: the shipped polar_pad WAS authored
+# at lat 90. Kerbin's pole ground sits 328 m under Kerbin's own sea, so #1007 moved that pad
+# to the nearest dry flat ground (88.8/171.4), where the ground moves ~3.6 m/s and this state
+# is simply absent. The fixture holds the state instead, with the same body, air and
+# rotation: same r (599681 m), and its rows run 1.4e-04 .. 1.6e-03 m/s -- the same side of
+# the floor as the 3.9e-04 .. 3.4e-03 the shipped pad measured in tmp/night3/870_polar.log.
 #
 # This case is also the reason orbit.h:kConicSpeedFloor is 1e-2 m/s and not 1e-3: at 1e-3
 # the middle row of that log dashed while the other two printed bearings, so the readout
@@ -16,6 +24,7 @@
 NAME prg-dash-on-a-polar-pad
 CLAIM A hull parked where the ground does not move dashes prg/rtg rather than pointing at solver residue.
 KIND invariant
+ARGS --system e2e/fixtures/systems/870-kerbin-polar-pad.json
 ARGS --startship racer,res/ships/racer.json,Kerbin,pad,polar_pad
 ARGS --time-accel 1 --timeout 4 --info-log --orbit-interval 1
 LIMIT 60
@@ -31,5 +40,6 @@ CHECK all(o["prg"] is None and o["rtg"] is None for o in orbinfo)
 # centre, so the row is a real parked hull rather than an empty dump.
 CHECK all(o["vel"] > 0.0 and o["vel"] < 1e-2 and o["r"] > 5.9e5 for o in orbinfo)
 # MUTATION: kConicSpeedFloor 1e-2 -> 1e-3 prints bearings on the rows whose residue is
-# 3.4e-03 / 1.9e-03 and dashes the 3.9e-04 one, reddening the all() CHECK -- which is the
-# flicker this case exists to forbid.
+# above 1e-3 (1.6e-03 on this fixture) and dashes the 1.4e-04 one, reddening the all()
+# CHECK -- re-measured here, not carried over from the shipped pad. That flicker between an
+# instrument and a gap on consecutive rows of one parked hull is what this case forbids.

@@ -12,8 +12,8 @@
       "type": "space_port",
       "display_name": "Polar pad",
       "body": "Eerbon",
-      "lat_deg": 90.0,
-      "lon_deg": 0.0,
+      "lat_deg": 86.9,
+      "lon_deg": 235.7,
       "height_m": 5.0,
       "heading_deg": 0.0,
       "flags": [

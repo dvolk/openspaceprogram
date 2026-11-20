@@ -629,15 +629,17 @@ int main() {
            above it. The seen[] half is the point of writing it this way: matching
            ids alone leaves a renamed or deleted pad pinning NOTHING, and the test
            still says OK (proven: renaming moho_pad to moho_site in a scratch copy
-           of the data left this test green). polar_pad is deliberately absent -- its
-           deck sits below Kerbin's sea level, which is #1007, a question rather
-           than a fact to freeze. */
+           of the data left this test green). polar_pad joins the list now that it
+           stands on dry ground: it used to sit 323 m under Kerbin's sea, which is
+           what #1007 moved it out of, and a pad whose deck is under water is a
+           fact worth freezing just as much as the dry ones. */
         struct PadWant { const char *id; double asl; };
         static const PadWant kWant[] = {
             {"main_space_port", 260.1},
             {"ksc_runway", 249.6},
             {"moho_pad", 125.9},
             {"duna_pad", 65.0},
+            {"polar_pad", 50.1},
         };
         const bool pinHere = logical == "res/systems/ksp_system.json";
         bool seen[sizeof(kWant) / sizeof(kWant[0])] = {};
@@ -695,10 +697,10 @@ int main() {
                 check_pad_grounding(logical, w, wb);
                 /* The number, printed where it earns its keep: the pinned pads, so
                    a stale one sits on the line above its own failure, and any deck
-                   under its body's sea level -- three shipped pads do (#1007), and
-                   that is worth a permanent line rather than a one-off audit. All
-                   69 of them every run is noise the suite does not need (#1000 was
-                   about exactly this). */
+                   under its body's sea level -- the state #1007 moved three shipped
+                   pads out of, and a permanent line beats a one-off audit if it ever
+                   comes back. All 69 of them every run is noise the suite does not
+                   need (#1000 was about exactly this). */
                 const double asl = padDeckAsl(w, wb);
                 bool pinned = false;
                 for(size_t k = 0; k < sizeof(kWant) / sizeof(kWant[0]); k++) {
@@ -711,6 +713,23 @@ int main() {
                     printf("[padalt] %-28s %-8s %-18s deck_asl=%.1f%s\n",
                            logical.c_str(), w.body.c_str(), w.id.c_str(), asl,
                            asl < 0.0 ? "  BELOW SEA LEVEL" : "");
+                }
+                /* And the refusing half. A deck under its own sea is not a physics
+                   problem -- no term reads the ocean, so the hull sits on the sea
+                   floor and works -- it is the player standing a launch pad where
+                   they can see water over it, and landing "back at the pad" into a
+                   sea with no splash. So a site the VAB offers must clear the water
+                   line. Scoped to VAB pads on a body that HAS a sea: a scenic
+                   building under water is a designer's business, and orbital and air
+                   entries never reach here. check_pad_grounding cannot see this --
+                   it weighs the deck against the terrain under the footprint, which
+                   a pad is built to sit on, submerged or not. */
+                if(asl < 0.0 && wb->surface.has_sea && w.hasFlag("VAB_LAUNCH_PAD")) {
+                    printf("FAIL %s: pad '%s' deck sits %.1f m BELOW %s's sea level "
+                           "-- a hull on it stands under the ocean shell; move it to "
+                           "dry ground (#1007)\n",
+                           logical.c_str(), w.id.c_str(), -asl, w.body.c_str());
+                    g_failures++;
                 }
                 if(!pinHere) { continue; }
                 for(const auto &e : kWant) {
@@ -727,8 +746,9 @@ int main() {
         }
         /* Every pinned id has to have been SEEN, or the pin above compared nothing.
            The same rule covers the discriminator itself: the want list is keyed to
-           this one file because main_space_port also exists on Eerbon, at -166.5 m,
-           so without it the test would fail for the wrong reason -- and if the file
+           this one file because main_space_port also exists on Eerbon (at 26.0 m,
+           not the -166.5 m #1007 found it at), so without it the test would fail
+           for the wrong reason -- and if the file
            were renamed, both this pin and the ksp-specific counts above would go
            away silently. */
         if(pinHere) {
@@ -765,10 +785,17 @@ int main() {
             } else if(logical == "res/systems/ksp_system.json"
                       || logical == "res/systems/old_system.json") {
                 CHECK(dflt->id == "main_space_port");
-                // The fictional systems' tables are hand-authored data no
-                // generator writes, so nothing else watches their numbers:
-                // pin the home pad's spot, as alcantara does for Earth's.
-                CHECK(dflt->lat_deg == 0.286473 && dflt->lon_deg == 270.286477);
+                /* The fictional systems' tables are hand-authored data no
+                   generator writes, so nothing else watches their numbers:
+                   pin the home pad's spot, as alcantara does for Earth's.
+                   Eerbon's degrees are NOT Kerbin's copied over: the same spot
+                   on Eerbon's own noise put its deck 166 m under that world's
+                   sea, so it moved to the nearest dry flat ground (#1007). */
+                if(logical == "res/systems/ksp_system.json") {
+                    CHECK(dflt->lat_deg == 0.286473 && dflt->lon_deg == 270.286477);
+                } else {
+                    CHECK(dflt->lat_deg == -1.9135 && dflt->lon_deg == 267.8);
+                }
             }
             /* A demo file names its own pad. res/systems is also what the in-game
                picker lists, so it can hold a world invented to show a mechanism off

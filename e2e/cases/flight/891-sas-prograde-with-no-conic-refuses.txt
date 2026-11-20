@@ -1,8 +1,8 @@
 # #891: SAS aimed at the residue #870 taught the HUD to dash. `Vehicle::slewTargetDir()`
 # built prograde/retrograde and the plane normal straight out of `comStateIn()` with no
 # floor, while render.cpp's markers and [orbinfo] had agreed on `orbit.h:kConicSpeedFloor`
-# (1e-2 m/s) since #870. Parked on Kerbin's shipped polar pad -- lat 90, where
-# |omega x r| is zero and the contact solver's residue is all that is left (2.9e-04 ..
+# (1e-2 m/s) since #870. Parked on a pad at Kerbin's pole -- |omega x r| is zero there and
+# the contact solver's residue is all that is left (2.9e-04 ..
 # 4.6e-04 m/s in tmp/night3/891_after.log) -- a residue vector still normalizes to a
 # confident unit heading, so a prograde hold slewed the nose after whichever way the jitter
 # pointed this tick, spending reaction-wheel torque, while the same screen printed `prg=-`.
@@ -15,9 +15,15 @@
 # SAS shows for a mode with nothing to point at. So the pin is on the autopilot rows: the
 # mode latches (`mode=prograde`), the answer is a refusal on every row, and no row shows
 # the law chasing a heading (`mode=prograde E=`).
+# The pole comes from a fixture now: e2e/fixtures/systems/870-kerbin-polar-pad.json is the
+# shipped Kerbin verbatim -- air, mass, rotation, seed -- with one pad authored at lat 90.
+# The shipped polar_pad used to BE that pad, and #1007 moved it to the nearest dry flat
+# ground, 240 km off the pole, where the ground moves ~3.6 m/s and this state does not
+# exist. Same body and same air, so every band quoted above carries over unchanged.
 NAME sas-prograde-with-no-conic-refuses
 CLAIM SAS prograde on a hull with no conic refuses instead of steering at solver residue: the mode latches, every autopilot row says no-target, and none shows a heading being chased.
 KIND invariant
+ARGS --system e2e/fixtures/systems/870-kerbin-polar-pad.json
 ARGS --startship racer,res/ships/racer.json,Kerbin,pad,polar_pad
 ARGS --time-accel 1 --timeout 6 --info-log --orbit-interval 1 --slew-log
 ARGS --sim-press 2000,0,Z

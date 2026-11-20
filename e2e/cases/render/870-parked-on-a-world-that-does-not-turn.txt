@@ -9,11 +9,12 @@
 # precision and no meaning -- and -nan once the vector lands exactly on zero, which is the
 # shape the log rows quoted in the issue had.
 # The fix says MISSING: "-" the way lan/lpe and apo_* already do, with the line between
-# "no heading" and "slow" at orbit.h:kConicSpeedFloor (1e-2 m/s). Why not 1e-3: Kerbin's
-# own POLAR pad lands in the same state with a much larger residue (up to 3.4e-03 m/s), so
+# "no heading" and "slow" at orbit.h:kConicSpeedFloor (1e-2 m/s). Why not 1e-3: a pad at
+# Kerbin's pole lands in the same state with a much larger residue (up to 3.4e-03 m/s), so
 # at 1e-3 that case's log would flicker between a number and a dash -- see
-# render/870-prg-dash-on-a-polar-pad, which is the shipped-content half of this pair and
-# the floor's upper bracket.
+# render/870-prg-dash-on-a-polar-pad, the other half of this pair and the floor's upper
+# bracket. It reaches the state through |omega x r| -> 0 on a world that DOES turn, and it
+# has needed a fixture of its own since #1007 moved the shipped polar pad off the pole.
 #
 # What this case does NOT witness, on purpose: --plane-log prints no rows at all for a
 # grounded hull (drawOrbitPlane returns at the same gate case 197 pins), so the prg=/nrm=
