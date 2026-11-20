@@ -1925,8 +1925,9 @@ static void test_the_air_bills_each_surface_in_watts() {
    and out of the closure claim (add the parts back up and you get the ship's Profile=)
    while surfaceFormCdA went on charging it. The gate is the bill now; the ANGLE has
    its own flag, because a plate with no lift frame has no incidence rather than zero
-   incidence, and drag.h::surfaceAlphaDegForReadout says outright that answering 0.0
-   there is a lie. */
+   incidence. The flag carries that, never the number: surfaceAlphaDegForReadout() is
+   still called for a refused frame and still answers a bare 0.0 (drag.h calls that
+   "a lie"), and the callers stamp the flag from the same pa.valid that says so. */
 static void test_a_billed_plate_stays_on_the_row_when_the_frame_is_refused() {
     printf("== #732: a billed plate keeps its row when its frame is refused ==\n");
     TerrainBody *body = mkAirBall();
@@ -1982,6 +1983,62 @@ static void test_a_billed_plate_stays_on_the_row_when_the_frame_is_refused() {
                "the plate is off neutral, so the deflecting branch is the one that ran");
     CHECK_TRUE(a.fin->aeroAngleValid,
                "and it takes the angle from the law, which answers a chord-on plate");
+    destroyShip(a.v);
+    delete body;
+}
+
+/* THE LIFT LOOP ANSWERS THE ANGLE ITSELF (#732). applyAeroForce() has TWO passes that
+   raise aeroAngleValid, and the rig above only reaches the steering one: the lift loop
+   skips a part whose def has no lift_area. That pass is also the only one that stamps
+   the flag as a plain `= true` rather than from pa.valid -- it sits past the frame gate,
+   which `continue`s -- so it needs its own evidence on a plate the steering walk cannot
+   reach. An unsteered lifting plate is the whole fixture: if the flag goes up, the only
+   thing that could have raised it is the lift loop. */
+static void test_a_lifting_plate_answers_its_own_angle() {
+    printf("== #732: the lift loop answers the angle on an unsteered wing ==\n");
+    TerrainBody *body = mkAirBall();
+    Rig a = mkRig(100.0, 0.0);
+    PartDef &wing = a.defs.back();
+    wing.control_area = 0.0;   // unsteered: the control walk skips this plate entirely
+    wing.lift_area = 1.0;      // the lift loop's own gate (d->lift_area > 0)
+    wing.drag_forward = 0.02;
+    wing.drag_side = 1.0;
+    wing.drag_backward = 0.02;
+    a.v->m_parent = body;
+    a.v->placeShip(glm::dvec3(0.0, 0.0, 601000.0), glm::dmat3(1.0));
+
+    glm::dvec3 fp; glm::dmat3 fr;
+    a.v->partWorldPose(a.fin, fp, fr);
+    a.v->recordSurfaceAero = true;
+    /* Tilt OFF THE PLATE'S OWN PLANE. The mount's normal is fr[1] (broadside below is
+       cross(fr[2], fr[0]) = fr[1]), so a lean toward fr[0] would stay inside the plane
+       and be a genuine zero incidence -- which is what the first version of this pin
+       accidentally asked for. */
+    const double kRad = std::atan(0.3);   // 0.3 of normal-wise flow on 1.0 of chord-wise
+
+    /* Broadside: partAero() refuses the frame, the lift loop `continue`s before it
+       writes anything, and the form bill keeps the row. Same shape as the test above,
+       now proven for the pass that stamps the flag as a constant. */
+    SetVelocity(a.v->hull, glm::cross(fr[2], fr[0]) * 100.0);
+    a.v->applyAeroForce(1.0 / 120.0);
+    CHECK_TRUE(a.fin->aeroValid && a.fin->aeroDragWatts > 0.0f,
+               "the planform is still billed, so the row is still there");
+    CHECK_TRUE(!a.fin->aeroAngleValid,
+               "and the lift loop refused the frame rather than answering zero");
+
+    /* 0.3 normal-wise on 1.0 chord-wise: a frame the law answers, at an angle the
+       number has to show. A flag that went up over a leftover 0.0 would pass a
+       validity check alone, so the size is pinned too. */
+    a.v->hull->btBody->clearForces();
+    SetVelocity(a.v->hull, glm::normalize(fr[2] + fr[1] * 0.3) * 100.0);
+    a.v->applyAeroForce(1.0 / 120.0);
+    CHECK_TRUE(a.fin->aeroAngleValid,
+               "the lift loop raised the flag -- nothing else writes it for an unsteered plate");
+    CHECK_TRUE(std::fabs((double)a.fin->aeroAlphaDeg) > 0.8 * glm::degrees(kRad)
+            && std::fabs((double)a.fin->aeroAlphaDeg) < 1.25 * glm::degrees(kRad),
+               "and the angle it raised is the tilted flow, not a leftover zero");
+    printf("   unsteered wing: %.1f deg of cross-flow read as %+.1f deg\n",
+           glm::degrees(kRad), (double)a.fin->aeroAlphaDeg);
     destroyShip(a.v);
     delete body;
 }
@@ -2551,6 +2608,7 @@ int main() {
     test_a_fin_row_is_spent_and_hands_its_ask_to_the_air();
     test_the_air_bills_each_surface_in_watts();
     test_a_billed_plate_stays_on_the_row_when_the_frame_is_refused();
+    test_a_lifting_plate_answers_its_own_angle();
     test_a_ring_of_bells_is_a_row_of_actuators();
     test_the_aim_is_measured_once();
     test_the_aim_keeps_its_doors_shut();

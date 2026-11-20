@@ -123,8 +123,10 @@ struct Part {
     bool aeroValid = false;
     /* Whether aeroAlphaDeg means anything THIS substep. False for a mount the law
        refuses -- flow along the plate's normal, a degenerate frame -- where alpha is
-       undefined rather than zero, and surfaceAlphaDegForReadout() has already said that
-       quoting 0.0 there is a lie (drag.h). q, Mach and the watts stay readable there:
+       undefined rather than zero. The FLAG carries that refusal, never the number: the
+       readout helper still runs for such a part and still answers a bare 0.0, which is
+       indistinguishable from a fin that genuinely sits at zero (its own comment in
+       drag.h calls quoting that 0.0 "a lie"). q, Mach and the watts stay readable:
        they need the flow, not the frame. Readers print a dash for the angle and keep
        the rest of the row (#732). */
     bool aeroAngleValid = false;

@@ -1464,11 +1464,17 @@ void tick(Game &g) {
                     for(const Part *p : g.ship->parts) {
                         if(!p->aeroValid || p->def == nullptr) { continue; }
                         char a[8];
+                        int an = 0;
                         if(p->aeroAngleValid) {
-                            std::snprintf(a, sizeof a, "%+.1f", p->aeroAlphaDeg);
+                            an = std::snprintf(a, sizeof a, "%+.1f", p->aeroAlphaDeg);
                         } else {
-                            std::snprintf(a, sizeof a, "-");
+                            an = std::snprintf(a, sizeof a, "-");
                         }
+                        /* snprintf returns the length it WANTED, so a clipped angle is
+                           visible here rather than printed as a truncated token that the
+                           runner reads as an angle anyway. The part window asserts the
+                           same width (gameui.cpp); #732's dash is 1 char. */
+                        assert(an > 0 && an < (int)sizeof a);
                         if(!any) { printf("[surface]"); any = true; }
                         printf(" %s a=%s q=%.0f mach=%.3f watts=%.0f",
                                p->id.empty() ? p->def->name.c_str() : p->id.c_str(),

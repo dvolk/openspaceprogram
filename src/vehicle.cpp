@@ -4270,8 +4270,11 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
                and a part window on such a fin read "drag power -" at the moment it was
                spending the most. q and Mach need the flow, not the frame, so they come
                along; the ANGLE does not, because flow along a plate normal has no
-               incidence rather than zero incidence -- surfaceAlphaDegForReadout() says
-               outright that answering 0.0 there is a lie. */
+               incidence rather than zero incidence, so this block simply never raises
+               the angle flag. The later passes still call surfaceAlphaDegForReadout()
+               for an unusable frame and get a bare 0.0 back; what discards it is
+               stamping the flag from pa.valid beside it (drag.h calls quoting that 0.0
+               "a lie", and it cannot tell the two apart on the number alone). */
             p->aeroQ = (float)lf.q;
             p->aeroMach = (float)mach;
             p->aeroValid = true;

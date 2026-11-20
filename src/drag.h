@@ -2113,6 +2113,11 @@ inline SurfaceReadout surfaceReadoutFrame(const glm::dvec3 &rigPush,
    Display arithmetic; nothing in the law calls this. */
 inline double surfaceAlphaDegForReadout(const PartAero &pa, const SurfaceReadout &rf,
                                         const glm::dvec3 &up, const glm::dvec3 &right) {
+    /* No precondition, and deliberately so: the two flight-pass callers compute this for
+       every part they sample and stamp Part::aeroAngleValid from the SAME pa.valid, so
+       what this answers for a refused frame is discarded, not displayed. It cannot tell
+       that frame from a fin that genuinely sits at zero -- both answer 0 -- which is why
+       the refusal is the flag and never a sentinel in the number (#732). */
     const double along = glm::dot(pa.liftDir, rf.axisUp ? up : right);
     /* along == 0: the live force has no component along the axis being quoted, so the wind
        offers no sign. Fall back to the mount's own convention -- alpha is measured against
