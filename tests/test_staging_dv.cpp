@@ -2695,6 +2695,16 @@ static void test_auto_stager_from_scratch_drops_numbers_it_cannot_honor() {
     std::vector<std::string> w;
     validateStaging(fresh, w);
     CHECK_TRUE(w.empty(), "and the ladder it wrote is legal");
+
+    /* The commit's promise is "one click recovers them", so exercise it rather than infer it from
+       the change list: this mode is the one that destroys a ladder on purpose. */
+    StagingUndo stack;
+    recordStagingEdit(stack, scratch.changes, false);
+    std::vector<std::string> un;
+    CHECK_TRUE(undoStagingEdit(fresh, stack, un) == scratch.changes.size(),
+               "one Undo takes the whole plan back");
+    CHECK_TRUE(labelsOf(fresh) == std::vector<int>({1, 3, 2, 1, 2}),
+               "and the numbers the mode ignored are the ones that come back");
 }
 
 /* The other half: a hand-numbered ladder. With the switch the author's cut order is not kept (that
@@ -2782,6 +2792,43 @@ static void test_auto_stager_clamps_a_fuel_rank_above_a_cut_it_contains() {
     std::vector<std::string> w;
     validateStaging(bs, w);
     CHECK_TRUE(w.empty(), "and a ladder with no dead press in it");
+}
+
+/* The one protection "Stage from scratch" removes that no label vector shows on its own: the
+   pad-lit pin. Same shape as the test below -- a root engine and one under a cut, both authored at
+   the top label so the build lights them at the pad. The default path lifts the safe one; the mode
+   lifts neither, because "this engine lights at the pad" is itself one of the numbers the player
+   said not to read. Pinned so a future edit that reads ship.parts[e].stage in the pin loop instead
+   of authored[e] cannot pass the suite while quietly changing what the mode means. */
+static void test_auto_stager_from_scratch_declines_the_pad_lit_pin() {
+    Catalog cat;
+    auto build = [&](BuildShip &bs) {
+        const int topEng = addPart(bs, cat.engine(10, 0.5, 1000.0), "top_eng", -1, 5);
+        const int dA = addPart(bs, cat.decoupler(5), "d_a", topEng, 3);
+        const int tankA = addPart(bs, cat.tank(50, 25, 25), "tank_a", dA, 3);
+        const int safeEng = addPart(bs, cat.engine(10, 0.5, 1000.0), "safe_eng", tankA, 5);
+        const int dB = addPart(bs, cat.decoupler(5), "d_b", tankA, 4);
+        addPart(bs, cat.tank(50, 25, 25), "tank_b", dB, 4);
+        (void)topEng; (void)dA; (void)tankA; (void)safeEng; (void)dB;
+    };
+
+    BuildShip keep;
+    build(keep);
+    StagingPlan pin = autoStage(keep);
+    CHECK_TRUE(pin.applied && labelsOf(keep) == std::vector<int>({1, 2, 2, 3, 3, 3}),
+               "read as intent, the engine under the cut is lifted to the pad label");
+    CHECK_TRUE(has_note(pin, "kept lit at the pad"), "and the plan says it did that");
+
+    BuildShip bs;
+    build(bs);
+    StagingPlan scratch = autoStage(bs, false, true);
+    CHECK_TRUE(scratch.applied, "the mode numbers the same stack");
+    CHECK_TRUE(labelsOf(bs) == std::vector<int>({1, 2, 2, 2, 3, 3}),
+               "and leaves that engine where its own stage puts it -- it lights at 2, not at the pad");
+    CHECK_TRUE(!has_note(scratch, "kept lit at the pad"), "no pin, so no note about one");
+    std::vector<std::string> w;
+    validateStaging(bs, w);
+    CHECK_TRUE(w.empty(), "a different ladder, still a legal one");
 }
 
 /* The pad-lit pin gives up rather than empty the floor -- and gives up only for the engines
@@ -3291,6 +3338,7 @@ int main() {
     test_auto_stager_keeps_typed_cut_numbers_ahead_of_the_fuel_chain();
     test_auto_stager_from_scratch_drops_numbers_it_cannot_honor();
     test_auto_stager_from_scratch_replaces_a_hand_numbered_ladder();
+    test_auto_stager_from_scratch_declines_the_pad_lit_pin();
     test_auto_stager_clamps_a_fuel_rank_above_a_cut_it_contains();
     test_auto_stager_gives_up_the_pad_pin_rather_than_empty_the_floor();
     test_auto_stager_says_what_a_chute_on_the_floor_needs();

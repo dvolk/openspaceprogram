@@ -1,0 +1,31 @@
+# #1035, the other half: what one Undo gives back after a from-scratch rebuild. The switch is the
+# one in this window that destroys a ladder on purpose, so the recovery is the contract -- the
+# staging Undo stack replays the plan's own change records, which carry the numbers the mode
+# ignored (1035-a pins the rebuilt ladder: labels=1..4, presses=3).
+NAME undo-takes-a-from-scratch-rebuild-back
+CLAIM After "Stage from scratch" + Auto-stage on heavy_asp, Undo staging restores the authored ladder.
+KIND invariant
+ARGS --ui-click 1000,"Title Menu/New Game"
+ARGS --ui-click 1600,"New Game/Start"
+ARGS --sim-press 2600,0,4
+ARGS --ui-type 3200,"VAB TopBar/##vehfilter",heavy_asp
+ARGS --ui-click 3800,"VAB TopBar/##vabload"
+ARGS --ui-click 4400,"heavy_asp"
+ARGS --ui-click 5000,"VAB TopBar/Load"
+ARGS --ui-click 5600,"Staging/Stage from scratch"
+ARGS --ui-click 6200,"Staging/Auto-stage"
+ARGS --ui-click 6800,"Staging/Undo staging"
+ARGS --stage-dump 7600 --timeout 14
+LIMIT 60
+EXPECT [vab] loaded heavy_asp (45 parts)
+EXPECT [toast] Auto-staged 23 parts from the stack
+EXPECT [toast] Undo: 23 parts back to their previous labels
+# The author's 6/5/4 is back, six labels and five presses -- the ladder 1020-a pins for this hull
+# when nothing touches it.
+EXPECT [stagetree] 15 dec_1c def=decoupler_r1.5 parent=big_tank1 stage=6 responds=decoupler
+EXPECT [stagetree] 20 dec_1b def=decoupler_r1.5 parent=big_tank1 stage=5 responds=decoupler
+EXPECT [stagetree] 14 engine_central def=engine_r2.25h4.5 parent=big_tank2 stage=6 responds=engine
+EXPECT [stagetree] labels=1..6 presses=5 inert_parts=28/45
+FORBID [stagetree] warn:
+FORBID error:
+FORBID FAILED
