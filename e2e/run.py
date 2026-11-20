@@ -689,6 +689,21 @@ SURF_RE = re.compile(
     r"acc=([-\d.e+]+) m/s2\s+"
     r"body=\"([^\"]*)\"\s+bme=\"([^\"]*)\"\s+sit=\"([^\"]*)\""
 )
+# [dockwin] is the Docking window's publish (gameui.cpp), one row per kDockReadSec tick
+# while the window is open, in whichever of the two forms the gate left the pair in: the
+# measurable one carries the dial's figures, every other state -- no arm, no target, a
+# hull on the rails, a pair in different frames -- prints its why token alone because
+# there is no port-to-port line to plot (#1026-b). The optional group IS that split, so a
+# case reading twist= sees None on a refused row rather than losing the row, and
+# first()/last() still walk the whole run in line order.
+DOCKWIN_RE = re.compile(
+    r"\[dockwin\] a=\"([^\"]*)\" b=\"([^\"]*)\" why=([a-z]+)"
+    r"(?:\s+align=([-\d.e+]+),([-\d.e+]+)\s+turn=([-\d.e+]+),([-\d.e+]+)"
+    r"\s+push=([-\d.e+]+),([-\d.e+]+)\s+drift=([-\d.e+]+),([-\d.e+]+)"
+    r"\s+twist=([-\d.e+]+)\s+rng=([-\d.e+]+)\s+gap=([-\d.e+]+)\s+speed=([-\d.e+]+)"
+    r"\s+along=([-\d.e+]+)\s+closing=([-\d.e+]+))?"
+    r"\s+at=([-\d.]+),([-\d.]+)\s+size=([-\d.]+),([-\d.]+)"
+)
 # [orbinfo] is the ORBITAL window's own numbers. Nothing parsed it until #498
 # needed it: prg/rtg are now the ONLY place the CONIC's prograde angle prints -- the
 # window dropped its own Prg/Rtg rows on 2026_11_06, leaving the HUD marker and these
@@ -760,7 +775,8 @@ ROW_PARSERS = [
     ("drainlog", DRAINLOG_RE, "world"), ("power", POWER_RE, "world"), ("dv", DV_RE, "world"),
     ("mass", MASS_RE, "world"), ("drag", DRAG_RE, "world"), ("shake", SHAKE_RE, "world"),
     ("cam", CAM_RE, "world"), ("terrain", TERRAIN_RE, "world"), ("surf", SURF_RE, "world"),
-    ("orbinfo", ORBINFO_RE, "world"), ("scene", SCENE_RE, "out"), ("fuel", FUEL_RE, "world"),
+    ("orbinfo", ORBINFO_RE, "world"), ("dockwin", DOCKWIN_RE, "world"),
+    ("scene", SCENE_RE, "out"), ("fuel", FUEL_RE, "world"),
 ]
 
 
@@ -1804,6 +1820,30 @@ def parse_surf(out):
     return rows
 
 
+def parse_dockwin(out):
+    rows = []
+    for m in DOCKWIN_RE.finditer(out):
+        (a, b, why, alA, alB, tnY, tnP, pR, pU, dR, dU, tw, rng, gap, spd, alng, cls,
+         atx, aty, szx, szy) = m.groups()
+        rows.append({
+            "a": a, "b": b, "why": why,
+            # Every figure below is None on a row the gate could not measure: the panel
+            # printed its sentence because there is no line to plot, not because the
+            # line is zero. A case that wants the measured half asks `is not None`.
+            "alignA": num(alA), "alignB": num(alB),
+            "turnY": num(tnY), "turnP": num(tnP),
+            "pushRight": num(pR), "pushUp": num(pU),
+            "driftRight": num(dR), "driftUp": num(dU),
+            # The RELATIVE spin the dial points at (gameui.cpp): |w_a - w_b| in deg/s,
+            # which is #1041's figure -- not the flight panel's "Angular rate", which is
+            # spin against the hull's own frame and moves when a hull changes frames.
+            "twist": num(tw), "rng": num(rng), "gap": num(gap),
+            "speed": num(spd), "along": num(alng), "closing": num(cls),
+            "at": (float(atx), float(aty)), "size": (float(szx), float(szy)),
+        })
+    return rows
+
+
 def parse_orbinfo(out):
     """One row per --info-log ORBITAL-window dump (#498). apo_* / lan / lpe / prg /
     rtg print "-" and become None; the peri_* pair and period print whatever the
@@ -2464,6 +2504,7 @@ def run_case(case):
     terrain = parse_scoped(world, parse_terrain)
     surf = parse_scoped(world, parse_surf)
     orbinfo = parse_scoped(world, parse_orbinfo)
+    dockwin = parse_scoped(world, parse_dockwin)
     scene = parse_scene(out)
     mapb = parse_scoped(world, parse_mapb)
     mapbldg = parse_scoped(world, parse_mapbldg)
@@ -2496,7 +2537,8 @@ def run_case(case):
         "uilist": uilist,
         "cam": cam,
         "terrain": terrain,
-        "surf": surf, "orbinfo": orbinfo, "mapb": mapb, "mapbldg": mapbldg,
+        "surf": surf, "orbinfo": orbinfo, "dockwin": dockwin,
+        "mapb": mapb, "mapbldg": mapbldg,
         "plane": plane, "slew": slew, "relvel": relvel,
         # The handoffs themselves: [{"verb": switch/removed/unchanged/none, "name": ...}].
         "shipswitch": shipswitch,

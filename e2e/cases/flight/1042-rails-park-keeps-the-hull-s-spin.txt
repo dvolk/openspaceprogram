@@ -1,0 +1,43 @@
+# Parking a hull on rails and waking it is supposed to be a no-op for its MOTION. The
+# conic keeps rail_pos and rail_vel, and the frame hop converts the stasis terms through
+# switchFrameState (#946's discipline). The angular half had no rail field at all:
+# writeRailPose() ended with SetAngVelocity(hull, 0), so every rails excursion dropped the
+# hull's spin (#1042). The rails state is vehicle.h's rail_pos/rail_vel/rail_orient -- no
+# angular member -- and railAdvance() asserts frame->omega_total == 0, so a coasting conic
+# lives in the inertial node and a spin can only come back if it was stored there.
+#
+# The instrument is the Docking dial's twist= (#1026, #1041): |w_a - w_b|, the RELATIVE
+# spin of the pair, which is the figure a pilot docking actually has to kill. gameui.cpp
+# says outright that it is NOT the flight panel's "Angular rate", because that one is read
+# against the hull's own frame and jumps when F6 parks a hull and wakes it again -- which
+# is exactly the bug, wearing a disguise: a row that changes when nobody touched anything.
+#
+# The --dock-test pair is not inert: it drifts and turns, and the misaligned fixture holds
+# the pair apart (the cone refuses the mate, so this run never docks and both hulls stay
+# selectable). The measured twist here is a few deg/s. Zeroing one hull's spin against the
+# other's leaves the pair twisting at whatever the survivor kept, so the claim this case
+# makes is the round trip, not the number: the twist the dial read before the F6 pair is
+# the twist it reads after, and both are well clear of zero -- a case that only pinned
+# "twist is unchanged" would pass on a world where nothing was ever spinning.
+NAME rails-park-keeps-the-hull-s-spin
+CLAIM Parking a hull on rails and waking it keeps the spin it had: the docking dial's relative twist is the same figure on both sides of an F6 round trip, and not zero.
+KIND invariant
+ARGS --dock-test misaligned --time-accel 1 --timeout 6 --width 1280 --height 720
+ARGS --ui-click 1500,"Windows/Docking"
+ARGS --sim-press 3000,0,F6,4500,0,F6
+FORBID FAILED
+# The window has to have been open across the whole sequence, and the two handoffs have
+# to have happened: without them this is a run where nothing was parked and every CHECK
+# below is weighing a pair that never moved.
+CHECK len(dockwin) >= 6
+CHECK len([s for s in shipswitch if s["verb"] == "switch"]) == 2
+CHECK all(r["twist"] is not None for r in (first(dockwin), last(dockwin)))
+# Both ends are spinning pairs, so the equality below cannot be satisfied by a dead rig.
+CHECK first(dockwin)["twist"] > 1.0
+CHECK last(dockwin)["twist"] > 1.0
+# The round trip. Measured across the two runs of this case: with the old zeroing the dial
+# reads twist=3.73 before the F6 pair and 0.00 after it -- one hull's spin against the
+# other's surviving rate. With rail_omega carried, the same schedule prints
+# 3.72, 3.71, 3.70 across the whole run, so the pair's own drift is ~0.03 deg/s and the
+# band below is ten times that, while the defect misses it by 3.7.
+CHECK abs(last(dockwin)["twist"] - first(dockwin)["twist"]) < 0.3

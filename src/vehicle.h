@@ -685,6 +685,17 @@ public:
        unwritten -- leaveRails() would then place the hull at garbage. */
     glm::dvec3 rail_pos = glm::dvec3(0.0);   // m, cluster COM in ship->frame coords
     glm::dvec3 rail_vel = glm::dvec3(0.0);   // m/s, ship->frame coords
+    /* The spin, in the SAME frame the rail state lives in, so a rails round trip is a
+       no-op for it (#1042). It used to be DROPPED: writeRailPose() zeroed the hull, so
+       parking and waking kept the attitude and destroyed the angular momentum -- most
+       visibly at a body-fixed dock, where a hull that had stopped rotating relative to the
+       dock holds a real 0.126 deg/s of inertial spin, and zeroing it leaves the hull
+       counter-rotating against the dock it is trying to close on. The rails still never
+       integrate the ATTITUDE (rail_orient rides whichever node the conic lives in), so
+       this is spin without precession: the hull wakes spinning about the axes it parked
+       spinning about. A frozen park reads zero by construction -- its model pins the pose
+       to the node -- as does the warp landing that parks one. */
+    glm::dvec3 rail_omega = glm::dvec3(0.0);  // rad/s, ship->frame coords
     glm::dmat3 rail_orient = glm::dmat3(1.0); // park frame -> ship->frame axes
     /* Frame S's axes at park time (the ship is rigid: nothing per-part).
        rail_orient * railRot is the hull's S -> frame rotation, so railRot stays

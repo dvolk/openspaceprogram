@@ -7704,7 +7704,14 @@ void Vehicle::writeRailPose() {
     fromBt(principal, pOrigin, pBasis);
     setPosRot(hull, rail_pos, (rail_orient * railRot) * pBasis);
     SetVelocity(hull, rail_vel);
-    SetAngVelocity(hull, glm::dvec3(0.0));
+    /* ... and the spin (#1042). This line used to be SetAngVelocity(hull, 0), which made
+       a rails excursion eat the hull's angular momentum: park a tumbling hull and unpark
+       it and the tumble is gone, and a hull that was holding still RELATIVE to a rotating
+       dock wakes up inertially still, which at that dock is the same as starting to
+       rotate. rail_omega is carried in whichever frame the rail state lives in, so this
+       writes back exactly what goOnRails() took -- the angular analogue of rail_vel, and
+       the same one-spelling rule #946 put on the stasis terms. */
+    SetAngVelocity(hull, rail_omega);
 }
 
 void Vehicle::comStateIn(Frame *inFrame, glm::dvec3 &p, glm::dvec3 &v) {
@@ -7804,12 +7811,14 @@ bool Vehicle::goOnRails() {
     if(!canRail()) { return false; }
 
     /* The COM state in the body's inertial frame node, where the trajectory
-       is a Kepler conic. The parked ship's residual spin is discarded with
-       its attitude (writeRailPose zeroes it). */
+       is a Kepler conic. The attitude is not carried forward (rail_orient
+       rides whichever node the conic lives in), but the SPIN is (#1042):
+       writeRailPose() used to zero the hull, so parking lost angular momentum. */
     Frame *oldFrame = frame;
     Frame *inertial = frame->getNonRotFrame();
     const glm::dvec3 com_frame = get_center_of_mass();  // old frame coords
     const glm::dvec3 vel_frame = GetVelocity(hull);     // old frame coords
+    const glm::dvec3 w_frame = GetAngVelocity(hull);    // old frame coords
     glm::dvec3 p, v;
     comStateIn(inertial, p, v);
 
@@ -7830,12 +7839,23 @@ bool Vehicle::goOnRails() {
         rail_pos = com_frame;
         rail_vel = vel_frame;
         rail_orient = glm::dmat3(1.0);
+        /* Zero, and deliberately so: the frozen model pins the pose to the node, so a
+           spin stored here would be a rate the park never spends and then re-mints on
+           wake. A ship that is actually resting on something is at rest in that frame
+           anyway. (#1042's spin half is the coasting conic below.) */
+        rail_omega = glm::dvec3(0.0);
         railFrozen = true;
         rail_epoch = frame->rail_time;
     } else {
         rail_pos = p;
         rail_vel = v;
         rail_orient = oldFrame->GetOrientRelTo(inertial);
+        /* The spin in the node the conic lives in, by the same spelling moveToFrame()
+           uses for a hull under physics (#850): add the frame being left, subtract the
+           one being entered. A hull holding inertial attitude in a rotating frame parks
+           with 0; a hull co-rotating with a body-fixed dock parks with the dock's rate,
+           which is the case that used to disappear (#1041, #1042). */
+        rail_omega = switchFrameSpin(oldFrame, inertial, w_frame);
         // Same-body frame hop (a rail conic lives in the inertial node),
         // not an SoI re-home: deliberately a bare write, not setSoi.
         frame = inertial;   // on rails, ship->frame == its inertial node
@@ -7970,6 +7990,9 @@ RailEnd Vehicle::railAdvance(double t, const double step) {
             rail_pos = O * rail_pos + frame->GetPositionRelTo(rot);
             rail_orient = O * rail_orient;
             rail_vel = glm::dvec3(0.0);
+            /* "at rest" covers the spin too (#1042): a frozen park pins its pose to the
+               node, and this one is a warp landing that Bullet could not resolve anyway. */
+            rail_omega = glm::dvec3(0.0);
             frame = rot;
             rail_epoch = rot->rail_time;
             railFrozen = true;
@@ -8041,6 +8064,10 @@ void Vehicle::moveToRailFrame(Frame *newFrame, double t) {
     rail_vel = O * rail_vel + frame->GetVelocityRelTo(newFrame);
     rail_pos = O * rail_pos + frame->GetPositionRelTo(newFrame);
     rail_orient = O * rail_orient;
+    /* And the spin, re-axes plus the two frames' own omegas -- the same spelling
+       moveToFrame() uses for a hull under physics, because rail_omega is frame-relative
+       like a live hull's (#1042). A rail hop is a frame change like any other. */
+    rail_omega = switchFrameSpin(frame, newFrame, rail_omega);
 
     /* The ship must end up INSIDE the frame it was handed to: a tautology for the
        endpoint-only soiTarget test, but it fails loudly if a target is ever chosen from
