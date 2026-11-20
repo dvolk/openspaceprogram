@@ -3,7 +3,10 @@
 
 Usage: python3 e2e/run.py <selectors> [--jobs N] [--game PATH] [--limit S]
 [--show-cmd] [--kind K] [--self-test]. No selectors runs the whole battery --
-that is what `make release` does. Nothing caps or paces a run: how much e2e is
+that is what `make release` does. A selector that matches no case refuses the
+run with its name even when its neighbours matched (#1061): the count a batch
+prints is the count that was ASKED for, not the count that happened to exist.
+Nothing caps or paces a run: how much e2e is
 worth running is the caller's judgement, not the runner's policy. --limit
 overrides
 every case's LIMIT (a slow box, or a case you want to drive by hand);
@@ -2684,10 +2687,17 @@ def run_case(case):
 def select_cases(case_files, selectors):
     """Filter to cases whose NAME, filename or subject path contains any
     selector (case-insensitive). A path selector like `save/` or
-    `save/270` scopes a run to one group."""
+    `save/270` scopes a run to one group.
+
+    Also returns the selectors that matched NO case (#1061). A selector is an
+    intent: `run.py A B C` asks for three runs, and an OR filter that simply
+    ignores the dead one reports the number that RAN -- `4/4 passed`, exit 0 --
+    rather than the number that was ASKED. main() refuses the run on a non-empty
+    list here, the same way it already refuses when nothing at all matches."""
     if not selectors:
-        return case_files
+        return case_files, []
     sel = [s.lower() for s in selectors]
+    hit = [False] * len(sel)
     out = []
     for path in case_files:
         base = os.path.splitext(os.path.basename(path))[0].lower()
@@ -2700,9 +2710,11 @@ def select_cases(case_files, selectors):
             # since a missed NAME match prints "no case matches".
             warn("warning: %s" % e)
             name = ""
-        if any(s in name or s in base or s in rel for s in sel):
+        matched = [s in name or s in base or s in rel for s in sel]
+        hit = [h or m for h, m in zip(hit, matched)]
+        if any(matched):
             out.append(path)
-    return out
+    return out, [selectors[i] for i in range(len(sel)) if not hit[i]]
 
 
 def case_kind(path):
@@ -2726,6 +2738,17 @@ def available_names(case_files):
         except ValueError:
             names.append(os.path.basename(path))
     return names
+
+
+def print_no_match(asked, all_files):
+    """One shape for "you asked for cases that are not here", whichever filter
+    went unmatched."""
+    print("no case matches %s" % " ".join(asked))
+    names = available_names(all_files)
+    print("available: %s" % ", ".join(names[:40]))
+    if len(names) > 40:
+        print("... %d more; e2e/INDEX.md lists every case with its claim."
+              % (len(names) - 40))
 
 
 def run_one(path):
@@ -3409,6 +3432,26 @@ def self_test():
             fails.append("CHECK namespace lets a case reach %r" % barred)
         except NameError:
             pass
+    # A selector is an intent (#1061). Temp files rather than the real battery,
+    # so this pin cannot be satisfied or broken by what e2e/cases happens to
+    # hold on the day it runs.
+    with tempfile.TemporaryDirectory() as d:
+        real = os.path.join(d, "flight", "05-real-thing.txt")
+        os.makedirs(os.path.dirname(real))
+        with open(real, "w", encoding="utf-8") as f:
+            f.write("\n".join(base) + "\n")
+        picked, missed = select_cases([real], ["selftest", "05-real",
+                                               "flight/nope", "nope-name"])
+        if len(picked) != 1:
+            fails.append("select_cases dropped a case its selectors matched")
+        if missed != ["flight/nope", "nope-name"]:
+            fails.append("select_cases missed-selector report is %r, want "
+                         "['flight/nope', 'nope-name'] -- `selftest` matches "
+                         "only the NAME line and must count as matched"
+                         % (missed,))
+        _, missed_all = select_cases([real], [])
+        if missed_all:
+            fails.append("no selectors produced a missed list %r" % (missed_all,))
     if fails:
         for f in fails:
             print("SELF-TEST FAIL: %s" % f)
@@ -3427,7 +3470,9 @@ def self_test():
           "named; regex-shaped EXPECT/FORBID refused at parse while literal text "
           "containing brackets stays legal; re.search, walrus, comprehension and "
           "immediately-called lambda CHECKs accepted; CHECK failed/raised wording "
-          "intact; the CHECK allowlist carries sorted/tuple/range and still refuses "
+          "intact; a batch selector that matches no case named and the run refused "
+          "rather than a count quietly lowered; the CHECK allowlist carries "
+          "sorted/tuple/range and still refuses "
           "open/exec/__import__")
     return 0
 
@@ -3501,20 +3546,23 @@ def main():
         print("no case files found in %s" % CASES_DIR)
         return 1
 
-    case_files = select_cases(all_files, selectors)
+    case_files, missed = select_cases(all_files, selectors)
     if args.kind:
         case_files = [p for p in case_files if case_kind(p) in args.kind]
+    if missed:
+        # A dead selector inside a batch used to just lower the count: five
+        # selectors asked, `4/4 passed`, exit 0, and the case that should have
+        # covered the change never started (#1061). Refuse the whole run, naming
+        # only the selectors that matched nothing, so a typo cannot turn a check
+        # into no check.
+        print_no_match(["%r" % s for s in missed], all_files)
+        return 1
     if not case_files:
         # Name every filter that contributed: with no selectors a --kind that
         # matches nothing otherwise reads as `no case matches ()`.
         asked = ["%r" % s for s in selectors]
         asked += ["--kind %s" % k for k in (args.kind or [])]
-        print("no case matches %s" % " ".join(asked))
-        names = available_names(all_files)
-        print("available: %s" % ", ".join(names[:40]))
-        if len(names) > 40:
-            print("... %d more; e2e/INDEX.md lists every case with its claim."
-                  % (len(names) - 40))
+        print_no_match(asked, all_files)
         return 1
 
     # Cases are independent (own Xvfb display + stdout capture), so they can

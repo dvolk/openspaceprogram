@@ -17,6 +17,10 @@ python3 e2e/run.py 172 177 262      # several at once
 python3 e2e/run.py                  # the whole battery (make e2e-all)
 ```
 
+A selector that matches no case refuses the run and names it, even when the
+others matched (#1061): the summary prints the count you ASKED for, not the
+count that happened to exist.
+
 The whole battery runs, and it is slow: a few hundred cases at `--jobs 6` is on
 the order of ten minutes. That is why it belongs to `make release` and not to a
 working loop. Nothing caps or paces a run -- how much e2e a change deserves is
