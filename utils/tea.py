@@ -613,6 +613,70 @@ def label_ids_for_edit(labels, args):
     return labels.ids(want, "--labels"), labels.ids(gone, "--remove-labels")
 
 
+# ---- why an issue closed (#985) -------------------------------------------------
+# `closed` covers four different outcomes: a change landed, something else answered
+# it, the idea was dropped, the behaviour was correct. Only the first is work done,
+# and the closed pile (633 issues at filing) reads like a record of work either way.
+# The marker is a COMMENT rather than a label because this tool cannot create labels
+# (Labels.ids refuses an unknown name rather than inventing vocabulary), a comment
+# needs no schema, and the next reader greps it with `show N --comments`.
+RESOLUTION_HELP = ("one of --fixed <sha|#issue> | --superseded #issue "
+                   "| --dropped [why] | --not-a-bug <why>")
+
+
+def add_resolution_opts(s):
+    """The four closing reasons as one mutually exclusive group."""
+    g = s.add_mutually_exclusive_group()
+    g.add_argument("--fixed", metavar="SHA|#ISSUE", default=None,
+                   help="a change landed; name the commit sha or the issue")
+    g.add_argument("--superseded", metavar="#ISSUE", default=None,
+                   help="something else answered it; name the issue")
+    g.add_argument("--dropped", metavar="WHY", nargs="?", const="", default=None,
+                   help="closed without acting on it (default reason: no player "
+                        "impact)")
+    g.add_argument("--not-a-bug", dest="not_a_bug", metavar="WHY", default=None,
+                   help="the behaviour is correct; give the one-line answer")
+    return g
+
+
+def resolution_of(args):
+    """(kind, detail) for the asked flag, or None when nothing was asked."""
+    fixed = getattr(args, "fixed", None)
+    if fixed is not None:
+        return ("fixed", fixed)
+    sup = getattr(args, "superseded", None)
+    if sup is not None:
+        return ("superseded", sup)
+    drop = getattr(args, "dropped", None)
+    if drop is not None:
+        return ("dropped", drop if drop.strip() else "no player impact")
+    nab = getattr(args, "not_a_bug", None)
+    if nab is not None:
+        return ("not a bug", nab)
+    return None
+
+
+def need_resolution(args, what):
+    """A close that does not say why is the hole #985 is about, so the tool asks
+    instead of remembering to ask. Called before any write."""
+    args.resolution = resolution_of(args)
+    if args.resolution is None:
+        fail(f"{what} has to say why it closed -- {RESOLUTION_HELP} -- nothing "
+             f"was written")
+    return args.resolution
+
+
+def resolution_marker(kind, detail):
+    if kind == "fixed":
+        return f"resolution: fixed by {detail}"
+    if kind == "superseded":
+        return f"resolution: superseded by {detail}"
+    return f"resolution: {kind} -- {detail}"
+
+
+RESOLUTION_PREFIX = "resolution: "
+
+
 def cmd_new(args):
     tracker = Tracker()
     labels = Labels(tracker)
@@ -769,12 +833,28 @@ def cmd_show(args):
     tracker = Tracker()
     d = get_issue(tracker, args.index)
     if args.comments:
-        d["comments"] = [comment_out(c) for c in list_comments(tracker,
-                                                               args.index)]
+        cs = [comment_out(c) for c in list_comments(tracker, args.index)]
+        d["comments"] = cs
+        # The newest marker describes why the issue is closed. An OPEN issue that
+        # carries one was reopened after a close (or closed by a run that was
+        # later undone), so its marker is history, not the state: it goes under a
+        # name that says so rather than answering as if it still applied. No extra
+        # request -- these are the comments --comments already fetched.
+        marks = [c["body"].strip() for c in cs
+                 if isinstance(c.get("body"), str)
+                 and c["body"].strip().startswith(RESOLUTION_PREFIX)]
+        last = marks[-1] if marks else None
+        if d["state"] == "closed":
+            d["resolution"] = last
+        else:
+            d["resolution"] = None
+            if last is not None:
+                d["stale_resolution"] = last
     else:
         # An empty list is what a quiet issue answers, so "not asked" has to be
         # said rather than left as [].
         d["comments"] = None
+        d["resolution"] = None
     print(json.dumps(d))
 
 
@@ -900,6 +980,25 @@ def _edit_one(tracker, labels, index, args, want_ids, gone_ids):
                  f"(HTTP {status}: {_why(issue)})")
             return _res()
         landed = ", ".join(k for k in ("title", "body", "state") if k in payload)
+    marker_ok = True
+    if args.close and getattr(args, "resolution", None):
+        # Said on the issue, after the close landed, so an issue is never marked
+        # resolved while it is still open. The marker failing does not undo the
+        # close: it leaves a closed issue whose reason is missing, which is the
+        # state the caller has to be told about rather than one papered over.
+        kind, detail = args.resolution
+        status, raw, _ = tracker.call(
+            "POST", tracker.repo_path(f"/issues/{index}/comments"),
+            payload={"body": resolution_marker(kind, detail)}, soft=True)
+        if status is None:
+            note(f"issue {index}: closed, but its resolution comment got no "
+                 f"answer -- it may be there, so check with `show {index} "
+                 f"--comments` before posting it again")
+            marker_ok = False
+        elif status != 201:
+            note(f"issue {index}: closed, but its resolution comment was refused "
+                 f"(HTTP {status}: {_why(raw)})")
+            marker_ok = False
     if want_ids or gone_ids:
         status, current, _ = tracker.call("GET",
                                           tracker.repo_path(f"/issues/{index}"),
@@ -993,7 +1092,7 @@ def _edit_one(tracker, labels, index, args, want_ids, gone_ids):
                  f"for: {', '.join(lost)}")
     # Reached only by an accepted write, so the write is counted even when the
     # read-back says it did not do what was asked.
-    return _res(proof, ok=ok, wrote=True)
+    return _res(proof, ok=ok and marker_ok, wrote=True)
 
 
 def _read_issue(tracker, index):
@@ -1075,6 +1174,13 @@ def cmd_edit(args):
              "--allow-empty-body if that is really what you mean")
     if args.close and args.is_open:
         fail("--close and --open contradict each other")
+    if args.close:
+        need_resolution(args, "--close")
+    elif resolution_of(args) is not None:
+        fail("a closing reason (--fixed/--superseded/--dropped/--not-a-bug) only "
+             "means something with --close -- nothing was written")
+    else:
+        args.resolution = None
     if not any([args.title is not None, body is not None, args.close,
                 args.is_open, args.labels, args.remove_labels]):
         fail("nothing to change: pass --title/--body/--close/--open/--labels")
@@ -1099,6 +1205,10 @@ def cmd_state(cmd, args):
     args.close = cmd == "close"
     args.is_open = cmd == "open"
     args.allow_empty_body = True
+    if args.close:
+        need_resolution(args, f"closing {', '.join(str(i) for i in indexes)}")
+    else:
+        args.resolution = None
     _edit_many(tracker, labels, indexes, args, None, None)
 
 
@@ -1478,6 +1588,8 @@ def main():
     for name, fn in (("close", cmd_state), ("open", cmd_state)):
         s = sp.add_parser(name, help=f"{name} one or more issues")
         s.add_argument("indexes", nargs="+", type=check_index)
+        if name == "close":
+            add_resolution_opts(s)
         s.set_defaults(fn=fn, cmd=name)
 
     ed = sp.add_parser("edit", help="change title/body/state/labels")
@@ -1490,6 +1602,7 @@ def main():
     ed.add_argument("--remove-labels", help="comma-separated label names to drop")
     ed.add_argument("--close", action="store_true")
     ed.add_argument("--open", dest="is_open", action="store_true")
+    add_resolution_opts(ed)
     ed.set_defaults(fn=cmd_edit, cmd="edit")
 
     lb = sp.add_parser("labels", help="the repo's labels, with ids")
