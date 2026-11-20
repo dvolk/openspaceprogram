@@ -33,6 +33,11 @@
 // only a real system file can show -- test_drag pins the math, not the copy. It
 // also gates the sphere each column is weighed against, because a profile resolved
 // against one body and read against another steps the air at every level seam.
+//
+// Every read of a shipped file goes through load_shipped (tests/tload.h, #720). The
+// loader refuses malformed generated data by throwing, which is right for the game and
+// was SIGABRT here: one body with `"wind": []` ended the run before its later checks,
+// leaving `make test` with a core dump and no list of what else was wrong.
 
 #include "system.h"
 #include "vehicle.h"
@@ -52,6 +57,7 @@
 
 #include <nlohmann/json.hpp>
 #include "tchecks.h"
+#include "tload.h"
 
 // The semi-major axis a body's authored rail implies.
 static double semi_major(const TerrainBody *b) {
@@ -1262,7 +1268,8 @@ static void check_raised_sea() {
     }
     nlohmann::json j = nlohmann::json::parse(f);
     TerrainBody *dry_b = nullptr;
-    System dry = load_system(src, nullptr, nullptr);
+    System dry;
+    if(!load_shipped(src, dry)) { return; }
     dry_b = find_body(dry, "Kerbin");
     if(dry_b == nullptr) {
         printf("  %s: no Kerbin to raise the sea on\n", src);
@@ -2181,7 +2188,8 @@ static void check_body_claims() {
 }
 
 static void check_system(const char *path) {
-    System sys = load_system(path, nullptr, nullptr);
+    System sys;
+    if(!load_shipped(path, sys)) { return; }
     int checked = 0;
     int datum_bad = 0;
     for(size_t i = 0; i < scenario_count(); i++) {
@@ -2560,14 +2568,16 @@ int main() {
     // game boots by default.
     for(const char *p : { "res/systems/ksp_system.json",
                           "res/systems/old_system.json" }) {
-        System sys = load_system(p, nullptr, nullptr);
+        System sys;
+        if(!load_shipped(p, sys)) { continue; }
         if(check_datum(p, sys)) g_failures++;
         if(check_air(p, sys)) g_failures++;
     }
     // ...and the air bodies whose composition is authored (H2 giants, CO2 worlds) live
     // in the solar files, so the air check runs there too.
     for(const char *p : { "res/systems/solar_system.json" }) {
-        System sys = load_system(p, nullptr, nullptr);
+        System sys;
+        if(!load_shipped(p, sys)) { continue; }
         if(check_air(p, sys)) g_failures++;
     }
     check_composition();

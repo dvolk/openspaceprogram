@@ -26,6 +26,7 @@
 #include <fstream>
 #include <string>
 #include "tchecks.h"
+#include "tload.h"
 
 static nlohmann::json read_json(const char *path) {
     std::ifstream f(path);
@@ -47,7 +48,8 @@ static double angleDiff(double a, double b) {
 
 static void checkSystem(const char *path) {
     nlohmann::json doc = read_json(path);
-    System sys = load_system(path, nullptr, nullptr);
+    System sys;
+    if(!load_shipped(path, sys)) { return; }
     sys.root->frame->UpdateOrbitRails(0.0);
     int checked = 0;
 

@@ -48,6 +48,7 @@
 
 #include <nlohmann/json.hpp>
 #include "tchecks.h"
+#include "tload.h"
 
 static constexpr double PI = std::numbers::pi;
 
@@ -178,7 +179,8 @@ static void with_loaded(const nlohmann::json &j, const char *tag, F &&fn) {
 
 int main() {
     const char *sys_path = "res/systems/solar_system.json";
-    System sys = load_system(sys_path, nullptr, nullptr);
+    System sys;
+    if(!load_shipped(sys_path, sys)) { return 1; }
     nlohmann::json j = read_json(sys_path);
 
     // --- Triton: retrograde ORBIT via orb_incl > 90 deg -------------------

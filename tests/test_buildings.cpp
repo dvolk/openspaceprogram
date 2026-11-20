@@ -45,6 +45,7 @@
 #include "system.h"
 #include "terrain.h"
 #include "tchecks.h"
+#include "tload.h"
 
 static bool expect_throw(const std::function<void()> &fn) {
     try { fn(); }
@@ -382,31 +383,33 @@ int main() {
 
     // --- air placement validation (needs a real system's bodies) ----------
     {
-        System sys = load_system("res/systems/solar_system.json", nullptr, nullptr);
-        auto airOn = [&](const char *body, double alt) {
-            WorldBuilding w;
-            w.id = "probe"; w.type = "balloon_platform"; w.body = body;
-            w.air = true; w.air_alt_m = alt;
-            w.air_lat_deg = 10.0; w.air_lon_deg = 0.0;
-            return w;
-        };
-        const std::vector<WorldBuilding> saved = sys.world_buildings;
-        // Venus has wind-bearing air up to 116 km: 56 km is a valid float.
-        sys.world_buildings = {airOn("Venus", 56000)};
-        bool ok = true;
-        try { validate_world_buildings(sys, cat); }
-        catch(const std::exception &) { ok = false; }
-        CHECK(ok);
-        // Above the air top: vacuum, nothing to float in.
-        sys.world_buildings = {airOn("Venus", 120000)};
-        CHECK(expect_throw([&]() { validate_world_buildings(sys, cat); }));
-        // The Moon has no atmosphere at all.
-        sys.world_buildings = {airOn("Moon", 56000)};
-        CHECK(expect_throw([&]() { validate_world_buildings(sys, cat); }));
-        // Pluto has physical air but NO wind table: windAt would assert.
-        sys.world_buildings = {airOn("Pluto", 5000)};
-        CHECK(expect_throw([&]() { validate_world_buildings(sys, cat); }));
-        sys.world_buildings = saved;
+        System sys;
+        if(load_shipped("res/systems/solar_system.json", sys)) {
+            auto airOn = [&](const char *body, double alt) {
+                WorldBuilding w;
+                w.id = "probe"; w.type = "balloon_platform"; w.body = body;
+                w.air = true; w.air_alt_m = alt;
+                w.air_lat_deg = 10.0; w.air_lon_deg = 0.0;
+                return w;
+            };
+            const std::vector<WorldBuilding> saved = sys.world_buildings;
+            // Venus has wind-bearing air up to 116 km: 56 km is a valid float.
+            sys.world_buildings = {airOn("Venus", 56000)};
+            bool ok = true;
+            try { validate_world_buildings(sys, cat); }
+            catch(const std::exception &) { ok = false; }
+            CHECK(ok);
+            // Above the air top: vacuum, nothing to float in.
+            sys.world_buildings = {airOn("Venus", 120000)};
+            CHECK(expect_throw([&]() { validate_world_buildings(sys, cat); }));
+            // The Moon has no atmosphere at all.
+            sys.world_buildings = {airOn("Moon", 56000)};
+            CHECK(expect_throw([&]() { validate_world_buildings(sys, cat); }));
+            // Pluto has physical air but NO wind table: windAt would assert.
+            sys.world_buildings = {airOn("Pluto", 5000)};
+            CHECK(expect_throw([&]() { validate_world_buildings(sys, cat); }));
+            sys.world_buildings = saved;
+        }
     }
 
     // --- world_buildings_files: named fragments merge in ------------------
