@@ -5768,6 +5768,187 @@ void drawUIRecorder(Game &g) {
     });
 }
 
+/* --- the docking panel (#1026) --------------------------------------------- */
+
+/* The gate's answer, as the one word a test greps and the sentence a pilot reads, in
+   ONE table indexed by Vehicle::DockSit::Why. It is a table rather than two switches
+   because two switches need two fallbacks, and theirs disagreed (one said "go", one said
+   nothing) while neither was the point: the assert below is what makes adding an
+   enumerator stop compiling here, where the fix is a line, instead of printing an empty
+   verdict in the window and a stale token in the log. Each row carries its enumerator's
+   name because the ORDER is the enum's order. */
+struct DockWhy { const char *token; const char *sentence; };
+static const DockWhy kDockWhy[] = {
+    {/*MyRails      */ "myrails",      "this hull is on the rails -- drop warp"},
+    {/*NoArm        */ "noarm",        "no port armed on this hull"},
+    {/*NoTarget     */ "notarget",     "no target port set"},
+    {/*TargetGone   */ "targetgone",   "the target no longer carries that port"},
+    {/*TargetRails  */ "targetrails",  "the target is still on the rails -- drop warp"},
+    {/*OtherFrame   */ "otherframe",   "the two hulls are in different frames"},
+    {/*ArmGone      */ "armgone",      "the armed port is gone"},
+    {/*Unmeasurable */ "unmeasurable", "the two ports are at one point"},
+    {/*Misaligned   */ "misaligned",   "a port face is off-axis"},
+    {/*TooWide      */ "toowide",      "the port faces are too far apart"},
+    {/*TooFast      */ "toofast",      "the ports move past each other too fast"},
+    {/*Mass         */ "mass",         ""},  // #583's own sentence beats a paraphrase
+    {/*Go           */ "go",           "GO: the hulls mate this tick"},
+};
+static_assert(sizeof kDockWhy / sizeof kDockWhy[0] == (size_t)Vehicle::DockSit::Go + 1,
+              "Vehicle::DockSit::Why changed: add a row here, in the enum's order, and a "
+              "case in Game::updateDocking");
+
+/* The live line's cadence, named rather than a bare 0.5: the part windows set this 2 Hz
+   rule in #734 and spell it kReadSec (gameui.cpp:3830). Wall seconds, not sim seconds --
+   the panel is a gauge a pilot reads, and it would be a strange gauge that went quiet at
+   100x while the hulls were flying hardest. */
+static constexpr double kDockReadSec = 0.5;
+
+/* A segment meter for a gate: cells that fill as the figure approaches the limit that
+   judges it. Hand-drawn rather than a progress bar because a progress bar reads "more
+   is better", and here the last cell IS the shut gate. So the numbers carry the truth
+   and the meter is only the glance.
+   `shut` is handed in rather than derived from now/limit: the three gates compare with
+   three different operators (an axis fails BELOW the cosine, a gap at or ABOVE the
+   capture distance, a speed strictly ABOVE the limit), and a meter that re-derived the
+   boundary would be a second gate that can disagree with the first at its edge. */
+static void dockMeter(double now, double limit, bool shut) {
+    const int cells = 12;
+    int lit = 0;
+    if(limit > 0.0 && now > 0.0) {
+        const double frac = now / limit;
+        lit = frac >= 1.0 ? cells : (int)(frac * cells + 0.5);
+    }
+    const float cw = 8.0f;
+    const float ch = ImGui::GetTextLineHeight() * 0.7f;
+    ImGui::Dummy(ImVec2((float)cells * cw, ch));
+    const ImVec2 p = ImGui::GetItemRectMin();
+    ImDrawList *dl = ImGui::GetWindowDrawList();
+    const ImU32 on = shut ? IM_COL32(226, 96, 84, 255) : IM_COL32(120, 200, 150, 255);
+    const ImU32 off = IM_COL32(96, 96, 104, 220);
+    for(int i = 0; i < cells; i++) {
+        const float x0 = p.x + (float)i * cw;
+        dl->AddRectFilled(ImVec2(x0 + 1.0f, p.y + ch * 0.15f),
+                          ImVec2(x0 + cw - 2.0f, p.y + ch * 0.95f),
+                          i < lit ? on : off);
+    }
+}
+
+/* One gate row: what is measured, the live figure, and the limit the gate judges it
+   against -- the limit is printed, not hidden behind the bar, because a player cannot
+   dock to a number nobody tells them (the ticket's whole complaint). The font is
+   monospace (res/fonts), so printf padding lines the columns up for free. */
+static void dockGateRow(const char *name, double now, double limit, bool shut,
+                        const char *unit, int prec) {
+    char a[24], b[24];
+    snprintf(a, sizeof a, "%.*f", prec, now);
+    snprintf(b, sizeof b, "%.*f", prec, limit);
+    uiText("%-10s %8s %-4s / %8s", name, a, unit, b);
+    ImGui::SameLine();
+    dockMeter(now, limit, shut);
+}
+
+void drawUIDock(Game &g) {
+    drawWin(g, W_Dock, [&] {
+        Vehicle *a = g.ship;
+        if(a == nullptr) { uiTextDisabled("(no hull selected)"); return; }
+        /* One answer, from the same pass the dock gate runs (Vehicle::dockSituation),
+           so a row that reads open here is a row the gate read open. */
+        const Vehicle::DockSit s = a->dockSituation();
+        constexpr double rad2deg = 180.0 / std::numbers::pi;
+        /* Named, because the active hull changes under the window (the ship list, a
+           dock, a split) and a panel of bare numbers would then be describing a hull
+           nobody selected. */
+        uiText("%s -> %s", a->displayName().c_str(),
+               s.b ? s.b->displayName().c_str() : "(no target)");
+        if(s.arm != nullptr && s.target != nullptr) {
+            uiTextDisabled("%s -> %s", s.arm->def->name.c_str(),
+                           s.target->def->name.c_str());
+        }
+        /* The verdict first: the question a pilot asks this window is "will it mate",
+           and everything below is detail about why not. */
+        if(s.why == Vehicle::DockSit::Mass) {
+            uiText("%s", s.massWhy.c_str());
+        } else {
+            uiText("%s", kDockWhy[(size_t)s.why].sentence);
+        }
+        if(!s.read.measurable) {
+            /* No line between the two port centres, so there is nothing to measure.
+               Said rather than left as six rows of zeros. */
+            if(s.why != Vehicle::DockSit::NoArm && s.why != Vehicle::DockSit::NoTarget) {
+                uiTextDisabled("(no port-to-port measurement yet)");
+            }
+        } else {
+            ImGui::Spacing();
+            /* The three gates, in the order the gate asks them, with the limits it uses
+               read out of the constants rather than retyped -- so the window cannot
+               outlive a change to them.
+               An axis figure can never exceed 90 deg, because a port presents whichever
+               of its two faces is nearer the other hull: a port pointed exactly away
+               from its target reads 0.0 deg and mates. That is the gate's law, not a
+               rounding, and it surprises nobody until they see it. */
+            const double alignDeg = acosUnit(Vehicle::kDockAlign) * rad2deg;
+            dockGateRow("axis mine", acosUnit(s.read.axisCosA) * rad2deg, alignDeg,
+                        s.read.axisCosA < Vehicle::kDockAlign, "deg", 1);
+            dockGateRow("axis tgt", acosUnit(s.read.axisCosB) * rad2deg, alignDeg,
+                        s.read.axisCosB < Vehicle::kDockAlign, "deg", 1);
+            dockGateRow("face gap", s.read.faceGap, Vehicle::kDockCapture,
+                        s.read.faceGap >= Vehicle::kDockCapture, "m", 2);
+            dockGateRow("port speed", s.read.relSpeed, Vehicle::kDockMaxV,
+                        s.read.relSpeed > Vehicle::kDockMaxV, "m/s", 2);
+            ImGui::Spacing();
+            /* And the part no gate has: which way to nudge. A gate that only says "no"
+               leaves the pilot guessing whether they are short, high, or already past
+               the socket -- faceGap is unsigned, so it cannot say. "sideways" rather
+               than "off axis" because the two rows above are the AXIS in degrees, and
+               two rows with the same word and different units get read as one number. */
+            uiText("%-10s %8.2f m", "along", s.read.along);
+            uiText("%-10s %8.2f m", "sideways", s.read.lateral);
+            uiText("%-10s %8.2f m/s", "closing", s.read.closing);
+            uiTextDisabled("(along + = short of the socket; closing + = coming together)");
+        }
+        if(s.why == Vehicle::DockSit::MyRails || s.why == Vehicle::DockSit::TargetRails) {
+            /* The rails are a warp switch, so name the switch. The number here is the
+               threshold the game tests (time_accel >= kRailsWarp, game.h) rather than a
+               rung on the decimal ladder, which steps 1, 10, 100: 10x flies, 100x does
+               not, and 11x is where the rule changes. */
+            uiTextDisabled("(rails warp is %dx or more: nothing docks there)", kRailsWarp);
+        }
+        /* One live line at the 2 Hz instrument cadence: this panel is a gauge, so a
+           per-frame print is a log nobody can read, and a printed line is the only way a
+           test can EXPECT a number a pilot actually saw. Only while the window is open,
+           which is a choice the player made. Units stay out of the line (as in [recwin])
+           so a test comparing it to a drawn row has nothing to strip.
+           at=/size= are the anchor pin: a window that loses its `.below` anchor silently
+           centres itself, and the only sign is a panel sitting in the middle of the view.
+           The width gate is not decoration -- an anchored content-fit window has no
+           measured rect on the frame it appears (ui::Manager waits for the anchor, and
+           this window has no initial_size of its own), so that first frame reports a
+           position that is not where the panel lands and a size of 16x36. */
+        if(ImGui::GetTime() >= g.hud.dock_next_read
+           && ImGui::GetWindowSize().x > 64.0f) {
+            g.hud.dock_next_read = ImGui::GetTime() + kDockReadSec;
+            const ImVec2 wp = ImGui::GetWindowPos();
+            const ImVec2 wsz = ImGui::GetWindowSize();
+            if(s.read.measurable) {
+                printf("[dockwin] a=\"%s\" b=\"%s\" why=%s align=%.1f,%.1f gap=%.2f"
+                       " speed=%.2f lat=%.2f along=%.2f closing=%+.2f"
+                       " at=%.0f,%.0f size=%.0f,%.0f\n",
+                       a->displayName().c_str(),
+                       s.b ? s.b->displayName().c_str() : "",
+                       kDockWhy[(size_t)s.why].token,
+                       acosUnit(s.read.axisCosA) * rad2deg,
+                       acosUnit(s.read.axisCosB) * rad2deg,
+                       s.read.faceGap, s.read.relSpeed, s.read.lateral, s.read.along,
+                       s.read.closing, wp.x, wp.y, wsz.x, wsz.y);
+            } else {
+                printf("[dockwin] a=\"%s\" b=\"%s\" why=%s at=%.0f,%.0f size=%.0f,%.0f\n",
+                       a->displayName().c_str(),
+                       s.b ? s.b->displayName().c_str() : "",
+                       kDockWhy[(size_t)s.why].token, wp.x, wp.y, wsz.x, wsz.y);
+            }
+        }
+    });
+}
 /* The modal scrim: a full-viewport window drawn UNDER the card so a pending question
    cannot be clicked through (#234). It carries no widgets, but imgui hit-tests it.
 

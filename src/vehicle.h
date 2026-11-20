@@ -2169,6 +2169,72 @@ public:
     Part *dockTargetPort = nullptr;
     Part *dockArmPort = nullptr;   // this ship's port to mate with (mandatory)
 
+    /* Docking capture thresholds. They live here rather than in Game because
+       Vehicle::dockRead is the pass that measures what they judge, and the two readers
+       of that measurement -- the dock gate in Game::updateDocking and the Docking window
+       (#1026) -- must quote the same numbers. Hulls are 0.1 m inflated, so a slow
+       aligned approach locks before the hulls touch. */
+    static constexpr double kDockCapture = 1.5;   // m, port face-centre distance
+    static constexpr double kDockAlign   = 0.966; // cos(15 deg) axis misalignment
+    static constexpr double kDockMaxV    = 2.0;   // m/s relative speed at capture
+
+    /* What these two ports look like to each other (#1026). ONE pass, shared by the
+       dock gate and the Docking window, so a row a pilot reads cannot disagree with the
+       rule that actually mates the hulls. Raw figures only: the thresholds they are
+       judged against are the three constants just above, and the window prints them
+       beside the figures. */
+    struct DockRead {
+        /* False when the two port centres coincide: there is no line to measure along,
+           so nothing below means anything yet. */
+        bool measurable = false;
+        /* A port presents whichever of its two faces is nearer the other part (+Z or
+           -Z of its own frame). These are the cosines between each presented face's
+           axis and the line joining the port centres -- what kDockAlign is tested
+           against, and why they run near 1 rather than near 0. */
+        double axisCosA = 1.0, axisCosB = 1.0;
+        double faceGap = 0.0;   // m between the two presented faces (kDockCapture)
+        double relSpeed = 0.0;  // m/s at the two ports (kDockMaxV)
+        /* In the ARMED port's frame, +Z out of its presented face. NOT gates: they say
+           which way to nudge once a gate is shut, which is the part a pilot cannot
+           infer from three yes/no lamps. */
+        double along = 0.0;     // m: the other face along this port's axis
+        double lateral = 0.0;   // m: how far off that axis the other face sits
+        double closing = 0.0;   // m/s: + = the two ports coming together
+    };
+    DockRead dockRead(const Part *pa, const Vehicle *b, const Part *pb) const;
+
+    /* The whole docking situation of THIS ship's intent (#1026): which half of the
+       intent is missing or stale, whether the two hulls are even in a state to mate,
+       and what the three gates measure. Game::updateDocking() acts on `why` and the
+       Docking window says it out loud, so a refusal that used to be silent has one
+       sentence and one token. The order below IS the gate's order -- it matters, because
+       a stale intent half is DROPPED where a rails state is merely waited out, and a
+       window that asked in a different order would promise a mate the gate never
+       considered. */
+    struct DockSit {
+        enum Why : unsigned char {
+            MyRails,       // this hull is on the rails (warp >= kRailsWarp)
+            NoArm,         // nothing armed on this hull
+            NoTarget,      // no target ship/port set
+            TargetGone,    // that hull no longer carries the port that was targeted
+            TargetRails,   // the target is on the rails; proximity has to wake it
+            OtherFrame,    // the two hulls are in different frames
+            ArmGone,       // the armed port left with a stage press
+            Unmeasurable,  // the port centres are at one point: no axis to compare
+            Misaligned,    // a face is outside the kDockAlign cone
+            TooWide,       // the faces are further than kDockCapture
+            TooFast,       // the ports move relative to each other past kDockMaxV
+            Mass,          // refuseDockWith: the pair would not fit in one Body (#583)
+            Go,            // every gate open: the next tick mates them
+        };
+        Why why = NoArm;
+        Vehicle *b = nullptr;    // the targeted hull, null when there is none
+        Part *arm = nullptr;     // this ship's armed port, null when absent/stale
+        Part *target = nullptr;  // the targeted port, ditto
+        DockRead read;
+        std::string massWhy;     // the #583 sentence, "" when the pair fits
+    };
+    DockSit dockSituation();
     /* The dock gate's own door (#583): "" if folding `B` into this ship gives a hull
        the game can hold, else the sentence to say instead. A ship's mass total is
        refused where it is built -- a def at load (#547), a save at load -- and a
@@ -2180,6 +2246,7 @@ public:
        debug build mid-flight and leaves a release build with an unrotatable hull.
        `B` is another live ship (the caller's gate has already ruled out null, self
        and a dead target). */
+
     std::string refuseDockWith(Vehicle *B);
 
     /* Fold B into this ship at the mated port. B's shell is deleted by the

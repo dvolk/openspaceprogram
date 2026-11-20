@@ -11,6 +11,10 @@ void drawUIMap(Game &g);
 // The flight recorder's window (#972). Its own entry point rather than a block in
 // drawUIReadouts because it anchors on the map, so it must draw AFTER drawUIMap.
 void drawUIRecorder(Game &g);
+/* The docking panel (#1026): the three gates a mate is decided by, in numbers. Its own
+   entry point because it anchors under the resource bars, and because its readout comes
+   from Vehicle::dockSituation() -- the same pass the dock gate runs -- not from ShipView. */
+void drawUIDock(Game &g);
 
 void drawTitleMenu(Game &g);
 void drawSpaceCenterMenu(Game &g);

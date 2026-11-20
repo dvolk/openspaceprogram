@@ -2478,80 +2478,59 @@ void Game::cullFarDebris() {
 
 /* Docking is INTENT-driven: the active ship mates only when the player has
    armed one of its own ports AND targeted a port on another ship. The intent
-   is consumed on success, so an undock cannot immediately re-dock. */
+   is consumed on success, so an undock cannot immediately re-dock.
+
+   The decision itself lives in Vehicle::dockSituation() (#1026), because the Docking
+   window has to say the same thing the gate does; what stays here is what to DO with
+   the answer, which is nothing a readout should ever do. */
 void Game::updateDocking() {
     Vehicle *a = ship;
-    if(a == nullptr || a->isEva() || a->onRails) { return; }
-    // Both halves of the intent are required.
-    if(a->dockTargetPort == nullptr || a->dockTargetShip == nullptr
-       || a->dockArmPort == nullptr) { return; }
-    Vehicle *b = a->dockTargetShip;
-    /* The target must be another live ship still carrying that port. Every
-       death goes through retire(), which drops this intent before the hull
-       leaves the world, so a pointer that survives here is one that was never
-       dropped -- the belt, not the braces. */
-    bool targetOk = (b != a && !b->isEva());
-    if(targetOk) {
-        targetOk = false;
-        for(Part *p : b->parts) {
-            if(p == a->dockTargetPort && p->isDockingPort()) { targetOk = true; break; }
+    if(a == nullptr || a->isEva()) { return; }
+    const Vehicle::DockSit s = a->dockSituation();
+    switch(s.why) {
+        case Vehicle::DockSit::Go: break;
+        /* A stale half of the intent is dropped, not waited out, so that a re-arm
+           retries instead of the game holding a part that no longer exists. */
+        case Vehicle::DockSit::TargetGone:
+            a->dockTargetShip = nullptr;
+            a->dockTargetPort = nullptr;
+            return;
+        case Vehicle::DockSit::ArmGone:
+            a->dockArmPort = nullptr;    // keep the target: a re-arm retries
+            return;
+        case Vehicle::DockSit::Mass: {
+            /* #583's door. Drop the WHOLE intent, not just the arm: two hulls this
+               heavy never fit, so re-arming would only toast once a tick. */
+            const std::string bName = s.b->displayName();
+            a->dockTargetShip = nullptr;
+            a->dockTargetPort = nullptr;
+            a->dockArmPort = nullptr;
+            toast("%s", s.massWhy.c_str());
+            printf("[dock] t=%.3f a=\"%s\" b=\"%s\" REFUSED: %s\n",
+                   time, a->displayName().c_str(), bName.c_str(), s.massWhy.c_str());
+            return;
         }
+        /* Everything else is "not yet, and nothing to clean up": warp, frames, and
+           the gates themselves. Listed one enumerator at a time rather than as a
+           `default:`, because this is the switch that ACTS on the answer: a new Why
+           should stop compiling here until someone decides what the gate does about
+           it, rather than silently becoming a no-op. The Docking window (#1026) is
+           where these get said out loud. */
+        case Vehicle::DockSit::MyRails:
+        case Vehicle::DockSit::NoArm:
+        case Vehicle::DockSit::NoTarget:
+        case Vehicle::DockSit::TargetRails:
+        case Vehicle::DockSit::OtherFrame:
+        case Vehicle::DockSit::Unmeasurable:
+        case Vehicle::DockSit::Misaligned:
+        case Vehicle::DockSit::TooWide:
+        case Vehicle::DockSit::TooFast: return;
     }
-    if(!targetOk) { a->dockTargetShip = nullptr; a->dockTargetPort = nullptr; return; }
-    /* On rails or in another frame: cannot mate this tick. Keep the intent;
-       proximity wakes the target. */
-    if(b->onRails || b->frame != a->frame) { return; }
-
-    Part *pb = a->dockTargetPort;
-    Part *bestA = a->dockArmPort;
-    /* The arm must still be a live port here (else it was staged away). Drop
-       the arm, keep the target so a re-arm retries. */
-    bool armOk = false;
-    for(Part *p : a->parts) {
-        if(p == bestA && p->isDockingPort()) { armOk = true; break; }
-    }
-    if(!armOk) { a->dockArmPort = nullptr; return; }
-
-    glm::dvec3 paP, pbP;
-    glm::dmat3 paR, pbR;
-    a->partWorldPose(bestA, paP, paR);
-    b->partWorldPose(pb, pbP, pbR);
-    const glm::dvec3 dir = pbP - paP;
-    const double d = glm::length(dir);
-    if(d < 1e-9) { return; }
-    const glm::dvec3 n = dir / d;
-    // Each port presents the face closest to the other part: +Z or -Z.
-    const double sA = (glm::dot(paR[2], dir) >= 0.0) ? 1.0 : -1.0;
-    const double sB = (glm::dot(pbR[2], paP - pbP) >= 0.0) ? 1.0 : -1.0;
-    const glm::dvec3 axisA = paR[2] * sA;
-    const glm::dvec3 axisB = pbR[2] * sB;
-    if(glm::dot(axisA, n) < kDockAlign) { return; }
-    if(glm::dot(axisB, -n) < kDockAlign) { return; }
-    const glm::dvec3 faceA = paP + axisA * (bestA->def->height * 0.5);
-    const glm::dvec3 faceB = pbP + axisB * (pb->def->height * 0.5);
-    const glm::dvec3 rv = a->partVel(bestA) - b->partVel(pb);
-    const double bestD = glm::length(faceA - faceB);
-    if(bestD >= kDockCapture) { return; }
-    const double bestV = glm::length(rv);
-    if(bestV > kDockMaxV) { return; }
-
+    /* The mass door ran inside dockSituation, so the parts surgery below only happens
+       on a pair whose totals still fit in one Body. */
+    Vehicle *b = s.b;
     const std::string bName = b->displayName();
-    /* #583: the dock's own door, before any part surgery. Each hull passed its own
-       mass door at load; a dock is where two of those totals become ONE Body, and an
-       infinite compound mass is the #547 symptom -- a NaN inertia and a NaN centre,
-       a hull that cannot be turned. Refusing here rather than asserting later is
-       what keeps the release build honest. Drop the whole intent, not just the arm:
-       two hulls this heavy never fit, so re-arming would only toast once a tick. */
-    if(std::string why = a->refuseDockWith(b); !why.empty()) {
-        a->dockTargetShip = nullptr;
-        a->dockTargetPort = nullptr;
-        a->dockArmPort = nullptr;
-        toast("%s", why.c_str());
-        printf("[dock] t=%.3f a=\"%s\" b=\"%s\" REFUSED: %s\n",
-               time, a->displayName().c_str(), bName.c_str(), why.c_str());
-        return;
-    }
-    a->absorbShip(b, bestA);
+    a->absorbShip(b, s.arm);
     a->dockTargetShip = nullptr;   // the intent is consumed by the dock
     a->dockTargetPort = nullptr;   // (both halves: re-arm and re-target on
     a->dockArmPort = nullptr;      //  a redock)
@@ -2561,7 +2540,8 @@ void Game::updateDocking() {
     retire(b);
     toast("Docked with %s", bName.c_str());
     printf("[dock] t=%.3f a=\"%s\" b=\"%s\" d=%.3f m v=%.3f m/s\n",
-           time, a->displayName().c_str(), bName.c_str(), bestD, bestV);
+           time, a->displayName().c_str(), bName.c_str(),
+           s.read.faceGap, s.read.relSpeed);
 }
 
 /* Undock: split the most recent seam off the active ship into its own vessel. */

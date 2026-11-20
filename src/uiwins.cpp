@@ -251,6 +251,21 @@ const WinDef kWins[W_Count] = {
                   .closable = true, .default_open = false },
         .role = WinRole::Persistent, .inList = true,
     },
+    [W_Dock] = {
+        /* The docking panel (#1026): the three gates a mate is actually decided by, and
+           the offsets that say which way to nudge when one of them is shut. Docking in
+           this game is a third-person camera and nothing else, so the player is lining
+           two 20 m hulls up by eye against limits nobody tells them (the ticket).
+           TopRight, under the resource bars: the map owns BottomLeft, the recorder
+           BottomCenter and the flight readouts TopLeft, and a docking panel is read in
+           glances while the pilot watches the target -- it must not sit over the middle
+           of the view. Content-fit, so the number columns size themselves.
+           Closed by default: with no port armed it has one row to say. */
+        .name = "Docking", .label = "Docking",
+        .opts = { .slot = ui::Slot::TopRight, .below = "Resources",
+                  .closable = true, .default_open = false },
+        .role = WinRole::Persistent, .inList = true,
+    },
     // --- title -----------------------------------------------------------
     [W_TitleMenu] = {
         .name = "Title Menu", .label = "Title Menu",
@@ -379,6 +394,8 @@ static const Win kFlightWinIds[] = {
     // #972: in the list and drawn in flight. Unlike Telemetry -- a debug surface,
     // F2 only -- this is the window for the flight the player just flew.
     W_Recorder,
+    // #1026: consulted while maneuvering, so in the list and drawn in flight.
+    W_Dock,
     W_Settings, W_Controls, W_Debug, W_Telemetry, W_SaveLoad,
 };
 // The set, not a guard in each window's body, is what hides the flight

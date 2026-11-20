@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 426 |
+| `invariant` | a behaviour or a player route the game must keep | 428 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 50 |
 | `harness` | CLI/test-engine plumbing, not game spec | 16 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **496** |
+| | **total** | **498** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -18,7 +18,7 @@ paces a run: how much e2e a change deserves is the caller's
 judgement. Select by number, name or path, e.g.
 `python3 e2e/run.py save/172 262`.
 
-## flight (154)
+## flight (156)
 
 | case | kind | pins |
 |---|---|---|
@@ -176,6 +176,8 @@ judgement. Select by number, name or path, e.g.
 | `flight/1009-a-stage-dump-of-a-shipped-hull.txt` | invariant | --stage-dump prints every part's label and what a press does to it. |
 | `flight/1010-a-staging-checker-flags-a-mis-authored-ladder.txt` | invariant | The staging checker counts the presses a bad ladder wastes and names the floor decoupler. |
 | `flight/1010-b-fleet-report-checks-the-order-of-every-shipped-hull.txt` | invariant | --fleet-report runs the staging checker and the auto-stager over every hull and reports both verdicts. |
+| `flight/1026-a-docking-window-says-why-a-dock-refuses.txt` | invariant | The Docking window names the gate that stopped a mate, and the pair it calls refused really does not mate. |
+| `flight/1026-b-docking-window-blames-the-rails-not-the-ports.txt` | invariant | A dock whose target is still on the rails is reported as a rails state, in the gate's order, with no port figures invented for it. |
 
 ## crew (29)
 

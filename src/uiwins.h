@@ -27,6 +27,7 @@ enum Win : int {
     W_Hud, W_Windows, W_Orbital, W_Surface, W_Resources, W_OrbitalMap,
     W_SurfaceMap, W_VesselInfo, W_Systems, W_ShipList, W_Autopilot, W_Guidance,
     W_Target, W_Porkchop, W_Recorder,
+    W_Dock,      // the docking panel: what a mate is decided by (#1026)
     // title
     W_TitleMenu, W_NewGame, W_Readme,
     // space center hub

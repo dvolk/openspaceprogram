@@ -1,0 +1,22 @@
+# The other half of the same window (#1026): the reasons a dock fails that are NOT about
+# the ports. Here the pair is the misaligned one -- faces in range, axes outside the cone
+# -- and the world is paused (`--time-accel 0`), which leaves the station on the rails.
+#
+# The window says `why=targetrails` and prints NO port numbers, because there is no
+# measurement to report and six rows of zeros would read as "your ports are fine". The
+# FORBIDden `why=misaligned` is the real claim: it pins the ORDER the gate asks its
+# questions in, which is the order Vehicle::dockSituation documents and Game::updateDocking
+# acts on. Ask the geometry first and this pair would be told to rotate when the thing
+# holding it is warp.
+#
+# A silent refusal at the rails is the commonest one in the game: at rails warp NOTHING
+# docks, and until this window nothing said so anywhere.
+NAME docking-window-blames-the-rails-not-the-ports
+CLAIM A dock whose target is still on the rails is reported as a rails state, in the gate's order, with no port figures invented for it.
+KIND invariant
+ARGS --dock-test misaligned --time-accel 0 --width 1280 --height 720 --timeout 2
+ARGS --ui-click 300,"Windows/Docking"
+EXPECT [dockwin] a="dockprobe" b="dockstation" why=targetrails at=908,144 size=364,122
+FORBID why=misaligned
+FORBID [dock] t=
+FORBID FAILED

@@ -5,6 +5,7 @@
 #include "docktest.h"
 
 #include <cmath>
+#include <numbers>
 #include <stdexcept>
 
 #include "part.h"     // make_part
@@ -31,12 +32,19 @@ DockTestShips build_dock_test_ships(const std::string &mode,
                                  "missing from the parts catalog");
     }
 
-    /* the starting port-face gap (m) */
+    /* The COM-arc spacing that puts the port FACES `gap` metres apart in the aligned
+       modes (the arc is built from each hull's COM-to-port distance, so it holds for
+       their stacks as built, not for a yawed one -- see the banner below). */
     double gap = 1.0;
+    /* #1026: yaw the probe off the line to the station so the two port axes leave the
+       kDockAlign cone. The Docking window's end-to-end case needs a pair the gate refuses
+       -- with the other two modes it opens at once and the panel has nothing to explain. */
+    double yawDeg = 0.0;
     if(mode == "approach") { gap = 2.0; }
+    else if(mode == "misaligned") { yawDeg = 40.0; }
     else if(mode != "near") {
         throw std::runtime_error("--dock-test: unknown mode '" + mode
-                                 + "' (near | approach)");
+                                 + "' (near | approach | misaligned)");
     }
 
     const ScenarioDef *sc = scenario_by_name("rot-orbit");
@@ -114,12 +122,14 @@ DockTestShips build_dock_test_ships(const std::string &mode,
     const double dP = glm::length(probe->get_center_of_mass());
     const double arc = dP + dS + gap;                 // COM-to-COM spacing
     const double th = -arc / glm::length(rS_i);       // negative = trailing
-    auto rotAxis = [&](const glm::dvec3 &v) {
-        return v * std::cos(th) + glm::cross(h_i, v) * std::sin(th)
-             + h_i * glm::dot(h_i, v) * (1.0 - std::cos(th));
+    /* Rodrigues rotation about the orbit normal, by an arbitrary angle: the phase
+       offset below uses it, and so does the "misaligned" yaw -- one spelling. */
+    auto rotH = [&](const glm::dvec3 &v, double a) {
+        return v * std::cos(a) + glm::cross(h_i, v) * std::sin(a)
+             + h_i * glm::dot(h_i, v) * (1.0 - std::cos(a));
     };
-    const glm::dvec3 rP_i = rotAxis(rS_i);
-    const glm::dvec3 vP_i = rotAxis(vS_i);
+    const glm::dvec3 rP_i = rotH(rS_i, th);
+    const glm::dvec3 vP_i = rotH(vS_i, th);
     /* Inertial -> the ship's rotating frame (the inverse of comStateIn):
        rotate back, drop the frame offset, subtract the frame's own velocity
        and the point's stasis velocity. */
@@ -132,7 +142,27 @@ DockTestShips build_dock_test_ships(const std::string &mode,
     /* Face the station: the probe's port is on its +Z, so aim +Z at the
        station (ahead along the orbit) for a clean aligned dock. */
     const glm::dvec3 faceDir = glm::normalize(rS - rP);
-    probe->placeShipAtCom(rP, faceAlong(faceDir));
+    /* "misaligned" yaws that aim off the line, and takes the yaw AROUND THE PORT rather
+       than around the COM: this is a seven-part stack whose port sits metres out from its
+       own centre of mass, so a yaw about the COM swings the port more than a metre
+       sideways -- which would fail the distance gates as well as the cone one and leave
+       the fixture testing two things at once. Place, read where the port went, place
+       again shifted by the difference.
+       The angle is 40 deg, not the 16 that would do: nothing flies the probe, so the pair
+       wanders, and a yaw set just outside the cone is inside it (or far outside it) by the
+       time the window is on screen. Measured over the 3 s the end-to-end case runs: the
+       face gap the panel first prints is 1.2 m and the last line 3 s later says 4.3 m
+       (separating at 1.2 m/s), while the misalignment drifts from 38 to 46 deg. The
+       verdict stays `misaligned` through all of it because the gate asks the axis question
+       before the distance one -- the same order tests/test_dock.cpp pins. */
+    probe->placeShipAtCom(rP, faceAlong(faceDir));      // the aligned pose
+    if(yawDeg != 0.0) {
+        const glm::dvec3 port0 = probe->partPos(prPort);    // where its port belongs
+        const glm::dvec3 aim = rotH(faceDir, yawDeg * std::numbers::pi / 180.0);
+        probe->placeShipAtCom(rP, faceAlong(aim));
+        const glm::dvec3 port1 = probe->partPos(prPort);
+        probe->placeShipAtCom(rP + (port0 - port1), faceAlong(aim));
+    }
     probe->enterWorld();
     // Co-moving on the same orbit: zero relative speed -> the kDockMaxV gate
     // passes the moment the gap is inside capture.
@@ -145,14 +175,25 @@ DockTestShips build_dock_test_ships(const std::string &mode,
     probe->dockTargetShip = station;
     probe->dockTargetPort = stPort;
 
-    printf("Dock-test (%s): station '%s' + probe '%s', port-face gap %.2f m, "
-           "|v| = %.1f m/s\n",
-           mode.c_str(), station->name.c_str(), probe->name.c_str(),
-           gap, glm::length(GetVelocity(station->hull)));
+    /* The banner says what the FIXTURE asked for, not what the ports ended up at: the arc
+       is built for the aligned stacks, so a yawed probe's face gap is whatever the yaw
+       leaves (the Docking window prints the measured figure, and for `misaligned` it is
+       not this number). Naming the yaw here is what keeps the two from looking like a
+       contradiction in one log. */
+    if(yawDeg == 0.0) {
+        printf("Dock-test (%s): station '%s' + probe '%s', arc gap %.2f m, "
+               "|v| = %.1f m/s\n",
+               mode.c_str(), station->name.c_str(), probe->name.c_str(),
+               gap, glm::length(GetVelocity(station->hull)));
+    } else {
+        printf("Dock-test (%s): station '%s' + probe '%s', arc gap %.2f m, "
+               "yaw %.0f deg about the port, |v| = %.1f m/s\n",
+               mode.c_str(), station->name.c_str(), probe->name.c_str(),
+               gap, yawDeg, glm::length(GetVelocity(station->hull)));
+    }
 
     DockTestShips d;
     d.probe = probe;
     d.station = station;
-    d.gap = gap;
     return d;
 }

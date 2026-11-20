@@ -26,6 +26,8 @@ void flightDrawUi(Game &g) {
     drawUIMap(g);
     // After the map: the recorder window anchors on it (uiwins.cpp).
     drawUIRecorder(g);
+    // After the readouts: the docking panel anchors under the resource bars (#1026).
+    drawUIDock(g);
     drawPartWindows(g);
     drawSaveLoad(g);
 }

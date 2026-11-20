@@ -69,12 +69,6 @@ static const int kToastVisible = 3;
 static const int kPickClickPx = 6;
 static const int kPickClickMs = 400;
 
-// Docking capture thresholds. Hulls are 0.1 m inflated, so a slow aligned
-// approach locks before the hulls touch.
-static const double kDockCapture = 1.5;   // m, port face-centre distance
-static const double kDockAlign   = 0.966; // cos(15 deg) axis misalignment
-static const double kDockMaxV    = 2.0;   // m/s relative speed at capture
-
 struct ToastMsg {
     std::string text;
     double born;   // wall-clock seconds (SDL_GetTicks() * 0.001)
@@ -276,6 +270,12 @@ struct HudState {
        compare it with another window, or screenshot it. */
     bool rec_pinned = false;
     double rec_pin = 0.0;
+    /* The Docking window's live [dockwin] line (#1026) next speaks at this WALL time
+       (ImGui::GetTime), on the 2 Hz instrument cadence #734 established for the part
+       windows. Wall rather than sim seconds because the panel prints while the pilot
+       reads it, warped or not: a gauge that goes quiet at 100x is a gauge that stops
+       existing exactly when the hulls are being flown hardest. */
+    double dock_next_read = 0.0;
 };
 
 /* VAB editor SESSION state (Game::vab), not save state: the build tree round-trips

@@ -5657,6 +5657,93 @@ std::vector<Part *> Vehicle::stagedDecouplers(int stage) {
     return decs;
 }
 
+/* #1026. The geometry a dock is decided by, in ONE pass, because two readers need it:
+   the gate that decides whether two hulls mate, and the Docking window that has to say
+   why they did not. This is the arithmetic the gate used to do inline and throw away.
+   Everything is measured at the PORTS, never at the COMs: a 20 m stack meeting a
+   station reads the gap between two port faces, not the distance between two hull
+   centres. */
+Vehicle::DockRead Vehicle::dockRead(const Part *pa, const Vehicle *b,
+                                    const Part *pb) const {
+    DockRead r;
+    glm::dvec3 paP, pbP;
+    glm::dmat3 paR, pbR;
+    partWorldPose(pa, paP, paR);
+    b->partWorldPose(pb, pbP, pbR);
+    const glm::dvec3 dir = pbP - paP;
+    const double d = glm::length(dir);
+    if(d < 1e-9) { return r; }   // measurable stays false
+    const glm::dvec3 n = dir / d;
+    // Each port presents the face closest to the other part: +Z or -Z.
+    const double sA = (glm::dot(paR[2], dir) >= 0.0) ? 1.0 : -1.0;
+    const double sB = (glm::dot(pbR[2], paP - pbP) >= 0.0) ? 1.0 : -1.0;
+    const glm::dvec3 axisA = paR[2] * sA;
+    const glm::dvec3 axisB = pbR[2] * sB;
+    r.measurable = true;
+    r.axisCosA = glm::dot(axisA, n);
+    r.axisCosB = glm::dot(axisB, -n);
+    const glm::dvec3 faceA = paP + axisA * (pa->def->height * 0.5);
+    const glm::dvec3 faceB = pbP + axisB * (pb->def->height * 0.5);
+    r.faceGap = glm::length(faceA - faceB);
+    const glm::dvec3 rv = partVel(pa) - b->partVel(pb);
+    r.relSpeed = glm::length(rv);
+    /* The nudge rows, in the ARMED port's frame. `along` is signed so a pilot can tell
+       "still short" from "already past it", which the unsigned faceGap cannot say --
+       and past it is a real failure mode, because the capture gate has no lower bound. */
+    const glm::dvec3 gap = faceB - faceA;
+    r.along = glm::dot(gap, axisA);
+    r.lateral = glm::length(gap - axisA * r.along);
+    r.closing = glm::dot(rv, n);
+    return r;
+}
+
+/* The situation of THIS ship's docking intent (#1026). Game::updateDocking() acts on the
+   answer and the Docking window reads it out, so a refusal that has neither sound nor
+   toast is at least nameable somewhere. The order is the gate's order and is not
+   arbitrary: a stale intent half gets DROPPED where a rails state is merely waited out,
+   and a window that asked in another order would promise a mate the gate never
+   considered. */
+Vehicle::DockSit Vehicle::dockSituation() {
+    DockSit s;
+    s.arm = dockArmPort;
+    s.b = dockTargetShip;
+    s.target = dockTargetPort;
+    if(onRails) { s.why = DockSit::MyRails; return s; }
+    if(s.arm == nullptr) { s.why = DockSit::NoArm; return s; }
+    if(s.b == nullptr || s.target == nullptr) { s.why = DockSit::NoTarget; return s; }
+    /* The target must be another live ship still carrying the port that was targeted.
+       Every death goes through Game::retire(), which drops this intent before the hull
+       leaves the world, so this is the belt rather than the braces. */
+    bool targetOk = (s.b != this && !s.b->isEva());
+    if(targetOk) {
+        targetOk = false;
+        for(Part *p : s.b->parts) {
+            if(p == s.target && p->isDockingPort()) { targetOk = true; break; }
+        }
+    }
+    if(!targetOk) { s.why = DockSit::TargetGone; return s; }
+    // On rails or in another frame: cannot mate this tick. Proximity wakes the target.
+    if(s.b->onRails) { s.why = DockSit::TargetRails; return s; }
+    if(s.b->frame != frame) { s.why = DockSit::OtherFrame; return s; }
+    /* The arm must still be a live port here (else it was staged away). */
+    bool armOk = false;
+    for(Part *p : parts) {
+        if(p == s.arm && p->isDockingPort()) { armOk = true; break; }
+    }
+    if(!armOk) { s.why = DockSit::ArmGone; return s; }
+    s.read = dockRead(s.arm, s.b, s.target);
+    if(!s.read.measurable) { s.why = DockSit::Unmeasurable; return s; }
+    if(s.read.axisCosA < kDockAlign || s.read.axisCosB < kDockAlign) {
+        s.why = DockSit::Misaligned; return s;
+    }
+    if(s.read.faceGap >= kDockCapture) { s.why = DockSit::TooWide; return s; }
+    if(s.read.relSpeed > kDockMaxV) { s.why = DockSit::TooFast; return s; }
+    s.massWhy = refuseDockWith(s.b);
+    if(!s.massWhy.empty()) { s.why = DockSit::Mass; return s; }
+    s.why = DockSit::Go;
+    return s;
+}
+
 /* #583. getMass() is the same sum rebuildCompound() hands Bullet (effectiveMass over
    the parts, part.h), so the two totals here are exactly the two the merged Body is
    about to add. No ceiling beyond that: the game stores mass in a double, and this
@@ -5664,7 +5751,7 @@ std::vector<Part *> Vehicle::stagedDecouplers(int stage) {
    ~1e308 kg each, i.e. hand-edited saves -- but the loaded-pair case is NOT covered
    by the save doors, which each judge ONE ship, and this is the one place in play the
    quantity changes. The merged POSE spread gets no door here: both hulls passed
-   validateShipParts, and docking needs the ports within kDockCapture (game.h) of
+   validateShipParts, and docking needs the ports within kDockCapture (vehicle.h) of
    each other, so a merged spread can only reach the bound if the ships were already
    ~1e154 m across -- hulls broken in a hundred other ways long before the dock. */
 std::string Vehicle::refuseDockWith(Vehicle *B) {
