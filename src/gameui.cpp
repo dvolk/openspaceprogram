@@ -2914,8 +2914,11 @@ void drawUIReadouts(Game &g) {
             float amin = 0.0f, amax = 0.0f;
             int nsurf = 0;
             for(const Part *p : ship->parts) {
-                if(!p->aeroValid || p->def == nullptr) { continue; }
-                if(p->def->lift_area <= 0.0 && p->def->control_area <= 0.0) { continue; }
+                /* #732: this row is a spread of ANGLES, so it asks the angle gate, not
+                   the row gate. A surface broadside to the flow is billed and appears on
+                   [surface] with a=-; averaging a refused angle into this line would be
+                   the same invention drag.h refuses. */
+                if(!p->aeroAngleValid || p->def == nullptr) { continue; }
                 if(nsurf == 0) { amin = amax = p->aeroAlphaDeg; }
                 else {
                     amin = std::min(amin, p->aeroAlphaDeg);
@@ -4122,11 +4125,18 @@ void drawPartWindows(Game &g) {
                    observable, so a case can assert what the player reads. */
                 const Part *sp = ship->parts[part];
                 if(sp->aeroValid) {
-                    if(sp->aeroDragWatts > live.holdWatts) {
+                    /* >=, not >: a wing at zero incidence bills nothing, and with a
+                       strict greater-than the hold never seeds, so the publish below
+                       would print an angle from nothing held. The maximum still wins
+                       (a thinner frame is not >= a fatter one), so the worst-loaded
+                       frame rule is untouched -- this only covers the interval where
+                       every frame bills nothing. */
+                    if(sp->aeroDragWatts >= live.holdWatts) {
                         live.holdWatts = sp->aeroDragWatts;
                         live.holdQ = sp->aeroQ;
                         live.holdMach = sp->aeroMach;
                         live.holdAlpha = sp->aeroAlphaDeg;
+                        live.holdAngleOk = sp->aeroAngleValid;
                     }
                     if(ImGui::GetTime() >= live.nextRead) {
                         live.nextRead = ImGui::GetTime() + kReadSec;
@@ -4135,10 +4145,22 @@ void drawPartWindows(Game &g) {
                            regimes. It is load-bearing since #543 A5 -- the same number
                            corrects this surface's slope -- and since A5b it is also what
                            bills the wave drag, so when a surface's bill jumps this is the
-                           row that says why. */
-                        snprintf(live.flowRow, sizeof live.flowRow,
-                                 "AoA: %+.1f deg  q=%.0f Pa  Mach %.2f",
-                                 live.holdAlpha, live.holdQ, live.holdMach);
+                           row that says why.
+                           The dash is #732's: this part is on the row because the air is
+                           billing it, and a plate broadside to the flow has no usable lift
+                           frame to quote an incidence against. Answering 0.0 deg there is
+                           an invented angle -- drag.h says so outright -- while q, Mach and
+                           the watts need only the flow, so they keep printing at the moment
+                           this surface spends the most. */
+                        if(live.holdAngleOk) {
+                            snprintf(live.flowRow, sizeof live.flowRow,
+                                     "AoA: %+.1f deg  q=%.0f Pa  Mach %.2f",
+                                     live.holdAlpha, live.holdQ, live.holdMach);
+                        } else {
+                            snprintf(live.flowRow, sizeof live.flowRow,
+                                     "AoA: -     q=%.0f Pa  Mach %.2f",
+                                     live.holdQ, live.holdMach);
+                        }
                         /* The watts the air is taking off this surface (#730) -- its form
                            drag plus the induced price of its lift. Not a temperature: no
                            material property sits behind it, and most of these watts leave in

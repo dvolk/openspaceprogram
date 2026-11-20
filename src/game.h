@@ -107,6 +107,11 @@ struct PartSel {
        so the published rows are internally consistent and never understate a
        spike. Frame-sampled -- see the caveat in gameui.cpp. */
     double holdWatts = 0.0, holdQ = 0.0, holdMach = 0.0, holdAlpha = 0.0;
+    /* Whether the held frame had an angle to hold (#732). A surface broadside to the
+       flow bills the most watts it will ever bill and has no usable lift frame, so the
+       worst-loaded frame is exactly the one where the angle goes missing: the AoA cell
+       prints a dash and q/Mach/watts carry on. */
+    bool holdAngleOk = false;
     char flowRow[64] = "";    // the two published rows, formatted once per publish
     char wattsRow[64] = "";
 };

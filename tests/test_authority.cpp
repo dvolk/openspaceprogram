@@ -1918,6 +1918,74 @@ static void test_the_air_bills_each_surface_in_watts() {
     delete body;
 }
 
+/* --- A BILL WITHOUT A FRAME IS STILL A BILL (#732) ------------------------
+   The per-surface readout used to gate on "the lift law measured me", so a plate the
+   law refuses -- flow along its own normal, which is broadside, the attitude where a
+   planform pays its biggest bill -- dropped out of [surface], out of the part window
+   and out of the closure claim (add the parts back up and you get the ship's Profile=)
+   while surfaceFormCdA went on charging it. The gate is the bill now; the ANGLE has
+   its own flag, because a plate with no lift frame has no incidence rather than zero
+   incidence, and drag.h::surfaceAlphaDegForReadout says outright that answering 0.0
+   there is a lie. */
+static void test_a_billed_plate_stays_on_the_row_when_the_frame_is_refused() {
+    printf("== #732: a billed plate keeps its row when its frame is refused ==\n");
+    TerrainBody *body = mkAirBall();
+    Rig a = mkRig(100.0, 0.0);
+    /* The fixture's plate authors no drag, so the form block would skip it and there
+       would be no bill to put a row on -- same three edits the watts pin above makes. */
+    a.defs.back().drag_forward = 0.02;
+    a.defs.back().drag_side = 1.0;
+    a.defs.back().drag_backward = 0.02;
+    a.v->m_parent = body;
+    a.v->placeShip(glm::dvec3(0.0, 0.0, 601000.0), glm::dmat3(1.0));
+
+    glm::dvec3 fp; glm::dmat3 fr;
+    a.v->partWorldPose(a.fin, fp, fr);
+    /* partAero() builds its lift direction as up - (up.v)v, up = cross(nose, right):
+       zero exactly when the flow lies along the plate's normal. Fly it that way. */
+    a.v->recordSurfaceAero = true;   // a readout IS open: the neutral branch runs too
+    SetVelocity(a.v->hull, glm::cross(fr[2], fr[0]) * 100.0);
+    a.v->applyAeroForce(1.0 / 120.0);
+
+    CHECK_TRUE(a.v->lastSurfCdA > 0.0, "broadside, the air still charges this planform");
+    CHECK_TRUE(a.fin->aeroDragWatts > 0.0f, "and bills THIS plate for it");
+    CHECK_TRUE(a.fin->aeroValid, "...so the plate is on the row (#732)");
+    CHECK_TRUE(!a.fin->aeroAngleValid,
+               "...and quotes no angle: the frame has no incidence to quote");
+    CHECK_TRUE(a.fin->aeroQ > 0.0f && a.fin->aeroMach > 0.0f,
+               "q and Mach need the flow and no frame, so they keep printing");
+    printf("   broadside: CdA %.4f, watts %.0f W, q %.0f Pa, angle refused\n",
+           a.v->lastSurfCdA, (double)a.fin->aeroDragWatts, (double)a.fin->aeroQ);
+
+    /* Turn the same plate chord-on to the flow: the frame answers, and both flags go
+       up. Without this half, "angle refused" would only prove this rig never frames
+       anything. */
+    a.v->hull->btBody->clearForces();
+    SetVelocity(a.v->hull, fr[2] * 100.0);
+    a.v->applyAeroForce(1.0 / 120.0);
+    CHECK_TRUE(a.fin->aeroValid, "still billed, still on the row");
+    CHECK_TRUE(a.fin->aeroAngleValid,
+               "and chord-on the frame answers, so the refusal above is about the frame");
+
+    /* THE OTHER WRITE. A plate nobody is steering runs only the neutral branch, so the
+       deflecting branch's copy of the same flag needs its own evidence -- and an
+       undeflected broadside rig cannot supply it, because commanding the plate moves
+       its normal off the flow and un-refuses the frame. So: deflected AND chord-on.
+       The frame answers there, which pins that copy to the law's answer rather than to
+       a constant, the way the neutral rig pins it to false. */
+    a.v->hull->btBody->clearForces();
+    a.v->stick[1] = 1.0f;   // the pitch key; in this air the plate pins at its stop
+    a.v->applyRotationForce(1.0 / 120.0);
+    SetVelocity(a.v->hull, fr[2] * 100.0);
+    a.v->applyAeroForce(1.0 / 120.0);
+    CHECK_TRUE(std::fabs(a.fin->controlDefl) > 1e-3,
+               "the plate is off neutral, so the deflecting branch is the one that ran");
+    CHECK_TRUE(a.fin->aeroAngleValid,
+               "and it takes the angle from the law, which answers a chord-on plate");
+    destroyShip(a.v);
+    delete body;
+}
+
 static void test_a_ring_of_bells_is_a_row_of_actuators() {
     printf("== #595: the RCS ring is a row of attitude actuators ==\n");
     std::deque<PartDef> defs;
@@ -2482,6 +2550,7 @@ int main() {
     test_a_jet_engine_earns_its_gimbal_rating_only_in_air();
     test_a_fin_row_is_spent_and_hands_its_ask_to_the_air();
     test_the_air_bills_each_surface_in_watts();
+    test_a_billed_plate_stays_on_the_row_when_the_frame_is_refused();
     test_a_ring_of_bells_is_a_row_of_actuators();
     test_the_aim_is_measured_once();
     test_the_aim_keeps_its_doors_shut();

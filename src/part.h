@@ -112,8 +112,22 @@ struct Part {
        substep: an invalid part showed no usable flow (no air, a mount with no
        usable axis, or a surface too edge-on to make lift), and a ship that never
        ran the pass keeps whatever it last read -- which is why every reader goes
-       through aeroValid. */
+       through aeroValid.
+       WHAT aeroValid GATES (#732): that this part met the aero pass this substep --
+       billed by the form-drag block, or measured by the lift/control loops. It used to
+       mean the second only, which put a hole in the closure claim on exactly the
+       attitudes where a surface bills most: a plate broadside to the flow has no usable
+       lift frame, so the pass quoted no row for it while surfaceFormCdA still charged
+       its planform as a flat plate. The angle is now gated separately below, so a row
+       can say "this part is paying" without inventing an incidence to go with it. */
     bool aeroValid = false;
+    /* Whether aeroAlphaDeg means anything THIS substep. False for a mount the law
+       refuses -- flow along the plate's normal, a degenerate frame -- where alpha is
+       undefined rather than zero, and surfaceAlphaDegForReadout() has already said that
+       quoting 0.0 there is a lie (drag.h). q, Mach and the watts stay readable there:
+       they need the flow, not the frame. Readers print a dash for the angle and keep
+       the rest of the row (#732). */
+    bool aeroAngleValid = false;
     float aeroAlphaDeg = 0.0f;
     float aeroQ = 0.0f;
     /* Mach AT THIS SURFACE (#552 A3): the flow speed localFlow already measured,

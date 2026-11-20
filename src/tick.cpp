@@ -1453,21 +1453,26 @@ void tick(Game &g) {
                    watts (watts over q x the speed its own q implies) and the parts of a
                    row add back to the [drag] line's Profile= plus Induced= -- 1.00
                    measured over a Kerbin cruise, pinned by flight/730. That is #699's
-                   lesson applied to a per-part row before the bug exists. One caveat the
-                   row itself imposes: this prints only surfaces the per-surface readout
-                   could read (aeroValid), so a part whose mount the pass found unusable
-                   still bills the ship line and quotes no row. */
+                   lesson applied to a per-part row before the bug exists. The row covers
+                   every surface the form-drag block billed (#732), which is what makes
+                   that closure add up: a plate broadside to the flow has no lift frame,
+                   so its ANGLE is refused -- a=- rather than the 0.0 that would invent an
+                   incidence -- while its planform is still being charged as a flat plate,
+                   and its q, Mach and watts ride the flow without needing a frame. */
                 {
                     bool any = false;
                     for(const Part *p : g.ship->parts) {
                         if(!p->aeroValid || p->def == nullptr) { continue; }
-                        if(p->def->lift_area <= 0.0 && p->def->control_area <= 0.0) {
-                            continue;
+                        char a[8];
+                        if(p->aeroAngleValid) {
+                            std::snprintf(a, sizeof a, "%+.1f", p->aeroAlphaDeg);
+                        } else {
+                            std::snprintf(a, sizeof a, "-");
                         }
                         if(!any) { printf("[surface]"); any = true; }
-                        printf(" %s a=%+.1f q=%.0f mach=%.3f watts=%.0f",
+                        printf(" %s a=%s q=%.0f mach=%.3f watts=%.0f",
                                p->id.empty() ? p->def->name.c_str() : p->id.c_str(),
-                               p->aeroAlphaDeg, p->aeroQ, p->aeroMach,
+                               a, p->aeroQ, p->aeroMach,
                                p->aeroDragWatts);
                     }
                     if(any) { printf("\n"); }

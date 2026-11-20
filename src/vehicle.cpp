@@ -3559,6 +3559,7 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
     // is a wrong total, not a wrong detail.
     for(Part *p : parts) {
         p->aeroValid = false;
+        p->aeroAngleValid = false;
         p->aeroDragWatts = 0.0f;
         if(p->def != nullptr && p->def->control_area > 0.0) { p->controlDefl = 0.0; }
     }
@@ -4194,7 +4195,8 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
                share, because those are not a section meeting the flow chordwise. A
                subsonic surface pays nothing (waveCd is 0 under kTransonicMach), so
                every Kerbin golden in the battery is untouched by this line. */
-            const double wave = waveCd(d->meshThicknessToChord(), flowMach(lf, invAirA));
+            const double mach = flowMach(lf, invAirA);
+            const double wave = waveCd(d->meshThicknessToChord(), mach);
             const double cda = drag_cd * surfaceFormCdA(
                 ref, d->meshEdgeArea(),
                 d->drag_forward + wave, d->drag_side, d->drag_backward + wave,
@@ -4220,6 +4222,20 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
                bill joins per sample in applyInducedDrag, and the peak folds once both
                are in. */
             p->aeroDragWatts = (float)(lf.q * cda * vpl);
+            /* #732: the row gate is the BILL, not the lift frame. A plate broadside to
+               the flow has no usable lift frame -- partAero() refuses it, so the lift
+               loop below never runs for this part -- while this block is charging its
+               planform as a flat plate, which is the widest bill a surface ever pays.
+               Quoting no row there left a hole in the claim the row exists to support
+               (flight/730: add the parts back up and you get Profile= plus Induced=),
+               and a part window on such a fin read "drag power -" at the moment it was
+               spending the most. q and Mach need the flow, not the frame, so they come
+               along; the ANGLE does not, because flow along a plate normal has no
+               incidence rather than zero incidence -- surfaceAlphaDegForReadout() says
+               outright that answering 0.0 there is a lie. */
+            p->aeroQ = (float)lf.q;
+            p->aeroMach = (float)mach;
+            p->aeroValid = true;
             /* ... and it pushes HERE, which is the half the hull's cp never saw:
                a fin 3 m aft is a stabilizer whether or not the hull's own cp is
                anywhere near it. */
@@ -4352,6 +4368,7 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
         const double mach = flowMach(lf, invAirA);
         p->aeroMach = (float)mach;
         p->aeroValid = true;
+        p->aeroAngleValid = true;   // past partAero's gate above, so the angle is real
         /* #543 A5: THE ONE COMPRESSIBILITY READ. This surface's Mach, corrected
            slope, once. Everything downstream -- the neutral-point slope below, the
            lift force, and (in the control loop) the hinge force and #487's rate
@@ -4468,7 +4485,12 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
                         up, right);
                     p->aeroQ = (float)lf0.q;
                     p->aeroMach = (float)flowMach(lf0, invAirA);
-                    p->aeroValid = pa0.valid;
+                    /* The angle is an assignment, not a merge: this is the pass that
+                       answers it, and an unusable frame answers nothing. aeroValid
+                       ORs, because the form block has already billed this part and its
+                       row stays open either way (#732). */
+                    p->aeroAngleValid = pa0.valid;
+                    p->aeroValid = p->aeroValid || pa0.valid;
                 }
                 ++ctrlIndex;
                 continue;
@@ -4516,7 +4538,8 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
             p->aeroQ = (float)qp;
             const double mach = flowMach(lf, invAirA);
             p->aeroMach = (float)mach;
-            p->aeroValid = pa.valid;
+            p->aeroAngleValid = pa.valid;
+            p->aeroValid = p->aeroValid || pa.valid;   // the form bill keeps the row (#732)
             const glm::dvec3 forceDir = pa.liftDir;   // zero when the frame is unusable
             const glm::dvec3 about =
                 (ax.aboutAxis == 0) ? right : (ax.aboutAxis == 1) ? up : nose;
@@ -7837,6 +7860,7 @@ bool Vehicle::goOnRails() {
         p->aeroDragWatts = 0.0f;
         p->aeroDragWattsPeak = 0.0f;
         p->aeroValid = false;
+        p->aeroAngleValid = false;
         if(p->isRcs()) { for(double &f : p->rcsFired) { f = 0.0; } }
     }
     lastRcsNozzles.clear();  // likewise the [rcs] log: no substeps, no nozzles
