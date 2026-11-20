@@ -33,7 +33,10 @@
 //     asked in (axis, then distance, then speed, then the mass door -- a pair that is far
 //     away is told to close, not that it is too heavy), and for the rule that a port's
 //     speed is its PORT's: a hull spinning about a still centre still offers a port that
-//     is moving.
+//     is moving. And for WHICH FRAME those figures speak in (#1044): the turn and push
+//     pairs are resolved on attitudeRef()'s axes, because that is where the keys live, so
+//     a port rolled 90 deg off its hull rotates the dial without moving a single axis
+//     figure.
 //   - IDENTITY: Part::uid is minted per instance and stays distinct across a
 //     merge of two ships whose Part::ids collide on EVERY part -- the case
 //     two ships built from one def produce, since absorbShip does not rename.
@@ -1590,6 +1593,91 @@ static void test_the_dock_situation_says_why_a_pair_will_not_mate() {
     destroyShip(A.v);
 }
 
+/* #1044. WHICH FRAME THE KEYS ARE RESOLVED IN. dockRead() answers its turn and push
+   figures on attitudeRef()'s axes, because that is the basis applyRotationForce() reads the
+   rotation stick in (vehicle.cpp:4870) and rcsWorldDir() the translation keys in
+   (vehicle.cpp:4952). Every other fixture in this file is a one-part hull, so there the
+   armed port IS the attitude reference and the two bases are the same matrix: spelling
+   that line `keyR = paR` keeps all of them green while a shipped sideways port --
+   res/ships/sideways_wheel.json mounts one at angle: 90, and src/vehicle.h:1931 says the
+   displayed attitude asks this same part -- plots its markers a quarter turn away from the
+   keys they name.
+
+   The fixture hangs a port off a tank with 90 deg of roll about the stack axis, through
+   attachMode's angleDeg, which IS that roll -- the game's own mount path rather than a
+   hand-set localRot. A roll about the bore leaves the bore alone, so every AXIS figure is
+   exactly what a square-mounted port would read; only the key-resolved figures move. That
+   leaves this fixture pinning the frame choice and nothing else. The roll's sign is not
+   pinned, deliberately: the expected figures below are the ROOT's and do not depend on it. */
+static void test_a_sideways_port_moves_the_dial_but_not_the_verdict() {
+    printf("== dockRead: a rolled port still answers in the hull's keys (#1044) ==\n");
+
+    /* The two offsets the read is built from, named so the expectations below are the
+       fixture's own geometry rather than a magic number. */
+    const double lat = 1.0;     // m, along the world's +X: the hull's RIGHT
+    const double down = 1.0;    // m, further along -Z
+
+    Ship A; A.v = new Vehicle; A.v->name = "A";
+    Part *tankA = mkPart(A, "tankA", 800.0, 1.0, 1.0, kTankHz, false);
+    A.v->setRoot(tankA);
+    A.v->controller = tankA;
+    Part *portA = mkPart(A, "portA", 50.0, 1.0, 1.0, kPortHz, true);
+    A.v->attachMode(portA, partIndex(A.v, tankA), AttachMode::Down, 90.0);
+    A.v->init();
+    A.v->placeShip(glm::dvec3(0.0), glm::dmat3(1.0));
+
+    Ship B; B.v = new Vehicle; B.v->name = "B";
+    Part *portB = mkPart(B, "portB", 50.0, 1.0, 1.0, kPortHz, true);
+    B.v->setRoot(portB);
+    B.v->controller = portB;
+    B.v->init();
+    /* A's port hangs kTankHz + kPortHz under the tank; B's port sits `down` below that and
+       `lat` to the world's +X. So the joining line comes 45 deg off both bores, and the
+       whole perpendicular offset lies along the one axis the two bases disagree about. */
+    B.v->placeShip(glm::dvec3(lat, 0.0, -(kTankHz + kPortHz) - down), glm::dmat3(1.0));
+
+    A.v->dockArmPort = portA;
+    A.v->dockTargetShip = B.v;
+    A.v->dockTargetPort = portB;
+
+    /* The fixture's own premises first: a test that pins a frame choice is worthless if the
+       hull being measured has no frame to choose, and worthless if the roll quietly moved
+       the bore -- that would make the rows below about the axis gates instead. */
+    CHECK_TRUE(A.v->attitudeRef() == tankA && A.v->attitudeRef() != portA,
+               "the hull asks its ROOT part for its axes, and the armed port is not that part");
+    CHECK_NEAR(std::fabs(glm::dot(A.v->partAxis(tankA, 2), A.v->partAxis(portA, 2))), 1.0, 1e-12,
+               "90 deg of roll about the stack axis leaves the BORE exactly where it was");
+    CHECK_NEAR(glm::dot(A.v->partAxis(tankA, 0), A.v->partAxis(portA, 0)), 0.0, 1e-12,
+               "and the bases are a quarter turn apart: the hull's right is one of the port's sides");
+
+    Vehicle::DockSit s = A.v->dockSituation();
+    CHECK_NEAR(s.read.portRange, std::sqrt(lat * lat + down * down), 1e-12,
+               "range is port centre to port centre, and the ports never moved");
+    CHECK_NEAR(s.read.axisCosA, down / std::sqrt(lat * lat + down * down), 1e-12,
+               "my bore sits 45 deg off the line -- the same as an unrolled port");
+    CHECK_NEAR(s.read.axisCosB, down / std::sqrt(lat * lat + down * down), 1e-12,
+               "and theirs by the same amount: the roll changes no axis figure at all");
+    CHECK_TRUE(s.read.shutAxis, "45 deg is outside the cone");
+    CHECK_TRUE(s.why == Vehicle::DockSit::Misaligned, "so that is the one reason this pair refuses");
+
+    /* THE FIGURES THE DOCKING PANEL PLOTS. turnYaw answers the 45 deg with the hull's UP
+       axis, and the error lies wholly in that plane, so the pitch key is asked for nothing;
+       pushRight answers the whole 1 m with the hull's RIGHT, and pushUp nothing. Resolve
+       those same two pairs on the port's basis and each one lands on the OTHER key -- which
+       is exactly the lie: the panel would put its marker beside D while the key that centres
+       the bore is W, and beside RcsUp while the key that gets onto their path is RcsRight. */
+    CHECK_NEAR(s.read.turnYaw, std::atan2(lat, down), 1e-12,
+               "45 deg of turn, read along the HULL's up axis rather than the port's side");
+    CHECK_NEAR(s.read.turnPitch, 0.0, 1e-12,
+               "a yaw-plane error asks no pitch key, even through a rolled port");
+    CHECK_NEAR(s.read.pushRight, lat, 1e-12,
+               "the offset is 1 m along the hull's right: RcsRight is the key that answers it");
+    CHECK_NEAR(s.read.pushUp, 0.0, 1e-12, "and the hull's up axis has no part in that offset");
+
+    destroyShip(B.v);
+    destroyShip(A.v);
+}
+
 int main() {
     test_absorb();
     test_orders_return_on_undock();
@@ -1604,6 +1692,7 @@ int main() {
     test_experiments_ride_parts();
     test_dock_mass_door();
     test_the_dock_situation_says_why_a_pair_will_not_mate();
+    test_a_sideways_port_moves_the_dial_but_not_the_verdict();
 
     printf("%d checks, %d failures\n", g_checks, g_failures);
     if(g_failures) { printf("FAILED\n"); return 1; }
