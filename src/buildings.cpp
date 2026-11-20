@@ -279,6 +279,26 @@ std::vector<WorldBuilding> parse_world_buildings(const nlohmann::json &doc,
     return parse_building_array(arr, path);
 }
 
+/* One id names one building, across the WHOLE system (#890). Ids are handles: the VAB
+   picker, find_launch_site, each body's pad list and save.cpp's building keys all resolve
+   by id, so a second building with the same id silently shadows the first -- unlike
+   display_name, which dedupBuildingName renames (#883).
+   Stated once and called twice rather than written twice, because the two writers had
+   already picked different scopes: parse checked the merged list (inline + every fragment
+   it names) and validate checked per body, which anything reaching it from load_system had
+   passed already. That made validate's term unreachable in the game and left it biting
+   only a hand-built sys.world_buildings -- and it is how `WorldBuilding::id`'s comment came
+   to say one thing while the nearer code implied another. */
+static void checkUniqueBuildingIds(const std::vector<WorldBuilding> &ws,
+                                   const std::string &where) {
+    for(size_t i = 0; i < ws.size(); i++) {
+        for(size_t k = i + 1; k < ws.size(); k++) {
+            if(ws[i].id != ws[k].id) { continue; }
+            throw std::runtime_error(where + " building id '" + ws[i].id + "'");
+        }
+    }
+}
+
 std::vector<WorldBuilding> parse_world_buildings_all(
         const nlohmann::json &doc, const std::string &path) {
     std::vector<WorldBuilding> out;
@@ -337,16 +357,9 @@ std::vector<WorldBuilding> parse_world_buildings_all(
     for(const WorldBuilding &w : parse_world_buildings(doc, path)) {
         out.push_back(w);
     }
-    // Ids are handles (the VAB picker); a duplicate would silently
-    // shadow one of the two.
-    for(size_t i = 0; i < out.size(); i++) {
-        for(size_t k = i + 1; k < out.size(); k++) {
-            if(out[i].id == out[k].id) {
-                throw std::runtime_error("system: '" + path + "': duplicate world"
-                                         " building id '" + out[i].id + "'");
-            }
-        }
-    }
+    // Ids are handles; a duplicate would silently shadow one of the two. The message
+    // keeps its old shape -- it names the file the merge came from.
+    checkUniqueBuildingIds(out, "system: '" + path + "': duplicate world");
     return out;
 }
 
@@ -407,15 +420,12 @@ void validate_world_buildings(const System &sys, const BuildingsCatalog &cat) {
                                          "or shrink \"bubble_km\"");
             }
         }
-        // Instance ids are per body, which is what the placement check below used
-        // to compare against; nothing is placed yet, so compare against the list.
-        for(const WorldBuilding &other : sys.world_buildings) {
-            if(&other != &w && other.id == w.id && other.body == w.body) {
-                throw std::runtime_error("buildings: duplicate instance id '"
-                                         + w.id + "' on " + w.body);
-            }
-        }
     }
+    /* Same rule parse enforces on a merged file, called here because a caller can hand
+       validate a list it built itself (tests do exactly that). One implementation, one
+       scope: an earlier copy here compared per body, which every system reaching this
+       from load_system had already survived, so the term it added could not fire (#890). */
+    checkUniqueBuildingIds(sys.world_buildings, "buildings: duplicate world");
 }
 
 /* A driven building carries a frame node with a small SoI bubble (#850): a

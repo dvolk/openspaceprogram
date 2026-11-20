@@ -412,6 +412,30 @@ int main() {
         }
     }
 
+    /* --- one id, one building, across the whole SYSTEM (#890) -------------
+       What is pinned is the SCOPE, not that a clash is refused. validate_world_buildings
+       used to carry its own copy of the rule, scoped per body, so two sites sharing an id
+       on two different worlds were legal there and illegal at parse. Nothing reaches
+       validate from load_system without passing parse first, so the extra term could only
+       fire on a hand-built list -- which is where it disagreed with buildings.h's "unique
+       across the SYSTEM", and how a comment about ids ended up wrong twice. */
+    {
+        System sys;
+        if(load_shipped("res/systems/solar_system.json", sys)) {
+            auto site = [](const char *id, const char *body) {
+                WorldBuilding w; w.id = id; w.type = "runway"; w.body = body;
+                return w;
+            };
+            sys.world_buildings = {site("baikonur", "Mars"), site("baikonur", "Venus")};
+            CHECK(expect_throw([&]() { validate_world_buildings(sys, cat); }));
+            sys.world_buildings = {site("baikonur", "Mars"), site("vostochny", "Venus")};
+            bool clean = true;
+            try { validate_world_buildings(sys, cat); }
+            catch(const std::exception &) { clean = false; }
+            CHECK(clean);
+        }
+    }
+
     // --- world_buildings_files: named fragments merge in ------------------
     {
         // The shipped Earth table reaches the solar systems, and the merge

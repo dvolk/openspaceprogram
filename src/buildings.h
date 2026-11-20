@@ -48,9 +48,11 @@ BuildingsCatalog load_buildings_catalog(const char *path);
 struct WorldBuilding {
     std::string id;           // instance id: unique across the SYSTEM -- parse
                               // refuses a duplicate anywhere in the merged
-                              // fragment + inline list, and placement,
-                              // find_launch_site and the save's pose references
-                              // all match on it. display_name is NOT unique as
+                              // fragment + inline list, validate enforces the
+                              // same scope on a list a caller built itself
+                              // (#890), and placement, find_launch_site and the
+                              // save's pose references all match on it.
+                              // display_name is NOT unique as
                               // authored; placement renames a clash
                               // (dedupBuildingName, #883).
     std::string type;         // catalog name
