@@ -5,9 +5,9 @@
 #
 # With nothing authored, depth is the only signal and it gives the shape the rocket has: the
 # three booster cuts sit at one tree depth, so they share the first press, and the core's cut
-# sits a press below them. The core engine then lights as its stage separates rather than at
-# the pad -- which is the tree's answer, and the honest one for a build that never said
-# otherwise (compare 1020-a, where the authored ladder says otherwise and is kept).
+# sits a press below them. The core engine is not on that lower label: nothing is ever under it,
+# so the free-engine rule (#1033) lights it from the pad -- the one ignition fact the part tree
+# does supply, and the same answer 1020-a's authored ladder gives by being typed.
 #
 # The fuel links make this a real asparagus stack to FLY, but they move no number: autoStage
 # reads the part tree, not the drain graph, so the ladder is the same with the links deleted.
@@ -30,14 +30,16 @@ ARGS --stage-dump 7900 --timeout 14
 LIMIT 60
 EXPECT [vab] loaded asparagus (13 parts)
 EXPECT [toast] Auto-staged 12 parts from the stack
+EXPECT [autostage] note: 1 engine(s) lit as soon as the stack leaves them free
 # The ring is one press: three cuts, one tree depth, nothing authored to separate them.
 EXPECT [stagetree] 4 dec_a def=decoupler_radial parent=core_tank stage=3 responds=decoupler
 EXPECT [stagetree] 7 dec_b def=decoupler_radial parent=core_tank stage=3 responds=decoupler
 EXPECT [stagetree] 10 dec_c def=decoupler_radial parent=core_tank stage=3 responds=decoupler
 EXPECT [stagetree] 6 a_eng def=engine parent=a_tank stage=3 responds=engine
-# The core stage rides a press below them; its engine lights when that press cuts it away.
+# The core stage rides a press below them; its engine does not, because there is nothing under it
+# to wait for (#1033).
 EXPECT [stagetree] 1 dec_core def=decoupler_r1 parent=pod_1 stage=2 responds=decoupler
-EXPECT [stagetree] 3 core_eng def=engine parent=core_tank stage=2 responds=engine
+EXPECT [stagetree] 3 core_eng def=engine parent=core_tank stage=3 responds=engine
 EXPECT [stagetree] 0 pod_1 def=capsule parent=- stage=1 responds=-
 EXPECT [stagetree] labels=1..3 presses=2 inert_parts=5/13
 FORBID [stagetree] warn:

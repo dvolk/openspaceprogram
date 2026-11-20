@@ -163,6 +163,17 @@ void validateStaging(const BuildShip &ship, std::vector<std::string> &warns);
    both choices cost the player something, and the plan protects the ladder. Pins standing anywhere
    else are unaffected.
 
+   An engine the player left UN-numbered lights as soon as the stack leaves it nothing under it
+   (#1033). That much ignition the tree does know: an engine with no cut below it is free from the
+   pad, so it takes the plan's hi instead of the label of the stage it dangles from, and one with
+   cuts below it takes (smallest label among those cuts) - 1, because a label L lights when the
+   counter steps onto L -- the press that fires L+1. Measured over res/ships that reproduces the
+   number the author typed on 52 of the 53 engines; the miss (heavy_one's engine3, authored 3 of
+   4) is a deliberate late start, which is why this runs only where the player said nothing about
+   that engine. Two prohibitions, both the pin's: it never takes the last part off the floor, and
+   it never re-sequences a pair the player DID number -- such an engine stays on the label its
+   stage carries and is counted in a note rather than refusing the ship.
+
    Refuses rather than guesses: leaves the build exactly as it was and says why in `notes`.
    The refusals are the places where the tree cannot see the player's intent, or cannot read
    the stack at all:

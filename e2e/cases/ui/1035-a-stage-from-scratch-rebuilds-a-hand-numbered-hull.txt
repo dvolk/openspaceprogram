@@ -2,9 +2,9 @@
 # breaks this way: its six booster cuts sit at ONE tree depth and are authored 6/5/4 (compare
 # 1020-a, same hull, switch untouched: `labels=1..6 presses=5`, nothing moved). Tick the box and
 # the plan stops reading the ship's numbers as intent at all, so depth decides: all six boosters
-# come back on one press, the authored sequence is gone, and the floor engine that nothing ever
-# cuts away sits on label 1 -- lit at every press. That is the point of asking for it; the numbers
-# the plan replaced stay on the staging Undo stack.
+# come back on one press, the authored sequence is gone, and the floor engine keeps label 1 --
+# there is a cut under it, so the free-engine rule (#1033) leaves it there too. That is the point
+# of asking for it; the numbers the plan replaced stay on the staging Undo stack.
 NAME stage-from-scratch-rebuilds-a-hand-numbered-hull
 CLAIM With "Stage from scratch" ticked, Auto-stage ignores the numbers on heavy_asp and rebuilds the ladder from the part tree.
 KIND invariant
@@ -27,11 +27,13 @@ EXPECT [autostage] note: staged from scratch
 EXPECT [stagetree] 15 dec_1c def=decoupler_r1.5 parent=big_tank1 stage=4 responds=decoupler
 EXPECT [stagetree] 20 dec_1b def=decoupler_r1.5 parent=big_tank1 stage=4 responds=decoupler
 EXPECT [stagetree] 25 dec_1a def=decoupler_r1.5 parent=big_tank1 stage=4 responds=decoupler
-# The two serial cuts keep their relative order (they are the only thing depth CAN see), and the
-# core engine that the author lit at the pad now lights at its own separation instead.
+# The two serial cuts keep their relative order (they are the only thing depth CAN see). The core
+# engine loses the author's number AND the pad-lit pin the mode refuses to apply, and still ends up
+# lit from the pad -- because nothing is ever under it, which is the one ignition fact the tree does
+# know (#1033). It lands on the top label instead of the author's 6.
 EXPECT [stagetree] 9 dec_2 def=decoupler_r1.5 parent=engine_2 stage=3 responds=decoupler
 EXPECT [stagetree] 4 dec_3 def=decoupler_r1 parent=engine_1 stage=2 responds=decoupler
-EXPECT [stagetree] 14 engine_central def=engine_r2.25h4.5 parent=big_tank2 stage=3 responds=engine
+EXPECT [stagetree] 14 engine_central def=engine_r2.25h4.5 parent=big_tank2 stage=4 responds=engine
 EXPECT [stagetree] 3 engine_1 def=engine parent=tank_r1h1_1 stage=1 responds=engine
 EXPECT [stagetree] labels=1..4 presses=3
 FORBID [autostage] refuse:

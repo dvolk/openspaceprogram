@@ -2082,6 +2082,19 @@ static std::vector<int> labelsOf(const BuildShip &bs) {
     return out;
 }
 
+// A label-vector mismatch is the commonest failure here and CHECK_TRUE can only print the
+// expression, which never shows what the plan actually wrote. This prints both ladders.
+static bool labelsMatch(const BuildShip &bs, const std::vector<int> &want, const char *what) {
+    const std::vector<int> got = labelsOf(bs);
+    if(got == want) { return true; }
+    printf("   (%s) got [", what);
+    for(size_t i = 0; i < got.size(); i++) { printf("%s%d", i ? "," : "", got[i]); }
+    printf("] want [");
+    for(size_t i = 0; i < want.size(); i++) { printf("%s%d", i ? "," : "", want[i]); }
+    printf("]\n");
+    return false;
+}
+
 static bool has_note(const StagingPlan &plan, const char *phrase) {
     for(const std::string &n : plan.notes) {
         if(n.find(phrase) != std::string::npos) { return true; }
@@ -2103,7 +2116,7 @@ static void test_auto_stager_numbers_the_tree_from_its_decouplers() {
 
     StagingPlan plan = autoStage(bs);
     CHECK_TRUE(plan.applied, "a stack with two cuts numbers itself");
-    CHECK_TRUE(labelsOf(bs) == std::vector<int>({1, 2, 2, 2, 3, 3, 3}),
+    CHECK_TRUE(labelsMatch(bs, std::vector<int>({1, 2, 2, 2, 3, 3, 3}), "labels"),
                "the floor, the core cut, the booster cut");
     CHECK_TRUE(plan.changes.size() == 6, "every part but the pod moved");
     if(plan.changes.size() != 6) { return; }   // CHECK does not bail; indexing it would only segfault
@@ -2149,7 +2162,7 @@ static void test_auto_stager_gives_a_ring_one_press() {
 
     StagingPlan plan = autoStage(bs);
     CHECK_TRUE(plan.applied, "two side boosters number");
-    CHECK_TRUE(labelsOf(bs) == std::vector<int>({1, 2, 2, 2, 2, 2, 2}),
+    CHECK_TRUE(labelsMatch(bs, std::vector<int>({1, 2, 2, 2, 2, 2, 2}), "labels"),
                "one depth is one press: a 2-ring is not two stages (#540)");
 
     /* A cut nested below one branch: it fires BEFORE the ring, so it takes the higher label,
@@ -2170,8 +2183,9 @@ static void test_auto_stager_gives_a_ring_one_press() {
     CHECK_TRUE(deeper.applied, "a nested cut numbers too");
     CHECK_TRUE(nest.parts[dIn].stage == 3, "the innermost cut fires first, so it is the top label");
     CHECK_TRUE(nest.parts[nA].stage == 2 && nest.parts[nB].stage == 2, "the ring stays one press");
-    CHECK_TRUE(labelsOf(nest) == std::vector<int>({1, 2, 2, 2, 2, 2, 2, 3, 3}),
-               "and everything below the inner cut rides it");
+    CHECK_TRUE(labelsMatch(nest, std::vector<int>({1, 2, 2, 2, 3, 2, 3, 3, 3}), "labels"),
+               "everything below the inner cut rides it, and the two booster engines -- nothing "
+               "under them -- light from the pad (#1033)");
 
     /* The same edit on the build that was already numbered as a ring. The new cut carries the
        default label, so the ladder is half-numbered and DEPTH orders it (the inner cut first);
@@ -2184,7 +2198,7 @@ static void test_auto_stager_gives_a_ring_one_press() {
     CHECK_TRUE(edited.applied, "deepening a numbered stack is a renumber, not a refusal");
     CHECK_TRUE(has_note(edited, "kept lit at the pad"),
                "and it says which engines it kept lit at the pad while doing it");
-    CHECK_TRUE(labelsOf(bs) == std::vector<int>({1, 2, 2, 2, 3, 2, 3, 3, 3}),
+    CHECK_TRUE(labelsMatch(bs, std::vector<int>({1, 2, 2, 2, 3, 2, 3, 3, 3}), "labels"),
                "the ring keeps one press, the inner cut takes the new top label, and the "
                "booster engines ride that top label because the build lights them at the pad");
 }
@@ -2198,7 +2212,7 @@ static void test_auto_stager_refuses_a_build_with_no_decoupler() {
     StagingPlan plan = autoStage(bs);
     CHECK_TRUE(!plan.applied, "no decoupler: there is nothing to assign");
     CHECK_TRUE(plan.changes.empty(), "and nothing moved");
-    CHECK_TRUE(labelsOf(bs) == std::vector<int>({3, 1}), "the build is left exactly as it was");
+    CHECK_TRUE(labelsMatch(bs, std::vector<int>({3, 1}), "labels"), "the build is left exactly as it was");
     CHECK_TRUE(has_note(plan, "refuse:") && has_note(plan, "no decoupler"), "and it says why");
     /* The kind is what a one-line banner says with (#1027): this shape is a one-stage rocket,
        not a broken one, so the generic "can't" would be the wrong sentence. */
@@ -2221,7 +2235,7 @@ static void test_auto_stager_refuses_a_cut_that_would_drop_everything() {
     CHECK_TRUE(!plan.applied, "a decoupler whose side is every part cannot be labelled");
     CHECK_TRUE(has_note(plan, "whole ship"), "named as the reason");
     CHECK_TRUE(has_note(plan, "'d_root'"), "and named by part");
-    CHECK_TRUE(labelsOf(bs) == std::vector<int>({1, 1, 1}), "untouched");
+    CHECK_TRUE(labelsMatch(bs, std::vector<int>({1, 1, 1}), "labels"), "untouched");
     /* The default kind: the banner's generic line is the honest answer for a shape a short
        sentence cannot describe (#1027). */
     CHECK_TRUE(plan.refusal == StagingPlan::Refusal::Other,
@@ -2248,7 +2262,7 @@ static void test_auto_stager_keeps_two_engines_relative_to_each_other() {
     CHECK_TRUE(!plan.applied, "the build lights mid_eng first; the stack would light it last");
     CHECK_TRUE(has_note(plan, "refuse:") && has_note(plan, "'mid_eng'") && has_note(plan, "'low_eng'"),
                "and the refusal names both engines");
-    CHECK_TRUE(labelsOf(bs) == std::vector<int>({5, 5, 5, 3, 5, 5, 1}), "untouched");
+    CHECK_TRUE(labelsMatch(bs, std::vector<int>({5, 5, 5, 3, 5, 5, 1}), "labels"), "untouched");
     CHECK_TRUE(bs.parts[midEng].stage > bs.parts[loEng].stage,
                "authored: mid_eng first, low_eng later -- the stack says the opposite");
 
@@ -2261,7 +2275,7 @@ static void test_auto_stager_keeps_two_engines_relative_to_each_other() {
     addPart(ok, cat.engine(10, 0.5, 1000.0), "bo_eng", d2, 4);
     StagingPlan good = autoStage(ok);
     CHECK_TRUE(good.applied, "authored in the order the stack implies: the plan agrees");
-    CHECK_TRUE(labelsOf(ok) == std::vector<int>({1, 1, 2, 2, 2}), "one cut: the floor and the cut");
+    CHECK_TRUE(labelsMatch(ok, std::vector<int>({1, 1, 2, 2, 2}), "labels"), "one cut: the floor and the cut");
     CHECK_TRUE(good.changes.size() == 3, "only the parts the cut takes moved");
     std::vector<std::string> w;
     validateStaging(ok, w);
@@ -2271,7 +2285,10 @@ static void test_auto_stager_keeps_two_engines_relative_to_each_other() {
        placed part gets, and refusing on it would refuse every stack out of the VAB -- so the
        plan may pull them apart, and says so (first test above). The reversal here is what it
        refuses. */
-    CHECK_TRUE(good.notes.empty(), "an accepted renumber with no behaviour to warn about says nothing");
+    CHECK_TRUE(good.notes.size() == 1 && has_note(good, "left on the label their stage carries"),
+               "and the one thing it says is that it left the un-numbered core engine on its "
+               "stage: lighting it at the pad would sit on the booster engine the author DID "
+               "number, so the plan declines and keeps the plan (#1033)");
 }
 
 static void test_auto_stager_says_what_a_chute_on_the_floor_needs() {
@@ -2286,7 +2303,7 @@ static void test_auto_stager_says_what_a_chute_on_the_floor_needs() {
 
     StagingPlan plan = autoStage(bs);
     CHECK_TRUE(plan.applied, "a chute does not stop the build numbering");
-    CHECK_TRUE(labelsOf(bs) == std::vector<int>({1, 1, 2, 2, 2}),
+    CHECK_TRUE(labelsMatch(bs, std::vector<int>({1, 1, 2, 2, 2}), "labels"),
                "the chute rides the hull it stays on, at the floor");
     CHECK_TRUE(has_note(plan, "chute") && has_note(plan, "past the ladder"),
                "and the plan says what a floor chute costs: one press past the ladder");
@@ -2314,7 +2331,7 @@ static void test_auto_stager_keeps_a_launch_lit_engine_at_the_pad() {
     CHECK_TRUE(plan.applied, "a launch-lit engine no longer stops the plan (#1020)");
     /* One cut, so hi = 2 and the counter starts there. Both engines the build lit from the pad
        end up on that label: the plan moved their numbers and kept what they MEAN. */
-    CHECK_TRUE(labelsOf(bs) == std::vector<int>({1, 2, 2, 2, 2}),
+    CHECK_TRUE(labelsMatch(bs, std::vector<int>({1, 2, 2, 2, 2}), "labels"),
                "the pad-lit engines land on hi and the tanks follow their cut");
     CHECK_TRUE(bs.parts[coreEng].stage == 2, "the core still lights at launch");
     CHECK_TRUE(has_note(plan, "kept lit at the pad"),
@@ -2335,7 +2352,7 @@ static void test_auto_stager_keeps_a_launch_lit_engine_at_the_pad() {
     StagingPlan open = autoStage(bare);
     CHECK_TRUE(open.applied, "an un-numbered stack numbers");
     CHECK_TRUE(bare.parts[boEng].stage == 2, "the booster engine ends on launch (hi = 2)");
-    CHECK_TRUE(labelsOf(bare) == std::vector<int>({1, 1, 2, 2, 2}), "floor and cut");
+    CHECK_TRUE(labelsMatch(bare, std::vector<int>({1, 2, 2, 2, 2}), "labels"), "floor and cut");
     CHECK_TRUE(!has_note(open, "kept lit at the pad"),
                "and a build that numbered nothing has no ignition to keep, so no such note");
 }
@@ -2400,7 +2417,7 @@ static void test_auto_stager_orders_cuts_by_the_authored_label_not_depth() {
     CHECK_TRUE(plan.applied, "a numbered stack whose tree disagrees still numbers (#1020)");
     CHECK_TRUE(bs.parts[dHigh].stage == 3 && bs.parts[dLow].stage == 2,
                "the shallower cut fires first because the author put it higher, not last");
-    CHECK_TRUE(labelsOf(bs) == std::vector<int>({1, 3, 3, 1, 2, 2}),
+    CHECK_TRUE(labelsMatch(bs, std::vector<int>({1, 3, 3, 1, 2, 2}), "labels"),
                "and the strut between them is what nothing separates: the floor");
     std::vector<std::string> w;
     validateStaging(bs, w);
@@ -2427,7 +2444,7 @@ static void test_auto_stager_never_puts_a_cut_above_the_cut_that_contains_it() {
     CHECK_TRUE(plan.applied, "an authored inversion is repaired, not refused");
     CHECK_TRUE(bs.parts[dInner].stage > bs.parts[dOuter].stage,
                "the inner cut separates first, whatever the numbers said");
-    CHECK_TRUE(labelsOf(bs) == std::vector<int>({1, 2, 2, 3, 3, 3}),
+    CHECK_TRUE(labelsMatch(bs, std::vector<int>({1, 2, 2, 3, 3, 3}), "labels"),
                "the outer cut drops to a press below the inner one");
     CHECK_TRUE(has_note(plan, "ordered above a cut they contain"),
                "and the plan says it bent an authored number instead of hiding it");
@@ -2454,7 +2471,7 @@ static void test_auto_stager_clamps_an_outer_cut_against_its_neighbours() {
 
     StagingPlan plan = autoStage(bs);
     CHECK_TRUE(plan.applied, "the stack numbers -- with one authored number bent");
-    CHECK_TRUE(labelsOf(bs) == std::vector<int>({1, 2, 2, 3, 3, 4, 4}),
+    CHECK_TRUE(labelsMatch(bs, std::vector<int>({1, 2, 2, 3, 3, 4, 4}), "labels"),
                "the sibling takes the top rung, the inner cut the next, the outer cut the last");
     CHECK_TRUE(bs.parts[dSib].stage == 4, "the sibling was never the problem and keeps its press");
     CHECK_TRUE(has_note(plan, "1 cut(s) ordered above a cut they contain"),
@@ -2501,7 +2518,7 @@ static void test_auto_stager_orders_cuts_by_the_fuel_chain_when_asked() {
     build(plain);
     StagingPlan off = autoStage(plain);
     CHECK_TRUE(off.applied, "an un-numbered stack numbers either way");
-    CHECK_TRUE(labelsOf(plain) == std::vector<int>({1, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3}),
+    CHECK_TRUE(labelsMatch(plain, std::vector<int>({1, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3}), "labels"),
                "off: the ring's three cuts share one press, and the core's cut sits below");
     CHECK_TRUE(!has_note(off, "ranked by the fuel chain"), "off says nothing about the chain");
     std::vector<std::string> wOff;
@@ -2512,8 +2529,9 @@ static void test_auto_stager_orders_cuts_by_the_fuel_chain_when_asked() {
     const int dCore = build(bs);
     StagingPlan on = autoStage(bs, true);
     CHECK_TRUE(on.applied, "the chain's answer is a plan too");
-    CHECK_TRUE(labelsOf(bs) == std::vector<int>({1, 2, 2, 2, 5, 5, 5, 4, 4, 4, 3, 3, 3}),
-               "three hops, three presses, outboard first, and every part of a stage rides it");
+    CHECK_TRUE(labelsMatch(bs, std::vector<int>({1, 2, 2, 5, 5, 5, 5, 4, 4, 5, 3, 3, 5}), "labels"),
+               "three hops, three presses, outboard first, and each stage's tank rides its cut "
+               "(every engine stands under nothing, so all four light from the pad, #1033)");
     CHECK_TRUE(bs.parts[dCore].stage == 2,
                "the core ranks 0 -- it burns its own fuel -- so it stays a press below");
     CHECK_TRUE(has_note(on, "3 cut(s) ranked by the fuel chain"),
@@ -2537,7 +2555,9 @@ static void test_auto_stager_fuel_link_switch_is_inert_without_links() {
     (void)tank;
     StagingPlan ask = autoStage(bs, true);
     CHECK_TRUE(ask.applied, "the switch does not make a stack unnumberable");
-    CHECK_TRUE(labelsOf(bs) == std::vector<int>({1, 1, 2, 2, 2}), "and moves no label");
+    CHECK_TRUE(labelsMatch(bs, std::vector<int>({1, 2, 2, 2, 2}), "labels"),
+               "and moves no label that the chain owns -- only the un-numbered engine rides the "
+               "pad label, which the switch has no part in (#1033)");
     CHECK_TRUE(!has_note(ask, "ranked by the fuel chain"), "nor claims the chain ordered anything");
 }
 
@@ -2566,15 +2586,16 @@ static void test_auto_stager_ranks_only_the_boosters_the_links_cover() {
     BuildShip plain;
     build(plain, false);
     autoStage(plain);
-    CHECK_TRUE(labelsOf(plain) == std::vector<int>({1, 2, 2, 2, 3, 3, 3, 3, 3, 3}),
+    CHECK_TRUE(labelsMatch(plain, std::vector<int>({1, 2, 2, 3, 3, 3, 3, 3, 3, 3}), "labels"),
                "no links: both boosters share one press");
 
     BuildShip bs;
     build(bs, true);
     StagingPlan on = autoStage(bs, true);
     CHECK_TRUE(on.applied, "a chain over one booster is still a plan");
-    CHECK_TRUE(labelsOf(bs) == std::vector<int>({1, 2, 2, 2, 4, 4, 4, 3, 3, 3}),
-               "only the linked booster moves up; the unlinked one and the core stay put");
+    CHECK_TRUE(labelsMatch(bs, std::vector<int>({1, 2, 2, 4, 4, 4, 4, 3, 3, 4}), "labels"),
+               "only the linked booster's cut moves up; the unlinked one and the core stay put "
+               "(the three engines have nothing under them, so they light from the pad)");
     CHECK_TRUE(has_note(on, "1 cut(s) ranked by the fuel chain"), "one opinion, counted");
     std::vector<std::string> w;
     validateStaging(bs, w);
@@ -2604,7 +2625,7 @@ static void test_auto_stager_ignores_a_chain_that_hands_fuel_no_further_inboard(
     addLink(bs, "core_tank", "b_tank");
     StagingPlan ask = autoStage(bs, true);
     CHECK_TRUE(ask.applied, "an outward chain is still a stack");
-    CHECK_TRUE(labelsOf(bs) == std::vector<int>({1, 2, 2, 2, 3, 3, 3, 3, 3, 3}),
+    CHECK_TRUE(labelsMatch(bs, std::vector<int>({1, 2, 2, 3, 3, 3, 3, 3, 3, 3}), "labels"),
                "and the ring shares one press, exactly as it does without links");
     CHECK_TRUE(!has_note(ask, "ranked by the fuel chain"), "the chain offered no opinion");
 }
@@ -2643,7 +2664,7 @@ static void test_auto_stager_keeps_typed_cut_numbers_ahead_of_the_fuel_chain() {
     build(off);
     autoStage(off);
     const std::vector<int> offLabels = labelsOf(off);
-    CHECK_TRUE(offLabels == std::vector<int>({1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5}),
+    CHECK_TRUE(offLabels == std::vector<int>({1, 2, 2, 5, 3, 3, 5, 4, 4, 5, 5, 5, 5}),
                "the typed order is the ladder: c off first, the core's cut last");
 
     BuildShip bs;
@@ -2678,18 +2699,19 @@ static void test_auto_stager_from_scratch_drops_numbers_it_cannot_honor() {
     StagingPlan keep = autoStage(bs);
     CHECK_TRUE(!keep.applied, "as numbered, the tree and the ignition order cannot both hold");
     CHECK_TRUE(has_note(keep, "lights before"), "and the plan names the pair it would re-sequence");
-    CHECK_TRUE(labelsOf(bs) == std::vector<int>({1, 3, 2, 1, 2}), "a refusal touches nothing");
+    CHECK_TRUE(labelsMatch(bs, std::vector<int>({1, 3, 2, 1, 2}), "labels"), "a refusal touches nothing");
 
     BuildShip fresh;
     build(fresh);
     StagingPlan scratch = autoStage(fresh, false, true);
     CHECK_TRUE(scratch.applied, "asked to start over, it numbers the stack");
-    CHECK_TRUE(labelsOf(fresh) == std::vector<int>({1, 1, 2, 2, 2}),
-               "the floor engine goes back to the floor, which is all the tree can do with it");
+    CHECK_TRUE(labelsMatch(fresh, std::vector<int>({1, 2, 2, 2, 2}), "labels"),
+               "the tree cannot light it on press 3, but it can light it at the pad, and an "
+               "un-numbered engine under nothing is exactly what the free rule asks for (#1033)");
     CHECK_TRUE(has_note(scratch, "staged from scratch"), "and the log says nothing was protected");
     bool engineReverted = false;
     for(const StagingChange &c : scratch.changes) {
-        if(c.id == "engine_1" && c.from == 3 && c.to == 1) { engineReverted = true; }
+        if(c.id == "engine_1" && c.from == 3 && c.to == 2) { engineReverted = true; }
     }
     CHECK_TRUE(engineReverted, "the change record still carries the REAL replaced number, so Undo works");
     std::vector<std::string> w;
@@ -2703,7 +2725,7 @@ static void test_auto_stager_from_scratch_drops_numbers_it_cannot_honor() {
     std::vector<std::string> un;
     CHECK_TRUE(undoStagingEdit(fresh, stack, un) == scratch.changes.size(),
                "one Undo takes the whole plan back");
-    CHECK_TRUE(labelsOf(fresh) == std::vector<int>({1, 3, 2, 1, 2}),
+    CHECK_TRUE(labelsMatch(fresh, std::vector<int>({1, 3, 2, 1, 2}), "labels"),
                "and the numbers the mode ignored are the ones that come back");
 }
 
@@ -2738,14 +2760,14 @@ static void test_auto_stager_from_scratch_replaces_a_hand_numbered_ladder() {
     BuildShip keep;
     build(keep);
     autoStage(keep);
-    CHECK_TRUE(labelsOf(keep) == std::vector<int>({1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5}),
+    CHECK_TRUE(labelsMatch(keep, std::vector<int>({1, 2, 2, 5, 3, 3, 5, 4, 4, 5, 5, 5, 5}), "labels"),
                "unread, the authored ring keeps its three presses");
 
     BuildShip bs;
     build(bs);
     StagingPlan scratch = autoStage(bs, false, true);
     CHECK_TRUE(scratch.applied, "asked to start over, it numbers the ring from the tree");
-    CHECK_TRUE(labelsOf(bs) == std::vector<int>({1, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3}),
+    CHECK_TRUE(labelsMatch(bs, std::vector<int>({1, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3}), "labels"),
                "one press for the ring -- depth cannot tell three chained boosters apart");
     CHECK_TRUE(!has_note(scratch, "ranked by the fuel chain"), "the chain was not asked");
 
@@ -2753,7 +2775,7 @@ static void test_auto_stager_from_scratch_replaces_a_hand_numbered_ladder() {
     build(both);
     StagingPlan bothPlan = autoStage(both, true, true);
     CHECK_TRUE(bothPlan.applied, "and both switches together number it too");
-    CHECK_TRUE(labelsOf(both) == std::vector<int>({1, 2, 2, 2, 5, 5, 5, 4, 4, 4, 3, 3, 3}),
+    CHECK_TRUE(labelsMatch(both, std::vector<int>({1, 2, 2, 5, 5, 5, 5, 4, 4, 5, 3, 3, 5}), "labels"),
                "from scratch lets the chain order a ring the author had ordered the other way");
     CHECK_TRUE(has_note(bothPlan, "3 cut(s) ranked by the fuel chain"), "and says the chain did it");
     std::vector<std::string> w;
@@ -2794,6 +2816,100 @@ static void test_auto_stager_clamps_a_fuel_rank_above_a_cut_it_contains() {
     CHECK_TRUE(w.empty(), "and a ladder with no dead press in it");
 }
 
+/* #1033: the tree says nothing about when a NUMBERED engine was meant to start, but it does know
+   when an engine stops having anything under it. An engine the player left un-numbered with no cut
+   below it burns from the pad; one with a cut below it waits for that press. Measured over
+   res/ships, that reproduces the number the author typed on 52 of the 53 engines. */
+static void test_auto_stager_lights_an_unnumbered_engine_as_soon_as_it_is_free() {
+    Catalog cat;
+    /* A core tank with one engine dangling off it and a two-rung stage below. The hanging engine
+       carries the default label, so the tree alone leaves it on the floor -- lit only once the
+       ladder has run out -- while nothing is ever under it. */
+    BuildShip open;
+    const int tank = addPart(open, cat.tank(50, 25, 25), "core_tank", -1, 1);
+    const int hangEng = addPart(open, cat.engine(10, 0.5, 1000.0), "hang_eng", tank, 1);
+    const int dA = addPart(open, cat.decoupler(5), "dec_a", tank, 1);
+    const int tankA = addPart(open, cat.tank(50, 25, 25), "tank_a", dA, 1);
+    addPart(open, cat.decoupler(5), "dec_b", tankA, 1);
+    (void)tank; (void)dA; (void)tankA;
+    StagingPlan lift = autoStage(open);
+    CHECK_TRUE(lift.applied, "an un-numbered stack numbers");
+    CHECK_TRUE(labelsMatch(open, std::vector<int>({1, 3, 2, 2, 3}), "labels"),
+               "the hanging engine rides the pad label, not the label of the stage it dangles from");
+    CHECK_TRUE(open.parts[hangEng].stage == 3, "which is the press it is free from");
+    CHECK_TRUE(has_note(lift, "lit as soon as"), "and the plan says it lit an engine early");
+    std::vector<std::string> w;
+    validateStaging(open, w);
+    CHECK_TRUE(w.empty(), "and moving an engine off the floor leaves the checker quiet");
+
+    /* The other half of the rule: an engine standing ON a cut is not free until that cut fires,
+       so it stays where its stage puts it. Without the "cuts strictly below" part of the rule this
+       engine would join the pad label one press too early. */
+    BuildShip stand;
+    const int t2 = addPart(stand, cat.tank(50, 25, 25), "core_tank", -1, 1);
+    const int upEng = addPart(stand, cat.engine(10, 0.5, 1000.0), "up_eng", t2, 1);
+    const int d2 = addPart(stand, cat.decoupler(5), "d_low", upEng, 1);
+    addPart(stand, cat.tank(50, 25, 25), "low_tank", d2, 1);
+    (void)t2; (void)d2;
+    StagingPlan held = autoStage(stand);
+    CHECK_TRUE(held.applied, "the same shape with the engine above the cut numbers");
+    CHECK_TRUE(labelsMatch(stand, std::vector<int>({1, 1, 2, 2}), "labels"),
+               "and that engine keeps the floor label -- it is standing on the cut, so it is not "
+               "free until the press that fires it");
+    CHECK_TRUE(!has_note(held, "lit as soon as"), "and there was nothing to lift, so nothing said");
+}
+
+/* The precedence the rule needs: an un-numbered engine must not be freed ACROSS an engine the
+   player did number, because the plan would then light them the other way round. Declining one
+   engine does not decline the plan -- the ladder still numbers, the engine stays on its stage's
+   label, and the note says so (#1033). */
+static void test_auto_stager_does_not_free_an_engine_across_one_the_player_numbered() {
+    Catalog cat;
+    BuildShip bs;
+    const int tank = addPart(bs, cat.tank(50, 25, 25), "core_tank", -1, 1);
+    const int coreEng = addPart(bs, cat.engine(10, 0.5, 1000.0), "core_eng", tank, 1);
+    const int dA = addPart(bs, cat.decoupler(5), "dec_a", tank, 2);
+    const int tankA = addPart(bs, cat.tank(50, 25, 25), "tank_a", dA, 2);
+    const int boEng = addPart(bs, cat.engine(10, 0.5, 1000.0), "bo_eng", tankA, 2);
+    const int dB = addPart(bs, cat.decoupler(5), "dec_b", tankA, 3);
+    addPart(bs, cat.tank(50, 25, 25), "tank_b", dB, 3);
+    (void)tank; (void)dA; (void)tankA;
+
+    StagingPlan plan = autoStage(bs);
+    CHECK_TRUE(plan.applied, "a ship with one clashing engine is still a ship");
+    CHECK_TRUE(bs.parts[coreEng].stage == 1,
+               "the un-numbered core engine stays on its stage label: lighting it at the pad would "
+               "start it before bo_eng, which the player numbered after nothing");
+    CHECK_TRUE(bs.parts[boEng].stage == 2, "and the numbered engine keeps its own press");
+    CHECK_TRUE(has_note(plan, "left on the label their stage carries"),
+               "and the plan says it declined, and why");
+    std::vector<std::string> w;
+    validateStaging(bs, w);
+    CHECK_TRUE(w.empty(), "the ladder it wrote is a legal one");
+}
+
+/* The floor keeps one part wherever the plan got the idea of moving it, so the free rule answers
+   to the same limit as the pad-lit pin: on a build whose only label-1 part is an engine, that
+   engine stays, or the lowest label the build carries would be a cut (#1010 rule 2). */
+static void test_auto_stager_leaves_the_last_part_on_the_floor() {
+    Catalog cat;
+    BuildShip bs;
+    const int lone = addPart(bs, cat.engine(10, 0.5, 1000.0), "lone_eng", -1, 1);
+    const int d = addPart(bs, cat.decoupler(5), "d_x", -1, 1);
+    addPart(bs, cat.tank(50, 25, 25), "t_x", d, 1);
+    (void)d;
+    StagingPlan plan = autoStage(bs);
+    CHECK_TRUE(plan.applied, "the two islands still number");
+    CHECK_TRUE(labelsMatch(bs, std::vector<int>({1, 2, 2}), "labels"),
+               "and the lone engine stays on the floor label it is the only carrier of");
+    CHECK_TRUE(bs.parts[lone].stage == 1, "the engine, not the cut, is what label 1 answers to");
+    CHECK_TRUE(has_note(plan, "left on the label their stage carries"),
+               "counted with the engine the numbered-pair rule declined");
+    std::vector<std::string> w;
+    validateStaging(bs, w);
+    CHECK_TRUE(w.empty(), "and the checker agrees there is no cut on the lowest label");
+}
+
 /* The one protection "Stage from scratch" removes that no label vector shows on its own: the
    pad-lit pin. Same shape as the test below -- a root engine and one under a cut, both authored at
    the top label so the build lights them at the pad. The default path lifts the safe one; the mode
@@ -2815,7 +2931,7 @@ static void test_auto_stager_from_scratch_declines_the_pad_lit_pin() {
     BuildShip keep;
     build(keep);
     StagingPlan pin = autoStage(keep);
-    CHECK_TRUE(pin.applied && labelsOf(keep) == std::vector<int>({1, 2, 2, 3, 3, 3}),
+    CHECK_TRUE(pin.applied && labelsMatch(keep, std::vector<int>({1, 2, 2, 3, 3, 3}), "labels"),
                "read as intent, the engine under the cut is lifted to the pad label");
     CHECK_TRUE(has_note(pin, "kept lit at the pad"), "and the plan says it did that");
 
@@ -2823,8 +2939,9 @@ static void test_auto_stager_from_scratch_declines_the_pad_lit_pin() {
     build(bs);
     StagingPlan scratch = autoStage(bs, false, true);
     CHECK_TRUE(scratch.applied, "the mode numbers the same stack");
-    CHECK_TRUE(labelsOf(bs) == std::vector<int>({1, 2, 2, 2, 3, 3}),
-               "and leaves that engine where its own stage puts it -- it lights at 2, not at the pad");
+    CHECK_TRUE(labelsMatch(bs, std::vector<int>({1, 2, 2, 3, 3, 3}), "labels"),
+               "and the ladder lands in the same place here only because the free engine rule "
+               "reaches the same label for itself (#1033), not because the pin ran");
     CHECK_TRUE(!has_note(scratch, "kept lit at the pad"), "no pin, so no note about one");
     std::vector<std::string> w;
     validateStaging(bs, w);
@@ -2852,7 +2969,7 @@ static void test_auto_stager_gives_up_the_pad_pin_rather_than_empty_the_floor() 
     CHECK_TRUE(plan.applied, "the plan runs -- it just declines one pin");
     CHECK_TRUE(bs.parts[topEng].stage == 1, "the root engine stays on the floor, where it is needed");
     CHECK_TRUE(bs.parts[safeEng].stage == 3, "and the engine that cannot hurt the floor is pinned");
-    CHECK_TRUE(labelsOf(bs) == std::vector<int>({1, 2, 2, 3, 3, 3}),
+    CHECK_TRUE(labelsMatch(bs, std::vector<int>({1, 2, 2, 3, 3, 3}), "labels"),
                "one floor part, two rungs, and the pinning that was safe about it");
     CHECK_TRUE(has_note(plan, "stay on label 1"), "it says which engines it declined to lift");
     CHECK_TRUE(has_note(plan, "a press past the ladder"),
@@ -2878,7 +2995,7 @@ static void test_auto_stager_reads_the_graph_not_the_part_order() {
 
     StagingPlan plan = autoStage(bs);
     CHECK_TRUE(plan.applied, "a part listed before its parent still numbers");
-    CHECK_TRUE(labelsOf(bs) == std::vector<int>({2, 1, 2}),
+    CHECK_TRUE(labelsMatch(bs, std::vector<int>({2, 1, 2}), "labels"),
                "the graph decides who hangs off whom, not the list order");
     CHECK_TRUE(plan.changes.size() == 2 && plan.changes[0].id == "bo_eng",
                "and the change list names what it moved");
@@ -2895,7 +3012,7 @@ static void test_auto_stager_refuses_a_parent_chain_that_loops() {
     StagingPlan plan = autoStage(bs);
     CHECK_TRUE(!plan.applied, "a chain that loops cannot be walked, so it cannot be numbered");
     CHECK_TRUE(has_note(plan, "parent chain that loops"), "and it says so in those words");
-    CHECK_TRUE(labelsOf(bs) == std::vector<int>({1, 1}), "untouched");
+    CHECK_TRUE(labelsMatch(bs, std::vector<int>({1, 1}), "labels"), "untouched");
 
     std::vector<std::string> w;
     validateStaging(bs, w);
@@ -2922,7 +3039,7 @@ static void test_auto_stager_refuses_a_forest_whose_every_root_is_a_cut() {
     StagingPlan plan = autoStage(bs);
     CHECK_TRUE(!plan.applied, "nothing would hold the floor, so the plan steps back");
     CHECK_TRUE(has_note(plan, "every root"), "and names the shape");
-    CHECK_TRUE(labelsOf(bs) == std::vector<int>({1, 1, 1, 1, 1, 1}), "untouched");
+    CHECK_TRUE(labelsMatch(bs, std::vector<int>({1, 1, 1, 1, 1, 1}), "labels"), "untouched");
 
     /* The labels it would have produced, set by hand, are what the checker then objects to:
        proof the refusal is about a fault a player would fly, not a tidy rule. */
@@ -3053,7 +3170,7 @@ static void test_undo_reaches_a_part_by_id_not_by_the_index_it_had() {
     /* {4,1,2,3,2}: pod, d_core, up_tank, d_boost, bo_eng. Distinct values on purpose -- if
        the undo aimed by index it would land d_boost's or bo_eng's label on the wrong hull
        member and this row would read differently. */
-    CHECK_TRUE(labelsOf(bs) == std::vector<int>({4, 1, 2, 3, 2}),
+    CHECK_TRUE(labelsMatch(bs, std::vector<int>({4, 1, 2, 3, 2}), "labels"),
                "each survivor keeps the label the authored build gave it");
     CHECK_TRUE(has_line(notes, "chute_1") && has_line(notes, "no longer in the build"),
                "and the player is told which part the undo could not reach");
@@ -3112,7 +3229,7 @@ static void test_a_run_of_same_part_retyping_is_one_undo() {
     addPart(bs, cat.tank(50, 25, 25), "tank_1", 0, 1);
     std::vector<std::string> notes;
     CHECK_TRUE(undoStagingEdit(bs, stack, notes) == 1, "one undo puts the one part back");
-    CHECK_TRUE(labelsOf(bs) == std::vector<int>({1, 1}), "back to the authored floor");
+    CHECK_TRUE(labelsMatch(bs, std::vector<int>({1, 1}), "labels"), "back to the authored floor");
     CHECK_TRUE(stack.empty(), "and the stack is empty again");
 }
 
@@ -3141,9 +3258,9 @@ static void test_two_retys_on_different_parts_are_two_steps() {
     addPart(bs, cat.tank(50, 25, 25), "tank_1", 0, 3);
     std::vector<std::string> notes;
     CHECK_TRUE(undoStagingEdit(bs, stack, notes) == 1, "one undo, one part");
-    CHECK_TRUE(labelsOf(bs) == std::vector<int>({2, 2}), "the later retype goes back, the earlier stays");
+    CHECK_TRUE(labelsMatch(bs, std::vector<int>({2, 2}), "labels"), "the later retype goes back, the earlier stays");
     CHECK_TRUE(undoStagingEdit(bs, stack, notes) == 1, "and the earlier one is still there to undo");
-    CHECK_TRUE(labelsOf(bs) == std::vector<int>({1, 2}), "in order");
+    CHECK_TRUE(labelsMatch(bs, std::vector<int>({1, 2}), "labels"), "in order");
 }
 
 /* A plan that happens to move ONE part is still a bulk edit. Keying the merge on how many
@@ -3212,7 +3329,7 @@ static void test_a_rung_step_moves_every_part_carrying_the_label() {
     StagingUndo stack;
     const size_t moved = rungStepStage(bs, stack, 1, +1);
     CHECK_TRUE(moved == 3, "three parts carry rung 1");
-    CHECK_TRUE(labelsOf(bs) == std::vector<int>({2, 2, 2, 3, 3}),
+    CHECK_TRUE(labelsMatch(bs, std::vector<int>({2, 2, 2, 3, 3}), "labels"),
                "the whole rung moves, the parts that answer nothing included, and the rung "
                "above is untouched");
     CHECK_TRUE(stack.size() == 1, "the rung is ONE undo step, not one per part");
@@ -3222,7 +3339,7 @@ static void test_a_rung_step_moves_every_part_carrying_the_label() {
 
     std::vector<std::string> notes;
     CHECK_TRUE(undoStagingEdit(bs, stack, notes) == 3, "one Ctrl+Z takes the whole rung back");
-    CHECK_TRUE(labelsOf(bs) == std::vector<int>({1, 1, 1, 3, 3}), "back where they stood");
+    CHECK_TRUE(labelsMatch(bs, std::vector<int>({1, 1, 1, 3, 3}), "labels"), "back where they stood");
 
     /* A rung that no part carries is not a rung the ladder drew, so this is the caller's
        mistake rather than the player's -- but it must still be a no-op, not an empty entry
@@ -3248,9 +3365,9 @@ static void test_the_ladder_steps_clamp_at_the_ends_of_the_save_range() {
        stack by hand has to work when autoStage refuses to read it, so a part has to be able
        to travel past the labels that exist today. */
     CHECK_TRUE(rungStepStage(bs, stack, kMaxStage, +1) == 0, "the top rung cannot step up");
-    CHECK_TRUE(labelsOf(bs) == std::vector<int>({1, 1, kMaxStage}), "the build is untouched");
+    CHECK_TRUE(labelsMatch(bs, std::vector<int>({1, 1, kMaxStage}), "labels"), "the build is untouched");
     CHECK_TRUE(rungStepStage(bs, stack, kMaxStage, -1) == 1, "but it can come back down");
-    CHECK_TRUE(labelsOf(bs) == std::vector<int>({1, 1, kMaxStage - 1}), "one label at a time");
+    CHECK_TRUE(labelsMatch(bs, std::vector<int>({1, 1, kMaxStage - 1}), "labels"), "one label at a time");
 }
 
 static void test_a_part_step_is_one_typed_decision() {
@@ -3268,7 +3385,7 @@ static void test_a_part_step_is_one_typed_decision() {
     }
     CHECK_TRUE(stack.size() == 1, "three clicks on one part are one undo step");
     CHECK_TRUE(stack[0].typed, "and it is the typed kind, so it chains, not accumulates");
-    CHECK_TRUE(labelsOf(bs) == std::vector<int>({1, 1, 4}), "and the part is three labels up");
+    CHECK_TRUE(labelsMatch(bs, std::vector<int>({1, 1, 4}), "labels"), "and the part is three labels up");
 
     /* Out-of-range index: the window builds these from its own cached groups, so a bad index
        means the cache and the build disagree (#527's tripwire) -- but the step must not be
@@ -3283,7 +3400,7 @@ static void test_a_part_step_is_one_typed_decision() {
     CHECK_TRUE(stack.size() == 2, "as their own step");
     std::vector<std::string> notes;
     CHECK_TRUE(undoStagingEdit(bs, stack, notes) == 2, "one undo takes the rung back");
-    CHECK_TRUE(labelsOf(bs) == std::vector<int>({1, 1, 4}),
+    CHECK_TRUE(labelsMatch(bs, std::vector<int>({1, 1, 4}), "labels"),
                "and leaves the nudged engine where the player left it");
 }
 
@@ -3340,6 +3457,9 @@ int main() {
     test_auto_stager_from_scratch_replaces_a_hand_numbered_ladder();
     test_auto_stager_from_scratch_declines_the_pad_lit_pin();
     test_auto_stager_clamps_a_fuel_rank_above_a_cut_it_contains();
+    test_auto_stager_lights_an_unnumbered_engine_as_soon_as_it_is_free();
+    test_auto_stager_does_not_free_an_engine_across_one_the_player_numbered();
+    test_auto_stager_leaves_the_last_part_on_the_floor();
     test_auto_stager_gives_up_the_pad_pin_rather_than_empty_the_floor();
     test_auto_stager_says_what_a_chute_on_the_floor_needs();
     test_auto_stager_reads_the_graph_not_the_part_order();

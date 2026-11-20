@@ -1736,6 +1736,56 @@ StagingPlan autoStage(BuildShip &ship, bool fuelStaging, bool fromScratch) {
     for(int e : pin) { label[e] = hi; }
     const int litAtPad = (int)pin.size();
 
+    /* An engine the player left un-numbered lights as soon as the stack leaves it nothing under
+       it (#1033). The tree knows THIS much about ignition, even though it knows nothing about when
+       a numbered engine was meant to start: an engine with no cut under it is free from the pad,
+       and one with cuts under it stops having anything under it at the LAST of them, so its label
+       is (smallest label among the cuts strictly below it) - 1 -- minus one because a label L
+       lights when the counter steps ONTO L, which happens at the press that fires the cut labelled
+       L+1 (game.cpp steps the counter after the press, vehicle.cpp:3128). Measured over res/ships
+       that reproduces the number the author typed on 52 of the 53 engines, in 25 of the 26 hulls
+       with engines; the one miss (heavy_one's engine3, authored 3 of 4) is a deliberate late start,
+       which is exactly why this runs only where the player said nothing about the engine.
+
+       Two things it must not do, both the pin's rules: it cannot take the LAST part off the floor
+       (#1010 rule 2 -- the lowest label the build carries would then be a cut), and it cannot
+       re-sequence a pair the player DID number, which would refuse a ship over an inference the
+       player never made. Such an engine stays on the label its stage carries and is counted. */
+    std::vector<int> minBelow(n, 0);   // smallest plan label among the cuts strictly below; 0 = none
+    for(size_t k = order.size(); k-- > 0; ) {
+        const int p = order[k];
+        int best = 0;
+        for(int c : children[(size_t)p]) {
+            const int cand = isDec[c] ? decLabel[c] : minBelow[(size_t)c];
+            if(cand <= 0) { continue; }
+            if(best <= 0 || cand < best) { best = cand; }
+        }
+        minBelow[(size_t)p] = best;
+    }
+    int freeLit = 0, freeDeclined = 0;
+    int floorLeft = floorParts - floorPins;   // the pin just moved some of them
+    for(int e : engs) {
+        /* authored[e] != 1 is intent. A part that is also a cut or a chute carries a label the
+           plan owns for the other reason, same as the pin skips them. */
+        if(authored[e] != 1 || isDec[e] || isChute[e]) { continue; }
+        const int freeLabel = minBelow[(size_t)e] > 0 ? minBelow[(size_t)e] - 1 : hi;
+        assert(freeLabel >= 1);   // a cut never carries label 1, so "one below the last cut" cannot fall off
+        if(freeLabel == label[e]) { continue; }
+        if(label[e] == 1) {
+            if(floorLeft <= 1) { freeDeclined++; continue; }
+            floorLeft--;
+        }
+        bool clashes = false;
+        for(int o : engs) {
+            if(authored[o] <= 1) { continue; }
+            /* The build puts this numbered engine FIRST -- so the plan has to keep it first. */
+            if(label[o] <= freeLabel) { clashes = true; break; }
+        }
+        if(clashes) { freeDeclined++; continue; }
+        label[e] = freeLabel;
+        freeLit++;
+    }
+
     /* Engines, both remaining questions in one pass over the pairs. (a) A pair the build
        ORDERS -- distinct labels -- is authored intent, and if the tree implies the opposite
        then the two readings of the build disagree and the plan steps back. (b) A pair the
@@ -1808,6 +1858,20 @@ StagingPlan autoStage(BuildShip &ship, bool fuelStaging, bool fromScratch) {
                       "-- '%s' at label %d; the tree says when a part falls, never when an "
                       "engine starts (#1020)", litAtPad, ship.parts[(size_t)pin[0]].id.c_str(),
                       hi);
+        plan.notes.push_back(buf);
+    }
+    if(freeLit > 0) {
+        std::snprintf(buf, sizeof buf,
+                      "note: %d engine(s) lit as soon as the stack leaves them free (#1033) -- "
+                      "an engine with no cut under it burns from the pad, and one with cuts under "
+                      "it starts at the press that drops the last of them", freeLit);
+        plan.notes.push_back(buf);
+    }
+    if(freeDeclined > 0) {
+        std::snprintf(buf, sizeof buf,
+                      "note: %d engine(s) left on the label their stage carries -- lighting them "
+                      "when they free would re-sequence a pair the ship's own numbers order, or "
+                      "take the last part off the floor (#1033)", freeDeclined);
         plan.notes.push_back(buf);
     }
     if(floorPinsGivenUp > 0) {
