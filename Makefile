@@ -234,6 +234,15 @@ else
 	ln -sfn $(BINDIR)/$(TARGET) osp
 endif
 
+# The name people type when they mean "build the game". Without a rule here, make
+# resolves `osp` to the SYMLINK at the repo root, finds no prerequisites, and answers
+# "Nothing to be done for 'osp'" -- a clean-looking no-op that leaves the binary behind
+# its own timestamp, so every e2e run after it weighs the previous build (measured
+# 2026_11_20: a fixed src tree, `make osp` green, ./osp unchanged, case still red).
+# Going through `all` keeps the symlink rule, including its prof/Windows exceptions.
+.PHONY: osp
+osp: all
+
 # Compilation database for editors / clang-tidy (compile_commands.json).
 # `bear -- make` on a WARM tree writes an EMPTY database -- bear only records
 # the compiles that actually happen, and an up-to-date tree compiles nothing.
