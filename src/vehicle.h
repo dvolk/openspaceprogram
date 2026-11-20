@@ -2194,18 +2194,43 @@ public:
         double axisCosA = 1.0, axisCosB = 1.0;
         double faceGap = 0.0;   // m between the two presented faces (kDockCapture)
         double relSpeed = 0.0;  // m/s at the two ports (kDockMaxV)
+        /* The corrections the Docking window plots, signed so that POSITIVE MEANS THE
+           NAMED KEY: turn D, turn W, push L, push I. They are resolved on the axes the
+           KEYS move -- attitudeRef()'s frame, which is where applyRotationForce reads the
+           stick -- so a port mounted sideways rotates the dial rather than lying about the
+           keys. (#1026. A parallel-error readout was tried first and dropped: it compares
+           axis to axis, but the gate compares each axis to the line joining the ports, and
+           with a lateral offset those disagree by atan(offset/range) per side -- up to 30
+           deg at the capture distance, which is the whole cone.)
+           `turn*` is the rotation that brings my presented face onto the joining line,
+           which is what shutAxis tests for MY face, so the dial draws it as a circle at
+           acos(kDockAlign) on its degree scale. `push*` compared against
+           range*sin(kDockAlign) is the same gate for THEIR face, drawn as the cone circle
+           on the metre scale: two circles, both halves of shutAxis.
+           `push*` is how far my port centre sits off the OTHER port's bore line -- the
+           approach path. It has to be their line: the joining line runs through both ports,
+           so by construction it has no offset to report.
+           `drift*` is which way that offset is moving, m/s. A pair that reads centred and
+           is sliding 0.5 m/s sideways was never centred.
+           All three are ill-conditioned when the faces are far from facing each other (a
+           two-component projection has no unique meaning there), which the dial handles by
+           pinning to its rim rather than pretending. */
+        double turnYaw = 0.0, turnPitch = 0.0;      // rad
+        double pushRight = 0.0, pushUp = 0.0;       // m
+        double driftRight = 0.0, driftUp = 0.0;     // m/s
+        double portRange = 0.0;                     // m between the port centres
         /* The three gates as THIS pass judged them, so nobody downstream re-compares the
            figures against a threshold of their own. Each boundary is a different operator
            -- an axis fails BELOW the cosine, a gap AT or ABOVE it, a speed strictly ABOVE
            -- and a window that guessed would disagree with the gate right at the edge,
            which is the only kind of drift this struct exists to prevent. dockSituation()
-           and the Docking window's lamps both read these. */
+           and the Docking window's v_rel colour both read these. */
         bool shutAxis = false, shutGap = false, shutSpeed = false;
         /* In the ARMED port's frame, +Z out of its presented face. NOT gates: they say
-           which way to nudge once a gate is shut, which is the part a pilot cannot
-           infer from three yes/no lamps. */
+           which way to nudge once a gate is shut, which is the part a yes/no verdict
+           cannot tell a pilot. The sideways half of that nudge is push* above; `along`
+           and `closing` have no drawing yet, which is a hole -- see #1026. */
         double along = 0.0;     // m: the other face along this port's axis
-        double lateral = 0.0;   // m: how far off that axis the other face sits
         double closing = 0.0;   // m/s: + = the two ports coming together
     };
     DockRead dockRead(const Part *pa, const Vehicle *b, const Part *pb) const;

@@ -5680,8 +5680,25 @@ Vehicle::DockRead Vehicle::dockRead(const Part *pa, const Vehicle *b,
     const glm::dvec3 axisA = paR[2] * sA;
     const glm::dvec3 axisB = pbR[2] * sB;
     r.measurable = true;
+    r.portRange = d;
     r.axisCosA = glm::dot(axisA, n);
     r.axisCosB = glm::dot(axisB, -n);
+    /* The KEYS' frame, not the port's: applyRotationForce reads the stick in
+       attitudeRef()'s axes (roll +nose, pitch -right, yaw -up of that part), so these are
+       the axes a hand on the keyboard actually moves, and a port mounted sideways rotates
+       the dial instead of lying about the keys. A hull with no attitude reference has no
+       keys either, so the armed port's own basis is the least wrong answer. */
+    const Part *ref = attitudeRef();
+    const glm::dmat3 keyR = ref != nullptr ? partRot(ref) : paR;
+    /* The rotation that takes my bore onto the joining line, in those axes -- so a
+       positive number is a positive demand, which is what puts the marker beside the key
+       that centres it. atan2 against the along-line cosine rather than asin on the
+       transverse components, so a pair nowhere near facing each other still answers with
+       an angle rather than a NaN. */
+    const glm::dvec3 crossA = glm::cross(axisA, n);
+    const double lineCos = glm::dot(axisA, n);
+    r.turnYaw = std::atan2(glm::dot(crossA, -keyR[1]), lineCos);   // yaw-right (D)
+    r.turnPitch = std::atan2(glm::dot(crossA, -keyR[0]), lineCos); // pitch-up (W)
     const glm::dvec3 faceA = paP + axisA * (pa->def->height * 0.5);
     const glm::dvec3 faceB = pbP + axisB * (pb->def->height * 0.5);
     r.faceGap = glm::length(faceA - faceB);
@@ -5692,12 +5709,29 @@ Vehicle::DockRead Vehicle::dockRead(const Part *pa, const Vehicle *b,
        and past it is a real failure mode, because the capture gate has no lower bound. */
     const glm::dvec3 gap = faceB - faceA;
     r.along = glm::dot(gap, axisA);
-    r.lateral = glm::length(gap - axisA * r.along);
     r.closing = glm::dot(rv, n);
+    /* The approach path is THEIR bore line: the joining line runs through both ports, so
+       by construction it has no offset to report. My port centre's perpendicular distance
+       off that line, negated into the way I must travel and resolved on the keys that push
+       there (RcsRight along keyR[0], RcsUp along keyR[1], per rcsWorldDir). That distance
+       IS range * sin(their axis error), so comparing it against range * sin(kDockAlign)
+       is exactly their half of shutAxis -- which is why the dial can draw that circle in
+       metres and it cannot disagree with the gate. */
+    const glm::dvec3 rel = paP - pbP;
+    const glm::dvec3 off = rel - axisB * glm::dot(rel, axisB);
+    r.pushRight = -glm::dot(off, keyR[0]);
+    r.pushUp = -glm::dot(off, keyR[1]);
+    /* Which way that offset is moving. Their port's velocity covers their translation;
+       the path's own rotation as THEIR hull turns is not here, and neither is mine, which
+       is what the twist= figure in the [dockwin] line reports. */
+    const glm::dvec3 lat = rv - axisB * glm::dot(rv, axisB);
+    r.driftRight = -glm::dot(lat, keyR[0]);
+    r.driftUp = -glm::dot(lat, keyR[1]);
     /* The three gates, compared ONCE, each with the operator it actually uses: an axis
        fails below the cosine, a gap at or above the limit, a speed strictly above it. The
-       Docking window lights its lamps from these instead of comparing the figures again,
-       so a row cannot disagree with the verdict that refused the mate. */
+       Docking window takes its colours from these fields (shutSpeed for v_rel) or from the
+       same cosines the gate compared (the dial's two circles), never from a boundary the
+       UI invents, so the drawing cannot disagree with the verdict that refused the mate. */
     r.shutAxis = r.axisCosA < kDockAlign || r.axisCosB < kDockAlign;
     r.shutGap = r.faceGap >= kDockCapture;
     r.shutSpeed = r.relSpeed > kDockMaxV;

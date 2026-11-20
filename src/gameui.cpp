@@ -5803,49 +5803,155 @@ static_assert(sizeof kDockWhy / sizeof kDockWhy[0] == (size_t)Vehicle::DockSit::
    100x while the hulls were flying hardest. */
 static constexpr double kDockReadSec = 0.5;
 
-/* A segment meter for a gate: cells that fill as the figure approaches the limit that
-   judges it. Hand-drawn rather than a progress bar because a progress bar reads "more
-   is better", and here the last cell IS the shut gate. So the numbers carry the truth
-   and the meter is only the glance.
-   `shut` comes in from DockRead rather than being derived from now/limit: the three gates
-   compare with three different operators (an axis fails BELOW the cosine, a gap at or
-   ABOVE the capture distance, a speed strictly ABOVE the limit), and a meter that
-   re-derived the boundary would be a second gate that can disagree with the first at its
-   edge. */
-static void dockMeter(double now, double limit, bool shut) {
-    const int cells = 12;
-    int lit = 0;
-    if(limit > 0.0 && now > 0.0) {
-        const double frac = now / limit;
-        lit = frac >= 1.0 ? cells : (int)(frac * cells + 0.5);
-    }
-    const float cw = 8.0f;
-    const float ch = ImGui::GetTextLineHeight() * 0.7f;
-    ImGui::Dummy(ImVec2((float)cells * cw, ch));
-    const ImVec2 p = ImGui::GetItemRectMin();
-    ImDrawList *dl = ImGui::GetWindowDrawList();
-    const ImU32 on = shut ? IM_COL32(226, 96, 84, 255) : IM_COL32(120, 200, 150, 255);
-    const ImU32 off = IM_COL32(96, 96, 104, 220);
-    for(int i = 0; i < cells; i++) {
-        const float x0 = p.x + (float)i * cw;
-        dl->AddRectFilled(ImVec2(x0 + 1.0f, p.y + ch * 0.15f),
-                          ImVec2(x0 + cw - 2.0f, p.y + ch * 0.95f),
-                          i < lit ? on : off);
-    }
+/* The dial is the whole panel, so it takes half the content width or half the room below
+   the cursor, whichever is smaller -- a square the window can actually hold. Dragging the
+   Docking window bigger therefore scales the ring, both markers, the arrow and their
+   strokes together, which is why this window declares an initial_size rather than fitting
+   itself (uiwins.cpp): the size the player sees is the size of the instrument. The two
+   text lines held back are the closing-speed readout that goes under the circle. The floor
+   is in font units because GetFontSize() carries the DPI scale, as in
+   ui::Options::fixed_width (ui.h); below it the dial would be a smudge, so it overflows
+   the window instead. */
+static float dockDialRadius() {
+    const ImGuiStyle &st = ImGui::GetStyle();
+    const float availW = ImGui::GetWindowWidth() - 2.0f * st.WindowPadding.x;
+    const float lineH = ImGui::GetTextLineHeight() + st.ItemSpacing.y;
+    const float roomH = ImGui::GetWindowHeight() - ImGui::GetCursorPosY()
+                      - 2.0f * st.WindowPadding.y - 2.0f * lineH;
+    return std::max(1.5f * ImGui::GetFontSize(), std::min(0.5f * availW, 0.5f * roomH));
 }
 
-/* One gate row: what is measured, the live figure, and the limit the gate judges it
-   against -- the limit is printed, not hidden behind the bar, because a player cannot
-   dock to a number nobody tells them (the ticket's whole complaint). The font is
-   monospace (res/fonts), so printf padding lines the columns up for free. */
-static void dockGateRow(const char *name, double now, double limit, bool shut,
-                        const char *unit, int prec) {
-    char a[24], b[24];
-    snprintf(a, sizeof a, "%.*f", prec, now);
-    snprintf(b, sizeof b, "%.*f", prec, limit);
-    uiText("%-10s %8s %-4s / %8s", name, a, unit, b);
-    ImGui::SameLine();
-    dockMeter(now, limit, shut);
+/* One ring, one quantity's scale, mapped onto 0..1 of the dial radius. Log, because the
+   approach spans decades and a linear axis cannot show the last metre and the first
+   kilometre at once (the wiki's DST/CVEL bars run 10^-1..10^3 for the same reason).
+   `floorV` is what sits at the centre of the dial; `decades` is what the outer ring is
+   above it. At or below the floor the marker is simply at the centre. */
+static float dialU(double value, double floorV, double decades) {
+    if(value <= floorV) { return 0.0f; }
+    return (float)std::min(1.0, std::log10(value / floorV) / decades);
+}
+
+/* The approach dial (#1026), on the Docking MFD's layout: one radial grid, four rings,
+   and three different units read off the same radii. The rings sit at 1/4, 1/2, 3/4 and
+   1 of the radius, so a quantity's marks land where the wiki says they do:
+     offset   0.1 m at the centre, then 1, 10, 100, 1000 m    (marks 0,1,2,3 = 10^x m)
+     drift    0.01 m/s at the centre, then 0.1, 1, 10, 100    (marks -1,0,1,2)
+     turn     0 deg at the centre, then 5, 10, 15, 20 deg     (marks on rings 2 and 4)
+   Two of those are the halves of the SAME gate, drawn as two circles, which is the one
+   place this dial is better than the MFD it copies. axisCosA's circle sits on the degree
+   scale at acos(kDockAlign) -- ring 3 while that constant is 15 deg -- and axisCosB's is
+   the cone the wiki draws as a circle that "as you approach the dock, gets smaller",
+   because its radius is range*sin(15 deg) METRES on the offset scale: the width the bore
+   line still tolerates at the current range. SIN, not TAN: the + marker's radius is the
+   perpendicular distance from this port's centre to their bore line, which is
+   range*sin(their axis error), so the circle and the gate agree exactly (TAN would be
+   0.55 deg looser).
+   So: x inside ring 3 AND + inside the cone circle, together, is shutAxis being open --
+   each marker is coloured by its own half, so a green pair means the axis gate is open.
+     x     = the rotation to command: radius = the angle in degrees, side = the key that
+             closes it (right half = D, top half = W).
+     +     = the translation to command: radius = how far off their bore line (the approach
+             path) this port is, in metres; side = the RCS key (right = RcsRight).
+     ->    = the tangential velocity, from the CENTRE, length on the drift scale. The wiki's
+             cue is the whole maneuver: "move slowly so the arrow moves toward the yellow
+             cross until the cross is centered".
+   Past the outer ring a marker pins there: beyond it the components stop carrying a
+   direction worth plotting (Vehicle::DockRead), and a marker parked on the rim is the
+   honest answer for the bearing. The turn figure in particular only reads as a true angle
+   while the target is roughly ahead -- the two components are resolved on the axes the keys
+   move, so at 90 deg off-axis they no longer add in quadrature.
+   A drawing, not a widget: ImDrawList is hit-tested by nothing, so --ui-click cannot reach
+   it, which is why the same figures go into the [dockwin] line. */
+static void dockApproachDial(const Vehicle::DockRead &r) {
+    const float R = dockDialRadius();
+    // The dial is the whole panel now, so it sits in the middle of the window.
+    ImGui::SetCursorPosX((ImGui::GetWindowWidth() - 2.0f * R) * 0.5f);
+    ImGui::Dummy(ImVec2(2.0f * R, 2.0f * R));
+    const ImVec2 o = ImGui::GetItemRectMin();
+    const ImVec2 c(o.x + R, o.y + R);
+    ImDrawList *dl = ImGui::GetWindowDrawList();
+    /* Hairlines, like the rest of the hand-drawn UI (1.0f-1.5f elsewhere in this file). A
+       stroke scaled from the radius is a rope at the window's default size, and a rope
+       hides the markers it is supposed to frame. */
+    const float lw = 1.0f;
+    const double kc = Vehicle::kDockAlign;
+    const double coneRad = acosUnit(kc);
+    /* The turn scale's rim is 20 deg, which is the MFD's mark on its outer ring. Our cone
+       is 15 deg TODAY, so the gate circle below happens to sit on ring 3; if kDockAlign
+       moves the circle moves with it and the ruler does not. */
+    const double topRad = 20.0 / 180.0 * std::numbers::pi;
+    const ImU32 openCol = IM_COL32(96, 196, 118, 235);
+    const ImU32 shutCol = IM_COL32(240, 126, 116, 235);
+    const ImU32 pathCol = IM_COL32(250, 232, 150, 255);   // the + : the MFD's yellow cross
+    const ImU32 faintCol = IM_COL32(150, 150, 158, 230);
+    for(int i = 1; i <= 4; i++) {
+        dl->AddCircle(c, R * 0.25f * (float)i, IM_COL32(110, 110, 120, 160), 64, lw * 0.5f);
+    }
+    /* The centre cross runs out to the rim, as the MFD draws it. It is the zero that every
+       marker is measured against, so a short tick in the middle is no use next to markers
+       this large. */
+    dl->AddLine(ImVec2(c.x - R, c.y), ImVec2(c.x + R, c.y), faintCol, lw);
+    dl->AddLine(ImVec2(c.x, c.y - R), ImVec2(c.x, c.y + R), faintCol, lw);
+    const bool openA = acosUnit(r.axisCosA) <= coneRad;
+    const bool openB = acosUnit(r.axisCosB) <= coneRad;
+    // Their half of the gate, on the metre scale, floating at range*sin(15 deg).
+    const double coneM = r.portRange * std::sin(coneRad);
+    const float coneRU = std::min(1.0f, dialU(coneM, 0.1, 4.0));
+    dl->AddCircle(c, R * coneRU, openB ? openCol : shutCol, 64, lw);
+    // My half of the gate, on the degree scale.
+    const float gateU = std::min(1.0f, (float)(coneRad / topRad));
+    dl->AddCircle(c, R * gateU, openA ? openCol : shutCol, 64, lw);
+    /* Marker positions in key space: +x screen = the yaw-right / RcsRight side, -y = the
+       pitch-up / RcsUp side (screen y runs down, the keys run up). */
+    const double offM = std::hypot(r.pushRight, r.pushUp);
+    const double driftM = std::hypot(r.driftRight, r.driftUp);
+    const double turnMag = std::hypot(r.turnYaw, r.turnPitch);
+    const float pu = dialU(offM, 0.1, 4.0);
+    const double ox = offM > 0.0 ? r.pushRight / offM : 0.0;
+    const double oy = offM > 0.0 ? -r.pushUp / offM : 0.0;
+    const ImVec2 pp(c.x + pu * ox * R, c.y + pu * oy * R);
+    const float tu = std::min(1.0f, (float)(turnMag / topRad));
+    const double tx = turnMag > 0.0 ? r.turnYaw / turnMag : 0.0;
+    const double ty = turnMag > 0.0 ? -r.turnPitch / turnMag : 0.0;
+    const ImVec2 tp(c.x + tu * tx * R, c.y + tu * ty * R);
+    /* The velocity arrow starts at the centre, as the MFD draws it, and its length is the
+       speed on the 0.01..100 m/s scale. A centred + with an arrow is not centred.
+       Drawn LAST: its tail lands on the centre crosshair and its head on top of the + in
+       the common closing case, so underneath either marker it just disappears. */
+    const float au = dialU(driftM, 0.01, 4.0);
+    const double vx = driftM > 0.0 ? r.driftRight / driftM : 0.0;
+    const double vy = driftM > 0.0 ? -r.driftUp / driftM : 0.0;
+    const ImVec2 ap(c.x + au * vx * R, c.y + au * vy * R);
+    /* Fat on purpose, as the MFD draws them: each marker spans three quarters of the dial
+       radius, which is what makes it read as a marker rather than as another ring. A
+       marker pinned out at the rim therefore pokes past it, which the MFD does too. */
+    /* Marker sizes, as the MFD draws them: the x spans three quarters of the dial radius
+       and the + a whole radius. The bigger they are, the more the fraction of a metre a
+       marker moved is still visible at a glance. A marker pinned at the rim pokes past it,
+       which the MFD does too.
+       Each marker keeps ONE colour -- the x light red, the + light yellow -- and the gate
+       state lives in the two circles rather than in the markers. Two signals in one stroke
+       is how a readout gets misread, and it is also what the MFD's screenshot looks like;
+       whether its x ever goes white inside the cone is worth knowing, but is not what is
+       drawn here. */
+    const float ths = R * 0.375f;
+    const float phs = R * 0.5f;
+    dl->AddLine(ImVec2(tp.x - ths, tp.y - ths), ImVec2(tp.x + ths, tp.y + ths), shutCol, lw);
+    dl->AddLine(ImVec2(tp.x - ths, tp.y + ths), ImVec2(tp.x + ths, tp.y - ths), shutCol, lw);
+    dl->AddLine(ImVec2(pp.x - phs, pp.y), ImVec2(pp.x + phs, pp.y), pathCol, lw);
+    dl->AddLine(ImVec2(pp.x, pp.y - phs), ImVec2(pp.x, pp.y + phs), pathCol, lw);
+    if(au > 0.0f) {
+        const ImU32 velCol = IM_COL32(232, 196, 92, 255);
+        dl->AddLine(c, ap, velCol, lw);
+        /* A two-stroke head; AddTriangle would fill, and a filled head reads as a place. */
+        const float hl = R * 0.07f;
+        dl->AddLine(ap, ImVec2(ap.x - (float)(vx * hl) + (float)(vy * hl * 0.6),
+                               ap.y - (float)(vy * hl) - (float)(vx * hl * 0.6)),
+                    velCol, lw);
+        dl->AddLine(ap, ImVec2(ap.x - (float)(vx * hl) - (float)(vy * hl * 0.6),
+                               ap.y - (float)(vy * hl) + (float)(vx * hl * 0.6)),
+                    velCol, lw);
+    }
 }
 
 void drawUIDock(Game &g) {
@@ -5853,66 +5959,75 @@ void drawUIDock(Game &g) {
         Vehicle *a = g.ship;
         if(a == nullptr) { uiTextDisabled("(no hull selected)"); return; }
         /* One answer, from the same pass the dock gate runs (Vehicle::dockSituation),
-           so a row that reads open here is a row the gate read open. */
+           so what the dial draws is what the gate measured, not a second opinion. */
         const Vehicle::DockSit s = a->dockSituation();
         constexpr double rad2deg = 180.0 / std::numbers::pi;
-        /* Named, because the active hull changes under the window (the ship list, a
-           dock, a split) and a panel of bare numbers would then be describing a hull
-           nobody selected. */
-        uiText("%s -> %s", a->displayName().c_str(),
-               s.b ? s.b->displayName().c_str() : "(no target)");
-        if(s.arm != nullptr && s.target != nullptr) {
-            uiTextDisabled("%s -> %s", s.arm->def->name.c_str(),
-                           s.target->def->name.c_str());
-        }
-        /* The verdict first: the question a pilot asks this window is "will it mate",
-           and everything below is detail about why not. */
-        if(s.why == Vehicle::DockSit::Mass) {
-            uiText("%s", s.massWhy.c_str());
-        } else {
-            uiText("%s", kDockWhy[(size_t)s.why].sentence);
-        }
+        /* The figures as THIS player's keys would fix them. The dial's contract is POSITIVE
+           MEANS THE KEY BESIDE THE MARKER, and tick.cpp puts flip_yaw / flip_pitch between
+           the key and the stick, so the inversion lands HERE -- not inside
+           Vehicle::dockRead, which stays setting-free geometry. Ignoring it would tell an
+           inverted pilot to press the one key that makes it worse. The translation flips,
+           when they land, multiply the push and drift figures the same way. */
+        Vehicle::DockRead d = s.read;
+        if(g.flip_yaw) { d.turnYaw = -d.turnYaw; }
+        if(g.flip_pitch) { d.turnPitch = -d.turnPitch; }
+        /* The spin that matters here is the RELATIVE one: a pair where both hulls turn
+           0.12 deg/s the same way is not a problem, while a pair where only one turns is
+           un-dockable. Subtracting the two angular velocities is legal because
+           dockSituation() refuses OtherFrame before it measures anything, so a measurable
+           pair shares a frame -- and it is why this is NOT the flight panel's "Angular
+           rate" row, which is spin relative to the hull's OWN frame and jumps when F6
+           parks a hull and wakes it again (#1041). The dial must not report a twist nobody
+           commanded. */
+        const double twistDeg = s.b != nullptr
+            ? glm::degrees(glm::length(a->hullAngVel() - s.b->hullAngVel())) : 0.0;
+        /* The dial is the window. The gate meters and nudge figures the first pass built
+           are gone: a pilot flies the ring, the x and the plus, and a column of numbers
+           they have to translate into keys is a second instrument doing the same job
+           slower. Text stays ONLY for the states that have no port-to-port line to plot --
+           no arm, no target, a hull on the rails, a pair in different frames -- where an
+           empty panel would read as a broken panel rather than as a refused dock (#1026's
+           promise). */
         if(!s.read.measurable) {
-            /* No line between the two port centres, so there is nothing to measure.
-               Said rather than left as six rows of zeros. */
-            if(s.why != Vehicle::DockSit::NoArm && s.why != Vehicle::DockSit::NoTarget) {
-                uiTextDisabled("(no port-to-port measurement yet)");
+            /* Named, because the active hull changes under the window (the ship list, a
+               dock, a split) and a panel of bare words would otherwise be describing a
+               hull nobody selected. */
+            uiText("%s -> %s", a->displayName().c_str(),
+                   s.b ? s.b->displayName().c_str() : "(no target)");
+            if(s.arm != nullptr && s.target != nullptr) {
+                uiTextDisabled("%s -> %s", s.arm->def->name.c_str(),
+                               s.target->def->name.c_str());
+            }
+            if(s.why == Vehicle::DockSit::Mass) {
+                uiText("%s", s.massWhy.c_str());
+            } else {
+                uiText("%s", kDockWhy[(size_t)s.why].sentence);
+            }
+            if(s.why == Vehicle::DockSit::MyRails || s.why == Vehicle::DockSit::TargetRails) {
+                /* The rails are a warp switch, so name the switch. The number here is the
+                   threshold the game tests (time_accel >= kRailsWarp, game.h) rather than a
+                   rung on the decimal ladder, which steps 1, 10, 100: 10x flies, 100x does
+                   not, and 11x is where the rule changes. */
+                uiTextDisabled("(rails warp is %dx or more: nothing docks there)", kRailsWarp);
             }
         } else {
-            ImGui::Spacing();
-            /* The three gates, in the order the gate asks them, with the limits it uses
-               read out of the constants rather than retyped -- so the window cannot
-               outlive a change to them.
-               An axis figure can never exceed 90 deg, because a port presents whichever
-               of its two faces is nearer the other hull: a port pointed exactly away
-               from its target reads 0.0 deg and mates. That is the gate's law, not a
-               rounding, and it surprises nobody until they see it. */
-            const double alignDeg = acosUnit(Vehicle::kDockAlign) * rad2deg;
-            dockGateRow("axis mine", acosUnit(s.read.axisCosA) * rad2deg, alignDeg,
-                        s.read.shutAxis, "deg", 1);
-            dockGateRow("axis tgt", acosUnit(s.read.axisCosB) * rad2deg, alignDeg,
-                        s.read.shutAxis, "deg", 1);
-            dockGateRow("face gap", s.read.faceGap, Vehicle::kDockCapture,
-                        s.read.shutGap, "m", 2);
-            dockGateRow("port speed", s.read.relSpeed, Vehicle::kDockMaxV,
-                        s.read.shutSpeed, "m/s", 2);
-            ImGui::Spacing();
-            /* And the part no gate has: which way to nudge. A gate that only says "no"
-               leaves the pilot guessing whether they are short, high, or already past
-               the socket -- faceGap is unsigned, so it cannot say. "sideways" rather
-               than "off axis" because the two rows above are the AXIS in degrees, and
-               two rows with the same word and different units get read as one number. */
-            uiText("%-10s %8.2f m", "along", s.read.along);
-            uiText("%-10s %8.2f m", "sideways", s.read.lateral);
-            uiText("%-10s %8.2f m/s", "closing", s.read.closing);
-            uiTextDisabled("(along + = short of the socket; closing + = coming together)");
-        }
-        if(s.why == Vehicle::DockSit::MyRails || s.why == Vehicle::DockSit::TargetRails) {
-            /* The rails are a warp switch, so name the switch. The number here is the
-               threshold the game tests (time_accel >= kRailsWarp, game.h) rather than a
-               rung on the decimal ladder, which steps 1, 10, 100: 10x flies, 100x does
-               not, and 11x is where the rule changes. */
-            uiTextDisabled("(rails warp is %dx or more: nothing docks there)", kRailsWarp);
+            dockApproachDial(d);
+            /* The one figure the dial cannot draw: how fast the ports are moving past each
+               other, which is what the speed gate judges against Vehicle::kDockMaxV. The
+               colour comes from the same shut flag the gate set, so a red number cannot
+               disagree with a dock that happened -- or did not. */
+            char spd[32];
+            snprintf(spd, sizeof spd, "v_rel %.2f m/s", s.read.relSpeed);
+            // Clear of the dial: the + marker's lower arm reaches the rim and below it.
+            ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 10.0f);
+            ImGui::SetCursorPosX((ImGui::GetWindowWidth() - ImGui::CalcTextSize(spd).x) * 0.5f);
+            if(s.read.shutSpeed) {
+                ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(226, 96, 84, 255));
+            }
+            uiText("%s", spd);
+            if(s.read.shutSpeed) {
+                ImGui::PopStyleColor();
+            }
         }
         /* One live line at the 2 Hz instrument cadence: this panel is a gauge, so a
            per-frame print is a log nobody can read, and a printed line is the only way a
@@ -5921,25 +6036,31 @@ void drawUIDock(Game &g) {
            so a test comparing it to a drawn row has nothing to strip.
            at=/size= are the anchor pin: a window that loses its `.below` anchor silently
            centres itself, and the only sign is a panel sitting in the middle of the view.
-           The width gate is not decoration -- an anchored content-fit window has no
-           measured rect on the frame it appears (ui::Manager waits for the anchor, and
-           this window has no initial_size of its own), so that first frame reports a
-           position that is not where the panel lands and a size of 16x36. */
+           The width gate is not decoration: before a window's anchor resolves, the rect it
+           reports is a placeholder, so a line printed that frame would pin a position
+           nobody ever saw. */
         if(ImGui::GetTime() >= g.hud.dock_next_read
            && ImGui::GetWindowSize().x > 64.0f) {
             g.hud.dock_next_read = ImGui::GetTime() + kDockReadSec;
             const ImVec2 wp = ImGui::GetWindowPos();
             const ImVec2 wsz = ImGui::GetWindowSize();
             if(s.read.measurable) {
-                printf("[dockwin] a=\"%s\" b=\"%s\" why=%s align=%.1f,%.1f gap=%.2f"
-                       " speed=%.2f lat=%.2f along=%.2f closing=%+.2f"
-                       " at=%.0f,%.0f size=%.0f,%.0f\n",
+                /* turn=/push=/drift= print the FLIPPED figures, because that is what the
+                   dial drew and what the pilot was told to press: a test that pinned the
+                   setting-free numbers would pass on a screen nobody was looking at. */
+                printf("[dockwin] a=\"%s\" b=\"%s\" why=%s align=%.1f,%.1f"
+                       " turn=%+.1f,%+.1f push=%+.2f,%+.2f drift=%+.2f,%+.2f"
+                       " twist=%.2f rng=%.2f gap=%.2f speed=%.2f"
+                       " along=%.2f closing=%+.2f at=%.0f,%.0f size=%.0f,%.0f\n",
                        a->displayName().c_str(),
                        s.b ? s.b->displayName().c_str() : "",
                        kDockWhy[(size_t)s.why].token,
                        acosUnit(s.read.axisCosA) * rad2deg,
                        acosUnit(s.read.axisCosB) * rad2deg,
-                       s.read.faceGap, s.read.relSpeed, s.read.lateral, s.read.along,
+                       d.turnYaw * rad2deg, d.turnPitch * rad2deg,
+                       d.pushRight, d.pushUp, d.driftRight, d.driftUp,
+                       twistDeg,
+                       s.read.portRange, s.read.faceGap, s.read.relSpeed, s.read.along,
                        s.read.closing, wp.x, wp.y, wsz.x, wsz.y);
             } else {
                 printf("[dockwin] a=\"%s\" b=\"%s\" why=%s at=%.0f,%.0f size=%.0f,%.0f\n",

@@ -1202,7 +1202,10 @@ static void test_the_dock_situation_says_why_a_pair_will_not_mate() {
     CHECK_NEAR(s.read.axisCosA, 1.0, 1e-12, "my face points at the other port");
     CHECK_NEAR(s.read.axisCosB, 1.0, 1e-12, "and theirs points back");
     CHECK_NEAR(s.read.faceGap, 0.0, 1e-12, "faces coincide: the capture gate is open");
-    CHECK_NEAR(s.read.lateral, 0.0, 1e-12, "nothing off-axis to nudge");
+    CHECK_NEAR(s.read.turnYaw, 0.0, 1e-12, "my bore is on the line: the dial asks no turn");
+    CHECK_NEAR(s.read.turnPitch, 0.0, 1e-12, "in either key");
+    CHECK_NEAR(s.read.pushRight, 0.0, 1e-12, "and my port sits on their approach line");
+    CHECK_NEAR(s.read.pushUp, 0.0, 1e-12, "in either key");
     CHECK_NEAR(s.read.along, 0.0, 1e-12, "nothing short or past to nudge");
     CHECK_NEAR(s.read.closing, 0.0, 1e-12, "and neither port is moving");
 
@@ -1254,11 +1257,39 @@ static void test_the_dock_situation_says_why_a_pair_will_not_mate() {
     s = A.v->dockSituation();
     CHECK_NEAR(s.read.axisCosB, std::cos(yaw), 1e-12, "their face is 25 deg off the line");
     CHECK_NEAR(s.read.axisCosA, 1.0, 1e-12, "mine still points at it");
-    CHECK_NEAR(s.read.lateral, kPortHz * std::sin(yaw), 1e-12,
-               "and the nudge row says how far off my axis it is");
+    /* Their line has swung, so my port centre now sits off the APPROACH path -- and the
+       shift the dial can ask for is only the part of that which the L/I keys reach. The
+       rest lies along my own nose, where no transverse key goes, which is why the figure
+       carries a cos() rather than the full 2*halfB*sin() perpendicular distance. Mine
+       still points at the port, so the turn markers stay in the centre: the honest advice
+       here is to close and let the cone shrink, not to rotate. Positive pushRight is the
+       RcsRight key, and the port-centre separation is 2*halfB straight down -Z. */
+    CHECK_NEAR(s.read.pushRight, 2.0 * kPortHz * std::sin(yaw) * std::cos(yaw), 1e-12,
+               "off their line, in the key that gets me back on it");
+    CHECK_NEAR(s.read.pushUp, 0.0, 1e-12, "and nothing up or down");
+    CHECK_NEAR(s.read.turnYaw, 0.0, 1e-12, "my bore is still on the line, so no turn asked");
     CHECK_TRUE(s.read.faceGap < Vehicle::kDockCapture,
                "close enough to mate, which is why the axis is the only reason not to");
     CHECK_TRUE(s.why == Vehicle::DockSit::Misaligned, "off-axis: MISALIGNED");
+
+    /* The other half of the dial: MY bore off the line. Yaw A 10 deg about world Y --
+       through its own port centre, so neither port moves -- which leaves the two ports
+       coaxial (push stays zero) while axisA comes off the line by exactly 10 deg. The
+       SIGN is the dial's whole contract: undoing this yaw is a rotation about -keyR[1],
+       which is the axis the yaw-right demand turns about (tick.cpp sends YawRight as +1,
+       applyRotationForce reads it as -axes[1]), so the figure must read +10 deg --
+       positive means press the key beside the marker. Get the sign wrong here and every
+       number on the panel tells the pilot to press the one key that makes it worse. */
+    B.v->placeShip(glm::dvec3(0.0, 0.0, -(2.0 * kPortHz)), glm::dmat3(1.0));
+    const double turn = 10.0 * std::numbers::pi / 180.0;
+    A.v->placeShip(glm::dvec3(0.0),
+                   glm::mat3_cast(glm::angleAxis(turn, glm::dvec3(0.0, 1.0, 0.0))));
+    s = A.v->dockSituation();
+    CHECK_NEAR(s.read.turnYaw, turn, 1e-9, "10 deg off the line, signed for the yaw-right key");
+    CHECK_NEAR(s.read.turnPitch, 0.0, 1e-12, "a yaw error leaves the pitch marker at the centre");
+    CHECK_NEAR(s.read.pushRight, 0.0, 1e-12, "and the ports are still coaxial");
+    CHECK_NEAR(s.read.portRange, 2.0 * kPortHz, 1e-12, "range is port centre to port centre");
+    A.v->placeShip(glm::dvec3(0.0), glm::dmat3(1.0));
 
     /* Cone boundary, from the constant rather than a literal: 14.9 deg fits, 15.1 does
        not. kDockAlign is a cosine, so the test asks in degrees and converts. */

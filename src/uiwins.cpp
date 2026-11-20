@@ -252,25 +252,28 @@ const WinDef kWins[W_Count] = {
         .role = WinRole::Persistent, .inList = true,
     },
     [W_Dock] = {
-        /* The docking panel (#1026): the three gates a mate is actually decided by, and
-           the offsets that say which way to nudge when one of them is shut. Docking in
-           this game is a third-person camera and nothing else, so the player is lining
-           two 20 m hulls up by eye against limits nobody tells them (the ticket).
+        /* The docking panel (#1026): an approach dial. Docking in this game is a
+           third-person camera and nothing else, so the player is lining two 20 m hulls up
+           by eye against limits nobody tells them (the ticket). The ring IS one of those
+           limits drawn -- the axis cone -- and the one figure that has no picture, the
+           speed the ports close at, is printed under it.
            TopRight, under the resource bars: the map owns BottomLeft, the recorder
            BottomCenter and the flight readouts TopLeft, and a docking panel is read in
            glances while the pilot watches the target -- it must not sit over the middle
            of the view.
            A declared size rather than a content fit: the fit is ONE-SHOT (ui.h:264-268),
-           so it sizes the window to the rows that happened to be up the frame it appears.
-           Measured: opened on a hull whose target was still on the rails it fitted to
-           three rows (364x122), and when the target woke the gate rows and the nudge rows
-           arrived below the fold -- the panel the player clicked for, hidden. 451x238 is
-           what the full readout measures in flight (the %-10s %8s %-4s / %8s column plus
-           the 12-cell meter), and the player can still resize it.
-           Closed by default: with no port armed it has one row to say. */
+           so it sizes the window to whatever rows happened to be up the frame it appears.
+           Measured early on: opened while the target was still on the rails it fitted to
+           three text rows (364x122), and when the target woke the rest arrived below the
+           fold -- the panel the player clicked for, hidden. So the size is declared, and
+           dockDialRadius() (gameui.cpp) makes the ring whatever square that leaves: at
+           451x470 the radius is ~200 px, and resizing the window scales the instrument
+           rather than revealing it. 470 also keeps the panel inside a 720-tall screen
+           below its anchor (measured y=144).
+           Closed by default: with no port armed there is nothing to draw. */
         .name = "Docking", .label = "Docking",
         .opts = { .slot = ui::Slot::TopRight, .below = "Resources",
-                  .initial_size = ImVec2(451.0f, 238.0f),
+                  .initial_size = ImVec2(451.0f, 470.0f),
                   .closable = true, .default_open = false },
         .role = WinRole::Persistent, .inList = true,
     },

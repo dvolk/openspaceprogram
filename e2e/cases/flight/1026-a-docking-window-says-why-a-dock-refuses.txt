@@ -11,9 +11,11 @@
 # distance, so this case pins that order from the other side of 1026-b, where a rails
 # state outranks the same geometry.
 # This is the state where a player is doing everything they can see -- closing on a port
-# they line up by eye -- and nothing tells them the answer is rotation. The window prints
-# `why=misaligned` for it, and the unit tests in tests/test_dock.cpp pin the cone boundary
-# itself from the constant.
+# they line up by eye -- and nothing tells them the answer is rotation. The panel is the
+# approach dial for a pair like this, and at this fixture both of its markers sit pinned on
+# the rim; the line it emits at 2 Hz prints `why=misaligned` with the angles behind that,
+# which is what this case reads. The unit tests in tests/test_dock.cpp pin the cone
+# boundary itself from the constant.
 #
 # The refusal is the point, so it is FORBIDden as well: the mate must really not happen.
 # A window that names a gate while the hulls dock anyway is a window lying.
@@ -23,14 +25,16 @@
 # middle of the view, which no widget list shows. The size is the window's declared
 # initial_size rather than whatever the widest line happened to measure, so both this case
 # and 1026-b pin the same rect, and it only moves when someone changes uiwins.cpp or the
-# Resources bar above it on purpose.
+# Resources bar above it on purpose. That rect is also what sizes the approach dial
+# (dockDialRadius, gameui.cpp) -- the ring takes whatever square the window has -- so the
+# pin doubles as "the instrument is the size the panel declares, not a collapsed one".
 NAME docking-window-says-why-a-dock-refuses
-CLAIM The Docking window names the gate that stopped a mate, and the pair it calls refused really does not mate.
+CLAIM The Docking panel reports the gate that stopped a mate, and the pair it calls refused really does not mate.
 KIND invariant
 ARGS --dock-test misaligned --width 1280 --height 720 --timeout 3
 ARGS --ui-click 200,"Windows/Docking"
 EXPECT Dock-test (misaligned)
 EXPECT [dockwin] a="dockprobe" b="dockstation" why=misaligned
-EXPECT at=821,144 size=451,238
+EXPECT at=821,144 size=451,470
 FORBID [dock] t=
 FORBID FAILED
