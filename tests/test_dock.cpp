@@ -75,6 +75,7 @@
 #include <vector>
 
 #include "vehicle.h"   // Vehicle + Part (inline); pulls in Bullet (btcommon.h)
+#include "tfueltable.h"   // the group-table-vs-scan check (#984)
 #include "frame.h"     // Frame: the dock gate will not measure across two of them
 #include "physics.h"   // SetAngVelocity: a spinning hull, a moving port (#1026)
                            // SetVelocity/GetVelocity: the merge keeps m*v (#366)
@@ -102,7 +103,7 @@ static size_t partIndex(Vehicle *v, Part *p) {
    setRoot/attachDown, not here. */
 static Part *mkPart(Ship &s, const char *name, double mass,
                     double hx, double hy, double hz, bool port,
-                    bool decoupler = false) {
+                    bool decoupler = false, double h2 = 0.0) {
     Body *b = new Body;
     // mesh/shader/texture default to null (no GL in a headless test)
     b->btBody = nullptr;                 // a part is not simulated on its own
@@ -117,6 +118,10 @@ static Part *mkPart(Ship &s, const char *name, double mass,
     d.height       = (float)(2.0 * hz);
     d.docking_port = port;
     d.decoupler    = decoupler;
+    /* Part::def is const, so a fixture that wants a real tank has to say so here:
+       Part::isTank() reads capacity, and the dry default leaves every part in this
+       file out of the fuel-group table, checks included (#984). */
+    d.capacity[(int)ResourceType::Hydrogen] = h2;
     d.synthesizeNodes();   // hand-built def: give it the axial stack nodes
                            // attachDown mates (a catalog part gets these from
                            // load_parts_catalog)
@@ -240,7 +245,12 @@ static void test_absorb() {
 
     /* A: tank (root) + port below it, at the world origin. */
     Ship A; A.v = new Vehicle; A.v->name = "A";
-    Part *tankA = mkPart(A, "tankA", 1000.0, 1.0, 1.0, kTankHz, false);
+    /* The names promise tanks, and the table check below needs a member to find:
+       Part::isTank() reads capacity, so a dry fixture leaves the group table
+       legitimately empty on both sides of the merge -- a check that can never fail
+       (#984). 100 kg of hydrogen each, which lands in hull->mass (part.h
+       effectiveMass) and so in the merged total at the end. */
+    Part *tankA = mkPart(A, "tankA", 1000.0, 1.0, 1.0, kTankHz, false, false, 100.0);
     Part *portA = mkPart(A, "portA",   50.0, 1.0, 1.0, kPortHz, true);
     A.v->setRoot(tankA);
     A.v->attachDown(portA);          // portA at local z = -(3.0+0.25)/2 = -1.625
@@ -253,7 +263,7 @@ static void test_absorb() {
        port front face is at its origin + 0.125, so B sits at z = -1.875). */
     Ship B; B.v = new Vehicle; B.v->name = "B";
     Part *portB = mkPart(B, "portB",   50.0, 1.0, 1.0, kPortHz, true);
-    Part *tankB = mkPart(B, "tankB", 1000.0, 1.0, 1.0, kTankHz, false);
+    Part *tankB = mkPart(B, "tankB", 1000.0, 1.0, 1.0, kTankHz, false, false, 100.0);
     B.v->setRoot(portB);
     B.v->attachDown(tankB);          // tankB at local z = -1.625
     B.v->controller = portB;
@@ -287,6 +297,20 @@ static void test_absorb() {
     /* Union of the parts; B is left an empty shell. */
     CHECK_TRUE(A.v->parts.size() == 4, "absorb: survivor holds all four parts");
     CHECK_TRUE(B.v->parts.empty(), "absorb: absorbed ship is an empty shell");
+    CHECK_TRUE(B.v->memberStart_.size() == 1 && B.v->memberOf_.empty()
+               && B.v->drainLayers_.empty(),
+               "and the shell keeps no fuel cache whose indices would name parts it no longer has (#984)");
+
+    /* ...and the fuel cache comes out of the merge whole (#984). A dock renumbers the
+       groups -- both hulls numbered theirs from 0 -- so the survivor rebuilds the table
+       the drain walks. The stale one is A's pre-merge table, which lists only A's tank:
+       the absorbed tank would belong to a group nobody walks, so a merged engine could
+       not drink from it, and nothing else about the merge would notice. */
+    checkFuelTableMatchesScan(A.v, "after the dock");
+    CHECK_TRUE(A.v->memberStart_.size() == 2
+               && A.v->memberStart_[1] - A.v->memberStart_[0] == 2,
+               "and both tanks are on that list: these hand-built ports carry no fuel_barrier, "
+               "so the merged hull is ONE group holding both");
 
     /* Topology: B's root now hangs off A's port. */
     CHECK_TRUE(portB->parent == portA, "absorb: absorbed root hangs off the port");
@@ -326,8 +350,9 @@ static void test_absorb() {
                "absorb: absorbed child re-based into the survivor's S");
 
     /* The merged COM sits between the two tanks' COMs (mass-weighted), and
-       the hull mass is the sum -- a sanity check that rebuildCompound ran. */
-    CHECK_NEAR(A.v->hull->mass, 2100.0, 1e-6, "absorb: hull mass is the union");
+       the hull mass is the sum -- a sanity check that rebuildCompound ran. The sum
+       is effectiveMass (part.h), so it carries the 100 kg each tank holds above. */
+    CHECK_NEAR(A.v->hull->mass, 2300.0, 1e-6, "absorb: hull mass is the union, fuel included");
 
     destroyShip(B.v);   // empty shell (its old compound references, not owns)
     destroyShip(A.v);

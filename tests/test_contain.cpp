@@ -35,6 +35,7 @@
 #include <vector>
 
 #include "vehicle.h"   // Vehicle + Part (inline); pulls in Bullet (btcommon.h)
+#include "tfueltable.h"   // the group-table-vs-scan check (#984)
 #include "tchecks.h"
 
 /* A hand-built part. `defs` is a deque, not a vector: push_back on a vector
@@ -46,7 +47,7 @@ struct Ship {
 
 static Part *mkPart(Ship &s, const char *name, const char *type, double mass,
                     double hx, double hy, double hz, int crewCapacity,
-                    int inventoryCapacity, bool dockingPort) {
+                    int inventoryCapacity, bool dockingPort, double h2 = 0.0) {
     Body *b = new Body;
     b->btBody = nullptr;                 // a part is not simulated on its own
     b->shape  = new btBoxShape(btVector3(hx, hy, hz));
@@ -62,6 +63,7 @@ static Part *mkPart(Ship &s, const char *name, const char *type, double mass,
     d.crew_capacity = crewCapacity;
     d.inventory_capacity = inventoryCapacity;
     d.docking_port  = dockingPort;
+    d.capacity[(int)ResourceType::Hydrogen] = h2;   // Part::def is const, so a fixture sets it here (#984)
     d.synthesizeNodes();   // axial stack nodes (attachDown mates them)
 
     Part *p = new Part;
@@ -253,7 +255,9 @@ int main() {
 
         Ship Q; Q.v = new Vehicle; Q.v->name = "Q";
         Part *qCap  = mkPart(Q, "qCapsule", "capsule", 100.0, 1.0, 1.0, 0.5, 2, 0, false);
-        Part *qTank = mkPart(Q, "qTank", "fuel", 500.0, 1.0, 1.0, 1.0, 0, 0, false);
+        /* Named "fuel" AND carrying some: Part::isTank() reads capacity, and the
+           group-table check below needs a member to find (#984). */
+        Part *qTank = mkPart(Q, "qTank", "fuel", 500.0, 1.0, 1.0, 1.0, 0, 0, false, 100.0);
         Q.v->setRoot(qCap);
         Q.v->attachDown(qTank);
         Q.v->controller = qCap;
@@ -268,6 +272,9 @@ int main() {
         /* dock Q into P: the seat rides with Q's capsule */
         P.v->absorbShip(Q.v, portP);
         delete Q.v;
+        /* The merge renumbered the groups (Q had its own ids from 0), so the survivor's
+           tank table has to describe the MERGED parts (#984). */
+        checkFuelTableMatchesScan(P.v, "after the dock");
         CHECK_TRUE(qCap->owner == P.v, "the capsule re-pointed to P");
         CHECK_TRUE(tSuit->owner == P.v, "the seat's owner re-pointed to P");
         CHECK_TRUE(tSuit->container == qCap, "its capsule still names Q's capsule");
@@ -278,7 +285,17 @@ int main() {
            follow its capsule to the split-off ship */
         Vehicle *nv = P.v->extractSubtreeAsShip(qCap, "Q");
         CHECK_TRUE(nv != nullptr, "the split succeeds");
+        /* The split renumbers BOTH sides, so both tables follow their own parts: the
+           tank that left must be off P's list and on the new hull's (#984). A stale P
+           table would keep the index of a Part that is no longer in P::parts -- the
+           drain would then read a member index past its own part list. */
+        checkFuelTableMatchesScan(P.v, "after the split, the hull that stayed");
         if(nv != nullptr) {
+            checkFuelTableMatchesScan(nv, "after the split, the hull that left");
+            CHECK_TRUE(P.v->memberStart_.back() == 0,
+                       "and nothing is left on P's tank list -- the tank went with its subtree");
+            CHECK_TRUE(nv->memberStart_.back() - nv->memberStart_[0] == 1,
+                       "and the split-off hull lists exactly that one tank");
             CHECK_TRUE(qCap->owner == nv, "the capsule re-pointed to the split-off");
             CHECK_TRUE(tSuit->owner == nv, "the seat's owner followed its capsule");
             CHECK_TRUE(tSuit->container == qCap,

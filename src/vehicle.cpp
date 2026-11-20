@@ -2431,7 +2431,16 @@ void Vehicle::init() {
 }
 
 void Vehicle::finalize() {
-    if(parts.empty()) { return; }
+    if(parts.empty()) {
+        /* An empty hull has an empty fuel cache (#984). The rest of this function reads
+           parts[0], so it does still return early -- but the cache goes through the same
+           builder rather than a hand-written clear, so an empty hull's cache has the exact
+           shape buildFuelGroups() gives one (memberStart_ = {0}, nothing indexed, no layer
+           slots). Left alone, its indices point into a `parts` list that is empty now, and
+           groupSlice() would walk them as if they were members. */
+        buildFuelGroups();
+        return;
+    }
     if(controller == nullptr) { controller = parts[0]; }
     /* totalStages_ = highest stage, minStage_ = lowest; activeStage_ starts at the
        HIGHEST, so stage 1 fires last. Both ends seed from parts[0] and the scan covers
@@ -2506,28 +2515,21 @@ void Vehicle::buildFuelGroups() {
        dock -- not a per-tick cost). */
     drainLayers_.assign((size_t)nGroups, FuelLayers());
     /* The group -> tanks table the drain loops walk (#974), so they touch each tank
-       once instead of every part once per reachable group. Two passes over `parts`
-       with a per-group cursor: counting then placing keeps each group's members in
-       `parts` order, which is the order the old scan summed them in. */
-    memberStart_.assign((size_t)nGroups + 1, 0);
-    for(size_t i = 0; i < parts.size(); i++) {
-        const int g = parts[i]->fuelGroup;
-        if(g >= 0 && parts[i]->isTank()) { memberStart_[(size_t)g + 1]++; }
-    }
-    for(int g = 0; g < nGroups; g++) {
-        memberStart_[(size_t)g + 1] += memberStart_[(size_t)g];
-    }
-    memberIdx_.resize((size_t)memberStart_[(size_t)nGroups]);
-    {
-        std::vector<int> cursor = memberStart_;
-        for(size_t i = 0; i < parts.size(); i++) {
-            const int g = parts[i]->fuelGroup;
-            if(g >= 0 && parts[i]->isTank()) {
-                memberIdx_[(size_t)cursor[(size_t)g]++] = (int)i;
-            }
-        }
-        assert(cursor[(size_t)nGroups] == (int)memberIdx_.size());
-    }
+       once instead of every part once per reachable group. Built by the same CSR helper
+       the staging preview has always used (#984, #534), which is the safety argument
+       rather than a copy of it: both passes go through ONE key closure, so the count and
+       the fill cannot disagree and write past the buffer -- the failure the old hand-rolled
+       version sized for and then checked only afterwards -- and every group id is bounds-
+       checked per part by the helper. Members come out in `parts` order within a group,
+       so the drain sums land bit-for-bit where the old scan left them. The buffer is sized
+       to the part count rather than the tank count: a hull's groups hold a fraction of its
+       parts, and this is one int per part, re-assign()ed per renumbering, not per ask. */
+    buildBuckets(nGroups, (int)parts.size(),
+                 [this](int i) {
+                     const Part *p = parts[(size_t)i];
+                     return (p->isTank() && p->fuelGroup >= 0) ? p->fuelGroup : -1;
+                 },
+                 memberStart_, memberOf_);
 }
 
 const FuelLayers &Vehicle::fuelDrainLayers(Part *engine) const {
@@ -2575,7 +2577,7 @@ Vehicle::FuelDraw Vehicle::consumeResourceMass(enum ResourceType type, double am
        `layerTotals` follows the drain's (only positive, since a share of a negative
        tank is not a thing).
 
-       Since #974 the tanks of a group come from memberStart_/memberIdx_ rather than a
+       Since #974 the tanks of a group come from memberStart_/memberOf_ rather than a
        scan of the hull, so the pass is O(tanks reachable) not O(parts x groups); the
        sums are unchanged because that table lists each group's tanks in `parts` order. */
     static thread_local std::vector<double> layerTotals;
@@ -2585,9 +2587,10 @@ Vehicle::FuelDraw Vehicle::consumeResourceMass(enum ResourceType type, double am
         double t = 0.0;
         for(int k = layers.layerStart[li]; k < layers.layerStart[li + 1]; k++) {
             const int grp = layers.groupOf[(size_t)k];
-            assert(grp >= 0 && grp + 1 < (int)memberStart_.size());
-            for(int m = memberStart_[(size_t)grp]; m < memberStart_[(size_t)grp + 1]; m++) {
-                Part *p = parts[(size_t)memberIdx_[(size_t)m]];
+            int m0, m1;
+            groupSlice(grp, m0, m1);
+            for(int m = m0; m < m1; m++) {
+                Part *p = parts[(size_t)memberOf_[(size_t)m]];
                 const double have = p->resources.current[(int)type];
                 avail += have;
                 if(have > 0.0) { t += have; }
@@ -2610,9 +2613,10 @@ Vehicle::FuelDraw Vehicle::consumeResourceMass(enum ResourceType type, double am
         const double take = owed < layerTotal ? owed : layerTotal;
         for(int k = layers.layerStart[li]; k < layers.layerStart[li + 1]; k++) {
             const int grp = layers.groupOf[(size_t)k];
-            assert(grp >= 0 && grp + 1 < (int)memberStart_.size());
-            for(int m = memberStart_[(size_t)grp]; m < memberStart_[(size_t)grp + 1]; m++) {
-                Part *p = parts[(size_t)memberIdx_[(size_t)m]];
+            int m0, m1;
+            groupSlice(grp, m0, m1);
+            for(int m = m0; m < m1; m++) {
+                Part *p = parts[(size_t)memberOf_[(size_t)m]];
                 const double have = p->resources.current[(int)type];
                 if(have <= 0.0) { continue; }
                 double share = take * have / layerTotal;
@@ -2636,9 +2640,10 @@ double Vehicle::availableResourceMass(enum ResourceType type, Part *engine) cons
     for(size_t li = 0; li + 1 < layers.layerStart.size(); li++) {
         for(int k = layers.layerStart[li]; k < layers.layerStart[li + 1]; k++) {
             const int grp = layers.groupOf[(size_t)k];
-            assert(grp >= 0 && grp + 1 < (int)memberStart_.size());
-            for(int m = memberStart_[(size_t)grp]; m < memberStart_[(size_t)grp + 1]; m++) {
-                total += parts[(size_t)memberIdx_[(size_t)m]]->resources.current[(int)type];
+            int m0, m1;
+            groupSlice(grp, m0, m1);
+            for(int m = m0; m < m1; m++) {
+                total += parts[(size_t)memberOf_[(size_t)m]]->resources.current[(int)type];
             }
         }
     }
@@ -2659,9 +2664,10 @@ void Vehicle::layerFuelTotals(Part *engine, const bool *want, double *out) const
     for(size_t li = 0; li + 1 < layers.layerStart.size(); li++) {
         for(int k = layers.layerStart[li]; k < layers.layerStart[li + 1]; k++) {
             const int grp = layers.groupOf[(size_t)k];
-            assert(grp >= 0 && grp + 1 < (int)memberStart_.size());
-            for(int m = memberStart_[(size_t)grp]; m < memberStart_[(size_t)grp + 1]; m++) {
-                const Part *p = parts[(size_t)memberIdx_[(size_t)m]];
+            int m0, m1;
+            groupSlice(grp, m0, m1);
+            for(int m = m0; m < m1; m++) {
+                const Part *p = parts[(size_t)memberOf_[(size_t)m]];
                 for(int i = 0; i < nw; i++) {
                     out[wanted[i]] += p->resources.current[wanted[i]];
                 }
@@ -5890,6 +5896,13 @@ void Vehicle::absorbShip(Vehicle *B, Part *portA) {
     B->aeroSilNode.clear();
     B->aeroSil.clear();
     B->aeroGeomValid = false;
+    /* And so did B's fuel cache (#984): memberOf_ names positions in B::parts, which is
+       empty from the line above. The dock caller retires B and game.h promises a retired
+       hull is never read again, but "an emptied hull has an empty cache" is only worth
+       having if it holds when the hull empties rather than whenever something else gets
+       round to it. buildFuelGroups() with no parts leaves memberStart_ = {0}, nothing
+       indexed, and no drain-layer slots. */
+    B->buildFuelGroups();
     fuelLinks.insert(fuelLinks.end(), B->fuelLinks.begin(), B->fuelLinks.end());
     B->fuelLinks.clear();
 
@@ -6552,6 +6565,13 @@ bool Vehicle::stageIsDue() {
     // droppedPartsAtStage returns address order (see its note), which is what a
     // binary search needs -- no second copy into a set.
     double dropFuel = 0.0, allFuel = 0.0;
+    /* This sum walks `parts`, not the group table the four drain sites use (#974), and
+       that is not an oversight (#984). The table answers "which tanks can THIS engine
+       drink, layer by layer", which pays for itself per engine per substep; this is one
+       cross-group sum per logic tick that still needs each Part* for the drop-set lookup
+       below, so routing it through the table adds a group loop and a member -> part hop
+       to save nothing. #934 is the ticket that wants this per-tick walk cached; that is
+       where this cost comes down, not by changing its shape. */
     for(Part *p : parts) {
         if(!p->isTank()) { continue; }     // consumeResourceMass drains tanks, only
         if(!std::binary_search(reach.begin(), reach.end(), p->fuelGroup)) { continue; }

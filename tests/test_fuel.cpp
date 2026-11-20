@@ -36,7 +36,11 @@
 //     layer first, ascending group id within a layer, the engine's own group last (#965);
 //   * the group -> tanks table the drain walks instead of scanning the hull: same members
 //     as a scan, in scan order, and re-listed by every renumbering -- including one that
-//     leaves the group COUNT alone (#974);
+//     leaves the group COUNT alone (#974). That comparison lives in tfueltable.h so the
+//     dock and containment tests can put it after a merge and a split, which is where the
+//     table was never pinned (#984);
+//   * a hull emptied to nothing keeps no fuel cache, so its stale indices cannot outlive
+//     the parts they point into (#984);
 //   * a tank whose contents went negative nets into BOTH answers to "what can this engine
 //     draw" -- availableResourceMass and the drain-or-nothing gate -- while the drain loop
 //     itself skips it.
@@ -61,6 +65,7 @@
 
 #include "vehicle.h"   // Vehicle + PartDef + ResourceContent (inline)
 #include "tchecks.h"
+#include "tfueltable.h"   // the same table-vs-scan check the merge and split tests make
 
 /* A hand-built ship. `defs` must outlive the Vehicle (Part::def points
    into it). A deque, not a vector: push_back on a vector reallocates and
@@ -1354,7 +1359,7 @@ static void test_negative_tank_nets_in_both_sums() {
     destroyShip(s);
 }
 
-/* #974: the drain loops reach a group's tanks through memberStart_/memberIdx_ instead of
+/* #974: the drain loops reach a group's tanks through memberStart_/memberOf_ instead of
    filtering every part of the hull once per reachable group. That shortcut is only safe if
    the table says exactly what a scan says -- same members, same parts order (the fp sums
    are the order), and rebuilt by every renumbering. A stale row drains a tank that left
@@ -1380,26 +1385,10 @@ static void test_group_tank_table_matches_a_scan() {
     initShip(s);
 
     /* Table vs scan, for every group and for the total. A lambda because the same
-       question is asked at three numberings, and each ask names the one it describes. */
-    auto tableMatchesScan = [&](const char *when) {
-        int listed = 0;
-        for(int g = 0; g + 1 < (int)s.v->memberStart_.size(); g++) {
-            std::vector<int> want, got;
-            for(size_t i = 0; i < s.v->parts.size(); i++) {
-                if(s.v->parts[i]->isTank() && s.v->parts[i]->fuelGroup == g) { want.push_back((int)i); }
-            }
-            got.assign(s.v->memberIdx_.begin() + s.v->memberStart_[(size_t)g],
-                       s.v->memberIdx_.begin() + s.v->memberStart_[(size_t)g + 1]);
-            CHECK_TRUE(want == got, when);
-            listed += (int)got.size();
-        }
-        int grouped = 0;
-        for(size_t i = 0; i < s.v->parts.size(); i++) {
-            if(s.v->parts[i]->isTank() && s.v->parts[i]->fuelGroup >= 0) { grouped++; }
-        }
-        CHECK_TRUE(listed == grouped, when);
-    };
-    tableMatchesScan("the first numbering lists each group's tanks in parts order");
+       question is asked at three numberings, and each ask names the one it describes.
+       The check itself is in tfueltable.h so the merge and the split can ask it too. */
+    auto tableMatchesScan = [&](const char *when) { checkFuelTableMatchesScan(s.v, when); };
+    tableMatchesScan("the first numbering");
     CHECK_TRUE(wall->isTank() && wall->fuelGroup < 0,
                "the wall is a tank with no group, so it is in no list");
 
@@ -1427,7 +1416,7 @@ static void test_group_tank_table_matches_a_scan() {
     link(s, engA, tD);
     tD->fillTanks();   // a part added after init() seeds itself, like any fresh tank
     s.v->buildFuelGroups();
-    tableMatchesScan("after a renumbering the lists still match a scan");
+    tableMatchesScan("after a renumbering");
     CHECK_NEAR(s.v->availableResourceMass(ResourceType::Hydrogen, engA), 90.0, 1e-9,
                "the engine now sees tA + the new tank, and has lost the one that moved");
 
@@ -1438,9 +1427,42 @@ static void test_group_tank_table_matches_a_scan() {
        engine would drink from a tank that is no longer its own. */
     tD->parent = tB;
     s.v->buildFuelGroups();
-    tableMatchesScan("a renumbering at the same group count re-lists too");
+    tableMatchesScan("a renumbering at the SAME group count");
     CHECK_NEAR(s.v->availableResourceMass(ResourceType::Hydrogen, engA), 50.0, 1e-9,
                "and the engine is left with tA alone");
+    destroyShip(s);
+}
+
+/* The one hole in "the table describes `parts`": a hull with NO parts used to keep the
+   cache its previous shape had, because finalize() bails out before rebuilding anything.
+   No live path reads it -- the same four call sites that renumber are the only ones that
+   drain, and a hull with no tanks has no flow to answer -- but groupSlice()'s assert now
+   has to answer "what does an empty table mean", and a stale one is a worse answer than
+   an empty one. Pinned so a future caller that drains through a half-cleared hull trips
+   here instead of in flight. */
+static void test_an_emptied_hull_drops_the_fuel_cache() {
+    printf("== An emptied hull keeps no fuel cache ==\n");
+    Ship s;
+    s.v = new Vehicle;
+    Part *engA = addPart(s, 0, 0, true);
+    Part *tA   = addPart(s, 100, 0);
+    link(s, engA, tA);
+    initShip(s);
+    CHECK_TRUE(s.v->memberStart_.size() == 2 && s.v->memberOf_.size() == s.v->parts.size(),
+               "one group, and the index buffer sized to the PART count (#974)");
+
+    /* Hand the parts to a local list so the hull really has none (a dock's absorbed
+       shell ends up exactly here), then hand them back before the destructor runs --
+       otherwise this test leaks the two parts. */
+    std::vector<Part *> held;
+    held.swap(s.v->parts);
+    s.v->finalize();
+    CHECK_TRUE(s.v->memberStart_.size() == 1 && s.v->memberStart_[0] == 0,
+               "finalize() on an empty hull leaves an empty table, not the old one");
+    CHECK_TRUE(s.v->memberOf_.empty(), "and no member indices behind it");
+    CHECK_TRUE(s.v->drainLayers_.empty() && s.v->drainRev_.empty(),
+               "and it drops the cached drain layers too, which were numbered for the old groups");
+    held.swap(s.v->parts);
     destroyShip(s);
 }
 
@@ -1492,6 +1514,8 @@ int main() {
     test_negative_tank_nets_in_both_sums();
     printf("\n");
     test_group_tank_table_matches_a_scan();
+    printf("\n");
+    test_an_emptied_hull_drops_the_fuel_cache();
 
     printf("\n%d checks, %d failures\n", g_checks, g_failures);
     if(g_failures == 0) {

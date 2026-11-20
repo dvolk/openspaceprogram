@@ -79,53 +79,9 @@ double totalMass(const std::vector<SimPart> &parts) {
     return m;
 }
 
-/* The one bucketed index this file needs (a CSR): bucket b owns
-   items[start[b] .. start[b+1]). `key(i)` says which bucket item i belongs to, or -1 to
-   leave it out. Both passes go through the SAME key, which is the whole point of the
-   helper: a histogram that accepts an item the fill rejects (or the reverse) writes
-   `items` past its end, and nothing else in here would notice. #534 folded the two
-   hand-rolled copies (group members, part children) into this one. */
-template <class Key>
-void buildBuckets(int nBuckets, int nItems, const Key &key,
-                  std::vector<int> &start, std::vector<int> &items) {
-    start.assign((size_t)nBuckets + 1, 0);
-    for(int i = 0; i < nItems; i++) {
-        const int b = key(i);
-        assert(b < nBuckets);            // a bucket id outside the table is a bug
-        if(b >= 0) { start[(size_t)b + 1]++; }
-    }
-    for(int b = 0; b + 1 < (int)start.size(); b++) {
-        start[(size_t)b + 1] += start[(size_t)b];
-    }
-    items.assign((size_t)nItems, 0);
-    /* The write cursor is a copy of `start`, so it used to be a fresh container per call;
-       this runs twice a fuel renumbering and both sizes are the part or group count
-       (#963). Assigned rather than rebuilt, so only a growing bucket/item count costs
-       anything. Note that this static belongs to the INSTANTIATION, not to the thread:
-       the two call sites pass different key closures, so they already have two separate
-       cursors. That is not what makes nesting safe -- a third caller that reused one
-       key type and nested inside a buildBuckets call would share this buffer and corrupt
-       the outer fill. The body calls nothing but key(), asserts and vector ops, so the
-       only way to nest it is a caller whose key() calls buildBuckets; that would need its
-       own cursor passed in. */
-    static thread_local std::vector<int> cursor;
-    cursor = start;
-    for(int i = 0; i < nItems; i++) {
-        const int b = key(i);
-        if(b < 0) { continue; }
-        items[(size_t)cursor[(size_t)b]++] = i;
-    }
-    // Per bucket: its cursor ran exactly to where its count said it would. A key that
-    // answers differently in the two passes shows up here whenever that change moves
-    // an item in or out of a bucket's COUNT; a straight swap between two buckets keeps
-    // every count and cannot be caught this way (nor by anything cheaper than
-    // re-running key() over the result). Both call sites pass a pure key -- a part's
-    // group id, a clamped parent -- so this is a tripwire for a future caller rather
-    // than a check the current ones could fail.
-    for(int b = 0; b < nBuckets; b++) {
-        assert(cursor[(size_t)b] == start[(size_t)b + 1]);
-    }
-}
+/* buildBuckets, the CSR this file's tables are built with, lives in fuelgraph.h: the
+   staging preview and the live drain (#984) share one builder, and #534 is why there is
+   only one to share. */
 
 struct Sim {
     std::vector<SimPart> parts;

@@ -473,18 +473,40 @@ public:
     mutable std::vector<std::vector<int> > drainRev_;
 
     /* Which parts of each fuel group are TANKS, as a CSR (#974): group g owns
-       memberIdx_[memberStart_[g] .. memberStart_[g+1]], holding indices into `parts`.
+       memberOf_[memberStart_[g] .. memberStart_[g+1]], holding indices into `parts`.
        The drain loops used to sweep EVERY part of the hull once per reachable group to
        find them -- O(parts x groups) per ask, so a 286-part stack with ten groups
        looked at 2,860 slots to touch the ~40 tanks it wanted, again per engine per
        substep. The staging preview has kept this table since before #965; flight now
-       keeps its own, built by buildFuelGroups(), the only writer of Part::fuelGroup
-       (and every writer of `parts` order renumbers right after: spawn, init,
-       absorbShip, extractSubtreeAsShip). Members stay in `parts` order within a group,
-       so the drain sums land bit-for-bit where they did with the scan. tests/test_fuel.cpp
-       pins the table against a plain scan, including after a renumbering. */
+       keeps its own, built by buildFuelGroups() through the shared CSR helper
+       (#984, #534). Members stay in `parts` order within a group, so the drain sums land
+       bit-for-bit where they did with the scan. tests/test_fuel.cpp pins the table
+       against a plain scan, including after a renumbering, and tests/test_dock.cpp and
+       tests/test_contain.cpp pin it again after a merge and a split -- the two places a
+       renumbering is easy to forget.
+       `Part::fuelGroup` has exactly one writer in src/, buildFuelGroups() (a test stamps
+       one by hand, and says so: tests/test_staging.cpp); what has many writers is `parts`
+       ORDER, and every one of them renumbers before the ship drains again: the loader and
+       spawn, init/finalize, absorbShip, extractSubtreeAsShip, the save load, an
+       EVA-minted hull, a dropped item. A hull emptied to nothing takes an empty cache
+       with it (finalize()'s early return, and the shell absorbShip leaves behind), so
+       these indices never outlive the parts they name. */
     std::vector<int> memberStart_;   // nGroups + 1 boundaries
-    std::vector<int> memberIdx_;     // part indices, grouped, `parts` order within a group
+    std::vector<int> memberOf_;      // part indices, grouped, `parts` order within a group
+
+    /* The group's slice of that table, with the one bounds rule (#984). The group id is
+       not the hazard: it comes from FuelLayers::groupOf, and drainLayers_ and memberStart_
+       are both rewritten by buildFuelGroups(), so an id outside the table cannot be
+       reached. What the table ADDS over the old hull scan is an index into `parts` that
+       outlives a shrinking part list if a writer ever forgets to renumber -- so that is
+       what gets checked. memberOf_ ascends within a group, so its last entry covers the
+       whole slice: one compare per group, at the top of the loop that walks it. */
+    void groupSlice(int grp, int &begin, int &end) const {
+        assert(grp >= 0 && grp + 1 < (int)memberStart_.size());
+        begin = memberStart_[(size_t)grp];
+        end = memberStart_[(size_t)grp + 1];
+        assert(begin == end || memberOf_[(size_t)end - 1] < (int)parts.size());
+    }
 
     /* --drain-log state. drainSample() runs on every tick the sim steps this
        ship, so the interval a rate describes is SIM time and means the same at
