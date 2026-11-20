@@ -5831,6 +5831,21 @@ static float dialU(double value, double floorV, double decades) {
     return (float)std::min(1.0, std::log10(value / floorV) / decades);
 }
 
+/* A dashed ring (#1046). ImDrawList has no dash pattern, so this is N arcs and N gaps, and
+   the count follows the CIRCUMFERENCE rather than being a constant: at the dial's minimum
+   radius a fixed 24 dashes is a 5 px period, which reads as one smudged circle -- exactly the
+   ambiguity the dashes exist to remove. */
+static void drawDashRing(ImDrawList *dl, const ImVec2 &c, float rad, ImU32 col, float lw) {
+    const float twoPi = 2.0f * (float)std::numbers::pi;
+    const int dashes = std::max(8, (int)(rad / 8.0f));
+    const float period = twoPi / (float)dashes;
+    for(int i = 0; i < dashes; i++) {
+        const float a0 = (float)i * period;
+        dl->PathArcTo(c, rad, a0, a0 + period * 0.6f, 4);
+        dl->PathStroke(col, false, lw);
+    }
+}
+
 /* The approach dial (#1026), laid out like the Docking MFD: one radial grid, four rings at
    1/4, 1/2, 3/4 and 1 of the radius, and three quantities read off those same radii. The
    wiki names the two figures and the cone; the numbers on the rings come off a screenshot of
@@ -5854,6 +5869,12 @@ static float dialU(double value, double floorV, double decades) {
        -- see the comment at its draw.
    So a green pair of axis circles IS shutAxis being open, and a green capture ring IS the
    distance gate open; the markers keep one colour each.
+   The circles are told apart by STROKE, not colour (#1046) -- colour is already spent on the
+   gate state, and two of them cross anyway. DASHED means the degree ruler, SOLID means the
+   metre ruler. The axis pair coincides at range ~386 m, where coneRad/topRad on the degree
+   ruler maps to the same pixel radius as range*sin(kDockAlign) on the metre ruler: every long
+   approach passes straight through it, and there a half-shut gate used to draw two rings a
+   pixel apart with nothing saying which belongs to the x and which to the +.
      x     = the rotation to command: radius = the angle in degrees, side = the key that
              closes it (right half = D, top half = W).
      +     = the translation to command: radius = how far off their bore line (the approach
@@ -5909,9 +5930,11 @@ static void dockApproachDial(const Vehicle::DockRead &r) {
     /* Two pixels of floor. Below range ~0.39 m, coneM falls under the ruler's 0.1 m centre
        and a radius-0 circle would erase the cue at the one moment it matters most. */
     dl->AddCircle(c, std::max(2.0f, R * coneRU), openB ? openCol : shutCol, 64, lw);
-    // My half of the gate, on the degree scale.
+    // My half of the gate, on the degree scale. The only circle on that ruler, so it is the
+    // one that carries the dashed stroke: the ruler a circle belongs to has to be readable
+    // without a legend, because at range ~386 m this and the cone circle share a radius.
     const float gateU = std::min(1.0f, (float)(coneRad / topRad));
-    dl->AddCircle(c, R * gateU, openA ? openCol : shutCol, 64, lw);
+    drawDashRing(dl, c, R * gateU, openA ? openCol : shutCol, lw);
     /* The distance gate: a fixed ring at kDockCapture read off the metre ruler, coloured by
        the gate's own shutGap, so the ring going green IS the gate opening. Careful about
        what it does NOT mean: kDockCapture is the gap BETWEEN FACES, an along-path distance,
