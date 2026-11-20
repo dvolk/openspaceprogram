@@ -5327,13 +5327,21 @@ void Vehicle::att_log(double time) {
     assert(ref != nullptr);   // rootPart() falls back to parts[0], so non-empty means non-null
     const glm::dmat3 axes = partRot(ref);
     const glm::dvec3 w = hullAngVel();
+    /* railed= says where the row came from (#1056, and #375's discipline for a hull
+       outside the physics world). A railed hull is not being integrated by Bullet, so
+       without this column the row reads like a substep answer: axes from the rail pose,
+       rate from rail_omega. Both are the rail model's own answer now -- the conic
+       advances the pos/vel and advanceRailOrient turns the hull by the carried spin --
+       but they are a MODEL's answer, and a reader comparing this row against a
+       --spin-log row for the same hull should be able to see they are not the same kind
+       of number. */
     printf("[attlog] t=%.3fs nose=[%+.4f %+.4f %+.4f] "
            "right=[%+.4f %+.4f %+.4f] up=[%+.4f %+.4f %+.4f] "
-           "w=[%+.4f %+.4f %+.4f] |w|=%.4f rad/s\n",
+           "w=[%+.4f %+.4f %+.4f] |w|=%.4f rad/s railed=%d\n",
            time, axes[2].x, axes[2].y, axes[2].z,
            axes[0].x, axes[0].y, axes[0].z,
            axes[1].x, axes[1].y, axes[1].z,
-           w.x, w.y, w.z, glm::length(w));
+           w.x, w.y, w.z, glm::length(w), onRails ? 1 : 0);
     fflush(stdout);
 }
 
@@ -7894,9 +7902,10 @@ bool Vehicle::goOnRails() {
     if(!canRail()) { return false; }
 
     /* The COM state in the body's inertial frame node, where the trajectory
-       is a Kepler conic. The attitude is not carried forward (rail_orient
-       rides whichever node the conic lives in), but the SPIN is (#1042):
-       writeRailPose() used to zero the hull, so parking lost angular momentum. */
+       is a Kepler conic. The SPIN is carried (#1042) and the rails turn the
+       hull with it (#1056, orbit.h::advanceRailOrient), so the heading is not
+       pinned to the node either. Before #1042 writeRailPose() zeroed the hull,
+       so parking lost angular momentum. */
     Frame *oldFrame = frame;
     Frame *inertial = frame->getNonRotFrame();
     const glm::dvec3 com_frame = get_center_of_mass();  // old frame coords
@@ -8025,6 +8034,13 @@ RailEnd Vehicle::railAdvance(double t, const double step) {
     const glm::dvec3 prev_pos = rail_pos;   // an exact-radial conic can hit r = 0
     propagateKepler(rail_pos, rail_vel, frame->body->mu, step,
                     rail_pos, rail_vel);
+    /* ... and the heading goes round with the spin (#1056). Same hop, same `step`,
+       same frame: rail_omega is #1042's carried spin, expressed in the node this conic
+       lives in, and until this line the rails advanced the conic while pinning the axes
+       to it. So a hull coasting at 0.0003 rad/s spent 500 s of warp reporting a rate its
+       printed attitude refused to spend, and woke pointing where it fell asleep.
+       Before the SoI hop below, which re-expresses both this and rail_omega. */
+    rail_orient = advanceRailOrient(rail_orient, rail_omega, step);
     rail_epoch = t;   // the advance ends at the caller's instant, == the tree's
     if(Frame *target = soiTarget(rail_pos, true)) {
         printf("@@@ %s rails SoI switch: %s -> %s\n",

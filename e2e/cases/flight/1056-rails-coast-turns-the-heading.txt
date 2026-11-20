@@ -1,0 +1,39 @@
+# A hull parked on rails keeps its conic (flight/05) and, since #1042, keeps its SPIN.
+# What it did not keep was its HEADING: Vehicle::railAdvance() ran rail_pos/rail_vel
+# through propagateKepler and never touched rail_orient, so the axes stayed pinned to
+# whichever node the conic lives in. The row that reports the carried spin therefore
+# described a body whose printed attitude refused to spend it, and the hull woke pointing
+# exactly where it fell asleep.
+#
+# This rig parks on rails immediately -- 100x is above kRailsWarp, so every [attlog] row
+# below is a railed hull, and the railed=1 column #1056 adds says that ON the row rather
+# than leaving the reader to infer it. The spin it carries, 0.0003 rad/s, is the inertial
+# spin of the rotating frame it parked out of; over the 505 s between the first and last
+# rows that is a turn of ~0.15 rad. Rotating about +y takes +x toward -z, so the nose's z
+# component shows the turn directly.
+#
+# Before the fix the same run prints nose=[+1.0000 -0.0000 +0.0000] on all six rows: not a
+# small drift, exactly nothing. So the lower bound below carries the whole defect, and the
+# band around |w| x elapsed is there for the wrong-scale mistakes -- a hop counted in wall
+# seconds rather than sim seconds overshoots by the warp factor. The band is deliberately
+# loose: the printed |w| is 4 dp, which on 0.0003 is ~10% by itself. Measured: the turn is
+# 0.135 rad against |w| x elapsed = 0.152, i.e. 0.89x.
+NAME rails-coast-turns-the-heading-it-parked-with
+CLAIM A hull coasting on its conic turns through the spin it carries: its heading moves by about |w| x the time spent, monotone, and every row says the rails produced it.
+KIND invariant
+ARGS --time-accel 100 --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+ARGS --att-log --timeout 6
+EXPECT @@@ racer parked on rails around Kerbin
+FORBID FAILED
+CHECK len(att) >= 5
+CHECK all(a["railed"] == 1 for a in att)
+# The hull really is turning. Without this the band below could be satisfied by a rig
+# that never spins and never moves -- the discipline #1042's case learnt the hard way.
+CHECK all(a["wnorm"] > 2e-4 for a in att)
+# The heading moves (#1056's defect: six rows, identical to 4 dp).
+CHECK abs(att[-1]["nose"][2] - att[0]["nose"][2]) > 0.08
+# ... at the rate the rows report, neither a warp factor too big nor nothing at all.
+CHECK abs(att[-1]["nose"][2] - att[0]["nose"][2]) > 0.5 * att[0]["wnorm"] * (att[-1]["t"] - att[0]["t"])
+CHECK abs(att[-1]["nose"][2] - att[0]["nose"][2]) < 2.0 * att[0]["wnorm"] * (att[-1]["t"] - att[0]["t"])
+# One direction, no jitter: a single axis at a constant rate.
+CHECK all(att[i + 1]["nose"][2] < att[i]["nose"][2] for i in range(len(att) - 1))

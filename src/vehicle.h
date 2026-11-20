@@ -725,11 +725,13 @@ public:
        parking and waking kept the attitude and destroyed the angular momentum -- most
        visibly at a body-fixed dock, where a hull that had stopped rotating relative to the
        dock holds a real 0.126 deg/s of inertial spin, and zeroing it leaves the hull
-       counter-rotating against the dock it is trying to close on. The rails still never
-       integrate the ATTITUDE (rail_orient rides whichever node the conic lives in), so
-       this is spin without precession: the hull wakes spinning about the axes it parked
-       spinning about. A frozen park reads zero by construction -- its model pins the pose
-       to the node -- as does the warp landing that parks one. */
+       counter-rotating against the dock it is trying to close on. The rails integrate
+       the ATTITUDE with it (#1056), so a coasting hull keeps turning rather than waking
+       at the heading it fell asleep at. What they still do not model is precession --
+       for a hull whose three principal moments differ, omega itself wanders about the
+       conserved L -- so the hull keeps the axis it parked with. A frozen park reads zero
+       by construction -- its model pins the pose to the node -- as does the warp landing
+       that parks one. */
     glm::dvec3 rail_omega = glm::dvec3(0.0);  // rad/s, ship->frame coords
     glm::dmat3 rail_orient = glm::dmat3(1.0); // park frame -> ship->frame axes
     /* Frame S's axes at park time (the ship is rigid: nothing per-part).
@@ -2497,7 +2499,8 @@ public:
     /* Per-tick SOI bookkeeping for THIS ship. */
     void switchFrames(double t);
 
-    /* Write the rail state into the body (once per tick). Spin is zeroed. */
+    /* Write the rail state into the body (once per tick): pose from the conic and
+       rail_orient, velocity from rail_vel, spin from rail_omega (#1042). */
     void writeRailPose();
 
     /* The COM state in `inFrame` -- any frame node. Most callers pass the

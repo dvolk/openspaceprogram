@@ -14,6 +14,7 @@
 #include <cmath>
 #include <numbers>
 #include <glm/glm.hpp>
+#include <glm/gtc/quaternion.hpp>  // advanceRailOrient's exponential hop (#1056)
 
 #include "angmath.h"
 
@@ -599,6 +600,26 @@ inline void propagateKepler(glm::dvec3 pos0, glm::dvec3 vel0,
     const double fdot = (sqrt_mu / (r * r0)) * chi * (z * stumpffS(z) - 1.0);
     const double gdot = 1.0 - (chi2 / r) * stumpffC(z);
     vel = fdot * pos0 + gdot * vel0;
+}
+
+/* The ATTITUDE half of a rail hop (#1056), sitting beside propagateKepler's pos/vel
+   half because a rail tick has exactly these two halves. A coasting hull keeps
+   turning, so over `step` it goes round by |omega| * step about omega itself: ONE
+   exponential hop rather than the substep loop's 1/60 s rotations added up, which is
+   what makes it stable at a warp-sized step (500 s at 10000x, i.e. tens of radians).
+   `orient` is park-frame axes expressed in the frame the conic lives in and `omega` is
+   in that same frame -- the rails' inertial node, which Vehicle::railAdvance() asserts
+   (frame->omega_total == 0) -- so the turn pre-multiplies: it happens in that frame,
+   not in the hull's.
+   What is NOT modelled is torque-free PRECECTION: for a hull whose three principal
+   moments differ, omega itself wanders (about the conserved L) while the hull turns.
+   This keeps omega fixed, so a parked tumble keeps its axis -- the same approximation
+   #1042 recorded on rail_omega, and the heading is the half a player can see. */
+inline glm::dmat3 advanceRailOrient(const glm::dmat3 &orient, const glm::dvec3 &omega,
+                                    const double step) {
+    const double rate = glm::length(omega);
+    if(rate == 0.0 || step == 0.0) { return orient; }
+    return glm::mat3_cast(glm::angleAxis(rate * step, omega / rate)) * orient;
 }
 
 /* Epoch state from elements, in the BODY-RAIL convention: orbital plane = XZ

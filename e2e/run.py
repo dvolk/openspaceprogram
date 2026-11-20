@@ -467,6 +467,10 @@ ATT_RE = re.compile(
     r"up=\[([-+\d.]+) ([-+\d.]+) ([-+\d.]+)\]\s+"
     r"w=\[([-+\d.]+) ([-+\d.]+) ([-+\d.]+)\]\s+"
     r"\|w\|=([-\d.]+) rad/s"
+    # #1056: where the row came from. Optional so the pre-marker grammar still parses
+    # (the point of the marker is that a railed hull's row is a MODEL's answer, not a
+    # Bullet one; a case that does not care reads it as None).
+    r"(?:\s+railed=(\d))?"
 )
 EVA_RE = re.compile(
     r"\[evalog\]\s+t=([\d.]+)s\s+mode=(\w+)\s+grounded=(\d)\s+"
@@ -1596,7 +1600,8 @@ def parse_solar(out):
 def parse_att(out):
     rows = []
     for m in ATT_RE.finditer(out):
-        (t, nx, ny, nz, rx, ry, rz, ux, uy, uz, wx, wy, wz, wnorm) = m.groups()
+        (t, nx, ny, nz, rx, ry, rz, ux, uy, uz, wx, wy, wz, wnorm,
+         railed) = m.groups()
         nose = (float(nx), float(ny), float(nz))
         right = (float(rx), float(ry), float(rz))
         up = (float(ux), float(uy), float(uz))
@@ -1617,6 +1622,11 @@ def parse_att(out):
             # generator resolve against globals, not the locals namespace.
             "wroll": wroll, "wpitch": wpitch, "wyaw": wyaw,
             "awroll": abs(wroll), "awpitch": abs(wpitch), "awyaw": abs(wyaw),
+            # 1 when the hull was coasting on its conic rather than being
+            # integrated (#1056). The axes and the rate are then the rail
+            # model's answer; a case pinning a heading turn wants to know it
+            # is reading the rails, not Bullet.
+            "railed": None if railed is None else int(railed),
         })
     return rows
 
@@ -3114,6 +3124,22 @@ def self_test():
     if any(dashed[0][k] is None for k in ("q", "mach", "watts")):
         fails.append("the dashed-angle [surface] item lost its own figures: %r" % (dashed[0],))
 
+    # #1056: [attlog] grew a railed= column saying WHICH model produced the row -- the
+    # rail conic or Bullet. Both spellings have to parse: a case wants to read the
+    # marker, and the two dozen cases predating it print none. A row that stops parsing
+    # is a silent hole in every heading pin that follows it.
+    att_row = ('[attlog] t=85.000s nose=[+1.0000 -0.0000 +0.0000] '
+               'right=[+0.0000 +1.0000 -0.0000] up=[-0.0000 +0.0000 +1.0000] '
+               'w=[-0.0001 +0.0003 +0.0001] |w|=0.0003 rad/s railed=1')
+    marked = parse_att(att_row)
+    if len(marked) != 1 or marked[0]["railed"] != 1:
+        fails.append("an [attlog] row carrying railed= parsed as %r" % (marked,))
+    unmarked = parse_att(att_row.replace(" railed=1", ""))
+    if len(unmarked) != 1 or unmarked[0]["railed"] is not None \
+            or abs(unmarked[0]["wnorm"] - 0.0003) > 1e-12:
+        fails.append("an [attlog] row WITHOUT railed= parsed as %r; the column is "
+                     "optional, not part of the row" % (unmarked,))
+
     # #870: a hull resting on a world that does not turn has no conic prograde and no
     # plane normal, so both files print "-" where a direction used to be. The parse has
     # to answer None -- so a case can pin `p["prg"] is None` -- rather than drop the row
@@ -3387,7 +3413,8 @@ def self_test():
           "printed row dropped because its number reads inf/nan named, and "
           "[ascent]'s dashed fields parsed as None while its nan row is named too; "
           "[surface]'s dashed angle parsed as an absence that keeps its row and the "
-          "other figures on it; "
+          "other figures on it; [attlog]'s railed= column read as the model that "
+          "produced the row, and its absence read as absence; "
           "every world-scoped row stamped with the vessel that was active when it "
           "printed, in line order, and [mass]'s own ship= kept; a scripted UI action "
           "the game never reported, and a FAILED line with no EXPECT behind it, both "

@@ -1,7 +1,9 @@
 // test_orbit: two-body orbital elements + time-to-apsis (src/orbit.h), plus the
 // planeTangentBasis the orbital-plane overlay draws with and the orbitNodePoints
 // crossings the orbit map marks as AN/DN, plus the conicPrograde / conicNormal
-// guards that say WHEN the state has no direction to report at all (#870).
+// guards that say WHEN the state has no direction to report at all (#870), plus
+// advanceRailOrient -- the attitude half of a rail hop, beside propagateKepler's
+// pos/vel half (#1056).
 // Runs from the repo root:
 //   make test   (or: g++ -O2 -std=c++20 -I./src -I./middleware/glm/ tests/test_orbit.cpp -o test_orbit && ./test_orbit)
 //
@@ -485,6 +487,53 @@ int main() {
         propagateKepler(p, v, MU, -12345.678, p2, v2);
         CHECK_NEAR(glm::length(p2 - p0), 0.0, 1e-7 * a);
         CHECK_NEAR(glm::length(v2 - v0), 0.0, 1e-7 * glm::length(v0));
+    }
+
+    /* --- advanceRailOrient: the ATTITUDE half of the same hop (#1056) --------
+       A rail tick advances pos/vel with propagateKepler above and the hull's axes
+       with this one. Three things the warp case (flight/1056) leans on: the turn is
+       the carried spin spent over the step, it happens in the node the conic lives in
+       rather than inside the hull, and a 500 s hop is the same answer as the substeps
+       it replaces rather than a coarser one. */
+    {
+        const glm::dvec3 x(1.0, 0.0, 0.0), y(0.0, 1.0, 0.0), z(0.0, 0.0, 1.0);
+        /* Nothing to spend, nothing moves -- and it must not drift either, because a
+           hull parked at a dock coasts for hours at a time. */
+        CHECK(advanceRailOrient(glm::dmat3(1.0), glm::dvec3(0.0), 500.0) == glm::dmat3(1.0));
+
+        const double wz = 0.0003;          // rad/s, the #1056 repro's parked spin
+        const double step = 503.0;         // s, its whole excursion
+        const double th = wz * step;
+        const glm::dmat3 turned = advanceRailOrient(glm::dmat3(1.0), z * wz, step);
+        CHECK_NEAR(glm::length(turned * x - glm::dvec3(cos(th), sin(th), 0.0)), 0.0, 1e-12);
+        CHECK_NEAR(glm::length(turned * z - z), 0.0, 1e-12);   // the spin axis itself stays
+
+        // One hop at warp versus the 1/60 s rotations it replaces, on a turn of 5
+        // whole revolutions. Fixed omega makes these the same rotation exactly, so a
+        // gap here is the hop being wrong rather than the model being simplified.
+        const double fast = 0.065, big = 500.0;
+        const glm::dvec3 w_fast(0.0, fast, 0.0);
+        const glm::dmat3 one = advanceRailOrient(glm::dmat3(1.0), w_fast, big);
+        glm::dmat3 many(1.0);
+        const int kSubsteps = 30000;
+        for(int i = 0; i < kSubsteps; i++) { many = advanceRailOrient(many, w_fast, big / kSubsteps); }
+        CHECK_NEAR(glm::length(one * x - many * x), 0.0, 1e-9);
+        // Still an orientation after 32 rad of turning, which is what lets it
+        // compose with railRot into a pose at all.
+        CHECK_NEAR(glm::length(one * x) - 1.0, 0.0, 1e-12);
+        CHECK_NEAR(glm::dot(one * x, one * y), 0.0, 1e-12);
+
+        // FRAME-side, not hull-side: rail_omega is in the node the conic lives in, so
+        // the hop pre-multiplies rail_orient. A hull parked 90 deg about x (columns
+        // named, so the row/column-major trap test_orient.cpp exists for cannot bite)
+        // answers differently under the two orders, by a whole axis.
+        glm::dmat3 parked(1.0);
+        parked[0] = x; parked[1] = z; parked[2] = -y;
+        const glm::dvec3 w90(0.0, 0.0, M_PI / 2.0);
+        const glm::dmat3 rz90 = advanceRailOrient(glm::dmat3(1.0), w90, 1.0);
+        const glm::dmat3 turnedParked = advanceRailOrient(parked, w90, 1.0);
+        CHECK_NEAR(glm::length(turnedParked[2] - rz90 * parked[2]), 0.0, 1e-12);
+        CHECK(glm::length(turnedParked[2] - parked * z) > 1.0);
     }
 
     // --- propagateKepler: inbound state, long dt (fallback + bracket) -------
