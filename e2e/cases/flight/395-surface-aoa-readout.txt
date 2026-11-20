@@ -77,7 +77,14 @@ CHECK all(s2["tas"] - s2["vs"] < s1["tas"] - s1["vs"] for s1, s2 in zip([r for r
 # arrives, and the faster the hull climbs the less a 6 m/s crosswind bends it. Monotone through
 # the burn (t=6.0 is the throttle-down row, so it is excluded rather than band-ed around).
 CHECK all(abs(s2["aoa"]) < abs(s1["aoa"]) for s1, s2 in zip([r for r in surf if 1.5 < r["t"] < 5.6][:-1], [r for r in surf if 1.5 < r["t"] < 5.6][1:]))
-CHECK all(8.0 < abs(s["aoa"]) < 11.0 for s in surf if 4.9 < s["t"] < 5.6)
+# The two rows at the top of the climb. The CEILING has to survive both sampler phases (#1054):
+# rows land on the UI's tick, so their printed t drifts by ~0.1 s with load and the SAME flight
+# moment prints as 4.9 -- which the strict window drops -- or as 5.0 -- which keeps it. Measured
+# against thetas 27.9/-11.80 and 28.0/-11.75, so 11.0 was written for the phase that got to skip
+# the row. 12.0 admits both and is still clear of the -13.58 that belongs to the tas 24.6 row,
+# which is the one a law that stopped bending with the climb would report. The floor is the
+# other end: 10.5 at the top (tas 32.1), so under 8 is flow arriving from somewhere else.
+CHECK all(8.0 < abs(s["aoa"]) < 12.0 for s in surf if 4.9 < s["t"] < 5.6)
 # aprg and aoa are the same flow read twice -- the direction the air is going, and the angle it
 # arrives at -- so they are equal and OPPOSITE. Pre-wind, both read near zero and the sign was
 # invisible; with a 5.8 m/s crosswind at a 2.9 m/s climb the two would disagree by 127 deg if
