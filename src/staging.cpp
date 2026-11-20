@@ -1331,22 +1331,43 @@ static void validateStagingGroups(const BuildShip &ship,
    outside itself likewise ranks 0.
 
    The hops are the ones flight drains through (rev = "who feeds whom", hop = link hops from the
-   engine's group), so the ladder cannot disagree with what the tanks actually do -- that
-   agreement is the whole argument for offering this: measured over res/ships, the two hulls
-   that carry links have their authors' cut numbers ALREADY equal to these ranks (heavy_asp's
-   chains sit 3/2/1 hops from engine_central and are authored 6/5/4; heavy_two's two boosters
-   share one hop and share one label), so the rule is derived rather than invented.
+   engine's group), which is the whole argument for offering this: measured over res/ships, the
+   two hulls that carry links have their authors' cut numbers ALREADY equal to these ranks
+   (heavy_asp's chains sit 3/2/1 hops from engine_central and are authored 6/5/4; heavy_two's two
+   boosters share one hop and share one label), so the rule is derived rather than invented.
 
-   Cost is one partition, one BFS per engine, and one subtree mark per cut -- a button press,
-   not a frame. A cut's loop is cuts x (subtree + engines x legs), which for a hull of
-   hundreds of parts and a dozen links is microseconds; the plan already pays a sort and the
-   label walk. */
-static void fuelCutRanks(const BuildShip &ship, const std::vector<std::vector<int>> &children,
+   Furthest-leg is a PROXY for the drain order, not the drain order, and a stage that carries
+   other cut stages shows the difference: its rank counts fuel a nested cut will already have
+   thrown away, which delays cuts that should go earlier and drags their dry mass through the
+   biggest burn (measured on a 12-part stack: 1197 m/s ranked this way against 1284 with the
+   switch off and 1348 hand-numbered to the drain layers). On the two shipped hulls every cut
+   subtree holds one fuel group, so furthest and nearest coincide and nothing ships wrong today.
+   The quantity fuelgraph's "furthest layer drains first" actually implies is WHEN THE RELEASED
+   STAGE RUNS DRY -- a nearest-leg answer once nested cuts have taken their groups out -- and
+   that subtraction is a decision, not a tweak, so it is filed rather than guessed here. That a
+   containment clamp has to fire at all on those shapes is a symptom of the same thing.
+
+   Cost is one partition, one BFS per ENGINE FUEL GROUP (engines sharing a group see the same
+   chain), and O(1) subtree tests -- measured 0.08 ms at 482 parts, 0.68 ms at 1986 and 1.03 ms
+   at 3986, against 0.58 ms with the switch off. Marking each cut's subtree instead cost 6.3 ms
+   at 3986: the same quadratic this file already removed from the containment walks. */
+static void fuelCutRanks(const BuildShip &ship, const std::vector<int> &order,
+                         const std::vector<size_t> &sizes,
                          const std::vector<char> &isDec, const std::vector<char> &isEng,
                          std::vector<int> &rank) {
     const size_t n = ship.parts.size();
     rank.assign(n, 0);
     if(ship.fuelLinks.empty()) { return; }
+    assert(order.size() == n);   // autoStage refuses a looping parent chain before it gets here
+
+    /* treeOrder is a DFS preorder, so a subtree is the half-open run [pos, pos + size). That
+       turns "does this fuel group sit inside that cut" into one comparison per question. */
+    std::vector<int> pos(n, -1);
+    for(size_t k = 0; k < order.size(); k++) { pos[(size_t)order[k]] = (int)k; }
+    auto inside = [&](int member, int root) {
+        const int p = pos[(size_t)member], r = pos[(size_t)root];
+        return r <= p && p < r + (int)sizes[(size_t)root];
+    };
 
     /* The one wall rule (shipdef.h, #292): a fuel group is a stretch of tree a link can pour
        across, and a decoupler is a wall -- which is precisely the boundary a cut releases, so
@@ -1356,9 +1377,18 @@ static void fuelCutRanks(const BuildShip &ship, const std::vector<std::vector<in
     for(size_t i = 0; i < n; i++) {
         par[i] = ship.parts[i].parent;
         wall[i] = ship.parts[i].def != nullptr && ship.parts[i].def->isFuelBarrier();
+        /* A group is a CONNECTED tree stretch, so it cannot straddle a cut as long as every cut
+           is a wall -- and the parser forces fuel_barrier wherever it sees a decoupler
+           (shipdef.cpp:664). Everything below asks the inside/outside question per group rather
+           than per part, so a decoupler that was not a wall would quietly rank the wrong cuts. */
+        assert(!isDec[i] || wall[i]);
     }
     std::vector<int> group;
     const int nGroups = partitionFuelGroups(par, wall, group);
+    std::vector<int> rep((size_t)nGroups, -1);   // any one part of each group, for the test above
+    for(size_t i = 0; i < n; i++) {
+        if(group[i] >= 0 && rep[(size_t)group[i]] < 0) { rep[(size_t)group[i]] = (int)i; }
+    }
 
     /* Link endpoints resolve to the LAST part carrying the id, as computeStaging resolves
        them (#963) -- two parts with one id is a broken build, and both readers have to
@@ -1376,45 +1406,41 @@ static void fuelCutRanks(const BuildShip &ship, const std::vector<std::vector<in
         rev[(size_t)b].push_back(a);   // a feeds b
     }
 
-    /* Per engine: every group that feeds it and how many hops away. */
-    std::vector<std::vector<std::pair<int, int>>> legs(n);
-    std::vector<int> hop((size_t)nGroups, -1), queue;
+    /* For each fuel group that holds an engine: every group that feeds it and how many hops
+       away. Jets count here (StageRole::Engine) even though the launch preview leaves them out
+       -- a jet can be fed by a link, and the question is what the tanks do, not what thrusts. */
+    std::vector<std::vector<std::pair<int, int>>> legsOf((size_t)nGroups);
+    std::vector<char> done((size_t)nGroups, 0);
+    std::vector<int> engGroups, hop((size_t)nGroups), queue;
     for(size_t i = 0; i < n; i++) {
-        if(!isEng[i] || group[i] < 0) { continue; }
+        const int g = group[(size_t)i];
+        if(!isEng[i] || g < 0 || done[(size_t)g]) { continue; }
+        done[(size_t)g] = 1;
+        engGroups.push_back(g);
         std::fill(hop.begin(), hop.end(), -1);
-        hop[(size_t)group[i]] = 0;
-        queue.assign(1, group[i]);
+        hop[(size_t)g] = 0;
+        queue.assign(1, g);
         for(size_t qh = 0; qh < queue.size(); qh++) {
             const int q = queue[qh];
             for(int up : rev[(size_t)q]) {
                 if(hop[(size_t)up] >= 0) { continue; }
                 hop[(size_t)up] = hop[(size_t)q] + 1;
                 queue.push_back(up);
-                legs[i].push_back({up, hop[(size_t)up]});
+                legsOf[(size_t)g].push_back({up, hop[(size_t)up]});
             }
         }
     }
 
-    std::vector<int> markP(n, 0), markG((size_t)nGroups, 0), stackv;
-    int tick = 0;
     for(size_t i = 0; i < n; i++) {
         if(!isDec[i]) { continue; }
-        ++tick;
-        stackv.assign(1, (int)i);
-        while(!stackv.empty()) {
-            const int p = stackv.back();
-            stackv.pop_back();
-            if(markP[(size_t)p] == tick) { continue; }
-            markP[(size_t)p] = tick;
-            if(group[(size_t)p] >= 0) { markG[(size_t)group[(size_t)p]] = tick; }
-            for(int c : children[(size_t)p]) { stackv.push_back(c); }
-        }
         int best = 0;
-        for(size_t e = 0; e < n; e++) {
-            if(!isEng[e] || legs[e].empty()) { continue; }
-            if(markP[e] == tick) { continue; }   // it burns inside the stage, so it is no leg out
-            for(const std::pair<int, int> &l : legs[e]) {
-                if(markG[(size_t)l.first] == tick && l.second > best) { best = l.second; }
+        for(const int ge : engGroups) {
+            const std::vector<std::pair<int, int>> &legs = legsOf[(size_t)ge];
+            if(legs.empty()) { continue; }
+            // An engine inside the stage burns its own stage's fuel, so it is no leg out of it.
+            if(inside(rep[(size_t)ge], (int)i)) { continue; }
+            for(const std::pair<int, int> &l : legs) {
+                if(l.second > best && inside(rep[(size_t)l.first], (int)i)) { best = l.second; }
             }
         }
         rank[i] = best;
@@ -1539,16 +1565,21 @@ StagingPlan autoStage(BuildShip &ship, bool fuelStaging) {
         }
         for(int d : decs) { if(cutAuth[d] != authored[d]) { swallowed++; } }   // per cut, not per pair
     }
-    /* Fuel link staging (#1031), when the player asked for it: the chain's rank leads the key,
-       with the typed number behind it -- switching it on IS the instruction to order the cuts by
-       fuel flow, and the plan says below how many cuts that ranked. Where the chain has no
-       opinion (rank 0 -- nothing the stage releases feeds an engine outside it), the rest of the
-       key is exactly the rule that runs with the switch off. */
-    std::vector<int> fuelRank(n, 0);
-    int fuelRanked = 0, fuelSwallowed = 0;
-    if(fuelStaging) {
-        fuelCutRanks(ship, children, isDec, isEng, fuelRank);
-        const std::vector<int> chainRank = fuelRank;
+    /* Fuel link staging (#1031), when the player asked for it -- and only where the ladder has
+       no order of its own. A number the player typed beats the chain's inference, exactly as it
+       beats tree depth (#1020): ranking ABOVE a typed number strands fuel the author meant to
+       burn, splits a ring the author deliberately left on one label, and can tip the engine-order
+       guard below into a refusal the player cannot trace back to a checkbox (measured: authored
+       6 on a rank-0 cut and 2 on a rank-2 cut comes out 6-on-the-last-press, and Auto-stage then
+       refuses the ship). So a fully-numbered ladder keeps its order and the switch says so; where
+       the chain earns its keep is the shape a player builds and never numbers, which is most of
+       what a VAB asparagus is. */
+    const bool rankCuts = fuelStaging && !authoredCuts;
+    std::vector<int> fuelRank(n, 0), chainRank;
+    int fuelRanked = 0;
+    if(rankCuts) {
+        fuelCutRanks(ship, order, sizes, isDec, isEng, fuelRank);
+        chainRank = fuelRank;
         /* The containment clamp again, this time on the rank: a stage can sit further from an
            engine than a cut nested inside it, and the outer press would take the inner one.
            Lowering the outer rank ties them, and depth puts the inner cut first. */
@@ -1560,14 +1591,19 @@ StagingPlan autoStage(BuildShip &ship, bool fuelStaging) {
             const int a = nearDec[(size_t)par];
             if(a >= 0 && fuelRank[a] > fuelRank[d]) { fuelRank[a] = fuelRank[d]; }
         }
-        for(int d : decs) {
-            if(fuelRank[d] > 0) { fuelRanked++; }
-            if(fuelRank[d] != chainRank[d]) { fuelSwallowed++; }
-        }
+        for(int d : decs) { if(fuelRank[d] > 0) { fuelRanked++; } }
     }
-    // One key for both the sort and the rung count, so they cannot drift apart.
+    /* One count for both clamps: a cut bent by the authored rule AND by the rank is one cut the
+       ladder moved, not two, and the same stack must not be described differently by a switch
+       that did not move it. */
+    int bentCuts = swallowed;
+    for(int d : decs) {
+        if(!chainRank.empty() && fuelRank[d] != chainRank[d]) { bentCuts++; }
+    }
+    // One key for both the sort and the rung count, so they cannot drift apart. rankCuts and
+    // authoredCuts are mutually exclusive, so the two orderings never meet inside a key.
     auto cutKey = [&](int i) {
-        return std::make_tuple(fuelStaging ? fuelRank[i] : 0,
+        return std::make_tuple(rankCuts ? fuelRank[i] : 0,
                                authoredCuts ? cutAuth[i] : 1, depth[i]);
     };
     std::vector<int> cuts = decs;
@@ -1708,15 +1744,23 @@ StagingPlan autoStage(BuildShip &ship, bool fuelStaging) {
                    that would light the two together. */
                 std::snprintf(buf, sizeof buf,
                               "refuse: '%s' lights before '%s' as built; the stack would light "
-                              "them together -- fix the stack, or number the labels by hand",
+                              "them together -- fix the stack%s",
                               ship.parts[(size_t)ea].id.c_str(),
-                              ship.parts[(size_t)eb].id.c_str());
+                              ship.parts[(size_t)eb].id.c_str(), rankCuts ?
+                              ", number the labels by hand, or turn Fuel link staging off" :
+                              ", or number the labels by hand");
             } else {
+                /* The lever gets named because it is the thing the player just touched: with the
+                   chain ordering the cuts, this refusal is usually the chain moving two engines
+                   past each other, and "fix the stack" is the expensive guess next to a checkbox
+                   (#1031). */
                 std::snprintf(buf, sizeof buf,
                               "refuse: as built, '%s' lights before '%s'; the stack would light "
-                              "it after -- fix the stack, or number the labels by hand",
+                              "it after -- fix the stack%s",
                               ship.parts[(size_t)ea].id.c_str(),
-                              ship.parts[(size_t)eb].id.c_str());
+                              ship.parts[(size_t)eb].id.c_str(), rankCuts ?
+                              ", number the labels by hand, or turn Fuel link staging off" :
+                              ", or number the labels by hand");
             }
             plan.notes.push_back(buf);
             return plan;
@@ -1749,18 +1793,29 @@ StagingPlan autoStage(BuildShip &ship, bool fuelStaging) {
                       "only on a press past the ladder", floorPinsGivenUp, floorParts);
         plan.notes.push_back(buf);
     }
-    if(swallowed + fuelSwallowed > 0) {
+    if(bentCuts > 0) {
         std::snprintf(buf, sizeof buf,
                       "note: %d cut(s) ordered above a cut they contain, which no press order "
-                      "can fly -- the inner cut separates first (#1020)",
-                      swallowed + fuelSwallowed);
+                      "can fly -- the inner cut separates first (#1020)", bentCuts);
         plan.notes.push_back(buf);
     }
     if(fuelRanked > 0) {
+        /* Only true because rankCuts means the ladder had no typed order to keep: with the
+           switch off these cuts order by depth alone, so naming that as the alternative is
+           naming what the code actually does. */
         std::snprintf(buf, sizeof buf,
                       "note: %d cut(s) ranked by the fuel chain, furthest leg first (#1031) -- "
-                      "turn Fuel link staging off to rank them by the part tree instead",
+                      "turn Fuel link staging off to order them by the part tree instead",
                       fuelRanked);
+        plan.notes.push_back(buf);
+    }
+    if(fuelStaging && authoredCuts) {
+        /* The checkbox looks dead here, so say why: the ladder is numbered right through, and a
+           typed number outranks the chain. Without this line a player who flips the switch on
+           heavy_asp gets no answer at all, and no way to tell "inert" from "broken". */
+        std::snprintf(buf, sizeof buf,
+                      "note: Fuel link staging ranked nothing -- every cut already carries a "
+                      "number, and a typed number outranks the drain chain (#1031)");
         plan.notes.push_back(buf);
     }
     if(apart > 0) {

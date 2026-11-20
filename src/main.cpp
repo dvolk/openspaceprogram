@@ -383,7 +383,7 @@ static int printFleetReport(const Game &game, const GameArgs &args,
 
     int broken = 0, no_engine = 0, grounded = 0, short_hull = 0, solvent = 0, flagged = 0;
     int refused = 0, restaged = 0, moved = 0, planned = 0, faults = 0;
-    int linkHulls = 0, fuelDiff = 0;   // the #1031 switch, measured apart
+    int linkHulls = 0, fuelDiff = 0, fuelFaults = 0;   // the #1031 switch, measured apart
     for(auto &[name, path]: hulls) {
         ShipDef def;
         try {
@@ -469,20 +469,34 @@ static int printFleetReport(const Game &game, const GameArgs &args,
             faults += (int)after.size();
             for(const std::string &w : after) { printf("    auto-stage LEFT A FAULT: %s\n", w.c_str()); }
         }
-        /* The same question with the fuel chain leading the cut order (#1031), asked only of the
-           hulls that have links to answer it. Reported as a difference against the plain plan
-           rather than a second wall of rows: on this fleet the switch should be quiet -- both
-           linked hulls already number their cuts the way their chains drain -- so a non-zero
-           count is the finding, and the plan text would just be noise. */
+        /* The same question with the chain ordering the cuts (#1031), asked only of the hulls
+           that have links to answer it. Compared LABEL FOR LABEL rather than by change count: a
+           relabelling that moves the same number of parts is exactly what a change count hides,
+           and this line exists to make the switch's reach visible rather than merely printed.
+           The fuel plan gets the checker as well -- it is the newer ordering rule, so it is the
+           one likelier to leave a fault, and the plain plan above already gets asked. Reported
+           as a difference rather than a second wall of rows: on this fleet the switch should be
+           quiet, so a non-zero count is the finding. */
         if(!build.fuelLinks.empty()) {
             linkHulls++;
             BuildShip fuel = build;
             const StagingPlan fp = autoStage(fuel, true);
-            if(fp.applied != plan.applied || fp.changes.size() != plan.changes.size()) {
+            bool same = fp.applied == plan.applied;
+            if(same) {
+                for(size_t k = 0; k < fuel.parts.size(); k++) {
+                    if(fuel.parts[k].stage != trial.parts[k].stage) { same = false; break; }
+                }
+            }
+            if(!same) {
                 fuelDiff++;
                 printf("    fuel link staging would number this hull differently: %d change(s) "
                        "against %d\n", (int)fp.changes.size(), (int)plan.changes.size());
             }
+            std::vector<std::string> fwarn;
+            validateStaging(fuel, fwarn);
+            fuelFaults += (int)fwarn.size();
+            for(const std::string &w : fwarn) { printf("    fuel plan LEFT A FAULT: %s\n", w.c_str()); }
+            for(const std::string &n : fp.notes) { printf("    fuel plan: %s\n", n.c_str()); }
         }
     }
     printf("%d no engine, %d grounded (TWR < 1 at the pad), %d lift off but book "
@@ -504,9 +518,11 @@ static int printFleetReport(const Game &game, const GameArgs &args,
            "authored, %d refuse; %d hull(s) applied, %d fault(s) left behind.\n",
            restaged, (int)hulls.size(), moved, planned - restaged, refused, planned, faults);
     /* Printed even when nothing differs: "%d hull(s) carry links" is the reach of the #1031
-       switch, and a reader cannot tell a quiet switch from an unmeasured one without it. */
+       switch, and a reader cannot tell a quiet switch from an unmeasured one without it. The
+       fault count rides along because the fuel plan is a second ordering rule over the same
+       ladders, and "it numbered them the same" is only reassuring if it also left them legal. */
     printf("%d hull(s) carry fuel links; Fuel link staging would number %d of them "
-           "differently (#1031).\n", linkHulls, fuelDiff);
+           "differently and leave %d fault(s) (#1031).\n", linkHulls, fuelDiff, fuelFaults);
     if(broken > 0) { printf("%d def(s) failed to load.\n", broken); }
     return 0;
 }

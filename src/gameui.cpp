@@ -7526,6 +7526,12 @@ void drawVabUI(Game &g) {
         ImGui::SameLine();
         const int nLinks = (int)g.vab.build.fuelLinks.size();
         ImGui::TextDisabled("%d fuel link%s", nLinks, nLinks == 1 ? "" : "s");
+        /* What the box means, in the window rather than only in the log. #1027 deliberately
+           kept the plan's notes out of the banner, so a player who ticks this and presses
+           Auto-stage would otherwise get no explanation anywhere. "un-numbered" is the
+           load-bearing word: a ladder whose every cut carries a typed number keeps it, and
+           saying so here is what stops the box looking broken on a hand-numbered hull. */
+        ImGui::TextDisabled("Un-numbered cuts drop in drain order; off drops them in stack order");
         ensureStagingCache(g, frameSigOnce(), gLaunch);
         const std::vector<StagingLabel> &grp = g.vab.stagingGroups;
         if(grp.empty()) { return; }

@@ -2541,6 +2541,122 @@ static void test_auto_stager_fuel_link_switch_is_inert_without_links() {
     CHECK_TRUE(!has_note(ask, "ranked by the fuel chain"), "nor claims the chain ordered anything");
 }
 
+/* A ring where only SOME of the boosters carry a link: the chain covers one of them, so it ranks
+   one of them. The linked booster waits for its fuel to run down and rides the top press; the
+   unlinked one burns its own tank, so the chain has no opinion and it ranks 0 with the core stage,
+   where depth puts it. Recorded because "rank the whole ring off its linked neighbours" is a
+   tempting shortcut that would make the unlinked booster wait for a fuel leg it never had. */
+static void test_auto_stager_ranks_only_the_boosters_the_links_cover() {
+    Catalog cat;
+    auto build = [&](BuildShip &bs, bool linkA) {
+        const int pod = addPart(bs, cat.mono(100, 0), "pod", -1, 1);
+        const int dCore = addPart(bs, cat.decoupler(5), "dec_core", pod, 1);
+        const int coreTank = addPart(bs, cat.tank(50, 25, 25), "core_tank", dCore, 1);
+        addPart(bs, cat.engine(10, 0.5, 1000.0), "core_eng", coreTank, 1);
+        const int dA = addPart(bs, cat.decoupler(5), "dec_a", coreTank, 1);
+        const int aTank = addPart(bs, cat.tank(50, 25, 25), "a_tank", dA, 1);
+        addPart(bs, cat.engine(10, 0.5, 1000.0), "a_eng", aTank, 1);
+        const int dB = addPart(bs, cat.decoupler(5), "dec_b", coreTank, 1);
+        const int bTank = addPart(bs, cat.tank(50, 25, 25), "b_tank", dB, 1);
+        addPart(bs, cat.engine(10, 0.5, 1000.0), "b_eng", bTank, 1);
+        if(linkA) { addLink(bs, "a_tank", "core_tank"); }
+        (void)dCore; (void)coreTank; (void)dA; (void)aTank; (void)dB; (void)bTank;
+    };
+
+    BuildShip plain;
+    build(plain, false);
+    autoStage(plain);
+    CHECK_TRUE(labelsOf(plain) == std::vector<int>({1, 2, 2, 2, 3, 3, 3, 3, 3, 3}),
+               "no links: both boosters share one press");
+
+    BuildShip bs;
+    build(bs, true);
+    StagingPlan on = autoStage(bs, true);
+    CHECK_TRUE(on.applied, "a chain over one booster is still a plan");
+    CHECK_TRUE(labelsOf(bs) == std::vector<int>({1, 2, 2, 2, 4, 4, 4, 3, 3, 3}),
+               "only the linked booster moves up; the unlinked one and the core stay put");
+    CHECK_TRUE(has_note(on, "1 cut(s) ranked by the fuel chain"), "one opinion, counted");
+    std::vector<std::string> w;
+    validateStaging(bs, w);
+    CHECK_TRUE(w.empty(), "three dense rungs, each answering to a cut");
+}
+
+/* The chain ranks a stage by fuel it hands to an engine OUTSIDE itself. Point the chain the
+   other way -- the core feeds the boosters, so every engine burns inside the stage it sits on --
+   and the switch has nothing to say: no rank, no note, and the same ladder the switch-off rule
+   gives. This is the half of the rule the ring tests cannot show, because there every chain runs
+   outward. */
+static void test_auto_stager_ignores_a_chain_that_hands_fuel_no_further_inboard() {
+    Catalog cat;
+    BuildShip bs;
+    const int pod = addPart(bs, cat.mono(100, 0), "pod", -1, 1);
+    const int dCore = addPart(bs, cat.decoupler(5), "dec_core", pod, 1);
+    const int coreTank = addPart(bs, cat.tank(50, 25, 25), "core_tank", dCore, 1);
+    addPart(bs, cat.engine(10, 0.5, 1000.0), "core_eng", coreTank, 1);
+    const int dA = addPart(bs, cat.decoupler(5), "dec_a", coreTank, 1);
+    const int aTank = addPart(bs, cat.tank(50, 25, 25), "a_tank", dA, 1);
+    addPart(bs, cat.engine(10, 0.5, 1000.0), "a_eng", aTank, 1);
+    const int dB = addPart(bs, cat.decoupler(5), "dec_b", coreTank, 1);
+    const int bTank = addPart(bs, cat.tank(50, 25, 25), "b_tank", dB, 1);
+    addPart(bs, cat.engine(10, 0.5, 1000.0), "b_eng", bTank, 1);
+    (void)pod; (void)dCore; (void)coreTank; (void)dA; (void)dB;
+    addLink(bs, "core_tank", "a_tank");   // outward: the trunk feeds the branches
+    addLink(bs, "core_tank", "b_tank");
+    StagingPlan ask = autoStage(bs, true);
+    CHECK_TRUE(ask.applied, "an outward chain is still a stack");
+    CHECK_TRUE(labelsOf(bs) == std::vector<int>({1, 2, 2, 2, 3, 3, 3, 3, 3, 3}),
+               "and the ring shares one press, exactly as it does without links");
+    CHECK_TRUE(!has_note(ask, "ranked by the fuel chain"), "the chain offered no opinion");
+}
+
+/* Links AND typed numbers -- the case the whole feature turns on, and the one no fixture had.
+   The author numbered the ring 3/4/5 in the order OPPOSITE to the drain chain (which would put
+   the outboard booster on the top press), and left the core's cut on 2 because it goes last --
+   a ladder that answers to containment, so nothing here gets bent. A typed number beats the
+   tree's guesses (#1020), and it beats the chain for the same reason: the author can be wrong
+   about physics, but the number is the only statement of intent there is, and ranking over it
+   would also split a ring they left on one label deliberately. So the switch is inert here, and
+   says so. */
+static void test_auto_stager_keeps_typed_cut_numbers_ahead_of_the_fuel_chain() {
+    Catalog cat;
+    auto build = [&](BuildShip &bs) {
+        const int pod = addPart(bs, cat.mono(100, 0), "pod", -1, 1);
+        const int dCore = addPart(bs, cat.decoupler(5), "dec_core", pod, 2);
+        const int coreTank = addPart(bs, cat.tank(50, 25, 25), "core_tank", dCore, 1);
+        addPart(bs, cat.engine(10, 0.5, 1000.0), "core_eng", coreTank, 1);
+        const int dA = addPart(bs, cat.decoupler(5), "dec_a", coreTank, 3);   // chain: 3 hops
+        const int aTank = addPart(bs, cat.tank(50, 25, 25), "a_tank", dA, 1);
+        addPart(bs, cat.engine(10, 0.5, 1000.0), "a_eng", aTank, 1);
+        const int dB = addPart(bs, cat.decoupler(5), "dec_b", coreTank, 4);   // chain: 2 hops
+        const int bTank = addPart(bs, cat.tank(50, 25, 25), "b_tank", dB, 1);
+        addPart(bs, cat.engine(10, 0.5, 1000.0), "b_eng", bTank, 1);
+        const int dC = addPart(bs, cat.decoupler(5), "dec_c", coreTank, 5);   // chain: 1 hop
+        const int cTank = addPart(bs, cat.tank(50, 25, 25), "c_tank", dC, 1);
+        addPart(bs, cat.engine(10, 0.5, 1000.0), "c_eng", cTank, 1);
+        (void)pod; (void)coreTank; (void)aTank; (void)bTank; (void)cTank;
+        addLink(bs, "a_tank", "b_tank");
+        addLink(bs, "b_tank", "c_tank");
+        addLink(bs, "c_tank", "core_tank");
+    };
+
+    BuildShip off;
+    build(off);
+    autoStage(off);
+    const std::vector<int> offLabels = labelsOf(off);
+    CHECK_TRUE(offLabels == std::vector<int>({1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5}),
+               "the typed order is the ladder: c off first, the core's cut last");
+
+    BuildShip bs;
+    build(bs);
+    StagingPlan on = autoStage(bs, true);
+    CHECK_TRUE(labelsOf(bs) == offLabels, "and the chain does not move a numbered cut");
+    CHECK_TRUE(has_note(on, "ranked nothing -- every cut already carries a number"),
+               "the switch explains why it did nothing");
+    std::vector<std::string> w;
+    validateStaging(bs, w);
+    CHECK_TRUE(w.empty(), "the ladder stays legal either way");
+}
+
 /* A chain can rank a stage further from an engine than a cut NESTED inside it, and that order
    cannot fly either -- the outer press takes the inner cut with it. The same repair as the
    authored clamp applies to the rank: the outer rank comes down to the inner one, the depth
@@ -3076,6 +3192,9 @@ int main() {
     test_auto_stager_clamps_an_outer_cut_against_its_neighbours();
     test_auto_stager_orders_cuts_by_the_fuel_chain_when_asked();
     test_auto_stager_fuel_link_switch_is_inert_without_links();
+    test_auto_stager_ranks_only_the_boosters_the_links_cover();
+    test_auto_stager_ignores_a_chain_that_hands_fuel_no_further_inboard();
+    test_auto_stager_keeps_typed_cut_numbers_ahead_of_the_fuel_chain();
     test_auto_stager_clamps_a_fuel_rank_above_a_cut_it_contains();
     test_auto_stager_gives_up_the_pad_pin_rather_than_empty_the_floor();
     test_auto_stager_says_what_a_chute_on_the_floor_needs();

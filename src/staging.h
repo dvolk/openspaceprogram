@@ -207,18 +207,25 @@ struct StagingPlan {
     enum class Refusal : unsigned { Other, NoDecoupler };
     Refusal refusal = Refusal::Other;
 };
-/* `fuelStaging` (#1031) puts the fuel chain in front of the cut ordering instead of the part
-   tree: a cut ranks by the FURTHEST fuel leg the stage it releases still has to supply -- link
-   hops from a group inside the stage out to an engine outside it, the same walk flight drains
-   through -- and that rank leads the sort key. The chain has an opinion only where fuel crosses
-   the cut boundary, so a stage that feeds nothing outside itself ranks 0 and orders by depth
-   exactly as it does with the switch off; and a rank that would stand a cut above one nested
-   inside it is clamped down, the same repair an authored number gets.
+/* `fuelStaging` (#1031) orders the cuts by the fuel chain instead of the part tree -- where the
+   ladder has no order of its own. A cut ranks by the FURTHEST fuel leg the stage it releases
+   still has to supply: link hops from a group inside the stage out to an engine outside it, the
+   same walk flight drains through. The chain has an opinion only where fuel crosses the cut
+   boundary, so a stage that feeds nothing outside itself ranks 0 and orders by depth exactly as
+   it does with the switch off; and a rank that would stand a cut above one nested inside it is
+   clamped down, the same repair an authored number gets.
+
+   A typed number still wins (#1020): when every cut already carries one, the switch changes
+   nothing and the plan says so. Ranking above an author's number would strand fuel they meant to
+   burn, split a ring they left on one label on purpose, and can tip the engine-order guard into
+   a refusal nobody can trace back to a checkbox.
 
    Measured over res/ships, the two hulls carrying links (heavy_asp, heavy_two) already have
    their authors' cut numbers equal to these ranks, so on the shipped fleet the switch changes
-   nothing. It is for the asparagus stack a player builds in the VAB and never numbers: a chain
-   three hops long comes out three presses apart rather than one press for the whole ring. */
+   nothing either way. It is for the asparagus stack a player builds in the VAB and never
+   numbers: a chain three hops long comes out three presses apart rather than one press for the
+   whole ring. Furthest-leg is a proxy for the drain order, not the drain order -- see the note
+   on fuelCutRanks about a stage that carries other cut stages. */
 StagingPlan autoStage(BuildShip &ship, bool fuelStaging = false);
 
 /* Taking a staging edit back (#1013), scoped to LABELS. The VAB has no undo for place,
