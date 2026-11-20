@@ -1,0 +1,41 @@
+# The Save/Load sheet used to hold its selection as an INDEX into a list it re-scans at
+# ~1 Hz while the window is open -- and list_saves() sorts. So a slot that appears while
+# the sheet is open shifts every later row down by one, and the index still points where it
+# pointed: at somebody else's save. Measured on the pre-fix binary with the schedule below:
+#
+#   [toast] Saved to game1/zz-slot
+#   [uiclick] path="Save/Load/zz-slot" ... pressed        <-- the player picks zz-slot
+#   [toast] Saved to game1/aa-slot                        <-- sorts ABOVE zz-slot
+#   [toast] Loaded game1/aa-slot                          <-- the row nobody picked
+#
+# With the fix the same schedule prints "Loaded game1/zz-slot". The selection is a NAME now
+# (gameui.cpp::resolveSelection / resolveGame), re-derived into an index every frame, and a
+# picked row that has gone answers -1 -- so Load and Delete grey out instead of aiming at
+# the nearest neighbour. #78.
+#
+# Timing matters here and is not incidental. The row click relies on --ui-click's 2 s wait
+# for a drawn item, because the row only exists after the sheet's next scan. The Load click
+# sits 2.4 s after the second Save so the scan that re-sorts the list has already happened:
+# that gap is what makes the shift observable rather than a race.
+NAME save-selection-follows-the-row-not-the-index
+CLAIM Picking a slot and then saving another slot that sorts above it still loads the picked slot.
+KIND invariant
+ARGS --timeout 12
+ARGS --ui-click 1500,"Title Menu/New Game"
+ARGS --ui-click 2200,"New Game/Start"
+ARGS --ui-click 3000,"Game Menu/Save/Load"
+ARGS --ui-type 3600,"Save/Load/##newslot",zz-slot
+ARGS --ui-click 4200,"Save/Load/Save##saveload"
+ARGS --ui-click 5200,"Save/Load/zz-slot"
+ARGS --ui-type 6200,"Save/Load/##newslot",aa-slot
+ARGS --ui-click 6800,"Save/Load/Save##saveload"
+ARGS --ui-click 9200,"Save/Load/Load##saveload"
+EXPECT [toast] Saved to game1/zz-slot
+EXPECT [toast] Saved to game1/aa-slot
+EXPECT [toast] Loaded game1/zz-slot
+CHECK len([l for l in out.splitlines() if l.startswith("[toast] Loaded")]) == 1
+FILE saves/*/zz-slot/save.json
+FILE saves/*/aa-slot/save.json
+FORBID [toast] Loaded game1/aa-slot
+FORBID FAILED
+FORBID error:

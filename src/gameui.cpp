@@ -6894,14 +6894,43 @@ static std::string lowerCase(const std::string &s) {
     return out;
 }
 
+/* Re-derive this frame's row from a NAME (#78). Both columns of the Save/Load sheet are
+   directory scans that run again under the open window, and list_saves() sorts, so a
+   saved slot, a deleted one, or a saves/ touched elsewhere shifts every index below it.
+   An index-selection therefore survives only by luck, and the luck is a Load or a Delete
+   aimed at a save nobody picked. An EMPTY key means nothing has been picked yet, which
+   defaults to the top row (the sheet has always opened that way, and quickload-by-Enter
+   depends on it); a key that is not in the list THIS frame answers -1, which every button
+   on the sheet already gates on, rather than quietly landing on the nearest neighbour. */
+static int resolveSelection(const std::vector<std::string> &names, const std::string &key) {
+    if(key.empty()) { return names.empty() ? -1 : 0; }
+    for(size_t i = 0; i < names.size(); i++) {
+        if(names[i] == key) { return (int)i; }
+    }
+    return -1;
+}
+
+/* A game dir's identity: the same display name can exist under two roots (the player's
+   saves/ and a Game Debug fixture root) and hand-named dirs carry no stamp, so the key is
+   root + dirName, not the label the row shows. */
+static std::string gameKeyOf(const GameEntry &e) { return e.root + "/" + e.dirName; }
+
+static int resolveGame(const std::vector<GameEntry> &games, const std::string &key) {
+    if(key.empty()) { return games.empty() ? -1 : 0; }
+    for(size_t i = 0; i < games.size(); i++) {
+        if(gameKeyOf(games[i]) == key) { return (int)i; }
+    }
+    return -1;
+}
+
 void drawSaveLoad(Game &g) {
     // The slot name and the selections persist (static): so the player does not retype,
     // and Load/Delete act on the chosen row.
     static char nameBuf[256] = "save1";
     static char filterBuf[128] = "";
-    static int gameSel = 0;    // index into the games list
-    static int slotSel = 0;    // index into the selected game's slots
-    static int prevGameSel = -2;   // a game switch re-picks the first slot
+    static std::string gameKey;      // gameKeyOf() of the picked game
+    static std::string slotKey;      // the picked slot's dir name
+    static std::string prevGameKey;  // a game switch drops the slot selection
     /* Both lists are directory scans: refresh at ~1 Hz while the window is open. A save
        or delete resets the timer, so your own action shows on the next frame. */
     static const double kRescanSec = 1.0;
@@ -6910,8 +6939,6 @@ void drawSaveLoad(Game &g) {
     static std::vector<std::string> slots;
 
     drawWin(g, W_SaveLoad, [&] {
-        // Clamp BOTH bounds: a frame with an empty list parks the index at -1, and a later
-        // `list[-1]` is an out-of-bounds read.
         const bool due = ImGui::GetTime() >= nextRescan;
         if(due) {
             nextRescan = ImGui::GetTime() + kRescanSec;
@@ -6921,20 +6948,22 @@ void drawSaveLoad(Game &g) {
                          g.extra_save_roots.end());
             games = list_games(roots);
         }
-        if(gameSel < 0 || gameSel >= (int)games.size()) {
-            gameSel = (int)games.size() - 1;
+        /* Both selections are resolved from their key every frame, not carried as an
+           index: the lists can be re-scanned underneath, and a re-scan re-sorts. This
+           also makes an out-of-range index impossible, which is what the old clamp was
+           papering over -- a clamp is how a wrong row gets loaded (#78). */
+        const int gameSel = resolveGame(games, gameKey);
+        const bool gameChanged = (gameKey != prevGameKey);
+        if(gameChanged) {
+            slotKey.clear();          // a game switch drops to the new game's top slot
+            prevGameKey = gameKey;
         }
-        if(due || gameSel != prevGameSel) {
-            slots.clear();
-            if(gameSel >= 0) {
-                slots = list_saves(games[gameSel].root + "/"
-                                   + games[gameSel].dirName);
-            }
+        if(gameSel >= 0 && (due || gameChanged)) {
+            slots = list_saves(games[gameSel].root + "/" + games[gameSel].dirName);
+        } else if(gameSel < 0 && !slots.empty()) {
+            slots.clear();            // the picked game is gone: no slot column to show
         }
-        if(gameSel != prevGameSel) { slotSel = 0; prevGameSel = gameSel; }
-        if(slotSel < 0 || slotSel >= (int)slots.size()) {
-            slotSel = (int)slots.size() - 1;
-        }
+        const int slotSel = resolveSelection(slots, slotKey);
 
         // --- save-as: capture the live ships + crew + clock ----------------
         ImGui::TextWrapped(
@@ -7000,7 +7029,7 @@ void drawSaveLoad(Game &g) {
                nobody picked (measured: select save_eva_yaw, type "padwall",
                click Load -> save_eva_padwall). The buttons gate on the
                selection being one of the rows on screen instead, and the
-               frame-top clamp keeps it a real index into `slots`. */
+               frame-top resolve keeps it a real index into `slots`. */
             const bool selShown =
                 std::find(shown.begin(), shown.end(), slotSel) != shown.end();
 
@@ -7010,7 +7039,7 @@ void drawSaveLoad(Game &g) {
             ImGui::BeginChild("##games", ImVec2(w, 180.0f));
             for(size_t i = 0; i < games.size(); i++) {
                 if(ImGui::Selectable(games[i].name.c_str(), (int)i == gameSel)) {
-                    gameSel = (int)i;
+                    gameKey = gameKeyOf(games[i]);
                 }
             }
             ImGui::EndChild();
@@ -7023,7 +7052,7 @@ void drawSaveLoad(Game &g) {
             }
             for(int i : shown) {
                 if(ImGui::Selectable(slots[i].c_str(), i == slotSel)) {
-                    slotSel = i;
+                    slotKey = slots[i];
                 }
             }
             ImGui::EndChild();
@@ -7067,7 +7096,9 @@ void drawSaveLoad(Game &g) {
                     delete_save(dir, root);
                     g.toast("Deleted %s/%s", games[gameSel].name.c_str(),
                             slots[slotSel].c_str());
-                    slotSel = 0;   // the slot list shrank under the selection
+                    slotKey.clear();  // the slot list shrank under the selection: fall
+                                      // back to the top row rather than to whatever slot
+                                      // slid into the dead index
                     nextRescan = 0.0;   // and the deleted row goes away next frame
                 } catch(const std::exception &e) {
                     g.toast("Delete failed: %s", e.what());

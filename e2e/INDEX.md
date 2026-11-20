@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 430 |
+| `invariant` | a behaviour or a player route the game must keep | 431 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 50 |
 | `harness` | CLI/test-engine plumbing, not game spec | 16 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **500** |
+| | **total** | **501** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -361,7 +361,7 @@ judgement. Select by number, name or path, e.g.
 | `save/612-ask-survives-a-round-trip.txt` | invariant | A saved Guidance ask loads back into the game and is written out again. |
 | `save/867-cross-system-bubble-load.txt` | invariant | A save with a ship in a building's bubble loads from the title across systems. |
 
-## ui (76)
+## ui (77)
 
 | case | kind | pins |
 |---|---|---|
@@ -378,6 +378,7 @@ judgement. Select by number, name or path, e.g.
 | `ui/74-esc-vab-back.txt` | invariant | ESC in the VAB returns to the hub. |
 | `ui/75-scene-switch-keys.txt` | invariant | The 1/2/3/4 scene shortcuts switch scenes. |
 | `ui/76-scene-switch-title-denied.txt` | invariant | The scene shortcuts are denied on the title screen. |
+| `ui/78-save-selection-follows-the-row.txt` | invariant | Picking a slot and then saving another slot that sorts above it still loads the picked slot. |
 | `ui/85-title-boot-full.txt` | canary | The full solar system boots to the title with a backdrop. |
 | `ui/86-exit-midstream-full.txt` | canary | The game exits cleanly mid-stream on the full system. |
 | `ui/87-switch-system.txt` | invariant | A New Game system picker switches systems and mints the game. |
