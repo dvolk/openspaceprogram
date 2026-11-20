@@ -7,6 +7,8 @@ import os
 
 import trimesh
 
+from gen_out import add_args, ship
+
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 RADIUS = 0.2         # m, cross-section
@@ -30,6 +32,7 @@ def build_capsule():
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    add_args(ap, REPO_ROOT)
     ap.add_argument("--dry-run", action="store_true",
                     help="print the geometry without writing")
     a = ap.parse_args()
@@ -47,7 +50,7 @@ def main():
 
     # trimesh's OBJ export omits the normals the loader wants; write v/vn/f
     # by hand. No UVs: the loader falls back to (0,0), sampling the flat fill.
-    obj_path = os.path.join(REPO_ROOT, "res", "meshes", "kerbal.obj")
+    obj_path = ship(a.out, "meshes", "kerbal.obj", force=a.force)
     with open(obj_path, "w") as f:
         f.write("# gen_kerbal.py: the EVA placeholder capsule\n")
         for v in m.vertices:
@@ -63,7 +66,7 @@ def main():
 
     from PIL import Image
     img = Image.new("RGB", (64, 64), KERBAL_RGB)
-    png_path = os.path.join(REPO_ROOT, "res", "textures", "kerbal.png")
+    png_path = ship(a.out, "textures", "kerbal.png", force=a.force)
     img.save(png_path)
     print("wrote %s" % png_path)
 

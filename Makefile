@@ -728,12 +728,15 @@ test: test-gen test-parts $(addprefix $(TESTDIR)/,$(TESTS))
 #              These are the pins that catch a committed res/systems/*.json
 #              drifting from its generator (#186: the ksp Kuiper radii sat
 #              1.5x out for two days because nothing regenerated them).
-# test-py   -- adds the three pins that import third-party modules
-#              (trimesh for the part meshes, numpy+PIL for the heightmap and
-#              skybox faces). parts.json is the one that bites -- its
-#              generator had no row for the parachute, so the next regenerate
-#              would have deleted the part from the catalog. They run here and
-#              in CI; on a box without the modules they are reported as
+# test-py   -- adds the pins that import third-party modules
+#              (trimesh for the part meshes and for check_mesh_pins.py,
+#              numpy+PIL for the heightmap and skybox faces). parts.json is
+#              the one that bites -- its generator had no row for the
+#              parachute, so the next regenerate would have deleted the part
+#              from the catalog. check_mesh_pins.py is #1051: the art those
+#              scripts write had no drift pin at all, and four of them wrote
+#              into res/ with no way to point them elsewhere. They run here
+#              and in CI; on a box without the modules they are reported as
 #              skipped instead of quietly vanishing (#220).
 
 # The gates that cost no compiler: hygiene, file size, JSON parseability, secret shapes,
@@ -797,10 +800,11 @@ PY_MISSING = $(shell python3 -c "import importlib.util as u; print(' '.join(m fo
 .PHONY: test-py
 test-py: test-gen
 	@if [ -n "$(PY_MISSING)" ]; then \
-		echo "test-py: SKIP parts/heightmap/skybox pins -- missing python module(s): $(PY_MISSING)" >&2; \
+		echo "test-py: SKIP parts/mesh/heightmap/skybox pins -- missing python module(s): $(PY_MISSING)" >&2; \
 		echo "         (pip install trimesh numpy pillow, or run these in CI)" >&2; \
 	else \
 		python3 utils/gen_parts.py --check && \
+		python3 utils/check_mesh_pins.py && \
 		python3 utils/heightmaps/gen_earth_hm.py --verify && \
 		python3 utils/skybox/make_skybox.py --verify --out res/skybox/dsm_1024_g3_ds2; \
 	fi

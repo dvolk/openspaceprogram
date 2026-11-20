@@ -3,9 +3,12 @@
 Simple v1 shapes (the torus-hab collision case is noted in the plan). Authored in
 the building's local frame; body-fixed attitude points local +Z at the planet.
 """
+import argparse
 import os
 import numpy as np
 import trimesh
+
+from gen_out import add_args, ship
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -28,8 +31,13 @@ def dock():
 
 
 def main():
+    ap = argparse.ArgumentParser(
+        description="Generate res/meshes/{station,spacedock}.obj (v1 building shapes)")
+    add_args(ap, ROOT)
+    a = ap.parse_args()
+
     for name, mesh in [("station", station()), ("spacedock", dock())]:
-        dst = os.path.join(ROOT, "res", "meshes", name + ".obj")
+        dst = ship(a.out, "meshes", name + ".obj", force=a.force)
         mesh.export(dst, include_normals=True)
         print("%s: extents %s" % (dst, np.round(mesh.extents, 2)))
 

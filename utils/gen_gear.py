@@ -5,10 +5,13 @@ the one src/wheel.h / Vehicle::applyGroundForces assume: axle X, rolling
 direction +Y, strut up +Z. The surface-attach node is authored at the strut top
 (parts.json "nodes"), so the gear hangs below a fuselage belly.
 """
+import argparse
 import os
 
 import numpy as np
 import trimesh
+
+from gen_out import add_args, ship
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -19,13 +22,18 @@ STRUT_TOP = 0.65  # mount face height (the surface node sits here)
 
 
 def main():
+    ap = argparse.ArgumentParser(
+        description="Generate res/meshes/gear.obj (this module's header has the part frame)")
+    add_args(ap, REPO_ROOT)
+    a = ap.parse_args()
+
     wheel = trimesh.creation.cylinder(radius=R, height=WIDTH, sections=24)
     # trimesh's cylinder axis is Z; turn it onto X so the axle is X.
     wheel.apply_transform(trimesh.transformations.rotation_matrix(np.pi / 2, [0, 1, 0]))
     strut = trimesh.creation.box(extents=[0.12, 0.12, STRUT])
     strut.apply_translation([0, 0, STRUT_TOP - STRUT / 2])
     gear = trimesh.util.concatenate([wheel, strut])
-    dst = os.path.join(REPO_ROOT, "res", "meshes", "gear.obj")
+    dst = ship(a.out, "meshes", "gear.obj", force=a.force)
     gear.export(dst, include_normals=True)
     print("%s: wheel R=%.2f axle X, strut top Z=%.2f, extents %s"
           % (dst, R, STRUT_TOP, np.round(gear.extents, 3)))

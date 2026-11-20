@@ -9,9 +9,12 @@ Sizing story (reports/air-buildings2026_11_14): at 56 km on Venus a 10 t
 platform needs ~13,500 m3 of helium; six balloons r=8.5 m carry ~15,400 m3
 (~14% margin). Tethers ~60 m for visual impact.
 """
+import argparse
 import os
 import numpy as np
 import trimesh
+
+from gen_out import add_args, ship
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -46,10 +49,15 @@ def visual():
 
 
 def main():
+    ap = argparse.ArgumentParser(
+        description="Generate res/meshes/balloon_platform*.obj (sizing story in the header)")
+    add_args(ap, ROOT)
+    a = ap.parse_args()
+
     d = deck()
     v = visual()
-    dst_d = os.path.join(ROOT, "res", "meshes", "balloon_platform_deck.obj")
-    dst_v = os.path.join(ROOT, "res", "meshes", "balloon_platform.obj")
+    dst_d = ship(a.out, "meshes", "balloon_platform_deck.obj", force=a.force)
+    dst_v = ship(a.out, "meshes", "balloon_platform.obj", force=a.force)
     d.export(dst_d, include_normals=True)
     v.export(dst_v, include_normals=True)
     print("%s: extents %s (collider)" % (dst_d, np.round(d.extents, 2)))
