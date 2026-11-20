@@ -393,6 +393,11 @@ struct VabState {
        doc). Editor state, not ship state -- it is how the player asked the question, and the
        ship file already carries the answer once the plan has run. */
     bool fuelStaging = false;
+    /* The Staging window's "Stage from scratch" switch (#1035): ignore the labels the build
+       carries and derive the ladder from the tree, with no authored-order or ignition-order
+       protection. Editor state for the same reason as above -- the replaced numbers are on the
+       staging Undo stack, not in a second copy of the ship. */
+    bool stageFromScratch = false;
     /* id -> index into vab.build.parts, rebuilt with the rows above and keyed by the
        same signature (#527). The fuel-link overlay draws every frame and used to
        resolve both ends of every link by scanning every part and comparing std::string

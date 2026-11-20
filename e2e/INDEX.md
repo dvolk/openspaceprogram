@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 424 |
+| `invariant` | a behaviour or a player route the game must keep | 425 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 50 |
 | `harness` | CLI/test-engine plumbing, not game spec | 16 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **494** |
+| | **total** | **495** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -357,7 +357,7 @@ judgement. Select by number, name or path, e.g.
 | `save/612-ask-survives-a-round-trip.txt` | invariant | A saved Guidance ask loads back into the game and is written out again. |
 | `save/867-cross-system-bubble-load.txt` | invariant | A save with a ship in a building's bubble loads from the title across systems. |
 
-## ui (74)
+## ui (75)
 
 | case | kind | pins |
 |---|---|---|
@@ -435,6 +435,7 @@ judgement. Select by number, name or path, e.g.
 | `ui/1022-c-a-rung-shift-moves-everything-on-the-label.txt` | invariant | The ladder's rung buttons step every part carrying a label by one (no-op at the floor), and Undo takes the whole rung back as one edit. |
 | `ui/1027-a-auto-stage-says-one-short-line-and-logs-its-detail.txt` | invariant | Auto-stage toasts one short line per outcome and logs its technical detail instead of painting it. |
 | `ui/1031-a-fuel-link-staging-sequences-an-unnumbered-asparagus-stack.txt` | invariant | With Fuel link staging on, Auto-stage sequences the chained boosters one press apart instead of dropping the ring at once. |
+| `ui/1035-a-stage-from-scratch-rebuilds-a-hand-numbered-hull.txt` | invariant | With "Stage from scratch" ticked, Auto-stage ignores the numbers on heavy_asp and rebuilds the ladder from the part tree. |
 
 ## render (89)
 

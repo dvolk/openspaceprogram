@@ -7459,7 +7459,7 @@ void drawVabUI(Game &g) {
            box because they answer a different question: that box is one part, this is the
            whole stack, and the undo covers whichever of the two moved the label. */
         if(ImGui::Button("Auto-stage")) {
-            StagingPlan plan = autoStage(g.vab.build, g.vab.fuelStaging);
+            StagingPlan plan = autoStage(g.vab.build, g.vab.fuelStaging, g.vab.stageFromScratch);
             /* A plan's note is about the SHAPE of the stack -- which part, which label, what
                the tree cannot see -- and it runs past 160 characters, which in the toast font
                is about twice the width of the screen (#1027): the player gets the middle of a
@@ -7515,12 +7515,16 @@ void drawVabUI(Game &g) {
             const auto &bb = g.binds.perSlot[(size_t)Slot::UndoStaging];
             ImGui::TextDisabled("%s", bb.empty() ? "(unbound)" : bindLabel(bb[0]).c_str());
         }
-        /* One row UNDER the buttons (#1031): where Auto-stage should read the press order from
-           -- the fuel chain's drain order, or the part tree's depth. Always drawn rather than
-           shown when the build has links: a control that appears and disappears is one the
-           player cannot find or remember, and the link count beside it explains a switch that
-           changes nothing on a single-chain ship. It edits no part, so unlike the two buttons
-           above it never touches the frame's staging signature. */
+        /* Two switches under the buttons (#1035, #1031): what Auto-stage should read the press
+           order from, and whether to read the ship's own numbers at all. Both always drawn rather
+           than shown when they apply: a control that appears and disappears is one the player
+           cannot find or remember. Neither edits a part, so unlike the two buttons above they never
+           touch the frame's staging signature. */
+        bool scratch = g.vab.stageFromScratch;
+        if(ImGui::Checkbox("Stage from scratch", &scratch)) { g.vab.stageFromScratch = scratch; }
+        /* Where Auto-stage should read the press order from -- the fuel chain's drain order, or the
+           part tree's depth. The link count beside it explains a switch that changes nothing on a
+           single-chain ship. */
         bool fs = g.vab.fuelStaging;
         if(ImGui::Checkbox("Fuel link staging", &fs)) { g.vab.fuelStaging = fs; }
         ImGui::SameLine();

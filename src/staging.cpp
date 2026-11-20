@@ -1447,7 +1447,7 @@ static void fuelCutRanks(const BuildShip &ship, const std::vector<int> &order,
     }
 }
 
-StagingPlan autoStage(BuildShip &ship, bool fuelStaging) {
+StagingPlan autoStage(BuildShip &ship, bool fuelStaging, bool fromScratch) {
     StagingPlan plan;
     const size_t n = ship.parts.size();
     char buf[512];
@@ -1471,7 +1471,14 @@ StagingPlan autoStage(BuildShip &ship, bool fuelStaging) {
     std::vector<char> isDec(n, 0), isEng(n, 0), isChute(n, 0);
     std::vector<int> decs;
     for(size_t i = 0; i < n; i++) {
-        authored[i] = ship.parts[i].stage;
+        /* "Stage from scratch" (#1035) is implemented HERE and nowhere else: a build the player
+           has just placed carries 1 on every part, so reading 1 everywhere is exactly "ignore the
+           numbers on the ship". The authored cut order, the pad-lit pin and the engine-order
+           refusal all hang off authored[], so they stand down together rather than each needing
+           their own exemption -- and there is no fourth thing later that quietly keeps reading the
+           real labels. What gets WRITTEN comes from the tree; plan.changes still reports the
+           build's real values, so Undo still puts the replaced numbers back. */
+        authored[i] = fromScratch ? 1 : ship.parts[i].stage;
         const unsigned roles = stageRoles(ship.parts[i].def);
         if(roles & (unsigned)StageRole::Decoupler) { isDec[i] = 1; decs.push_back((int)i); }
         if(roles & (unsigned)StageRole::Engine) { isEng[i] = 1; }
@@ -1777,6 +1784,14 @@ StagingPlan autoStage(BuildShip &ship, bool fuelStaging) {
     /* The plan's caveats, said once instead of left for the player to notice mid-flight. None
        is a refusal: the numbering is right for the stack, and the stack is what the tree says
        it is. All of them go to the log and --fleet-report, not to a toast (#1027). */
+    if(fromScratch) {
+        /* First, because it colours every number below it: nothing here was protected, so a
+           reader comparing this plan against the ship's ladder needs to know the ladder was not
+           the input. */
+        plan.notes.push_back("note: staged from scratch -- the numbers the build carried were not "
+                             "read as intent, so no cut order and no ignition order was protected "
+                             "(#1035)");
+    }
     if(litAtPad > 0) {
         std::snprintf(buf, sizeof buf,
                       "note: %d engine(s) kept lit at the pad that the stack would have dimmed "
@@ -1818,7 +1833,11 @@ StagingPlan autoStage(BuildShip &ship, bool fuelStaging) {
                       "number, and a typed number outranks the drain chain (#1031)");
         plan.notes.push_back(buf);
     }
-    if(apart > 0) {
+    if(apart > 0 && !fromScratch) {
+        /* The premise of this note is "carried one label" -- the numbers the BUILD carried. Under
+           from-scratch the comparison is against a pretend fresh build that carries 1 everywhere,
+           so every pair would count and the sentence would describe a ship that is not there. The
+           change count and Undo are the report in that mode. */
         std::snprintf(buf, sizeof buf,
                       "note: %d engine pair(s) carried one label and would now light apart -- "
                       "'%s' at %d, '%s' at %d; an engine lights when the counter steps down "

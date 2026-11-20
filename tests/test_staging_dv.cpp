@@ -2657,6 +2657,100 @@ static void test_auto_stager_keeps_typed_cut_numbers_ahead_of_the_fuel_chain() {
     CHECK_TRUE(w.empty(), "the ladder stays legal either way");
 }
 
+/* "Stage from scratch" (#1035) in the shape that started it: heavy_asp's first engine sits on a
+   part nothing ever cuts away, so the only label the tree can give it is 1 -- lit at every press.
+   Typing 3 on it says "light it later", which the tree cannot produce, and the default path says so
+   rather than overwriting the number. With the switch, the plan reads the build as if it had just
+   been placed: the number is replaced, the ladder comes from the tree, and the refusal is gone. */
+static void test_auto_stager_from_scratch_drops_numbers_it_cannot_honor() {
+    Catalog cat;
+    auto build = [&](BuildShip &bs) {
+        const int pod = addPart(bs, cat.mono(100, 0), "pod", -1, 1);
+        addPart(bs, cat.engine(10, 0.5, 1000.0), "engine_1", pod, 3);   // lit later, the player says
+        const int d = addPart(bs, cat.decoupler(5), "dec_x", pod, 2);
+        const int tank = addPart(bs, cat.tank(50, 25, 25), "x_tank", d, 1);
+        addPart(bs, cat.engine(10, 0.5, 1000.0), "engine_2", tank, 2);
+        (void)pod; (void)d; (void)tank;
+    };
+
+    BuildShip bs;
+    build(bs);
+    StagingPlan keep = autoStage(bs);
+    CHECK_TRUE(!keep.applied, "as numbered, the tree and the ignition order cannot both hold");
+    CHECK_TRUE(has_note(keep, "lights before"), "and the plan names the pair it would re-sequence");
+    CHECK_TRUE(labelsOf(bs) == std::vector<int>({1, 3, 2, 1, 2}), "a refusal touches nothing");
+
+    BuildShip fresh;
+    build(fresh);
+    StagingPlan scratch = autoStage(fresh, false, true);
+    CHECK_TRUE(scratch.applied, "asked to start over, it numbers the stack");
+    CHECK_TRUE(labelsOf(fresh) == std::vector<int>({1, 1, 2, 2, 2}),
+               "the floor engine goes back to the floor, which is all the tree can do with it");
+    CHECK_TRUE(has_note(scratch, "staged from scratch"), "and the log says nothing was protected");
+    bool engineReverted = false;
+    for(const StagingChange &c : scratch.changes) {
+        if(c.id == "engine_1" && c.from == 3 && c.to == 1) { engineReverted = true; }
+    }
+    CHECK_TRUE(engineReverted, "the change record still carries the REAL replaced number, so Undo works");
+    std::vector<std::string> w;
+    validateStaging(fresh, w);
+    CHECK_TRUE(w.empty(), "and the ladder it wrote is legal");
+}
+
+/* The other half: a hand-numbered ladder. With the switch the author's cut order is not kept (that
+   is the point of asking), and depth decides -- the whole ring on one press. With BOTH switches the
+   two compose: from scratch makes the ladder unread-as-intent, and the chain then orders the ring
+   one press apart, which is the ladder #1031 derives for a build nobody numbered. Built three times
+   because a plan WRITES labels and the next plan would read them. */
+static void test_auto_stager_from_scratch_replaces_a_hand_numbered_ladder() {
+    Catalog cat;
+    auto build = [&](BuildShip &bs) {
+        const int pod = addPart(bs, cat.mono(100, 0), "pod", -1, 1);
+        const int dCore = addPart(bs, cat.decoupler(5), "dec_core", pod, 2);
+        const int coreTank = addPart(bs, cat.tank(50, 25, 25), "core_tank", dCore, 1);
+        addPart(bs, cat.engine(10, 0.5, 1000.0), "core_eng", coreTank, 1);
+        const int dA = addPart(bs, cat.decoupler(5), "dec_a", coreTank, 3);
+        const int aTank = addPart(bs, cat.tank(50, 25, 25), "a_tank", dA, 1);
+        addPart(bs, cat.engine(10, 0.5, 1000.0), "a_eng", aTank, 1);
+        const int dB = addPart(bs, cat.decoupler(5), "dec_b", coreTank, 4);
+        const int bTank = addPart(bs, cat.tank(50, 25, 25), "b_tank", dB, 1);
+        addPart(bs, cat.engine(10, 0.5, 1000.0), "b_eng", bTank, 1);
+        const int dC = addPart(bs, cat.decoupler(5), "dec_c", coreTank, 5);
+        const int cTank = addPart(bs, cat.tank(50, 25, 25), "c_tank", dC, 1);
+        addPart(bs, cat.engine(10, 0.5, 1000.0), "c_eng", cTank, 1);
+        (void)pod; (void)dCore; (void)coreTank; (void)dA; (void)aTank;
+        (void)dB; (void)bTank; (void)dC; (void)cTank;
+        addLink(bs, "a_tank", "b_tank");
+        addLink(bs, "b_tank", "c_tank");
+        addLink(bs, "c_tank", "core_tank");
+    };
+
+    BuildShip keep;
+    build(keep);
+    autoStage(keep);
+    CHECK_TRUE(labelsOf(keep) == std::vector<int>({1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5}),
+               "unread, the authored ring keeps its three presses");
+
+    BuildShip bs;
+    build(bs);
+    StagingPlan scratch = autoStage(bs, false, true);
+    CHECK_TRUE(scratch.applied, "asked to start over, it numbers the ring from the tree");
+    CHECK_TRUE(labelsOf(bs) == std::vector<int>({1, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3}),
+               "one press for the ring -- depth cannot tell three chained boosters apart");
+    CHECK_TRUE(!has_note(scratch, "ranked by the fuel chain"), "the chain was not asked");
+
+    BuildShip both;
+    build(both);
+    StagingPlan bothPlan = autoStage(both, true, true);
+    CHECK_TRUE(bothPlan.applied, "and both switches together number it too");
+    CHECK_TRUE(labelsOf(both) == std::vector<int>({1, 2, 2, 2, 5, 5, 5, 4, 4, 4, 3, 3, 3}),
+               "from scratch lets the chain order a ring the author had ordered the other way");
+    CHECK_TRUE(has_note(bothPlan, "3 cut(s) ranked by the fuel chain"), "and says the chain did it");
+    std::vector<std::string> w;
+    validateStaging(both, w);
+    CHECK_TRUE(w.empty(), "four dense rungs, each answering to a cut");
+}
+
 /* A chain can rank a stage further from an engine than a cut NESTED inside it, and that order
    cannot fly either -- the outer press takes the inner cut with it. The same repair as the
    authored clamp applies to the rank: the outer rank comes down to the inner one, the depth
@@ -3195,6 +3289,8 @@ int main() {
     test_auto_stager_ranks_only_the_boosters_the_links_cover();
     test_auto_stager_ignores_a_chain_that_hands_fuel_no_further_inboard();
     test_auto_stager_keeps_typed_cut_numbers_ahead_of_the_fuel_chain();
+    test_auto_stager_from_scratch_drops_numbers_it_cannot_honor();
+    test_auto_stager_from_scratch_replaces_a_hand_numbered_ladder();
     test_auto_stager_clamps_a_fuel_rank_above_a_cut_it_contains();
     test_auto_stager_gives_up_the_pad_pin_rather_than_empty_the_floor();
     test_auto_stager_says_what_a_chute_on_the_floor_needs();

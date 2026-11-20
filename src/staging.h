@@ -226,7 +226,15 @@ struct StagingPlan {
    numbers: a chain three hops long comes out three presses apart rather than one press for the
    whole ring. Furthest-leg is a proxy for the drain order, not the drain order -- see the note
    on fuelCutRanks about a stage that carries other cut stages. */
-StagingPlan autoStage(BuildShip &ship, bool fuelStaging = false);
+/* `fromScratch` (#1035) ignores the numbers the build carries and derives everything: the ladder
+   the tree gives (plus the chain, if `fuelStaging` is on), with no authored cut order, no pad-lit
+   pin and no engine-order refusal. It is the answer to "I moved a number and now Auto-stage won't
+   touch this ship" -- e.g. an engine on a part that never separates can only hold label 1, which
+   means lit at every press, so any ignition the player typed for it is something the tree cannot
+   produce and the default path refuses rather than overwrites. Replaced numbers stay on the Undo
+   stack; the mode is off by default so a hand-numbered hull is still protected from one stray
+   click. */
+StagingPlan autoStage(BuildShip &ship, bool fuelStaging = false, bool fromScratch = false);
 
 /* Taking a staging edit back (#1013), scoped to LABELS. The VAB has no undo for place,
    delete, detach or clear -- those destroy parts, and undoing them is a feature of its own
