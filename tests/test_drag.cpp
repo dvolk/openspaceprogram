@@ -47,7 +47,6 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
-#include <cstring>
 #include <limits>
 #include <numbers>
 #include <string>
@@ -1459,7 +1458,7 @@ static void test_surface_alpha_readout() {
 static void test_alpha_readout_cell() {
     printf("== #1058: one angle cell for the log, the window and the arrows ==\n");
     auto cell = [&](bool ok, double deg) {
-        char b[8];
+        char b[kAlphaCellChars + 2];
         formatAlphaDeg(b, sizeof b, ok, deg);
         return std::string(b);
     };
@@ -1476,18 +1475,22 @@ static void test_alpha_readout_cell() {
     CHECK_TRUE(cell(true, std::nan("")) == "-", "a NaN never prints");
     CHECK_TRUE(cell(true, INFINITY) == "-" && cell(true, -INFINITY) == "-",
                "nor does an infinity, either sign");
-    /* Width: the call sites pass 8 chars and the window pads the cell to 6, so nothing
-       the law can emit may be longer. alpha stays under +-180 deg, so +-180.0 is the
-       widest token and a clipped one must trip the helper's own assert. */
+    /* Width, against kAlphaCellChars -- the constant the window pads its column to.
+       The helper asserts the COLUMN, not just the 8-char buffer the call sites pass:
+       a token one character wider walks q= and Mach= sideways in silence, because a
+       printf width never truncates a %s. Pinned from both sides: nothing the law can
+       emit is wider than the column, and something REACHES it, so a constant widened
+       for no reason cannot pass a bare <= quietly. (The buffer here is the column
+       plus two, which is what the call sites pass -- the assert would fire first if
+       they ever fall below it.) */
     int widest = 0;
     for(int i = -1800; i <= 1800; ++i) {
-        const double deg = (double)i / 10.0;
-        char b[8];
-        const int want = formatAlphaDeg(b, sizeof b, true, deg);
-        CHECK_TRUE(std::strlen(b) == (size_t)want, "no angle in range is truncated");
+        char b[kAlphaCellChars + 2];
+        const int want = formatAlphaDeg(b, sizeof b, true, (double)i / 10.0);
         if(want > widest) { widest = want; }
     }
-    CHECK_TRUE(widest == 6, "the widest cell is the window's 6-char column (+-180.0)");
+    CHECK_TRUE(widest == kAlphaCellChars,
+               "the widest token is exactly the column the window pads to (+-180.0)");
     printf("   widest angle token: %d chars; refused and non-finite both print \"-\"\n",
            widest);
 }

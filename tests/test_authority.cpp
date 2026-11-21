@@ -2053,17 +2053,44 @@ static void test_a_lifting_plate_answers_its_own_angle() {
        saying so -- so the copy is pinned to the part for the substep that recorded
        it. A writer that updated one pair and not the other would put an angle next
        to a force that came from a different sample, and the overlay and the part
-       window would disagree on screen. */
-    int liftArrows = 0;
-    for(const Vehicle::ForceVec &fv : a.v->lastForceVecs) {
-        if(fv.kind != Vehicle::kForceLift) { continue; }
-        ++liftArrows;
-        CHECK_TRUE(fv.alphaValid == a.fin->aeroAngleValid,
-                   "the arrow's angle flag IS the part's flag");
-        CHECK_NEAR((double)fv.alphaDeg, (double)a.fin->aeroAlphaDeg, 1e-6,
-                   "and the arrow quotes the number that made this force");
-    }
-    CHECK_TRUE(liftArrows == 1, "this rig records exactly one lift arrow to compare");
+       window would disagree on screen. (tests/test_fuel.cpp's
+       test_force_overlay_recording pins that the recording happens at all and stops
+       when the overlay is off; this pins what the recorded angle MEANS.)
+       Pinned at TWO flows. One substep can only catch a mutation at the record site:
+       the flag is a constant true at both the part write and the record (vehicle.cpp
+       :4413, :4442), and a pair that both kept a leftover value would still match.
+       So: match, change the flow, match again -- and the angle has to have MOVED,
+       which is what turns "the two sides agree" into "the two sides agree about this
+       sample". */
+    auto arrowMatchesPart = [&]() {
+        int liftArrows = 0;
+        for(const Vehicle::ForceVec &fv : a.v->lastForceVecs) {
+            if(fv.kind == Vehicle::kForceLift) { ++liftArrows; }
+        }
+        /* Counted before comparing: a rig that grew a second lifting plate should say
+           so first, rather than drowning in per-arrow mismatches against the fin. */
+        CHECK_TRUE(liftArrows == 1, "this rig records exactly one lift arrow to compare");
+        for(const Vehicle::ForceVec &fv : a.v->lastForceVecs) {
+            if(fv.kind != Vehicle::kForceLift) { continue; }
+            CHECK_TRUE(fv.alphaValid == a.fin->aeroAngleValid,
+                       "the arrow's angle flag IS the part's flag");
+            CHECK_NEAR((double)fv.alphaDeg, (double)a.fin->aeroAlphaDeg, 1e-6,
+                       "and the arrow quotes the number that made this force");
+        }
+        return (double)a.fin->aeroAlphaDeg;
+    };
+    const double firstDeg = arrowMatchesPart();
+
+    a.v->hull->btBody->clearForces();
+    a.v->beginForceRecordSubstep();
+    SetVelocity(a.v->hull, glm::normalize(fr[2] - fr[1] * 0.3) * 100.0);  // other side of chord
+    a.v->applyAeroForce(1.0 / 120.0);
+    CHECK_TRUE(a.fin->aeroAngleValid, "the second flow still frames the plate");
+    const double secondDeg = arrowMatchesPart();
+    CHECK_TRUE(std::fabs(secondDeg - firstDeg) > 5.0,
+               "the second flow is a different sample, so the matches above are not two leftovers");
+    printf("   the overlay's copy follows the part across substeps: %+.1f then %+.1f deg\n",
+           firstDeg, secondDeg);
     destroyShip(a.v);
     delete body;
 }

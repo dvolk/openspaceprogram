@@ -2139,11 +2139,12 @@ inline double surfaceAlphaDegForReadout(const PartAero &pa, const SurfaceReadout
 }
 
 /* The refused angle, spelled ONCE (#732's rule, one formatter per #1058).
-   Three readouts quote a surface's incidence: [surface]'s a= column (tick.cpp), the
-   part window's AoA: row and the F4 force-arrow labels (gameui.cpp). Each used to
-   render "no angle" its own way -- a bare dash, "AoA: -" padded by hand, or the field
-   quietly omitted -- which is how four formatters drift apart over one fact, and why
-   the window's dash did not hold the column the rest of its row does.
+   Four readouts quote a surface's incidence: [surface]'s a= column (tick.cpp), the
+   part window's AoA: row in both of its states, and the F4 force-arrow labels
+   (gameui.cpp). Each used to render "no angle" its own way -- a bare dash, "AoA: -"
+   padded by hand, or the field quietly omitted -- which is how four formatters drift
+   apart over one fact, and why the window's dash did not hold the column the rest of
+   its row does.
    The dash is the whole point: a plate broadside to the flow has no lift frame, so it
    has no incidence rather than zero incidence, and surfaceAlphaDegForReadout() still
    answers a bare 0.0 for that frame (drag.h calls that "a lie"). Callers stamp
@@ -2151,16 +2152,26 @@ inline double surfaceAlphaDegForReadout(const PartAero &pa, const SurfaceReadout
    The isfinite test belongs to the same claim: a number that is not a number is not an
    angle either. Printing one would put "+inf" in the [surface] row, where the runner
    splits rows on whitespace and every part after it shifts a column -- the printer,
-   not the parser, is where garbage has to stop.
-   The assert is the length snprintf WANTED, not the one it wrote: a clipped cell is a
-   silent column break, and both the ITEM grammar and the mono-font columns depend on
-   the width. 8 chars is what the call sites pass and holds everything the law emits
-   (alpha stays under +-180 deg, so "+180.0" is the widest at 6). */
+   not the parser, is where garbage has to stop. (This guard covers the PER-SURFACE angle
+   only. The hull-level aoa=/beta= rows print their own format raw; a garbage value there
+   is not hidden, it is named -- the runner reports a printed row whose number reads inf
+   or nan (#408) -- so it stays a loud bug rather than a formatter job.)
+   kAlphaCellChars is the COLUMN, not the buffer. The window pads the cell to it with
+   %*s, and a width in a printf format never truncates a %s -- so a token one character
+   wider walks q= and Mach= sideways in silence. Asserting the column rather than the
+   8-char buffer is the stronger claim, and it is a domain claim: partAero's alpha is an
+   atan2 (above), so its degrees sit in [-180, 180] and "+180.0" is the widest token
+   there is. Asserts are live in every build (#1065), so an angle outside that domain
+   should name itself at a file and line instead of painting wide for a frame.
+   The assert is on the length snprintf WANTED, not the one it wrote, so a clipped
+   buffer is visible too. Call sites pass 8 chars -- one clear above the column. */
+constexpr int kAlphaCellChars = 6;
+
 inline int formatAlphaDeg(char *buf, size_t n, bool valid, double deg) {
     const int want = valid && std::isfinite(deg)
                    ? std::snprintf(buf, n, "%+.1f", deg)
                    : std::snprintf(buf, n, "-");
-    assert(want > 0 && (size_t)want < n);
+    assert(want > 0 && want <= kAlphaCellChars && (size_t)want < n);
     return want;
 }
 

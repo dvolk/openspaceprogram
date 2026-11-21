@@ -3827,7 +3827,7 @@ static glm::vec3 suitComplexion(const Part *suit) {
    width is what stops the words after the number from walking as it changes
    ("14.94 kW" one frame, "14.9 kW" the next, a character left and right several
    times a second), and the mono UI font (res/fonts/DejaVuSansMono -- overridable
-   with --font, see cli.h:178) is what makes a constant width a constant column.
+   with --font, see cli.h's font_path) is what makes a constant width a constant column.
    Four rungs at powers of ten, and %6.1f holds the scaled figure inside the field
    even at a rounding boundary (999.95 rounds to "1000.0", still 6 characters).
    The assert is the domain claim: past ~1e13 W the field would grow, and the worst
@@ -4159,13 +4159,22 @@ void drawPartWindows(Game &g) {
                         char ang[8];
                         formatAlphaDeg(ang, sizeof ang, live.holdAngleOk,
                                        (double)live.holdAlpha);
-                        /* %6s, not the bare dash this row used to hand-pad: the mono UI
-                           font (see wattCell above) makes a constant width a constant
-                           column, so q= and Mach= stop walking sideways when a plate
-                           swings into and out of a refused frame. */
-                        snprintf(live.flowRow, sizeof live.flowRow,
-                                 "AoA: %6s deg  q=%.0f Pa  Mach %.2f",
-                                 ang, live.holdQ, live.holdMach);
+                        /* %*s at drag.h's kAlphaCellChars, not the bare dash this row
+                           used to hand-pad: the mono UI font (see wattCell above) makes a
+                           constant width a constant column, so q= and Mach= stop walking
+                           sideways when a plate swings into and out of a refused frame.
+                           The width comes from the same constant the helper asserts,
+                           because a %s width never truncates: an unasserted 6 here and an
+                           8-char buffer would agree right up until they did not.
+                           The assert is on the row snprintf wanted, not what it wrote:
+                           flowRow is 64 chars (game.h) and the widest plausible row is
+                           ~42, so this is the same trip-wire wattCell carries, not a
+                           fix for a truncation that happens today. */
+                        const int row_n = snprintf(
+                            live.flowRow, sizeof live.flowRow,
+                            "AoA: %*s deg  q=%.0f Pa  Mach %.2f",
+                            kAlphaCellChars, ang, live.holdQ, live.holdMach);
+                        assert(row_n > 0 && row_n < (int)sizeof live.flowRow);
                         /* The watts the air is taking off this surface (#730) -- its form
                            drag plus the induced price of its lift. Not a temperature: no
                            material property sits behind it, and most of these watts leave in
@@ -4190,7 +4199,8 @@ void drawPartWindows(Game &g) {
                        hull crosses the air boundary (#1058). */
                     char dang[8];
                     formatAlphaDeg(dang, sizeof dang, false, 0.0);
-                    uiText("AoA: %6s deg  q:-   Mach -   drag power -", dang);
+                    uiText("AoA: %*s deg  q:-   Mach -   drag power -",
+                           kAlphaCellChars, dang);
                 }
                 if(def->isControlSurface()) {
                     /* The slider's range is not the clamp. Ctrl+click turns any slider
@@ -6416,24 +6426,36 @@ void drawForceOverlay(Game &g) {
         // dozens of numbers on the few pixels near their anchors.
         if(mag >= 0.08 * fmax) {
             char buf[48];
+            int n = 0;
             /* #485: a surface's arrow carries the angle of attack THAT SURFACE
                read, because that is the number its force came from. The SURFACE
                window's single AoA cannot say it: incidence, dihedral and any
                rotation under way split a ship's surfaces by degrees, and a twin
                pair straddles the rotation axis, so its two halves differ in SIGN
                mid-swing (#453, #483).
-               The surface kinds print the angle cell whatever the answer is: a
-               refused frame shows the same dash the [surface] log and the part
-               window print (#1058) instead of dropping the field, which left the
-               label looking exactly like a non-surface arrow's. The other kinds
-               carry no angle to quote, so they stay newtons only. */
+               #1058 routes the number through drag.h::formatAlphaDeg instead of a
+               private "%+.1f". Its dash branch is NOT reachable for these two kinds
+               today, and it is worth saying so rather than claiming a fixed bug: the
+               lift loop records only past its `if(!pa.valid) continue` gate
+               (vehicle.cpp:4399, then :4442 stamps the flag true), and a steering
+               surface with no frame deflects to zero and is skipped before its record
+               (drag.h::controlDeflection, vehicle.cpp:4608, then :4657).
+               The flag is still carried rather than assumed, so a record site that
+               ever learns to bill an unusable frame prints the same dash the log and
+               the part window print instead of a leftover 0.0.
+               The arrows a refused plate DOES draw -- its profile bill and its
+               induced bill -- carry no angle fields at all, so they stay newtons
+               only; that asymmetry has its own issue. The length assert covers this
+               label the way wattCell covers its cell: the widest label the overlay
+               can build is well inside 48 today, so it is a trip-wire, not a fix. */
             if(fv.kind == Vehicle::kForceLift || fv.kind == Vehicle::kForceCtrl) {
                 char ang[8];
                 formatAlphaDeg(ang, sizeof ang, fv.alphaValid, (double)fv.alphaDeg);
-                snprintf(buf, sizeof buf, "%.0f N a%s", mag, ang);
+                n = snprintf(buf, sizeof buf, "%.0f N a%s", mag, ang);
             } else {
-                snprintf(buf, sizeof buf, "%.0f N", mag);
+                n = snprintf(buf, sizeof buf, "%.0f N", mag);
             }
+            assert(n > 0 && n < (int)sizeof buf);
             dl->AddText(ImVec2(B.x + 6.0f, B.y - 6.0f), col, buf);
         }
     }

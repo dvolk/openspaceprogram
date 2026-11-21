@@ -36,6 +36,14 @@ CHECK all(r["text"] for r in uilist if "Wing (8m)" in r["window"] and r["label"]
 # differ, because in the air the load moves every substep.
 CHECK 2 <= len({r["label"] for r in uilist if "Wing (8m)" in r["window"] and r["label"].startswith("Drag power")}) <= 5
 CHECK 2 <= len({r["label"] for r in uilist if "Wing (8m)" in r["window"] and r["label"].startswith("AoA:")}) <= 6
+# THE COLUMN (#1058). The angle sits in a fixed cell -- drag.h's kAlphaCellChars, which
+# the printer asserts and the row pads to -- so the words after it never move, whatever
+# the number's sign or digits. Measured offset: "AoA: " (5) + the 6-char cell + " deg"
+# (4) + two spaces, so "q=" starts at 17. Before the shared formatter this row hand-padded
+# "AoA: -" against "AoA: +4.9", so a plate swinging into and out of a refused frame walked
+# q= and Mach= five columns sideways between frames -- the same wobble wattCell's fixed
+# width exists to stop.
+CHECK set(r["label"].find("q=") for r in uilist if "Wing (8m)" in r["window"] and r["label"].startswith("AoA:")) == {17}
 # ... and per CARD, not just in total: measured 3 distinct (card, figure) pairs across the
 # 22 printings. Each card published twice or three times in the second, and mirror wings
 # land on near-identical ROUNDED figures, so pairs can collapse -- what the pair count owns
