@@ -576,6 +576,20 @@ struct PartDef {
 
     bool isLeg() const { return leg_foot > 0.0; }
 
+    /* LADDER: a climbable segment the EVA kerbal hangs off (src/eva.h). The
+       field's PRESENCE makes the part a ladder. a/b are the segment's bottom
+       and top ends in the part's LOCAL frame (+Z = stack axis); out is the
+       unit direction the kerbal hangs off, away from the hull. Capsules carry
+       an invisible hatch ladder along their slope (b = the hatch, 2/3 up);
+       crewed fuselages one on the midbody; the ladder part one on its outer
+       (+X) face. All authored by utils/gen_parts.py off the mesh. */
+    bool has_ladder = false;
+    glm::dvec3 ladder_a = glm::dvec3(0.0);
+    glm::dvec3 ladder_b = glm::dvec3(0.0);
+    glm::dvec3 ladder_out = glm::dvec3(0.0);
+
+    bool isLadder() const { return has_ladder; }
+
     PartDef();
 
     /* The human-readable name: display_name, else the machine id (catalogs that

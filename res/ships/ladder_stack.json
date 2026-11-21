@@ -1,0 +1,1 @@
+{"name": "ladderstack", "parts": [{"part": "capsule", "id": "capsule_1"}, {"part": "reaction_wheel", "id": "reaction_wheel_1", "parent": "capsule_1"}, {"part": "fuel_tank", "id": "fuel_tank_1", "parent": "reaction_wheel_1"}, {"part": "ladder", "id": "ladder_1", "parent": "fuel_tank_1", "attach": "surface", "angle": 5, "z": 0.1}]}

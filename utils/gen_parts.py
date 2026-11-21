@@ -188,6 +188,10 @@ DRAG_CD = {
     # landing leg: the same bluff-body family (a pad + strut + plate).
     "leg":            {"drag": 0.7, "drag_forward": 0.8, "drag_side": 0.9,
                        "drag_backward": 0.9},
+    # EVA ladder: a long thin box bolted to the hull -- bluff broadside,
+    # near-edge-on along its own length.
+    "ladder":         {"drag": 0.7, "drag_forward": 0.8, "drag_side": 1.0,
+                       "drag_backward": 0.8},
 }
 
 # Per-part Cd overrides on top of the type's family: rcs_box is a flush cube
@@ -314,6 +318,10 @@ PARTS = [
     # law (src/wheel.h via the leg loop) stands it; one size for v1, sized for
     # the 2 m engine class (reports/landing-legs2026_11_21).
     ("leg",              "leg",            "meshes/leg.obj",                      "textures/gear.png"),
+    # EVA ladder (utils/gen_ladder.py): a long box surface-mounted on the hull's
+    # side; the kerbal climbs the segment its "ladder" field authors. One size
+    # for v1 (reports/ladders2026_11_21).
+    ("ladder",           "ladder",         "meshes/ladder.obj",                   "textures/ladder.png"),
     ("fuel_link",        "fuel_link",      None,                           None),
 ]
 
@@ -416,6 +424,18 @@ EXTRA_FIELDS["leg"] = {"mass": 40.0, "leg_foot": 0.05, "leg_travel": 0.4,
                        "nodes": [{"id": "srf", "pos": [-0.986, 0.0, 2.6],
                                   "dir": [-1.0, 0.0, 0.0], "surface": True}]}
 
+# ladder: mass declared (a climb rail is not hull volume). The surface node is
+# the box's hull-side face; keep in sync with gen_ladder.py's defaults
+# (thick 0.1, wide 0.4, length 2): node x = -thick/2. top/bottom stack nodes
+# let ladders bolt end-to-end exactly; surface attach puts them anywhere.
+EXTRA_FIELDS["ladder"] = {"mass": 5.0,
+                          "nodes": [{"id": "srf", "pos": [-0.05, 0.0, 0.0],
+                                     "dir": [-1.0, 0.0, 0.0], "surface": True},
+                                    {"id": "top", "pos": [0.0, 0.0, 1.0],
+                                     "dir": [0.0, 0.0, 1.0]},
+                                    {"id": "bottom", "pos": [0.0, 0.0, -1.0],
+                                     "dir": [0.0, 0.0, -1.0]}]}
+
 # every overlay-art path in the table must name its own asset directory
 for _n, _f in EXTRA_FIELDS.items():
     for _k, _pfx in (("shroud", "meshes/"), ("shroud_texture", "textures/"),
@@ -499,6 +519,41 @@ def clean(x):
     return int(r) if abs(r - round(r)) < 1e-9 else r
 
 
+def ladder_spec(ptype, mesh):
+    """The climbable segment (a -> b) + outward hang direction, in the part's
+    LOCAL frame -- the "ladder" field src/shipdef.cpp parses and the EVA law
+    climbs (reports/ladders2026_11_21). Read off the mesh so a reshaped part
+    moves its ladder with it:
+      capsule: the bottom 2/3 of the slope at azimuth 0 (+X); b is the hatch
+               the kerbal spawns holding, out the slope's outward normal.
+      fuselage: the parallel midbody at azimuth 0 (the ogive ends taper).
+      ladder part: the outer (+X) face, opposite the surface node."""
+    t = trimesh.load_mesh(os.path.join(REPO_ROOT, "res", mesh), process=False)
+    vs = t.vertices
+    if ptype == "ladder":
+        hx = max(abs(v[0]) for v in vs)
+        hz = max(abs(v[2]) for v in vs)
+        a, b, out = [hx, 0.0, -hz], [hx, 0.0, hz], [1.0, 0.0, 0.0]
+    elif ptype == "capsule":
+        zmin = min(v[2] for v in vs)
+        zmax = max(v[2] for v in vs)
+        rbot = max(math.hypot(v[0], v[1]) for v in vs if abs(v[2] - zmin) < 1e-6)
+        rtop = max(math.hypot(v[0], v[1]) for v in vs if abs(v[2] - zmax) < 1e-6)
+        a = [rbot, 0.0, zmin]
+        b = [rbot + (rtop - rbot) * 2.0 / 3.0, 0.0, zmin + (zmax - zmin) * 2.0 / 3.0]
+        n = [zmax - zmin, 0.0, rbot - rtop]   # perpendicular to the slope, outward
+        L = math.sqrt(sum(c * c for c in n))
+        out = [c / L for c in n]
+    else:   # fuselage: stations at (essentially) the full radius are the midbody
+        rs = [math.hypot(v[0], v[1]) for v in vs]
+        rmax = max(rs)
+        mid = [v[2] for v, r in zip(vs, rs) if r >= 0.99 * rmax]
+        assert mid, mesh
+        a, b, out = [rmax, 0.0, min(mid)], [rmax, 0.0, max(mid)], [1.0, 0.0, 0.0]
+    return {"a": [clean(c) for c in a], "b": [clean(c) for c in b],
+            "out": [round(c, 4) for c in out]}
+
+
 # Display-only labels for the UI (behavior still comes from the part fields).
 DISPLAY_BASE = {
     "capsule":        "Capsule",
@@ -529,6 +584,7 @@ DISPLAY_BASE = {
     "chute":          "Parachute",
     "gear":           "Landing Gear",
     "leg":            "Landing Leg",
+    "ladder":         "Ladder",
     "fuel_link":      "Fuel Link",
 }
 
@@ -538,6 +594,9 @@ def display_name_for(name, ptype, radius, height):
     # not the `radius` this function is handed, so a diameter suffix would lie.
     if ptype in ("kerbal", "fuel_link", "barometer", "thermometer", "leg"):
         return base
+    # ladder: the length is the size that matters, not the diameter
+    if ptype == "ladder":
+        return "%s (%sm)" % (base, clean(height))
     if name == "decoupler_radial":
         return "Radial Decoupler"
     if name == "rcs_box":
@@ -669,6 +728,11 @@ def generate(name, ptype, mesh, texture):
         e["mass"] = clean(EXTRA_FIELDS[name]["mass"])
         e["radius"] = clean(max(abs(lo[0]), abs(hi[0]), abs(lo[1]), abs(hi[1])))
         e["height"] = height
+    elif ptype == "ladder":
+        # mass declared (EXTRA_FIELDS); the climb segment is authored below
+        e["mass"] = clean(EXTRA_FIELDS[name]["mass"])
+        e["radius"] = radius
+        e["height"] = height
     elif ptype == "battery":
         active = volume * BATTERY_ACTIVE_DENSITY
         dry = volume * BATTERY_DRY_DENSITY
@@ -742,6 +806,12 @@ def generate(name, ptype, mesh, texture):
             e["torque"] = clean(WHEEL_TORQUE_PER_M * radius)
             e["wheel_axes"] = 3   # the same triad housing, one drum per axis
             e["power_draw"] = clean(WHEEL_DRAW_WATTS_PER_NM * e["torque"])
+
+    # The climbable segment: every crew part carries a hatch ladder (invisible,
+    # pure data) and the ladder part carries its own. Presence of the field is
+    # what makes a part climbable (PartDef::isLadder).
+    if ptype in ("capsule", "fuselage", "ladder"):
+        e["ladder"] = ladder_spec(ptype, mesh)
 
     e.update(EXTRA_FIELDS.get(name, {}))
     d = dict(DRAG_CD.get(ptype) or {})

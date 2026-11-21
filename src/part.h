@@ -228,6 +228,8 @@ struct Part {
     bool isGearWheel() const { return def != nullptr && def->isGearWheel(); }
     // Landing leg: the same ground law stands these with the brake held on.
     bool isLeg() const { return def != nullptr && def->isLeg(); }
+    // Ladder: the EVA kerbal can climb this part (PartDef's ladder segment).
+    bool isLadder() const { return def != nullptr && def->isLadder(); }
     bool isRcs() const { return def != nullptr && def->rcs_thrust > 0.0; }
     bool isDecoupler() const { return def != nullptr && def->decoupler; }
     bool isDockingPort() const { return def != nullptr && def->docking_port; }

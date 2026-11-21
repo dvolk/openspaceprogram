@@ -659,6 +659,110 @@ int main() {
         std::remove(steer);
     }
 
+    /* Ladder (the EVA_LADDER law, src/eva.h): the "ladder" field's presence
+       makes a part climbable. Every crew part carries a hatch ladder and the
+       ladder part its own, all authored off the mesh by gen_parts.py -- so pin
+       what shipped, and refuse the malformed specs at the parse door. */
+    {
+        const PartDef *lad = cat.find("ladder");
+        CHECK(lad != nullptr);
+        if(lad != nullptr) {
+            CHECK(lad->isLadder());
+            CHECK(near(lad->mass, 5.0));
+            // the climb line rides the outer (+X) face, opposite the mount
+            CHECK(vnear(lad->ladder_a, glm::dvec3(0.05, 0.0, -1.0)));
+            CHECK(vnear(lad->ladder_b, glm::dvec3(0.05, 0.0, 1.0)));
+            CHECK(vnear(lad->ladder_out, glm::dvec3(1.0, 0.0, 0.0)));
+            const Node *lsrf = lad->findSurfaceNode();
+            CHECK(lsrf != nullptr);
+            if(lsrf != nullptr) {
+                CHECK(vnear(lsrf->pos, glm::dvec3(-0.05, 0.0, 0.0)));
+                CHECK(vnear(lsrf->dir, glm::dvec3(-1.0, 0.0, 0.0)));
+            }
+            // stackable end-to-end
+            CHECK(lad->findNode("top") != nullptr);
+            CHECK(lad->findNode("bottom") != nullptr);
+        }
+        /* Every crew part: a hatch ladder. Capsules run it from the bottom rim
+           2/3 up the slope at azimuth 0, out perpendicular to the slope (the
+           kerbal hangs OFF the surface, not into it). Tolerances absorb the
+           catalog's 2 dp ends / 4 dp normal rounding. */
+        int crewLadders = 0;
+        for(const PartDef &d : cat.parts) {
+            if(d.crew_capacity <= 0) { continue; }
+            crewLadders++;
+            CHECK(d.isLadder());
+            if(!d.isLadder()) { continue; }
+            CHECK(near(glm::length(d.ladder_out), 1.0));
+            CHECK(glm::length(d.ladder_b - d.ladder_a) > 0.1);
+            CHECK(d.ladder_out.x > 0.0);   // hangs away from the hull, azimuth 0
+            if(d.type == "capsule") {
+                CHECK(near(d.ladder_a.x, d.radius));
+                CHECK(near(d.ladder_a.y, 0.0));
+                CHECK(near(d.ladder_a.z, -d.height / 2.0));
+                CHECK(d.ladder_b.z > d.ladder_a.z);
+                CHECK(d.ladder_b.x < d.ladder_a.x);   // up the slope, inward
+                CHECK(std::fabs(glm::dot(d.ladder_out,
+                                         d.ladder_b - d.ladder_a)) < 0.01);
+            }
+        }
+        CHECK(crewLadders >= 8);   // four capsules + four crewed fuselages
+
+        // A well-formed spec loads; out normalizes like a node dir.
+        const char *lok = "/tmp/test_shipload_ladder.json";
+        std::ofstream lo(lok);
+        lo << "{ \"parts\": [ { \"name\": \"l\", \"type\": \"ladder\", \"mesh\": \"a.obj\", "
+              "\"texture\": \"a.png\", \"mass\": 5.0, "
+              "\"ladder\": {\"a\": [0.05, 0, -1], \"b\": [0.05, 0, 1], \"out\": [2, 0, 0]} } ] }";
+        lo.close();
+        PartsCatalog lc = load_parts_catalog(lok);
+        const PartDef *lp = lc.find("l");
+        CHECK(lp != nullptr && lp->isLadder());
+        if(lp != nullptr) {
+            CHECK(vnear(lp->ladder_out, glm::dvec3(1.0, 0.0, 0.0)));
+        }
+        std::remove(lok);
+        // A segment with coincident ends is not climbable.
+        const char *lflat = "/tmp/test_shipload_ladder_flat.json";
+        std::ofstream lf(lflat);
+        lf << "{ \"parts\": [ { \"name\": \"l\", \"type\": \"ladder\", \"mesh\": \"a.obj\", "
+              "\"texture\": \"a.png\", \"mass\": 5.0, "
+              "\"ladder\": {\"a\": [0, 0, 0], \"b\": [0, 0, 0], \"out\": [1, 0, 0]} } ] }";
+        lf.close();
+        CHECK(expect_throw_saying([&]{ load_parts_catalog(lflat); },
+                                  "\"a\" and \"b\" must be distinct ends"));
+        std::remove(lflat);
+        // A zero hang direction leaves the kerbal nowhere to hang.
+        const char *lzero = "/tmp/test_shipload_ladder_zero.json";
+        std::ofstream lz(lzero);
+        lz << "{ \"parts\": [ { \"name\": \"l\", \"type\": \"ladder\", \"mesh\": \"a.obj\", "
+              "\"texture\": \"a.png\", \"mass\": 5.0, "
+              "\"ladder\": {\"a\": [0, 0, -1], \"b\": [0, 0, 1], \"out\": [0, 0, 0]} } ] }";
+        lz.close();
+        CHECK(expect_throw_saying([&]{ load_parts_catalog(lzero); },
+                                  "\"out\" must be non-zero"));
+        std::remove(lzero);
+        // A missing end is a shape problem, named as one.
+        const char *lmiss = "/tmp/test_shipload_ladder_miss.json";
+        std::ofstream lm(lmiss);
+        lm << "{ \"parts\": [ { \"name\": \"l\", \"type\": \"ladder\", \"mesh\": \"a.obj\", "
+              "\"texture\": \"a.png\", \"mass\": 5.0, "
+              "\"ladder\": {\"a\": [0, 0, -1], \"out\": [1, 0, 0]} } ] }";
+        lm.close();
+        CHECK(expect_throw_saying([&]{ load_parts_catalog(lmiss); },
+                                  "\"b\" must be a 3-element array"));
+        std::remove(lmiss);
+        // The field is an object, not a flag.
+        const char *lbool = "/tmp/test_shipload_ladder_bool.json";
+        std::ofstream lb(lbool);
+        lb << "{ \"parts\": [ { \"name\": \"l\", \"type\": \"ladder\", \"mesh\": \"a.obj\", "
+              "\"texture\": \"a.png\", \"mass\": 5.0, \"ladder\": true } ] }";
+        lb.close();
+        CHECK(expect_throw_saying([&]{ load_parts_catalog(lbool); },
+                                  "\"ladder\" must be an object"));
+        std::remove(lbool);
+    }
+
     /* A drum pays for its own electricity (#596). "torque" > 0 makes a part a wheel
        (Part::isWheel asks the rating, not the type), and Vehicle::wheelDrawWatts()
        bills power_draw over exactly those parts -- so a rating with no power_draw is

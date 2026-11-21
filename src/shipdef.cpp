@@ -865,6 +865,28 @@ PartsCatalog load_parts_catalog(const char *path) {
                                           "\"leg_travel\" and \"leg_spring\" > 0");
         }
 
+        /* Ladder (the EVA_LADDER law, src/eva.h): a climbable segment in the
+           part's local frame. Presence makes the part climbable; the segment
+           needs two distinct ends and a non-zero hang direction (kept unit,
+           like node dirs). */
+        if(pv.contains("ladder")) {
+            const nlohmann::json &lv = pv["ladder"];
+            wantEntryObject(lv, ctx + "\"ladder\"");
+            const std::string lctx = ctx + "\"ladder\": ";
+            d.ladder_a = parse_vec3(lv, "a", lctx);
+            d.ladder_b = parse_vec3(lv, "b", lctx);
+            d.ladder_out = parse_vec3(lv, "out", lctx);
+            if(glm::length(d.ladder_b - d.ladder_a) < 1e-6) {
+                throw std::runtime_error(lctx + "\"a\" and \"b\" must be distinct ends");
+            }
+            const double len = glm::length(d.ladder_out);
+            if(len < 1e-9) {
+                throw std::runtime_error(lctx + "\"out\" must be non-zero");
+            }
+            d.ladder_out /= len;
+            d.has_ladder = true;
+        }
+
         /* An explicit "nodes" array wins; fuel links get none. */
         if(!d.fuel_link) {
             if(pv.contains("nodes")) {
