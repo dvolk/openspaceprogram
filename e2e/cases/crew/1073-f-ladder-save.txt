@@ -1,0 +1,24 @@
+# A hang survives quicksave/quickload: the grip travels as the part's SAVED
+# uid, the load re-mints part uids, and the commit remaps through the save's
+# uid->Part map -- so the suit loads still holding the ladder at the same
+# pose, not falling. (The first build restored the saved uid raw and the
+# lookup missed: the suit loaded free and fell off the hatch.)
+NAME ladder-save
+CLAIM A ladder hang round-trips quicksave/quickload still gripping.
+KIND invariant
+ARGS --time-accel 1
+ARGS --startship ladderstack,res/ships/ladder_stack.json,Kerbin,pad
+ARGS --timeout 12 --eva-log --orbit-interval 0.5
+ARGS --sim-press 1000,0,V,3000,0,F5,5500,0,F9,6500,0,PERIOD
+EXPECT [evalog]
+EXPECT Loaded game from
+CHECK len(eva) > 12
+# The rows after the load (the clock reset to the save's time; the last rows
+# are the resumed hang): still ladder mode, a live remapped grip, same hatch.
+CHECK all(e["mode"] == "ladder" for e in eva[-4:])
+CHECK all(e["ladder"] is not None and e["ladder"] != 0 for e in eva[-4:])
+CHECK all(8.0 < e["alt"] < 10.0 for e in eva[-4:])
+CHECK all(abs(e["vel"][0]) + abs(e["vel"][1]) + abs(e["vel"][2]) < 0.2 for e in eva[-4:])
+FORBID error:
+FORBID FAILED
+FORBID [load] refused

@@ -302,7 +302,10 @@ void flightKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
             g.toast("Camera: free flight (Shift-C to leave)");
         }
     }
-    if(slotFired(Slot::CycleTarget, ksc, kmod, g.binds) && !repeat) {
+    /* G is the kerbal's ladder grab (#1073): while piloting a suit the key
+       belongs to EvaGrab below, not to the camera's target cycle. */
+    if(slotFired(Slot::CycleTarget, ksc, kmod, g.binds) && !repeat
+       && !(g.ship && g.ship->isEva())) {
         // Cycle the orbit camera's target body.
         if(g.camera->mode == CAM_ORBIT) {
             g.focusBody = (g.focusBody + 1) % (int)g.focusTargets.size();
@@ -361,6 +364,13 @@ void flightKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
         if(!repeat && g.ship && g.camera->mode != CAM_FREE && g.time_accel > 0
            && !g.ship->isEva()) {
             g.stage();
+        }
+    }
+    if(slotFired(Slot::EvaGrab, ksc, kmod, g.binds)) {
+        // Ladder grab / let-go (#1073): an edge the arm consumes, like the
+        // jump. Same doors -- not from free cam (nothing arms a suit there).
+        if(!repeat && g.ship && g.ship->isEva() && g.camera->mode != CAM_FREE) {
+            static_cast<Kerbal *>(g.ship)->pressGrab();
         }
     }
     if(slotFired(Slot::Undock, ksc, kmod, g.binds)) {

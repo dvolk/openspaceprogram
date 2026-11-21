@@ -1,7 +1,7 @@
 NAME eva-spawn
-CLAIM EVA spawns the roster's lowest-id kerbal at the capsule.
+CLAIM EVA spawns the roster's lowest-id kerbal holding the capsule's hatch ladder; let go, land, walk.
 KIND invariant
-ARGS --time-accel 1 --timeout 9 --eva-log --orbit-interval 0.3 --sim-press 1000,0,V,2500,2000,W --frame-cap 30 --startship racer,res/ships/racer.json,Kerbin,pad
+ARGS --time-accel 1 --timeout 10 --eva-log --orbit-interval 0.3 --sim-press 1000,0,V,2500,0,G,4500,2000,W --frame-cap 30 --startship racer,res/ships/racer.json,Kerbin,pad
 # The kerbal is named from the shipped roster (res/data/kerbals.json): the
 # lowest id is the first one a seat claims, so 'Ash' is id 1.
 EXPECT Crew: 'Ash' aboard 'racer' part 0 (1/1)
@@ -9,4 +9,9 @@ EXPECT EVA: 'Ash' out of 'racer' part 0
 EXPECT Active ship 2 of 2: Ash
 FORBID error:
 CHECK len(eva) > 5
+# #1073: the spawn holds the hatch ladder (the old spawn floated beside the
+# capsule and fell from rim height).
+CHECK all(e["mode"] == "ladder" and e["ladder"] != 0 for e in eva if e["t"] < 2.4)
+# G lets go at 2.5 s: the suit lands and W walks it (>1.5 m/s).
 CHECK max((e["vel"][0]**2 + e["vel"][1]**2 + e["vel"][2]**2)**0.5 for e in eva) > 1.5
+CHECK eva[-1]["mode"] == "ground"

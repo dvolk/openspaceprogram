@@ -27,6 +27,25 @@ static const double kMaxRate     = 6.0;     // rad/s attitude slew cap
 static const double kYawRate     = 1.5;     // rad/s QE yaw about the view axis
 static const double kGroundBand  = 0.25;    // m above restAlt still "grounded"
 static const double kFloorDrop   = 0.4;     // m below restAlt -> snap back up
+// Ladder (#1073): the hang is a force servo, so imperfectly placed segments
+// compose -- the kerbal is PULLED to the line, and a transfer across a gap or
+// a lateral offset is a smooth slide, not a teleport. e2e pins the behavior
+// (climb direction/speed band, transfer, stable hang), not these numbers.
+static const double kClimbSpeed    = 1.5;   // m/s the hold point travels along the segment
+static const double kLadderHold    = 0.45;  // m off the line (clears both margins)
+static const double kLadderP       = 200.0; // /s^2 position spring (gravity sag g/kP ~ 5 cm)
+static const double kLadderD       = 28.0;  // /s damping (~critical: 2*sqrt(kP))
+static const double kLadderHoldAccel = 30.0;// m/s^2 servo clamp
+static const double kLadderTorque  = 300.0; // N m attitude authority (ground's)
+static const double kLadderGrabRange = 1.5; // m COM-to-segment grab reach
+static const double kLadderTransfer  = 0.9; // m end-of-segment transfer reach
+static const double kLadderEndEps    = 0.1; // m of the end counts as "at the end"
+                                            // (> the gravity sag g/kLadderP, which
+                                            // on a vertical ladder holds the suit
+                                            // ~5 cm short of the top end)
+static const double kLadderGroundEnd = 0.6; // m of the bottom end: ground drop band
+                                            // (a body length -- the feet touch down
+                                            // before the COM reaches the end hold)
 
 bool Kerbal::onDeck() const {
     return frame != nullptr && frame->building != nullptr && frame->building->air;
@@ -79,8 +98,15 @@ bool Kerbal::overDeck() const {
    above the analytic surface reads "space" until the first tick's
    BodyInContact flips it back -- except on a platform deck, whose bubble
    knows its own floor (#850). */
-void Kerbal::settleContact() {
+void Kerbal::settleContact(const std::vector<Vehicle *> &vehicles) {
     assert(m_parent != nullptr && !parts.empty());
+    /* A restored grip wins over any contact reading: the hang is a regime of
+       its own, and the hull may not even be in the world yet at load. */
+    if(resolveLadder(vehicles)) {
+        grounded = false;
+        mode = EVA_LADDER;
+        return;
+    }
     if(inStationBubble()) {
         grounded = false;   // weightless: no deck to stand on (#850)
         mode = EVA_SPACE;
@@ -115,6 +141,165 @@ void Kerbal::updateContact() {
     mode = grounded ? EVA_GROUND : EVA_SPACE;
 }
 
+/* --- the ladder grip (#1073) ------------------------------------------- */
+
+void Kerbal::ladderSegment(glm::dvec3 &A, glm::dvec3 &B, glm::dvec3 &out) const {
+    assert(ladderPart != nullptr && ladderPart->isLadder());
+    glm::dvec3 p; glm::dmat3 r;
+    ladderPart->owner->partPoseRelTo(ladderPart, frame, p, r);
+    A = p + r * ladderPart->def->ladder_a;
+    B = p + r * ladderPart->def->ladder_b;
+    out = r * ladderPart->def->ladder_out;
+}
+
+Part *Kerbal::nearestLadder(const std::vector<Vehicle *> &vehicles, double reach,
+                            uint64_t excludeUid) {
+    Part *best = nullptr;
+    double bestD = reach;
+    const glm::dvec3 pos = partPos(controller);
+    for(Vehicle *v : vehicles) {
+        /* A grip needs a live hull: a railed ship's pose is a frozen park, and
+           the hang law reads its parts per substep. */
+        if(v == this || v->onRails || !v->hullInWorld()) { continue; }
+        for(Part *p : v->parts) {
+            if(!p->isLadder() || p->uid == excludeUid) { continue; }
+            glm::dvec3 pp; glm::dmat3 pr;
+            v->partPoseRelTo(p, frame, pp, pr);
+            const glm::dvec3 A = pp + pr * p->def->ladder_a;
+            const glm::dvec3 B = pp + pr * p->def->ladder_b;
+            const double L = glm::length(B - A);
+            assert(L > 0.0);   // the parse door refuses coincident ends
+            const double d = ladderDist(A, (B - A) / L, L, pos);
+            if(d < bestD) { bestD = d; best = p; }
+        }
+    }
+    return best;
+}
+
+bool Kerbal::resolveLadder(const std::vector<Vehicle *> &vehicles) {
+    const uint64_t prevUid = ladderUid;
+    const Part *prevPart = ladderPart;
+    if(ladderUid == 0) { ladderPart = nullptr; return false; }
+    /* The uid is the durable grip; the part is looked up fresh every tick, so
+       staging the ladder away, undocking it or parking its ship drops the
+       grip with no pointer lifetime to manage. */
+    Part *found = nullptr;
+    for(Vehicle *v : vehicles) {
+        if(v == this || v->onRails || !v->hullInWorld()) { continue; }
+        for(Part *p : v->parts) {
+            if(p->uid == ladderUid) { found = p; break; }
+        }
+        if(found != nullptr) { break; }
+    }
+    if(found == nullptr || !found->isLadder()) {
+        ladderUid = 0;
+        ladderPart = nullptr;
+        return false;
+    }
+    ladderPart = found;
+    glm::dvec3 A, B, out;
+    ladderSegment(A, B, out);
+    const glm::dvec3 u = glm::normalize(B - A);
+    const double L = glm::length(B - A);
+    const double s = ladderProject(A, u, L, partPos(controller));
+    /* Climbing DOWN off the bottom end onto GROUND: let go onto your feet.
+       Only while climbing down -- grabbing the bottom end while standing
+       keeps the grip (W climbs up from there). A ray, not BodyInContact or
+       the analytic altitude: at a capsule rim the suit touches the ship's
+       hull (not the ground), and on a raised pad the analytic terrain is
+       metres below the deck. Ground is terrain (no user pointer) or a
+       building (a Body, but not any vehicle's hull); a vehicle hull -- the
+       grabbed stack, another ship, another suit -- is not ground. The band is
+       a body length, not kLadderEndEps: the feet touch down while collision
+       still holds the COM above the end's hold point. */
+    if(s < kLadderGroundEnd && climbDir < 0.0 && !inStationBubble()) {
+        const glm::dvec3 pos = comPos();
+        glm::dvec3 hit, nrm;
+        Body *hitBody = nullptr;
+        if(groundRay(pos, pos - groundUp() * (restAlt() + kGroundBand),
+                     hit, nrm, hull, &hitBody)) {
+            bool vehicleHull = false;
+            for(Vehicle *v : vehicles) {
+                if(v->hull == hitBody) { vehicleHull = true; break; }
+            }
+            if(!vehicleHull) {
+                ladderUid = 0;
+                ladderPart = nullptr;
+                return false;
+            }
+        }
+    }
+    /* At an end, another segment within reach takes over -- the generosity
+       that lets a capsule ladder meet a slightly misplaced tank ladder. Only
+       at the ends (hysteresis): mid-ladder the current grip always wins. */
+    /* At an end, another segment within reach takes over -- but only when the
+       climb demand pushes PAST that end. At a junction the same position is
+       the bottom of one segment and the top of the next, so an ungated rule
+       ping-pongs between the two every tick; the direction is the hysteresis.
+       A disarmed hang (climbDir 0) keeps its segment. */
+    if((s > L - kLadderEndEps && climbDir > 0.0)
+       || (s < kLadderEndEps && climbDir < 0.0)) {
+        Part *next = nearestLadder(vehicles, kLadderTransfer, ladderUid);
+        if(next != nullptr) {
+            ladderUid = next->uid;
+            ladderPart = next;
+        }
+    }
+    /* A new grip (grab, transfer, spawn/load restore -- the cache was empty)
+       starts its hold target at the current projection: the servo flies the
+       suit in, no teleport. */
+    if(ladderUid != prevUid || prevPart == nullptr) {
+        glm::dvec3 A2, B2, out2;
+        ladderSegment(A2, B2, out2);
+        ladderS = ladderProject(A2, glm::normalize(B2 - A2),
+                                glm::length(B2 - A2), partPos(controller));
+    }
+    return true;
+}
+
+void Kerbal::applyLadder(double h) {
+    Body *b = hull;
+    assert(ladderPart != nullptr && ladderPart->isLadder());
+    glm::dvec3 A, B, out;
+    ladderSegment(A, B, out);
+    const glm::dvec3 u = glm::normalize(B - A);
+    const glm::dvec3 pos = partPos(controller);
+    const glm::dvec3 hold = ladderHold(A, u, ladderS, out, kLadderHold);
+    /* One position PD toward the hold point, all three axes: it pulls the
+       kerbal onto the line on grab, slides it across a transfer gap, holds
+       it against gravity (sag g/kLadderP ~ 5 cm) and tracks the climbing
+       hold point armInput advances. The damping is on the velocity RELATIVE
+       to the grabbed ship, not the frame: in a rotating frame an orbiting
+       hull carries ~km/s of frame-local velocity, and damping that brakes
+       the suit out of its orbit while the hold point races on. The ship's
+       COM velocity in the suit's frame stands in for the hold point's (the
+       ladder is rigid with the ship; the spin lever is a small disturbance
+       the spring absorbs). */
+    glm::dvec3 shipPos, shipVel;
+    ladderPart->owner->comStateIn(frame, shipPos, shipVel);
+    glm::dvec3 a = kLadderP * (hold - pos)
+                 - kLadderD * (partVel(controller) - shipVel);
+    const double alen = glm::length(a);
+    if(alen > kLadderHoldAccel) { a *= kLadderHoldAccel / alen; }
+    ApplyCentralForce(b, b->mass * a);
+    /* Body along the ladder, face to the hull: the stand target with the
+       ladder axis as "up" and the inward normal as the face hint. */
+    slewTo(evaStandTarget(u, -out), h, kLadderTorque);
+}
+
+bool Kerbal::hatchPose(const Part *cap, glm::dvec3 &pos, glm::dmat3 &rot) {
+    assert(cap != nullptr && cap->owner != nullptr);
+    if(!cap->isLadder()) { return false; }
+    glm::dvec3 p; glm::dmat3 r;
+    cap->owner->partWorldPose(cap, p, r);
+    const glm::dvec3 A = p + r * cap->def->ladder_a;
+    const glm::dvec3 B = p + r * cap->def->ladder_b;
+    const glm::dvec3 out = r * cap->def->ladder_out;
+    pos = B + out * kLadderHold;
+    rot = evaStandTarget(glm::normalize(B - A), -out);
+    return true;
+}
+
 void Kerbal::armInput(Game &g, const SlotProbe &active) {
     const Camera *cam = g.camera;
 
@@ -124,14 +309,52 @@ void Kerbal::armInput(Game &g, const SlotProbe &active) {
     const glm::dvec3 sright = evaScreenRight(fwd, up);
     camBasis = evaCamBasis(fwd, up);
 
+    /* The grab edge (#1073), spent whichever mode runs: let go when gripping,
+       else grab the nearest ladder in reach. The servo does the rest -- the
+       kerbal is pulled onto the line, no teleport. */
+    const bool grabWanted = grabPressed;
+    grabPressed = false;
+    /* No toast here: the arm runs in the headless test tier too (TBASE has no
+       game.o), and the servo's pull-in is the player's feedback, as the jump's
+       silence is. The printf is the e2e oracle. */
+    if(grabWanted) {
+        if(ladderUid != 0) {
+            ladderUid = 0;
+            ladderPart = nullptr;
+            printf("[crew] t=%.1f Let go: '%s'\n", g.time, displayName().c_str());
+        } else {
+            Part *p = nearestLadder(g.vehicles, kLadderGrabRange, 0);
+            if(p != nullptr) {
+                /* Only the uid: resolveLadder caches the part and, seeing the
+                   cache was empty, re-projects ladderS onto the NEW segment
+                   at the suit's current position. Setting the part here would
+                   skip that and fly the suit to the previous grip's arc
+                   length -- a teleport up the ladder. */
+                ladderUid = p->uid;
+                printf("[crew] t=%.1f Grab: '%s' on '%s' ladder\n",
+                       g.time, displayName().c_str(),
+                       p->owner->displayName().c_str());
+            } else {
+                printf("[crew] t=%.1f No ladder in reach of '%s'\n",
+                       g.time, displayName().c_str());
+            }
+        }
+    }
+
     const glm::dvec3 radial = groundUp();
     /* tick.cpp disarms every live suit BEFORE it arms this one, so the regime has
        already been derived once this tick from the same pose -- nothing between the two
        calls moves pos, vel or frame, and updateContact()'s only side effect (spending
        the `jumping` latch) is monotone, so the second call cannot disagree with the
        first. Derived here anyway to keep armInput() self-contained: it costs one extra
-       terrain sample and one contactTest per tick, on one hull. */
-    updateContact();
+       terrain sample and one contactTest per tick, on one hull. The ladder grip wins
+       over any contact reading: a hang is a regime of its own (#1073). */
+    if(resolveLadder(g.vehicles)) {
+        grounded = false;
+        mode = EVA_LADDER;
+    } else {
+        updateContact();
+    }
     /* Spend the jump edge whichever mode is running (#578). It used to be read only on
        the ground branch, so a press during a spacewalk survived the tick and fired on
        the next landing: SPACE is the staging key for every ship, so tapping it out of
@@ -139,7 +362,31 @@ void Kerbal::armInput(Game &g, const SlotProbe &active) {
     const bool jumpWanted = jumpPressed;
     jumpPressed = false;
 
-    if(mode == EVA_GROUND) {
+    if(mode == EVA_LADDER) {
+        /* W/S climb toward the segment's top/bottom end (ladder-relative,
+           like KSP); A/D idle in v1. The demand moves the hold TARGET; the
+           servo flies the suit to it (applyLadder). */
+        climbDir = 0.0;
+        if(active.held(Slot::EvaForward)) { climbDir += 1.0; }
+        if(active.held(Slot::EvaBack)) { climbDir -= 1.0; }
+        walkDir = glm::dvec3(0.0);
+        armRcs(glm::dvec3(0.0));   // hanging, not flying
+        glm::dvec3 A, B, out;
+        ladderSegment(A, B, out);
+        ladderS = glm::clamp(ladderS + climbDir * kClimbSpeed * g.dt,
+                             0.0, glm::length(B - A));
+        if(jumpWanted) {
+            /* SPACE on a ladder: let go with an outward kick. The space law
+               runs this tick's substeps; the next tick re-derives the regime. */
+            SetVelocity(hull, partVel(controller) + out * kJumpSpeed);
+            ladderUid = 0;
+            ladderPart = nullptr;
+            jumping = true;
+            mode = EVA_SPACE;
+            printf("[crew] t=%.1f Let go: '%s' (jump)\n",
+                   g.time, displayName().c_str());
+        }
+    } else if(mode == EVA_GROUND) {
         glm::dvec3 w(0.0);
         if(active.held(Slot::EvaForward)) { w += fwd; }
         if(active.held(Slot::EvaBack)) { w -= fwd; }
@@ -179,9 +426,15 @@ void Kerbal::armInput(Game &g, const SlotProbe &active) {
    an orbital suit means the walk law's brake pulls 10 m/s^2 out of a 2.2 km/s orbit.
    camBasis and viewYaw deliberately survive: they are the pose the suit was facing,
    and the space law holds it instead of hunting for a view nobody is driving. */
-void Kerbal::disarm() {
-    updateContact();
+void Kerbal::disarm(const std::vector<Vehicle *> &vehicles) {
+    if(resolveLadder(vehicles)) {
+        grounded = false;
+        mode = EVA_LADDER;
+    } else {
+        updateContact();
+    }
     walkDir = glm::dvec3(0.0);
+    climbDir = 0.0;   // the grip survives; the climb demand does not
     /* Not armRcs(): clearRcs() is the whole armed-translation state -- the demand, the
        request the window writes, and the rcsFiring flag the render pass gates the puff
        on -- and a suit with no pilot should hold none of it. */
@@ -191,6 +444,13 @@ void Kerbal::disarm() {
 
 void Kerbal::applyEva(double h) {
     Body *b = hull;
+    /* The ladder hang (#1073): a regime of its own, BEFORE the floor guard --
+       a hanging kerbal is meant to be off the ground, and a terrain snap
+       would teleport it off the ladder. */
+    if(mode == EVA_LADDER) {
+        applyLadder(h);
+        return;
+    }
     const glm::dvec3 pos = partPos(controller);
     const glm::dvec3 radial = groundUp();
     const double rest = restAlt();

@@ -102,6 +102,9 @@ void KeyBindings::resetDefaults() {
     add(Slot::EvaDown,       SDL_SCANCODE_F);
     add(Slot::EvaYawLeft,    SDL_SCANCODE_Q);
     add(Slot::EvaYawRight,   SDL_SCANCODE_E);
+    // G is CycleTarget's key too; events.cpp gates that off while piloting a
+    // kerbal, so the grab owns it here (one key per mode, #1073).
+    add(Slot::EvaGrab,       SDL_SCANCODE_G);
 }
 
 KeyBindings::KeyBindings() { resetDefaults(); }
@@ -214,6 +217,7 @@ const char *slotName(Slot s) {
         case Slot::EvaDown:        return "eva_down";
         case Slot::EvaYawLeft:     return "eva_yaw_left";
         case Slot::EvaYawRight:    return "eva_yaw_right";
+        case Slot::EvaGrab:        return "eva_grab";
         case Slot::SLOT_COUNT:     break;
     }
     return nullptr;
@@ -295,6 +299,7 @@ const char *slotLabel(Slot s) {
         case Slot::EvaDown:        return "EVA down";
         case Slot::EvaYawLeft:     return "EVA yaw left";
         case Slot::EvaYawRight:    return "EVA yaw right";
+        case Slot::EvaGrab:        return "Grab / let go of ladder";
         case Slot::SLOT_COUNT:     break;
     }
     return "?";
@@ -334,6 +339,7 @@ SlotGroup slotGroup(Slot s) {
         case Slot::EvaLeft: case Slot::EvaRight:
         case Slot::EvaUp: case Slot::EvaDown:
         case Slot::EvaYawLeft: case Slot::EvaYawRight:
+        case Slot::EvaGrab:
             return SlotGroup::Eva;
         case Slot::SLOT_COUNT: break;
     }

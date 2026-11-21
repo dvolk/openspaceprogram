@@ -73,6 +73,30 @@ static inline glm::dmat3 evaSpaceTarget(const glm::dmat3 &camBasis) {
     return glm::dmat3(camBasis[0], -camBasis[2], camBasis[1]);
 }
 
+/* Ladder segment math (the EVA_LADDER law, eva.cpp). A segment is its bottom
+   end A, unit axis u (toward the top end) and length L. The kerbal hangs off
+   the line along the part's outward direction; these are the projections the
+   grab reach, the climb servo and the end transfer all read. */
+
+/* Arc length of the closest point to `pos`, clamped to the segment. */
+static inline double ladderProject(const glm::dvec3 &A, const glm::dvec3 &u,
+                                   double L, const glm::dvec3 &pos) {
+    return glm::clamp(glm::dot(pos - A, u), 0.0, L);
+}
+
+/* Distance from `pos` to the segment (0 on it). */
+static inline double ladderDist(const glm::dvec3 &A, const glm::dvec3 &u,
+                                double L, const glm::dvec3 &pos) {
+    const double s = ladderProject(A, u, L, pos);
+    return glm::length(pos - (A + u * s));
+}
+
+/* Where the kerbal hangs: the segment point at s, offset `d` along out. */
+static inline glm::dvec3 ladderHold(const glm::dvec3 &A, const glm::dvec3 &u,
+                                    double s, const glm::dvec3 &out, double d) {
+    return A + u * s + out * d;
+}
+
 /* Axis-angle decomposition of a rotation matrix (angle 0..pi). Near 180 deg
    the antisymmetric part vanishes, so the axis falls back to the symmetric
    part. */

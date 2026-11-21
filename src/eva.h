@@ -11,7 +11,7 @@
 
 struct Game;
 
-enum EvaMode { EVA_GROUND, EVA_SPACE };
+enum EvaMode { EVA_GROUND, EVA_SPACE, EVA_LADDER };
 
 struct Kerbal : Vehicle {
     /* Frictionless feet: foot friction pairs with the COM walk force (see
@@ -67,6 +67,26 @@ protected:
     glm::dvec3 walkDir = glm::dvec3(0.0);
     double viewYaw = 0.0;                  // rad, accumulated
     glm::dmat3 camBasis = glm::dmat3(1.0); // [right, up, fwd] snapshot at arm
+    /* THE LADDER GRIP (#1073). ladderUid is the durable half -- the grabbed
+       part's uid, saved with the kerbal; 0 = not on a ladder. ladderPart is
+       the per-tick resolved cache (the uid looked up among live nearby
+       vehicles), valid only while mode == EVA_LADDER; applyLadder reads it
+       per substep. Everything else about the hang -- where along the segment,
+       which way out -- is re-derived from the pose, never remembered.
+         grabPressed       the grab key's down EDGE: pressGrab() raises it,
+                           armInput() spends it (grab nearest / let go)
+         climbDir          -1..1 along the segment toward its top end, armed
+                           per tick (W/S); a disarmed suit hangs at 0
+         ladderS           the hold point's target arc length along the
+                           segment: armInput advances it by the climb demand,
+                           the servo flies the suit to it. Re-projected onto
+                           the segment whenever the grip changes (grab,
+                           transfer, load), so a hang never jumps. */
+    uint64_t ladderUid = 0;
+    Part *ladderPart = nullptr;
+    bool grabPressed = false;
+    double climbDir = 0.0;
+    double ladderS = 0.0;
 
 public:
     /* Arm this kerbal's controls for one tick: keys + camera basis + ground state.
@@ -84,13 +104,32 @@ public:
        dry, and a suit that was never armed at all wears the constructor's "standing"
        default and brakes an orbital kerbal at kWalkAccel. No demands, and the regime
        re-derived from the pose rather than remembered (remembering it IS the bug).
+       A ladder grip SURVIVES the disarm (climbDir goes to 0): a kerbal left on a
+       ladder hangs there while the player flies another ship -- the grip is state,
+       not a demand, and validating it needs the fleet.
        tick.cpp calls this every tick for every live, off-rails kerbal when the tick
        steps physics, before the arm; game.cpp's proximity pass calls it on a suit it
        wakes later in the same tick. */
-    void disarm();
+    void disarm(const std::vector<Vehicle *> &vehicles);
 
     /* The jump key went down (events.cpp). The rule lives on jumpPressed above. */
     void pressJump() { jumpPressed = true; }
+
+    /* The grab key went down (events.cpp): armInput spends it -- let go when
+       gripping, else grab the nearest ladder in reach (#1073). */
+    void pressGrab() { grabPressed = true; }
+
+    /* The grip, for the save and the log. The uid is the whole durable state;
+       the loader restores it and the first resolution finds the part again
+       (a gone part -- staged away between save and load -- clears it). */
+    uint64_t ladderGrip() const { return ladderUid; }
+    void restoreLadder(uint64_t uid) { ladderUid = uid; }
+
+    /* The hatch hold pose on a capsule's ladder, in the capsule vehicle's
+       frame: the top end (the hatch) plus the hang offset, body along the
+       slope facing the hull. Game::kerbalEVA spawns the walker here (#1073).
+       False if the def carries no ladder (the caller's fallback). */
+    static bool hatchPose(const Part *cap, glm::dvec3 &pos, glm::dmat3 &rot);
 
     /* What the regime is, for the --eva-log row (#421's e2e assertions read it). */
     EvaMode evaMode() const { return mode; }
@@ -147,11 +186,13 @@ public:
        constructor's "standing at the KSC" default until its first tick. A load
        starts paused, so nothing ticks: derive the regime from the loaded pose
        instead of letting the first read (or --eva-log's first row) claim an
-       orbital kerbal is standing. */
-    void settleContact();
+       orbital kerbal is standing. A restored ladder grip resolves here too
+       (the fleet is built by the time the load commit calls this). */
+    void settleContact(const std::vector<Vehicle *> &vehicles);
 
-    // Per-substep EVA law: ground walking + jump, or RCS + camera-facing
-    // attitude; analytic fall-through guard in both modes.
+    // Per-substep EVA law: ground walking + jump, RCS + camera-facing
+    // attitude, or the ladder hang; analytic fall-through guard in the first
+    // two (a hanging kerbal must never terrain-snap).
     void applyEva(double h);
 
     void applyControlForces(double h) override {
@@ -168,4 +209,21 @@ private:
     /* mode/grounded from the pose and Bullet contact, keys aside: the half of
        armInput() that disarm() needs too (#215). */
     void updateContact();
+
+    /* The ladder grip (#1073), resolved per tick wherever the regime is
+       derived. resolveLadder validates the uid among live nearby vehicles,
+       caches the part, and handles the two generous transitions: climbing
+       off an END onto another segment within reach, and climbing down to the
+       ground at the bottom end. True = still hanging (mode EVA_LADDER). */
+    bool resolveLadder(const std::vector<Vehicle *> &vehicles);
+    /* Nearest ladder part whose segment lies within `reach` of the suit,
+       among live vehicles; excludeUid skips the current grip (transfer). */
+    Part *nearestLadder(const std::vector<Vehicle *> &vehicles, double reach,
+                        uint64_t excludeUid);
+    /* The grabbed segment in the KERBAL's frame (partPoseRelTo), off the
+       cached part. */
+    void ladderSegment(glm::dvec3 &A, glm::dvec3 &B, glm::dvec3 &out) const;
+    /* Per-substep hang: along-axis climb servo + perpendicular position PD
+       toward the hold point, attitude along the ladder facing the hull. */
+    void applyLadder(double h);
 };

@@ -1,0 +1,23 @@
+# G lets go of the ladder: the suit falls from the hatch, lands on the pad
+# and walks -- the grip is gone (ladder=0) and the regime re-derives to
+# ground, exactly like any other fall. The let-go is logged.
+NAME ladder-letgo
+CLAIM G lets go of the hatch ladder; the suit lands and walks.
+KIND invariant
+ARGS --time-accel 1
+ARGS --startship racer,res/ships/racer.json,Kerbin,pad
+ARGS --timeout 12 --eva-log --orbit-interval 0.5
+ARGS --sim-press 1000,0,V,3000,0,G,7000,2000,W
+EXPECT Let go: 'Ash'
+EXPECT [evalog]
+CHECK len(eva) > 10
+# Before the let-go: hanging. After: the grip is gone for good.
+CHECK any(e["mode"] == "ladder" and e["ladder"] != 0 for e in eva if e["t"] < 3.0)
+CHECK all(e["ladder"] == 0 for e in eva if e["t"] > 4.5)
+# Landed and walking: the last rows are ground mode at deck height, and the
+# W press moves the suit horizontally (walk speed ~2.5 m/s).
+CHECK eva[-1]["mode"] == "ground"
+CHECK eva[-1]["alt"] < 6.5
+CHECK (lambda es: abs(es[-1]["pos"][0] - es[0]["pos"][0]) + abs(es[-1]["pos"][1] - es[0]["pos"][1]) > 2.0)([e for e in eva if e["t"] > 7.2])
+FORBID error:
+FORBID FAILED

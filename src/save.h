@@ -241,6 +241,11 @@ struct SaveShip {
        accumulated, not re-derivable from the pose -- drop it and the space-mode
        attitude law slews the suit back to camera-facing on load. */
     double view_yaw = 0.0;
+    /* The ladder grip (#1073): the grabbed part's uid (Kerbal::ladderGrip /
+       restoreLadder, eva.h). 0 = not on a ladder; absent reads 0, so a
+       pre-ladder save loads as a free floater. A uid the load cannot find
+       (the part was staged away) clears on the first resolution. */
+    uint64_t ladder_uid = 0;
 };
 
 /* The global save state (dir/save.json). `ships` is the ordered slug list in
@@ -815,6 +820,7 @@ inline nlohmann::json saveShipToJson(const SaveShip &s) {
            camera. A seated person is not here at all (SavePart::seats). */
         j["pose"] = savePoseToJson(s.pose);
         j["view_yaw"] = s.view_yaw;
+        if(s.ladder_uid != 0) { j["ladder_uid"] = s.ladder_uid; }
         return j;
     }
     j["home"]         = s.home;
@@ -917,6 +923,8 @@ inline SaveShip saveShipFromJson(const nlohmann::json &j) {
         }
         // Absent leaves 0 = camera-facing.
         if(j.contains("view_yaw") && j["view_yaw"].is_number()) { s.view_yaw = j["view_yaw"].get<double>(); }
+        // Absent leaves 0 = not on a ladder.
+        s.ladder_uid = readUid(j, "ladder_uid");
         return s;
     }
     if(j.contains("home") && j["home"].is_string()) { s.home = j["home"].get<std::string>(); }

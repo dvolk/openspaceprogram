@@ -217,7 +217,7 @@ void tick(Game &g) {
         if(g.time_accel != 0) {
             for(Vehicle *s : vehicles) {
                 if(s->onRails || !s->isEva()) { continue; }
-                static_cast<Kerbal *>(s)->disarm();
+                static_cast<Kerbal *>(s)->disarm(vehicles);
             }
         }
 
@@ -1586,17 +1586,20 @@ void tick(Game &g) {
                 // azimuth, and the two are the other half of the same attitude
                 // law (#241). Ground rows print the offset anyway -- it is the
                 // one that applies on the next space transition.
+                const char *modeName = (k->evaMode() == EVA_GROUND) ? "ground"
+                                     : (k->evaMode() == EVA_LADDER) ? "ladder"
+                                     : "space";
                 printf("[evalog] t=%.1fs mode=%s grounded=%d "
                        "pos=[%.1f %.1f %.1f] vel=[%.2f %.2f %.2f] "
                        "face=[%.3f %.3f %.3f] alt=%.2f m viewyaw=%.3f "
-                       "rcs=%d mass=%.3fkg\n",
-                       g.time, (k->evaMode() == EVA_GROUND) ? "ground" : "space",
+                       "rcs=%d mass=%.3fkg ladder=%llu\n",
+                       g.time, modeName,
                        (int)k->evaGrounded(), p.x, p.y, p.z, v.x, v.y, v.z,
                        face.x, face.y, face.z,
                        glm::length(p_rot) - (double)k->m_parent->GetTerrainHeight(
                            glm::vec3(glm::normalize(p_rot))),
                        k->viewYawOffset(), (int)k->rcsBurned(),
-                       k->getMass());
+                       k->getMass(), (unsigned long long)k->ladderGrip());
                 fflush(stdout);
             }
         }

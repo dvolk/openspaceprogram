@@ -110,6 +110,40 @@ int main() {
                           - glm::dvec3(1, 2, 0)) < 1e-9);
     }
 
+    /* Ladder segment math (#1073): the projections the grab reach, the climb
+       servo and the end transfer read. A slanted segment (the capsule slope
+       shape), so the clamps and the perpendicular distance are exercised off
+       the principal axes. */
+    {
+        const glm::dvec3 A(1.0, 0.0, -1.0);
+        const glm::dvec3 B(0.5, 0.0, 1.0 / 3.0);   // exact slope: out below is perpendicular
+        const glm::dvec3 u = glm::normalize(B - A);
+        const double L = glm::length(B - A);
+        // a point ON the segment projects to its arc length, distance 0
+        const glm::dvec3 mid = A + u * (0.4 * L);
+        CHECK(std::fabs(ladderProject(A, u, L, mid) - 0.4 * L) < 1e-9);
+        CHECK(ladderDist(A, u, L, mid) < 1e-9);
+        // off the line: the perpendicular offset is the distance, the
+        // projection is unchanged
+        const glm::dvec3 out = glm::normalize(glm::dvec3(2.0, 0.0, 0.75));
+        const glm::dvec3 off = mid + out * 0.45;
+        CHECK(std::fabs(ladderProject(A, u, L, off) - 0.4 * L) < 1e-9);
+        CHECK(std::fabs(ladderDist(A, u, L, off) - 0.45) < 1e-9);
+        // past the ends: clamped, and the distance grows from the END
+        CHECK(std::fabs(ladderProject(A, u, L, A - u * 2.0)) < 1e-9);
+        CHECK(std::fabs(ladderProject(A, u, L, B + u * 2.0) - L) < 1e-9);
+        CHECK(std::fabs(ladderDist(A, u, L, B + u * 2.0) - 2.0) < 1e-9);
+        // the hold point rides the line at the hang offset
+        const glm::dvec3 hold = ladderHold(A, u, 0.4 * L, out, 0.45);
+        CHECK(glm::length(hold - off) < 1e-9);
+        // the ladder attitude target: body along the segment, face to the hull
+        const glm::dmat3 T = evaStandTarget(u, -out);
+        CHECK(glm::length(T[2] - u) < 1e-9);
+        CHECK(std::fabs(glm::dot(T[1], u)) < 1e-9);     // face perpendicular to the axis
+        CHECK(glm::dot(T[1], -out) > 0.9);              // ...and toward the hull
+        CHECK(std::fabs(glm::determinant(T) - 1.0) < 1e-9);
+    }
+
     if(g_failures == 0) {
         printf("test_eva: all checks passed\n");
         return 0;

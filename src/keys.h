@@ -90,6 +90,7 @@ enum class Slot {
     EvaDown,
     EvaYawLeft,
     EvaYawRight,
+    EvaGrab,       // grab / let go of a ladder (#1073)
     SLOT_COUNT
 };
 

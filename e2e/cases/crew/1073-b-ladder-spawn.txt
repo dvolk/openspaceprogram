@@ -1,0 +1,26 @@
+# EVA spawns HOLDING the capsule's hatch ladder (#1073), not floating beside
+# the capsule: the regime is ladder, the grip names a part, and the suit hangs
+# still at the hatch (top of the slope, 2/3 up) instead of dropping from rim
+# height. The old spawn fell ~3 m on this stack; the hang must not.
+NAME ladder-spawn
+CLAIM EVA spawns gripping the hatch ladder and hangs still at the hatch.
+KIND invariant
+ARGS --time-accel 1
+ARGS --startship racer,res/ships/racer.json,Kerbin,pad
+ARGS --timeout 8 --eva-log --orbit-interval 0.5
+ARGS --sim-press 1000,0,V
+EXPECT [crew] t=
+EXPECT [evalog]
+CHECK len(eva) > 5
+# Every row after the EVA is a hang: mode ladder, a live grip, no fall.
+CHECK all(e["mode"] == "ladder" for e in eva)
+CHECK all(e["ladder"] is not None and e["ladder"] != 0 for e in eva)
+# Settled: the servo holds the suit against gravity (sag ~5 cm, not a fall).
+CHECK all(abs(e["vel"][0]) + abs(e["vel"][1]) + abs(e["vel"][2]) < 0.2 for e in eva[2:])
+# At the hatch: 2/3 up the slope, hanging off it -- metres above the deck
+# (the racer's capsule sits on wheel+tank+engine, hatch ~11 m up), and the
+# altitude does not drain away (the pre-ladder spawn fell).
+CHECK all(10.0 < e["alt"] < 12.0 for e in eva)
+CHECK eva[-1]["alt"] > eva[2]["alt"] - 0.2
+FORBID error:
+FORBID FAILED

@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 436 |
+| `invariant` | a behaviour or a player route the game must keep | 444 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 50 |
 | `harness` | CLI/test-engine plumbing, not game spec | 16 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **506** |
+| | **total** | **514** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -186,16 +186,16 @@ judgement. Select by number, name or path, e.g.
 | `flight/1062-stale-dock-target-leaves-with-the-port-it-aimed-at.txt` | invariant | Switching to the target hull and staging it drops both halves of the docking target and keeps the armed port. |
 | `flight/1072-lander-legs-stand.txt` | invariant | A legged rocket spawns standing on its feet, stays there, and survives a quicksave/quickload. |
 
-## crew (29)
+## crew (36)
 
 | case | kind | pins |
 |---|---|---|
 | `crew/26-eva-walk.txt` | invariant | WASD walks the kerbal on the surface without tipping it over. |
 | `crew/27-eva-jump.txt` | invariant | A jump leaves the ground and lands back on it. |
 | `crew/28-eva-rcs.txt` | invariant | Suit RCS thrust draws a puff and clears when the key is released. |
-| `crew/29-eva-spawn.txt` | invariant | EVA spawns the roster's lowest-id kerbal at the capsule. |
+| `crew/29-eva-spawn.txt` | invariant | EVA spawns the roster's lowest-id kerbal holding the capsule's hatch ladder; let go, land, walk. |
 | `crew/30-eva-rcs-fuel.txt` | golden | Suit RCS burns suit fuel at the expected rate. |
-| `crew/31-eva-orbit.txt` | invariant | A kerbal can EVA in orbit and the suit state is kept. |
+| `crew/31-eva-orbit.txt` | invariant | A kerbal can EVA in orbit onto the hatch ladder and the suit state is kept. |
 | `crew/81-crew-noncapsule.txt` | invariant | A kerbal can only be seated in a capsule, not an arbitrary part. |
 | `crew/82-crew-overcapacity.txt` | invariant | A capsule refuses more crew than its capacity. |
 | `crew/83-inventory-load.txt` | invariant | A loaded kerbal keeps the items in its pockets. |
@@ -211,7 +211,7 @@ judgement. Select by number, name or path, e.g.
 | `crew/212-save-name-clash.txt` | invariant | A save with two ships named alike is refused rather than merged. |
 | `crew/215-eva-board-round-trip.txt` | invariant | EVA out and board again leaves exactly one vessel and the suit parked as a seat. |
 | `crew/215-eva-free-cam-no-law.txt` | invariant | Free cam over an orbital kerbal leaves it coasting: the suit does not claim to be standing, and nothing brakes the orbit. |
-| `crew/215-eva-handoff-no-coast.txt` | invariant | Handing control back from a spacewalker stops it walking: the suit stands still while nobody pilots it. |
+| `crew/215-eva-handoff-no-coast.txt` | invariant | Handing control back from a ladder climber leaves the suit hanging still, not coasting. |
 | `crew/224-ui-board-button.txt` | invariant | The part window's Board button returns a walking kerbal to its capsule. |
 | `crew/225-startship-kerbal-multidef.txt` | invariant | A kerbal def with more than one part is refused at boot. |
 | `crew/226-vab-launch-kerbal-multidef.txt` | invariant | The VAB refuses to launch a multi-part kerbal with a toast. |
@@ -219,6 +219,13 @@ judgement. Select by number, name or path, e.g.
 | `crew/394-spent-pool-kerbal-refused.txt` | invariant | A kerbal spawned on a spent pad pool is refused, not minted off the def. |
 | `crew/547-walking-kerbal-suit-mass-overflow-refused.txt` | invariant | A saved kerbal whose suit contents add up to more mass than the game can store is refused, not stood up as a NaN-inertia Body. |
 | `crew/866-platform-eva-stands.txt` | invariant | EVA on the platform: stand, walk, fall off the edge, and keep flying with RCS. |
+| `crew/1073-b-ladder-spawn.txt` | invariant | EVA spawns gripping the hatch ladder and hangs still at the hatch. |
+| `crew/1073-c-ladder-climb.txt` | invariant | S climbs down the hatch ladder, release holds, W climbs back up. |
+| `crew/1073-d-ladder-letgo.txt` | invariant | G lets go of the hatch ladder; the suit lands and walks. |
+| `crew/1073-e-ladder-kick.txt` | invariant | SPACE kicks off the hatch ladder into a stable orbital spacewalk. |
+| `crew/1073-f-ladder-save.txt` | invariant | A ladder hang round-trips quicksave/quickload still gripping. |
+| `crew/1073-g-ladder-down-compose.txt` | invariant | Climbing down transfers capsule ladder to tank ladder and grounds at the bottom. |
+| `crew/1073-h-ladder-up-compose.txt` | invariant | Re-grab from the pad takes the ladder bottom; climbing up transfers tank to capsule and reaches the hatch. |
 
 ## science (31)
 
@@ -256,7 +263,7 @@ judgement. Select by number, name or path, e.g.
 | `science/830-the-dossier-carries-the-lag-beside-the-swing-it-modifies.txt` | invariant | A world the shipped catalogue gives a ground phase lag says so in the same block as the swing it bends -- the knob in radians of phase, how far past its sun its hottest ground can sit, and the measured solar day that converts the two -- while the swing itself stays the law's two ends, so the identity that ties those ends still closes, AND the block prints what the lag leaves: an equator-at-equinox pair strictly inside the law's ends and narrowing as the knob grows. |
 | `science/840-a-lagged-summit-prices-the-forcing-its-own-world-wears.txt` | invariant | On a world that authors both a phase lag and a height term, the atlas's summit row is the temperature pair that world's sea-level equator actually wears at that epoch, moved down by the lapse -- not the law's two ends moved down, which on AltoFrio read 97.2 to 319.9 K against a Surface Map painting 99.19 to 316.53: a summit colder than the coldest pixel and hotter than the hottest one. |
 
-## vab (42)
+## vab (43)
 
 | case | kind | pins |
 |---|---|---|
@@ -302,6 +309,7 @@ judgement. Select by number, name or path, e.g.
 | `vab/817-d-startship-alt-under-the-relief.txt` | invariant | Asking a circular bed under a body's mountains is refused at boot instead of spawning a hull that flies through the ground. |
 | `vab/817-e-startship-alt-outside-the-shell.txt` | invariant | An altitude past the body's near-body shell is refused, by a bed that reads the air, with the shell's height printed instead of placing the bed in another frame. |
 | `vab/818-b-startship-alt-outside-the-sphere-of-influence.txt` | invariant | An altitude past the body's sphere of influence is refused by name, with the SOI's height printed, instead of placing a hull whose speed comes from another body's gravity. |
+| `vab/1073-a-ladder-click-places.txt` | invariant | A ladder armed from the palette surface-places on a tank click and launches with the ship. |
 
 ## save (58)
 

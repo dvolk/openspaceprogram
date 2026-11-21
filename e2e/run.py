@@ -482,6 +482,9 @@ EVA_RE = re.compile(
     r"vel=\[([-\d.]+) ([-\d.]+) ([-\d.]+)\]\s+"
     r"face=\[([-\d.]+) ([-\d.]+) ([-\d.]+)\]\s+alt=([-\d.]+) m"
     r"(?:\s+viewyaw=([-\d.]+))?(?:\s+rcs=(\d+))?(?:\s+mass=([-\d.]+)kg)?"
+    # #1073: the grabbed ladder part's uid (0 = not on a ladder). Optional, so
+    # the pre-ladder grammar still parses.
+    r"(?:\s+ladder=(\d+))?"
 )
 DRAINLOG_RE = re.compile(
     r"\[drainlog\]\s+t=([\d.]+)s\s+dt=([\d.]+)s\s+ship=\"([^\"]*)\"\s+"
@@ -1639,7 +1642,7 @@ def parse_eva(out):
     rows = []
     for m in EVA_RE.finditer(out):
         (t, mode, grounded, px, py, pz, vx, vy, vz,
-         fx, fy, fz, alt, viewyaw, rcs, mass) = m.groups()
+         fx, fy, fz, alt, viewyaw, rcs, mass, ladder) = m.groups()
         rows.append({
             "t": float(t), "mode": mode, "grounded": int(grounded),
             "pos": (float(px), float(py), float(pz)),
@@ -1652,6 +1655,8 @@ def parse_eva(out):
             # what the render pass gates the RCS puff on (#242).
             "rcs": int(rcs) if rcs is not None else None,
             "mass": float(mass) if mass is not None else None,
+            # the grabbed ladder part's uid, 0 = none (#1073).
+            "ladder": int(ladder) if ladder is not None else None,
         })
     return rows
 

@@ -1912,11 +1912,19 @@ void Game::kerbalEVA(Part *suit) {
     const PartDef *capDef = capPart->def;
     const std::string who = seatName(suit);
 
-    /* Standing / hover pose beside the capsule. The branch is the ship's
-       GROUNDED state, not its frame's rotation: zero velocity in a rotating
-       frame is co-rotating free fall. Computed BEFORE the seat is emptied,
-       because it reads the capsule's live pose. */
+    /* The spawn pose (#1073): HOLDING the capsule's hatch ladder at its top
+       end -- one rule for landed and space, the ladder holds the suit, no
+       more rim-height drop. The side is ship-fixed (the ladder's azimuth),
+       not the old world-axis tangent. Computed BEFORE the seat is emptied,
+       because it reads the capsule's live pose. A capsule def with no ladder
+       (a custom def) falls back to the old beside-the-capsule placement
+       below, whose branch is the ship's GROUNDED state, not its frame's
+       rotation: zero velocity in a rotating frame is co-rotating free fall. */
     const glm::dvec3 capCom = ship->partPos(capPart);
+    const glm::dvec3 capVel = ship->partVel(capPart);
+    glm::dvec3 hatchPos(0.0);
+    glm::dmat3 hatchRot(1.0);
+    const bool onLadder = Kerbal::hatchPose(capPart, hatchPos, hatchRot);
     /* In a platform bubble the deck is the ground: local +Z up, deck top at
        z=0 (#850). normalize(capCom) would point from the BUILDING, and the
        terrain radius below would place the walker a planet away. */
@@ -1934,7 +1942,6 @@ void Game::kerbalEVA(Part *suit) {
     const glm::dvec3 right = glm::cross(tangent, upDir);
     const glm::dmat3 orient = glm::dmat3(right, tangent, upDir);
     const double offset = capDef->radius + 2.0;
-    const glm::dvec3 capVel = ship->partVel(capPart);
 
     /* Empty the seat: the suit stops being held, and the capsule loses the
        mass (checkPartInvariants holds on both sides of this). The suit keeps
@@ -1968,7 +1975,11 @@ void Game::kerbalEVA(Part *suit) {
        burned. finalize builds the hull (rebuildCompound) and the fuel groups. */
     k->finalize();
 
-    if(ship->isGrounded()) {
+    if(onLadder) {
+        k->placeShipAtCom(hatchPos, hatchRot);
+        k->setVelocity(capVel);   // co-moving with the hatch (~0 when landed)
+        k->restoreLadder(capPart->uid);
+    } else if(ship->isGrounded()) {
         if(onDeck) {
             /* Beside the capsule at its own height -- the pad semantics: the
                walker steps out of the hatch, not down to the deck, and falls
@@ -1994,6 +2005,15 @@ void Game::kerbalEVA(Part *suit) {
     kerbal = k;
     lastShip = ship;
     select_vehicle(k);
+    /* select_vehicle PARKS the ship it switches away from, and a grip on a
+       railed hull clears on the first resolution -- the kerbal would fall off
+       the ladder it just spawned holding (#1073). Wake it back up (the
+       proximity pass's own sequence); from here the pass keeps it live, the
+       kerbal being right beside it. A no-ladder fallback EVA parks as before. */
+    if(onLadder) {
+        ship->leaveRails();
+        ship->switchFrames(time);
+    }
     toast("EVA: %s", who.c_str());
     /* Log the capsule's slot in the ship's part list (e2e pins "part 0"). */
     int capIdx = 0;
@@ -2295,7 +2315,7 @@ void Game::updateProximity() {
                Vehicle method and knows nothing about walkDir/mode/grounded, and
                tick.cpp's per-tick disarm pass already walked past this hull while it was
                on rails, so without this the substeps later in THIS tick would run it. */
-            if(s->isEva()) { static_cast<Kerbal *>(s)->disarm(); }
+            if(s->isEva()) { static_cast<Kerbal *>(s)->disarm(vehicles); }
             if(args.prox_log) { printf("[prox] t=%.3f %s ENGAGED at %.1f m (< %.1f m, %s)\n",
                                        time, s->displayName().c_str(), d, r_on,
                                        grounded ? "ground" : "fly"); }
@@ -2334,7 +2354,7 @@ void Game::updateProximity() {
         /* As at the neighbour wake above: this happens AFTER tick.cpp's disarm pass and
            AFTER this tick's arm, so the substeps that follow would run whatever law the
            suit wore on the rails (#215). Next tick arms it properly from the live pose. */
-        if(a->isEva()) { static_cast<Kerbal *>(a)->disarm(); }
+        if(a->isEva()) { static_cast<Kerbal *>(a)->disarm(vehicles); }
         if(args.prox_log) { printf("[prox] t=%.3f active %s WOKEN from rails\n",
                                    time, a->displayName().c_str()); }
     }

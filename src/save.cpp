@@ -474,6 +474,7 @@ SaveShip saveShipFromVehicle(Vehicle *v,
            steers toward camera-facing + this offset every substep: without it
            the suit slews back to camera-facing on load (see Kerbal::applyEva). */
         s.view_yaw = k->viewYawOffset();
+        s.ladder_uid = k->ladderGrip();
         // part 0 is the suit; without this a partly-burned tank re-seeds full
         if(!v->parts.empty()) {
             for(int r = 0; r < (int)ResourceType::Num; r++) {
@@ -1238,6 +1239,9 @@ Kerbal *buildKerbalFromSave(Game &g, const LoadWorld &w, const SaveShip &s) {
     // BEFORE either setSoi below, whose observe is then a no-op.
     k->flog = s.flog;
     k->restoreViewYaw(s.view_yaw);
+    /* The ladder grip is remapped at the commit (the uid->Part map spans the
+       whole save; parts are re-minted here, so the saved uid is not yet a live
+       one). */
     /* Walking: the saved pose is the kerbal's own. A seated person is not a
        vehicle at all -- they are a `seats` element of their capsule (part.h),
        built by buildSeatParts. */
@@ -1848,7 +1852,19 @@ void commitSaveWorld(Game &g, BuiltSave *bp, bool fleetAlreadyGone) {
         // inertial node, and settleContact's terrain lookup wants the rotating
         // frame (railsTick converts for the same reason). enterWorld leaves the
         // pose where build put it, so either way it is valid here.
-        if(v->isEva()) { static_cast<Kerbal *>(v)->settleContact(); }
+        if(v->isEva()) {
+            Kerbal *k = static_cast<Kerbal *>(v);
+            /* The grip travels as a SAVED uid; the load re-mints part uids, so
+               remap through the save-wide map to the live one (#1073). A uid
+               the map cannot resolve clears -- the kerbal loads free. */
+            if(s.ladder_uid != 0) {
+                const std::map<uint64_t, Part *>::const_iterator lp =
+                    b->savedUidToPart.find(s.ladder_uid);
+                k->restoreLadder(lp != b->savedUidToPart.end()
+                                 ? lp->second->uid : 0);
+            }
+            k->settleContact(g.vehicles);
+        }
         // build left the hull out of the world: this is the one place it is
         // added or parked. A non-rail-eligible ship stays live. Crew too --
         // a walking kerbal that was saved live is not on rails.
@@ -1856,6 +1872,19 @@ void commitSaveWorld(Game &g, BuiltSave *bp, bool fleetAlreadyGone) {
             if(!v->goOnRails()) { v->enterWorld(); }
         } else {
             v->enterWorld();
+        }
+    }
+
+    /* A grip whose ship sits LATER in the save order than the kerbal (an
+       undock appends the new hull) could not resolve above -- its hull was not
+       in the world yet. Every hull is now: re-derive the ones still holding a
+       uid. A gripping kerbal is saved live, so the rotating-frame caveat above
+       does not apply here. */
+    for(Vehicle *v : g.vehicles) {
+        if(!v->isEva()) { continue; }
+        Kerbal *k = static_cast<Kerbal *>(v);
+        if(k->ladderGrip() != 0 && k->evaMode() != EVA_LADDER) {
+            k->settleContact(g.vehicles);
         }
     }
 

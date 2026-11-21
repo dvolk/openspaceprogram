@@ -12,14 +12,14 @@ ARGS --timeout 34 --eva-log --orbit-interval 0.5
 ARGS --ui-focus 2000,"racer/capsule_1"
 ARGS --sim-mouse 2100,0,CUR,CUR,RMB
 ARGS --ui-click 3000,"racer > Capsule (2m)##0/EVA##eva0"
-ARGS --sim-press 6000,22000,W
+ARGS --sim-press 4500,0,G,6000,22000,W
 EXPECT EVA: 'Ash' out of 'racer' part 0
 EXPECT [evalog]
-# The walker steps out at the capsule's height (pad semantics), falls to the
-# deck and stands: bubble-local z ~ restAlt, ground mode -- not teleported a
-# planet away by a body-centric floor read (#850).
-CHECK all(e["mode"] == "ground" for e in eva if 5.0 < e["t"] < 19.0)
-CHECK all(abs(e["pos"][2]) < 5.0 for e in eva if 5.0 < e["t"] < 19.0)
+# #1073: EVA spawns holding the hatch ladder; G at 4.5 s lets go, the suit
+# falls to the deck and stands: bubble-local z ~ restAlt, ground mode -- not
+# teleported a planet away by a body-centric floor read (#850).
+CHECK all(e["mode"] == "ground" for e in eva if 6.0 < e["t"] < 19.0)
+CHECK all(abs(e["pos"][2]) < 5.0 for e in eva if 6.0 < e["t"] < 19.0)
 # Walking works on the deck: horizontal displacement while ground mode holds.
 CHECK (lambda es: (es[-1]["pos"][0]-es[0]["pos"][0])**2 + (es[-1]["pos"][1]-es[0]["pos"][1])**2 > 0.25)([e for e in eva if 6.0 < e["t"] < 8.0])
 # No bounce limit cycle: the standing height holds still while walking (the

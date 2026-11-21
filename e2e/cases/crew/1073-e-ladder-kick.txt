@@ -1,0 +1,27 @@
+# SPACE on a ladder lets go WITH an outward kick (the jump reused): in orbit
+# the suit leaves the hatch at ~2.5 m/s relative to the ship and flies the
+# space law -- not a fall, not a teleport. The hang itself is stable in orbit
+# (the servo damps velocity RELATIVE to the ship, so the ~km/s of frame-local
+# orbital motion is not braked away -- the bug that dropped the suit out of
+# its orbit mid-climb).
+NAME ladder-kick
+CLAIM SPACE kicks off the hatch ladder into a stable orbital spacewalk.
+KIND invariant
+ARGS --time-accel 1
+ARGS --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+ARGS --timeout 12 --eva-log --orbit-interval 0.5
+ARGS --sim-press 1000,0,V,8000,0,SPACE
+EXPECT Let go: 'Ash' (jump)
+EXPECT [evalog]
+CHECK len(eva) > 10
+# The hang holds in orbit: ladder mode, grip live, no drift from the ship
+# (the suit co-moves; its frame-local velocity is the ship's, ~km/s).
+CHECK all(e["mode"] == "ladder" and e["ladder"] != 0 for e in eva if e["t"] < 7.5)
+# After the kick: space law, grip gone.
+CHECK all(e["mode"] == "space" and e["ladder"] == 0 for e in eva if e["t"] > 9.0)
+# The kick is a ~2.5 m/s DISCONTINUITY: subtract the preceding gravity-only
+# interval (same length, same orbit) from the interval across the kick, and
+# the ~2.5 m/s kick vector remains -- not a stop, not a launch.
+CHECK (lambda a, b, c: 1.5 < sum((c["vel"][i] - 2 * b["vel"][i] + a["vel"][i]) ** 2 for i in range(3)) ** 0.5 < 3.5)([e for e in eva if 6.8 < e["t"] < 7.5][-1], [e for e in eva if 7.5 < e["t"] < 8.0][-1], [e for e in eva if 8.1 < e["t"] < 8.6][0])
+FORBID error:
+FORBID FAILED

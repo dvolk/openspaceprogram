@@ -1,7 +1,7 @@
 NAME eva-orbit
-CLAIM A kerbal can EVA in orbit and the suit state is kept.
+CLAIM A kerbal can EVA in orbit onto the hatch ladder and the suit state is kept.
 KIND invariant
-ARGS --time-accel 1 --timeout 6 --orbit-log --orbit-interval 0.5 --prox-log --sim-press 1000,0,V --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+ARGS --time-accel 1 --timeout 6 --orbit-log --orbit-interval 0.5 --prox-log --eva-log --sim-press 1000,0,V --startship racer,res/ships/racer.json,Kerbin,rot-orbit
 # Named from the shipped roster: 'Ash' is the lowest id, so the first seat
 # claims them (see 29-eva-spawn).
 EXPECT Crew: 'Ash' aboard 'racer' part 0 (1/1)
@@ -10,6 +10,13 @@ EXPECT Active ship 2 of 2: Ash
 FORBID error:
 CHECK len(orbit) > 5
 CHECK all(o["ecc"] < 0.01 and 2000.0 < o["v"] < 2500.0 for o in orbit if o["t"] > 1.3)
+# The switch parks the ship once; the hatch-ladder wake (kerbalEVA, #1073)
+# takes it straight off the rails -- the grip needs a live hull on the first
+# tick, before the proximity pass runs -- so proximity has nothing to ENGAGE.
+# What must still hold: the ship is never RELEASED (the hanging suit keeps it
+# near), and the suit hangs in ladder mode rather than drifting free.
 CHECK out.count("parked on rails") == 1
-CHECK out.count("ENGAGED") >= 1
+CHECK out.count("left the rails") >= 1
 CHECK out.count("RELEASED") == 0
+CHECK len(eva) > 3
+CHECK all(e["mode"] == "ladder" and e["ladder"] != 0 for e in eva)

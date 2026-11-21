@@ -1685,6 +1685,11 @@ void Vehicle::rebuildCompound() {
                                                 inertiaDiag);
     ci.m_friction = (btScalar)hullFriction;
     hull->btBody = new btRigidBody(ci);
+    /* Back-pointer for ray queries (groundRay's hitBody), the same contract
+       RegisterObject gives building bodies: the ladder ground-drop (#1073)
+       tells a vehicle hull from the ground by scanning the fleet for it.
+       Terrain colliders carry none. */
+    hull->btBody->setUserPointer(hull);
     NeverSleep(hull);
 
     /* Restore frame S under the new principal, and the COM's velocity:
@@ -7674,6 +7679,15 @@ glm::dvec3 Vehicle::GetPositionRelTo(const Part *part, Frame *relTo) {
     glm::dvec3 fpos = frame->GetPositionRelTo(relTo);
     glm::dmat3 forient = frame->GetOrientRelTo(relTo);
     return forient * partPos(part) + fpos;
+}
+
+void Vehicle::partPoseRelTo(const Part *part, Frame *relTo,
+                            glm::dvec3 &pos, glm::dmat3 &rot) {
+    glm::dvec3 p; glm::dmat3 r;
+    partWorldPose(part, p, r);
+    const glm::dmat3 forient = frame->GetOrientRelTo(relTo);
+    pos = forient * p + frame->GetPositionRelTo(relTo);
+    rot = forient * r;
 }
 
 /* --- root-frame state helpers, shared by the two frame-switch guards -------

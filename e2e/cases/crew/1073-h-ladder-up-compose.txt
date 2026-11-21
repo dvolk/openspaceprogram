@@ -1,0 +1,29 @@
+# The ascent composition, and the two bugs the first playtest found (#1073):
+# (1) drop off the hatch, land on the pad, G again -- the grab must take the
+# suit at the BOTTOM of the nearest ladder (the servo slides it across the
+# deck), not teleport it to the previous grip's arc length up the ladder;
+# (2) climbing UP off the tank ladder's top end must transfer onto the capsule
+# ladder (the end band is wider than the gravity sag that holds the suit ~5 cm
+# short of the top) and carry the suit back to the hatch.
+NAME ladder-up-compose
+CLAIM Re-grab from the pad takes the ladder bottom; climbing up transfers tank to capsule and reaches the hatch.
+KIND invariant
+ARGS --time-accel 1
+ARGS --startship ladderstack,res/ships/ladder_stack.json,Kerbin,pad
+ARGS --timeout 15 --eva-log --orbit-interval 0.25
+ARGS --sim-press 1000,0,V,3000,0,G,6000,0,G,7500,5000,W
+EXPECT Let go: 'Ash'
+EXPECT Grab: 'Ash'
+EXPECT [evalog]
+CHECK len(eva) > 30
+# Bug 1: after the re-grab the suit is at the ladder BOTTOM -- it stays near
+# the deck for a full second (the stale-target teleport flew it up ~2 m).
+CHECK all(e["mode"] == "ladder" and e["alt"] < 7.0 for e in eva if 6.3 < e["t"] < 7.4)
+# Bug 2: the climb transfers tank -> capsule (two distinct grips while climbing).
+CHECK len(set(e["ladder"] for e in eva if e["mode"] == "ladder" and e["t"] > 7.5)) == 2
+# Back at the hatch: the climb ends hanging at the top of the capsule slope.
+CHECK eva[-1]["mode"] == "ladder"
+CHECK eva[-1]["alt"] > 8.5
+CHECK abs(eva[-1]["vel"][0]) + abs(eva[-1]["vel"][1]) + abs(eva[-1]["vel"][2]) < 0.2
+FORBID error:
+FORBID FAILED

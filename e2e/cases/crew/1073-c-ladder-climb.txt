@@ -1,0 +1,27 @@
+# W/S climb the ladder at ~1.5 m/s along the segment, and letting go of the
+# key HOLDS position (the hang is a position servo, not a velocity command).
+# On the racer the capsule ladder is the only one: S from the hatch runs down
+# to its bottom end and clamps there (no tank ladder to transfer to), W climbs
+# back to the hatch. Altitude is the along-slope proxy (the slope is ~70 deg
+# from horizontal, so 1 m of climb is ~0.94 m of altitude).
+NAME ladder-climb
+CLAIM S climbs down the hatch ladder, release holds, W climbs back up.
+KIND invariant
+ARGS --time-accel 1
+ARGS --startship racer,res/ships/racer.json,Kerbin,pad
+ARGS --timeout 12 --eva-log --orbit-interval 0.25
+ARGS --sim-press 1000,0,V,3000,1000,S,5500,1000,W
+EXPECT [evalog]
+CHECK len(eva) > 20
+CHECK all(e["mode"] == "ladder" for e in eva)
+# The descent: between the S press and its release the altitude drops > 1 m.
+CHECK (lambda es: min(e["alt"] for e in es) < max(e["alt"] for e in es) - 1.0)([e for e in eva if 3.0 < e["t"] < 5.0])
+# The hold after S release: altitude steady within the sag band.
+CHECK (lambda es: max(e["alt"] for e in es) - min(e["alt"] for e in es) < 0.15)([e for e in eva if 4.3 < e["t"] < 5.4])
+# The climb back: W regains > 1 m of altitude.
+CHECK (lambda es: max(e["alt"] for e in es) - min(e["alt"] for e in es) > 1.0)([e for e in eva if 5.5 < e["t"] < 7.5])
+# Climb speed band: the descent covers ~1.3 m of altitude in ~1 s of travel
+# (1.5 m/s along the slope x 0.94), not a teleport and not a crawl.
+CHECK (lambda es: 0.5 < (max(e["alt"] for e in es) - min(e["alt"] for e in es)) < 2.0)([e for e in eva if 3.2 < e["t"] < 4.6])
+FORBID error:
+FORBID FAILED

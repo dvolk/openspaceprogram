@@ -2498,6 +2498,13 @@ public:
     // --- physical rotation model -------------
     glm::dvec3 GetPositionRelTo(const Part *part, Frame *relTo);
 
+    /* The part's full pose (position + orientation) in `relTo`'s frame --
+       GetPositionRelTo's sibling for when the axes matter too (the EVA ladder
+       law reads a part-local segment through it, #1073). One spelling, same
+       frame transform; non-const for the same reason as GetPositionRelTo. */
+    void partPoseRelTo(const Part *part, Frame *relTo,
+                       glm::dvec3 &pos, glm::dmat3 &rot);
+
     /* The hull's centre of mass in UNIVERSE-ROOT (star) axes (#687). Every other
        frame math here is local to a body; insolation is the one reading that
        needs the distance to the star, and asking for it through a chain of

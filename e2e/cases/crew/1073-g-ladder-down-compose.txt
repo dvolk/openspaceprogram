@@ -1,0 +1,31 @@
+# The descent composition on ladder_stack (#1073): the capsule's hatch ladder
+# meets the tank ladder across the reaction-wheel gap WITH the fixture's
+# deliberate slop (5 deg azimuth, z +0.1). Climbing down transfers capsule ->
+# tank (the grip uid changes, no mode dropout), runs to the tank ladder's
+# bottom end and lets go onto the deck -- climb down onto your feet -- then
+# walks. The generosity is the servo: the transfer is a smooth slide, not a
+# teleport, and the imperfect placement still composes.
+NAME ladder-down-compose
+CLAIM Climbing down transfers capsule ladder to tank ladder and grounds at the bottom.
+KIND invariant
+ARGS --time-accel 1
+ARGS --startship ladderstack,res/ships/ladder_stack.json,Kerbin,pad
+ARGS --timeout 14 --eva-log --orbit-interval 0.25
+ARGS --sim-press 1000,0,V,3000,6000,S
+EXPECT [evalog]
+CHECK len(eva) > 25
+# Two distinct grips during the descent: the capsule ladder, then the tank's.
+CHECK len(set(e["ladder"] for e in eva if e["mode"] == "ladder" and e["ladder"])) == 2
+# The transfer never drops the regime: every row from the EVA to the bottom
+# is ladder mode until the ground drop (~5.1 s on this fixture).
+CHECK all(e["mode"] == "ladder" for e in eva if 1.5 < e["t"] < 5.0)
+# Grounded at the end: the bottom-end ground drop fired and the suit walks.
+CHECK eva[-1]["mode"] == "ground"
+CHECK eva[-1]["ladder"] == 0
+CHECK eva[-1]["alt"] < 6.5
+# The transfer slid across the gap (no teleport): consecutive ladder rows
+# stay under 1 m -- climb is 0.375 m/row, the servo's gap slide peaks ~0.9 m;
+# a teleport would be several metres in one row.
+CHECK (lambda es: all(sum((a["pos"][i] - b["pos"][i]) ** 2 for i in range(3)) ** 0.5 < 1.0 for a, b in zip(es, es[1:])))([e for e in eva if e["mode"] == "ladder"])
+FORBID error:
+FORBID FAILED
