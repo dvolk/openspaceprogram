@@ -1186,8 +1186,9 @@ int main() {
 
     /* #870: a direction the state cannot support has to come back MISSING, not as a
        number. A hull parked where the ground does not move -- a world whose
-       rotating.rot_ang_speed is 0, or Kerbin's own POLAR pad, where |omega x r|
-       vanishes -- has a conic speed of contact-solver residue. That is NOT zero, so
+       rotating.rot_ang_speed is 0, or a pad at Kerbin's pole, where |omega x r|
+       vanishes (e2e/fixtures/systems/870-kerbin-polar-pad.json -- no shipped pad
+       stands at a pole since #1063) -- has a conic speed of contact-solver residue. That is NOT zero, so
        glm's normalize answers a perfectly unit vector and the HUD prints a confident
        bearing that is the phase of the residue (an exactly zero vector is worse still:
        NaN). kConicSpeedFloor is the line between "no heading" and "slow", and both ends
@@ -1233,7 +1234,12 @@ int main() {
        both ends measured, and the numbers here ARE the measurements (orbit.h quotes them
        too), so a retune that breaks either end reddens here. */
     {
-        const double r_pad = 599681.0;   // Kerbin's polar pad, as [orbinfo] printed it
+        /* The pole pad's distance from Kerbin's centre as [orbinfo] printed it, on the
+           content that pad shipped in -- since #1063 that state is
+           e2e/fixtures/systems/870-kerbin-polar-pad.json, whose deck lands within a few
+           metres of this. The number is a scale for the h/r ratio, not a claim about a
+           shipped pad's deck: tests/test_buildings.cpp is where decks are pinned. */
+        const double r_pad = 599681.0;
         CHECK(!conicNormalOk(0.0, r_pad));
         CHECK(!conicNormalOk(-1.0, r_pad));      // a magnitude is never negative
         CHECK(!conicNormalOk(NAN, r_pad));

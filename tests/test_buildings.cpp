@@ -455,12 +455,18 @@ int main() {
         }
     }
     {
-        /* Merge order, said directly instead of borrowed from shipped data: no
-           system carries an inline pad since #1063 deleted the polar one, so the
-           rule that the polar pad used to demonstrate -- a fragment's pads come
-           BEFORE the system's own "world_buildings", which is what keeps the
-           table's first VAB_LAUNCH_PAD as the default site -- had no witness
-           left. Build the shape rather than ship a pad for it. */
+        /* Merge order, said directly instead of borrowed from shipped data: no GENERATED
+           system carries an inline pad since #1063 deleted Kerbin's polar one, so the rule
+           the polar pad used to demonstrate -- a fragment's pads come BEFORE the system's
+           own "world_buildings", which is what keeps the table's first VAB_LAUNCH_PAD as
+           the default site -- had no witness left. Build the shape rather than ship a pad
+           for it. The inline pass is NOT dead code, though: res/systems/lag_playground.json
+           and res/systems/wind_playground.json hand-author inline VAB_LAUNCH_PAD rows, so
+           removing it would break those two playgrounds and neither this block nor the
+           shipped-system loop above would notice. */
+        nlohmann::json frag_only;
+        frag_only["world_buildings_files"] = { "res/data/earth_launch_sites.json" };
+        const size_t nfrag = parse_world_buildings_all(frag_only, "mem").size();
         nlohmann::json doc;
         doc["world_buildings_files"] = { "res/data/earth_launch_sites.json" };
         doc["world_buildings"] = { nlohmann::json{
@@ -470,9 +476,14 @@ int main() {
             {"flags", nlohmann::json::array({"VAB_LAUNCH_PAD"})},
         } };
         std::vector<WorldBuilding> ws = parse_world_buildings_all(doc, "mem");
-        CHECK(ws.size() == 15);              // 14 from the table + the inline one
+        /* Positional rather than an absolute count: the inline row lands after EVERY
+           fragment row, so this holds when someone adds a launch range to
+           earth_launch_sites.json and reddens when the merge order flips. The front CHECK
+           is the player-visible half -- the table, not an inline entry, owns the default
+           site. */
+        CHECK(ws.size() == nfrag + 1);
         CHECK(ws.front().id == "baikonur");  // the table still owns the default
-        CHECK(ws.back().id == "inline_pad");
+        CHECK(ws[nfrag].id == "inline_pad");
     }
     CHECK(expect_throw([]() {
         nlohmann::json doc = nlohmann::json::parse(
@@ -628,9 +639,12 @@ int main() {
         // The fictional systems name a site fragment too (#226): 6 Kerbol sites
         // (pad, runway, station, dock, Moho, Duna) and 1 Eerbon site. Exact
         // counts so a fragment that stops loading is a failure, not a smaller
-        // pass. Since #1063 deleted the inline polar pads these tables ARE the
-        // whole list, so the count is also the number of rows the pad selector
-        // offers on that world.
+        // pass. For THESE two systems the table is the whole list -- #1063 deleted
+        // ksp_system's inline polar pad and old_system never had one -- so the count
+        // is also the number of rows the pad selector offers on that world. The two
+        // hand-authored playgrounds (res/systems/lag_playground.json,
+        // res/systems/wind_playground.json) still add an inline pad of their own and
+        // are deliberately NOT in this loop: their counts would move with the tables.
         if(logical == "res/systems/ksp_system.json") {
             CHECK(sys.world_buildings.size() == 6);
         }

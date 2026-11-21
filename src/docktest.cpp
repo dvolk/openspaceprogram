@@ -1,6 +1,9 @@
 // docktest.cpp -- the --dock-test pair builder (see docktest.h).
 // Two single-stage r1.0 ships, nose-to-nose along the station's prograde,
-// co-moving on the same circular orbit, each carrying the same seven parts.
+// co-moving on the same circular orbit, each carrying the same seven parts --
+// except `stale-target`, where the station wears two more (a decoupler and a port
+// under its tail, and THAT far port is the targeted one, so a stage press on that
+// hull walks the targeted port off into a new ship: #1062).
 // The probe is the active ship; its engine thrusts along +Z toward the station.
 #include "docktest.h"
 

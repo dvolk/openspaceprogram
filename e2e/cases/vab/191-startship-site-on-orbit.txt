@@ -2,7 +2,10 @@
 # supportMargin measures how far to lift the ship by reading the SITE's hull as
 # what it rests on -- a lie when the base comes from terrain, so place_vehicle
 # asserts site == nullptr || sc->on_pad (vehicle.cpp). Reject it at boot rather
-# than trusting the assert: an -O2 build has no assert to fire.
+# than trusting the assert. It is not compiled out here -- the Makefile never defines
+# NDEBUG, so the -O2 binary aborts like any debug build (#1065 asks for that to be a
+# decision rather than an assumption) -- but a crash two subsystems downstream is a
+# worse report of a config error than this line is.
 #
 # Any real pad id makes the point; main_space_port is used now that #1063
 # deleted the polar pad this case was written against.

@@ -2514,13 +2514,21 @@ void Game::updateDocking() {
             /* #583's door. Drop the WHOLE intent, not just the arm: two hulls this
                heavy never fit, so re-arming would only toast once a tick.
                The one policy here with no end-to-end pin, because a running game cannot
-               reach it: btScalar is a float, so rebuildCompound()/refreshMassProps()
-               already refuse a ship whose OWN total passes ~3.4e38 kg (#547), and two
-               hulls under that cap add to an unremarkable double. tests/test_dock.cpp
-               builds the overflowing pair out of hand-made Parts, where no Bullet compound
-               has to hold it, and pins the sentence plus both ships intact; what this
-               branch DOES stays unobservable from the game. #1062 asked for that pin --
-               this comment is the answer, so the next reader does not spend the hour. */
+               reach it. The door is arithmetic (vehicle.cpp's note on refuseDockWith): the
+               sum of two getMass() doubles stops being one at ~1e308 kg EACH. A hull
+               cannot get that heavy and stay in the world -- rebuildCompound() and
+               refreshMassProps() assert the compound total AND its inertia diagonal and
+               principal origin are finite (the #547 doors, vehicle.cpp:1634-1656, :1736),
+               and an inertia diagonal weighs mass x r^2, so with metre-scale parts that
+               abort bites around 1e306 kg, two orders below the sum this gate would have
+               to overflow. btScalar is a DOUBLE here (btcommon.h turns
+               BT_USE_DOUBLE_PRECISION on), so this is not a precision ceiling hiding the
+               door: it is the same double, reached sooner by the r^2 factor.
+               #1062 asked for the pin; tests/test_dock.cpp builds the overflowing pair out
+               of hand-made Parts, where no Bullet compound has to hold it, and pins the
+               sentence plus both ships intact. That is the only place the door can be
+               exercised, and this comment is why -- so the next reader does not spend the
+               hour I did. */
             const std::string bName = s.b->displayName();
             a->dockTargetShip = nullptr;
             a->dockTargetPort = nullptr;

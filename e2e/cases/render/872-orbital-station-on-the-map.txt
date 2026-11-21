@@ -15,7 +15,8 @@ ARGS --time-accel 1 --timeout 6 --map-dump 2500 --dbg-log --orbit-interval 1.0
 ARGS --startship racer,res/ships/racer.json,Kerbin,pad
 FORBID error:
 # Kerbin ships two stations and nothing else that is driven. The exact id set IS the
-# exclusion pin -- the pads (main_space_port, ksc_runway, the polar pad) stay the
+# exclusion pin -- the pads (main_space_port, ksc_runway; Kerbin's polar pad is only in
+# the 870 fixture, which this case does not load) stay the
 # Surface Map's business and must not leak onto these maps as dots.
 CHECK set(m["id"] for m in mapbldg) == {"kerbin_dock", "kerbin_station"}
 CHECK not any(m["id"] == "main_space_port" for m in mapbldg)

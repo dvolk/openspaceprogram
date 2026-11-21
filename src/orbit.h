@@ -157,10 +157,13 @@ inline constexpr double kConicSpeedFloor = 1e-2;   // m/s
 /* Where "this state has no heading" starts, rather than "this state is slow"
    (#870). Both ends of the bracket are measured, not guessed:
      -- parked on a Moho with rotating.rot_ang_speed 0: 3..7e-05 m/s;
-     -- parked on Kerbin's own POLAR pad, where |omega x r| goes to zero and the
+     -- parked on a pad at Kerbin's pole, where |omega x r| goes to zero and the
         contact solver's residue takes over: 3.9e-04 .. 3.4e-03 m/s (the reason
         the floor cannot sit at 1e-3: a polar readout would flicker between a
-        number and a dash on consecutive rows of the same log).
+        number and a dash on consecutive rows of the same log). That pad is
+        e2e/fixtures/systems/870-kerbin-polar-pad.json -- the shipped polar pad
+        moved off the pole in #1007 and went away in #1063, and the fixture kept
+        the state so these figures stay reproducible.
    Nothing a player flies comes near it. The slowest apoapsis speed a bound
    Kerbin conic reaches while still inside Kerbin's sphere of influence (~1.2e8 m)
    is ~17 m/s; getting to 1e-2 m/s takes the apoapsis past 2e11 m, where Kerbol is
@@ -205,7 +208,8 @@ inline double flightPathAngle(const OrbitElements &o) {
    magnitude r |v| sin(gamma), gamma the flight path angle, so a near-radial state
    clears kConicSpeedFloor many times over while sin(gamma) collapses: the "plane" is
    then the heading of the last sideways cm/s, and its unit normal reverses between
-   frames (#900, measured on a vertical climb off Kerbin's polar pad -- 10 of 27
+   frames (#900, measured on a vertical climb off a pole pad -- the 870 fixture's,
+   since #1063 took the shipped one out -- 10 of 27
    consecutive targets jumped more than 90 deg, the worst 174 deg, while |v| ran
    6.9 .. 21.3 m/s).
    The quantity to bound is therefore h / r, the TANGENTIAL speed: m/s whatever the

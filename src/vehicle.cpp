@@ -7235,9 +7235,11 @@ glm::dvec3 Vehicle::slewTargetDir() {
        orbit's normal. Then back into this frame -- slewDemand steers in it.
        Matches the drawn markers (render.cpp), so what SAS aims at is what the
        prograde icon shows -- including #870's floor, which this path used to skip.
-       Parked on a world that does not turn, or on Kerbin's polar pad where
+       Parked on a world that does not turn, or on a pole pad where
        |omega x r| goes to zero, `v` here is the contact solver's residue
-       (measured 3.9e-04 .. 3.4e-03 m/s): a unit vector of noise, so SAS slewed the
+       (measured 3.9e-04 .. 3.4e-03 m/s on Kerbin's, which since #1063 means
+       e2e/fixtures/systems/870-kerbin-polar-pad.json -- the shipped pad is gone):
+       a unit vector of noise, so SAS slewed the
        nose after whichever way the jitter pointed this tick, spending drum torque,
        while the HUD said `prg=-` (#891). Below the floor the answer is the same
        "no target" pointingTo() already fails closed on, and the [slew] row prints
@@ -7245,7 +7247,7 @@ glm::dvec3 Vehicle::slewTargetDir() {
     if(nrm) {
         /* The normal pair answers "does this state have a PLANE", which is not the
            question the speed floor asks. |h| = r |v| sin(gamma), so a near-radial
-           climb -- a vertical launch, which on the polar pad is also where the
+           climb -- a vertical launch, which on a pole pad is also where the
            ground's own motion is zero -- clears the speed floor 16x while its whole
            angular momentum is 6.8e-4 m/s of tangential residue: SAS slewed the nose
            after a normal that reversed by up to 174 deg between frames, asking 4.0e6

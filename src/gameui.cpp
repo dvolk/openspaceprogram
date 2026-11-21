@@ -797,7 +797,9 @@ static double ascentDvNeed(const TerrainBody &b, double apo_asl) {
    buildings, and it says nothing about where a pad's DECK lands, because that
    height is generated terrain sampled at the pad's own dir, not a surveyed
    number -- moho_pad's deck is at ~126 m on a body authored with 800 m of
-   surface amplitude, and Kerbin's polar pad sits BELOW its sea level.
+   surface amplitude, and the pole pad in e2e/fixtures/systems/870-kerbin-polar-pad.json
+   stands on Kerbin's sea floor, 328 m BELOW its sea level (no shipped pad does that --
+   #1007 moved the one that did, and #1063 deleted it).
    test_buildings prints every shipped pad's deck as [padalt] and pins the
    fictional system's four, so a comment quoting one of these can be checked. The
    margin is what stands in for everything the measurement leaves out -- including
@@ -3110,7 +3112,9 @@ void drawUIReadouts(Game &g) {
                hull parked where the ground does not move has a conic speed of
                contact-solver residue, so the bearing it would print is the phase of that
                residue: prg moved 90.02 -> 85.68 deg between rows one second apart on
-               Kerbin's polar pad. Dashed like lan/lpe above and the apo_* keys below;
+               Kerbin's pole pad -- the 870 fixture's, since #1063 took the shipped
+               one out; the state is the same, the file is not. Dashed like lan/lpe
+               above and the apo_* keys below;
                vel_dir is zeroed in that case, and note that glm::angle against a zero
                vector answers 90 deg rather than NaN, so the flag is the only honest
                test. */

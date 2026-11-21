@@ -219,7 +219,8 @@ void updateShipView(Game &g) {
        ground's own motion -- which is why this reads marker_vel and not vel: vel is
        the frame-relative velocity, and on the pad that is zero.
        The two flags are for the states with nothing to point at (#870). A hull at
-       rest on a world that does not turn, or parked on Kerbin's POLAR pad where
+       rest on a world that does not turn, or parked on a pole pad (the 870 fixture's
+       polar_pad, since #1063 took Kerbin's shipped one out) where
        |omega x r| vanishes, has a conic speed of contact-solver residue: NOT zero,
        so normalize answers a unit vector and the HUD prints a confident bearing that
        wanders degrees between consecutive rows of the same log. Exactly zero -- the

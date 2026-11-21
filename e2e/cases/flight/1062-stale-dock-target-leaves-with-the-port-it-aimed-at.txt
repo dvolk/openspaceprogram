@@ -26,17 +26,26 @@
 # policy -- prints why=noarm, which the last CHECK refuses. Clearing nothing leaves the
 # panel naming targetgone (the FORBID), and leaves the gate pointing at a hull that no
 # longer carries the port it is aiming at.
+#
+# The window opens at 400 ms, not 800: [dockwin] rows carry no timestamp, so this case can
+# only reason about ORDER, and the opening row has to be clear of the control hand-off at
+# 1500 ms. At 800 that was one 0.5 s print bucket of margin; at 400 there are two rows
+# before the hand-off, and the first one pins the fixture's own verdict (misaligned) rather
+# than a "not one of the bad ones" negative that also passes on toofast or myrails.
 NAME stale-dock-target-leaves-with-the-port-it-aimed-at
 CLAIM Switching to the target hull and staging it drops both halves of the docking target and keeps the armed port.
 KIND invariant
 ARGS --dock-test stale-target --width 1280 --height 720 --timeout 9
 ARGS --ui-click 200,"Windows/Ship List"
-ARGS --ui-click 800,"Windows/Docking"
+ARGS --ui-click 400,"Windows/Docking"
 ARGS --ui-click 1500,"Ship List/dockstation"
 ARGS --sim-press 3000,0,SPACE
 ARGS --ui-click 4200,"Ship List/dockprobe"
 EXPECT Dock-test (stale-target)
-EXPECT Stage: dropped 1 ship(s)
+# The part count is the half that says WHICH hull staged: the probe carries no decoupler in
+# this fixture, so "2 part(s)" is the station's decoupler-and-port stack coming off -- the
+# targeted port with it.
+EXPECT Stage: dropped 1 ship(s) / 2 part(s)
 EXPECT [dockwin] a="dockprobe" b="" why=notarget at=821,144 size=451,470
 CHECK len(dockwin) >= 10
 # Both halves were live to begin with: the row names the target and blames neither half
@@ -44,7 +53,7 @@ CHECK len(dockwin) >= 10
 # about what a stale target costs.)
 CHECK dockwin[0]["a"] == "dockprobe"
 CHECK dockwin[0]["b"] == "dockstation"
-CHECK dockwin[0]["why"] not in ("noarm", "notarget")
+CHECK dockwin[0]["why"] == "misaligned"
 # The control hand-off really happened -- the panel prints the ACTIVE ship, so a station
 # row means the Ship List click reached select_vehicle rather than missing its row.
 CHECK any(r["a"] == "dockstation" for r in dockwin)
@@ -54,4 +63,9 @@ CHECK dockwin[-1]["b"] == ""
 CHECK dockwin[-1]["why"] == "notarget"
 FORBID why=targetgone
 FORBID [dock] t=
+# The other route to these same two rows: if the press ever RETIRED the station,
+# Game::dropVehicleRefs() clears both halves of the intent as well (game.cpp) and every row
+# above still prints identically. The claim is that the target LOST THE PORT while still
+# flying -- so the station staying in the world is part of what this case pins.
+FORBID [vehicle] retired: 'dockstation'
 FORBID FAILED
