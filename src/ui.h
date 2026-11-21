@@ -269,6 +269,16 @@ bool Window(const char* name, const Options& o, Body&& body) {
         }
         ImGui::SetNextWindowPos(pos, ImGuiCond_Always, pivot);
         ImGui::SetNextWindowCollapsed(false, ImGuiCond_Always);
+        /* NOTE for tall fixed content: `relayout` is EVERY frame for a fixed window,
+           so this reseat pins its scroll to the top every frame too -- the wheel
+           arrives and is erased before the frame renders, and NoMove/NoResize mean the
+           player cannot drag or grow the window out of it. Harmless for the chrome that
+           is fixed today (the top bars and the Space Center menu all fit at 1280x720,
+           the size the game is tested at); at a 380 px tall viewport it makes the
+           menu's last rows unreachable. A window with more content than the viewport
+           should follow Controls instead (uiwins.cpp: initial_size + size_cb =
+           capToWorkArea), which bounds itself and scrolls. See the fixed-window scroll
+           issue if this ever has to change. */
         ImGui::SetNextWindowScroll(ImVec2(0.0f, 0.0f));
     }
 
