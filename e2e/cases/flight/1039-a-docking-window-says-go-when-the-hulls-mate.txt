@@ -1,0 +1,46 @@
+# The Docking window can name the gate that stopped a mate (#1026) but could never say a
+# mate HAPPENED. Game::updateDocking() consumes the docking intent on the tick the hulls
+# join, and it runs before the panel draws (#1040), so the only tick that ever answers Go
+# is over by the time the window asks. Ask after a mate and the honest answer is NoArm. Go
+# is still drawable in the sliver where a frame renders before the gate has run a tick --
+# that is a pair about to mate, not one that did, and the pilot looks at this panel for the
+# second one. #1039.
+#
+# The gate therefore hands the verdict over rather than leaving it to be re-asked: the
+# survivor's name, the absorbed hull's name and a wall-clock stamp (Game::dock_go_*), read
+# by the panel through Game::dockedJustNow for kDockGoLife seconds -- and only on the state
+# a mate leaves behind, arm AND target both gone, so a pair the player has since re-armed
+# keeps showing its own reason. Names, not pointers: the absorbed hull is retired inside the
+# same function, so there is nothing left to point at.
+#
+# --dock-test near mates on the first physics tick (sim t=0.017), well before this window
+# opens at 200 ms, so every line here is written AFTER the mate. A `go` row cannot be the
+# panel catching the tick of the dock, because the window was not open on that tick.
+#
+#   [dockwin] a="dockprobe" b="dockstation" why=go     (the hand-off, and the absorbed name)
+#   [dockwin] a="dockprobe" b=""            why=noarm  (the hold expired)
+#
+# Both halves are load-bearing. Delete the three assignments in updateDocking() and no
+# `go` row is printed at all -- the window says noarm from its first line, which is what
+# this case used to look like. Never let the stamp age and the last lines stop being
+# `noarm`: that is the leak the hold exists to prevent, a panel still claiming a mate from
+# the last game.
+NAME docking-window-says-go-when-the-hulls-mate
+CLAIM The Docking window reports a mate that already happened, names the hull that was absorbed, and stops claiming it once the moment has passed.
+KIND invariant
+ARGS --dock-test near --width 1280 --height 720 --timeout 5
+ARGS --ui-click 200,"Windows/Docking"
+EXPECT Dock-test (near)
+EXPECT [dock] t=
+EXPECT [dockwin] a="dockprobe" b="dockstation" why=go
+CHECK len(dockwin) >= 8
+CHECK dockwin[0]["a"] == "dockprobe"
+CHECK dockwin[0]["b"] == "dockstation"
+CHECK dockwin[0]["why"] == "go"
+# The verdict ages out, and what is left is the honest post-mate answer: no arm, no target.
+CHECK dockwin[-1]["why"] == "noarm"
+CHECK dockwin[-1]["b"] == ""
+# Only one hull mated here and the other is gone, so every line belongs to the survivor.
+CHECK all(r["a"] == "dockprobe" for r in dockwin)
+FORBID FAILED
+FORBID error:

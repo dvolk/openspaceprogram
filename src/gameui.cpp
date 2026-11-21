@@ -6046,6 +6046,15 @@ void drawUIDock(Game &g) {
         /* One answer, from the same pass the dock gate runs (Vehicle::dockSituation),
            so what the dial draws is what the gate measured, not a second opinion. */
         const Vehicle::DockSit s = a->dockSituation();
+        /* #1039: GO is the one verdict this panel cannot get by asking. A mate consumes
+           the intent, and the gate acts before the window draws (#1040), so the only tick
+           that ever answered Go is over by the time the panel looks; the honest answer
+           from then on is NoArm. The game hands the fact over instead (Game::dockedJustNow)
+           and it is shown only on the signature a mate leaves behind -- arm AND target
+           gone. A pair the player has since re-armed keeps showing its own reason. */
+        std::string matedWith;
+        const bool justMated = s.why == Vehicle::DockSit::NoArm
+                            && g.dockedJustNow(a, matedWith);
         constexpr double rad2deg = 180.0 / std::numbers::pi;
         /* The figures as THIS player's keys would fix them. The dial's contract is POSITIVE
            MEANS THE KEY BESIDE THE MARKER, and tick.cpp puts flip_yaw / flip_pitch between
@@ -6078,14 +6087,21 @@ void drawUIDock(Game &g) {
                dock, a split) and a panel of bare words would otherwise be describing a
                hull nobody selected. */
             uiText("%s -> %s", a->displayName().c_str(),
-                   s.b ? s.b->displayName().c_str() : "(no target)");
+                   s.b ? s.b->displayName().c_str()
+                       : (justMated ? matedWith.c_str() : "(no target)"));
             if(s.arm != nullptr && s.target != nullptr) {
                 uiTextDisabled("%s -> %s", s.arm->def->name.c_str(),
                                s.target->def->name.c_str());
             }
             /* No Mass case here on purpose: dockSituation() only reaches the #583 mass door
                after a measurable read, so an unmeasurable pair cannot be refused on mass. */
-            uiText("%s", kDockWhy[(size_t)s.why].sentence);
+            if(justMated) {
+                /* Past tense on purpose: kDockWhy[Go].sentence is written for the tick the
+                   gate is acting on, which is the one tick this panel never gets to draw. */
+                uiText("GO: %s mated with %s", a->displayName().c_str(), matedWith.c_str());
+            } else {
+                uiText("%s", kDockWhy[(size_t)s.why].sentence);
+            }
             if(s.why == Vehicle::DockSit::MyRails || s.why == Vehicle::DockSit::TargetRails) {
                 /* The rails are a warp switch, so name the switch. The number here is the
                    threshold the game tests (time_accel >= kRailsWarp, game.h) rather than a
@@ -6135,6 +6151,12 @@ void drawUIDock(Game &g) {
             g.hud.dock_next_read = ImGui::GetTime() + kDockReadSec;
             const ImVec2 wp = ImGui::GetWindowPos();
             const ImVec2 wsz = ImGui::GetWindowSize();
+            /* The line prints what the window SAYS, so a latched mate reads `why=go` with
+               the hull that was absorbed in b= -- same words, same name the pilot just
+               saw, so a test can EXPECT the verdict instead of only its log twin. */
+            const char *whyTok = kDockWhy[(size_t)(justMated ? Vehicle::DockSit::Go : s.why)].token;
+            const char *bTok = s.b ? s.b->displayName().c_str()
+                                   : (justMated ? matedWith.c_str() : "");
             if(s.read.measurable) {
                 /* turn= prints the FLIPPED figures, because that is what the dial drew and
                    what the pilot was told to press: a test that pinned the setting-free
@@ -6146,8 +6168,8 @@ void drawUIDock(Game &g) {
                        " twist=%.2f rng=%.2f gap=%.2f speed=%.2f"
                        " along=%.2f closing=%+.2f at=%.0f,%.0f size=%.0f,%.0f\n",
                        a->displayName().c_str(),
-                       s.b ? s.b->displayName().c_str() : "",
-                       kDockWhy[(size_t)s.why].token,
+                       bTok,
+                       whyTok,
                        acosUnit(s.read.axisCosA) * rad2deg,
                        acosUnit(s.read.axisCosB) * rad2deg,
                        d.turnYaw * rad2deg, d.turnPitch * rad2deg,
@@ -6157,9 +6179,7 @@ void drawUIDock(Game &g) {
                        s.read.closing, wp.x, wp.y, wsz.x, wsz.y);
             } else {
                 printf("[dockwin] a=\"%s\" b=\"%s\" why=%s at=%.0f,%.0f size=%.0f,%.0f\n",
-                       a->displayName().c_str(),
-                       s.b ? s.b->displayName().c_str() : "",
-                       kDockWhy[(size_t)s.why].token, wp.x, wp.y, wsz.x, wsz.y);
+                       a->displayName().c_str(), bTok, whyTok, wp.x, wp.y, wsz.x, wsz.y);
             }
         }
     });

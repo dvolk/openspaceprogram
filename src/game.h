@@ -65,6 +65,13 @@ static const int kMaxWarp = 10000000;
 static const double kToastLife = 3.0;
 static const int kToastVisible = 3;
 
+/* How long the Docking window keeps showing a mate it could not otherwise show (#1039).
+   Wall-clock like a toast, and about as short: the panel speaks on the 2 Hz instrument
+   cadence, so this is a handful of [dockwin] lines -- long enough for the pilot to watch
+   the verdict flip and for a test to EXPECT one, short enough that a window cannot claim
+   a mate from a hull that has since been split, landed or left behind. */
+static const double kDockGoLife = 2.0;
+
 // RMB click (pick a part) vs RMB drag (camera look).
 static const int kPickClickPx = 6;
 static const int kPickClickMs = 400;
@@ -832,6 +839,14 @@ struct Game {
     // --- one-shot on-screen messages (gameui.cpp draws the last N) ----------
     std::vector<ToastMsg> toasts;
 
+    /* #1039: the last mate, held by NAME. updateDocking() writes it the tick the hulls
+       join, because that tick is the only one that ever answers Go: the mate consumes the
+       intent, and the Docking panel draws AFTER the gate has acted (#1040), so asking
+       dockSituation() for the verdict never gets it. Names rather than pointers because
+       the absorbed hull is retired -- there is nothing left to point at. */
+    std::string dock_go_a, dock_go_b;
+    double dock_go_at = -1.0;   // Game::currentTime (wall), -1 = never
+
     // --- the fixed-timestep loop (tick.cpp) ---------------------------------
     double currentTime = 0.001 * (double)(SDL_GetTicks());
     double accumulator = 0.0;
@@ -1361,6 +1376,11 @@ struct Game {
     /* The active ship's port against every other live ship's port -- close, aligned
        and slow enough, merge. */
     void updateDocking();
+    /* Did `a` mate with another hull within the last kDockGoLife wall seconds? If so the
+       name it joined comes back in `mate`. This is the Docking panel's only way to say GO
+       (#1039): the verdict itself lives for one physics tick and the panel draws after
+       the gate, so the fact has to be kept by the game rather than re-asked. */
+    bool dockedJustNow(const Vehicle *a, std::string &mate) const;
     // Splits the most recent seam off the active ship.
     void undock();
     /* What a stage press did. Game::stage() is the player's key and answers with

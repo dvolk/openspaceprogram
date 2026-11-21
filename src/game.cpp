@@ -2549,6 +2549,13 @@ void Game::updateDocking() {
     a->dockTargetShip = nullptr;   // the intent is consumed by the dock
     a->dockTargetPort = nullptr;   // (both halves: re-arm and re-target on
     a->dockArmPort = nullptr;      //  a redock)
+    /* #1039: keep the verdict, because it has just stopped being askable. Go is the one
+       answer the Docking window can never get by asking -- this is the only tick that
+       answers it, the panel draws after the gate (#1040), and the next tick's answer is
+       NoArm. Held by NAME: `b` is retired below, so there is nothing left to point at. */
+    dock_go_a = a->displayName();
+    dock_go_b = bName;
+    dock_go_at = currentTime;      // wall clock, like a toast and like dock_next_read
     /* b's parts are already a's, so this frees the empty vessel -- and its hull
        leaves the Bullet world here, not at the sweep, or the ship that just
        swallowed it spends the next substep colliding with a ghost. */
@@ -2557,6 +2564,19 @@ void Game::updateDocking() {
     printf("[dock] t=%.3f a=\"%s\" b=\"%s\" d=%.3f m v=%.3f m/s\n",
            time, a->displayName().c_str(), bName.c_str(),
            s.read.faceGap, s.read.relSpeed);
+}
+
+/* #1039: the Docking panel's question -- is this the hull that just mated, and with
+   whom? Identity is the name rather than a pointer or a hull id, because the absorbed
+   hull is gone and the survivor is the only half still in the world. Wall clock and a
+   short life (kDockGoLife) so the answer cannot outlive the moment it describes: a hull
+   that mated, then warped, landed, staged or lost control is not "just mated". */
+bool Game::dockedJustNow(const Vehicle *a, std::string &mate) const {
+    if(a == nullptr || dock_go_at < 0.0) { return false; }
+    if(currentTime - dock_go_at > kDockGoLife) { return false; }
+    if(a->displayName() != dock_go_a) { return false; }
+    mate = dock_go_b;
+    return true;
 }
 
 /* Undock: split the most recent seam off the active ship into its own vessel. */

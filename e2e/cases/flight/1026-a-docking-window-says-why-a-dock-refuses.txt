@@ -37,4 +37,8 @@ EXPECT Dock-test (misaligned)
 EXPECT [dockwin] a="dockprobe" b="dockstation" why=misaligned
 EXPECT at=821,144 size=451,470
 FORBID [dock] t=
+# The GO verdict (#1039) is handed over by the gate when hulls actually mate, so a pair
+# this panel calls refused must never produce one -- not now, and not from a latch that
+# outlived the moment it describes.
+FORBID why=go
 FORBID FAILED

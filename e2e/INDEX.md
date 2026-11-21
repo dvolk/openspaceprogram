@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 433 |
+| `invariant` | a behaviour or a player route the game must keep | 434 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 50 |
 | `harness` | CLI/test-engine plumbing, not game spec | 16 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **503** |
+| | **total** | **504** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -18,7 +18,7 @@ paces a run: how much e2e a change deserves is the caller's
 judgement. Select by number, name or path, e.g.
 `python3 e2e/run.py save/172 262`.
 
-## flight (160)
+## flight (161)
 
 | case | kind | pins |
 |---|---|---|
@@ -178,6 +178,7 @@ judgement. Select by number, name or path, e.g.
 | `flight/1010-b-fleet-report-checks-the-order-of-every-shipped-hull.txt` | invariant | --fleet-report runs the staging checker and the auto-stager over every hull and reports both verdicts. |
 | `flight/1026-a-docking-window-says-why-a-dock-refuses.txt` | invariant | The Docking panel reports the gate that stopped a mate, and the pair it calls refused really does not mate. |
 | `flight/1026-b-docking-window-blames-the-rails-not-the-ports.txt` | invariant | A dock whose target is still on the rails is reported as a rails state, in the gate's order, with no port figures invented for it. |
+| `flight/1039-a-docking-window-says-go-when-the-hulls-mate.txt` | invariant | The Docking window reports a mate that already happened, names the hull that was absorbed, and stops claiming it once the moment has passed. |
 | `flight/1040-stale-dock-arm-keeps-the-target.txt` | invariant | Cutting the armed port off the active hull drops only that half of the docking intent: the panel keeps naming the same target. |
 | `flight/1042-rails-park-keeps-the-hull-s-spin.txt` | invariant | Parking a hull on rails and waking it keeps the spin it had: the docking dial's relative twist is the same figure on both sides of an F6 round trip, and not zero. |
 | `flight/1056-rails-coast-turns-the-heading.txt` | invariant | A hull coasting on its conic turns through the spin it carries: its heading moves by about \|w\| x the time spent, monotone, and every row says the coasting rails produced it. |
