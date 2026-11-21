@@ -4156,15 +4156,16 @@ void drawPartWindows(Game &g) {
                            an invented angle -- drag.h says so outright -- while q, Mach and
                            the watts need only the flow, so they keep printing at the moment
                            this surface spends the most. */
-                        if(live.holdAngleOk) {
-                            snprintf(live.flowRow, sizeof live.flowRow,
-                                     "AoA: %+.1f deg  q=%.0f Pa  Mach %.2f",
-                                     live.holdAlpha, live.holdQ, live.holdMach);
-                        } else {
-                            snprintf(live.flowRow, sizeof live.flowRow,
-                                     "AoA: -     q=%.0f Pa  Mach %.2f",
-                                     live.holdQ, live.holdMach);
-                        }
+                        char ang[8];
+                        formatAlphaDeg(ang, sizeof ang, live.holdAngleOk,
+                                       (double)live.holdAlpha);
+                        /* %6s, not the bare dash this row used to hand-pad: the mono UI
+                           font (see wattCell above) makes a constant width a constant
+                           column, so q= and Mach= stop walking sideways when a plate
+                           swings into and out of a refused frame. */
+                        snprintf(live.flowRow, sizeof live.flowRow,
+                                 "AoA: %6s deg  q=%.0f Pa  Mach %.2f",
+                                 ang, live.holdQ, live.holdMach);
                         /* The watts the air is taking off this surface (#730) -- its form
                            drag plus the induced price of its lift. Not a temperature: no
                            material property sits behind it, and most of these watts leave in
@@ -4183,7 +4184,13 @@ void drawPartWindows(Game &g) {
                 } else {
                     live.holdWatts = 0.0;
                     live.nextRead = 0.0;
-                    uiText("AoA: -   q:-   Mach -   drag power -");
+                    /* No flow to have an angle at (vacuum, or sitting still in air), so
+                       this row dashes everything -- and dashes the angle in the same cell
+                       the frame-refused row above uses, so the row does not reflow when a
+                       hull crosses the air boundary (#1058). */
+                    char dang[8];
+                    formatAlphaDeg(dang, sizeof dang, false, 0.0);
+                    uiText("AoA: %6s deg  q:-   Mach -   drag power -", dang);
                 }
                 if(def->isControlSurface()) {
                     /* The slider's range is not the clamp. Ctrl+click turns any slider
@@ -6414,10 +6421,16 @@ void drawForceOverlay(Game &g) {
                window's single AoA cannot say it: incidence, dihedral and any
                rotation under way split a ship's surfaces by degrees, and a twin
                pair straddles the rotation axis, so its two halves differ in SIGN
-               mid-swing (#453, #483). */
-            if(fv.alphaValid && (fv.kind == Vehicle::kForceLift
-                              || fv.kind == Vehicle::kForceCtrl)) {
-                snprintf(buf, sizeof buf, "%.0f N a%+.1f", mag, fv.alphaDeg);
+               mid-swing (#453, #483).
+               The surface kinds print the angle cell whatever the answer is: a
+               refused frame shows the same dash the [surface] log and the part
+               window print (#1058) instead of dropping the field, which left the
+               label looking exactly like a non-surface arrow's. The other kinds
+               carry no angle to quote, so they stay newtons only. */
+            if(fv.kind == Vehicle::kForceLift || fv.kind == Vehicle::kForceCtrl) {
+                char ang[8];
+                formatAlphaDeg(ang, sizeof ang, fv.alphaValid, (double)fv.alphaDeg);
+                snprintf(buf, sizeof buf, "%.0f N a%s", mag, ang);
             } else {
                 snprintf(buf, sizeof buf, "%.0f N", mag);
             }

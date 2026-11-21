@@ -47,6 +47,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <limits>
 #include <numbers>
 #include <string>
@@ -1447,6 +1448,48 @@ static void test_surface_alpha_readout() {
         CHECK_TRUE(flipIn == 0, "within +-60 deg of sideslip the two rules pick the same axis");
         CHECK_TRUE(flipOut > 0, "past that the old live rule starts picking the other axis");
     }
+}
+
+/* ONE SPELLING OF THE REFUSED ANGLE (#1058). [surface]'s a= column (tick.cpp), the part
+   window's AoA: row and the F4 arrow labels (gameui.cpp) all print through
+   formatAlphaDeg() now; before that they each hand-rolled the absence -- a bare dash,
+   "AoA: -" padded by hand, or the field dropped -- and only the log guarded a garbage
+   number. Pinned as exact strings because the runner parses a= as a number: a token
+   that merely looks plausible and shifts a column goes red three rows later. */
+static void test_alpha_readout_cell() {
+    printf("== #1058: one angle cell for the log, the window and the arrows ==\n");
+    auto cell = [&](bool ok, double deg) {
+        char b[8];
+        formatAlphaDeg(b, sizeof b, ok, deg);
+        return std::string(b);
+    };
+    CHECK_TRUE(cell(true, 12.34) == "+12.3", "an answered frame prints signed one decimal");
+    CHECK_TRUE(cell(true, -7.05) == "-7.0" || cell(true, -7.05) == "-7.1",
+               "the sign survives, and the tenth is snprintf's rounding");
+    /* The refusal at the printer. surfaceAlphaDegForReadout() still answers 0.0 for a
+       frame the law refused, so a formatter that took only a number would print a lie;
+       the flag has to reach the dash. */
+    CHECK_TRUE(cell(false, 12.34) == "-", "a refused frame prints the dash, not its number");
+    CHECK_TRUE(cell(false, 0.0) == "-", "and not the 0.0 the refused frame answers");
+    /* Garbage is not an angle either. "+inf" would fit the log's 8-char field and break
+       the runner's whitespace ITEM grammar, shifting every part after it. */
+    CHECK_TRUE(cell(true, std::nan("")) == "-", "a NaN never prints");
+    CHECK_TRUE(cell(true, INFINITY) == "-" && cell(true, -INFINITY) == "-",
+               "nor does an infinity, either sign");
+    /* Width: the call sites pass 8 chars and the window pads the cell to 6, so nothing
+       the law can emit may be longer. alpha stays under +-180 deg, so +-180.0 is the
+       widest token and a clipped one must trip the helper's own assert. */
+    int widest = 0;
+    for(int i = -1800; i <= 1800; ++i) {
+        const double deg = (double)i / 10.0;
+        char b[8];
+        const int want = formatAlphaDeg(b, sizeof b, true, deg);
+        CHECK_TRUE(std::strlen(b) == (size_t)want, "no angle in range is truncated");
+        if(want > widest) { widest = want; }
+    }
+    CHECK_TRUE(widest == 6, "the widest cell is the window's 6-char column (+-180.0)");
+    printf("   widest angle token: %d chars; refused and non-finite both print \"-\"\n",
+           widest);
 }
 
 /* #454: the neutral point -- where an angle-of-attack change puts the CHANGE in lift.
@@ -4414,6 +4457,7 @@ int main() {
     printf("\n");
     test_surface_alpha_readout();
     printf("\n");
+    test_alpha_readout_cell();
     test_neutral_point();
     printf("\n");
     test_surface_effectiveness();

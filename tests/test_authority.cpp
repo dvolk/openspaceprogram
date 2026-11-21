@@ -2033,6 +2033,8 @@ static void test_a_lifting_plate_answers_its_own_angle() {
        number has to show. A flag that went up over a leftover 0.0 would pass a
        validity check alone, so the size is pinned too. */
     a.v->hull->btBody->clearForces();
+    a.v->recordForceVecs = true;      // the F4 overlay's copy starts being recorded
+    a.v->beginForceRecordSubstep();
     SetVelocity(a.v->hull, glm::normalize(fr[2] + fr[1] * 0.3) * 100.0);
     a.v->applyAeroForce(1.0 / 120.0);
     CHECK_TRUE(a.fin->aeroAngleValid,
@@ -2042,6 +2044,26 @@ static void test_a_lifting_plate_answers_its_own_angle() {
                "and the angle it raised is the tilted flow, not a leftover zero");
     printf("   unsteered wing: %.1f deg of cross-flow read as %+.1f deg\n",
            glm::degrees(kRad), (double)a.fin->aeroAlphaDeg);
+
+    /* THE OVERLAY'S COPY OF THE SAME ANGLE (#1058). An F4 arrow does not read
+       Part::aeroAlphaDeg at paint time: it carries the angle that made THAT force
+       (ForceVec::alphaDeg/alphaValid), by value rather than by part index because a
+       stage in the same frame can reshuffle parts between recording and painting.
+       That is a second copy of one fact -- two places to get wrong, with nothing
+       saying so -- so the copy is pinned to the part for the substep that recorded
+       it. A writer that updated one pair and not the other would put an angle next
+       to a force that came from a different sample, and the overlay and the part
+       window would disagree on screen. */
+    int liftArrows = 0;
+    for(const Vehicle::ForceVec &fv : a.v->lastForceVecs) {
+        if(fv.kind != Vehicle::kForceLift) { continue; }
+        ++liftArrows;
+        CHECK_TRUE(fv.alphaValid == a.fin->aeroAngleValid,
+                   "the arrow's angle flag IS the part's flag");
+        CHECK_NEAR((double)fv.alphaDeg, (double)a.fin->aeroAlphaDeg, 1e-6,
+                   "and the arrow quotes the number that made this force");
+    }
+    CHECK_TRUE(liftArrows == 1, "this rig records exactly one lift arrow to compare");
     destroyShip(a.v);
     delete body;
 }

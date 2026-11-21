@@ -2089,7 +2089,14 @@ public:
         /* #485: the angle of attack THIS surface read on the substep that made
            this force, degrees -- carried by value rather than by a part index
            because a stage in the same frame can reshuffle parts between recording
-           and painting. Only meaningful for the surface kinds (lift, control). */
+           and painting. Only meaningful for the surface kinds (lift, control).
+           #1058 asked whether this second copy of the angle could go away and read
+           the part it points at instead; it cannot, since the part index is exactly
+           what staging invalidates. So the copy stays and the equivalence is what
+           gets pinned: tests/test_authority.cpp checks that an arrow's pair equals
+           Part::aeroAlphaDeg/aeroAngleValid for the substep that recorded it, which
+           is the only thing keeping the overlay and the part window honest with each
+           other. */
         float alphaDeg = 0.0f;
         bool alphaValid = false;
     };

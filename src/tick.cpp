@@ -9,6 +9,7 @@
 #include "keys.h"                // Slot, SlotProbe (the command map)
 #include "angmath.h"             // acosUnit: the one acos(clamp) spelling (#622)
 #include "eva.h"                 // Kerbal::armInput (the kerbal's controls)
+#include "drag.h"                // formatAlphaDeg: the one spelling of a refused AoA (#1058)
 #include "orbit.h"               // OrbitElements, computeOrbitElements
 #include "solar.h"               // sunSample: the --solar-log flux (#687)
 #include "insolation.h"          // skyAtZenith: the --solar-log elevation and cosine (#724)
@@ -1464,21 +1465,13 @@ void tick(Game &g) {
                     for(const Part *p : g.ship->parts) {
                         if(!p->aeroValid || p->def == nullptr) { continue; }
                         char a[8];
-                        int an = 0;
-                        /* A non-finite angle fits an 8-char field as "+inf"/"-inf" and
-                           then breaks the runner's ITEM grammar, shifting every part
-                           after it -- so the printer, not the parser, is where a garbage
-                           number has to stop. The dash already means "no angle". */
-                        if(p->aeroAngleValid && std::isfinite(p->aeroAlphaDeg)) {
-                            an = std::snprintf(a, sizeof a, "%+.1f", p->aeroAlphaDeg);
-                        } else {
-                            an = std::snprintf(a, sizeof a, "-");
-                        }
-                        /* snprintf returns the length it WANTED, so a clipped angle is
-                           visible here rather than reaching the runner as a token that
-                           still parses as an angle. The HUD's own AoA field carries the
-                           same length assert (gameui.cpp:3167); #732's dash is 1 char. */
-                        assert(an > 0 && an < (int)sizeof a);
+                        /* One formatter for this column, the part window's AoA: row and
+                           the F4 arrow labels (#1058). The non-finite guard and the
+                           width assert live inside it (drag.h::formatAlphaDeg), which is
+                           where the note about "+inf" breaking the runner's ITEM grammar
+                           now sits -- as does #732's dash for a refused lift frame. */
+                        formatAlphaDeg(a, sizeof a, p->aeroAngleValid,
+                                       (double)p->aeroAlphaDeg);
                         if(!any) { printf("[surface]"); any = true; }
                         printf(" %s a=%s q=%.0f mach=%.3f watts=%.0f",
                                p->id.empty() ? p->def->name.c_str() : p->id.c_str(),

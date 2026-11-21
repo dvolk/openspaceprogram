@@ -1,7 +1,10 @@
 #pragma once
 
 // drag.h -- the atmospheric-drag law as pure math (glm + <cmath> only), so tests/
-// can pin it without the render chain.
+// can pin it without the render chain. The readout helpers at the end of the file
+// (surfaceAlphaDegForReadout, formatAlphaDeg) are display arithmetic on the law's
+// answer -- nothing in the law calls them -- and live here because the refusal they
+// render is the law's (#732).
 //
 // The air co-rotates with the planet: absent an authored wind it is at rest in the
 // body's ROTATING frame, so there the ship's frame velocity IS the air-relative
@@ -15,6 +18,7 @@
 #include <cassert>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
 #include <numbers>
 #include <vector>
 
@@ -2132,6 +2136,32 @@ inline double surfaceAlphaDegForReadout(const PartAero &pa, const SurfaceReadout
        zero here is a zero component, not a zero vector. */
     if(along == 0.0) { return (rf.rigSign >= 0.0 ? 1.0 : -1.0) * glm::degrees(pa.alpha); }
     return (along > 0.0 ? 1.0 : -1.0) * glm::degrees(pa.alpha);
+}
+
+/* The refused angle, spelled ONCE (#732's rule, one formatter per #1058).
+   Three readouts quote a surface's incidence: [surface]'s a= column (tick.cpp), the
+   part window's AoA: row and the F4 force-arrow labels (gameui.cpp). Each used to
+   render "no angle" its own way -- a bare dash, "AoA: -" padded by hand, or the field
+   quietly omitted -- which is how four formatters drift apart over one fact, and why
+   the window's dash did not hold the column the rest of its row does.
+   The dash is the whole point: a plate broadside to the flow has no lift frame, so it
+   has no incidence rather than zero incidence, and surfaceAlphaDegForReadout() still
+   answers a bare 0.0 for that frame (drag.h calls that "a lie"). Callers stamp
+   Part::aeroAngleValid from the same pa.valid and pass it in here.
+   The isfinite test belongs to the same claim: a number that is not a number is not an
+   angle either. Printing one would put "+inf" in the [surface] row, where the runner
+   splits rows on whitespace and every part after it shifts a column -- the printer,
+   not the parser, is where garbage has to stop.
+   The assert is the length snprintf WANTED, not the one it wrote: a clipped cell is a
+   silent column break, and both the ITEM grammar and the mono-font columns depend on
+   the width. 8 chars is what the call sites pass and holds everything the law emits
+   (alpha stays under +-180 deg, so "+180.0" is the widest at 6). */
+inline int formatAlphaDeg(char *buf, size_t n, bool valid, double deg) {
+    const int want = valid && std::isfinite(deg)
+                   ? std::snprintf(buf, n, "%+.1f", deg)
+                   : std::snprintf(buf, n, "-");
+    assert(want > 0 && (size_t)want < n);
+    return want;
 }
 
 /* The VISUAL hinge of a control-surface mesh at commanded deflection defl
