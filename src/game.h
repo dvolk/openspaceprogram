@@ -68,8 +68,11 @@ static const int kToastVisible = 3;
 /* How long the Docking window keeps showing a mate it could not otherwise show (#1039).
    Wall-clock like a toast, and about as short: the panel speaks on the 2 Hz instrument
    cadence, so this is a handful of [dockwin] lines -- long enough for the pilot to watch
-   the verdict flip and for a test to EXPECT one, short enough that a window cannot claim
-   a mate from a hull that has since been split, landed or left behind. */
+   the verdict flip and for a test to EXPECT one. The clock is Game::currentTime, refreshed
+   once per frame (tick.cpp), which the scripted --sim-steps branch does NOT advance: under
+   that mode the hold lasts the whole run. Harmless today (no case docks with the window
+   open under --sim-steps), and the alternative is aging a player-facing gauge on a
+   scheduler only the tests use. */
 static const double kDockGoLife = 2.0;
 
 // RMB click (pick a part) vs RMB drag (camera look).

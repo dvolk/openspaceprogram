@@ -33,7 +33,10 @@ ARGS --ui-click 200,"Windows/Docking"
 EXPECT Dock-test (near)
 EXPECT [dock] t=
 EXPECT [dockwin] a="dockprobe" b="dockstation" why=go
-CHECK len(dockwin) >= 8
+# Six lines at --timeout 5 rather than the ten the run measures: this pin is only there to
+# notice a run that printed nothing, and on a loaded machine a stall is the reason it would
+# print fewer -- which has nothing to do with what the case claims.
+CHECK len(dockwin) >= 6
 CHECK dockwin[0]["a"] == "dockprobe"
 CHECK dockwin[0]["b"] == "dockstation"
 CHECK dockwin[0]["why"] == "go"

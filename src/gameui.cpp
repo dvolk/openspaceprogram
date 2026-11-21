@@ -6086,9 +6086,12 @@ void drawUIDock(Game &g) {
             /* Named, because the active hull changes under the window (the ship list, a
                dock, a split) and a panel of bare words would otherwise be describing a
                hull nobody selected. */
+            /* The arrow names the INTENT, so it keeps saying "(no target)" after a mate:
+               a hull that no longer exists in the slot where a picked target goes reads as
+               a target the pilot could still fly. The mate is said by name on the verdict
+               line below, which is where the past tense belongs. */
             uiText("%s -> %s", a->displayName().c_str(),
-                   s.b ? s.b->displayName().c_str()
-                       : (justMated ? matedWith.c_str() : "(no target)"));
+                   s.b ? s.b->displayName().c_str() : "(no target)");
             if(s.arm != nullptr && s.target != nullptr) {
                 uiTextDisabled("%s -> %s", s.arm->def->name.c_str(),
                                s.target->def->name.c_str());
@@ -6152,8 +6155,12 @@ void drawUIDock(Game &g) {
             const ImVec2 wp = ImGui::GetWindowPos();
             const ImVec2 wsz = ImGui::GetWindowSize();
             /* The line prints what the window SAYS, so a latched mate reads `why=go` with
-               the hull that was absorbed in b= -- same words, same name the pilot just
-               saw, so a test can EXPECT the verdict instead of only its log twin. */
+               the absorbed hull in b= -- the same name the verdict line above the print
+               named out loud, so a test EXPECTs what a pilot read rather than a log twin of
+               it. b= is the OTHER HALF OF THIS VERDICT, as in [dock], not the picked target
+               the arrow row shows; after a mate that other hull is gone. The latch can only
+               ever reach the token-only branch below: dockSituation() answers NoArm before
+               it builds a read, so `measurable` and `justMated` cannot both hold. */
             const char *whyTok = kDockWhy[(size_t)(justMated ? Vehicle::DockSit::Go : s.why)].token;
             const char *bTok = s.b ? s.b->displayName().c_str()
                                    : (justMated ? matedWith.c_str() : "");

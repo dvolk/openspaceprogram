@@ -1,0 +1,41 @@
+# The held GO verdict (#1039) is a claim that two hulls ARE joined, so pressing U has to
+# take the claim back. #1039's first cut did not: the review run docked, undocked, and read
+# this -- both hulls live and flying apart, the "Undocked dockstation" toast on screen, and
+# the panel still saying
+#
+#   [dockwin] a="dockprobe" b="dockstation" why=go
+#
+# for the rest of the 2 s hold, with the arrow row naming the station as if it were the
+# picked target. The age bound alone does not cover this: a player who undocks 0.5 s into a
+# mate spends the next second and a half looking at a lie.
+#
+# So undock() drops the latch (game.cpp, beside the seam it splits) and
+# clearEphemeralState() drops it with the toasts, which is the F9 quickload route: a save
+# taken before a dock and reloaded inside the hold would otherwise report a mate the player
+# just un-did, naming a hull of the old world.
+#
+# This run ends at 2 s, INSIDE the 2 s hold, on purpose. Every line after the U press is
+# inside the window the latch would otherwise still be showing, so `why=noarm` on the last
+# line is the clear working, not the clock running out. Delete the clear in undock() and the
+# last line reads `why=go`.
+#
+# The reverse -- the latch never ageing out at all -- is caught by 1039-a, which never
+# presses U and so has to reach the expiry to print its noarm tail.
+NAME undocking-takes-the-held-go-verdict-back
+CLAIM Pressing U after a mate stops the Docking window reporting a GO that is no longer true.
+KIND invariant
+ARGS --dock-test near --width 1280 --height 720 --timeout 2
+ARGS --ui-click 150,"Windows/Docking"
+ARGS --sim-press 600,0,U
+EXPECT [undock] t=
+EXPECT [dockwin] a="dockprobe" b="dockstation" why=go
+CHECK len(dockwin) >= 2
+# The verdict was live before the press: this is a held GO being withdrawn, not a panel that
+# never had one to lose.
+CHECK dockwin[0]["why"] == "go"
+CHECK dockwin[0]["b"] == "dockstation"
+# And gone after it, with the hold still running.
+CHECK dockwin[-1]["why"] == "noarm"
+CHECK dockwin[-1]["b"] == ""
+CHECK all(r["a"] == "dockprobe" for r in dockwin)
+FORBID error:

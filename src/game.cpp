@@ -1398,6 +1398,11 @@ void Game::clearEphemeralState() {
        events.cpp:417). */
     dropPendingQuestion(question);
     toasts.clear();
+    /* #1039: the Docking window's held GO goes with the toasts. F9 quickload runs this,
+       so a save taken BEFORE a dock and reloaded within the hold would otherwise keep
+       reporting a mate the player just un-did -- and name a hull of the old world while
+       doing it. */
+    dock_go_at = -1.0;
     /* Per-active-ship, and a teardown has none. Not the only place this needs
        clearing: ui_remove_vehicle hands control to a successor, which must not
        inherit the latch, so it clears its own (game.cpp). */
@@ -2568,9 +2573,12 @@ void Game::updateDocking() {
 
 /* #1039: the Docking panel's question -- is this the hull that just mated, and with
    whom? Identity is the name rather than a pointer or a hull id, because the absorbed
-   hull is gone and the survivor is the only half still in the world. Wall clock and a
-   short life (kDockGoLife) so the answer cannot outlive the moment it describes: a hull
-   that mated, then warped, landed, staged or lost control is not "just mated". */
+   hull is gone and the survivor is the only half still in the world. dedupVehicleName()
+   (vehicle.cpp) keeps live hulls and the roster mutually unique, so a name cannot point at
+   two hulls here. Three things end the claim: the age bound below, a name that is not the
+   survivor's, and an explicit drop -- undock() takes the pair apart again, and
+   clearEphemeralState() tears the world down under it. A stage press does NOT: a dock seam
+   is not a decoupler seam, so staging cannot un-mate this pair, and the claim stays true. */
 bool Game::dockedJustNow(const Vehicle *a, std::string &mate) const {
     if(a == nullptr || dock_go_at < 0.0) { return false; }
     if(currentTime - dock_go_at > kDockGoLife) { return false; }
@@ -2613,7 +2621,13 @@ void Game::undock() {
        the cut, so popping would drop the WRONG one. */
     // Part windows address parts by index, which just shifted: drop them.
     dropPartWindowsFor(a);
+    /* #1039: and the mate goes with the seam. The latch is a claim that these two hulls
+       ARE joined, so a player who presses U has taken the claim back -- the review caught
+       the window still reading GO (and the arrow naming the station as if it were the
+       target) while both hulls sat apart. */
+    dock_go_at = -1.0;
     toast("Undocked %s", out->displayName().c_str());
+
     printf("[undock] t=%.3f a=\"%s\" b=\"%s\"\n", time, a->displayName().c_str(),
            out->displayName().c_str());
 }
