@@ -1877,14 +1877,23 @@ void commitSaveWorld(Game &g, BuiltSave *bp, bool fleetAlreadyGone) {
 
     /* A grip whose ship sits LATER in the save order than the kerbal (an
        undock appends the new hull) could not resolve above -- its hull was not
-       in the world yet. Every hull is now: re-derive the ones still holding a
-       uid. A gripping kerbal is saved live, so the rotating-frame caveat above
-       does not apply here. */
-    for(Vehicle *v : g.vehicles) {
+       in the world yet, and the failed lookup CLEARED the uid. Every hull is
+       now: re-remap from the save's own uid and re-derive. (Testing the live
+       grip here would be dead code -- the clear already zeroed it.) A
+       gripping kerbal is saved live, so the rotating-frame caveat above does
+       not apply here. */
+    for(size_t i = 0; i < b->saves.size(); i++) {
+        Vehicle *v = g.vehicles[i];
         if(!v->isEva()) { continue; }
+        const SaveShip &s = b->saves[i];
         Kerbal *k = static_cast<Kerbal *>(v);
-        if(k->ladderGrip() != 0 && k->evaMode() != EVA_LADDER) {
-            k->settleContact(g.vehicles);
+        if(s.ladder_uid != 0 && k->evaMode() != EVA_LADDER) {
+            const std::map<uint64_t, Part *>::const_iterator lp =
+                b->savedUidToPart.find(s.ladder_uid);
+            if(lp != b->savedUidToPart.end()) {
+                k->restoreLadder(lp->second->uid);
+                k->settleContact(g.vehicles);
+            }
         }
     }
 

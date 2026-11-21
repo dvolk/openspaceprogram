@@ -302,10 +302,13 @@ void flightKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
             g.toast("Camera: free flight (Shift-C to leave)");
         }
     }
-    /* G is the kerbal's ladder grab (#1073): while piloting a suit the key
-       belongs to EvaGrab below, not to the camera's target cycle. */
+    /* G is the kerbal's ladder grab (#1073): while piloting a suit a key that
+       ALSO fires EvaGrab belongs to the grab, not the camera's target cycle.
+       The gate is on the shared binding, not on isEva() alone -- rebind either
+       slot and the other keeps its key. */
     if(slotFired(Slot::CycleTarget, ksc, kmod, g.binds) && !repeat
-       && !(g.ship && g.ship->isEva())) {
+       && !(g.ship && g.ship->isEva()
+            && slotFired(Slot::EvaGrab, ksc, kmod, g.binds))) {
         // Cycle the orbit camera's target body.
         if(g.camera->mode == CAM_ORBIT) {
             g.focusBody = (g.focusBody + 1) % (int)g.focusTargets.size();

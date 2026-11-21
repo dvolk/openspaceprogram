@@ -39,6 +39,9 @@ static const double kLadderHoldAccel = 30.0;// m/s^2 servo clamp
 static const double kLadderTorque  = 300.0; // N m attitude authority (ground's)
 static const double kLadderGrabRange = 1.5; // m COM-to-segment grab reach
 static const double kLadderTransfer  = 0.9; // m end-of-segment transfer reach
+static const double kLadderTransferEnd = 0.5;// m of the NEXT segment's opposite
+                                            // end the suit must enter at (half
+                                            // the reach: gap yes, overlap no)
 static const double kLadderEndEps    = 0.1; // m of the end counts as "at the end"
                                             // (> the gravity sag g/kLadderP, which
                                             // on a vertical ladder holds the suit
@@ -230,19 +233,32 @@ bool Kerbal::resolveLadder(const std::vector<Vehicle *> &vehicles) {
         }
     }
     /* At an end, another segment within reach takes over -- the generosity
-       that lets a capsule ladder meet a slightly misplaced tank ladder. Only
-       at the ends (hysteresis): mid-ladder the current grip always wins. */
-    /* At an end, another segment within reach takes over -- but only when the
-       climb demand pushes PAST that end. At a junction the same position is
-       the bottom of one segment and the top of the next, so an ungated rule
-       ping-pongs between the two every tick; the direction is the hysteresis.
-       A disarmed hang (climbDir 0) keeps its segment. */
+       that lets a capsule ladder meet a slightly misplaced tank ladder. Two
+       hysteresis gates, because a junction is the bottom of one segment and
+       the top of the next: the climb demand must push PAST this end (a
+       disarmed hang keeps its segment), and the suit must enter the NEXT
+       segment at its opposite end -- overlapping ladders (a part placed over
+       the hatch ladder) otherwise transfer into each other's end bands and
+       ping-pong every tick. The entry band is half the transfer reach: wide
+       enough for a sloppy gap, narrow enough to refuse a mid-segment entry. */
     if((s > L - kLadderEndEps && climbDir > 0.0)
        || (s < kLadderEndEps && climbDir < 0.0)) {
         Part *next = nearestLadder(vehicles, kLadderTransfer, ladderUid);
         if(next != nullptr) {
-            ladderUid = next->uid;
-            ladderPart = next;
+            glm::dvec3 p2; glm::dmat3 r2;
+            next->owner->partPoseRelTo(next, frame, p2, r2);
+            const glm::dvec3 A2 = p2 + r2 * next->def->ladder_a;
+            const glm::dvec3 B2 = p2 + r2 * next->def->ladder_b;
+            const double L2 = glm::length(B2 - A2);
+            const double s2 = ladderProject(A2, (B2 - A2) / L2, L2,
+                                            partPos(controller));
+            const bool enters = (climbDir > 0.0)
+                ? (s2 < kLadderTransferEnd)
+                : (s2 > L2 - kLadderTransferEnd);
+            if(enters) {
+                ladderUid = next->uid;
+                ladderPart = next;
+            }
         }
     }
     /* A new grip (grab, transfer, spawn/load restore -- the cache was empty)
@@ -342,13 +358,10 @@ void Kerbal::armInput(Game &g, const SlotProbe &active) {
     }
 
     const glm::dvec3 radial = groundUp();
-    /* tick.cpp disarms every live suit BEFORE it arms this one, so the regime has
-       already been derived once this tick from the same pose -- nothing between the two
-       calls moves pos, vel or frame, and updateContact()'s only side effect (spending
-       the `jumping` latch) is monotone, so the second call cannot disagree with the
-       first. Derived here anyway to keep armInput() self-contained: it costs one extra
-       terrain sample and one contactTest per tick, on one hull. The ladder grip wins
-       over any contact reading: a hang is a regime of its own (#1073). */
+    /* The regime is derived here, from the pose, keys aside -- the tick's
+       disarm pass skips the active suit (it would spend the grab/jump edges
+       this arm exists to consume, #1073). The ladder grip wins over any
+       contact reading: a hang is a regime of its own. */
     if(resolveLadder(g.vehicles)) {
         grounded = false;
         mode = EVA_LADDER;
@@ -373,7 +386,10 @@ void Kerbal::armInput(Game &g, const SlotProbe &active) {
         armRcs(glm::dvec3(0.0));   // hanging, not flying
         glm::dvec3 A, B, out;
         ladderSegment(A, B, out);
-        ladderS = glm::clamp(ladderS + climbDir * kClimbSpeed * g.dt,
+        /* The tick spans g.dt * time_accel of sim time (tick.cpp's substep
+           loop); the hold target must advance on the SAME clock or the climb
+           crawls at physics warp while the ship's physics runs full speed. */
+        ladderS = glm::clamp(ladderS + climbDir * kClimbSpeed * g.dt * g.time_accel,
                              0.0, glm::length(B - A));
         if(jumpWanted) {
             /* SPACE on a ladder: let go with an outward kick. The space law
@@ -440,6 +456,12 @@ void Kerbal::disarm(const std::vector<Vehicle *> &vehicles) {
        on -- and a suit with no pilot should hold none of it. */
     clearRcs();
     jumpRequested = false;
+    /* A press cannot outlive the tick it arms: an edge raised in the same
+       event batch as a ship switch would otherwise latch on the now-disarmed
+       suit and fire on return (a surprise let-go / hop). The ACTIVE suit is
+       skipped by the tick's disarm pass -- its arm below spends the edges. */
+    grabPressed = false;
+    jumpPressed = false;
 }
 
 void Kerbal::applyEva(double h) {

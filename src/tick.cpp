@@ -216,7 +216,15 @@ void tick(Game &g) {
            it wakes it. */
         if(g.time_accel != 0) {
             for(Vehicle *s : vehicles) {
-                if(s->onRails || !s->isEva()) { continue; }
+                /* Skip the active suit ONLY when the arm below will actually
+                   run (same doors: not free cam, a piloting scene, running):
+                   armInput re-derives everything disarm would and must KEEP
+                   the grab/jump edges this batch raised -- disarm spends
+                   them (#1073). Free cam arms nothing, so its active suit
+                   still owes a neutral tick here (#215). */
+                const bool willArm = s == g.ship && g.camera->mode != CAM_FREE
+                                     && curScene(g).pilot && g.time_accel > 0;
+                if(s->onRails || !s->isEva() || willArm) { continue; }
                 static_cast<Kerbal *>(s)->disarm(vehicles);
             }
         }

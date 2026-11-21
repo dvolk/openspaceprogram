@@ -108,8 +108,9 @@ public:
        ladder hangs there while the player flies another ship -- the grip is state,
        not a demand, and validating it needs the fleet.
        tick.cpp calls this every tick for every live, off-rails kerbal when the tick
-       steps physics, before the arm; game.cpp's proximity pass calls it on a suit it
-       wakes later in the same tick. */
+       steps physics, EXCEPT the active one (its armInput spends the grab/jump edges
+       this would clear); game.cpp's proximity pass calls it on a suit it wakes later
+       in the same tick. */
     void disarm(const std::vector<Vehicle *> &vehicles);
 
     /* The jump key went down (events.cpp). The rule lives on jumpPressed above. */
