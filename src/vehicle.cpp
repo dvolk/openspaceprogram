@@ -1597,6 +1597,7 @@ void Vehicle::rebuildCompound() {
         aeroSil.clear();
         aeroGeomValid = false;
         gearParts.clear();
+        legParts.clear();
         return;
     }
 
@@ -1830,6 +1831,7 @@ void Vehicle::refreshAeroGeom() {
     aeroSil.invalidate();
     groupLiftingSystems();
     groupGearParts();
+    groupLegParts();
 }
 
 /* The hull's gear wheels, in part order. Rebuilt on a geometry change (the same
@@ -1838,6 +1840,14 @@ void Vehicle::groupGearParts() {
     gearParts.clear();
     for(Part *p : parts) {
         if(p->isGearWheel()) { gearParts.push_back(p); }
+    }
+}
+
+/* The hull's landing legs, same discipline as groupGearParts. */
+void Vehicle::groupLegParts() {
+    legParts.clear();
+    for(Part *p : parts) {
+        if(p->isLeg()) { legParts.push_back(p); }
     }
 }
 
@@ -4742,13 +4752,45 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
     return lastAeroForce;
 }
 
-/* The ground reaction on the gear wheels (src/wheel.h). Per wheel: ray down the
-   strut axis to the contact (analytic terrain fall-through when the ray misses,
-   the EVA two-source pattern), then the spring + tire force applied at the patch.
-   A no-op for a wheel-less hull. Forces accumulate on the one body like aero and
-   thrust; nothing integrates until physics_tick. */
+/* The contact find the gear and leg loops share (vehicle.h). The ray hits the
+   margin-inflated collision surface; the analytic fall-through agrees with it. */
+bool Vehicle::groundContact(const glm::dvec3 &from, const glm::dvec3 &down,
+                            double reach, double &dist, glm::dvec3 &hit,
+                            glm::dvec3 &n) {
+    if(groundRay(from, from + down * reach, hit, n, hull)) {
+        dist = glm::length(hit - from);
+        n = glm::normalize(n);
+        return true;
+    }
+    if(m_parent != nullptr && frame->building == nullptr) {
+        // Collision meshes only exist at max-LOD leaves; the analytic ground
+        // is the fall-through for the gaps, offset by the terrain margin so it
+        // agrees with the height a ray hits the collision mesh at. Note the
+        // 0.5 m terrain margin is taller than the shipped suspension travel,
+        // so on raw terrain the suspension bottoms out and the hulls ride as
+        // bump stops -- a deck (0.1 m margin) is the working surface.
+        // OSP_TERRAIN_MARGIN / OSP_HULL_MARGIN tune both at runtime.
+        const glm::dvec3 radial = glm::normalize(from);
+        dist = glm::length(from)
+             - ((double)m_parent->GetTerrainHeight(glm::vec3(radial)) + terrainMargin());
+        n = radial;
+        hit = from - n * dist;
+        return true;
+    }
+    // In a building bubble a missed ray is AIRBORNE (off the deck edge): the
+    // planet's analytic surface is far below and reads nonsense in bubble
+    // coordinates (#850).
+    return false;
+}
+
+/* The ground reaction on the gear wheels and landing legs (src/wheel.h). Per
+   contact: ray down the strut/leg axis to the ground (groundContact), then the
+   spring + tire force applied at the patch -- the gear rolls and brakes on
+   demand, the leg stands with the brake held on. A no-op for a hull with
+   neither. Forces accumulate on the one body like aero and thrust; nothing
+   integrates until physics_tick. */
 void Vehicle::applyGroundForces(double h) {
-    if(gearParts.empty() || hull == nullptr || !hullInWorld()) { return; }
+    if((gearParts.empty() && legParts.empty()) || hull == nullptr || !hullInWorld()) { return; }
     /* h is the substep the tire force is held for, and the momentum clamp below
        divides by it. The caller is the substep loop (tick.cpp), which cannot
        reach here with h <= 0; asserted rather than guarded, because a zero h that
@@ -4767,29 +4809,8 @@ void Vehicle::applyGroundForces(double h) {
         const glm::dvec3 down = -(pRot * glm::dvec3(0.0, 0.0, 1.0));
         const double reach = R + T + 0.2;   // a little slop past full extension
         glm::dvec3 hit, n;
-        Body *ground = nullptr;
         double dist;
-        if(groundRay(axle, axle + down * reach, hit, n, hull, &ground)) {
-            dist = glm::length(hit - axle);
-            n = glm::normalize(n);
-        } else if(m_parent != nullptr && frame->building == nullptr) {
-            // Collision meshes only exist at max-LOD leaves; the analytic ground
-            // is the fall-through for the gaps, offset by the terrain margin so it
-            // agrees with the height a ray hits the collision mesh at. Note the
-            // 0.5 m terrain margin is taller than the gear travel, so on raw
-            // terrain the suspension bottoms out and the wheel hulls ride as bump
-            // stops -- a runway deck (0.1 m margin) is the rolling surface.
-            const glm::dvec3 radial = glm::normalize(axle);
-            dist = glm::length(axle)
-                 - ((double)m_parent->GetTerrainHeight(glm::vec3(radial)) + terrainMargin());
-            n = radial;
-            hit = axle - n * dist;
-        } else {
-            // In a building bubble a missed ray is AIRBORNE (off the deck
-            // edge): the planet's analytic surface is far below and reads
-            // nonsense in bubble coordinates (#850).
-            continue;
-        }
+        if(!groundContact(axle, down, reach, dist, hit, n)) { continue; }
         const double compression = std::clamp((R + T) - dist, 0.0, T);
         if(compression <= 0.0) { continue; }   // airborne: no force
         /* The ground is stationary in the ship's frame: terrain and pads are
@@ -4847,6 +4868,62 @@ void Vehicle::applyGroundForces(double h) {
            which is what holds the hull up. */
         in.normalStopRate = impulseMass(hull, rel, n)
                         / (h * (double)gearParts.size());
+        const glm::dvec3 F = wheel::force(in);
+        ApplyForce(hull, rel, F);
+        if(recordForceVecs) { lastForceVecs.push_back({ rel, F, kForceGround }); }
+    }
+
+    /* Landing legs: the same contact law with the brake HELD on -- a footpad
+       grips in every tangential direction (the friction circle caps the pair
+       at mu*N either way). The part origin is the footpad centre; on a vertical
+       parent at roll 0 the mating keeps the part's +Z vertical, so the ray runs
+       straight down from the foot (a rolled or tilted mount rays down the leg
+       instead, the gear's strut behaviour). No steer: a pad has no rolling
+       direction. Like the gear, the contact face rides (travel - compression)
+       above the ray hit -- a spring-only ride height, clear of the deck's
+       collision margin, so the feet float by that much (#1072 ride height). */
+    for(Part *p : legParts) {
+        const PartDef &d = *p->def;
+        glm::dvec3 foot; glm::dmat3 pRot;
+        partWorldPose(p, foot, pRot);
+        const double pad = d.leg_foot, T = d.leg_travel;
+        const glm::dvec3 down = -(pRot * glm::dvec3(0.0, 0.0, 1.0));
+        const double reach = pad + T + 0.2;
+        glm::dvec3 hit, n;
+        double dist;
+        if(!groundContact(foot, down, reach, dist, hit, n)) { continue; }
+        const double compression = std::clamp((pad + T) - dist, 0.0, T);
+        if(compression <= 0.0) { continue; }   // airborne: no force
+        const glm::dvec3 vRel = vel;
+        // wheel::force needs a non-degenerate in-plane axis; the part's +Y
+        // laid into the ground plane serves (the pad does not roll along it).
+        // A mount rolled so +Y meets the normal skips the contact, the gear's
+        // same guard -- no fallback axis invented here.
+        const glm::dvec3 f0 = pRot * glm::dvec3(0.0, 1.0, 0.0);
+        glm::dvec3 f = f0 - n * glm::dot(f0, n);
+        if(glm::length2(f) < 1e-9) { continue; }
+        f = glm::normalize(f);
+        const glm::dvec3 rel = hit - com;
+        wheel::Input in;
+        in.compression  = compression;
+        in.compressRate = -glm::dot(vRel + glm::cross(omega, foot - com), n);
+        in.spring       = d.leg_spring;
+        in.damp         = d.leg_damp;
+        in.normal       = n;
+        in.forward      = f;
+        in.contactVel   = vRel + glm::cross(omega, rel);
+        in.brake        = 1.0;
+        /* The momentum clamps, same pot as the gear (#770/#862), split across
+           the legs. A hull with BOTH gear and legs touching spends slightly
+           more than the one pot (two denominators); rare, and the softer
+           clamp is the safe direction -- see the gear loop's note. */
+        const glm::dvec3 slip = in.contactVel - n * glm::dot(in.contactVel, n);
+        const double slipM = glm::length(slip);
+        const glm::dvec3 slipDir = slipM > 1e-9 ? slip / slipM : f;
+        in.stopRate = impulseMass(hull, rel, slipDir)
+                        / (h * (double)legParts.size());
+        in.normalStopRate = impulseMass(hull, rel, n)
+                        / (h * (double)legParts.size());
         const glm::dvec3 F = wheel::force(in);
         ApplyForce(hull, rel, F);
         if(recordForceVecs) { lastForceVecs.push_back({ rel, F, kForceGround }); }

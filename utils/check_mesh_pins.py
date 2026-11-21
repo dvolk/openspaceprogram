@@ -35,11 +35,12 @@ REPO = os.path.dirname(HERE)
 
 # Generators that name their own output inside the repo. They get --out <temp tree>, so the
 # gate never touches a shipped file; the others take a destination path as an argument.
-IN_PLACE = {"gen_gear.py", "gen_kerbal.py", "gen_platform.py", "gen_station.py"}
+IN_PLACE = {"gen_gear.py", "gen_leg.py", "gen_kerbal.py", "gen_platform.py", "gen_station.py"}
 
 # (script, argv, [paths under res/ that run writes]).
 PINS = [
     ("gen_gear.py",     [], ["meshes/gear.obj"]),
+    ("gen_leg.py",      [], ["meshes/leg.obj"]),
     ("gen_kerbal.py",   [], ["meshes/kerbal.obj", "textures/kerbal.png"]),
     ("gen_platform.py", [], ["meshes/balloon_platform.obj",
                              "meshes/balloon_platform_deck.obj"]),

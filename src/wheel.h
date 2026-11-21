@@ -10,6 +10,14 @@
 //     brake), clamped to the friction circle mu*N.
 // There is no drive force in v1 -- the longitudinal slot is where a rover's
 // motor lands later (DESIGN.md "ground vehicles").
+//
+// RIDE HEIGHT: compression is measured from FULL EXTENSION (radius+travel),
+// so the spring holds the contact face (travel - compression) ABOVE the ray
+// hit -- the visual wheel/foot floats by that much, plus the support's
+// collision margin. The float is the price of spring-only support: resting
+// on Bullet contact instead would scrub and pump at coarse substeps. A part
+// whose face must sit ON the ground needs a ride allowance in its mesh or a
+// compression reference at the face, not a tweak here (#1072).
 #pragma once
 
 #include <algorithm>

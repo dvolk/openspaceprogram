@@ -561,6 +561,21 @@ struct PartDef {
 
     bool isGearWheel() const { return wheel_radius > 0.0; }
 
+    /* LANDING LEG: a footpad on a splayed strut, surface-mounted on a tank's
+       side. leg_foot > 0 makes this a leg; the ground law (src/wheel.h, the leg
+       loop in Vehicle::applyGroundForces) stands it with the brake held on.
+       NOT a gear wheel: type "gear" drives the horizontal runway/air-platform
+       spawn, and a legged rocket stays vertical. Part frame convention: origin
+       at the footpad centre, +Z up (parallel to the tank axis when mounted),
+       splay baked into the mesh toward -X, mount plate at the top with the
+       surface node on its hull-side face (dir -X). */
+    double leg_foot;     // m, origin to pad contact face along -Z; > 0 -> a leg
+    double leg_travel;   // m, crush stroke
+    double leg_spring;   // N/m, suspension stiffness
+    double leg_damp;     // N s/m, suspension damping
+
+    bool isLeg() const { return leg_foot > 0.0; }
+
     PartDef();
 
     /* The human-readable name: display_name, else the machine id (catalogs that

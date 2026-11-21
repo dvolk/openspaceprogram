@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 435 |
+| `invariant` | a behaviour or a player route the game must keep | 436 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 50 |
 | `harness` | CLI/test-engine plumbing, not game spec | 16 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **505** |
+| | **total** | **506** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -18,7 +18,7 @@ paces a run: how much e2e a change deserves is the caller's
 judgement. Select by number, name or path, e.g.
 `python3 e2e/run.py save/172 262`.
 
-## flight (162)
+## flight (163)
 
 | case | kind | pins |
 |---|---|---|
@@ -184,6 +184,7 @@ judgement. Select by number, name or path, e.g.
 | `flight/1042-rails-park-keeps-the-hull-s-spin.txt` | invariant | Parking a hull on rails and waking it keeps the spin it had: the docking dial's relative twist is the same figure on both sides of an F6 round trip, and not zero. |
 | `flight/1056-rails-coast-turns-the-heading.txt` | invariant | A hull coasting on its conic turns through the spin it carries: its heading moves by about \|w\| x the time spent, monotone, and every row says the coasting rails produced it. |
 | `flight/1062-stale-dock-target-leaves-with-the-port-it-aimed-at.txt` | invariant | Switching to the target hull and staging it drops both halves of the docking target and keeps the armed port. |
+| `flight/1072-lander-legs-stand.txt` | invariant | A legged rocket spawns standing on its feet, stays there, and survives a quicksave/quickload. |
 
 ## crew (29)
 

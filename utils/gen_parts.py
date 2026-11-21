@@ -185,6 +185,9 @@ DRAG_CD = {
     # landing gear: a small bluff body tucked under the hull (a wheel + strut).
     "gear":           {"drag": 0.7, "drag_forward": 0.8, "drag_side": 0.9,
                        "drag_backward": 0.9},
+    # landing leg: the same bluff-body family (a pad + strut + plate).
+    "leg":            {"drag": 0.7, "drag_forward": 0.8, "drag_side": 0.9,
+                       "drag_backward": 0.9},
 }
 
 # Per-part Cd overrides on top of the type's family: rcs_box is a flush cube
@@ -306,6 +309,11 @@ PARTS = [
     # is the same wheel with steering (the nose wheel); the mains stay fixed.
     ("gear",             "gear",           "meshes/gear.obj",                     "textures/gear.png"),
     ("gear_nose",        "gear",           "meshes/gear.obj",                     "textures/gear.png"),
+    # rocket landing leg (utils/gen_leg.py): a footpad on a splayed strut with
+    # a mount plate at the top, surface-mounted on a tank's side. The ground
+    # law (src/wheel.h via the leg loop) stands it; one size for v1, sized for
+    # the 2 m engine class (reports/landing-legs2026_11_21).
+    ("leg",              "leg",            "meshes/leg.obj",                      "textures/gear.png"),
     ("fuel_link",        "fuel_link",      None,                           None),
 ]
 
@@ -395,6 +403,19 @@ EXTRA_FIELDS = {
 # fixed. Same mesh, same suspension -- only wheel_steer differs.
 EXTRA_FIELDS["gear_nose"] = dict(EXTRA_FIELDS["gear"], wheel_steer=20.0)
 
+# leg: mass + suspension declared (one size for v1). leg_foot is the distance
+# from the part origin (footpad centre) to the pad contact face along -Z --
+# the wheel_radius analogue for the leg ground loop. The surface node is the
+# plate's hull-side face; keep in sync with gen_leg.py's defaults (drop 2.6,
+# splay 20 deg, plate-thick 0.08): node x = -(2.6*tan(20) + 0.04) = -0.986.
+# Spring sized so the racer's ~6.5 kN per-leg load compresses ~0.11 m of the
+# 0.4 m travel, leaving ~3.5 m/s of touchdown absorption before bottoming out
+# (reports/landing-legs2026_11_21).
+EXTRA_FIELDS["leg"] = {"mass": 40.0, "leg_foot": 0.05, "leg_travel": 0.4,
+                       "leg_spring": 60000.0, "leg_damp": 8000.0,
+                       "nodes": [{"id": "srf", "pos": [-0.986, 0.0, 2.6],
+                                  "dir": [-1.0, 0.0, 0.0], "surface": True}]}
+
 # every overlay-art path in the table must name its own asset directory
 for _n, _f in EXTRA_FIELDS.items():
     for _k, _pfx in (("shroud", "meshes/"), ("shroud_texture", "textures/"),
@@ -406,9 +427,12 @@ for _n, _f in EXTRA_FIELDS.items():
 
 
 def mesh_geom(mesh_file):
-    """(radius, height, volume, planform, extents): half largest x/y span, z
-    span, enclosed volume (or bounding-cylinder fallback if not watertight),
-    the area of the mesh's x/z footprint, and the raw (x, y, z) spans."""
+    """(radius, height, volume, planform, extents, bounds): half largest x/y
+    span, z span, enclosed volume (or bounding-cylinder fallback if not
+    watertight), the area of the mesh's x/z footprint, the raw (x, y, z)
+    spans, and the (min, max) corners. Off-centre meshes (the landing leg)
+    need bounds: their PartDef radius is the SYMMETRISED half-span
+    (meshHalfSpan), not half the full span."""
     t = trimesh.load_mesh(os.path.join(REPO_ROOT, "res", mesh_file), process=False)
     ext = t.extents                       # (x, y, z) spans
     radius = max(ext[0], ext[1]) / 2.0
@@ -422,7 +446,8 @@ def mesh_geom(mesh_file):
         volume = math.pi * radius * radius * height
     return (round(radius, 3), round(height, 3), volume,
             hull_area([(v[0], v[2]) for v in t.vertices]),
-            (float(ext[0]), float(ext[1]), float(ext[2])))
+            (float(ext[0]), float(ext[1]), float(ext[2])),
+            (t.bounds[0].tolist(), t.bounds[1].tolist()))
 
 
 def hull_area(pts):
@@ -503,12 +528,15 @@ DISPLAY_BASE = {
     "aileron":        "Aileron",
     "chute":          "Parachute",
     "gear":           "Landing Gear",
+    "leg":            "Landing Leg",
     "fuel_link":      "Fuel Link",
 }
 
 def display_name_for(name, ptype, radius, height):
     base = DISPLAY_BASE.get(ptype, name)
-    if ptype in ("kerbal", "fuel_link", "barometer", "thermometer"):
+    # leg: its declared radius is the symmetrised half-span (off-centre mesh),
+    # not the `radius` this function is handed, so a diameter suffix would lie.
+    if ptype in ("kerbal", "fuel_link", "barometer", "thermometer", "leg"):
         return base
     if name == "decoupler_radial":
         return "Radial Decoupler"
@@ -533,7 +561,7 @@ def generate(name, ptype, mesh, texture):
         e.update(EXTRA_FIELDS[name])
         return e
 
-    radius, height, volume, planform, extents = mesh_geom(mesh)
+    radius, height, volume, planform, extents, bounds = mesh_geom(mesh)
     e = {
         "name": name,
         "type": ptype,
@@ -632,6 +660,15 @@ def generate(name, ptype, mesh, texture):
         e["radius"] = radius
         e["height"] = height
         e["wheel_radius"] = clean(extents[1] / 2.0)
+    elif ptype == "leg":
+        # mass + suspension declared (EXTRA_FIELDS). The leg is authored
+        # off-centre (the strut leans -X), so its radius is the SYMMETRISED
+        # half-span the catalog pins against (PartDef::meshHalfSpan), not
+        # mesh_geom's half-full-span.
+        lo, hi = bounds
+        e["mass"] = clean(EXTRA_FIELDS[name]["mass"])
+        e["radius"] = clean(max(abs(lo[0]), abs(hi[0]), abs(lo[1]), abs(hi[1])))
+        e["height"] = height
     elif ptype == "battery":
         active = volume * BATTERY_ACTIVE_DENSITY
         dry = volume * BATTERY_DRY_DENSITY

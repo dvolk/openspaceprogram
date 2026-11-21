@@ -226,6 +226,8 @@ struct Part {
     // Landing gear, NOT a reaction wheel (isWheel above is torque). The ground
     // law (Vehicle::applyGroundForces) rolls these on the surface.
     bool isGearWheel() const { return def != nullptr && def->isGearWheel(); }
+    // Landing leg: the same ground law stands these with the brake held on.
+    bool isLeg() const { return def != nullptr && def->isLeg(); }
     bool isRcs() const { return def != nullptr && def->rcs_thrust > 0.0; }
     bool isDecoupler() const { return def != nullptr && def->decoupler; }
     bool isDockingPort() const { return def != nullptr && def->docking_port; }

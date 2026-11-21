@@ -1507,6 +1507,40 @@
       "drag_backward": 0.9
     },
     {
+      "name": "leg",
+      "type": "leg",
+      "display_name": "Landing Leg",
+      "mesh": "meshes/leg.obj",
+      "texture": "textures/gear.png",
+      "mass": 40.0,
+      "radius": 0.99,
+      "height": 2.8,
+      "leg_foot": 0.05,
+      "leg_travel": 0.4,
+      "leg_spring": 60000.0,
+      "leg_damp": 8000.0,
+      "nodes": [
+        {
+          "id": "srf",
+          "pos": [
+            -0.986,
+            0.0,
+            2.6
+          ],
+          "dir": [
+            -1.0,
+            0.0,
+            0.0
+          ],
+          "surface": true
+        }
+      ],
+      "drag": 0.7,
+      "drag_forward": 0.8,
+      "drag_side": 0.9,
+      "drag_backward": 0.9
+    },
+    {
       "name": "fuel_link",
       "type": "fuel_link",
       "display_name": "Fuel Link",

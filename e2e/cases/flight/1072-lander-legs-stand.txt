@@ -1,0 +1,37 @@
+NAME lander-legs-stand
+CLAIM A legged rocket spawns standing on its feet, stays there, and survives a quicksave/quickload.
+KIND invariant
+ARGS --time-accel 1
+ARGS --startship racerlegs,res/ships/racer_legs.json,Kerbin,pad
+ARGS --timeout 20 --dbg-log --att-log
+ARGS --sim-press 6000,0,F5
+ARGS --sim-press 8000,0,F9
+ARGS --sim-press 9000,0,PERIOD
+EXPECT [dbg]
+EXPECT [attlog]
+# Count the rows first: all(...) over an empty list is true (run.py's own note).
+CHECK len(dbg) > 5
+CHECK len(att) > 5
+# The save carries all four legs (the new part round-trips the writer).
+FILE saves/*/quicksave-00/ships/v0.json "\"part\": \"leg\""
+# At rest: [dbg] v is frame-local speed; a scrubbing or tipping hull reads m/s.
+# The last row is AFTER the quickload + unpause (F9 pauses; PERIOD resumes).
+CHECK abs(dbg[-1]["v"]) < 1.0
+# Rigid rest: each body-frame position COMPONENT stays within a metre of its
+# spawn value (the settle is ~0.15 m of suspension stroke; a tipping or sliding
+# hull moves ~2 m). Components, not the radius: at |pos| ~ 6e5 m a horizontal
+# slide barely changes the radius. The load restores the same pose, so the
+# spread spans the round-trip too.
+CHECK (lambda cs: max(cs) - min(cs) < 1.0)([d["pos"][0] for d in dbg])
+CHECK (lambda cs: max(cs) - min(cs) < 1.0)([d["pos"][1] for d in dbg])
+CHECK (lambda cs: max(cs) - min(cs) < 1.0)([d["pos"][2] for d in dbg])
+# Vertical: the nose stays on the local vertical (the pad dir is ~+Z), every row.
+CHECK all(a["nose"][2] > 0.99 for a in att)
+# Settled: no residual spin in the last rows.
+CHECK all(a["wnorm"] < 0.01 for a in att[-5:])
+# Under physics, not a frozen park: the LEGS are what hold it up (a railed=2
+# row would mean the ground law never ran and the case proved nothing).
+CHECK all(a["railed"] == 0 for a in att)
+FORBID error:
+FORBID FAILED
+FORBID [load] refused

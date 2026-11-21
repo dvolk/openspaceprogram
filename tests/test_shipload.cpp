@@ -283,15 +283,24 @@ int main() {
             CHECK(std::fabs(std::max(hx, hy) - d.radius) <= 0.01 * d.radius);
             // Gear is authored off-centre -- the strut rises +Z to the mount face
             // while the wheel hangs below -- so its mesh half-length is not half
-            // its height. This centering pin is for stack-axis bodies, not gear.
-            if(!d.isGearWheel()) {
+            // its height. The leg likewise: its origin is the FOOTPAD, with the
+            // plate 2.6 m up. This centering pin is for stack-axis bodies.
+            if(!d.isGearWheel() && !d.isLeg()) {
                 CHECK(std::fabs(d.meshHalfLength() - d.height / 2.0) <= 0.01 * d.height);
             }
             /* meshHalfSpan() symmetrises the box about the part origin because
                the origin IS the stack axis. A mesh modelled off-centre would get
                the larger half-span on both sides and place a child on the far
-               side of air, so keep every shipped mesh centred. Measured: 0. */
-            CHECK(std::fabs(d.mesh_min.x + d.mesh_max.x) <= 1e-6);
+               side of air, so keep every shipped mesh centred. Measured: 0.
+               The leg is the deliberate exception in X: its strut leans -X by
+               design (the splay), so its box cannot centre there. It IS
+               centred in Y, and that pin stays. Its declared radius is the
+               symmetrised half-span (gen_parts.py), which is what the pin
+               above checks; attaching ONTO a leg would read that symmetrised
+               ellipse -- a degenerate case v1 does not use. */
+            if(!d.isLeg()) {
+                CHECK(std::fabs(d.mesh_min.x + d.mesh_max.x) <= 1e-6);
+            }
             CHECK(std::fabs(d.mesh_min.y + d.mesh_max.y) <= 1e-6);
             /* The CHILD side of a surface attach still bolts at the part's
                surface node, which synthesizeNodes() mints from the authored
@@ -302,8 +311,34 @@ int main() {
             const Node *srf = d.findSurfaceNode();
             // Gear authors its own surface node at the strut top (+Z), not the
             // synthesized -X side, so the -X pin is for the synthesized nodes only.
-            if(srf != nullptr && !d.isGearWheel()) {
+            if(srf != nullptr && !d.isGearWheel() && !d.isLeg()) {
                 CHECK(std::fabs(std::fabs(srf->pos.x) - std::fabs(d.mesh_min.x)) <= 1e-3);
+            }
+            /* The leg's node is authored on the plate's hull-side face, dir -X
+               (into the tank). Pin the gen_leg.py defaults (drop 2.6, splay
+               20 deg, plate-thick 0.08): x = -(2.6*tan(20) + 0.04). A leg
+               regenerated at other argv must update this pin and the catalog
+               node together -- the node is what bolts the leg to the hull. */
+            if(d.isLeg()) {
+                CHECK(srf != nullptr);
+                if(srf != nullptr) {
+                    CHECK(std::fabs(srf->pos.x - (-0.986)) <= 1e-3);
+                    CHECK(std::fabs(srf->pos.y) <= 1e-3);
+                    CHECK(std::fabs(srf->pos.z - 2.6) <= 1e-3);
+                    CHECK(std::fabs(srf->dir.x - (-1.0)) <= 1e-9);
+                    CHECK(std::fabs(srf->dir.y) <= 1e-9);
+                    CHECK(std::fabs(srf->dir.z) <= 1e-9);
+                    /* Cross-check the node against the MESH, not just the
+                       catalog constants: a leg regenerated at other argv moves
+                       the box while a stale catalog node (and the pins above)
+                       would still agree with each other. The node sits on the
+                       plate's hull-side face: within 2 cm of the box's -X face
+                       (the strut's top corner overshoots it by ~7 mm), and one
+                       plate half (0.15 m, gen_leg --plate 0.3) below the top. */
+                    CHECK(srf->pos.x >= d.mesh_min.x - 1e-9);
+                    CHECK(srf->pos.x <= d.mesh_min.x + 0.02);
+                    CHECK(std::fabs(srf->pos.z - (d.mesh_max.z - 0.15)) <= 1e-3);
+                }
             }
         }
         /* No mesh on disk: readMeshGeom says so rather than throwing, and the

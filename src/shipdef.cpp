@@ -32,7 +32,8 @@ PartDef::PartDef()
       control_area(0.0), control_axis(ControlAxis::Pitch), cl_control(0.0),
       max_deflection(0.0), chute_area(0.0),
       wheel_radius(0.0), wheel_travel(0.0), wheel_spring(0.0), wheel_damp(0.0),
-      wheel_steer(0.0) {
+      wheel_steer(0.0),
+      leg_foot(0.0), leg_travel(0.0), leg_spring(0.0), leg_damp(0.0) {
     capacity.resize((int)ResourceType::Num, 0.0);
     propellant_rate.resize((int)ResourceType::Num, 0.0);
 }
@@ -846,6 +847,22 @@ PartsCatalog load_parts_catalog(const char *path) {
         if(d.wheel_radius > 0.0 && (d.wheel_travel <= 0.0 || d.wheel_spring <= 0.0)) {
             throw std::runtime_error(ctx + "\"wheel_radius\" > 0 requires "
                                           "\"wheel_travel\" and \"wheel_spring\" > 0");
+        }
+
+        /* Landing leg (the leg loop in Vehicle::applyGroundForces). leg_foot > 0
+           makes a leg; the suspension must then be authored, same door as the
+           gear's -- a foot with no spring is a rigid stub that hammers the hull. */
+        d.leg_foot   = optNumber(pv, "leg_foot", 0.0, ctx, "m");
+        d.leg_travel = optNumber(pv, "leg_travel", 0.0, ctx, "m");
+        d.leg_spring = optNumber(pv, "leg_spring", 0.0, ctx, "N/m");
+        d.leg_damp   = optNumber(pv, "leg_damp", 0.0, ctx, "N s/m");
+        if(d.leg_foot < 0.0 || d.leg_travel < 0.0 || d.leg_spring < 0.0
+           || d.leg_damp < 0.0) {
+            throw std::runtime_error(ctx + "leg fields must be >= 0");
+        }
+        if(d.leg_foot > 0.0 && (d.leg_travel <= 0.0 || d.leg_spring <= 0.0)) {
+            throw std::runtime_error(ctx + "\"leg_foot\" > 0 requires "
+                                          "\"leg_travel\" and \"leg_spring\" > 0");
         }
 
         /* An explicit "nodes" array wins; fuel links get none. */

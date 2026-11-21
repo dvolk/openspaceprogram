@@ -322,6 +322,11 @@ public:
     std::vector<Part*> gearParts;
     void groupGearParts();
 
+    /* LANDING LEGS: the hull's footpads (Part::isLeg), same rebuild discipline
+       as gearParts. The ground pass stands them with the brake held on. */
+    std::vector<Part*> legParts;
+    void groupLegParts();
+
     /* Per-substep scratch for the induced bill (#556): the lift each surface made,
        held until every surface has contributed, because the price is the SYSTEM's
        CL^2/(pi e AR) and the system's CL needs the whole sum. One reused vector --
@@ -1941,10 +1946,19 @@ public:
     /* The armed control forces, per SUBSTEP. The EVA kerbal overrides (eva.h). */
     virtual void applyControlForces(double h);
 
-    /* The ground reaction on the gear wheels, per SUBSTEP (src/wheel.h). A no-op
-       for a wheel-less hull. Runs beside the aero pass; nothing integrates until
-       physics_tick, so it reads the same fresh pose and velocity the aero does. */
+    /* The ground reaction on the gear wheels and landing legs, per SUBSTEP
+       (src/wheel.h). A no-op for a hull with neither. Runs beside the aero pass;
+       nothing integrates until physics_tick, so it reads the same fresh pose
+       and velocity the aero does. */
     void applyGroundForces(double h);
+
+    /* The contact find both ground loops share: ray from `from` along `down`
+       to `reach`, analytic terrain fall-through outside a building bubble,
+       AIRBORNE (false) on a missed ray inside one (#850). True writes the
+       distance, hit point and unit normal. */
+    bool groundContact(const glm::dvec3 &from, const glm::dvec3 &down,
+                       double reach, double &dist, glm::dvec3 &hit,
+                       glm::dvec3 &n);
 
     /* Brakes: the parking latch. Spawn sets it, O toggles it, and it travels in
        the save as the player's control state. (A ship parked on a balloon
