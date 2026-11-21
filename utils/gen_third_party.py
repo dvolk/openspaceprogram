@@ -20,8 +20,9 @@ read, because an invented SPDX tag is worse than an admitted unknown (this track
 already been burned once by inferred data that read like decided data).
 
 Outputs:
-  THIRD-PARTY.md               the record, committed
-  THIRD-PARTY/<lib>-<file>     each library's own notice text, copied out of wherever it
+  utils/doc/THIRD-PARTY.md     the record, committed
+  utils/doc/third-party/<lib>-<file>
+                               each library's own notice text, copied out of wherever it
                                lives under a name that says whose it is
   utils/third-party.install    debian/install lines copying each licence text into the
                                package. It deliberately does NOT live in utils/debian/:
@@ -239,7 +240,7 @@ def tail_notice(path, cap=160):
     return ""
 
 
-TEXT_DIR = "THIRD-PARTY"
+TEXT_DIR = "utils/doc/third-party"
 
 
 def slug(name):
@@ -400,9 +401,9 @@ def render(rows):
             "directory: `make deb` installs it into "
             "`/usr/share/doc/openspaceprogram/third-party/` from "
             "`utils/third-party.install`, which this script also writes; the tarballs "
-            "carry it as `third-party/` next to the binary, the AppImage as "
-            "`usr/share/doc/third-party/`. This file "
-            "rides next to `LICENSE.md`." % TEXT_DIR,
+            "carry it as `doc/third-party/`, the AppImage as "
+            "`usr/share/doc/third-party/`. The repo copy lives in `%s/`."
+            % (TEXT_DIR, os.path.dirname(TEXT_DIR)),
             "",
             "Our own code is AGPL-3.0 and `res/` is CC-BY-SA-3.0, in `LICENSE.md`. That "
             "claim covers our work only: everything under `middleware/` keeps whatever "
@@ -419,12 +420,11 @@ def render_install(texts):
            "# list of a package named third-party. make_deb.sh appends it to",
            "# debian/install.",
            "#",
-           "# Each source is a copy gen_third_party.py keeps in %s/ named for its library,"
-           % TEXT_DIR,
-           "# not the upstream basename: eleven libraries share two basenames",
+           "# Each source is a copy gen_third_party.py keeps in %s/ named for its" % TEXT_DIR,
+           "# library, not the upstream basename: eleven libraries share two basenames",
            "# (LICENSE, LICENSE.txt), and dh_install copies by basename into one",
-           "# directory, so the upstream names collapse to three files.",
-           "THIRD-PARTY.md                            usr/share/doc/openspaceprogram/"]
+           "# directory, so the upstream names collapse to three files."]
+    out.append("%-48s usr/share/doc/openspaceprogram/" % "utils/doc/THIRD-PARTY.md")
     for p in texts:
         out.append("%-48s usr/share/doc/openspaceprogram/third-party/" % p[0])
     out.append("")
@@ -455,8 +455,8 @@ def main():
     args = ap.parse_args()
     rows = collect()
     texts = render_texts(rows)
-    stale = write_if_changed(os.path.join(REPO, "THIRD-PARTY.md"), render(rows),
-                             args.check, "THIRD-PARTY.md")
+    stale = write_if_changed(os.path.join(REPO, "utils/doc/THIRD-PARTY.md"), render(rows),
+                             args.check, "utils/doc/THIRD-PARTY.md")
     for rel, body in texts:
         stale |= write_if_changed(os.path.join(REPO, rel), body, args.check, rel)
     stale |= write_if_changed(os.path.join(REPO, "utils/third-party.install"),

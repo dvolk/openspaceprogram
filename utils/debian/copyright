@@ -19,10 +19,11 @@ License: AGPL-3.0
 # middleware/ is not ours, and `Files: *` above must not be read as claiming it: the
 # binary this package conveys links it static, and each library keeps its own copyright
 # and licence (zlib, MIT, BSD, Apache-2.0, and stb's public-domain alternative).
-# THIRD-PARTY.md -- installed next to this file, and generated from the pins the repo
-# keeps (gitlinks, bootstrap.sh's GLEW pin, the vendored headers' version macros) --
-# records which library, which version, which licence; each library's own notice text
-# goes under /usr/share/doc/openspaceprogram/third-party/.
+# The record is generated at utils/doc/THIRD-PARTY.md from the pins the repo keeps
+# (gitlinks, bootstrap.sh's GLEW pin, the vendored headers' version macros) and installed
+# next to this file as THIRD-PARTY.md; it says which library, which version, which
+# licence. Each library's own notice text goes under
+# /usr/share/doc/openspaceprogram/third-party/.
 # The "License:" line below is deliberately a pointer rather than a licence name: naming
 # one licence here would be a guess about fourteen different texts.
 Files: middleware/*

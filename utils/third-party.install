@@ -3,19 +3,19 @@
 # list of a package named third-party. make_deb.sh appends it to
 # debian/install.
 #
-# Each source is a copy gen_third_party.py keeps in THIRD-PARTY/ named for its library,
-# not the upstream basename: eleven libraries share two basenames
+# Each source is a copy gen_third_party.py keeps in utils/doc/third-party/ named for its
+# library, not the upstream basename: eleven libraries share two basenames
 # (LICENSE, LICENSE.txt), and dh_install copies by basename into one
 # directory, so the upstream names collapse to three files.
-THIRD-PARTY.md                            usr/share/doc/openspaceprogram/
-THIRD-PARTY/glm-copying.txt                      usr/share/doc/openspaceprogram/third-party/
-THIRD-PARTY/bullet3-LICENSE.txt                  usr/share/doc/openspaceprogram/third-party/
-THIRD-PARTY/imgui-LICENSE.txt                    usr/share/doc/openspaceprogram/third-party/
-THIRD-PARTY/implot-LICENSE                       usr/share/doc/openspaceprogram/third-party/
-THIRD-PARTY/assimp-LICENSE                       usr/share/doc/openspaceprogram/third-party/
-THIRD-PARTY/sdl3-LICENSE.txt                     usr/share/doc/openspaceprogram/third-party/
-THIRD-PARTY/sdl3-image-LICENSE.txt               usr/share/doc/openspaceprogram/third-party/
-THIRD-PARTY/sdl-mixer-LICENSE.txt                usr/share/doc/openspaceprogram/third-party/
-THIRD-PARTY/glew-LICENSE.txt                     usr/share/doc/openspaceprogram/third-party/
-THIRD-PARTY/libpng-LICENSE                       usr/share/doc/openspaceprogram/third-party/
-THIRD-PARTY/zlib-LICENSE                         usr/share/doc/openspaceprogram/third-party/
+utils/doc/THIRD-PARTY.md                         usr/share/doc/openspaceprogram/
+utils/doc/third-party/glm-copying.txt            usr/share/doc/openspaceprogram/third-party/
+utils/doc/third-party/bullet3-LICENSE.txt        usr/share/doc/openspaceprogram/third-party/
+utils/doc/third-party/imgui-LICENSE.txt          usr/share/doc/openspaceprogram/third-party/
+utils/doc/third-party/implot-LICENSE             usr/share/doc/openspaceprogram/third-party/
+utils/doc/third-party/assimp-LICENSE             usr/share/doc/openspaceprogram/third-party/
+utils/doc/third-party/sdl3-LICENSE.txt           usr/share/doc/openspaceprogram/third-party/
+utils/doc/third-party/sdl3-image-LICENSE.txt     usr/share/doc/openspaceprogram/third-party/
+utils/doc/third-party/sdl-mixer-LICENSE.txt      usr/share/doc/openspaceprogram/third-party/
+utils/doc/third-party/glew-LICENSE.txt           usr/share/doc/openspaceprogram/third-party/
+utils/doc/third-party/libpng-LICENSE             usr/share/doc/openspaceprogram/third-party/
+utils/doc/third-party/zlib-LICENSE               usr/share/doc/openspaceprogram/third-party/

@@ -1,6 +1,8 @@
 # utils/
 
-Tooling, not shipped code -- nothing here compiles into the game. The coupling points the other
+Tooling, not shipped code -- nothing here compiles into the game. The one exception is
+`doc/`: its licence record and per-library notice texts are copied verbatim into every
+release artifact. The coupling points the other
 way: comments in `src/` and `tests/` name these scripts as the second spelling of a number or a
 law (`atmo.h` / `atmo_units.py`, `groundtemp.h` / `ground_model.py`, `constants.h` /
 `check_atmo_band.py`) -- 48 such mentions in `src/` and `tests/` alone, 101 across the repo

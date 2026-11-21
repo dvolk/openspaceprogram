@@ -29,11 +29,11 @@ cp -r res "$STAGE/usr/share/openspaceprogram/res"
 cp LICENSE.md release/README.md "$STAGE/usr/share/doc/"
 # The statically linked libraries' own notices ride along too (#1002). An AppImage is a
 # distribution like any other: zlib, MIT and BSD each ask that the copyright notice and
-# the licence text travel with the binary. THIRD-PARTY.md and the per-library texts are
-# generated -- see utils/gen_third_party.py and the 'third-party' make target.
-cp THIRD-PARTY.md "$STAGE/usr/share/doc/"
+# the licence text travel with the binary. utils/doc/THIRD-PARTY.md and the per-library
+# texts are generated -- see utils/gen_third_party.py and the 'third-party' make target.
+cp utils/doc/THIRD-PARTY.md "$STAGE/usr/share/doc/"
 mkdir -p "$STAGE/usr/share/doc/third-party"
-cp THIRD-PARTY/* "$STAGE/usr/share/doc/third-party/"
+cp utils/doc/third-party/* "$STAGE/usr/share/doc/third-party/"
 cp release/openspaceprogram.desktop "$STAGE/"
 cp release/openspaceprogram.png "$STAGE/"
 ln -s usr/bin/osp "$STAGE/AppRun"

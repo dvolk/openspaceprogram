@@ -823,8 +823,8 @@ test-py: test-gen
 		python3 utils/skybox/make_skybox.py --verify --out res/skybox/dsm_1024_g3_ds2; \
 	fi
 
-# Regenerate the third-party record (#1002) -- THIRD-PARTY.md and the .deb's licence-text
-# install list. `make test-py` checks it; this writes it.
+# Regenerate the third-party record (#1002) -- utils/doc/THIRD-PARTY.md and the .deb's
+# licence-text install list. `make test-py` checks it; this writes it.
 .PHONY: third-party
 third-party:
 	python3 utils/gen_third_party.py
@@ -908,9 +908,9 @@ APPIMAGETOOL=tmp/appimagetool-x86_64.AppImage
 WINE_CASES ?= harness/01-smoke vab/52-vab-launch vab/57-vab-launch-orbit vab/58-vab-launch-body
 
 # Package only (no test/e2e gates). Version from `version` target; dirty
-# trees keep -dirty in the name. Each archive carries LICENSE.md, THIRD-PARTY.md and the
-# per-library notice texts under third-party/: these tarballs link the same static
-# libraries as the .deb, so the same texts have to travel (#1002).
+# trees keep -dirty in the name. Each archive carries LICENSE.md and, under doc/,
+# THIRD-PARTY.md with the per-library notice texts in doc/third-party/: these tarballs link
+# the same static libraries as the .deb, so the same texts have to travel (#1002).
 .PHONY: artifacts
 artifacts: icon-check
 	@$(MAKE) --no-print-directory version
@@ -934,9 +934,10 @@ artifacts: icon-check
 	for layout in osp-$$VER-linux osp-$$VER-windows osp-$$VER-linux+windows; do \
 		mkdir -p "$$STAGE/$$layout"; \
 		cp -r res "$$STAGE/$$layout/"; \
-		cp LICENSE.md THIRD-PARTY.md release/README.md "$$STAGE/$$layout/"; \
-		mkdir -p "$$STAGE/$$layout/third-party"; \
-		cp THIRD-PARTY/* "$$STAGE/$$layout/third-party/"; \
+		cp LICENSE.md release/README.md "$$STAGE/$$layout/"; \
+		mkdir -p "$$STAGE/$$layout/doc/third-party"; \
+		cp utils/doc/THIRD-PARTY.md "$$STAGE/$$layout/doc/"; \
+		cp utils/doc/third-party/* "$$STAGE/$$layout/doc/third-party/"; \
 	done; \
 	cp "$(LINUX_BIN)"   "$$STAGE/osp-$$VER-linux/"; \
 	cp "$(WINDOWS_BIN)" "$$STAGE/osp-$$VER-windows/"; \
