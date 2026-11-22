@@ -1,0 +1,710 @@
+#!/home/ubuntu/.venvs/qstats/bin/python3
+"""qstats - personal usage stats for Qwen Code CLI logs in ~/.qwen.
+
+Sources:
+  ~/.qwen/usage/token-usage-YYYY-MM.jsonl  one record per API request (model, tokens, latency)
+  ~/.qwen/usage_record.jsonl               one record per session segment (project, tools, line deltas)
+
+The token log has no project field, so project attribution comes from joining
+sessionId -> usage_record.
+
+Model names are folded onto one row each by ~/.qwen/model_groups.json (explicit
+rules) and then by stripping paths, .gguf and quant suffixes. Run
+`qstats --by unmapped` to see names still on the fallback and `qstats --by suggest`
+for likely merges. No pricing exists in these logs, so this reports tokens,
+latency and throughput rather than cost.
+"""
+
+import argparse
+import collections
+import datetime as dt
+import fnmatch
+import glob
+import json
+import os
+import re
+import sys
+
+try:
+    from tabulate import tabulate
+except ModuleNotFoundError:
+    sys.exit("qstats needs tabulate. Run it with the venv interpreter "
+             "(~/.venvs/qstats/bin/python3), or make one: "
+             "python3 -m venv ~/.venvs/qstats && ~/.venvs/qstats/bin/pip install tabulate")
+
+QWEN_DIR = os.path.expanduser(os.environ.get("QWEN_DIR", "~/.qwen"))
+GROUPS_FILE = "model_groups.json"
+
+# ----------------------------------------------------------------------------
+# model name canonicalisation
+# ----------------------------------------------------------------------------
+
+# Trailing quant/build decorations that llama.cpp-style model ids accumulate.
+# Deliberately excludes it/instruct/chat: "llama3-8b-it" and "llama3-8b" are
+# different models, so stripping those would fabricate a merge.
+VARIANT_WORDS = r"(?:ud|expert|generic|mainline)"
+# A quant always carries an underscore group (Q4_K_M, Q8_0, IQ3_XXS) or an iq
+# prefix; that keeps "k2"/"k1"/bare "q4" intact instead of eating a model name.
+QUANT_TOKEN = r"(?:iq[0-9]+(?:_[a-z0-9]+)*|q[0-9]+(?:_[a-z0-9]+)+)"
+QUANT_RE = re.compile(
+    rf"""(?i)
+    (?:
+        [._\-\s]+ {VARIANT_WORDS} [._\-\s]+ {QUANT_TOKEN}
+      | [._\-\s]+ {VARIANT_WORDS}
+      | [._\-\s]+ {QUANT_TOKEN}
+    ) $""",
+    re.VERBOSE,
+)
+VERSION_RE = re.compile(r"[0-9]+(?:\.[0-9]+)+")
+PATHISH_RE = re.compile(r"\.(gguf|safetensors|bin|ggml)$", re.I)
+
+
+def normalize_model(name):
+    """'stuff/software/models/Qwen3.8-27B-Q4_K_M.gguf' -> 'Qwen3.8-27B'"""
+    orig = name.strip()
+    n = orig
+    if PATHISH_RE.search(n) or "/" in n or "\\" in n:
+        n = os.path.basename(n)
+    n = PATHISH_RE.sub("", n)
+    prev = None
+    while prev != n:
+        prev = n
+        n = QUANT_RE.sub("", n).rstrip("._- ")
+    # If stripping gutted the identifier ("A-Q4_0" -> "A"), the match was part of
+    # the name rather than a decoration, so keep the original.
+    if len(n) < 3 or not re.search(r"[a-z]{2}", n, re.I):
+        return orig
+    return n
+
+
+def suggest_key(name):
+    """Coarser signature (no version numbers, no quants) used only for --by suggest."""
+    base = normalize_model(name).lower()
+    base = VERSION_RE.sub(" ", base)
+    return " ".join(sorted({t for t in re.split(r"[^a-z0-9]+", base) if len(t) > 1}))
+
+
+class Folder:
+    """Maps raw model names onto canonical families via an editable alias file."""
+
+    def __init__(self, path, enabled=True):
+        self.raw = not enabled
+        self.path = path
+        self.explicit = {}
+        self.loaded = False
+        if not self.raw and os.path.exists(path):
+            try:
+                with open(path) as fh:
+                    cfg = json.load(fh)
+            except (json.JSONDecodeError, OSError) as exc:
+                print(f"warning: ignoring {path}: {exc}", file=sys.stderr)
+                cfg = {}
+            groups = cfg.get("groups") or {}
+            if not isinstance(groups, dict):
+                print(f"warning: {path}: \"groups\" must map display name -> list of raw names, ignored",
+                      file=sys.stderr)
+                groups = {}
+            claimed = {}
+            for canon, patterns in groups.items():
+                if isinstance(patterns, str):
+                    patterns = [patterns]
+                if not isinstance(patterns, list):
+                    print(f"warning: {path}: rule for {canon!r} is not a name or list, skipped",
+                          file=sys.stderr)
+                    continue
+                for pat in patterns:
+                    low = str(pat).strip().lower()
+                    if low in claimed and claimed[low] != canon:
+                        print(f"warning: {path}: {pat!r} is mapped to both {claimed[low]!r} and "
+                              f"{canon!r}; using {canon!r}", file=sys.stderr)
+                    claimed[low] = canon
+                    self.explicit[low] = canon
+            self.loaded = True
+
+    def _match(self, low):
+        if low in self.explicit:
+            return self.explicit[low]
+        for pat, canon in self.explicit.items():
+            if ("*" in pat or "?" in pat) and fnmatch.fnmatch(low, pat):
+                return canon
+        return None
+
+    def canonical(self, name):
+        if self.raw:
+            return name
+        hit = self._match(name.strip().lower())
+        if hit:
+            return hit
+        norm = normalize_model(name)
+        return self._match(norm.lower()) or norm
+
+    def is_explicit(self, name):
+        return (self._match(name.strip().lower()) is not None
+                or self._match(normalize_model(name).lower()) is not None)
+
+
+# ----------------------------------------------------------------------------
+# loading
+# ----------------------------------------------------------------------------
+
+def parse_ts(value):
+    if isinstance(value, str):
+        d = dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
+    else:
+        d = dt.datetime.fromtimestamp(value / 1000, dt.timezone.utc)
+    return d.astimezone()
+
+
+class Session:
+    __slots__ = ("project", "duration_ms", "lines_add", "lines_del", "tools",
+                 "segments", "in_window", "snap_ts")
+
+    def __init__(self):
+        self.project = "(unknown)"
+        self.duration_ms = 0
+        self.lines_add = 0
+        self.lines_del = 0
+        self.tools = {}
+        self.segments = 0
+        self.in_window = False
+        self.snap_ts = None
+
+    def take_snapshot(self, when, files, tool_map):
+        """Each resumed segment re-emits the whole session total, so the newest
+        snapshot IS the session total; summing segments double counts."""
+        if self.snap_ts is None or when >= self.snap_ts:
+            self.snap_ts = when
+            self.lines_add = files.get("linesAdded") or 0
+            self.lines_del = files.get("linesRemoved") or 0
+            self.tools = {name: [st.get("count") or 0, st.get("fail") or 0,
+                                 st.get("totalDurationMs") or 0]
+                          for name, st in tool_map.items()}
+        else:
+            # Out-of-order segment: only lift fields that actually increased.
+            self.lines_add = max(self.lines_add, files.get("linesAdded") or 0)
+            self.lines_del = max(self.lines_del, files.get("linesRemoved") or 0)
+            for name, st in tool_map.items():
+                slot = self.tools.setdefault(name, [0, 0, 0])
+                slot[0] = max(slot[0], st.get("count") or 0)
+                slot[1] = max(slot[1], st.get("fail") or 0)
+                slot[2] = max(slot[2], st.get("totalDurationMs") or 0)
+
+
+def load_sessions(path, since, until):
+    """One entry per sessionId. Every segment contributes its project (so requests
+    in the window still join to a project even when the session started earlier),
+    but stats only come from in-window segments."""
+    sessions = {}
+    bad = 0
+    if not os.path.exists(path):
+        return sessions, bad
+    with open(path) as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError:
+                bad += 1
+                continue
+            if not isinstance(rec, dict) or not rec.get("sessionId"):
+                bad += 1
+                continue
+            try:
+                when = parse_ts(rec.get("startTime") or rec.get("timestamp"))
+            except (TypeError, ValueError):
+                bad += 1
+                continue
+            s = sessions.setdefault(rec["sessionId"], Session())
+            if rec.get("project"):
+                s.project = rec["project"]
+            if (since and when.date() < since) or (until and when.date() > until):
+                continue
+            s.segments += 1
+            s.in_window = True
+            # durationMs is the only per-segment field; everything else is cumulative.
+            s.duration_ms += rec.get("durationMs") or 0
+            s.take_snapshot(when, rec.get("files") or {},
+                            (rec.get("tools") or {}).get("byName") or {})
+    return sessions, bad
+
+
+def load_requests(dir_glob, since, until, folder):
+    reqs = []
+    seen_ids = set()
+    dupes = bad = 0
+    for path in sorted(glob.glob(dir_glob)):
+        with open(path) as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError:
+                    bad += 1
+                    continue
+                if not isinstance(rec, dict) or "timestamp" not in rec:
+                    bad += 1
+                    continue
+                rid = rec.get("id")
+                if rid is not None:
+                    if rid in seen_ids:
+                        dupes += 1
+                        continue
+                    seen_ids.add(rid)
+                try:
+                    when = parse_ts(rec["timestamp"])
+                except (TypeError, ValueError):
+                    bad += 1
+                    continue
+                if since and when.date() < since:
+                    continue
+                if until and when.date() > until:
+                    continue
+                raw = rec.get("model") or "?"
+                reqs.append({
+                    "when": when,
+                    "session": rec.get("sessionId"),
+                    "source": rec.get("source") or "?",
+                    "raw_model": raw,
+                    "model": folder.canonical(raw),
+                    "in": rec.get("inputTokens") or 0,
+                    "out": rec.get("outputTokens") or 0,
+                    "cached": rec.get("cachedTokens") or 0,
+                    "think": rec.get("thoughtsTokens") or 0,
+                    "total": rec.get("totalTokens") or 0,
+                    "ms": rec.get("apiDurationMs") or 0,
+                })
+    return reqs, dupes, bad
+
+
+# ----------------------------------------------------------------------------
+# formatting
+# ----------------------------------------------------------------------------
+
+def num(v):
+    if v is None:
+        return "-"
+    a = abs(v)
+    if a >= 1e9:
+        return f"{v / 1e9:.2f}G"
+    if a >= 1e6:
+        return f"{v / 1e6:.2f}M"
+    if a >= 1e4:
+        return f"{v / 1e3:.0f}k"
+    return f"{v:,.0f}"
+
+
+def hours(ms):
+    if ms >= 3.6e8:
+        return f"{ms / 3.6e6:.0f}h"
+    if ms >= 3.6e6:
+        return f"{ms / 3.6e6:.1f}h"
+    if ms >= 6e4:
+        return f"{ms / 6e4:.1f}m"
+    return f"{ms / 1e3:.1f}s"
+
+
+def pct(part, whole):
+    return "-" if not whole else f"{100.0 * part / whole:.1f}%"
+
+
+def short_path(p, width=46):
+    home = os.path.expanduser("~")
+    if p.startswith(home + "/"):
+        p = "~/" + p[len(home) + 1:]
+    return p if len(p) <= width else "..." + p[-(width - 3):]
+
+
+def table(rows, headers):
+    return tabulate(rows, headers=headers, tablefmt="rounded_outline",
+                    disable_numparse=True, stralign="right")
+
+
+def percentile(values, q):
+    if not values:
+        return None
+    values = sorted(values)
+    pos = (len(values) - 1) * q
+    lo = int(pos)
+    hi = min(lo + 1, len(values) - 1)
+    return values[lo] + (values[hi] - values[lo]) * (pos - lo)
+
+
+def ms_str(values, q):
+    v = percentile(values, q)
+    return "-" if v is None else f"{v:.0f}"
+
+
+# ----------------------------------------------------------------------------
+# sections
+# ----------------------------------------------------------------------------
+
+def sec_overview(reqs, sessions, dupes, bad):
+    if not reqs and not sessions:
+        print("no records in range")
+        return
+    dates = {r["when"].date() for r in reqs}
+    tin = sum(r["in"] for r in reqs)
+    tout = sum(r["out"] for r in reqs)
+    api_ms = sum(r["ms"] for r in reqs)
+    main = sum(1 for r in reqs if r["source"] == "main")
+    rows = [
+        ["span", (f"{min(dates)} .. {max(dates)} ({len(dates)} active days)" if dates else "-")],
+        ["sessions", f"{len({r['session'] for r in reqs}):,}"],
+        ["api requests", f"{len(reqs):,}"],
+        ["requests / active day", f"{len(reqs) / max(1, len(dates)):,.0f}"],
+        ["tokens total", num(sum(r["total"] for r in reqs))],
+        # totalTokens == input+output, so thinking is a subset of completion.
+        ["prompt / completion", f"{num(tin)} / {num(tout)} (thinking {num(sum(r['think'] for r in reqs))})"],
+        ["cache hit rate", pct(sum(r["cached"] for r in reqs), tin)],
+        ["api time", f"{hours(api_ms)}  (p50 {ms_str([r['ms'] for r in reqs], .5)}ms / "
+                     f"p95 {ms_str([r['ms'] for r in reqs], .95)}ms)"],
+        ["session wall time", hours(sum(s.duration_ms for s in sessions.values()))],
+        ["main / subagent", f"{main:,} / {len(reqs) - main:,} "
+                            f"({pct(len(reqs) - main, len(reqs))} from subagents)"],
+        ["lines + / -", f"{sum(s.lines_add for s in sessions.values()):,} / "
+                        f"{sum(s.lines_del for s in sessions.values()):,}"],
+    ]
+    if dupes:
+        rows.append(["skipped duplicate ids", f"{dupes:,}"])
+    if bad:
+        rows.append(["skipped unparsable lines", f"{bad:,}"])
+    print(table(rows, ["", "total"]))
+
+
+def sec_models(reqs, folder, limit, show_members):
+    agg = collections.defaultdict(lambda: {"req": 0, "in": 0, "out": 0, "think": 0,
+                                           "cached": 0, "total": 0, "ms": [],
+                                           "first": None, "last": None,
+                                           "raw": collections.Counter()})
+    for r in reqs:
+        a = agg[r["model"]]
+        a["req"] += 1
+        for k in ("in", "out", "think", "cached", "total"):
+            a[k] += r[k]
+        a["ms"].append(r["ms"])
+        a["raw"][r["raw_model"]] += 1
+        if a["first"] is None or r["when"] < a["first"]:
+            a["first"] = r["when"]
+        if a["last"] is None or r["when"] > a["last"]:
+            a["last"] = r["when"]
+
+    ranked = sorted(agg.items(), key=lambda kv: -kv[1]["total"])
+    rows = []
+    for name, a in ranked[:limit]:
+        ms = a["ms"]
+        rows.append([
+            name, a["req"], num(a["in"]), num(a["out"]), num(a["think"]),
+            pct(a["cached"], a["in"]), num(a["total"]),
+            ms_str(ms, .5), ms_str(ms, .95),
+            num(a["out"] / (sum(ms) / 1000.0)) if sum(ms) else "-",
+            f"{a['first'].date()}..{a['last'].date()}",
+        ])
+    print(table(rows, ["model", "reqs", "prompt", "compl", "think", "cache%",
+                       "total tok", "p50ms", "p95ms", "out tok/s", "seen"]))
+
+    if show_members and not folder.raw:
+        multi = [(n, a["raw"]) for n, a in ranked if len(a["raw"]) > 1]
+        if multi:
+            print("\nrolled up from:")
+            for name, raw in multi:
+                print(f"  {name}")
+                for m, c in raw.most_common():
+                    flag = "" if folder.is_explicit(m) else "   (auto)"
+                    print(f"      {c:>7,}  {m}{flag}")
+
+
+def sec_timeline(reqs, unit):
+    def key(d):
+        if unit == "day":
+            return d.isoformat()
+        if unit == "week":
+            iso = d.isocalendar()
+            return f"{iso[0]}-W{iso[1]:02d}"
+        return d.strftime("%Y-%m")
+
+    buckets = collections.defaultdict(lambda: {"req": 0, "tok": 0, "ms": 0, "sess": set()})
+    for r in reqs:
+        b = buckets[key(r["when"].date())]
+        b["req"] += 1
+        b["tok"] += r["total"]
+        b["ms"] += r["ms"]
+        b["sess"].add(r["session"])
+    mx = max((b["tok"] for b in buckets.values()), default=1)
+    rows = []
+    for k in sorted(buckets):
+        b = buckets[k]
+        rows.append([k, len(b["sess"]), b["req"], num(b["tok"]), hours(b["ms"]),
+                     "#" * max(1, int(34 * b["tok"] / mx))])
+    print(table(rows, [unit, "sess", "reqs", "tokens", "api time", "tokens"]))
+
+
+def sec_heatmap(reqs):
+    grid = collections.Counter((r["when"].weekday(), r["when"].hour) for r in reqs)
+    if not grid:
+        return
+    scale = " .:-=+*#%@"
+    mx = max(grid.values())
+    days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    header = [""] + [str(h) for h in range(24)]
+    rows = []
+    for wd in range(7):
+        cells = []
+        for h in range(24):
+            v = grid.get((wd, h), 0)
+            if not v:
+                cells.append("-")
+            else:
+                lvl = max(1, min(len(scale) - 1, int((v / mx) * (len(scale) - 1) + 0.999)))
+                cells.append(scale[lvl] * 3)
+        rows.append([days[wd]] + cells)
+    print(table(rows, header))
+    print(f"requests per local weekday x hour; '-' = none, '{scale[-1]}' = peak ({mx}), "
+          f"'{scale[1]}' = anything below the first of 10 count bands")
+
+
+def sec_projects(reqs, sessions, limit):
+    agg = collections.defaultdict(lambda: {"sess": set(), "req": 0, "tok": 0, "add": 0,
+                                           "del": 0, "dur": 0, "tools": 0})
+    # Session-scoped figures only come from segments inside the window...
+    for sid, s in sessions.items():
+        if not s.in_window:
+            continue
+        a = agg[s.project]
+        a["sess"].add(sid)
+        a["add"] += s.lines_add
+        a["del"] += s.lines_del
+        a["dur"] += s.duration_ms
+        a["tools"] += sum(t[0] for t in s.tools.values())
+    # ...but the project join uses every segment ever recorded for the session, so a
+    # session that started before the window still attributes to its real project.
+    for r in reqs:
+        sid = r["session"]
+        s = sessions.get(sid)
+        a = agg[s.project if s is not None else "(no usage_record)"]
+        a["req"] += 1
+        a["tok"] += r["total"]
+        a["sess"].add(sid)
+    rows = []
+    for name, a in sorted(agg.items(), key=lambda kv: -kv[1]["tok"])[:limit]:
+        rows.append([short_path(name), len(a["sess"]), a["req"], num(a["tok"]),
+                     hours(a["dur"]), f"+{a['add']:,}/-{a['del']:,}", a["tools"]])
+    print(table(rows, ["project", "sess", "reqs", "tokens", "wall time", "lines", "tools"]))
+
+
+def sec_tools(sessions, limit):
+    calls = collections.defaultdict(lambda: [0, 0, 0])
+    for s in sessions.values():
+        for name, (n, fail, ms) in s.tools.items():
+            c = calls[name]
+            c[0] += n
+            c[1] += fail
+            c[2] += ms
+    total = sum(c[0] for c in calls.values())
+    rows = [[name, c[0], pct(c[0], total), c[1], pct(c[1], c[0]), hours(c[2]),
+             hours(c[2] / c[0]) if c[0] else "-"]
+            for name, c in sorted(calls.items(), key=lambda kv: -kv[1][0])[:limit]]
+    print(table(rows, ["tool", "calls", "share", "fails", "fail%", "time", "avg"]) if rows
+          else "no tool records in range")
+
+
+
+def sec_sources(reqs):
+    src = collections.defaultdict(lambda: {"req": 0, "tok": 0})
+    for r in reqs:
+        src[r["source"]]["req"] += 1
+        src[r["source"]]["tok"] += r["total"]
+    rows = [[k, v["req"], pct(v["req"], len(reqs)), num(v["tok"])]
+            for k, v in sorted(src.items(), key=lambda kv: -kv[1]["req"])]
+    print(table(rows, ["source", "reqs", "share", "tokens"]))
+
+
+def sec_unmapped(reqs, folder):
+    if folder.raw:
+        print("grouping is disabled (--raw), so nothing is mapped; drop --raw to see this")
+        return
+    raw = collections.Counter(r["raw_model"] for r in reqs if not folder.is_explicit(r["raw_model"]))
+    if not raw:
+        print(f"every raw model name has an explicit rule in {folder.path}")
+        return
+    print(f"raw names relying on auto-normalisation (edit {folder.path} to merge these):")
+    print(table([[m, c, folder.canonical(m)] for m, c in raw.most_common()],
+                 ["raw name", "reqs", "-> group"]))
+
+
+def versions_of(name):
+    return set(VERSION_RE.findall(name.lower()))
+
+
+def sec_suggest(reqs, folder):
+    """Cluster raw names whose version/quant-stripped token sets overlap, so the
+    alias file is easy to fill in. Suggestion only: never applied automatically."""
+    by_key = collections.defaultdict(collections.Counter)
+    for r in reqs:
+        if folder.is_explicit(r["raw_model"]):
+            continue  # already merged on purpose
+        by_key[suggest_key(r["raw_model"]) or "(none)"][r["raw_model"]] += 1
+    keys = [k for k in sorted(by_key) if k != "(none)"]
+
+    pairs = []
+    for i, a in enumerate(keys):
+        for b in keys[i + 1:]:
+            sa, sb = set(a.split()), set(b.split())
+            shared = sa & sb
+            # A single shared word ("coder") is not evidence of a rename.
+            if len(shared) < 2:
+                continue
+            va = {v for n, _ in by_key[a].items() if versions_of(n)}
+            vb = {v for n, _ in by_key[b].items() if versions_of(n)}
+            if va and vb and va != vb:
+                continue  # 3.8 vs 4.0 is a different model, not a rename
+            pairs.append((a, b, shared))
+    if not pairs:
+        print("  (no unmapped names overlap once versions and quants are ignored)")
+        return
+    for a, b, shared in pairs:
+        names = list(by_key[a].items()) + list(by_key[b].items())
+        total = sum(c for _, c in names)
+        vers = set()
+        for n, _ in names:
+            vers |= versions_of(n)
+        print(f"  {total:>7,} reqs  share tokens: {', '.join(sorted(shared))}"
+              f"{'  versions: ' + ', '.join(sorted(vers)) if vers else ''}")
+        for name, count in sorted(names, key=lambda kv: -kv[1]):
+            print(f"              {count:>7,}  {name}")
+        # Distinct version numbers mean distinct models (3.8 vs 4.0), not a rename.
+        distinct = {v for n, _ in names for v in versions_of(n)}
+        per_name_versions = [versions_of(n) for n, _ in names if versions_of(n)]
+        if len(distinct) > 1 and any(v != per_name_versions[0] for v in per_name_versions):
+            print("      -> different version numbers, so probably genuinely distinct models")
+            continue
+        label = max(((normalize_model(n), c) for n, c in names), key=lambda kv: kv[1])[0]
+        print(f"      paste into {GROUPS_FILE} if correct:")
+        print(json.dumps({label: [n for n, _ in names]}, indent=2))
+
+
+# ----------------------------------------------------------------------------
+
+def parse_date(s):
+    try:
+        return dt.date.fromisoformat(s)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"expected YYYY-MM-DD, got {s!r}")
+
+
+def positive_int(s):
+    try:
+        v = int(s)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"expected an integer, got {s!r}")
+    if v < 1:
+        raise argparse.ArgumentTypeError("expected a row count of 1 or more")
+    return v
+
+
+def main():
+    ap = argparse.ArgumentParser(prog="qstats", description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--by", choices=["overview", "model", "day", "week", "month", "project",
+                                     "tools", "sources", "heatmap", "unmapped", "suggest"],
+                                     help="print only this section (default: overview, model, "
+                                          "week, heatmap, project, tools, sources)")
+    ap.add_argument("--since", type=parse_date, help="inclusive YYYY-MM-DD")
+    ap.add_argument("--until", type=parse_date, help="inclusive YYYY-MM-DD")
+    ap.add_argument("--project", help="substring filter on project path")
+    ap.add_argument("--model", help="substring filter on raw or canonical model name")
+    ap.add_argument("--source", choices=["main", "subagent", "all"], default="all")
+    ap.add_argument("--limit", type=positive_int, default=15,
+                    help="rows for the model/project/tools tables (default 15); timeline, "
+                         "sources, heatmap and mapping sections always print in full")
+    ap.add_argument("--raw", action="store_true", help="disable all model grouping")
+    ap.add_argument("--no-members", action="store_true", help="hide the rolled-up alias legend")
+    ap.add_argument("--groups", default=None, help="alias file (default <qwen-dir>/model_groups.json)")
+    ap.add_argument("--qwen-dir", default=QWEN_DIR)
+    args = ap.parse_args()
+
+    qwen = os.path.expanduser(args.qwen_dir)
+    if not os.path.isdir(qwen):
+        ap.error(f"no such qwen directory: {qwen}")
+    groups = args.groups or os.path.join(qwen, GROUPS_FILE)
+    if args.groups and not os.path.exists(groups):
+        print(f"warning: alias file {groups} does not exist; falling back to auto-normalisation",
+              file=sys.stderr)
+    folder = Folder(groups, enabled=not args.raw)
+
+    sessions, bad_sessions = load_sessions(os.path.join(qwen, "usage_record.jsonl"),
+                                           args.since, args.until)
+    reqs, dupes, bad_reqs = load_requests(os.path.join(qwen, "usage", "*.jsonl"),
+                                          args.since, args.until, folder)
+    bad = bad_sessions + bad_reqs
+
+    # Every filter is applied to the request stream; the session-scoped sections then
+    # follow the surviving sessions so no two tables can disagree.
+    scoped = bool(args.project or args.source != "all" or args.model)
+    if args.source != "all":
+        want = args.source == "main"
+        reqs = [r for r in reqs if (r["source"] == "main") == want]
+    if args.model:
+        needle = args.model.lower()
+        reqs = [r for r in reqs if needle in r["model"].lower() or needle in r["raw_model"].lower()]
+    if args.project:
+        needle = args.project.lower()
+        reqs = [r for r in reqs
+                if needle in (sessions[r["session"]].project if r["session"] in sessions else "").lower()]
+    if scoped:
+        owning = {r["session"] for r in reqs}
+        sessions = {sid: s for sid, s in sessions.items() if sid in owning}
+
+    print(f"# qstats  {args.since or '(start)'} .. {args.until or '(latest)'}\n")
+    if args.since or args.until or scoped:
+        print("note: session wall time, lines and tool counts are per-session totals for the\n"
+              "sessions in view (usage_record has no per-model or per-source split), while\n"
+              "requests and tokens are counted per request.\n")
+
+    all_sections = ["overview", "model", "week", "heatmap", "project", "tools", "sources"]
+    wanted = [args.by] if args.by else all_sections
+
+    if "overview" in wanted:
+        print("## overview\n")
+        sec_overview(reqs, sessions, dupes, bad)
+        print()
+    if "model" in wanted:
+        print("## models\n")
+        sec_models(reqs, folder, args.limit, not args.no_members)
+        print()
+    for unit in ("day", "week", "month"):
+        if unit in wanted:
+            print(f"## by {unit}\n")
+            sec_timeline(reqs, unit)
+            print()
+    if "heatmap" in wanted:
+        print("## activity heatmap\n")
+        sec_heatmap(reqs)
+        print()
+    if "project" in wanted:
+        print("## projects\n")
+        sec_projects(reqs, sessions, args.limit)
+        print()
+    if "tools" in wanted:
+        print("## tools\n")
+        sec_tools(sessions, args.limit)
+        print()
+    if "sources" in wanted:
+        print("## request sources\n")
+        sec_sources(reqs)
+        print()
+    if "unmapped" in wanted:
+        print("## model name mapping\n")
+        sec_unmapped(reqs, folder)
+        print()
+    if "suggest" in wanted:
+        print("## suggested merges\n")
+        sec_suggest(reqs, folder)
+        print()
+
+
+if __name__ == "__main__":
+    main()
