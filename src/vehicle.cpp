@@ -1594,6 +1594,7 @@ void Vehicle::rebuildCompound() {
         aeroSilPartVis.clear();
         aeroSilPartCdA.clear();
         aeroSilPartProj.clear();
+        aeroSilPartCp.clear();
         aeroSilPartPtr.clear();
         aeroSilNode.clear();
         aeroSilNodeAtt.clear();
@@ -4284,7 +4285,8 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
         if(lastDragAlphaValid) {
             assert(aeroSilPartPtr.size() == aeroSilPartVis.size()
                    && aeroSilPartVis.size() == aeroSilPartCdA.size()
-                   && aeroSilPartCdA.size() == aeroSilPartProj.size());
+                   && aeroSilPartCdA.size() == aeroSilPartProj.size()
+                   && aeroSilPartProj.size() == aeroSilPartCp.size());
             const double qv = lfCp.q * std::sqrt(lfCp.vp2);
             double sideArmCdA = 0.0;
             double bodyArmCdA = 0.0;
@@ -4373,7 +4375,11 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
                        weighted sum of the parts' copies IS that cpNum. The flow
                        sample moves with the force (#486's doctrine: force, lever
                        and flow answer one point; sampling at the bolt and pushing
-                       at the centroid is the same class of error #486 fixed). What
+                       at the centroid is the same class of error #486 fixed) --
+                       and so does the vp2 gate: a spinning hull whose sweep
+                       cancels the COM flow AT the bolt can now lift (or stop
+                       lifting) where #1097 said the opposite. That is the
+                       one-point consequence, not a regression. What
                        the projection cannot recover is the ALONG-FLOW component --
                        the centroid lives in the flow plane on the mount's station
                        (#512's caveat: ~0.1% of the sweep term for shipped hulls,
@@ -4385,7 +4391,12 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
                        body parts never join the SURFACE lift systems. */
                     const double vis = aeroSilPartVis[i];
                     const glm::dvec3 axisW = sRot * p->localRot[2];
-                    // vis > 1e-9 m2 by wantsLift, so the division has a floor.
+                    /* wantsLift floors vis at 1e-9 m2, but it is the BLEND that
+                       bounds the quotient, not the floor: the numerator is a
+                       different column than the denominator, and only the
+                       weights' non-negativity and unit sum keep
+                       |sum w x vis x cp| <= max|cp| x vis. An auditor changing
+                       the kernel needs that property, not the floor. */
                     const glm::dvec3 rCp =
                         (sPos + sRot * (aeroSilPartCp[i] / vis)) - com;
                     const LocalFlow lfL = localFlow(vrel, w, rCp, rho);
@@ -4416,9 +4427,11 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
                            joins the stability pair -- the SAME vector law
                            finite-differenced over a tilted flow that made the
                            force above (drag.h::bodyLiftSlopePerQ, #454's
-                           "ask the law" doctrine), with visible frozen: the
-                           occlusion term is second order and the partitioned
-                           chart surface is jump-laden. Accumulated beside the
+                           "ask the law" doctrine), over the FROZEN geometry
+                           that function documents: visible AND the cp lever
+                           both stay at this flow, because their alpha
+                           derivatives are first order and out of the memo's
+                           honest reach (#1090) -- both filed. Accumulated beside the
                            zero-force test, like the surfaces do: a hull at a=0
                            makes no force and has all the slope in the world. */
                         hullSlope.add(bodyLiftSlopePerQ(p->def->body_lift, vis,
@@ -5024,9 +5037,12 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
        the Form section -- the same vector law, finite-differenced, visible
        frozen). LiftSlopeSum::add is the merge; dlabs keeps a hull that leans
        forward of its surfaces from cancelling a tail's slope into looking neutral
-       (the dash rule, not the number). A hull contribution only exists where the
-       Form section ran, so on a chart MISS or an invalid alpha these terms are
-       simply absent -- the pair is then the surfaces' alone, honestly. */
+       (the dash rule, not the number). The hull terms ride whatever the Form
+       section computed, chart HIT or MISS -- the miss path fills the same cp
+       columns, and the hull-only bench reads the pair on a first flight
+       because of it. They are absent only when the silhouette pass did not run
+       at all (invalid alpha, no air); the pair is then the surfaces' alone,
+       honestly. */
     npSum.add(hullSlope);
     /* #454: reported before the zero-force return below, because a ship flying at
        alpha 0 has no lift right now and still has a slope and a margin -- that is the
@@ -6327,6 +6343,7 @@ void Vehicle::absorbShip(Vehicle *B, Part *portA) {
     B->aeroSilPartVis.clear();
     B->aeroSilPartCdA.clear();
     B->aeroSilPartProj.clear();
+    B->aeroSilPartCp.clear();
     B->aeroSilPartPtr.clear();
     B->aeroSilNode.clear();
     B->aeroSil.clear();

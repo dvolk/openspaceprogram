@@ -1368,10 +1368,13 @@ struct SilhouetteMemo {
        makes per-part numbers exist on a HIT, not just on the exact pass: the force
        law still never reads them, but the part window's Form row does, and a
        heating or stress law is meant to. Cost is bounded and lazy: one double per
-       body part per FILLED node (~24 B x parts now, three columns; since #1106 the
-       cp products make it five, 40 B), plus a shell
-       of empty slots that appears with the first fill (961 x 72 B of vector
-       headers, plus one allocation per column per filled node). Slot order is projectSilhouette's
+       body part per FILLED node (three scalar columns, ~24 B x parts; #1106's cp
+       products add three more, 48 B), plus a shell
+       of empty slots that appears with the first fill (961 x 144 B of vector
+       headers, plus one allocation per column per filled node -- six now, and a
+       hull with no opted-in part still pays three of them for columns nothing
+       reads; skipping them behind an aeroHasBodyLift flag is the filed
+       follow-up). Slot order is projectSilhouette's
        parts order; a generation is born with one part set and one order (the
        fingerprint is order-sensitive, vehicle.cpp aeroGeomFingerprint), so every
        node of a generation agrees on what slot t means. */
@@ -1566,10 +1569,12 @@ struct SilhouetteMemo {
             }
             if(cp != nullptr) {
                 const size_t n3 = partCp[0][k00].size();
-                assert(n3 == partCp[0][k00 + 1].size()
-                       && n3 == partCp[0][k00 + kSteps].size()
-                       && n3 == partCp[0][k00 + kSteps + 1].size()
-                       && "cp product columns must agree across a generation's cell");
+                for(int c = 0; c < 3; c++) {
+                    assert(n3 == partCp[c][k00 + 1].size()
+                           && n3 == partCp[c][k00 + kSteps].size()
+                           && n3 == partCp[c][k00 + kSteps + 1].size()
+                           && "cp product columns must agree across a generation's cell");
+                }
                 cp->resize(n3);
                 for(size_t t = 0; t < n3; t++) {
                     (*cp)[t] = glm::dvec3(bl2(partCp[0], t), bl2(partCp[1], t),
@@ -1988,7 +1993,11 @@ inline double bodyLiftCdA(double cl, double cosA, double visible) {
    hull parts) finite-differences THIS against a tilted flow, so the slope can never
    drift from the force. `bcda` and `sinA` come out beside it because the log's
    BodyCdA= column bills bcda x sinA and re-deriving either would be a second
-   spelling. */
+   spelling. Production spelled the force inline as `ahat x (q x bcda)` before
+   #1106; this groups the products differently, so a shipped hull's body-lift
+   force equals the pre-#1106 one to PRINT precision, not bit for bit (only
+   liftbody_4m ships a nonzero one, and its log pins are inequalities and 2-dp
+   zeros). */
 struct BodyLiftF {
     glm::dvec3 fperq = glm::dvec3(0.0);  // force per unit q, along â
     double bcda = 0.0;                   // drag_cd x bodyLiftCdA (the sin NOT in it)
@@ -2007,19 +2016,32 @@ inline BodyLiftF bodyLiftForce(double cl, double visible, double drag_cd,
 
 /* #1106: d(body-lift force)/d(hull alpha), per unit q -- the stability fold for a
    hull part that opted in (#454's "ask the law, don't derive it" doctrine, the same
-   finite-difference shape as liftSlopePerQ below for surfaces). Rotating the FLOW
+   finite-difference shape as liftSlopePerQ for surfaces). Rotating the FLOW
    by +/- eps/2 about the ship's lateral axis is the same alpha change a hull pitches
-   through; the part's axis and its visible area stay put. `visible` is deliberately
-   FROZEN: the occlusion derivative d(visible)/d(alpha) is second order over a
-   half-eps window and the per-part silhouette surface is jump-laden at chart cell
-   walls (memo docs: no smooth interpolation follows a shadow jump), so it is not a
-   derivative the cache can honestly answer. drag_cd rides through because it is part
-   of the hull's own force law -- --drag-cd changes the physics, so CLa following it
-   is honest, not the unit clash it looks like beside the surfaces' cd-free CLa.
+   through; the part's axis stays put. TWO first-order terms are deliberately
+   FROZEN, and neither is small in general:
+   - d(visible)/d(alpha): F rides visible x sin a cos a, so wherever the kernel's
+     own slope is nonzero this is a first-order missing term, not a rounding one
+     (modelled in the follow-up issue: tens of percent for a part whose visible
+     changes with alpha). Answering it means a full projection pass per part at
+     BOTH tilted flows per substep -- and re-blending the memo at a tilted alpha
+     would make the derivative depend on which chart cells happened to be
+     filled, which #1090 forbids. That reach, not size, is why it is frozen.
+   - d(cp)/d(alpha) x F: the LEVER freezes at alpha too (the caller holds the cp
+     from this flow). Exactly zero for mount-centred parts -- which is everything
+     shipped and benched so far -- and it grows with the material offset, so a
+     hull whose centroid sits metres off its bolt reads a slope that misses that
+     term. Filed beside #513's arm family.
+   The shipped fold is therefore the slope of the FROZEN geometry, not of the
+   full law; nothing in a readout should treat it as exact past that. drag_cd
+   rides through because it is part of the hull's own force law -- --drag-cd
+   changes the physics, so CLa following it is honest, not the unit clash it
+   looks like beside the surfaces' cd-free CLa.
    Returns the per-q force-slope VECTOR; the caller feeds it to LiftSlopeSum::add
    with the cp lever, which does the liftAxis/latAxis projections. eps is the same
-   1e-3 rad as the surfaces' liftSlopePerQ -- both are well above the law's float
-   noise and well below the sin/cos curvature scale. */
+   1e-3 rad as the surfaces' liftSlopePerQ: the truncation is eps^2-scale
+   (~3e-7 relative measured at 60 deg AoA), far below what these readouts
+   resolve. */
 inline glm::dvec3 bodyLiftSlopePerQ(double cl, double visible, double drag_cd,
                                     const glm::dvec3 &axisW, const glm::dvec3 &uhat,
                                     const glm::dvec3 &latAxis, double eps = 1e-3) {

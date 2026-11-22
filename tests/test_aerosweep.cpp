@@ -982,15 +982,18 @@ static void test_body_lift_stays_out_of_the_surface_systems() {
     /* #1106: CLa moves, by the law's OWN derivative. The frame's BodyCdA
        column is D cl vis sinA cosA (the force meter), so D cl vis reads back
        off it, and d(sin a cos^2 a)/da = cos a (cos^2 a - 2 sin^2 a) does the
-       rest. Same alpha, same frame, so the pod's partial occlusion by the wing
-       and any chart blend cancel between the two sides of this pin -- what is
-       left is the fold, not a fudge. (1e-6, not 1e-12: the production slope is
-       a central finite difference at eps 1e-3, error ~eps^2.) */
+       rest. Same alpha, same frame, same visible column the force just billed:
+       the wing carries lift_area so it is not in the silhouette set at all,
+       and both shots run on a fresh table (exact passes), so whatever the
+       pod's visible happens to be cancels between the two sides of this pin
+       -- what is left is the fold, not a fudge. (2e-6, not 1e-12: the
+       production slope is a central finite difference at eps 1e-3, whose
+       truncation measures ~3e-7 relative here and scales as eps^2.) */
     const double a10 = 10.0 * std::numbers::pi / 180.0;
     const double s10 = std::sin(a10), c10 = std::cos(a10);
     const double hullWant = b.v->lastBodyCdA / (s10 * c10)
         * c10 * (c10 * c10 - 2.0 * s10 * s10);
-    CHECK_NEAR(b.v->lastLiftSlope - cla0, hullWant, std::fabs(hullWant) * 1e-6,
+    CHECK_NEAR(b.v->lastLiftSlope - cla0, hullWant, std::fabs(hullWant) * 2e-6,
                "#1106: CLa gains exactly the hull's d(lift)/d(alpha) (drag.h "
                "bodyLiftSlopePerQ -- the finite-differenced bodyLiftForce)");
     CHECK_TRUE(b.v->lastStaticValid, "and the pair still answers, wings and hull together");
@@ -1020,9 +1023,10 @@ static void test_hull_only_build_answers_the_pair() {
     fly(b.v, 300.0, 0.0, 0.0);
     CHECK_NEAR(b.v->lastBodyCdA, 0.0, 1e-12, "alpha 0: sin a bills no force yet");
     CHECK_TRUE(b.v->lastStaticValid, "the pair still answers at alpha 0 -- it is a derivative");
-    CHECK_REL(b.v->lastLiftSlope, b.v->drag_cd * 0.6 * 0.64, 1e-6,
+    CHECK_REL(b.v->lastLiftSlope, b.v->drag_cd * 0.6 * 0.64, 2e-6,
               "CLa = drag_cd cl vis: the slope of sin a cos a at 0, on the "
-              "0.8 x 0.8 m nose-on silhouette (1e-6: the eps 1e-3 finite difference)");
+              "0.8 x 0.8 m nose-on silhouette (2e-6: the eps 1e-3 finite "
+              "difference truncates ~3e-7 here)");
     CHECK_NEAR(b.v->lastStaticMargin, 1.0, 1e-9,
                "SM = the -1.0 m moment arm, flipped: restoring, with no force aboard");
     /* Past 35.3 deg the sin cos law's own slope turns negative -- a hull
@@ -1036,7 +1040,7 @@ static void test_hull_only_build_answers_the_pair() {
     const double syn = c * (c * c - 2.0 * s * s);   // d(sin a cos^2 a)/dalpha
     const double szp = -s * (s * s - 2.0 * c * c);  // d(cos a sin^2 a)/dalpha
     const double dl = b.v->drag_cd * 0.6 * vis * syn;
-    CHECK_REL(b.v->lastLiftSlope, dl, 1e-6,
+    CHECK_REL(b.v->lastLiftSlope, dl, 2e-6,
               "CLa at -60 deg: the drooping slope of the same law, vis read off "
               "the frame's own visible column");
     // The one body-lift vector: arm, and the column that must agree with it.
@@ -1054,7 +1058,7 @@ static void test_hull_only_build_answers_the_pair() {
     CHECK_NEAR(b.v->lastBodyCpLever, fpos.z, 1e-12,
                "single lifting part: the BodyCp column IS this vector's arm");
     const double marginWant = (fpos.y * szp - fpos.z * syn) / syn;
-    CHECK_REL(b.v->lastStaticMargin, marginWant, 1e-6,
+    CHECK_REL(b.v->lastStaticMargin, marginWant, 2e-6,
               "SM carries the full slope VECTOR (the z-term tilts the lever too), "
               "about the same arm the force meter quotes");
     CHECK_TRUE(b.v->lastStaticMargin > 0.0, "and this fixture is still restoring");
@@ -1075,16 +1079,20 @@ static void test_hull_only_build_answers_the_pair() {
    part of the slide is unrecoverable from any silhouette -- that is
    #512's caveat, and pinning the exact sin^2 rather than the full 0.8 is what
    keeps the promise honest (a static mesh-box centre would "pass" here by
-   promising an arm the projection never saw). */
+   promising an arm the projection never saw). The last pins move the SLOPE
+   lever too: SM must shift by the lever ratio across the arm gap, or a fold
+   that adds its slope at the bolt while the force acts at the cp keeps half
+   the ticket undone with every arm pin green. */
 static void test_hull_lift_arm_is_the_projected_centroid() {
     printf("== #1106: the arm is the projected centroid, not the bolt ==\n");
-    auto shot = [](Bench &b, double *bodycp, glm::dvec3 *fpos) {
+    auto shot = [](Bench &b, double *bodycp, glm::dvec3 *fpos, double *margin) {
         b.v->recordForceVecs = true;
         fly(b.v, 300.0, -60.0, 0.0);  // fresh table: the exact pass, products and all
         b.v->lastForceVecs.clear();
         fly(b.v, 300.0, -60.0, 0.0);
         CHECK_TRUE((double)b.v->parts[1]->formVis > 0.9, "the fairing is exposed");
         *bodycp = b.v->lastBodyCpLever;
+        *margin = b.v->lastStaticMargin;
         int at = 0;
         for(const Vehicle::ForceVec &fv : b.v->lastForceVecs) {
             if(fv.kind == Vehicle::kForceBodyLift) { *fpos = fv.pos; at++; }
@@ -1097,8 +1105,8 @@ static void test_hull_lift_arm_is_the_projected_centroid() {
     mid.defs.back().body_lift = 0.6;
     mid.v->attach(fMid, 0, glm::dvec3(0.0, 1.2, -1.5), glm::dmat3(1.0));
     launch(mid);
-    double cpMid = 0.0; glm::dvec3 posMid(0.0);
-    shot(mid, &cpMid, &posMid);
+    double cpMid = 0.0, mMid = 0.0; glm::dvec3 posMid(0.0);
+    shot(mid, &cpMid, &posMid, &mMid);
 
     Bench fwd = mkBench();
     Part *fFwd = mkPlate(fwd.defs, "fairing", 50.0, 0.4, 0.4, 0.5);
@@ -1108,11 +1116,13 @@ static void test_hull_lift_arm_is_the_projected_centroid() {
     fwd.defs.back().body_lift = 0.6;
     fwd.v->attach(fFwd, 0, glm::dvec3(0.0, 1.2, -1.5), glm::dmat3(1.0));
     launch(fwd);
-    double cpFwd = 0.0; glm::dvec3 posFwd(0.0);
-    shot(fwd, &cpFwd, &posFwd);
+    double cpFwd = 0.0, mFwd = 0.0; glm::dvec3 posFwd(0.0);
+    shot(fwd, &cpFwd, &posFwd, &mFwd);
 
     const double a = -60.0 * std::numbers::pi / 180.0;
     const double s = std::sin(a), c = std::cos(a);
+    const double syn = c * (c * c - 2.0 * s * s);   // d(sin a cos^2 a)/dalpha
+    const double szp = -s * (s * s - 2.0 * c * c);  // d(cos a sin^2 a)/dalpha
     CHECK_NEAR(cpFwd - cpMid, 0.8 * s * s, 1e-6,
                "BodyCp moved by the in-plane part of the slide, sin^2 x 0.8: the "
                "lift lands 0.6 m further forward than the bolt (cf. #947's review: "
@@ -1120,6 +1130,22 @@ static void test_hull_lift_arm_is_the_projected_centroid() {
     CHECK_NEAR(posFwd.z - posMid.z, 0.8 * s * s, 1e-6, "the force vector moved with it");
     CHECK_NEAR(posFwd.y - posMid.y, 0.8 * s * c, 1e-6,
                "and the in-plane offset toward the axis the same projection implies");
+    /* THE SLOPE LEVER, the other half of #1106. Everything above moves the FORCE
+       arm; a fold that kept adding its slope at the bolt (hullSlope.add(..., ri,
+       ...) in vehicle.cpp) would pass every pin above and silently undo half the
+       ticket. The slope vector's pattern is common to both benches up to each
+       one's frozen visible -- same law, same alpha, fresh table -- and SM is a
+       dm/dlabs RATIO, so visible cancels in the gap: the mid->fwd margin move
+       must equal the hull-only bench's lever formula on the MEASURED arm gap.
+       0.8 m of slide taking nearly half a metre off the restoring margin: a
+       bolt-lever fold would leave the gap at zero and redden this. */
+    const double dMarginWant = ((posFwd.y - posMid.y) * szp
+                                - (posFwd.z - posMid.z) * syn) / syn;
+    CHECK_REL(mFwd - mMid, dMarginWant, 2e-6,
+              "SM moved with the cp, not with the bolt: the fold's lever is the "
+              "same projected centroid the force acts at");
+    CHECK_TRUE(std::fabs(dMarginWant) > 0.3,
+               "the fixture separates the two levers by a measurable margin gap");
     /* Both benches get the identical two-shot script on a fresh table, so the
        counted shot is the exact pass in each and the difference above is pure
        geometry, not cache state. A HIT blends the product column bilinearly,

@@ -2946,9 +2946,9 @@ void drawUIReadouts(Game &g) {
                d(force)/d(alpha) here too: a lifting-body build now shows a real pair
                where it used to show only dashes, and a one-part hull shows SM 0.00
                (neutral) -- no lever to speak of, which is a fact, not a failure. The
-               VAB quotes the same law with no flight at all (shipdef.h::buildStability,
-               defs-only: it sees body_lift as a slope but not the silhouette it acts
-               on, so an all-hull build's VAB pair is the bare authored number). */
+               VAB quotes the same law with no flight at all (shipdef.h::buildStability)
+               -- but only for SURFACES: it is defs-only and never reads body_lift, so
+               an all-hull build dashes on the pad and flies on this pair alone. */
             if(ship->lastDragRho > 0.0) {
                 ImGui::Text("CLa: %.1f m2/rad", ship->lastLiftSlope);
                 if(ship->lastStaticValid) {
@@ -2962,7 +2962,7 @@ void drawUIReadouts(Game &g) {
                                     : (ship->lastStaticMargin < -0.005
                                            ? "(diverging)" : "(neutral)"));
                 } else {
-                    ImGui::Text("SM:  -  (surfaces disagree)");
+                    ImGui::Text("SM:  -  (slopes disagree)");
                 }
             } else {
                 ImGui::Text("CLa: -   SM: -");
@@ -2981,7 +2981,7 @@ void drawUIReadouts(Game &g) {
             if(ship->lastDragAlphaValid) {
                 ImGui::Text("SideCdA: %.2f m2   SideCp: %+.2f m",
                             ship->lastSideCdA, ship->lastSideCpLever);
-                ImGui::Text("BodyCdA: %.2f m2   BodyCp: %+.2f m",
+                ImGui::Text("BodyCdA: %+.2f m2   BodyCp: %+.2f m",
                             ship->lastBodyCdA, ship->lastBodyCpLever);
             } else {
                 ImGui::Text("SideCdA: -   BodyCdA: -");
@@ -7738,9 +7738,14 @@ void drawVabUI(Game &g) {
                               ? partLoadMass(*suit->def) : 0.0;
         const BuildStability stab = buildStability(g.vab.build, occupant);
         if(stab.valid) {
+            /* Same +-0.005 verdict as the flight window's SM row (#1106 review):
+               %+.2f prints +0.00 either way, and one law must not call the same
+               margin "restoring" on the pad and "(neutral)" in the air. */
             ImGui::Text("Aero: CLa %.1f m2/rad  SM %+.2fm %s",
                         stab.slope, stab.margin,
-                        stab.margin > 0.0 ? "restoring" : "diverging");
+                        stab.margin > 0.005
+                            ? "restoring"
+                            : (stab.margin < -0.005 ? "diverging" : "neutral"));
         } else {
             /* Dashed, not zeroed: LiftSlopeSum::usable refuses to quote where the
                average of a cancelled sum landed (#454's Np=+15.9 m lie). The reason
@@ -7749,17 +7754,18 @@ void drawVabUI(Game &g) {
         }
         /* #1106: this row walks SURFACES -- a hull part's slope needs its projected
            silhouette, which the pad has no geometry for. A build that opts parts
-           in with body_lift therefore reads a CLa/SM here that its FLIGHT pair will
-           exceed (the hull's own d(force)/d(alpha) joins it, and an all-hull build
-           flies on the flight pair alone). The count says whose lift is missing
-           from the estimate without pretending to price it; pricing it at build
-           time is a filed follow-up to #1106. */
+           in with body_lift therefore reads a CLa/SM here that its FLIGHT pair
+           need not match: the hull's own d(force)/d(alpha) joins the flight pair,
+           in EITHER direction -- the kernel's slope is negative past 35.3 deg AoA
+           -- and an all-hull build flies on the flight pair alone. The count says
+           whose lift is missing from the estimate without pretending to price it;
+           pricing it at build time is a filed follow-up to #1106. */
         int hullLifts = 0;
         for(const BuildPart &bp : g.vab.build.parts) {
             if(bp.def != nullptr && bp.def->body_lift != 0.0) { hullLifts++; }
         }
         if(hullLifts > 0) {
-            uiText("Aero: %d hull lift part%s -- flight adds their slope",
+            uiText("Aero: %d hull lift part%s -- flight adds slope",
                    hullLifts, hullLifts == 1 ? "" : "s");
         }
     }
