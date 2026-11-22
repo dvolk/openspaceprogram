@@ -618,7 +618,13 @@ static void test_heat_hooks() {
         /* 20 km up on this body: rho = 1.225 x e^-2.5. placeShip again because the
            column is a profile, not one flight. */
         b.v->placeShip(glm::dvec3(0.0, 0.0, 620000.0), glm::dmat3(1.0));
-        fly(b.v, sp, 0.0, 0.0);
+        /* Five substeps at the SAME flow direction: kSilFillNodes=1 spreads the
+           cell's four corner fills over substeps 1..4 -- each of which looks the
+           chart up BEFORE filling, so it bills its own exact pass -- and substep
+           5 HITS. The hull pins below therefore run through the blended columns
+           and the Part-copy path, not just the exact one (#1090's other half;
+           test_drag's memo pins stop at the blend itself). */
+        for(int shot = 0; shot < 5; shot++) { fly(b.v, sp, 0.0, 0.0); }
         const double q = 0.5 * b.v->lastDragRho * sp * sp;
         printf("[heat] v %7.1f  rho %8.5f  Mach %5.2f  q %11.1f Pa  "
                "hull CdA %6.3f m2  ship drag %11.1f N  -> W %11.1f  |  "

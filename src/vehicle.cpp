@@ -3929,6 +3929,13 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
         const double dl = glm::length(dirLocal);
         const glm::dvec3 dhat = dl > 0.0 ? dirLocal / dl : glm::dvec3(0.0);
         size_t n = 0;
+        /* The pointer twin is per PASS, not per slot (#1090). polys and atts
+           reuse their buffers -- that reuse is the whole point -- but after a
+           stage or undock SHRINKS `parts`, a reused slot can name a part this
+           ship no longer owns, and the copy below would credit the wrong Part
+           (or write into a retired one). Rebuilding the twin costs one pointer
+           push per body part, dwarfed by the projection beside it. */
+        aeroSilPartPtr.clear();
         for(Part *p : parts) {
             if(p->body == nullptr || p->body->hullVerts.empty()) { continue; }
             /* #455: a lifting or steering part is not body. The chart's cells are
@@ -3940,11 +3947,6 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
             if(n == polys.size()) {
                 polys.emplace_back();
                 atts.push_back(SilhouettePart());
-                /* The third positional twin (#1090). The node-fill call rewrites it
-                   with the same sequence -- the iteration below is a function of
-                   `parts` alone -- so the columns the cache stores per node and the
-                   Parts they are copied onto cannot drift apart. */
-                aeroSilPartPtr.push_back(p);
             }
             // projectHull clears and refills the slot; keeping the slot is what
             // keeps its buffer, which is the whole point of the reuse above.
@@ -3983,11 +3985,13 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
                                   p->def ? p->def->control_area : 0.0,
                                   noseDot, at.depth, cpOff2 });
             }
+            /* The twin, rebuilt every pass (see the clear above): slot n of the
+               columns belongs to p. */
+            aeroSilPartPtr.push_back(p);
             n++;
         }
         polys.resize(n);
         atts.resize(n);
-        aeroSilPartPtr.resize(n);
         return n;
     };
     // Node fill (#463, #945, #1090): the whole bill at one flow direction, and the
@@ -4226,6 +4230,8 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
             const double qv = lfCp.q * std::sqrt(lfCp.vp2);
             for(size_t i = 0; i < aeroSilPartPtr.size(); i++) {
                 Part *p = aeroSilPartPtr[i];
+                assert(p->owner == this);   // the twin was rebuilt THIS pass; a
+                                            // stale slot is the #1090 split bug
                 p->formVis = (float)aeroSilPartVis[i];
                 p->formCdA = (float)aeroSilPartCdA[i];
                 p->formDragWatts = (float)(drag_cd * qv * aeroSilPartCdA[i]);
@@ -6076,6 +6082,10 @@ void Vehicle::absorbShip(Vehicle *B, Part *portA) {
     B->parts.clear();
     // B's cached silhouette went with its parts (and its key with it)
     B->aeroSilParts.clear();
+    B->aeroSilPartAtt.clear();
+    B->aeroSilPartVis.clear();
+    B->aeroSilPartCdA.clear();
+    B->aeroSilPartPtr.clear();
     B->aeroSilNode.clear();
     B->aeroSil.clear();
     B->aeroGeomValid = false;
