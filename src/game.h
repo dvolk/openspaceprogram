@@ -124,26 +124,16 @@ struct PartSel {
     bool holdAngleOk = false;
     char flowRow[64] = "";    // the two published rows, formatted once per publish
     char wattsRow[64] = "";
-    /* The hull Form rows (#1090, restyled #1113) ride the SAME cadence on the same
-       nextRead: a part is either a lifting surface or a body, never both, so the
-       surface block and the Form block are disjoint per window and one publish tick
-       covers whichever one runs. The worst-frame snapshot (#1114) picks the frame
-       the HULL billed hardest -- Vehicle::lastFormWatts, the whole partition sum --
-       not the frame that billed THIS part hardest, and its publish tick is aligned
-       to the kReadSec grid so every body card of a ship sees the same frames and
-       publishes on the same tick: the hull flow row then quotes ONE frame for all
-       cards, while each card still prints its own vis/cd/watts of that same frame
-       (the rows keep multiplying back). A card opened mid-window quotes a partial
-       window on its first read. The peak is read live at publish like the surface one. */
+    /* The hull Form rows (#1090, restyled #1113) ride the same 2 Hz cadence --
+       but NOT held here (#1114): the hull's flow is one ship-level figure, so
+       the worst-frame window, the kReadSec publish grid and the published
+       sample live on the hull itself (Vehicle::HullFlowPub). Per-card holds
+       printed two q's for one hull, and a card opened mid-window can never
+       see frames that predate it. The window keeps only the formatted strings
+       it last drew; the peak stays part-level and is read live at draw. */
     char formRow[64] = "";
     char formFlowRow[64] = "";
     char formWattsRow[64] = "";
-    double holdFormVis = 0.0, holdFormCdA = 0.0, holdFormW = 0.0;
-    double holdFormQ = 0.0, holdFormMach = 0.0;
-    double holdFormShipW = 0.0;   // worst HULL bill seen this window (the criterion)
-    double holdFormAlpha = 0.0;   // rad; the hull angle OF the held frame (#1114:
-                                  // printing lastDragAlpha live made the cards'
-                                  // alpha cells disagree too)
 };
 
 /* The active ship's per-frame state (render frame): render.cpp writes it, the UI

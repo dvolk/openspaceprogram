@@ -4318,84 +4318,114 @@ void drawPartWindows(Game &g) {
                    peak that outlived a vacuum stretch (only rails clears it) keeps
                    printing where the live figure dashes. */
                 if(ship->lastDragAlphaValid && !ship->onRails) {
-                    /* #1114: the frame is the HULL's worst-billed one (lastFormWatts
-                       = this substep's whole partition sum), not the frame that
-                       billed this part hardest. Every body card of a ship therefore
-                       holds the same frame -- and publishes on the same kReadSec
-                       grid, without which phase-offset windows could still straddle
-                       different peaks and disagree. The part's own vis/cd/watts are
-                       still read from that frame, so each card's rows multiply back.
-                       A card opened mid-window quotes a partial window on its first
-                       read; that is the whole residual. */
-                    if(ship->lastFormWatts >= live.holdFormShipW) {
-                        live.holdFormShipW = ship->lastFormWatts;
-                        live.holdFormW = hp->formDragWatts;
-                        live.holdFormVis = hp->formVis;
-                        live.holdFormCdA = hp->formCdA;
-                        live.holdFormQ = hp->formQ;
-                        live.holdFormMach = hp->formMach;
-                        live.holdFormAlpha = ship->lastDragAlpha;
-                    }
-                    if(ImGui::GetTime() >= live.nextRead) {
-                        live.nextRead = std::floor(ImGui::GetTime() / kReadSec) * kReadSec
-                                        + kReadSec;   // the shared grid (#1114)
-                        /* The cd cell is the credit over its own area -- and a fully
-                           sheltered part has neither, so it dashes rather than
-                           inventing a 0.00 coefficient for air that never reached
-                           it. Fixed cells for the same reason as the AoA column
-                           above (#1058): a mono font makes width a column. */
-                        char cdCell[6];
-                        if(live.holdFormVis > 1e-6) {
-                            const int n = snprintf(cdCell, sizeof cdCell, "%4.2f",
-                                                   live.holdFormCdA / live.holdFormVis);
-                            /* == 4, not < 6: the row's column claim, and partCd +
-                               the high-Mach wave term stay well under 10 -- if this
-                               ever trips, the row's fixed cells are the thing that
-                               broke, not the number. (#1113 review) */
-                            assert(n > 0 && n == 4);
-                        } else {
-                            memcpy(cdCell, "   -", 5);
+                    /* #1114: ONE sample per HULL. The window, the publish tick
+                       and the published figures live on the hull (Vehicle::
+                       hflow), not per card: card-local holds printed two q's
+                       for one hull (572 vs 455 Pa on this skiff), a ship-level
+                       figure cannot have per-card windows, and a card opened
+                       mid-window can never see frames that predate it. The
+                       first body card drawn in a frame advances the window and
+                       the publish (updFrame guard); every card, opened whenever,
+                       prints the SAME published sample -- the frame the hull
+                       billed hardest, WITH each part's columns of that same
+                       frame, so the three rows still multiply back card by card.
+                       Publishes are grid-aligned (kReadSec) and the first
+                       publish of a fresh window carries only the frames the
+                       ship has had a card open for -- every card quotes that
+                       same partial window, so agreement never depends on when
+                       a card opened. */
+                    Vehicle::HullFlowPub &hf = ship->hflow;
+                    const unsigned long long frame =
+                        (unsigned long long)ImGui::GetFrameCount();
+                    if(hf.updFrame != frame) {
+                        hf.updFrame = frame;
+                        const size_t nparts = ship->parts.size();
+                        if(hf.winVis.size() != nparts) {
+                            /* A pickup or a separation changed the hull: a
+                               half-window of the OLD geometry is not a sample
+                               of this one, so the window starts over. */
+                            hf.winVis.assign(nparts, 0.0);
+                            hf.winCdA.assign(nparts, 0.0);
+                            hf.winWatts.assign(nparts, 0.0);
+                            hf.worstW = 0.0;
                         }
-                        const int n = snprintf(live.formRow, sizeof live.formRow,
-                                               "Form: %*.*f m2 visible  cd %s",
-                                               kFormVisCellChars, 2, live.holdFormVis,
-                                               cdCell);
-                        assert(n > 0 && n < (int)sizeof live.formRow);
-                        /* "Hull AoA", deliberately not "AoA": it is the airframe's
-                           measured angle -- the very one this part's union credit
-                           was billed at (#463 keys the AREA to the hull flow; same
-                           number --drag-log and SURFACE print) -- and a tank card
-                           must not claim a part-local incidence (#732 invented
-                           nothing; there is no part-local angle to print). q and
-                           Mach come from the bill's own flow, lfCp at the cp
-                           (#486), so the three rows multiply together:
-                           drag power == drag_cd x q x |vp| x cd x vis. A q that
-                           reads exactly 0 while this row lives is the rotation
-                           sweep cancelling the flow at the cp -- a real zero at
-                           the billing point, not a bug (part.h). #1114: the held
-                           frame is the HULL's hardest-billed one, published on a
-                           shared grid, so two open body cards quote the SAME flow
-                           row -- and the angle is held with it, not read live. */
-                        const int n2 = partFlowRow(live.formFlowRow,
-                                                   sizeof live.formFlowRow,
-                                                   "Hull AoA", true,
-                                                   glm::degrees(live.holdFormAlpha),
-                                                   true, live.holdFormQ,
-                                                   live.holdFormMach);
-                        assert(n2 > 0 && n2 < (int)sizeof live.formFlowRow);
-                        const int n3 = partPowerRow(live.formWattsRow,
-                                                    sizeof live.formWattsRow,
-                                                    true, live.holdFormW,
-                                                    hp->formDragWattsPeak);
-                        assert(n3 > 0 && n3 < (int)sizeof live.formWattsRow);
-                        live.holdFormShipW = 0.0;   // the interval starts over with the publish
+                        if(ship->lastFormWatts >= hf.worstW) {
+                            hf.worstW = ship->lastFormWatts;
+                            hf.worstAlpha = ship->lastDragAlpha;
+                            hf.worstQ = ship->lastFormQ;
+                            hf.worstMach = ship->lastFormMach;
+                            for(size_t k = 0; k < nparts; k++) {
+                                hf.winVis[k] = ship->parts[k]->formVis;
+                                hf.winCdA[k] = ship->parts[k]->formCdA;
+                                hf.winWatts[k] = ship->parts[k]->formDragWatts;
+                            }
+                        }
+                        if(ImGui::GetTime() >= hf.nextRead
+                           || hf.pubVis.size() != ship->parts.size()) {
+                            hf.nextRead = std::floor(ImGui::GetTime() / kReadSec)
+                                          * kReadSec + kReadSec;
+                            std::swap(hf.winVis, hf.pubVis);
+                            std::swap(hf.winCdA, hf.pubCdA);
+                            std::swap(hf.winWatts, hf.pubWatts);
+                            hf.pubAlpha = hf.worstAlpha;
+                            hf.pubQ = hf.worstQ;
+                            hf.pubMach = hf.worstMach;
+                            hf.worstW = 0.0;   // the window starts over with the publish
+                        }
                     }
+                    /* The cd cell is the credit over its own area -- and a fully
+                       sheltered part has neither, so it dashes rather than
+                       inventing a 0.00 coefficient for air that never reached
+                       it. Fixed cells for the same reason as the AoA column
+                       above (#1058): a mono font makes width a column. */
+                    char cdCell[6];
+                    if(hf.pubVis[part] > 1e-6) {
+                        const int n = snprintf(cdCell, sizeof cdCell, "%4.2f",
+                                               hf.pubCdA[part] / hf.pubVis[part]);
+                        /* == 4, not < 6: the row's column claim, and partCd +
+                           the high-Mach wave term stay well under 10 -- if this
+                           ever trips, the row's fixed cells are the thing that
+                           broke, not the number. (#1113 review) */
+                        assert(n > 0 && n == 4);
+                    } else {
+                        memcpy(cdCell, "   -", 5);
+                    }
+                    const int n = snprintf(live.formRow, sizeof live.formRow,
+                                           "Form: %*.*f m2 visible  cd %s",
+                                           kFormVisCellChars, 2, hf.pubVis[part],
+                                           cdCell);
+                    assert(n > 0 && n < (int)sizeof live.formRow);
+                    /* "Hull AoA", deliberately not "AoA": it is the airframe's
+                       measured angle -- the very one this part's union credit
+                       was billed at (#463 keys the AREA to the hull flow; same
+                       number --drag-log and SURFACE print) -- and a tank card
+                       must not claim a part-local incidence (#732 invented
+                       nothing; there is no part-local angle to print). q and
+                       Mach come from the bill's own flow, lfCp at the cp
+                       (#486), so the three rows multiply together:
+                       drag power == drag_cd x q x |vp| x cd x vis -- all of it
+                       from the published frame, which is one hull frame for
+                       every card (#1114). */
+                    const int n2 = partFlowRow(live.formFlowRow,
+                                               sizeof live.formFlowRow,
+                                               "Hull AoA", true,
+                                               glm::degrees(hf.pubAlpha),
+                                               true, hf.pubQ, hf.pubMach);
+                    assert(n2 > 0 && n2 < (int)sizeof live.formFlowRow);
+                    const int n3 = partPowerRow(live.formWattsRow,
+                                                sizeof live.formWattsRow,
+                                                true, hf.pubWatts[part],
+                                                hp->formDragWattsPeak);
+                    assert(n3 > 0 && n3 < (int)sizeof live.formWattsRow);
                     uiText("%s", live.formRow);
                     uiText("%s", live.formFlowRow);
                     uiText("%s", live.formWattsRow);
                 } else {
-                    live.holdFormShipW = 0.0;
-                    live.nextRead = 0.0;
+                    /* Gate closed: the hull's window is dead air -- start it
+                       fresh when the flow returns, and let the peak columns
+                       keep their numbers exactly as the card's live peak does. */
+                    ship->hflow.worstW = 0.0;
+                    ship->hflow.nextRead = 0.0;
                     /* Every field dashes, no field disappears, and the dashed row
                        count matches the live one: the old one-row Form fallback
                        reflowed the card at the air boundary (the #1098 family --

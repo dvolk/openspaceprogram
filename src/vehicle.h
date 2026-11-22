@@ -908,10 +908,41 @@ public:
     /* The hull's whole along-flow bill THIS billed substep [W]: drag_cd x q x |vp|
        at the cp x (lastDragCd x lastDragArea) -- the same product the #945
        partition splits per part, so it EQUALS the sum of the formDragWatts columns
-       (pinned by test_aerosweep). #1114: the part-window body cards hold the frame
-       the hull billed hardest, so two open cards quote one hull flow row instead of
-       two opinions. Zeroed at pass start and on rails with the form columns. */
+       (pinned by test_aerosweep). #1114: the part-window body cards share ONE
+       worst-frame publish per hull (HullFlowPub below), and this is that frame's
+       measure. lastFormQ/lastFormMach are the flow the bill is struck in -- lfCp
+       at the cp (#486) -- at their ship-level home: #1113 first repeated them per
+       part, and two cards then held two frames of "one" hull flow. Zeroed at pass
+       start and on rails with the form columns. */
     double lastFormWatts = 0.0;
+    double lastFormQ = 0.0;      // [Pa] dynamic pressure at the cp, this substep.
+                                 // Exactly 0 while the flow row lives is the
+                                 // rotation sweep cancelling the COM flow at the
+                                 // cp (#486) -- a real zero at the billing point.
+    double lastFormMach = 0.0;   // Mach in that same flow
+    /* #1114: the hull's flow row is ONE figure, so the worst-frame window, the
+       publish tick and the published sample live on the hull, not per card. Card
+       holds produced two q's for one hull (572 vs 455 Pa on ui/1090-a's skiff),
+       and a card opened mid-window can never see frames that predate it -- a
+       per-ship sample is the only thing both cards can always agree on, and the
+       per-part columns of the SAME frame travel with it so each card's rows keep
+       multiplying back. UI-cadence state on the model has precedent (stagedRows_,
+       #948): drawPartWindows is this struct's only reader and writer, and the
+       model merely stamps the candidates above and the per-part form* columns.
+       It dies with the hull; with no part window ever open it is a few doubles
+       nobody touches. */
+    struct HullFlowPub {
+        double nextRead = 0.0;            // ImGui::GetTime() of the next publish
+        unsigned long long updFrame = 0;  // last ImGui frame this was refreshed
+        double worstW = 0.0;              // the window's best hull bill so far
+        double worstAlpha = 0.0, worstQ = 0.0, worstMach = 0.0;
+        /* the parts' columns OF that best frame, indexed into parts; a size
+           change (pickup, drop) invalidates the window's arrays */
+        std::vector<double> winVis, winCdA, winWatts;
+        /* the published sample every card prints until the next publish */
+        double pubAlpha = 0.0, pubQ = 0.0, pubMach = 0.0;
+        std::vector<double> pubVis, pubCdA, pubWatts;
+    } hflow;
     /* The hull's weathervane lever: (cp - com) . nose, metres; + = cp AHEAD of the
        COM. #486 made hull drag answer to the flow AT cp, and two different things
        ride on that. The sweep of the flow OPPOSES a rotation whatever the sign of

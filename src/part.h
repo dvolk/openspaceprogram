@@ -186,18 +186,17 @@ struct Part {
     float formVis = 0.0f;         // [m^2] credited visible silhouette area, this substep
     float formCdA = 0.0f;         // [m^2] visible x partCd at that flow (the bill's share)
     float formDragWatts = 0.0f;   // [W] this part's credit share of the hull's drag power
-    /* #1113: the FLOW that bill is struck in, stamped beside the trio. This is the
-       hull's ship-level accounting flow -- lfCp at the cp, #486 -- repeated on every
-       body part, NOT a measurement at this mount: the row it feeds stays honest
-       because the arithmetic closes, formDragWatts == drag_cd x formQ x |vp| x
-       formCdA on every billed substep, and a mount-sampled q could not multiply
-       back into a cp-billed wattage. The part window labels the angle beside them
-       "Hull AoA" for exactly that reason. Zeroed with the trio at pass start.
+    /* #1113 first stamped the BILL's flow beside each part too; #1114 moved that
+       flow to the hull that owns it -- Vehicle::lastFormQ/lastFormMach/
+       lastFormWatts -- because a ship-level figure repeated per part only invited
+       two cards to hold two different frames of it. The arithmetic still closes
+       per part, formDragWatts == drag_cd x lastFormQ x |vp| x formCdA on every
+       billed substep, and the part window pairs each part's columns with the same
+       frame's flow through Vehicle::HullFlowPub. A mount-sampled q (the aeroQ the
+       surfaces carry, #483) could not multiply back into a cp-billed wattage.
        formDragWattsPeak folds in the SAME loop as aeroDragWattsPeak (vehicle.cpp,
        after both bills exist) and clears only on rails, not pass start -- it is a
        per-flight peak-hold, not a summable this-substep figure. */
-    float formQ = 0.0f;             // [Pa] the hull bill's flow q (at cp), this substep
-    float formMach = 0.0f;          // Mach in that same flow
     float formDragWattsPeak = 0.0f; // [W] worst billed substep since the ship last went on rails
     /* Which LIFTING SYSTEM this surface belongs to (#556/#555), as an index into
        Vehicle::aeroSystems; -1 = not a lifting or steering surface. Written by

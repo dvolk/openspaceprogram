@@ -3629,14 +3629,14 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
         p->formVis = 0.0f;
         p->formCdA = 0.0f;
         p->formDragWatts = 0.0f;
-        /* #1113: NOT summable -- the same ship figure repeated per part -- but they
-           zero for the display reason: a card on an unbilled substep must not quote
-           last substep's flow beside this substep's credits. */
-        p->formQ = 0.0f;
-        p->formMach = 0.0f;
         if(p->def != nullptr && p->def->control_area > 0.0) { p->controlDefl = 0.0; }
     }
-    lastFormWatts = 0.0;   // #1114: the ship figure behind the columns, same zeroing
+    /* #1114: the ship-level flow trio zeroes with the columns it bills against --
+       a card on an unbilled substep must not quote last substep's flow beside
+       this substep's credits. */
+    lastFormWatts = 0.0;
+    lastFormQ = 0.0;
+    lastFormMach = 0.0;
 
     // --drag-cd 0 = no aero at all (the master off switch).
     if(drag_cd <= 0.0) { return lastAeroForce; }
@@ -4294,12 +4294,15 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
                    && aeroSilPartCdA.size() == aeroSilPartProj.size()
                    && aeroSilPartProj.size() == aeroSilPartCp.size());
             const double qv = lfCp.q * std::sqrt(lfCp.vp2);
-            /* #1114: the hull's whole bill, before it is split. lastDragCd x
-               lastDragArea is the union cdA the loop below partitions, so this
-               equals the sum of the formDragWatts columns -- and the part-window
-               body cards pick their held frame with THIS, not their own part's
-               share, so two open cards quote one hull. */
+            /* #1114: the hull's whole bill and the flow it is struck in, BEFORE
+               the split. lastDragCd x lastDragArea is the union cdA the loop
+               below partitions, so lastFormWatts equals the sum of the
+               formDragWatts columns -- and the part-window body cards publish
+               one hull sample keyed on it (#1113 stamped q/Mach per part; that
+               ship-level figure on Part was the #1114 disagreement in waiting). */
             lastFormWatts = drag_cd * lastDragCd * lastDragArea * qv;
+            lastFormQ = lfCp.q;
+            lastFormMach = flowMach(lfCp, invAirA);
             double sideArmCdA = 0.0;
             double bodyArmCdA = 0.0;
             for(size_t i = 0; i < aeroSilPartPtr.size(); i++) {
@@ -4309,15 +4312,6 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
                 p->formVis = (float)aeroSilPartVis[i];
                 p->formCdA = (float)aeroSilPartCdA[i];
                 p->formDragWatts = (float)(drag_cd * qv * aeroSilPartCdA[i]);
-                /* #1113: the bill's flow travels with the bill, so the part window's
-                   rows reconcile: q x |vp| here is the very qv the watts were split
-                   by. A SHIP-level figure repeated per part, not a local reading --
-                   cf. the mount-sampled aeroQ of the surfaces (#483). lfCp.q can be
-                   exactly 0 when the rotation sweep cancels the COM flow at the cp
-                   while lastDragAlphaValid still holds; that is a real zero at the
-                   billing point, printed as one. */
-                p->formQ = (float)lfCp.q;
-                p->formMach = (float)flowMach(lfCp, invAirA);
                 /* #947: THE CROSSFLOW NORMAL FORCE. The union bill charges a part
                    only where the air MEETS it; a body hidden behind another along
                    the flow was billed nothing at all -- not for its frontal disc
@@ -8410,12 +8404,14 @@ bool Vehicle::goOnRails() {
         p->formVis = 0.0f;
         p->formCdA = 0.0f;
         p->formDragWatts = 0.0f;
-        p->formQ = 0.0f;
-        p->formMach = 0.0f;
         p->formDragWattsPeak = 0.0f;   // #1113: a per-flight peak, so it goes with rails
         if(p->isRcs()) { for(double &f : p->rcsFired) { f = 0.0; } }
     }
-    lastFormWatts = 0.0;   // #1114: the ship criterion, same rails-clear as the columns
+    /* #1114: the ship trio, same rails-clear as the columns. The publish sample
+       (hflow) is display state drawPartWindows re-gates every frame; it rides on. */
+    lastFormWatts = 0.0;
+    lastFormQ = 0.0;
+    lastFormMach = 0.0;
     lastRcsNozzles.clear();  // likewise the [rcs] log: no substeps, no nozzles
     lastForceVecs.clear();   // and the force overlay: no substeps, no arrows
     /* And the #599 spend record: applyRotationForce, which clears it every substep,
