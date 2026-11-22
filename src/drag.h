@@ -1360,6 +1360,18 @@ struct SilhouetteMemo {
        node of a generation agrees on what slot t means. */
     std::vector<std::vector<double>> partVis;
     std::vector<std::vector<double>> partVisCd;
+    /* And the third column (#947): each part's OWN projected area at that node --
+       not a slice of the union, the whole polygon the part threw at that flow. It
+       sits beside the credits on purpose: visible/ownProj is the fraction of a
+       part's shadow the air still reaches, and for a fully exposed part it cancels
+       to exactly 1 (the columns come from the same polygons, and a bilinear blend
+       of equal values is the identity -- the same linearity #1090 leaned on for
+       the sums). The crossflow normal law needs that cancellation to be exact: an
+       analytic box estimate of the own area would disagree with the polygon
+       credit by the pi-vs-box cap term, tens of percent of the strip, and every
+       exposed part would pay a normal force it has already spent in the axial
+       bill. */
+    std::vector<std::vector<double>> partProj;
 
     void reset() {
         area.assign(kSteps * kSteps, 0.0);
@@ -1368,6 +1380,7 @@ struct SilhouetteMemo {
         stamp.assign(kSteps * kSteps, 0u);
         partVis.clear();
         partVisCd.clear();
+        partProj.clear();
         gen = 1;                   // 0 means "never filled"
     }
     /* Free the table. A ship that stops having parts stops having a silhouette:
@@ -1382,6 +1395,7 @@ struct SilhouetteMemo {
         std::vector<uint32_t>().swap(stamp);
         std::vector<std::vector<double>>().swap(partVis);
         std::vector<std::vector<double>>().swap(partVisCd);
+        std::vector<std::vector<double>>().swap(partProj);
         gen = 0;
     }
     // Geometry changed: nothing in the table is trustworthy. No allocation here --
@@ -1446,10 +1460,12 @@ struct SilhouetteMemo {
        a corner not yet filled) is a MISS and leaves `out` alone.
        `vis`/`visCd`, when given, get the BLENDED partition columns (#1090): the
        same bilinear weights per part slot, so their sums equal the blended area and
-       cdNum by the same linearity that makes each node's columns the bill. */
+       cdNum by the same linearity that makes each node's columns the bill. `proj`
+       gets the blended OWN-shadow column (#947) the same way. */
     bool lookup(double alpha, double beta, SilhouetteBill &out,
                 std::vector<double> *vis = nullptr,
-                std::vector<double> *visCd = nullptr) const {
+                std::vector<double> *visCd = nullptr,
+                std::vector<double> *proj = nullptr) const {
         if(area.empty() || !std::isfinite(alpha) || !std::isfinite(beta)) { return false; }
         fold(alpha, beta);
         if(!charted(alpha, beta)) { return false; }
@@ -1476,7 +1492,7 @@ struct SilhouetteMemo {
         out.area = bl(area);
         out.cdNum = bl(cdNum);
         out.cpNum = glm::dvec3(bl(cpNum[0]), bl(cpNum[1]), bl(cpNum[2]));
-        if(vis != nullptr || visCd != nullptr) {
+        if(vis != nullptr || visCd != nullptr || proj != nullptr) {
             /* One part, one slot, at all four corners of this generation's cell --
                a size that disagrees is a stale column under a live stamp, i.e. a
                bug, and blending it would invent an area no part ever paid. */
@@ -1501,6 +1517,17 @@ struct SilhouetteMemo {
                     (*visCd)[t] = bl2(partVisCd, t);
                 }
             }
+            if(proj != nullptr) {
+                const size_t n2 = partProj[k00].size();
+                assert(n2 == partProj[k00 + 1].size()
+                       && n2 == partProj[k00 + kSteps].size()
+                       && n2 == partProj[k00 + kSteps + 1].size()
+                       && "shadow columns must agree across a generation's cell");
+                proj->resize(n2);
+                for(size_t t = 0; t < n2; t++) {
+                    (*proj)[t] = bl2(partProj, t);
+                }
+            }
         }
         return true;
     }
@@ -1513,12 +1540,13 @@ struct SilhouetteMemo {
     }
 
     /* Fill this cell's missing corners, at most `budget` of them -- the caller
-       spreads the cost over substeps. `exact(alpha, beta, vis, visCd)` computes the
-       bill at a node AND its partition -- the callback sizes and fills the two
-       column vectors in its own polys order, and the memo keeps both beside the
-       scalars (#1090). The caller holds the parts, the ship frame and the union.
-       Returns how many nodes were filled. A direction outside the cached range
-       fills nothing: it is answered by the caller's exact bill instead. */
+       spreads the cost over substeps. `exact(alpha, beta, vis, visCd, proj)`
+       computes the bill at a node AND its partition columns -- the callback sizes
+       and fills the three column vectors in its own polys order, and the memo
+       keeps them beside the scalars (#1090, #947). The caller holds the parts,
+       the ship frame and the union. Returns how many nodes were filled. A
+       direction outside the cached range fills nothing: it is answered by the
+       caller's exact bill instead. */
     template <class ExactFn>
     int fillAround(double alpha, double beta, int budget, ExactFn exact) {
         if(budget <= 0 || !std::isfinite(alpha) || !std::isfinite(beta)) { return 0; }
@@ -1532,6 +1560,7 @@ struct SilhouetteMemo {
         if(partVis.size() != area.size()) {
             partVis.assign(area.size(), std::vector<double>());
             partVisCd.assign(area.size(), std::vector<double>());
+            partProj.assign(area.size(), std::vector<double>());
         }
         const int i0 = cellOf(alpha), j0 = cellOf(beta);
         int filled = 0;
@@ -1541,8 +1570,8 @@ struct SilhouetteMemo {
                 const int i = i0 + di, j = j0 + dj;
                 const size_t k = (size_t)j * kSteps + i;
                 if(stamp[k] == gen) { continue; }
-                std::vector<double> pv, pcd;
-                const SilhouetteBill nb = exact(alphaAt(i), betaAt(j), pv, pcd);
+                std::vector<double> pv, pcd, ppj;
+                const SilhouetteBill nb = exact(alphaAt(i), betaAt(j), pv, pcd, ppj);
                 area[k] = nb.area;
                 cdNum[k] = nb.cdNum;
                 cpNum[0][k] = nb.cpNum.x;
@@ -1550,6 +1579,7 @@ struct SilhouetteMemo {
                 cpNum[2][k] = nb.cpNum.z;
                 partVis[k] = std::move(pv);
                 partVisCd[k] = std::move(pcd);
+                partProj[k] = std::move(ppj);
                 stamp[k] = gen;
                 filled++;
                 budget--;
@@ -1834,6 +1864,20 @@ inline double partCd(double cdForward, double cdSide, double cdBackward,
     const double cw = (c > 0.0) ? c2 : 0.0;   // forward weight (nose-in)
     const double bw = (c < 0.0) ? c2 : 0.0;   // backward weight (base-in)
     return cdSide * (1.0 - c2) + cdForward * cw + cdBackward * bw;
+}
+
+/* #947: the part's SIDE-STRIP area -- the two lateral face pairs of the mesh box,
+   projected on the flow, WITHOUT the axial caps. For half-extents (hx,hy) across
+   the stack axis, half-length hz along it, and the flow direction read in the
+   part's own axes:
+     strip = 4 hz (hy |d.x| + hx |d.y|)
+   On a round part (hx=hy=r) this is exactly 2 r L |sin(alpha)| -- the stadium
+   strip its shadow gains as it bows off the flow, which is the normal-force
+   reference area of slender-body theory. The sin kernel is IN the geometry, so
+   the law that reads this must not multiply another sin(alpha): a cylinder dead
+   axial strips to zero, and a part broadside pays its full L x D. */
+inline double sideStripCdA(double hx, double hy, double hz, const glm::dvec3 &dhatPart) {
+    return 4.0 * hz * (hy * std::fabs(dhatPart.x) + hx * std::fabs(dhatPart.y));
 }
 
 /* The shape drag of one SURFACE part (#455, split by #559). A plate meets the flow

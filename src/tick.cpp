@@ -72,8 +72,11 @@ static RecSample recSample(Vehicle &v, const ShipView &view, double t) {
         s.aoa = glm::degrees(v.lastDragAlpha);
         s.cpl = v.lastCpLever;
         s.ind = v.lastInducedCdA;
+        s.side = v.lastSideCdA;
+        s.sidecp = v.lastSideCpLever;
     } else {
         s.aoa = s.cpl = s.ind = NAN;
+        s.side = s.sidecp = NAN;
     }
     /* Beta has its own floor: the flow that gives AoA a direction need not
        give yaw one (AeroFrame::betaValid, #787). A recorded NaN prints as
@@ -1421,6 +1424,25 @@ void tick(Game &g) {
                     printf(" Ld=%.2f", g.ship->lastFlowLift / g.ship->lastFlowDrag);
                 } else {
                     printf(" Ld=-");
+                }
+                /* #947: the CROSSFLOW NORMAL bill and its lever. CpL above says
+                   where the axial union pushes; on a stacked rocket that landed on
+                   the nose caps (+3.7 m on the ascending mars_explorer_mk1) because
+                   the partition credits hidden bodies nothing at all. SideCdA= is
+                   what the sides of those hidden bodies pay instead -- cn x the
+                   side strip their own shadow refuses, m^2 -- and SideCp= is the
+                   arm of that push (+ ahead of the COM, signed like CpL; on a
+                   stack it lands AFT, which is the restoring half the tail used to
+                   carry alone). The two are NOT folded into CpL or FormCp: normal
+                   force and axial drag are perpendicular forces, and one lever
+                   cannot stand for two lines of action. Dashed with no usable flow,
+                   like CpL; SideCdA=0.00 with a real flow means every body part is
+               exposed and paying its flank in the axial bill instead. */
+                if(g.ship->lastDragAlphaValid) {
+                    printf(" SideCdA=%.2f m2 SideCp=%+.2f m",
+                           g.ship->lastSideCdA, g.ship->lastSideCpLever);
+                } else {
+                    printf(" SideCdA=- SideCp=-");
                 }
                 printf("\n");
                 // Control surfaces' applied deflections.

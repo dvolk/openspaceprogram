@@ -212,7 +212,7 @@ static void report(Vehicle *v, double speed, double alpha, double beta) {
     printf("[sweep] v %6.1f  alpha %6.1f  beta %5.1f  rho %7.5f  Mach %5.3f"
            "  L %10.2f N  D %10.2f N  Side %10.2f N  |tau| %10.2f Nm"
            "  A %6.3f Cd %5.3f  Profile %6.4f  Induced %7.4f  CdAtot %7.4f"
-           "  CpL %6.3f  FormCp %6.3f  CLa %8.3f  SM %8s\n",
+           "  CpL %6.3f  FormCp %6.3f  CLa %8.3f  SM %8s  SideCdA %7.3f  SideCp %6.3f\n",
            speed, alpha, beta, v->lastDragRho,
            v->lastAirV / (v->lastAirA > 0.0 ? v->lastAirA : 1.0),
            v->lastFlowLift, v->lastFlowDrag,
@@ -221,7 +221,8 @@ static void report(Vehicle *v, double speed, double alpha, double beta) {
            v->lastDragArea, v->lastDragCd, v->lastSurfCdA, v->lastInducedCdA,
            v->lastSurfCdA + v->lastInducedCdA
                + v->drag_cd * v->lastDragCd * v->lastDragArea,
-           v->lastCpLever, v->lastFormCpLever, v->lastLiftSlope, sm);
+           v->lastCpLever, v->lastFormCpLever, v->lastLiftSlope, sm,
+           v->lastSideCdA, v->lastSideCpLever);
 }
 
 /* --- the grid (#655) -------------------------------------------------------
@@ -675,6 +676,20 @@ static void test_heat_hooks() {
         }
         prevW = (double)b.v->parts[1]->aeroDragWatts;
     }
+    /* #947's anti-double-count, pinned away from the kernel excuse: at 30 deg
+       ANGLE OF ATTACK a body's side strip is genuinely nonzero, so a zero here can
+       only come from the discount -- the pod's credit equals its own shadow at
+       every node, so `refused` is 0 and the crossflow law bills the fully exposed
+       hull exactly nothing: its flank is already paid once, axially. The fifth
+       shot HITS, so this runs through the blended shadow/credit columns, where a
+       lying column would show up. If this pin ever reddens, either the normal law
+       and the union bill the same flank twice, or the #947 shadow column is not
+       the same polygon world as the credits. */
+    b.v->placeShip(glm::dvec3(0.0, 0.0, 620000.0), glm::dmat3(1.0));
+    for(int shot = 0; shot < 5; shot++) { fly(b.v, 800.0, 30.0, 0.0); }
+    CHECK_TRUE(b.v->lastDragAlphaValid, "30 deg is a real angle for the pass");
+    CHECK_NEAR(b.v->lastSideCdA, 0.0, 0.0,
+               "a fully exposed hull pays no crossflow normal force, blended or not");
     teardown(b);
 }
 

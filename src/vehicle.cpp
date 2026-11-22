@@ -1593,6 +1593,7 @@ void Vehicle::rebuildCompound() {
         aeroSilPartAtt.clear();
         aeroSilPartVis.clear();
         aeroSilPartCdA.clear();
+        aeroSilPartProj.clear();
         aeroSilPartPtr.clear();
         aeroSilNode.clear();
         aeroSilNodeAtt.clear();
@@ -3604,6 +3605,8 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
     lastChuteCdA = 0.0;
     lastInducedCdA = 0.0;
     lastSurfCdA = 0.0;
+    lastSideCdA = 0.0;
+    lastSideCpLever = 0.0;
     aeroLiftSamples.clear();  // #556: last substep's lift must not be re-billed
     lastControlDeflections.clear();  // a no-air substep reports no steering
     // Fins swing back to neutral whenever this substep produces no steering
@@ -3994,15 +3997,20 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
         atts.resize(n);
         return n;
     };
-    // Node fill (#463, #945, #1090): the whole bill at one flow direction, and the
-    // partition that accounts it by part, projected through that direction's own
-    // plane. The columns ride into the cache beside the scalars, which is what
-    // makes a chart HIT able to answer per part as well as per ship.
+    // Node fill (#463, #945, #1090, #947): the whole bill at one flow direction, and
+    // the partition that accounts it by part, projected through that direction's own
+    // plane. The columns ride into the cache beside the scalars, which is what makes a
+    // chart HIT able to answer per part as well as per ship. The third column is each
+    // part's own shadow at that node (#947) -- the crossflow law's exposure discount.
     auto billAtS = [&](const glm::dvec3 &dirLocal, std::vector<double> &pv,
-                       std::vector<double> &pcd) {
+                       std::vector<double> &pcd, std::vector<double> &ppj) {
         projectSilhouette(dirLocal, aeroSilNode, aeroSilNodeAtt, nullptr);
         pv.assign(aeroSilNode.size(), 0.0);
         pcd.assign(aeroSilNode.size(), 0.0);
+        ppj.resize(aeroSilNode.size());
+        for(size_t i = 0; i < aeroSilNode.size(); i++) {
+            ppj[i] = polygonArea2(aeroSilNode[i]);
+        }
         return silhouetteBill(aeroSilNode, aeroSilNodeAtt, &pv, &pcd);
     };
     /* How many silhouette nodes one substep may compute. A node is a whole
@@ -4080,7 +4088,8 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
         bool fromChart = false;
         if(!dumping && lastDragAlphaValid) {
             fromChart = aeroSil.lookup(alpha, fr.beta, bill,
-                                       &aeroSilPartVis, &aeroSilPartCdA);
+                                       &aeroSilPartVis, &aeroSilPartCdA,
+                                       &aeroSilPartProj);
         }
         if(!fromChart && (dumping || lastDragAlphaValid)) {
             if(dumping) {
@@ -4094,18 +4103,25 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
             if(lastDragAlphaValid) {
                 aeroSil.fillAround(alpha, fr.beta, kSilFillNodes,
                                    [&](double na, double nb, std::vector<double> &pv,
-                                       std::vector<double> &pcd) {
+                                       std::vector<double> &pcd, std::vector<double> &ppj) {
                                        return billAtS(glm::transpose(sRot)
                                            * flowDirection(na, nb, right, up, nose),
-                                           pv, pcd);
+                                           pv, pcd, ppj);
                                    });
             }
             /* #1090: the exact pass bills WITH its partition columns out, not only
                under the audit -- a MISS and a HIT now hand the same two columns to
                the parts below, one computed and one blended. (The audit's per-row
-               visA reads the same array it always did.) */
+               visA reads the same array it always did.) #947 adds the third: each
+               part's OWN projected shadow, so the crossflow discount below means
+               the same thing on a HIT as on a MISS -- and cancels exactly on an
+               exposed part, since credits and shadow come from one polygon. */
             aeroSilPartVis.assign(aeroSilParts.size(), 0.0);
             aeroSilPartCdA.assign(aeroSilParts.size(), 0.0);
+            aeroSilPartProj.resize(aeroSilParts.size());
+            for(size_t i = 0; i < aeroSilParts.size(); i++) {
+                aeroSilPartProj[i] = polygonArea2(aeroSilParts[i]);
+            }
             bill = silhouetteBill(aeroSilParts, aeroSilPartAtt,
                                   &aeroSilPartVis, &aeroSilPartCdA);
         }
@@ -4226,8 +4242,10 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
            pass-start sweep zeroes when there is no usable flow. */
         if(lastDragAlphaValid) {
             assert(aeroSilPartPtr.size() == aeroSilPartVis.size()
-                   && aeroSilPartVis.size() == aeroSilPartCdA.size());
+                   && aeroSilPartVis.size() == aeroSilPartCdA.size()
+                   && aeroSilPartCdA.size() == aeroSilPartProj.size());
             const double qv = lfCp.q * std::sqrt(lfCp.vp2);
+            double sideArmCdA = 0.0;
             for(size_t i = 0; i < aeroSilPartPtr.size(); i++) {
                 Part *p = aeroSilPartPtr[i];
                 assert(p->owner == this);   // the twin was rebuilt THIS pass; a
@@ -4235,7 +4253,71 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
                 p->formVis = (float)aeroSilPartVis[i];
                 p->formCdA = (float)aeroSilPartCdA[i];
                 p->formDragWatts = (float)(drag_cd * qv * aeroSilPartCdA[i]);
+                /* #947: THE CROSSFLOW NORMAL FORCE. The union bill charges a part
+                   only where the air MEETS it; a body hidden behind another along
+                   the flow was billed nothing at all -- not for its frontal disc
+                   (correct, the air never reaches it) nor for the length of flank
+                   the air slides along (wrong: a cylinder in crossflow makes a
+                   normal force proportional to L x D, and a stacked rocket has
+                   nothing aft pushing back, so the hull lever pointed the nose
+                   further into the flow: CpL +3.7 m on the ascending
+                   mars_explorer_mk1). This pays the missing half, per part, at the
+                   part's own mount:
+                     F = cn x q x (side strip) x (fraction of its shadow refused)
+                   -- strip from the mesh box (drag.h::sideStripCdA; 2 L D
+                   sin(alpha) for a round body, so the sin kernel is in the
+                   geometry and not multiplied twice), discounted by visible/ownProj
+                   from this pass's columns. The discount is the anti-double-count:
+                   an exposed part already paid its flank in the axial bill (its
+                   shadow, at the cdSide share of partCd), so it nets EXACTLY zero
+                   here -- both columns come from the same polygons and blend with
+                   the same weights, so the cancellation survives a chart HIT too.
+                   cn reuses the authored drag_side (a broadside cylinder's drag
+                   coefficient IS its normal-force coefficient); the direction is
+                   the flow-perpendicular component of the part's own axis,
+                   opposing how the part slides sideways through the air. Like the
+                   surfaces (#483), this answers the flow AT THE PART -- pitch and
+                   yaw rotation sweep each flank through the air, and a distributed
+                   normal force finally damps that swing the way fins do. It is NOT
+                   merged into CpL/FormCp: two perpendicular lines of action cannot
+                   share one CdA-weighted lever, so the log gets its own
+                   SideCdA=/SideCp= pair. Lateral occlusion (flanks shielded SIDE
+                   ways, asparagus bundles) is knowingly unmodeled -- a second
+                   projection pass, filed in the ticket as a follow-up. */
+                if(p->def == nullptr || !(aeroSilPartProj[i] > 1e-9)) { continue; }
+                const double refused = 1.0 - aeroSilPartVis[i] / aeroSilPartProj[i];
+                if(!(refused > 0.0)) { continue; }   // exposed: already paid axially
+                const glm::dvec3 ri = partPosS(p) - com;
+                const LocalFlow lf = localFlow(vrel, w, ri, rho);
+                if(!(lf.vp2 > 0.0)) { continue; }
+                const double vpl = std::sqrt(lf.vp2);
+                const glm::dvec3 uhat = lf.vp / vpl;
+                const glm::dvec3 flowLocal = glm::transpose(sRot) * uhat;
+                double hx, hy;
+                p->def->meshHalfSpan(hx, hy);
+                const glm::dvec3 dirPart{glm::dot(p->localRot[0], flowLocal),
+                                         glm::dot(p->localRot[1], flowLocal),
+                                         glm::dot(p->localRot[2], flowLocal)};
+                const double unbilled =
+                    sideStripCdA(hx, hy, p->def->meshHalfLength(), dirPart) * refused;
+                if(!(unbilled > 0.0)) { continue; }
+                const glm::dvec3 axisW = sRot * p->localRot[2];
+                const glm::dvec3 perp = uhat - axisW * glm::dot(axisW, uhat);
+                const double perp2 = glm::length2(perp);
+                if(!(perp2 > 1e-12)) { continue; }   // sliding axis-first: no crossflow
+                const double cda = drag_cd * p->def->drag_side * unbilled;
+                if(!(cda > 0.0)) { continue; }
+                const glm::dvec3 fside = perp * (-lf.q * cda / std::sqrt(perp2));
+                ApplyForce(hull, ri, fside);
+                moment += glm::cross(ri, fside);
+                ftotal += fside;
+                lastSideCdA += cda;
+                sideArmCdA += cda * glm::dot(ri, nose);
+                if(recordForceVecs) {
+                    lastForceVecs.push_back({ ri, fside, kForceSide });
+                }
             }
+            lastSideCpLever = (lastSideCdA > 0.0) ? (sideArmCdA / lastSideCdA) : 0.0;
         }
     }
 
@@ -6085,6 +6167,7 @@ void Vehicle::absorbShip(Vehicle *B, Part *portA) {
     B->aeroSilPartAtt.clear();
     B->aeroSilPartVis.clear();
     B->aeroSilPartCdA.clear();
+    B->aeroSilPartProj.clear();
     B->aeroSilPartPtr.clear();
     B->aeroSilNode.clear();
     B->aeroSil.clear();

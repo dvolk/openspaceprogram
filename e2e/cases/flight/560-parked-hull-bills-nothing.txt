@@ -65,14 +65,20 @@ CHECK all(d["v"] == 0.0 for d in drag[-15:])
 # 5.80 m/s against the authored 5.82 the profile implies at 260.8 m -- which is the wind feature
 # arriving in the drag log through the door the [surfinfo] line already had (tas=, wind_east=).
 CHECK all(5.6 < d["mach"] * d["airA"] < 6.0 for d in drag[-15:])
-# THE BILL CLOSES. q = 0.5 rho v_air^2 = 20.1 Pa; the force is q x (1.2 Cd A + Profile) --
-# 1.2 because the hull product is charged at that multiplier while A=/Cd= print raw, and Profile
-# because the lifting parts pay their shape bill outside the hull union (#455). 20.1 x (1.2 x
-# 0.389 x 0.82 + 0.469) = 17.1 N against the 17.23 N the row charges (A= and Mach= print rounded,
-# and the exact air speed is 5.83 rather than 5.80). Before #945 that row read Cd 1.100 and
-# charged 31.0 N; before the wind it charged 0.00 N and the arithmetic was vacuous in a different
-# way.
-CHECK all(abs(d["F"] - 0.5 * d["rho"] * (d["mach"] * d["airA"]) ** 2 * (1.2 * d["cd"] * d["a"] + d["profile"])) < 0.5 for d in drag[-15:])
+# THE BILL CLOSES -- two-sided since #947. q = 0.5 rho v_air^2 = 20.1 Pa; ALONG the flow the
+# force is q x (1.2 Cd A + Profile) -- 1.2 because the hull product is charged at that multiplier
+# while A=/Cd= print raw, and Profile because the lifting parts pay their shape bill outside the
+# hull union (#455). PERPENDICULAR to the flow the body now pays for its own side (#947): the
+# hull's own strip is shielded from this wind by the parts ahead of it, refuses to swallow that
+# shadow, and adds q x SideCdA x cdSide of normal force the axial bill never carried. F= is the
+# MAGNITUDE of the sum, so what closes is the triangle: between the axial bill alone and the two
+# bills added. Measured 17.6 N between 16.8 (q x (1.2 x 0.389 x 0.82 + 0.469)) and 20.4
+# (+ q x 0.18 m2 x cdSide 1.0). Before #945 that row read Cd 1.100 and charged 31.0 N; before the
+# wind it charged 0.00 N and the arithmetic was vacuous in a different way.
+CHECK all(abs(d["F"] - 0.5 * d["rho"] * (d["mach"] * d["airA"]) ** 2 * (1.2 * d["cd"] * d["a"] + d["profile"])) <= 0.5 * d["rho"] * (d["mach"] * d["airA"]) ** 2 * d["sidecda"] + 0.5 for d in drag[-15:])
+# #947's normal force EXISTS here -- this is the case that proves the ticket's claim that a parked
+# hull paid for nothing but its silhouette. SideCdA 0.18 m2 on a hull of A 0.82, every settled row.
+CHECK all(d["sidecda"] is not None and d["sidecda"] > 0.05 for d in drag[-15:])
 # THE FLOW HAS A DIRECTION, and a fixed one: the pad holds the hull at one attitude, so the wind
 # arrives along the hull's line from behind on every settled row -- AoA -177.2, Beta -179.4.
 # Pinned to a degree and a half, which is slack for the settle's residual, not for the wind.
@@ -85,9 +91,12 @@ CHECK all(176.0 < abs(d["beta"]) <= 180.0 for d in drag[-15:])
 # and a dash would claim the aero pass did not run.
 CHECK all(d["induced"] == 0.0 for d in drag[-15:])
 CHECK all(d["profile"] is not None and d["formcp"] is not None for d in drag[-15:])
-# Ld= (#694) prints 0.00 rather than dashing: there IS along-flow drag to divide by (31.7 N) and
-# no lift over it. A dash here would mean "no flow", which is what used to be true of this row.
-CHECK all(d["ld"] == 0.0 for d in drag[-15:])
+# Ld= (#694) used to print 0.00: along-flow drag to divide by, nothing across it. Since #947 the
+# across-flow leg is the hull's own normal force, so Ld is no longer zero -- and it is exactly
+# SideCdA over the axial CdA, because those are the only two legs (wings unloaded, chute stowed).
+# Measured 0.21 = 0.18 / (1.2 x 0.389 x 0.82 + 0.469). A parked skiff has an L/D; that IS the
+# point of #947, and this pin is where the game says so.
+CHECK all(abs(d["ld"] - d["sidecda"] / (1.2 * d["cd"] * d["a"] + d["profile"])) < 0.05 for d in drag[-15:])
 # WHAT STILL PRINTS, and why unchanged: rho and the body's air are not read off a direction.
 # Kerbin's pad air is 1.1945 kg/m3 at 260.8 m; the thermometer reads 289.6 K, not the 286.5 K the
 # profile alone answers there -- Kerbin authors air_follow 0.35 (#724 rung D), so the air nearest

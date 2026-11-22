@@ -32,12 +32,16 @@
 // with nothing marking it. seams= is the game's own count (Vehicle::seams), appended
 // like every earlier version did: nothing renamed, nothing removed, so a v3 reader
 // keeps every key it knew.
-static const int kRecVersion = 4;
+// v5 (#947) added the crossflow normal bill (side=, m^2) and its lever (sidecp=, m):
+// the reading --drag-log prints as SideCdA=/SideCp=, the push the sides of hidden
+// bodies pay that the axial silhouette never billed. Same append law: a v4 reader
+// keeps every key it knew.
+static const int kRecVersion = 5;
 
 // The channels, in row order: the header line's contract with a reader.
 inline const char *recChannels() {
     return "t alt_asl alt_agl v v_surf v_orb vs hs lat lon pitch roll hdg dv acc"
-           " rho F L Cd A aoa beta cpl ind chute T p a mach mass thr stg"
+           " rho F L Cd A aoa beta cpl ind side sidecp chute T p a mach mass thr stg"
            " q gamma dv_exp grav drag steer burns seams";
 }
 
@@ -80,6 +84,10 @@ struct RecSample {
     double Cd = 0.0;
     double A = 0.0;        // body silhouette facing the flow, m2
     double aoa = 0.0, beta = 0.0, cpl = 0.0, ind = 0.0;
+    /* #947: the crossflow normal bill (m^2) and its lever (+ ahead of the COM),
+       the reading --drag-log spells SideCdA=/SideCp=. They ride the aoa gate: no
+       usable flow, no normal force to quote. */
+    double side = 0.0, sidecp = 0.0;
     double chute = 0.0;    // always a number: a parked chute IS 0 m2
     double T = 0.0, p = 0.0, a = 0.0, mach = 0.0;
     double mass = 0.0;     // kg, fuel and crew included
@@ -119,16 +127,21 @@ struct RecSample {
 inline int recRow(const RecSample &s, char *buf, size_t n) {
     if(buf == nullptr || n == 0) { return -1; }
     char aoa_txt[32], beta_txt[32], cpl_txt[32], ind_txt[32];
+    char side_txt[32], sidecp_txt[32];
     char t_txt[32], p_txt[32], a_txt[32], mach_txt[32];
     const bool flow = !std::isnan(s.aoa);   // one test, as --drag-log does
     if(flow) {
         snprintf(aoa_txt, sizeof aoa_txt, "%.1f", s.aoa);
         snprintf(cpl_txt, sizeof cpl_txt, "%.2f", s.cpl);
         snprintf(ind_txt, sizeof ind_txt, "%.3f", s.ind);
+        snprintf(side_txt, sizeof side_txt, "%.2f", s.side);
+        snprintf(sidecp_txt, sizeof sidecp_txt, "%+.2f", s.sidecp);
     } else {
         snprintf(aoa_txt, sizeof aoa_txt, "-");
         snprintf(cpl_txt, sizeof cpl_txt, "-");
         snprintf(ind_txt, sizeof ind_txt, "-");
+        snprintf(side_txt, sizeof side_txt, "-");
+        snprintf(sidecp_txt, sizeof sidecp_txt, "-");
     }
     /* beta is NOT gated by `flow`: a flow can be fast enough to have an angle of
        attack and still have no yaw to report, because it lies along the hull's up
@@ -184,14 +197,16 @@ inline int recRow(const RecSample &s, char *buf, size_t n) {
                                "t=%.2f alt_asl=%.1f alt_agl=%s v=%.2f v_surf=%s"
                                " v_orb=%s vs=%s hs=%s lat=%s lon=%s pitch=%s roll=%s"
                                " hdg=%s dv=%.1f acc=%.2f rho=%.5g F=%.2f L=%.2f"
-                               " Cd=%.3f A=%.2f aoa=%s beta=%s cpl=%s ind=%s chute=%.2f"
+                               " Cd=%.3f A=%.2f aoa=%s beta=%s cpl=%s ind=%s"
+                               " side=%s sidecp=%s chute=%.2f"
                                " T=%s p=%s a=%s mach=%s mass=%.1f thr=%.2f stg=%d"
                                " q=%.1f gamma=%s dv_exp=%.1f grav=%.1f drag=%.1f"
                                " steer=%.1f burns=%d seams=%d",
                                s.t, s.alt_asl, agl_txt, s.v, vsurf_txt, vorb_txt,
                                vs_txt, hs_txt, lat_txt, lon_txt, pit_txt, rol_txt,
                                hdg_txt, s.dv, s.acc, s.rho, s.F, s.L, s.Cd, s.A,
-                               aoa_txt, beta_txt, cpl_txt, ind_txt, s.chute,
+                               aoa_txt, beta_txt, cpl_txt, ind_txt,
+                               side_txt, sidecp_txt, s.chute,
                                t_txt, p_txt, a_txt, mach_txt, s.mass, s.thr, s.stg,
                                s.q, gam_txt, s.dv_exp, s.grav, s.drag, s.steer,
                                s.burns, s.seams);

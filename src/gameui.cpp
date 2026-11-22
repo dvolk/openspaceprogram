@@ -6405,6 +6405,10 @@ static ImU32 forceKindColor(int kind) {
         case Vehicle::kForceSurfDrag: return IM_COL32(190, 190, 190, 230);
         case Vehicle::kForceThrust: return IM_COL32(255, 165, 40, 235);
         case Vehicle::kForceGround: return IM_COL32(180, 120, 60, 235);
+        /* Steel blue: it is the hull's own force like kForceDrag, but it belongs to
+           the hidden bodies and acts at theirs, so it should not read as a shade
+           of the drag arrow (#947). */
+        case Vehicle::kForceSide: return IM_COL32(110, 160, 230, 230);
         default:
             assert(!"unknown force overlay kind");
             return IM_COL32(255, 255, 255, 230);
@@ -6421,6 +6425,7 @@ static const char *forceKindName(int kind) {
         case Vehicle::kForceSurfDrag: return "surface form drag (at the surface)";
         case Vehicle::kForceThrust: return "thrust";
         case Vehicle::kForceGround: return "ground (wheel)";
+        case Vehicle::kForceSide: return "crossflow normal (at the hidden body)";
         default:                   return "?";
     }
 }

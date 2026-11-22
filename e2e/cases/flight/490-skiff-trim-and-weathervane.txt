@@ -35,7 +35,10 @@ CHECK len(drag) >= 40
 # attitude in still air -- the run went 2.5..2.8 unwinded and reads 2.5..3.2 with it.
 # #945 moved the arc along with the bill: the hull went Cd 0.58 -> 0.40, the air-relative
 # speed now spans 25.3..82.6 m/s where it spanned 30.0..78.3, and the peak reads 3.5.
-CHECK all(2.4 < d["aoa"] < 3.6 for d in drag if d["aoa"] is not None)
+# #947 dropped the floor: the hull's crossflow normal force (SideCp pinned below, ~1.2 m aft)
+# trims the whole arc down, and the low row reads 2.4 where it used to hold 2.5. The band
+# keeps 0.2 of floor slack and the same 3.6 ceiling the wing peak defended.
+CHECK all(2.2 < d["aoa"] < 3.6 for d in drag if d["aoa"] is not None)
 # The first, uncoupled exchange: the bed gives 80 m/s of air and this hull trims near
 # 41 m/s in #686's air (47..50 in the air this case was written against, because the
 # bed's rho went 0.348 -> 0.502 kg/m3 and trim speed goes as 1/sqrt(rho)). So the arc
@@ -107,6 +110,17 @@ CHECK all(d["induced"] > 0.05 for d in drag if d.get("induced") is not None)
 # almost none of the weathervane, and the tail carries it. The band is 0.09 m clear of
 # the measured top and 0.09 clear of the bottom: the number worth keeping apart from it
 # is zero and the spindle's -0.68, both of which the band still separates. The missing
-# side-force that would put this back aft is #947.
+# side-force that case blamed on #947 landed -- but it did NOT move this number: FormCp
+# stays the lever of the ALONG-flow bill, and the perpendicular push gets its own SideCp=
+# beside it, because two lines of action cannot fold into one scalar without lying about
+# at least one of them.
 CHECK all(-0.20 < d["formcp"] < -0.02 for d in drag if d.get("formcp") is not None)
+# #947, pinned on the airframe its body was written against. This hull flies a degree or
+# two off its line, so every cruise row has crossflow; the hull's strip is half-shielded
+# by the pod ahead of it and bills the rest; and the normal force lands aft, doing the
+# weathervane work FormCp alone could not. Measured 0.11..0.31 m2 at -1.14..-1.22 m.
+# The floor guards "the law bills at all"; the band around -1.2 guards the SIGN, which is
+# this case's claim made checkable in its own column.
+CHECK all(d["sidecda"] is not None and d["sidecda"] > 0.05 for d in drag)
+CHECK all(-1.5 < d["sidecp"] < -0.9 for d in drag if d.get("sidecp") is not None)
 FORBID error:

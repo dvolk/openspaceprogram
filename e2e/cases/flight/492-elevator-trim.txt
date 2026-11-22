@@ -1,5 +1,5 @@
 NAME elevator-trim
-CLAIM The same 569 kg skiff, with 12 deg of elevator trim authored on the parts and nothing else changed, holds +4.8..+6.4 deg of angle of attack through its phugoid with the stick released: the download that trims this airframe comes from deflection, and the standing bill is real (0.34-0.51 m2 of induced CdA while the hull is pointing into the flow, 0.87 the instant the rudder is kicked). The gravity-keyed bed spawns it at 80 m/s of GROUND speed, and Kerbin's column is worth 31.6 m/s at that band -- 19 deg off the spawn heading -- so the hull arrives with 52 m/s of air and this run stays inside its envelope and settles back after the kick.
+CLAIM The same 569 kg skiff, with 12 deg of elevator trim authored on the parts and nothing else changed, holds +4.7..+6.0 deg of angle of attack through its phugoid with the stick released: the download that trims this airframe comes from deflection, and the standing bill is real (0.34-0.51 m2 of induced CdA while the hull is pointing into the flow, 0.87 the instant the rudder is kicked). The gravity-keyed bed spawns it at 80 m/s of GROUND speed, and Kerbin's column is worth 31.6 m/s at that band -- 19 deg off the spawn heading -- so the hull arrives with 52 m/s of air and this run stays inside its envelope and settles back after the kick.
 KIND golden
 ARGS --time-accel 1 --startship skiff_trim,res/ships/skiff_trim.json,Kerbin,flying-cruise
 # --no-paint: every assertion here parses [drag]/[mass] rows, so the 3D pass buys
@@ -39,7 +39,12 @@ CHECK len(drag) >= 40
 # #945 raised the top of the band 5.8 -> 6.4: the hull went Cd 0.58 -> 0.42, so the exchange
 # runs deeper and the slow end of it asks more of the tab. The arc's own speed now reads
 # 48.2..82.4 over the ground (20.1..55.3 through the air).
-CHECK all(4.7 < d["aoa"] < 6.5 for d in drag if d["aoa"] is not None and d["t"] < 25.0)
+# #947 brought the whole band down about 0.1-0.4 and flattened its top: the hull's crossflow
+# normal force lands aft of the COM (SideCp about -1.2 m on this airframe, flight/490) and
+# answers the angle the hull already flies, so the tab buys slightly less of the hold. The
+# arc reads 4.7..6.0 now; the floor 4.5 keeps 0.2 of slack and still separates the band from
+# the untrimmed 2.4..3.4 the same hull holds without the tab (flight/490).
+CHECK all(4.5 < d["aoa"] < 6.5 for d in drag if d["aoa"] is not None and d["t"] < 25.0)
 # The exchange, pre-kick: 48.2..82.4 m/s of GROUND speed (20.1..55.3 of air) inside 330 m
 # of height, and the whole 50 s run stays inside that. This floor is NOT a stall floor, and
 # that is worth saying out loud:

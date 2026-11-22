@@ -3584,7 +3584,8 @@ static void test_silhouetteMemo() {
     CHECK_TRUE(!memo.lookup(0.3, 0.1, out), "fresh table: nothing filled -> miss");
     CHECK_TRUE(memo.fillAround(0.3, 0.1, 0,
                                [](double, double, std::vector<double> &,
-                                  std::vector<double> &) { return SilhouetteBill(); }) == 0,
+                                  std::vector<double> &, std::vector<double> &) {
+                                   return SilhouetteBill(); }) == 0,
                "a zero budget fills nothing (and costs nothing)");
 
     /* A function LINEAR in both angles: bilinear interpolation reproduces it
@@ -3594,7 +3595,7 @@ static void test_silhouetteMemo() {
        hands it returns one: the same linear surface in the area, three times it in
        the cd numerator, and a cp that walks with the angles. */
     const auto exactBill = [&](double a, double b, std::vector<double> &pv,
-                               std::vector<double> &pcd) {
+                               std::vector<double> &pcd, std::vector<double> &ppj) {
         SilhouetteBill bl;
         bl.area = exact(a, b);
         bl.cdNum = 3.0 * bl.area;
@@ -3604,12 +3605,16 @@ static void test_silhouetteMemo() {
            against the blended bill (#1090). */
         pv = { 0.6 * bl.area, 0.4 * bl.area };
         pcd = { 1.8 * bl.area, 1.2 * bl.area };
+        /* And the own-shadow column (#947), told so that slot 0 is FULLY EXPOSED
+           (shadow == credit) while slot 1 hides behind it by a linear, positive
+           amount: exactly the shape the crossflow law leans on. */
+        ppj = { pv[0], pv[1] + 3.0 + 0.5 * a };
         return bl;
     };
     int calls = 0;
     const auto counted = [&](double a, double b, std::vector<double> &pv,
-                             std::vector<double> &pcd) {
-        calls++; return exactBill(a, b, pv, pcd);
+                             std::vector<double> &pcd, std::vector<double> &ppj) {
+        calls++; return exactBill(a, b, pv, pcd, ppj);
     };
     CHECK_TRUE(memo.fillAround(0.11, -0.31, 4, counted) == 4,
                "a fresh cell fills its four corners");
@@ -3631,8 +3636,8 @@ static void test_silhouetteMemo() {
         CHECK_TRUE(memo.lookup(0.13, -0.29, bl), "the bill hits with the area");
         CHECK_REL(bl.cdNum, 3.0 * bl.area, 1e-6, "the cd numerator blends on the area");
         CHECK_REL(bl.cdNum / bl.area, 3.0, 1e-6, "so the coefficient survives the blend");
-        std::vector<double> wantV, wantC;
-        const SilhouetteBill want = exactBill(0.13, -0.29, wantV, wantC);
+        std::vector<double> wantV, wantC, wantP;
+        const SilhouetteBill want = exactBill(0.13, -0.29, wantV, wantC, wantP);
         CHECK_REL(glm::length(bl.cpNum - want.cpNum), 0.0, 1e-5 * glm::length(want.cpNum),
                    "and so does the cp numerator (same basis at every node)");
         /* THE PARTITION HITS TOO (#1090). Same four nodes, same weights, one row
@@ -3641,14 +3646,26 @@ static void test_silhouetteMemo() {
            area and cd numerator, and each part's own cd survives -- so a part
            window or a heating law reading these on a HIT reads the same KIND of
            number the exact pass would have computed. */
-        std::vector<double> vis, cdA;
-        CHECK_TRUE(memo.lookup(0.13, -0.29, bl, &vis, &cdA), "the hit carries the partition");
-        CHECK_TRUE(vis.size() == 2 && cdA.size() == 2, "one row per part in each column");
+        std::vector<double> vis, cdA, proj;
+        CHECK_TRUE(memo.lookup(0.13, -0.29, bl, &vis, &cdA, &proj),
+                   "the hit carries the partition");
+        CHECK_TRUE(vis.size() == 2 && cdA.size() == 2 && proj.size() == 2,
+                   "one row per part in each column");
         CHECK_REL(vis[0], wantV[0], 1e-9, "the 60% part keeps its 60%, blended");
         CHECK_REL(vis[1], wantV[1], 1e-9, "and the 40% part its 40%");
         CHECK_REL(vis[0] + vis[1], bl.area, 1e-12, "the columns still sum to the blended area");
         CHECK_REL(cdA[0] + cdA[1], bl.cdNum, 1e-12, "and their credits to the blended numerator");
         CHECK_REL(cdA[0] / vis[0], 3.0, 1e-9, "each part's own cd survives the blend");
+        /* THE SHADOW COLUMN (#947): the exposed part's credit equals its own shadow
+           THROUGH the blend -- both columns carry the identical linear function, so
+           the bilinear weights cancel to identity and the crossflow law bills that
+           part exactly zero. A box estimate of the own shadow could not promise
+           this cancellation, and that is why the column exists. */
+        CHECK_TRUE(proj[0] == vis[0], "an exposed part cancels exactly, blended");
+        CHECK_REL(proj[1], wantP[1], 1e-9, "the hidden part's shadow blends too");
+        CHECK_REL(proj[1] - vis[1], 3.0 + 0.5 * 0.13, 1e-9,
+                  "and what the union refused of it is the exact linear amount");
+        CHECK_TRUE(proj[1] > vis[1], "a shadow never credits more than it throws");
     }
 
     /* Lazy allocation: a geometry change bumps a counter, it does not buy a table.
@@ -3828,6 +3845,47 @@ static void test_inducedCd() {
     CHECK_REL(inducedCd(1.0, 4.0, 0.0), 0.0, 0.0, "no planform -> 0");
     CHECK_REL(inducedCd(1.0, 0.0, 8.0), 0.0, 0.0, "no span -> 0");
     CHECK_REL(inducedCd(1.0, 4.0, 8.0, 0.0), 0.0, 0.0, "a zero Oswald efficiency -> 0");
+}
+
+/* #947: the crossflow SIDE STRIP -- the normal-force reference area of a body,
+   off its mesh box, with the sin(alpha) kernel in the geometry. */
+static void test_crossflow_strip() {
+    printf("== sideStripCdA: lateral face pairs, projected on the flow ==\n");
+
+    /* A round part, radius 0.5, length L = 2 hz = 2: the strip is exactly
+       2 r L sin(alpha) -- the stadium strip its shadow gains as it bows off the
+       flow -- for a cylinder rotated about any axis across it. */
+    const double r = 0.5, hz = 1.0;
+    CHECK_REL(sideStripCdA(r, r, hz, glm::dvec3(0.0, 0.0, 1.0)), 0.0, 1.0,
+              "dead axial: no side strip at all (the kernel, not a guard)");
+    CHECK_REL(sideStripCdA(r, r, hz, glm::dvec3(1.0, 0.0, 0.0)), 2.0 * r * (2.0 * hz),
+              1e-12, "broadside: full L x D");
+    for(double a = 0.0; a <= 90.0; a += 15.0) {
+        const double rad = a * std::numbers::pi / 180.0;
+        const glm::dvec3 d(std::sin(rad), 0.0, std::cos(rad));
+        CHECK_REL(sideStripCdA(r, r, hz, d), 2.0 * r * (2.0 * hz) * std::sin(rad),
+                  1e-12, "rotation about y: 2 L D sin(alpha) exactly");
+        const glm::dvec3 e(0.0, std::sin(rad), std::cos(rad));
+        CHECK_REL(sideStripCdA(r, r, hz, e), 2.0 * r * (2.0 * hz) * std::sin(rad),
+                  1e-12, "rotation about x: same");
+    }
+    // Flow from behind names the same strip: it is an AREA, not a signed push.
+    CHECK_REL(sideStripCdA(r, r, hz, glm::dvec3(-0.5, 0.0, 0.866)),
+              sideStripCdA(r, r, hz, glm::dvec3(0.5, 0.0, -0.866)), 1e-12,
+              "d and -d strip equal");
+
+    /* A square section: each lateral face pair reads its own rectangle.
+       hx=0.5, hy=0.25, hz=1: faces across x are 2hy x 2hz = 1 m2; across y,
+       2hx x 2hz = 2 m2; an oblique flow weights both by its components. */
+    CHECK_REL(sideStripCdA(0.5, 0.25, 1.0, glm::dvec3(1.0, 0.0, 0.0)), 1.0, 1e-12,
+              "flow along x: the y-normal face pair only");
+    CHECK_REL(sideStripCdA(0.5, 0.25, 1.0, glm::dvec3(0.0, 1.0, 0.0)), 2.0, 1e-12,
+              "flow along y: the x-normal face pair only");
+    CHECK_REL(sideStripCdA(0.5, 0.25, 1.0, glm::normalize(glm::dvec3(1.0, 1.0, 0.0))),
+              (1.0 + 2.0) / std::sqrt(2.0), 1e-12, "oblique: component-weighted");
+    // A part's own axis still strips to zero whatever its section.
+    CHECK_REL(sideStripCdA(0.5, 0.25, 1.0, glm::dvec3(0.0, 0.0, 1.0)), 0.0, 1.0,
+              "any section, axial flow: zero");
 }
 
 static void test_partCd() {
@@ -4525,6 +4583,8 @@ int main() {
     test_inducedCd();
     printf("\n");
     test_partCd();
+    printf("\n");
+    test_crossflow_strip();
     printf("\n");
     test_surfaceFormCdA();
     printf("\n");

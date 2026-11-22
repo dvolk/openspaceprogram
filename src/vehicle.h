@@ -303,9 +303,13 @@ public:
        are not; that is what lets a body part's Form row (and a future heating or
        stress law) read per-part figures at any cadence. `aeroSilPartPtr` is the
        third positional twin, filled by projectSilhouette, so the copy onto the
-       Parts cannot drift from the order that built the columns. */
+       Parts cannot drift from the order that built the columns. `aeroSilPartProj`
+       is the fourth (#947): each part's OWN projected shadow area beside its
+       credits, so `1 - vis/proj` says how much of that shadow the union refused
+       -- and cancels to exactly zero for an exposed part, hit or miss. */
     std::vector<double> aeroSilPartVis;
     std::vector<double> aeroSilPartCdA;
+    std::vector<double> aeroSilPartProj;
     std::vector<Part *> aeroSilPartPtr;
     // Scratch for filling cache nodes: those polygons belong to the cell
     // corners' flow directions, not the substep's, so they need their own set.
@@ -947,6 +951,20 @@ public:
        is charged once for its shape (here) and once for its lift (Induced= above),
        never twice for the same planform. */
     double lastSurfCdA = 0.0;
+    /* #947: the hull's CROSSFLOW NORMAL force -- what the side of a body pays
+       when the axial union billed it nothing. A part's share is its mesh-box side
+       strip (drag.h::sideStripCdA, 2 L D sin(alpha) for a round body) discounted
+       by the shadow the axial partition already credited it, times the authored
+       drag_side as the normal coefficient, at the part's own mount and its own
+       flow. lastSideCdA is the whole bill (m^2, 0 = every part exposed);
+       lastSideCpLever is the arm of its centroid along the nose (+ ahead, like
+       CpL) -- on a stacked rocket the hidden tanks and engine sit it AFT, which
+       is the aft push #945's cp never had. Deliberately NOT folded into
+       CpL/FormCp: normal force and axial drag are perpendicular forces, and one
+       CdA-weighted lever over two lines of action is a number that cannot
+       reconstruct a torque. */
+    double lastSideCdA = 0.0;
+    double lastSideCpLever = 0.0;
 
     /* Last substep's control-surface deflections (--drag-log). */
     struct ControlDeflection {
@@ -2134,7 +2152,8 @@ public:
        weathervane is coming from. */
     static constexpr int kForceThrust = 0, kForceRcs = 1, kForceDrag = 2,
                          kForceLift = 3, kForceChute = 4, kForceCtrl = 5,
-                         kForceInduced = 6, kForceSurfDrag = 7, kForceGround = 8;
+                         kForceInduced = 6, kForceSurfDrag = 7, kForceGround = 8,
+                         kForceSide = 9;
     static constexpr int kForceKindCount = 9;
     std::vector<ForceVec> lastForceVecs;
     bool recordForceVecs = false;

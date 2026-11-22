@@ -1,0 +1,76 @@
+# #947: the SIDE of a body used to pay for nothing. The axial bill charges the silhouette --
+# the union of every part's shadow seen along the flow -- and a hull strip that some OTHER
+# part covers from upwind votes for zero there, while the strip itself feels the flow
+# arriving perpendicular to that silhouette, at up to cd x its full side area. A parked
+# skiff's hull read Ld 0.00 in case 560 because there was genuinely no perpendicular force
+# in the model at all -- for a body hidden inside its own silhouette, there never is.
+#
+# The law: each hull part refuses to swallow its OWN shadow. The fraction of its projected
+# area the union does not credit it (1 - visible/own, cached columns from the SAME polygons
+# so an exposed part cancels exactly -- tests/test_aerosweep.cpp pins that at real alpha)
+# times the mesh box's crossflow strip (4 hz (hy|u.x| + hx|u.y|), exactly 2 r L sin(alpha)
+# for a round part -- the sin lives in the geometry, not a second multiply), times the
+# part's authored drag_side, answered against that part's OWN local flow (#483) at its
+# mount. The force is perpendicular to the flow, so it gets its own log columns --
+# SideCdA=/SideCp= -- instead of folding into CpL/FormCp, which are the along-flow bill's
+# lever and cannot share a scalar with a line of action at 90 deg to it.
+#
+# WHY THIS CASE: the audit that re-checked #947's body found the suite had no ascent pin for
+# this column at all -- 560 is a parked skiff and 490 a Kerbin cruise, and neither weighs a
+# tall stack whose hull hides BEHIND its own pod. mars_explorer_mk1 is the hull the ticket's
+# numbers were written against, and the fact worth pinning is the SIGN: the billed strip
+# sits aft of the COM on every row, so the force is restoring. Pre-#947 the same climb let
+# angle of attack drift past 3.8 deg toward 5.5 while the stack torqued harder the faster
+# it flew; now it holds inside a degree and a half through the fat air.
+#
+# THE RUN'S SHAPE (measured, so the windows below say what they weigh): scripted mode
+# prints one [drag] row per sim second; the climb leaves the air at t~250 s (rho=0 rows
+# dash AoA and the side pair exactly there, #560's rule), a ~160 s coast above the air,
+# and the fall back down resumes billing at t~420 s down to ~41 km by the 4300-tick stop.
+# The fall is kept on purpose: it is where the strip decays to ~1 m2 while staging keeps
+# moving the COM aft of the hull, and the lever is pinned holding through all of it.
+NAME hidden-body-normal-force
+CLAIM On an autopilot ascent the hull's hidden side bills real strip (SideCdA up to 46 m2 at the pad pitch-over), its normal force always lands aft of the COM (SideCp < 0), and the hull holds inside 3 deg of AoA in the fat air instead of the pre-#947 drift toward 5.5.
+KIND golden
+ARGS --startship mars_explorer_mk1,res/ships/mars_explorer_mk1.json,Kerbin,pad --ascent 100e3 --time-accel 10
+ARGS --drag-log --sim-steps 4300 --timeout 600 --no-paint
+LIMIT 90
+EXPECT Autopilot: ascent armed on 'mars_explorer_mk1'
+EXPECT [drag]
+FORBID error:
+CHECK len(drag) >= 20
+# THE DASH DISCIPLINE of the new pair: it rides the same lastDragAlphaValid gate as AoA,
+# so a row may dash AoA only when it has no air at all. Measured: dashed rows are exactly
+# the t >= 250 s ones, every one with rho=0.
+CHECK all(d.get("aoa") is not None or d["rho"] == 0.0 for d in drag)
+# THE LAW BILLS SOMETHING, at scale. This hull is 16 m2 of axial silhouette; its tube
+# strips are far larger, and at the t=10 s pitch-over the stack flies ~6.6 deg broadside
+# to its own speed low in the air: SideCdA peaks at 46.7 m2. 20 pins "the strip column
+# exists and is not a rounding artifact" without betting on the exact wobble of one frame.
+CHECK max([d["sidecda"] for d in drag if d.get("sidecda") is not None]) >= 20.0
+# THE COUPLING: crossflow implies a bill. Every row flown more than a degree off the line
+# carries at least 1 m2 -- measured >= 9.3. A run that kept this cheap by SKIPPING the
+# crossflow while still printing AoA fails here instead of quietly billing nothing.
+CHECK all(d["sidecda"] > 1.0 for d in drag if d.get("aoa") is not None and abs(d["aoa"]) > 1.0)
+# THE SIGN IS THE CLAIM, on rows where the lever means something. Measured -1.41..-3.38 m
+# across the ~50 billed rows (SideCdA >= 0.5): -1.4..-2.8 on the climb, drifting aft to
+# -3.4 on the fall as stages drop away and the COM moves off the hull. The band keeps 0.2 m
+# clear each way. A POSITIVE
+# SideCp would mean the normal force moved ahead of the COM -- the hull levering itself
+# further off its flow instead of weathervaning back, the failure direction #947 was
+# predicted to fix. SideCp is deliberately NOT gated on aoa: at aoa~0 the strip shrinks
+# toward zero (sin in the geometry) and rows below 0.5 m2 are exactly where a lever
+# divided out of noise could wander -- the tail past the air is not here to be wrong.
+CHECK all(-3.6 < d["sidecp"] < -1.2 for d in drag if d.get("sidecda") is not None and d["sidecda"] >= 0.5)
+CHECK sum(1 for d in drag if d.get("sidecda") is not None and d["sidecda"] >= 0.5) >= 10
+# THE FIGHT IS GONE in the fat air (rho >= 0.01, after the t=10 s pitch-over the guidance
+# itself commands): the hull holds inside 3 deg of its line -- measured -0.7..+1.5, against
+# the pre-#947 drift that grew 3.8 -> 5.5. The near-vacuum rows above the air are excluded
+# on rho, not on time: at 2e-5 kg/m3 the aerodynamic authority that would carry any
+# weathervane argument is gone, and the same rows there read -4 deg on a hull the air can
+# barely touch. That is #960's guidance question, not this law's.
+CHECK all(abs(d["aoa"]) < 3.0 for d in drag if d.get("aoa") is not None and d["t"] > 20.0 and d["rho"] >= 0.01)
+# And the torque the whole stack feels stays inside the envelope the guidance was sized
+# for: max |tau| measured 174 kNm on this climb. 300 kNm keeps the pin clear of the
+# measured worst while reddening anything that levers the stack around.
+CHECK all(d["tau"] < 300000.0 for d in drag if d.get("tau") is not None)

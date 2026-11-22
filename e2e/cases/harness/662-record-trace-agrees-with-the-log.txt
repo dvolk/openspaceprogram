@@ -12,13 +12,25 @@ ARGS --time-accel 1 --width 1920 --height 1080 --startship skiff,res/ships/skiff
 ARGS --sim-steps 900 --drag-log --record --record-interval 0.25 --no-paint
 ARGS --sim-press 500,3000,R
 ARGS --sim-press 500,20000,T
+# The Recorder window opens HELD (#972): its Plot waits for Start, and the ring --
+# the buffer that window draws -- only fills while unheld. --no-paint keeps the imgui
+# pass alive (main.cpp: only the 3D half goes away), so --ui-click reaches the window
+# here exactly as painted. Without these two clicks this case was red at HEAD BEFORE
+# #947 touched anything: ring=0, because it never pressed Start.
+ARGS --ui-click 2000,"Windows/Recorder"
+ARGS --ui-click 3000,"Recorder/Start"
 EXPECT record:
 EXPECT (one row per 250 ms)
 EXPECT 60 rows
 # ring= is the other sink (#972): the history buffer a Recorder window would draw.
-# Same gate, one sampler, no load in this run, so the two counts are the same
-# number -- the cheap witness that the plot did not grow its own sampling path.
-EXPECT ring=60 ->
+# Same gate, one sampler, no load in this run -- the counts are the same number only
+# while nothing is held. Start lands at 3 s of this 15 s run, so the ring takes the
+# samples from 3.0 s (the Start click is processed before that grid slot's sampler
+# runs; #972's Pause at 8000 excluding its own slot shows the same ordering) through
+# the last grid slot at 14.75 s: 48 of the trace's 60. The file keeps all 60 because
+# a held plot must not throw evidence away -- that asymmetry IS the #972 design, and
+# pinning 48 beside 60 is where the game says so.
+EXPECT ring=48 ->
 # The cadence: --orbit-interval gates [drag] at 1 s, --record-interval the trace at
 # 0.25 s, both on the same scripted clock and both armed at tick 0.
 CHECK len(drag) >= 10
@@ -37,6 +49,10 @@ CHECK all(d["F"] == r["F"] and d["cd"] == r["Cd"] and d["a"] == r["A"] for d, r 
 # for the log) goes red instead of quietly disagreeing.
 CHECK all(d["L"] == r["L"] for d, r in zip(drag, rec[3::4]))
 CHECK all(d["aoa"] == r["aoa"] and d["beta"] == r["beta"] and d["cpl"] == r["cpl"] and d["induced"] == r["ind"] for d, r in zip(drag, rec[3::4]))
+# #947's pair joins the row-for-row comparison for the same reason cpl and ind did: the
+# [drag] row's SideCdA=/SideCp= and the trace's side=/sidecp= must be one reading, printed
+# twice. Both sides print %.2f/%+.2f of the same double at the same tick, so == is exact.
+CHECK all(d["sidecda"] == r["side"] and d["sidecp"] == r["sidecp"] for d, r in zip(drag, rec[3::4]))
 CHECK all(d["airT"] == r["T"] and d["airP"] == r["p"] and d["airA"] == r["a"] and d["mach"] == r["mach"] for d, r in zip(drag, rec[3::4]))
 # And the two clocks map onto each other: the trace's t= counts the run clock, which
 # under --sim-steps is the same clock the [drag] rows' t= comes from -- less one
@@ -69,6 +85,6 @@ CHECK all(a["dv_exp"] <= b["dv_exp"] and a["burns"] <= b["burns"] for a, b in zi
 # docked fixture instead.
 CHECK all(r["seams"] == 0 for r in rec)
 # What the recorder says it captured, in its own words on stdout.
-FILE flights/*.log "#rec v4 channels=t alt_asl alt_agl v v_surf v_orb vs hs lat lon pitch roll hdg dv acc rho F L Cd A aoa beta cpl ind chute T p a mach mass thr stg q gamma dv_exp grav drag steer burns seams" "#ship=\"skiff\" interval_ms=250" "[rec] t=0.00 "
+FILE flights/*.log "#rec v5 channels=t alt_asl alt_agl v v_surf v_orb vs hs lat lon pitch roll hdg dv acc rho F L Cd A aoa beta cpl ind side sidecp chute T p a mach mass thr stg q gamma dv_exp grav drag steer burns seams" "#ship=\"skiff\" interval_ms=250" "[rec] t=0.00 "
 FORBID error:
 FORBID record: FAILED

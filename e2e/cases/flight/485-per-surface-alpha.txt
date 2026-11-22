@@ -116,18 +116,20 @@ CHECK all(abs(f - r) < 0.6 for f,r in zip([s["a"] for s in surface][4::10],[s["a
 # and the band itself stays at 0.3.
 # The wing band used to be 2.2..3.6, a 1.4 deg window around a signal that measured
 # 2.5..2.7 on every row of this run -- a band that could not fail for a sideslip leaking
-# into pitch. It is 2.4..3.6 now: the run measures 2.50..3.50, so 0.1 deg of slack below
-# and 0.1 above, and the leak this pins is a fraction of that. The top of the signal is
-# what moved when the air started moving (#688) and again when the hull got cheaper
-# (#945): at t=25 s the hull is slipping into the kick at 25 m/s of AIR, so a metre per
-# second of sweep across a 4 m half-span is 2.3 deg of angle where the same turn reads
-# 0.7 deg at 78 m/s.
-CHECK all(2.4 < a < 3.6 for a in [s["a"] for s in surface][0::10])
+# into pitch. It went 2.4..3.6 when the run measured 2.50..3.50, and back to 2.2..3.6
+# with #947: the hull's crossflow normal force (aft, restoring) trims the arc about
+# 0.1 deg nose-down, the same shift flight/490's AoA band took, and the signal now
+# measures 2.40..3.40 -- 0.2 deg of slack below and 0.2 above, and the leak this pins
+# is still a fraction of that. The top of the signal is what moved when the air started
+# moving (#688) and again when the hull got cheaper (#945): at t=25 s the hull is
+# slipping into the kick at 25 m/s of AIR, so a metre per second of sweep across a 4 m
+# half-span is 2.3 deg of angle where the same turn reads 0.7 deg at 78 m/s.
+CHECK all(2.2 < a < 3.6 for a in [s["a"] for s in surface][0::10])
 CHECK max(abs(f) for f,t in zip([s["a"] for s in surface][4::10],[d["t"] for d in drag]) if t >= 44.0) < 0.3
 # q is the pressure of the flow AT the surface (#483), not one ship-wide number, and the
-# log shows it: the widest wing-tip split of this run is 13 Pa (t=31 s reads 553 on
-# wing_l and 566 on wing_r) and the split FLIPS SIGN with the yaw -- t=28 reads wing_l 9
-# Pa over wing_r, t=30 7 Pa the other way -- which is omega x r across a 16 m span, a metre
+# log shows it: the widest wing-tip split of this run is 10 Pa (t=30 s reads 397 on
+# wing_l and 407 on wing_r) and the split FLIPS SIGN with the yaw -- t=28 reads wing_l 9
+# Pa over wing_r, t=30 10 Pa the other way -- which is omega x r across a 16 m span, a metre
 # or so per second of sideways flow at the tip while the hull is turning
 # through its kick. The same row spans 18 Pa across all ten parts: the two
 # outermost plates pay the sweep and the ones near the rotation axis do not, so the row
@@ -135,9 +137,10 @@ CHECK max(abs(f) for f,t in zip([s["a"] for s in surface][4::10],[d["t"] for d i
 # of each other.
 # The split used to measure 35 Pa. It is a pressure DIFFERENCE, and a pressure difference
 # from a given sideways speed is rho * v_air * (omega x r): the same turn at half the
-# AIRSPEED pays half the split. Hence the floor moves from 30 Pa to 10 -- measured 13, so
-# 30% of slack, and the sign flip above is the part that cannot happen at all if the
-# flow stops being per-part.
+# AIRSPEED pays half the split. Hence the floor moved from 30 Pa to 10 (#945's deeper,
+# slower arc) and to 8 with #947, whose hull normal force trims the kick a shade later
+# in the phugoid -- measured 10.0 Pa now, so 20% of slack, and the sign flip above is
+# the part that cannot happen at all if the flow stops being per-part.
 # Sampled on every part of every row rather than one survivor: the shared band against the
 # air's OWN speed is 0.95..1.04 across all 500 values, the residual being the substep
 # between the aero pass and the log line plus that per-part spread.
@@ -153,7 +156,7 @@ CHECK max(abs(f) for f,t in zip([s["a"] for s in surface][4::10],[d["t"] for d i
 # parts onto one row, and the CHECK sandbox has no range().)
 CHECK all(0.92 < sp["q"] / (0.5 * d["rho"] * (d["mach"] * d["airA"]) ** 2) < 1.08 for d, sp in zip([r for r in drag for _ in surface[0:10]], surface))
 # ... and the twins disagree where they should: the wing pair's q is not one number.
-# This one reads the mirrored wing pair only -- 15 Pa measured against a 10 Pa floor, so
+# This one reads the mirrored wing pair only -- 10 Pa measured against the 8 Pa floor, so
 # it reddens if a per-part flow stops being per-part.
-CHECK max(abs(l["q"] - r["q"]) for l, r in zip(surface[0::10], surface[1::10])) > 10.0
+CHECK max(abs(l["q"] - r["q"]) for l, r in zip(surface[0::10], surface[1::10])) > 8.0
 FORBID error:

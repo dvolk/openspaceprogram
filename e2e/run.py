@@ -597,6 +597,13 @@ DRAG_RE = re.compile(
     # class used above and throw in float(); the numeric branch is digit-anchored, and the
     # dashed alternative is spelled out so a reader sees the row that carries no value.
     r"(?:\s+(?:Ld=(-?\d+(?:\.\d+)?)|Ld=-))?"
+    # #947: SideCdA=/SideCp= -- the crossflow normal bill on the parts the along-flow
+    # union hides, and its signed lever. One group, not two: tick.cpp prints the pair
+    # together (both numbered or both dashed) off the same lastDragAlphaValid gate as
+    # AoA, because the reading is meaningless without a flow to be perpendicular to.
+    # Printed LAST so every older parser keeps matching -- the same courtesy the
+    # Profile=/FormCp=/Ld= tails were extended by.
+    r"(?:\s+(?:SideCdA=([-\d.]+) m2 SideCp=([-\d.e+]+) m|SideCdA=- SideCp=-))?"
 )
 # --drag-log's control surfaces (src/tick.cpp): one [ctrl] line under each [drag]
 # line, one "name[index](axis)=±deg" term per surface the aero pass scored. It
@@ -2104,7 +2111,8 @@ def parse_drag(out):
     rows = []
     for m in DRAG_RE.finditer(out):
         (t, alt, rho, v, F, L, lup, up, tau, cd, a, aoa, chute, ind,
-         beta, cpl, cla, sm, profile, formcp, airT, airP, airA, mach, ld) = m.groups()
+         beta, cpl, cla, sm, profile, formcp, airT, airP, airA, mach, ld,
+         sidecda, sidecp) = m.groups()
         row = {
             # alt_asl: metres above the body's sea-level DATUM, which is NOT the
             # ground and goes negative exactly where rho peaks (#245). Renamed from
@@ -2180,6 +2188,14 @@ def parse_drag(out):
         # must skip None rows, since a filter over absent keys passes vacuously (#653).
         if ld is not None:
             row["ld"] = float(ld)
+        # #947: the crossflow normal bill (sidecda, m2) and its lever (sidecp, m along
+        # the nose from the COM, same sign convention as cpl/formcp). The force is
+        # PERPENDICULAR to the flow, which is why it is its own pair of columns instead
+        # of a share of Cd/A or of FormCp. Absent when the row dashed the pair: the
+        # same no-usable-flow gate as aoa.
+        if sidecda is not None:
+            row["sidecda"] = float(sidecda)
+            row["sidecp"] = float(sidecp)
         rows.append(row)
     return rows
 
