@@ -19,9 +19,11 @@ ARGS --sim-press 2600,0,G
 ARGS --sim-press 3200,0,G
 EXPECT [camlog]
 CHECK all(r["mode"] == "orbit" and r["focus"] == "ship" for r in cam)
-# The orbit distance never moves: the old cycle set it to radius*3 (or 50 for
-# the ship entry), so any handler at all shows up as a jump.
-CHECK max(r["dist"] for r in cam if r["t"] > 1.0) - min(r["dist"] for r in cam if r["t"] > 1.0) < 1e-6
+# The orbit distance never moves across the presses: the old cycle set it to
+# radius*3 (or 50 for the ship entry), so any handler at all shows up as a
+# jump. Scoped to the presses' neighbourhood, not the whole run: nothing here
+# pins dist against unrelated future auto-framing.
+CHECK max(r["dist"] for r in cam if 1.5 < r["t"] < 4.0) - min(r["dist"] for r in cam if 1.5 < r["t"] < 4.0) < 1e-6
 # The old handler's every branch printed something; none may appear.
 FORBID Camera target:
 FORBID Orbit camera targeting

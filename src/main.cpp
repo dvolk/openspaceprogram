@@ -1180,8 +1180,8 @@ int main(int argc, char **argv)
         game.focusTargets.push_back({ b->name.c_str(), b });
     }
     /* The list is [ship?] + the current bodies, exactly once. Worth a line: a
-       doubled list is invisible in play (the G-cycle name sequence is the same
-       either way) and only shows up as a doubled focusBody index (#298). */
+       doubled list shows up only as a doubled focusBody index (#298) -- the
+       G-cycle that once walked these names and could mask it is gone (#1079). */
     printf("[cam] focus: %zu targets (%d body/bodies)\n",
            game.focusTargets.size(), (int)sys.bodies.size());
     fflush(stdout);

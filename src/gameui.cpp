@@ -3673,10 +3673,10 @@ void drawUIReadouts(Game &g) {
                 const bool capturing = (g.rebind_capture_slot == (int)i);
                 /* The ## suffix is invisible to the player and is what makes the
                    row addressable: PushID gives these buttons unique imgui ids,
-                   but --ui-click matches the LABEL, and 63 rows labelled "rebind"
-                   plus 63 labelled "clear" were one ambiguous match each (#165).
-                   slotName() is the same stable id settings.json stores, so a
-                   case path cannot rot when a key is rebound. */
+                   but --ui-click matches the LABEL, and every row labelled
+                   "rebind" (and every "clear") was one ambiguous match each
+                   (#165). slotName() is the same stable id settings.json
+                   stores, so a case path cannot rot when a key is rebound. */
                 const char *slot = slotName((Slot)i);
                 assert(slot != nullptr);   // every i here is < SLOT_COUNT
                 const std::string tag = slot;

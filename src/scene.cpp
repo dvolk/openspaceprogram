@@ -188,9 +188,14 @@ CameraSnapshot captureCamera(const Game &g) {
 void restoreCamera(Game &g, const CameraSnapshot &s) {
     if(g.camera == nullptr) { return; }
     // The saved body resolves to its CURRENT index (null = the "ship" entry).
+    int resolved = -1;
     for(int i = 0; i < (int)g.focusTargets.size(); i++) {
-        if(g.focusTargets[i].body == s.focusBody) { g.focusBody = i; break; }
+        if(g.focusTargets[i].body == s.focusBody) { resolved = i; break; }
     }
+    /* With #1079 retired there is no in-flight writer that could move
+       focusBody back, so an unmatched snapshot falls back to the ship entry
+       explicitly rather than keeping a stale index. */
+    g.focusBody = (resolved >= 0) ? resolved : 0;
     if(s.mode == CAM_FREE) {
         g.camera->setFreePose(s.pos, s.fwd, s.up);
     } else if(s.mode == CAM_FIRST) {
