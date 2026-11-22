@@ -814,6 +814,22 @@ def generate(name, ptype, mesh, texture):
         e["ladder"] = ladder_spec(ptype, mesh)
 
     e.update(EXTRA_FIELDS.get(name, {}))
+    # #1081: a docking port's SURFACE node is its bottom FLANGE, not the
+    # synthesized -X side node. attachSurface opposes the child NODE's dir to
+    # the contact normal, so a flange node (dir -Z, along the bore) leaves the
+    # bore pointing OUT of the hull it is bolted to; the side node left it
+    # tangent. top/bottom stay unflagged: VAB stack snap skips surface nodes
+    # (vab.cpp), so flagging the bottom node itself would cost the port its
+    # axial stacking -- the flange is a third node, geometrically coincident
+    # with bottom. The half-heights are exact binary fractions, so no clean().
+    if ptype == "docking_port":
+        hz = e["height"] / 2.0
+        e["nodes"] = [
+            {"id": "top", "pos": [0.0, 0.0, hz], "dir": [0.0, 0.0, 1.0]},
+            {"id": "bottom", "pos": [0.0, 0.0, -hz], "dir": [0.0, 0.0, -1.0]},
+            {"id": "srf", "pos": [0.0, 0.0, -hz], "dir": [0.0, 0.0, -1.0],
+             "surface": True},
+        ]
     d = dict(DRAG_CD.get(ptype) or {})
     d.update(DRAG_CD_BY_NAME.get(name, {}))
     if d:

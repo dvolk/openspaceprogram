@@ -47,8 +47,10 @@ THE SECOND MECHANISM, weighed here too (and named on #153): synthesizeNodes (shi
 puts a part's surface node at -radius, again the WIDEST radius rather than the skin at the
 node's own height. The child's node is what lands on the contact, so a part whose node
 stands off its own skin hangs that far OUTSIDE the contact no matter how honest the contact
-is -- 23 of the 70 round-cross-section part types do, up to 1.12 m for
-`nose_cap_r2.25h1.125`, 0.84 m for `capsule_r2.25h4.5`, 0.24 m for plain `engine`. Fixing
+is -- 26 of the 70 round-cross-section part types do (23 from the rule, up to 1.12 m for
+`nose_cap_r2.25h1.125`, 0.84 m for `capsule_r2.25h4.5`, 0.24 m for plain `engine`; plus the
+three docking ports, which AUTHOR their node at the bottom flange on purpose -- #1081 --
+so their "burial" equals the radius and is the design, not drift). Fixing
 it moves geom_fingerprint (nodes are hashed, #456), so every existing save would report a
 reshaped ship; that is why it is a decision and not a drive-by.
 
@@ -374,6 +376,10 @@ def weigh_nodes(defs, mesh_dir):
 
 # ---------------------------------------------------------------------------
 # Waivers (regenerate with --emit-allow)
+# The docking_port_* node rows are negative by design (#1081): their surface
+# node is the bottom FLANGE (dir -Z) so a flank-mounted port points its bore
+# out of the hull; the X-silhouette model reads that as one radius buried.
+# If a node ever returns to the side skin the waiver goes stale and fails.
 # ---------------------------------------------------------------------------
 
 CONTACT_WAIVERS = {
@@ -407,7 +413,10 @@ CONTACT_WAIVERS = {
     "skiff_trim:fin->engine": 0.0358,
 }
 NODE_WAIVERS = {
+    "docking_port_r2.25": -2.2500,
+    "docking_port_r1.5": -1.5000,
     "nose_cap_r2.25h1.125": 1.1250,
+    "docking_port_r1": -1.0000,
     "capsule_r2.25h4.5": 0.8438,
     "nose_cap_r1.5h0.75": 0.7500,
     "adapter_r1to2.25": 0.6250,

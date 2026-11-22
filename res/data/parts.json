@@ -1191,6 +1191,48 @@
       "height": 0.25,
       "docking_port": true,
       "fuel_barrier": true,
+      "nodes": [
+        {
+          "id": "top",
+          "pos": [
+            0.0,
+            0.0,
+            0.125
+          ],
+          "dir": [
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        {
+          "id": "bottom",
+          "pos": [
+            0.0,
+            0.0,
+            -0.125
+          ],
+          "dir": [
+            0.0,
+            0.0,
+            -1.0
+          ]
+        },
+        {
+          "id": "srf",
+          "pos": [
+            0.0,
+            0.0,
+            -0.125
+          ],
+          "dir": [
+            0.0,
+            0.0,
+            -1.0
+          ],
+          "surface": true
+        }
+      ],
       "drag": 0.6,
       "drag_forward": 1.1,
       "drag_side": 0.2,
@@ -1207,6 +1249,48 @@
       "height": 0.375,
       "docking_port": true,
       "fuel_barrier": true,
+      "nodes": [
+        {
+          "id": "top",
+          "pos": [
+            0.0,
+            0.0,
+            0.1875
+          ],
+          "dir": [
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        {
+          "id": "bottom",
+          "pos": [
+            0.0,
+            0.0,
+            -0.1875
+          ],
+          "dir": [
+            0.0,
+            0.0,
+            -1.0
+          ]
+        },
+        {
+          "id": "srf",
+          "pos": [
+            0.0,
+            0.0,
+            -0.1875
+          ],
+          "dir": [
+            0.0,
+            0.0,
+            -1.0
+          ],
+          "surface": true
+        }
+      ],
       "drag": 0.6,
       "drag_forward": 1.1,
       "drag_side": 0.2,
@@ -1223,6 +1307,48 @@
       "height": 0.5625,
       "docking_port": true,
       "fuel_barrier": true,
+      "nodes": [
+        {
+          "id": "top",
+          "pos": [
+            0.0,
+            0.0,
+            0.28125
+          ],
+          "dir": [
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        {
+          "id": "bottom",
+          "pos": [
+            0.0,
+            0.0,
+            -0.28125
+          ],
+          "dir": [
+            0.0,
+            0.0,
+            -1.0
+          ]
+        },
+        {
+          "id": "srf",
+          "pos": [
+            0.0,
+            0.0,
+            -0.28125
+          ],
+          "dir": [
+            0.0,
+            0.0,
+            -1.0
+          ],
+          "surface": true
+        }
+      ],
       "drag": 0.6,
       "drag_forward": 1.1,
       "drag_side": 0.2,

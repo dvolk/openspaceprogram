@@ -310,9 +310,36 @@ int main() {
                off its own tip. */
             const Node *srf = d.findSurfaceNode();
             // Gear authors its own surface node at the strut top (+Z), not the
-            // synthesized -X side, so the -X pin is for the synthesized nodes only.
-            if(srf != nullptr && !d.isGearWheel() && !d.isLeg()) {
+            // synthesized -X side, so the -X pin is for the synthesized nodes
+            // only -- and so is the port's now (#1081, its flange below).
+            if(srf != nullptr && !d.isGearWheel() && !d.isLeg() && !d.docking_port) {
                 CHECK(std::fabs(std::fabs(srf->pos.x) - std::fabs(d.mesh_min.x)) <= 1e-3);
+            }
+            /* #1081: the port's SURFACE node is its bottom flange -- dir -Z,
+               along the bore -- so a surface-mounted port points its bore out
+               of the hull it bolts to instead of running tangent. Pin the
+               generator's numbers and its stack nodes together: regenerating
+               the ports at another height must move this pin and the catalog
+               nodes as one, and flagging `bottom` instead of adding a third
+               node would cost axial stacking (the VAB skips surface nodes). */
+            if(d.docking_port) {
+                CHECK(srf != nullptr);
+                if(srf != nullptr) {
+                    CHECK(std::fabs(srf->pos.x) <= 1e-9);
+                    CHECK(std::fabs(srf->pos.y) <= 1e-9);
+                    CHECK(std::fabs(srf->pos.z + d.height / 2.0) <= 1e-9);
+                    CHECK(std::fabs(srf->dir.x) <= 1e-9);
+                    CHECK(std::fabs(srf->dir.y) <= 1e-9);
+                    CHECK(std::fabs(srf->dir.z + 1.0) <= 1e-9);
+                    const Node *top = d.findNode("top");
+                    const Node *bot = d.findNode("bottom");
+                    CHECK(top != nullptr && bot != nullptr);
+                    if(top && bot) {
+                        CHECK(!top->surface && !bot->surface);
+                        CHECK(std::fabs(top->pos.z - d.height / 2.0) <= 1e-9);
+                        CHECK(std::fabs(bot->pos.z + d.height / 2.0) <= 1e-9);
+                    }
+                }
             }
             /* The leg's node is authored on the plate's hull-side face, dir -X
                (into the tank). Pin the gen_leg.py defaults (drop 2.6, splay
@@ -1669,6 +1696,58 @@ int main() {
         CHECK(!mnear(a.childRot, b.childRot));                // but spun
         // roll is about the normal (+X): the child's axis stays perpendicular to it
         CHECK(near(glm::dot(b.childRot * glm::dvec3(0, 0, 1), glm::dvec3(1, 0, 0)), 0.0));
+    }
+
+    // #1081: a docking port's SURFACE node is its bottom FLANGE (dir -Z, the
+    // bore axis), not the synthesized -X side node (the catalog loop above
+    // pins those nodes for every port def). attachSurface opposes the child
+    // NODE's dir to the contact normal, so a flank-mounted port points its
+    // BORE out of the hull instead of running tangent along it. The
+    // top/bottom STACK nodes stay unflagged: VAB stack snap skips surface
+    // nodes (vab.cpp), so flagging `bottom` itself instead of adding a
+    // coincident third node would have cost the port its axial stacking --
+    // the stack edge below re-checks that.
+    {
+        const PartDef *tank = cat.find("tank_r1h3");
+        const PartDef *port = cat.find("docking_port_r1");
+        CHECK(tank != nullptr && port != nullptr);
+        // flank mount, solved at the free-function level: contact +X on the
+        // tank skin, normal +X
+        const Node *cn = port->findSurfaceNode();
+        const glm::dvec3 pt(tank->radius, 0.0, 0.0), nrm(1.0, 0.0, 0.0);
+        AttachPose p = attachSurface(O, I, pt, nrm, *cn, 0.0, 0.0);
+        CHECK(vnear(p.childRot * glm::dvec3(0.0, 0.0, 1.0), nrm));    // bore OUT
+        CHECK(vnear(p.childPos + p.childRot * cn->pos, pt));          // flange on skin
+        CHECK(vnear(p.childPos, pt + nrm * (port->height / 2.0)));    // stands proud
+        // the stack edge is untouched: a port under the tank keeps its bore axial
+        AttachPose s = attachPose(O, I, *tank, *port, AttachMode::Down, 0.0, 0.0);
+        CHECK(vnear(s.childRot * glm::dvec3(0.0, 0.0, 1.0), glm::dvec3(0.0, 0.0, 1.0)));
+        CHECK(near(s.childPos.z, -(tank->height / 2.0 + port->height / 2.0)));
+    }
+    // the authoring route: a surface edge with point+normal and no childNode,
+    // which the parser defaults through findSurfaceNode to the flange. (The
+    // VAB writes "childNode": "srf" explicitly; the default is what makes
+    // both routes name the same node.)
+    {
+        const char *rp = "/tmp/test_shipload_radialport.json";
+        std::ofstream f(rp);
+        f << "{ \"name\": \"radialport\", \"parts\": ["
+             "{ \"part\": \"tank_r1h3\", \"id\": \"t\" },"
+             "{ \"part\": \"docking_port_r1\", \"id\": \"p\", \"parent\": \"t\","
+             "  \"attach\": \"surface\", \"point\": [1.0, 0, 0],"
+             "  \"normal\": [1, 0, 0] } ] }";
+        f.close();
+        ShipDef sr = load_ship_def(rp, cat);
+        CHECK(sr.parts[1].isSurfaceEdge());
+        CHECK(sr.parts[1].childNode == "srf");
+        BuildShip bs = BuildShip::fromShipDef(sr);
+        CHECK(vnear(bs.parts[1].localRot * glm::dvec3(0.0, 0.0, 1.0),
+                    glm::dvec3(1.0, 0.0, 0.0)));              // bore out of the flank
+        // contact x (the JSON's point) + half the port, standing proud
+        CHECK(vnear(bs.parts[1].localPos,
+                    glm::dvec3(1.0 + cat.find("docking_port_r1")->height / 2.0,
+                               0.0, 0.0)));
+        std::remove(rp);
     }
 
     // --- VAB build tree: fromShipDef + recomputePoses ----------------------
