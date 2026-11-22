@@ -3110,14 +3110,22 @@ static void test_silhouetteBill() {
             at.cp = glm::dvec3(0.0, 0.0, double(k));
             atts.push_back(at);
         }
-        std::vector<double> vis(3, 0.0);
-        const SilhouetteBill b = silhouetteBill(polys, atts, &vis);
+        std::vector<double> vis(3, 0.0), visCd(3, 0.0);
+        const SilhouetteBill b = silhouetteBill(polys, atts, &vis, &visCd);
         CHECK_REL(b.area, 4.0, 1e-12, "a stack silhouettes one face");
         CHECK_REL(vis[0], 4.0, 1e-12, "the front part keeps the whole face");
         CHECK_REL(vis[1], 0.0, 1e-12, "the middle part is invisible");
         CHECK_REL(vis[2], 0.0, 1e-12, "and so is the rear");
         CHECK_REL(b.cdNum / b.area, 0.35, 1e-12,
                    "so the coefficient is the front part's, not a mean of three");
+        /* The CREDIT column (#1090): each part's visible area billed at its own cd,
+           so vis x cd is the part's share of cdNum -- the number the part window's
+           Form row prints and a heating or stress law reads. */
+        CHECK_REL(visCd[0], 4.0 * 0.35, 1e-12, "the keeper's credit is its area x its cd");
+        CHECK_REL(visCd[1], 0.0, 1e-12, "an occluded part credits nothing");
+        double sumCd = 0.0;
+        for(double v : visCd) { sumCd += v; }
+        CHECK_REL(sumCd, b.cdNum, 1e-12, "and the credits sum to the bill's numerator");
         double sum = 0.0;
         for(double v : vis) { sum += v; }
         CHECK_REL(sum, b.area, 1e-12, "the credits partition the silhouette");
@@ -3575,7 +3583,8 @@ static void test_silhouetteMemo() {
     CHECK_TRUE(!memo.empty(), "reset allocates the table");
     CHECK_TRUE(!memo.lookup(0.3, 0.1, out), "fresh table: nothing filled -> miss");
     CHECK_TRUE(memo.fillAround(0.3, 0.1, 0,
-                               [](double, double) { return SilhouetteBill(); }) == 0,
+                               [](double, double, std::vector<double> &,
+                                  std::vector<double> &) { return SilhouetteBill(); }) == 0,
                "a zero budget fills nothing (and costs nothing)");
 
     /* A function LINEAR in both angles: bilinear interpolation reproduces it
@@ -3584,15 +3593,24 @@ static void test_silhouetteMemo() {
     /* The memo caches the whole BILL now (#945), so the exact function the caller
        hands it returns one: the same linear surface in the area, three times it in
        the cd numerator, and a cp that walks with the angles. */
-    const auto exactBill = [&](double a, double b) {
+    const auto exactBill = [&](double a, double b, std::vector<double> &pv,
+                               std::vector<double> &pcd) {
         SilhouetteBill bl;
         bl.area = exact(a, b);
         bl.cdNum = 3.0 * bl.area;
         bl.cpNum = glm::dvec3(2.0 * a, -1.0 * b, 0.5);   // linear, so bilinear is exact
+        /* A two-part partition of every node, linear like the scalars: 60/40 of
+           the area, both parts voting cd 3, so the blended columns are checkable
+           against the blended bill (#1090). */
+        pv = { 0.6 * bl.area, 0.4 * bl.area };
+        pcd = { 1.8 * bl.area, 1.2 * bl.area };
         return bl;
     };
     int calls = 0;
-    const auto counted = [&](double a, double b) { calls++; return exactBill(a, b); };
+    const auto counted = [&](double a, double b, std::vector<double> &pv,
+                             std::vector<double> &pcd) {
+        calls++; return exactBill(a, b, pv, pcd);
+    };
     CHECK_TRUE(memo.fillAround(0.11, -0.31, 4, counted) == 4,
                "a fresh cell fills its four corners");
     CHECK_TRUE(calls == 4, "each node computed once");
@@ -3613,9 +3631,24 @@ static void test_silhouetteMemo() {
         CHECK_TRUE(memo.lookup(0.13, -0.29, bl), "the bill hits with the area");
         CHECK_REL(bl.cdNum, 3.0 * bl.area, 1e-6, "the cd numerator blends on the area");
         CHECK_REL(bl.cdNum / bl.area, 3.0, 1e-6, "so the coefficient survives the blend");
-        const SilhouetteBill want = exactBill(0.13, -0.29);
+        std::vector<double> wantV, wantC;
+        const SilhouetteBill want = exactBill(0.13, -0.29, wantV, wantC);
         CHECK_REL(glm::length(bl.cpNum - want.cpNum), 0.0, 1e-5 * glm::length(want.cpNum),
                    "and so does the cp numerator (same basis at every node)");
+        /* THE PARTITION HITS TOO (#1090). Same four nodes, same weights, one row
+           per part: the columns blend to the exact linear surface (the node
+           columns are linear in the angles), their sums are exactly the blended
+           area and cd numerator, and each part's own cd survives -- so a part
+           window or a heating law reading these on a HIT reads the same KIND of
+           number the exact pass would have computed. */
+        std::vector<double> vis, cdA;
+        CHECK_TRUE(memo.lookup(0.13, -0.29, bl, &vis, &cdA), "the hit carries the partition");
+        CHECK_TRUE(vis.size() == 2 && cdA.size() == 2, "one row per part in each column");
+        CHECK_REL(vis[0], wantV[0], 1e-9, "the 60% part keeps its 60%, blended");
+        CHECK_REL(vis[1], wantV[1], 1e-9, "and the 40% part its 40%");
+        CHECK_REL(vis[0] + vis[1], bl.area, 1e-12, "the columns still sum to the blended area");
+        CHECK_REL(cdA[0] + cdA[1], bl.cdNum, 1e-12, "and their credits to the blended numerator");
+        CHECK_REL(cdA[0] / vis[0], 3.0, 1e-9, "each part's own cd survives the blend");
     }
 
     /* Lazy allocation: a geometry change bumps a counter, it does not buy a table.

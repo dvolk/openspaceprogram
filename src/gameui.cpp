@@ -4218,6 +4218,64 @@ void drawPartWindows(Game &g) {
                     }
                 }
             }
+            // --- hull form drag (this part is body: it pays inside the ship's bill) --
+            /* #1090: the union silhouette bills the whole ship at once (#463), but
+               the #945 partition keeps the score by part, and #1090 carries that
+               score onto the Part every billed substep, chart HITS included. This
+               is the row that answers "what does this spare tank in front of the
+               capsule cost, and does the capsule shelter it?": the visible CREDIT,
+               not the part's own projection, is what the ship pays with, and a
+               sheltered part's credit is exactly zero -- which is the same fact the
+              OSP_SHIP_DUMP audit's visA column showed one flag away. Same 2 Hz
+               cadence and worst-loaded-frame rule as the surface rows (#734), and
+               the blocks are disjoint (a part is a surface or a body, never both),
+               so they share the window's publish tick. The gate mirrors the law's
+               own skip list: no hull vertices, no row. */
+            if(!isAeroSurface(def->lift_area, def->control_area)
+               && ship->parts[part]->body != nullptr
+               && !ship->parts[part]->body->hullVerts.empty()) {
+                ImGui::Separator();
+                const Part *hp = ship->parts[part];
+                /* lastDragAlphaValid is the ship's own "this bill had a flow" flag;
+                   onRails rides beside it because no aero pass runs there at all --
+                   the form fields are zeroed for the same reason (vehicle.cpp), and
+                   a live gate over dead fields is the stale-figure bug #730 caught. */
+                if(ship->lastDragAlphaValid && !ship->onRails) {
+                    if((double)hp->formDragWatts >= live.holdFormW) {
+                        live.holdFormW = hp->formDragWatts;
+                        live.holdFormVis = hp->formVis;
+                        live.holdFormCdA = hp->formCdA;
+                    }
+                    if(ImGui::GetTime() >= live.nextRead) {
+                        live.nextRead = ImGui::GetTime() + kReadSec;
+                        /* The cd cell is the credit over its own area -- and a fully
+                           sheltered part has neither, so it dashes rather than
+                           inventing a 0.00 coefficient for air that never reached
+                           it. Fixed cells for the same reason as the AoA column
+                           above (#1058): a mono font makes width a column. */
+                        char cdCell[6];
+                        if(live.holdFormVis > 1e-6) {
+                            const int n = snprintf(cdCell, sizeof cdCell, "%4.2f",
+                                                   live.holdFormCdA / live.holdFormVis);
+                            assert(n > 0 && n < (int)sizeof cdCell);
+                        } else {
+                            memcpy(cdCell, "   -", 5);
+                        }
+                        char wCell[16];
+                        wattCell(live.holdFormW, wCell);
+                        const int n = snprintf(live.formRow, sizeof live.formRow,
+                                               "Form: %6.2f m2 visible  cd %s  drag %s",
+                                               live.holdFormVis, cdCell, wCell);
+                        assert(n > 0 && n < (int)sizeof live.formRow);
+                        live.holdFormW = 0.0;   // the interval starts over with the publish
+                    }
+                    uiText("%s", live.formRow);
+                } else {
+                    live.holdFormW = 0.0;
+                    live.nextRead = 0.0;
+                    uiText("Form: - m2 visible  cd    -   drag -");
+                }
+            }
             // --- docking port ------------------------------------------------
             // Docking is intent-driven (Game::updateDocking): the active ship docks only with
             // BOTH an armed port of its own AND a targeted port on another ship. The dock

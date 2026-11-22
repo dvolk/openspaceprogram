@@ -296,9 +296,17 @@ public:
        the cache invalidation is fingerprint-gated. */
     std::vector<std::vector<glm::dvec2>> aeroSilParts;
     std::vector<SilhouettePart> aeroSilPartAtt;
-    /* Each polygon's unoccluded area, filled only when the OSP_SHIP_DUMP audit asks
-       for it -- the column that shows which parts stopped voting (#945). */
+    /* The bill's PARTITION, polygon-for-polygon with aeroSilParts: each part's
+       visible (unoccluded) area in the union, and that area x its cd as the flow
+       faced it (#945's audit columns, #1090's live ones). Current on a HIT as well
+       as a MISS -- blended from the chart nodes -- while the polygons beside them
+       are not; that is what lets a body part's Form row (and a future heating or
+       stress law) read per-part figures at any cadence. `aeroSilPartPtr` is the
+       third positional twin, filled by projectSilhouette, so the copy onto the
+       Parts cannot drift from the order that built the columns. */
     std::vector<double> aeroSilPartVis;
+    std::vector<double> aeroSilPartCdA;
+    std::vector<Part *> aeroSilPartPtr;
     // Scratch for filling cache nodes: those polygons belong to the cell
     // corners' flow directions, not the substep's, so they need their own set.
     std::vector<std::vector<glm::dvec2>> aeroSilNode;

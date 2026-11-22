@@ -124,6 +124,12 @@ struct PartSel {
     bool holdAngleOk = false;
     char flowRow[64] = "";    // the two published rows, formatted once per publish
     char wattsRow[64] = "";
+    /* The hull Form row (#1090) rides the SAME cadence on the same nextRead: a
+       part is either a lifting surface or a body, never both, so the surface
+       block and the Form block are disjoint per window and one publish tick
+       covers whichever one runs. */
+    char formRow[64] = "";
+    double holdFormVis = 0.0, holdFormCdA = 0.0, holdFormW = 0.0;
 };
 
 /* The active ship's per-frame state (render frame): render.cpp writes it, the UI

@@ -1592,6 +1592,8 @@ void Vehicle::rebuildCompound() {
            empty polygon set keeps the ship one careless call away from that assert. */
         aeroSilPartAtt.clear();
         aeroSilPartVis.clear();
+        aeroSilPartCdA.clear();
+        aeroSilPartPtr.clear();
         aeroSilNode.clear();
         aeroSilNodeAtt.clear();
         aeroSil.clear();
@@ -3615,6 +3617,12 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
         p->aeroValid = false;
         p->aeroAngleValid = false;
         p->aeroDragWatts = 0.0f;
+        /* #1090: zeroed like the surface wattage -- a reader sums these across the
+           body parts, and a stale share in that sum is a wrong total. The billed
+           substep overwrites them from this substep's partition, hit or miss. */
+        p->formVis = 0.0f;
+        p->formCdA = 0.0f;
+        p->formDragWatts = 0.0f;
         if(p->def != nullptr && p->def->control_area > 0.0) { p->controlDefl = 0.0; }
     }
 
@@ -3932,6 +3940,11 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
             if(n == polys.size()) {
                 polys.emplace_back();
                 atts.push_back(SilhouettePart());
+                /* The third positional twin (#1090). The node-fill call rewrites it
+                   with the same sequence -- the iteration below is a function of
+                   `parts` alone -- so the columns the cache stores per node and the
+                   Parts they are copied onto cannot drift apart. */
+                aeroSilPartPtr.push_back(p);
             }
             // projectHull clears and refills the slot; keeping the slot is what
             // keeps its buffer, which is the whole point of the reuse above.
@@ -3974,13 +3987,19 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
         }
         polys.resize(n);
         atts.resize(n);
+        aeroSilPartPtr.resize(n);
         return n;
     };
-    // Node fill (#463, #945): the whole bill at one flow direction, projected
-    // through that direction's own plane.
-    auto billAtS = [&](const glm::dvec3 &dirLocal) {
+    // Node fill (#463, #945, #1090): the whole bill at one flow direction, and the
+    // partition that accounts it by part, projected through that direction's own
+    // plane. The columns ride into the cache beside the scalars, which is what
+    // makes a chart HIT able to answer per part as well as per ship.
+    auto billAtS = [&](const glm::dvec3 &dirLocal, std::vector<double> &pv,
+                       std::vector<double> &pcd) {
         projectSilhouette(dirLocal, aeroSilNode, aeroSilNodeAtt, nullptr);
-        return silhouetteBill(aeroSilNode, aeroSilNodeAtt);
+        pv.assign(aeroSilNode.size(), 0.0);
+        pcd.assign(aeroSilNode.size(), 0.0);
+        return silhouetteBill(aeroSilNode, aeroSilNodeAtt, &pv, &pcd);
     };
     /* How many silhouette nodes one substep may compute. A node is a whole
        project-and-union pass -- 0.009 ms on a 13-part hull, but the union's
@@ -4056,7 +4075,8 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
         std::vector<SilDumpRow> rows;
         bool fromChart = false;
         if(!dumping && lastDragAlphaValid) {
-            fromChart = aeroSil.lookup(alpha, fr.beta, bill);
+            fromChart = aeroSil.lookup(alpha, fr.beta, bill,
+                                       &aeroSilPartVis, &aeroSilPartCdA);
         }
         if(!fromChart && (dumping || lastDragAlphaValid)) {
             if(dumping) {
@@ -4069,17 +4089,21 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
                               dumping ? &rows : nullptr);
             if(lastDragAlphaValid) {
                 aeroSil.fillAround(alpha, fr.beta, kSilFillNodes,
-                                   [&](double na, double nb) {
+                                   [&](double na, double nb, std::vector<double> &pv,
+                                       std::vector<double> &pcd) {
                                        return billAtS(glm::transpose(sRot)
-                                           * flowDirection(na, nb, right, up, nose));
+                                           * flowDirection(na, nb, right, up, nose),
+                                           pv, pcd);
                                    });
             }
-            if(dumping) {
-                aeroSilPartVis.assign(aeroSilParts.size(), 0.0);
-                bill = silhouetteBill(aeroSilParts, aeroSilPartAtt, &aeroSilPartVis);
-            } else {
-                bill = silhouetteBill(aeroSilParts, aeroSilPartAtt);
-            }
+            /* #1090: the exact pass bills WITH its partition columns out, not only
+               under the audit -- a MISS and a HIT now hand the same two columns to
+               the parts below, one computed and one blended. (The audit's per-row
+               visA reads the same array it always did.) */
+            aeroSilPartVis.assign(aeroSilParts.size(), 0.0);
+            aeroSilPartCdA.assign(aeroSilParts.size(), 0.0);
+            bill = silhouetteBill(aeroSilParts, aeroSilPartAtt,
+                                  &aeroSilPartVis, &aeroSilPartCdA);
         }
         const double A_ship = lastDragAlphaValid ? bill.area : 0.0;
         lastDragArea = A_ship;
@@ -4184,6 +4208,27 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
             // IS the weathervane story.
             if(recordForceVecs) {
                 lastForceVecs.push_back({ rcp, fdrag, kForceDrag });
+            }
+        }
+        /* #1090: the partition onto the PARTS. Both columns are this substep's --
+           exact from the pass above on a MISS, blended from the chart's nodes on a
+           HIT -- and this is the hook the part window's Form row reads and what a
+           heating or stress law (#553's energy hook, exact per surface and zero
+           for a body) is meant to grow into. The watt share splits the hull's own
+           bill by credit: q x |vp| at the cp -- the very flow fdrag was built
+           from -- times the global cd multiplier times this part's visible x cd,
+           so the body parts' watts SUM to the hull drag power and an occluded part
+           quotes 0 exactly the way it votes 0. Only a billed substep writes; the
+           pass-start sweep zeroes when there is no usable flow. */
+        if(lastDragAlphaValid) {
+            assert(aeroSilPartPtr.size() == aeroSilPartVis.size()
+                   && aeroSilPartVis.size() == aeroSilPartCdA.size());
+            const double qv = lfCp.q * std::sqrt(lfCp.vp2);
+            for(size_t i = 0; i < aeroSilPartPtr.size(); i++) {
+                Part *p = aeroSilPartPtr[i];
+                p->formVis = (float)aeroSilPartVis[i];
+                p->formCdA = (float)aeroSilPartCdA[i];
+                p->formDragWatts = (float)(drag_cd * qv * aeroSilPartCdA[i]);
             }
         }
     }
@@ -8068,6 +8113,11 @@ bool Vehicle::goOnRails() {
         p->aeroDragWattsPeak = 0.0f;
         p->aeroValid = false;
         p->aeroAngleValid = false;
+        /* #1090: the hull partition readouts ride the same reasoning -- nothing
+           refreshes them on rails, and the Form row reads them as this state. */
+        p->formVis = 0.0f;
+        p->formCdA = 0.0f;
+        p->formDragWatts = 0.0f;
         if(p->isRcs()) { for(double &f : p->rcsFired) { f = 0.0; } }
     }
     lastRcsNozzles.clear();  // likewise the [rcs] log: no substeps, no nozzles

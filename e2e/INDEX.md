@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 446 |
+| `invariant` | a behaviour or a player route the game must keep | 447 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 50 |
 | `harness` | CLI/test-engine plumbing, not game spec | 16 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **516** |
+| | **total** | **517** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -376,7 +376,7 @@ judgement. Select by number, name or path, e.g.
 | `save/612-ask-survives-a-round-trip.txt` | invariant | A saved Guidance ask loads back into the game and is written out again. |
 | `save/867-cross-system-bubble-load.txt` | invariant | A save with a ship in a building's bubble loads from the title across systems. |
 
-## ui (77)
+## ui (78)
 
 | case | kind | pins |
 |---|---|---|
@@ -457,6 +457,7 @@ judgement. Select by number, name or path, e.g.
 | `ui/1031-a-fuel-link-staging-sequences-an-unnumbered-asparagus-stack.txt` | invariant | With Fuel link staging on, Auto-stage sequences the chained boosters one press apart instead of dropping the ring at once. |
 | `ui/1035-a-stage-from-scratch-rebuilds-a-hand-numbered-hull.txt` | invariant | With "Stage from scratch" ticked, Auto-stage ignores the numbers on heavy_asp and rebuilds the ladder from the part tree. |
 | `ui/1035-b-undo-takes-a-from-scratch-rebuild-back.txt` | invariant | After "Stage from scratch" + Auto-stage on heavy_asp, Undo staging restores the authored ladder. |
+| `ui/1090-a-hull-card-form-row.txt` | invariant | Body part cards print the silhouette credit row at cadence; the upwind capsule reads a real area and cd; no surface rows on body cards. |
 
 ## render (89)
 

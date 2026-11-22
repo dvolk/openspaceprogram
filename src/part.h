@@ -151,11 +151,13 @@ struct Part {
        no failure that could spend them yet (#728). Most of these watts leave in the wake
        rather than in the material, which is the honest reason the row cannot be a
        temperature until something authors the share that does not.
-       Two bills are missing on purpose. The hull's silhouette (#461) is one ship-wide
-       figure with no part to charge, so a part the hull carries quotes nothing rather than
-       a share it never paid; and a deployed canopy's bill has no reader -- nothing prints
-       a chute part today. Lift itself moves no watts (perpendicular to the flow), but the
-       price of making lift IS the induced term, and that one is counted here.
+       Two bills are missing on purpose. The hull's silhouette (#461) is billed once,
+       ship-wide, at the cp and its flow -- not at this mount -- so it is NOT this field;
+       since #1090 its per-part SHARE lives in the form* trio below, as credits in that
+       one bill rather than a charge this part paid at its own place in the air. And a
+       deployed canopy's bill has no reader -- nothing prints a chute part today. Lift
+       itself moves no watts (perpendicular to the flow), but the price of making lift
+       IS the induced term, and that one is counted here.
        Unlike the trio above, this is ZEROED each substep rather than left standing: a
        reader could SUM it across a ship, and a stale wattage inside a sum is a wrong total
        rather than a wrong detail. Readers still gate on aeroValid. goOnRails zeroes both
@@ -166,6 +168,24 @@ struct Part {
        Flight Summary row); it is a live-panel figure. */
     float aeroDragWatts = 0.0f;        // [W] this substep
     float aeroDragWattsPeak = 0.0f;    // [W] worst substep since the ship last went on rails
+    /* THE HULL'S FORM-DRAG PARTITION, per body part (#1090). A body part never pays
+       its own drag force -- the ship pays ONE bill on the union silhouette (#463) --
+       but #945's partition says which strips of that union are THIS part's, and these
+       are its columns: formVis is the visible area credited to it this substep (the
+       occluded part of a tank behind a capsule keeps nothing), formCdA is that area x
+       the part's cd as the flow faced it -- the credit the ship's cd mean is summed
+       over -- and formDragWatts splits the hull's drag power by that credit (flow at
+       the cp, not at this mount: an accounting share, not a local bill). Summed across
+       the body parts they are exactly lastDragArea, cdNum, and the hull's watts; a
+       lifting surface stays 0 in all three because it is not in the union.
+       Written EVERY billed substep, chart HIT included (blended from the cached
+       nodes' columns -- vehicle.h, SilhouetteMemo #1090) and zeroed when the
+       substep bills nothing or the ship goes on rails, so a reader never sees a
+       figure older than the pass that refused to have one. The part window's Form
+   row is the first consumer; a heating or stress law is the reason it exists. */
+    float formVis = 0.0f;         // [m^2] credited visible silhouette area, this substep
+    float formCdA = 0.0f;         // [m^2] visible x partCd at that flow (the bill's share)
+    float formDragWatts = 0.0f;   // [W] this part's credit share of the hull's drag power
     /* Which LIFTING SYSTEM this surface belongs to (#556/#555), as an index into
        Vehicle::aeroSystems; -1 = not a lifting or steering surface. Written by
        Vehicle::groupLiftingSystems at every geometry rebuild (the same fingerprint

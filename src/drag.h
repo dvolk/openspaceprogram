@@ -1189,9 +1189,12 @@ inline double unionProjectedArea(const std::vector<std::vector<glm::dvec2>> &pol
    at |d.x| < 0.9 (see flowPlane), which would make two neighbouring nodes'
    coordinates incomparable.
 
-   `visible`, when given, must already be sized to polys AND zeroed: credits are
-   added, never written, so a part that keeps nothing stays at whatever it started
-   at. It is the column the design audit reads to show which parts stopped voting. */
+   `visible` and `visCd`, when given, must already be sized to polys AND zeroed:
+   credits are added, never written, so a part that keeps nothing stays at whatever
+   it started at. They are the columns the design audit reads to show which parts
+   stopped voting (#945) -- and since #1090 the columns every body part's Form row
+   reads: `visible` is the part's slice of the union, `visCd` that slice billed at
+   the part's own cd (their sums are exactly the bill's area and cdNum). */
 struct SilhouettePart {
     double cd = 0.0;
     double depth = 0.0;
@@ -1206,9 +1209,11 @@ struct SilhouetteBill {
 
 inline SilhouetteBill silhouetteBill(const std::vector<std::vector<glm::dvec2>> &polys,
                                     const std::vector<SilhouettePart> &atts,
-                                    std::vector<double> *visible = nullptr) {
+                                    std::vector<double> *visible = nullptr,
+                                    std::vector<double> *visCd = nullptr) {
     assert(atts.size() == polys.size());
     if(visible) { assert(visible->size() == polys.size()); }
+    if(visCd) { assert(visCd->size() == polys.size()); }
     SilhouetteBill b;
     static thread_local std::vector<size_t> order;
     static thread_local std::vector<double> ys;
@@ -1255,6 +1260,7 @@ inline SilhouetteBill silhouetteBill(const std::vector<std::vector<glm::dvec2>> 
                 b.cdNum += w * pa.cd;
                 b.cpNum += w * pa.cp;
                 if(visible) { (*visible)[bd.poly] += w; }
+                if(visCd) { (*visCd)[bd.poly] += w * pa.cd; }
                 break;
             }
         }
@@ -1339,12 +1345,29 @@ struct SilhouetteMemo {
     std::array<std::vector<double>, 3> cpNum;
     std::vector<uint32_t> stamp; // the generation the node was filled at
     uint32_t gen = 0;            // bump to invalidate every node at once
+    /* THE PARTITION, per filled node (#1090): which part each strip of that node's
+       union went to (partVis) and what the strip was billed at (partVisCd = visible
+       x the part's cd AS THE NODE SAW IT). These two columns ARE the bill accounted
+       by part: at every node their sums are exactly the node's area and cdNum, and
+       bilinear blending -- linear per part -- preserves both sums. That is what
+       makes per-part numbers exist on a HIT, not just on the exact pass: the force
+       law still never reads them, but the part window's Form row does, and a
+       heating or stress law is meant to. Cost is bounded and lazy: one double per
+       body part per FILLED node (~16 B x parts), plus a shell of empty slots that
+       appears with the first fill (961 x 24 B). Slot order is projectSilhouette's
+       parts order; a generation is born with one part set and one order (the
+       fingerprint is order-sensitive, vehicle.cpp aeroGeomFingerprint), so every
+       node of a generation agrees on what slot t means. */
+    std::vector<std::vector<double>> partVis;
+    std::vector<std::vector<double>> partVisCd;
 
     void reset() {
         area.assign(kSteps * kSteps, 0.0);
         cdNum.assign(kSteps * kSteps, 0.0);
         for(std::vector<double> &c : cpNum) { c.assign(kSteps * kSteps, 0.0); }
         stamp.assign(kSteps * kSteps, 0u);
+        partVis.clear();
+        partVisCd.clear();
         gen = 1;                   // 0 means "never filled"
     }
     /* Free the table. A ship that stops having parts stops having a silhouette:
@@ -1357,6 +1380,8 @@ struct SilhouetteMemo {
         std::vector<double>().swap(cdNum);
         for(std::vector<double> &c : cpNum) { std::vector<double>().swap(c); }
         std::vector<uint32_t>().swap(stamp);
+        std::vector<std::vector<double>>().swap(partVis);
+        std::vector<std::vector<double>>().swap(partVisCd);
         gen = 0;
     }
     // Geometry changed: nothing in the table is trustworthy. No allocation here --
@@ -1418,8 +1443,13 @@ struct SilhouetteMemo {
     /* A hit: all four corners of the cell were filled at this generation, so
        bilinear between them -- for every entry of the bill, not just the area.
        Anything else (no table, a NaN angle, a direction outside the cached range,
-       a corner not yet filled) is a MISS and leaves `out` alone. */
-    bool lookup(double alpha, double beta, SilhouetteBill &out) const {
+       a corner not yet filled) is a MISS and leaves `out` alone.
+       `vis`/`visCd`, when given, get the BLENDED partition columns (#1090): the
+       same bilinear weights per part slot, so their sums equal the blended area and
+       cdNum by the same linearity that makes each node's columns the bill. */
+    bool lookup(double alpha, double beta, SilhouetteBill &out,
+                std::vector<double> *vis = nullptr,
+                std::vector<double> *visCd = nullptr) const {
         if(area.empty() || !std::isfinite(alpha) || !std::isfinite(beta)) { return false; }
         fold(alpha, beta);
         if(!charted(alpha, beta)) { return false; }
@@ -1436,9 +1466,42 @@ struct SilhouetteMemo {
             return (a00 * (1.0 - wa) + a10 * wa) * (1.0 - wb)
                  + (a01 * (1.0 - wa) + a11 * wa) * wb;
         };
+        // The same bilinear weights one slot deep into a per-node partition.
+        const auto bl2 = [&](const std::vector<std::vector<double>> &tbl, size_t t) {
+            const std::vector<double> &c00 = tbl[k00], &c10 = tbl[k00 + 1];
+            const std::vector<double> &c01 = tbl[k00 + kSteps], &c11 = tbl[k00 + kSteps + 1];
+            return (c00[t] * (1.0 - wa) + c10[t] * wa) * (1.0 - wb)
+                 + (c01[t] * (1.0 - wa) + c11[t] * wa) * wb;
+        };
         out.area = bl(area);
         out.cdNum = bl(cdNum);
         out.cpNum = glm::dvec3(bl(cpNum[0]), bl(cpNum[1]), bl(cpNum[2]));
+        if(vis != nullptr || visCd != nullptr) {
+            /* One part, one slot, at all four corners of this generation's cell --
+               a size that disagrees is a stale column under a live stamp, i.e. a
+               bug, and blending it would invent an area no part ever paid. */
+            const size_t n0 = partVis[k00].size();
+            assert(n0 == partVis[k00 + 1].size() && n0 == partVis[k00 + kSteps].size()
+                   && n0 == partVis[k00 + kSteps + 1].size()
+                   && "partition columns must agree across a generation's cell");
+            if(vis != nullptr) {
+                vis->resize(n0);
+                for(size_t t = 0; t < n0; t++) {
+                    (*vis)[t] = bl2(partVis, t);
+                }
+            }
+            if(visCd != nullptr) {
+                const size_t n1 = partVisCd[k00].size();
+                assert(n1 == partVisCd[k00 + 1].size()
+                       && n1 == partVisCd[k00 + kSteps].size()
+                       && n1 == partVisCd[k00 + kSteps + 1].size()
+                       && "credit columns must agree across a generation's cell");
+                visCd->resize(n1);
+                for(size_t t = 0; t < n1; t++) {
+                    (*visCd)[t] = bl2(partVisCd, t);
+                }
+            }
+        }
         return true;
     }
     // The area alone, for callers (and pins) that only care about the shape.
@@ -1450,10 +1513,12 @@ struct SilhouetteMemo {
     }
 
     /* Fill this cell's missing corners, at most `budget` of them -- the caller
-       spreads the cost over substeps. `exact(alpha, beta)` computes the bill at
-       a node; the caller holds the parts, the ship frame and the union. Returns
-       how many nodes were filled. A direction outside the cached range fills
-       nothing: it is answered by the caller's exact bill instead. */
+       spreads the cost over substeps. `exact(alpha, beta, vis, visCd)` computes the
+       bill at a node AND its partition -- the callback sizes and fills the two
+       column vectors in its own polys order, and the memo keeps both beside the
+       scalars (#1090). The caller holds the parts, the ship frame and the union.
+       Returns how many nodes were filled. A direction outside the cached range
+       fills nothing: it is answered by the caller's exact bill instead. */
     template <class ExactFn>
     int fillAround(double alpha, double beta, int budget, ExactFn exact) {
         if(budget <= 0 || !std::isfinite(alpha) || !std::isfinite(beta)) { return 0; }
@@ -1464,6 +1529,10 @@ struct SilhouetteMemo {
         if(area.empty()) {
             reset();
         }
+        if(partVis.size() != area.size()) {
+            partVis.assign(area.size(), std::vector<double>());
+            partVisCd.assign(area.size(), std::vector<double>());
+        }
         const int i0 = cellOf(alpha), j0 = cellOf(beta);
         int filled = 0;
         for(int dj = 0; dj <= 1; dj++) {
@@ -1472,12 +1541,15 @@ struct SilhouetteMemo {
                 const int i = i0 + di, j = j0 + dj;
                 const size_t k = (size_t)j * kSteps + i;
                 if(stamp[k] == gen) { continue; }
-                const SilhouetteBill nb = exact(alphaAt(i), betaAt(j));
+                std::vector<double> pv, pcd;
+                const SilhouetteBill nb = exact(alphaAt(i), betaAt(j), pv, pcd);
                 area[k] = nb.area;
                 cdNum[k] = nb.cdNum;
                 cpNum[0][k] = nb.cpNum.x;
                 cpNum[1][k] = nb.cpNum.y;
                 cpNum[2][k] = nb.cpNum.z;
+                partVis[k] = std::move(pv);
+                partVisCd[k] = std::move(pcd);
                 stamp[k] = gen;
                 filled++;
                 budget--;
