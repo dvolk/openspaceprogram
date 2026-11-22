@@ -2022,6 +2022,21 @@
       "type": "fuel_link",
       "display_name": "Fuel Link",
       "fuel_link": true
+    },
+    {
+      "name": "liftbody_4m",
+      "type": "liftbody",
+      "display_name": "Lifting Body (4m)",
+      "mesh": "meshes/liftbody_4m.obj",
+      "texture": "textures/fuel_tank.png",
+      "mass": 128,
+      "radius": 2.0,
+      "height": 1.6,
+      "body_lift": 0.9,
+      "drag": 0.4,
+      "drag_forward": 0.1,
+      "drag_side": 1.1,
+      "drag_backward": 0.5
     }
   ]
 }

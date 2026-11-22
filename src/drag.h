@@ -1890,6 +1890,32 @@ inline double sideStripCdA(double hx, double hy, double hz, const glm::dvec3 &dh
     return 4.0 * hz * (hy * std::fabs(dhatPart.x) + hx * std::fabs(dhatPart.y));
 }
 
+/* #1097: the BODY LIFT kernel — the perpendicular (lift-direction) force a BODY
+   part makes on its own upwind silhouette, per unit q and drag_cd:
+
+       cl x visible x cos(a)
+
+   with `visible` the #1090 partition's exposed area (a pressure force needs flow
+   hitting material) and cos(a) = axisW . uhat, where uhat is the part's LOCAL
+   velocity through the air (LocalFlow::vp normalized -- the same uhat #947's
+   crossflow uses). The caller's force is q x drag_cd x this x â with
+   â = axisW - uhat x cos(a) (the axis component perpendicular to the flow,
+   |â| = sin a), so the magnitude is q cl visible sin(a)cos(a): zero axial
+   (nothing to redirect) and zero broadside (pure drag there — and #947's
+   refused-fraction law covers a shielded part's share of it). The push is ⊥
+   flow, toward the side the part's axis tilts away from the direction of
+   travel — the leeward side — so cl > 0 on a belly-into-flow hull lifts. The
+   law is INVARIANT to the axis's orientation: mounting the part inverted flips
+   cos(a) and â together, never the force; only cl's sign chooses the side.
+   Note this direction is ⊥ FLOW, unlike #947's crossflow `perp` (⊥ AXIS, a
+   damping force), and the two laws bill DISJOINT area: #947 the REFUSED fraction
+   of a part's own shadow, this law the VISIBLE fraction. Not a 3-point drag
+   blend — this sin cos kernel replaces it — and not a surface law: it never
+   enters Induced, CLa, SM, or the #730 part-watts sum. */
+inline double bodyLiftCdA(double cl, double cosA, double visible) {
+    return cl * cosA * visible;
+}
+
 /* The shape drag of one SURFACE part (#455, split by #559). A plate meets the flow
    three ways and they are three different AREAS:
 

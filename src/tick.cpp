@@ -74,9 +74,12 @@ static RecSample recSample(Vehicle &v, const ShipView &view, double t) {
         s.ind = v.lastInducedCdA;
         s.side = v.lastSideCdA;
         s.sidecp = v.lastSideCpLever;
+        s.blift = v.lastBodyCdA;
+        s.blcp = v.lastBodyCpLever;
     } else {
         s.aoa = s.cpl = s.ind = NAN;
         s.side = s.sidecp = NAN;
+        s.blift = s.blcp = NAN;
     }
     /* Beta has its own floor: the flow that gives AoA a direction need not
        give yaw one (AeroFrame::betaValid, #787). A recorded NaN prints as
@@ -1440,12 +1443,22 @@ void tick(Game &g) {
                    every body part exposed (paying its flank in the axial bill
                    instead), the flow along the parts' axes (the sin lives in the
                    strip), or no body parts at all -- so read SideCp only beside a
-                   nonzero SideCdA. */
+                   nonzero SideCdA. #1097 adds BodyCdA=/BodyCp= beside it: the hull's
+                   OWN normal force -- the authored body_lift (drag.h::bodyLiftCdA)
+                   on each body part's EXPOSED silhouette, the fraction #947 above
+                   did NOT bill, so one polygon is never charged twice. Signed: a
+                   negative BodyCdA is net downforce, and its Cp arm only means
+                   something beside a nonzero bill. 0.00 is the reading for every
+                   shipped part until a family opts in (with re-fitted drag anchors
+                   -- partCd's drag_side share already prices some crossflow
+                   pressure). */
                 if(g.ship->lastDragAlphaValid) {
                     printf(" SideCdA=%.2f m2 SideCp=%+.2f m",
                            g.ship->lastSideCdA, g.ship->lastSideCpLever);
+                    printf(" BodyCdA=%+.2f m2 BodyCp=%+.2f m",
+                           g.ship->lastBodyCdA, g.ship->lastBodyCpLever);
                 } else {
-                    printf(" SideCdA=- SideCp=-");
+                    printf(" SideCdA=- SideCp=- BodyCdA=- BodyCp=-");
                 }
                 printf("\n");
                 // Control surfaces' applied deflections.

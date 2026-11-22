@@ -212,7 +212,8 @@ static void report(Vehicle *v, double speed, double alpha, double beta) {
     printf("[sweep] v %6.1f  alpha %6.1f  beta %5.1f  rho %7.5f  Mach %5.3f"
            "  L %10.2f N  D %10.2f N  Fright %10.2f N  |tau| %10.2f Nm"
            "  A %6.3f Cd %5.3f  Profile %6.4f  Induced %7.4f  CdAtot %7.4f"
-           "  CpL %6.3f  FormCp %6.3f  CLa %8.3f  SM %8s  SideCdA %7.3f  SideCp %6.3f\n",
+           "  CpL %6.3f  FormCp %6.3f  CLa %8.3f  SM %8s  SideCdA %7.3f  SideCp %6.3f"
+           "  BodyCdA %+7.3f  BodyCp %+6.3f\n",
            // Fright: the along-+x force component (the sideslip leg; renamed from
            // "Side" so it cannot be read as the SideCdA= bill two columns over).
            speed, alpha, beta, v->lastDragRho,
@@ -224,7 +225,8 @@ static void report(Vehicle *v, double speed, double alpha, double beta) {
            v->lastSurfCdA + v->lastInducedCdA
                + v->drag_cd * v->lastDragCd * v->lastDragArea,
            v->lastCpLever, v->lastFormCpLever, v->lastLiftSlope, sm,
-           v->lastSideCdA, v->lastSideCpLever);
+           v->lastSideCdA, v->lastSideCpLever,
+           v->lastBodyCdA, v->lastBodyCpLever);
 }
 
 /* --- the grid (#655) -------------------------------------------------------
@@ -697,6 +699,166 @@ static void test_heat_hooks() {
     teardown(b);
 }
 
+/* #1097: BODY LIFT -- the opt-in normal force on a body part's EXPOSED silhouette,
+   and the partition that keeps it disjoint from #947. The fixture stacks three body
+   parts along the stack axis, all parallel:
+
+       pod   (root, 0.5 x 0.5 x 1.0, body_lift 0.6)  center z =  0.0
+       shelter (2.0 x 2.5 x 0.2,    body_lift 0.6)   center z = -1.2
+       tail  (0.1 x 0.1 x 1.5,      body_lift 0.6, drag_side 1) center z = -2.9
+
+   At alpha 30 the travel direction is cos30 z - sin30 y, so shelter stands between
+   the flow and tail, and tail's small shadow falls INSIDE shelter's (margin ~0.6 m
+   at every chart node near 30 deg): tail bills no lift (visible = 0, the #1090
+   column) and full side (refused = 1, the #947 block) -- the two laws' DISJOINT
+   partition, pinned by counting recorded force vectors by kind at each mount. The
+   three axes are parallel, so cos(a) factors out and the bill closes by #1090's
+   identity sum(visible) == union:
+
+       BodyCdA = drag_cd x 0.6 x cos(30) x lastDragArea -- EXACT even on memo HITS,
+       because both sides ride the same columns.
+
+   The recorded arms sit at the hull body's ORIGIN (Bullet keeps a rigid body's
+   COM at its transform origin, and the root pod center is the bench's origin):
+   pod 0, shelter -1.2, tail -2.9 -- the tail is both the ONLY side vector and
+   the aftmost vector on the hull. And lastForceVecs accumulates across
+   applyAeroForce calls (the tick loop clears it per substep, the applier does
+   not), so each recording shot clears it by hand first. */
+static void test_body_lift() {
+    printf("== #1097: body lift -- sin cos kernel, opt-in, disjoint with #947 ==\n");
+    Bench b = mkBench();
+    launch(b);
+    fly(b.v, 800.0, 30.0, 0.0);
+    CHECK_NEAR(b.v->lastBodyCdA, 0.0, 0.0,
+               "a hull with no body_lift authored lifts nothing (every shipped part)");
+    CHECK_NEAR(b.v->lastBodyCpLever, 0.0, 0.0,
+               "...and quotes no lever either");
+
+    b.defs.front().body_lift = 0.6;   // the pod def (mkBench filled its drag anchors)
+    Part *shelter = mkPlate(b.defs, "shelter", 200.0, 2.0, 2.5, 0.2);
+    b.defs.back().body_lift = 0.6;
+    b.v->attachMode(shelter, 0, AttachMode::Down);
+    Part *tail = mkPlate(b.defs, "tail", 50.0, 0.1, 0.1, 1.5);
+    b.defs.back().body_lift = 0.6;
+    b.defs.back().drag_side = 1.0;    // #947 bills cn x strip: no anchor, no vector
+    b.v->attachMode(tail, 1, AttachMode::Down);
+
+    b.v->recordForceVecs = true;
+    for(int shot = 0; shot < 3; shot++) { fly(b.v, 800.0, 30.0, 0.0); }
+    b.v->lastForceVecs.clear();   // the counted shot: fresh vectors only
+    fly(b.v, 800.0, 30.0, 0.0);
+    CHECK_TRUE(b.v->lastDragAlphaValid, "30 deg is a real angle for the pass");
+    const double a = 30.0 * std::numbers::pi / 180.0;
+    CHECK_NEAR(b.v->lastBodyCdA, b.v->drag_cd * 0.6 * std::cos(a) * b.v->lastDragArea,
+               b.v->drag_cd * 0.6 * b.v->lastDragArea * 1e-6,
+               "BodyCdA = drag_cd x cl x cos(alpha) x union: cos factors out (parallel "
+               "axes) and the visible column sums to the union (#1090), HITS included");
+    CHECK_NEAR(b.v->lastSideCdA, b.v->drag_cd * 1.0 * 0.3, b.v->drag_cd * 1e-6,
+               "only the hidden tail bills crossflow: refused 1 x strip 0.3 m2");
+
+    /* The kind-count partition, at the mounts: TWO body-lift vectors (pod, shelter),
+       ZERO at tail; ONE side vector and it is the aftmost. */
+    int nlift = 0, nside = 0;
+    double liftRz[2] = { 0.0, 0.0 };
+    glm::dvec3 liftSum(0.0);
+    for(const Vehicle::ForceVec &fv : b.v->lastForceVecs) {
+        if(fv.kind == Vehicle::kForceBodyLift) {
+            nlift++;
+            if(nlift <= 2) { liftRz[nlift - 1] = fv.pos.z; }
+            liftSum += fv.vec;
+        } else if(fv.kind == Vehicle::kForceSide) {
+            nside++;
+            CHECK_NEAR(fv.pos.z, -2.9, 1e-5,
+                       "the only crossflow vector sits at the hidden tail's mount");
+        }
+    }
+    CHECK_TRUE(nlift == 2, "body lift at the two exposed mounts, not at the hidden one");
+    CHECK_TRUE(nside == 1, "crossflow normal at the hidden mount only (#947/#1097 "
+                           "partition: refused vs visible, one polygon never twice)");
+    CHECK_NEAR(liftRz[0], 0.0, 1e-5, "pod mount arm (the hull origin)");
+    CHECK_NEAR(liftRz[1], -1.2, 1e-5, "shelter mount arm");
+
+    /* Direction and magnitude in one: the two vectors share one ahat (parallel
+       axes, same local flow at a non-rotating bench), so their sum must be
+       q x BodyCdA x ahat with ahat = z + uhat cos(a) the axis component
+       perpendicular to the FLOW -- leeward, up-ish at belly-into-flow. Recompute
+       uhat from flowDirection, exactly as fly() built the velocity from it. */
+    const glm::dvec3 uhat = -flowDirection(a, 0.0, glm::dvec3(1, 0, 0),
+                                           glm::dvec3(0, 1, 0), glm::dvec3(0, 0, 1));
+    const glm::dvec3 ahat = glm::dvec3(0.0, 0.0, 1.0) + uhat * std::cos(a);
+    CHECK_NEAR(glm::length(ahat), std::sin(a), 1e-12, "sin lives in ahat");
+    const double q = 0.5 * b.v->lastDragRho * 800.0 * 800.0;
+    const glm::dvec3 want = ahat * (q * b.v->lastBodyCdA);
+    CHECK_NEAR(glm::length(liftSum - want), 0.0, q * b.v->lastBodyCdA * 1e-6,
+               "sum(body lift vectors) = q x BodyCdA x ahat: perpendicular to the "
+               "FLOW (not #947's perp), leeward, magnitude q cl A sin cos");
+    CHECK_NEAR(glm::dot(liftSum, uhat), 0.0, q * b.v->lastBodyCdA * 1e-9,
+               "perpendicular to the flow by construction: it does no work at a "
+               "non-rotating bench");
+    CHECK_TRUE(b.v->lastFlowLift > 0.0,
+               "the hull now carries a perpendicular force with no wings aboard "
+               "(Ld= picks it up automatically)");
+
+    /* Axial travel: the kernel, not a guard, zeroes the force -- ahat = z - z x 1
+       is EXACTLY zero -- while the cos-weighted bill stands. */
+    b.v->lastForceVecs.clear();
+    fly(b.v, 800.0, 0.0, 0.0);
+    CHECK_NEAR(b.v->lastBodyCdA, b.v->drag_cd * 0.6 * b.v->lastDragArea,
+               b.v->drag_cd * 0.6 * b.v->lastDragArea * 1e-6,
+               "axial: the bill is cos(0)-weighted, full");
+    double axialLift = 0.0;
+    for(const Vehicle::ForceVec &fv : b.v->lastForceVecs) {
+        if(fv.kind == Vehicle::kForceBodyLift) { axialLift += glm::length(fv.vec); }
+    }
+    CHECK_NEAR(axialLift, 0.0, 0.0, "zero axial force exactly: the sin lives in ahat");
+
+    /* Signed anchor: flipping body_lift negates the bill and swings the push to
+       the windward side. (Mounting the part INVERTED instead -- flipping the
+       axis, not the anchor -- must leave the force alone: cosA and ahat flip
+       together. Same shot, negated anchors:) */
+    b.defs.front().body_lift = -0.6;
+    b.defs[1].body_lift = -0.6;   // the shelter def (Part::def is const; the deque
+                                  // that owns it is not, and refs into it are stable)
+    b.v->lastForceVecs.clear();
+    fly(b.v, 800.0, 30.0, 0.0);
+    CHECK_NEAR(b.v->lastBodyCdA, -b.v->drag_cd * 0.6 * std::cos(a) * b.v->lastDragArea,
+               b.v->drag_cd * 0.6 * b.v->lastDragArea * 1e-6,
+               "cl is signed: the bill negates");
+    glm::dvec3 flipSum(0.0);
+    for(const Vehicle::ForceVec &fv : b.v->lastForceVecs) {
+        if(fv.kind == Vehicle::kForceBodyLift) { flipSum += fv.vec; }
+    }
+    CHECK_NEAR(glm::length(flipSum + liftSum), 0.0,
+               q * std::fabs(b.v->lastBodyCdA) * 1e-6,
+               "and the force negates: the same ahat, the opposite side");
+    b.v->recordForceVecs = false;
+    teardown(b);
+}
+
+/* Body parts must not join the SURFACE machinery: no aeroLiftSamples, so
+   Induced= cannot move, and CLa (npSum) stays surfaces-only. Same wing bench
+   with the pod's body_lift off then on: both readings bit-identical. */
+static void test_body_lift_stays_out_of_the_lift_systems() {
+    printf("== #1097: body lift never touches Induced or CLa ==\n");
+    Bench b = mkBench();
+    Part *wing = mkPlate(b.defs, "wing", 20.0, 2.0, 0.05, 1.0);
+    setSurface(b.defs.back(), 8.0, true);
+    b.v->attachMode(wing, 0, AttachMode::Down);
+    launch(b);
+    fly(b.v, 300.0, 10.0, 0.0);
+    CHECK_TRUE(b.v->lastInducedCdA > 0.0, "the wing is loaded and billing induced");
+    const double ind0 = b.v->lastInducedCdA, cla0 = b.v->lastLiftSlope;
+    b.defs.front().body_lift = 0.6;
+    fly(b.v, 300.0, 10.0, 0.0);
+    CHECK_TRUE(b.v->lastBodyCdA > 0.0, "and the pod is now lifting too");
+    CHECK_NEAR(b.v->lastInducedCdA, ind0, ind0 * 1e-12,
+               "Induced= is bit-identical: body parts never join a lifting system");
+    CHECK_NEAR(b.v->lastLiftSlope, cla0, std::fabs(cla0) * 1e-12,
+               "CLa stays surfaces-only (SM's twin is the VAB buildStability, same "
+               "decision, not this ticket)");
+    teardown(b);
+}
+
 /* THE RATE COLUMN: the same hull with an angular velocity, which is #487's whole
    question and the column #655's header said was missing. A rotating airframe carries
    each surface through the air (drag.h::localFlow, #483), so every surface meets the
@@ -859,6 +1021,8 @@ int main() {
     test_induced_sum_is_sign_blind();
     test_surface_authority_curve();
     test_heat_hooks();
+    test_body_lift();
+    test_body_lift_stays_out_of_the_lift_systems();
     test_rate_column();
     test_neutral_fin_alpha_gate();
     printf("%d checks, %d failures\n", g_checks, g_failures);

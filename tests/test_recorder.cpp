@@ -118,7 +118,7 @@ int main() {
               "v_orb=252.75 vs=-0.25 hs=77.75 lat=-0.094300 lon=30.500000 "
               "pitch=2.5 roll=-0.5 hdg=91.5 dv=1450.5 acc=3.75 "
               "rho=1.225 F=210.50 L=12.00 Cd=0.950 "
-              "A=3.20 aoa=2.3 beta=-1.0 cpl=0.25 ind=0.020 side=0.00 sidecp=+0.00 chute=0.00 "
+              "A=3.20 aoa=2.3 beta=-1.0 cpl=0.25 ind=0.020 side=0.00 sidecp=+0.00 blift=+0.00 blcp=+0.00 chute=0.00 "
               "T=288.1 p=101325 a=340.3 mach=0.100 mass=6000.0 thr=0.75 stg=2"
               " q=3720.5 gamma=12.50 dv_exp=2380.5 grav=612.4 drag=140.7"
               " steer=38.5 burns=3 seams=0");
@@ -150,7 +150,7 @@ int main() {
               "v_orb=175.00 vs=0.00 hs=0.00 lat=0.000000 lon=0.000000 "
               "pitch=0.0 roll=0.0 hdg=0.0 dv=1450.5 acc=0.00 "
               "rho=0 F=0.00 L=0.00 Cd=0.950 A=3.20 "
-              "aoa=- beta=- cpl=- ind=- side=- sidecp=- chute=0.00 T=- p=- a=- mach=- "
+              "aoa=- beta=- cpl=- ind=- side=- sidecp=- blift=- blcp=- chute=0.00 T=- p=- a=- mach=- "
               "mass=6000.0 thr=0.00 stg=0"
               " q=0.0 gamma=- dv_exp=0.0 grav=0.0 drag=0.0 steer=0.0 burns=0 seams=0");
 
@@ -174,6 +174,21 @@ int main() {
         }
     }
 
+    // --- #1097: blift is SIGNED (%.2f with the sign), printed right after sidecp
+    {
+        RecSample lift = cruise();
+        lift.blift = -1.85; lift.blcp = 0.40;   // net downforce, arm ahead
+        char buf[1024];
+        const int n = recRow(lift, buf, sizeof buf);
+        if(n < 0 || std::strstr(buf,
+                                " sidecp=+0.00 blift=-1.85 blcp=+0.40 chute=0.00")
+               == nullptr) {
+            printf("FAIL %s:%d: blift/blcp did not print signed after sidecp: %s\n",
+                   __FILE__, __LINE__, (n < 0 ? "(refused)" : buf));
+            g_failures++;
+        }
+    }
+
     // --- air, but no lifting surfaces to define the flow frame ------------
     RecSample ball = cruise();
     ball.aoa = ball.beta = ball.cpl = ball.ind = NAN;
@@ -183,7 +198,7 @@ int main() {
               "v_orb=252.75 vs=-0.25 hs=77.75 lat=-0.094300 lon=30.500000 "
               "pitch=2.5 roll=-0.5 hdg=91.5 dv=1450.5 acc=3.75 "
               "rho=1.225 F=210.50 L=0.00 Cd=0.950 "
-              "A=3.20 aoa=- beta=- cpl=- ind=- side=- sidecp=- chute=0.00 "
+              "A=3.20 aoa=- beta=- cpl=- ind=- side=- sidecp=- blift=- blcp=- chute=0.00 "
               "T=288.1 p=101325 a=340.3 mach=0.100 mass=6000.0 thr=0.75 stg=2"
               " q=3720.5 gamma=12.50 dv_exp=2380.5 grav=612.4 drag=140.7"
               " steer=38.5 burns=3 seams=0");
@@ -198,7 +213,7 @@ int main() {
               "v_orb=252.75 vs=-0.25 hs=77.75 lat=-0.094300 lon=30.500000 "
               "pitch=2.5 roll=-0.5 hdg=91.5 dv=1450.5 acc=3.75 "
               "rho=1.225 F=210.50 L=0.00 Cd=0.950 "
-              "A=3.20 aoa=2.3 beta=0.0 cpl=0.25 ind=0.000 side=0.00 sidecp=+0.00 chute=0.00 "
+              "A=3.20 aoa=2.3 beta=0.0 cpl=0.25 ind=0.000 side=0.00 sidecp=+0.00 blift=+0.00 blcp=+0.00 chute=0.00 "
               "T=288.1 p=101325 a=340.3 mach=0.100 mass=6000.0 thr=0.75 stg=2"
               " q=3720.5 gamma=12.50 dv_exp=2380.5 grav=612.4 drag=140.7"
               " steer=38.5 burns=3 seams=0");
@@ -215,7 +230,7 @@ int main() {
               "v_orb=252.75 vs=-0.25 hs=77.75 lat=-0.094300 lon=30.500000 "
               "pitch=2.5 roll=-0.5 hdg=91.5 dv=1450.5 acc=3.75 "
               "rho=1.225 F=210.50 L=12.00 Cd=0.950 "
-              "A=3.20 aoa=2.3 beta=- cpl=0.25 ind=0.020 side=0.00 sidecp=+0.00 chute=0.00 "
+              "A=3.20 aoa=2.3 beta=- cpl=0.25 ind=0.020 side=0.00 sidecp=+0.00 blift=+0.00 blcp=+0.00 chute=0.00 "
               "T=288.1 p=101325 a=340.3 mach=0.100 mass=6000.0 thr=0.75 stg=2"
               " q=3720.5 gamma=12.50 dv_exp=2380.5 grav=612.4 drag=140.7"
               " steer=38.5 burns=3 seams=0");
@@ -234,7 +249,7 @@ int main() {
               "v_orb=252.75 vs=-0.25 hs=77.75 lat=-0.094300 lon=30.500000 "
               "pitch=2.5 roll=-0.5 hdg=91.5 dv=1450.5 acc=3.75 "
               "rho=1.225 F=210.50 L=12.00 Cd=0.950 "
-              "A=3.20 aoa=2.3 beta=-1.0 cpl=0.25 ind=0.020 side=0.00 sidecp=+0.00 chute=0.00 "
+              "A=3.20 aoa=2.3 beta=-1.0 cpl=0.25 ind=0.020 side=0.00 sidecp=+0.00 blift=+0.00 blcp=+0.00 chute=0.00 "
               "T=288.1 p=101325 a=340.3 mach=0.100 mass=6000.0 thr=0.75 stg=2"
               " q=3720.5 gamma=- dv_exp=2380.5 grav=612.4 drag=140.7"
               " steer=38.5 burns=3 seams=0");
@@ -254,7 +269,7 @@ int main() {
               "v_orb=- vs=- hs=- lat=- lon=- pitch=- roll=- hdg=- "
               "dv=1450.5 acc=3.75 "
               "rho=1.225 F=210.50 L=12.00 Cd=0.950 "
-              "A=3.20 aoa=2.3 beta=-1.0 cpl=0.25 ind=0.020 side=0.00 sidecp=+0.00 chute=0.00 "
+              "A=3.20 aoa=2.3 beta=-1.0 cpl=0.25 ind=0.020 side=0.00 sidecp=+0.00 blift=+0.00 blcp=+0.00 chute=0.00 "
               "T=288.1 p=101325 a=340.3 mach=0.100 mass=6000.0 thr=0.75 stg=2"
               " q=3720.5 gamma=- dv_exp=2380.5 grav=612.4 drag=140.7"
               " steer=38.5 burns=3 seams=0");

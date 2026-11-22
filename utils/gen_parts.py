@@ -54,6 +54,8 @@ MASS_DENSITY = {
     "nose_cap":       25.0,
     "rcs":            40.0,
     "cargo":          40.0,
+    # A lifting body is thin structure -- cargo's shell density suits it.
+    "liftbody":       40.0,
     "materials_pod":  60.0,
 }
 
@@ -135,6 +137,11 @@ DRAG_CD = {
                        "drag_backward": 1.0},
     "cargo":          {"drag": 0.7, "drag_forward": 1.0, "drag_side": 1.1,
                        "drag_backward": 1.0},
+    # #1097: the flat lifting-body hull. Edge-on is the low-drag case (the chord
+    # runs with the flow); broadside is a flat plate at rest. Its LIFT is not a
+    # surface law -- it rides the authored body_lift anchor in EXTRA_FIELDS.
+    "liftbody":       {"drag": 0.4, "drag_forward": 0.1, "drag_side": 1.1,
+                       "drag_backward": 0.5},
     "engine":         {"drag": 0.6, "drag_forward": 0.9, "drag_side": 1.0,
                        "drag_backward": 0.9},
     "orbital_engine": {"drag": 0.6, "drag_forward": 0.9, "drag_side": 1.0,
@@ -326,6 +333,10 @@ PARTS = [
     ("ladder_1m",        "ladder",         "meshes/ladder_1m.obj",                "textures/ladder.png"),
     ("ladder_0.5m",      "ladder",         "meshes/ladder_0.5m.obj",              "textures/ladder.png"),
     ("fuel_link",        "fuel_link",      None,                           None),
+    # The first hull part to opt in to body lift (#1097): a 4 m flat plate,
+    # flown by flight/1097-a. Every older family stays at body_lift 0 until the
+    # drag-anchor re-fit (their drag_side already prices a crossflow share).
+    ("liftbody_4m",      "liftbody",       "meshes/liftbody_4m.obj",              "textures/fuel_tank.png"),
 ]
 
 # per-part extra fields that do NOT derive from the geometry (crew, declared
@@ -365,6 +376,9 @@ EXTRA_FIELDS = {
     "kerbal":            {"mass": 87.05, "capacity": {"hydrazine": 10.0},
                           "inventory_capacity": 3, "experiment_storage": "courier"},
     "cargo":             {"inventory_capacity": 10},
+    # #1097: the signed body-lift anchor (drag.h::bodyLiftCdA). 0.9 on a flat
+    # plate is where the sin cos kernel stays honest.
+    "liftbody_4m":       {"body_lift": 0.9},
     "materials_pod":     {"experiment_family": "materials study",
                           "experiment_storage": "instrument"},
     # rcs_box: a flush 0.3 m cube of five fixed bells, not a round pod. Mass and
@@ -586,6 +600,7 @@ DISPLAY_BASE = {
     "nose_cap":       "Nose Cap",
     "kerbal":         "Staff",
     "cargo":          "Cargo Crate",
+    "liftbody":       "Lifting Body",
     "materials_pod":  "Materials Pod",
     "barometer":      "Barometer",
     "thermometer":    "Thermometer",

@@ -6409,6 +6409,10 @@ static ImU32 forceKindColor(int kind) {
            the hidden bodies and acts at theirs, so it should not read as a shade
            of the drag arrow (#947). */
         case Vehicle::kForceSide: return IM_COL32(110, 160, 230, 230);
+        /* A paler twin of the lift arrow on purpose: same perpendicular-to-flow
+           force, but it comes from the hull's own body rather than a wing, and
+           sits at the part that earned it (#1097). */
+        case Vehicle::kForceBodyLift: return IM_COL32(150, 235, 210, 230);
         default:
             assert(!"unknown force overlay kind");
             return IM_COL32(255, 255, 255, 230);
@@ -6426,6 +6430,7 @@ static const char *forceKindName(int kind) {
         case Vehicle::kForceThrust: return "thrust";
         case Vehicle::kForceGround: return "ground (wheel)";
         case Vehicle::kForceSide: return "crossflow normal (at the hidden body)";
+        case Vehicle::kForceBodyLift: return "body lift (at the hull part)";
         default:                   return "?";
     }
 }

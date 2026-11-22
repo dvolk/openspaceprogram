@@ -699,6 +699,16 @@ PartsCatalog load_parts_catalog(const char *path) {
             throw std::runtime_error(ctx +
                 "\"drag_backward\" must be >= 0 (dimensionless)");
         }
+        /* #1097: signed body-lift anchor. Sane-magnitude bound because this one
+           drives, not trims: the kernel's peak force is q x drag_cd x cl x A / 2,
+           so a typo an order of magnitude up turns a hull into a wing and the
+           flight logs argue about it. 3.0 is well past any plausible body cl
+           (flat-plate theory peaks near 1) while still refusing a fat-finger. */
+        d.body_lift = optNumber(pv, "body_lift", 0.0, ctx);
+        if(!(d.body_lift >= -3.0 && d.body_lift <= 3.0)) {
+            throw std::runtime_error(ctx +
+                "\"body_lift\" must be within +-3.0 (dimensionless cl)");
+        }
         d.lift_area = optNumber(pv, "lift_area", 0.0, ctx, "m^2");
         if(d.lift_area < 0.0) {
             throw std::runtime_error(ctx + "\"lift_area\" must be >= 0 (m^2)");
@@ -768,6 +778,16 @@ PartsCatalog load_parts_catalog(const char *path) {
         if(d.lift_area > 0.0 && d.control_area > 0.0) {
             throw std::runtime_error(ctx + "a part cannot carry both \"lift_area\" and "
                                           "\"control_area\": one surface, one law");
+        }
+        /* #1097: BODY lift is the third law of the family, and it is for parts
+           that are NOT surfaces. Authored on a wing it bills the same plate
+           twice — liftCurve on its own angle, this kernel on the silhouette it
+           leaves — and lifts have stall/induced/Mach machinery this blunt
+           kernel would silently fight. body_lift belongs to hull parts only. */
+        if(d.body_lift != 0.0 && (d.lift_area > 0.0 || d.control_area > 0.0)) {
+            throw std::runtime_error(ctx + "\"body_lift\" is for body parts: a part with "
+                                          "\"lift_area\" or \"control_area\" already has "
+                                          "its own lift law");
         }
         /* A steering part needs its travel stop as well as its area, because
            isControlSurface() is the pair. control_area with no max_deflection is not a

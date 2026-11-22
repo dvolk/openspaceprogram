@@ -1,0 +1,10 @@
+{
+  "name": "liftbody",
+  "parts": [
+    {
+      "part": "liftbody_4m",
+      "id": "hull",
+      "stage": 1
+    }
+  ]
+}

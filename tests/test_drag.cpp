@@ -3898,6 +3898,33 @@ static void test_crossflow_strip() {
               "any section, axial flow: zero");
 }
 
+/* #1097: the BODY LIFT kernel -- cl x visible x cos(a), the perpendicular-force
+   partner of the strip above. The kernel is pure multiplication; what the pins
+   hold is the SHAPE of the law (both ends zero, antisymmetric in cos so an
+   inverted flow side flips the push) and its sign convention: cosA is measured
+   with the part's TRAVEL through the air, so a belly-into-flow part with cl > 0
+   quotes a positive bill. */
+static void test_body_lift_kernel() {
+    printf("== bodyLiftCdA: the sin cos kernel, signed and end-zeroed ==\n");
+
+    CHECK_REL(bodyLiftCdA(0.6, std::cos(30.0 * std::numbers::pi / 180.0), 4.0),
+              0.6 * std::cos(30.0 * std::numbers::pi / 180.0) * 4.0, 1e-12,
+              "the product, exactly");
+    CHECK_REL(bodyLiftCdA(0.6, 0.0, 4.0), 0.0, 1.0, "broadside: pure drag, no lift");
+    CHECK_REL(bodyLiftCdA(0.6, 1.0, 0.0), 0.0, 1.0,
+              "nothing visible (fully shielded): nothing lifts");
+    CHECK_REL(bodyLiftCdA(0.0, 1.0, 4.0), 0.0, 1.0, "no anchor authored: 0");
+    // Antisymmetric in cosA: the same part travelling the OTHER way through the
+    // air (or flying nose-back) reads the same bill with the side flipped --
+    // which is why the caller's ahat flips sign with it and the product is
+    // invariant to a part mounted inverted.
+    CHECK_REL(bodyLiftCdA(0.6, -0.7, 4.0), -bodyLiftCdA(0.6, 0.7, 4.0), 1e-12,
+              "cosA flips the bill, and with it the push side");
+    // Signed cl: a downforce anchor is the same kernel negated.
+    CHECK_REL(bodyLiftCdA(-0.4, 0.7, 4.0), -bodyLiftCdA(0.4, 0.7, 4.0), 1e-12,
+              "cl is signed");
+}
+
 static void test_partCd() {
     printf("== partCd: 3-anchor directional blend (nose / side / base) ==\n");
 
@@ -4595,6 +4622,7 @@ int main() {
     test_partCd();
     printf("\n");
     test_crossflow_strip();
+    test_body_lift_kernel();
     printf("\n");
     test_surfaceFormCdA();
     printf("\n");

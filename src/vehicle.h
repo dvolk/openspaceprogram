@@ -968,6 +968,19 @@ public:
        reconstruct a torque. */
     double lastSideCdA = 0.0;
     double lastSideCpLever = 0.0;
+    /* #1097: the hull's BODY LIFT -- the perpendicular force body parts make on
+       their own EXPOSED silhouette (drag.h::bodyLiftCdA; the law, its sin cos
+       kernel and the disjoint split against #947's refused fraction live there).
+       lastBodyCdA is the SIGNED sum of drag_cd x body_lift x cos(a) x visible —
+       negative reads honestly as net downforce — and is 0 for every hull whose
+       parts leave body_lift unauthored, which is every shipped part today.
+       lastBodyCpLever is its CdA-weighted arm (+ ahead, like CpL/SideCp); with a
+       signed sum it can sit opposite the force's own side, so it only means
+       something beside a nonzero BodyCdA. Not in CpL/FormCp/Induced/CLa/SM:
+       body parts never join the lift systems, and a signed lever over a signed
+       sum folded into an unsigned pair would reconstruct nothing. */
+    double lastBodyCdA = 0.0;
+    double lastBodyCpLever = 0.0;
 
     /* Last substep's control-surface deflections (--drag-log). */
     struct ControlDeflection {
@@ -2156,12 +2169,12 @@ public:
     static constexpr int kForceThrust = 0, kForceRcs = 1, kForceDrag = 2,
                          kForceLift = 3, kForceChute = 4, kForceCtrl = 5,
                          kForceInduced = 6, kForceSurfDrag = 7, kForceGround = 8,
-                         kForceSide = 9;
-    static constexpr int kForceKindCount = 10;
+                         kForceSide = 9, kForceBodyLift = 10;
+    static constexpr int kForceKindCount = 11;
     // The drawer gates fv.kind < kForceKindCount; a kind past the count is
     // silently never drawn. The list and its count have drifted once (#947's
     // review caught it) -- this fires instead.
-    static_assert(kForceSide == kForceKindCount - 1, "kForceKindCount must cover every kForce* kind");
+    static_assert(kForceBodyLift == kForceKindCount - 1, "kForceKindCount must cover every kForce* kind");
     std::vector<ForceVec> lastForceVecs;
     bool recordForceVecs = false;
     /* #485: record each surface's own alpha/q (Part::aeroAlphaDeg, aeroQ). The

@@ -3302,6 +3302,42 @@ int main() {
         std::remove(bad);
     }
 
+    // #1097: body_lift bounds and family. Out of +-3 is a fat finger that turns a
+    // hull into a wing (the kernel's peak is q x cl x A / 2), and on a part that
+    // already has lift_area/control_area it bills the same plate through two laws.
+    {
+        const char *bad = "/tmp/test_shipload_badcat.json";
+        std::ofstream f(bad);
+        f << "{ \"parts\": [ { \"name\": \"x\", \"mesh\": \"m\", \"texture\": \"t\","
+             " \"mass\": 1, \"body_lift\": 40 } ] }";
+        f.close();
+        CHECK(expect_throw_saying([&](){ load_parts_catalog(bad); },
+                                  "\"body_lift\" must be within +-3.0"));
+        std::remove(bad);
+    }
+    {
+        const char *bad = "/tmp/test_shipload_badcat.json";
+        std::ofstream f(bad);
+        f << "{ \"parts\": [ { \"name\": \"x\", \"mesh\": \"m\", \"texture\": \"t\","
+             " \"mass\": 1, \"body_lift\": 0.6, \"lift_area\": 8, \"cl\": 6,"
+             " \"stall_angle\": 0.35 } ] }";
+        f.close();
+        CHECK(expect_throw_saying([&](){ load_parts_catalog(bad); },
+                                  "\"body_lift\" is for body parts"));
+        std::remove(bad);
+    }
+    // A signed anchor inside the bound, on a body part, loads (this is the shape
+    // the opt-in tuning ticket will author).
+    {
+        const char *ok = "/tmp/test_shipload_okcat.json";
+        std::ofstream f(ok);
+        f << "{ \"parts\": [ { \"name\": \"x\", \"mesh\": \"m\", \"texture\": \"t\","
+             " \"mass\": 1, \"body_lift\": -1.2 } ] }";
+        f.close();
+        CHECK(!expect_throw([&](){ load_parts_catalog(ok); }));
+        std::remove(ok);
+    }
+
     // engine gimbal (TVC): a negative limit is rejected...
     {
         const char *bad = "/tmp/test_shipload_badcat.json";

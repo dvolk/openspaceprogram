@@ -606,6 +606,11 @@ DRAG_RE = re.compile(
     # unit, so the wide [-\d.]+ class is safe here (a bare "-" needs no unit to
     # match and float() to throw -- see the digit-anchored T=/p=/a=/Mach= note).
     r"(?:\s+(?:SideCdA=([-\d.]+) m2 SideCp=([-\d.e+]+) m|SideCdA=- SideCp=-))?"
+    # #1097: BodyCdA=/BodyCp= -- the hull's OWN normal force (body lift: authored
+    # body_lift x the EXPOSED silhouette x cos a, SIGNED: negative is net downforce)
+    # and its CdA-weighted lever. One group like the Side pair (printed together off
+    # the same lastDragAlphaValid gate), appended last, both unit-anchored.
+    r"(?:\s+(?:BodyCdA=([-\d.e+]+) m2 BodyCp=([-\d.e+]+) m|BodyCdA=- BodyCp=-))?"
 )
 # --drag-log's control surfaces (src/tick.cpp): one [ctrl] line under each [drag]
 # line, one "name[index](axis)=±deg" term per surface the aero pass scored. It
@@ -2114,7 +2119,7 @@ def parse_drag(out):
     for m in DRAG_RE.finditer(out):
         (t, alt, rho, v, F, L, lup, up, tau, cd, a, aoa, chute, ind,
          beta, cpl, cla, sm, profile, formcp, airT, airP, airA, mach, ld,
-         sidecda, sidecp) = m.groups()
+         sidecda, sidecp, bodycda, bodycp) = m.groups()
         row = {
             # alt_asl: metres above the body's sea-level DATUM, which is NOT the
             # ground and goes negative exactly where rho peaks (#245). Renamed from
@@ -2198,6 +2203,12 @@ def parse_drag(out):
         if sidecda is not None:
             row["sidecda"] = float(sidecda)
             row["sidecp"] = float(sidecp)
+        # #1097: the body-lift bill (bodycda, signed m2) and its lever (bodycp, m
+        # along the nose, same sign convention as cpl/formcp). 0.00 for every hull
+        # whose parts leave body_lift unauthored -- every shipped part today.
+        if bodycda is not None:
+            row["bodycda"] = float(bodycda)
+            row["bodycp"] = float(bodycp)
         rows.append(row)
     return rows
 

@@ -53,6 +53,10 @@ CHECK all(d["aoa"] == r["aoa"] and d["beta"] == r["beta"] and d["cpl"] == r["cpl
 # [drag] row's SideCdA=/SideCp= and the trace's side=/sidecp= must be one reading, printed
 # twice. Both sides print %.2f/%+.2f of the same double at the same tick, so == is exact.
 CHECK all(d["sidecda"] == r["side"] and d["sidecp"] == r["sidecp"] for d, r in zip(drag, rec[3::4]))
+# #1097's pair (trace v6) joins the same row-for-row law. Skiff's parts all leave
+# body_lift unauthored, so both sides read +0.00 everywhere -- the agreement, not the
+# magnitude, is what this case owns (the magnitude lives in flight/1097-a).
+CHECK all(d["bodycda"] == r["blift"] and d["bodycp"] == r["blcp"] for d, r in zip(drag, rec[3::4]))
 CHECK all(d["airT"] == r["T"] and d["airP"] == r["p"] and d["airA"] == r["a"] and d["mach"] == r["mach"] for d, r in zip(drag, rec[3::4]))
 # And the two clocks map onto each other: the trace's t= counts the run clock, which
 # under --sim-steps is the same clock the [drag] rows' t= comes from -- less one
@@ -85,6 +89,6 @@ CHECK all(a["dv_exp"] <= b["dv_exp"] and a["burns"] <= b["burns"] for a, b in zi
 # docked fixture instead.
 CHECK all(r["seams"] == 0 for r in rec)
 # What the recorder says it captured, in its own words on stdout.
-FILE flights/*.log "#rec v5 channels=t alt_asl alt_agl v v_surf v_orb vs hs lat lon pitch roll hdg dv acc rho F L Cd A aoa beta cpl ind side sidecp chute T p a mach mass thr stg q gamma dv_exp grav drag steer burns seams" "#ship=\"skiff\" interval_ms=250" "[rec] t=0.00 "
+FILE flights/*.log "#rec v6 channels=t alt_asl alt_agl v v_surf v_orb vs hs lat lon pitch roll hdg dv acc rho F L Cd A aoa beta cpl ind side sidecp blift blcp chute T p a mach mass thr stg q gamma dv_exp grav drag steer burns seams" "#ship=\"skiff\" interval_ms=250" "[rec] t=0.00 "
 FORBID error:
 FORBID record: FAILED

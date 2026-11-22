@@ -3607,6 +3607,8 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
     lastSurfCdA = 0.0;
     lastSideCdA = 0.0;
     lastSideCpLever = 0.0;
+    lastBodyCdA = 0.0;
+    lastBodyCpLever = 0.0;
     aeroLiftSamples.clear();  // #556: last substep's lift must not be re-billed
     lastControlDeflections.clear();  // a no-air substep reports no steering
     // Fins swing back to neutral whenever this substep produces no steering
@@ -4251,6 +4253,7 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
                    && aeroSilPartCdA.size() == aeroSilPartProj.size());
             const double qv = lfCp.q * std::sqrt(lfCp.vp2);
             double sideArmCdA = 0.0;
+            double bodyArmCdA = 0.0;
             for(size_t i = 0; i < aeroSilPartPtr.size(); i++) {
                 Part *p = aeroSilPartPtr[i];
                 assert(p->owner == this);   // the twin was rebuilt THIS pass; a
@@ -4300,16 +4303,62 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
                    need a valid AeroFrame to exist; a hull tumbling fast in nearly
                    still air damps through its surfaces (#483 asks only lf.vp2 > 0)
                    but bills no hull normal force. */
-                if(p->def == nullptr || !(aeroSilPartProj[i] > 1e-9)) { continue; }
-                const double refused =
-                    (aeroSilPartProj[i] - aeroSilPartVis[i]) / aeroSilPartProj[i];
-                if(!(refused > 1e-12)) { continue; }  // exposed (or sum-order
-                                                      // residue): already paid axially
+                if(p->def == nullptr) { continue; }
+                const bool wantsSide = (aeroSilPartProj[i] > 1e-9)
+                    && (aeroSilPartProj[i] - aeroSilPartVis[i]
+                        > 1e-12 * aeroSilPartProj[i]);   // relative floor: exposed
+                                                         // parts cancel to ~1e-16
+                const bool wantsLift = (p->def->body_lift != 0.0)
+                                       && (aeroSilPartVis[i] > 1e-9);   // m2, same
+                                                                       // floor as
+                                                                       // the proj
+                                                                       // column
+                if(!wantsSide && !wantsLift) { continue; }
                 const glm::dvec3 ri = partPosS(p) - com;
                 const LocalFlow lf = localFlow(vrel, w, ri, rho);
                 if(!(lf.vp2 > 0.0)) { continue; }
                 const double vpl = std::sqrt(lf.vp2);
                 const glm::dvec3 uhat = lf.vp / vpl;
+                const glm::dvec3 axisW = sRot * p->localRot[2];
+                if(wantsLift) {
+                    /* #1097: THE HULL'S OWN NORMAL FORCE -- the Shuttle's reentry
+                       trim, the only lift a wingless hull can ever make. The law is
+                       drag.h::bodyLiftCdA (cl x visible x cos a) times
+                       (axisW - uhat cos a): magnitude q cl visible sin a cos a, zero
+                       axial, zero broadside, the authored SIGN picking the side
+                       against the part's +z. The direction is perpendicular to the
+                       FLOW -- deliberately NOT #947's perp, which is perpendicular
+                       to the AXIS -- and it bills the VISIBLE column where the law
+                       above bills the REFUSED fraction, so the two never charge the
+                       same polygon twice (a half-shielded part pays half a strip
+                       there and half a lift here). The kernel runs LIVE off the
+                       cached visible column because on a chart HIT projectSilhouette
+                       does not run -- cos a comes from the same live dots as dirPart
+                       below. Applied at the mount with the part's own flow, per #483
+                       and #947's precedent (a per-part cp is exact-pass-only and not
+                       cached): a hull that authors body_lift authors a pitch moment
+                       with it, and CLa/SM/Induced stay surfaces-only -- body parts
+                       never join the lift systems and never stamp aeroValid/aeroQ
+                       (#730's identity). */
+                    const double cosA = glm::dot(axisW, uhat);
+                    const double bcda = drag_cd
+                        * bodyLiftCdA(p->def->body_lift, cosA, aeroSilPartVis[i]);
+                    if(bcda != 0.0) {
+                        const glm::dvec3 ahat = axisW - uhat * cosA;  // |ahat| = sin a
+                        const glm::dvec3 flift = ahat * (lf.q * bcda);
+                        ApplyForce(hull, ri, flift);
+                        moment += glm::cross(ri, flift);
+                        ftotal += flift;
+                        lastBodyCdA += bcda;
+                        bodyArmCdA += bcda * glm::dot(ri, nose);
+                        if(recordForceVecs) {
+                            lastForceVecs.push_back({ ri, flift, kForceBodyLift });
+                        }
+                    }
+                }
+                if(!wantsSide) { continue; }
+                const double refused =
+                    (aeroSilPartProj[i] - aeroSilPartVis[i]) / aeroSilPartProj[i];
                 const glm::dvec3 flowLocal = glm::transpose(sRot) * uhat;
                 double hx, hy;
                 p->def->meshHalfSpan(hx, hy);
@@ -4318,27 +4367,32 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
                                          glm::dot(p->localRot[2], flowLocal)};
                 const double unbilled =
                     sideStripCdA(hx, hy, p->def->meshHalfLength(), dirPart) * refused;
-                if(!(unbilled > 0.0)) { continue; }
-                const glm::dvec3 axisW = sRot * p->localRot[2];
-                const glm::dvec3 perp = uhat - axisW * glm::dot(axisW, uhat);
-                const double perp2 = glm::length2(perp);
-                if(!(perp2 > 1e-12)) { continue; }   // sliding axis-first: no crossflow
-                const double cda = drag_cd * p->def->drag_side * unbilled;
-                if(!(cda > 0.0)) { continue; }
-                const glm::dvec3 fside = perp * (-lf.q * cda / std::sqrt(perp2));
-                ApplyForce(hull, ri, fside);
-                moment += glm::cross(ri, fside);
-                ftotal += fside;
-                lastSideCdA += cda;
-                sideArmCdA += cda * glm::dot(ri, nose);
-                if(recordForceVecs) {
-                    lastForceVecs.push_back({ ri, fside, kForceSide });
+                const double cda = (unbilled > 0.0)
+                    ? (drag_cd * p->def->drag_side * unbilled) : 0.0;
+                if(cda > 0.0) {
+                    const glm::dvec3 perp = uhat - axisW * glm::dot(axisW, uhat);
+                    const double perp2 = glm::length2(perp);
+                    if(perp2 > 1e-12) {   // sliding axis-first: no crossflow
+                        const glm::dvec3 fside = perp * (-lf.q * cda / std::sqrt(perp2));
+                        ApplyForce(hull, ri, fside);
+                        moment += glm::cross(ri, fside);
+                        ftotal += fside;
+                        lastSideCdA += cda;
+                        sideArmCdA += cda * glm::dot(ri, nose);
+                        if(recordForceVecs) {
+                            lastForceVecs.push_back({ ri, fside, kForceSide });
+                        }
+                    }
                 }
             }
             // 1e-9 m^2, not > 0: real bills start around 0.01; anything under the
             // floor is sum-order residue, and arm/sum of two residues would print
             // one part's mount arm as a fabricated restoring lever (#947 review).
             lastSideCpLever = (lastSideCdA > 1e-9) ? (sideArmCdA / lastSideCdA) : 0.0;
+            // Signed sum, so the floor is on |BodyCdA|; arm/sum of a near-cancelled
+            // pair would print an arm at random (same reason as the SideCp floor).
+            lastBodyCpLever = (std::fabs(lastBodyCdA) > 1e-9)
+                ? (bodyArmCdA / lastBodyCdA) : 0.0;
         }
     }
 
