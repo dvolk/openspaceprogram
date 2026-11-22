@@ -283,7 +283,7 @@ void flightKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
                 g.toast("Camera: free");
             } else {
                 g.camera->toOrbit(g.focusWorldPos(g.focusBody));
-                printf("Camera: orbiting %s (G = switch body, C = free)\n",
+                printf("Camera: orbiting %s (C = free)\n",
                        g.focusTargets[g.focusBody].name);
                 g.toast("Camera: orbiting %s", g.focusTargets[g.focusBody].name);
             }
@@ -300,31 +300,6 @@ void flightKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
             g.camera->toFree();
             printf("Camera: free (Shift-C = orbit)\n");
             g.toast("Camera: free flight (Shift-C to leave)");
-        }
-    }
-    /* G is the kerbal's ladder grab (#1073): while piloting a suit a key that
-       ALSO fires EvaGrab belongs to the grab, not the camera's target cycle.
-       The gate is on the shared binding, not on isEva() alone -- rebind either
-       slot and the other keeps its key. */
-    if(slotFired(Slot::CycleTarget, ksc, kmod, g.binds) && !repeat
-       && !(g.ship && g.ship->isEva()
-            && slotFired(Slot::EvaGrab, ksc, kmod, g.binds))) {
-        // Cycle the orbit camera's target body.
-        if(g.camera->mode == CAM_ORBIT) {
-            g.focusBody = (g.focusBody + 1) % (int)g.focusTargets.size();
-            g.camera->setSubject(g.focusWorldPos(g.focusBody));   // new subject, new framing (#919)
-            double d = (g.focusTargets[g.focusBody].body == nullptr)
-                ? 50.0
-                : (double)g.focusTargets[g.focusBody].body->radius * 3.0;
-            g.camera->distance = d;
-            printf("Orbit camera targeting %s\n", g.focusTargets[g.focusBody].name);
-            g.toast("Camera target: %s", g.focusTargets[g.focusBody].name);
-        } else if(g.camera->mode == CAM_FIRST) {
-            printf("In first person; press C for the orbit view first.\n");
-            g.toast("In first person; press C for the orbit view");
-        } else {
-            printf("In free flight; press C or Shift-C to leave free cam.\n");
-            g.toast("In free flight; press C or Shift-C to leave");
         }
     }
     if(slotFired(Slot::NextShip, ksc, kmod, g.binds)) {

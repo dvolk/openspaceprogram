@@ -1,0 +1,30 @@
+# #1079 retired the planet-focus key: G used to cycle the orbit camera's target
+# body (toasting "Camera target: <name>" and re-framing at radius x3). The
+# mode itself survives for the title/space-center backdrop and the orbit view
+# stays reachable with C / Shift-C -- but IN FLIGHT a plain G press must now be
+# inert: no target cycle, no toasts, no distance jump. G belongs to the kerbal's
+# ladder grab alone (keys.cpp); this is the ship-piloting half of that claim --
+# the grab half is pinned by the crew cases (29, 866, 1073-h, 1095-a).
+#
+# The pad racer is static, so a still orbit camera's dist/focus rows are
+# constant by themselves: if the old G handler were reinstated, dist would jump
+# to the next target's radius*3, focus would leave "ship", and the toast lines
+# would print. All three are pinned here.
+NAME g-is-no-camera-key
+CLAIM Pressing G while piloting a ship changes nothing about the camera: same target, same distance, no camera toasts.
+KIND invariant
+ARGS --timeout 6 --time-accel 1 --startship racer,res/ships/racer.json,Kerbin,pad --cam-log --orbit-interval 0.25
+ARGS --sim-press 2000,0,G
+ARGS --sim-press 2600,0,G
+ARGS --sim-press 3200,0,G
+EXPECT [camlog]
+CHECK all(r["mode"] == "orbit" and r["focus"] == "ship" for r in cam)
+# The orbit distance never moves: the old cycle set it to radius*3 (or 50 for
+# the ship entry), so any handler at all shows up as a jump.
+CHECK max(r["dist"] for r in cam if r["t"] > 1.0) - min(r["dist"] for r in cam if r["t"] > 1.0) < 1e-6
+# The old handler's every branch printed something; none may appear.
+FORBID Camera target:
+FORBID Orbit camera targeting
+FORBID In first person; press C
+FORBID In free flight; press C or Shift-C to leave free cam
+FORBID error:

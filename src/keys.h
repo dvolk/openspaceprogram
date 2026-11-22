@@ -26,7 +26,6 @@ enum class Slot {
     CamSpeedDown,  // '['  camera speed /4
     ToggleCamMode, // 'c'  ship: orbit <-> first-person; kerbal: orbit <-> free
     ToggleFreeCam, // 'LShift+c' free-cam on/off
-    CycleTarget,   // 'g'  orbit mode: cycle the target body/ship
     ToggleWindows, // TAB  the info windows
     DebugInfo,     // F1   the GAME DEBUG window (readouts + dev options)
     Telemetry,     // F2   the TELEMETRY plots

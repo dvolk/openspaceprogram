@@ -4,7 +4,9 @@
 # appended sys.bodies again -- Game::sys is a reference to main's local `sys`,
 # which that switch reassigns -- so every body sat in the list twice: 64 entries
 # where 32 is correct, and every focusBody index past the first was doubled.
-# The G-cycle cannot see this: a doubled list is two copies of the SAME names, so
+# No name-by-name walk can see this (the #298 bug shows only in LENGTH; and
+# #1079 retired the one key, G, that walked the names): a doubled list is two
+# copies of the SAME names, so
 # the sequence it prints is identical either way. Only the list LENGTH differs,
 # which is why boot reports it -- and the length is the file's body count plus the
 # ship, so this case's two numbers travel with the corpus: solar_system.json wore 31

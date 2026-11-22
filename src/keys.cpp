@@ -23,7 +23,6 @@ void KeyBindings::resetDefaults() {
     // Free-cam is Shift+C (both sides; L/R Shift are distinct keys).
     perSlot[(size_t)Slot::ToggleFreeCam].push_back(KeyBind{SDL_SCANCODE_C, SDL_KMOD_LSHIFT});
     perSlot[(size_t)Slot::ToggleFreeCam].push_back(KeyBind{SDL_SCANCODE_C, SDL_KMOD_RSHIFT});
-    add(Slot::CycleTarget,   SDL_SCANCODE_G);
     add(Slot::ToggleWindows, SDL_SCANCODE_TAB);
     add(Slot::DebugInfo,     SDL_SCANCODE_F1);
     add(Slot::Telemetry,     SDL_SCANCODE_F2);
@@ -102,8 +101,8 @@ void KeyBindings::resetDefaults() {
     add(Slot::EvaDown,       SDL_SCANCODE_F);
     add(Slot::EvaYawLeft,    SDL_SCANCODE_Q);
     add(Slot::EvaYawRight,   SDL_SCANCODE_E);
-    // G is CycleTarget's key too; events.cpp gates that off while piloting a
-    // kerbal, so the grab owns it here (one key per mode, #1073).
+    // G was the orbit-target cycle (#1073 gated the two, #1079 retired that
+    // slot) -- the grab is the only thing bound to G now.
     add(Slot::EvaGrab,       SDL_SCANCODE_G);
 }
 
@@ -156,7 +155,6 @@ const char *slotName(Slot s) {
         case Slot::CamSpeedDown:   return "cam_speed_down";
         case Slot::ToggleCamMode:  return "toggle_cam_mode";
         case Slot::ToggleFreeCam:  return "toggle_free_cam";
-        case Slot::CycleTarget:    return "cycle_target";
         case Slot::ToggleWindows:  return "toggle_windows";
         case Slot::DebugInfo:      return "debug_info";
         case Slot::Telemetry:      return "telemetry";
@@ -240,7 +238,6 @@ const char *slotLabel(Slot s) {
         case Slot::CamSpeedDown:   return "Camera speed down";
         case Slot::ToggleCamMode:  return "Toggle camera mode";
         case Slot::ToggleFreeCam:  return "Toggle free camera";
-        case Slot::CycleTarget:    return "Cycle orbit target";
         case Slot::ToggleWindows:  return "Toggle windows";
         case Slot::DebugInfo:      return "Game Debug";
         case Slot::Telemetry:      return "Telemetry plots";
@@ -309,7 +306,7 @@ SlotGroup slotGroup(Slot s) {
     switch (s) {
         case Slot::WarpUp: case Slot::WarpDown:
         case Slot::CamSpeedUp: case Slot::CamSpeedDown:
-        case Slot::ToggleCamMode: case Slot::ToggleFreeCam: case Slot::CycleTarget: case Slot::ToggleWindows:
+        case Slot::ToggleCamMode: case Slot::ToggleFreeCam: case Slot::ToggleWindows:
         case Slot::DebugInfo: case Slot::Telemetry:
         case Slot::NextShip: case Slot::ToggleEva: case Slot::Space: case Slot::Undock:
         case Slot::Screenshot: case Slot::Quicksave: case Slot::Quickload:

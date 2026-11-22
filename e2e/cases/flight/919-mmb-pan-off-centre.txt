@@ -9,7 +9,13 @@
 # vertically, +-37.6 deg horizontally (atan(tan(30 deg) x 4/3)).
 # Gestures: park the cursor; MMB-drag +200,+100 px; MMB-drag +2000,+2400 px
 # (both axes over the edge); an RMB orbit of +200 px (pure yaw); a 0-duration
-# MMB press; the same +200,+100 drag again; then G (CycleTarget).
+# MMB press; the same +200,+100 drag again. (The case used to end on G, the
+# orbit-target cycle -- #1079 retired that key; the "new subject recentres"
+# half of the claim now rides flight/06-ship-switch, which carries a pan drag
+# across an F6 hull switch. And the whole case stays on ONE start ship: a
+# fixture fleet relocates the pads, and the up basis over different terrain
+# flips the turntable's roll after a pure yaw -- the pixel pins below are the
+# single-pad world's.)
 #
 #   pan=[+0.38490 +0.19245] = exactly 200 and 100 px at 519.6 px/rad, so a
 #     swallowed or truncated drag shows up immediately, and the two axes carry
@@ -39,10 +45,8 @@
 #     using the same still-and-brief test as an RMB pick (kPickClickPx 6 px /
 #     kPickClickMs 400 ms). The drag after it pans again -- a tap does not latch
 #     the gesture off.
-#   G hands the camera a new subject, and the framing goes with the old one:
-#     focus changes and pan is back to 0 (mmb=0 rows, no gesture).
 NAME mmb-pan-off-centre
-CLAIM An MMB drag pans the camera's aim without moving the camera: the focus sits off-centre at the cursor's rate, stops on the frame edge, holds that place in frame across an orbit, and a tap or a new subject recentres it.
+CLAIM An MMB drag pans the camera's aim without moving the camera: the focus sits off-centre at the cursor's rate, stops on the frame edge, holds that place in frame across an orbit, and a tap recentres it.
 KIND invariant
 ARGS --timeout 7 --time-accel 1 --startship racer,res/ships/racer.json,Kerbin,pad --cam-log --orbit-interval 0.25 --width 800 --height 600 --fov 60
 ARGS --sim-mouse 1000,0,900,500,0
@@ -51,7 +55,6 @@ ARGS --sim-mouse 2000,600,3100,3000,MMB
 ARGS --sim-mouse 3000,600,3300,3000,RMB
 ARGS --sim-mouse 4000,0,3300,3000,MMB
 ARGS --sim-mouse 4500,600,3500,3100,MMB
-ARGS --sim-press 5200,0,G
 EXPECT [camlog]
 CHECK all(r["mode"] == "orbit" and r["pan"] is not None and r["aim"] is not None for r in cam)
 CHECK all(abs(r["pan"][0]) < 1e-9 and abs(r["pan"][1]) < 1e-9 and abs(r["aim"][0]) < 0.1 for r in cam if r["t"] < 1.25)
@@ -72,7 +75,5 @@ CHECK max(abs(a["fwd"][0] - b["fwd"][0]) + abs(a["fwd"][1] - b["fwd"][1]) + abs(
 CHECK any(abs(r["yaw"] + 1.0) < 1e-4 and r["mmb"] == 0 for r in cam if 3.20 < r["t"] < 4.05)
 CHECK all(abs(r["pan"][0]) < 1e-9 and abs(r["pan"][1]) < 1e-9 and abs(r["aim"][0]) < 0.1 for r in cam if 4.25 < r["t"] < 4.55)
 CHECK all(abs(r["pan"][0] - 0.384900) < 1e-4 and abs(r["pan"][1] - 0.192450) < 1e-4 for r in cam if 4.75 < r["t"] < 5.05)
-CHECK any(r["focus"] != "ship" for r in cam if r["t"] > 5.25)
-CHECK all(abs(r["pan"][0]) < 1e-9 and abs(r["pan"][1]) < 1e-9 for r in cam if r["t"] > 5.30)
 CHECK all(abs(r["roll"]) < 0.5 for r in cam if r["roll"] is not None)
 FORBID error:

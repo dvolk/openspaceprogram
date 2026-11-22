@@ -1,9 +1,24 @@
+# F6 cycles the fleet (#6-era claim) AND recentres the camera's aim: the
+# "new subject drops the pan offset" leg of #919 lives here now, because the
+# pixel-pinned pan case (flight/919) stays on a single start ship -- a fixture
+# fleet relocates pads and the turntable's up basis over other terrain moves
+# its numeric pins. This case keeps that leg cheap: drag the aim off-centre,
+# switch hulls, the pan is gone.
 NAME ship-switch
-CLAIM F6 cycles the fleet and hands the camera and HUD to the next vessel.
+CLAIM F6 cycles the fleet and hands the camera and HUD to the next vessel, recentring a panned aim for the new subject.
 KIND invariant
-ARGS --startships e2e/fixtures/startships.json --time-accel 1 --timeout 8
-ARGS --sim-press 1500,50,F6
+ARGS --startships e2e/fixtures/startships.json --time-accel 1 --timeout 8 --cam-log --orbit-interval 0.25
+ARGS --sim-mouse 2000,0,900,500,0
+ARGS --sim-mouse 2200,600,1100,600,MMB
+ARGS --sim-press 3500,50,F6
 # Eight start ships, one seat each: a seated kerbal is a seat on its capsule,
 # not a vessel (part.h), so the fleet counts 8 and F6 steps racer -> tanker.
 EXPECT Active ship 2 of 8: tanker
+EXPECT [camlog]
+# The drag parked the aim off-centre (any nonzero pan: this window and lens
+# are not pinned, the FACT is, so the bound is loose)...
+CHECK any(abs(r["pan"][0]) > 0.05 for r in cam if 2.9 < r["t"] < 3.4)
+# ...and the switch erased it: syncShipFocus calls camera->setSubject for the
+# new hull, which zeroes the aim offset in any mode (#919).
+CHECK all(abs(r["pan"][0]) < 1e-9 and abs(r["pan"][1]) < 1e-9 for r in cam if r["t"] > 3.75)
 FORBID error:
