@@ -347,6 +347,11 @@ void Kerbal::armInput(Game &g, const SlotProbe &active) {
                    skip that and fly the suit to the previous grip's arc
                    length -- a teleport up the ladder. */
                 ladderUid = p->uid;
+                /* A fresh grip takes a fresh climb demand: walking on the ground never
+                   touches climbDir, so a stale -1 from the last descent would make
+                   resolveLadder()'s bottom-end release fire against this grip in the
+                   same tick it was taken. (#1095) */
+                climbDir = 0.0;
                 printf("[crew] t=%.1f Grab: '%s' on '%s' ladder\n",
                        g.time, displayName().c_str(),
                        p->owner->displayName().c_str());

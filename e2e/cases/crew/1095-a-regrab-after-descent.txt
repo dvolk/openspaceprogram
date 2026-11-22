@@ -1,0 +1,30 @@
+# The ground re-grab (#1095): climb DOWN ladder_stack onto the deck, then
+# G for a new grip and W to climb back. Before the fix the grip printed and
+# died the same tick: climbDir kept the descent's -1 (ground walking never
+# touches it), and resolveLadder's bottom-end release -- meant for stepping
+# off onto your feet -- fired against the fresh grip at s < kLadderGroundEnd.
+# Only a save/load (which never stored the demand) let the re-grab work.
+NAME regrab-after-descent
+CLAIM After walking down a ladder to the ground, G grips and W climbs back up.
+KIND invariant
+ARGS --time-accel 1
+ARGS --startship ladderstack,res/ships/ladder_stack.json,Kerbin,pad
+ARGS --timeout 14 --eva-log --orbit-interval 0.25
+ARGS --sim-press 1000,0,V,2000,2300,S,5500,0,G,6500,5000,W
+EXPECT [evalog]
+CHECK len(eva) > 12
+# The descent runs to the deck first (this is the state that poisoned the demand).
+CHECK any(e["mode"] == "ground" and e["ladder"] == 0 for e in eva if e["t"] < 5.5)
+EXPECT Grab: 'Ash'
+CHECK out.count("Grab: 'Ash'") == 1
+# The grip survives: every row after the last grounded one is a ladder grip.
+CHECK (lambda gt: all(e["mode"] == "ladder" and e["ladder"] != 0 for e in eva if e["t"] > gt))(max(e["t"] for e in eva if e["mode"] == "ground"))
+# And W climbs: deck to near the top of the stack, > 2 m gained, composing
+# tank -> capsule up through the reaction-wheel gap (two distinct grips).
+CHECK eva[-1]["mode"] == "ladder"
+CHECK len(set(e["ladder"] for e in eva if e["mode"] == "ladder" and e["ladder"])) == 2
+CHECK eva[-1]["alt"] - max(e["alt"] for e in eva if e["mode"] == "ground") > 2.0
+FORBID Let go:
+FORBID No ladder in reach
+FORBID error:
+FORBID FAILED

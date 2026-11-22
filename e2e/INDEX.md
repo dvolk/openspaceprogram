@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 444 |
+| `invariant` | a behaviour or a player route the game must keep | 446 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 50 |
 | `harness` | CLI/test-engine plumbing, not game spec | 16 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **514** |
+| | **total** | **516** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -186,7 +186,7 @@ judgement. Select by number, name or path, e.g.
 | `flight/1062-stale-dock-target-leaves-with-the-port-it-aimed-at.txt` | invariant | Switching to the target hull and staging it drops both halves of the docking target and keeps the armed port. |
 | `flight/1072-lander-legs-stand.txt` | invariant | A legged rocket spawns standing on its feet, stays there, and survives a quicksave/quickload. |
 
-## crew (36)
+## crew (37)
 
 | case | kind | pins |
 |---|---|---|
@@ -226,6 +226,7 @@ judgement. Select by number, name or path, e.g.
 | `crew/1073-f-ladder-save.txt` | invariant | A ladder hang round-trips quicksave/quickload still gripping. |
 | `crew/1073-g-ladder-down-compose.txt` | invariant | Climbing down transfers capsule ladder to tank ladder and grounds at the bottom. |
 | `crew/1073-h-ladder-up-compose.txt` | invariant | Re-grab from the pad takes the ladder bottom; climbing up transfers tank to capsule and reaches the hatch. |
+| `crew/1095-a-regrab-after-descent.txt` | invariant | After walking down a ladder to the ground, G grips and W climbs back up. |
 
 ## science (31)
 
@@ -263,7 +264,7 @@ judgement. Select by number, name or path, e.g.
 | `science/830-the-dossier-carries-the-lag-beside-the-swing-it-modifies.txt` | invariant | A world the shipped catalogue gives a ground phase lag says so in the same block as the swing it bends -- the knob in radians of phase, how far past its sun its hottest ground can sit, and the measured solar day that converts the two -- while the swing itself stays the law's two ends, so the identity that ties those ends still closes, AND the block prints what the lag leaves: an equator-at-equinox pair strictly inside the law's ends and narrowing as the knob grows. |
 | `science/840-a-lagged-summit-prices-the-forcing-its-own-world-wears.txt` | invariant | On a world that authors both a phase lag and a height term, the atlas's summit row is the temperature pair that world's sea-level equator actually wears at that epoch, moved down by the lapse -- not the law's two ends moved down, which on AltoFrio read 97.2 to 319.9 K against a Surface Map painting 99.19 to 316.53: a summit colder than the coldest pixel and hotter than the hottest one. |
 
-## vab (43)
+## vab (44)
 
 | case | kind | pins |
 |---|---|---|
@@ -310,6 +311,7 @@ judgement. Select by number, name or path, e.g.
 | `vab/817-e-startship-alt-outside-the-shell.txt` | invariant | An altitude past the body's near-body shell is refused, by a bed that reads the air, with the shell's height printed instead of placing the bed in another frame. |
 | `vab/818-b-startship-alt-outside-the-sphere-of-influence.txt` | invariant | An altitude past the body's sphere of influence is refused by name, with the SOI's height printed, instead of placing a hull whose speed comes from another body's gravity. |
 | `vab/1073-a-ladder-click-places.txt` | invariant | A ladder armed from the palette surface-places on a tank click and launches with the ship. |
+| `vab/1078-a-small-ladders-click-place.txt` | invariant | A 0.5 m ladder armed from the palette surface-places on a tank click and launches with the ship. |
 
 ## save (58)
 
