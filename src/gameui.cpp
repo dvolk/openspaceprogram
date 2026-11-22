@@ -4297,10 +4297,11 @@ void drawPartWindows(Game &g) {
                sheltered part's credit is exactly zero -- which is the same fact the
               OSP_SHIP_DUMP audit's visA column showed one flag away. Same 2 Hz
                cadence as the surface rows (#734), but the worst-frame choice is
-               HULL-level (#1114) and the publish rides a shared grid. The blocks
-               are disjoint (a part is a surface or a body, never both), so they
-               share the window's publish tick. The gate mirrors the law's
-               own skip list: no hull vertices, no row. */
+               HULL-level (#1114): the window and its publish live on the ship
+               (Vehicle::hflow), not on the PartSel the surface block uses. The
+               blocks are disjoint (a part is a surface or a body, never both),
+               so one window prints at most one flow row and one watts row. The
+               gate mirrors the law's own skip list: no hull vertices, no row. */
             if(!isAeroSurface(def->lift_area, def->control_area)
                && ship->parts[part]->body != nullptr
                && !ship->parts[part]->body->hullVerts.empty()) {
@@ -4333,21 +4334,27 @@ void drawPartWindows(Game &g) {
                        publish of a fresh window carries only the frames the
                        ship has had a card open for -- every card quotes that
                        same partial window, so agreement never depends on when
-                       a card opened. */
+                       a card opened. Frame-sampled on the HULL criterion, so
+                       #734's warp caveat applies the same way here: one sample
+                       per frame, and a sheltered part's own worst lives in its
+                       peak cell, not in this card's current one. */
                     Vehicle::HullFlowPub &hf = ship->hflow;
                     const unsigned long long frame =
                         (unsigned long long)ImGui::GetFrameCount();
+                    const size_t nparts = ship->parts.size();
                     if(hf.updFrame != frame) {
                         hf.updFrame = frame;
-                        const size_t nparts = ship->parts.size();
                         if(hf.winVis.size() != nparts) {
                             /* A pickup or a separation changed the hull: a
                                half-window of the OLD geometry is not a sample
-                               of this one, so the window starts over. */
+                               of this one, so the WHOLE window starts over --
+                               scalars included, so a stale worst flow can
+                               never pair with zeroed columns. */
+                            hf = Vehicle::HullFlowPub{};
+                            hf.updFrame = frame;
                             hf.winVis.assign(nparts, 0.0);
                             hf.winCdA.assign(nparts, 0.0);
                             hf.winWatts.assign(nparts, 0.0);
-                            hf.worstW = 0.0;
                         }
                         if(ship->lastFormWatts >= hf.worstW) {
                             hf.worstW = ship->lastFormWatts;
@@ -4360,8 +4367,7 @@ void drawPartWindows(Game &g) {
                                 hf.winWatts[k] = ship->parts[k]->formDragWatts;
                             }
                         }
-                        if(ImGui::GetTime() >= hf.nextRead
-                           || hf.pubVis.size() != ship->parts.size()) {
+                        if(ImGui::GetTime() >= hf.nextRead || hf.pubVis.size() != nparts) {
                             hf.nextRead = std::floor(ImGui::GetTime() / kReadSec)
                                           * kReadSec + kReadSec;
                             std::swap(hf.winVis, hf.pubVis);
@@ -4373,6 +4379,12 @@ void drawPartWindows(Game &g) {
                             hf.worstW = 0.0;   // the window starts over with the publish
                         }
                     }
+                    /* The prints below index three vectors by `part`: the swap
+                       keeps the trio one size, and the publish (or a geometry
+                       reset) has just sized them to THIS hull. Asserted rather
+                       than assumed (#1114 review). */
+                    assert(hf.pubVis.size() == nparts && hf.pubCdA.size() == nparts
+                           && hf.pubWatts.size() == nparts);
                     /* The cd cell is the credit over its own area -- and a fully
                        sheltered part has neither, so it dashes rather than
                        inventing a 0.00 coefficient for air that never reached

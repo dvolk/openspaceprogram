@@ -8407,11 +8407,16 @@ bool Vehicle::goOnRails() {
         p->formDragWattsPeak = 0.0f;   // #1113: a per-flight peak, so it goes with rails
         if(p->isRcs()) { for(double &f : p->rcsFired) { f = 0.0; } }
     }
-    /* #1114: the ship trio, same rails-clear as the columns. The publish sample
-       (hflow) is display state drawPartWindows re-gates every frame; it rides on. */
+    /* #1114: the ship trio, same rails-clear as the columns. The publish window
+       goes with them (and its vectors free with it): a card CLOSED across the
+       rails transition never draws to re-gate it, and reopening after the conic
+       would print the pre-rails worst frame -- current watts above a peak the
+       rails pass just zeroed, which is #730's "21.1 kW (peak 0.0 kW)" bug in a
+       new row. A fresh window starts at the first in-air frame the card sees. */
     lastFormWatts = 0.0;
     lastFormQ = 0.0;
     lastFormMach = 0.0;
+    hflow = HullFlowPub{};
     lastRcsNozzles.clear();  // likewise the [rcs] log: no substeps, no nozzles
     lastForceVecs.clear();   // and the force overlay: no substeps, no arrows
     /* And the #599 spend record: applyRotationForce, which clears it every substep,
