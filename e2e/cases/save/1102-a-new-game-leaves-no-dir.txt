@@ -1,0 +1,22 @@
+# A New Game claims a NAME, not a directory (#1102). mintGameDir used to
+# ensure_dir the saves/<stamp>-game1/ path at creation, so a career played and
+# quit without ever saving left a dangling empty directory: invisible to the
+# games list (scanGames skips slot-less dirs) and undeletable through the UI
+# (the Load sheet deletes slots, not games). The fix removes the mkdir; every
+# writer into the game dir already ensures it (save_game, quicksave, Save-As,
+# the flight recorder's own make_dir), so lazy materialization loses nothing.
+#
+# This case is the failing half of 260: that one ends in a save, so it passes
+# either way. Here the career NEVER saves, and nothing may exist under saves/
+# when the process exits. The EXPECT below is what makes the NOFILE honest:
+# it proves the mint ran, so the empty match is a fact, not a typo.
+NAME new-game-leaves-no-dir
+CLAIM A New Game that never saves leaves no directory under saves/.
+KIND invariant
+ARGS --timeout 8
+ARGS --ui-click 2500,"Title Menu/New Game" --ui-click 3200,"New Game/Start"
+EXPECT [game] new game 'game1'
+NOFILE saves
+NOFILE saves/*
+FORBID FAILED
+FORBID error:

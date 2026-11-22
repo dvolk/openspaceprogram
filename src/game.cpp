@@ -907,12 +907,12 @@ void Game::newGame() {
     assert(!gameRunning(*this) && "a new game starts from the title");
     /* A game with no identity cannot be saved: quicksave() writes into whatever
        gameId names, and after a quit-to-title that is the PREVIOUS game's
-       directory (#299). The caller mints first -- startNewGame claims the dir
+       directory (#299). The caller mints first -- startNewGame claims the name
        before calling this, and it is the only caller -- so minting here would be
-       dead code that quietly hides a caller who forgot. Mint-before-newGame is
-       also what keeps a REFUSED new game from leaving an orphan directory:
-       startNewGame's vehicle guard runs before its mint. */
-    assert(!gameId.empty() && "a new game needs its saves/ dir claimed first");
+       dead code that quietly hides a caller who forgot. The claim is a name,
+       not a directory (#1102): a refused new game leaves nothing on disk at
+       all, and a saved one gets its dir from the save path. */
+    assert(!gameId.empty() && "a new game needs its game name claimed first");
     /* A new career starts at t=0. Nothing else writes `time` -- only boot
        --start-time and a load -- so a New Game on a system that had been
        running opened at the old game's epoch, and the science stamps and Flight
@@ -992,9 +992,12 @@ bool Game::startNewGame(const std::string &name, const std::string &sysPath,
     if(exhaustScale > 5.0f) { exhaustScale = 5.0f; }
     args.exhaust_scale = exhaustScale;
     // The game's identity is minted AFTER the switch, so a failed switch
-    // leaves no orphan dir; minting here, not at first save, keeps the
-    // same-second collision check sound. gameName first: mintGameDir names the
-    // directory after it.
+    // costs nothing. gameName first: mintGameDir names the game after it.
+    // The same-second bump in newGameDir checks fs::exists, and no dir exists
+    // yet (#1102) -- two unsaved New Games inside one second would alias. That
+    // is harmless: the second replaces the first, and an unsaveable game has
+    // no state to collide with; once the first HAS saved, the dir exists and
+    // the bump works as before.
     gameName = name;
     if(!mintGameDir()) {
         toast("Too many same-named games this second; try again");
@@ -1012,9 +1015,13 @@ bool Game::startNewGame(const std::string &name, const std::string &sysPath,
 }
 
 bool Game::mintGameDir() {
+    /* Only the NAME is claimed (#1102): minting a directory here left a
+       dangling empty game dir whenever a career was quit without saving, and
+       the games list cannot even show it to delete it. Every writer into the
+       dir ensures it first -- save_game (save.cpp), quicksave, Save-As, the
+       flight recorder -- so the dir materializes at the first write. */
     const std::string dir = newGameDir(datadir::saves(), gameName);
     if(dir.empty()) { return false; }
-    ensure_dir(dir);
     gameId = baseName(dir);
     return true;
 }
