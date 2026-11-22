@@ -956,7 +956,10 @@ public:
        strip (drag.h::sideStripCdA, 2 L D sin(alpha) for a round body) discounted
        by the shadow the axial partition already credited it, times the authored
        drag_side as the normal coefficient, at the part's own mount and its own
-       flow. lastSideCdA is the whole bill (m^2, 0 = every part exposed);
+       flow. lastSideCdA is the whole bill (m^2); a zero reads honestly three ways
+       -- every part exposed, the flow along the parts' axes (the sin lives in the
+       strip), or no body parts at all -- so SideCp only means something beside a
+       nonzero SideCdA;
        lastSideCpLever is the arm of its centroid along the nose (+ ahead, like
        CpL) -- on a stacked rocket the hidden tanks and engine sit it AFT, which
        is the aft push #945's cp never had. Deliberately NOT folded into
@@ -2154,7 +2157,11 @@ public:
                          kForceLift = 3, kForceChute = 4, kForceCtrl = 5,
                          kForceInduced = 6, kForceSurfDrag = 7, kForceGround = 8,
                          kForceSide = 9;
-    static constexpr int kForceKindCount = 9;
+    static constexpr int kForceKindCount = 10;
+    // The drawer gates fv.kind < kForceKindCount; a kind past the count is
+    // silently never drawn. The list and its count have drifted once (#947's
+    // review caught it) -- this fires instead.
+    static_assert(kForceSide == kForceKindCount - 1, "kForceKindCount must cover every kForce* kind");
     std::vector<ForceVec> lastForceVecs;
     bool recordForceVecs = false;
     /* #485: record each surface's own alpha/q (Part::aeroAlphaDeg, aeroQ). The

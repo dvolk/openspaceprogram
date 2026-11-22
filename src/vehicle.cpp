@@ -4237,9 +4237,14 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
            for a body) is meant to grow into. The watt share splits the hull's own
            bill by credit: q x |vp| at the cp -- the very flow fdrag was built
            from -- times the global cd multiplier times this part's visible x cd,
-           so the body parts' watts SUM to the hull drag power and an occluded part
-           quotes 0 exactly the way it votes 0. Only a billed substep writes; the
-           pass-start sweep zeroes when there is no usable flow. */
+           so the body parts' watts SUM to the hull's ALONG-FLOW drag power and an
+           occluded part quotes 0 exactly the way it votes 0. Since #947 the hull
+           also dissipates its crossflow normal force (q x sideCdA x |vp_perp| at
+           each part), which is NOT in this trio -- these columns answer "what did
+           the air pay pushing against this part's shadow", not total aero watts;
+           a heating law that wants every watt has to add the side bill (filed).
+           Only a billed substep writes; the pass-start sweep zeroes when there
+           is no usable flow. */
         if(lastDragAlphaValid) {
             assert(aeroSilPartPtr.size() == aeroSilPartVis.size()
                    && aeroSilPartVis.size() == aeroSilPartCdA.size()
@@ -4269,9 +4274,15 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
                    geometry and not multiplied twice), discounted by visible/ownProj
                    from this pass's columns. The discount is the anti-double-count:
                    an exposed part already paid its flank in the axial bill (its
-                   shadow, at the cdSide share of partCd), so it nets EXACTLY zero
-                   here -- both columns come from the same polygons and blend with
-                   the same weights, so the cancellation survives a chart HIT too.
+                   shadow, at the cdSide share of partCd), so it nets nothing here
+                   -- both columns come from the same polygons and blend with the
+                   same weights, so the cancellation survives a chart HIT too. It
+                   cancels to WITHIN the sum order, not bit-exactly: ownProj is a
+                   shoelace of the part polygon while visible is the union's strip
+                   sum of it, and the two can disagree by ~1e-16 of area. The
+                   refused > 1e-12 floor is what turns that residue into nothing
+                   rather than a noise-sized bill whose lever (a ratio of two
+                   noises) would print as a plausible arm in the log.
                    cn reuses the authored drag_side (a broadside cylinder's drag
                    coefficient IS its normal-force coefficient); the direction is
                    the flow-perpendicular component of the part's own axis,
@@ -4283,10 +4294,17 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
                    share one CdA-weighted lever, so the log gets its own
                    SideCdA=/SideCp= pair. Lateral occlusion (flanks shielded SIDE
                    ways, asparagus bundles) is knowingly unmodeled -- a second
-                   projection pass, filed in the ticket as a follow-up. */
+                   projection pass, filed in the ticket as a follow-up. One honest
+                   asymmetry: the block rides the hull's lastDragAlphaValid gate,
+                   which reads the flow at the COM, because the same cached columns
+                   need a valid AeroFrame to exist; a hull tumbling fast in nearly
+                   still air damps through its surfaces (#483 asks only lf.vp2 > 0)
+                   but bills no hull normal force. */
                 if(p->def == nullptr || !(aeroSilPartProj[i] > 1e-9)) { continue; }
-                const double refused = 1.0 - aeroSilPartVis[i] / aeroSilPartProj[i];
-                if(!(refused > 0.0)) { continue; }   // exposed: already paid axially
+                const double refused =
+                    (aeroSilPartProj[i] - aeroSilPartVis[i]) / aeroSilPartProj[i];
+                if(!(refused > 1e-12)) { continue; }  // exposed (or sum-order
+                                                      // residue): already paid axially
                 const glm::dvec3 ri = partPosS(p) - com;
                 const LocalFlow lf = localFlow(vrel, w, ri, rho);
                 if(!(lf.vp2 > 0.0)) { continue; }
@@ -4317,7 +4335,10 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
                     lastForceVecs.push_back({ ri, fside, kForceSide });
                 }
             }
-            lastSideCpLever = (lastSideCdA > 0.0) ? (sideArmCdA / lastSideCdA) : 0.0;
+            // 1e-9 m^2, not > 0: real bills start around 0.01; anything under the
+            // floor is sum-order residue, and arm/sum of two residues would print
+            // one part's mount arm as a fabricated restoring lever (#947 review).
+            lastSideCpLever = (lastSideCdA > 1e-9) ? (sideArmCdA / lastSideCdA) : 0.0;
         }
     }
 

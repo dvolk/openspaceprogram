@@ -602,7 +602,9 @@ DRAG_RE = re.compile(
     # together (both numbered or both dashed) off the same lastDragAlphaValid gate as
     # AoA, because the reading is meaningless without a flow to be perpendicular to.
     # Printed LAST so every older parser keeps matching -- the same courtesy the
-    # Profile=/FormCp=/Ld= tails were extended by.
+    # Profile=/FormCp=/Ld= tails were extended by. Both fields carry a trailing
+    # unit, so the wide [-\d.]+ class is safe here (a bare "-" needs no unit to
+    # match and float() to throw -- see the digit-anchored T=/p=/a=/Mach= note).
     r"(?:\s+(?:SideCdA=([-\d.]+) m2 SideCp=([-\d.e+]+) m|SideCdA=- SideCp=-))?"
 )
 # --drag-log's control surfaces (src/tick.cpp): one [ctrl] line under each [drag]

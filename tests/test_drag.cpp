@@ -3854,7 +3854,9 @@ static void test_crossflow_strip() {
 
     /* A round part, radius 0.5, length L = 2 hz = 2: the strip is exactly
        2 r L sin(alpha) -- the stadium strip its shadow gains as it bows off the
-       flow -- for a cylinder rotated about any axis across it. */
+       flow -- for flows lying in a plane containing the stack axis. A flow
+       cutting diagonally across the section bills the bounding SQUARE instead;
+       that box cost is pinned below, not hidden. */
     const double r = 0.5, hz = 1.0;
     CHECK_REL(sideStripCdA(r, r, hz, glm::dvec3(0.0, 0.0, 1.0)), 0.0, 1.0,
               "dead axial: no side strip at all (the kernel, not a guard)");
@@ -3873,6 +3875,14 @@ static void test_crossflow_strip() {
     CHECK_REL(sideStripCdA(r, r, hz, glm::dvec3(-0.5, 0.0, 0.866)),
               sideStripCdA(r, r, hz, glm::dvec3(0.5, 0.0, -0.866)), 1e-12,
               "d and -d strip equal");
+    // DIAGONAL across the round section: the box formula bills the bounding
+    // SQUARE, sqrt(2) over the slender-body 2 r L sin(alpha) a cylinder would.
+    // Half-extents cannot tell a round section from a square one, so this is
+    // the law's known cost (filed) -- pinned so that special-casing rounds
+    // later is a visible change, not a silent drift.
+    CHECK_REL(sideStripCdA(r, r, hz, glm::normalize(glm::dvec3(1.0, 1.0, 0.0))),
+              std::sqrt(2.0) * (2.0 * r * (2.0 * hz)), 1e-12,
+              "diagonal round section: the square, sqrt(2) over the cylinder strip");
 
     /* A square section: each lateral face pair reads its own rectangle.
        hx=0.5, hy=0.25, hz=1: faces across x are 2hy x 2hz = 1 m2; across y,

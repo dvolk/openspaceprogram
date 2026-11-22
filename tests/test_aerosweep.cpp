@@ -210,9 +210,11 @@ static void report(Vehicle *v, double speed, double alpha, double beta) {
     if(v->lastStaticValid) { snprintf(sm, sizeof sm, "%+.3f", v->lastStaticMargin); }
     else { snprintf(sm, sizeof sm, "-"); }
     printf("[sweep] v %6.1f  alpha %6.1f  beta %5.1f  rho %7.5f  Mach %5.3f"
-           "  L %10.2f N  D %10.2f N  Side %10.2f N  |tau| %10.2f Nm"
+           "  L %10.2f N  D %10.2f N  Fright %10.2f N  |tau| %10.2f Nm"
            "  A %6.3f Cd %5.3f  Profile %6.4f  Induced %7.4f  CdAtot %7.4f"
            "  CpL %6.3f  FormCp %6.3f  CLa %8.3f  SM %8s  SideCdA %7.3f  SideCp %6.3f\n",
+           // Fright: the along-+x force component (the sideslip leg; renamed from
+           // "Side" so it cannot be read as the SideCdA= bill two columns over).
            speed, alpha, beta, v->lastDragRho,
            v->lastAirV / (v->lastAirA > 0.0 ? v->lastAirA : 1.0),
            v->lastFlowLift, v->lastFlowDrag,
@@ -665,7 +667,8 @@ static void test_heat_hooks() {
                    "the credits sum to the cd numerator the force pays on (#1090)");
         CHECK_NEAR(sumW, b.v->drag_cd * q * b.v->lastDragCd * b.v->lastDragArea * sp,
                    b.v->drag_cd * q * b.v->lastDragCd * b.v->lastDragArea * sp * 1e-5,
-                   "the hull's drag power is fully booked by credit now (#1090)");
+                   "the hull's ALONG-FLOW drag power is fully booked by credit now "
+                   "(#1090; this bench hull is exposed, so #947's normal watts are 0 here)");
         CHECK_NEAR((double)b.v->parts[0]->aeroDragWatts, 0.0, 0.0,
                    "a body still folds no SURFACE watts: the hull share is the form trio, "
                    "so #730's sum-over-surfaces reading keeps its meaning");
@@ -679,12 +682,13 @@ static void test_heat_hooks() {
     /* #947's anti-double-count, pinned away from the kernel excuse: at 30 deg
        ANGLE OF ATTACK a body's side strip is genuinely nonzero, so a zero here can
        only come from the discount -- the pod's credit equals its own shadow at
-       every node, so `refused` is 0 and the crossflow law bills the fully exposed
-       hull exactly nothing: its flank is already paid once, axially. The fifth
-       shot HITS, so this runs through the blended shadow/credit columns, where a
-       lying column would show up. If this pin ever reddens, either the normal law
-       and the union bill the same flank twice, or the #947 shadow column is not
-       the same polygon world as the credits. */
+       every node to within the sum order (shoelace vs the union's strip sum,
+       ~1e-16 of area), refused falls under the 1e-12 floor, and the crossflow law
+       bills the fully exposed hull NOTHING: its flank is already paid once,
+       axially. The fifth shot HITS, so this runs through the blended shadow/credit
+       columns, where a lying column would show up. If this pin ever reddens,
+       either the normal law and the union bill the same flank twice, or the #947
+       shadow column is not the same polygon world as the credits. */
     b.v->placeShip(glm::dvec3(0.0, 0.0, 620000.0), glm::dmat3(1.0));
     for(int shot = 0; shot < 5; shot++) { fly(b.v, 800.0, 30.0, 0.0); }
     CHECK_TRUE(b.v->lastDragAlphaValid, "30 deg is a real angle for the pass");

@@ -1353,8 +1353,9 @@ struct SilhouetteMemo {
        makes per-part numbers exist on a HIT, not just on the exact pass: the force
        law still never reads them, but the part window's Form row does, and a
        heating or stress law is meant to. Cost is bounded and lazy: one double per
-       body part per FILLED node (~16 B x parts), plus a shell of empty slots that
-       appears with the first fill (961 x 24 B). Slot order is projectSilhouette's
+       body part per FILLED node (~24 B x parts now, three columns), plus a shell
+       of empty slots that appears with the first fill (961 x 72 B of vector
+       headers, plus one allocation per column per filled node). Slot order is projectSilhouette's
        parts order; a generation is born with one part set and one order (the
        fingerprint is order-sensitive, vehicle.cpp aeroGeomFingerprint), so every
        node of a generation agrees on what slot t means. */
@@ -1363,14 +1364,16 @@ struct SilhouetteMemo {
     /* And the third column (#947): each part's OWN projected area at that node --
        not a slice of the union, the whole polygon the part threw at that flow. It
        sits beside the credits on purpose: visible/ownProj is the fraction of a
-       part's shadow the air still reaches, and for a fully exposed part it cancels
-       to exactly 1 (the columns come from the same polygons, and a bilinear blend
-       of equal values is the identity -- the same linearity #1090 leaned on for
-       the sums). The crossflow normal law needs that cancellation to be exact: an
-       analytic box estimate of the own area would disagree with the polygon
-       credit by the pi-vs-box cap term, tens of percent of the strip, and every
-       exposed part would pay a normal force it has already spent in the axial
-       bill. */
+       part's shadow the air still reaches, and for a fully exposed part it
+       cancels to 1 to within the sum order -- the columns come from the same
+       polygons (shoelace vs the union's strip sum of it), a bilinear blend of
+       equal values is the identity (the same linearity #1090 leaned on for the
+       sums), and what survives is ~1e-16 of area, which the caller's 1e-12
+       relative floor turns into no bill. The crossflow normal law needs that
+       cancellation tight: an analytic box estimate of the own area would
+       disagree with the polygon credit by the pi-vs-box cap term, tens of
+       percent of the strip, and every exposed part would pay a normal force it
+       has already spent in the axial bill. */
     std::vector<std::vector<double>> partProj;
 
     void reset() {
@@ -1871,11 +1874,18 @@ inline double partCd(double cdForward, double cdSide, double cdBackward,
    the stack axis, half-length hz along it, and the flow direction read in the
    part's own axes:
      strip = 4 hz (hy |d.x| + hx |d.y|)
-   On a round part (hx=hy=r) this is exactly 2 r L |sin(alpha)| -- the stadium
-   strip its shadow gains as it bows off the flow, which is the normal-force
-   reference area of slender-body theory. The sin kernel is IN the geometry, so
-   the law that reads this must not multiply another sin(alpha): a cylinder dead
-   axial strips to zero, and a part broadside pays its full L x D. */
+   That is exactly the box's four lateral faces seen from the flow -- 2 L D
+   |sin(alpha)| when the flow lies in a plane containing the stack axis, which
+   covers the sweeps the law was designed for and is the stadium strip slender-
+   body theory uses as the normal-force reference area. The sin kernel is IN the
+   geometry, so the law that reads this must not multiply another sin(alpha): a
+   cylinder dead axial strips to zero, and a part broadside pays its full L x D.
+   Known box cost (filed): a round body's bounding SQUARE bills up to sqrt(2)
+   too much when the flow cuts DIAGONALLY across the section (|dx|+|dy| over
+   sqrt(dx^2+dy^2)), and PartDef::meshHalfSpan symmetrises off-centre meshes,
+   which inflates further. A round-section special case cannot be told from a
+   square one on half-extents alone, so the box stands until that question is
+   answered. */
 inline double sideStripCdA(double hx, double hy, double hz, const glm::dvec3 &dhatPart) {
     return 4.0 * hz * (hy * std::fabs(dhatPart.x) + hx * std::fabs(dhatPart.y));
 }

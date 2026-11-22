@@ -1436,8 +1436,11 @@ void tick(Game &g) {
                    carry alone). The two are NOT folded into CpL or FormCp: normal
                    force and axial drag are perpendicular forces, and one lever
                    cannot stand for two lines of action. Dashed with no usable flow,
-                   like CpL; SideCdA=0.00 with a real flow means every body part is
-               exposed and paying its flank in the axial bill instead. */
+                   like CpL. SideCdA=0.00 with a real flow is honest three ways --
+                   every body part exposed (paying its flank in the axial bill
+                   instead), the flow along the parts' axes (the sin lives in the
+                   strip), or no body parts at all -- so read SideCp only beside a
+                   nonzero SideCdA. */
                 if(g.ship->lastDragAlphaValid) {
                     printf(" SideCdA=%.2f m2 SideCp=%+.2f m",
                            g.ship->lastSideCdA, g.ship->lastSideCpLever);
