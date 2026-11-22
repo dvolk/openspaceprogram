@@ -730,7 +730,8 @@ static void test_body_lift() {
     launch(b);
     fly(b.v, 800.0, 30.0, 0.0);
     CHECK_NEAR(b.v->lastBodyCdA, 0.0, 0.0,
-               "a hull with no body_lift authored lifts nothing (every shipped part)");
+               "a hull with no body_lift authored lifts nothing (every flight-pinned "
+               "hull; liftbody_4m is the catalog's opt-in)");
     CHECK_NEAR(b.v->lastBodyCpLever, 0.0, 0.0,
                "...and quotes no lever either");
 
@@ -749,12 +750,27 @@ static void test_body_lift() {
     fly(b.v, 800.0, 30.0, 0.0);
     CHECK_TRUE(b.v->lastDragAlphaValid, "30 deg is a real angle for the pass");
     const double a = 30.0 * std::numbers::pi / 180.0;
-    CHECK_NEAR(b.v->lastBodyCdA, b.v->drag_cd * 0.6 * std::cos(a) * b.v->lastDragArea,
+    CHECK_NEAR(b.v->lastBodyCdA,
+               b.v->drag_cd * 0.6 * std::cos(a) * std::sin(a) * b.v->lastDragArea,
                b.v->drag_cd * 0.6 * b.v->lastDragArea * 1e-6,
-               "BodyCdA = drag_cd x cl x cos(alpha) x union: cos factors out (parallel "
-               "axes) and the visible column sums to the union (#1090), HITS included");
+               "BodyCdA = drag_cd x cl x cos x sin x union: the column bills the "
+               "MAGNITUDE line -- the sin is folded in, like #947's strip -- so "
+               "q x BodyCdA is the summed force's size; cos and sin factor out "
+               "(parallel axes) and the visible column sums to the union (#1090), "
+               "HITS included");
     CHECK_NEAR(b.v->lastSideCdA, b.v->drag_cd * 1.0 * 0.3, b.v->drag_cd * 1e-6,
                "only the hidden tail bills crossflow: refused 1 x strip 0.3 m2");
+    // The lever is the FORCE-weighted centroid arm (a bare-coefficient weighting
+    // would be the arm of nothing once parts see different flows or axes). Same
+    // cl/cos/sin on both lifting mounts here, so the weights reduce to the
+    // cached visible areas: visPod x 0 + visShelter x (-1.2) over their sum.
+    const double visPod = (double)b.v->parts[0]->formVis;
+    const double visShel = (double)b.v->parts[1]->formVis;
+    CHECK_TRUE(visPod > 0.0 && visShel > 0.0,
+               "pod fully seen, shelter partly -- the middle of the partition");
+    CHECK_NEAR(b.v->lastBodyCpLever, -1.2 * visShel / (visPod + visShel), 1e-5,
+               "BodyCp = force-weighted arm of the two lifting mounts; the hidden "
+               "tail bills no lift and cannot pull the lever");
 
     /* The kind-count partition, at the mounts: TWO body-lift vectors (pod, shelter),
        ZERO at tail; ONE side vector and it is the aftmost. */
@@ -773,44 +789,81 @@ static void test_body_lift() {
         }
     }
     CHECK_TRUE(nlift == 2, "body lift at the two exposed mounts, not at the hidden one");
-    CHECK_TRUE(nside == 1, "crossflow normal at the hidden mount only (#947/#1097 "
-                           "partition: refused vs visible, one polygon never twice)");
+    CHECK_TRUE(nside == 1, "crossflow normal at the hidden mount only: #947 acts "
+                           "where the union refused, and on this hull that is the "
+                           "tail alone (complementary gates -- see the middle case "
+                           "below for both laws on one part)");
     CHECK_NEAR(liftRz[0], 0.0, 1e-5, "pod mount arm (the hull origin)");
     CHECK_NEAR(liftRz[1], -1.2, 1e-5, "shelter mount arm");
 
     /* Direction and magnitude in one: the two vectors share one ahat (parallel
-       axes, same local flow at a non-rotating bench), so their sum must be
-       q x BodyCdA x ahat with ahat = z + uhat cos(a) the axis component
-       perpendicular to the FLOW -- leeward, up-ish at belly-into-flow. Recompute
-       uhat from flowDirection, exactly as fly() built the velocity from it. */
-    const glm::dvec3 uhat = -flowDirection(a, 0.0, glm::dvec3(1, 0, 0),
-                                           glm::dvec3(0, 1, 0), glm::dvec3(0, 0, 1));
-    const glm::dvec3 ahat = glm::dvec3(0.0, 0.0, 1.0) + uhat * std::cos(a);
+       axes, same local flow at a non-rotating bench), so their sum must be the
+       UNIT ahat x (q x BodyCdA) -- leeward, up-ish at belly-into-flow. flowHat
+       is fly()'s velocity direction itself: production's uhat is vp/|vp|, the
+       same vector. */
+    const glm::dvec3 flowHat = flowDirection(a, 0.0, glm::dvec3(1, 0, 0),
+                                             glm::dvec3(0, 1, 0), glm::dvec3(0, 0, 1));
+    const glm::dvec3 ahat = glm::dvec3(0.0, 0.0, 1.0) - flowHat * std::cos(a);
     CHECK_NEAR(glm::length(ahat), std::sin(a), 1e-12, "sin lives in ahat");
     const double q = 0.5 * b.v->lastDragRho * 800.0 * 800.0;
-    const glm::dvec3 want = ahat * (q * b.v->lastBodyCdA);
+    // The column already carries the sin, so the force rides the UNIT direction.
+    const glm::dvec3 want = (ahat / std::sin(a)) * (q * b.v->lastBodyCdA);
     CHECK_NEAR(glm::length(liftSum - want), 0.0, q * b.v->lastBodyCdA * 1e-6,
-               "sum(body lift vectors) = q x BodyCdA x ahat: perpendicular to the "
-               "FLOW (not #947's perp), leeward, magnitude q cl A sin cos");
-    CHECK_NEAR(glm::dot(liftSum, uhat), 0.0, q * b.v->lastBodyCdA * 1e-9,
+               "sum(body lift vectors) = (ahat/sin) x q x BodyCdA: perpendicular to "
+               "the FLOW (not #947's perp), leeward, and |sum| = q x BodyCdA -- the "
+               "column is a force meter, like SideCdA");
+    CHECK_NEAR(glm::dot(liftSum, flowHat), 0.0, q * b.v->lastBodyCdA * 1e-9,
                "perpendicular to the flow by construction: it does no work at a "
                "non-rotating bench");
     CHECK_TRUE(b.v->lastFlowLift > 0.0,
                "the hull now carries a perpendicular force with no wings aboard "
                "(Ld= picks it up automatically)");
 
-    /* Axial travel: the kernel, not a guard, zeroes the force -- ahat = z - z x 1
-       is EXACTLY zero -- while the cos-weighted bill stands. */
+    /* Axial travel: the kernel, not a guard, zeroes BOTH the force and the
+       column. ahat = z - z x 1 is EXACTLY zero, and the folded sin makes the
+       column read 0.00 there too -- which is the whole point of folding it in:
+       the old column read a full bill beside a force of exactly nothing. */
     b.v->lastForceVecs.clear();
     fly(b.v, 800.0, 0.0, 0.0);
-    CHECK_NEAR(b.v->lastBodyCdA, b.v->drag_cd * 0.6 * b.v->lastDragArea,
-               b.v->drag_cd * 0.6 * b.v->lastDragArea * 1e-6,
-               "axial: the bill is cos(0)-weighted, full");
+    CHECK_NEAR(b.v->lastBodyCdA, 0.0, 0.0,
+               "axial: q x BodyCdA sizes the force at 0, honestly, because the "
+               "force IS 0 there");
     double axialLift = 0.0;
     for(const Vehicle::ForceVec &fv : b.v->lastForceVecs) {
         if(fv.kind == Vehicle::kForceBodyLift) { axialLift += glm::length(fv.vec); }
     }
     CHECK_NEAR(axialLift, 0.0, 0.0, "zero axial force exactly: the sin lives in ahat");
+
+    /* THE MIDDLE CASE (#1097 review): complementary GATES are not one shared
+       area measure -- the #947 strip and the #1097 silhouette are different
+       numbers for the same box -- so a HALF-SHIELDED part with both anchors
+       authored takes both normal forces at once. That sum is a decision, so
+       pin it: author the shelter's drag_side and re-shoot 30 deg. The shot
+       now records a side vector AT THE SHELTER MOUNT too (its refused share,
+       beside the tail's whole refused shadow), while the two lift vectors
+       stand untouched. Neither law hands material to the other. */
+    b.defs[1].drag_side = 1.0;   // the shelter def
+    b.v->lastForceVecs.clear();
+    fly(b.v, 800.0, 30.0, 0.0);
+    int nB_lift = 0, nB_side = 0, shelterSide = 0;
+    for(const Vehicle::ForceVec &fv : b.v->lastForceVecs) {
+        if(fv.kind == Vehicle::kForceBodyLift) { nB_lift++; }
+        else if(fv.kind == Vehicle::kForceSide) {
+            nB_side++;
+            if(std::fabs(fv.pos.z + 1.2) < 1e-5 && glm::length(fv.vec) > 0.0) {
+                shelterSide++;
+            }
+        }
+    }
+    CHECK_TRUE(nB_side == 2, "refused billing now sits at the tail AND the shelter");
+    CHECK_TRUE(shelterSide == 1,
+               "the half-shielded shelter bills crossflow ON TOP of its body lift: "
+               "the partition gates the fractions, it does not make the two laws "
+               "take turns over one part (different area measures, drag.h)");
+    CHECK_TRUE(nB_lift == 2, "and its body lift stands: 30 deg visible share lifted");
+    CHECK_TRUE(b.v->lastSideCdA > b.v->drag_cd * 0.3,
+               "SideCdA grew past the tail-only 0.3 m2 by the shelter's refused "
+               "share of its own strip");
 
     /* Signed anchor: flipping body_lift negates the bill and swings the push to
        the windward side. (Mounting the part INVERTED instead -- flipping the
@@ -821,7 +874,8 @@ static void test_body_lift() {
                                   // that owns it is not, and refs into it are stable)
     b.v->lastForceVecs.clear();
     fly(b.v, 800.0, 30.0, 0.0);
-    CHECK_NEAR(b.v->lastBodyCdA, -b.v->drag_cd * 0.6 * std::cos(a) * b.v->lastDragArea,
+    CHECK_NEAR(b.v->lastBodyCdA,
+               -b.v->drag_cd * 0.6 * std::cos(a) * std::sin(a) * b.v->lastDragArea,
                b.v->drag_cd * 0.6 * b.v->lastDragArea * 1e-6,
                "cl is signed: the bill negates");
     glm::dvec3 flipSum(0.0);
@@ -833,6 +887,72 @@ static void test_body_lift() {
                "and the force negates: the same ahat, the opposite side");
     b.v->recordForceVecs = false;
     teardown(b);
+}
+
+/* MOUNT-FLIP INVARIANCE, on its own bench (the review asked: the law's headline
+   safety claim was tested only by flipping cl -- a different mechanism).
+   Mounting a part INVERTED flips its +z to -z: cosA flips and ahat flips with
+   it, so the FORCE is untouched; only the signed COLUMN turns with cosA, an
+   inverted shelter's bill cancelling part of the pod's. Same script twice, the
+   second hanging the identical box from the raw attach pose with pi of roll
+   about x: same arm, same silhouette, opposite axis. */
+static void test_body_lift_mount_flip_invariance() {
+    printf("== #1097: an inverted mount flips cosA and ahat together, not the force ==\n");
+    auto shot = [](Bench &b, glm::dvec3 *shelterLift, double *bcda,
+                   double *visPod, double *visShel) {
+        b.v->recordForceVecs = true;
+        for(int s = 0; s < 3; s++) { fly(b.v, 800.0, 30.0, 0.0); }
+        b.v->lastForceVecs.clear();
+        fly(b.v, 800.0, 30.0, 0.0);
+        *shelterLift = glm::dvec3(0.0);
+        int at = 0;
+        for(const Vehicle::ForceVec &fv : b.v->lastForceVecs) {
+            if(fv.kind == Vehicle::kForceBodyLift
+               && std::fabs(fv.pos.z + 1.2) < 1e-5) {
+                *shelterLift = fv.vec;
+                at++;
+            }
+        }
+        CHECK_TRUE(at == 1, "exactly one body-lift vector at the shelter mount");
+        *bcda = b.v->lastBodyCdA;
+        *visPod = (double)b.v->parts[0]->formVis;
+        *visShel = (double)b.v->parts[1]->formVis;
+        b.v->recordForceVecs = false;
+    };
+    const double a = 30.0 * std::numbers::pi / 180.0;
+    Bench up = mkBench();
+    launch(up);
+    Part *shUp = mkPlate(up.defs, "shelter", 200.0, 2.0, 2.5, 0.2);
+    up.defs.front().body_lift = 0.6;
+    up.defs.back().body_lift = 0.6;
+    up.v->attachMode(shUp, 0, AttachMode::Down);
+    glm::dvec3 liftUp; double bcdaUp, visPodUp, visShelUp;
+    shot(up, &liftUp, &bcdaUp, &visPodUp, &visShelUp);
+
+    Bench inv = mkBench();
+    launch(inv);
+    Part *shInv = mkPlate(inv.defs, "shelter", 200.0, 2.0, 2.5, 0.2);
+    inv.defs.front().body_lift = 0.6;
+    inv.defs.back().body_lift = 0.6;
+    // The raw pose, not the node solve: same -1.2 m arm, +z flipped (pi about x).
+    inv.v->attach(shInv, 0, glm::dvec3(0.0, 0.0, -1.2),
+                  glm::dmat3(1.0, 0.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0, -1.0));
+    glm::dvec3 liftInv; double bcdaInv, visPodInv, visShelInv;
+    shot(inv, &liftInv, &bcdaInv, &visPodInv, &visShelInv);
+
+    CHECK_NEAR(visShelInv, visShelUp, 1e-4, "same symmetric box, same visible column");
+    CHECK_NEAR(glm::length(liftInv - liftUp), 0.0, glm::length(liftUp) * 1e-9,
+               "the shelter's lift force is UNCHANGED by the inverted mount: cosA "
+               "and ahat flip together; only cl's sign moves the force (drag.h)");
+    const double scale = up.v->drag_cd * 0.6;
+    CHECK_NEAR(bcdaUp, scale * std::cos(a) * std::sin(a) * (visPodUp + visShelUp),
+               scale * 1e-5, "upright: both bills add");
+    CHECK_NEAR(bcdaInv, scale * std::cos(a) * std::sin(a) * (visPodInv - visShelInv),
+               scale * 1e-5,
+               "inverted: the COLUMN is axis-sign-aware even though the force is not "
+               "-- the signed sum is a bill, not a vector meter (vehicle.h)");
+    teardown(up);
+    teardown(inv);
 }
 
 /* Body parts must not join the SURFACE machinery: no aeroLiftSamples, so
@@ -1022,6 +1142,7 @@ int main() {
     test_surface_authority_curve();
     test_heat_hooks();
     test_body_lift();
+    test_body_lift_mount_flip_invariance();
     test_body_lift_stays_out_of_the_lift_systems();
     test_rate_column();
     test_neutral_fin_alpha_gate();

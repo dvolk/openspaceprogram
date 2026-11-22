@@ -92,10 +92,11 @@ struct RecSample {
        the reading --drag-log spells SideCdA=/SideCp=. They ride the aoa gate: no
        usable flow, no normal force to quote. */
     double side = 0.0, sidecp = 0.0;
-    /* #1097: the BODY LIFT bill (signed m^2: negative reads as net downforce) and
-       its lever, the reading --drag-log spells BodyCdA=/BodyCp=. Same aoa gate;
-       0.00 is what every hull that left body_lift unauthored (every shipped part
-       today) records. */
+    /* #1097: the BODY LIFT bill (signed m^2, sin folded in -- q x it is the
+       summed force's size; negative reads as net downforce) and its lever, the
+       reading --drag-log spells BodyCdA=/BodyCp=. Same aoa gate; 0.00 is what
+       every flight-pinned hull records -- liftbody_4m in the catalog is the
+       first part a player can opt in with. */
     double blift = 0.0, blcp = 0.0;
     double chute = 0.0;    // always a number: a parked chute IS 0 m2
     double T = 0.0, p = 0.0, a = 0.0, mach = 0.0;

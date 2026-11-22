@@ -15,17 +15,19 @@
 #
 # THE RUN'S SHAPE (measured): 800 scripted ticks at time-accel 4 print 13 [drag] rows
 # 4 sim-seconds apart, t=4 s to t=52 s. At t=4 the hull flies 21.7 deg AoA with
-# SideCdA 0.00 / BodyCdA +4.23: the #947 law bills this hull NOTHING (every part exposed,
-# refused floored to zero) while the #1097 law bills it everything it sees -- the two
-# laws' disjoint partition, end to end, in the shipped log. |F| settles to ~1.2 kN and
-# holds against the 1.26 kN weight (128 kg) for the rest of the fall; Ld stays positive
-# throughout (1.29 -> 0.08 as the flow swings under the plate, BodyCdA peaking +4.70 then
-# decaying to +0.67), and the 48 s of flying lose 1.0 km of altitude where a ballistic
-# drop would have lost ~11 km. With one part there is no restoring moment, so the plate
-# never trims at a fixed AoA -- a hull that cruises level needs tails, and that balance
-# is a bed of its own, not this law's job.
+# SideCdA 0.00 / BodyCdA +1.56: the #947 law acts on this hull NOTHING (every part
+# exposed, refused floored to zero) while the #1097 law acts on everything it sees --
+# the exposed half of the two laws' split, in the shipped log (the middle and hidden
+# halves are pinned in test_aerosweep). |F| settles to ~1.2 kN and holds against the
+# 1.26 kN weight (128 kg) for the rest of the fall; Ld stays positive throughout
+# (1.29 -> 0.08 as the flow swings under the plate, BodyCdA -- a force meter now, q x
+# it is the summed lift's size -- peaking +3.29 at t=20 then decaying to +0.67), and
+# the 48 s of flying lose 1.0 km of altitude where a ballistic drop would have lost
+# ~11 km. With one part there is no restoring moment, so the plate never trims at a
+# fixed AoA -- a hull that cruises level needs tails, and that balance is a bed of
+# its own, not this law's job.
 NAME wingless-lifting-body
-CLAIM A flat plate with an authored body_lift and no lifting surfaces flies: BodyCdA > 0 on every row while SideCdA stays 0.00 (the #947/#1097 partition), Ld > 0, and the sink is bounded far short of ballistic.
+CLAIM A flat plate with an authored body_lift and no lifting surfaces flies: BodyCdA > 0 on every row while SideCdA stays 0.00 (the exposed half of the #947/#1097 split) and the surface-lift column |L| stays 0, Ld > 0, and the sink is bounded far short of ballistic.
 KIND golden
 ARGS --startship liftbody,res/ships/liftbody.json,Kerbin,flying-cruise
 ARGS --drag-log --time-accel 4 --sim-steps 800 --timeout 300 --no-paint
@@ -33,17 +35,24 @@ LIMIT 90
 EXPECT [drag]
 FORBID error:
 CHECK len(drag) >= 10
-# THE BILL EXISTS, at a scale that is not rounding: the plate's own silhouette on the
-# row (A=) is 4.2..6.6 m2, and body_lift 0.9 x drag_cd 1.2 x cos(a) puts the mid-flight
-# BodyCdA near +4.7 m2 (t=12). Measured min +0.67 at t=52, deep in the near-vertical
-# fall where cos -> 0; the 0.6 floor keeps that honest tail in and rounding out.
-CHECK all(d["bodycda"] >= 0.6 for d in drag if d.get("bodycda") is not None)
-CHECK max(d["bodycda"] for d in drag if d.get("bodycda") is not None) >= 3.0
-# THE PARTITION, end to end: a fully exposed hull is refused NOTHING by the axial
-# union, so the crossflow law keeps its hands off -- and the body-lift law bills the
-# visible fraction it left alone. One polygon, one law. Pinned exactly on 0.00: this
-# hull is one part, so "exposed" is not a near-miss.
+# THE BILL EXISTS, at a scale that is not rounding. BodyCdA folds the sin in (q x it
+# is the summed body-lift force's SIZE): the plate's silhouette on the row (A=) is
+# 4.2..6.6 m2 and body_lift 0.9 x drag_cd 1.2 x sin x cos puts it at +1.56 on the
+# first row, peaking +3.29 at t=20, decaying to +0.67 at t=52 as the near-vertical
+# fall drives cos -> 0. The 0.5 floor keeps that honest tail in with a quarter to
+# spare; 2.5 on the peak is the same margin mid-arc.
+CHECK all(d["bodycda"] >= 0.5 for d in drag if d.get("bodycda") is not None)
+CHECK max(d["bodycda"] for d in drag if d.get("bodycda") is not None) >= 2.5
+# THE PARTITION, ITS EXPOSED HALF: a fully exposed hull is refused NOTHING by the
+# axial union, so the crossflow law keeps its hands off while the body-lift law acts
+# on everything it sees. Pinned exactly on 0.00: this hull is one part, so "exposed"
+# is not a near-miss. (The middle and the hidden half of the split belong to
+# test_aerosweep -- a one-part hull's log cannot speak for both laws.)
 CHECK all(d["sidecda"] == 0.0 for d in drag if d.get("sidecda") is not None)
+# No lifting SURFACE is aboard: |L| stays 0.00 on every row while Ld is positive --
+# the perpendicular force this hull flies on is the hull's own, and it shows up only
+# in Ld='s split of the air's force, never in a wing's lift sum.
+CHECK all(d["L"] == 0.0 for d in drag)
 # The force is perpendicular to the flow, so it reads as Ld>0 with no wings aboard
 # (the |L| column is SURFACE lift and stays 0 -- Ld= is the air's split of the total
 # force, which is exactly the point). Measured 1.29 at t=4, still >= 0.9 at t=8.

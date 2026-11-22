@@ -700,10 +700,13 @@ PartsCatalog load_parts_catalog(const char *path) {
                 "\"drag_backward\" must be >= 0 (dimensionless)");
         }
         /* #1097: signed body-lift anchor. Sane-magnitude bound because this one
-           drives, not trims: the kernel's peak force is q x drag_cd x cl x A / 2,
-           so a typo an order of magnitude up turns a hull into a wing and the
-           flight logs argue about it. 3.0 is well past any plausible body cl
-           (flat-plate theory peaks near 1) while still refusing a fat-finger. */
+           drives, not trims: the kernel's peak force is q x drag_cd x cl x A / 2
+           (sin a cos a tops out at 45 deg), so a typo an order of magnitude up
+           turns a hull into a wing and the flight logs argue about it. 3.0 is a
+           guardrail, not a physical ceiling: a Newtonian flat plate's normal-
+           force coefficient tops out near 2, so an anchor of that size already
+           reads "this part is a wing" -- 3.0 leaves a little deliberate slack
+           above that without admitting a fat-finger. */
         d.body_lift = optNumber(pv, "body_lift", 0.0, ctx);
         if(!(d.body_lift >= -3.0 && d.body_lift <= 3.0)) {
             throw std::runtime_error(ctx +

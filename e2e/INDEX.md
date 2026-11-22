@@ -186,7 +186,7 @@ judgement. Select by number, name or path, e.g.
 | `flight/1056-rails-coast-turns-the-heading.txt` | invariant | A hull coasting on its conic turns through the spin it carries: its heading moves by about \|w\| x the time spent, monotone, and every row says the coasting rails produced it. |
 | `flight/1062-stale-dock-target-leaves-with-the-port-it-aimed-at.txt` | invariant | Switching to the target hull and staging it drops both halves of the docking target and keeps the armed port. |
 | `flight/1072-lander-legs-stand.txt` | invariant | A legged rocket spawns standing on its feet, stays there, and survives a quicksave/quickload. |
-| `flight/1097-a-wingless-lifting-body.txt` | golden | A flat plate with an authored body_lift and no lifting surfaces flies: BodyCdA > 0 on every row while SideCdA stays 0.00 (the #947/#1097 partition), Ld > 0, and the sink is bounded far short of ballistic. |
+| `flight/1097-a-wingless-lifting-body.txt` | golden | A flat plate with an authored body_lift and no lifting surfaces flies: BodyCdA > 0 on every row while SideCdA stays 0.00 (the exposed half of the #947/#1097 split) and the surface-lift column \|L\| stays 0, Ld > 0, and the sink is bounded far short of ballistic. |
 
 ## crew (37)
 

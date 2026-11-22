@@ -3326,15 +3326,19 @@ int main() {
                                   "\"body_lift\" is for body parts"));
         std::remove(bad);
     }
-    // A signed anchor inside the bound, on a body part, loads (this is the shape
-    // the opt-in tuning ticket will author).
+    // A signed anchor inside the bound, on a body part, loads -- AND lands in the
+    // field (a bare "does not throw" would also pass if the key parsed into the
+    // wrong one). This is the shape the opt-in tuning ticket will author.
     {
         const char *ok = "/tmp/test_shipload_okcat.json";
         std::ofstream f(ok);
         f << "{ \"parts\": [ { \"name\": \"x\", \"mesh\": \"m\", \"texture\": \"t\","
              " \"mass\": 1, \"body_lift\": -1.2 } ] }";
         f.close();
-        CHECK(!expect_throw([&](){ load_parts_catalog(ok); }));
+        PartsCatalog sc = load_parts_catalog(ok);
+        CHECK(sc.find("x") != nullptr && sc.find("x")->body_lift == -1.2);
+        CHECK(sc.find("x") != nullptr
+              && sc.find("x")->lift_area == 0.0 && sc.find("x")->control_area == 0.0);
         std::remove(ok);
     }
 

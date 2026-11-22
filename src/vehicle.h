@@ -969,16 +969,22 @@ public:
     double lastSideCdA = 0.0;
     double lastSideCpLever = 0.0;
     /* #1097: the hull's BODY LIFT -- the perpendicular force body parts make on
-       their own EXPOSED silhouette (drag.h::bodyLiftCdA; the law, its sin cos
-       kernel and the disjoint split against #947's refused fraction live there).
-       lastBodyCdA is the SIGNED sum of drag_cd x body_lift x cos(a) x visible —
-       negative reads honestly as net downforce — and is 0 for every hull whose
-       parts leave body_lift unauthored, which is every shipped part today.
-       lastBodyCpLever is its CdA-weighted arm (+ ahead, like CpL/SideCp); with a
-       signed sum it can sit opposite the force's own side, so it only means
-       something beside a nonzero BodyCdA. Not in CpL/FormCp/Induced/CLa/SM:
-       body parts never join the lift systems, and a signed lever over a signed
-       sum folded into an unsigned pair would reconstruct nothing. */
+       their own EXPOSED silhouette (drag.h::bodyLiftCdA; the law and its sin cos
+       kernel live there; the #947 split is a complementary GATE -- this law acts
+       on the visible fraction, #947 on the refused -- not a shared area
+       measure). lastBodyCdA folds the sin in (signed sum of drag_cd x body_lift
+       x cos(a) x sin(a) x visible) so q x BodyCdA is the summed force's SIZE the
+       way q x SideCdA is #947's: it reads 0 at alpha 0 because the force IS 0
+       there, and negative reads honestly as net downforce -- but two parts with
+       opposite cos(a) can cancel it to 0.00 while forces still act, the same
+       cancellation the SideCp floor guards. It is 0 for every hull whose parts
+       leave body_lift unauthored -- every flight-pinned hull -- though the
+       catalog's liftbody_4m lets a VAB player opt in. lastBodyCpLever is the
+       force-weighted arm (+ ahead, like CpL/SideCp); beside a near-cancelled
+       sum it means nothing. Not in CpL/FormCp/Induced/CLa/SM: body parts never
+       join the lift systems, and a signed lever over a signed sum folded into
+       an unsigned pair would reconstruct nothing (the missing cp and CLa
+       coverage is #1106). */
     double lastBodyCdA = 0.0;
     double lastBodyCpLever = 0.0;
 

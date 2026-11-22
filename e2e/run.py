@@ -2196,16 +2196,22 @@ def parse_drag(out):
         if ld is not None:
             row["ld"] = float(ld)
         # #947: the crossflow normal bill (sidecda, m2) and its lever (sidecp, m along
-        # the nose from the COM, same sign convention as cpl/formcp). The force is
-        # PERPENDICULAR to the flow, which is why it is its own pair of columns instead
-        # of a share of Cd/A or of FormCp. Absent when the row dashed the pair: the
+        # the nose from the COM, same sign convention as cpl/formcp). The force is a
+        # flank normal -- along the flow's component PERPENDICULAR TO THE PART'S AXIS,
+        # which is why it is its own pair of columns instead of a share of Cd/A or of
+        # FormCp. q x sidecda is that force's size: the sin of the angle to the axis
+        # already lives inside the strip. Absent when the row dashed the pair: the
         # same no-usable-flow gate as aoa.
         if sidecda is not None:
             row["sidecda"] = float(sidecda)
             row["sidecp"] = float(sidecp)
         # #1097: the body-lift bill (bodycda, signed m2) and its lever (bodycp, m
-        # along the nose, same sign convention as cpl/formcp). 0.00 for every hull
-        # whose parts leave body_lift unauthored -- every shipped part today.
+        # along the nose, same sign convention as cpl/formcp). q x bodycda is the
+        # summed body-lift force's SIZE (the column folds in the sin of the angle
+        # between the part's axis and its own local flow), and the force is
+        # perpendicular to that FLOW. 0.00 for every hull whose parts leave
+        # body_lift unauthored -- every flight-pinned hull, though the catalog's
+        # liftbody_4m is opt-in from the VAB.
         if bodycda is not None:
             row["bodycda"] = float(bodycda)
             row["bodycp"] = float(bodycp)

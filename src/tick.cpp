@@ -1446,11 +1446,16 @@ void tick(Game &g) {
                    nonzero SideCdA. #1097 adds BodyCdA=/BodyCp= beside it: the hull's
                    OWN normal force -- the authored body_lift (drag.h::bodyLiftCdA)
                    on each body part's EXPOSED silhouette, the fraction #947 above
-                   did NOT bill, so one polygon is never charged twice. Signed: a
-                   negative BodyCdA is net downforce, and its Cp arm only means
-                   something beside a nonzero bill. 0.00 is the reading for every
-                   shipped part until a family opts in (with re-fitted drag anchors
-                   -- partCd's drag_side share already prices some crossflow
+                   did NOT act on (the two laws gate complementarily on one
+                   polygon; different area measures, so read the pair together).
+                   This column folds the sin in: q x BodyCdA is the summed force's
+                   SIZE, the way q x SideCdA is #947's. Signed: a negative BodyCdA
+                   is net downforce, 0.00 reads true at zero angle of attack (and,
+                   as with SideCdA, can be a cancellation), and its Cp arm only
+                   means something beside a nonzero bill. 0.00 is the reading for
+                   every flight-pinned hull; the catalog's liftbody_4m is the
+                   first part a player can opt in with, its drag anchors not yet
+                   re-fitted (partCd's drag_side share already prices some crossflow
                    pressure). */
                 if(g.ship->lastDragAlphaValid) {
                     printf(" SideCdA=%.2f m2 SideCp=%+.2f m",

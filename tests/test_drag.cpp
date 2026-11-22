@@ -3910,14 +3910,17 @@ static void test_body_lift_kernel() {
     CHECK_REL(bodyLiftCdA(0.6, std::cos(30.0 * std::numbers::pi / 180.0), 4.0),
               0.6 * std::cos(30.0 * std::numbers::pi / 180.0) * 4.0, 1e-12,
               "the product, exactly");
-    CHECK_REL(bodyLiftCdA(0.6, 0.0, 4.0), 0.0, 1.0, "broadside: pure drag, no lift");
-    CHECK_REL(bodyLiftCdA(0.6, 1.0, 0.0), 0.0, 1.0,
-              "nothing visible (fully shielded): nothing lifts");
-    CHECK_REL(bodyLiftCdA(0.0, 1.0, 4.0), 0.0, 1.0, "no anchor authored: 0");
-    // Antisymmetric in cosA: the same part travelling the OTHER way through the
-    // air (or flying nose-back) reads the same bill with the side flipped --
-    // which is why the caller's ahat flips sign with it and the product is
-    // invariant to a part mounted inverted.
+    CHECK_NEAR(bodyLiftCdA(0.6, 0.0, 4.0), 0.0, 1e-12, "broadside: pure drag, no lift");
+    CHECK_NEAR(bodyLiftCdA(0.6, 1.0, 0.0), 0.0, 1e-12,
+               "nothing visible (fully shielded): nothing lifts");
+    CHECK_NEAR(bodyLiftCdA(0.0, 1.0, 4.0), 0.0, 1e-12, "no anchor authored: 0");
+    // Antisymmetric in cosA. A flow REVERSAL (the part travelling the other way)
+    // flips cosA and with it the bill's sign: the caller's ahat = axisW -
+    // uhat x cosA is INVARIANT under a reversal (it is the axis component
+    // perpendicular to the flow LINE), so the flipped bill is what moves the
+    // push to the other side. A MOUNT flip is the different mechanism: it flips
+    // cosA AND ahat together, leaving the force alone -- which is why authors
+    // touch cl's sign only. test_aerosweep pins the mount-flip half on a hull.
     CHECK_REL(bodyLiftCdA(0.6, -0.7, 4.0), -bodyLiftCdA(0.6, 0.7, 4.0), 1e-12,
               "cosA flips the bill, and with it the push side");
     // Signed cl: a downforce anchor is the same kernel negated.

@@ -4244,7 +4244,10 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
            also dissipates its crossflow normal force (q x sideCdA x |vp_perp| at
            each part), which is NOT in this trio -- these columns answer "what did
            the air pay pushing against this part's shadow", not total aero watts;
-           a heating law that wants every watt has to add the side bill (filed).
+           a heating law that wants every watt has to add the side bill (#1104)
+           and, since #1097, the body-lift bill (zero work against the part's own
+           flow by construction, nonzero against the ground when wind moves the
+           air underneath it).
            Only a billed substep writes; the pass-start sweep zeroes when there
            is no usable flow. */
         if(lastDragAlphaValid) {
@@ -4283,7 +4286,8 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
                    cancels to WITHIN the sum order, not bit-exactly: ownProj is a
                    shoelace of the part polygon while visible is the union's strip
                    sum of it, and the two can disagree by ~1e-16 of area. The
-                   refused > 1e-12 floor is what turns that residue into nothing
+                   refused-fraction floor (ownProj - visible > 1e-12 x ownProj)
+                   is what turns that residue into nothing
                    rather than a noise-sized bill whose lever (a ratio of two
                    noises) would print as a plausible arm in the log.
                    cn reuses the authored drag_side (a broadside cylinder's drag
@@ -4328,10 +4332,13 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
                        axial, zero broadside, the authored SIGN picking the side
                        against the part's +z. The direction is perpendicular to the
                        FLOW -- deliberately NOT #947's perp, which is perpendicular
-                       to the AXIS -- and it bills the VISIBLE column where the law
-                       above bills the REFUSED fraction, so the two never charge the
-                       same polygon twice (a half-shielded part pays half a strip
-                       there and half a lift here). The kernel runs LIVE off the
+                       to the AXIS -- and it gates on the VISIBLE fraction where
+                       the law above gates on the REFUSED fraction: complementary
+                       gates on one polygon, NOT one shared area measure (a strip
+                       and a silhouette are different numbers for the same box),
+                       so a half-shielded opted-in part takes BOTH bills at once
+                       and that sum is a decision, pinned in the bench, not an
+                       accident. The kernel runs LIVE off the
                        cached visible column because on a chart HIT projectSilhouette
                        does not run -- cos a comes from the same live dots as dirPart
                        below. Applied at the mount with the part's own flow, per #483
@@ -4343,14 +4350,21 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
                     const double cosA = glm::dot(axisW, uhat);
                     const double bcda = drag_cd
                         * bodyLiftCdA(p->def->body_lift, cosA, aeroSilPartVis[i]);
+                    assert(std::isfinite(bcda));
                     if(bcda != 0.0) {
                         const glm::dvec3 ahat = axisW - uhat * cosA;  // |ahat| = sin a
                         const glm::dvec3 flift = ahat * (lf.q * bcda);
                         ApplyForce(hull, ri, flift);
                         moment += glm::cross(ri, flift);
                         ftotal += flift;
-                        lastBodyCdA += bcda;
-                        bodyArmCdA += bcda * glm::dot(ri, nose);
+                        // The log column bills the MAGNITUDE line: bcda x |ahat|
+                        // folds in the sin a the product omits, so q x BodyCdA is
+                        // the force's size the way q x SideCdA is #947's, and the
+                        // lever below weights forces, not bare coefficients.
+                        const double bill =
+                            bcda * std::sqrt(std::max(0.0, 1.0 - cosA * cosA));
+                        lastBodyCdA += bill;
+                        bodyArmCdA += bill * glm::dot(ri, nose);
                         if(recordForceVecs) {
                             lastForceVecs.push_back({ ri, flift, kForceBodyLift });
                         }

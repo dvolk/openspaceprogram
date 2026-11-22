@@ -1908,8 +1908,12 @@ inline double sideStripCdA(double hx, double hy, double hz, const glm::dvec3 &dh
    law is INVARIANT to the axis's orientation: mounting the part inverted flips
    cos(a) and â together, never the force; only cl's sign chooses the side.
    Note this direction is ⊥ FLOW, unlike #947's crossflow `perp` (⊥ AXIS, a
-   damping force), and the two laws bill DISJOINT area: #947 the REFUSED fraction
-   of a part's own shadow, this law the VISIBLE fraction. Not a 3-point drag
+   damping force). The two laws GATE on complementary fractions of one polygon —
+   #947 acts where the axial union REFUSED to bill the part, this law where it
+   let the part be seen — but they bill different area MEASURES (side strip vs
+   silhouette), so a half-shielded opted-in part takes both normal forces at
+   once; for plate-ish parts that sum stays under the Newtonian normal-force
+   reference, and the bench pins the middle case as a decision. Not a 3-point drag
    blend — this sin cos kernel replaces it — and not a surface law: it never
    enters Induced, CLa, SM, or the #730 part-watts sum. */
 inline double bodyLiftCdA(double cl, double cosA, double visible) {

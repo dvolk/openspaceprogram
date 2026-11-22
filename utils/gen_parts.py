@@ -138,8 +138,12 @@ DRAG_CD = {
     "cargo":          {"drag": 0.7, "drag_forward": 1.0, "drag_side": 1.1,
                        "drag_backward": 1.0},
     # #1097: the flat lifting-body hull. Edge-on is the low-drag case (the chord
-    # runs with the flow); broadside is a flat plate at rest. Its LIFT is not a
-    # surface law -- it rides the authored body_lift anchor in EXTRA_FIELDS.
+    # runs with the flow); broadside is a flat plate at rest. forward 0.1 /
+    # backward 0.5 is not a claim that a symmetric plate flies better one way --
+    # it is the catalog's bluffer-base convention (fuselage 0.10/0.20: the lee
+    # face sits in the wake). Its LIFT is not a surface law -- it rides the
+    # authored body_lift anchor in EXTRA_FIELDS -- and the lift+drag pair wants
+    # a joint first-flight fit, filed as #1107.
     "liftbody":       {"drag": 0.4, "drag_forward": 0.1, "drag_side": 1.1,
                        "drag_backward": 0.5},
     "engine":         {"drag": 0.6, "drag_forward": 0.9, "drag_side": 1.0,
