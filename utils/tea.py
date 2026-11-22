@@ -20,7 +20,10 @@ Contract:
 - every subcommand prints one JSON value on stdout; every failure is
   {"error": ...} there with non-zero exit, so output can be piped freely;
 - explanations that are not failures go to stderr as "note: ...", deduped and
-  capped so a 450-row listing cannot bury its own answer;
+  capped so a 450-row listing cannot bury its own answer. `show` is the one
+  place a note rides in the JSON instead, under a "note" key: it is a pointer at
+  a flag the caller has to know about before it can ask, and a stderr line is
+  the first thing lost when stdout goes through jq;
 - a write answers {"ok": true, "confirmed": bool, "wrote": bool, "per_index":
   [...], ...}. `confirmed` means the change was read back and found to be what
   was asked -- title, description text, state, labels -- not that the request was
@@ -59,7 +62,12 @@ Usage:
                         complete and empty)
   utils/tea.py show INDEX [--comments]
                        (--comments off answers "comments": null, because an empty
-                        list would look like an issue nobody discussed)
+                        list would look like an issue nobody discussed. The count
+                        the server sends with the issue turns into a "note" saying
+                        how many there are and pointing at --comments. "resolution"
+                        comes out of those comments too, so it is null until they
+                        are asked for -- and stays null for issues closed before
+                        the reason rule (#985), which never recorded one)
   utils/tea.py comment INDEX [--body "..." | < body.md]
   utils/tea.py close INDEX [INDEX...]
   utils/tea.py open INDEX [INDEX...]
@@ -620,6 +628,9 @@ def label_ids_for_edit(labels, args):
 # The marker is a COMMENT rather than a label because this tool cannot create labels
 # (Labels.ids refuses an unknown name rather than inventing vocabulary), a comment
 # needs no schema, and the next reader greps it with `show N --comments`.
+# The rule is much newer than the closed pile, so everything closed before it landed
+# has no marker: `resolution: null` on an old close is the true answer, not a lost
+# one. Backfilling would invent reasons nobody recorded.
 RESOLUTION_HELP = ("one of --fixed <sha|#issue> | --superseded #issue "
                    "| --dropped [why] | --not-a-bug <why>")
 
@@ -830,8 +841,11 @@ def cmd_ls(args):
 
 
 def cmd_show(args):
+    """One issue. `resolution` is read out of the comments (#985), so without
+    --comments it is null because nobody looked -- and it stays null for issues
+    closed before that rule landed, which never recorded a reason."""
     tracker = Tracker()
-    d = get_issue(tracker, args.index)
+    d, ncomments = get_issue(tracker, args.index)
     if args.comments:
         cs = [comment_out(c) for c in list_comments(tracker, args.index)]
         d["comments"] = cs
@@ -852,15 +866,32 @@ def cmd_show(args):
                 d["stale_resolution"] = last
     else:
         # An empty list is what a quiet issue answers, so "not asked" has to be
-        # said rather than left as [].
+        # said rather than left as []. A bare null is still easy to read as
+        # "nobody discussed this", so the count the server already sent becomes a
+        # note pointing at --comments -- free, no second request.
         d["comments"] = None
         d["resolution"] = None
+        if ncomments is not None and ncomments > 0:
+            plural = "" if ncomments == 1 else "s"
+            verb = "is" if ncomments == 1 else "are"
+            # "any recorded close reason", not "why it closed": most closed
+            # issues predate #985 and recorded nothing, so the comments only
+            # sometimes hold the reason.
+            d["note"] = (f"there {verb} {ncomments} comment{plural} -- add "
+                         f"--comments to view them"
+                         + (" and any recorded close reason"
+                            if d["state"] == "closed" else ""))
     print(json.dumps(d))
 
 
 def get_issue(tracker, index):
     """One issue, with the 404 explained: issue and pull request numbers share
-    one space, and this endpoint only answers issues."""
+    one space, and this endpoint only answers issues.
+
+    Answers (shape, comment count). Gitea sends the count with the issue object,
+    so a caller can say how many comments there are without a second request --
+    None when the server did not answer one, which must never become a note
+    claiming a number."""
     status, body, _ = tracker.call("GET", tracker.repo_path(f"/issues/{index}"))
     if status == 404:
         fail(f"no issue {index} -- the number may be a pull request, or the "
@@ -869,7 +900,8 @@ def get_issue(tracker, index):
         fail(f"GET issue {index} -> HTTP {status}: {_why(body)}")
     out = norm_issue(body)
     out["body"] = body.get("body")
-    return out
+    n = body.get("comments")
+    return out, (n if isinstance(n, int) and not isinstance(n, bool) else None)
 
 
 def list_comments(tracker, index):
