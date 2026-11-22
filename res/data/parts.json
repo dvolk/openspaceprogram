@@ -1830,7 +1830,7 @@
           "pos": [
             -0.05,
             0.0,
-            0.0
+            1.0
           ],
           "dir": [
             -1.0,
@@ -1858,6 +1858,152 @@
             0.0,
             0.0,
             -1.0
+          ],
+          "dir": [
+            0.0,
+            0.0,
+            -1.0
+          ]
+        }
+      ],
+      "drag": 0.7,
+      "drag_forward": 0.8,
+      "drag_side": 1.0,
+      "drag_backward": 0.8
+    },
+    {
+      "name": "ladder_1m",
+      "type": "ladder",
+      "display_name": "Ladder (1m)",
+      "mesh": "meshes/ladder_1m.obj",
+      "texture": "textures/ladder.png",
+      "mass": 2.5,
+      "radius": 0.2,
+      "height": 1.0,
+      "ladder": {
+        "a": [
+          0.05,
+          0,
+          -0.5
+        ],
+        "b": [
+          0.05,
+          0,
+          0.5
+        ],
+        "out": [
+          1.0,
+          0.0,
+          0.0
+        ]
+      },
+      "nodes": [
+        {
+          "id": "srf",
+          "pos": [
+            -0.05,
+            0.0,
+            0.5
+          ],
+          "dir": [
+            -1.0,
+            0.0,
+            0.0
+          ],
+          "surface": true
+        },
+        {
+          "id": "top",
+          "pos": [
+            0.0,
+            0.0,
+            0.5
+          ],
+          "dir": [
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        {
+          "id": "bottom",
+          "pos": [
+            0.0,
+            0.0,
+            -0.5
+          ],
+          "dir": [
+            0.0,
+            0.0,
+            -1.0
+          ]
+        }
+      ],
+      "drag": 0.7,
+      "drag_forward": 0.8,
+      "drag_side": 1.0,
+      "drag_backward": 0.8
+    },
+    {
+      "name": "ladder_0.5m",
+      "type": "ladder",
+      "display_name": "Ladder (0.5m)",
+      "mesh": "meshes/ladder_0.5m.obj",
+      "texture": "textures/ladder.png",
+      "mass": 1.25,
+      "radius": 0.2,
+      "height": 0.5,
+      "ladder": {
+        "a": [
+          0.05,
+          0,
+          -0.25
+        ],
+        "b": [
+          0.05,
+          0,
+          0.25
+        ],
+        "out": [
+          1.0,
+          0.0,
+          0.0
+        ]
+      },
+      "nodes": [
+        {
+          "id": "srf",
+          "pos": [
+            -0.05,
+            0.0,
+            0.25
+          ],
+          "dir": [
+            -1.0,
+            0.0,
+            0.0
+          ],
+          "surface": true
+        },
+        {
+          "id": "top",
+          "pos": [
+            0.0,
+            0.0,
+            0.25
+          ],
+          "dir": [
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        {
+          "id": "bottom",
+          "pos": [
+            0.0,
+            0.0,
+            -0.25
           ],
           "dir": [
             0.0,

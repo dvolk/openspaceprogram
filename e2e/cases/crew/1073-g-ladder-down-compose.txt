@@ -1,6 +1,8 @@
 # The descent composition on ladder_stack (#1073): the capsule's hatch ladder
 # meets the tank ladder across the reaction-wheel gap WITH the fixture's
-# deliberate slop (5 deg azimuth, z +0.1). Climbing down transfers capsule ->
+# deliberate slop (5 deg azimuth, z +1.0 -- #1078 anchored the ladder's surface
+# node at its top end, so this is the old z +0.1 position, 0.1 lower because
+# the loader caps z at the parent's end). Climbing down transfers capsule ->
 # tank (the grip uid changes, no mode dropout), runs to the tank ladder's
 # bottom end and lets go onto the deck -- climb down onto your feet -- then
 # walks. The generosity is the servo: the transfer is a smooth slide, not a

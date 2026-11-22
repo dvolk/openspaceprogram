@@ -689,26 +689,42 @@ int main() {
     /* Ladder (the EVA_LADDER law, src/eva.h): the "ladder" field's presence
        makes a part climbable. Every crew part carries a hatch ladder and the
        ladder part its own, all authored off the mesh by gen_parts.py -- so pin
-       what shipped, and refuse the malformed specs at the parse door. */
+       what shipped, and refuse the malformed specs at the parse door.
+       Sizes (#1078): 2 m, 1 m and 0.5 m -- one art family, the length is the
+       size, mass scales with it. The surface node ANCHORS at the top edge of
+       the mount face (pos z = +h/2, dir stays -X): matePose places the child's
+       node point at the contact, so the ladder hangs down FROM the cursor. */
     {
-        const PartDef *lad = cat.find("ladder");
-        CHECK(lad != nullptr);
-        if(lad != nullptr) {
+        struct { const char *name; double hz, mass; } lads[]
+            = { { "ladder", 1.0, 5.0 },
+                { "ladder_1m", 0.5, 2.5 },
+                { "ladder_0.5m", 0.25, 1.25 } };
+        for(const auto &want : lads) {
+            const PartDef *lad = cat.find(want.name);
+            CHECK(lad != nullptr);
+            if(lad == nullptr) { continue; }
             CHECK(lad->isLadder());
-            CHECK(near(lad->mass, 5.0));
+            CHECK(near(lad->mass, want.mass));
             // the climb line rides the outer (+X) face, opposite the mount
-            CHECK(vnear(lad->ladder_a, glm::dvec3(0.05, 0.0, -1.0)));
-            CHECK(vnear(lad->ladder_b, glm::dvec3(0.05, 0.0, 1.0)));
+            CHECK(vnear(lad->ladder_a, glm::dvec3(0.05, 0.0, -want.hz)));
+            CHECK(vnear(lad->ladder_b, glm::dvec3(0.05, 0.0, want.hz)));
             CHECK(vnear(lad->ladder_out, glm::dvec3(1.0, 0.0, 0.0)));
             const Node *lsrf = lad->findSurfaceNode();
             CHECK(lsrf != nullptr);
             if(lsrf != nullptr) {
-                CHECK(vnear(lsrf->pos, glm::dvec3(-0.05, 0.0, 0.0)));
+                CHECK(vnear(lsrf->pos, glm::dvec3(-0.05, 0.0, want.hz)));
                 CHECK(vnear(lsrf->dir, glm::dvec3(-1.0, 0.0, 0.0)));
             }
-            // stackable end-to-end
-            CHECK(lad->findNode("top") != nullptr);
-            CHECK(lad->findNode("bottom") != nullptr);
+            // stackable end-to-end: the stack nodes stay at the segment ends
+            const Node *lt = lad->findNode("top");
+            const Node *lb = lad->findNode("bottom");
+            CHECK(lt != nullptr && lb != nullptr);
+            if(lt != nullptr) {
+                CHECK(vnear(lt->pos, glm::dvec3(0.0, 0.0, want.hz)));
+            }
+            if(lb != nullptr) {
+                CHECK(vnear(lb->pos, glm::dvec3(0.0, 0.0, -want.hz)));
+            }
         }
         /* Every crew part: a hatch ladder. Capsules run it from the bottom rim
            2/3 up the slope at azimuth 0, out perpendicular to the slope (the
@@ -1748,6 +1764,36 @@ int main() {
                     glm::dvec3(1.0 + cat.find("docking_port_r1")->height / 2.0,
                                0.0, 0.0)));
         std::remove(rp);
+    }
+
+    // #1078: a ladder's surface node anchors at the TOP edge of its mount
+    // face, so a flank click near a tank's bottom rim hangs the ladder plumb
+    // with its whole length below the click -- clear of an engine stacked
+    // under the parent. The pose rule is untouched (the DIR decides it; the
+    // port block above proves it): what moved is where the part sits against
+    // the contact.
+    {
+        const PartDef *tank = cat.find("tank_r1h3");
+        const PartDef *lad = cat.find("ladder");
+        CHECK(tank != nullptr && lad != nullptr);
+        if(tank != nullptr && lad != nullptr) {
+            const Node *cn = lad->findSurfaceNode();
+            CHECK(cn != nullptr);
+            const glm::dvec3 pt(tank->radius, 0.0, -tank->height / 2.0 + 0.1);
+            const glm::dvec3 nrm(1.0, 0.0, 0.0);
+            AttachPose p = attachSurface(O, I, pt, nrm, *cn, 0.0, 0.0);
+            CHECK(vnear(p.childRot * glm::dvec3(0.0, 0.0, 1.0),
+                        glm::dvec3(0.0, 0.0, 1.0)));              // hangs plumb
+            CHECK(vnear(p.childPos + p.childRot * cn->pos, pt));  // top end at click
+            // the climb line spans the full ladder BELOW the click: top rung at
+            // the click's height, bottom end a whole ladder lower -- past the
+            // tank floor, riding the front face (mount skin + thickness).
+            const glm::dvec3 a = p.childPos + p.childRot * lad->ladder_a;
+            const glm::dvec3 b = p.childPos + p.childRot * lad->ladder_b;
+            CHECK(vnear(b, glm::dvec3(tank->radius + 0.1, 0.0, pt.z)));
+            CHECK(vnear(a, glm::dvec3(tank->radius + 0.1, 0.0,
+                                      pt.z - lad->height)));
+        }
     }
 
     // --- VAB build tree: fromShipDef + recomputePoses ----------------------

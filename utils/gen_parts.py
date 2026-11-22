@@ -319,9 +319,12 @@ PARTS = [
     # the 2 m engine class (reports/landing-legs2026_11_21).
     ("leg",              "leg",            "meshes/leg.obj",                      "textures/gear.png"),
     # EVA ladder (utils/gen_ladder.py): a long box surface-mounted on the hull's
-    # side; the kerbal climbs the segment its "ladder" field authors. One size
-    # for v1 (reports/ladders2026_11_21).
+    # side; the kerbal climbs the segment its "ladder" field authors. Three
+    # sizes (#1078): 2 m, 1 m and 0.5 m -- all one art family, the length is
+    # the size. (0.25 m waits on a pass over the EVA transfer bands, #1093.)
     ("ladder",           "ladder",         "meshes/ladder.obj",                   "textures/ladder.png"),
+    ("ladder_1m",        "ladder",         "meshes/ladder_1m.obj",                "textures/ladder.png"),
+    ("ladder_0.5m",      "ladder",         "meshes/ladder_0.5m.obj",              "textures/ladder.png"),
     ("fuel_link",        "fuel_link",      None,                           None),
 ]
 
@@ -424,17 +427,26 @@ EXTRA_FIELDS["leg"] = {"mass": 40.0, "leg_foot": 0.05, "leg_travel": 0.4,
                        "nodes": [{"id": "srf", "pos": [-0.986, 0.0, 2.6],
                                   "dir": [-1.0, 0.0, 0.0], "surface": True}]}
 
-# ladder: mass declared (a climb rail is not hull volume). The surface node is
-# the box's hull-side face; keep in sync with gen_ladder.py's defaults
-# (thick 0.1, wide 0.4, length 2): node x = -thick/2. top/bottom stack nodes
-# let ladders bolt end-to-end exactly; surface attach puts them anywhere.
-EXTRA_FIELDS["ladder"] = {"mass": 5.0,
-                          "nodes": [{"id": "srf", "pos": [-0.05, 0.0, 0.0],
-                                     "dir": [-1.0, 0.0, 0.0], "surface": True},
-                                    {"id": "top", "pos": [0.0, 0.0, 1.0],
-                                     "dir": [0.0, 0.0, 1.0]},
-                                    {"id": "bottom", "pos": [0.0, 0.0, -1.0],
-                                     "dir": [0.0, 0.0, -1.0]}]}
+# ladder: mass declared (a climb rail is not hull volume), scaled with length.
+# The surface node is the box's hull-side face ANCHORED AT ITS TOP END (#1078):
+# matePose places the child's node point at the contact, so the ladder hangs
+# down FROM the cursor and can clear an engine stacked under the parent. The
+# dir stays -X -- the pose comes from the dir (a +Z dir would stand the ladder
+# off a flank wall); clicking a flat bottom cap wants that +Z dir plus a VAB
+# surface-node pick, deferred as #1094. Keep in sync with gen_ladder.py's
+# defaults (thick 0.1, wide 0.4): node x = -thick/2. top/bottom stack nodes let
+# ladders bolt end-to-end exactly; surface attach puts them anywhere.
+def ladder_nodes(length):
+    hz = length / 2.0
+    return [{"id": "srf", "pos": [-0.05, 0.0, hz], "dir": [-1.0, 0.0, 0.0],
+             "surface": True},
+            {"id": "top", "pos": [0.0, 0.0, hz], "dir": [0.0, 0.0, 1.0]},
+            {"id": "bottom", "pos": [0.0, 0.0, -hz], "dir": [0.0, 0.0, -1.0]}]
+
+
+EXTRA_FIELDS["ladder"] = {"mass": 5.0, "nodes": ladder_nodes(2.0)}
+EXTRA_FIELDS["ladder_1m"] = {"mass": 2.5, "nodes": ladder_nodes(1.0)}
+EXTRA_FIELDS["ladder_0.5m"] = {"mass": 1.25, "nodes": ladder_nodes(0.5)}
 
 # every overlay-art path in the table must name its own asset directory
 for _n, _f in EXTRA_FIELDS.items():

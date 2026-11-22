@@ -43,6 +43,11 @@ PINS = [
     ("gen_gear.py",     [], ["meshes/gear.obj"]),
     ("gen_leg.py",      [], ["meshes/leg.obj"]),
     ("gen_ladder.py",   [], ["meshes/ladder.obj", "textures/ladder.png"]),
+    # Ladder size variants (#1078): one art family, the length is the size; the
+    # grey texture ships once with the base part.
+    ("gen_ladder.py", ["--length", "1", "--name", "ladder_1m"], ["meshes/ladder_1m.obj"]),
+    ("gen_ladder.py", ["--length", "0.5", "--name", "ladder_0.5m"],
+     ["meshes/ladder_0.5m.obj"]),
     ("gen_kerbal.py",   [], ["meshes/kerbal.obj", "textures/kerbal.png"]),
     ("gen_platform.py", [], ["meshes/balloon_platform.obj",
                              "meshes/balloon_platform_deck.obj"]),
