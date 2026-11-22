@@ -168,6 +168,15 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "slider's own floor of 0.5 deg/s is not enforced here -- a smaller "
                    "figure works, it just lags a moving aim")
         ->check(CLI::NonNegativeNumber);
+    app.add_option("--rcs-frac", args.rcs_frac,
+                   "How much of the RCS ring's demand ceiling the translation KEYS may "
+                   "command, 0..1 (default 1 = the whole ring). The command-line "
+                   "spelling of the Systems window's RCS-authority slider (#1067): the "
+                   "nozzles keep their ratings, only what the keys ask for shrinks, so "
+                   "attitude stays honest while a heavy hull stops being shoved at full "
+                   "force. 0 turns the keys off; attitude, if enabled, still fires the "
+                   "ring to hold heading")
+        ->check(CLI::Range(0.0, 1.0));
     app.add_option("--ascent", args.ascent,
                    "Fly the active ship to a circular orbit: ALTITUDE[,INCLINATION] "
                    "in metres and degrees. An ascent autopilot -- it pitches over, "

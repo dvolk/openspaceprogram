@@ -1017,6 +1017,13 @@ int main(int argc, char **argv)
             first->sas_turn_rate = glm::radians(args.sas_rate);
             printf("SAS: turn rate capped at %.2f deg/s\n", args.sas_rate);
         }
+        /* --rcs-frac: #1067's dial, on the hull the same way the Systems window's
+           RCS-authority slider sets it. Stored as a fraction of the ring's demand
+           ceiling; the printf spells the unit so a case can pin what it asked for. */
+        if(args.rcs_frac != 1.0 && first != nullptr) {
+            first->rcs_thrust_frac = args.rcs_frac;
+            printf("RCS: thrust limited to %.0f%% of the ring\n", args.rcs_frac * 100.0);
+        }
 
         /* --ascent: arm the ascent autopilot on the active ship. Parsed by hand
            rather than through CLI11's numeric machinery because "100e3,45" is a

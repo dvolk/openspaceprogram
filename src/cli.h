@@ -66,6 +66,10 @@ struct GameArgs {
        LAW may swing the active hull. 0 = unlimited (the default). It sets the same
        field the Systems window's slider writes, so a case and a click cannot disagree. */
     double sas_rate = 0.0;
+    /* #1067's dial from the command line: how much of the ring's demand ceiling the
+       RCS KEYS may command, 0..1. It sets the same field the Systems window's
+       slider writes, so a case and a click cannot disagree. */
+    double rcs_frac = 1.0;
     bool recover_anywhere = false;  // default: home body only
     bool dev_scenarios = false;  // --dev-scenarios: the VAB dropdown's dev beds
     bool fleet_report = false;   // --fleet-report: print the airworthiness table and exit

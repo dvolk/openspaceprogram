@@ -1,0 +1,16 @@
+NAME rcs-authority-off
+CLAIM Dialed to 0, the RCS translation keys fire nothing at all (#1067) -- the handle a heavy hull needed to stop shoving its neighbours.
+KIND invariant
+# The bottom of the Systems dial is not "very little thrust", it is the same
+# early-out the hull takes when it has no ring: rcsPlan leaves the demand at
+# zero, so applyRcsForce has nothing to spend and the [rcs] line never prints.
+# Pinning the ABSENCE is the point -- a 0 that quietly kept 1 N, or kept the
+# hydrazine ticking, would still pass a force-only test.
+# What 0 does NOT close is the ring's ATTITUDE half, which stays on its own
+# switch (#595): pointing the hull and pushing it are different doors, and this
+# dial only ever had the second one in hand.
+ARGS --time-accel 1 --sim-steps 480 --startship rcs_box_pair,res/ships/rcs_box_pair.json,Kerbin,inertial-orbit --att-log --drag-log --rcs-frac 0 --sim-press 2000,3000,N
+EXPECT RCS: thrust limited to 0% of the ring
+FORBID [rcs]
+CHECK len(att) >= 6
+CHECK max(a["wnorm"] for a in att) < 0.02

@@ -648,6 +648,17 @@ public:
        (gameui.cpp), not to this field -- the sim takes any non-negative figure. */
     double sas_turn_rate = 0.0;
 
+    /* How hard this hull's RCS KEYS may push, as a fraction of the ring's demand
+       ceiling (#1067): 1.0 = full authority (the old behaviour), 0.0 = the keys
+       fire nothing -- the translation OFF switch rcs_attitude_enabled deliberately
+       never was (that door buys pointing, not pushing, gameui.cpp). It caps the
+       DEMAND in rcsPlan only: the bells keep their ratings, so the attitude solve
+       gets MORE room beside a light nudge, not less, and the fuel draw follows
+       the firing pro rata (applyRcsForce derives flow from the same fractions).
+       The handle is the Systems window's slider; --rcs-frac is its CLI twin.
+       Saved with the ship and carried across seams, like the other doors. */
+    double rcs_thrust_frac = 1.0;
+
     double dvRocket_ = 0.0;
     double propSpent_ = 0.0;       // kg of rocket propellant drained
     double dvVeLast_ = 0.0;        // last ve used, exhaust_scale applied (m/s)
@@ -2331,6 +2342,10 @@ public:
         bool rcs_attitude_enabled = true;
         bool tvc_enabled = true;
         double sas_turn_rate = 0.0;   // #678's dial; 0 = unlimited
+        /* #1067's dial travels with the same rule: the merged hull keeps the ROOT's
+           RCS authority and the absorbed side's value waits here for the cut that
+           gives that hull back its own. */
+        double rcs_thrust_frac = 1.0;
     };
     /* Absorbed docks, innermost first -- the LAST is the one undock selects. */
     std::vector<DockSeam> seams;

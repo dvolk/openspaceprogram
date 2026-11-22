@@ -5510,9 +5510,15 @@ void Vehicle::rcsPlan() {
     if(N == 0) { return; }
     if(glm::length2(rcsDir) < 1e-12) { rcsScratch.c.assign(N, 0.0); return; }
     const glm::dvec3 dirW = rcsWorldDir();
-    const double Fmax = maxRcsThrust();
+    /* #1067: the Systems dial rides HERE, on the demand -- never on the nozzle
+       ratings below. Scale a rating and the attitude rows are priced with the
+       same shrunken newtons (#595's first run learned that the hard way: 11x
+       over-priced authority), while capping Fdem hands the LEFTOVER bell room to
+       pointing and the fuel draw follows the firing sum pro rata. frac == 0
+       falls into the same early-out as no ring at all: the keys push nothing. */
+    const double Fmax = maxRcsThrust() * rcs_thrust_frac;
     if(Fmax <= 0.0 || glm::length2(dirW) < 1e-12) { rcsScratch.c.assign(N, 0.0); return; }
-    const glm::dvec3 Fdem = dirW * Fmax;  // full authority on the key, as before
+    const glm::dvec3 Fdem = dirW * Fmax;  // authority on the key, dialed by #1067
     lastRcsCmd = Fdem;
     rcsAllocateInto(rcsNoz, Fdem, rcsScratch);
 }
@@ -6396,7 +6402,8 @@ void Vehicle::absorbShip(Vehicle *B, Part *portA) {
                               .surfaces_enabled = B->surfaces_enabled,
                               .rcs_attitude_enabled = B->rcs_attitude_enabled,
                               .tvc_enabled = B->tvc_enabled,
-                              .sas_turn_rate = B->sas_turn_rate });
+                              .sas_turn_rate = B->sas_turn_rate,
+                              .rcs_thrust_frac = B->rcs_thrust_frac });
 
     // Rebuild as the union and regroup fuel: the ports are fuel barriers, so the two
     // fuel systems stay separate.
@@ -6515,6 +6522,7 @@ Vehicle * Vehicle::extractSubtreeAsShip(Part *root, const std::string &name, dou
     nv->rcs_attitude_enabled = rcs_attitude_enabled;   // #595's door travels too
     nv->tvc_enabled = tvc_enabled;                     // #768's door travels too
     nv->sas_turn_rate = sas_turn_rate;                 // #678's dial travels too
+    nv->rcs_thrust_frac = rcs_thrust_frac;             // #1067's the same way
     /* What still does NOT travel is the rest of the per-hull control state: brakesOn,
        throttle and the latched slew mode are per-hull and ARE saved (save.cpp), yet a
        hull that docks -- or stages -- comes back out resting, lever idle, SAS unlatched.
@@ -6615,6 +6623,7 @@ Vehicle * Vehicle::extractSubtreeAsShip(Part *root, const std::string &name, dou
         nv->rcs_attitude_enabled = cut.rcs_attitude_enabled;
         nv->tvc_enabled = cut.tvc_enabled;
         nv->sas_turn_rate = cut.sas_turn_rate;
+        nv->rcs_thrust_frac = cut.rcs_thrust_frac;
     }
 
     /* A kerbal follows its capsule automatically: the seat is containment on

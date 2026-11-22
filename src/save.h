@@ -152,6 +152,7 @@ struct SaveDock {
     bool rcs_attitude_enabled = true;
     bool tvc_enabled = true;
     double sas_turn_rate = 0.0;   // 0 = unlimited, exactly as on the ship
+    double rcs_thrust_frac = 1.0; // #1067's dial; absent = full authority
 };
 
 /* One roster entry as saved (save.json's "roster"). Identity only: WHO is where
@@ -215,6 +216,9 @@ struct SaveShip {
     /* #678's dial: the ceiling on how fast an attitude law may swing this hull, rad/s.
        0 = unlimited, which is also what a save from before this row existed means. */
     double sas_turn_rate = 0.0;
+    /* #1067's dial: how hard this vessel's RCS keys may push, as a fraction of its
+       ring. Absent = 1.0 (full authority), the pre-row save reading unchanged. */
+    double rcs_thrust_frac = 1.0;
     std::vector<SaveDock> docks;
     /* The dock target is a SLUG (its own save file), its port a uid -- the
        load's uid->Part map spans every file. */
@@ -648,6 +652,19 @@ inline std::string refuseSavedSasRate(double rate) {
     return "";
 }
 
+/* #1067's dial, refused the same way: the !(...) form catches NaN too. Outside
+   [0,1] is not a dimmer setting -- above 1 the keys would demand newtons the
+   ring was never rated for (the allocator pins every bell at its own rating, so
+   the save just lies about what the ship can do), and a negative reads as "off"
+   in rcsPlan's early-out while every readout prints the negative. Refused, not
+   clamped: a hand-edited save is a mistake to report. Empty string = fine. */
+inline std::string refuseSavedRcsFrac(double frac) {
+    if(!(frac >= 0.0 && frac <= 1.0)) {
+        return "RCS thrust fraction " + std::to_string(frac) + ", not a 0..1 fraction";
+    }
+    return "";
+}
+
 /* The ship-TOTAL verdict (#547), spelled the same way for the same reason:
    validateShipParts (save.cpp) walks the parts and keeps a running mass, and this
    says the sentence when that total stops being a number a Body can hold. The
@@ -856,6 +873,10 @@ inline nlohmann::json saveShipToJson(const SaveShip &s) {
         // Absent = unlimited, so the common case costs nothing (#678).
         j["sas_turn_rate"] = s.sas_turn_rate;
     }
+    if(s.rcs_thrust_frac != 1.0) {
+        // Absent = full authority, same economy (#1067).
+        j["rcs_thrust_frac"] = s.rcs_thrust_frac;
+    }
     if(!s.docks.empty()) {
         nlohmann::json docks = nlohmann::json::array();
         for(auto &&d : s.docks) {
@@ -864,12 +885,13 @@ inline nlohmann::json saveShipToJson(const SaveShip &s) {
                defaults: an ordinary seam stays three keys, and the exceptions are what
                a reader (and a hand-edit) sees. */
             if(!d.wheels_enabled || !d.surfaces_enabled || !d.rcs_attitude_enabled
-               || !d.tvc_enabled || d.sas_turn_rate > 0.0) {
+               || !d.tvc_enabled || d.sas_turn_rate > 0.0 || d.rcs_thrust_frac != 1.0) {
                 dj["wheels_enabled"] = d.wheels_enabled;
                 dj["surfaces_enabled"] = d.surfaces_enabled;
                 dj["rcs_attitude_enabled"] = d.rcs_attitude_enabled;
                 dj["tvc_enabled"] = d.tvc_enabled;
                 dj["sas_turn_rate"] = d.sas_turn_rate;
+                dj["rcs_thrust_frac"] = d.rcs_thrust_frac;   // #1067
             }
             docks.push_back(dj);
         }
@@ -965,6 +987,7 @@ inline SaveShip saveShipFromJson(const nlohmann::json &j) {
     if(j.contains("rcs_attitude_enabled") && j["rcs_attitude_enabled"].is_boolean()) { s.rcs_attitude_enabled = j["rcs_attitude_enabled"].get<bool>(); }
     if(j.contains("tvc_enabled") && j["tvc_enabled"].is_boolean()) { s.tvc_enabled = j["tvc_enabled"].get<bool>(); }
     if(j.contains("sas_turn_rate") && j["sas_turn_rate"].is_number()) { s.sas_turn_rate = j["sas_turn_rate"].get<double>(); }
+    if(j.contains("rcs_thrust_frac") && j["rcs_thrust_frac"].is_number()) { s.rcs_thrust_frac = j["rcs_thrust_frac"].get<double>(); }   // #1067
     if(j.contains("docks") && j["docks"].is_array()) {
         for(auto &&d : j["docks"]) {
             if(!d.is_object()) { continue; }
@@ -980,6 +1003,7 @@ inline SaveShip saveShipFromJson(const nlohmann::json &j) {
             if(d.contains("rcs_attitude_enabled") && d["rcs_attitude_enabled"].is_boolean()) { dk.rcs_attitude_enabled = d["rcs_attitude_enabled"].get<bool>(); }
             if(d.contains("tvc_enabled") && d["tvc_enabled"].is_boolean()) { dk.tvc_enabled = d["tvc_enabled"].get<bool>(); }
             if(d.contains("sas_turn_rate") && d["sas_turn_rate"].is_number()) { dk.sas_turn_rate = d["sas_turn_rate"].get<double>(); }
+            if(d.contains("rcs_thrust_frac") && d["rcs_thrust_frac"].is_number()) { dk.rcs_thrust_frac = d["rcs_thrust_frac"].get<double>(); }   // #1067
             s.docks.push_back(dk);
         }
     }

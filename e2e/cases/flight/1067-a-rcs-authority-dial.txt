@@ -1,0 +1,23 @@
+NAME rcs-authority-dial
+CLAIM A hull's RCS authority dial caps what the translation keys ask the ring for, without shrinking the nozzles themselves (#1067).
+KIND invariant
+# rcs_box_pair surface-mounts two 5-bell boxes rated 60 N each, so the ring's
+# demand ceiling is 120 N and the [rcs] line says what each BELL actually spent.
+# Dialed to 50 %, the same key press asks the ring for 60 N and each bell spends
+# 30 N. The bell figure is the one worth pinning: it is what the allocator spent
+# this substep, and the fuel draw follows that same sum, so a halved ring costs
+# half the hydrazine. The part's RATING never moves -- attitude authority is
+# priced from those ratings (#595), and scaling them made that read wrong the
+# first time it was tried.
+# flight/110 pins this fixture at full authority (box_l[-Z] spending 60 N), so
+# the "not in" below is the same run seen through the dial: full-authority
+# newtons must not appear once the hull is dialed down. (The bell names ride in
+# CHECKs, not EXPECTs: a bracketed `[-Z]` reads as a character class to the case
+# linter, which is right that EXPECT is a substring test.)
+ARGS --time-accel 1 --sim-steps 480 --startship rcs_box_pair,res/ships/rcs_box_pair.json,Kerbin,inertial-orbit --att-log --drag-log --rcs-frac 0.5 --sim-press 2000,3000,N
+EXPECT RCS: thrust limited to 50% of the ring
+EXPECT [rcs] cmd=(60 0 -0)N ach=(60 0 -0)N
+CHECK len(att) >= 6
+CHECK max(a["wnorm"] for a in att) < 0.02
+CHECK "box_l[-Z]=30N box_r[-Z]=30N" in out
+CHECK "box_l[-Z]=60N" not in out
