@@ -19,7 +19,15 @@
 NAME flight-fov-scroll
 CLAIM In flight the wheel nudges the frustum where it has no other job (plain in free/first cam, ALT in orbit cam) while the orbit distance zoom survives; the value is this flight only -- the hub renders the configured FOV and Resume Flight restores the scrolled one.
 KIND invariant
-ARGS --time-accel 1 --timeout 15 --width 1920 --height 1080 --startship skiff_trim,res/ships/skiff_trim.json,Kerbin,flying-cruise --fov 60 --cam-log
+# --sim-steps, not --timeout: the review measured that in wall-clock mode the
+# camlog cadence (~1 row/s of SIM time) drifts ~17 ms per second against the
+# wall-scheduled --sim-* events, putting this case's phase windows 83-133 ms
+# from a row boundary (~8% of the phase space reddens). On the tick clock
+# (game.h:968-979: schedClockMs, logClockMs and g.time share it) the rows land
+# where the schedule says they land -- the same reason render.cpp's camlog
+# header tells case authors to pin which rows print. 900 steps = 15 s of sim,
+# past the Resume leg at 11 s.
+ARGS --time-accel 1 --sim-steps 900 --width 1920 --height 1080 --startship skiff_trim,res/ships/skiff_trim.json,Kerbin,flying-cruise --fov 60 --cam-log
 # 3.0 s: PLAIN wheel in orbit cam -- the distance zoom must survive (BTN 5 =
 # wheel down = zoom out) and the frustum must NOT move.
 ARGS --sim-mouse 3000,0,CUR,CUR,5
@@ -40,21 +48,24 @@ EXPECT [toast] Camera: FOV 55 deg (this flight only)
 EXPECT [toast] Camera: FOV 50 deg (this flight only)
 EXPECT [scene] flight -> spacecenter (push)
 EXPECT [scene] spacecenter -> flight (pop)
+# Windows are CLOSED and aligned to the row grid: under --sim-steps the camlog
+# rows land on exact integer seconds (measured: 1.000, 6.000, 8.000, 10.000,
+# 12.000), so a strict < next to an integer boundary selects nothing.
 # The configured figure holds before any wheel, and through the orbit-mode
 # plain wheel (which must be busy zooming DISTANCE, not touching the frustum).
-CHECK len([c for c in cam if 1.0 < c["t"] < 3.0]) >= 1 and all(c["fov"] == 60.0 for c in cam if c["t"] < 5.0)
-CHECK len([c for c in cam if 3.5 < c["t"] < 5.0]) >= 1 and max(c["dist"] for c in cam if 2.0 < c["t"] < 3.0) < min(c["dist"] for c in cam if 3.5 < c["t"] < 5.0)
-# ALT+wheel up x2 (BTN 4): 60 -> 55 -> 50, zoom-in narrows the frustum, and the
-# ALT chord must NOT also nudge the orbit distance.
-CHECK len([c for c in cam if 6.0 < c["t"] < 7.0]) >= 1 and all(c["fov"] == 50.0 for c in cam if 6.0 < c["t"] < 7.0)
-CHECK len({c["dist"] for c in cam if 5.0 < c["t"] < 7.4}) == 1
-# First-person plain wheel down: 50 -> 55 (widening), no toast spam beyond the
-# two expected above is asserted by the spellings below only for those two.
-CHECK len([c for c in cam if 8.0 < c["t"] < 9.0]) >= 1 and all(c["fov"] == 55.0 for c in cam if 8.0 < c["t"] < 9.0)
-# The hub renders the CONFIGURED fov, not the flight's.
-CHECK len([c for c in cam if 9.5 < c["t"] < 11.0]) >= 1 and all(c["fov"] == 60.0 for c in cam if 9.5 < c["t"] < 11.0)
+CHECK len([c for c in cam if c["t"] <= 4.0]) >= 2 and all(c["fov"] == 60.0 for c in cam if c["t"] <= 4.0)
+CHECK len([c for c in cam if 4.0 <= c["t"] <= 5.0]) >= 1 and max(c["dist"] for c in cam if c["t"] <= 3.0) < min(c["dist"] for c in cam if 4.0 <= c["t"] <= 5.0)
+# ALT+wheel up x2 (BTN 4 at 5.5/5.8): 60 -> 55 -> 50, zoom-in narrows the
+# frustum, and the ALT chord must NOT also nudge the orbit distance.
+CHECK len([c for c in cam if 6.0 <= c["t"] <= 7.0]) >= 1 and all(c["fov"] == 50.0 for c in cam if 6.0 <= c["t"] <= 7.0)
+CHECK len({c["dist"] for c in cam if 4.0 <= c["t"] <= 7.0}) == 1
+# First-person plain wheel down (7.5): 50 -> 55 (widening).
+CHECK len([c for c in cam if 8.0 <= c["t"] <= 9.0]) >= 1 and all(c["fov"] == 55.0 for c in cam if 8.0 <= c["t"] <= 9.0)
+# The hub renders the CONFIGURED fov, not the flight's. The pop lands at
+# t=11.0 exactly, so this window stops short of it.
+CHECK len([c for c in cam if 10.0 <= c["t"] < 11.0]) >= 1 and all(c["fov"] == 60.0 for c in cam if 10.0 <= c["t"] < 11.0)
 # Resume Flight: the flight's own scrolled figure comes back (mode too -- the
 # snapshot handback is whole, not fov-only).
-CHECK len([c for c in cam if 11.5 < c["t"] < 13.0]) >= 1 and all(c["fov"] == 55.0 for c in cam if 11.5 < c["t"] < 13.0)
-CHECK all(c["mode"] == "first" for c in cam if 11.5 < c["t"] < 13.0)
+CHECK len([c for c in cam if 12.0 <= c["t"] <= 13.0]) >= 1 and all(c["fov"] == 55.0 for c in cam if 12.0 <= c["t"] <= 13.0)
+CHECK all(c["mode"] == "first" for c in cam if 12.0 <= c["t"] <= 13.0)
 FORBID error:
