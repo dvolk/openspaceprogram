@@ -103,9 +103,10 @@ inline const std::string &init(const std::string &override) {
 inline const std::string saves() { return dir() + "saves"; }
 inline const std::string screenshots() { return dir() + "screenshots"; }
 inline const std::string ships() { return dir() + "ships"; }
-/* Flight recorder traces (#662). A run that has claimed a game dir writes beside
-   its save slots instead; this is where the ones that have not (a --startship
-   boot, every scripted run) put the trace, so the artifact has one obvious home
+/* Flight recorder traces (#662). A run that has claimed a game NAME writes beside
+   that game's saves instead (even with no slot yet -- see Game::openRecorder and
+   the #1102 follow-up); this is where the ones that have not (a --startship boot,
+   every scripted run) put the trace, so the artifact has one obvious home
    either way. */
 inline const std::string flights() { return dir() + "flights"; }
 inline const std::string settings_file() { return dir() + "settings.json"; }

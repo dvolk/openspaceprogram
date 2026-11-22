@@ -1000,7 +1000,10 @@ bool Game::startNewGame(const std::string &name, const std::string &sysPath,
     // the bump works as before.
     gameName = name;
     if(!mintGameDir()) {
-        toast("Too many same-named games this second; try again");
+        /* Post-#1102 the only realistic cause is a name gameNameUsable
+           refuses -- the New Game widget filters those, so this is the
+           --game-name CLI guard speaking. */
+        toast("Cannot mint a game name from '%s'", gameName.c_str());
         return false;
     }
     const std::string gdir = datadir::saves() + "/" + gameId;
@@ -1047,10 +1050,13 @@ std::string Game::ensureGameDir() {
 
 /* The flight recorder's file (#662). Opened from the tick, at the first sample
    that is due, by which time a run that is going to claim a game dir has: a run
-   with a save slot writes its trace beside its saves, one without (--startship,
-   every scripted run) writes under the data dir's flights/ -- so the artifact has
-   one obvious home either way, and an e2e case knows where to FILE it. A run that
-   never flies opens nothing.
+   that has claimed a game NAME writes its trace beside its saves, one without
+   (--startship, every scripted run) writes under the data dir's flights/ -- so
+   the artifact has one obvious home either way, and an e2e case knows where to
+   FILE it. A run that never flies opens nothing.
+   The gate is gameId, not "has a slot" (#1102): a --record run that minted a
+   name but never saved creates the game dir here, with the trace as its only
+   content -- litter the games list cannot show. Filed as a follow-up.
    The name carries a UTC stamp: two runs in the same local minute stay distinct,
    and the listing sorts in the order the flights happened. A row's t= counts the
    LOG clock (run time), not g.time: a load moves the mission clock backwards

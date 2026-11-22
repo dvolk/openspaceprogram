@@ -1297,8 +1297,8 @@ struct Game {
     /* Claim a fresh saves/<stamp>-<gameName>/ NAME unconditionally: this STARTS a
        game, so it is not gated on one already being in charge the way
        ensureGameDir is. No directory is created (#1102) -- the first write
-       (save, quicksave, recorder) materializes it. Sets gameId. False = the
-       name was taken this second. */
+       (save, quicksave, recorder) materializes it. Sets gameId. False = an
+       unusable name, or 60 same-named EXISTING dirs inside one second. */
     bool mintGameDir();
     /* Does NOT make `active` the player's ship -- the caller does. --load skips
        this (a save records live-or-railed state). */
