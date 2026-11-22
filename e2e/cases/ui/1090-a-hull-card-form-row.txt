@@ -1,14 +1,31 @@
-# The hull card's Form row (#1090): the union silhouette bills the ship ONCE, but
-# the #945 partition keeps the score by part, and the silhouette cache nodes carry
-# that partition so the per-part numbers exist on chart hits too. Right-click the
-# pod and the tank of a cruising skiff -- both body parts -- and each card prints
-# "Form: <m2> visible  cd <cd>  drag <W>" on the #734 instrument cadence. The
-# OSP_SHIP_DUMP audit showed these numbers one flag away (at alpha 0 the pod keeps
-# the whole union, visA 0.78 = unionA, and the sheltered tank 0.00); this puts them
-# where the player can ask. A body card carries NO surface "Drag power" row -- the
-# blocks are disjoint, and that is the player-visible half of the claim.
+# The hull card's aero block (#1090, restyled by #1113): the union silhouette bills
+# the ship ONCE, but the #945 partition keeps the score by part, and the silhouette
+# cache nodes carry that partition so the per-part numbers exist on chart hits too.
+# Right-click the pod and the tank of a cruising skiff -- both body parts -- and
+# each card now prints the surface block's three-row shape:
+#   "Form: <m2> visible  cd <cd>"          the credit (#1090)
+#   "Hull AoA: <deg>  q=<Pa>  Mach <M>"   the flow that bill is struck in
+#   "Drag power: <W> (peak <W>)"          the watt share, model-peak beside it
+# on the #734 instrument cadence. The OSP_SHIP_DUMP audit showed these numbers one
+# flag away (at alpha 0 the pod keeps the whole union, visA 0.78 = unionA, and the
+# sheltered tank 0.00); this puts them where the player can ask.
+#
+# #1113 changes what "disjoint" looks like: the body card's q/Mach are the BILL's
+# flow (lfCp at the cp -- part.h says "an accounting share, not a local bill"), so
+# the three rows multiply together, and a MOUNT-sampled q was rejected exactly for
+# not multiplying back. "Drag power" is therefore a shared label now -- disjointness
+# is pinned instead by the surface block's "AoA:" row never appearing on a body
+# card (the hull's angle prints as "Hull AoA:", which is the airframe angle the
+# credit was billed at, not an invented per-part incidence -- #732's rule).
+#
+# What this case does NOT pin: the dashed fallbacks (the air-boundary row triples).
+# Their widths come from the same single-source helpers the live rows use --
+# wattCell's valid flag (9-char), formatAlphaDeg/kAlphaCellChars, %6s for the vis
+# cell -- so the #1098 lesson (the width lives in the helper, not in a hand-padded
+# literal) holds by construction; an e2e pinned to a parked hull would cost a
+# second fixture for a spelling the compiler already guards with asserts.
 NAME hull-card-form-row
-CLAIM Body part cards print the silhouette credit row at cadence; the upwind capsule reads a real area and cd; no surface rows on body cards.
+CLAIM Body part cards print the merged aero block -- credit row, hull flow row, watts row -- at cadence; the upwind capsule reads a real area and cd; no surface AoA row on body cards.
 KIND invariant
 ARGS --time-accel 1 --sim-steps 600 --width 1920 --height 1080 --startship skiff_trim,res/ships/skiff_trim.json,Kerbin,flying-cruise
 ARGS --ui-focus 2000,skiff_trim/pod
@@ -23,11 +40,13 @@ ARGS --ui-focus 4200,skiff_trim/tank
 ARGS --sim-mouse 4400,0,CUR,CUR,RMB
 ARGS --ui-list 6000 6100 6200 6300 6400 6500 6600 6700 6800 6900 7000
 EXPECT [uilist] loop=
-# One Form row per read per card, and exactly the two body cards print one.
+# One row of each per read per card, and exactly the two body cards print them.
 CHECK len([r for r in uilist if r["label"].startswith("Form:")]) == 11 * 2
 CHECK len({r["window"] for r in uilist if r["label"].startswith("Form:")}) == 2
-# Body cards carry no surface flow/power rows (those blocks gate on lift_area).
-CHECK not any(r["label"].startswith("Drag power") for r in uilist)
+CHECK len([r for r in uilist if r["label"].startswith("Hull AoA:")]) == 11 * 2
+CHECK len([r for r in uilist if r["label"].startswith("Drag power")]) == 11 * 2
+# The surface block's OWN AoA row still never appears on a body card -- that is the
+# player-visible half of the disjointness claim now that "Drag power" is shared.
 CHECK not any(r["label"].startswith("AoA:") for r in uilist)
 # Cadence (#734): eleven reads 100 ms apart see the PUBLISHED figures, never more
 # than a couple of them. The lower bound is deliberately 1 here: unlike the wing
@@ -39,12 +58,25 @@ CHECK not any(r["label"].startswith("AoA:") for r in uilist)
 # steady, which is how 734 caught the shared-state bug at 11 distinct figures.
 CHECK 1 <= len({r["label"] for r in uilist if "Capsule (1m)" in r["window"] and r["label"].startswith("Form:")}) <= 5
 # The column holds: fixed-cell figures print the same character count every read.
+# (Only the two rows whose cells are ALL fixed: the watts cells are wattCell's
+# 9 chars, and the Form row's vis/cd cells are %6.2f/%4s. The flow row's q= is
+# %0f and legitimately varies width as dynamic pressure varies -- the surface
+# block's own flow row has the same property, and ui/734 pins its q= OFFSET
+# instead, which this row's "Hull " prefix deliberately cannot collide with.)
 CHECK len({len(r["label"]) for r in uilist if r["label"].startswith("Form:")}) == 1
+CHECK len({len(r["label"]) for r in uilist if r["label"].startswith("Drag power")}) == 1
 # The pod is the upwind-most body of the stack, so every pod read carries a real
 # credit -- area >= 0.3 m2 (its own silhouette is ~0.8) and a NUMERIC cd. A sheltered
 # part would dash the cd cell; the pod never may.
 CHECK all(re.search(r"Form:\s+([0-9.]+) m2 visible  cd \d", r["label"]) and float(re.search(r"Form:\s+([0-9.]+) m2", r["label"]).group(1)) >= 0.3 for r in uilist if "Capsule (1m)" in r["window"] and r["label"].startswith("Form:"))
-# Every row parses on both cards: the cd cell is numeric or the four-cell dash,
-# and a drag figure follows.
-CHECK all(re.search(r"Form:\s+[0-9.]+ m2 visible  cd (   -|\d+\.\d+)  drag .+", r["label"]) for r in uilist if r["label"].startswith("Form:"))
+# Every row parses on both cards: the cd cell is numeric or the four-char dash.
+CHECK all(re.search(r"Form:\s+[0-9.]+ m2 visible  cd (   -|\d+\.\d+)", r["label"]) for r in uilist if r["label"].startswith("Form:"))
+# The flow row carries the hull's angle and the bill's flow, live on both cards --
+# a signed angle cell (formatAlphaDeg), a numeric q and Mach (never dashed while
+# this in-air case runs).
+CHECK all(re.search(r"Hull AoA:\s+[-+][0-9.]+ deg\s+q=[0-9]+ Pa\s+Mach [0-9.]+", r["label"]) for r in uilist if r["label"].startswith("Hull AoA:"))
+# And the watts row parses with a peak beside it (the peak may round to the same
+# figure as the held value on this steady cruise -- that is honest, not frozen).
+# The \s+ before "(peak": wattCell's 9-char cell can carry a trailing space.
+CHECK all(re.search(r"Drag power:\s+[0-9.]+ [kMWG]*W\s+\(peak .+\)", r["label"]) for r in uilist if r["label"].startswith("Drag power"))
 FORBID error:

@@ -3629,6 +3629,8 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
         p->formVis = 0.0f;
         p->formCdA = 0.0f;
         p->formDragWatts = 0.0f;
+        p->formQ = 0.0f;
+        p->formMach = 0.0f;
         if(p->def != nullptr && p->def->control_area > 0.0) { p->controlDefl = 0.0; }
     }
 
@@ -4297,6 +4299,15 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
                 p->formVis = (float)aeroSilPartVis[i];
                 p->formCdA = (float)aeroSilPartCdA[i];
                 p->formDragWatts = (float)(drag_cd * qv * aeroSilPartCdA[i]);
+                /* #1113: the bill's flow travels with the bill, so the part window's
+                   rows reconcile: q x |vp| here is the very qv the watts were split
+                   by. A SHIP-level figure repeated per part, not a local reading --
+                   cf. the mount-sampled aeroQ of the surfaces (#483). lfCp.q can be
+                   exactly 0 when the rotation sweep cancels the COM flow at the cp
+                   while lastDragAlphaValid still holds; that is a real zero at the
+                   billing point, printed as one. */
+                p->formQ = (float)lfCp.q;
+                p->formMach = (float)flowMach(lfCp, invAirA);
                 /* #947: THE CROSSFLOW NORMAL FORCE. The union bill charges a part
                    only where the air MEETS it; a body hidden behind another along
                    the flow was billed nothing at all -- not for its frontal disc
@@ -5013,6 +5024,8 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
        here rather than at each write. #730. */
     for(Part *p : parts) {
         if(p->aeroDragWatts > p->aeroDragWattsPeak) { p->aeroDragWattsPeak = p->aeroDragWatts; }
+        // #1113: the hull's credit rides the same fold, same single pass.
+        if(p->formDragWatts > p->formDragWattsPeak) { p->formDragWattsPeak = p->formDragWatts; }
     }
 
     lastAeroForce = ftotal;
@@ -8387,6 +8400,9 @@ bool Vehicle::goOnRails() {
         p->formVis = 0.0f;
         p->formCdA = 0.0f;
         p->formDragWatts = 0.0f;
+        p->formQ = 0.0f;
+        p->formMach = 0.0f;
+        p->formDragWattsPeak = 0.0f;   // #1113: a per-flight peak, so it goes with rails
         if(p->isRcs()) { for(double &f : p->rcsFired) { f = 0.0; } }
     }
     lastRcsNozzles.clear();  // likewise the [rcs] log: no substeps, no nozzles

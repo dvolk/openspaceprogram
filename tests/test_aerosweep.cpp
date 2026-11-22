@@ -979,6 +979,22 @@ static void test_body_lift_stays_out_of_the_surface_systems() {
     CHECK_TRUE(b.v->lastBodyCdA > 0.0, "and the pod is now lifting too");
     CHECK_NEAR(b.v->lastInducedCdA, ind0, ind0 * 1e-12,
                "Induced= is bit-identical: body parts never join a lifting system");
+    /* #1113 grew the form* trio into a quintet -- the BILL's flow (lfCp at the cp)
+       stamped beside the credits so the part window's rows reconcile -- and with a
+       printed q now living on body parts too, the naming contract that comment
+       above promised becomes a CHECK: the #730 aeroQ/aeroValid stamp is
+       surface-only (tick.cpp's [surface] filter reads aeroValid; flight/730
+       counts those rows). */
+    Part *pod = b.v->parts[0];
+    CHECK_TRUE(pod->formQ > 0.0f && pod->formMach > 0.0f,
+               "the body part carries the bill's flow (part.h formQ/formMach)");
+    CHECK_TRUE(pod->aeroQ == 0.0f && !pod->aeroValid,
+               "no body part carries the #730 surface stamp, now pinned not just said");
+    CHECK_TRUE(b.v->parts[1]->formQ == 0.0f,
+               "and the reverse half: a lifting surface is not in the union bill");
+    CHECK_NEAR((double)pod->formDragWattsPeak, (double)pod->formDragWatts, 1e-6,
+               "the peak folds in the same single pass as the surface one (both "
+               "flies here bill identical inputs)");
     /* #1106: CLa moves, by the law's OWN derivative. The frame's BodyCdA
        column is D cl vis sinA cosA (the force meter), so D cl vis reads back
        off it, and d(sin a cos^2 a)/da = cos a (cos^2 a - 2 sin^2 a) does the
