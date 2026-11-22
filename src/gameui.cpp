@@ -4198,7 +4198,8 @@ void drawPartWindows(Game &g) {
                    readout outlives the pass that fed it, which is #730's rails bug in a new
                    place. The state sits on the PartSel for the same reason: see game.h.
                    uiText, not ImGui::Text: like the air rows below, this IS the part's
-                   observable, so a case can assert what the player reads. */
+                   observable, so a case can assert what the player reads -- the dashed
+                   pair this gate prints on a card is pinned by ui/1115-a. */
                 const Part *sp = ship->parts[part];
                 if(sp->aeroValid) {
                     /* >=, not >: a wing at zero incidence bills nothing, and with a
