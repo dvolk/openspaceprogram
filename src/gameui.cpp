@@ -3881,6 +3881,41 @@ static void wattCell(double w, char *cell, bool valid = true) {
     assert(strlen(cell) == 9);
 }
 
+/* The Form row's visible-area cell width, in ONE place (#1113 review): the live
+   figure and its dash are the same field, and #1098's own fix-idea dash ("----")
+   was two chars short of %6.2f -- a literal dash beside a literal format is how
+   that happens. */
+constexpr int kFormVisCellChars = 6;
+static const char kFormVisDash[] = "------";
+static_assert(sizeof(kFormVisDash) - 1 == kFormVisCellChars,
+              "the Form vis dash must hold the live cell's width");
+
+/* The part cards' flow and power rows, spelled ONCE (#1113 review): both blocks
+   print them, live and gated-off -- four branches whose grammar must not drift
+   (#1058's rule, widened from widths to whole rows). flowOk=false is the
+   "no flow measured" spelling; angleOk is #732's refused frame. The peak is
+   always a number: "worst billed substep since the ship last went on rails" has
+   an answer even when the answer is zero -- a dash there would mean "no answer",
+   which the model cannot give, and 0.0 W keeps the surface and body cards
+   telling the same story. Returns snprintf's wanted length for the caller's
+   buffer trip-wire. */
+static int partFlowRow(char *row, size_t n, const char *tag, bool angleOk, double deg,
+                       bool flowOk, double q, double mach) {
+    char ang[8];
+    formatAlphaDeg(ang, sizeof ang, angleOk, deg);
+    if(!flowOk) {
+        return snprintf(row, n, "%s: %*s deg  q:-   Mach -", tag, kAlphaCellChars, ang);
+    }
+    return snprintf(row, n, "%s: %*s deg  q=%.0f Pa  Mach %.2f",
+                    tag, kAlphaCellChars, ang, q, mach);
+}
+static int partPowerRow(char *row, size_t n, bool curOk, double cur, double peak) {
+    char cw[16], pw[16];
+    wattCell(cur, cw, curOk);
+    wattCell(peak, pw);
+    return snprintf(row, n, "Drag power: %s (peak %s)", cw, pw);
+}
+
 /* One plain imgui window per part right-clicked in the 3D view (g.part_sels, opened
    by pickAt). Plain Begin/End -- user-placed popups, NOT slot-layout windows. Staging
    that drops the part leaves the entry stale (dropped, not re-pointed). */
@@ -4193,36 +4228,26 @@ void drawPartWindows(Game &g) {
                            an invented angle -- drag.h says so outright -- while q, Mach and
                            the watts need only the flow, so they keep printing at the moment
                            this surface spends the most. */
-                        char ang[8];
-                        formatAlphaDeg(ang, sizeof ang, live.holdAngleOk,
-                                       (double)live.holdAlpha);
-                        /* %*s at drag.h's kAlphaCellChars, not the bare dash this row
-                           used to hand-pad: the mono UI font (see wattCell above) makes a
-                           constant width a constant column, so q= and Mach= stop walking
-                           sideways when a plate swings into and out of a refused frame.
-                           The width comes from the same constant the helper asserts,
-                           because a %s width never truncates: an unasserted 6 here and an
-                           8-char buffer would agree right up until they did not.
-                           The assert is on the row snprintf wanted, not what it wrote:
-                           flowRow is 64 chars (game.h) and the widest plausible row is
-                           ~42, so this is the same trip-wire wattCell carries, not a
-                           fix for a truncation that happens today. */
-                        const int row_n = snprintf(
-                            live.flowRow, sizeof live.flowRow,
-                            "AoA: %*s deg  q=%.0f Pa  Mach %.2f",
-                            kAlphaCellChars, ang, live.holdQ, live.holdMach);
+                        /* The row's cell grammar lives in partFlowRow (widths from
+                           kAlphaCellChars, the #1058 mono-column rule); the trip-wire
+                           stays here at the buffer. */
+                        const int row_n = partFlowRow(
+                            live.flowRow, sizeof live.flowRow, "AoA",
+                            live.holdAngleOk, (double)live.holdAlpha,
+                            true, live.holdQ, live.holdMach);
                         assert(row_n > 0 && row_n < (int)sizeof live.flowRow);
                         /* The watts the air is taking off this surface (#730) -- its form
                            drag plus the induced price of its lift. Not a temperature: no
                            material property sits behind it, and most of these watts leave in
-                           the wake. The peak is the worst substep since the ship last went on
-                           rails (a warp or an atmosphere exit clears it with everything else),
-                           so it can only ever read >= the held figure beside it. */
-                        char cur[16], pk[16];
-                        wattCell(live.holdWatts, cur);
-                        wattCell(sp->aeroDragWattsPeak, pk);
-                        snprintf(live.wattsRow, sizeof live.wattsRow,
-                                 "Drag power: %s (peak %s)", cur, pk);
+                           the wake. The peak is the worst substep since the ship last went
+                           on rails -- the rails clear is the ONLY clear (#730: a warp rides
+                           the rails, an atmosphere exit does not, which is why the peak can
+                           outlive a vacuum stretch beside dashes) -- so it can only ever
+                           read >= the held figure beside it. */
+                        const int wrow_n = partPowerRow(live.wattsRow, sizeof live.wattsRow,
+                                                        true, live.holdWatts,
+                                                        sp->aeroDragWattsPeak);
+                        assert(wrow_n > 0 && wrow_n < (int)sizeof live.wattsRow);
                         live.holdWatts = 0.0;
                     }
                     uiText("%s", live.flowRow);
@@ -4231,20 +4256,20 @@ void drawPartWindows(Game &g) {
                     live.holdWatts = 0.0;
                     live.nextRead = 0.0;
                     /* No flow to have an angle at (vacuum, or sitting still in air), so
-                       this row dashes everything -- and dashes the angle in the same cell
-                       the frame-refused row above uses, so the row does not reflow when a
-                       hull crosses the air boundary (#1058). #1113 split the collapsed
-                       one-row fallback ("... q:- Mach - drag power -") into the same TWO
-                       rows the live block publishes: the row count is part of the layout,
-                       and the peak -- which outlives a vacuum stretch, only rails clears
-                       it -- keeps its cell instead of vanishing with the live wattage. */
-                    char dang[8];
-                    formatAlphaDeg(dang, sizeof dang, false, 0.0);
-                    uiText("AoA: %*s deg  q:-   Mach -", kAlphaCellChars, dang);
-                    char cw[16], pw[16];
-                    wattCell(0.0, cw, false);
-                    wattCell(sp->aeroDragWattsPeak, pw, sp->aeroDragWattsPeak > 0.0f);
-                    uiText("Drag power: %s (peak %s)", cw, pw);
+                       every field dashes -- and the dashed pair is the SAME two rows the
+                       live block publishes (row count is part of the layout; #1113
+                       un-collapsed this fallback), cells spelled by the same helpers so
+                       nothing reflows at the air boundary (#1058). The peak keeps its
+                       number: it outlives a vacuum stretch (only rails clears it) and
+                       0.0 W is its honest answer when nothing ever billed. */
+                    const int rn = partFlowRow(live.flowRow, sizeof live.flowRow,
+                                               "AoA", false, 0.0, false, 0.0, 0.0);
+                    assert(rn > 0 && rn < (int)sizeof live.flowRow);
+                    const int wn = partPowerRow(live.wattsRow, sizeof live.wattsRow,
+                                                false, 0.0, sp->aeroDragWattsPeak);
+                    assert(wn > 0 && wn < (int)sizeof live.wattsRow);
+                    uiText("%s", live.flowRow);
+                    uiText("%s", live.wattsRow);
                 }
                 if(def->isControlSurface()) {
                     /* The slider's range is not the clamp. Ctrl+click turns any slider
@@ -4310,17 +4335,18 @@ void drawPartWindows(Game &g) {
                         if(live.holdFormVis > 1e-6) {
                             const int n = snprintf(cdCell, sizeof cdCell, "%4.2f",
                                                    live.holdFormCdA / live.holdFormVis);
-                            assert(n > 0 && n < (int)sizeof cdCell);
+                            /* == 4, not < 6: the row's column claim, and partCd +
+                               the high-Mach wave term stay well under 10 -- if this
+                               ever trips, the row's fixed cells are the thing that
+                               broke, not the number. (#1113 review) */
+                            assert(n > 0 && n == 4);
                         } else {
                             memcpy(cdCell, "   -", 5);
                         }
-                        char wCell[16], pkCell[16];
-                        wattCell(live.holdFormW, wCell);
-                        wattCell(hp->formDragWattsPeak, pkCell,
-                                 hp->formDragWattsPeak > 0.0f);
                         const int n = snprintf(live.formRow, sizeof live.formRow,
-                                               "Form: %6.2f m2 visible  cd %s",
-                                               live.holdFormVis, cdCell);
+                                               "Form: %*.*f m2 visible  cd %s",
+                                               kFormVisCellChars, 2, live.holdFormVis,
+                                               cdCell);
                         assert(n > 0 && n < (int)sizeof live.formRow);
                         /* "Hull AoA", deliberately not "AoA": it is the airframe's
                            measured angle -- the very one this part's union credit
@@ -4333,19 +4359,20 @@ void drawPartWindows(Game &g) {
                            drag power == drag_cd x q x |vp| x cd x vis. A q that
                            reads exactly 0 while this row lives is the rotation
                            sweep cancelling the flow at the cp -- a real zero at
-                           the billing point, not a bug (part.h). */
-                        char ang[8];
-                        formatAlphaDeg(ang, sizeof ang, true,
-                                       glm::degrees(ship->lastDragAlpha));
-                        const int n2 = snprintf(live.formFlowRow,
-                                                sizeof live.formFlowRow,
-                                                "Hull AoA: %*s deg  q=%.0f Pa  Mach %.2f",
-                                                kAlphaCellChars, ang, live.holdFormQ,
-                                                live.holdFormMach);
+                           the billing point, not a bug (part.h). Each card holds
+                           the frame that billed THIS part hardest, so two open
+                           body cards can print different q's of one hull (#1114). */
+                        const int n2 = partFlowRow(live.formFlowRow,
+                                                   sizeof live.formFlowRow,
+                                                   "Hull AoA", true,
+                                                   glm::degrees(ship->lastDragAlpha),
+                                                   true, live.holdFormQ,
+                                                   live.holdFormMach);
                         assert(n2 > 0 && n2 < (int)sizeof live.formFlowRow);
-                        const int n3 = snprintf(live.formWattsRow,
-                                                sizeof live.formWattsRow,
-                                                "Drag power: %s (peak %s)", wCell, pkCell);
+                        const int n3 = partPowerRow(live.formWattsRow,
+                                                    sizeof live.formWattsRow,
+                                                    true, live.holdFormW,
+                                                    hp->formDragWattsPeak);
                         assert(n3 > 0 && n3 < (int)sizeof live.formWattsRow);
                         live.holdFormW = 0.0;   // the interval starts over with the publish
                     }
@@ -4359,26 +4386,24 @@ void drawPartWindows(Game &g) {
                        count matches the live one: the old one-row Form fallback
                        reflowed the card at the air boundary (the #1098 family --
                        the surface block carried the same bug two rows up). The
-                       vis dash is the %6.2f field's width, the watt dashes come
-                       from wattCell's own valid spelling, not hand padding. */
+                       cells come from the same helpers and constants the live rows
+                       use -- kFormVisDash is static_asserted to the live %*.*f
+                       width, the watt dash is wattCell's own valid spelling. The
+                       peak keeps its number (0.0 W is a real answer, and on rails
+                       where it was cleared the number says so plainly). Spelling
+                       pinned by no one yet: #1115. */
                     const int n = snprintf(live.formRow, sizeof live.formRow,
-                                           "Form: %6s m2 visible  cd %4s",
-                                           "------", "-");
+                                           "Form: %*s m2 visible  cd %4s",
+                                           kFormVisCellChars, kFormVisDash, "-");
                     assert(n > 0 && n < (int)sizeof live.formRow);
-                    char dang[8];
-                    formatAlphaDeg(dang, sizeof dang, false, 0.0);
-                    const int n2 = snprintf(live.formFlowRow,
-                                            sizeof live.formFlowRow,
-                                            "Hull AoA: %*s deg  q:-   Mach -",
-                                            kAlphaCellChars, dang);
+                    const int n2 = partFlowRow(live.formFlowRow,
+                                               sizeof live.formFlowRow,
+                                               "Hull AoA", false, 0.0, false,
+                                               0.0, 0.0);
                     assert(n2 > 0 && n2 < (int)sizeof live.formFlowRow);
-                    char cw[16], pw[16];
-                    wattCell(0.0, cw, false);
-                    wattCell(hp->formDragWattsPeak, pw,
-                             hp->formDragWattsPeak > 0.0f);
-                    const int n3 = snprintf(live.formWattsRow,
-                                            sizeof live.formWattsRow,
-                                            "Drag power: %s (peak %s)", cw, pw);
+                    const int n3 = partPowerRow(live.formWattsRow,
+                                                sizeof live.formWattsRow,
+                                                false, 0.0, hp->formDragWattsPeak);
                     assert(n3 > 0 && n3 < (int)sizeof live.formWattsRow);
                     uiText("%s", live.formRow);
                     uiText("%s", live.formFlowRow);

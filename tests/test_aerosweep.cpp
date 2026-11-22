@@ -986,15 +986,10 @@ static void test_body_lift_stays_out_of_the_surface_systems() {
        surface-only (tick.cpp's [surface] filter reads aeroValid; flight/730
        counts those rows). */
     Part *pod = b.v->parts[0];
-    CHECK_TRUE(pod->formQ > 0.0f && pod->formMach > 0.0f,
-               "the body part carries the bill's flow (part.h formQ/formMach)");
     CHECK_TRUE(pod->aeroQ == 0.0f && !pod->aeroValid,
                "no body part carries the #730 surface stamp, now pinned not just said");
     CHECK_TRUE(b.v->parts[1]->formQ == 0.0f,
                "and the reverse half: a lifting surface is not in the union bill");
-    CHECK_NEAR((double)pod->formDragWattsPeak, (double)pod->formDragWatts, 1e-6,
-               "the peak folds in the same single pass as the surface one (both "
-               "flies here bill identical inputs)");
     /* #1106: CLa moves, by the law's OWN derivative. The frame's BodyCdA
        column is D cl vis sinA cosA (the force meter), so D cl vis reads back
        off it, and d(sin a cos^2 a)/da = cos a (cos^2 a - 2 sin^2 a) does the
@@ -1013,6 +1008,31 @@ static void test_body_lift_stays_out_of_the_surface_systems() {
                "#1106: CLa gains exactly the hull's d(lift)/d(alpha) (drag.h "
                "bodyLiftSlopePerQ -- the finite-differenced bodyLiftForce)");
     CHECK_TRUE(b.v->lastStaticValid, "and the pair still answers, wings and hull together");
+    /* #1113 review, run LAST so no extra fly moves lastLiftSlope under the CLa pin:
+       formQ/formMach are pinned to the BILL's flow -- the cp's (#486), not the
+       COM's. At zero spin the two coincide, so the identity pins the q's magnitude
+       (and the pair is unswappable: ~4.6e4 Pa beside ~0.43). At 20 rad/s the sweep
+       separates the cp's flow from the COM's: this fixture's cp-COM lever is only
+       ~5 cm, so the shift is ~0.6% of q -- comfortably over the 0.4% floor, and an
+       exact-COM mutant sits at 0.0. (cp-vs-mount stays with the stamp-site comment
+       and the 1090-a row closure -- the bench holds no cp vector to aim at.) */
+    CHECK_REL((double)pod->formQ,
+              0.5 * b.v->lastDragRho * b.v->lastAirV * b.v->lastAirV, 1e-5,
+              "no spin: the bill's q IS the ship's dynamic pressure (float stamp)");
+    CHECK_TRUE(pod->formMach > 0.1f && pod->formMach < 1.0f,
+               "subsonic Mach beside a ~4.6e4 Pa q: the pair cannot be swapped");
+    const double w1 = pod->formDragWatts;
+    CHECK_TRUE(w1 > 0.0, "the pod bills a real watt share, or the peak pin is vacuous");
+    fly(b.v, 300.0, 10.0, 0.0);
+    const double w2 = pod->formDragWatts;
+    CHECK_NEAR((double)pod->formDragWattsPeak, (w1 > w2 ? w1 : w2), 0.0,
+               "the peak folds in the same single pass as the surface one, and holds "
+               "the worst billed run -- not just the last one");
+    fly(b.v, 300.0, 10.0, 0.0, 20.0);  // 20 rad/s about the right axis
+    const double comq = 0.5 * b.v->lastDragRho * b.v->lastAirV * b.v->lastAirV;
+    CHECK_TRUE(std::fabs((double)pod->formQ - comq) > 0.004 * comq,
+               "under rotation the bill's flow leaves the COM's: lfCp, not a COM "
+               "stamp (the sweep term, #486)");
     teardown(b);
 }
 

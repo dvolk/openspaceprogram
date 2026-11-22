@@ -19,11 +19,12 @@
 # credit was billed at, not an invented per-part incidence -- #732's rule).
 #
 # What this case does NOT pin: the dashed fallbacks (the air-boundary row triples).
-# Their widths come from the same single-source helpers the live rows use --
-# wattCell's valid flag (9-char), formatAlphaDeg/kAlphaCellChars, %6s for the vis
-# cell -- so the #1098 lesson (the width lives in the helper, not in a hand-padded
-# literal) holds by construction; an e2e pinned to a parked hull would cost a
-# second fixture for a spelling the compiler already guards with asserts.
+# Their cells come from the same helpers and constants the live rows use --
+# partFlowRow/partPowerRow, wattCell's own dash spelling, kFormVisDash
+# static_asserted to the live vis cell -- so widths cannot DRIFT from the live row
+# by accident. But no assert pins that live and dashed print the same ROW COUNT or
+# the exact dashed spellings; that coverage is filed as #1115 (a parked-in-air
+# phase). Until it lands the guarantee is structural, not pinned.
 NAME hull-card-form-row
 CLAIM Body part cards print the merged aero block -- credit row, hull flow row, watts row -- at cadence; the upwind capsule reads a real area and cd; no surface AoA row on body cards.
 KIND invariant

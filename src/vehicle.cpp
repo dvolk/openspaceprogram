@@ -3629,6 +3629,9 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
         p->formVis = 0.0f;
         p->formCdA = 0.0f;
         p->formDragWatts = 0.0f;
+        /* #1113: NOT summable -- the same ship figure repeated per part -- but they
+           zero for the display reason: a card on an unbilled substep must not quote
+           last substep's flow beside this substep's credits. */
         p->formQ = 0.0f;
         p->formMach = 0.0f;
         if(p->def != nullptr && p->def->control_area > 0.0) { p->controlDefl = 0.0; }
