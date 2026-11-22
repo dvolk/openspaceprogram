@@ -3584,7 +3584,8 @@ static void test_silhouetteMemo() {
     CHECK_TRUE(!memo.lookup(0.3, 0.1, out), "fresh table: nothing filled -> miss");
     CHECK_TRUE(memo.fillAround(0.3, 0.1, 0,
                                [](double, double, std::vector<double> &,
-                                  std::vector<double> &, std::vector<double> &) {
+                                  std::vector<double> &, std::vector<double> &,
+                                  std::vector<glm::dvec3> &) {
                                    return SilhouetteBill(); }) == 0,
                "a zero budget fills nothing (and costs nothing)");
 
@@ -3595,7 +3596,8 @@ static void test_silhouetteMemo() {
        hands it returns one: the same linear surface in the area, three times it in
        the cd numerator, and a cp that walks with the angles. */
     const auto exactBill = [&](double a, double b, std::vector<double> &pv,
-                               std::vector<double> &pcd, std::vector<double> &ppj) {
+                               std::vector<double> &pcd, std::vector<double> &ppj,
+                               std::vector<glm::dvec3> &pcp) {
         SilhouetteBill bl;
         bl.area = exact(a, b);
         bl.cdNum = 3.0 * bl.area;
@@ -3609,12 +3611,20 @@ static void test_silhouetteMemo() {
            (shadow == credit) while slot 1 hides behind it by a linear, positive
            amount: exactly the shape the crossflow law leans on. */
         ppj = { pv[0], pv[1] + 3.0 + 0.5 * a };
+        /* The per-part cp PRODUCTS (#1106): vis_t x cp_t split 2/3 : 1/3 of the
+           bill's own numerator, linear like everything else so the blend is exact.
+           The areas differ (60/40), so the parts' centroids pcp[t]/pv[t] are
+           DIFFERENT points -- a law that read the cached value as a centroid
+           instead of dividing would move one, and Σ pcp == cpNum would not save
+           it. */
+        pcp = { (2.0 / 3.0) * bl.cpNum, (1.0 / 3.0) * bl.cpNum };
         return bl;
     };
     int calls = 0;
     const auto counted = [&](double a, double b, std::vector<double> &pv,
-                             std::vector<double> &pcd, std::vector<double> &ppj) {
-        calls++; return exactBill(a, b, pv, pcd, ppj);
+                             std::vector<double> &pcd, std::vector<double> &ppj,
+                             std::vector<glm::dvec3> &pcp) {
+        calls++; return exactBill(a, b, pv, pcd, ppj, pcp);
     };
     CHECK_TRUE(memo.fillAround(0.11, -0.31, 4, counted) == 4,
                "a fresh cell fills its four corners");
@@ -3637,7 +3647,8 @@ static void test_silhouetteMemo() {
         CHECK_REL(bl.cdNum, 3.0 * bl.area, 1e-6, "the cd numerator blends on the area");
         CHECK_REL(bl.cdNum / bl.area, 3.0, 1e-6, "so the coefficient survives the blend");
         std::vector<double> wantV, wantC, wantP;
-        const SilhouetteBill want = exactBill(0.13, -0.29, wantV, wantC, wantP);
+        std::vector<glm::dvec3> wantCP;
+        const SilhouetteBill want = exactBill(0.13, -0.29, wantV, wantC, wantP, wantCP);
         CHECK_REL(glm::length(bl.cpNum - want.cpNum), 0.0, 1e-5 * glm::length(want.cpNum),
                    "and so does the cp numerator (same basis at every node)");
         /* THE PARTITION HITS TOO (#1090). Same four nodes, same weights, one row
@@ -3647,7 +3658,8 @@ static void test_silhouetteMemo() {
            window or a heating law reading these on a HIT reads the same KIND of
            number the exact pass would have computed. */
         std::vector<double> vis, cdA, proj;
-        CHECK_TRUE(memo.lookup(0.13, -0.29, bl, &vis, &cdA, &proj),
+        std::vector<glm::dvec3> cpP;
+        CHECK_TRUE(memo.lookup(0.13, -0.29, bl, &vis, &cdA, &proj, &cpP),
                    "the hit carries the partition");
         CHECK_TRUE(vis.size() == 2 && cdA.size() == 2 && proj.size() == 2,
                    "one row per part in each column");
@@ -3666,6 +3678,22 @@ static void test_silhouetteMemo() {
         CHECK_REL(proj[1] - vis[1], 3.0 + 0.5 * 0.13, 1e-9,
                   "and what the union refused of it is the exact linear amount");
         CHECK_TRUE(proj[1] > vis[1], "a shadow never credits more than it throws");
+        /* THE CP-PRODUCT COLUMN (#1106), the one the hull lift leans its arm on.
+           Every row blends to its exact node's product (linear again), the rows
+           SUM to the blended cp numerator -- so the parts' copy of the answer and
+           the bill's are the same weighted point hit or miss, which is what keeps
+           the line of action from depending on cache history (#1090's doctrine)
+           -- and the parts' centroids (row / vis) sit apart, so a mutant that
+           handed out the product as if it were a centroid fails here, not only in
+           flight. */
+        CHECK_TRUE(cpP.size() == 2, "one cp product per part");
+        CHECK_NEAR(glm::length(cpP[0] - wantCP[0]), 0.0, 1e-12,
+                   "part 0's product is the exact linear value, blended");
+        CHECK_NEAR(glm::length(cpP[0] + cpP[1] - bl.cpNum), 0.0,
+                   1e-12 * (1.0 + glm::length(bl.cpNum)),
+                   "the products sum to the blended cp numerator");
+        CHECK_TRUE(glm::length(cpP[0] / vis[0] - cpP[1] / vis[1]) > 0.1,
+                   "the parts' own centroids are different points");
     }
 
     /* Lazy allocation: a geometry change bumps a counter, it does not buy a table.

@@ -723,7 +723,11 @@ static void test_heat_hooks() {
    pod 0, shelter -1.2, tail -2.9 -- the tail is both the ONLY side vector and
    the aftmost vector on the hull. And lastForceVecs accumulates across
    applyAeroForce calls (the tick loop clears it per substep, the applier does
-   not), so each recording shot clears it by hand first. */
+   not), so each recording shot clears it by hand first.
+   Since #1106 the arms sit at each part's PROJECTED CENTROID, not the bolt --
+   but every box here is mount-centred, so its cp equals its mount EXACTLY and
+   these pins read the same numbers as before (and stay blind to the arm;
+   test_hull_lift_arm_is_the_projected_centroid is the one that is not). */
 static void test_body_lift() {
     printf("== #1097: body lift -- sin cos kernel, opt-in, disjoint with #947 ==\n");
     Bench b = mkBench();
@@ -956,10 +960,12 @@ static void test_body_lift_mount_flip_invariance() {
 }
 
 /* Body parts must not join the SURFACE machinery: no aeroLiftSamples, so
-   Induced= cannot move, and CLa (npSum) stays surfaces-only. Same wing bench
-   with the pod's body_lift off then on: both readings bit-identical. */
-static void test_body_lift_stays_out_of_the_lift_systems() {
-    printf("== #1097: body lift never touches Induced or CLa ==\n");
+   Induced= cannot move, and no part carries a #730 aeroQ stamp. CLa used to
+   be pinned out too; #1106 reversed THAT half on purpose -- the hull's own
+   d(force)/d(alpha) now folds into the pair -- and the pin below names
+   exactly how much, off the same frame's BodyCdA bill. */
+static void test_body_lift_stays_out_of_the_surface_systems() {
+    printf("== #1097/#1106: body lift moves no Induced; its slope joins CLa ==\n");
     Bench b = mkBench();
     Part *wing = mkPlate(b.defs, "wing", 20.0, 2.0, 0.05, 1.0);
     setSurface(b.defs.back(), 8.0, true);
@@ -973,10 +979,157 @@ static void test_body_lift_stays_out_of_the_lift_systems() {
     CHECK_TRUE(b.v->lastBodyCdA > 0.0, "and the pod is now lifting too");
     CHECK_NEAR(b.v->lastInducedCdA, ind0, ind0 * 1e-12,
                "Induced= is bit-identical: body parts never join a lifting system");
-    CHECK_NEAR(b.v->lastLiftSlope, cla0, std::fabs(cla0) * 1e-12,
-               "CLa stays surfaces-only (SM's twin is the VAB buildStability, same "
-               "decision, not this ticket)");
+    /* #1106: CLa moves, by the law's OWN derivative. The frame's BodyCdA
+       column is D cl vis sinA cosA (the force meter), so D cl vis reads back
+       off it, and d(sin a cos^2 a)/da = cos a (cos^2 a - 2 sin^2 a) does the
+       rest. Same alpha, same frame, so the pod's partial occlusion by the wing
+       and any chart blend cancel between the two sides of this pin -- what is
+       left is the fold, not a fudge. (1e-6, not 1e-12: the production slope is
+       a central finite difference at eps 1e-3, error ~eps^2.) */
+    const double a10 = 10.0 * std::numbers::pi / 180.0;
+    const double s10 = std::sin(a10), c10 = std::cos(a10);
+    const double hullWant = b.v->lastBodyCdA / (s10 * c10)
+        * c10 * (c10 * c10 - 2.0 * s10 * s10);
+    CHECK_NEAR(b.v->lastLiftSlope - cla0, hullWant, std::fabs(hullWant) * 1e-6,
+               "#1106: CLa gains exactly the hull's d(lift)/d(alpha) (drag.h "
+               "bodyLiftSlopePerQ -- the finite-differenced bodyLiftForce)");
+    CHECK_TRUE(b.v->lastStaticValid, "and the pair still answers, wings and hull together");
     teardown(b);
+}
+
+/* #1106: A HULL-ONLY AIRFRAME answers the pair, and answers it where the force
+   columns are honest zeros. One plate with body_lift hung 1.5 m aft of the pod
+   and 1.2 m off the axis (coaxial, the pod would shadow it at alpha 0), no
+   lifting surface anywhere: before #1106 this build read CLa 0.00 SM - and
+   that was the whole story the VAB told. The mesh stays centred on the mount,
+   so cp == mount: the recorded vector sits at its attach offset MINUS the
+   compound COM the pass subtracts (attach happens before launch here, so the
+   pod's 100 kg and the fairing's 50 kg put that COM at (0, 0.4, -0.5) and the
+   fairing's moment arm at (0, 0.8, -1.0)). The 60-degree shots run at NEGATIVE
+   alpha, where the fairing stands upwind of the pod and sees the air whole.
+   The pair's slope numbers are checked against the law's own derivative; the
+   margin against that derivative and the RECORDED arm, which is where the
+   fold's lever claim actually lives. */
+static void test_hull_only_build_answers_the_pair() {
+    printf("== #1106: a hull-only build answers CLa/SM, force-free at alpha 0 ==\n");
+    Bench b = mkBench();
+    Part *fair = mkPlate(b.defs, "fairing", 50.0, 0.4, 0.4, 0.5);
+    b.defs.back().body_lift = 0.6;
+    b.v->attach(fair, 0, glm::dvec3(0.0, 1.2, -1.5), glm::dmat3(1.0));
+    launch(b);
+    fly(b.v, 300.0, 0.0, 0.0);
+    CHECK_NEAR(b.v->lastBodyCdA, 0.0, 1e-12, "alpha 0: sin a bills no force yet");
+    CHECK_TRUE(b.v->lastStaticValid, "the pair still answers at alpha 0 -- it is a derivative");
+    CHECK_REL(b.v->lastLiftSlope, b.v->drag_cd * 0.6 * 0.64, 1e-6,
+              "CLa = drag_cd cl vis: the slope of sin a cos a at 0, on the "
+              "0.8 x 0.8 m nose-on silhouette (1e-6: the eps 1e-3 finite difference)");
+    CHECK_NEAR(b.v->lastStaticMargin, 1.0, 1e-9,
+               "SM = the -1.0 m moment arm, flipped: restoring, with no force aboard");
+    /* Past 35.3 deg the sin cos law's own slope turns negative -- a hull
+       parked there has a NEGATIVE lift slope, and now the pair says so
+       instead of dashing. */
+    const double a = -60.0 * std::numbers::pi / 180.0;
+    const double s = std::sin(a), c = std::cos(a);
+    fly(b.v, 300.0, -60.0, 0.0);
+    const double vis = b.v->parts[1]->formVis;
+    CHECK_TRUE(vis > 0.9, "upwind of the pod, the fairing sees the air whole");
+    const double syn = c * (c * c - 2.0 * s * s);   // d(sin a cos^2 a)/dalpha
+    const double szp = -s * (s * s - 2.0 * c * c);  // d(cos a sin^2 a)/dalpha
+    const double dl = b.v->drag_cd * 0.6 * vis * syn;
+    CHECK_REL(b.v->lastLiftSlope, dl, 1e-6,
+              "CLa at -60 deg: the drooping slope of the same law, vis read off "
+              "the frame's own visible column");
+    // The one body-lift vector: arm, and the column that must agree with it.
+    b.v->recordForceVecs = true;
+    fly(b.v, 300.0, -60.0, 0.0);
+    glm::dvec3 fpos(0.0);
+    int at = 0;
+    for(const Vehicle::ForceVec &fv : b.v->lastForceVecs) {
+        if(fv.kind == Vehicle::kForceBodyLift) { fpos = fv.pos; at++; }
+    }
+    CHECK_TRUE(at == 1, "exactly one body-lift vector");
+    CHECK_NEAR(fpos.x, 0.0, 1e-9, "the fixture is in the pitch plane");
+    CHECK_NEAR(fpos.y, 0.8, 1e-9, "attach y minus the compound COM's y");
+    CHECK_NEAR(fpos.z, -1.0, 1e-9, "attach z minus the compound COM's z: cp == mount");
+    CHECK_NEAR(b.v->lastBodyCpLever, fpos.z, 1e-12,
+               "single lifting part: the BodyCp column IS this vector's arm");
+    const double marginWant = (fpos.y * szp - fpos.z * syn) / syn;
+    CHECK_REL(b.v->lastStaticMargin, marginWant, 1e-6,
+              "SM carries the full slope VECTOR (the z-term tilts the lever too), "
+              "about the same arm the force meter quotes");
+    CHECK_TRUE(b.v->lastStaticMargin > 0.0, "and this fixture is still restoring");
+    teardown(b);
+}
+
+/* #1106: THE ARM ITSELF, on a hull whose MATERIAL sits forward of its bolt.
+   Every other fixture in this file is a mount-centred box, so cp == mount and
+   the centroid law is invisible -- green AND blind. This one slides the mesh
+   +0.8 m along +z while the collision box and pose stay identical, so mass,
+   inertia and pivot are identical between the benches and every difference
+   below is the cp. The shot flies at NEGATIVE alpha so the fairing stands
+   upwind of the pod and sees the air whole (at +60 it hides in the pod's
+   shadow -- measured vis 0.17 and, slid forward, 0.0: the wrong fixture to
+   talk about arms on). At -60 deg the projection can only recover the
+   IN-PLANE part of the slide: sin^2 x 0.8 = +0.6 m of nose arm and
+   sin cos x 0.8 = -0.346 m of offset toward the pod's side. The along-flow
+   part of the slide is unrecoverable from any silhouette -- that is
+   #512's caveat, and pinning the exact sin^2 rather than the full 0.8 is what
+   keeps the promise honest (a static mesh-box centre would "pass" here by
+   promising an arm the projection never saw). */
+static void test_hull_lift_arm_is_the_projected_centroid() {
+    printf("== #1106: the arm is the projected centroid, not the bolt ==\n");
+    auto shot = [](Bench &b, double *bodycp, glm::dvec3 *fpos) {
+        b.v->recordForceVecs = true;
+        fly(b.v, 300.0, -60.0, 0.0);  // fresh table: the exact pass, products and all
+        b.v->lastForceVecs.clear();
+        fly(b.v, 300.0, -60.0, 0.0);
+        CHECK_TRUE((double)b.v->parts[1]->formVis > 0.9, "the fairing is exposed");
+        *bodycp = b.v->lastBodyCpLever;
+        int at = 0;
+        for(const Vehicle::ForceVec &fv : b.v->lastForceVecs) {
+            if(fv.kind == Vehicle::kForceBodyLift) { *fpos = fv.pos; at++; }
+        }
+        CHECK_TRUE(at == 1, "one body-lift vector on this hull");
+        b.v->recordForceVecs = false;
+    };
+    Bench mid = mkBench();
+    Part *fMid = mkPlate(mid.defs, "fairing", 50.0, 0.4, 0.4, 0.5);
+    mid.defs.back().body_lift = 0.6;
+    mid.v->attach(fMid, 0, glm::dvec3(0.0, 1.2, -1.5), glm::dmat3(1.0));
+    launch(mid);
+    double cpMid = 0.0; glm::dvec3 posMid(0.0);
+    shot(mid, &cpMid, &posMid);
+
+    Bench fwd = mkBench();
+    Part *fFwd = mkPlate(fwd.defs, "fairing", 50.0, 0.4, 0.4, 0.5);
+    for(glm::dvec3 &h : fFwd->body->hullVerts) { h += glm::dvec3(0.0, 0.0, 0.8); }
+    fwd.defs.back().mesh_min += glm::dvec3(0.0, 0.0, 0.8);
+    fwd.defs.back().mesh_max += glm::dvec3(0.0, 0.0, 0.8);
+    fwd.defs.back().body_lift = 0.6;
+    fwd.v->attach(fFwd, 0, glm::dvec3(0.0, 1.2, -1.5), glm::dmat3(1.0));
+    launch(fwd);
+    double cpFwd = 0.0; glm::dvec3 posFwd(0.0);
+    shot(fwd, &cpFwd, &posFwd);
+
+    const double a = -60.0 * std::numbers::pi / 180.0;
+    const double s = std::sin(a), c = std::cos(a);
+    CHECK_NEAR(cpFwd - cpMid, 0.8 * s * s, 1e-6,
+               "BodyCp moved by the in-plane part of the slide, sin^2 x 0.8: the "
+               "lift lands 0.6 m further forward than the bolt (cf. #947's review: "
+               "an arm must be real geometry, never an accident of the mount)");
+    CHECK_NEAR(posFwd.z - posMid.z, 0.8 * s * s, 1e-6, "the force vector moved with it");
+    CHECK_NEAR(posFwd.y - posMid.y, 0.8 * s * c, 1e-6,
+               "and the in-plane offset toward the axis the same projection implies");
+    /* Both benches get the identical two-shot script on a fresh table, so the
+       counted shot is the exact pass in each and the difference above is pure
+       geometry, not cache state. A HIT blends the product column bilinearly,
+       which reproduces a linear function exactly but not sin^2 -- a few mm of
+       wobble across a 5 deg cell, the same kind of wobble test_silhouetteMemo
+       pins as EXPECTED for cpNum. What must never happen is the arm depending
+       on whether this part happened to have been projected before (#1090's
+       doctrine): hit or miss, both routes carry a centroid. */
+    teardown(mid);
+    teardown(fwd);
 }
 
 /* THE RATE COLUMN: the same hull with an angular velocity, which is #487's whole
@@ -1143,7 +1296,9 @@ int main() {
     test_heat_hooks();
     test_body_lift();
     test_body_lift_mount_flip_invariance();
-    test_body_lift_stays_out_of_the_lift_systems();
+    test_body_lift_stays_out_of_the_surface_systems();
+    test_hull_only_build_answers_the_pair();
+    test_hull_lift_arm_is_the_projected_centroid();
     test_rate_column();
     test_neutral_fin_alpha_gate();
     printf("%d checks, %d failures\n", g_checks, g_failures);

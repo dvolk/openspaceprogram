@@ -4004,8 +4004,13 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
     // plane. The columns ride into the cache beside the scalars, which is what makes a
     // chart HIT able to answer per part as well as per ship. The third column is each
     // part's own shadow at that node (#947) -- the crossflow law's exposure discount.
+    // The fourth is the credit x the part's projected centroid (#1106): the product,
+    // not the centroid, so the blend stays linear and the parts' weighted sum IS the
+    // node's cpNum. Free: the centroid is already on the attachment and the credit
+    // already came out of the strip loop.
     auto billAtS = [&](const glm::dvec3 &dirLocal, std::vector<double> &pv,
-                       std::vector<double> &pcd, std::vector<double> &ppj) {
+                       std::vector<double> &pcd, std::vector<double> &ppj,
+                       std::vector<glm::dvec3> &pcp) {
         projectSilhouette(dirLocal, aeroSilNode, aeroSilNodeAtt, nullptr);
         pv.assign(aeroSilNode.size(), 0.0);
         pcd.assign(aeroSilNode.size(), 0.0);
@@ -4013,7 +4018,13 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
         for(size_t i = 0; i < aeroSilNode.size(); i++) {
             ppj[i] = polygonArea2(aeroSilNode[i]);
         }
-        return silhouetteBill(aeroSilNode, aeroSilNodeAtt, &pv, &pcd);
+        const SilhouetteBill nb = silhouetteBill(aeroSilNode, aeroSilNodeAtt,
+                                                 &pv, &pcd);
+        pcp.resize(aeroSilNode.size());
+        for(size_t i = 0; i < aeroSilNode.size(); i++) {
+            pcp[i] = pv[i] * aeroSilNodeAtt[i].cp;
+        }
+        return nb;
     };
     /* How many silhouette nodes one substep may compute. A node is a whole
        project-and-union pass -- 0.009 ms on a 13-part hull, but the union's
@@ -4026,6 +4037,18 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
        about 99% of its queries; a deliberate 14 s tumble that sweeps the chart
        fills 88 and still answers about 10% of its queries with the exact union. */
     static constexpr int kSilFillNodes = 1;
+
+    /* #1106: hull parts that OPT IN with body_lift also answer the CLa/SM pair,
+       not just the force. Their slope terms accumulate in the Form section below
+       -- beside the silhouette pass that supplies their `visible` and cp-product
+       columns -- and merge into the surfaces' npSum where the pair is published.
+       Declared here (function scope) because the accumulation and the merge sit in
+       different blocks; LiftSlopeSum::add keeps dlabs honest, so a hull whose
+       slope disagrees with the wings dashes the pair instead of averaging it
+       away. Induced= stays surfaces-only: a hull has no span to price (#556), and
+       the fold touches derivatives, never the force path or the #730 part
+       stamps. */
+    LiftSlopeSum hullSlope;
 
     // DRAG: AREA = the UNION of the parts' silhouettes facing the flow;
     // COEFFICIENT = the parts' 3-anchor cd (partCd) weighted by the area each one
@@ -4091,7 +4114,7 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
         if(!dumping && lastDragAlphaValid) {
             fromChart = aeroSil.lookup(alpha, fr.beta, bill,
                                        &aeroSilPartVis, &aeroSilPartCdA,
-                                       &aeroSilPartProj);
+                                       &aeroSilPartProj, &aeroSilPartCp);
         }
         if(!fromChart && (dumping || lastDragAlphaValid)) {
             if(dumping) {
@@ -4105,10 +4128,11 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
             if(lastDragAlphaValid) {
                 aeroSil.fillAround(alpha, fr.beta, kSilFillNodes,
                                    [&](double na, double nb, std::vector<double> &pv,
-                                       std::vector<double> &pcd, std::vector<double> &ppj) {
+                                       std::vector<double> &pcd, std::vector<double> &ppj,
+                                       std::vector<glm::dvec3> &pcp) {
                                        return billAtS(glm::transpose(sRot)
                                            * flowDirection(na, nb, right, up, nose),
-                                           pv, pcd, ppj);
+                                           pv, pcd, ppj, pcp);
                                    });
             }
             /* #1090: the exact pass bills WITH its partition columns out, not only
@@ -4126,6 +4150,13 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
             }
             bill = silhouetteBill(aeroSilParts, aeroSilPartAtt,
                                   &aeroSilPartVis, &aeroSilPartCdA);
+            /* #1106: the cp products, filled the same way on a MISS as they are
+               blended on a HIT -- one spelling of "current per part", two ways of
+               making it current. */
+            aeroSilPartCp.resize(aeroSilParts.size());
+            for(size_t i = 0; i < aeroSilParts.size(); i++) {
+                aeroSilPartCp[i] = aeroSilPartVis[i] * aeroSilPartAtt[i].cp;
+            }
         }
         const double A_ship = lastDragAlphaValid ? bill.area : 0.0;
         lastDragArea = A_ship;
@@ -4319,58 +4350,89 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
                                                                        // column
                 if(!wantsSide && !wantsLift) { continue; }
                 const glm::dvec3 ri = partPosS(p) - com;
+                if(wantsLift) {
+                    /* #1097: THE HULL'S OWN NORMAL FORCE -- the Shuttle's reentry
+                       trim, the only lift a wingless hull can ever make. The law is
+                       drag.h::bodyLiftForce: bodyLiftCdA (cl x visible x cos a)
+                       times (axisW - uhat cos a); magnitude q cl visible sin a
+                       cos a, zero axial, zero broadside, the authored SIGN picking
+                       the side against the part's +z. The direction is
+                       perpendicular to the FLOW -- deliberately NOT #947's perp,
+                       which is perpendicular to the AXIS -- and it gates on the
+                       VISIBLE fraction where the law below gates on the REFUSED
+                       fraction: complementary gates on one polygon, NOT one shared
+                       area measure (a strip and a silhouette are different numbers
+                       for the same box), so a half-shielded opted-in part takes
+                       BOTH bills at once and that sum is a decision, pinned in the
+                       bench, not an accident. The kernel runs LIVE off the cached
+                       visible column because on a chart HIT projectSilhouette does
+                       not run.
+                       #1106: it acts at the part's PROJECTED CENTROID, not the
+                       bolt -- aeroSilPartCp / aeroSilPartVis is the per-part cp,
+                       blended on a HIT exactly as the ship-level cpNum is, and the
+                       weighted sum of the parts' copies IS that cpNum. The flow
+                       sample moves with the force (#486's doctrine: force, lever
+                       and flow answer one point; sampling at the bolt and pushing
+                       at the centroid is the same class of error #486 fixed). What
+                       the projection cannot recover is the ALONG-FLOW component --
+                       the centroid lives in the flow plane on the mount's station
+                       (#512's caveat: ~0.1% of the sweep term for shipped hulls,
+                       ~10% for a 4 m plate at 1 rad/s). #947's side force keeps
+                       its mount; moving that arm too is #513's family decision,
+                       not this block's.
+                       The slope of this same vector law folds into CLa/SM below
+                       (hullSlope); Induced= and the #730 part stamps stay out --
+                       body parts never join the SURFACE lift systems. */
+                    const double vis = aeroSilPartVis[i];
+                    const glm::dvec3 axisW = sRot * p->localRot[2];
+                    // vis > 1e-9 m2 by wantsLift, so the division has a floor.
+                    const glm::dvec3 rCp =
+                        (sPos + sRot * (aeroSilPartCp[i] / vis)) - com;
+                    const LocalFlow lfL = localFlow(vrel, w, rCp, rho);
+                    if(lfL.vp2 > 0.0) {
+                        const glm::dvec3 uhat = lfL.vp / std::sqrt(lfL.vp2);
+                        const BodyLiftF bl =
+                            bodyLiftForce(p->def->body_lift, vis, drag_cd,
+                                          axisW, uhat);
+                        assert(std::isfinite(bl.bcda));
+                        if(bl.bcda != 0.0) {
+                            const glm::dvec3 flift = bl.fperq * lfL.q;
+                            ApplyForce(hull, rCp, flift);
+                            moment += glm::cross(rCp, flift);
+                            ftotal += flift;
+                            // The log column bills the MAGNITUDE line: bcda x
+                            // sinA folds in the sin the product omits, so
+                            // q x BodyCdA is the force's size the way q x SideCdA
+                            // is #947's, and the lever below weights forces.
+                            const double bill = bl.bcda * bl.sinA;
+                            lastBodyCdA += bill;
+                            bodyArmCdA += bill * glm::dot(rCp, nose);
+                            if(recordForceVecs) {
+                                lastForceVecs.push_back({ rCp, flift,
+                                                          kForceBodyLift });
+                            }
+                        }
+                        /* #1106: this part's d(force)/d(hull alpha) per unit q
+                           joins the stability pair -- the SAME vector law
+                           finite-differenced over a tilted flow that made the
+                           force above (drag.h::bodyLiftSlopePerQ, #454's
+                           "ask the law" doctrine), with visible frozen: the
+                           occlusion term is second order and the partitioned
+                           chart surface is jump-laden. Accumulated beside the
+                           zero-force test, like the surfaces do: a hull at a=0
+                           makes no force and has all the slope in the world. */
+                        hullSlope.add(bodyLiftSlopePerQ(p->def->body_lift, vis,
+                                                        drag_cd, axisW, uhat,
+                                                        right),
+                                      rCp, up, right);
+                    }
+                }
+                if(!wantsSide) { continue; }
                 const LocalFlow lf = localFlow(vrel, w, ri, rho);
                 if(!(lf.vp2 > 0.0)) { continue; }
                 const double vpl = std::sqrt(lf.vp2);
                 const glm::dvec3 uhat = lf.vp / vpl;
                 const glm::dvec3 axisW = sRot * p->localRot[2];
-                if(wantsLift) {
-                    /* #1097: THE HULL'S OWN NORMAL FORCE -- the Shuttle's reentry
-                       trim, the only lift a wingless hull can ever make. The law is
-                       drag.h::bodyLiftCdA (cl x visible x cos a) times
-                       (axisW - uhat cos a): magnitude q cl visible sin a cos a, zero
-                       axial, zero broadside, the authored SIGN picking the side
-                       against the part's +z. The direction is perpendicular to the
-                       FLOW -- deliberately NOT #947's perp, which is perpendicular
-                       to the AXIS -- and it gates on the VISIBLE fraction where
-                       the law above gates on the REFUSED fraction: complementary
-                       gates on one polygon, NOT one shared area measure (a strip
-                       and a silhouette are different numbers for the same box),
-                       so a half-shielded opted-in part takes BOTH bills at once
-                       and that sum is a decision, pinned in the bench, not an
-                       accident. The kernel runs LIVE off the
-                       cached visible column because on a chart HIT projectSilhouette
-                       does not run -- cos a comes from the same live dots as dirPart
-                       below. Applied at the mount with the part's own flow, per #483
-                       and #947's precedent (a per-part cp is exact-pass-only and not
-                       cached): a hull that authors body_lift authors a pitch moment
-                       with it, and CLa/SM/Induced stay surfaces-only -- body parts
-                       never join the lift systems and never stamp aeroValid/aeroQ
-                       (#730's identity). */
-                    const double cosA = glm::dot(axisW, uhat);
-                    const double bcda = drag_cd
-                        * bodyLiftCdA(p->def->body_lift, cosA, aeroSilPartVis[i]);
-                    assert(std::isfinite(bcda));
-                    if(bcda != 0.0) {
-                        const glm::dvec3 ahat = axisW - uhat * cosA;  // |ahat| = sin a
-                        const glm::dvec3 flift = ahat * (lf.q * bcda);
-                        ApplyForce(hull, ri, flift);
-                        moment += glm::cross(ri, flift);
-                        ftotal += flift;
-                        // The log column bills the MAGNITUDE line: bcda x |ahat|
-                        // folds in the sin a the product omits, so q x BodyCdA is
-                        // the force's size the way q x SideCdA is #947's, and the
-                        // lever below weights forces, not bare coefficients.
-                        const double bill =
-                            bcda * std::sqrt(std::max(0.0, 1.0 - cosA * cosA));
-                        lastBodyCdA += bill;
-                        bodyArmCdA += bill * glm::dot(ri, nose);
-                        if(recordForceVecs) {
-                            lastForceVecs.push_back({ ri, flift, kForceBodyLift });
-                        }
-                    }
-                }
-                if(!wantsSide) { continue; }
                 const double refused =
                     (aeroSilPartProj[i] - aeroSilPartVis[i]) / aeroSilPartProj[i];
                 const glm::dvec3 flowLocal = glm::transpose(sRot) * uhat;
@@ -4958,6 +5020,14 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
     lastLiftForce = lift_total;
     lastLiftVert = glm::dot(lift_total, com / r);
     lastAeroTorque = moment;
+    /* #1106: the hull parts that opted in answer the pair too (see hullSlope in
+       the Form section -- the same vector law, finite-differenced, visible
+       frozen). LiftSlopeSum::add is the merge; dlabs keeps a hull that leans
+       forward of its surfaces from cancelling a tail's slope into looking neutral
+       (the dash rule, not the number). A hull contribution only exists where the
+       Form section ran, so on a chart MISS or an invalid alpha these terms are
+       simply absent -- the pair is then the surfaces' alone, honestly. */
+    npSum.add(hullSlope);
     /* #454: reported before the zero-force return below, because a ship flying at
        alpha 0 has no lift right now and still has a slope and a margin -- that is the
        whole point of these being derivatives. */

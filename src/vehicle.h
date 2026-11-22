@@ -306,10 +306,16 @@ public:
        Parts cannot drift from the order that built the columns. `aeroSilPartProj`
        is the fourth (#947): each part's OWN projected shadow area beside its
        credits, so `1 - vis/proj` says how much of that shadow the union refused
-       -- and cancels to exactly zero for an exposed part, hit or miss. */
+       -- and cancels to exactly zero for an exposed part, hit or miss.
+       `aeroSilPartCp` is the fifth, sixth and seventh (#1106): the part's credit
+       times its own projected centroid, in the same frame S cpNum lives in, so
+       cp == aeroSilPartCp[i] / aeroSilPartVis[i] is where THAT part's share of
+       the union's pressure sits -- and the weighted sum of the parts' copies IS
+       the cpNum the axial force acts at, hit or miss (products blend linearly). */
     std::vector<double> aeroSilPartVis;
     std::vector<double> aeroSilPartCdA;
     std::vector<double> aeroSilPartProj;
+    std::vector<glm::dvec3> aeroSilPartCp;
     std::vector<Part *> aeroSilPartPtr;
     // Scratch for filling cache nodes: those polygons belong to the cell
     // corners' flow directions, not the substep's, so they need their own set.
@@ -981,10 +987,16 @@ public:
        leave body_lift unauthored -- every flight-pinned hull -- though the
        catalog's liftbody_4m lets a VAB player opt in. lastBodyCpLever is the
        force-weighted arm (+ ahead, like CpL/SideCp); beside a near-cancelled
-       sum it means nothing. Not in CpL/FormCp/Induced/CLa/SM: body parts never
-       join the lift systems, and a signed lever over a signed sum folded into
-       an unsigned pair would reconstruct nothing (the missing cp and CLa
-       coverage is #1106). */
+       sum it means nothing. Since #1106 the force acts AT the arm: each part's
+       lift lands on its PROJECTED CENTROID (aeroSilPartCp / aeroSilPartVis --
+       cached per chart node, hit or miss, so the line of action never depends
+       on cache history), and the lever weights by that same point. What the
+       projection cannot recover is the along-flow part of the offset (#512's
+       caveat). Still NOT in CpL/FormCp/Induced: body parts never join the
+       SURFACE lift systems force-side and never stamp aeroValid/aeroQ (#730).
+       The SLOPE half changed with #1106 though: a part's d(force)/d(alpha)
+       joins CLa/SM (vehicle.cpp hullSlope -> LiftSlopeSum::add), so "SM -" no
+       longer means "this lifting hull says nothing about trim". */
     double lastBodyCdA = 0.0;
     double lastBodyCpLever = 0.0;
 

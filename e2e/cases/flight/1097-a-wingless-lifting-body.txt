@@ -7,8 +7,10 @@
 # -- the first part in the catalog to opt in; every pre-existing def stays at 0), no wings,
 # no tails, no pilot, spawned prograde into 8.5 km air and left completely alone.
 #
-# The hull is deliberately ONE part: the force acts at the part's mount, so its arm is
-# zero and there is no pitch moment at all -- attitude stays exactly where the bed put it
+# The hull is deliberately ONE part: the force acts at the part's PROJECTED
+# CENTROID (#1106), and liftbody_4m's plate is point-symmetric, so that centroid
+# IS its mount -- the one bolt, which is the pivot: the arm is zero and there is
+# no pitch moment at all. Attitude stays exactly where the bed put it
 # and the angle of attack grows only as gravity bends the flight path under it. That
 # makes the run readable: AoA is 22 deg at the first logged row and climbs as gravity
 # steepens the path beneath the plate, and the whole story is the vertical force balance.
@@ -25,7 +27,9 @@
 # the 48 s of flying lose 1.0 km of altitude where a ballistic drop would have lost
 # ~11 km. With one part there is no restoring moment, so the plate never trims at a
 # fixed AoA -- a hull that cruises level needs tails, and that balance is a bed of
-# its own, not this law's job.
+# its own, not this law's job. Since #1106 the same rows also print a CLa=/SM= pair
+# for a wingless hull (CLa>0, SM +0.00 neutral here); the pair's numbers are pinned
+# by the hull-only benches in test_aerosweep, not re-pinned on this bed.
 NAME wingless-lifting-body
 CLAIM A flat plate with an authored body_lift and no lifting surfaces flies: BodyCdA > 0 on every row while SideCdA stays 0.00 (the exposed half of the #947/#1097 split) and the surface-lift column |L| stays 0, Ld > 0, and the sink is bounded far short of ballistic.
 KIND golden
@@ -58,9 +62,12 @@ CHECK all(d["L"] == 0.0 for d in drag)
 # force, which is exactly the point). Measured 1.29 at t=4, still >= 0.9 at t=8.
 CHECK all(d["ld"] > 0.0 for d in drag if d.get("ld") is not None)
 CHECK any(d["ld"] >= 0.9 for d in drag if d.get("ld") is not None and d["t"] <= 8.0)
-# ONE-PART HULL: the lift lands on the mount, and the mount IS the pivot -- the lever
-# reads zero honestly rather than hiding a fabricated arm (cf. #947's review, where a
-# noise ratio printed as a plausible +0.52 m arm).
+# ONE-PART HULL: the lift lands on the projected centroid, and this plate's
+# centroid IS the mount, and the mount IS the pivot -- the lever reads zero
+# honestly rather than hiding a fabricated arm (cf. #947's review, where a
+# noise ratio printed as a plausible +0.52 m arm). #1106 is what makes this pin
+# mean something: the arm is now real geometry that happens to be zero, not a
+# law that cannot see one.
 CHECK all(d["bodycp"] == 0.0 for d in drag if d.get("bodycp") is not None)
 # THE GLIDE, bounded: 48 s of flying lose 1.02 km (measured); a ballistic fall from the
 # same bed would lose ~11.3 km. The 3 km floor is that gap with room for the transient.

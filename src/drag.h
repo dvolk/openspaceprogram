@@ -579,7 +579,12 @@ inline glm::dvec3 liftForce(double q, double S, double cl, double alpha,
    q is absent on purpose: it multiplies the lift change and the moment change
    equally, so it cancels out of the lever arm and everything stays in area units
    (m^2/rad, m^3/rad), comparable with the [drag] line's A= and Induced=.
-   Only lifting surfaces belong here. A CONTROL surface is absent from this sum on
+   Only lift-slope-makers belong here: lifting surfaces from the lift loop, and
+   since #1106 the hull parts that opt in with body_lift -- their own vector law
+   finite-differenced at their projected centroid, merged by add(const LiftSlopeSum
+   &) where the pair is published (vehicle.cpp, hullSlope). Induced= stays out of
+   this sum either way.
+   A CONTROL surface is absent from this sum on
    purpose: its force is a deflection term, not a d(alpha) term, so it moves no margin in
    THIS lever. That is not the same as saying it cannot stabilise anything -- #454's other
    half gave a control surface in a non-lifting system its OWN angle of attack
@@ -617,6 +622,16 @@ struct LiftSlopeSum {
         dl += c;
         dlabs += std::fabs(c);
         dm += glm::dot(glm::cross(ri, dLdA), latAxis);
+    }
+    /* Merge a whole sub-sum (#1106): the hull parts accumulate on their own beside
+       the silhouette pass and join the pair here, so the same agreement dash fires
+       when a hull's slope disagrees with the wings' instead of the pair quietly
+       averaging a cancelled sum. dlabs is what makes that honest: it grew by the
+       hull's magnitude on the way in. */
+    void add(const LiftSlopeSum &o) {
+        dl += o.dl;
+        dlabs += o.dlabs;
+        dm += o.dm;
     }
     /* Quote the pair or dash it -- never quote a lever out of a sum that cancelled.
        Two reasons to dash: nothing lifting (no lifting surface at all, or all of them
@@ -1353,7 +1368,8 @@ struct SilhouetteMemo {
        makes per-part numbers exist on a HIT, not just on the exact pass: the force
        law still never reads them, but the part window's Form row does, and a
        heating or stress law is meant to. Cost is bounded and lazy: one double per
-       body part per FILLED node (~24 B x parts now, three columns), plus a shell
+       body part per FILLED node (~24 B x parts now, three columns; since #1106 the
+       cp products make it five, 40 B), plus a shell
        of empty slots that appears with the first fill (961 x 72 B of vector
        headers, plus one allocation per column per filled node). Slot order is projectSilhouette's
        parts order; a generation is born with one part set and one order (the
@@ -1374,6 +1390,18 @@ struct SilhouetteMemo {
        disagree with the polygon credit by the pi-vs-box cap term, tens of
        percent of the strip, and every exposed part would pay a normal force it
        has already spent in the axial bill. */
+    /* And the fourth, fifth and sixth (#1106): the part's CREDIT times its own
+       projected centroid, one column per compound-frame component (the same frame
+       cpNum lives in -- plane coordinates cannot blend across nodes). Products,
+       not the centroid itself, so the blend is linear: at every node
+       SUM_t vis_t x cp_t == cpNum exactly (the strip loop credits w and the cp of
+       the same polygon, and cpNum is accumulated from those same products), and
+       bilinear preserves it -- which is what lets a HIT hand the parts loop a
+       per-part cp whose weighted sum IS the cpNum the axial force already acted
+       at on that same HIT. The along-flow component is unrecoverable by a
+       projection (#512's caveat, ~0.1% shipped / ~10% for a 4 m plate at
+       1 rad/s): this is the centroid in the flow plane, placed on the mount. */
+    std::array<std::vector<std::vector<double>>, 3> partCp;
     std::vector<std::vector<double>> partProj;
 
     void reset() {
@@ -1384,6 +1412,7 @@ struct SilhouetteMemo {
         partVis.clear();
         partVisCd.clear();
         partProj.clear();
+        for(std::vector<std::vector<double>> &c : partCp) { c.clear(); }
         gen = 1;                   // 0 means "never filled"
     }
     /* Free the table. A ship that stops having parts stops having a silhouette:
@@ -1399,6 +1428,9 @@ struct SilhouetteMemo {
         std::vector<std::vector<double>>().swap(partVis);
         std::vector<std::vector<double>>().swap(partVisCd);
         std::vector<std::vector<double>>().swap(partProj);
+        for(std::vector<std::vector<double>> &c : partCp) {
+            std::vector<std::vector<double>>().swap(c);
+        }
         gen = 0;
     }
     // Geometry changed: nothing in the table is trustworthy. No allocation here --
@@ -1468,7 +1500,8 @@ struct SilhouetteMemo {
     bool lookup(double alpha, double beta, SilhouetteBill &out,
                 std::vector<double> *vis = nullptr,
                 std::vector<double> *visCd = nullptr,
-                std::vector<double> *proj = nullptr) const {
+                std::vector<double> *proj = nullptr,
+                std::vector<glm::dvec3> *cp = nullptr) const {
         if(area.empty() || !std::isfinite(alpha) || !std::isfinite(beta)) { return false; }
         fold(alpha, beta);
         if(!charted(alpha, beta)) { return false; }
@@ -1495,7 +1528,7 @@ struct SilhouetteMemo {
         out.area = bl(area);
         out.cdNum = bl(cdNum);
         out.cpNum = glm::dvec3(bl(cpNum[0]), bl(cpNum[1]), bl(cpNum[2]));
-        if(vis != nullptr || visCd != nullptr || proj != nullptr) {
+        if(vis != nullptr || visCd != nullptr || proj != nullptr || cp != nullptr) {
             /* One part, one slot, at all four corners of this generation's cell --
                a size that disagrees is a stale column under a live stamp, i.e. a
                bug, and blending it would invent an area no part ever paid. */
@@ -1531,6 +1564,18 @@ struct SilhouetteMemo {
                     (*proj)[t] = bl2(partProj, t);
                 }
             }
+            if(cp != nullptr) {
+                const size_t n3 = partCp[0][k00].size();
+                assert(n3 == partCp[0][k00 + 1].size()
+                       && n3 == partCp[0][k00 + kSteps].size()
+                       && n3 == partCp[0][k00 + kSteps + 1].size()
+                       && "cp product columns must agree across a generation's cell");
+                cp->resize(n3);
+                for(size_t t = 0; t < n3; t++) {
+                    (*cp)[t] = glm::dvec3(bl2(partCp[0], t), bl2(partCp[1], t),
+                                          bl2(partCp[2], t));
+                }
+            }
         }
         return true;
     }
@@ -1543,11 +1588,13 @@ struct SilhouetteMemo {
     }
 
     /* Fill this cell's missing corners, at most `budget` of them -- the caller
-       spreads the cost over substeps. `exact(alpha, beta, vis, visCd, proj)`
+       spreads the cost over substeps. `exact(alpha, beta, vis, visCd, proj, cp)`
        computes the bill at a node AND its partition columns -- the callback sizes
-       and fills the three column vectors in its own polys order, and the memo
-       keeps them beside the scalars (#1090, #947). The caller holds the parts,
-       the ship frame and the union. Returns how many nodes were filled. A
+       and fills the column vectors in its own polys order, and the memo
+       keeps them beside the scalars (#1090, #947; #1106 adds the cp products:
+       visible x the part's projected centroid, compound-frame components). The
+       caller holds the parts, the ship frame and the union. Returns how many
+       nodes were filled. A
        direction outside the cached range fills nothing: it is answered by the
        caller's exact bill instead. */
     template <class ExactFn>
@@ -1564,6 +1611,9 @@ struct SilhouetteMemo {
             partVis.assign(area.size(), std::vector<double>());
             partVisCd.assign(area.size(), std::vector<double>());
             partProj.assign(area.size(), std::vector<double>());
+            for(std::vector<std::vector<double>> &c : partCp) {
+                c.assign(area.size(), std::vector<double>());
+            }
         }
         const int i0 = cellOf(alpha), j0 = cellOf(beta);
         int filled = 0;
@@ -1574,7 +1624,9 @@ struct SilhouetteMemo {
                 const size_t k = (size_t)j * kSteps + i;
                 if(stamp[k] == gen) { continue; }
                 std::vector<double> pv, pcd, ppj;
-                const SilhouetteBill nb = exact(alphaAt(i), betaAt(j), pv, pcd, ppj);
+                std::vector<glm::dvec3> pcp;
+                const SilhouetteBill nb = exact(alphaAt(i), betaAt(j), pv, pcd, ppj,
+                                                pcp);
                 area[k] = nb.area;
                 cdNum[k] = nb.cdNum;
                 cpNum[0][k] = nb.cpNum.x;
@@ -1583,6 +1635,14 @@ struct SilhouetteMemo {
                 partVis[k] = std::move(pv);
                 partVisCd[k] = std::move(pcd);
                 partProj[k] = std::move(ppj);
+                partCp[0][k].resize(pcp.size());
+                partCp[1][k].resize(pcp.size());
+                partCp[2][k].resize(pcp.size());
+                for(size_t t = 0; t < pcp.size(); t++) {
+                    partCp[0][k][t] = pcp[t].x;
+                    partCp[1][k][t] = pcp[t].y;
+                    partCp[2][k][t] = pcp[t].z;
+                }
                 stamp[k] = gen;
                 filled++;
                 budget--;
@@ -1915,9 +1975,58 @@ inline double sideStripCdA(double hx, double hy, double hz, const glm::dvec3 &dh
    once; for plate-ish parts that sum stays under the Newtonian normal-force
    reference, and the bench pins the middle case as a decision. Not a 3-point drag
    blend — this sin cos kernel replaces it — and not a surface law: it never
-   enters Induced, CLa, SM, or the #730 part-watts sum. */
+   enters Induced or the #730 part-watts sum. Its SLOPE does join CLa/SM since
+   #1106 (bodyLiftSlopePerQ below); its FORCE never joins the surface lift
+   systems. */
 inline double bodyLiftCdA(double cl, double cosA, double visible) {
     return cl * cosA * visible;
+}
+
+/* The body-lift FORCE VECTOR per unit q (#1106): â x (drag_cd x bodyLiftCdA), the
+   one spelling of the direction half of the law. Production multiplies this by the
+   part's own q to bill the force; the stability fold (#454's machinery, now open to
+   hull parts) finite-differences THIS against a tilted flow, so the slope can never
+   drift from the force. `bcda` and `sinA` come out beside it because the log's
+   BodyCdA= column bills bcda x sinA and re-deriving either would be a second
+   spelling. */
+struct BodyLiftF {
+    glm::dvec3 fperq = glm::dvec3(0.0);  // force per unit q, along â
+    double bcda = 0.0;                   // drag_cd x bodyLiftCdA (the sin NOT in it)
+    double sinA = 0.0;                   // |â|
+};
+inline BodyLiftF bodyLiftForce(double cl, double visible, double drag_cd,
+                               const glm::dvec3 &axisW, const glm::dvec3 &uhat) {
+    const double cosA = glm::dot(axisW, uhat);
+    BodyLiftF bl;
+    bl.bcda = drag_cd * bodyLiftCdA(cl, cosA, visible);
+    const glm::dvec3 ahat = axisW - uhat * cosA;
+    bl.sinA = glm::length(ahat);
+    bl.fperq = ahat * bl.bcda;
+    return bl;
+}
+
+/* #1106: d(body-lift force)/d(hull alpha), per unit q -- the stability fold for a
+   hull part that opted in (#454's "ask the law, don't derive it" doctrine, the same
+   finite-difference shape as liftSlopePerQ below for surfaces). Rotating the FLOW
+   by +/- eps/2 about the ship's lateral axis is the same alpha change a hull pitches
+   through; the part's axis and its visible area stay put. `visible` is deliberately
+   FROZEN: the occlusion derivative d(visible)/d(alpha) is second order over a
+   half-eps window and the per-part silhouette surface is jump-laden at chart cell
+   walls (memo docs: no smooth interpolation follows a shadow jump), so it is not a
+   derivative the cache can honestly answer. drag_cd rides through because it is part
+   of the hull's own force law -- --drag-cd changes the physics, so CLa following it
+   is honest, not the unit clash it looks like beside the surfaces' cd-free CLa.
+   Returns the per-q force-slope VECTOR; the caller feeds it to LiftSlopeSum::add
+   with the cp lever, which does the liftAxis/latAxis projections. eps is the same
+   1e-3 rad as the surfaces' liftSlopePerQ -- both are well above the law's float
+   noise and well below the sin/cos curvature scale. */
+inline glm::dvec3 bodyLiftSlopePerQ(double cl, double visible, double drag_cd,
+                                    const glm::dvec3 &axisW, const glm::dvec3 &uhat,
+                                    const glm::dvec3 &latAxis, double eps = 1e-3) {
+    const glm::dvec3 uHi = glm::angleAxis(eps * 0.5, latAxis) * uhat;
+    const glm::dvec3 uLo = glm::angleAxis(-eps * 0.5, latAxis) * uhat;
+    return (bodyLiftForce(cl, visible, drag_cd, axisW, uHi).fperq
+          - bodyLiftForce(cl, visible, drag_cd, axisW, uLo).fperq) / eps;
 }
 
 /* The shape drag of one SURFACE part (#455, split by #559). A plate meets the flow

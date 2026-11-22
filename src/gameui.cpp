@@ -2941,19 +2941,50 @@ void drawUIReadouts(Game &g) {
                CLa with it, always: an airframe deep in the stall droop keeps a healthy
                looking SM while its stiffness collapses, and CLa is the field that says
                so (#487's band). Outside an atmosphere both are dash -- a vacuum substep
-               measures no aero, and "0.0" would read as "my wings fell off". The VAB
-               quotes the same law with no flight at all (shipdef.h::buildStability). */
+               measures no aero, and "0.0" would read as "my wings fell off". Since
+               #1106 a hull part that OPTS IN with body_lift contributes its own
+               d(force)/d(alpha) here too: a lifting-body build now shows a real pair
+               where it used to show only dashes, and a one-part hull shows SM 0.00
+               (neutral) -- no lever to speak of, which is a fact, not a failure. The
+               VAB quotes the same law with no flight at all (shipdef.h::buildStability,
+               defs-only: it sees body_lift as a slope but not the silhouette it acts
+               on, so an all-hull build's VAB pair is the bare authored number). */
             if(ship->lastDragRho > 0.0) {
                 ImGui::Text("CLa: %.1f m2/rad", ship->lastLiftSlope);
                 if(ship->lastStaticValid) {
+                    /* The word matches what the number DISPLAYS: at half a centimetre
+                       the margin prints +0.00, and "(restoring)" beside +0.00 tells a
+                       trimming pilot nothing. Near zero is neutral -- a symmetric
+                       lifting hull with its cp at the pivot, exactly. */
                     ImGui::Text("SM:  %+.2f m %s", ship->lastStaticMargin,
-                                ship->lastStaticMargin > 0.0
-                                    ? "(restoring)" : "(diverging)");
+                                ship->lastStaticMargin > 0.005
+                                    ? "(restoring)"
+                                    : (ship->lastStaticMargin < -0.005
+                                           ? "(diverging)" : "(neutral)"));
                 } else {
                     ImGui::Text("SM:  -  (surfaces disagree)");
                 }
             } else {
                 ImGui::Text("CLa: -   SM: -");
+            }
+            /* #1106 (fields from #947 and #1097): the two normal-force pairs, until now
+               visible only in --drag-log rows and the force overlay. SideCdA is #947's
+               crossflow bill -- the fraction of each part's own shadow the axial union
+               REFUSED -- and SideCp its weighted arm; BodyCdA is the hull's OWN normal
+               force (body_lift parts), a force meter in the same sense q x SideCdA is,
+               and BodyCp the arm those forces actually act at, force-weighted metres
+               from the pivot, + = ahead of it. Since #1106 that arm is the part's
+               PROJECTED CENTROID (the cached per-part cp products), not its bolt, so
+               what the pilot sees is where the force really leans the nose. Zeros are
+               honest zeros: an exposed hull refuses nothing, and a hull parked at zero
+               AoA lifts nothing YET -- both read 0.00 rather than hiding the row. */
+            if(ship->lastDragAlphaValid) {
+                ImGui::Text("SideCdA: %.2f m2   SideCp: %+.2f m",
+                            ship->lastSideCdA, ship->lastSideCpLever);
+                ImGui::Text("BodyCdA: %.2f m2   BodyCp: %+.2f m",
+                            ship->lastBodyCdA, ship->lastBodyCpLever);
+            } else {
+                ImGui::Text("SideCdA: -   BodyCdA: -");
             }
             /* #455: where the airframe's FORM drag pushes -- the hull's silhouette plus
                every wing and fin's own planform bill, weighted by the CdA each pays.
@@ -6430,7 +6461,7 @@ static const char *forceKindName(int kind) {
         case Vehicle::kForceThrust: return "thrust";
         case Vehicle::kForceGround: return "ground (wheel)";
         case Vehicle::kForceSide: return "crossflow normal (at the hidden body)";
-        case Vehicle::kForceBodyLift: return "body lift (at the hull part)";
+        case Vehicle::kForceBodyLift: return "body lift (at the hull cp)";
         default:                   return "?";
     }
 }
@@ -7715,6 +7746,21 @@ void drawVabUI(Game &g) {
                average of a cancelled sum landed (#454's Np=+15.9 m lie). The reason
                stays off the row -- an instrument reads "-", the manual says why. */
             ImGui::TextDisabled("Aero: CLa %.1f m2/rad  SM -", stab.slope);
+        }
+        /* #1106: this row walks SURFACES -- a hull part's slope needs its projected
+           silhouette, which the pad has no geometry for. A build that opts parts
+           in with body_lift therefore reads a CLa/SM here that its FLIGHT pair will
+           exceed (the hull's own d(force)/d(alpha) joins it, and an all-hull build
+           flies on the flight pair alone). The count says whose lift is missing
+           from the estimate without pretending to price it; pricing it at build
+           time is a filed follow-up to #1106. */
+        int hullLifts = 0;
+        for(const BuildPart &bp : g.vab.build.parts) {
+            if(bp.def != nullptr && bp.def->body_lift != 0.0) { hullLifts++; }
+        }
+        if(hullLifts > 0) {
+            uiText("Aero: %d hull lift part%s -- flight adds their slope",
+                   hullLifts, hullLifts == 1 ? "" : "s");
         }
     }
     /* #644: the electrical counterpart of the Aero row above -- the terms the flight

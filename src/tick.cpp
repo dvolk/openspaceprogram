@@ -1303,7 +1303,14 @@ void tick(Game &g) {
                    stays blandly positive. SM is dashed when nothing had a slope this
                    pass (no lifting part, a mount edge-on, everything stalled flat) --
                    the ratio would be 0/0, and quoting 0.00 there would claim a margin
-                   exactly at the COM, which is a different statement. SM is the only
+                   exactly at the COM, which is a different statement. Since #1106 a
+                   hull part that OPTED IN with body_lift counts here too: its
+                   d(force)/d(alpha) joins the pair at its projected centroid, so a
+                   lifting-body build with no wings gets numbers where it used to get
+                   dashes -- and a symmetric one-part hull prints SM +0.00, neutral AT
+                   the pivot, a fact rather than the old dash's silence. The dash still
+                   means the slopes DISAGREE (dl a small difference of large dlabs), as
+                   #454 ruled. SM is the only
                    SIGNED field on this line, on purpose: its sign is the payload. Both
                    dash together on the same test as AoA/CpL, so a winged ship in
                    vacuum does not print the same numbers as a ship with no wings. */
@@ -1452,7 +1459,13 @@ void tick(Game &g) {
                    SIZE, the way q x SideCdA is #947's. Signed: a negative BodyCdA
                    is net downforce, 0.00 reads true at zero angle of attack (and,
                    as with SideCdA, can be a cancellation), and its Cp arm only
-                   means something beside a nonzero bill. 0.00 is the reading for
+                   means something beside a nonzero bill. Since #1106 that arm is
+                   the line of action itself: each part's lift is applied at -- and
+                   weighed at -- its PROJECTED CENTROID, a per-part cp the same
+                   silhouette pass caches for the ship-level CpL= (hit or miss,
+                   never "only when we happened to project"). What no projection
+                   can see is the along-flow part of the offset (#512's caveat).
+                   0.00 is the reading for
                    every flight-pinned hull; the catalog's liftbody_4m is the
                    first part a player can opt in with, its drag anchors not yet
                    re-fitted (partCd's drag_side share already prices some crossflow
