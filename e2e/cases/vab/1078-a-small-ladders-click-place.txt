@@ -1,0 +1,32 @@
+# The ladder sizes (#1078): the palette carries "Ladder (2m) / (1m) / (0.5m)"
+# as one family. This pins the NEWEST row, which is also the palette's last:
+# arm "Ladder (0.5m)", click the racer's tank side in the 3D view, and the
+# surface attach places it -- LAUNCH finds the racer's four parts plus the
+# ladder. Same shape as vab/1073-a (whose click framing this reuses): no stack
+# node is near the screen-centre click, so this is the surface path. The
+# top-anchored srf node (hanging from the cursor) is pinned pose-wise in
+# tests/test_shipload; here it is the palette row and attach machinery that
+# need a guard.
+NAME small-ladders-click-place
+CLAIM A 0.5 m ladder armed from the palette surface-places on a tank click and launches with the ship.
+KIND invariant
+ARGS --timeout 12 --frame-cap 30
+ARGS --startship racer,res/ships/racer.json,Kerbin,rot-orbit
+ARGS --sim-press 1000,0,4
+ARGS --sim-press 1500,0,F1
+ARGS --ui-click 2000,"Game Debug/Dev vehicles in the VAB picker"
+ARGS --sim-press 2500,0,F1
+ARGS --ui-type 3000,"VAB TopBar/##vehfilter",racer
+ARGS --ui-click 3600,"VAB TopBar/##vabload"
+ARGS --ui-click 4200,"racer"
+ARGS --ui-click 4800,"VAB TopBar/Load"
+# The size variants sit at the catalog's very end, below the palette's fold:
+# scroll to the bottom first (a visible row names its child window).
+ARGS --ui-scroll 5400,"Palette/Capsule (2m)##capsule",-30
+ARGS --ui-click 6000,"Palette/Ladder (0.5m)##ladder_0.5m"
+ARGS --sim-mouse 6800,0,960,540,LMB
+ARGS --ui-click 7600,"VAB TopBar/LAUNCH"
+EXPECT [vab] launched
+CHECK re.search(r"\[vab\] launched '[^']+' \((\d+) parts\)", out).group(1) == "5"
+FORBID error:
+FORBID FAILED
