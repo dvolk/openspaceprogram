@@ -648,8 +648,12 @@ public:
        (gameui.cpp), not to this field -- the sim takes any non-negative figure. */
     double sas_turn_rate = 0.0;
 
-    /* How hard this hull's RCS KEYS may push, as a fraction of the ring's demand
-       ceiling (#1067): 1.0 = full authority (the old behaviour), 0.0 = the keys
+    /* How hard this hull's RCS KEYS may push, as a fraction of maxRcsThrust() --
+       which is the SUM OF PER-PART ratings, not what the ring can deliver along a
+       given demand (#1119: the allocator bounds each nozzle separately, so on a
+       diagonal nudge one pod can spend more than its part entry contributed).
+       "50 %" means 50 % of that sum today; read the figure as a dial position,
+       not as newtons. 1.0 = full authority (the old behaviour), 0.0 = the keys
        fire nothing -- the translation OFF switch rcs_attitude_enabled deliberately
        never was (that door buys pointing, not pushing, gameui.cpp). It caps the
        DEMAND in rcsPlan only: the bells keep their ratings, so the attitude solve

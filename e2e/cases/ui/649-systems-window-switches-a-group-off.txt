@@ -98,6 +98,10 @@ CHECK out.index('wheels=4950/4950/4950') < out.index('wheels=0/0/0')
 # A row that vanished with the door closed, which is the mistake this window's design is
 # about, shows up here as 11 then 10 rather than as a 21 that still looks plausible.
 CHECK [len([l for l in d.split("\n") if l.rstrip().endswith(" text") and 'window="Systems"' in l]) for d in out.split("[uilist] loop=")[1:]] == [11, 11]
+# One widget that count cannot see: a SliderFloat registers WITHOUT the " text"
+# suffix (it carries no TextDisabled line), so #1067's dial could vanish from the
+# window and the [11, 11] above would stay green. Name the widget instead.
+CHECK all('label="RCS translation limit"' in d for d in out.split("[uilist] loop=")[1:])
 # Vessel Info is down to one row -- the Angular rate that says whether the hull is
 # turning. The per-axis actuator rows it used to carry (drums, gimbals, fins) all moved to
 # Game Debug in the 2026_11_05 pass, so this count no longer depends on the part list; the

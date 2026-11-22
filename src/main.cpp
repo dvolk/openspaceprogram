@@ -538,6 +538,22 @@ int main(int argc, char **argv)
     GameArgs args;
     int exit_code = 1;
     if(!parse_cli(argc, argv, args, &exit_code)) { return exit_code; }
+    /* The two dials are validated with the SAVE side's verdict rather than a second
+       opinion. CLI11's Range / NonNegativeNumber are comparisons, so they catch 1.5,
+       -0.2 and inf but let NaN through, and a NaN dial is not cosmetic: rcsPlan's
+       `Fmax <= 0.0` gate cannot see it, so the hull's RCS keys die without a word,
+       and a save written under it prints `null` -- which the reader's is_number()
+       gate drops, so one round trip quietly restores FULL authority. The loader
+       already refuses this value (save.h spells why); refusing it at the door that
+       lets it in keeps the two doors saying one sentence. */
+    if(std::string why = refuseSavedRcsFrac(args.rcs_frac); !why.empty()) {
+        printf("error: %s\n", why.c_str());
+        return 1;
+    }
+    if(std::string why = refuseSavedSasRate(args.sas_rate); !why.empty()) {
+        printf("error: %s\n", why.c_str());
+        return 1;
+    }
 
     // saves/ + settings.json live in the per-OS data dir (datadir.h,
     // --data-dir overrides). Must run before the settings load.
@@ -1080,13 +1096,18 @@ int main(int argc, char **argv)
                    first->displayName().c_str(), alt, inc_txt.c_str(),
                    first->m_parent ? first->m_parent->name.c_str() : "?", air_txt);
         }
-    } else if(!args.ascent.empty() || !args.autopilot.empty()) {
-        /* The whole block above -- the start ships, --autopilot and --ascent --
-           only runs for a freshly built world, because a load owns the ships,
-           their state and the saved ask. That is right, but it is invisible:
+    } else if(!args.ascent.empty() || !args.autopilot.empty()
+              || args.sas_rate > 0.0 || args.rcs_frac != 1.0) {
+        /* The whole block above -- the start ships, --autopilot, --ascent and the
+           two dials -- only runs for a freshly built world, because a load owns the
+           ships, their state and the saved ask. That is right, but it is invisible:
            "--load X --ascent Y" reads like a way to replay a saved approach at a
-           different altitude and used to do nothing at all, quietly, exit 0. */
-        printf("[cli] --ascent/--autopilot ignored: --load owns the ships and the ask\n");
+           different altitude and used to do nothing at all, quietly, exit 0. Same
+           for --sas-rate/--rcs-frac: the hull a load brings back already carries its
+           own dials (save.h), and overwriting them from the command line would make
+           a save and a flag two answers to one question. */
+        printf("[cli] --ascent/--autopilot/--sas-rate/--rcs-frac ignored:"
+               " --load owns the ships, their dials and the ask\n");
     }
 
     Mesh *engine_plume_mesh = get_mesh("res/meshes/engine_plume.obj");

@@ -3595,24 +3595,35 @@ void drawUIReadouts(Game &g) {
                    ship->rcs_attitude_enabled ? "on" : "off", hwv[0], hwv[1], hwv[2]);
         }
         /* How hard the RCS KEYS may shove this hull (#1067). The row above prices what
-           the ring is worth; this prices what one key press may ask of it. It is a
-           FRACTION rather than newtons because the honest ceiling belongs to the ring:
-           100 N is a nudge on a probe and a shove on a lifting stage, and a newton dial
-           would have to be re-learned per hull. The nozzles keep their ratings --
-           attitude authority is priced FROM those ratings (#595 learned not to scale
-           them) -- only rcsPlan's demand shrinks, and the hydrazine bill shrinks with
-           it because flow is derived from the firing sum. 0 turns the keys off: the
-           handle the game did not have, for a hull that must stop shoving its neighbours
-           without stranding the pointing the switch above still buys. */
+           the ring is worth for POINTING; this prices what a translation key may ask of
+           it -- a different door, and the label has to say so. Called "RCS thrust
+           limit" it read as a cap on the ring, when the measured effect runs the other
+           way: dial the keys down and pointing gets STRONGER, because the bell the keys
+           no longer spend is left to the attitude walk (#595's allocator). Measured on
+           rcs_box_pair under a held key: roll authority 69 -> 104 N m at 50 %.
+           It is a FRACTION rather than newtons because the honest ceiling belongs to
+           the ring: 100 N is a nudge on a probe and a shove on a lifting stage, and a
+           newton dial would have to be re-learned per hull. The nozzles keep their
+           ratings -- attitude authority is priced FROM those ratings (#595 learned not
+           to scale them) -- only rcsPlan's demand shrinks, and the hydrazine bill
+           shrinks with it because flow is derived from the firing sum. 0 turns the keys
+           off: the handle the game did not have, for a hull that must stop shoving its
+           neighbours without stranding the pointing the switch above still buys. */
         /* The widget is spelled in PERCENT because that is the question a player asks
            ("half the push"); the field is a fraction because that is what rcsPlan
            multiplies. Worth noting for the next slider here: SliderFloat formats the
            value it is handed, so a 0..1 range wearing a "%.0f %%" format printed 0 %
            and 1 % and dragged like a two-position switch. The dial runs 0..100 and
-           divides on the way in, which keeps both ends exact. */
-        float pct = (float)std::clamp(ship->rcs_thrust_frac, 0.0, 1.0) * 100.0f;
-        if(ImGui::SliderFloat("RCS thrust limit", &pct, 0.0f, 100.0f, "%.0f %%")) {
-            ship->rcs_thrust_frac = (double)pct / 100.0;
+           divides on the way in, which keeps both ends exact. The NaN guard is spelled
+           the way save.h spells it because std::clamp does NOT reject NaN (both
+           comparisons fail and it hands the value straight back); a broken field reads
+           as full authority here rather than as a plausible-looking 0 %. */
+        double f = ship->rcs_thrust_frac;
+        float pct = (f >= 0.0 && f <= 1.0) ? (float)f * 100.0f : 100.0f;
+        if(ImGui::SliderFloat("RCS translation limit", &pct, 0.0f, 100.0f, "%.0f %%")) {
+            /* This imgui has no step argument, so the snap to whole percent lives
+               here: the figure printed on the slider is the figure rcsPlan uses. */
+            ship->rcs_thrust_frac = (double)std::lroundf(pct) / 100.0;
         }
         /* The fourth door (#768): the nozzles. A hull whose only steering is its gimbals
            has been pointing itself with its throttle since the first shipped rocket, and

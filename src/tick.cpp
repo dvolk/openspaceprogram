@@ -1554,6 +1554,14 @@ void tick(Game &g) {
                     const glm::dvec3 ach = g.ship->lastRcsAch;
                     printf("[rcs] cmd=(%.0f %.0f %.0f)N ach=(%.0f %.0f %.0f)N",
                            cmd.x, cmd.y, cmd.z, ach.x, ach.y, ach.z);
+                    /* #1067: say when a dial is in play. A dialed hull prints
+                       ach == cmd -- the hardware delivered every newton it was
+                       asked for -- so a player diagnosing "this hull barely
+                       moves" would find nothing wrong anywhere in this line.
+                       Only shows when the hull's figure is not the default. */
+                    if(g.ship->rcs_thrust_frac != 1.0) {
+                        printf(" lim=%.0f%%", g.ship->rcs_thrust_frac * 100.0);
+                    }
                     for(const Vehicle::RcsNozzleLog &nl : g.ship->lastRcsNozzles) {
                         printf(" %s[%s]=%.0fN", nl.part.c_str(), nl.tag.c_str(),
                                nl.thrust);

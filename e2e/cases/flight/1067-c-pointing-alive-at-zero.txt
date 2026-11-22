@@ -1,0 +1,39 @@
+NAME pointing-alive-at-rcs-zero
+CLAIM With the RCS authority dial at 0 the translation keys are off, yet the same ring still turns the hull at its full rated authority (#1067, #595).
+KIND invariant
+# flight/677 established that a ring-only hull can be stopped from spinning: the
+# pods are actuators in the same allocator as drums, gimbals and fins, and
+# kill-rot spends 37 N m of their pitch authority to do it. This case is that
+# case with --rcs-frac 0 bolted on, which is the boundary #1067 has to hold: the
+# dial belongs to the TRANSLATION demand, and pointing must not feel it. The
+# wrong implementation -- scaling the nozzle rating instead of the demand, which
+# every [rcs] newton on rcs_box_pair fails to notice -- lands here: half the
+# rating is half the torque, tau_spent falls to a fraction of 37 N m, the spin
+# never comes down, and the pins below go red.
+# rcs_test because it is the ring-only hull (#595's fixture): the tap (S, 600 ms)
+# leaves ~0.31 rad/s, X is HELD from 6 s as the player would hold it, and the
+# vacuum bed means nothing else damps the spin. --no-paint because nothing here
+# is a picture (#666 proved the numbers survive it).
+ARGS --time-accel 1 --startship rcs_test,res/ships/rcs_test.json,Kerbin,inertial-orbit
+ARGS --slew-log --fuel-log --no-paint --rcs-frac 0
+ARGS --sim-press 3000,600,S,6000,3000,X
+ARGS --timeout 12
+LIMIT 40
+EXPECT [slew]
+EXPECT RCS: thrust limited to 0% of the ring
+FORBID error:
+FORBID FAILED
+CHECK len(slew) >= 15
+CHECK all(s["mode"] == "killrot" for s in slew)
+# THE RING IS SPENT ON POINTING, at its own ceiling (rcs_test's pod sits 0.185 m
+# off the COM: 37 N m in pitch/yaw, none in roll).
+CHECK max(s["tau_spent"] for s in slew) > 30
+CHECK all(s["tau_spent"] <= 45.0 for s in slew)
+# AND THE SPIN GOES AWAY with the keys' dial at zero.
+CHECK max(s["wnorm"] for s in slew) > 0.25
+CHECK min(s["wnorm"] for s in slew) < 0.01
+CHECK last(slew)["wnorm"] < 0.01
+# HYDRAZINE PAYS for the stop: no translation key is ever pressed, so every gram
+# that left the tank went into turning. A dial that reached the ratings would
+# still burn, so this one is the company the torque pin keeps.
+CHECK first(fuel)["groups"][0]["N2H4"][0] - last(fuel)["groups"][0]["N2H4"][0] > 0.1

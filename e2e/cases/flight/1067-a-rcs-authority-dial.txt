@@ -1,23 +1,35 @@
 NAME rcs-authority-dial
-CLAIM A hull's RCS authority dial caps what the translation keys ask the ring for, without shrinking the nozzles themselves (#1067).
+CLAIM A hull's RCS authority dial caps what the translation keys ask for, without shrinking the nozzles themselves (#1067).
 KIND invariant
-# rcs_box_pair surface-mounts two 5-bell boxes rated 60 N each, so the ring's
-# demand ceiling is 120 N and the [rcs] line says what each BELL actually spent.
-# Dialed to 50 %, the same key press asks the ring for 60 N and each bell spends
-# 30 N. The bell figure is the one worth pinning: it is what the allocator spent
-# this substep, and the fuel draw follows that same sum, so a halved ring costs
-# half the hydrazine. The part's RATING never moves -- attitude authority is
-# priced from those ratings (#595), and scaling them made that read wrong the
-# first time it was tried.
-# flight/110 pins this fixture at full authority (box_l[-Z] spending 60 N), so
-# the "not in" below is the same run seen through the dial: full-authority
-# newtons must not appear once the hull is dialed down. (The bell names ride in
-# CHECKs, not EXPECTs: a bracketed `[-Z]` reads as a character class to the case
-# linter, which is right that EXPECT is a substring test.)
-ARGS --time-accel 1 --sim-steps 480 --startship rcs_box_pair,res/ships/rcs_box_pair.json,Kerbin,inertial-orbit --att-log --drag-log --rcs-frac 0.5 --sim-press 2000,3000,N
+# rcs_box_pair surface-mounts two 5-bell boxes rated 60 N each, so maxRcsThrust()
+# says the hull is worth 120 N and the [rcs] line says what each BELL actually
+# spent. Dialed to 50 %, the same key press asks for 60 N and each bell spends
+# 30 N. flight/110 pins this fixture at full authority (60 N per bell), so the
+# "not in" below is the same run seen through the dial: full-authority newtons
+# must not appear once the hull is dialed down. (The bell names ride in CHECKs,
+# not EXPECTs: a bracketed `[-Z]` reads as a character class to the case linter,
+# which is right that EXPECT is a substring test.)
+#
+# THE OTHER HALF OF THE CLAIM, and the one the newtons cannot show: the dial must
+# shrink the DEMAND and never a nozzle's RATING, because attitude authority is
+# priced from those ratings (#595). A 60 N demand is exactly what two half-rated
+# bells could still deliver, so every figure above stays green under the wrong
+# implementation -- verified by mutation. --steering-log settles it: rcs_hw is
+# the ring's attitude HARDWARE figure, which a dial that touched ratings would
+# halve along with everything else. It reads 138/0/138 at 50 % just as at 100 %,
+# while the live rcs= authority GROWS (roll 69 -> 104 N m) because the bell the
+# keys no longer spend is left to the attitude walk. That is #1067 working.
+ARGS --time-accel 1 --sim-steps 480 --startship rcs_box_pair,res/ships/rcs_box_pair.json,Kerbin,inertial-orbit --att-log --drag-log --steering-log --rcs-frac 0.5 --sim-press 2000,3000,N
 EXPECT RCS: thrust limited to 50% of the ring
-EXPECT [rcs] cmd=(60 0 -0)N ach=(60 0 -0)N
+EXPECT [rcs] cmd=(60 0
+EXPECT lim=50%
 CHECK len(att) >= 6
+# The three [attlog] rows INSIDE the press window: under --sim-steps the schedule
+# and the log gate share the tick clock, so they land on t=3,4,5. The bare len
+# guard above only proved the sim ran -- an [rcs] EXPECT alone could pass off a
+# single row.
+CHECK len([a for a in att if 3.0 <= a["t"] <= 5.0]) == 3
 CHECK max(a["wnorm"] for a in att) < 0.02
 CHECK "box_l[-Z]=30N box_r[-Z]=30N" in out
 CHECK "box_l[-Z]=60N" not in out
+CHECK re.search(r'\[steerlog\][^\n]*rcs_hw=138/0/138', out)
