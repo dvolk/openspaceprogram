@@ -1,0 +1,60 @@
+# #1069: scroll nudges the FIELD OF VIEW in flight, where the wheel has no other
+# job -- and the nudge is THIS FLIGHT'S ONLY. The ticket asked two things: does
+# it conflict, and does a flight FOV leak into the VAB/title. Both answers are
+# pinned here numerically on --cam-log's fov= column (deg, added for this).
+#
+# The conflict, found before implementing: the wheel is NOT free in flight --
+# the orbit camera's wheel is the distance zoom (flight/876 pins it). So the
+# rule is scene+mode-local: in Flight, plain wheel serves FOV in free/first cam
+# (there the wheel was dead) and Alt+wheel serves it in orbit cam, where plain
+# wheel keeps zooming distance. Everywhere else the wheel is untouched.
+#
+# The leak, designed out: args.camFovDeg and settings.json never move; the
+# shared camera gets the configured figure back when the hub scene is pushed
+# (scene.cpp pushScene), and the flight's own scrolled figure rides the parked
+# CameraSnapshot so "Resume Flight" hands it back (pop restores it). The probe
+# this case replays: 60 -> [orbit plain wheel: dist 10->12.8, fov stays 60] ->
+# [ALT+wheel up x2: 55 -> 50] -> [C to first person; plain wheel down: 55] ->
+# [ESC to hub: fov 60] -> [Resume: fov 55].
+NAME flight-fov-scroll
+CLAIM In flight the wheel nudges the frustum where it has no other job (plain in free/first cam, ALT in orbit cam) while the orbit distance zoom survives; the value is this flight only -- the hub renders the configured FOV and Resume Flight restores the scrolled one.
+KIND invariant
+ARGS --time-accel 1 --timeout 15 --width 1920 --height 1080 --startship skiff_trim,res/ships/skiff_trim.json,Kerbin,flying-cruise --fov 60 --cam-log
+# 3.0 s: PLAIN wheel in orbit cam -- the distance zoom must survive (BTN 5 =
+# wheel down = zoom out) and the frustum must NOT move.
+ARGS --sim-mouse 3000,0,CUR,CUR,5
+# 5.0-7.0 s: LALT held (a live --sim-press window counts as held: SDL does not
+# see pushed keydowns, so events.cpp checks the windows the way SlotProbe does).
+ARGS --sim-press 5000,2000,LALT
+ARGS --sim-mouse 5500,0,CUR,CUR,4
+ARGS --sim-mouse 5800,0,CUR,CUR,4
+# 7.0 s: C puts the camera in first person, where a plain wheel has no zoom job.
+ARGS --sim-press 7000,0,C
+ARGS --sim-mouse 7500,0,CUR,CUR,5
+# 9.0 s: ESC pushes the Space Center (the hub renders the configured FOV);
+# 11.0 s: Resume Flight pops back and the snapshot hands the scrolled FOV over.
+ARGS --sim-press 9000,0,ESCAPE
+ARGS --ui-click 11000,"Game Menu/Resume Flight"
+EXPECT [camlog] t=
+EXPECT [toast] Camera: FOV 55 deg (this flight only)
+EXPECT [toast] Camera: FOV 50 deg (this flight only)
+EXPECT [scene] flight -> spacecenter (push)
+EXPECT [scene] spacecenter -> flight (pop)
+# The configured figure holds before any wheel, and through the orbit-mode
+# plain wheel (which must be busy zooming DISTANCE, not touching the frustum).
+CHECK len([c for c in cam if 1.0 < c["t"] < 3.0]) >= 1 and all(c["fov"] == 60.0 for c in cam if c["t"] < 5.0)
+CHECK len([c for c in cam if 3.5 < c["t"] < 5.0]) >= 1 and max(c["dist"] for c in cam if 2.0 < c["t"] < 3.0) < min(c["dist"] for c in cam if 3.5 < c["t"] < 5.0)
+# ALT+wheel up x2 (BTN 4): 60 -> 55 -> 50, zoom-in narrows the frustum, and the
+# ALT chord must NOT also nudge the orbit distance.
+CHECK len([c for c in cam if 6.0 < c["t"] < 7.0]) >= 1 and all(c["fov"] == 50.0 for c in cam if 6.0 < c["t"] < 7.0)
+CHECK len({c["dist"] for c in cam if 5.0 < c["t"] < 7.4}) == 1
+# First-person plain wheel down: 50 -> 55 (widening), no toast spam beyond the
+# two expected above is asserted by the spellings below only for those two.
+CHECK len([c for c in cam if 8.0 < c["t"] < 9.0]) >= 1 and all(c["fov"] == 55.0 for c in cam if 8.0 < c["t"] < 9.0)
+# The hub renders the CONFIGURED fov, not the flight's.
+CHECK len([c for c in cam if 9.5 < c["t"] < 11.0]) >= 1 and all(c["fov"] == 60.0 for c in cam if 9.5 < c["t"] < 11.0)
+# Resume Flight: the flight's own scrolled figure comes back (mode too -- the
+# snapshot handback is whole, not fov-only).
+CHECK len([c for c in cam if 11.5 < c["t"] < 13.0]) >= 1 and all(c["fov"] == 55.0 for c in cam if 11.5 < c["t"] < 13.0)
+CHECK all(c["mode"] == "first" for c in cam if 11.5 < c["t"] < 13.0)
+FORBID error:

@@ -849,7 +849,7 @@ void refreshWorld(Game &g) {
                    "yaw=%+.5f rad pitch=%+.5f rad dist=%.3f m "
                    "fwd=[%+.4f %+.4f %+.4f] up=[%+.4f %+.4f %+.4f] "
                    "lv=[%s] roll=%s pole=%s ax1=%s gf=%s camh=%s hi=%+.5f rad "
-                   "pan=%s aim=%s pin=%s rmb=%d mmb=%d cap=%d\n",
+                   "pan=%s aim=%s pin=%s rmb=%d mmb=%d cap=%d fov=%.1f\n",
                    g.time, mode, g.focusTargets[g.focusBody].name,
                    camera->orbitYaw, camera->orbitPitch, camera->distance,
                    camera->forward.x, camera->forward.y, camera->forward.z,
@@ -858,7 +858,8 @@ void refreshWorld(Game &g) {
                    pan_s, aim_s, pin_s,
                    g.rmbCam ? 1 : 0,
                    g.mmbCam ? 1 : 0,
-                   ImGui::GetIO().WantCaptureMouse ? 1 : 0);
+                   ImGui::GetIO().WantCaptureMouse ? 1 : 0,
+                   glm::degrees(camera->fov));
             fflush(stdout);
         }
     }

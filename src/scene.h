@@ -43,6 +43,10 @@ struct CameraSnapshot {
     double distance = 10.0;           // orbit radius
     double yaw = 0.0, pitch = 0.0;    // orbit angles
     double panYaw = 0.0, panPitch = 0.0;   // orbit aim offset (#919)
+    float fov = 60.0f;                // deg before clamp (#1069: a flight's
+                                      // scrolled frustum rides the snapshot, so
+                                      // Resume Flight keeps it and the hub never
+                                      // sees it)
     TerrainBody *focusBody = nullptr;
 };
 

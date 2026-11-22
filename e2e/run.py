@@ -680,6 +680,9 @@ CAM_RE = re.compile(
     r"pan=(?:\[([-+\d.]+) ([-+\d.]+)\]|-)\s+"
     r"aim=(?:\[([-+\d.]+) ([-+\d.]+)\]|-)\s+"
     r"pin=(hi|lo|-)\s+rmb=(\d)\s+mmb=(\d)\s+cap=(\d)"
+    # #1069: fov (deg) -- the frustum angle, so the flight scroll (events.cpp)
+    # is pinnable. Optional: a log written before the field existed still parses.
+    r"(?:\s+fov=([-\d.]+))?"
 )
 TERRAIN_RE = re.compile(
     r"\[terrain\]\s+t=([\d.]+)s\s+body=\"([^\"]*)\"\s+patches=(\d+)\s+"
@@ -1772,7 +1775,7 @@ def parse_cam(out):
     for m in CAM_RE.finditer(out):
         (t, mode, focus, yaw, pitch, dist,
          fx, fy, fz, ux, uy, uz, lvx, lvy, lvz, roll, pole, ax1, gf, camh, hi,
-         pany, panp, aimx, aimy, pin, rmb, mmb, cap) = m.groups()
+         pany, panp, aimx, aimy, pin, rmb, mmb, cap, fov) = m.groups()
         lv = None if lvx is None else (num(lvx), num(lvy), num(lvz))
         pan = None if pany is None else (float(pany), float(panp))
         aim = None if aimx is None else (float(aimx), float(aimy))
@@ -1797,6 +1800,8 @@ def parse_cam(out):
             "aim": aim,
             "pin": pin,
             "rmb": int(rmb), "mmb": int(mmb), "cap": int(cap),
+            # #1069: the frustum angle the flight wheel now nudges.
+            "fov": num(fov),
         })
     return rows
 

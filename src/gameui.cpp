@@ -1396,6 +1396,12 @@ void drawUIReadouts(Game &g) {
             const float f = (float)glm::radians(args.camFovDeg);
             camera->setFov(f);
         }
+        // #1069: this slider is the PERSISTED figure. In flight the wheel also
+        // nudges the frustum -- plain wheel in free/first cam (the wheel had no
+        // job there), Alt+wheel in orbit cam (plain wheel stays the distance
+        // zoom) -- without moving this number; leaving Flight puts this figure
+        // back (scene.cpp flightExit).
+        ImGui::TextDisabled("In flight: scroll (free cam) or Alt+scroll nudges FOV\nfor that flight only; leaving Flight restores this.");
         // Terrain LOD: a patch subdivides while it projects wider than args.terrain_px
         // [real screen px]. 64/32 are gone: the budget is per patch, so they explode the
         // patch count and the async builder never reaches max_depth -- where the collision

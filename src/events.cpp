@@ -776,7 +776,38 @@ void poll_events(Game &g) {
         }
         if(ev.type == SDL_EVENT_MOUSE_WHEEL) {
             if(!ImGui::GetIO().WantCaptureMouse) {
-                g.camera->wheel(ev.wheel.y);
+                /* #1069: in FLIGHT the scroll wheel changes the FIELD OF VIEW
+                   where it has no other job. Orbit mode's wheel is the distance
+                   zoom (flight/876 pins it), so there FOV rides ALT; free and
+                   first cam had a dead wheel, so plain wheel serves. Transient
+                   by design: args.camFovDeg and settings.json never move, and
+                   leaving Flight puts the configured figure back on the shared
+                   camera (scene.cpp flightExit), so a scrolled flight cannot
+                   repaint the VAB, the hub scenes or the title. Zoom-in
+                   semantics follow the orbit zoom: wheel UP narrows the
+                   frustum; setFov clamps [10,120] deg (camera.cpp). */
+                const bool flight = (curSceneId(g) == SceneId::Flight);
+                bool alt = false;
+                const bool *ks = SDL_GetKeyboardState(nullptr);
+                if(ks[SDL_SCANCODE_LALT] || ks[SDL_SCANCODE_RALT]) { alt = true; }
+                else {
+                    /* --sim-press keydowns go through the queue, which does NOT
+                       update SDL_GetKeyboardState (siminput.h), so the live
+                       windows are consulted the way SlotProbe::held does. */
+                    for(const SimKeyPress &p : g.args.sim_presses) {
+                        if(p.down_sent && !p.up_sent
+                           && (p.sc == SDL_SCANCODE_LALT
+                               || p.sc == SDL_SCANCODE_RALT)) { alt = true; break; }
+                    }
+                }
+                if(flight && (alt || g.camera->mode != CAM_ORBIT)) {
+                    g.camera->setFov(g.camera->fov
+                                     - (float)ev.wheel.y * (float)glm::radians(5.0));
+                    g.toast("Camera: FOV %.0f deg (this flight only)",
+                            glm::degrees(g.camera->fov));
+                } else {
+                    g.camera->wheel(ev.wheel.y);
+                }
             }
         }
     }

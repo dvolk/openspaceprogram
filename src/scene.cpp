@@ -17,6 +17,18 @@ namespace {
 void floorEnter(Game &) {}
 void floorExit(Game &) {}
 
+/* #1069: the flight FOV scroll belongs to this flight, but the camera is ONE
+   object the scenes share. When Flight itself is POPPED (quit to title, a base
+   collapse), nothing else resets it -- this does. The push side (pushScene) and
+   the snapshot (CameraSnapshot::fov) cover the excursion round trip. Nothing
+   is ever written to settings.json; args.camFovDeg IS the configured figure. */
+void flightExit(Game &g) {
+    floorExit(g);
+    if(g.camera != nullptr) {
+        g.camera->setFov((float)glm::radians((double)g.args.camFovDeg));
+    }
+}
+
 // Flight has no enter of its own: re-centering is the caller's (setBaseScene
 // skips enter when the base is already Flight).
 
@@ -123,7 +135,7 @@ const SceneDef kScenes[(size_t)SceneId::COUNT] = {
       .update = tick, .refresh = refreshWorld, .paint = paintWorld,
       .drawUi = titleDrawUi, .keys = flightKeyActions },
     { .name = "flight", .pilot = true, .backdrop = Backdrop::Sky,
-      .wins = kFlightWins, .enter = floorEnter, .exit = floorExit,
+      .wins = kFlightWins, .enter = floorEnter, .exit = flightExit,
       .update = tick, .refresh = refreshWorld, .paint = paintWorld,
       .drawUi = flightDrawUi, .keys = flightKeyActions },
     // The build tree itself is physics-free.
@@ -176,6 +188,7 @@ CameraSnapshot captureCamera(const Game &g) {
     s.pitch = g.camera->orbitPitch;
     s.panYaw = g.camera->panYaw;
     s.panPitch = g.camera->panPitch;
+    s.fov = g.camera->fov;   // #1069: the flight scroll rides home with the pose
     // The focus as a BODY, not an index: focusTargets shifts when the "ship"
     // entry is inserted or dropped.
     s.focusBody =
@@ -196,6 +209,10 @@ void restoreCamera(Game &g, const CameraSnapshot &s) {
        focusBody back, so an unmatched snapshot falls back to the ship entry
        explicitly rather than keeping a stale index. */
     g.focusBody = (resolved >= 0) ? resolved : 0;
+    /* #1069: the frustum rides the snapshot with the pose. This is what hands a
+       flight its scrolled FOV back on "Resume Flight" -- the push side put the
+       configured figure on the shared camera for the excursion scene. */
+    g.camera->setFov(s.fov);
     if(s.mode == CAM_FREE) {
         g.camera->setFreePose(s.pos, s.fwd, s.up);
     } else if(s.mode == CAM_FIRST) {
@@ -244,6 +261,13 @@ void pushScene(Game &g, SceneId id) {
     const SceneId from = curSceneId(g);
     if(f.camValid) {
         f.cam = captureCamera(g);
+        /* #1069: the FOV a flight scrolled with the wheel belongs to the flight.
+           The snapshot above carries it; the shared camera gets the configured
+           figure back, so the hub/VAB/title never render through a frustum the
+           player nudged while flying. Pop restores the flight's own. */
+        if(from == SceneId::Flight && g.camera != nullptr) {
+            g.camera->setFov((float)glm::radians((double)g.args.camFovDeg));
+        }
         // Park/restore pair is an e2e anchor for the camera handback.
         printf("[cam] parked: %s focus=%s dist=%.1f m\n",
                f.cam.mode == CAM_FREE ? "free"

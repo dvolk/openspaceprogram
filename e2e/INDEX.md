@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 450 |
+| `invariant` | a behaviour or a player route the game must keep | 451 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 52 |
 | `harness` | CLI/test-engine plumbing, not game spec | 16 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **522** |
+| | **total** | **523** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -18,7 +18,7 @@ paces a run: how much e2e a change deserves is the caller's
 judgement. Select by number, name or path, e.g.
 `python3 e2e/run.py save/172 262`.
 
-## flight (166)
+## flight (167)
 
 | case | kind | pins |
 |---|---|---|
@@ -185,6 +185,7 @@ judgement. Select by number, name or path, e.g.
 | `flight/1042-rails-park-keeps-the-hull-s-spin.txt` | invariant | Parking a hull on rails and waking it keeps the spin it had: the docking dial's relative twist is the same figure on both sides of an F6 round trip, and not zero. |
 | `flight/1056-rails-coast-turns-the-heading.txt` | invariant | A hull coasting on its conic turns through the spin it carries: its heading moves by about \|w\| x the time spent, monotone, and every row says the coasting rails produced it. |
 | `flight/1062-stale-dock-target-leaves-with-the-port-it-aimed-at.txt` | invariant | Switching to the target hull and staging it drops both halves of the docking target and keeps the armed port. |
+| `flight/1069-a-flight-fov-scroll.txt` | invariant | In flight the wheel nudges the frustum where it has no other job (plain in free/first cam, ALT in orbit cam) while the orbit distance zoom survives; the value is this flight only -- the hub renders the configured FOV and Resume Flight restores the scrolled one. |
 | `flight/1072-lander-legs-stand.txt` | invariant | A legged rocket spawns standing on its feet, stays there, and survives a quicksave/quickload. |
 | `flight/1079-a-g-is-no-camera-key.txt` | invariant | Pressing G while piloting a ship changes nothing about the camera: same target, same distance, no camera toasts. |
 | `flight/1097-a-wingless-lifting-body.txt` | golden | A flat plate with an authored body_lift and no lifting surfaces flies: BodyCdA > 0 on every row while SideCdA stays 0.00 (the exposed half of the #947/#1097 split) and the surface-lift column \|L\| stays 0, Ld > 0, and the sink is bounded far short of ballistic. |
