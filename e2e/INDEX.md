@@ -461,7 +461,7 @@ judgement. Select by number, name or path, e.g.
 | `ui/1031-a-fuel-link-staging-sequences-an-unnumbered-asparagus-stack.txt` | invariant | With Fuel link staging on, Auto-stage sequences the chained boosters one press apart instead of dropping the ring at once. |
 | `ui/1035-a-stage-from-scratch-rebuilds-a-hand-numbered-hull.txt` | invariant | With "Stage from scratch" ticked, Auto-stage ignores the numbers on heavy_asp and rebuilds the ladder from the part tree. |
 | `ui/1035-b-undo-takes-a-from-scratch-rebuild-back.txt` | invariant | After "Stage from scratch" + Auto-stage on heavy_asp, Undo staging restores the authored ladder. |
-| `ui/1090-a-hull-card-form-row.txt` | invariant | Body part cards print the merged aero block -- credit row, hull flow row, watts row -- at cadence; the upwind capsule reads a real area and cd; no surface AoA row on body cards. |
+| `ui/1090-a-hull-card-form-row.txt` | invariant | Body part cards print the merged aero block -- credit row, hull flow row, watts row -- at cadence; the hull flow row agrees across the ship's body cards; the upwind capsule reads a real area and cd; no surface AoA row on body cards. |
 
 ## render (89)
 

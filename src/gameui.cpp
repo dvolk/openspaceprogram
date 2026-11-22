@@ -4296,9 +4296,10 @@ void drawPartWindows(Game &g) {
                not the part's own projection, is what the ship pays with, and a
                sheltered part's credit is exactly zero -- which is the same fact the
               OSP_SHIP_DUMP audit's visA column showed one flag away. Same 2 Hz
-               cadence and worst-loaded-frame rule as the surface rows (#734), and
-               the blocks are disjoint (a part is a surface or a body, never both),
-               so they share the window's publish tick. The gate mirrors the law's
+               cadence as the surface rows (#734), but the worst-frame choice is
+               HULL-level (#1114) and the publish rides a shared grid. The blocks
+               are disjoint (a part is a surface or a body, never both), so they
+               share the window's publish tick. The gate mirrors the law's
                own skip list: no hull vertices, no row. */
             if(!isAeroSurface(def->lift_area, def->control_area)
                && ship->parts[part]->body != nullptr
@@ -4317,15 +4318,27 @@ void drawPartWindows(Game &g) {
                    peak that outlived a vacuum stretch (only rails clears it) keeps
                    printing where the live figure dashes. */
                 if(ship->lastDragAlphaValid && !ship->onRails) {
-                    if((double)hp->formDragWatts >= live.holdFormW) {
+                    /* #1114: the frame is the HULL's worst-billed one (lastFormWatts
+                       = this substep's whole partition sum), not the frame that
+                       billed this part hardest. Every body card of a ship therefore
+                       holds the same frame -- and publishes on the same kReadSec
+                       grid, without which phase-offset windows could still straddle
+                       different peaks and disagree. The part's own vis/cd/watts are
+                       still read from that frame, so each card's rows multiply back.
+                       A card opened mid-window quotes a partial window on its first
+                       read; that is the whole residual. */
+                    if(ship->lastFormWatts >= live.holdFormShipW) {
+                        live.holdFormShipW = ship->lastFormWatts;
                         live.holdFormW = hp->formDragWatts;
                         live.holdFormVis = hp->formVis;
                         live.holdFormCdA = hp->formCdA;
                         live.holdFormQ = hp->formQ;
                         live.holdFormMach = hp->formMach;
+                        live.holdFormAlpha = ship->lastDragAlpha;
                     }
                     if(ImGui::GetTime() >= live.nextRead) {
-                        live.nextRead = ImGui::GetTime() + kReadSec;
+                        live.nextRead = std::floor(ImGui::GetTime() / kReadSec) * kReadSec
+                                        + kReadSec;   // the shared grid (#1114)
                         /* The cd cell is the credit over its own area -- and a fully
                            sheltered part has neither, so it dashes rather than
                            inventing a 0.00 coefficient for air that never reached
@@ -4359,13 +4372,14 @@ void drawPartWindows(Game &g) {
                            drag power == drag_cd x q x |vp| x cd x vis. A q that
                            reads exactly 0 while this row lives is the rotation
                            sweep cancelling the flow at the cp -- a real zero at
-                           the billing point, not a bug (part.h). Each card holds
-                           the frame that billed THIS part hardest, so two open
-                           body cards can print different q's of one hull (#1114). */
+                           the billing point, not a bug (part.h). #1114: the held
+                           frame is the HULL's hardest-billed one, published on a
+                           shared grid, so two open body cards quote the SAME flow
+                           row -- and the angle is held with it, not read live. */
                         const int n2 = partFlowRow(live.formFlowRow,
                                                    sizeof live.formFlowRow,
                                                    "Hull AoA", true,
-                                                   glm::degrees(ship->lastDragAlpha),
+                                                   glm::degrees(live.holdFormAlpha),
                                                    true, live.holdFormQ,
                                                    live.holdFormMach);
                         assert(n2 > 0 && n2 < (int)sizeof live.formFlowRow);
@@ -4374,13 +4388,13 @@ void drawPartWindows(Game &g) {
                                                     true, live.holdFormW,
                                                     hp->formDragWattsPeak);
                         assert(n3 > 0 && n3 < (int)sizeof live.formWattsRow);
-                        live.holdFormW = 0.0;   // the interval starts over with the publish
+                        live.holdFormShipW = 0.0;   // the interval starts over with the publish
                     }
                     uiText("%s", live.formRow);
                     uiText("%s", live.formFlowRow);
                     uiText("%s", live.formWattsRow);
                 } else {
-                    live.holdFormW = 0.0;
+                    live.holdFormShipW = 0.0;
                     live.nextRead = 0.0;
                     /* Every field dashes, no field disappears, and the dashed row
                        count matches the live one: the old one-row Form fallback

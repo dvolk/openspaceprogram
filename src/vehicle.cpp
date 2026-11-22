@@ -3636,6 +3636,7 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
         p->formMach = 0.0f;
         if(p->def != nullptr && p->def->control_area > 0.0) { p->controlDefl = 0.0; }
     }
+    lastFormWatts = 0.0;   // #1114: the ship figure behind the columns, same zeroing
 
     // --drag-cd 0 = no aero at all (the master off switch).
     if(drag_cd <= 0.0) { return lastAeroForce; }
@@ -4293,6 +4294,12 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
                    && aeroSilPartCdA.size() == aeroSilPartProj.size()
                    && aeroSilPartProj.size() == aeroSilPartCp.size());
             const double qv = lfCp.q * std::sqrt(lfCp.vp2);
+            /* #1114: the hull's whole bill, before it is split. lastDragCd x
+               lastDragArea is the union cdA the loop below partitions, so this
+               equals the sum of the formDragWatts columns -- and the part-window
+               body cards pick their held frame with THIS, not their own part's
+               share, so two open cards quote one hull. */
+            lastFormWatts = drag_cd * lastDragCd * lastDragArea * qv;
             double sideArmCdA = 0.0;
             double bodyArmCdA = 0.0;
             for(size_t i = 0; i < aeroSilPartPtr.size(); i++) {
@@ -8408,6 +8415,7 @@ bool Vehicle::goOnRails() {
         p->formDragWattsPeak = 0.0f;   // #1113: a per-flight peak, so it goes with rails
         if(p->isRcs()) { for(double &f : p->rcsFired) { f = 0.0; } }
     }
+    lastFormWatts = 0.0;   // #1114: the ship criterion, same rails-clear as the columns
     lastRcsNozzles.clear();  // likewise the [rcs] log: no substeps, no nozzles
     lastForceVecs.clear();   // and the force overlay: no substeps, no arrows
     /* And the #599 spend record: applyRotationForce, which clears it every substep,

@@ -905,6 +905,13 @@ public:
                                 // what the airframe presents
     double lastDragCd = 0.0;    // the parts' cds, meaned over the area each one CONTRIBUTES
                                 // to the union (#945) -- a part behind another does not vote
+    /* The hull's whole along-flow bill THIS billed substep [W]: drag_cd x q x |vp|
+       at the cp x (lastDragCd x lastDragArea) -- the same product the #945
+       partition splits per part, so it EQUALS the sum of the formDragWatts columns
+       (pinned by test_aerosweep). #1114: the part-window body cards hold the frame
+       the hull billed hardest, so two open cards quote one hull flow row instead of
+       two opinions. Zeroed at pass start and on rails with the form columns. */
+    double lastFormWatts = 0.0;
     /* The hull's weathervane lever: (cp - com) . nose, metres; + = cp AHEAD of the
        COM. #486 made hull drag answer to the flow AT cp, and two different things
        ride on that. The sweep of the flow OPPOSES a rotation whatever the sign of

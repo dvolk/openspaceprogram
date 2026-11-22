@@ -671,6 +671,9 @@ static void test_heat_hooks() {
                    b.v->drag_cd * q * b.v->lastDragCd * b.v->lastDragArea * sp * 1e-5,
                    "the hull's ALONG-FLOW drag power is fully booked by credit now "
                    "(#1090; this bench hull is exposed, so #947's normal watts are 0 here)");
+        CHECK_NEAR(b.v->lastFormWatts, sumW, std::fabs(sumW) * 1e-5 + 1e-9,
+                   "#1114: the body-card hold's criterion (the hull's whole bill) IS the "
+                   "partition sum -- the product and the columns cannot drift apart");
         CHECK_NEAR((double)b.v->parts[0]->aeroDragWatts, 0.0, 0.0,
                    "a body still folds no SURFACE watts: the hull share is the form trio, "
                    "so #730's sum-over-surfaces reading keeps its meaning");
@@ -990,6 +993,8 @@ static void test_body_lift_stays_out_of_the_surface_systems() {
                "no body part carries the #730 surface stamp, now pinned not just said");
     CHECK_TRUE(b.v->parts[1]->formQ == 0.0f,
                "and the reverse half: a lifting surface is not in the union bill");
+    CHECK_TRUE(b.v->lastFormWatts > 0.0,
+               "#1114: a billed pass stamps the hull criterion beside the columns");
     /* #1106: CLa moves, by the law's OWN derivative. The frame's BodyCdA
        column is D cl vis sinA cosA (the force meter), so D cl vis reads back
        off it, and d(sin a cos^2 a)/da = cos a (cos^2 a - 2 sin^2 a) does the

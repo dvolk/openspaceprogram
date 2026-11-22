@@ -26,7 +26,7 @@
 # the exact dashed spellings; that coverage is filed as #1115 (a parked-in-air
 # phase). Until it lands the guarantee is structural, not pinned.
 NAME hull-card-form-row
-CLAIM Body part cards print the merged aero block -- credit row, hull flow row, watts row -- at cadence; the upwind capsule reads a real area and cd; no surface AoA row on body cards.
+CLAIM Body part cards print the merged aero block -- credit row, hull flow row, watts row -- at cadence; the hull flow row agrees across the ship's body cards; the upwind capsule reads a real area and cd; no surface AoA row on body cards.
 KIND invariant
 ARGS --time-accel 1 --sim-steps 600 --width 1920 --height 1080 --startship skiff_trim,res/ships/skiff_trim.json,Kerbin,flying-cruise
 ARGS --ui-focus 2000,skiff_trim/pod
@@ -58,6 +58,13 @@ CHECK not any(r["label"].startswith("AoA:") for r in uilist)
 # prints to quarter-watts (945.3 W) on a porpoising hull -- it cannot repaint
 # steady, which is how 734 caught the shared-state bug at 11 distinct figures.
 CHECK 1 <= len({r["label"] for r in uilist if "Capsule (1m)" in r["window"] and r["label"].startswith("Form:")}) <= 5
+# One hull, one frame (#1114): at every dump stamp, all body cards print the SAME
+# flow row -- the held frame is the hull's hardest-billed one (Vehicle::
+# lastFormWatts), published on a shared kReadSec grid. Before the fix every dump
+# disagreed (tank q=455 vs pod q=572, alpha +4.8 vs +4.9 in the SAME dump). Whole
+# label equality is exact here: the row carries no part-specific text and both
+# cards format ONE sample.
+CHECK all(len({r["label"] for r in uilist if r["label"].startswith("Hull AoA:") and r["t"] == t}) == 1 for t in {r["t"] for r in uilist if r["label"].startswith("Hull AoA:")})
 # The column holds: fixed-cell figures print the same character count every read.
 # (Only the two rows whose cells are ALL fixed: the watts cells are wattCell's
 # 9 chars, and the Form row's vis/cd cells are %6.2f/%4s. The flow row's q= is
