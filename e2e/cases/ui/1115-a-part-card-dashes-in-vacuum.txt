@@ -1,0 +1,69 @@
+# The dashed fallbacks of BOTH part-window aero blocks (#1115; the fallbacks
+# themselves shipped with #1113/#1098's "dash values, never hide fields" rule).
+# ui/1090-a prints the LIVE hull trio and ui/734 the LIVE surface pair; nothing
+# here has ever seen the gated-off spellings, so dropping a fallback row or
+# respelling a dash cell kept the suite green -- the exact reflow bug #1098 fixed.
+#
+# WHERE the fallbacks actually fire -- the ticket's premise needed a correction
+# found by audit. Parking a hull does NOT gate the pass: every shipped
+# atmosphere authors wind (res/systems/ksp_system.json, e.g. Kerbin alt 0 east
+# 5.0 m/s), so a parked skiff at Kerbin,pad stands in ~5.8 m/s of air-relative
+# flow and prints LIVE rows with real peaks (flight/560-parked-hull-bills-nothing
+# pins that flow; kAoAFlowFloor=0.1 is nowhere near binding there). The gate
+# that does fire is the density floor (vehicle.cpp, rho < kRhoFloor -> return):
+# Kerbin,rot-orbit sits at 0.85 of the rot-frame shell, far above the 85 km air
+# top, and at --time-accel 1 the hull stays off rails there (no [rail] line), so
+# the part windows render and their aero blocks print the dashed fallbacks.
+#
+# What is pinned here: the ROW COUNT per card (3 on a body card, 2 on a surface
+# card -- a fallback that drops a row reflows the card, #1098's family) and the
+# EXACT spellings, character for character, including wattCell's dashed current
+# and the never-billed peak's honest 0.0 W. Widths that must NOT be asserted:
+# the flow rows. Their q=/Mach tail is %0f and varies width with dynamic
+# pressure even between two live reads (ui/1090-a notes the same), so dashed 34
+# vs live 40+ is by design; only the Form and Drag-power families are
+# length-stable across the air boundary (32 and 38 chars both sides).
+NAME part-card-dashes-in-vacuum
+CLAIM Above the air, a body card prints the dashed trio and a surface card the dashed pair -- exact spellings, same row counts as the live blocks, and a never-billed peak that still answers 0.0 W.
+KIND invariant
+ARGS --time-accel 1 --sim-steps 600 --width 1920 --height 1080 --startship skiff_trim,res/ships/skiff_trim.json,Kerbin,rot-orbit
+# Pod (body) and wing_l (surface): disjoint blocks, one card each. The tank is
+# occluded from the chase camera even in vacuum, and an unresolvable --ui-focus
+# FAILS the case anyway (the #860 rule), so no camera dance is needed here.
+ARGS --ui-focus 2000,skiff_trim/pod
+ARGS --sim-mouse 2200,0,CUR,CUR,RMB
+ARGS --ui-focus 3000,skiff_trim/wing_l
+ARGS --sim-mouse 3200,0,CUR,CUR,RMB
+ARGS --ui-list 6000 6100 6200 6300 6400 6500 6600 6700 6800 6900 7000
+EXPECT [uilist] loop=
+EXPECT [uifocus] 'skiff_trim/pod' ->
+EXPECT [uifocus] 'skiff_trim/wing_l' ->
+# Row counts: 11 dumps x one card each for the body rows and the surface AoA
+# row; the watts row prints on BOTH cards, so 22.
+CHECK len([r for r in uilist if r["label"].startswith("Form:")]) == 11
+CHECK len([r for r in uilist if r["label"].startswith("Hull AoA:")]) == 11
+CHECK len([r for r in uilist if r["label"].startswith("AoA:")]) == 11
+CHECK len([r for r in uilist if r["label"].startswith("Drag power")]) == 22
+# And each family lands on the card whose block owns it: Form/Hull AoA on the
+# capsule (body), AoA on the wing (surface), never the other way.
+CHECK len({r["window"] for r in uilist if r["label"].startswith("Form:")}) == 1 and all("Capsule" in r["window"] for r in uilist if r["label"].startswith("Form:"))
+CHECK len({r["window"] for r in uilist if r["label"].startswith("AoA:")}) == 1 and all("Wing" in r["window"] for r in uilist if r["label"].startswith("AoA:"))
+# Per dump, per card: three dashed rows on the body card, two on the surface
+# card. This is the row-count half of the #1098 reflow claim.
+CHECK all(sum(1 for r in uilist if r["t"] == t and "Capsule" in r["window"] and r["label"].startswith(("Form:", "Hull AoA", "Drag power"))) == 3 for t in {r["t"] for r in uilist if "Capsule" in r["window"]})
+CHECK all(sum(1 for r in uilist if r["t"] == t and "Wing" in r["window"] and r["label"].startswith(("AoA:", "Drag power"))) == 2 for t in {r["t"] for r in uilist if "Wing" in r["window"]})
+# THE spellings (#1115's whole point): one distinct label per family, byte-exact.
+# kFormVisDash is static_asserted to the live vis width (gameui.cpp) and the
+# watt dash is wattCell's own valid spelling -- this CHECK is what stops the
+# other half from drifting: the joined row, the cd dash, the dashed q/Mach tail.
+CHECK {r["label"] for r in uilist if r["label"].startswith("Form:")} == {"Form: ------ m2 visible  cd    -"}
+CHECK {r["label"] for r in uilist if r["label"].startswith("Hull AoA:")} == {"Hull AoA:      - deg  q:-   Mach -"}
+CHECK {r["label"] for r in uilist if r["label"].startswith("AoA:")} == {"AoA:      - deg  q:-   Mach -"}
+CHECK {r["label"] for r in uilist if r["label"].startswith("Drag power")} == {"Drag power:      -    (peak    0.0 W )"}
+# No live figure leaks in: dashed means dashed, current AND flow, on both cards.
+CHECK not any(re.search(r"q=[0-9]", r["label"]) for r in uilist if r["label"].startswith(("AoA:", "Hull AoA")))
+# Length stability for the families that promise it (the flow rows deliberately
+# vary and are NOT included -- see header).
+CHECK len({len(r["label"]) for r in uilist if r["label"].startswith("Form:")}) == 1
+CHECK len({len(r["label"]) for r in uilist if r["label"].startswith("Drag power")}) == 1
+FORBID error:

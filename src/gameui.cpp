@@ -4446,8 +4446,9 @@ void drawPartWindows(Game &g) {
                        use -- kFormVisDash is static_asserted to the live %*.*f
                        width, the watt dash is wattCell's own valid spelling. The
                        peak keeps its number (0.0 W is a real answer, and on rails
-                       where it was cleared the number says so plainly). Spelling
-                       pinned by no one yet: #1115. */
+                       where it was cleared the number says so plainly). Spellings
+                       and row counts pinned by ui/1115-a (above the air -- the
+                       pad is windy, so it prints the live trio). */
                     const int n = snprintf(live.formRow, sizeof live.formRow,
                                            "Form: %*s m2 visible  cd %4s",
                                            kFormVisCellChars, kFormVisDash, "-");

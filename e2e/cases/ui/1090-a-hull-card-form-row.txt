@@ -21,10 +21,10 @@
 # What this case does NOT pin: the dashed fallbacks (the air-boundary row triples).
 # Their cells come from the same helpers and constants the live rows use --
 # partFlowRow/partPowerRow, wattCell's own dash spelling, kFormVisDash
-# static_asserted to the live vis cell -- so widths cannot DRIFT from the live row
-# by accident. But no assert pins that live and dashed print the same ROW COUNT or
-# the exact dashed spellings; that coverage is filed as #1115 (a parked-in-air
-# phase). Until it lands the guarantee is structural, not pinned.
+# static_asserted to the live vis cell -- so cells cannot DRIFT from the live row
+# by accident. The row COUNTS and the exact dashed spellings are pinned by the
+# sibling ui/1115-a: above the air, not parked (every shipped atmosphere authors
+# wind, so the pad prints live rows -- #1115's premise, corrected by audit).
 NAME hull-card-form-row
 CLAIM Body part cards print the merged aero block -- credit row, hull flow row, watts row -- at cadence; the hull flow row agrees across the ship's body cards; the upwind capsule reads a real area and cd; no surface AoA row on body cards.
 KIND invariant

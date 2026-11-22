@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 449 |
+| `invariant` | a behaviour or a player route the game must keep | 450 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 52 |
 | `harness` | CLI/test-engine plumbing, not game spec | 16 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **521** |
+| | **total** | **522** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -380,7 +380,7 @@ judgement. Select by number, name or path, e.g.
 | `save/867-cross-system-bubble-load.txt` | invariant | A save with a ship in a building's bubble loads from the title across systems. |
 | `save/1102-a-new-game-leaves-no-dir.txt` | invariant | A New Game that never saves leaves no directory under saves/. |
 
-## ui (78)
+## ui (79)
 
 | case | kind | pins |
 |---|---|---|
@@ -462,6 +462,7 @@ judgement. Select by number, name or path, e.g.
 | `ui/1035-a-stage-from-scratch-rebuilds-a-hand-numbered-hull.txt` | invariant | With "Stage from scratch" ticked, Auto-stage ignores the numbers on heavy_asp and rebuilds the ladder from the part tree. |
 | `ui/1035-b-undo-takes-a-from-scratch-rebuild-back.txt` | invariant | After "Stage from scratch" + Auto-stage on heavy_asp, Undo staging restores the authored ladder. |
 | `ui/1090-a-hull-card-form-row.txt` | invariant | Body part cards print the merged aero block -- credit row, hull flow row, watts row -- at cadence; the hull flow row agrees across the ship's body cards; the upwind capsule reads a real area and cd; no surface AoA row on body cards. |
+| `ui/1115-a-part-card-dashes-in-vacuum.txt` | invariant | Above the air, a body card prints the dashed trio and a surface card the dashed pair -- exact spellings, same row counts as the live blocks, and a never-billed peak that still answers 0.0 W. |
 
 ## render (89)
 
