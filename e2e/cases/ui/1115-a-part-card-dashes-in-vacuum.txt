@@ -76,7 +76,9 @@ CHECK all(sum(1 for r in uilist if r["t"] == t and "Wing" in r["window"] and r["
 # kFormVisDash is static_asserted to the live vis width (gameui.cpp) and the
 # watt dash is wattCell's own valid spelling -- this CHECK is what stops the
 # other half from drifting: the joined row, the cd dash, the dashed q/Mach tail.
-CHECK {r["label"] for r in uilist if r["label"].startswith("Form:")} == {"Form: ------ m2 visible  cd    -"}
+# The Form row's two #1105 cells dash as a pair: a part cannot hide a fraction of
+# itself from a flow that does not exist, so "hides" and "side" are dead air too.
+CHECK {r["label"] for r in uilist if r["label"].startswith("Form:")} == {"Form: ------ m2 visible  cd    -  hides -----%  side ------ m2"}
 CHECK {r["label"] for r in uilist if r["label"].startswith("Hull AoA:")} == {"Hull AoA:      - deg  q:-   Mach -"}
 CHECK {r["label"] for r in uilist if r["label"].startswith("AoA:")} == {"AoA:      - deg  q:-   Mach -"}
 CHECK {r["label"] for r in uilist if r["label"].startswith("Drag power")} == {"Drag power:      -    (peak    0.0 W )"}

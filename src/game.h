@@ -131,7 +131,7 @@ struct PartSel {
        printed two q's for one hull, and a card opened mid-window can never
        see frames that predate it. The window keeps only the formatted strings
        it last drew; the peak stays part-level and is read live at draw. */
-    char formRow[64] = "";
+    char formRow[96] = "";   // #1105 added two cells to this one
     char formFlowRow[64] = "";
     char formWattsRow[64] = "";
 };

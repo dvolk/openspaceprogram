@@ -3981,6 +3981,19 @@ constexpr int kFormVisCellChars = 6;
 static const char kFormVisDash[] = "------";
 static_assert(sizeof(kFormVisDash) - 1 == kFormVisCellChars,
               "the Form vis dash must hold the live cell's width");
+/* #1105's two crossflow cells, same discipline: one constant per cell, its dash
+   static_asserted to it, so a widened live cell cannot leave a short dash behind.
+   `hides` is refused as a percentage (0.0..100.0 -- five chars covers the ceiling
+   exactly); `side` is the part's crossflow CdA in m2, six chars to two decimals,
+   which is roomy for a hull whose SideCdA the ship log reports in the tens. */
+constexpr int kFormHideCellChars = 5;
+static const char kFormHideDash[] = "-----";
+static_assert(sizeof(kFormHideDash) - 1 == kFormHideCellChars,
+              "the Form hides dash must hold the live cell's width");
+constexpr int kFormSideCellChars = 6;
+static const char kFormSideDash[] = "------";
+static_assert(sizeof(kFormSideDash) - 1 == kFormSideCellChars,
+              "the Form side dash must hold the live cell's width");
 
 /* The part cards' flow and power rows, spelled ONCE (#1113 review): both blocks
    print them, live and gated-off -- four branches whose grammar must not drift
@@ -4448,6 +4461,8 @@ void drawPartWindows(Game &g) {
                             hf.winVis.assign(nparts, 0.0);
                             hf.winCdA.assign(nparts, 0.0);
                             hf.winWatts.assign(nparts, 0.0);
+                            hf.winRefused.assign(nparts, 0.0);
+                            hf.winSide.assign(nparts, 0.0);
                         }
                         if(ship->lastFormWatts >= hf.worstW) {
                             hf.worstW = ship->lastFormWatts;
@@ -4458,6 +4473,8 @@ void drawPartWindows(Game &g) {
                                 hf.winVis[k] = ship->parts[k]->formVis;
                                 hf.winCdA[k] = ship->parts[k]->formCdA;
                                 hf.winWatts[k] = ship->parts[k]->formDragWatts;
+                                hf.winRefused[k] = ship->parts[k]->formRefused;
+                                hf.winSide[k] = ship->parts[k]->formSideCdA;
                             }
                         }
                         if(ImGui::GetTime() >= hf.nextRead || hf.pubVis.size() != nparts) {
@@ -4466,18 +4483,22 @@ void drawPartWindows(Game &g) {
                             std::swap(hf.winVis, hf.pubVis);
                             std::swap(hf.winCdA, hf.pubCdA);
                             std::swap(hf.winWatts, hf.pubWatts);
+                            std::swap(hf.winRefused, hf.pubRefused);
+                            std::swap(hf.winSide, hf.pubSide);
                             hf.pubAlpha = hf.worstAlpha;
                             hf.pubQ = hf.worstQ;
                             hf.pubMach = hf.worstMach;
                             hf.worstW = 0.0;   // the window starts over with the publish
                         }
                     }
-                    /* The prints below index three vectors by `part`: the swap
-                       keeps the trio one size, and the publish (or a geometry
+                    /* The prints below index five vectors by `part`: the swap
+                       keeps them one size, and the publish (or a geometry
                        reset) has just sized them to THIS hull. Asserted rather
                        than assumed (#1114 review). */
                     assert(hf.pubVis.size() == nparts && hf.pubCdA.size() == nparts
-                           && hf.pubWatts.size() == nparts);
+                           && hf.pubWatts.size() == nparts
+                           && hf.pubRefused.size() == nparts
+                           && hf.pubSide.size() == nparts);
                     /* The cd cell is the credit over its own area -- and a fully
                        sheltered part has neither, so it dashes rather than
                        inventing a 0.00 coefficient for air that never reached
@@ -4496,9 +4517,14 @@ void drawPartWindows(Game &g) {
                         memcpy(cdCell, "   -", 5);
                     }
                     const int n = snprintf(live.formRow, sizeof live.formRow,
-                                           "Form: %*.*f m2 visible  cd %s",
+                                           "Form: %*.*f m2 visible  cd %s  "
+                                           "hides %*.*f%%  side %*.*f m2",
                                            kFormVisCellChars, 2, hf.pubVis[part],
-                                           cdCell);
+                                           cdCell,
+                                           kFormHideCellChars, 1,
+                                           100.0 * hf.pubRefused[part],
+                                           kFormSideCellChars, 2,
+                                           hf.pubSide[part]);
                     assert(n > 0 && n < (int)sizeof live.formRow);
                     /* "Hull AoA", deliberately not "AoA": it is the airframe's
                        measured angle -- the very one this part's union credit
@@ -4536,15 +4562,19 @@ void drawPartWindows(Game &g) {
                        reflowed the card at the air boundary (the #1098 family --
                        the surface block carried the same bug two rows up). The
                        cells come from the same helpers and constants the live rows
-                       use -- kFormVisDash is static_asserted to the live %*.*f
-                       width, the watt dash is wattCell's own valid spelling. The
-                       peak keeps its number (0.0 W is a real answer, and on rails
-                       where it was cleared the number says so plainly). Spellings
-                       and row counts pinned by ui/1115-a (above the air -- the
-                       pad is windy, so it prints the live trio). */
+                       use -- kFormVisDash, kFormHideDash and kFormSideDash are
+                       static_asserted to the live %*.*f widths, the watt dash is
+                       wattCell's own valid spelling. The peak keeps its number
+                       (0.0 W is a real answer, and on rails where it was cleared
+                       the number says so plainly). Spellings and row counts pinned
+                       by ui/1115-a (above the air -- the pad is windy, so it
+                       prints the live trio). */
                     const int n = snprintf(live.formRow, sizeof live.formRow,
-                                           "Form: %*s m2 visible  cd %4s",
-                                           kFormVisCellChars, kFormVisDash, "-");
+                                           "Form: %*s m2 visible  cd %4s  "
+                                           "hides %*s%%  side %*s m2",
+                                           kFormVisCellChars, kFormVisDash, "-",
+                                           kFormHideCellChars, kFormHideDash,
+                                           kFormSideCellChars, kFormSideDash);
                     assert(n > 0 && n < (int)sizeof live.formRow);
                     const int n2 = partFlowRow(live.formFlowRow,
                                                sizeof live.formFlowRow,

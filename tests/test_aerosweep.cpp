@@ -767,6 +767,45 @@ static void test_body_lift() {
                "HITS included");
     CHECK_NEAR(b.v->lastSideCdA, b.v->drag_cd * 1.0 * 0.3, b.v->drag_cd * 1e-6,
                "only the hidden tail bills crossflow: refused 1 x strip 0.3 m2");
+    /* #1105: that bill BY PART, which is the half the ship columns never showed. The
+       audit dump and the part window read these two columns, so they are pinned here
+       rather than eyeballed: formRefused is the fraction of the part's OWN shadow the
+       union hid, formSideCdA what that leaves it to lever sideways.
+         pod     exposed          -> refused 0, sideCdA 0 (the axial bill paid its flank)
+         shelter partly hidden    -> refused > 0, sideCdA 0 -- refusal alone bills
+                                     nothing: the normal coefficient is AUTHORED, and
+                                     this def never got a drag_side
+         tail    fully hidden     -> refused 1, sideCdA = the whole ship figure
+       And the sum identity: the parts' sideCdA IS the SideCdA= a --drag-log row prints,
+       so the readout and the force cannot drift apart. */
+    Part *pPod = b.v->parts[0], *pShelter = b.v->parts[1], *pTail = b.v->parts[2];
+    CHECK_NEAR((double)pPod->formRefused, 0.0, 0.0,
+               "the pod presents its whole shadow to this flow: refused 0 per part");
+    CHECK_NEAR((double)pPod->formSideCdA, 0.0, 0.0,
+               "...and pays no normal force, per part exactly as per ship");
+    CHECK_TRUE((double)pShelter->formRefused > 0.05,
+               "shelter hides part of its own shadow behind the pod -- the column "
+               "measures the overlap, it does not bin it");
+    CHECK_NEAR((double)pShelter->formSideCdA, 0.0, 0.0,
+               "a refused part with no authored drag_side bills nothing sideways: "
+               "#947's cn is an anchor, not a default");
+    CHECK_NEAR((double)pTail->formRefused, 1.0, 1e-9,
+               "the tail's 0.04 m2 shadow falls inside shelter's: fully refused");
+    CHECK_NEAR((double)pTail->formSideCdA, b.v->drag_cd * 1.0 * 0.3, b.v->drag_cd * 1e-6,
+               "and it carries the whole crossflow bill, coefficient and strip included");
+    double sumSide = 0.0;
+    for(Part *p : b.v->parts) { sumSide += p->formSideCdA; }
+    /* The columns are float (part.h), the ship figure double: the tolerance is the
+       storage's, not the law's -- same reasoning as #1090's watt pins above. */
+    CHECK_NEAR(sumSide, b.v->lastSideCdA, b.v->lastSideCdA * 1e-6,
+               "the per-part column SUMS to the ship's SideCdA= (#1105's readout and "
+               "the force are the same number)");
+    printf("[side-part] pod refused %.3f side %.4f | shelter %.3f / %.4f | "
+           "tail %.3f / %.4f | ship SideCdA %.4f SideCp %+.2f\n",
+           (double)pPod->formRefused, (double)pPod->formSideCdA,
+           (double)pShelter->formRefused, (double)pShelter->formSideCdA,
+           (double)pTail->formRefused, (double)pTail->formSideCdA,
+           b.v->lastSideCdA, b.v->lastSideCpLever);
     // The lever is the FORCE-weighted centroid arm (a bare-coefficient weighting
     // would be the arm of nothing once parts see different flows or axes). Same
     // cl/cos/sin on both lifting mounts here, so the weights reduce to the
