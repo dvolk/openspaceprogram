@@ -66,9 +66,10 @@ CHECK last(slew)["E"] < 0.005
 # show up here as a drain with nothing spent, or the reverse. Read off --drain-log rather
 # than the [fuel] print: [fuel] prints one decimal and this turn costs 0.14 kg, which is
 # inside one rounding step of nothing. Before #679 the same ARGS spent 0.7 kg and this case
-# pinned that figure; four of the twenty bells lever ~1e-5 N m, and a cost-blind solver
-# loaded them to full thrust. The hull turns the same either way -- flight/679-... is what
-# that waste was and where its pin lives.
+# pinned that figure; four of the twenty bells lever roundoff -- their authored axis is
+# radial, through the COM, so 3e-10..3e-9 N m against the ring's 69 -- and a cost-blind
+# solver loaded them to full thrust. The hull turns the same either way -- flight/679-...
+# is what that waste was, where its pin lives, and what rate x dt is worth.
 CHECK max(r["rates"][0] for r in drainlog) > 0.03
 CHECK sum(r["rates"][0] * r["dt"] for r in drainlog) > 0.05
 CHECK sum(r["rates"][0] * r["dt"] for r in drainlog) < 0.5

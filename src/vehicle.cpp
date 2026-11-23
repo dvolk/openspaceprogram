@@ -7643,17 +7643,27 @@ Vehicle::AttitudeAuthority Vehicle::attitudeAuthorityRows(bool switchesApply) {
                FULL bell thrust for the torque it never delivered. Measured on rcs_test
                holding kill-rot after the hull had stopped: ask 0.0002 N m, four radial
                bells at s=1.0, 120-240 N of thrust, 0.08 kg/s of hydrazine, no turn.
+               Those four are the bells whose authored axis is RADIAL -- one per box,
+               pointing out from the tank wall -- so their axis passes through the COM
+               and the cross product is roundoff: 3e-10..3e-9 N m against the 69 N m the
+               same ring's other sixteen bells lever.
                So the cut is by WORTH, against the ring itself, not against zero: a
                bell under 0.1% of the best bell here is a translation nozzle, exactly
                as a bell through the COM always was, and it stays creditable to rcsPlan
                for pushing. Relative rather than absolute because hulls run from a
                0.5 m pod to a station, and on the old one-bell pod rig (#1120's
-               rcs_r1) even a small arm is the whole ring.
+               rcs_r1) even a small arm is the whole ring. Nothing shipped sits near the
+               cut either: the bells it drops lever ~1e-11 of their ring's best and every
+               bell it keeps is a large fraction of it, so where the number sits is a
+               style question today, not a gameplay one.
                Squared compare on squared quantities: 1e-6 of bestLever2 is 1e-3 of it.
                A NaN lever never raises bestLever2 and never passes the minLever2 test,
-               so a poisoned geometry still buys nothing -- and if EVERY lever is bad,
-               bestLever2 is 0, minLever2 is 0, and the old `> 0.0` test is exactly
-               what runs. */
+               and an infinite one takes the whole ring down with it -- both fail closed,
+               which is the direction a poisoned geometry should go. And the cut stays
+               RELATIVE all the way down: a ring whose every bell is near-degenerate
+               keeps them all, because 0.06 N m on a badly-mounted box is that hull's
+               whole steering authority, not noise -- what the cut removes is a row that
+               is noise beside the ring it belongs to. */
             double bestLever2 = 0.0;
             for(const RcsNozzle &nz : rcsNoz) {
                 const double l2 = glm::length2(glm::cross(nz.arm, nz.dir) * nz.thrust);

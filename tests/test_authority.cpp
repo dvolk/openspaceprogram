@@ -2252,21 +2252,28 @@ static void test_a_bell_that_levers_a_hair_is_not_a_steering_row() {
     podDef.capacity[(int)ResourceType::Hydrazine] = 1.0;
     /* As in mkRing, 100 kg of loaded pod 2 m above 100 kg of ballast puts the COM
        exactly 1.0 m under the pod, so every bell here has a 1.0 m arm and its lever is
-       100 N x how far its axis misses the COM. Four bells, all one-way, the ship pushed
+       100 N x how far its axis misses the COM. Six bells, all one-way, the ship pushed
        OPPOSITE each, and the lever below is cross(arm, -dir) x thrust:
-         0  +X                     100 N m along -Y   -- a real steering bell
-         1  +Z                       0 N m            -- through the COM
-         2  +Z 1e-7 toward +Y      1e-5 N m along +X  -- #679's shape: noise, not lever
-         3  +Z 0.01 rad toward +X    1 N m along -Y   -- weak, but not noise
-       The ring's best is 100, so the cut sits at 0.1 N m: bell 3 clears it tenfold,
-       bell 2 misses it by three orders of magnitude. Bell 3 lands ON bell 0's line (the
-       grouping tolerance is 1e-9 rad), so they share that line pro-rata. Bell 2 owns the
-       +X line by itself, at a capacity of 1e-5 N m -- and a line nobody else covers is
-       how a whole bell goes missing: the law's ask has a hair of X in it, the solver
-       loads bell 2 to its limit chasing that hair, and applyRcsForce charges a full
-       100 N bell for the 1e-5 N m it delivered. */
+         0  +X                       100 N m along -Y   -- a real steering bell
+         1  +Z                         0 N m            -- through the COM
+         2  +Z 1e-7 toward +Y       1e-5 N m along +X   -- noise, not lever
+         3  +Z 0.01 rad toward +X     1 N m along -Y    -- weak, but not noise
+         4  +Z 2e-3 toward +X       0.2 N m along -Y    -- just inside the cut
+         5  +Z 5e-4 toward +X      0.05 N m along -Y    -- just outside it
+       The ring's best is 100, so the cut sits at 0.1 N m: bells 3 and 4 clear it, bell 5
+       misses it, and those two pin the constant within a factor of two -- widen it to 1%
+       and bell 4 goes, tighten it to 0.001% and bell 5 stays. Bell 2 is the shape #679
+       actually shipped: on rcs_test the four radial bells of the four boxes lever
+       3e-10..3e-9 N m against the same ring's 69, a ratio of 1e-11, and a law's residual
+       ask of 0.0002 N m is 1e5 times their capacity. Bell 3 lands ON bell 0's line (the
+       grouping tolerance is 1e-9 rad), so they share that line pro-rata, bells 4 and 5
+       with them. Bell 2 owns the +X line by itself, at a capacity of 1e-5 N m -- and a
+       line nobody else covers is how a whole bell goes missing: the law's ask has a hair
+       of X in it, the solver loads bell 2 to its limit chasing that hair, and
+       applyRcsForce charges a full 100 N bell for the 1e-5 N m it delivered. */
     podDef.rcs_nozzles = { glm::dvec3(1.0, 0.0, 0.0), glm::dvec3(0.0, 0.0, 1.0),
-                           glm::dvec3(0.0, 1e-7, 1.0), glm::dvec3(0.01, 0.0, 1.0) };
+                           glm::dvec3(0.0, 1e-7, 1.0), glm::dvec3(0.01, 0.0, 1.0),
+                           glm::dvec3(2e-3, 0.0, 1.0), glm::dvec3(5e-4, 0.0, 1.0) };
     v->setRoot(pod);
     Part *ballast = mkPart(defs, "ballast", 100.0, 1.0, 0.0, 0.0);
     v->attachDown(ballast);
@@ -2280,7 +2287,7 @@ static void test_a_bell_that_levers_a_hair_is_not_a_steering_row() {
     printf("   limits:");
     for(const ActuatorRow &r : a.rcs) { printf(" %.6g", r.limit); }
     printf("\n");
-    CHECK_TRUE(a.rcs.size() == 4, "index-parallel to the bells, dead ones and all (#595)");
+    CHECK_TRUE(a.rcs.size() == 6, "index-parallel to the bells, dead ones and all (#595)");
     CHECK_NEAR(1.0, a.rcs[0].limit, 1e-9, "the bell that levers is fully available");
     CHECK_NEAR(0.0, a.rcs[1].limit, 0.0, "a bell through the COM levers nothing to spend");
     CHECK_NEAR(0.0, a.rcs[2].limit, 0.0,
@@ -2288,21 +2295,32 @@ static void test_a_bell_that_levers_a_hair_is_not_a_steering_row() {
                "carried limit 1.0 and the solve loaded it like any other");
     CHECK_NEAR(1.0, a.rcs[3].limit, 1e-9,
                "a bell 0.01 rad off the COM line levers a whole N m: weak is not noise");
-    /* The capability the laws budget with moves with the rows: 101 = the real bell plus
-       the weak-but-real one. The noise bell's 1e-5 is what the cut is for, and it is
-       below this pin's tolerance, so the teeth are the limit pins above and the spend
+    /* THE WIDTH OF THE CUT, from both sides. Bells 4 and 5 are 0.2 and 0.05 N m beside a
+       ring worth 100: the constant says 0.1% of 100, so 4 is a row and 5 is not. Without
+       these two the constant is free -- the fixture above passes for any cut anywhere in
+       the eight decades between 1e-5 and 1 N m. */
+    CHECK_NEAR(1.0, a.rcs[4].limit, 1e-9,
+               "0.2 N m is 0.2% of this ring: kept, because weak is what the relative cut "
+               "is for -- on a hull whose best bell levers 0.2, that IS the steering");
+    CHECK_NEAR(0.0, a.rcs[5].limit, 0.0,
+               "0.05 N m is 0.05%: dropped, the same row the old exact-zero test used to "
+               "call it");
+    /* The capability the laws budget with moves with the rows: 101.2 = the real bell plus
+       the three weak-but-real ones. The noise bell's 1e-5 is what the cut is for, and it
+       is below this pin's tolerance, so the teeth are the limit pins above and the spend
        below -- this line is here so a future re-rate cannot quietly move the ring. */
-    CHECK_NEAR(101.0, v->attitudeTorqueAbout(a, -glm::dvec3(0.0, 1.0, 0.0)), 1e-3,
-               "the ring still brings 101 N m to bear about -Y: bell 0 plus bell 3's"
-               " sin(0.01) x 100, and the 1e-5 noise lever is not in the sum");
+    CHECK_NEAR(101.2, v->attitudeTorqueAbout(a, -glm::dvec3(0.0, 1.0, 0.0)), 1e-3,
+               "the ring still brings its four real bells to bear about -Y: 100 +"
+               " sin(0.01) x 100 + sin(2e-3) x 100, and the 1e-5 noise lever is not in"
+               " the sum");
     CHECK_NEAR(0.0, v->attitudeTorqueAbout(a, glm::dvec3(1.0, 0.0, 0.0)), 0.0,
                "and it brings nothing to bear about X -- bell 2's 1e-5 N m is not a"
                " capability a law could use, it is exactly what the cut drops");
 
     /* THE SPEND, at an ask like the one #679 measured on a hull that had already
        stopped: mostly the axis the ring does cover, plus a hair of noise on one it
-       does not. The solver splits the -Y part pro-rata over bells 0 and 3 (~2e-6 of
-       each), which is 4e-4 N of gas and 1.5e-9 kg of hydrazine for a substep. Offer it
+       does not. The solver splits the -Y part pro-rata over bells 0, 3 and 4 (~2e-6 of
+       each), which is 6e-4 N of gas and 2e-9 kg of hydrazine for a substep. Offer it
        bell 2 as well and the +X hair loads that bell to its limit: 100 N of thrust,
        3.9e-4 kg this substep -- 0.05 kg/s, the same shape as the 0.08 kg/s the live
        hold drank -- for 1e-5 N m, and the hull does not care about 1e-5 N m. */

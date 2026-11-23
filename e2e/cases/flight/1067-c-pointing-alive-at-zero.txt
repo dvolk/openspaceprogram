@@ -66,7 +66,8 @@ CHECK last(slew)["wnorm"] < 0.01
 # HYDRAZINE PAYS for the MANEUVER: no translation key is ever pressed, so every gram
 # that left the tank went into attitude. A dial that reached the ratings would
 # still burn, so this one is the company the torque pin keeps. Measured 0.056 kg/s
-# during the tap and the stop, ~0.10 kg for the run, off --drain-log rather than the
+# during the tap and the stop, 0.09-0.10 on the drain integral for the run (an upper
+# bound on the kg -- flight/679 explains why), off --drain-log rather than the
 # [fuel] print -- [fuel] prints one decimal and 0.10 kg is under one step of it. The
 # keys' dial is at 0, so the ring points with every bell that has leverage; the four
 # that do not (one per box, through the COM) are out of the attitude row set since

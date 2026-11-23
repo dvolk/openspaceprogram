@@ -1,31 +1,33 @@
 # A ring of bells turns a hull with no wheels and no armed engine (#595), and #677 proved
 # the kill-rot law asks it to. What #679 found is that the law keeps asking after the hull
 # has STOPPED, and the tank keeps falling: hold kill-rot on rcs_test, watch |w| reach
-# 0.0000 at t=6.65, and --drain-log prints 0.08 kg/s for the next two and a half seconds
-# while the key stays down. Integrated over that run: 0.51 kg, of which ~0.27 kg left the
-# tank doing nothing at all -- about 5 kg a minute of hydrazine to hold a still ship.
+# 0.0000 at t=6.7, and --drain-log prints 0.026-0.098 kg/s for the next two and a half
+# seconds while the key stays down. The [mass] rows say the tank fell 0.18-0.22 kg over
+# such a run (three runs) against 0.06-0.07 kg once the noise rows are gone -- call it 5
+# kg a minute of propellant to hold a still ship.
 #
 # The culprit is not the law and not the ring's rating. It is a row with a HAIR of
 # authority. Vehicle hands the torque solver one row per bell, priced cross(arm,dir) x
 # thrust, and the solver (actuators.h) fits a demanded vector with no notion of what a row
-# COSTS. rcs_test's four boxes each carry one bell whose axis passes within microns of the
-# COM: its lever is ~1e-5 N m, so its line's capacity is ~1e-5, and the residual ask of
-# 0.0002 N m is ten times that. The solver loads the bell to its LIMIT -- the descent is
-# happy with any split along a shared direction, so it gives the weak line its whole
-# capacity and the strong bells the rest -- and applyRcsForce then bills a FULL 120 N bell
-# for the 1e-5 N m it delivered. Measured with a temporary probe: ask 0.0002 N m, four bells
-# at s=1.0, 120-240 N of gas every other substep, |w| = 0.0000 the whole time.
+# COSTS. Each rcs_box authors five bells, and one of them points radially out from the tank
+# wall, so its axis passes through the COM: its lever is roundoff, 3e-10..3e-9 N m against
+# the 69 N m the ring's other sixteen bells lever. The residual ask of 0.0002 N m is
+# enormous next to that. The solver loads the bell to its LIMIT -- the descent is happy with
+# any split along a shared direction, so it gives the weak line its whole capacity and the
+# strong bells the rest -- and applyRcsForce then bills gas by THRUST, not by torque, so
+# four 60 N bells went off for 1e-9 N m. Measured with a temporary probe: ask 0.0002 N m,
+# four bells at s=1.0, 120-240 N of gas every other substep, |w| = 0.0000 the whole time.
 #
 # The fix is in row building, not in the solve: a bell under 0.1% of its own ring's best
 # lever is not a steering actuator at all. It stays fully creditable to rcsPlan for PUSHING
 # -- that is what a bell through the COM has always been good for -- it just cannot be spent
-# on pointing. tests/test_authority.cpp pins the cut and the saturated-bell arithmetic in a
-# fixture; this case is the same fact flying, and it is the first RCS case in the battery
-# that reads --drain-log, because the fuel print's one decimal cannot see a 0.1 kg burn.
+# on pointing. The margin is not close for any built hull: the shipped bells sit 10 orders
+# either side of the cut. tests/test_authority.cpp pins the cut and the saturated-bell
+# arithmetic in a fixture; this case is the same fact flying, off --drain-log rather than
+# the [fuel] print, whose one decimal cannot see a 0.1 kg burn.
 #
 # The stop itself still pays: 0.056 kg/s while 138 N m is putting 0.88 rad/s down. Post-fix
-# totals for these ARGS: ~0.10 kg for the whole run, against 0.51 kg before it, and every
-# drain row after t=7.4 is 0.000.
+# rows for these ARGS print 0.056, 0.022, then 0.000 from t=7.5 on.
 NAME holding-a-stopped-ring-hull-does-not-drink
 CLAIM Holding kill-rot on a ring-steered hull that has already stopped drinks nothing, while the stop that got it there still costs.
 KIND invariant
@@ -54,14 +56,17 @@ CHECK all(s["wnorm"] < 0.02 for s in slew if s["t"] > 8.0)
 # fix must NOT show up.
 CHECK max(s["tau_spent"] for s in slew) > 120
 CHECK max(r["rates"][0] for r in drainlog if r["t"] < 7.0) > 0.03
-# THE HOLD COSTS NOTHING. The stop is done by t=6.7; a --drain-log row averages its own
-# window, so the first row that cannot still be carrying the stop's spend is t >= 7.4.
-# Before the fix these rows read 0.026-0.098 kg/s steady (the spread is when a wall-clock
-# key release lands, #1054); post-fix they print 0.000.
+# THE HOLD COSTS NOTHING. The stop is done by t=6.7, so the first row that cannot still be
+# carrying the stop's spend is t >= 7.4. Before the fix these rows read 0.026-0.098 kg/s
+# steady; post-fix they print 0.000.
 CHECK all(r["rates"][0] < 0.005 for r in drainlog if r["t"] >= 7.4)
-# AND THE RUN AS A WHOLE: ~0.10 kg for tap plus stop, against 0.51 kg with the noise bells
-# in the solve. Generous at both ends -- the tap's 0.6 s and the stop's 0.7 s of 138 N m
-# are real spending, and the ceiling is what would catch a hull that went back to burning
-# through a hold.
+# AND THE RUN AS A WHOLE. What is integrated here is NOT kilograms: a row's g0= divides by
+# the seconds that group actually FLOWED (drainSpentSpan_), while dt= is the whole print
+# window, so rate x dt is an upper bound on the row's spend, not the spend -- 0.093-0.096
+# summed against the 0.06-0.07 kg the [mass] rows say this run really lost. It is still the
+# right instrument for this claim because the same over-count sits on both sides of the
+# comparison: these ARGS sum 0.093-0.096 with the guard and 0.23-0.41 with it off. The
+# floor is the tap's 0.6 s and the stop's 0.7 s of 138 N m, which are real spending; the
+# ceiling is what would catch a hull that went back to burning through a hold.
 CHECK sum(r["rates"][0] * r["dt"] for r in drainlog) > 0.03
-CHECK sum(r["rates"][0] * r["dt"] for r in drainlog) < 0.30
+CHECK sum(r["rates"][0] * r["dt"] for r in drainlog) < 0.15

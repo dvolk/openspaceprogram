@@ -80,15 +80,19 @@ CHECK last(slew)["wnorm"] < 0.01
 CHECK all(s["wnorm"] < 0.02 for s in slew if s["t"] > 8.0)
 # HYDRAZINE PAYS for the MANEUVER. No translation key (N/I/L/J/K/U) is ever pressed, so
 # every gram that left the tank went into attitude: 0.056 kg/s while 138 N m puts 0.88
-# rad/s down, ~0.10 kg over the run. It is read off --drain-log rather than the [fuel]
-# print because [fuel] prints one decimal and 0.10 kg is smaller than one step of it --
+# rad/s down, and 0.095-0.10 on the drain integral over the run -- an upper bound on the
+# kilograms, since a row's rate divides by the seconds it flowed and dt= is the whole
+# window (flight/679 spells it out). It is read off --drain-log rather than the [fuel]
+# print because [fuel] prints one decimal and 0.1 kg is smaller than one step of it --
 # which is also why this case's fuel pin used to be weaker than it looked. Mind what the
 # spend is NOT: it belongs to the tap and the stop, and the tank is flat (0.000 kg/s) for
 # the rest of the hold. It used to keep falling at 0.08 kg/s for as long as X stayed down,
-# and that was #679 -- four of the twenty bells lever ~1e-5 N m, and a cost-blind solve was
+# and that was #679 -- four of the twenty bells lever roundoff, 3e-10..3e-9 N m against the
+# ring's 69, and a cost-blind solve was
 # loading them to full thrust -- which flight/679-holding-a-stopped-ring-hull-does-not-drink
 # now pins. Note that those [slew] rows print tau_ask=0 tau_spent=0 throughout: the columns
 # record the last ACTUATED substep, not a sum over the row (see slew_log), so [slew] was
-# never the instrument that could see #679 -- only the drain columns can.
+# never the instrument that could see #679 -- only the drain columns can. Hence the
+# ceiling here: 0.095-0.10 post-fix, 0.22-0.40 on a build that puts the noise bells back.
 CHECK max(r["rates"][0] for r in drainlog) > 0.03
-CHECK sum(r["rates"][0] * r["dt"] for r in drainlog) < 0.3
+CHECK sum(r["rates"][0] * r["dt"] for r in drainlog) < 0.15
