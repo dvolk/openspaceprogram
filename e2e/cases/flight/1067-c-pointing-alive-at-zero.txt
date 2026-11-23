@@ -24,7 +24,12 @@ EXPECT RCS: translation limited to 0% of what the ring can do that way
 FORBID error:
 FORBID FAILED
 CHECK len(slew) >= 15
-CHECK all(s["mode"] == "killrot" for s in slew)
+# Two shapes now share [slew]: the HOLD rows (killrot, while X is held from 6 s) and the
+# TAP rows (mode=stick, while S is held at 3 s). #1130 asked for the second one -- with
+# only laws logging, a key press of your own left no row anywhere, so the spin-up these
+# pins rely on was inferable but never measured.
+CHECK all(s["mode"] == "killrot" for s in slew if s["t"] > 6.0)
+CHECK sum(1 for s in slew if s["mode"] == "stick") >= 4
 # THE RING IS SPENT ON POINTING, at its own ceiling (a --steering-log run on rcs_test
 # prices it at 276/138/138 N m, R/P/Y). The whole point of the case is that this number
 # does not move when the keys' dial goes to 0. tau_spent is exactly 138 -- the pitch
@@ -32,6 +37,21 @@ CHECK all(s["mode"] == "killrot" for s in slew)
 # only holds while the ask stays on pitch (roll is worth 276).
 CHECK max(s["tau_spent"] for s in slew) > 120
 CHECK all(s["tau_spent"] <= 145.0 for s in slew)
+# #1130's question, answered where it was asked: does the TRANSLATION dial reach a
+# POINTING tap? The tap rows say no -- with --rcs-frac 0 the stick still asks for the
+# ring's whole 138 N m and the ring still spends it, ask and spent equal to the last
+# printed digit in all six runs taken at --rcs-frac 1.0 / 0.65 / 0.35 / 0.0.
+CHECK all(s["tau_spent"] > 130.0 for s in slew if s["mode"] == "stick")
+CHECK all(abs(s["tau_ask"] - s["tau_spent"]) < 1.0 for s in slew if s["mode"] == "stick")
+# AND THE RAMP BELONGS TO THE HARDWARE. 138 N m over the Ieff these rows print (86 kg m^2)
+# is 1.605 rad/s^2, which is what 595's prograde rows call alpha=1.606. The slope between
+# the first and last tap row is 1.6002..1.6016 in six runs -- two at this dial, four at
+# the default -- so the tap accelerates the hull at exactly what the ring is worth no
+# matter where the translation dial sits. What DOES move is when the release lands: the
+# tap rows end at t=3.550..3.667 and leave 0.80..0.99 rad/s, because --sim-press without
+# --sim-steps is wall-clock timed (#138, #871). That spread is the 14-17 % #1130 read as
+# the dial biting, and it is why the slope rather than the endpoint is the pinnable number.
+CHECK (lambda st: 1.58 < (st[-1]["wnorm"] - st[0]["wnorm"]) / (st[-1]["t"] - st[0]["t"]) < 1.62)([s for s in slew if s["mode"] == "stick"])
 # AND THE SPIN GOES AWAY with the keys' dial at zero.
 CHECK max(s["wnorm"] for s in slew) > 0.25
 CHECK min(s["wnorm"] for s in slew) < 0.01

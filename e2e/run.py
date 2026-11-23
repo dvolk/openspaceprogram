@@ -449,6 +449,16 @@ KILLROT_RE = re.compile(
     r"\[slew\]\s+t=([\d.]+)\s+mode=killrot\s+\|w\|=([-\d.]+)\s+rad/s\s+"
     r"w=\[([-+\d. ]+)\]\s+tau_ask=([-\d.]+)\s+tau_spent=([-\d.]+)"
 )
+# ... and a third while ONLY the manual stick is held (#1130): no latched law, so again
+# no E, no alpha and no nose/target pair -- but the stick's own ask, the rate, and the
+# same torque pair. Before this row the part of a turn the player causes by hand was the
+# part the trace could not see, and #1130's dial question had to be inferred from the
+# spin still standing three seconds later. stick= is roll / pitch / yaw, -1..1.
+STICK_RE = re.compile(
+    r"\[slew\]\s+t=([\d.]+)\s+mode=stick\s+stick=\[([-+\d. ]+)\]\s+"
+    r"\|w\|=([-\d.]+)\s+rad/s\s+"
+    r"w=\[([-+\d. ]+)\]\s+tau_ask=([-\d.]+)\s+tau_spent=([-\d.]+)"
+)
 # --perf's frame-cost record (#676): one row per window, every number a per-frame
 # average. Parsed so a build can be DIFFED against a build instead of read as
 # prose at exit. `win=` is in the row because the window is gated on wall seconds
@@ -1415,6 +1425,21 @@ def parse_slew(out):
             "tau_spent": float(tau_spent),
             "nose": None, "target": None,
             "wxyz": tuple(float(v) for v in wxyz.split()),
+        })
+    # Stick-only rows (#1130), same list and same reasoning: the row carries no law state,
+    # so every law key is None and a case that mixes modes has to name the mode it means.
+    for m in STICK_RE.finditer(out):
+        t, ask, wmag, wxyz, tau_ask, tau_spent = m.groups()
+        rows.append({
+            "t": float(t), "mode": "stick", "E": None,
+            "w_slew": None, "w_roll": None, "w_third": None,
+            "wnorm": float(wmag), "alpha": None, "alpha_full": None,
+            "Ieff": None, "w_des": None, "w_cap": None,
+            "tau_ask": float(tau_ask),
+            "tau_spent": float(tau_spent),
+            "nose": None, "target": None,
+            "wxyz": tuple(float(v) for v in wxyz.split()),
+            "stick": tuple(float(v) for v in ask.split()),
         })
     rows.sort(key=lambda r: r["t"])
     return rows

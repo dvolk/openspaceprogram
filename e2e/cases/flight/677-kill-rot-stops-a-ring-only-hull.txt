@@ -19,9 +19,11 @@
 # ring all along.
 #
 # The S tap (600 ms) is the disturbance and X is HELD from 6.0 s, which is what the
-# player does -- X is an override, not a latch, and the [slew] rows only exist while it
-# is held, so their count is the hold. --no-paint because nothing here is a picture and
-# #666 proved the numbers do not move when the paint pass goes away.
+# player does -- X is an override, not a latch, and a latched law's [slew] rows only
+# exist while the key is held, so the killrot rows are the hold. The tap has rows of its
+# own now (mode=stick, #1130), so the mode filters below are windows, not the whole log.
+# --no-paint because nothing here is a picture and #666 proved the numbers do not move
+# when the paint pass goes away.
 NAME kill-rot-stops-a-ring-only-hull
 CLAIM Holding kill-rot on a hull whose only steering is its thruster ring asks for torque, spends hydrazine, and puts the spin down.
 KIND invariant
@@ -35,7 +37,16 @@ FORBID error:
 FORBID FAILED
 # The hold is 3 s of kill-rot and nothing else is latched, so every row is this law.
 CHECK len(slew) >= 15
-CHECK all(s["mode"] == "killrot" for s in slew)
+# Every row used to be this law; since #1130 made the manual stick log, the 3 s TAP also
+# prints rows (mode=stick) and they sit outside the hold window. The window is what the
+# claim is about, so the filter is the window.
+CHECK all(s["mode"] == "killrot" for s in slew if s["t"] > 6.0)
+CHECK sum(1 for s in slew if s["mode"] == "stick") >= 4
+# The line in this case's preamble -- "the SAME ring spent 138 N m answering the stick" --
+# used to be something you had to take on faith because no stick row was ever printed.
+# Now it is: the tap rows print stick=[+0.00 -1.00 +0.00] with tau_ask=138 tau_spent=138,
+# and flight/1067-c-pointing-alive-at-zero pins the ramp they produce.
+CHECK all(s["tau_spent"] == 138 for s in slew if s["mode"] == "stick")
 # THE LAW ASKS. tau_ask is the summed demand for the last actuated substep: I*(-w)/h
 # on a ~0.9 rad/s spin is fourteen thousand N m, which is the hull saying "stop", not a
 # number anyone should read as a thrust. Before #677's fix this is 0 in every row, so

@@ -13,13 +13,15 @@ KIND invariant
 # never rotates (|w| stays ~0.0003 where the default run reaches ~0.9), tau_spent is 0
 # on every row, and the tank never moves (the default run drinks 0.1-0.3 kg).
 #
-# tau_ask stays above 0 and mode stays killrot: kill-rot asks whenever the ring's ROWS
-# exist (its guard is row presence), so 0 % leaves a ring that is present and unallowed
-# and the shortfall reads ask>0 / spent=0. Switching the ring off removes the rows and
-# silences the ask, which is the shape #425's switch owns and the reason this dial must
-# not implement zero by dropping rows. (An ALIGNMENT law budgets its ask from alpha
-# instead, and alpha is 0 here either way, so --autopilot prograde cannot tell the two
-# apart; this press pattern can.)
+# The HOLD rows keep tau_ask above 0 and mode killrot: kill-rot asks whenever the ring's
+# ROWS exist (its guard is row presence), so 0 % leaves a ring that is present and
+# unallowed and the shortfall reads ask>0 / spent=0. The TAP rows read differently --
+# mode=stick with ask AND spent 0 -- because the stick's demand is cut by the dial before
+# the ring is consulted, while kill-rot budgets from I*(-w)/h. Switching the ring off
+# removes the rows and silences the ask, which is the shape #425's switch owns and the
+# reason this dial must not implement zero by dropping rows. (An ALIGNMENT law budgets its
+# ask from alpha instead, and alpha is 0 here either way, so --autopilot prograde cannot
+# tell the two apart; this press pattern can.)
 ARGS --time-accel 1 --startship rcs_test,res/ships/rcs_test.json,Kerbin,inertial-orbit
 ARGS --slew-log --fuel-log --no-paint --rcs-att-frac 0
 ARGS --sim-press 3000,600,S,6000,3000,X
@@ -29,10 +31,21 @@ EXPECT [slew]
 EXPECT RCS: attitude limited to 0% of what the ring leaves after the keys
 FORBID error:
 CHECK len(slew) >= 15
-CHECK all(s["mode"] == "killrot" for s in slew)
+CHECK all(s["mode"] == "killrot" for s in slew if s["t"] > 6.0)
 CHECK max(s["tau_spent"] for s in slew) == 0
 CHECK max(s["wnorm"] for s in slew) < 0.01
 CHECK max(s["tau_ask"] for s in slew) > 0
+# THE TAP ROWS (#1130) make the half of this claim that says "the stick was heard" direct
+# rather than inferred. Before the mode=stick rows, |w| staying at 0.0003 was equally
+# consistent with the key never being read at all; now the key logs itself, and what it
+# logs is an ask of 0 and a spend of 0 -- the dial caps the DEMAND, it does not dim the
+# nozzles. Note the two askers behave differently and keep the pins straight: killrot
+# keeps asking 5 N m on these rows because killRotDemand budgets from I*(-w)/h and only
+# then looks for rows, while the stick's ask is cut to 0 by the dial before the ring is
+# consulted. So tau_ask > 0 above is a killrot-row claim, never a stick-row one.
+CHECK sum(1 for s in slew if s["mode"] == "stick") >= 4
+CHECK all(s["tau_ask"] == 0 and s["tau_spent"] == 0 for s in slew if s["mode"] == "stick")
+CHECK all(s["wnorm"] < 0.01 for s in slew if s["mode"] == "stick")
 # Not one gram: nothing on this hull burns hydrazine except its ring, and the ring is
 # allowed nothing.
 CHECK first(fuel)["groups"][0]["N2H4"][0] == last(fuel)["groups"][0]["N2H4"][0]

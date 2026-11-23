@@ -5661,7 +5661,28 @@ void Vehicle::applyRcsForce(double h) {
 }
 
 void Vehicle::slew_log(double time) {
-    if(slew == SlewNone) { return; }
+    if(slew == SlewNone) {
+        /* THE STICK'S WINDOW (#1130). A held attitude key is a demand on the same four
+           channels a latched law uses, but until now the trace went silent while only the
+           stick was live, so the one part of a turn a player causes with their own hand was
+           the part nobody could measure -- #1130's "the dial weakened my tap" had to be
+           inferred from the rate still standing when kill-rot latched three seconds later,
+           and a wall-clock press schedule (#138, #871) moves that residue by more than the
+           effect being looked for. Row shape is the kill-rot one plus the ask itself, and
+           it says 0/0 when the ring cannot spend: the point is to record that the stick
+           reached the allocator, not that it moved the hull. */
+        if(stick[0] == 0.0f && stick[1] == 0.0f && stick[2] == 0.0f) { return; }
+        const AttitudeDelivery del = attitudeDelivery();
+        const glm::dvec3 w = hullAngVel();
+        printf("[slew] t=%.3f mode=stick stick=[%+.2f %+.2f %+.2f] |w|=%.4f rad/s "
+               "w=[%+.4f %+.4f %+.4f] tau_ask=%.0f tau_spent=%.0f\n",
+               time, (double)stick[0], (double)stick[1], (double)stick[2],
+               glm::length(w), w.x, w.y, w.z,
+               glm::length(del.asked),
+               glm::length(del.wheels + del.tvc + del.surfaces + del.rcs));
+        fflush(stdout);
+        return;
+    }
     /* THE SPEND (#599), read the same way for every mode this row prints. The demand
        and the channels come from the last ACTUATED substep -- applyRotationForce clears
        the record every substep, so a law that asked for nothing reads 0/0 rather than
