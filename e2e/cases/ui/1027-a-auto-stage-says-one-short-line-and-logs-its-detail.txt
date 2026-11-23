@@ -11,8 +11,15 @@
 #                  is refused in flight, so the label would be spent on nothing (#541)
 #   skiff          refused for the commonest reason of all -- no decoupler anywhere, 25 of the
 #                  32 shipped hulls -- where "can't" would call a one-stage ship broken
-#   central_radial applied, with a note that two engines that shared a label now light apart:
-#                  a real change, still detail, so it is a log line and not a second banner
+#   central_radial applied: four parts move, and the note says the engine nobody numbered now
+#                  lights as soon as the stack cuts it loose (#1033). A real change, still
+#                  detail, so it is a log line and not a second banner. This hull used to earn a
+#                  different note -- "1 engine pair(s) carried one label and would now light
+#                  apart" -- because before #1033 its two engines came out of the pair pass
+#                  sharing one label while the plan pulled them apart. Now the free-label pass
+#                  numbers central_engine on its own (no cut under it, so the top label), and the
+#                  pair never reaches that count. staging.cpp's own survey measured this rule
+#                  over res/ships and named central_radial as the hull whose labels it moved.
 #
 # rootcut and central_radial need Game Debug's dev-vehicles switch (a fixture, a testship),
 # flipped once and left on. No --width/--height: a small window stops the VAB top bar taking
@@ -55,8 +62,14 @@ EXPECT [autostage] refuse: 'dec_root' would have to take the whole ship
 EXPECT [toast] Auto-stage: this ship has no decoupler to split
 EXPECT [autostage] refuse: no decoupler in the build
 # The outcome that DOES change the build, and its caveat in the log rather than on screen.
-EXPECT [toast] Auto-staged 3 parts from the stack
-EXPECT [autostage] note: 1 engine pair(s) carried one label and would now light apart
+EXPECT [toast] Auto-staged 4 parts from the stack
+EXPECT [autostage] note: 1 engine(s) lit as soon as the stack cuts them loose
+# "4 parts" is a claim about the build, and the build is not dumped here: --stage-dump takes
+# exactly one instant (cli.cpp:512), and the refused shape above is the dump this case needs.
+# Read by hand off a run of the same clicks with only this hull loaded: authored all-1 becomes
+# capsule_1 1, central_tank 1, central_engine 2, dec_radial 2, booster_tank 2, booster_engine 2
+# -- four moved, one press, labels=1..2, inert_parts=3/6. 1012-b pins the same rule's effect on
+# a hull it does dump.
 # Nothing technical reaches the banner, and nothing painted is wider than the screen: at a
 # 28 px mono face ~16.8 px per cell, so 72 characters is the 1280 edge.
 CHECK all("refuse:" not in t and "note:" not in t for t in toast)

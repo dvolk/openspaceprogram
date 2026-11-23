@@ -9,6 +9,13 @@
 # dec_pod on the capsule's side -- so the numbered build carries 1, 2, 3 and spends two
 # presses, each of which drops something.
 #
+# Five parts move, not the four this case shipped with. eng_up carries label 1 like the rest of
+# the top of the stack, and #1033 numbers an engine the player never numbered one label below the
+# smallest cut under it -- dec_boost plans 3 here, so eng_up comes along to 2. That is a change
+# to the build, so it counts, and the note line pinned below is the game saying why. (Before
+# #1033 an engine like this stayed lit at the pad, which is the #1020 note instead. The toast's
+# "-- Ctrl+Z to take it back" tail is #1013, and 1013-a drives that undo.)
+#
 # No --width/--height: a small window stops the VAB top bar taking clicks (#1017), and
 # every step here is a click.
 NAME auto-stage-numbers-the-vabs-own-build
@@ -28,9 +35,12 @@ ARGS --ui-click 6600,"Staging/Auto-stage"
 ARGS --stage-dump 7400 --timeout 14
 LIMIT 60
 EXPECT [vab] loaded misstaged (8 parts)
-EXPECT [toast] Auto-staged 4 parts from the stack
+EXPECT [toast] Auto-staged 5 parts from the stack
+EXPECT [autostage] note: 1 engine(s) lit as soon as the stack cuts them loose
 # The deepest cut is the first press (label 3) and it rides its own label, because the
-# press drops the decoupler with its stage. dec_pod, one level up, is label 2.
+# press drops the decoupler with its stage. dec_pod, one level up, is label 2 -- and so is
+# eng_up, which is #1033 putting the upper engine on the label it lights at, not a cut.
+EXPECT [stagetree] 3 eng_up def=engine parent=tank_up stage=2 responds=engine
 EXPECT [stagetree] 4 dec_boost def=decoupler_r1 parent=eng_up stage=3 responds=decoupler
 EXPECT [stagetree] 7 dec_pod def=decoupler_radial parent=capsule_1 stage=2 responds=decoupler
 # Four presses became two, and the ladder is dense.
