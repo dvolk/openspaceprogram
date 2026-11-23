@@ -302,25 +302,22 @@ void flightKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
             g.toast("Camera: free flight (Shift-C to leave)");
         }
     }
-    if(slotFired(Slot::NextShip, ksc, kmod, g.binds)) {
-        /* Next selectable ship, wrapping. One-shot. Every vessel the walk
-           returns is flyable (a seated kerbal is a seat on its capsule Part,
-           not a vehicle -- part.h); a walking kerbal still cycles. */
-        if(!repeat) {
-            const std::vector<Vehicle *> &all = g.vehicles;
-            if(all.size() > 1) {
-                int cur = -1;
-                for(size_t i = 0; i < all.size(); i++) {
-                    if(all[i] == g.ship) { cur = (int)i; break; }
-                }
-                if(cur >= 0) {
-                    const int n = (int)all.size();
-                    for(int step = 1; step < n; step++) {
-                        Vehicle *v = all[(cur + step) % n];
-                        g.select_vehicle(v);
-                        break;
-                    }
-                }
+    /* Fleet cycling (#1148): ']' -- and still F6 -- steps forward, '[' steps back,
+       both wrap. One-shot. The whole fleet is in play: every vehicle the walk
+       returns is flyable (a seated kerbal is a seat on its capsule Part, not a
+       vehicle -- part.h) and a walking kerbal still cycles. Narrowing the walk to
+       one body or to the camera's vicinity is the ticket's stated later. */
+    const bool shipFwd = slotFired(Slot::NextShip, ksc, kmod, g.binds);
+    const bool shipBack = slotFired(Slot::PrevShip, ksc, kmod, g.binds);
+    if((shipFwd || shipBack) && !repeat) {
+        const std::vector<Vehicle *> &all = g.vehicles;
+        const size_t n = all.size();
+        if(n > 1) {
+            for(size_t i = 0; i < n; i++) {
+                if(all[i] != g.ship) { continue; }
+                // Forward wins if a rebind ever puts both slots on one key.
+                g.select_vehicle(all[shipFwd ? (i + 1) % n : (i + n - 1) % n]);
+                break;
             }
         }
     }

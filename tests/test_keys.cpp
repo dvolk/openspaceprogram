@@ -1,8 +1,9 @@
 // test_keys.cpp -- keys.h/.cpp: the rebindable key map. The exact-modifier
 // lookup (a plain binding fires only with no Shift/Ctrl/Alt held; a combo
 // fires only with exactly its modifiers), the default map (the previously
-// hardcoded keys land on the right scancodes, cam/eva up-down on R/F), the
-// --sim-press plain-key compatibility, and the naming round-trip.
+// hardcoded keys land on the right scancodes, cam/eva up-down on R/F, the
+// #1148 brackets on the fleet and -/= on camera speed), the --sim-press
+// plain-key compatibility, and the naming round-trip.
 // Pure logic: compiles src/keys.cpp with no SDL link (no SDL calls).
 #include <cassert>
 #include <cstdio>
@@ -88,6 +89,36 @@ int main() {
     assert(!slotFired(Slot::UndoStaging, SDL_SCANCODE_Z, 0, kb));
     assert(!slotSimKey(Slot::UndoStaging, SDL_SCANCODE_Z, kb));
     assert(slotGroup(Slot::UndoStaging) == SlotGroup::Game);
+
+    /* 1e) Fleet cycling (#1148): the brackets belong to the fleet -- '[' back, ']'
+       forward, both wrapping -- and F6 still steps forward next to ']'. Camera speed
+       moved to -/= to free them; the reason it was put on the brackets in the first
+       place (no double-fire with the held RCS keys) holds just as well on -/=.
+       A slot backs a LIST of keys, so NextShip having two is not a special case --
+       but that list is exactly what the Controls row now prints, so a binding sliding
+       off it would be invisible to a player and only noticed as a dead key. */
+    assert(hasPlain(Slot::NextShip, SDL_SCANCODE_F6));
+    assert(hasPlain(Slot::NextShip, SDL_SCANCODE_RIGHTBRACKET));
+    assert(hasPlain(Slot::PrevShip, SDL_SCANCODE_LEFTBRACKET));
+    assert(kb.perSlot[(size_t)Slot::NextShip].size() == 2);
+    assert(kb.perSlot[(size_t)Slot::PrevShip].size() == 1);
+    assert(!hasPlain(Slot::CamSpeedUp, SDL_SCANCODE_RIGHTBRACKET));
+    assert(!hasPlain(Slot::CamSpeedDown, SDL_SCANCODE_LEFTBRACKET));
+    assert(hasPlain(Slot::CamSpeedUp, SDL_SCANCODE_EQUALS));
+    assert(hasPlain(Slot::CamSpeedDown, SDL_SCANCODE_MINUS));
+    // Each bracket does exactly one thing: '[' never steps forward.
+    assert(slotFired(Slot::PrevShip, SDL_SCANCODE_LEFTBRACKET, 0, kb));
+    assert(!slotFired(Slot::NextShip, SDL_SCANCODE_LEFTBRACKET, 0, kb));
+    assert(slotFired(Slot::NextShip, SDL_SCANCODE_RIGHTBRACKET, 0, kb));
+    assert(!slotFired(Slot::PrevShip, SDL_SCANCODE_RIGHTBRACKET, 0, kb));
+    // --sim-press carries no modifiers, so an e2e case can only reach plain keys.
+    assert(slotSimKey(Slot::PrevShip, SDL_SCANCODE_LEFTBRACKET, kb));
+    assert(slotSimKey(Slot::NextShip, SDL_SCANCODE_RIGHTBRACKET, kb));
+    // The Controls window lists slots BY GROUP, so a mis-grouped slot is a row that
+    // does not exist: the player could never rebind what the ticket just added.
+    assert(slotGroup(Slot::PrevShip) == SlotGroup::Game);
+    assert(std::string(slotName(Slot::PrevShip)) == "prev_ship");
+    assert(slotFromName("prev_ship") == Slot::PrevShip);
 
     // 2) slotFired: exact-modifier match. A plain binding fires with no
     //    modifier and NOT with one held; a different key does not fire.

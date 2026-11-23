@@ -22,14 +22,15 @@ enum class Slot {
     // --- Game: one-shot actions (events.cpp, SDL_KEYDOWN edges) ----------
     WarpUp,        // '.'  warp one step up (10x)
     WarpDown,      // ','  warp one step down
-    CamSpeedUp,    // ']'  camera speed x4
-    CamSpeedDown,  // '['  camera speed /4
+    CamSpeedUp,    // '='  camera speed x4
+    CamSpeedDown,  // '-'  camera speed /4
     ToggleCamMode, // 'c'  ship: orbit <-> first-person; kerbal: orbit <-> free
     ToggleFreeCam, // 'LShift+c' free-cam on/off
     ToggleWindows, // TAB  the info windows
     DebugInfo,     // F1   the GAME DEBUG window (readouts + dev options)
     Telemetry,     // F2   the TELEMETRY plots
-    NextShip,      // F6   next selectable ship
+    NextShip,      // F6 / ']'  next selectable ship
+    PrevShip,      // '['  previous selectable ship (#1148)
     ToggleEva,     // 'v'  EVA out of the ship / back in
     Space,         // SPACE stage (ship) / jump (EVA)
     Undock,        // 'u'  split the most recent docked seam (active ship)

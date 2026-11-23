@@ -1,0 +1,52 @@
+# #1148: `[` steps to the previous ship, `]` to the next, both wrapping. F6 still
+# steps forward, so the bracket pair is the "back and forth" the ticket asked for
+# without orphaning the key the fleet HUD's habit already knows.
+#
+# Why the brackets moved rather than joined. They were the camera speed ladder
+# (CamSpeedUp/CamSpeedDown), and the comment that chose them there said why: "so it
+# doesn't double-fire with the held RCS keys". One press doing two things is the same
+# smell, so the ladder went to -/= -- also free, also nowhere near WASD or the RCS
+# row -- and the brackets, which read as back-and-forth, went to the fleet.
+#
+# What the walk covers: the whole fleet, not one body or the camera's neighbourhood.
+# Every vehicle in g.vehicles is selectable (a seated kerbal is a seat on its
+# capsule Part, not a vessel -- part.h), and a walking kerbal cycles too. The
+# ticket's "later we might limit it to vicinity or same body" is deliberately not
+# implemented; eight start ships are all on Kerbin, so this case cannot tell the two
+# apart and should not pretend to.
+#
+# The sequence pin is the point, not the count: forward, back, back THROUGH the start
+# into the tail (wrap), forward back over the start (wrap the other way), then F6 to
+# show the alias still works. The fixture order is racer, tanker, stager, laythe
+# explorer, transporter, endurance racer, ranger, power test.
+#
+# The last two legs read the CONTROLS window, because a binding nobody can see is a
+# binding nobody finds: its key column now prints every key a slot backs (F6 and ]
+# share a slot -- a slot has always backed a LIST, but the row used to show only the
+# first) and it prints through uiText, so the string the player reads is a row the
+# harness can name (#601). "Camera speed up" reading "=" is the other half of the
+# swap pinned here rather than left to the unit test.
+NAME bracket-ship-cycle
+CLAIM [ steps the active ship backwards and ] forwards, wrapping around the fleet, and the Controls window shows both brackets on the ship slots and -/= on camera speed.
+KIND invariant
+ARGS --startships e2e/fixtures/startships.json --time-accel 1 --timeout 9
+ARGS --sim-press 2000,0,]
+ARGS --sim-press 3000,0,[
+ARGS --sim-press 4000,0,[
+ARGS --sim-press 5000,0,]
+ARGS --sim-press 6000,0,F6
+# In flight there is no top-bar menu to click: ESCAPE (the Menu slot) is what opens
+# the Game Menu window, the same way save/181 reaches Save/Load.
+ARGS --sim-press 6600,0,ESCAPE
+ARGS --ui-click 7200,"Game Menu/Controls"
+ARGS --ui-list 7900
+# In order: 2 -> 1 -> 8 (wrapped back past the first) -> 1 (wrapped forward) -> 2 (F6).
+CHECK [ln.split("Active ship ")[1].split(" of")[0] for ln in out.splitlines() if "Active ship " in ln] == ["2", "1", "8", "1", "2"]
+EXPECT Active ship 8 of 8: power test
+EXPECT label="F6 / ]"
+EXPECT label="["
+EXPECT label="="
+EXPECT label="-"
+EXPECT rebind##prev_ship
+FORBID FAILED
+FORBID error:

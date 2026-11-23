@@ -16,9 +16,12 @@ void KeyBindings::resetDefaults() {
     // Game (one-shot, events.cpp)
     add(Slot::WarpUp,        SDL_SCANCODE_PERIOD);
     add(Slot::WarpDown,      SDL_SCANCODE_COMMA);
-    // Camera speed on [/] so it doesn't double-fire with the held RCS keys.
-    add(Slot::CamSpeedUp,    SDL_SCANCODE_RIGHTBRACKET);
-    add(Slot::CamSpeedDown,  SDL_SCANCODE_LEFTBRACKET);
+    /* Camera speed on -/= so it doesn't double-fire with the held RCS keys. It used
+       to sit on [/], which #1148 gave to fleet cycling: "back and forth" reads as
+       brackets, and one key doing two things at once is what the original comment
+       here was avoiding in the first place. */
+    add(Slot::CamSpeedUp,    SDL_SCANCODE_EQUALS);
+    add(Slot::CamSpeedDown,  SDL_SCANCODE_MINUS);
     add(Slot::ToggleCamMode, SDL_SCANCODE_C);
     // Free-cam is Shift+C (both sides; L/R Shift are distinct keys).
     perSlot[(size_t)Slot::ToggleFreeCam].push_back(KeyBind{SDL_SCANCODE_C, SDL_KMOD_LSHIFT});
@@ -26,7 +29,13 @@ void KeyBindings::resetDefaults() {
     add(Slot::ToggleWindows, SDL_SCANCODE_TAB);
     add(Slot::DebugInfo,     SDL_SCANCODE_F1);
     add(Slot::Telemetry,     SDL_SCANCODE_F2);
+    /* Two keys step forward: F6 is what the fleet HUD's habit and the old
+       one-shot table use, ']' is the forward half of the #1148 bracket pair. A slot
+       backs a LIST of keys (ToggleFreeCam has always carried both shift sides), and
+       the Controls row prints all of them. */
     add(Slot::NextShip,      SDL_SCANCODE_F6);
+    add(Slot::NextShip,      SDL_SCANCODE_RIGHTBRACKET);
+    add(Slot::PrevShip,      SDL_SCANCODE_LEFTBRACKET);
     add(Slot::ToggleEva,     SDL_SCANCODE_V);
     add(Slot::Space,         SDL_SCANCODE_SPACE);
     add(Slot::Undock,        SDL_SCANCODE_U);
@@ -159,6 +168,7 @@ const char *slotName(Slot s) {
         case Slot::DebugInfo:      return "debug_info";
         case Slot::Telemetry:      return "telemetry";
         case Slot::NextShip:       return "next_ship";
+        case Slot::PrevShip:       return "prev_ship";
         case Slot::ToggleEva:      return "toggle_eva";
         case Slot::Space:          return "space";
         case Slot::Undock:         return "undock";
@@ -242,6 +252,7 @@ const char *slotLabel(Slot s) {
         case Slot::DebugInfo:      return "Game Debug";
         case Slot::Telemetry:      return "Telemetry plots";
         case Slot::NextShip:       return "Next ship";
+        case Slot::PrevShip:       return "Previous ship";
         case Slot::ToggleEva:      return "Toggle EVA";
         case Slot::Space:          return "Stage / jump";
         case Slot::Undock:         return "Undock";
@@ -308,7 +319,7 @@ SlotGroup slotGroup(Slot s) {
         case Slot::CamSpeedUp: case Slot::CamSpeedDown:
         case Slot::ToggleCamMode: case Slot::ToggleFreeCam: case Slot::ToggleWindows:
         case Slot::DebugInfo: case Slot::Telemetry:
-        case Slot::NextShip: case Slot::ToggleEva: case Slot::Space: case Slot::Undock:
+        case Slot::NextShip: case Slot::PrevShip: case Slot::ToggleEva: case Slot::Space: case Slot::Undock:
         case Slot::Screenshot: case Slot::Quicksave: case Slot::Quickload:
         case Slot::Porkchop: case Slot::SurfaceMap:
         case Slot::Wireframe: case Slot::ResetWindows: case Slot::Menu:

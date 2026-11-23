@@ -6,17 +6,23 @@
 # The ambiguous half used to be demonstrated by the Controls window, whose 63
 # rebind buttons were all labelled "rebind" (#165). #165 is fixed now -- every
 # row is "rebind##<slotName>" -- and no shipped window carries two identical
-# labels any more (measured at 1920x1080 with Settings open: --ui-list 2600
-# reports items=59, prints 39 named rows, and no label repeats), so the case
-# pins only the not-found shape and the MISMATCH guard. findMatches()'s
-# "ambiguous (N matches)" branch is live code with nothing left in the shipped
-# UI to exercise it; a synthetic duplicate would be the only way to pin it.
+# CLICKABLE labels any more. Re-measured with this case's own setup after #1148
+# added a slot (1920x1080, Controls open): --ui-list 2600 reports items=231 and
+# prints 151 named rows, 85 of them clickable -- 38 rebind + 38 clear, for the
+# slots that fit above the fold (#1150 is the window running off the display),
+# plus the title menu's own rows -- and no label repeats. The key column's 66
+# readout rows DO repeat ("W" three times, once per movement group), but a
+# readout row is never a match target: findMatches() skips it.text, which is what
+# #601's marker is for. So the case pins only the not-found shape and the
+# MISMATCH guard. findMatches()'s "ambiguous (N matches)" branch is live code
+# with nothing left in the shipped UI to exercise it; a synthetic duplicate would
+# be the only way to pin it.
 NAME ui-click-failures
 CLAIM A bad --ui-click path fails loudly as not-found, never as a stray click.
 KIND harness
 ARGS --timeout 6 --ui-click 1500,"Title Menu/Controls" --ui-click 2500,"Controls/rebind##warp_up" --ui-click 3000,"Title Menu/No Such Button"
-# The positive control #165 bought: one row of the 63, named by its slot, so the
-# same run that shows a bad path failing also shows a good qualified path landing.
+# The positive control #165 bought: one row of the 66 slots, named by its slot, so
+# the same run that shows a bad path failing also shows a good qualified path landing.
 EXPECT path="Controls/rebind##warp_up"
 EXPECT path="Title Menu/No Such Button" FAILED not found
 FORBID FAILED MISMATCH

@@ -3739,7 +3739,6 @@ void drawUIReadouts(Game &g) {
     drawWin(g, W_Controls, [&] {
         ImGui::Text("Click rebind, then press a key (or Shift/Ctrl/Alt + key) to bind it.");
         ImGui::Spacing();
-        char buf[80];
         const char *groupNames[(int)SlotGroup::GROUP_COUNT] = {
             "Game (one-shot)",
             "Flight (piloting)",
@@ -3758,9 +3757,22 @@ void drawUIReadouts(Game &g) {
                 ImGui::AlignTextToFramePadding();
                 ImGui::Text("%s", slotLabel((Slot)i));
                 ImGui::SameLine(215.0f);
-                snprintf(buf, sizeof buf, "%s",
-                         v.empty() ? "(unbound)" : bindLabel(v[0]).c_str());
-                ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.85f, 1.0f), "%s", buf);
+                /* Print EVERY key the slot backs, not just the first: Next ship is
+                   F6 and ']' (#1148), and a row that hides one of the two is a row a
+                   player cannot trust. Bindings that differ only by which side of a
+                   modifier (Toggle free camera's two shift sides) print as two
+                   labels, which is the honest reading -- they ARE different keys.
+                   uiText, not TextColored, so the key a player reads is a row the
+                   harness can pin (#601): the bracket on this row is the whole
+                   discoverability of the new binding. */
+                std::string shown;
+                for(const KeyBind &b : v) {
+                    if(!shown.empty()) { shown += " / "; }
+                    shown += bindLabel(b);
+                }
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.7f, 0.7f, 0.85f, 1.0f));
+                uiText("%s", shown.empty() ? "(unbound)" : shown.c_str());
+                ImGui::PopStyleColor();
                 ImGui::SameLine(365.0f);
                 const bool capturing = (g.rebind_capture_slot == (int)i);
                 /* The ## suffix is invisible to the player and is what makes the
