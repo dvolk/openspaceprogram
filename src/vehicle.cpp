@@ -8045,9 +8045,10 @@ glm::dvec3 Vehicle::killRotDemand(double h, const AttitudeAuthority &auth) {
        #677 is the same line going stale a second time: #595 made each bell an
        actuator row and this guard was not told, so a ring-only hull (no drum, no
        air, no armed engine) asked for nothing and coasted at whatever rate a stick
-       tap left it, while the SAME ring turned it on a prograde hold and spent 37 N m
-       answering the stick one row earlier in the same substep. A latched law that
-       prints mode=killrot and asks for 0 N m is the readout lying, so the ring is
+       tap left it, while the SAME ring turned it on a prograde hold and spent its whole
+       pitch rating answering the stick one row earlier in the same substep (37 N m on the
+       pod hull of the day; the box ring shipped since #1120 levers 138 N m). A latched law
+       that prints mode=killrot and asks for 0 N m is the readout lying, so the ring is
        in the question. */
     if(auth.wheels.empty() && auth.surfaces.empty() && auth.rcs.empty()
        && auth.tvcTorque <= 0.0) { return glm::dvec3(0.0); }  /* nothing to fight with */

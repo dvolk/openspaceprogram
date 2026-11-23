@@ -2,10 +2,10 @@ NAME pointing-dead-at-pointing-zero
 CLAIM With the pointing dial at 0 neither SAS nor the manual stick can turn this hull with its ring: no torque spent, no hydrazine burned, and the tap that would have spun it does nothing (#1124).
 KIND invariant
 # rcs_test is #595's ring-only hull: no wheels, no fins, no gimbals, so its ENTIRE
-# attitude authority is the 138 N m its four rcs_box units lever about pitch (276 N m
-# about roll). flight/677 and
-# flight/1067-c both watch kill-rot spend exactly that pitch figure to bring a 0.93 rad/s
-# spin down.
+# attitude authority is the 138 N m its four rcs_box units lever about pitch (a
+# --steering-log run prices the ring at 276/138/138 N m, R/P/Y). flight/677 and
+# flight/1067-c both watch kill-rot spend exactly that pitch figure: 677 brings a
+# 0.91-0.93 rad/s spin down, 1067-c a 0.77-0.80 one.
 #
 # Here the spin never arrives in the first place. The tap is an attitude key (S, 600 ms)
 # and the dial dims the stick as well as the law -- both ask through the same authority

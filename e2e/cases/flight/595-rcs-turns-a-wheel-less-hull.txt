@@ -13,10 +13,11 @@
 # tests/test_authority.cpp pins it in the body frame; this case is the same fact flying.
 #
 # rcs_test is four rcs_box units bolted to the skin of a 1 m mono tank (#1120 took out the
-# round pod this hull used to be), so [steerlog] prices its ring at 276/138/138 N m (R/P/Y)
-# -- it can roll as well as pitch and yaw -- and the prograde law steers against alpha
-# 1.60 rad/s^2 on Ieff 86 kg m^2. Those are the numbers the rows print: a bell ring is a
-# weak actuator next to a drum, and the case says so rather than dressing it up.
+# round pod this hull used to be), so a --steering-log run on it prices the ring at
+# 276/138/138 N m (R/P/Y) -- it can roll as well as pitch and yaw -- and the prograde law
+# steers against alpha 1.60 rad/s^2 on Ieff 86 kg m^2. Those are the numbers the rows
+# print: a bell ring is a weak actuator next to a drum, and the case says so rather than
+# dressing it up.
 NAME rcs-turns-a-wheel-less-hull
 CLAIM With no wheels and no engine, a thruster ring holds prograde: it has authority, spends hydrazine to use it, and closes a stick disturbance.
 KIND invariant
@@ -24,8 +25,8 @@ KIND invariant
 # the tap did nothing at all -- no rows, no torque, and w_slew stayed at its 0.003 rad/s
 # floor -- so the two middle pins are the whole claim: the nose MOVES, and then the ring
 # BRAKES it and closes the error again. Measured over two runs of these ARGS: tap-window
-# w_slew down to -0.86..-0.97 rad/s, E peak 0.54-0.58 rad at t=4.2-4.3, error back under
-# 0.01 rad by t=5.3, and hydrazine down 0.7 kg with no translation key ever pressed.
+# w_slew down to -0.86..-0.96 rad/s, E peak 0.54-0.58 rad at t=4.2-4.3, error back under
+# 0.01 rad by t=5.3-5.4, and hydrazine down 0.7 kg with no translation key ever pressed.
 ARGS --time-accel 1 --startship rcs_test,res/ships/rcs_test.json,Kerbin,inertial-orbit
 ARGS --autopilot prograde --slew-log --fuel-log --orbit-interval 0.5
 ARGS --sim-press 3000,600,S
@@ -36,19 +37,22 @@ FORBID error:
 FORBID FAILED
 CHECK len(slew) >= 40
 # THE AUTHORITY EXISTS. alpha is the pointing budget the laws steer against, and it used to
-# read 0.000 on this hull for as long as it coasted. It is now 1.60 rad/s^2 in every row,
-# whether or not anything is being asked for -- a rating, not a spend.
-CHECK all(s["alpha_full"] > 0.4 for s in slew)
-CHECK all(s["alpha"] > 0.4 for s in slew)
+# read 0.000 on this hull for as long as it coasted. It is now 1.60 rad/s^2 in every row
+# (1.602-1.631 across runs), whether or not anything is being asked for -- a rating, not a
+# spend. The floor is three quarters of that rating: #595's bug was alpha 0, and a ring
+# that quietly lost half its leverage is still this case's business.
+CHECK all(s["alpha_full"] > 1.2 for s in slew)
+CHECK all(s["alpha"] > 1.2 for s in slew)
 # THE RING MOVES THE HULL: during the hold the only thing acting is thruster gas, and the
 # rate it buys is what the rows say it can (138 N m on Ieff 86 is 1.6 rad/s^2, so 600 ms
-# of full bells is ~0.9 rad/s).
-CHECK min(s["w_slew"] for s in slew if 3.0 < s["t"] < 3.7) < -0.2
-CHECK max(s["tau_spent"] for s in slew if 3.0 < s["t"] < 3.7) > 20
-# AND THE SAME RING PUTS IT BACK: the error peaks near 0.2 rad and is gone by the end. A
+# of full bells is ~0.9 rad/s; measured -0.86..-0.96 in the window). -0.5 keeps room for
+# the row grid itself shifting ~0.05 s between runs, which is #1054's shape.
+CHECK min(s["w_slew"] for s in slew if 3.0 < s["t"] < 3.7) < -0.5
+CHECK max(s["tau_spent"] for s in slew if 3.0 < s["t"] < 3.7) > 100
+# AND THE SAME RING PUTS IT BACK: the error peaks near 0.55 rad and is gone by the end. A
 # hull that could not turn would still be sitting at its tap angle, so the tail window is
 # the pin that a runaway cannot pass.
-CHECK max(s["E"] for s in slew) > 0.10
+CHECK max(s["E"] for s in slew) > 0.30
 CHECK max(s["E"] for s in slew if s["t"] > 7.0) < 0.01
 CHECK last(slew)["E"] < 0.005
 # HYDRAZINE PAYS, and only for the turn: no N/I/L/J/K/U key is pressed in this case, so

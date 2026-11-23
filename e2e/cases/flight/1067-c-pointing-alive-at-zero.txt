@@ -25,19 +25,24 @@ FORBID error:
 FORBID FAILED
 CHECK len(slew) >= 15
 CHECK all(s["mode"] == "killrot" for s in slew)
-# THE RING IS SPENT ON POINTING, at its own ceiling (rcs_test is four rcs_box units on
-# the skin of a 1 m mono tank: 138 N m in pitch/yaw, 276 N m in roll). The whole point of
-# the case is that this number does not move when the keys' dial goes to 0.
-CHECK max(s["tau_spent"] for s in slew) > 100
+# THE RING IS SPENT ON POINTING, at its own ceiling (a --steering-log run on rcs_test
+# prices it at 276/138/138 N m, R/P/Y). The whole point of the case is that this number
+# does not move when the keys' dial goes to 0. tau_spent is exactly 138 -- the pitch
+# rating -- in every actuated row, so the floor is 138 minus a twelfth and the ceiling
+# only holds while the ask stays on pitch (roll is worth 276).
+CHECK max(s["tau_spent"] for s in slew) > 120
 CHECK all(s["tau_spent"] <= 145.0 for s in slew)
 # AND THE SPIN GOES AWAY with the keys' dial at zero.
 CHECK max(s["wnorm"] for s in slew) > 0.25
 CHECK min(s["wnorm"] for s in slew) < 0.01
 CHECK last(slew)["wnorm"] < 0.01
-# HYDRAZINE PAYS for the stop: no translation key is ever pressed, so every gram
-# that left the tank went into turning. A dial that reached the ratings would
+# HYDRAZINE PAYS for the HOLD: no translation key is ever pressed, so every gram
+# that left the tank went into attitude. A dial that reached the ratings would
 # still burn, so this one is the company the torque pin keeps. Measured 78.5 ->
-# 78.4..78.2 kg over two runs: the keys' dial is at 0, so the ring points with every
-# bell it has. [fuel] prints one decimal and a 0.9 rad/s spin is cheap to stop, so
-# this floor only says the tank moved at all (#679 asks how much of a stop is dither).
+# 78.4..78.2 kg over three runs; the keys' dial is at 0, so the ring points with
+# every bell it has. Like 677, the drop is the hold rather than the stop -- the tank
+# keeps moving through rows that print tau_ask=0 tau_spent=0, since those columns
+# sample the last actuated substep -- and [fuel] prints one decimal, so the floor
+# only says the tank moved at all (#679 asks how much of a hold is dither).
 CHECK first(fuel)["groups"][0]["N2H4"][0] - last(fuel)["groups"][0]["N2H4"][0] > 0.0
+CHECK first(fuel)["groups"][0]["N2H4"][0] - last(fuel)["groups"][0]["N2H4"][0] < 1.5

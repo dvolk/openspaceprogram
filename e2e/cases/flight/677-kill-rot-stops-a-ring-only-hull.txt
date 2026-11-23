@@ -2,10 +2,10 @@
 # each bell is an actuator row in the same allocator as the drums, the gimbals and the
 # fins. What #677 found is that one of the laws never got told. Vehicle::killRotDemand
 # asks "is there any authority at all?" before stating its demand, and it asked over
-# three actuators -- wheels, surfaces, gimbals -- so a hull with nothing but pods and a
-# tank failed the test, asked for 0 N m, and coasted at whatever rate a stick tap left
-# it. The mode was latched, the Autopilot window said Kill rotation, [slew] printed
-# mode=killrot, and the hull spun forever:
+# three actuators -- wheels, surfaces, gimbals -- so a hull with nothing but a thruster
+# ring and a tank failed the test, asked for 0 N m, and coasted at whatever rate a stick
+# tap left it. The mode was latched, the Autopilot window said Kill rotation, [slew]
+# printed mode=killrot, and the hull spun forever:
 #
 #   [slew] t=4.050 mode=killrot |w|=0.3148 rad/s  tau_ask=0   tau_spent=0
 #   ...    t=11.567 mode=killrot |w|=0.3148 rad/s  tau_ask=0   tau_spent=0
@@ -42,26 +42,32 @@ CHECK all(s["mode"] == "killrot" for s in slew)
 # the pin below is the ticket.
 CHECK max(s["tau_ask"] for s in slew) > 1000
 # THE HARDWARE ANSWERS, at the ring's own ceiling: rcs_test is four rcs_box units bolted
-# to the skin of a 1 m mono tank, and [steerlog] prices that ring at 276/138/138 N m
-# (R/P/Y). tau_spent sits on the 138 N m pitch rating while tau_ask towers above it --
-# the allocator spending the ring as hard as it can, never past what it is worth.
-CHECK max(s["tau_spent"] for s in slew) > 100
+# to the skin of a 1 m mono tank, and a --steering-log run prices that ring at 276/138/138
+# N m (R/P/Y). tau_spent sits on the 138 N m pitch rating while tau_ask towers above it --
+# the allocator spending the ring as hard as it can, never past what it is worth. The
+# ceiling is this tight only while the ask stays on pitch: the roll rating is 276, so an
+# off-axis demand would need a wider cap rather than a broken ring.
+CHECK max(s["tau_spent"] for s in slew) > 120
 CHECK all(s["tau_spent"] <= 145.0 for s in slew)
-# AND THE SPIN GOES AWAY. The tap leaves 0.91-0.93 rad/s (the same tap reaches the same
-# rate on the mute build too -- that is how it stayed visible); ~0.6 s of hold takes it to
-# nothing, at 138 N m on Ieff 86 kg m^2 = 1.6 rad/s^2, which is the rate 595 prints.
+# AND THE SPIN GOES AWAY. The tap leaves 0.91-0.93 rad/s, and that spin-up does not come
+# from kill-rot at all -- which is how #677 stayed visible: the broken build reached the
+# same rate and then kept it. ~0.6 s of hold takes it to nothing, at 138 N m on Ieff
+# 86 kg m^2 = 1.6 rad/s^2, which is the rate 595 prints.
 CHECK max(s["wnorm"] for s in slew) > 0.25
 CHECK min(s["wnorm"] for s in slew) < 0.01
 CHECK last(slew)["wnorm"] < 0.01
-# It STAYS down after the key comes up: in this vacuum drift bed nothing else damps a
-# spin, so a hull that had merely been nudged rather than stopped would still be turning
-# in the tail rows.
+# It STAYS DOWN while the key is still held -- the last row is t=9.017 and X comes up at
+# 9.0, so "after the key comes up" is not something these rows can show. In this vacuum
+# drift bed nothing else damps a spin, so a hull that had merely been nudged rather than
+# stopped would still be turning in the tail rows.
 CHECK all(s["wnorm"] < 0.02 for s in slew if s["t"] > 8.0)
-# HYDRAZINE PAYS for the stop. No translation key (N/I/L/J/K/U) is ever pressed, so
-# every gram that left the tank went into turning: measured 78.5 -> 78.4..78.2 kg over two
-# runs. [fuel] prints one decimal, so this floor only says the tank moved at all -- the
-# ring stops a 0.9 rad/s spin in half a second and there is not much to pay. How much of
-# that burn is deadband dither rather than the impulse the spin itself carries is #679's
-# question.
+# HYDRAZINE PAYS for the HOLD. No translation key (N/I/L/J/K/U) is ever pressed, so every
+# gram that left the tank went into attitude: measured 78.5 -> 78.4..78.2 kg over three
+# runs. Mind what that drop is NOT: the stop itself finishes by t=6.7 while the tank keeps
+# moving through rows that print tau_ask=0 tau_spent=0 -- those columns record the last
+# ACTUATED substep, they are not summed over the row (see slew_log). So this is the cost of
+# holding, not of stopping, and [fuel] prints one decimal, so the floor only says the tank
+# moved at all. How much of a hold's burn is deadband rather than the impulse the spin
+# itself carries is #679's question.
 CHECK first(fuel)["groups"][0]["N2H4"][0] - last(fuel)["groups"][0]["N2H4"][0] > 0.0
 CHECK first(fuel)["groups"][0]["N2H4"][0] - last(fuel)["groups"][0]["N2H4"][0] < 1.5
