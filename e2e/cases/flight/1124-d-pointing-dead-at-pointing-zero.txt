@@ -1,0 +1,32 @@
+NAME pointing-dead-at-pointing-zero
+CLAIM With the pointing dial at 0 neither SAS nor the manual stick can turn this hull with its ring: no torque spent, no hydrazine burned, and the tap that would have spun it does nothing (#1124).
+KIND invariant
+# rcs_test is #595's ring-only hull: no wheels, no fins, no gimbals, so its ENTIRE
+# attitude authority is the 37 N m its pods lever about pitch. flight/677 and
+# flight/1067-c both watch kill-rot spend exactly that to bring a 0.31 rad/s spin down.
+#
+# Here the spin never arrives in the first place. The tap is an attitude key (S, 600 ms)
+# and the dial dims the stick as well as the law -- both ask through the same authority
+# rows, which is what #678's SAS dial deliberately does NOT do -- so at 0 % the hull
+# never rotates (|w| stays ~0.0003 where the default run reaches 0.3148), tau_spent is 0
+# on every row, and the tank never moves (the default run drinks 0.4 kg).
+#
+# tau_ask stays above 0 and mode stays killrot, which is the difference between this
+# dial and #425's switch: 0 % leaves a ring that is present and unallowed; switching the
+# ring off removes the rows and the law stops asking at all.
+ARGS --time-accel 1 --startship rcs_test,res/ships/rcs_test.json,Kerbin,inertial-orbit
+ARGS --slew-log --fuel-log --no-paint --rcs-att-frac 0
+ARGS --sim-press 3000,600,S,6000,3000,X
+ARGS --timeout 12
+LIMIT 40
+EXPECT [slew]
+EXPECT RCS: pointing limited to 0% of what the ring leaves after the keys
+FORBID error:
+CHECK len(slew) >= 15
+CHECK all(s["mode"] == "killrot" for s in slew)
+CHECK max(s["tau_spent"] for s in slew) == 0
+CHECK max(s["wnorm"] for s in slew) < 0.01
+CHECK max(s["tau_ask"] for s in slew) > 0
+# Not one gram: nothing on this hull burns hydrazine except its ring, and the ring is
+# allowed nothing.
+CHECK first(fuel)["groups"][0]["N2H4"][0] == last(fuel)["groups"][0]["N2H4"][0]

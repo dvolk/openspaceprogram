@@ -103,6 +103,8 @@ int main() {
     ship.surfaces_enabled = false;  // and so does the aero one (#649)
     ship.tvc_enabled = false;       // and the nozzle door (#768)
     ship.rcs_thrust_frac = 0.75;    // #1067's RCS-authority dial
+    ship.rcs_attitude_frac = 0.3;   // #1124's second dial, a different figure so a
+                                    // field swapped for its neighbour cannot pass
     SaveDock seam; seam.port = 101; seam.root = 101; seam.name = "station";
     /* A seam carries the absorbed vessel's ORDERS (#657), so a save between the dock
        and the undock must not reset what the undock hands back. Non-defaults here, and
@@ -111,6 +113,7 @@ int main() {
     seam.rcs_attitude_enabled = false; seam.tvc_enabled = false;
     seam.sas_turn_rate = 1.25;
     seam.rcs_thrust_frac = 0.4;   // #1067's dial, a non-default on the same rail
+    seam.rcs_attitude_frac = 0.15;   // #1124's second dial, a different figure again
     ship.docks.push_back(seam);   // the seam is still a LABEL, not a key
     ship.dock_target_ship = "v1";   // a SAVE SLUG, not a display name (#266)
     ship.dock_target_port = 103;   // a part uid on the TARGET ship
@@ -163,6 +166,7 @@ int main() {
     CHECK(out.surfaces_enabled == false);
     CHECK(out.tvc_enabled == false);
     CHECK(near(out.rcs_thrust_frac, 0.75));   // #1067: the dial survives the round trip
+    CHECK(near(out.rcs_attitude_frac, 0.3));  // #1124: and so does the pointing dial
     /* A seam whose ONLY exception is the dial: switches all open, ceiling capped. The
        writer groups the five keys behind one "anything non-default?" gate, so a gate that
        forgets the dial drops it here while every check above stays green -- and the dial
@@ -194,6 +198,21 @@ int main() {
             CHECK(near(o2.docks[0].sas_turn_rate, 0.0));   // the rest stays default
         }
     }
+    /* And one dial further (#1124): the pointing dial has its OWN write condition on the
+       ship and shares the seam's group gate, so both need the same "only exception"
+       probe. Nothing else about the seam is non-default here. */
+    {
+        SaveDock d; d.port = 7; d.root = 8; d.name = "tug";
+        d.rcs_attitude_frac = 0.25;
+        SaveShip s2; s2.name = "host"; s2.docks.push_back(d);
+        nlohmann::json j = saveShipToJson(s2);
+        SaveShip o2 = saveShipFromJson(j);
+        CHECK(o2.docks.size() == 1);
+        if(o2.docks.size() == 1) {
+            CHECK(near(o2.docks[0].rcs_attitude_frac, 0.25));
+            CHECK(near(o2.docks[0].rcs_thrust_frac, 1.0));   // the keys' dial stays default
+        }
+    }
     /* Wrong-typed seam keys are ignored, exactly as on the ship: a quoted "false" must
        not silently become true, and must not throw. */
     {
@@ -202,13 +221,15 @@ int main() {
         j["docks"].push_back(nlohmann::json{{"port", 101}, {"root", 101},
                                             {"wheels_enabled", "false"},
                                             {"sas_turn_rate", "1.5"},
-                                            {"rcs_thrust_frac", "0.5"}});
+                                            {"rcs_thrust_frac", "0.5"},
+                                            {"rcs_attitude_frac", "0.5"}});
         SaveShip o = saveShipFromJson(j);
         CHECK(o.docks.size() == 1);
         if(o.docks.size() == 1) {
             CHECK(o.docks[0].wheels_enabled);   // the bad value did not land
             CHECK(near(o.docks[0].sas_turn_rate, 0.0));
             CHECK(near(o.docks[0].rcs_thrust_frac, 1.0));   // #1067: quoted "0.5" ignored
+            CHECK(near(o.docks[0].rcs_attitude_frac, 1.0)); // #1124: same on the second dial
         }
     }
     /* And the sentences the loader says for a bad ceiling (#678, #657). The check runs
@@ -230,6 +251,17 @@ int main() {
     CHECK_TRUE(refuseSavedRcsFrac(std::nan("frac"))
                == "RCS thrust fraction nan, not a 0..1 fraction",
                "a NaN dial is refused, not read as full authority");
+    /* #1124's dial shares the verdict, so the one thing worth pinning is the NOUN: a
+       reader who is told "RCS thrust fraction" goes looking for the keys' slider, while
+       the field that broke commands pointing. Same range, different door. */
+    CHECK(refuseSavedRcsAttFrac(0.0).empty());
+    CHECK(refuseSavedRcsAttFrac(1.0).empty());
+    CHECK(refuseSavedRcsAttFrac(-0.1) == "RCS attitude fraction -0.100000, not a 0..1 fraction");
+    CHECK(refuseSavedRcsAttFrac(1.5) == "RCS attitude fraction 1.500000, not a 0..1 fraction");
+    CHECK_TRUE(refuseSavedRcsAttFrac(std::nan("att"))
+               == "RCS attitude fraction nan, not a 0..1 fraction",
+               "and the pointing dial's NaN is refused too -- in the sim it would read as "
+               "ZERO authority (the !(left > 0.0) guard), the opposite of the keys' NaN");
     CHECK(out.docks.size() == ship.docks.size());
     if(out.docks.size() == 1 && ship.docks.size() == 1) {
         CHECK(out.docks[0].port == ship.docks[0].port);
@@ -241,6 +273,7 @@ int main() {
         CHECK(out.docks[0].tvc_enabled == false);
         CHECK(near(out.docks[0].sas_turn_rate, 1.25));
         CHECK(near(out.docks[0].rcs_thrust_frac, 0.4));
+        CHECK(near(out.docks[0].rcs_attitude_frac, 0.15));   // #1124
     }
     /* And the other direction of the same optional-field rule: a save written before
        #657 has no order keys on its seams at all. They must read as the defaults --

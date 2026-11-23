@@ -3162,11 +3162,18 @@ void Vehicle::steering_log(double time) {
     const std::array<double, 3> spent = torqueRpY(del.wheels + del.tvc + del.surfaces + del.rcs, ax);
     const std::array<double, 3> r = actuatorRpY(live.rcs, ax);
     const std::array<double, 3> rh = actuatorRpY(hw.rcs, ax);
+    /* #1124: say what the hull's attitude dial ALLOWS, the way the [rcs] row prints
+       lim=NN% for the keys. Only when it is off the default, so a clean line means a
+       clean dial. rcs_hw= beside it stays undimmed on purpose -- that column is the
+       promise, this one is the permission. */
+    const std::string attLim = (rcs_attitude_frac != 1.0)
+        ? (" att_lim=" + std::to_string((int)std::lround(rcs_attitude_frac * 100.0)) + "%")
+        : std::string();
     printf("[steerlog] t=%.1fs ship=\"%s\" powered=%d wheels_on=%d fins_on=%d "
            "fins_fitted=%d "
            "wheels=%.0f/%.0f/%.0f wheels_hw=%.0f/%.0f/%.0f "
            "surfaces=%.0f/%.0f/%.0f surfaces_hw=%.0f/%.0f/%.0f "
-           "rcs=%.0f/%.0f/%.0f rcs_hw=%.0f/%.0f/%.0f rcs_on=%d "
+           "rcs=%.0f/%.0f/%.0f rcs_hw=%.0f/%.0f/%.0f rcs_on=%d%s "
            "tvc_on=%d tvc_fitted=%d "
            "tvc_rating=%.0f tvc_rating_full=%.0f tvc_hw=%.0f asked=%.0f/%.0f/%.0f "
            "spent_all=%.0f/%.0f/%.0f\n",
@@ -3175,6 +3182,7 @@ void Vehicle::steering_log(double time) {
            w[0], w[1], w[2], wh[0], wh[1], wh[2],
            s[0], s[1], s[2], sh[0], sh[1], sh[2],
            r[0], r[1], r[2], rh[0], rh[1], rh[2], (int)rcs_attitude_enabled,
+           attLim.c_str(),
            (int)tvc_enabled, (int)hw.hasGimbals,
            live.tvcTorque, live.tvcTorqueAvailable, hw.tvcTorqueAvailable,
            asked[0], asked[1], asked[2], spent[0], spent[1], spent[2]);
@@ -6414,7 +6422,8 @@ void Vehicle::absorbShip(Vehicle *B, Part *portA) {
                               .rcs_attitude_enabled = B->rcs_attitude_enabled,
                               .tvc_enabled = B->tvc_enabled,
                               .sas_turn_rate = B->sas_turn_rate,
-                              .rcs_thrust_frac = B->rcs_thrust_frac });
+                              .rcs_thrust_frac = B->rcs_thrust_frac,
+                              .rcs_attitude_frac = B->rcs_attitude_frac });
 
     // Rebuild as the union and regroup fuel: the ports are fuel barriers, so the two
     // fuel systems stay separate.
@@ -6534,6 +6543,7 @@ Vehicle * Vehicle::extractSubtreeAsShip(Part *root, const std::string &name, dou
     nv->tvc_enabled = tvc_enabled;                     // #768's door travels too
     nv->sas_turn_rate = sas_turn_rate;                 // #678's dial travels too
     nv->rcs_thrust_frac = rcs_thrust_frac;             // #1067's the same way
+    nv->rcs_attitude_frac = rcs_attitude_frac;         // #1124's second dial too
     /* What still does NOT travel is the rest of the per-hull control state: brakesOn,
        throttle and the latched slew mode are per-hull and ARE saved (save.cpp), yet a
        hull that docks -- or stages -- comes back out resting, lever idle, SAS unlatched.
@@ -6635,6 +6645,7 @@ Vehicle * Vehicle::extractSubtreeAsShip(Part *root, const std::string &name, dou
         nv->tvc_enabled = cut.tvc_enabled;
         nv->sas_turn_rate = cut.sas_turn_rate;
         nv->rcs_thrust_frac = cut.rcs_thrust_frac;
+        nv->rcs_attitude_frac = cut.rcs_attitude_frac;
     }
 
     /* A kerbal follows its capsule automatically: the seat is containment on
@@ -7503,8 +7514,9 @@ Vehicle::AttitudeAuthority Vehicle::attitudeAuthorityRows(bool switchesApply) {
        a turn up and cannot brake one the other way, which is why a ring fitted
        opposite the ask credits nothing about it (actuators.h).
        `limit` is the fraction of the bell the TRANSLATION solve left unspent, because
-       rcsPlan() already spent it: that is #595's "a PRIORITY not a sum" stored as
-       data rather than argued in the mixer. Hardware mode takes the whole rating --
+       rcsPlan() already spent it, scaled by the hull's attitude dial (#1124): that
+       is #595's "a PRIORITY not a sum" stored as data rather than argued in the
+       mixer. Hardware mode takes the whole rating and ignores the dial --
        a switch row has to say what the ring is WORTH, not what the key held this
        substep happened to leave (the same reason tvcTorqueAvailable ignores throttle).
        The doors are the same shape as the other actuators' (#418's lesson, #649's
@@ -7538,8 +7550,14 @@ Vehicle::AttitudeAuthority Vehicle::attitudeAuthorityRows(bool switchesApply) {
                     a.rcs.push_back({ glm::dvec3(0.0), 0.0, true });
                     continue;
                 }
+                /* #1124: the hull's ATTITUDE dial rides HERE, on the leftover --
+                   never on the lever above, which is the bell's rating and what the
+                   hardware view promises. One multiplication at the row is what keeps
+                   the figure a law plans against, the stick's ask, the solve's bound
+                   and the actual spend from being four numbers (#599's lesson). */
                 const double left = switchesApply
-                    ? 1.0 - (i < rcsScratch.c.size() ? rcsScratch.c[i] : 0.0) : 1.0;
+                    ? (1.0 - (i < rcsScratch.c.size() ? rcsScratch.c[i] : 0.0)) * rcs_attitude_frac
+                    : 1.0;
                 if(!(left > 0.0)) {
                     a.rcs.push_back({ glm::dvec3(0.0), 0.0, true });
                     continue;

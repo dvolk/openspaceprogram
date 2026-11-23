@@ -1,0 +1,28 @@
+NAME pointing-dial-dims-the-rows-not-the-ring
+CLAIM A hull's RCS attitude dial caps how much of its ring may steer without re-rating a single nozzle: the live authority falls, the hardware figure does not (#1124).
+KIND invariant
+# rcs_box_pair surface-mounts two 5-bell boxes rated 60 N A BELL, and carries no
+# wheels, fins or gimbals, so the whole attitude authority of this hull is its ring.
+# About roll those 12 bells bring 138 N m, and that is what BOTH [steerlog] columns
+# read with the dial at its default.
+#
+# Dialed to 50 % the two columns split, and the split IS the claim. rcs= is the live
+# authority a law plans against and the stick asks through, so it halves to 69/0/69;
+# rcs_hw= is what the ring IS WORTH and stays 138/0/138. att_lim=50% rides on the same
+# line so a player who reads a smaller rcs= can tell a dimmed ring from a broken one --
+# the diagnosis #1067 asked for, spelled one dial over.
+#
+# The wrong implementation is the tempting one: scale the nozzle ratings instead of the
+# leftover the translation keys leave. It halves BOTH columns, and every newton figure
+# in flight/110 or flight/1067 stays green while it does, because those cases only watch
+# what the ring delivers. This line is where a re-rating goes red.
+ARGS --time-accel 1 --sim-steps 240 --startship rcs_box_pair,res/ships/rcs_box_pair.json,Kerbin,inertial-orbit --steering-log --rcs-att-frac 0.5
+EXPECT RCS: pointing limited to 50% of what the ring leaves after the keys
+EXPECT rcs=69/0/69 rcs_hw=138/0/138 rcs_on=1 att_lim=50%
+FORBID error:
+FORBID rcs_hw=69/0/69
+CHECK len(re.findall(r'\[steerlog\]', out)) >= 4
+# Not just "one line said it": EVERY row of the dimmed run says it. att_lim= is printed
+# only off the default (the way [rcs]'s lim= is, #1067), so a line without it would mean
+# the dial moved under the log rather than the log naming it.
+CHECK all("att_lim=50%" in l and "rcs=69/0/69" in l for l in out.splitlines() if "[steerlog]" in l)

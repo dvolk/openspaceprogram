@@ -72,6 +72,11 @@ struct GameArgs {
        asks, not half of one hull-wide newton figure. It sets the same field the
        Systems window's slider writes, so a case and a click cannot disagree. */
     double rcs_frac = 1.0;
+    /* #1124's second dial: what fraction of the ring's LEFTOVER this hull may spend
+       on POINTING, 0..1. The other door on the same hardware -- #425's switch is
+       on/off, this is the dimmer -- and it rides the manual stick as well as SAS,
+       because both ask through the same authority rows. */
+    double rcs_att_frac = 1.0;
     bool recover_anywhere = false;  // default: home body only
     bool dev_scenarios = false;  // --dev-scenarios: the VAB dropdown's dev beds
     bool fleet_report = false;   // --fleet-report: print the airworthiness table and exit

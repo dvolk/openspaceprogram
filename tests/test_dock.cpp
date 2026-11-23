@@ -549,10 +549,13 @@ static void test_orders_return_on_undock() {
     B.v->tvc_enabled = false;            // #768
     B.v->sas_turn_rate = 0.75;
     B.v->rcs_thrust_frac = 0.4;    // #1067's dial rides the same rail
+    B.v->rcs_attitude_frac = 0.25;  // #1124's second dial, a DIFFERENT figure so a
+                                    // swapped copy cannot pass for the right one
     /* A's own dial, DIFFERENT from B's, so the checks on A below can tell a leak from
        B apart from a reset of A: both readings would land on the same figure otherwise. */
     A.v->sas_turn_rate = 1.5;
     A.v->rcs_thrust_frac = 0.9;
+    A.v->rcs_attitude_frac = 0.8;
 
     A.v->absorbShip(B.v, portA);
     CHECK_TRUE(A.v->wheels_enabled && A.v->surfaces_enabled && A.v->rcs_attitude_enabled
@@ -567,6 +570,8 @@ static void test_orders_return_on_undock() {
                    && !s.tvc_enabled, "the seam holds the absorbed hull's orders, not ours");
         CHECK_NEAR(s.sas_turn_rate, 0.75, 1e-9, "and its turn-rate ceiling");
         CHECK_NEAR(s.rcs_thrust_frac, 0.4, 1e-9, "and its RCS authority");
+        CHECK_NEAR(s.rcs_attitude_frac, 0.25, 1e-9,
+                   "and its RCS pointing dial (#1124), which is a separate figure");
     }
 
     Vehicle *out = A.v->extractSubtreeAsShip(portB, "B");   // Game::undock's call
@@ -577,10 +582,13 @@ static void test_orders_return_on_undock() {
                "the probe comes back with its switches as ITS pilot left them (#657)");
     CHECK_NEAR(out->sas_turn_rate, 0.75, 1e-9, "and comes back capped as it was capped");
     CHECK_NEAR(out->rcs_thrust_frac, 0.4, 1e-9, "and with the RCS authority it was dialed to");
+    CHECK_NEAR(out->rcs_attitude_frac, 0.25, 1e-9,
+               "and the pointing dial the seam froze for it (#1124)");
     CHECK_TRUE(A.v->wheels_enabled && A.v->surfaces_enabled && A.v->rcs_attitude_enabled
                && A.v->tvc_enabled, "the station keeps its own orders throughout");
     CHECK_NEAR(A.v->sas_turn_rate, 1.5, 1e-9, "and its dial is neither overwritten nor cleared");
     CHECK_NEAR(A.v->rcs_thrust_frac, 0.9, 1e-9, "and its RCS dial neither");
+    CHECK_NEAR(A.v->rcs_attitude_frac, 0.8, 1e-9, "and neither its pointing dial");
     CHECK_TRUE(A.v->seams.empty() && out->seams.empty(), "the cut seam is on neither side");
 
     destroyShip(out);
@@ -1180,6 +1188,7 @@ static void test_seam_kept_across_stage() {
     A.v->wheels_enabled = false;
     A.v->sas_turn_rate = 2.0;
     A.v->rcs_thrust_frac = 0.2;    // #1067: the same inheritance, dialed
+    A.v->rcs_attitude_frac = 0.6;  // #1124: and its second dial, a different figure
     CHECK_TRUE(A.v->seams.size() == 1, "kept: one seam after the dock");
     CHECK_TRUE(A.v->seams[0].port == portA && A.v->seams[0].root == bRoot,
                "kept: seam is {P, bRoot}");
@@ -1205,6 +1214,8 @@ static void test_seam_kept_across_stage() {
     CHECK_TRUE(!out->wheels_enabled, "kept: a stage cut away from the seam root takes our orders");
     CHECK_NEAR(out->sas_turn_rate, 2.0, 1e-9, "kept: and our ceiling");
     CHECK_NEAR(out->rcs_thrust_frac, 0.2, 1e-9, "kept: and our RCS authority");
+    CHECK_NEAR(out->rcs_attitude_frac, 0.6, 1e-9,
+               "kept: and our pointing dial, which is a separate figure on the same rail");
     CHECK_TRUE(A.v->parts.size() == 3, "kept: survivor keeps capsule, port, bRoot");
     CHECK_TRUE(out->parts.size() == 2, "kept: split-off holds decoupler + tank");
 

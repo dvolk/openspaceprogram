@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 456 |
+| `invariant` | a behaviour or a player route the game must keep | 460 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 52 |
 | `harness` | CLI/test-engine plumbing, not game spec | 16 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **528** |
+| | **total** | **532** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -18,7 +18,7 @@ paces a run: how much e2e a change deserves is the caller's
 judgement. Select by number, name or path, e.g.
 `python3 e2e/run.py save/172 262`.
 
-## flight (172)
+## flight (176)
 
 | case | kind | pins |
 |---|---|---|
@@ -194,6 +194,10 @@ judgement. Select by number, name or path, e.g.
 | `flight/1097-a-wingless-lifting-body.txt` | golden | A flat plate with an authored body_lift and no lifting surfaces flies: BodyCdA > 0 on every row while SideCdA stays 0.00 (the exposed half of the #947/#1097 split) and the surface-lift column \|L\| stays 0, Ld > 0, and the sink is bounded far short of ballistic. |
 | `flight/1119-a-rcs-ask-counts-bells.txt` | invariant | The RCS translation ask is the newtons the ring can bring to bear along the direction asked, not a sum of per-part ratings (#1119). |
 | `flight/1119-b-rcs-bell-scarce-axis.txt` | invariant | Where the ring has only one bell that can push an axis, the ask drops to that bell instead of printing a shortfall the hull could never serve (#1119). |
+| `flight/1124-a-pointing-dial-dims-the-rows-not-the-ring.txt` | invariant | A hull's RCS attitude dial caps how much of its ring may steer without re-rating a single nozzle: the live authority falls, the hardware figure does not (#1124). |
+| `flight/1124-b-two-rcs-dials-compose-on-one-ring.txt` | invariant | The keys' dial and the pointing dial share one ring and compose instead of fighting: half the keys still asks 60 N, and the bells it leaves still steer at half (#1124, #1067, #595). |
+| `flight/1124-c-translation-keys-alive-at-pointing-zero.txt` | invariant | With the pointing dial at 0 the same ring still pushes at the full ask: the two RCS doors are independent and only the steering half went dark (#1124). |
+| `flight/1124-d-pointing-dead-at-pointing-zero.txt` | invariant | With the pointing dial at 0 neither SAS nor the manual stick can turn this hull with its ring: no torque spent, no hydrazine burned, and the tap that would have spun it does nothing (#1124). |
 
 ## crew (37)
 

@@ -1,0 +1,31 @@
+NAME two-rcs-dials-compose-on-one-ring
+CLAIM The keys' dial and the pointing dial share one ring and compose instead of fighting: half the keys still asks 60 N, and the bells it leaves still steer at half (#1124, #1067, #595).
+KIND invariant
+# #595's priority, now with a dimmer on each end of it: translation spends the bells
+# FIRST, and the attitude rows carry what is left -- which this case halves a second
+# time. So both numbers move at once, in the same press window:
+#   [rcs]     the keys ask 60 N (50 % of the 120 N the ring can bring to bear along +X,
+#             #1119's per-direction ceiling) and each firing bell spends 30 N of its
+#             60 N rating;
+#   [steerlog] roll authority reads 69/0/69 while nothing is pressed -- half of the 138
+#             N m the ring is worth -- and drops to 69/0/52 DURING the press, because
+#             the two bells spending gas have only half of their leftover left to steer
+#             with. rcs_hw= never moves: the ring is still worth 138 N m.
+# Neither dial alone shows this pair moving together, and a dial that reached the
+# RATINGS would put rcs_hw= at 69/0/69 and fail the same line from the other side.
+ARGS --time-accel 1 --sim-steps 480 --startship rcs_box_pair,res/ships/rcs_box_pair.json,Kerbin,inertial-orbit --steering-log --drag-log --rcs-frac 0.5 --rcs-att-frac 0.5 --sim-press 2000,3000,N
+EXPECT RCS: translation limited to 50% of what the ring can do that way
+EXPECT RCS: pointing limited to 50% of what the ring leaves after the keys
+EXPECT [rcs] cmd=(60 0 -0)N ach=(60 0 -0)N lim=50%
+FORBID error:
+FORBID rcs_hw=69/0/69
+# The bell names ride in a CHECK, not the EXPECT above: a bracketed [-Z] reads as a
+# character class to the case linter, which is right that EXPECT is a substring test.
+CHECK "box_l[-Z]=30N box_r[-Z]=30N" in out
+CHECK len(re.findall(r'\[steerlog\]', out)) >= 8
+CHECK re.search(r'\[steerlog\][^\n]*rcs=69/0/52 rcs_hw=138/0/138 rcs_on=1 att_lim=50%', out)
+# In that order, and so the 52 cannot be a one-off: the dimmed-but-idle figure comes
+# first, the pressed figure after it, and the pressed one recurs for every tick of the
+# held key.
+CHECK out.index("rcs=69/0/69") < out.index("rcs=69/0/52")
+CHECK len(re.findall(r"rcs=69/0/52 ", out)) >= 3

@@ -552,6 +552,7 @@ SaveShip saveShipFromVehicle(Vehicle *v,
     s.tvc_enabled = v->tvc_enabled;   // #768
     s.sas_turn_rate = v->sas_turn_rate;                 // #678
     s.rcs_thrust_frac = v->rcs_thrust_frac;             // #1067
+    s.rcs_attitude_frac = v->rcs_attitude_frac;         // #1124
 
     for(size_t k = 0; k < v->seams.size(); k++) {
         SaveDock dk;
@@ -566,6 +567,7 @@ SaveShip saveShipFromVehicle(Vehicle *v,
         dk.tvc_enabled = v->seams[k].tvc_enabled;
         dk.sas_turn_rate = v->seams[k].sas_turn_rate;
         dk.rcs_thrust_frac = v->seams[k].rcs_thrust_frac;   // #1067
+        dk.rcs_attitude_frac = v->seams[k].rcs_attitude_frac;   // #1124
         s.docks.push_back(dk);
     }
     /* Every ship delete clears the other ships' dock intents first (game.cpp),
@@ -832,6 +834,9 @@ static std::string validateShipParts(const SaveShip &s, const PartsCatalog &cat,
     if(std::string why = refuseSavedRcsFrac(s.rcs_thrust_frac); !why.empty()) {
         return "load: saved ship '" + s.name + "' has " + why;   // #1067
     }
+    if(std::string why = refuseSavedRcsAttFrac(s.rcs_attitude_frac); !why.empty()) {
+        return "load: saved ship '" + s.name + "' has " + why;   // #1124
+    }
     for(const SaveFuelLink &fl : s.fuel_links) {
         if(prior.count(fl.from) == 0 || prior.count(fl.to) == 0) {
             return "load: saved ship '" + s.name + "' has a fuel link between uids "
@@ -854,6 +859,10 @@ static std::string validateShipParts(const SaveShip &s, const PartsCatalog &cat,
                    + std::to_string(d.port) + ", " + std::to_string(d.root) + ") with " + why;
         }
         if(std::string why = refuseSavedRcsFrac(d.rcs_thrust_frac); !why.empty()) {
+            return "load: saved ship '" + s.name + "' has a dock seam ("
+                   + std::to_string(d.port) + ", " + std::to_string(d.root) + ") with " + why;
+        }
+        if(std::string why = refuseSavedRcsAttFrac(d.rcs_attitude_frac); !why.empty()) {
             return "load: saved ship '" + s.name + "' has a dock seam ("
                    + std::to_string(d.port) + ", " + std::to_string(d.root) + ") with " + why;
         }
@@ -1149,6 +1158,7 @@ Vehicle *buildShipFromSaveParts(Game &g, const LoadWorld &w, const SaveShip &s,
     v->tvc_enabled = s.tvc_enabled;                     // #768's fourth
     v->sas_turn_rate = s.sas_turn_rate;                 // #678's dial
     v->rcs_thrust_frac = s.rcs_thrust_frac;             // #1067's
+    v->rcs_attitude_frac = s.rcs_attitude_frac;         // #1124's
 
     /* Both parts of a seam must be present: skipping an unresolvable seam
        leaves the joint physically docked with no undock record, so the ship
@@ -1174,7 +1184,8 @@ Vehicle *buildShipFromSaveParts(Game &g, const LoadWorld &w, const SaveShip &s,
                                               .rcs_attitude_enabled = s.docks[k].rcs_attitude_enabled,
                                               .tvc_enabled = s.docks[k].tvc_enabled,
                                               .sas_turn_rate = s.docks[k].sas_turn_rate,
-                                              .rcs_thrust_frac = s.docks[k].rcs_thrust_frac });
+                                              .rcs_thrust_frac = s.docks[k].rcs_thrust_frac,
+                                              .rcs_attitude_frac = s.docks[k].rcs_attitude_frac });
     }
     return v;
 }

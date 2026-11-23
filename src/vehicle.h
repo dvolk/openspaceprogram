@@ -666,6 +666,25 @@ public:
        Saved with the ship and carried across seams, like the other doors. */
     double rcs_thrust_frac = 1.0;
 
+    /* #1124: the same handle for the ring's POINTING half. The dial above only
+       dims the keys, and #595's priority means dimming them makes steering
+       STRONGER (the bell the keys no longer spend is left to the attitude walk),
+       so neither door could say "steer with half this ring".
+       It multiplies what each bell has LEFT for pointing in
+       attitudeAuthorityRows() -- (1 - c_i) * frac -- which is one expression
+       covering the live authority figures, what a law plans against, the stick's
+       own ask (the #425 switch's model, NOT #678's, which never touches the
+       stick) and what applyRcsForce spends, all at once and all in proportion.
+       The bells' RATINGS stay untouched: attitude authority is priced from them,
+       and a dial that shrank them would re-price the hardware promise too --
+       attitudeAuthorityHardware() ignores this field, so the Systems row and
+       [steerlog]'s rcs_hw= still say what the ring IS worth. att_lim=NN% rides
+       [steerlog] to say what it is being allowed to do.
+       0 is the dimmer's end, not the switch: the rows stay present with a zero
+       limit, so a law still asks and the shortfall reads tau_ask>0 / tau_spent=0
+       rather than the no-rows-at-all shape rcs_attitude_enabled=false gives. */
+    double rcs_attitude_frac = 1.0;
+
     double dvRocket_ = 0.0;
     double propSpent_ = 0.0;       // kg of rocket propellant drained
     double dvVeLast_ = 0.0;        // last ve used, exhaust_scale applied (m/s)
@@ -2352,6 +2371,10 @@ public:
            RCS authority and the absorbed side's value waits here for the cut that
            gives that hull back its own. */
         double rcs_thrust_frac = 1.0;
+        /* #1124's second dial, same rule and for the same reason: a hull that was
+           told to steer with half its ring should not get a full one back from a
+           dock, nor lose it to one. */
+        double rcs_attitude_frac = 1.0;
     };
     /* Absorbed docks, innermost first -- the LAST is the one undock selects. */
     std::vector<DockSeam> seams;

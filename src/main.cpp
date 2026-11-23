@@ -550,6 +550,14 @@ int main(int argc, char **argv)
         printf("error: %s\n", why.c_str());
         return 1;
     }
+    /* #1124's dial through the same door, and it needs its own verdict: CLI11's
+       Range is the comparison described above, so NaN arrives here regardless and
+       the attitude rows would read it as zero authority (the !(left > 0.0) guard)
+       while every readout prints NaN. The sentence names POINTING, not thrust. */
+    if(std::string why = refuseSavedRcsAttFrac(args.rcs_att_frac); !why.empty()) {
+        printf("error: %s\n", why.c_str());
+        return 1;
+    }
     if(std::string why = refuseSavedSasRate(args.sas_rate); !why.empty()) {
         printf("error: %s\n", why.c_str());
         return 1;
@@ -1043,6 +1051,15 @@ int main(int argc, char **argv)
             printf("RCS: translation limited to %.0f%% of what the ring can do that way\n",
                    args.rcs_frac * 100.0);
         }
+        /* --rcs-att-frac: #1124's second dial. The referent is the LEFTOVER, not the
+           ring -- the keys spend first (#595's priority) -- and it is per-axis torque
+           rather than one hull-wide figure, so the printf says which of the two doors
+           it closed and what sits underneath it. */
+        if(args.rcs_att_frac != 1.0 && first != nullptr) {
+            first->rcs_attitude_frac = args.rcs_att_frac;
+            printf("RCS: pointing limited to %.0f%% of what the ring leaves after the keys\n",
+                   args.rcs_att_frac * 100.0);
+        }
 
         /* --ascent: arm the ascent autopilot on the active ship. Parsed by hand
            rather than through CLI11's numeric machinery because "100e3,45" is a
@@ -1100,16 +1117,17 @@ int main(int argc, char **argv)
                    first->m_parent ? first->m_parent->name.c_str() : "?", air_txt);
         }
     } else if(!args.ascent.empty() || !args.autopilot.empty()
-              || args.sas_rate > 0.0 || args.rcs_frac != 1.0) {
+              || args.sas_rate > 0.0 || args.rcs_frac != 1.0
+              || args.rcs_att_frac != 1.0) {
         /* The whole block above -- the start ships, --autopilot, --ascent and the
-           two dials -- only runs for a freshly built world, because a load owns the
-           ships, their state and the saved ask. That is right, but it is invisible:
-           "--load X --ascent Y" reads like a way to replay a saved approach at a
-           different altitude and used to do nothing at all, quietly, exit 0. Same
-           for --sas-rate/--rcs-frac: the hull a load brings back already carries its
-           own dials (save.h), and overwriting them from the command line would make
-           a save and a flag two answers to one question. */
-        printf("[cli] --ascent/--autopilot/--sas-rate/--rcs-frac ignored:"
+           two RCS dials plus the SAS ceiling -- only runs for a freshly built world,
+           because a load owns the ships, their state and the saved ask. That is right,
+           but it is invisible: "--load X --ascent Y" reads like a way to replay a saved
+           approach at a different altitude and used to do nothing at all, quietly,
+           exit 0. Same for --sas-rate/--rcs-frac/--rcs-att-frac: the hull a load brings
+           back already carries its own dials (save.h), and overwriting them from the
+           command line would make a save and a flag two answers to one question. */
+        printf("[cli] --ascent/--autopilot/--sas-rate/--rcs-frac/--rcs-att-frac ignored:"
                " --load owns the ships, their dials and the ask\n");
     }
 

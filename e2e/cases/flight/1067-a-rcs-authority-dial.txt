@@ -26,7 +26,9 @@ KIND invariant
 ARGS --time-accel 1 --sim-steps 480 --startship rcs_box_pair,res/ships/rcs_box_pair.json,Kerbin,inertial-orbit --att-log --drag-log --steering-log --rcs-frac 0.5 --sim-press 2000,3000,N
 EXPECT RCS: translation limited to 50% of what the ring can do that way
 EXPECT [rcs] cmd=(60 0
-EXPECT lim=50%
+# Anchored on the newtons, not bare: #1124's [steerlog] column att_lim=NN% contains the
+# string lim=NN%, so an unanchored one would stay green off the OTHER dial.
+EXPECT ach=(60 0 -0)N lim=50%
 CHECK len(att) >= 6
 # The three [attlog] rows INSIDE the press window: under --sim-steps the schedule
 # and the log gate share the tick clock, so they land on t=3,4,5. The bare len

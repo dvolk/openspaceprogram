@@ -180,6 +180,18 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "being shoved at full force. 0 turns the keys off; attitude, if "
                    "enabled, still fires the ring to hold heading")
         ->check(CLI::Range(0.0, 1.0));
+    app.add_option("--rcs-att-frac", args.rcs_att_frac,
+                   "How much of this hull's RCS ring it may spend on POINTING, 0..1 "
+                   "(default 1 = all of it). The command-line spelling of the Systems "
+                   "window's RCS attitude limit (#1124), and the other door on the same "
+                   "hardware as --rcs-frac: the keys get first claim on the bells, this "
+                   "dials down what is left for steering. It dims the manual stick as "
+                   "well as SAS, because both ask through the same rows. The nozzles "
+                   "keep their ratings -- the Systems window's hardware figure, "
+                   "rcs_hw=, stays undimmed. 0 leaves the ring pointed at nothing while "
+                   "the keys still push; rcs_attitude_enabled=0 is the switch that "
+                   "removes the rows instead")
+        ->check(CLI::Range(0.0, 1.0));
     app.add_option("--ascent", args.ascent,
                    "Fly the active ship to a circular orbit: ALTITUDE[,INCLINATION] "
                    "in metres and degrees. An ascent autopilot -- it pitches over, "

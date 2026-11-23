@@ -3594,6 +3594,29 @@ void drawUIReadouts(Game &g) {
             uiText("  %-3s  %.0f / %.0f / %.0f N m (R/P/Y)",
                    ship->rcs_attitude_enabled ? "on" : "off", hwv[0], hwv[1], hwv[2]);
         }
+        /* How much of the ring this hull may spend on POINTING (#1124) -- the dimmer
+           beside the switch above, which is only ever on/off. It rides the leftover
+           the translation keys leave behind (#595's priority), so the two dials
+           compose instead of fighting: keys at 0 and this at 1 is a station that holds
+           its heading without shoving a neighbour. Unlike the keys' dial below, this
+           one DOES dim the manual stick as well as SAS -- both ask through the same
+           authority rows -- which is why it sits with the switch (#425's shape) and
+           not with the law settings (#678's SAS dial never touches the stick).
+           The figure printed above stays undimmed on purpose: attitudeAuthorityHardware
+           ignores this dial, so that row says what the ring IS worth and this slider
+           says what the hull is letting it do. A dimmed ring therefore reads as a
+           smaller live rcs= with rcs_hw= unchanged, and [steerlog] prints att_lim=NN%
+           so the difference is diagnosable rather than mysterious.
+           The NaN guard is the same shape as the keys' slider below, and it fails the
+           same way worth knowing: a poisoned field SHOWS 100 % here while the sim reads
+           it as zero authority (attitudeAuthorityRows' !(left > 0.0) gate), so the
+           window would look fine over a dead ring. --rcs-att-frac refuses that value at
+           the door (main.cpp) and save.h refuses it in a file. */
+        double a = ship->rcs_attitude_frac;
+        float apct = (a >= 0.0 && a <= 1.0) ? (float)a * 100.0f : 100.0f;
+        if(ImGui::SliderFloat("RCS attitude limit", &apct, 0.0f, 100.0f, "%.0f %%")) {
+            ship->rcs_attitude_frac = (double)std::lroundf(apct) / 100.0;
+        }
         /* How hard the RCS KEYS may shove this hull (#1067). The row above prices what
            the ring is worth for POINTING; this prices what a translation key may ask of
            it -- a different door, and the label has to say so. Called "RCS thrust

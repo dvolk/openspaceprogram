@@ -2171,6 +2171,53 @@ static void test_a_ring_of_bells_is_a_row_of_actuators() {
                "one bell spent pushing the hull +X leaves the other one for attitude");
     CHECK_NEAR(100.0, v->attitudeTorqueAbout(spent, -y), 1e-9,
                "and the unspent bell still levers a whole turn -- the ring does both, in order");
+
+    /* #1124's SECOND DIAL. The switch above is on/off; this is the dimmer, and it rides
+       the leftover the priority just computed -- never the lever, which is the bell's
+       rating. Half a ring therefore reads 50 N m in the live view and 100 N m in the
+       hardware one, which is the pair the Systems window prints and [steerlog] logs. */
+    v->rcs_attitude_frac = 0.5;
+    const Vehicle::AttitudeAuthority dim = v->attitudeAuthority();
+    CHECK_NEAR(50.0, v->attitudeTorqueAbout(dim, -y), 1e-9,
+               "half the dial is half the leftover: 0.5 x the free bell's 100 N m");
+    CHECK_NEAR(0.0, v->attitudeTorqueAbout(dim, y), 1e-6,
+               "and the bell translation spent still levers nothing, dial or no dial");
+    const Vehicle::AttitudeAuthority dimHw = v->attitudeAuthorityHardware();
+    CHECK_TRUE(dimHw.rcs.size() == 2, "the hardware view keeps both bells");
+    CHECK_NEAR(100.0, v->attitudeTorqueAbout(dimHw, y), 1e-9,
+               "at the FULL rating -- the dial is a permission, not a re-rating (#595)");
+    /* Pin it the other way round too: the keys' dial must not buy pointing, and the two
+       dials must compose on the SAME leftover rather than each owning half the ring.
+       With the +X ask at 50 % the keys spend 50 of the -X bell's 100 N, so that bell
+       leaves 0.5 of itself and the free one still leaves 1.0 -- 1.5 of row in total --
+       and the pointing dial halves BOTH leftovers, which is the 0.75 below. A dial that
+       reached the ratings instead would leave the same 0.75 of a HALF-RATED ring: the
+       next line is what tells them apart, and it comes out 25 N m there instead. */
+    v->rcs_thrust_frac = 0.5;
+    v->rcsPlan();
+    const Vehicle::AttitudeAuthority both = v->attitudeAuthority();
+    double allowed = 0.0;
+    for(const ActuatorRow &r : both.rcs) { allowed += r.limit; }
+    CHECK_NEAR(0.75, allowed, 1e-6,
+               "both dials compose: the keys leave half of the bell they spent, and the "
+               "pointing dial halves every leftover -- (0.5 + 1.0) x 0.5");
+    CHECK_NEAR(50.0, v->attitudeTorqueAbout(both, -y), 1e-9,
+               "so the free bell is worth 50 N m about -Y either way");
+    v->rcs_thrust_frac = 1.0;
+    /* 0 is the dimmer's end, NOT the switch: the rows stay present with a zero limit,
+       so a law still sees a ring and asks (tau_ask > 0) and gets nothing spent. The
+       no-rows-at-all shape belongs to rcs_attitude_enabled=false, above, and collapsing
+       the two would make the switch lie about what the hull has. */
+    v->rcsPlan();
+    v->rcs_attitude_frac = 0.0;
+    const Vehicle::AttitudeAuthority dead = v->attitudeAuthority();
+    CHECK_TRUE(dead.hasRcs, "the hull still HAS the ring at 0 %");
+    CHECK_TRUE(dead.rcs.size() == 2, "and the rows are still there, just unallowed");
+    CHECK_NEAR(0.0, v->attitudeTorqueAbout(dead, y), 0.0, "bringing nothing to bear");
+    CHECK_NEAR(100.0, v->attitudeTorqueAbout(v->attitudeAuthorityHardware(), y), 1e-9,
+               "while the hardware figure never noticed -- which is how a player tells "
+               "a dimmed ring from a broken one");
+    v->rcs_attitude_frac = 1.0;
     destroyShip(v);
 }
 
