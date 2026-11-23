@@ -30,7 +30,11 @@ NUCLEAR_THRUST_PER_M2 = 30000.0  # N, thrust at radius = 1 m (scales with r^2)
 NUCLEAR_EXHAUST_VELOCITY = 9000.0  # m/s (Isp = 9000/9.81 ~ 917 s), ~2x chemical
 NUCLEAR_MASS_PER_N = 0.03         # kg per newton -- reactor + shielding, ~3x chemical
 HYDRAZINE_DENSITY = 100.0        # kg/m^3, monopropellant hydrazine (mono)
-RCS_THRUST_PER_M2 = 200.0        # N, RCS thrust at radius = 1 m (scales with r^2)
+RCS_THRUST_PER_M2 = 200.0        # N PER BELL at radius = 1 m (scales with r^2). The
+                                 # rating is per orifice, not per pod (#1119): a round
+                                 # pod carries six bells, so rcs_r1 is 6 x 200 N of
+                                 # installed thrust, reachable only a direction at a
+                                 # time -- see rcsReachableAlong() in src/rcs.h.
 
 # Jet (air-breathing): T = T_fan + m_f*V_E + rho*A*v*(V_E - v) (src/drag.h jetThrust)
 JET_FAN_PER_M2    = 90000.0      # N, static (fan) thrust at radius = 1 m

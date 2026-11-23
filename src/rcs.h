@@ -172,13 +172,16 @@ inline void nnls(const double *W, size_t m, size_t n, const double *b, Scratch &
 
 }  // namespace rcs
 
-/* The most newtons any legal mix (0 <= c <= 1) can deliver along dirW: each
-   bell is one-way, so it adds thrust * cos(its angle to dirW) when it points
-   that way and nothing when it does not. Exact, not an estimate -- the force
-   rows above are separable per bell, so this sum IS that LP's optimum. A bell
-   cannot be credited for a direction it cannot push, which is why a hull's
-   ceiling is a function of the asked direction, not one number (#1119).
-   NaN in, 0 out: comparisons drop it, so a bad dirW buys no demand. */
+/* The most newtons any legal mix (0 <= c <= 1) can CONTRIBUTE along dirW:
+   each bell is one-way, so it adds thrust * cos(its angle to dirW) when it
+   points that way and nothing when it does not. Exact about the force rows --
+   they are separable per bell, so no solve can beat this along dirW. It is NOT
+   a delivery promise: rcsAllocateInto fits the off-axis force rows and the
+   torque rows too, so a hull whose bells sit OBLIQUE to dirW delivers less
+   along dirW than the ask it was given (one bell at 45 deg lands 0.71 of its
+   ask, and asks there used to look bigger only because the per-part sum
+   over-credited the ring). A ceiling on the contribution, not on the outcome
+   (#1119). NaN in, 0 out: comparisons drop it, so a bad dirW buys no ask. */
 inline double rcsReachableAlong(const std::vector<RcsNozzle> &noz,
                                 const glm::dvec3 &dirW) {
     double f = 0.0;

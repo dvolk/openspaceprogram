@@ -14,7 +14,7 @@ KIND invariant
 # switch (#595): pointing the hull and pushing it are different doors, and this
 # dial only ever had the second one in hand.
 ARGS --time-accel 1 --sim-steps 480 --startship rcs_box_pair,res/ships/rcs_box_pair.json,Kerbin,inertial-orbit --att-log --drag-log --fuel-log --rcs-frac 0 --sim-press 2000,3000,N
-EXPECT RCS: thrust limited to 0% of the ring
+EXPECT RCS: translation limited to 0% of what the ring can do that way
 FORBID [rcs]
 CHECK len(att) >= 6
 CHECK max(a["wnorm"] for a in att) < 0.02

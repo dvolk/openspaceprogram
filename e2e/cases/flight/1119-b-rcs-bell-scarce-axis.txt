@@ -19,5 +19,7 @@ FORBID cmd=(-0 120
 FORBID error:
 CHECK "box_r[+X]=60N" in out
 CHECK len(re.findall(r"\[rcs\] cmd=\(-0 60 -0\)N ach=\(-0 60 -0\)N", out)) >= 2
-# One bell firing, not two half-fired: the ask is exactly what the ring has.
-CHECK all(len(re.findall(r"box_\w+\[", line)) == 1 for line in out.splitlines() if line.startswith("[rcs]"))
+# EVERY row delivers what it asked, not just the one quoted above: the phantom
+# shortfall (cmd 120 against ach 60, every substep, forever) is gone rather than
+# merely hidden. Figures are printed rounded to whole newtons, so 1 N of slack.
+CHECK all(abs(int(m.group(1)) - int(m.group(4))) + abs(int(m.group(2)) - int(m.group(5))) + abs(int(m.group(3)) - int(m.group(6))) < 1 for m in re.finditer(r"cmd=\((-?\d+) (-?\d+) (-?\d+)\)N ach=\((-?\d+) (-?\d+) (-?\d+)\)N", out))

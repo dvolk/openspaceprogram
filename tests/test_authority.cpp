@@ -2155,6 +2155,8 @@ static void test_a_ring_of_bells_is_a_row_of_actuators() {
        walked away with a shortfall it could never serve.) */
     v->armRcs(x);
     v->rcsPlan();
+    CHECK_NEAR(100.0, glm::length(v->lastRcsCmd), 1e-9,
+               "the ask is the ring's reach along X, not 2 x the part rating (#1119)");
     const Vehicle::AttitudeAuthority spent = v->attitudeAuthority();
     CHECK_TRUE(spent.rcs.size() == 2, "both rows are still there to be read");
     CHECK_TRUE(spent.rcs[0].one_way, "a bell is a one-way row: it pushes along its axis");

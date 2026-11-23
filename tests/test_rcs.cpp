@@ -252,10 +252,11 @@ static void test_golden_answers() {
 }
 
 /* #1119: the translation ceiling rcsPlan caps its demand with. A bell is one-way,
-   so what a ring can deliver is a function of the DIRECTION being asked, not one
-   number per hull -- and the cap is the allocator's own optimum rather than a
-   fudge: fed exactly Fcap along dirW it needs no bell over rating, and no larger
-   ask moves the delivered component past it. */
+   so what a ring can CONTRIBUTE is a function of the DIRECTION being asked, not
+   one number per hull. Pinned both ways: on an aligned bell set the cap is
+   exactly what the shipped solver reaches (and no larger ask buys more along
+   dirW), while on an oblique one the cap is only the contribution -- delivery
+   lands short, which the old over-sized per-part ask used to paper over. */
 static void test_reachable_along_is_a_ceiling() {
     printf("== rcsReachableAlong: the ceiling is per-direction ==\n");
     /* A 5-bell box with the mount face missing, like rcs_box at 60 N a bell. */
@@ -275,18 +276,39 @@ static void test_reachable_along_is_a_ceiling() {
     const std::vector<RcsNozzle> none;
     CHECK_NEAR(0.0, rcsReachableAlong(none, z), 1e-9, "no ring, no ceiling");
 
-    /* Exactness against the shipped solver, not just arithmetic. */
+    /* What the cap buys in the shipped solver, on a bell set that CAN bring the
+       cap to bear: both projecting bells go to rating, the opposed ones stay
+       shut, and the delivered component along dirW is the cap. (Pinning c <= 1
+       here would be vacuous -- rcsAllocateInto clips every c at 1.0 by
+       construction, so it holds for any demand, reachable or not.) */
     const double cap = rcsReachableAlong(box, xy);
     glm::dvec3 F, T;
     const std::vector<double> at = rcsAllocate(box, xy * cap);
-    double worst = 0.0;
-    for(double ci : at) { if(ci > worst) { worst = ci; } }
-    CHECK_TRUE(worst <= 1.0 + 1e-9, "the cap is reachable without over-rating a bell");
+    CHECK_TRUE(at[0] > 0.999 && at[2] > 0.999,
+               "at the cap the two projecting bells sit AT rating");
+    CHECK_TRUE(at[1] < 1e-9 && at[3] < 1e-9, "the opposed bells are not a torque trim");
     achieved(box, at, F, T);
     CHECK_NEAR(cap, glm::dot(F, xy), 1e-6, "at the cap, the ask is delivered that way");
     const std::vector<double> twice = rcsAllocate(box, xy * (2.0 * cap));
     achieved(box, twice, F, T);
     CHECK_NEAR(cap, glm::dot(F, xy), 1e-6, "twice the ask delivers no more ALONG dirW");
+
+    /* And what it does NOT buy. One bell 45 deg off the ask CONTRIBUTES
+       60*cos45 = 42.43 along it, so that is the ask -- but the solve also fits
+       the off-axis force rows and the torque rows, so fed exactly that ask it
+       lands at c = 0.5: 30 N of force, 21.21 along dirW (cos^3 of the rating).
+       The cap bounds the contribution; delivery stays the solver's answer. An
+       oblique mount used to look better only because the per-part sum asked
+       over the cap -- see the #1119 review's oblique finding. */
+    const double c45 = std::sqrt(0.5);
+    const glm::dvec3 u(1.0, 0.0, 0.0);
+    const std::vector<RcsNozzle> oblique = { nz(glm::dvec3(c45, c45, 0.0), glm::dvec3(0.0), 60.0) };
+    const double ucap = rcsReachableAlong(oblique, u);
+    CHECK_NEAR(60.0 * c45, ucap, 1e-9, "an oblique bell contributes rating x cos");
+    const std::vector<double> ob = rcsAllocate(oblique, u * ucap);
+    achieved(oblique, ob, F, T);
+    CHECK_NEAR(ucap * c45 * c45, glm::dot(F, u), 1e-6,
+               "fed its own cap, an oblique ring delivers cos^2 of it: ask != delivery");
 
     /* A legacy 6-dir pod: the pre-#1119 ceiling was one rating per PART, which is
        neither of these. Six bells do not make 1200 N available in any direction;

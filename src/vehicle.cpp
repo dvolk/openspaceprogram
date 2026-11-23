@@ -5517,11 +5517,15 @@ void Vehicle::rcsPlan() {
        direction-shaped now -- a diagonal reaches more than a cardinal on the same
        hull, and an axis the ring is thin on asks less than it used to. Bells and
        dirW rotate together, so a held key's ask does not jitter as the hull turns.
-       The floor catches two different nothings: frac == 0 (the dial is off) and a
-       direction outside every bell's cone, which the dot products leave at ~1e-14
-       rather than 0 -- without a floor that hull "burns" fuel and prints a [rcs]
-       row of zeros. Keeping it one Fmax test is what makes the dial's own
-       zero-path (flight/1067-b) stay green whatever the geometry says. */
+       The floor catches two different nothings: frac == 0 (the dial is off) and
+       a direction outside every bell's cone, which the dot products leave at
+       ~1e-14 rather than 0 -- without a floor that hull "burns" 1e-14 N, sets
+       rcsFiring, and logs. Keeping it one Fmax test is what makes the dial's own
+       zero-path (flight/1067-b) stay green whatever the geometry says.
+       What the cap does NOT promise is DELIVERY along dirW: the solve fits the
+       off-axis force rows and the torque rows as well, so a ring whose bells sit
+       oblique to the asked direction lands short of its capped ask (see
+       rcsReachableAlong, rcs.h). */
     const double Fcap = rcsReachableAlong(rcsNoz, dirW);
     const double Fmax = Fcap * rcs_thrust_frac;
     if(!(Fmax > 1e-9) || glm::length2(dirW) < 1e-12) { rcsScratch.c.assign(N, 0.0); return; }

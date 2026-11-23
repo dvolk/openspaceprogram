@@ -1546,9 +1546,12 @@ void tick(Game &g) {
                 }
                 /* RCS nozzle allocation (#428): which BELLS fired for the
                    commanded move -- [tag] names the bell (part-local), the
-                   thrust it produces acts opposite the tag. ach < cmd (or
-                   nothing firing at all -- a demand outside every nozzle's
-                   cone) is the hardware saying it cannot deliver. */
+                   thrust it produces acts opposite the tag. ach < cmd is the
+                   hardware saying it cannot deliver that. A demand outside
+                   every bell's cone prints NO row at all: rcsPlan() caps the
+                   ask at what the ring can contribute along the demanded way
+                   (#1119), so a cone-blind key never gets as far as the log.
+                   Absence is the diagnostic there, not a row of zeros. */
                 if(glm::length2(g.ship->lastRcsCmd) > 0.0) {
                     const glm::dvec3 cmd = g.ship->lastRcsCmd;
                     const glm::dvec3 ach = g.ship->lastRcsAch;

@@ -24,7 +24,7 @@ KIND invariant
 # while the live rcs= authority GROWS (roll 69 -> 104 N m) because the bell the
 # keys no longer spend is left to the attitude walk. That is #1067 working.
 ARGS --time-accel 1 --sim-steps 480 --startship rcs_box_pair,res/ships/rcs_box_pair.json,Kerbin,inertial-orbit --att-log --drag-log --steering-log --rcs-frac 0.5 --sim-press 2000,3000,N
-EXPECT RCS: thrust limited to 50% of the ring
+EXPECT RCS: translation limited to 50% of what the ring can do that way
 EXPECT [rcs] cmd=(60 0
 EXPECT lim=50%
 CHECK len(att) >= 6

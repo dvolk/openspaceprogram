@@ -20,7 +20,7 @@ ARGS --sim-press 3000,600,S,6000,3000,X
 ARGS --timeout 12
 LIMIT 40
 EXPECT [slew]
-EXPECT RCS: thrust limited to 0% of the ring
+EXPECT RCS: translation limited to 0% of what the ring can do that way
 FORBID error:
 FORBID FAILED
 CHECK len(slew) >= 15
