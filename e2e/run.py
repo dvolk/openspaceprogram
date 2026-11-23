@@ -427,8 +427,13 @@ SOLAR_RE = re.compile(
 # axis that closes the error, the nose axis (an uncommanded roll), and the third that
 # completes it. Parsed because a case that wants "the actuators MOVED the hull" cannot ask
 # it of E alone -- E also rises when nothing acts and the target merely drifts.
+# stick= is on every numeric row since #1137: the manual keys' own roll/pitch/yaw demand,
+# -1..1, printed whether or not a law is latched. Under a latched law the hand is still an
+# asker (SasStickOwnsAxis yields whatever axis is held), so tau_ask on a mode=prograde row
+# can be mostly the pilot's -- which 421's "who wins the axis" could not otherwise tell
+# apart from a key the input layer ignored.
 SLEW_RE = re.compile(
-    r"\[slew\]\s+t=([\d.]+)\s+mode=(\S+)\s+E=([-\d.]+)\s+rad\s+\([-\d.]+ deg\)\s+"
+    r"\[slew\]\s+t=([\d.]+)\s+mode=(\S+)\s+stick=\[([-+\d. ]+)\]\s+E=([-\d.]+)\s+rad\s+\([-\d.]+ deg\)\s+"
     r"w_slew=([-\d+.]+)\s+w_roll=([-\d+.]+)\s+w_third=([-\d+.]+)\s+\|w\|=([-\d+.]+)\s+"
     r"alpha=([-\d.]+)\s+alpha_full=([-\d.]+)\s+Ieff=([-\d.]+)\s+"
     r"w_des=([-\d+.]+)\s+w_cap=(\S+)\s+.*?"
@@ -446,7 +451,7 @@ SLEW_RE = re.compile(
 # rows". Keys the row does not print are None: a case that mixes modes has to name the
 # mode it means.
 KILLROT_RE = re.compile(
-    r"\[slew\]\s+t=([\d.]+)\s+mode=killrot\s+\|w\|=([-\d.]+)\s+rad/s\s+"
+    r"\[slew\]\s+t=([\d.]+)\s+mode=killrot\s+stick=\[([-+\d. ]+)\]\s+\|w\|=([-\d.]+)\s+rad/s\s+"
     r"w=\[([-+\d. ]+)\]\s+tau_ask=([-\d.]+)\s+tau_spent=([-\d.]+)"
 )
 # ... and a third while ONLY the manual stick is held (#1130): no latched law, so again
@@ -1393,54 +1398,67 @@ def parse_mapbldg(out):
     return rows
 
 
+# Every shape --slew-log prints is parsed into ONE list, so a case that mixes modes has to
+# name the mode it means. Keys a row does not print are None rather than absent: a missing
+# key makes a case's arithmetic raise on one mode and pass on another with no clue which.
+# One builder, because three near-identical literals are how a new column gets added to
+# two shapes and silently missed on the third.
+SLEW_ROW_KEYS = ("E", "w_slew", "w_roll", "w_third", "wnorm", "alpha", "alpha_full",
+                 "Ieff", "w_des", "w_cap", "tau_ask", "tau_spent", "nose", "target",
+                 "wxyz", "stick")
+
+
+def _slew_row(t, mode, **kw):
+    row = {"t": float(t), "mode": mode}
+    row.update(dict.fromkeys(SLEW_ROW_KEYS, None))
+    row.update(kw)
+    return row
+
+
 def parse_slew(out):
     rows = []
     for m in SLEW_RE.finditer(out):
-        (t, mode, e, w_slew, w_roll, w_third, wmag, alpha, alpha_full, ieff,
+        (t, mode, ask, e, w_slew, w_roll, w_third, wmag, alpha, alpha_full, ieff,
          w_des, w_cap, tau_ask, tau_spent, nx, ny, nz, tx, ty, tz) = m.groups()
-        rows.append({
-            "t": float(t), "mode": mode, "E": float(e),
-            "w_slew": float(w_slew), "w_roll": float(w_roll),
-            "w_third": float(w_third), "wnorm": float(wmag),
-            "alpha": float(alpha), "alpha_full": float(alpha_full),
-            "Ieff": float(ieff),
+        rows.append(_slew_row(
+            t, mode,
+            E=float(e),
+            w_slew=float(w_slew), w_roll=float(w_roll), w_third=float(w_third),
+            wnorm=float(wmag),
+            alpha=float(alpha), alpha_full=float(alpha_full), Ieff=float(ieff),
             # What the law wants and the ceiling on it (#678). w_cap prints "-" when
             # unlimited: a 0 there would read as a law forbidden to move, so it parses
             # to None rather than to 0.0.
-            "w_des": float(w_des),
-            "w_cap": None if w_cap == "-" else float(w_cap),
-            "tau_ask": float(tau_ask), "tau_spent": float(tau_spent),
-            "nose": (float(nx), float(ny), float(nz)),
-            "target": (float(tx), float(ty), float(tz)),
-        })
+            w_des=float(w_des),
+            w_cap=None if w_cap == "-" else float(w_cap),
+            tau_ask=float(tau_ask), tau_spent=float(tau_spent),
+            nose=(float(nx), float(ny), float(nz)),
+            target=(float(tx), float(ty), float(tz)),
+            # The hand on the axis alongside the law (#1137) -- the row cannot say which
+            # of tau_ask is whose, but it can say whether anyone was holding a key.
+            stick=tuple(float(v) for v in ask.split()),
+        ))
     # Kill-rot rows, same list, keys the row does not print set to None.
     for m in KILLROT_RE.finditer(out):
-        t, wmag, wxyz, tau_ask, tau_spent = m.groups()
-        rows.append({
-            "t": float(t), "mode": "killrot", "E": None,
-            "w_slew": None, "w_roll": None, "w_third": None,
-            "wnorm": float(wmag), "alpha": None, "alpha_full": None,
-            "Ieff": None, "w_des": None, "w_cap": None,
-            "tau_ask": float(tau_ask),
-            "tau_spent": float(tau_spent),
-            "nose": None, "target": None,
-            "wxyz": tuple(float(v) for v in wxyz.split()),
-        })
+        t, ask, wmag, wxyz, tau_ask, tau_spent = m.groups()
+        rows.append(_slew_row(
+            t, "killrot",
+            wnorm=float(wmag),
+            tau_ask=float(tau_ask), tau_spent=float(tau_spent),
+            wxyz=tuple(float(v) for v in wxyz.split()),
+            stick=tuple(float(v) for v in ask.split()),
+        ))
     # Stick-only rows (#1130), same list and same reasoning: the row carries no law state,
     # so every law key is None and a case that mixes modes has to name the mode it means.
     for m in STICK_RE.finditer(out):
         t, ask, wmag, wxyz, tau_ask, tau_spent = m.groups()
-        rows.append({
-            "t": float(t), "mode": "stick", "E": None,
-            "w_slew": None, "w_roll": None, "w_third": None,
-            "wnorm": float(wmag), "alpha": None, "alpha_full": None,
-            "Ieff": None, "w_des": None, "w_cap": None,
-            "tau_ask": float(tau_ask),
-            "tau_spent": float(tau_spent),
-            "nose": None, "target": None,
-            "wxyz": tuple(float(v) for v in wxyz.split()),
-            "stick": tuple(float(v) for v in ask.split()),
-        })
+        rows.append(_slew_row(
+            t, "stick",
+            wnorm=float(wmag),
+            tau_ask=float(tau_ask), tau_spent=float(tau_spent),
+            wxyz=tuple(float(v) for v in wxyz.split()),
+            stick=tuple(float(v) for v in ask.split()),
+        ))
     rows.sort(key=lambda r: r["t"])
     return rows
 

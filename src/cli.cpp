@@ -719,10 +719,12 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                  "angle, angular velocity split into the slew/roll/third "
                  "axes, braking-curve rate) to stdout every 0.1s of wall "
                  "time; only while the ship is under control, since a pause "
-                 "clears the applied slew. While only the manual stick is "
-                 "held the row shrinks to mode=stick with the ask and what "
-                 "the actuators spent, so a key press of your own is "
-                 "measurable too. The instrument for hunting the "
+                 "clears the applied slew. Every row carries stick=[roll "
+                 "pitch yaw], the manual keys' own demand (-1..1), so a key "
+                 "press of your own is measurable even while a law owns the "
+                 "axis. While only the stick is live the row shrinks to "
+                 "mode=stick with just the rate and the torque pair. The "
+                 "instrument for hunting the "
                  "prograde wobble");
 
     app.add_flag("--att-log", args.att_log,

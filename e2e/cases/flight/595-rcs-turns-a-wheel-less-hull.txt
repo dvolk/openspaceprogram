@@ -22,8 +22,11 @@ NAME rcs-turns-a-wheel-less-hull
 CLAIM With no wheels and no engine, a thruster ring holds prograde: it has authority, spends hydrazine to use it, and closes a stick disturbance.
 KIND invariant
 # The S tap (600 ms) is the disturbance; prograde hold is on from the start. Before #595
-# the tap did nothing at all -- no rows, no torque, and w_slew stayed at its 0.003 rad/s
-# floor -- so the two middle pins are the whole claim: the nose MOVES, and then the ring
+# the tap spent nothing -- the ring was not an actuator, so tau_spent stayed 0 and w_slew
+# stayed at its 0.003 rad/s floor however hard the key was held. The tap is now visible in
+# the rows themselves twice over: while S is down the prograde rows carry
+# stick=[0, -1, 0] (#1137), and on a hull with nothing latched a tap prints rows of its own
+# (#1130). So the two middle pins are the whole claim: the nose MOVES, and then the ring
 # BRAKES it and closes the error again. Measured over two runs of these ARGS: tap-window
 # w_slew down to -0.86..-0.96 rad/s, E peak 0.54-0.58 rad at t=4.2-4.3, error back under
 # 0.01 rad by t=5.3-5.4, and hydrazine down 0.7 kg with no translation key ever pressed.

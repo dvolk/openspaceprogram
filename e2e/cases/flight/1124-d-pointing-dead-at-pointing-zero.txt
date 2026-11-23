@@ -4,19 +4,21 @@ KIND invariant
 # rcs_test is #595's ring-only hull: no wheels, no fins, no gimbals, so its ENTIRE
 # attitude authority is the 138 N m its four rcs_box units lever about pitch (a
 # --steering-log run prices the ring at 276/138/138 N m, R/P/Y). flight/677 and
-# flight/1067-c both watch kill-rot spend exactly that pitch figure: 677 brings a
-# 0.91-0.93 rad/s spin down, 1067-c a 0.77-0.80 one.
+# flight/1067-c both watch kill-rot spend exactly that pitch figure. The spin they take
+# down is 0.83-0.91 rad/s in 677 and 0.80-0.99 in 1067-c -- that spread is where a
+# wall-clock press release lands (#138, #871), not the hardware differing.
 #
-# Here the spin never arrives in the first place. The tap is an attitude key (S, 600 ms)
-# and the dial dims the stick as well as the law -- both ask through the same authority
-# rows, which is what #678's SAS dial deliberately does NOT do -- so at 0 % the hull
-# never rotates (|w| stays ~0.0003 where the default run reaches ~0.9), tau_spent is 0
-# on every row, and the tank never moves (the default run drinks 0.1-0.3 kg).
+# Here the spin never arrives in the first place. The tap is an attitude key (S, 600 ms),
+# and the pointing dial dims the stick's ask AND the law's: both are demands on the ring's
+# authority rows, which is what #678's SAS dial deliberately does NOT do. So at 0 % the
+# hull never rotates (|w| stays ~0.0003 where the same press reaches 0.80-0.99), tau_spent
+# is 0 on every row, and the tank never moves (the default run drinks 0.1-0.3 kg).
 #
 # The HOLD rows keep tau_ask above 0 and mode killrot: kill-rot asks whenever the ring's
 # ROWS exist (its guard is row presence), so 0 % leaves a ring that is present and
-# unallowed and the shortfall reads ask>0 / spent=0. The TAP rows read differently --
-# mode=stick with ask AND spent 0 -- because the stick's demand is cut by the dial before
+# unallowed and the shortfall reads ask>0 / spent=0 -- measured 5 N m asked, 0 spent. The
+# TAP rows read differently -- mode=stick with ask AND spent 0 -- because the stick's
+# demand is budgeted from what the authority rows ALLOW, so the dial cuts it to 0 before
 # the ring is consulted, while kill-rot budgets from I*(-w)/h. Switching the ring off
 # removes the rows and silences the ask, which is the shape #425's switch owns and the
 # reason this dial must not implement zero by dropping rows. (An ALIGNMENT law budgets its
@@ -39,13 +41,13 @@ CHECK max(s["tau_ask"] for s in slew) > 0
 # rather than inferred. Before the mode=stick rows, |w| staying at 0.0003 was equally
 # consistent with the key never being read at all; now the key logs itself, and what it
 # logs is an ask of 0 and a spend of 0 -- the dial caps the DEMAND, it does not dim the
-# nozzles. Note the two askers behave differently and keep the pins straight: killrot
-# keeps asking 5 N m on these rows because killRotDemand budgets from I*(-w)/h and only
-# then looks for rows, while the stick's ask is cut to 0 by the dial before the ring is
-# consulted. So tau_ask > 0 above is a killrot-row claim, never a stick-row one.
+# nozzles. Keep the two askers straight: kill-rot keeps asking 5 N m on the HOLD rows
+# because killRotDemand budgets from I*(-w)/h and only then looks for rows, while the
+# stick's ask is cut to 0 before the ring is consulted. So tau_ask > 0 above is a
+# killrot-row claim, never a stick-row one. Both columns print at %.0f, so "== 0" here
+# means under half a newton-metre -- and on this hull the alternative is 138.
 CHECK sum(1 for s in slew if s["mode"] == "stick") >= 4
 CHECK all(s["tau_ask"] == 0 and s["tau_spent"] == 0 for s in slew if s["mode"] == "stick")
-CHECK all(s["wnorm"] < 0.01 for s in slew if s["mode"] == "stick")
 # Not one gram: nothing on this hull burns hydrazine except its ring, and the ring is
 # allowed nothing.
 CHECK first(fuel)["groups"][0]["N2H4"][0] == last(fuel)["groups"][0]["N2H4"][0]

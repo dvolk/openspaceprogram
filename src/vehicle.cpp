@@ -5661,28 +5661,16 @@ void Vehicle::applyRcsForce(double h) {
 }
 
 void Vehicle::slew_log(double time) {
-    if(slew == SlewNone) {
-        /* THE STICK'S WINDOW (#1130). A held attitude key is a demand on the same four
-           channels a latched law uses, but until now the trace went silent while only the
-           stick was live, so the one part of a turn a player causes with their own hand was
-           the part nobody could measure -- #1130's "the dial weakened my tap" had to be
-           inferred from the rate still standing when kill-rot latched three seconds later,
-           and a wall-clock press schedule (#138, #871) moves that residue by more than the
-           effect being looked for. Row shape is the kill-rot one plus the ask itself, and
-           it says 0/0 when the ring cannot spend: the point is to record that the stick
-           reached the allocator, not that it moved the hull. */
-        if(stick[0] == 0.0f && stick[1] == 0.0f && stick[2] == 0.0f) { return; }
-        const AttitudeDelivery del = attitudeDelivery();
-        const glm::dvec3 w = hullAngVel();
-        printf("[slew] t=%.3f mode=stick stick=[%+.2f %+.2f %+.2f] |w|=%.4f rad/s "
-               "w=[%+.4f %+.4f %+.4f] tau_ask=%.0f tau_spent=%.0f\n",
-               time, (double)stick[0], (double)stick[1], (double)stick[2],
-               glm::length(w), w.x, w.y, w.z,
-               glm::length(del.asked),
-               glm::length(del.wheels + del.tvc + del.surfaces + del.rcs));
-        fflush(stdout);
-        return;
-    }
+    /* THE STICK'S WINDOW (#1130). A held attitude key is a demand on the same four
+       channels a latched law uses, but until now the trace went silent while only the
+       stick was live, so the part of a turn a player causes with their own hand was the
+       part nobody could measure -- #1130's "the dial weakened my tap" had to be inferred
+       from the rate still standing when kill-rot latched three seconds later, and a
+       wall-clock press schedule (#138, #871) moves that residue by more than the effect
+       being looked for. The row says 0/0 when the ring cannot spend: what it records is
+       that the stick reached the allocator, not that it moved the hull. */
+    const bool stickOnly = (slew == SlewNone);
+    if(stickOnly && stick[0] == 0.0f && stick[1] == 0.0f && stick[2] == 0.0f) { return; }
     /* THE SPEND (#599), read the same way for every mode this row prints. The demand
        and the channels come from the last ACTUATED substep -- applyRotationForce clears
        the record every substep, so a law that asked for nothing reads 0/0 rather than
@@ -5698,11 +5686,22 @@ void Vehicle::slew_log(double time) {
        coasting pod on thrusters spends hydrazine and shows up here as tau_spent with
        tau_ask behind it. Before it, the same hull read as spending nothing forever. */
     const double tau_spent = glm::length(del.wheels + del.tvc + del.surfaces + del.rcs);
-    if(slew == SlewKillRot) {
+    /* WHO ELSE IS ASKING (#1137). The triple is the pilot's own stick, roll / pitch / yaw,
+       -1..1, and it rides every row rather than only the stick-only one. Under a latched
+       law the hand has not stopped being an asker -- SasStickOwnsAxis hands over whatever
+       axis is being held, so tau_ask on a latched row is largely the pilot's while the row
+       names only the law. 421's "who wins the axis" could only be answered from where the
+       hull ended up: out-voted and ignored looked identical. stick=[+0.00 +0.00 +0.00] is
+       the answer to "was anyone holding a key?", and it is cheap because these are members. */
+    char stickc[48];
+    snprintf(stickc, sizeof stickc, "stick=[%+.2f %+.2f %+.2f]",
+             (double)stick[0], (double)stick[1], (double)stick[2]);
+    if(stickOnly || slew == SlewKillRot) {
         const glm::dvec3 w = hullAngVel();
-        printf("[slew] t=%.3f mode=killrot |w|=%.4f rad/s "
+        printf("[slew] t=%.3f mode=%s %s |w|=%.4f rad/s "
                "w=[%+.4f %+.4f %+.4f] tau_ask=%.0f tau_spent=%.0f\n",
-               time, glm::length(w), w.x, w.y, w.z, tau_ask, tau_spent);
+               time, stickOnly ? "stick" : "killrot", stickc,
+               glm::length(w), w.x, w.y, w.z, tau_ask, tau_spent);
         fflush(stdout);
         return;
     }
@@ -5718,6 +5717,8 @@ void Vehicle::slew_log(double time) {
     const AttitudeAuthority auth = attitudeAuthority();
     const Pointing p = pointingTo(target, auth);
     if(!p.valid) {
+        /* No stick column here on purpose: these rows name a law that cannot act at all,
+           and four cases pin their exact text ("mode=prograde no-target"). */
         printf("[slew] t=%.3f mode=%s %s\n", time, mode,
                glm::length2(target) < 1e-12 ? "no-target" : "no-frame");
         fflush(stdout);
@@ -5770,12 +5771,12 @@ void Vehicle::slew_log(double time) {
     /* The two directions at 6 dp, not 3: e2e pairs target= with --plane-log's
        n_orb, and a 3 dp component leaves ~3e-3 of dot-product slack -- the same
        size as the error it is there to catch. */
-    printf("[slew] t=%.3f mode=%s E=%.4f rad (%.2f deg) "
+    printf("[slew] t=%.3f mode=%s %s E=%.4f rad (%.2f deg) "
            "w_slew=%+.4f w_roll=%+.4f w_third=%+.4f |w|=%.4f "
            "alpha=%.3f alpha_full=%.3f Ieff=%.0f w_des=%+.4f w_cap=%s "
            "tau_ask=%.0f tau_spent=%.0f "
            "nose=[%+.6f %+.6f %+.6f] target=[%+.6f %+.6f %+.6f]\n",
-           time, mode, E, glm::degrees(E),
+           time, mode, stickc, E, glm::degrees(E),
            w_slew, w_roll, w_third, glm::length(w),
            alpha, alpha_full, Ieff, w_des, w_cap, tau_ask, tau_spent,
            p.facing.x, p.facing.y, p.facing.z, target.x, target.y, target.z);

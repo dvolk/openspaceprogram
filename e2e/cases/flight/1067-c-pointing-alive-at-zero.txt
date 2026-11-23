@@ -39,19 +39,25 @@ CHECK max(s["tau_spent"] for s in slew) > 120
 CHECK all(s["tau_spent"] <= 145.0 for s in slew)
 # #1130's question, answered where it was asked: does the TRANSLATION dial reach a
 # POINTING tap? The tap rows say no -- with --rcs-frac 0 the stick still asks for the
-# ring's whole 138 N m and the ring still spends it, ask and spent equal to the last
-# printed digit in all six runs taken at --rcs-frac 1.0 / 0.65 / 0.35 / 0.0.
+# ring's whole 138 N m and the ring still spends it, ask and spent identical to the last
+# printed digit in every run taken at --rcs-frac 1.0 / 0.65 / 0.35 / 0.0. Both columns
+# print at %.0f, so "the same" is only assertable to the print quantum: at a quarter and
+# three quarters of the pointing rating the two columns of ONE row come out 35/34 and
+# 104/103 from rounding alone. Hence 2 N m of slack, not 1.
 CHECK all(s["tau_spent"] > 130.0 for s in slew if s["mode"] == "stick")
-CHECK all(abs(s["tau_ask"] - s["tau_spent"]) < 1.0 for s in slew if s["mode"] == "stick")
-# AND THE RAMP BELONGS TO THE HARDWARE. 138 N m over the Ieff these rows print (86 kg m^2)
-# is 1.605 rad/s^2, which is what 595's prograde rows call alpha=1.606. The slope between
-# the first and last tap row is 1.6002..1.6016 in six runs -- two at this dial, four at
-# the default -- so the tap accelerates the hull at exactly what the ring is worth no
-# matter where the translation dial sits. What DOES move is when the release lands: the
-# tap rows end at t=3.550..3.667 and leave 0.80..0.99 rad/s, because --sim-press without
-# --sim-steps is wall-clock timed (#138, #871). That spread is the 14-17 % #1130 read as
-# the dial biting, and it is why the slope rather than the endpoint is the pinnable number.
-CHECK (lambda st: 1.58 < (st[-1]["wnorm"] - st[0]["wnorm"]) / (st[-1]["t"] - st[0]["t"]) < 1.62)([s for s in slew if s["mode"] == "stick"])
+CHECK all(abs(s["tau_ask"] - s["tau_spent"]) < 2.0 for s in slew if s["mode"] == "stick")
+# AND THE RAMP BELONGS TO THE HARDWARE. 138 N m over this hull's 86 kg m^2 about pitch is
+# 1.605 rad/s^2 -- flight/595's prograde rows print that Ieff and call the quotient
+# alpha=1.606; neither the killrot rows nor the tap rows this case reads carry an Ieff
+# column, so the figure is quoted from there rather than from here. The slope between the
+# first and last tap row is 1.6002..1.6039 in the fourteen runs taken for this case (six
+# alone, eight in concurrent fours), so the tap accelerates the hull at whatever the ring
+# is worth no matter where the translation dial sits. What DOES move is when the release
+# lands: the tap rows end at t=3.550..3.667 and leave 0.80..0.99 rad/s, because --sim-press
+# without --sim-steps is wall-clock timed (#138, #871). That spread is the 14-17 % #1130
+# read as the dial biting, and it is why the slope rather than the endpoint is pinnable.
+# len() guards the lambda: with a single row the slope is a division by zero.
+CHECK (lambda st: len(st) >= 2 and 1.58 < (st[-1]["wnorm"] - st[0]["wnorm"]) / (st[-1]["t"] - st[0]["t"]) < 1.62)([s for s in slew if s["mode"] == "stick"])
 # AND THE SPIN GOES AWAY with the keys' dial at zero.
 CHECK max(s["wnorm"] for s in slew) > 0.25
 CHECK min(s["wnorm"] for s in slew) < 0.01

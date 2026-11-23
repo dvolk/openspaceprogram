@@ -23,9 +23,11 @@ LIMIT 60
 EXPECT [slew]
 FORBID no-frame
 FORBID error:
-# Premise: the mode is latched AND has a target -- SLEW_RE only matches rows that got past
-# pointingTo(), so a parsed row is evidence of both halves at once.
+# Premise: the mode is latched AND has a target -- no [slew] parser matches a row that
+# pointingTo() refused, so a parsed row is evidence of both halves at once.
 CHECK len(slew) >= 10
+# Exhaustive because this run presses no attitude key: the moment one is held, the log
+# gains mode=stick rows too (#1130) and this filter has to name the window it means.
 CHECK all(s["mode"] == "normal" for s in slew)
 # The aim is this bed's normal: the ecliptic's +Y, and a unit vector as printed.
 CHECK all(abs(s["target"][1]) > 0.9999 and abs(sum(c * c for c in s["target"]) - 1.0) < 1e-5 for s in slew)
@@ -34,5 +36,5 @@ CHECK all(abs(s["target"][1]) > 0.9999 and abs(sum(c * c for c in s["target"]) -
 # authority.
 CHECK first(slew)["E"] > 1.5 and last(slew)["E"] < 0.5
 # MUTATION: hand pointingTo the raw cross(p, v) instead of a unit vector and every row
-# becomes `mode=normal no-frame`: SLEW_RE matches nothing, len(slew) is 0, and the FORBID
-# catches the string.
+# becomes `mode=normal no-frame`: none of the three [slew] parsers matches, len(slew) is 0,
+# and the FORBID catches the string.

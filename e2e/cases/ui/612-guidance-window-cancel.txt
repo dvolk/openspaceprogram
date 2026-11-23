@@ -5,8 +5,10 @@
 # thrust and was at full when this Cancel landed mid-climb. flyAscent's
 # going-away pass cannot do it here -- tick.cpp stops calling it the moment the
 # law is gone -- so Game::cancelAscent calls releaseAscent() itself.
-# What this case can see is the latch: --slew-log prints a row only while a slew
-# is latched, and the rows stop at the Cancel tick. The lever half has no
+# What this case can see is the latch: --slew-log prints while a law is latched AND while
+# an attitude key is held (#1130), and nothing here presses a key -- every input is a
+# --ui-click -- so the rows are the law's hand on the ship, and they stop at the Cancel
+# tick. The lever half has no
 # observable effect on a hull whose engine is not armed (armed thrust is cleared
 # at the top of every tick, tick.cpp), and --ascent-log is gated on Game::ascent,
 # which Cancel clears, so the lever is pinned in tests/test_guidance.cpp instead.
@@ -31,7 +33,8 @@ FORBID phase=circ
 # --ascent-log gate reads Game::ascent, which Cancel cleared.
 CHECK len(ascent) >= 2
 CHECK max(a["t"] for a in ascent) < 40
-# --slew-log prints a row only while a slew is latched, so these rows are the
+# --slew-log prints for a latched law or a held attitude key (#1130); this run holds no
+# keys, so these rows are the
 # law's hand on the ship: nothing before Go, nothing after the Cancel. A latch
 # left set would keep steering, keep the SAS keys from working, and keep the
 # hull awake off rails for ever (#610 review).

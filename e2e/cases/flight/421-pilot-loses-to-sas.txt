@@ -24,6 +24,13 @@ CHECK len(slew) >= 10
 # Every row after SAS has settled, not just the two windows: the whole-run bound is
 # the one that cannot drift with wall clock (these cases do not use --sim-steps).
 CHECK max(s["E"] for s in slew if s["t"] > 1.5) < 0.005
+# E 0.0000 is the same print whether the law over-powered the hand or the hand never
+# arrived. The stick column says which (#1137): every row while S is held carries the
+# pilot's own demand -- roll/pitch/yaw, so S is [0, -1, 0] -- next to a law whose tau
+# columns go on spending as if nothing happened. Before the column existed, this case's
+# CLAIM described a policy nobody could observe, and "ignored" and "out-voted" printed
+# byte-identical rows. Measured 13 held-key rows against a 1.5 s press.
+CHECK sum(1 for s in slew if s["stick"] == (0.0, -1.0, 0.0)) >= 8
 CHECK max(a["wnorm"] for a in att if 3.5 < a["t"] < 6.6) < 0.02
 CHECK last(slew)["E"] < 0.005
 CHECK all(a["wnorm"] == a["wnorm"] and a["wnorm"] < 1e4 for a in att)

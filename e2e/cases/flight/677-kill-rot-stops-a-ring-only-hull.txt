@@ -11,7 +11,8 @@
 #   ...    t=11.567 mode=killrot |w|=0.3148 rad/s  tau_ask=0   tau_spent=0
 #
 # (those rows are the pod hull of the day; #1120 replaced that fixture, and the same tap
-# on the ring this case now flies leaves ~0.9 rad/s instead of 0.31)
+# on the ring this case now flies leaves 0.83-0.91 rad/s instead of 0.31. Both quoted rows
+# predate the stick= column that every [slew] row carries now, #1130 and #1137.)
 #
 # while the SAME ring spent 138 N m answering the stick one row earlier in the same
 # substep, and flight/595-rcs-turns-a-wheel-less-hull holds prograde on the very same
@@ -44,9 +45,12 @@ CHECK all(s["mode"] == "killrot" for s in slew if s["t"] > 6.0)
 CHECK sum(1 for s in slew if s["mode"] == "stick") >= 4
 # The line in this case's preamble -- "the SAME ring spent 138 N m answering the stick" --
 # used to be something you had to take on faith because no stick row was ever printed.
-# Now it is: the tap rows print stick=[+0.00 -1.00 +0.00] with tau_ask=138 tau_spent=138,
-# and flight/1067-c-pointing-alive-at-zero pins the ramp they produce.
-CHECK all(s["tau_spent"] == 138 for s in slew if s["mode"] == "stick")
+# Now it is: the tap rows print stick=[+0.00 -1.00 +0.00] with tau_ask=138 tau_spent=138
+# in all of them, and flight/1067-c-pointing-alive-at-zero pins the ramp they
+# produce. Envelope rather than equality, as for the hold rows above: 138 is this fixture's
+# golden and both columns print at %.0f, so this case should go red for a law that stopped
+# asking, not for a rounding boundary. --rcs-att-frac 0.5 spends 69 and reddens it either way.
+CHECK all(s["tau_ask"] > 130.0 and s["tau_spent"] > 130.0 for s in slew if s["mode"] == "stick")
 # THE LAW ASKS. tau_ask is the summed demand for the last actuated substep: I*(-w)/h
 # on a ~0.9 rad/s spin is fourteen thousand N m, which is the hull saying "stop", not a
 # number anyone should read as a thrust. Before #677's fix this is 0 in every row, so
@@ -60,9 +64,10 @@ CHECK max(s["tau_ask"] for s in slew) > 1000
 # off-axis demand would need a wider cap rather than a broken ring.
 CHECK max(s["tau_spent"] for s in slew) > 120
 CHECK all(s["tau_spent"] <= 145.0 for s in slew)
-# AND THE SPIN GOES AWAY. The tap leaves 0.91-0.93 rad/s, and that spin-up does not come
-# from kill-rot at all -- which is how #677 stayed visible: the broken build reached the
-# same rate and then kept it. ~0.6 s of hold takes it to nothing, at 138 N m on Ieff
+# AND THE SPIN GOES AWAY. The tap leaves 0.83-0.91 rad/s -- the spread is where a
+# wall-clock press release lands (#138, #871), not the ring -- and that spin-up does not
+# come from kill-rot at all -- which is how #677 stayed visible: the broken build reached
+# the same rate and then kept it. ~0.6 s of hold takes it to nothing, at 138 N m on Ieff
 # 86 kg m^2 = 1.6 rad/s^2, which is the rate 595 prints.
 CHECK max(s["wnorm"] for s in slew) > 0.25
 CHECK min(s["wnorm"] for s in slew) < 0.01
