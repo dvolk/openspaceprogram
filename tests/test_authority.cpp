@@ -2234,13 +2234,16 @@ static void test_a_ring_of_bells_is_a_row_of_actuators() {
    own capacity, and applyRcsForce then bills it at FULL bell thrust for the torque it
    never delivered. That is the whole of #679: holding kill-rot on rcs_test after the
    hull had already stopped asked 0.0002 N m, four radial bells came back at s=1.0
-   (their lines' capacity is ~1e-5 N m), 120-240 N of gas fired every other substep,
-   the tank fell 0.08 kg/s and |w| stayed 0.0000. Nothing inside the solve can see this,
-   because as far as TORQUE goes those rows really are contributing; the fix is that
-   Vehicle stops handing them to the solve. The cut is RELATIVE -- 0.1% of this ring's
-   own best bell -- because hulls run from a 0.5 m pod to a station, and on a one-bell
-   rig even a short arm IS the ring. A bell under it stays fully creditable to rcsPlan:
-   it is a pusher, exactly as a bell through the COM always was. */
+   (their lines' capacity is roundoff -- 1e-15 N m at spawn, up to ~2e-9 mid-flight,
+   against the 69 N m the other sixteen bells lever), 120-240 N of gas fired every
+   other substep, the tank fell 0.08 kg/s and |w| stayed 0.0000. Nothing inside the
+   solve can see this, because as far as TORQUE goes those rows really are contributing;
+   the fix is that Vehicle stops handing them to the solve. The cut is RELATIVE -- 0.1%
+   of this ring's own best bell -- because hulls run from a 0.5 m pod to a station, and
+   on a one-bell rig even a short arm IS the ring. A bell under it stays fully creditable
+   to rcsPlan: it is a pusher, exactly as a bell through the COM always was (structural
+   -- rcsPlan reads rcsNoz, not these rows -- and flying in
+   flight/1119-b-rcs-bell-scarce-axis). */
 static void test_a_bell_that_levers_a_hair_is_not_a_steering_row() {
     printf("== #679: a bell that levers a hair is not an attitude actuator ==\n");
     std::deque<PartDef> defs;
@@ -2264,13 +2267,16 @@ static void test_a_bell_that_levers_a_hair_is_not_a_steering_row() {
        misses it, and those two pin the constant within a factor of two -- widen it to 1%
        and bell 4 goes, tighten it to 0.001% and bell 5 stays. Bell 2 is the shape #679
        actually shipped: on rcs_test the four radial bells of the four boxes lever
-       3e-10..3e-9 N m against the same ring's 69, a ratio of 1e-11, and a law's residual
-       ask of 0.0002 N m is 1e5 times their capacity. Bell 3 lands ON bell 0's line (the
-       grouping tolerance is 1e-9 rad), so they share that line pro-rata, bells 4 and 5
-       with them. Bell 2 owns the +X line by itself, at a capacity of 1e-5 N m -- and a
-       line nobody else covers is how a whole bell goes missing: the law's ask has a hair
-       of X in it, the solver loads bell 2 to its limit chasing that hair, and
-       applyRcsForce charges a full 100 N bell for the 1e-5 N m it delivered. */
+       1e-15 N m at spawn and up to ~2e-9 mid-flight -- roundoff, against the same
+       ring's 69 -- and a law's residual ask of 0.0002 N m is 1e5 times their capacity.
+       Bells 3, 4 and 5 land EXACTLY on bell 0's line (arm is (0,0,1) and all three
+       tilt along +X, so cross(arm,dir) is exactly -Y; actuators.h groups on a dot
+       within 1 - 1e-9, about 4.5e-5 rad, and these need none of that slack), so they
+       share that line pro-rata. Bell 2 owns the +X line by itself, at a capacity of
+       1e-5 N m -- and a line nobody else covers is how a whole bell goes missing: the
+       law's ask has a hair of X in it, the solver loads bell 2 to its limit chasing
+       that hair, and applyRcsForce charges a full 100 N bell for the 1e-5 N m it
+       delivered. */
     podDef.rcs_nozzles = { glm::dvec3(1.0, 0.0, 0.0), glm::dvec3(0.0, 0.0, 1.0),
                            glm::dvec3(0.0, 1e-7, 1.0), glm::dvec3(0.01, 0.0, 1.0),
                            glm::dvec3(2e-3, 0.0, 1.0), glm::dvec3(5e-4, 0.0, 1.0) };
@@ -2349,6 +2355,12 @@ static void test_a_bell_that_levers_a_hair_is_not_a_steering_row() {
                "the ask it could answer, it answered -- the guard removes rows, not authority");
     CHECK_NEAR(0.0, turn.x, 0.0,
                "and the hair of X buys nothing at all, which is what the hull pays for");
+    /* "And it is still a pusher" is structural rather than pinned here: rcsPlan reads
+       rcsNoz, never the attitude rows, so the cut cannot reach translation. The flying
+       proof is flight/1119-b-rcs-bell-scarce-axis, whose +X-tagged bells ARE the radial
+       (degenerate-lever) ones. Trying to pin it in this fixture asks along -Y, which
+       only bell 2 projects onto at all -- 1e-7 of it -- and that demand empties nnls'
+       active set and trips its assert (src/rcs.h:167), filed as #1147. */
     destroyShip(v);
 }
 

@@ -75,4 +75,7 @@ CHECK last(slew)["wnorm"] < 0.01
 # is the tap and the stop, NOT the hold: after the hull stops the drain rows print
 # 0.000, which is what #679 fixed.
 CHECK max(r["rates"][0] for r in drainlog) > 0.03
-CHECK sum(r["rates"][0] * r["dt"] for r in drainlog) < 0.3
+# 0.095-0.098 here, and 0.22-0.41 on a build that puts the no-leverage bells back into
+# the attitude rows -- which is why the ceiling is 0.15 and not the 0.3 it was: at 0.3 a
+# guardless run passed two times out of three.
+CHECK sum(r["rates"][0] * r["dt"] for r in drainlog) < 0.15

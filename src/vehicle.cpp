@@ -7645,8 +7645,10 @@ Vehicle::AttitudeAuthority Vehicle::attitudeAuthorityRows(bool switchesApply) {
                bells at s=1.0, 120-240 N of thrust, 0.08 kg/s of hydrazine, no turn.
                Those four are the bells whose authored axis is RADIAL -- one per box,
                pointing out from the tank wall -- so their axis passes through the COM
-               and the cross product is roundoff: 3e-10..3e-9 N m against the 69 N m the
-               same ring's other sixteen bells lever.
+               and the cross product is roundoff: 1e-15 N m at spawn, up to ~2e-9 in
+               flight -- which residue you get depends on how the arm and the COM sums
+               land that frame -- against the 69 N m the same ring's other sixteen
+               bells lever.
                So the cut is by WORTH, against the ring itself, not against zero: a
                bell under 0.1% of the best bell here is a translation nozzle, exactly
                as a bell through the COM always was, and it stays creditable to rcsPlan
@@ -7657,9 +7659,9 @@ Vehicle::AttitudeAuthority Vehicle::attitudeAuthorityRows(bool switchesApply) {
                bell it keeps is a large fraction of it, so where the number sits is a
                style question today, not a gameplay one.
                Squared compare on squared quantities: 1e-6 of bestLever2 is 1e-3 of it.
-               A NaN lever never raises bestLever2 and never passes the minLever2 test,
-               and an infinite one takes the whole ring down with it -- both fail closed,
-               which is the direction a poisoned geometry should go. And the cut stays
+               The maximum is taken over FINITE levers, so one poisoned bell cannot raise
+               the bar and silence the whole ring, and every row is tested for finiteness
+               too, so the poisoned one still buys nothing. And the cut stays
                RELATIVE all the way down: a ring whose every bell is near-degenerate
                keeps them all, because 0.06 N m on a badly-mounted box is that hull's
                whole steering authority, not noise -- what the cut removes is a row that
@@ -7667,7 +7669,7 @@ Vehicle::AttitudeAuthority Vehicle::attitudeAuthorityRows(bool switchesApply) {
             double bestLever2 = 0.0;
             for(const RcsNozzle &nz : rcsNoz) {
                 const double l2 = glm::length2(glm::cross(nz.arm, nz.dir) * nz.thrust);
-                if(l2 > bestLever2) { bestLever2 = l2; }
+                if(std::isfinite(l2) && l2 > bestLever2) { bestLever2 = l2; }
             }
             const double minLever2 = bestLever2 * 1e-6;
             a.rcs.reserve(rcsNoz.size());
@@ -7687,11 +7689,13 @@ Vehicle::AttitudeAuthority Vehicle::attitudeAuthorityRows(bool switchesApply) {
                    (cross(arm,dir) * thrust), which is what keeps the budget and the
                    spend from being two numbers again (#599's lesson). */
                 const glm::dvec3 lever = glm::cross(nz.arm, nz.dir) * nz.thrust;
+                const double lever2 = glm::length2(lever);
                 /* A bell through the COM levers nothing, and neither does one a hair
-                   off it (#679, the minLever2 above); a poisoned geometry (NaN arm or
-                   dir) fails the same way: !(x > 0.0) is the guard that makes a NaN
-                   buy no authority rather than all of it. */
-                if(!(glm::length2(lever) > minLever2) || !(nz.thrust > 0.0)) {
+                   off it (#679, the minLever2 above). A NaN lever fails the `>` outright
+                   and an infinite one fails isfinite: either way the poisoned bell buys
+                   no authority for itself, and because the ring maximum above ignored
+                   it, it takes nothing from its neighbours either. */
+                if(!(lever2 > minLever2) || !std::isfinite(lever2) || !(nz.thrust > 0.0)) {
                     a.rcs.push_back({ glm::dvec3(0.0), 0.0, true });
                     continue;
                 }

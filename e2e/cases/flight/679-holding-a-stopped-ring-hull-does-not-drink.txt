@@ -2,16 +2,17 @@
 # the kill-rot law asks it to. What #679 found is that the law keeps asking after the hull
 # has STOPPED, and the tank keeps falling: hold kill-rot on rcs_test, watch |w| reach
 # 0.0000 at t=6.7, and --drain-log prints 0.026-0.098 kg/s for the next two and a half
-# seconds while the key stays down. The [mass] rows say the tank fell 0.18-0.22 kg over
-# such a run (three runs) against 0.06-0.07 kg once the noise rows are gone -- call it 5
-# kg a minute of propellant to hold a still ship.
+# seconds while the key stays down. The [mass] rows say the tank fell 0.18-0.32 kg over
+# such a run -- bimodal, because a wall-clock key release lands differently between runs
+# (#1054) -- against 0.06-0.07 kg once the noise rows are gone. Call it 5 kg a minute of
+# propellant to hold a still ship.
 #
 # The culprit is not the law and not the ring's rating. It is a row with a HAIR of
 # authority. Vehicle hands the torque solver one row per bell, priced cross(arm,dir) x
 # thrust, and the solver (actuators.h) fits a demanded vector with no notion of what a row
 # COSTS. Each rcs_box authors five bells, and one of them points radially out from the tank
-# wall, so its axis passes through the COM: its lever is roundoff, 3e-10..3e-9 N m against
-# the 69 N m the ring's other sixteen bells lever. The residual ask of 0.0002 N m is
+# wall, so its axis passes through the COM: its lever is roundoff -- 1e-15 N m at spawn,
+# up to ~2e-9 in flight, against the 69 N m the ring's other sixteen bells lever. The residual ask of 0.0002 N m is
 # enormous next to that. The solver loads the bell to its LIMIT -- the descent is happy with
 # any split along a shared direction, so it gives the weak line its whole capacity and the
 # strong bells the rest -- and applyRcsForce then bills gas by THRUST, not by torque, so
@@ -67,6 +68,8 @@ CHECK all(r["rates"][0] < 0.005 for r in drainlog if r["t"] >= 7.4)
 # right instrument for this claim because the same over-count sits on both sides of the
 # comparison: these ARGS sum 0.093-0.096 with the guard and 0.23-0.41 with it off. The
 # floor is the tap's 0.6 s and the stop's 0.7 s of 138 N m, which are real spending; the
-# ceiling is what would catch a hull that went back to burning through a hold.
+# ceiling is what would catch a hull that went back to burning through a hold. If #1143
+# ever prints the window's spend instead of this rate, all four fuel pins here and in
+# 595/677/1067-c want re-reading against the real kilograms.
 CHECK sum(r["rates"][0] * r["dt"] for r in drainlog) > 0.03
 CHECK sum(r["rates"][0] * r["dt"] for r in drainlog) < 0.15
