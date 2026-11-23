@@ -172,6 +172,23 @@ inline void nnls(const double *W, size_t m, size_t n, const double *b, Scratch &
 
 }  // namespace rcs
 
+/* The most newtons any legal mix (0 <= c <= 1) can deliver along dirW: each
+   bell is one-way, so it adds thrust * cos(its angle to dirW) when it points
+   that way and nothing when it does not. Exact, not an estimate -- the force
+   rows above are separable per bell, so this sum IS that LP's optimum. A bell
+   cannot be credited for a direction it cannot push, which is why a hull's
+   ceiling is a function of the asked direction, not one number (#1119).
+   NaN in, 0 out: comparisons drop it, so a bad dirW buys no demand. */
+inline double rcsReachableAlong(const std::vector<RcsNozzle> &noz,
+                                const glm::dvec3 &dirW) {
+    double f = 0.0;
+    for(const RcsNozzle &n : noz) {
+        const double proj = glm::dot(n.dir, dirW);
+        if(proj > 0.0) { f += proj * n.thrust; }
+    }
+    return f;
+}
+
 /* Allocate nozzle strengths for the demanded force Fdem (world frame, N).
    c_i lands in scratch.c, in [0, 1]: a fraction of each nozzle's rating.
    Rows: force is scaled by forceWeight = 1e3, torque rows are

@@ -251,6 +251,54 @@ static void test_golden_answers() {
     }
 }
 
+/* #1119: the translation ceiling rcsPlan caps its demand with. A bell is one-way,
+   so what a ring can deliver is a function of the DIRECTION being asked, not one
+   number per hull -- and the cap is the allocator's own optimum rather than a
+   fudge: fed exactly Fcap along dirW it needs no bell over rating, and no larger
+   ask moves the delivered component past it. */
+static void test_reachable_along_is_a_ceiling() {
+    printf("== rcsReachableAlong: the ceiling is per-direction ==\n");
+    /* A 5-bell box with the mount face missing, like rcs_box at 60 N a bell. */
+    std::vector<RcsNozzle> box;
+    const glm::dvec3 dirs[5] = {{1,0,0},{-1,0,0},{0,1,0},{0,-1,0},{0,0,1}};
+    for(const glm::dvec3 &d : dirs) { box.push_back(nz(d, glm::dvec3(0.4,0,0), 60.0)); }
+    const glm::dvec3 z(0,0,1), xy = glm::normalize(glm::dvec3(1,1,0));
+    CHECK_NEAR(60.0, rcsReachableAlong(box, z), 1e-9, "a cardinal brings one bell to bear");
+    CHECK_NEAR(60.0 * std::sqrt(2.0), rcsReachableAlong(box, xy), 1e-9,
+               "a diagonal gets both side bells, each at cos 45");
+    CHECK_TRUE(rcsReachableAlong(box, xy) > rcsReachableAlong(box, z),
+               "the same ring is stronger BETWEEN its bells");
+    CHECK_NEAR(0.0, rcsReachableAlong(box, glm::dvec3(0,0,-1)), 1e-9,
+               "the face the box has no bell on stays unreachable");
+    CHECK_NEAR(0.0, rcsReachableAlong(box, glm::dvec3(std::nan(""), 0.0, 0.0)), 1e-9,
+               "a NaN direction buys no demand (the comparison drops it)");
+    const std::vector<RcsNozzle> none;
+    CHECK_NEAR(0.0, rcsReachableAlong(none, z), 1e-9, "no ring, no ceiling");
+
+    /* Exactness against the shipped solver, not just arithmetic. */
+    const double cap = rcsReachableAlong(box, xy);
+    glm::dvec3 F, T;
+    const std::vector<double> at = rcsAllocate(box, xy * cap);
+    double worst = 0.0;
+    for(double ci : at) { if(ci > worst) { worst = ci; } }
+    CHECK_TRUE(worst <= 1.0 + 1e-9, "the cap is reachable without over-rating a bell");
+    achieved(box, at, F, T);
+    CHECK_NEAR(cap, glm::dot(F, xy), 1e-6, "at the cap, the ask is delivered that way");
+    const std::vector<double> twice = rcsAllocate(box, xy * (2.0 * cap));
+    achieved(box, twice, F, T);
+    CHECK_NEAR(cap, glm::dot(F, xy), 1e-6, "twice the ask delivers no more ALONG dirW");
+
+    /* A legacy 6-dir pod: the pre-#1119 ceiling was one rating per PART, which is
+       neither of these. Six bells do not make 1200 N available in any direction;
+       an axis reaches one rating, a diagonal reaches two bells' projections. */
+    std::vector<RcsNozzle> pod;
+    const glm::dvec3 six[6] = {{1,0,0},{-1,0,0},{0,1,0},{0,-1,0},{0,0,1},{0,0,-1}};
+    for(const glm::dvec3 &d : six) { pod.push_back(nz(d, glm::dvec3(0.5,0.2,-0.3), 200.0)); }
+    CHECK_NEAR(200.0, rcsReachableAlong(pod, z), 1e-9, "one bell per axis fires on an axis");
+    CHECK_NEAR(200.0 * std::sqrt(2.0), rcsReachableAlong(pod, xy), 1e-9,
+               "two bells project onto a diagonal");
+}
+
 int main() {
     printf("=== rcs.h: nozzle allocator ===\n\n");
     test_one_way();
@@ -272,6 +320,8 @@ int main() {
     test_scratch_reuse();
     printf("\n");
     test_golden_answers();
+    printf("\n");
+    test_reachable_along_is_a_ceiling();
 
     printf("\n%d checks, %d failures\n", g_checks, g_failures);
     if(g_failures == 0) {

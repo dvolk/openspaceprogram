@@ -169,13 +169,16 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "figure works, it just lags a moving aim")
         ->check(CLI::NonNegativeNumber);
     app.add_option("--rcs-frac", args.rcs_frac,
-                   "How much of the RCS ring's demand ceiling the translation KEYS may "
-                   "command, 0..1 (default 1 = the whole ring). The command-line "
-                   "spelling of the Systems window's RCS-authority slider (#1067): the "
-                   "nozzles keep their ratings, only what the keys ask for shrinks, so "
-                   "attitude stays honest while a heavy hull stops being shoved at full "
-                   "force. 0 turns the keys off; attitude, if enabled, still fires the "
-                   "ring to hold heading")
+                   "How much of this hull's RCS translation authority the KEYS may "
+                   "command, 0..1 (default 1 = all of it). The command-line spelling "
+                   "of the Systems window's RCS translation limit (#1067). The "
+                   "referent is per-direction (#1119): a hull's ceiling is the "
+                   "newtons its bells can bring to bear along the way being asked, so "
+                   "one position buys more on a diagonal than on an axis the ring is "
+                   "thin on. The nozzles keep their ratings, only what the keys ask "
+                   "for shrinks, so attitude stays honest while a heavy hull stops "
+                   "being shoved at full force. 0 turns the keys off; attitude, if "
+                   "enabled, still fires the ring to hold heading")
         ->check(CLI::Range(0.0, 1.0));
     app.add_option("--ascent", args.ascent,
                    "Fly the active ship to a circular orbit: ALTITUDE[,INCLINATION] "

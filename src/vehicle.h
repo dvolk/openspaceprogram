@@ -648,14 +648,17 @@ public:
        (gameui.cpp), not to this field -- the sim takes any non-negative figure. */
     double sas_turn_rate = 0.0;
 
-    /* How hard this hull's RCS KEYS may push, as a fraction of maxRcsThrust() --
-       which is the SUM OF PER-PART ratings, not what the ring can deliver along a
-       given demand (#1119: the allocator bounds each nozzle separately, so on a
-       diagonal nudge one pod can spend more than its part entry contributed).
-       "50 %" means 50 % of that sum today; read the figure as a dial position,
-       not as newtons. 1.0 = full authority (the old behaviour), 0.0 = the keys
-       fire nothing -- the translation OFF switch rcs_attitude_enabled deliberately
-       never was (that door buys pointing, not pushing, gameui.cpp). It caps the
+    /* How hard this hull's RCS KEYS may push, as a fraction of what this ring can
+       deliver ALONG the direction being asked for -- rcsReachableAlong() (rcs.h),
+       the sum of every bell's forward projection onto that demand (#1119: the
+       bells are one-way and bounded one at a time, so no hull has one ceiling in
+       newtons). The referent is therefore per-direction: the same dial position
+       buys more newtons on a diagonal where several bells project, fewer on an
+       axis the ring is thin on. Read it as a dial position, never as newtons;
+       lim=NN% rides the [rcs] debug row so a dialed hull is visible there.
+       1.0 = full authority (the old behaviour), 0.0 = the keys fire nothing -- the
+       translation OFF switch rcs_attitude_enabled deliberately never was (that
+       door buys pointing, not pushing, gameui.cpp). It caps the
        DEMAND in rcsPlan only: the bells keep their ratings, so the attitude solve
        gets MORE room beside a light nudge, not less, and the fuel draw follows
        the firing pro rata (applyRcsForce derives flow from the same fractions).
@@ -2157,7 +2160,6 @@ public:
        control law's business. */
     virtual glm::dvec3 rcsWorldDir() const;
     Part *firstRcsPart();
-    double maxRcsThrust();
     /* The ring's substep is two halves now (#595), and the order is the priority:
        rcsPlan() enumerates the bells and spends them against the player's TRANSLATION
        demand, the attitude walk then builds its rows from whatever capacity that left,

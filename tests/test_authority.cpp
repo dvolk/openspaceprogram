@@ -2148,9 +2148,11 @@ static void test_a_ring_of_bells_is_a_row_of_actuators() {
     pod->resources.current[(int)ResourceType::Hydrazine] = 1.0;
 
     /* THE PRIORITY, which is the whole design: translation spends the bells first and
-       the rows carry what is LEFT. Arm a +X push and plan -- the ring's full-authority
-       demand is 200 N along X, which only the -X bell can serve, so that one is spent
-       and the other stays available for turning. */
+       the rows carry what is LEFT. Arm a +X push and plan -- the demand is the newtons
+       the ring can bring to bear that way (#1119), which here is one 100 N bell: only
+       the -X bell projects onto +X, so that one is spent and the other stays available
+       for turning. (Before #1119 this asked 200 N, the sum of per-part ratings, and
+       walked away with a shortfall it could never serve.) */
     v->armRcs(x);
     v->rcsPlan();
     const Vehicle::AttitudeAuthority spent = v->attitudeAuthority();

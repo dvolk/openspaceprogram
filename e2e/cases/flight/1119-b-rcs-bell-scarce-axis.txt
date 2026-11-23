@@ -1,0 +1,23 @@
+NAME rcs-bell-scarce-axis-honest
+CLAIM Where the ring has only one bell that can push an axis, the ask drops to that bell instead of printing a shortfall the hull could never serve (#1119).
+KIND invariant
+# rcs_box_pair mounts its boxes at 0 and 180 deg, so between them there is
+# exactly ONE bell that pushes the ship along +Y (box_r[+X]); the pair drops +Y
+# on one box and -Y on the other. Counting PODS credited the hull with 2 x 60 N,
+# so a held L key printed cmd=(-0 120 -0)N ach=(-0 60 -0)N -- the ring asking
+# twice what it has and coming up short every substep, forever. A player reading
+# that line would go looking for a stuck nozzle; the shortfall was arithmetic.
+#
+# Counting BELLS asks 60 N, gets 60 N, and the row goes quiet about a deficit
+# that was never physical. This is the nerf side of #1119: the same fixture that
+# gains newtons on a diagonal (flight/1119-a) loses an ask it could not deliver.
+# The other scarce axis, J (-Y), reaches one bell too -- box_l[+X] -- pinned
+# below so the pair is honest in both senses rather than by fixture luck.
+ARGS --time-accel 1 --sim-steps 480 --startship rcs_box_pair,res/ships/rcs_box_pair.json,Kerbin,inertial-orbit --drag-log --sim-press 2000,3000,L
+EXPECT [rcs] cmd=(-0 60 -0)N ach=(-0 60 -0)N
+FORBID cmd=(-0 120
+FORBID error:
+CHECK "box_r[+X]=60N" in out
+CHECK len(re.findall(r"\[rcs\] cmd=\(-0 60 -0\)N ach=\(-0 60 -0\)N", out)) >= 2
+# One bell firing, not two half-fired: the ask is exactly what the ring has.
+CHECK all(len(re.findall(r"box_\w+\[", line)) == 1 for line in out.splitlines() if line.startswith("[rcs]"))

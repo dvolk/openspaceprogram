@@ -383,7 +383,7 @@ struct Part {
     double thrust() const { return def->fullThrust(); }  // rocket rated thrust (N); jets use jetThrust
     double jetFuelRate() const { return def->propellant_rate[(int)ResourceType::JetFuel]; }
     double wheelTorque() const { return def->torque; }    // N m, rated PER DRUM
-    double rcsThrust() const { return def->rcs_thrust; }  // N, rated translation authority
+    double rcsThrust() const { return def->rcs_thrust; }  // N, rated PER BELL (def->rcs_nozzles)
     double exhaustVelocity() const { return def->exhaust_velocity; }
     /* Every electrical term comes from the PartDef accessor that owns it (#644), so a
        live hull and the VAB's buildPower() row sum identical arithmetic: what a part

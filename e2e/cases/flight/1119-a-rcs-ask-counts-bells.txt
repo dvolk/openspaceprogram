@@ -1,0 +1,31 @@
+NAME rcs-ask-counts-bells
+CLAIM The RCS translation ask is the newtons the ring can bring to bear along the direction asked, not a sum of per-part ratings (#1119).
+KIND invariant
+# rcs_box_pair surface-mounts two 5-bell boxes rated 60 N A BELL. Hold N (a +X
+# push) and L (a +Y push) together and the demand is a diagonal, and a diagonal
+# brings more than one bell per box to bear: N alone reaches 120 N -- one -Z bell
+# each, the row flight/110 pins -- while the diagonal reaches 127.3 N, which is
+# 90 N on each world axis, because box_r's +X bell projects onto +Y too. The old
+# ceiling counted PODS (2 x 60), so the same press asked 120 N total, printed as
+# cmd=(85 85 -0), while box_r actually spent 102 N of newtons that ceiling had
+# never credited it. The ask moving 85 -> 90 per axis IS the ticket; this case
+# fails on the per-part count, which is the point of it.
+#
+# Delivered is not the ceiling and the row says so: ach=(90 60 -0) is 108 N
+# against a 127 N ask, because the +Y share bottlenecked on the pair's ONE
+# Y-facing bell and the solver will not overshoot X to spend the rest. That is
+# #428's honest shortfall path staying visible -- pinning it here keeps the case
+# from ever claiming a buff the hull does not deliver.
+#
+# Bell tags live in CHECKs, not EXPECTs: a bracketed [+X] reads as a character
+# class to the case linter, which is right that EXPECT is a substring test.
+ARGS --time-accel 1 --sim-steps 480 --startship rcs_box_pair,res/ships/rcs_box_pair.json,Kerbin,inertial-orbit --drag-log --sim-press 2000,3000,N --sim-press 2000,3000,L
+EXPECT [rcs] cmd=(90 90 -0)N ach=(90 60 -0)N
+FORBID error:
+# More than one row inside the press window: the ask must be steady while the
+# hull turns, not a coincidence of one substep's geometry.
+CHECK len(re.findall(r"\[rcs\] cmd=\(90 90 -0\)N", out)) >= 2
+# No bell spends more than its rating -- the per-part count let one pod do just
+# that, which is how it hid: 102 N out of a part the ceiling called 60 N.
+CHECK all(int(v) <= 60 for v in re.findall(r"\[[+-][XYZ]\]=(\d+)N", out))
+CHECK "box_r[+X]=60N" in out

@@ -3601,13 +3601,15 @@ void drawUIReadouts(Game &g) {
            way: dial the keys down and pointing gets STRONGER, because the bell the keys
            no longer spend is left to the attitude walk (#595's allocator). Measured on
            rcs_box_pair under a held key: roll authority 69 -> 104 N m at 50 %.
-           It is a FRACTION rather than newtons because the honest ceiling belongs to
-           the ring: 100 N is a nudge on a probe and a shove on a lifting stage, and a
-           newton dial would have to be re-learned per hull. The nozzles keep their
-           ratings -- attitude authority is priced FROM those ratings (#595 learned not
-           to scale them) -- only rcsPlan's demand shrinks, and the hydrazine bill
-           shrinks with it because flow is derived from the firing sum. 0 turns the keys
-           off: the handle the game did not have, for a hull that must stop shoving its
+           It is a FRACTION rather than newtons because there is no one newton figure
+           to write (#1119): a hull's ceiling is per-direction -- the newtons its
+           bells can bring to bear along the way being asked -- so 50 % means half of
+           what this ring can do THAT way, and a newton dial would be wrong per hull
+           and wrong per pair of held keys. The nozzles keep their ratings -- attitude
+           authority is priced FROM those ratings (#595 learned not to scale them) --
+           only rcsPlan's demand shrinks, and the hydrazine bill shrinks with it
+           because flow is derived from the firing sum. 0 turns the keys off: the
+           handle the game did not have, for a hull that must stop shoving its
            neighbours without stranding the pointing the switch above still buys. */
         /* The widget is spelled in PERCENT because that is the question a player asks
            ("half the push"); the field is a fraction because that is what rcsPlan

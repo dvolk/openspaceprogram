@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 454 |
+| `invariant` | a behaviour or a player route the game must keep | 456 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 52 |
 | `harness` | CLI/test-engine plumbing, not game spec | 16 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **526** |
+| | **total** | **528** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -18,7 +18,7 @@ paces a run: how much e2e a change deserves is the caller's
 judgement. Select by number, name or path, e.g.
 `python3 e2e/run.py save/172 262`.
 
-## flight (170)
+## flight (172)
 
 | case | kind | pins |
 |---|---|---|
@@ -192,6 +192,8 @@ judgement. Select by number, name or path, e.g.
 | `flight/1072-lander-legs-stand.txt` | invariant | A legged rocket spawns standing on its feet, stays there, and survives a quicksave/quickload. |
 | `flight/1079-a-g-is-no-camera-key.txt` | invariant | Pressing G while piloting a ship changes nothing about the camera: same target, same distance, no camera toasts. |
 | `flight/1097-a-wingless-lifting-body.txt` | golden | A flat plate with an authored body_lift and no lifting surfaces flies: BodyCdA > 0 on every row while SideCdA stays 0.00 (the exposed half of the #947/#1097 split) and the surface-lift column \|L\| stays 0, Ld > 0, and the sink is bounded far short of ballistic. |
+| `flight/1119-a-rcs-ask-counts-bells.txt` | invariant | The RCS translation ask is the newtons the ring can bring to bear along the direction asked, not a sum of per-part ratings (#1119). |
+| `flight/1119-b-rcs-bell-scarce-axis.txt` | invariant | Where the ring has only one bell that can push an axis, the ask drops to that bell instead of printing a shortfall the hull could never serve (#1119). |
 
 ## crew (37)
 

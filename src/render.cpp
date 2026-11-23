@@ -1276,7 +1276,7 @@ void paintWorld(Game &g) {
        direction and the camera axis LEAST aligned with it, keeping the flat
        strip screen-facing. Ships with pods draw plumes per nozzle, above. */
     if(ship && ship->rcsTranslating()
-       && ship->maxRcsThrust() <= 0.0) {
+       && ship->firstRcsPart() == nullptr) {
         const glm::dvec3 z = ship->rcsWorldDir();  // thrust dir; the mesh extends toward -z
         const glm::dvec3 camR = glm::normalize(glm::cross(g.camera->forward, g.camera->up));
         const glm::dvec3 seed = (std::abs(glm::dot(camR, z)) < std::abs(glm::dot(g.camera->up, z)))

@@ -1,12 +1,16 @@
 NAME rcs-authority-dial
 CLAIM A hull's RCS authority dial caps what the translation keys ask for, without shrinking the nozzles themselves (#1067).
 KIND invariant
-# rcs_box_pair surface-mounts two 5-bell boxes rated 60 N each, so maxRcsThrust()
-# says the hull is worth 120 N and the [rcs] line says what each BELL actually
-# spent. Dialed to 50 %, the same key press asks for 60 N and each bell spends
-# 30 N. flight/110 pins this fixture at full authority (60 N per bell), so the
-# "not in" below is the same run seen through the dial: full-authority newtons
-# must not appear once the hull is dialed down. (The bell names ride in CHECKs,
+# rcs_box_pair surface-mounts two 5-bell boxes rated 60 N A BELL. Along Z this
+# ring brings exactly two bells to bear -- one per box -- so the direction-shaped
+# ceiling of #1119 and the old per-part sum agree here at 120 N, and the [rcs]
+# line says what each BELL actually spent. Dialed to 50 %, the same key press
+# asks for 60 N and each bell spends 30 N. flight/110 pins this fixture at full
+# authority (60 N per bell), so the "not in" below is the same run seen through
+# the dial: full-authority newtons must not appear once the hull is dialed down.
+# (The dial's referent is per-direction, which is why this case asks along an
+# axis rather than quoting a hull-wide newton figure; flight/1119-a is the case
+# where the two counts come apart.) (The bell names ride in CHECKs,
 # not EXPECTs: a bracketed `[-Z]` reads as a character class to the case linter,
 # which is right that EXPECT is a substring test.)
 #

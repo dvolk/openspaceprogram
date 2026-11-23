@@ -5434,12 +5434,6 @@ Part * Vehicle::firstRcsPart() {
     return nullptr;
 }
 
-double Vehicle::maxRcsThrust() {
-    double t = 0.0;
-    for(Part *p : parts) { if(p->isRcs()) { t += p->rcsThrust(); } }
-    return t;
-}
-
 /* Log label for a BELL (part-local): "+Z"-style, the axis of the biggest
    component -- the nozzle that fired, NOT the force: [rcs] thrust acts along
    the OPPOSITE of the label. Authored bells are axis-aligned today; a
@@ -5514,10 +5508,23 @@ void Vehicle::rcsPlan() {
        ratings below. Scale a rating and the attitude rows are priced with the
        same shrunken newtons (#595's first run learned that the hard way: 11x
        over-priced authority), while capping Fdem hands the LEFTOVER bell room to
-       pointing and the fuel draw follows the firing sum pro rata. frac == 0
-       falls into the same early-out as no ring at all: the keys push nothing. */
-    const double Fmax = maxRcsThrust() * rcs_thrust_frac;
-    if(Fmax <= 0.0 || glm::length2(dirW) < 1e-12) { rcsScratch.c.assign(N, 0.0); return; }
+       pointing and the fuel draw follows the firing sum pro rata.
+       #1119: what it caps is now rcsReachableAlong(), the newtons this ring can
+       deliver ALONG dirW, not a sum of per-pod ratings. The bells below are
+       bounded one at a time, so crediting a pod once per box let one pod spend
+       more than the ceiling allowed while |Fdem| stayed put (rcs_box_pair on two
+       keys: cmd 120 N, box_r 102 N of 60 N bells). The ask is therefore
+       direction-shaped now -- a diagonal reaches more than a cardinal on the same
+       hull, and an axis the ring is thin on asks less than it used to. Bells and
+       dirW rotate together, so a held key's ask does not jitter as the hull turns.
+       The floor catches two different nothings: frac == 0 (the dial is off) and a
+       direction outside every bell's cone, which the dot products leave at ~1e-14
+       rather than 0 -- without a floor that hull "burns" fuel and prints a [rcs]
+       row of zeros. Keeping it one Fmax test is what makes the dial's own
+       zero-path (flight/1067-b) stay green whatever the geometry says. */
+    const double Fcap = rcsReachableAlong(rcsNoz, dirW);
+    const double Fmax = Fcap * rcs_thrust_frac;
+    if(!(Fmax > 1e-9) || glm::length2(dirW) < 1e-12) { rcsScratch.c.assign(N, 0.0); return; }
     const glm::dvec3 Fdem = dirW * Fmax;  // authority on the key, dialed by #1067
     lastRcsCmd = Fdem;
     rcsAllocateInto(rcsNoz, Fdem, rcsScratch);
