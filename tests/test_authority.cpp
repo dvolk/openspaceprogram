@@ -2228,6 +2228,112 @@ static void test_a_ring_of_bells_is_a_row_of_actuators() {
     destroyShip(v);
 }
 
+/* A BELL THAT LEVERS A HAIR IS NOT A STEERING ACTUATOR (#679). The torque solver has no
+   notion of COST -- actuators.h fits a demanded vector and knows nothing about what a
+   row buys -- so a row with a hair of authority is SATURATED by any ask bigger than its
+   own capacity, and applyRcsForce then bills it at FULL bell thrust for the torque it
+   never delivered. That is the whole of #679: holding kill-rot on rcs_test after the
+   hull had already stopped asked 0.0002 N m, four radial bells came back at s=1.0
+   (their lines' capacity is ~1e-5 N m), 120-240 N of gas fired every other substep,
+   the tank fell 0.08 kg/s and |w| stayed 0.0000. Nothing inside the solve can see this,
+   because as far as TORQUE goes those rows really are contributing; the fix is that
+   Vehicle stops handing them to the solve. The cut is RELATIVE -- 0.1% of this ring's
+   own best bell -- because hulls run from a 0.5 m pod to a station, and on a one-bell
+   rig even a short arm IS the ring. A bell under it stays fully creditable to rcsPlan:
+   it is a pusher, exactly as a bell through the COM always was. */
+static void test_a_bell_that_levers_a_hair_is_not_a_steering_row() {
+    printf("== #679: a bell that levers a hair is not an attitude actuator ==\n");
+    std::deque<PartDef> defs;
+    RcsProbe *v = new RcsProbe;
+    v->name = "weak ring";
+    Part *pod = mkPart(defs, "pod", 99.0, 1.0, 0.0, 0.0);
+    PartDef &podDef = defs.back();
+    podDef.rcs_thrust = 100.0;
+    podDef.capacity[(int)ResourceType::Hydrazine] = 1.0;
+    /* As in mkRing, 100 kg of loaded pod 2 m above 100 kg of ballast puts the COM
+       exactly 1.0 m under the pod, so every bell here has a 1.0 m arm and its lever is
+       100 N x how far its axis misses the COM. Four bells, all one-way, the ship pushed
+       OPPOSITE each, and the lever below is cross(arm, -dir) x thrust:
+         0  +X                     100 N m along -Y   -- a real steering bell
+         1  +Z                       0 N m            -- through the COM
+         2  +Z 1e-7 toward +Y      1e-5 N m along +X  -- #679's shape: noise, not lever
+         3  +Z 0.01 rad toward +X    1 N m along -Y   -- weak, but not noise
+       The ring's best is 100, so the cut sits at 0.1 N m: bell 3 clears it tenfold,
+       bell 2 misses it by three orders of magnitude. Bell 3 lands ON bell 0's line (the
+       grouping tolerance is 1e-9 rad), so they share that line pro-rata. Bell 2 owns the
+       +X line by itself, at a capacity of 1e-5 N m -- and a line nobody else covers is
+       how a whole bell goes missing: the law's ask has a hair of X in it, the solver
+       loads bell 2 to its limit chasing that hair, and applyRcsForce charges a full
+       100 N bell for the 1e-5 N m it delivered. */
+    podDef.rcs_nozzles = { glm::dvec3(1.0, 0.0, 0.0), glm::dvec3(0.0, 0.0, 1.0),
+                           glm::dvec3(0.0, 1e-7, 1.0), glm::dvec3(0.01, 0.0, 1.0) };
+    v->setRoot(pod);
+    Part *ballast = mkPart(defs, "ballast", 100.0, 1.0, 0.0, 0.0);
+    v->attachDown(ballast);
+    v->init();
+    v->placeShip(glm::dvec3(0.0, 0.0, 0.0), glm::dmat3(1.0));
+
+    v->rcsPlan();   // the shipped order: translation first, so the rows read the leftover
+    const Vehicle::AttitudeAuthority a = v->attitudeAuthority();
+    printf("   bell authority (N m):");
+    for(const ActuatorRow &r : a.rcs) { printf(" %.6g", glm::length(r.axis)); }
+    printf("   limits:");
+    for(const ActuatorRow &r : a.rcs) { printf(" %.6g", r.limit); }
+    printf("\n");
+    CHECK_TRUE(a.rcs.size() == 4, "index-parallel to the bells, dead ones and all (#595)");
+    CHECK_NEAR(1.0, a.rcs[0].limit, 1e-9, "the bell that levers is fully available");
+    CHECK_NEAR(0.0, a.rcs[1].limit, 0.0, "a bell through the COM levers nothing to spend");
+    CHECK_NEAR(0.0, a.rcs[2].limit, 0.0,
+               "and neither does one 1e-7 rad off it -- before #679's guard this row "
+               "carried limit 1.0 and the solve loaded it like any other");
+    CHECK_NEAR(1.0, a.rcs[3].limit, 1e-9,
+               "a bell 0.01 rad off the COM line levers a whole N m: weak is not noise");
+    /* The capability the laws budget with moves with the rows: 101 = the real bell plus
+       the weak-but-real one. The noise bell's 1e-5 is what the cut is for, and it is
+       below this pin's tolerance, so the teeth are the limit pins above and the spend
+       below -- this line is here so a future re-rate cannot quietly move the ring. */
+    CHECK_NEAR(101.0, v->attitudeTorqueAbout(a, -glm::dvec3(0.0, 1.0, 0.0)), 1e-3,
+               "the ring still brings 101 N m to bear about -Y: bell 0 plus bell 3's"
+               " sin(0.01) x 100, and the 1e-5 noise lever is not in the sum");
+    CHECK_NEAR(0.0, v->attitudeTorqueAbout(a, glm::dvec3(1.0, 0.0, 0.0)), 0.0,
+               "and it brings nothing to bear about X -- bell 2's 1e-5 N m is not a"
+               " capability a law could use, it is exactly what the cut drops");
+
+    /* THE SPEND, at an ask like the one #679 measured on a hull that had already
+       stopped: mostly the axis the ring does cover, plus a hair of noise on one it
+       does not. The solver splits the -Y part pro-rata over bells 0 and 3 (~2e-6 of
+       each), which is 4e-4 N of gas and 1.5e-9 kg of hydrazine for a substep. Offer it
+       bell 2 as well and the +X hair loads that bell to its limit: 100 N of thrust,
+       3.9e-4 kg this substep -- 0.05 kg/s, the same shape as the 0.08 kg/s the live
+       hold drank -- for 1e-5 N m, and the hull does not care about 1e-5 N m. */
+    const double hyd0 = pod->resources.current[(int)ResourceType::Hydrazine];
+    v->tvcCalls_ = 0;
+    v->actuateAttitude(glm::dvec3(1e-4, -2e-4, 0.0), a);
+    printf("   setpoints at a (0.0001, -0.0002, 0) N m ask:");
+    for(double f : v->rcsAttFrac) { printf(" %.3g", f); }
+    printf("\n");
+    CHECK_TRUE(a.rcs.size() == v->rcsAttFrac.size(),
+               "one setpoint per bell, or the index link is broken");
+    CHECK_NEAR(0.0, v->rcsAttFrac[1], 0.0, "the COM bell does not fire");
+    CHECK_NEAR(0.0, v->rcsAttFrac[2], 0.0,
+               "and neither does the noise bell -- offer it and the solver saturates "
+               "it (s=1.0), because the ask's X hair is 10x that line's whole capacity");
+    CHECK_TRUE(v->rcsAttFrac[0] > 0.0 && v->rcsAttFrac[0] < 1e-4,
+               "the real bell takes a hair of itself, not a whole bell");
+    v->applyRcsForce(1.0 / 120.0);
+    const double spent = hyd0 - pod->resources.current[(int)ResourceType::Hydrazine];
+    printf("   that ask cost %.3g kg of hydrazine\n", spent);
+    CHECK_TRUE(spent < 1e-8,
+               "propellant in proportion to the torque asked for -- with the noise bell "
+               "still a row the same substep costs 3.9e-4 kg");
+    const glm::dvec3 turn = v->attitudeDelivery().rcs;
+    CHECK_NEAR(2e-4, -turn.y, 1e-9,
+               "the ask it could answer, it answered -- the guard removes rows, not authority");
+    CHECK_NEAR(0.0, turn.x, 0.0,
+               "and the hair of X buys nothing at all, which is what the hull pays for");
+    destroyShip(v);
+}
+
 /* THE INLINE ROOM IS SIZED FOR THE SHIPPED FLEET, not for a fixture (#1131).
    AttitudeAuthority's row buffers are InlineVecs (#668): past their inline size a set
    costs one malloc per actuation rebuild, so the size is a constant that needs a
@@ -2770,6 +2876,7 @@ int main() {
     test_a_billed_plate_stays_on_the_row_when_the_frame_is_refused();
     test_a_lifting_plate_answers_its_own_angle();
     test_a_ring_of_bells_is_a_row_of_actuators();
+    test_a_bell_that_levers_a_hair_is_not_a_steering_row();
     test_the_row_buffers_fit_the_shipped_fleet();
     test_the_aim_is_measured_once();
     test_the_aim_keeps_its_doors_shut();

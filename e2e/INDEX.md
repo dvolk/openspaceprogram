@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 464 |
+| `invariant` | a behaviour or a player route the game must keep | 465 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 53 |
 | `harness` | CLI/test-engine plumbing, not game spec | 16 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **537** |
+| | **total** | **538** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -18,7 +18,7 @@ paces a run: how much e2e a change deserves is the caller's
 judgement. Select by number, name or path, e.g.
 `python3 e2e/run.py save/172 262`.
 
-## flight (176)
+## flight (177)
 
 | case | kind | pins |
 |---|---|---|
@@ -118,6 +118,7 @@ judgement. Select by number, name or path, e.g.
 | `flight/648-killing-the-spin-stops-costing-power.txt` | invariant | Wheels bill what they deliver: this hull pays its full wheel rating while its drums carry the ask, and stops paying once an autopilot has arrived -- with its key still held down. |
 | `flight/677-kill-rot-stops-a-ring-only-hull.txt` | invariant | Holding kill-rot on a hull whose only steering is its thruster ring asks for torque, spends hydrazine, and puts the spin down. |
 | `flight/678-a-turn-rate-ceiling-coasts-instead-of-snapping.txt` | invariant | A latched 90 degree turn with SAS turn rate 6 deg/s asks for no more than that rate, cruises at it, and still arrives. |
+| `flight/679-holding-a-stopped-ring-hull-does-not-drink.txt` | invariant | Holding kill-rot on a ring-steered hull that has already stopped drinks nothing, while the stop that got it there still costs. |
 | `flight/688-earth-jet-bends-ground-speed.txt` | golden | Earth's wind profile is read at the hull, not at the ground: at the 8.5 km spawn the two rows interpolate to 32.0 m/s of air, so a hull trimmed at 44.9 m/s of airspeed spawns at 76.9 m/s over the ground and tracks east off lon 0. |
 | `flight/688-mars-wind-shows-on-the-tape.txt` | golden | Mars's datum wind row is carried all the way to the bed at 6 km: a hull trimmed at 196.3 m/s of airspeed in 0.8 Pa of moving air tracks 205.7 m/s over the ground and runs east off lon 0, even though the wind barely pushes. |
 | `flight/688-venus-wind-outruns-the-hull.txt` | golden | Venus authors a wind, and it moves the air rather than the hull: at 11.6 km the table interpolates to 18.7 m/s of air, so a hull that asked for 5.1 m/s of airspeed spawns at 13.5 m/s over the ground and drifts downwind (east, off lon 0) while pointing into the flow. |

@@ -7636,6 +7636,30 @@ Vehicle::AttitudeAuthority Vehicle::attitudeAuthorityRows(bool switchesApply) {
         if(!rcsNozFresh_) { enumerateRcsNozzles(); }
         Part *pod = firstRcsPart();
         if(pod != nullptr && availableResourceMass(ResourceType::Hydrazine, pod) > 0.0) {
+            /* #679: what the BEST bell in this ring levers, before a single row is
+               built. The torque solve has no notion of propellant -- it fits a demand
+               and knows nothing about what a row costs -- so a row with a hair of
+               authority is saturated by any ask bigger than itself and then billed at
+               FULL bell thrust for the torque it never delivered. Measured on rcs_test
+               holding kill-rot after the hull had stopped: ask 0.0002 N m, four radial
+               bells at s=1.0, 120-240 N of thrust, 0.08 kg/s of hydrazine, no turn.
+               So the cut is by WORTH, against the ring itself, not against zero: a
+               bell under 0.1% of the best bell here is a translation nozzle, exactly
+               as a bell through the COM always was, and it stays creditable to rcsPlan
+               for pushing. Relative rather than absolute because hulls run from a
+               0.5 m pod to a station, and on the old one-bell pod rig (#1120's
+               rcs_r1) even a small arm is the whole ring.
+               Squared compare on squared quantities: 1e-6 of bestLever2 is 1e-3 of it.
+               A NaN lever never raises bestLever2 and never passes the minLever2 test,
+               so a poisoned geometry still buys nothing -- and if EVERY lever is bad,
+               bestLever2 is 0, minLever2 is 0, and the old `> 0.0` test is exactly
+               what runs. */
+            double bestLever2 = 0.0;
+            for(const RcsNozzle &nz : rcsNoz) {
+                const double l2 = glm::length2(glm::cross(nz.arm, nz.dir) * nz.thrust);
+                if(l2 > bestLever2) { bestLever2 = l2; }
+            }
+            const double minLever2 = bestLever2 * 1e-6;
             a.rcs.reserve(rcsNoz.size());
             for(size_t i = 0; i < rcsNoz.size(); i++) {
                 const RcsNozzle &nz = rcsNoz[i];
@@ -7653,10 +7677,11 @@ Vehicle::AttitudeAuthority Vehicle::attitudeAuthorityRows(bool switchesApply) {
                    (cross(arm,dir) * thrust), which is what keeps the budget and the
                    spend from being two numbers again (#599's lesson). */
                 const glm::dvec3 lever = glm::cross(nz.arm, nz.dir) * nz.thrust;
-                /* A bell through the COM levers nothing, and a poisoned geometry
-                   (NaN arm or dir) fails the same way: !(x > 0.0) is the guard that
-                   makes a NaN buy no authority rather than all of it. */
-                if(!(glm::length2(lever) > 0.0) || !(nz.thrust > 0.0)) {
+                /* A bell through the COM levers nothing, and neither does one a hair
+                   off it (#679, the minLever2 above); a poisoned geometry (NaN arm or
+                   dir) fails the same way: !(x > 0.0) is the guard that makes a NaN
+                   buy no authority rather than all of it. */
+                if(!(glm::length2(lever) > minLever2) || !(nz.thrust > 0.0)) {
                     a.rcs.push_back({ glm::dvec3(0.0), 0.0, true });
                     continue;
                 }

@@ -15,11 +15,12 @@ KIND invariant
 # vacuum bed means nothing else damps the spin. --no-paint because nothing here
 # is a picture (#666 proved the numbers survive it).
 ARGS --time-accel 1 --startship rcs_test,res/ships/rcs_test.json,Kerbin,inertial-orbit
-ARGS --slew-log --fuel-log --no-paint --rcs-frac 0
+ARGS --slew-log --drain-log --no-paint --rcs-frac 0
 ARGS --sim-press 3000,600,S,6000,3000,X
 ARGS --timeout 12
 LIMIT 40
 EXPECT [slew]
+EXPECT [drainlog]
 EXPECT RCS: translation limited to 0% of what the ring can do that way
 FORBID error:
 FORBID FAILED
@@ -62,13 +63,15 @@ CHECK (lambda st: len(st) >= 2 and 1.58 < (st[-1]["wnorm"] - st[0]["wnorm"]) / (
 CHECK max(s["wnorm"] for s in slew) > 0.25
 CHECK min(s["wnorm"] for s in slew) < 0.01
 CHECK last(slew)["wnorm"] < 0.01
-# HYDRAZINE PAYS for the HOLD: no translation key is ever pressed, so every gram
+# HYDRAZINE PAYS for the MANEUVER: no translation key is ever pressed, so every gram
 # that left the tank went into attitude. A dial that reached the ratings would
-# still burn, so this one is the company the torque pin keeps. Measured 78.5 ->
-# 78.4..78.2 kg over three runs; the keys' dial is at 0, so the ring points with
-# every bell it has. Like 677, the drop is the hold rather than the stop -- the tank
-# keeps moving through rows that print tau_ask=0 tau_spent=0, since those columns
-# sample the last actuated substep -- and [fuel] prints one decimal, so the floor
-# only says the tank moved at all (#679 asks how much of a hold is dither).
-CHECK first(fuel)["groups"][0]["N2H4"][0] - last(fuel)["groups"][0]["N2H4"][0] > 0.0
-CHECK first(fuel)["groups"][0]["N2H4"][0] - last(fuel)["groups"][0]["N2H4"][0] < 1.5
+# still burn, so this one is the company the torque pin keeps. Measured 0.056 kg/s
+# during the tap and the stop, ~0.10 kg for the run, off --drain-log rather than the
+# [fuel] print -- [fuel] prints one decimal and 0.10 kg is under one step of it. The
+# keys' dial is at 0, so the ring points with every bell that has leverage; the four
+# that do not (one per box, through the COM) are out of the attitude row set since
+# #679, and the tap and stop still spend the full 138 N m above. Like 677, the spend
+# is the tap and the stop, NOT the hold: after the hull stops the drain rows print
+# 0.000, which is what #679 fixed.
+CHECK max(r["rates"][0] for r in drainlog) > 0.03
+CHECK sum(r["rates"][0] * r["dt"] for r in drainlog) < 0.3

@@ -29,11 +29,12 @@ NAME kill-rot-stops-a-ring-only-hull
 CLAIM Holding kill-rot on a hull whose only steering is its thruster ring asks for torque, spends hydrazine, and puts the spin down.
 KIND invariant
 ARGS --time-accel 1 --startship rcs_test,res/ships/rcs_test.json,Kerbin,inertial-orbit
-ARGS --slew-log --fuel-log --no-paint
+ARGS --slew-log --drain-log --no-paint
 ARGS --sim-press 3000,600,S,6000,3000,X
 ARGS --timeout 12
 LIMIT 40
 EXPECT [slew]
+EXPECT [drainlog]
 FORBID error:
 FORBID FAILED
 # The hold is 3 s of kill-rot and nothing else is latched, so every row is this law.
@@ -77,13 +78,17 @@ CHECK last(slew)["wnorm"] < 0.01
 # drift bed nothing else damps a spin, so a hull that had merely been nudged rather than
 # stopped would still be turning in the tail rows.
 CHECK all(s["wnorm"] < 0.02 for s in slew if s["t"] > 8.0)
-# HYDRAZINE PAYS for the HOLD. No translation key (N/I/L/J/K/U) is ever pressed, so every
-# gram that left the tank went into attitude: measured 78.5 -> 78.4..78.2 kg over three
-# runs. Mind what that drop is NOT: the stop itself finishes by t=6.7 while the tank keeps
-# moving through rows that print tau_ask=0 tau_spent=0 -- those columns record the last
-# ACTUATED substep, they are not summed over the row (see slew_log). So this is the cost of
-# holding, not of stopping, and [fuel] prints one decimal, so the floor only says the tank
-# moved at all. How much of a hold's burn is deadband rather than the impulse the spin
-# itself carries is #679's question.
-CHECK first(fuel)["groups"][0]["N2H4"][0] - last(fuel)["groups"][0]["N2H4"][0] > 0.0
-CHECK first(fuel)["groups"][0]["N2H4"][0] - last(fuel)["groups"][0]["N2H4"][0] < 1.5
+# HYDRAZINE PAYS for the MANEUVER. No translation key (N/I/L/J/K/U) is ever pressed, so
+# every gram that left the tank went into attitude: 0.056 kg/s while 138 N m puts 0.88
+# rad/s down, ~0.10 kg over the run. It is read off --drain-log rather than the [fuel]
+# print because [fuel] prints one decimal and 0.10 kg is smaller than one step of it --
+# which is also why this case's fuel pin used to be weaker than it looked. Mind what the
+# spend is NOT: it belongs to the tap and the stop, and the tank is flat (0.000 kg/s) for
+# the rest of the hold. It used to keep falling at 0.08 kg/s for as long as X stayed down,
+# and that was #679 -- four of the twenty bells lever ~1e-5 N m, and a cost-blind solve was
+# loading them to full thrust -- which flight/679-holding-a-stopped-ring-hull-does-not-drink
+# now pins. Note that those [slew] rows print tau_ask=0 tau_spent=0 throughout: the columns
+# record the last ACTUATED substep, not a sum over the row (see slew_log), so [slew] was
+# never the instrument that could see #679 -- only the drain columns can.
+CHECK max(r["rates"][0] for r in drainlog) > 0.03
+CHECK sum(r["rates"][0] * r["dt"] for r in drainlog) < 0.3
