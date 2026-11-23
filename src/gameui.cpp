@@ -3983,9 +3983,11 @@ static_assert(sizeof(kFormVisDash) - 1 == kFormVisCellChars,
               "the Form vis dash must hold the live cell's width");
 /* #1105's two crossflow cells, same discipline: one constant per cell, its dash
    static_asserted to it, so a widened live cell cannot leave a short dash behind.
-   `hides` is refused as a percentage (0.0..100.0 -- five chars covers the ceiling
-   exactly); `side` is the part's crossflow CdA in m2, six chars to two decimals,
-   which is roomy for a hull whose SideCdA the ship log reports in the tens. */
+   That assert ties the DASH to the width; it cannot bound a VALUE, so the print
+   site asserts each cell's own character count the way cdCell's does. `hides` is
+   refused as a percentage (0.0..100.0 -- five chars covers the ceiling exactly);
+   `side` is the part's crossflow CdA in m2, six chars to two decimals = 999.99,
+   against a ship-wide SideCdA that peaks near 47 m2 on the 947 ascent. */
 constexpr int kFormHideCellChars = 5;
 static const char kFormHideDash[] = "-----";
 static_assert(sizeof(kFormHideDash) - 1 == kFormHideCellChars,
@@ -4461,8 +4463,8 @@ void drawPartWindows(Game &g) {
                             hf.winVis.assign(nparts, 0.0);
                             hf.winCdA.assign(nparts, 0.0);
                             hf.winWatts.assign(nparts, 0.0);
-                            hf.winRefused.assign(nparts, 0.0);
-                            hf.winSide.assign(nparts, 0.0);
+                            hf.winSideRefused.assign(nparts, 0.0);
+                            hf.winSideCdA.assign(nparts, 0.0);
                         }
                         if(ship->lastFormWatts >= hf.worstW) {
                             hf.worstW = ship->lastFormWatts;
@@ -4473,8 +4475,8 @@ void drawPartWindows(Game &g) {
                                 hf.winVis[k] = ship->parts[k]->formVis;
                                 hf.winCdA[k] = ship->parts[k]->formCdA;
                                 hf.winWatts[k] = ship->parts[k]->formDragWatts;
-                                hf.winRefused[k] = ship->parts[k]->formRefused;
-                                hf.winSide[k] = ship->parts[k]->formSideCdA;
+                                hf.winSideRefused[k] = ship->parts[k]->sideRefused;
+                                hf.winSideCdA[k] = ship->parts[k]->sideCdA;
                             }
                         }
                         if(ImGui::GetTime() >= hf.nextRead || hf.pubVis.size() != nparts) {
@@ -4483,8 +4485,8 @@ void drawPartWindows(Game &g) {
                             std::swap(hf.winVis, hf.pubVis);
                             std::swap(hf.winCdA, hf.pubCdA);
                             std::swap(hf.winWatts, hf.pubWatts);
-                            std::swap(hf.winRefused, hf.pubRefused);
-                            std::swap(hf.winSide, hf.pubSide);
+                            std::swap(hf.winSideRefused, hf.pubSideRefused);
+                            std::swap(hf.winSideCdA, hf.pubSideCdA);
                             hf.pubAlpha = hf.worstAlpha;
                             hf.pubQ = hf.worstQ;
                             hf.pubMach = hf.worstMach;
@@ -4497,8 +4499,8 @@ void drawPartWindows(Game &g) {
                        than assumed (#1114 review). */
                     assert(hf.pubVis.size() == nparts && hf.pubCdA.size() == nparts
                            && hf.pubWatts.size() == nparts
-                           && hf.pubRefused.size() == nparts
-                           && hf.pubSide.size() == nparts);
+                           && hf.pubSideRefused.size() == nparts
+                           && hf.pubSideCdA.size() == nparts);
                     /* The cd cell is the credit over its own area -- and a fully
                        sheltered part has neither, so it dashes rather than
                        inventing a 0.00 coefficient for air that never reached
@@ -4516,15 +4518,31 @@ void drawPartWindows(Game &g) {
                     } else {
                         memcpy(cdCell, "   -", 5);
                     }
+                    /* #1105's two cells, cdCell's discipline: formatted into their own
+                       buffers so the assert can test the COLUMN rather than only that the
+                       joined row fit -- a value that outgrows its cell shifts every column
+                       to its right while snprintf still reports success. refused is a
+                       fraction (visible area can never exceed a part's own projection), so
+                       0.0..100.0 fits %5.1f exactly and a trip means the fraction escaped
+                       the union, not that the format ran out of room. sideCdA has %6.2f =
+                       999.99 m2: no single part can bill more than the ship's SideCdA=,
+                       which peaks near 47 m2 on the 947 ascent (case 947-a), so the column
+                       carries real headroom. */
+                    char hideCell[kFormHideCellChars + 1];
+                    const int nh = snprintf(hideCell, sizeof hideCell, "%*.*f",
+                                            kFormHideCellChars, 1,
+                                            100.0 * hf.pubSideRefused[part]);
+                    assert(nh > 0 && nh == kFormHideCellChars);
+                    char sideCell[kFormSideCellChars + 1];
+                    const int ns = snprintf(sideCell, sizeof sideCell, "%*.*f",
+                                            kFormSideCellChars, 2,
+                                            hf.pubSideCdA[part]);
+                    assert(ns > 0 && ns == kFormSideCellChars);
                     const int n = snprintf(live.formRow, sizeof live.formRow,
                                            "Form: %*.*f m2 visible  cd %s  "
-                                           "hides %*.*f%%  side %*.*f m2",
+                                           "hides %s%%  side %s m2",
                                            kFormVisCellChars, 2, hf.pubVis[part],
-                                           cdCell,
-                                           kFormHideCellChars, 1,
-                                           100.0 * hf.pubRefused[part],
-                                           kFormSideCellChars, 2,
-                                           hf.pubSide[part]);
+                                           cdCell, hideCell, sideCell);
                     assert(n > 0 && n < (int)sizeof live.formRow);
                     /* "Hull AoA", deliberately not "AoA": it is the airframe's
                        measured angle -- the very one this part's union credit

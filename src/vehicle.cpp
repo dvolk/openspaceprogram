@@ -3648,10 +3648,12 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
         p->formVis = 0.0f;
         p->formCdA = 0.0f;
         p->formDragWatts = 0.0f;
-        /* #1105: the crossflow pair rides the same rule -- formSideCdA is summed across
-           the body parts into lastSideCdA, so a stale one is a wrong total. */
-        p->formRefused = 0.0f;
-        p->formSideCdA = 0.0f;
+        /* #1105: the crossflow pair rides the same rule -- sideCdA is summed across the
+           body parts into lastSideCdA, so a stale one is a wrong ship total; and a part
+           this substep skips (it became exposed at a new flow angle, its projection
+           collapsed) must not keep last substep's hides/side figures on its card. */
+        p->sideRefused = 0.0f;
+        p->sideCdA = 0.0f;
         if(p->def != nullptr && p->def->control_area > 0.0) { p->controlDefl = 0.0; }
     }
     /* #1114: the ship-level flow trio zeroes with the columns it bills against --
@@ -4119,12 +4121,10 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
            #560 caught between a row's columns, one printf earlier -- so the audit
            waits, exactly as the beta gate above waits for a real sideslip. */
         const bool dumping = aeroDump == 1 && lastDragAlphaValid;
-        /* #1105: the crossflow half of the same audit prints where its numbers are BUILT
-           -- inside the pass below, which is ~100 lines down -- because the silhouette
-           rows above run BEFORE that pass and the pass-start sweep has already zeroed
-           the per-part columns. Same one-shot flag, same substep, so the two audits
-           describe one attitude. */
-        const bool sideDump = dumping;
+        /* #1105: the crossflow half of this same audit prints from inside the pass below,
+           where its numbers are BUILT -- see the "[ship] side" block. Same latching flag
+           (aeroDump goes 1 -> 2 -> 1 as the beta gate opens and closes), same substep, so
+           the two audits describe one attitude. */
         /* The ship's silhouette BILL: the area the air is stopped by, the cd mean
            over that same area, and where it pushes -- all three from one place, all
            three cached per flow DIRECTION (speed and density multiply the force,
@@ -4334,28 +4334,18 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
             lastFormMach = flowMach(lfCp, invAirA);
             double sideArmCdA = 0.0;
             double bodyArmCdA = 0.0;
-            /* #1105: ONE AUDIT ROW PER PART, filled as the loop bills them, printed after
-               it. This is the readout a builder needs and the ship columns never gave:
-               `refused` is the fraction of the part's own shadow the union hid (the
-               discount that keeps the axial and crossflow bills from charging one flank
-               twice), `sideCdA` is what that leaves it to lever sideways, and `arm` is
-               the station SideCp= weights it by -- so "is my engine adding weathervane or
-               stealing it?" is a sign and a multiplication, not a diff between two
-               flights. A part at refused 0.00 / sideCdA 0.00 is exposed: the axial bill
-               already paid its flank. */
-            struct SideAuditRow { const char *name; double projA; double visA;
-                                  double refused; double cdA; double arm; };
-            std::vector<SideAuditRow> sideRows;
-            if(sideDump) {
-                sideRows.resize(aeroSilPartPtr.size());
-                for(size_t i = 0; i < aeroSilPartPtr.size(); i++) {
-                    Part *p = aeroSilPartPtr[i];
-                    sideRows[i].name = p->def->name.c_str();
-                    sideRows[i].projA = aeroSilPartProj[i];
-                    sideRows[i].visA = aeroSilPartVis[i];
-                    sideRows[i].arm = glm::dot(partPosS(p) - com, nose);
-                }
-            }
+            /* #1105: THE AUDIT ROWS PRINT AFTER THE LOOP, straight from the Part columns
+               the loop just wrote -- the same floats the part window prints, so the dump
+               and the card cannot disagree. What the ship columns never gave: `refused`
+               is the fraction of the part's own shadow the union hid (the discount that
+               keeps the axial and crossflow bills from charging one flank twice),
+               `sideCdA` what that leaves it to lever sideways, `arm` the station SideCp=
+               weights it by -- so "is my engine adding weathervane or stealing it?" is a
+               sign and a multiplication, not a diff between two flights. A row at
+               refused 0.00 / sideCdA 0.00 is one of #947's three declines: exposed (the
+               axial bill already paid that flank), edge-on enough that its own
+               projection collapsed -- refused then measures nothing -- or no authored
+               drag_side. */
             for(size_t i = 0; i < aeroSilPartPtr.size(); i++) {
                 Part *p = aeroSilPartPtr[i];
                 assert(p->owner == this);   // the twin was rebuilt THIS pass; a
@@ -4514,12 +4504,11 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
                 const glm::dvec3 axisW = sRot * p->localRot[2];
                 const double refused =
                     (aeroSilPartProj[i] - aeroSilPartVis[i]) / aeroSilPartProj[i];
-                /* #1105: both halves of this bill become readouts. The audit dump and the
-                   part window need exactly these two numbers, and printing them from
-                   anywhere else would mean re-deriving the discount -- the one place the
-                   axial and crossflow bills are kept from double-charging a flank. */
-                p->formRefused = (float)refused;
-                if(sideDump) { sideRows[i].refused = refused; }
+                /* #1105: the discount becomes a readout. The audit dump and the part
+                   window need exactly this number, and deriving it anywhere else would
+                   mean re-running the union -- and the one place the axial and
+                   crossflow bills are kept from double-charging a flank. */
+                p->sideRefused = (float)refused;
                 const glm::dvec3 flowLocal = glm::transpose(sRot) * uhat;
                 double hx, hy;
                 p->def->meshHalfSpan(hx, hy);
@@ -4530,12 +4519,20 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
                     sideStripCdA(hx, hy, p->def->meshHalfLength(), dirPart) * refused;
                 const double cda = (unbilled > 0.0)
                     ? (drag_cd * p->def->drag_side * unbilled) : 0.0;
-                p->formSideCdA = (float)cda;   // the sum of these IS lastSideCdA
-                if(sideDump) { sideRows[i].cdA = cda; }
                 if(cda > 0.0) {
                     const glm::dvec3 perp = uhat - axisW * glm::dot(axisW, uhat);
                     const double perp2 = glm::length2(perp);
                     if(perp2 > 1e-12) {   // sliding axis-first: no crossflow
+                        /* #1105: written INSIDE both gates, beside the += it mirrors, so
+                           sum(sideCdA) == lastSideCdA holds by construction and not by
+                           luck of the fixture. A part 1e-6 rad off its own axis still has
+                           strip area and refused shadow, so a write out by the other
+                           #1105 line would publish a CdA for a force perp2 has just
+                           rejected -- small, invisible at %.2f, and exactly the sort of
+                           column that quietly stops adding up. refused, by contrast, is a
+                           MEASUREMENT: it prints even where nothing was billed, which is
+                           the whole point of the hides column. */
+                        p->sideCdA = (float)cda;
                         const glm::dvec3 fside = perp * (-lf.q * cda / std::sqrt(perp2));
                         ApplyForce(hull, ri, fside);
                         moment += glm::cross(ri, fside);
@@ -4556,24 +4553,35 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
             // pair would print an arm at random (same reason as the SideCp floor).
             lastBodyCpLever = (std::fabs(lastBodyCdA) > 1e-9)
                 ? (bodyArmCdA / lastBodyCdA) : 0.0;
-            if(sideDump) {
-                /* The rows the ship columns cannot give. `arm` is metres ahead of the
-                   COM (+) along the nose, the same weighting SideCp= uses; the force
-                   itself points with the part's sideways slide, so the weathervane
-                   verdict is this row's sign times that direction -- which is why no
-                   word is printed here claiming one. The SUM line is the audit checking
-                   itself: the parts' sideCdA add to the SideCdA= a --drag-log row prints
-                   for this same substep, so a part the loop skipped shows up as a
-                   disagreement rather than a quiet zero. */
+            if(dumping) {
+                /* The rows the ship columns cannot give, read back off the Part columns
+                   the loop above wrote -- the same floats the part window prints, so the
+                   dump and the card cannot disagree. It prints HERE and not as two more
+                   columns on the silhouette rows above because those rows run BEFORE this
+                   pass, and the pass-start sweep has already zeroed these columns:
+                   appended there, every one would print 0.00.
+                   `arm` is metres ahead of the COM (+) along the nose, the same
+                   weighting SideCp= uses; the force itself points with the part's
+                   sideways slide, so the weathervane verdict is this row's sign times
+                   that direction -- which is why no word is printed here claiming one.
+                   The SUM line is the audit checking itself: the parts' sideCdA add to
+                   the SideCdA= a --drag-log row prints for this same substep, so a part
+                   the loop skipped shows up as a disagreement rather than a quiet zero. */
                 printf("[ship] side audit, this substep: refused = fraction of the part's"
-                       " own shadow the union hid; sideCdA = drag_side x strip x refused;"
-                       " arm = station SideCp weights by (+ ahead)\n");
+                       " own shadow the union hid; sideCdA = what that left it to lever"
+                       " sideways (drag_side x strip x refused, and only where the part"
+                       " slides across its own axis); arm = station SideCp weights by"
+                       " (+ ahead)\n");
                 double sumSide = 0.0;
-                for(const SideAuditRow &sa : sideRows) {
-                    sumSide += sa.cdA;
+                for(size_t i = 0; i < aeroSilPartPtr.size(); i++) {
+                    Part *p = aeroSilPartPtr[i];
+                    sumSide += p->sideCdA;
                     printf("[ship] side %-16s projA %5.2f visA %5.2f refused %5.2f"
                            " sideCdA %6.2f arm %6.2f\n",
-                           sa.name, sa.projA, sa.visA, sa.refused, sa.cdA, sa.arm);
+                           p->def ? p->def->name.c_str() : "?",
+                           aeroSilPartProj[i], aeroSilPartVis[i],
+                           (double)p->sideRefused, (double)p->sideCdA,
+                           glm::dot(partPosS(p) - com, nose));
                 }
                 printf("[ship] SUM sideCdA %.2f  SideCdA %.2f  SideCp %+.2f m\n",
                        sumSide, lastSideCdA, lastSideCpLever);
@@ -8544,8 +8552,8 @@ bool Vehicle::goOnRails() {
         p->formVis = 0.0f;
         p->formCdA = 0.0f;
         p->formDragWatts = 0.0f;
-        p->formRefused = 0.0f;
-        p->formSideCdA = 0.0f;
+        p->sideRefused = 0.0f;
+        p->sideCdA = 0.0f;
         p->formDragWattsPeak = 0.0f;   // #1113: a per-flight peak, so it goes with rails
         if(p->isRcs()) { for(double &f : p->rcsFired) { f = 0.0; } }
     }

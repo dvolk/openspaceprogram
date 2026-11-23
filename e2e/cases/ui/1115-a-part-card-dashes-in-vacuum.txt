@@ -28,7 +28,8 @@
 # the flow rows. Their q=/Mach tail is %0f and varies width with dynamic
 # pressure even between two live reads (ui/1090-a notes the same), so dashed 34
 # vs live 40+ is by design. (For the record, measured: dashed Form/Drag-power
-# are 32/38 chars, the same as their live counterparts in 1090-a/734 -- but
+# are 62/38 chars -- the Form row grew from 32 when #1105 added the hides/side
+# cells, and its live counterpart in 1090-a is 62 too -- but
 # this case never opens the live side, so that equality is 1090-a's claim, not
 # a CHECK here.)
 NAME part-card-dashes-in-vacuum

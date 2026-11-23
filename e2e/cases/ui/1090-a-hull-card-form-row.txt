@@ -82,19 +82,21 @@ CHECK len({len(r["label"]) for r in uilist if r["label"].startswith("Drag power"
 CHECK all(re.search(r"Form:\s+([0-9.]+) m2 visible  cd \d", r["label"]) and float(re.search(r"Form:\s+([0-9.]+) m2", r["label"]).group(1)) >= 0.3 for r in uilist if "Capsule (1m)" in r["window"] and r["label"].startswith("Form:"))
 # Every row parses on both cards: the cd cell is numeric or the four-char dash.
 CHECK all(re.search(r"Form:\s+[0-9.]+ m2 visible  cd (   -|\d+\.\d+)", r["label"]) for r in uilist if r["label"].startswith("Form:"))
-# #1105: the two crossflow cells, read off the same two cards. The occlusion this
-# case is built around (the tank behind the pod along the flight line) was already
-# half-visible here -- the tank keeps a sliver of credit -- but nothing showed HOW
-# much of it the pod ate, and none of the hidden area's sideways bill appeared at
-# all. Now: the pod, being the upwind-most body, has nothing in front of it, so it
-# reads 0.0% hidden and a 0.00 m2 crossflow bill at every read; the tank behind it
-# reads well over half hidden. Deliberately NOT pinned: the measured 93.5% and
-# 0.17 m2, which are this fixture's geometry, not the law's. What IS the law is the
-# pair -- crossflow is charged for hidden area, so a part with nothing hidden can
-# never show a side figure, and any part that hides something does.
+# #1105: the two crossflow cells, read off the same two cards. The occlusion this case
+# is built around (the tank behind the pod along the flight line) was already half-visible
+# here -- the tank keeps a sliver of credit -- but nothing showed HOW much of it the pod
+# ate, and none of the hidden area's sideways bill appeared at all. Now the pod, the
+# upwind-most body, reads 0.0% hidden and 0.00 m2 at every read (nothing hides anything
+# from it, so the axial bill already paid its flank), and the tank behind it reads well
+# over half hidden WITH a side figure beside it, because this hull authored drag_side on
+# its tank.
+# Deliberately NOT pinned, even though the run shows them: hidden == 100.0%, the
+# measured 93.5% / 0.17 m2 (fixture geometry), and "hidden implies a side figure" -- that
+# last one is a fact about res/data/parts.json, not about #947. Refusal alone bills
+# nothing, because cn is authored and never defaulted; the unit bench holds that case on
+# its own parts, where a 10.3%-hidden shelter reads 0.0000 m2 beside it.
 CHECK all((lambda l: float(re.search(r"hides\s+([0-9.]+)%", l).group(1)) == 0.0 and float(re.search(r"side\s+([0-9.]+) m2", l).group(1)) == 0.0)(r["label"]) for r in uilist if "Capsule (1m)" in r["window"] and r["label"].startswith("Form:"))
-CHECK all(float(re.search(r"hides\s+([0-9.]+)%", r["label"]).group(1)) > 50.0 for r in uilist if "Fuel Tank" in r["window"] and r["label"].startswith("Form:"))
-CHECK all(float(re.search(r"side\s+([0-9.]+) m2", r["label"]).group(1)) > 0.0 for r in uilist if r["label"].startswith("Form:") and float(re.search(r"hides\s+([0-9.]+)%", r["label"]).group(1)) > 0.0)
+CHECK all((lambda l: float(re.search(r"hides\s+([0-9.]+)%", l).group(1)) > 50.0 and float(re.search(r"side\s+([0-9.]+) m2", l).group(1)) > 0.0)(r["label"]) for r in uilist if "Fuel Tank" in r["window"] and r["label"].startswith("Form:"))
 # The flow row carries the hull's angle and the bill's flow, live on both cards --
 # a signed angle cell (formatAlphaDeg), a numeric q and Mach (never dashed while
 # this in-air case runs).

@@ -984,14 +984,17 @@ public:
         /* the parts' columns OF that best frame, indexed into parts; a size
            change (pickup, drop) invalidates the window's arrays */
         std::vector<double> winVis, winCdA, winWatts;
-        /* #1105: the crossflow pair joins the published frame so the card's Form row
-           and its flow row quote ONE substep, not a bill from one frame and a
-           weathervane reading from another. */
-        std::vector<double> winRefused, winSide;
+        /* #1105: the crossflow pair joins the published frame so the card's Form row and
+           its flow row quote ONE substep, not a bill from one frame and a weathervane
+           reading from another. Note WHICH frame: "best" ranks the AXIAL bill
+           (worstW <- lastFormWatts), so a card's side figure is the axial-worst frame's,
+           not the frame where SideCdA peaked. One hull, one frame, one row triple -- the
+           ship's SideCdA= column is where the peak lives. */
+        std::vector<double> winSideRefused, winSideCdA;
         /* the published sample every card prints until the next publish */
         double pubAlpha = 0.0, pubQ = 0.0, pubMach = 0.0;
         std::vector<double> pubVis, pubCdA, pubWatts;
-        std::vector<double> pubRefused, pubSide;
+        std::vector<double> pubSideRefused, pubSideCdA;
     } hflow;
     /* The hull's weathervane lever: (cp - com) . nose, metres; + = cp AHEAD of the
        COM. #486 made hull drag answer to the flow AT cp, and two different things

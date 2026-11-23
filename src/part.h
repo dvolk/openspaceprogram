@@ -186,19 +186,22 @@ struct Part {
     float formVis = 0.0f;         // [m^2] credited visible silhouette area, this substep
     float formCdA = 0.0f;         // [m^2] visible x partCd at that flow (the bill's share)
     float formDragWatts = 0.0f;   // [W] this part's credit share of the hull's drag power
-    /* #947's crossflow bill, by part (#1105). The axial partition above charges a part
-       only where the air MEETS it; a body hidden behind another along the flow still
-       slides its flank through the air, and that normal force is discounted by how much
-       of the part's OWN shadow the union refused. These are those two numbers:
-       formRefused is that fraction -- 0 exposed (the axial bill already paid its flank,
-       so this part nets nothing here), 1 fully hidden -- and formSideCdA is the CdA it
-       therefore levers sideways this substep (drag_side x mesh strip x refused,
-       drag.h::sideStripCdA). Summed over the body parts, formSideCdA IS the ship's
-       SideCdA= column; the arm SideCp= weights them by mount station. A part reading 0
-       in both is exposed, a lifting surface, or in a substep that billed nothing --
-       same lifetime rule as the three columns above. */
-    float formRefused = 0.0f;     // [-] fraction of this part's shadow the union hid
-    float formSideCdA = 0.0f;     // [m^2] this part's crossflow normal-force CdA
+    /* #947's crossflow bill, by part (#1105) -- named for the ship's SideCdA=/SideCp=
+       pair, NOT for the form trio above: the crossflow force is not part of that bill
+       and cannot be, since two perpendicular lines of action cannot share one
+       CdA-weighted lever (vehicle.cpp, #947). sideRefused is the fraction of THIS
+       part's own shadow the union hid -- the discount that stops the axial and
+       crossflow bills charging one flank twice -- and sideCdA is the CdA that leaves
+       it to lever sideways this substep (drag_side x mesh strip x refused,
+       drag.h::sideStripCdA). The two split where the law splits: refused is a
+       MEASUREMENT, kept even when nothing was billed, while sideCdA is written only
+       inside the gates that bill -- so summing it over the parts IS the ship's
+       SideCdA= column, exactly. A hidden part sliding along its own axis, or one with
+       no authored drag_side, therefore reads refused > 0 beside sideCdA 0.00 rather
+       than leaving a column that no longer adds up; the arm SideCp= weights them by is
+       the mount station. Same lifetime rule as the three columns above. */
+    float sideRefused = 0.0f;     // [-] fraction of this part's shadow the union hid
+    float sideCdA = 0.0f;         // [m^2] this part's crossflow normal-force CdA
     /* #1113 first stamped the BILL's flow beside each part too; #1114 moved that
        flow to the hull that owns it -- Vehicle::lastFormQ/lastFormMach/
        lastFormWatts -- because a ship-level figure repeated per part only invited
