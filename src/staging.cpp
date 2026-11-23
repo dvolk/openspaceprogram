@@ -708,6 +708,13 @@ std::vector<StageRow> computeStaging(const BuildShip &ship, double g,
     sim.resetFor(n);
     int minStage = ship.parts[0].stage;
     int maxStage = minStage;
+    /* A row per stage cut plus the last one: counted here so the rows vector is
+       reserved rather than doubled into place. A hint, not a bound the logic leans on
+       -- vector growth still works if the count is off. #1131 measured that chain at
+       819 allocations in 25 s of autopilot ascent and the reserve at 273 afterwards,
+       one per call, because Vehicle::stagedRows() re-runs this pass whenever a burn
+       moves the fuel figures its cache compares against. */
+    size_t nCuts = 0;
 
     bool burn[(int)ResourceType::Num];
     stagingPropellantMask(ship, burn);
@@ -724,6 +731,7 @@ std::vector<StageRow> computeStaging(const BuildShip &ship, double g,
            so spelling out `decoupler` here is a second rule free to drift (#292). */
         sp.isBarrier = (bp.def != nullptr) && bp.def->isFuelBarrier();
         sp.isDec = (bp.def != nullptr) && bp.def->decoupler;
+        if(sp.isDec) { nCuts++; }
         /* Written here rather than left to SimPart's defaults, because a Sim now rides
            between passes (#963): resize() only value-initializes parts ADDED since the
            last pass, so this slot still holds the previous ship's verdict. `alive` is
@@ -759,6 +767,7 @@ std::vector<StageRow> computeStaging(const BuildShip &ship, double g,
         if(sp.stage < minStage) { minStage = sp.stage; }
         if(sp.stage > maxStage) { maxStage = sp.stage; }
     }
+    rows.reserve(nCuts + 1);
     sim.buildChildren();   // the parent links are fixed by the snapshot (#520)
 
     /* Resolving a fuel link means turning an authored part id into an index. The

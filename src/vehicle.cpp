@@ -6159,44 +6159,47 @@ std::vector<Part *> Vehicle::droppedPartsAtStage(int stage) {
        (parent, child) pairs, and the parts by address, which turns "already
        dropped?" into a byte. */
     const size_t n = parts.size();
-    std::vector<std::pair<Part *, Part *>> kids;
-    kids.reserve(n);   // not n - 1: a malformed parent edge gives every part a parent
+    /* The four bookkeeping arrays are members (dropKids_ &co, #1131): this walk runs
+       every logic tick while an ascent law is armed, and four fresh buffers a tick is
+       what the paragraph above stopped short of removing. Capacity only grows. */
+    dropKids_.clear();
+    dropKids_.reserve(n);   // not n - 1: a malformed parent edge gives every part a parent
     for(Part *p : parts) {
-        if(p->parent != nullptr) { kids.push_back({p->parent, p}); }
+        if(p->parent != nullptr) { dropKids_.push_back({p->parent, p}); }
     }
     // Address order is the only order that makes a pointer comparable, and this is
     // a lookup key, not a result the caller reads as an ordering.
-    std::sort(kids.begin(), kids.end(),
+    std::sort(dropKids_.begin(), dropKids_.end(),
               [](const std::pair<Part *, Part *> &a, const std::pair<Part *, Part *> &b) {
                   return a.first < b.first;
               });
-    std::vector<Part *> byAddr(parts.begin(), parts.end());
-    std::sort(byAddr.begin(), byAddr.end());
-    std::vector<char> dropped(n, 0);
+    dropByAddr_.assign(parts.begin(), parts.end());
+    std::sort(dropByAddr_.begin(), dropByAddr_.end());
+    dropFlags_.assign(n, 0);
+    dropStack_.clear();   // the DFS empties itself; this says so rather than relying on it
     auto indexOf = [&](Part *q) -> size_t {
-        auto it = std::lower_bound(byAddr.begin(), byAddr.end(), q);
-        assert(it != byAddr.end() && *it == q);   // every part is in the index
-        return (size_t)(it - byAddr.begin());
+        auto it = std::lower_bound(dropByAddr_.begin(), dropByAddr_.end(), q);
+        assert(it != dropByAddr_.end() && *it == q);   // every part is in the index
+        return (size_t)(it - dropByAddr_.begin());
     };
 
-    std::vector<Part *> stack;
     size_t nDropped = 0;
     for(Part *p : parts) {
         if(!p->isDecoupler() || p->stage != stage) { continue; }
-        stack.push_back(p);   // the decoupler flies off with its stage
+        dropStack_.push_back(p);   // the decoupler flies off with its stage
         // Iterative DFS over the decoupler's child side.
-        while(!stack.empty()) {
-            Part *q = stack.back(); stack.pop_back();
+        while(!dropStack_.empty()) {
+            Part *q = dropStack_.back(); dropStack_.pop_back();
             const size_t qi = indexOf(q);
-            if(dropped[qi]) { continue; }
-            dropped[qi] = 1;
+            if(dropFlags_[qi]) { continue; }
+            dropFlags_[qi] = 1;
             nDropped++;
-            auto lo = std::lower_bound(kids.begin(), kids.end(), q,
+            auto lo = std::lower_bound(dropKids_.begin(), dropKids_.end(), q,
                         [](const std::pair<Part *, Part *> &e, Part *key) {
                             return e.first < key;
                         });
-            for(auto it = lo; it != kids.end() && it->first == q; ++it) {
-                stack.push_back(it->second);
+            for(auto it = lo; it != dropKids_.end() && it->first == q; ++it) {
+                dropStack_.push_back(it->second);
             }
         }
     }
@@ -6207,7 +6210,7 @@ std::vector<Part *> Vehicle::droppedPartsAtStage(int stage) {
     std::vector<Part *> out;
     out.reserve(nDropped);
     for(size_t i = 0; i < n; i++) {
-        if(dropped[i]) { out.push_back(byAddr[i]); }
+        if(dropFlags_[i]) { out.push_back(dropByAddr_[i]); }
     }
     return out;
 }
@@ -7166,7 +7169,7 @@ bool Vehicle::stageIsDue() {
        law is armed, and the set was one node allocation per group per tick (#942).
        Sorted once, then binary_search -- the group count is a handful, so the sort
        is free and the lookups replace a tree walk each. */
-    std::vector<int> reach;
+    dueReach_.clear();   // a member, not a local: this runs every tick (#1131)
     bool burn[(int)ResourceType::Num] = {false};
     for(Part *p : parts) {
         if(!p->isThruster() || p->stage < as) { continue; }
@@ -7177,11 +7180,11 @@ bool Vehicle::stageIsDue() {
         /* groupOf is every group the engine can drink from, once, whatever layer it
            sits in -- the layer boundaries only matter to a pro-rata drain. */
         const FuelLayers &layers = fuelDrainLayers(p);
-        reach.insert(reach.end(), layers.groupOf.begin(), layers.groupOf.end());
+        dueReach_.insert(dueReach_.end(), layers.groupOf.begin(), layers.groupOf.end());
     }
-    std::sort(reach.begin(), reach.end());
-    reach.erase(std::unique(reach.begin(), reach.end()), reach.end());
-    if(reach.empty()) { return false; }   // nothing ignited that can drink
+    std::sort(dueReach_.begin(), dueReach_.end());
+    dueReach_.erase(std::unique(dueReach_.begin(), dueReach_.end()), dueReach_.end());
+    if(dueReach_.empty()) { return false; }   // nothing ignited that can drink
 
     const std::vector<Part *> drop = droppedPartsAtStage(as);
     // droppedPartsAtStage returns address order (see its note), which is what a
@@ -7196,7 +7199,7 @@ bool Vehicle::stageIsDue() {
        where this cost comes down, not by changing its shape. */
     for(Part *p : parts) {
         if(!p->isTank()) { continue; }     // consumeResourceMass drains tanks, only
-        if(!std::binary_search(reach.begin(), reach.end(), p->fuelGroup)) { continue; }
+        if(!std::binary_search(dueReach_.begin(), dueReach_.end(), p->fuelGroup)) { continue; }
         double m = 0.0;
         for(int r = 0; r < (int)ResourceType::Num; r++) {
             if(burn[r]) { m += p->resources.current[(int)r]; }
@@ -7686,10 +7689,14 @@ Vehicle::AttitudeAuthority Vehicle::attitudeAuthorityRows(bool switchesApply) {
    safe rather than generous: actuatorTorqueAbout credits a bell only where it can
    actually push, so a ring cannot be credited with a turn it would have to blow the
    wrong way to make. */
-template<class Rows>
-static double torqueAboutRows(const Rows &wheels,
-                              const Rows &surfaces,
-                              const Rows &rcs,
+/* Three container types, not one: the row sets share a ROW type but not an inline
+   capacity (AttitudeAuthority::kInlineRcsRows vs kInlineRows, #1131), and a single
+   template parameter made the mixed pair fail to deduce. actuatorTorqueAbout is
+   already container-agnostic, so nothing else here changes. */
+template<class Wheels, class Surfaces, class Rcs>
+static double torqueAboutRows(const Wheels &wheels,
+                              const Surfaces &surfaces,
+                              const Rcs &rcs,
                               const glm::dvec3 &stackAxis, double tvc,
                               const glm::dvec3 &axis) {
     const double ax2 = glm::dot(axis, axis);

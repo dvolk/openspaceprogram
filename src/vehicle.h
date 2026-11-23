@@ -1374,6 +1374,14 @@ public:
            growing, so a hull with 30 fins gets the same physics for one malloc per
            rebuild rather than a truncated row set. */
         static constexpr size_t kInlineRows = 12;
+        /* RCS needs its own size because it counts a different population: one row per
+           NOZZLE, and the shipped pod carries 5 bells, so four of them (the shipped
+           rcs_test hull) is 20 rows and the rcs-test rigs are 40. Measured over
+           res/ships: at most 10 surfaces and 20 bells per hull -- kInlineRows covers the
+           first two sets and misses the third. Overflow is not a cap (InlineVec grows
+           onto the heap, #668); it is one malloc per actuation rebuild, which is exactly
+           what this buffer exists to avoid. */
+        static constexpr size_t kInlineRcsRows = 40;
         InlineVec<ActuatorRow, kInlineRows> wheels;
         /* The housing each wheel row came from, in `wheels` order. Same reason the
            surfaces carry surfaceParts: actuatorSolve's setpoints come back indexed by
@@ -1461,7 +1469,7 @@ public:
            LAST, after the wheels and plates have had their share, so a hull that can
            turn for free turns for free and hydrazine pays only for what they cannot do
            (actuateAttitude). */
-        InlineVec<ActuatorRow, kInlineRows> rcs;
+        InlineVec<ActuatorRow, kInlineRcsRows> rcs;
         /* Whether the hull CARRIES an RCS pod at all, whatever the tank or the switch
            say (#649's lesson, one level up from hasSurfaces): "no ring fitted" and "the
            ring is empty" are different sentences to a player, and an empty row set
@@ -1864,6 +1872,20 @@ public:
     /* Walks performed, not asks answered (#966). One counter on the cache itself, so
        the pin reads the same `moved` branch that decides the cost. */
     uint64_t stagedRebuilds_ = 0;
+
+    /* droppedPartsAtStage()'s bookkeeping arrays (#1131). The walk stopped being a
+       press-time ask when #928 made stageIsDue() run it every logic tick an ascent law
+       is armed: heaptrack over an autopilot ascent (mars_explorer_mk1 off the Kerbin
+       pad, 30 parts; the paired 15 s / 40 s delta scripted in tmp/night7/ascrun.sh)
+       counted 7,746 allocations in 25 s of steady flight from this one walk. They
+       persist and only grow, so the same window after the change counts 1,505 -- one
+       per call, which is the result vector. Nothing outside the function reads these. */
+    std::vector<std::pair<Part *, Part *>> dropKids_;
+    std::vector<Part *> dropByAddr_, dropStack_;
+    std::vector<char> dropFlags_;
+    /* stageIsDue()'s "which groups can the lit engines drink" list, same reason:
+       rebuilt per tick, and its sortedness is rebuilt too, so clear() is enough. */
+    std::vector<int> dueReach_;
 
     int activeStage();
     /* Step to the previous stage (clamped at the lowest one). */
