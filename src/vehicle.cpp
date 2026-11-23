@@ -7689,15 +7689,12 @@ Vehicle::AttitudeAuthority Vehicle::attitudeAuthorityRows(bool switchesApply) {
    safe rather than generous: actuatorTorqueAbout credits a bell only where it can
    actually push, so a ring cannot be credited with a turn it would have to blow the
    wrong way to make. */
-/* Three container types, not one: the row sets share a ROW type but not an inline
-   capacity (AttitudeAuthority::kInlineRcsRows vs kInlineRows, #1131), and a single
-   template parameter made the mixed pair fail to deduce. actuatorTorqueAbout is
-   already container-agnostic, so nothing else here changes. */
-template<class Wheels, class Surfaces, class Rcs>
-static double torqueAboutRows(const Wheels &wheels,
-                              const Surfaces &surfaces,
-                              const Rcs &rcs,
-                              const glm::dvec3 &stackAxis, double tvc,
+/* One AttitudeAuthority in, one number out: the three row sets share a ROW type but
+   not an inline capacity (kInlineRows vs kInlineRcsRows), so a single template
+   parameter over all three cannot deduce -- and naming the authority rather than its
+   parts keeps the mixed capacities from being this helper's problem at all. The two
+   callers differ only in WHICH tvc figure they credit, so that stays an argument. */
+static double torqueAboutRows(const Vehicle::AttitudeAuthority &a, double tvc,
                               const glm::dvec3 &axis) {
     const double ax2 = glm::dot(axis, axis);
     if(!(ax2 > 0.0)) { return 0.0; }   // a zero or NaN axis buys nothing
@@ -7706,7 +7703,7 @@ static double torqueAboutRows(const Wheels &wheels,
        axis can round a hair over |axis|. The `> 0.0` test is also the NaN guard:
        std::fmin would hand a NaN stack axis the FULL 1.0, i.e. grant TVC about every
        axis at once, whereas this buys nothing. (A NaN `axis` is caught above.) */
-    const double sinToStack = glm::length(glm::cross(stackAxis, axis)) / std::sqrt(ax2);
+    const double sinToStack = glm::length(glm::cross(a.stackAxis, axis)) / std::sqrt(ax2);
     const double b = (sinToStack > 0.0) ? std::fmin(1.0, sinToStack) : 0.0;
     /* The wheels' and the surfaces' halves ask actuators.h the same question
        actuateAttitude will answer with the same rows, so a hull with no wheel at all
@@ -7715,20 +7712,19 @@ static double torqueAboutRows(const Wheels &wheels,
        no wheel and no burn (#595) -- and note the ORDER differs: the budget credits
        what the ring can do, while actuateAttitude only spends it on what the drums and
        plates left undone. A budget is an upper bound, never a routing (actuators.h). */
-    return actuatorTorqueAbout(wheels, axis)
-         + actuatorTorqueAbout(surfaces, axis)
-         + actuatorTorqueAbout(rcs, axis) + tvc * b;
+    return actuatorTorqueAbout(a.wheels, axis)
+         + actuatorTorqueAbout(a.surfaces, axis)
+         + actuatorTorqueAbout(a.rcs, axis) + tvc * b;
 }
 
 double Vehicle::attitudeTorqueAbout(const AttitudeAuthority &a,
                                     const glm::dvec3 &axis) const {
-    return torqueAboutRows(a.wheels, a.surfaces, a.rcs, a.stackAxis, a.tvcTorque, axis);
+    return torqueAboutRows(a, a.tvcTorque, axis);
 }
 
 double Vehicle::availableTurnTorque(const AttitudeAuthority &a,
                                     const glm::dvec3 &axis) const {
-    return torqueAboutRows(a.wheels, a.surfaces, a.rcs, a.stackAxis,
-                           a.tvcTorqueAvailable, axis);
+    return torqueAboutRows(a, a.tvcTorqueAvailable, axis);
 }
 
 glm::dmat3 Vehicle::getInertia() {

@@ -538,7 +538,7 @@ static void test_press_due_on_asparagus_stack() {
         addEngine(s, ctank, 2, "core_engine", 0);
         Part *dec   = addPart(s, s.v->parts[0], 2, true, "dec_booster");
         Part *btank = addTank(s, dec, 2, "booster_tank", 1, 500.0, 500.0);
-        addEngine(s, btank, 2, "booster_engine", 1);
+        Part *beng  = addEngine(s, btank, 2, "booster_engine", 1);
         s.v->totalStages_ = 2; s.v->minStage_ = 1; s.v->activeStage_ = 2;
         /* Run the real renumbering, not just the hand-written ids above: the live
            drain caches its layers per group, and a hand-assigned id leaves that cache
@@ -570,6 +570,21 @@ static void test_press_due_on_asparagus_stack() {
         CHECK_TRUE(s.v->parts.size() == nparts + 1, "the hull grew by one part");
         CHECK_TRUE(s.v->stageIsDue(),
                    "a hull change that leaves the drop set alone keeps the press due");
+        /* THE REACH LIST IS REBUILT, NOT ACCUMULATED (#1131). It is a member buffer
+           now, reused every logic tick, so its CONTENTS are the thing to pin -- a
+           buffer that only grows would still answer correctly on the first call. Take
+           the booster's engine out of the ignited set (a label below the active one)
+           and refill the tank only it could drink: group 1 is no longer reachable, so
+           those 1,000 kg are inert mass on this stage and cannot hold the press. A
+           reach list left over from the call above still sees group 1, counts that
+           fuel on the drop side, and reads "not due" for a stage nothing can burn. */
+        beng->stage = 1;
+        btank->resources.current[(int)ResourceType::Hydrogen] = 500.0;
+        btank->resources.current[(int)ResourceType::LOX] = 500.0;
+        printf("   booster engine unlit, booster %.0f kg -> due=%d\n",
+               partFuel(btank), (int)s.v->stageIsDue());
+        CHECK_TRUE(s.v->stageIsDue(),
+                   "a group the ignited engines cannot drink does not hold the press");
         destroyShip(s);
     }
     {   // the other branch: this press drops nothing drinkable, so the stage

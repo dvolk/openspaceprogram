@@ -2107,6 +2107,13 @@ static void test_a_ring_of_bells_is_a_row_of_actuators() {
     CHECK_TRUE(a.wheels.empty() && a.tvcTorque == 0.0 && !a.hasSurfaces,
                "nothing else on this hull could turn it");
     CHECK_TRUE(a.hasRcs && a.rcs.size() == 2, "the ring is two rows, one per bell");
+    /* #1131: capacity() is the inline size right up to the moment the set outgrows
+       it (#668), so this reads "the ring rows never went to the heap" -- which is the
+       whole point of AttitudeAuthority::kInlineRcsRows. The fleet-shaped check below
+       is the half that says the constant is sized for shipped content, not for a
+       two-bell fixture. */
+    CHECK_TRUE(a.rcs.capacity() == Vehicle::AttitudeAuthority::kInlineRcsRows,
+               "two bells sit inside the ring's inline buffer, so capacity is still N");
     CHECK_NEAR(0.0, v->attitudeTorqueAbout(a, x), 0.0, "a yaw pair buys nothing about X");
     CHECK_NEAR(100.0, v->attitudeTorqueAbout(a, y), 1e-9,
                "one bell at 100 N on a 1.0 m arm is the whole authority about +Y");
@@ -2218,6 +2225,56 @@ static void test_a_ring_of_bells_is_a_row_of_actuators() {
                "while the hardware figure never noticed -- which is how a player tells "
                "a dimmed ring from a broken one");
     v->rcs_attitude_frac = 1.0;
+    destroyShip(v);
+}
+
+/* THE INLINE ROOM IS SIZED FOR THE SHIPPED FLEET, not for a fixture (#1131).
+   AttitudeAuthority's row buffers are InlineVecs (#668): past their inline size a set
+   costs one malloc per actuation rebuild, so the size is a constant that needs a
+   fence. Both halves measured off content, not guessed: rcs_box authors 5 face bells
+   (res/data/parts.json) and res/ships/rcs_test.json fits FOUR of them -- 20 rows, the
+   largest ring the game ships -- while every shipped wheel is a triad and
+   res/ships/heavy_one.json carries four housings, which is 12 rows, EXACTLY
+   kInlineRows with nothing left over. This rig is that shape. Before #1131 the ring
+   shared kInlineRows, so every shipped RCS hull paid a malloc per rebuild; the number
+   went to 24 for that fleet plus a pod of margin and no further, because the buffer
+   rides inside the struct -- sizeof(AttitudeAuthority) is 2,304 at 24 against 1,824 at
+   12 -- and every hull builds one of those per actuation substep, ring or no ring. */
+static void test_the_row_buffers_fit_the_shipped_fleet() {
+    printf("== the row buffers fit the fleet's biggest ring and biggest wheel set ==\n");
+    std::deque<PartDef> defs;
+    RcsProbe *v = new RcsProbe;
+    v->name = "fleet shape";
+    const std::vector<glm::dvec3> fiveBells = {
+        glm::dvec3(1.0, 0.0, 0.0), glm::dvec3(-1.0, 0.0, 0.0),
+        glm::dvec3(0.0, 1.0, 0.0), glm::dvec3(0.0, -1.0, 0.0),
+        glm::dvec3(0.0, 0.0, -1.0),
+    };
+    Part *root = mkPart(defs, "pod", 100.0, 1.0, 0.0, 0.0);
+    defs.back().rcs_thrust = 100.0;
+    defs.back().rcs_nozzles = fiveBells;
+    defs.back().capacity[(int)ResourceType::Hydrazine] = 1.0;
+    v->setRoot(root);
+    for(int k = 0; k < 3; k++) {   // rcs_test's four pods
+        Part *pod = mkPart(defs, "pod", 100.0, 1.0, 0.0, 0.0);
+        defs.back().rcs_thrust = 100.0;
+        defs.back().rcs_nozzles = fiveBells;
+        defs.back().capacity[(int)ResourceType::Hydrazine] = 1.0;
+        v->attachDown(pod);
+    }
+    for(int k = 0; k < 4; k++) {   // heavy_one's four triad housings
+        Part *drum = mkPart(defs, "wheelblock", 20.0, 0.5, 100.0, 0.0, 3);
+        v->attachDown(drum);
+    }
+    v->init();
+    v->placeShip(glm::dvec3(0.0, 0.0, 0.0), glm::dmat3(1.0));
+    const Vehicle::AttitudeAuthority a = v->attitudeAuthority();
+    CHECK_TRUE(a.rcs.size() == 20, "4 pods x 5 bells: rcs_test's ring, row for row");
+    CHECK_TRUE(a.rcs.capacity() == Vehicle::AttitudeAuthority::kInlineRcsRows,
+               "and the shipped fleet's biggest ring still sits in the inline buffer");
+    CHECK_TRUE(a.wheels.size() == 12, "4 triads: heavy_one's drum count");
+    CHECK_TRUE(a.wheels.capacity() == Vehicle::AttitudeAuthority::kInlineRows,
+               "exactly at kInlineRows: that constant has no headroom to give away");
     destroyShip(v);
 }
 
@@ -2713,6 +2770,7 @@ int main() {
     test_a_billed_plate_stays_on_the_row_when_the_frame_is_refused();
     test_a_lifting_plate_answers_its_own_angle();
     test_a_ring_of_bells_is_a_row_of_actuators();
+    test_the_row_buffers_fit_the_shipped_fleet();
     test_the_aim_is_measured_once();
     test_the_aim_keeps_its_doors_shut();
     test_an_antipodal_ask_steps_off_a_dead_line();

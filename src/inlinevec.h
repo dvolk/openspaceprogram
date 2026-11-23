@@ -8,9 +8,10 @@
    with reserve() still means four fresh mallocs per walk. heaptrack 2026_11_06
    measured that as the flight frame's single biggest allocator -- 85,386
    allocations per 20 s of atmospheric flight, 65% of that run's whole
-   steady-state delta, and still 24,216 after the reserves landed. A row is 32
-   bytes and a shipped hull carries a handful of them, so the heap was being
-   used to move ~100 bytes around a few hundred times a second.
+   steady-state delta, and still 24,216 after the reserves landed. A row is 40
+   bytes (a dvec3, a double and a bool, padded -- measured) and a shipped hull
+   carries a handful of them, so the heap was being used to move ~100 bytes
+   around a few hundred times a second.
 
    What this type promises:
 

@@ -1372,16 +1372,29 @@ public:
            reserve(). kInlineRows is the room a shipped hull fits in, so the common
            rebuild allocates nothing at all; past it the set moves to the heap and keeps
            growing, so a hull with 30 fins gets the same physics for one malloc per
-           rebuild rather than a truncated row set. */
+           rebuild rather than a truncated row set. It is not roomy: the shipped fleet's
+           largest wheel set is EXACTLY 12 rows -- three drums each on four housings,
+           res/ships/heavy_one.json &co -- and its largest surface set is 5 (the skiff
+           family), so one more drum block puts `wheels` on the heap. */
         static constexpr size_t kInlineRows = 12;
         /* RCS needs its own size because it counts a different population: one row per
-           NOZZLE, and the shipped pod carries 5 bells, so four of them (the shipped
-           rcs_test hull) is 20 rows and the rcs-test rigs are 40. Measured over
-           res/ships: at most 10 surfaces and 20 bells per hull -- kInlineRows covers the
-           first two sets and misses the third. Overflow is not a cap (InlineVec grows
-           onto the heap, #668); it is one malloc per actuation rebuild, which is exactly
-           what this buffer exists to avoid. */
-        static constexpr size_t kInlineRcsRows = 40;
+           NOZZLE, and rcs_box authors 5 face bells (res/data/parts.json), so the four
+           pods of res/ships/rcs_test.json -- the shipped fleet's biggest ring -- is 20
+           rows. 24 covers that with a pod of margin. Larger is not free: a row is 40
+           bytes and the buffer lives INSIDE the struct, so sizeof(AttitudeAuthority)
+           is 1,824 at inline 12, 2,304 at 24 and 2,944 at 40 (compiled and read out of
+           the type), and every hull in the game pays that much authority object whether
+           or not it carries a ring. What the bytes cost is footprint, not a memset --
+           the -O2 code for attitudeAuthorityRows() initializes the vectors'
+           bookkeeping, not the whole inline region, as the disassembly shows -- so 24
+           buys the shipped fleet's ring and stops there. 40 fits only the 8-pod rigs
+           under tmp/, which are not content.
+           Overflow is not a cap (InlineVec grows onto the heap, #668), and the price of
+           overflow is measured: the 40-bell rig pays the same ~4,500 allocations per 25 s
+           of RCS flight at inline 12 and at 24 -- one malloc per rebuild, exactly as
+           #668 promises -- while rcs_test's 20 bells go 4,503 -> 0. tests/ pins both
+           row counts and both capacities. */
+        static constexpr size_t kInlineRcsRows = 24;
         InlineVec<ActuatorRow, kInlineRows> wheels;
         /* The housing each wheel row came from, in `wheels` order. Same reason the
            surfaces carry surfaceParts: actuatorSolve's setpoints come back indexed by
@@ -1876,10 +1889,13 @@ public:
     /* droppedPartsAtStage()'s bookkeeping arrays (#1131). The walk stopped being a
        press-time ask when #928 made stageIsDue() run it every logic tick an ascent law
        is armed: heaptrack over an autopilot ascent (mars_explorer_mk1 off the Kerbin
-       pad, 30 parts; the paired 15 s / 40 s delta scripted in tmp/night7/ascrun.sh)
-       counted 7,746 allocations in 25 s of steady flight from this one walk. They
-       persist and only grow, so the same window after the change counts 1,505 -- one
-       per call, which is the result vector. Nothing outside the function reads these. */
+       pad, 30 parts, --ascent 150e3 --time-accel 10; the steady-state window is the
+       delta of a 15 s and a 40 s run of that one command) counted 7,746 allocations
+       from this one walk per 25 s of flight. They persist and only grow, so the same
+       window after the change counts 1,505 -- one per call that actually drops
+       something, which is the result vector: out.reserve() allocates nothing when
+       nothing came off. Nothing outside the function reads these, and what they hold
+       is ~33 bytes per part, retained after the last walk. */
     std::vector<std::pair<Part *, Part *>> dropKids_;
     std::vector<Part *> dropByAddr_, dropStack_;
     std::vector<char> dropFlags_;

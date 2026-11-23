@@ -1014,6 +1014,12 @@ std::vector<StageRow> computeStaging(const BuildShip &ship, double g,
         }
     }
 
+    /* The reserve hint is checkable, so check it: a row appears only at a label that
+       cuts something (the `drop.empty()` skip above) or at the final one, so the row
+       count can never pass the cut count by more than one. A wrong nCuts costs bytes,
+       not correctness -- this is what makes "it is a hint" a claim with a guard. */
+    assert(rows.size() <= nCuts + 1);
+
     /* markReachable()'s assert cannot see a bookkeeping slip in the last period's kill(),
        since no stamp follows it. This is the only place that can. */
     assert(sim.litCount == sim.litRocketCount());
