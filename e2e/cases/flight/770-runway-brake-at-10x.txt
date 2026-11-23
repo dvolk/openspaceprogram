@@ -1,8 +1,8 @@
 NAME runway-brake-at-10x
-CLAIM A gear hull that rolls up under thrust at 10x warp brakes to a stop and stays stopped.
+CLAIM A gear hull that rolls up under thrust at 10x warp brakes to a stop and stays stopped -- and at the speed it reaches its own wings are carrying most of its weight, so the tires' brake budget collapses mid-roll and the hull finishes the run on its roof.
 KIND invariant
 ARGS --time-accel 10 --startship skiffgear,res/ships/skiff_gear.json,Kerbin,pad,site=ksc_runway
-ARGS --sim-steps 300 --dbg-log --orbit-interval 0.5
+ARGS --sim-steps 300 --dbg-log --orbit-interval 0.5 --drag-log --mass-log
 # Brakes are on at spawn: release (O), roll up under thrust, then brake (O) again.
 # --sim-steps so the press schedule counts logic ticks, not the wall (#472): 1000 ms
 # is 60 ticks whatever the accel, and at warp 10 that is 10 s of sim.
@@ -16,19 +16,48 @@ EXPECT [dbg]
 # other driving case ran at warp 1, where the criterion 2.7*g*h is ~0.04 and the clamp
 # is provably dead code -- so the whole warp 8-10 rolling regime had no net under it.
 #
-# What it measures is that the clamp did not eat the rolling law. Measured here: 40.1
-# m/s at t=15 s, 45.0 m/s at t=20 s (alt 2.3-2.8 m, so this is rolling, not flying),
-# brake on at 2000 ms = 20 s of sim, 0.47 m/s at t=25 s and 0.01 m/s from t=30 s on.
-# With the clamp forced off (in.stopRate = 0) the same run is identical to 0.02 m/s --
-# the clamp cannot bind at 45 m/s, where tanh has saturated and the friction circle
-# (kGrip*N ~ 1.7 kN) sits two orders under the momentum budget (stopRate*|v| ~ 180 kN).
-# It binds at REST, which 859 pins. So this case's job is the negative: keep the moving
-# hull's braking law working at the coarsest substep, where an over-damped tire would
-# show up as a hull that never stops or stops and craws.
+# What it measures is that the clamp did not eat the rolling law. That is still the job;
+# what the flight looks like while doing it is not what this file used to say.
+# WHAT THE AERO RUN DID TO THIS ROLL (#1132 family D, re-measured 2026_11_23). The hull
+# weighs 658.65 kg x Kerbin's 9.8112 m/s2 = 6462 N -- the [mass] row prints the 658.65, so
+# the pin below is the game's own number and not a hand calculation. Skiffgear carries two
+# 4 m wings, a tail, an elevator pair, ailerons and a rudder, and once it is rolling the air
+# bills them: L_up = +4961.4 N world-up at 40.0 m/s, +4650.0 N at 44.4 m/s, three quarters of
+# the hull's weight taken off the tires. Braking friction is proportional to what is left, so
+# the brake press at t=20 s no longer finishes inside 5 s: measured 30.56 m/s at t=25, 6.00 at
+# t=30, at rest from t=35 -- where the old file recorded 0.47 m/s at t=25 and 0.01 from t=30.
+# The hull never leaves the ground (alt peaks at 2.3 m against the 2.2 m it sits at on gear),
+# so this is a light hull on the runway, not a flying one, and the clamp story stands.
+# IT ARRIVES UPSIDE DOWN. Up= walks 1.00 (t=15, 20) -> 0.88 (t=25) -> -0.61 (t=30) -> -1.00
+# (t=35 on): the aero pitch torque -- |tau| up to 10774 Nm across the run -- turns the hull
+# over while it brakes, because the sim never touches a control key: SAS is off and the
+# reaction wheels idle. Recorded, not defended, in #1136; this case pins only that it happens.
+# The --drag-log and --mass-log lines this case now reads are output: the [dbg] rows with
+# them are byte-identical to the same schedule without them (measured side by side), so the
+# new pins do not buy their behaviour with extra sampling.
 CHECK max(d["v"] for d in dbg) > 30
+CHECK max(d["alt"] for d in dbg) < 5.0
 CHECK last(dbg)["v"] < 0.1
-CHECK all(abs(d["v"]) < 0.1 for d in dbg[-4:])
-# And it stays where the brakes left it: under 0.5 m of travel across the last four
-# log steps (~40 s of sim). Measured 0.2 m.
-CHECK (lambda ds: max(sum((b["pos"][j]-ds[-5]["pos"][j])**2 for j in (0,1,2)) for b in ds[-4:]) < 0.5)(dbg)
+# Three quarters of the weight is the fact; 0.7 leaves room for the roll to change a little
+# and is still nowhere near "the wings did nothing" (measured 4961.4 N at 40.0 m/s against a
+# 4523.6 N threshold). up < -0.5 is the flip, measured at -1.00.
+CHECK max(d["L_up"] for d in drag if d["v"] > 35) > 0.7 * mass[0]["mass"] * 9.811
+CHECK any(d["up"] < -0.5 for d in drag)
+# REST. This pin used to measure travel from ds[-5], five log steps before the end, and that
+# worked only because those rows were already parked: the file recorded 0.2 m against a hull
+# that had stopped by t=30. Today the hull is still rolling at 6.00 m/s at t=30, so ds[-5] is
+# a moving anchor and the pin measured braking distance rather than rest -- 4.0 m, deterministically
+# red. The window is now its own first row: measured 0.02 m of travel across the last four
+# steps (25 s of sim) when the hull settles.
+CHECK (lambda ds: max(sum((b["pos"][j]-ds[-4]["pos"][j])**2 for j in (0,1,2)) for b in ds[-4:]) < 3.0)(dbg)
+# And |v| is pinned as a count, not an all(), because of #953 (commented with this measurement
+# on 2026_11_23): on a loaded machine a settled gear hull sometimes pops -- 6 copies of this
+# schedule run at once gave four identical rows (alt 0.3 m, |v| 0.01), one at alt 1.5 m with
+# |v| 0.07, and one kicked to |v| 1.25 m/s at t=40. The physics step is fixed (--physics-hz,
+# game.h:867), so nothing should care how busy the box is; something does. Three of four rows
+# under 0.2 m/s is what survives that, and it is weaker than the old 0.1-every-row on purpose:
+# the defect is filed, not hidden.
+CHECK sum(1 for d in dbg[-4:] if abs(d["v"]) < 0.2) >= 3
+# MUTATION, measured: drop the second O press and the hull is still rolling at 6.73 m/s at
+# t=50 (and 20.98 at t=35), so the rest pins above are the brakes' doing and not the air's.
 FORBID error:

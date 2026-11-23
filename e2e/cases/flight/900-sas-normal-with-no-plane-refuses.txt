@@ -30,14 +30,34 @@
 # rows resolve, and it is NOT "the player steered into a plane of their own": no steering key
 # is pressed here (R is throttle, T is thrust), and the resolved rows show SAS itself slewing
 # -- w_slew 0.087 .. 0.71 rad/s while the nose walks off vertical and E falls 89.6 -> 76.8
-# deg. The law turns the hull, the hull earns 0.1 .. 1.2 m/s of tangential velocity, h/r
-# clears the floor, and the plane is a consequence of steering the floor refused earlier. By
-# then the state really does have a plane, so this is not the bug; but the mode also flaps
+# deg. The law turns the hull, the hull earns tangential velocity (0.1 .. 1.2 m/s when this was
+# written; several m/s more today, most of it the air's -- see THE AIR GIVES THE CLIMB A PLANE
+# below), h/r clears the floor, and the plane is a consequence of steering the floor refused
+# earlier. By then the state really does have a plane, so this is not the bug; but the mode
+# also flaps
 # across the floor on the way (measured on a second run: refused 4.950, resolved 5.067 and
 # 5.167, refused 5.283 and 5.400, resolved from 5.517 -- four transitions in 0.6 s on a mode
 # the player latched), and an ask parked near E = 90 deg is a max-rate turn about an axis the
 # noise picks. Both of those are filed as follow-ups rather than pinned here. #900 changed the
 # refusal and the marker's agreement with it, and that is what these CHECKs hold.
+#
+# THE AIR GIVES THE CLIMB A PLANE (#1132 family D, re-measured 2026_11_23). The bands quoted
+# above stop holding at the end of the run, and the reason is the same authored air that turned
+# 395's racer: Kerbin's 5-6 m/s of east air pushes a nose-up hull sideways, sideways velocity IS
+# angular momentum, and peri_r = h^2 / (mu (1 + ecc)) reads it out. A/B, same schedule, same
+# hull, same fixture with its wind table deleted (tmp/night7/900-no-wind.json):
+#     with wind    peri_r 1.9e-7 -> 2.41491 m, ecc 1 -> 0.999992, refused 41 of 54 rows,
+#                  marker dashed 2 of 3 rows (another run: 1 of 3)
+#     windless     peri_r 4.6e-7 -> 2.25595e-6 m, ecc 1 throughout, refused 54 of 54,
+#                  marker dashed 3 of 3
+# Six orders of magnitude of peri_r, and the only difference is the air. So "genuinely
+# near-radial" is a statement about the first five seconds, not the whole run, and the pin that
+# demanded peri_r < 1 m on EVERY row was really demanding that the wind not blow. What the case
+# holds is the refused window plus the arrival of the plane the wind made; the windless half is
+# reproducible with that fixture copy but stays out of the battery, because a second case on the
+# same premise costs a run and #900's law is already pinned by tests/test_orbit.cpp numerically.
+# #905 (open) tracks the flapping and this wind-driven resolution; the A/B above is on it as of
+# 2026_11_23.
 #
 # One bound on what the marker CHECKs can cover: [planelog] is printed from inside
 # drawOrbitPlane(), which returns early for a grounded hull, so this run's rows start at
@@ -50,7 +70,7 @@
 # motion instead of none -- which is a different climb from the one whose bands are quoted
 # above. Same body and same air here, so those bands carry over.
 NAME sas-normal-with-no-plane-refuses
-CLAIM SAS normal on a near-radial Kerbin climb refuses instead of steering at a plane made of residue, and the drawn normal dashes on the same rows.
+CLAIM SAS normal on a near-radial Kerbin climb refuses instead of steering at a plane made of residue, and the drawn normal dashes on the same rows -- until the authored wind hands the climb sideways velocity of its own and the plane stops being residue.
 KIND invariant
 ARGS --system e2e/fixtures/systems/870-kerbin-polar-pad.json
 ARGS --startship racer,res/ships/racer.json,Kerbin,pad,polar_pad
@@ -63,13 +83,22 @@ EXPECT mode=normal no-target
 EXPECT nrm=-
 FORBID error:
 # The premise, pinned from the readout rather than assumed. This is NOT #891's state: the
-# hull is genuinely moving (23.1 m/s by the cutoff), and it is genuinely near-radial --
-# peri_r = h^2 / (mu (1 + ecc)), so a periapsis 2 cm from the focus at r = 599714 m says h
-# itself is microscopic. That is what makes "no plane" the honest answer rather than "slow".
+# hull is genuinely moving (22.4 m/s by the cutoff), and it is genuinely near-radial for the
+# refused part of the run -- peri_r = h^2 / (mu (1 + ecc)), so a periapsis 4.7 mm from the
+# focus at r = 599695 m while the hull climbs at 15.5 m/s says h itself is microscopic. That
+# is what makes "no plane" the honest answer rather than "slow". The window is cut by velocity
+# rather than by time because the refusal ends when h does, not at a wall-clock instant: rows
+# under 16 m/s run peri 1e-7 .. 4.7e-3 m, and the 22.4 m/s row that follows is 2.41 m.
 CHECK len(orbinfo) >= 3
 CHECK any(o["vel"] > 10.0 for o in orbinfo)
-CHECK all(o["peri_r"] < 1.0 for o in orbinfo)
+CHECK all(o["peri_r"] < 1.0 for o in orbinfo if o["vel"] < 16.0)
 CHECK all(o["r"] > 5.9e5 and o["r"] < 6.1e5 for o in orbinfo)
+# And the plane really does arrive, which is the other half of why the pin above is a window:
+# against the pad's own residue (the parked rows, vel < 0.01 m/s, peri ~1e-7 m) the last row
+# is six orders of magnitude less radial. Measured 2.41491 m against 3.8e-7 m, and ecc 1 ->
+# 0.999992. A windless Kerbin keeps that ratio under 10 (2.26e-6 against 4.6e-7), so what grew
+# is the air's contribution, not the conic's.
+CHECK last(orbinfo)["peri_r"] > 1000.0 * max(o["peri_r"] for o in orbinfo if o["vel"] < 0.01)
 # Refusal for most of the latched run, not one lucky tick: [slew] runs at 10 Hz over 6 s of
 # autopilot, and the mode is latched the whole time (the EXPECT on the mode name keeps an
 # unlatched run from reading as a vacuous pass). The margin is not laziness: --sim-press is
@@ -91,12 +120,14 @@ CHECK len(slew) <= 20
 CHECK all(s["mode"] == "normal" for s in slew)
 # The marker and the autopilot cannot claim different planes: render.cpp and slewTargetDir()
 # ask the same conicNormalOk, so [planelog] dashes the normal for the same states the bill
-# refuses. Held as a RATIO rather than a row-by-row join -- the planelog cadence is the
-# --orbit-interval one (1 s here, and only while airborne, per the note above) and the bill's
-# is 10 Hz, and the accepted window flickers between runs for the reason above. Measured 3
-# rows with 2 dashed, and 0 / 0 / 1 drawn across runs. Take the conicNormalOk out of
-# render.cpp and every row draws one (the old `dot(h_hat, h_hat) > 0.5` is an exactly-zero
-# test, and h_hat is never zero here), which reddens the EXPECT below and both halves of this.
+# refuses. Held on the FIRST marker row -- the one at liftoff, which is the same state the bill
+# has been refusing since t=0.017 -- and on the existence of a dashed row. Measured across two
+# runs: 2 dashed of 3 and 1 dashed of 3, because the resolve lands around 4.2-5.3 s and the
+# marker cadence is 1 s from liftoff. The old ratio pin (drawn * 2 <= rows) therefore reddened
+# on sampling phase alone, which is not a law and not what #900 fixed; the flapping is already
+# filed above as a follow-up. Take conicNormalOk out of render.cpp and every row draws one (the
+# old `dot(h_hat, h_hat) > 0.5` is an exactly-zero test, and h_hat is never zero here), which
+# reddens the EXPECT above, this row and the dashed-count pin together.
 CHECK len(plane) >= 2
 CHECK sum(1 for p in plane if p["nrm"] is None) >= 1
-CHECK sum(1 for p in plane if p["nrm"] is not None) * 2 <= len(plane)
+CHECK plane[0]["nrm"] is None
