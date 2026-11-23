@@ -54,8 +54,9 @@ CHECK len(drag) >= 10
 # 4.5..6.7 m2 and body_lift 0.65 x drag_cd 1.2 x sin x cos puts it at +1.35 on the
 # first row, peaking +2.36 at t=12 and decaying to +0.10 at t=52, where the near-
 # vertical fall (AoA 88.9) drives cos -> 0. 2.0 on the peak keeps the mid-arc story
-# with 15% to spare; 0.05 on the tail is the print quantum with a factor of two, which
-# is all a decaying column can honestly promise.
+# with 15% to spare; 0.05 on the tail is five print quanta (this column prints %.2f)
+# and half the measured +0.10, which is all a decaying column can honestly promise.
+# #1142 is open on printing the family at 3 dp so these floors stop being tight.
 CHECK all(d["bodycda"] >= 0.05 for d in drag if d.get("bodycda") is not None)
 CHECK max(d["bodycda"] for d in drag if d.get("bodycda") is not None) >= 2.0
 # THE PARTITION, ITS EXPOSED HALF: a fully exposed hull is refused NOTHING by the
@@ -78,15 +79,24 @@ CHECK any(d["ld"] >= 0.9 for d in drag if d.get("ld") is not None and d["t"] <= 
 # it (measured max 0.96). A hull that ever logged Ld above ~1.05 with no wing aboard
 # would be gliding better than a flat plate, which is the #1107 failure mode.
 CHECK max(d["ld"] for d in drag if d.get("ld") is not None) <= 1.05
-# ONE LINE OF ARITHMETIC, not two laws: Ld x (drag_cd x Cd x A) == BodyCdA on every
-# row that prints enough digits (1.2 is the default bill multiplier; 5% is the print
-# quantum -- the worst measured is 2.7%, on the row where Ld rounds from 0.13). The
-# lift column and the drag column are the same pair of anchors seen from two sides.
-CHECK all(abs(d["ld"] * 1.2 * d["cd"] * d["a"] - d["bodycda"]) <= 0.05 * d["bodycda"] for d in drag if d.get("ld") is not None and d["ld"] >= 0.1 and d.get("a") is not None)
+# THE COLUMNS AGREE, row by row: Ld x (drag_cd x Cd x A) == BodyCdA, with 1.2 the
+# default bill multiplier. This is bookkeeping, not a second law -- the pass computes
+# Ld as that quotient -- so what it catches is the FOLD moving: BodyCdA bills the sin
+# the axial bill does not, and #1106 nearly got that wrong. The filter is about digits:
+# Ld prints %.2f, so at Ld 0.01 the rounding alone is +-50%. Inside the filter the
+# worst measured gap is 1.0% and the print budget is under 3%; below it the identity
+# still holds, it just cannot be checked off print.
+CHECK all(abs(d["ld"] * 1.2 * d["cd"] * d["a"] - d["bodycda"]) <= 0.05 * d["bodycda"] for d in drag if d.get("ld") is not None and d["ld"] >= 0.2 and d.get("a") is not None)
 # THE BROADSIDE ANCHOR, read off the arc: the hull weathervanes toward broadside
 # (AoA 24.9 -> 88.9), so the axial Cd climbs to cdSide = 1.0 and cannot pass it --
 # the blend's max over alpha IS cdSide for this def. Under the old 1.1 the top row
-# printed 1.091; a ceiling here is what makes the refit visible in flight.
+# printed 1.091, so the ceiling is the refit showing up in flight. Honest about its
+# resolution: Cd prints %.3f, the true blend at AoA 88.9 is 0.9997, and the top row
+# rounds to 1.000 -- these two pins put cdSide within a print step, not to five
+# nines. The floor is the one that can fail for a non-anchor reason: with body_lift
+# back at 0.9 the hull never swings all the way to broadside inside 52 s, so it never
+# bills cdSide at all. That is the arc moving, and it is worth a red -- a lifting
+# body that cannot reach broadside is a different flight from the one this case is.
 CHECK all(d["cd"] <= 1.0005 for d in drag)
 CHECK max(d["cd"] for d in drag) >= 0.9995
 # ONE-PART HULL: the lift lands on the projected centroid, and this plate's

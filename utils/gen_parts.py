@@ -149,7 +149,10 @@ DRAG_CD = {
     # plate's ~1:1. tests/test_aerosweep.cpp sweeps the shipped def and pins it.
     # forward 0.1 / backward 0.5 is not a claim that a symmetric plate flies better
     # one way -- it is the catalog's bluffer-base convention (fuselage 0.10/0.20:
-    # the lee face sits in the wake).
+    # the lee face sits in the wake). But forward is HALF of the glide equation: that
+    # closed form is body_lift / (2 sqrt(cdSide x cdForward)), so 0.65 was SOLVED
+    # FROM 0.1. Streamline this def -- forward 0.05 buys the same plate a 41% better
+    # glide -- and body_lift has to be re-solved with it, not left behind.
     "liftbody":       {"drag": 0.4, "drag_forward": 0.1, "drag_side": 1.0,
                        "drag_backward": 0.5},
     "engine":         {"drag": 0.6, "drag_forward": 0.9, "drag_side": 1.0,

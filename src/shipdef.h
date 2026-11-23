@@ -515,8 +515,10 @@ struct PartDef {
        drag_cd x drag_side = 1.20 sits inside a real flat plate's 1.17-1.28
        broadside, and body_lift / (2 sqrt(drag_side x drag_forward)) = 1.03 keeps
        the pair's best glide at the ~1:1 a plate can do. tests/test_aerosweep
-       sweeps every opted-in catalog part over alpha and pins both halves, so a
-       family cannot opt in unfitted without going red. Mutually exclusive
+       sweeps every opted-in catalog part over alpha and pins both halves -- which
+       guards the OVER-lifted pair, the one #1107 found. An under-lifting pair
+       passes quietly, and a part outside the shipped catalog is checked by nothing
+       but the +-3.0 bound here (#1140). Mutually exclusive
        with the surface laws: a part with lift_area or control_area lifts
        through liftCurve/controlForce and must not pay twice. */
     double body_lift = 0.0;

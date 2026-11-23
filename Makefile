@@ -544,8 +544,9 @@ $(TESTDIR)/test_rotation: $(TESTDIR)/obj/test_rotation.o $(TBASE)
 
 # THE AERO BENCH (#655): one authored hull flown over a grid of alpha / beta / Mach,
 # printing AND pinning the whole-surface law's answers. Constructs Parts and calls
-# btBoxShape -- the compound hull is real -- so it links the shared tier. Needs no
-# res/: the fixture is hand-authored here.
+# btBoxShape -- the compound hull is real -- so it links the shared tier. Needs res/
+# (run from the repo root) since #1107: one section pins the SHIPPED body_lift anchors
+# out of res/data/parts.json rather than a copy of them.
 $(TESTDIR)/test_aerosweep: $(TESTDIR)/obj/test_aerosweep.o $(TBASE)
 	$(CXX) -O2 -Wl,--gc-sections -o $@ $^ $(TSYS)
 

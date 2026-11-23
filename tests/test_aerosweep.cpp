@@ -57,6 +57,7 @@
 #include <algorithm>   // std::max/min: which tab sign loads the airframe
 #include <cstdio>
 #include <deque>
+#include <stdexcept>   // std::exception: what load_parts_catalog throws
 #include <numbers>
 #include <utility>   // std::make_pair: the (Induced, net L) pair per trim shot
 #include <vector>
@@ -1287,8 +1288,9 @@ static void test_hull_lift_arm_is_the_projected_centroid() {
 
    The pair is one hull part's two normal-force anchors -- the axial blend's drag_side
    share and body_lift -- and they have to be answered TOGETHER, because at mid alpha
-   they push the same hull from two directions that are 90 deg apart. Three questions,
-   all of them ratios so the fixture's area cancels:
+   they push the same hull from two directions that are 90 deg apart. Three questions.
+   The first two are ratios, so the fixture's area cancels; the third normalizes on
+   A(90), so the box's 0.50 m of thickness is part of the answer there.
 
      BROADSIDE (alpha 90). The sin cos kernel is silent there (sin 90 = 1, cos 90 = 0),
        so the whole normal force is the axial blend: drag_cd x drag_side per unit q per
@@ -1299,20 +1301,39 @@ static void test_hull_lift_arm_is_the_projected_centroid() {
        cdF cos^2 a), so the best glide is closed-form: cl / (2 sqrt(cdS x cdF)), at
        tan a = sqrt(cdF / cdS). A flat plate glides at about 1:1 -- an anchor that buys
        more than that is billing pressure on the windward face that the leeward face
-       then has to give back as suction the plate cannot make.
-     THE NEWTONIAN SUM. A HALF-shielded opted-in part takes #947's crossflow AND this
-       kernel's force (different area measures, drag.h), so the pair's TOTAL force
-       perpendicular to the part -- D sin a + L cos a -- against a Newtonian plate of
-       the part's own broadside silhouette A(90), has to stay under 2 sin^2 a.
+       then has to give back as suction the plate cannot make. Note the closed form is
+       half-elastic in cdF: moving that anchor re-solves cl, it does not leave it.
+     THE NEWTONIAN HEADROOM. The pair's TOTAL force perpendicular to the part --
+       D sin a + L cos a -- never exceeds a Newtonian plate's 2 qS on the part's own
+       broadside silhouette (measured peak 1.22 qS at 80 deg). That is a headroom
+       guard, NOT a per-alpha law: below ~15 deg the shipped part is ABOVE 2 sin^2 a
+       (0.076 against 0.060 qS at 10 deg) because bodyLiftCdA bills the silhouette the
+       part shows THIS instant, and this one shows 2 m2 of thickness edge-on. #1141 is
+       open on which reference the kernel should use; the pin below freezes today's
+       answer so a decision there cannot happen by accident.
 
    liftbody_4m was authored 0.9 / 1.1 / 0.1 (cl / cdS / cdF): broadside 1.32, which is
    outside the plate band, and a 1.36 glide, a third over the plate ceiling -- the two
    halves were each picked, never against each other. Fitted as a pair: 0.65 / 1.0 /
    0.1 puts broadside at 1.20 (inside the band) and the glide at 1.03 (at the ceiling).
-   The flight arc that rides these numbers is e2e flight/1097-a. */
+   The flight arc that rides these numbers is e2e flight/1097-a.
+
+   This is the one test in the file that reads res/: it pins the shipped catalog, so a
+   fixture copy of the anchors would pin nothing. The load is wrapped, because an
+   uncaught throw here aborts the binary and silently loses every pin after it. */
 static void test_the_lifting_body_pair_is_fitted() {
     printf("== #1107: the catalog's body_lift anchors, read off res/data/parts.json ==\n");
-    PartsCatalog cat = load_parts_catalog("res/data/parts.json");
+    PartsCatalog cat;
+    try {
+        cat = load_parts_catalog("res/data/parts.json");
+    } catch(const std::exception &e) {
+        /* Not "let it throw": the abort swallows every later pin in this binary and
+           prints no "N checks, M failures" line, so a missing res/ would read as a
+           crash rather than a red test. */
+        printf("[pair] catalog load failed: %s\n", e.what());
+        CHECK_TRUE(false, "res/data/parts.json loads (run from the repo root)");
+        return;
+    }
     int fitted = 0;
     for(const PartDef &d : cat.parts) {
         if(d.body_lift == 0.0) { continue; }
@@ -1349,14 +1370,17 @@ static void test_the_lifting_body_pair_is_fitted() {
         CHECK_TRUE(broadside >= 1.17 && broadside <= 1.28,
                    "the broadside bill drag_cd x drag_side sits inside a real flat "
                    "plate's 1.17-1.28 normal-force range");
-        const double A90 = v->lastDragArea;
-        CHECK_TRUE(A90 > 0.0, "a broadside hull bills area");
+        const double A90 = v->lastDragArea;   // 6.4 m2 for this mesh box
 
         /* The alpha sweep, 100 m/s: Mach 0.30, under the transonic band, so no wave
-           term moves the blend the closed form below assumes. */
-        const double alphas[] = { 0.0, 10.0, 15.0, 18.0, 20.0, 30.0, 45.0,
-                                  60.0, 70.0, 80.0, 90.0 };
-        double ldPeak = 0.0, cnPeak = 0.0, cnAtPeak = 0.0;
+           term moves the blend the closed form below assumes. The grid brackets the
+           closed-form optimum wherever the legal anchors put it: that optimum sits at
+           tan a = sqrt(cdF / cdS), so 5 and 25 are not filler -- at cdF 0.02 it moves
+           to ~6 deg, and without a 5 row the "within 5%" pin below would fail on the
+           grid rather than on the physics. */
+        const double alphas[] = { 0.0, 5.0, 10.0, 15.0, 18.0, 20.0, 25.0, 30.0,
+                                  45.0, 60.0, 70.0, 80.0, 90.0 };
+        double ldPeak = 0.0, cnPeak = 0.0, cnAtPeak = 0.0, cn10 = 0.0, newt10 = 0.0;
         for(double al : alphas) {
             fly(v, 100.0, al, 0.0);
             report(v, 100.0, al, 0.0);
@@ -1365,19 +1389,26 @@ static void test_the_lifting_body_pair_is_fitted() {
             const double q = 0.5 * v->lastDragRho * 100.0 * 100.0;
             const double D = v->lastFlowDrag, L = v->lastFlowLift;
             CHECK_TRUE(D > 0.0, "the axial bill is never negative");
-            /* The pair's own ratio, read off the columns --drag-log prints: lift over
-               drag IS the body-lift column over the axial bill. Exact because one
-               part's visible silhouette is the union, so the area cancels here. */
+            /* The columns' bookkeeping, not a law: Ld is lastFlowLift / lastFlowDrag,
+               so Ld x (drag_cd x Cd x A) reproduces BodyCdA from the same two numbers
+               the pass already stored. It is here because the body-lift column folds
+               the sin in while the axial one does not (and #1106 nearly got that
+               fold wrong); move either half's q-normalization or drop the sin and
+               every row reddens. It says nothing about whether the ANCHORS are right,
+               and it is one-part-only: a second hull part makes Cd/A hull means while
+               BodyCdA stays a per-part sum. */
             const double ld = L / D;
             CHECK_REL(v->lastBodyCdA, ld * cdMul * v->lastDragCd * v->lastDragArea,
-                      1e-9, "Ld x (drag_cd x Cd x A) == BodyCdA: the two halves of "
-                            "the pair are one line of arithmetic");
+                      1e-9, "Ld x (drag_cd x Cd x A) == BodyCdA: the two columns "
+                            "still fold q and the sin the same way");
+            const double newt = 2.0 * s * s;
             const double cn = (D * s + L * c) / (q * A90);
             printf("[pair] alpha %5.1f  L/D %7.4f  D %9.2f N  L %9.2f N"
                    "  CN %7.4f qS  Newtonian %7.4f qS\n",
-                   al, ld, D, L, cn, 2.0 * s * s);
+                   al, ld, D, L, cn, newt);
             if(ld > ldPeak) { ldPeak = ld; }
             if(cn > cnPeak) { cnPeak = cn; cnAtPeak = al; }
+            if(al == 10.0) { cn10 = cn; newt10 = newt; }
         }
         /* The closed form, checked against the sweep rather than quoted: the sampled
            rows cannot beat the analytic peak, and one of them lands within a few
@@ -1400,22 +1431,55 @@ static void test_the_lifting_body_pair_is_fitted() {
                    "the pair's best glide stays at the flat plate's ~1:1 -- an anchor "
                    "above it bills a leeward suction the plate cannot make");
         CHECK_TRUE(cnPeak <= 2.0,
-                   "the pair's total normal force never exceeds a Newtonian plate's "
-                   "2 qS on the same broadside silhouette");
+                   "headroom, not a per-alpha law: the pair's total normal force "
+                   "never beats a Newtonian plate's 2 qS on the part's own broadside "
+                   "silhouette");
+        /* ... and at low alpha it is ABOVE 2 sin^2 a, measured 0.076 against 0.060
+           qS at 10 deg, because the part shows 2 m2 of thickness edge-on while a
+           mathematical plate would show nothing. Pinning the overshoot is deliberate
+           (#1141 decides whether the kernel should bill the broadside silhouette
+           instead): a law change there should redden something that says why. */
+        CHECK_TRUE(cn10 > newt10,
+                   "at 10 deg the thick part bills more normal force than a plate's "
+                   "2 sin^2 a -- see the comment above and #1141");
 
-        /* The blend's other half, for the record: past 90 deg the axial share flips to
-           drag_backward, where the sin cos kernel mirrors into the other side. Nothing
-           in the shipped arc runs there -- a hull weathervanes TO broadside, it does
-           not fly backwards -- so this is a print, not a claim. */
-        fly(v, 100.0, 120.0, 0.0);
-        printf("[pair] alpha 120 (record only): Cd %.3f  L/D %7.4f  BodyCdA %+.3f\n",
-               v->lastDragCd, v->lastFlowLift / v->lastFlowDrag, v->lastBodyCdA);
+        /* The blend's other half: past broadside the axial share flips from
+           drag_forward to drag_backward. fly() CANNOT ask for that -- flowDirection
+           builds the direction from tan(alpha), so its nose component is positive by
+           construction and |alpha| < 90 always; asking for 120 returns the -60 row
+           and prints Cd 0.775, the forward blend, while claiming otherwise. Negating
+           the direction is the real 120: base to the flow, c = cos 120 = -0.5. */
+        const double a60 = 60.0 * std::numbers::pi / 180.0;
+        const glm::dvec3 back = -flowDirection(a60, 0.0, glm::dvec3(1, 0, 0),
+                                               glm::dvec3(0, 1, 0),
+                                               glm::dvec3(0, 0, 1));
+        v->setVelocity(back * 100.0);
+        v->applyAeroForce(0.01, nullptr);
+        const double cdBackWant = d.drag_side * std::sin(a60) * std::sin(a60)
+                                + d.drag_backward * std::cos(a60) * std::cos(a60);
+        printf("[pair] base-in 120: Cd %.3f  BodyCdA %+.3f  (the -60 row would read "
+               "Cd %.3f)\n", v->lastDragCd, v->lastBodyCdA,
+               d.drag_side * std::sin(a60) * std::sin(a60)
+                   + d.drag_forward * std::cos(a60) * std::cos(a60));
+        CHECK_REL(v->lastDragCd, cdBackWant, 1e-9,
+                  "base to the flow, the axial blend pays drag_backward -- which "
+                  "differs from drag_forward for this def, so this is not the -60 "
+                  "row wearing a different label");
+        CHECK_TRUE(v->lastBodyCdA < 0.0,
+                   "and the sin cos kernel does not hide the reversal: cos 120 < 0 "
+                   "flips the bill's sign, so the part pushes the other way");
         delete v->m_parent;
         v->m_parent = nullptr;
         delete v;
     }
-    CHECK_TRUE(fitted == 1,
-               "exactly one catalog part opts in today, so this loop is the family");
+    /* Not `== 1`: that pins the catalog's head count, so a second well-fitted part
+       would go red for the wrong reason and the reflex would be to bump the number.
+       What has to be true is that the loop ran at all -- an empty filter would make
+       every pin above vacuous. Any part that opts in joins it by construction, so the
+       anchors are checked whatever the count; #1140 is about parts OUTSIDE the
+       shipped catalog, which nothing checks today. */
+    CHECK_TRUE(fitted >= 1, "at least one catalog part opts in, so the pins above "
+                            "measured something");
 }
 
 /* THE RATE COLUMN: the same hull with an angular velocity, which is #487's whole
