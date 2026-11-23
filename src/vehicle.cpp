@@ -7703,7 +7703,9 @@ glm::dvec3 Vehicle::slewTargetDir() {
        Parked on a world that does not turn, or on a pole pad where
        |omega x r| goes to zero, `v` here is the contact solver's residue
        (measured 3.9e-04 .. 3.4e-03 m/s on Kerbin's, which since #1063 means
-       e2e/fixtures/systems/870-kerbin-polar-pad.json -- the shipped pad is gone):
+       e2e/fixtures/systems/870-kerbin-polar-pad.json: #1133 put the shipped pad back,
+       but at 88.8 deg the ground there still moves 3.66 m/s, so no shipped pad reaches
+       this state):
        a unit vector of noise, so SAS slewed the
        nose after whichever way the jitter pointed this tick, spending drum torque,
        while the HUD said `prg=-` (#891). Below the floor the answer is the same

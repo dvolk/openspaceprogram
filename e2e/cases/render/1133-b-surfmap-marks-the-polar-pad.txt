@@ -1,0 +1,35 @@
+# render/163 counts Earth's markers because that is where the shipped real site table
+# lives. Kerbin's own markers -- the fictional system a player boots into -- had no case,
+# so when #1063 deleted the polar pad the Surface Map quietly drew one fewer triangle and
+# nothing on Kerbin went red (#1133 asks for the pad back; the map half of that symptom
+# is this case, the picker half is vab/1133-a).
+#
+# The count is the pin because the marker filter is a flag string: drop
+# VAB_LAUNCH_PAD from a row, or the flag test from surfmap.cpp's loop, and a pad stops
+# being drawn while everything still loads and launches. kerbin_dock carries
+# VAB_LAUNCH_PAD too and must NOT count: the loop skips driven() buildings, since a
+# station on a Kepler orbit has no place on an equirectangular ground map. So the
+# number is three -- main space port, KSC runway, polar pad -- and a fourth would mean
+# something orbital got painted onto the terrain.
+#
+# The polar pad is at 88.8, not 90, so its marker sits ~1.2 degrees off the top row
+# rather than smeared along the pole: #1007 found Kerbin's pole ground 328 m under the
+# body's own sea. tests/test_buildings pins that each site projects back to the degrees
+# it was authored with; this pins that the map asks for the right NUMBER of them.
+NAME surfmap-marks-the-polar-pad
+CLAIM The Surface Map marks all three of Kerbin's ground pads.
+KIND golden
+ARGS --system res/systems/ksp_system.json --startship racer,res/ships/racer.json,Kerbin,pad
+ARGS --timeout 10 --surfmap-log --surfmap-n 128
+ARGS --ui-click 2000,"Windows/Surface Map"
+EXPECT [surfmap]
+CHECK len(surfmap) >= 1
+CHECK last(surfmap)["body"] == "Kerbin"
+CHECK last(surfmap)["sites"] == 3
+FORBID error:
+FORBID FAILED
+# MUTATION (measured, one data edit). Strip VAB_LAUNCH_PAD from the polar_pad row and
+# the line prints sites=2 -- the marker loop stops seeing it while the pad still loads
+# and the system still has 7 buildings, so test_buildings' count pin stays green. The
+# picker half goes red at the same time (vab/1133-a: "##Combo_00/Polar pad FAILED not
+# found"), which is the pair this data needs: one flag, two player-visible doors.

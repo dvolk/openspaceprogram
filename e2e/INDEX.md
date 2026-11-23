@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 463 |
-| `golden` | tuned numbers or a content table -- update deliberately when tuning | 52 |
+| `invariant` | a behaviour or a player route the game must keep | 464 |
+| `golden` | tuned numbers or a content table -- update deliberately when tuning | 53 |
 | `harness` | CLI/test-engine plumbing, not game spec | 16 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **535** |
+| | **total** | **537** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -277,7 +277,7 @@ judgement. Select by number, name or path, e.g.
 | `science/830-the-dossier-carries-the-lag-beside-the-swing-it-modifies.txt` | invariant | A world the shipped catalogue gives a ground phase lag says so in the same block as the swing it bends -- the knob in radians of phase, how far past its sun its hottest ground can sit, and the measured solar day that converts the two -- while the swing itself stays the law's two ends, so the identity that ties those ends still closes, AND the block prints what the lag leaves: an equator-at-equinox pair strictly inside the law's ends and narrowing as the knob grows. |
 | `science/840-a-lagged-summit-prices-the-forcing-its-own-world-wears.txt` | invariant | On a world that authors both a phase lag and a height term, the atlas's summit row is the temperature pair that world's sea-level equator actually wears at that epoch, moved down by the lapse -- not the law's two ends moved down, which on AltoFrio read 97.2 to 319.9 K against a Surface Map painting 99.19 to 316.53: a summit colder than the coldest pixel and hotter than the hottest one. |
 
-## vab (45)
+## vab (46)
 
 | case | kind | pins |
 |---|---|---|
@@ -326,6 +326,7 @@ judgement. Select by number, name or path, e.g.
 | `vab/1073-a-ladder-click-places.txt` | invariant | A ladder armed from the palette surface-places on a tank click and launches with the ship. |
 | `vab/1078-a-small-ladders-click-place.txt` | invariant | A 0.5 m ladder armed from the palette surface-places on a tank click and launches with the ship. |
 | `vab/1120-a-catalog-rcs-rating-needs-authored-bells.txt` | invariant | A parts catalog that rates RCS without authoring bells is refused at boot and named, instead of booting a hull that thrusts six ways from its CoM. |
+| `vab/1133-a-vab-polar-pad-in-the-dropdown.txt` | invariant | The VAB site dropdown offers the polar pad and launches on it. |
 
 ## save (61)
 
@@ -477,7 +478,7 @@ judgement. Select by number, name or path, e.g.
 | `ui/1090-a-hull-card-form-row.txt` | invariant | Body part cards print the merged aero block -- credit row, hull flow row, watts row -- at cadence; the hull flow row agrees across the ship's body cards; the upwind capsule reads a real area and cd; no surface AoA row on body cards. |
 | `ui/1115-a-part-card-dashes-in-vacuum.txt` | invariant | Above the air, a body card prints the dashed trio and a surface card the dashed pair -- exact spellings, same row counts as the live blocks, and a never-billed peak that still answers 0.0 W. |
 
-## render (89)
+## render (90)
 
 | case | kind | pins |
 |---|---|---|
@@ -570,6 +571,7 @@ judgement. Select by number, name or path, e.g.
 | `render/872-orbital-station-on-the-map.txt` | invariant | The orbital/Tracking maps mark each orbital station around the focused body, conic included. |
 | `render/873-b-relative-velocity-markers-follow-a-station.txt` | invariant | The HUD's target relative-velocity markers are placed for an orbital station, from the velocity its pose law drives. |
 | `render/892-radial-pair-in-a-tipping-bubble.txt` | invariant | Inside a building bubble whose deck tips, the radial in/out pair tracks the planet instead of the station. |
+| `render/1133-b-surfmap-marks-the-polar-pad.txt` | golden | The Surface Map marks all three of Kerbin's ground pads. |
 
 ## harness (17)
 

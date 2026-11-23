@@ -161,9 +161,10 @@ inline constexpr double kConicSpeedFloor = 1e-2;   // m/s
         contact solver's residue takes over: 3.9e-04 .. 3.4e-03 m/s (the reason
         the floor cannot sit at 1e-3: a polar readout would flicker between a
         number and a dash on consecutive rows of the same log). That pad is
-        e2e/fixtures/systems/870-kerbin-polar-pad.json -- the shipped polar pad
-        moved off the pole in #1007 and went away in #1063, and the fixture kept
-        the state so these figures stay reproducible.
+        e2e/fixtures/systems/870-kerbin-polar-pad.json: the shipped polar pad moved
+        off the pole in #1007, went away in #1063, and came back in #1133 at 88.8 deg
+        rather than 90 -- 3.66 m/s of ground speed, 366x this floor -- so
+        the fixture is still the only lat-90 state these figures come from.
    Nothing a player flies comes near it. The slowest apoapsis speed a bound
    Kerbin conic reaches while still inside Kerbin's sphere of influence (~1.2e8 m)
    is ~17 m/s; getting to 1e-2 m/s takes the apoapsis past 2e11 m, where Kerbol is

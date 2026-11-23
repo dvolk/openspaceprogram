@@ -9,7 +9,9 @@
 # fails the CHECK. That is a 2.7 km question where it used to be a 240 km one --
 # the picked pad was the polar one at lat 90, and #1063 deleted it once #1007
 # had already moved it off Kerbin's sea. The rule it pins does not care how far
-# apart the two decks are; the pair just has to be two decks.
+# apart the two decks are; the pair just has to be two decks. (#1133 put the
+# polar pad back, at 88.8 deg rather than 90; that pick is vab/1133-a, and this
+# case keeps the tight pair.)
 #
 # Rows are the pads' display names; their ids are PushID'd so two pads sharing a
 # name would make this path ambiguous and --ui-click would refuse rather than pick

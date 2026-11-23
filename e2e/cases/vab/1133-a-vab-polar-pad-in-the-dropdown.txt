@@ -1,0 +1,64 @@
+# #1133 put Kerbin's polar pad back into res/data/ksp_launch_sites.json as an ordinary
+# row, and the symptom was that a player could not find it: the pad dropdown offered
+# Main space port, KSC runway and Kerbin space dock, and the Surface Map drew no marker
+# for it. The map half is render/1133-b; this is the picker half -- open the dropdown,
+# pick "Polar pad", and the launch stands where that pad stands.
+#
+# The degrees are the oracle, same as 288. The default pad (main_space_port) is at
+# 0.286473/270.286477 and the polar pad at 88.8/171.4, so a dropdown pick that never
+# reached the launch leaves the hull on the equator and fails the CHECK. The pair is
+# ~9900 km apart in latitude here, so the pick cannot pass by accident; 288 keeps the
+# 2.7 km pair, which is the tighter question and stays as it is.
+#
+# What else this pins: the row EXISTS. --ui-click resolves labels through imgui's own
+# registry, so a pad that stops loading -- or loses VAB_LAUNCH_PAD, which is what the
+# dropdown's loop filters on (gameui.cpp) -- fails with "not found" rather than clicking
+# empty space. test_buildings pins the same data from the other end (the shipped count,
+# the 50.1 m deck, the default site); this is the end where a human picks it.
+NAME vab-polar-pad-in-the-dropdown
+CLAIM The VAB site dropdown offers the polar pad and launches on it.
+KIND invariant
+ARGS --timeout 15 --info-log --orbit-interval 1
+ARGS --ui-click 8000,"VAB TopBar/##vabsite"
+ARGS --ui-click 8500,"##Combo_00/Polar pad"
+ARGS --ui-click 9500,"VAB TopBar/LAUNCH"
+# Reached the way a player reaches the editor: Title Menu -> New Game -> Start, then
+# the 4 key.
+# Game Debug turns on dev vehicles, which is what puts this def in the
+# Load picker; the filter narrows the roster to one row, and row + Load
+# do the rest. Same vabLoad() either way, so the assertions below are
+# unchanged -- and every scripted event here is shifted +7000ms because
+# the editor opens at 2.6s, not at boot.
+ARGS --ui-click 1000,"Title Menu/New Game"
+ARGS --ui-click 1600,"New Game/Start"
+ARGS --sim-press 2600,0,4
+ARGS --sim-press 3100,0,F1
+ARGS --ui-click 3600,"Game Debug/Dev vehicles in the VAB picker"
+ARGS --sim-press 4100,0,F1
+ARGS --ui-type 4600,"VAB TopBar/##vehfilter",racer
+ARGS --ui-click 5100,"VAB TopBar/##vabload"
+ARGS --ui-click 5700,"racer"
+ARGS --ui-click 6300,"VAB TopBar/Load"
+EXPECT [vab] launched 'racer' (4 parts)
+EXPECT [scene] vab -> flight (enterFlight)
+CHECK len(surf) >= 3
+CHECK all(abs(s["lat"] - 88.8) < 0.01 for s in surf)
+CHECK all(abs(s["lon"] - 171.4) < 0.01 for s in surf)
+CHECK all(s["sit"] == "landed" for s in surf)
+# The payoff, not just the coordinates. A parked hull's conic plane IS the ground
+# plane it stands on, so [orbinfo] reads inc=88.8 deg here against 0.29 deg on the
+# default port -- the ground carries 3.66 m/s of inertial speed at this pad and 175.0
+# m/s at that one (both measured off [orbinfo] vel=, at --timeout 6). A near-polar
+# orbit is cheap from the pole and expensive from the equator; that is why this pad is
+# shipped content rather than a fixture, and a pad that only LOOKS like a row in the
+# dropdown would still fail this CHECK if its degrees were wrong.
+CHECK len(orbinfo) >= 2
+CHECK all(o["inc"] > 88.5 for o in orbinfo)
+FORBID FAILED
+FORBID error:
+# MUTATION (measured, one data edit): strip VAB_LAUNCH_PAD from the polar_pad row and
+# the dropdown loses the row, so the click reports '##Combo_00/Polar pad FAILED not
+# found', LAUNCH never happens, and EXPECT [scene] vab -> flight goes red along with
+# len(surf) >= 3. The three lat/lon/sit CHECKs then walk an empty list -- the harness
+# says so out loud (#653) rather than letting them pass -- so the case cannot go green
+# on a vacuous all().

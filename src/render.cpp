@@ -220,7 +220,8 @@ void updateShipView(Game &g) {
        the frame-relative velocity, and on the pad that is zero.
        The two flags are for the states with nothing to point at (#870). A hull at
        rest on a world that does not turn, or parked on a pole pad (the 870 fixture's
-       polar_pad, since #1063 took Kerbin's shipped one out) where
+       polar_pad -- #1133 brought Kerbin's shipped pad back at 88.8 deg, where the
+       ground still moves 3.66 m/s, so only the fixture reaches this state) where
        |omega x r| vanishes, has a conic speed of contact-solver residue: NOT zero,
        so normalize answers a unit vector and the HUD prints a confident bearing that
        wanders degrees between consecutive rows of the same log. Exactly zero -- the

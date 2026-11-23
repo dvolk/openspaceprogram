@@ -8,7 +8,9 @@
 # worse report of a config error than this line is.
 #
 # Any real pad id makes the point; main_space_port is used now that #1063
-# deleted the polar pad this case was written against.
+# deleted the polar pad this case was written against. #1133 put that pad back
+# as an ordinary row, and this case stays on the default port -- reaching the
+# polar pad by name is pinned on its own by vab/1133-a.
 NAME startship-site-on-orbit
 CLAIM A pad id on an orbit bed is refused at boot.
 KIND invariant

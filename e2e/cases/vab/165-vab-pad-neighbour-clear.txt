@@ -5,10 +5,12 @@
 #
 # The neighbour used to be the polar pad. #1063 deleted that pad -- it was
 # already 240 km from the pole once #1007 moved it off Kerbin's sea, and both
-# launch doors pick a pad by name now. The runway is the better witness
-# anyway: its deck stands 2.7 km from the main space port's, so "another ship
+# launch doors pick a pad by name now. #1133 put it back, and the runway stays
+# the better witness for exactly that reason: its deck stands 2.7 km from the
+# main space port's, so "another ship
 # on this body" and "another ship on this pad" are genuinely different
-# questions 2.7 km apart, which is exactly where a per-body rule would bite.
+# questions 2.7 km apart, which is exactly where a per-body rule would bite. A
+# neighbour 240 km away cannot tell those two questions apart at all.
 NAME vab-pad-neighbour-clear
 CLAIM Occupancy is per pad: a ship on the KSC runway does not block the main port.
 KIND invariant

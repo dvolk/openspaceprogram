@@ -636,17 +636,18 @@ int main() {
         if(logical.find("solar_system") != std::string::npos) {
             CHECK(sys.world_buildings.size() >= 15);   // 14 Earth ranges + Venus's platform
         }
-        // The fictional systems name a site fragment too (#226): 6 Kerbol sites
-        // (pad, runway, station, dock, Moho, Duna) and 1 Eerbon site. Exact
-        // counts so a fragment that stops loading is a failure, not a smaller
-        // pass. For THESE two systems the table is the whole list -- #1063 deleted
-        // ksp_system's inline polar pad and old_system never had one -- so the count
-        // is also the number of rows the pad selector offers on that world. The two
+        // The fictional systems name a site fragment too (#226): 7 Kerbol sites
+        // (pad, runway, polar pad, station, dock, Moho, Duna) and 1 Eerbon site.
+        // Exact counts so a fragment that stops loading is a failure, not a smaller
+        // pass. For THESE two systems the table is the whole list -- no shipped
+        // system authors pads inline since #1063, and #1133 put Kerbin's polar pad
+        // back INTO the table -- so the count is also the number of rows the pad
+        // selector offers on that world. The two
         // hand-authored playgrounds (res/systems/lag_playground.json,
         // res/systems/wind_playground.json) still add an inline pad of their own and
         // are deliberately NOT in this loop: their counts would move with the tables.
         if(logical == "res/systems/ksp_system.json") {
-            CHECK(sys.world_buildings.size() == 6);
+            CHECK(sys.world_buildings.size() == 7);
         }
         if(logical == "res/systems/old_system.json") {
             CHECK(sys.world_buildings.size() == 1);
@@ -660,13 +661,18 @@ int main() {
            above it. The seen[] half is the point of writing it this way: matching
            ids alone leaves a renamed or deleted pad pinning NOTHING, and the test
            still says OK (proven: renaming moho_pad to moho_site in a scratch copy
-           of the data left this test green). polar_pad was in here at 50.1 m -- the
-           dry deck #1007 moved it to from under Kerbin's sea -- and #1063 deleted
-           the pad, so the pin went with it instead of haunting an id no system has. */
+           of the data left this test green). polar_pad is in here at 50.1 m -- the
+           dry deck #1007 moved it to from under Kerbin's sea, and the deck #1133
+           brought the pad back onto. #1063 deleted the pad and took this pin with
+           it, which is the right behaviour for an id no system has and the wrong
+           one for a pad that comes back: the number has to be re-measured, not
+           remembered, so a terrain change under it during those two weeks would
+           fail here rather than quietly inherit a stale figure. */
         struct PadWant { const char *id; double asl; };
         static const PadWant kWant[] = {
             {"main_space_port", 260.1},
             {"ksc_runway", 249.6},
+            {"polar_pad", 50.1},
             {"moho_pad", 125.9},
             {"duna_pad", 65.0},
         };

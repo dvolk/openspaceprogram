@@ -68,10 +68,12 @@ CHECK not re.search(r"\[atlas\]   station [^\n]*(weight=|approach_dv=|discovered
 #   (tmp/night3/886_mut_rows.log).
 # - Marker from the wrong source (r.stations = sys.world_buildings.size(), i.e. every body in
 #   the file, pads or not): the marker CHECK (Kerbin reads stations=6) and the Mun CHECK, and
-#   nothing else (tmp/night3/886_mut_marker.log).
+#   nothing else (tmp/night3/886_mut_marker.log). That figure moves with the shipped table:
+#   #1133 added a Kerbin pad, so today the same mutation reads 7.
 # - Station header printed with the body's fields (weight=/approach_dv=/discovered=): only the
 #   last CHECK (tmp/night3/886_mut_header.log).
 # - driven() gate dropped, so surface pads join the atlas: the marker count (stations=4), the
 #   nesting count and the set-equality against the map all go red -- the map still marks only
 #   the two driven buildings, which is exactly the disagreement this case exists to catch
-#   (tmp/night3/886_mut_gate.log).
+#   (tmp/night3/886_mut_gate.log). Same count follows the table: with #1133's polar pad back
+#   that mutation reads stations=5.
