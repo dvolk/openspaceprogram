@@ -56,11 +56,11 @@
 # WHAT THE PINNED ROW IS (#1132 family D, re-minted 2026_11_23), column by column, because
 # this one broke and the digits are worth reading rather than swapping. The sample sits at
 # mission t=23.00 s with the stager parked on the pad at alt_asl 268.469 m -- which has not
-# moved since the row was minted, because the pad does not move. The other four columns are
-# Kerbin's authored air, not the hull:
+# moved since the row was minted, because the pad does not move. Of the other four columns, two
+# are Kerbin's authored air and two are the hull's own residue:
 #   q=20.2534 is 1/2 rho tas^2 with rho ~1.194 and tas ~5.83 m/s -- the deck wind read at this
 #     altitude (5 m/s at 0 ramping to 40 m/s at 11205 m), not a hull moving at 20 m/s. The old
-#     row read 20.1511, which is 0.5% of air-speed difference.
+#     row read 20.1511: 0.51% down in q, which is 0.25% of air speed, since q goes as tas^2.
 #   aoa=-90.019 is that same flow arriving broadside at a nose-up hull.
 #   v=0.0142148 and gamma=0.000217918 are the integrator's residue: the hull is standing still,
 #     so the speed and flight-path angle are noise at the 1e-2 m/s scale, and they are the two
@@ -71,6 +71,15 @@
 # pins the wind's numbers as laws. Measured byte-identical across three standalone runs and
 # four concurrent ones, so the row is reproducible even though its v and gamma columns are
 # residue -- the same schedule on the same build gives the same residue.
+# Three of the columns are one number, and the CHECKs below say so without pinning the jitter:
+#     sqrt(2 q / rho) = sqrt(2 x 20.2534 / 1.1941) = 5.8243 m/s of air over the hull, while the
+#     authored ramp (5 m/s at 0, 40 m/s at 11205 m) reads 5.8386 at alt_asl 268.469 m. The
+#     0.0143 difference IS the row's own v=0.0142148, pointing into the wind.
+# So q and aoa are pinned as bands -- what the air makes, within the jitter of a still hull --
+# and only the EXPECT line above pins the digits. A hull moving at 20 m/s would bill ~240, so
+# the q band is a claim about the air; aoa within half a degree of -90 is a claim about the
+# nose being up and the flow being horizontal.
+CHECK (lambda m: 20.0 < float(m.group(4)) < 20.8 and abs(float(m.group(5)) + 90.0) < 0.5)(re.search(r"\[recwin\] pin t=([\d.]+) alt_asl=([-\d.e+]+) v=([-\d.e+]+) q=([-\d.e+]+) aoa=([-\d.e+]+)", out))
 NAME recorder-readout-puts-numbers-back
 CLAIM Clicking the Recorder graph pins a readout of that sample's readings on the mission clock, a toggled-on channel appears in it, Unpin releases it, and a drag pans without pinning.
 KIND invariant
