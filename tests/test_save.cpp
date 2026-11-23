@@ -260,8 +260,11 @@ int main() {
     CHECK(refuseSavedRcsAttFrac(1.5) == "RCS attitude fraction 1.500000, not a 0..1 fraction");
     CHECK_TRUE(refuseSavedRcsAttFrac(std::nan("att"))
                == "RCS attitude fraction nan, not a 0..1 fraction",
-               "and the pointing dial's NaN is refused too -- in the sim it would read as "
-               "ZERO authority (the !(left > 0.0) guard), the opposite of the keys' NaN");
+               "the pointing dial's NaN is refused too, for the same reason the keys' is: "
+               "in the sim both fail CLOSED (the !(left > 0.0) row guard, rcsPlan's "
+               "!(Fmax > 1e-9) gate), but a NaN written to a save prints null, which the "
+               "reader's is_number() gate drops, so one round trip quietly restores FULL "
+               "authority -- hence refusal at both doors rather than a clamped read.");
     CHECK(out.docks.size() == ship.docks.size());
     if(out.docks.size() == 1 && ship.docks.size() == 1) {
         CHECK(out.docks[0].port == ship.docks[0].port);

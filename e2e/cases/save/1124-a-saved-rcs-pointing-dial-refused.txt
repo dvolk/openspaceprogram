@@ -1,0 +1,22 @@
+NAME saved-rcs-pointing-dial-refused
+CLAIM A save whose RCS pointing dial sits outside 0..1 is refused, not loaded as a hull that claims to steer with more than its ring.
+KIND invariant
+# #1124's dial is a permission a hull commands its laws with: attitudeAuthorityRows
+# multiplies the leftover each bell may spend by it, so 2.0 would have the hull plan
+# twice what its bells can deliver, and a negative reads as zero authority through the
+# !(left > 0.0) guard while every readout prints the negative. Refused, not clamped --
+# a hand-edited save is a mistake to report, the same verdict #1067 gives the keys' dial.
+#
+# Fixture mint (re-mint together with the ship name below):
+#   cp -r e2e/fixtures/save_racer e2e/fixtures/save_racer_bad_att
+#   then add "rcs_attitude_frac": 2.0 to ships/v0.json
+# The writer never emits that value (it writes the field only off its default, and the
+# loader refuses a bad one before anything is built), so hand-editing is the only way to
+# author it. tests/test_save.cpp pins the helper's sentence verbatim; this case drives
+# the call SITE, which nothing else does -- delete the check in save.cpp and this goes
+# red while the unit suite stays green.
+ARGS --load e2e/fixtures/save_racer_bad_att --timeout 4
+EXPECT Load failed: load: saved ship 'racer' has RCS attitude fraction 2.000000, not a 0..1 fraction
+FORBID Loaded game from
+EXIT 1
+LIMIT 60

@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 460 |
+| `invariant` | a behaviour or a player route the game must keep | 462 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 52 |
 | `harness` | CLI/test-engine plumbing, not game spec | 16 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **532** |
+| | **total** | **534** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -326,7 +326,7 @@ judgement. Select by number, name or path, e.g.
 | `vab/1073-a-ladder-click-places.txt` | invariant | A ladder armed from the palette surface-places on a tank click and launches with the ship. |
 | `vab/1078-a-small-ladders-click-place.txt` | invariant | A 0.5 m ladder armed from the palette surface-places on a tank click and launches with the ship. |
 
-## save (59)
+## save (61)
 
 | case | kind | pins |
 |---|---|---|
@@ -389,6 +389,8 @@ judgement. Select by number, name or path, e.g.
 | `save/612-ask-survives-a-round-trip.txt` | invariant | A saved Guidance ask loads back into the game and is written out again. |
 | `save/867-cross-system-bubble-load.txt` | invariant | A save with a ship in a building's bubble loads from the title across systems. |
 | `save/1102-a-new-game-leaves-no-dir.txt` | invariant | A New Game that never saves leaves no directory under saves/. |
+| `save/1124-a-saved-rcs-pointing-dial-refused.txt` | invariant | A save whose RCS pointing dial sits outside 0..1 is refused, not loaded as a hull that claims to steer with more than its ring. |
+| `save/1124-b-saved-seam-rcs-pointing-dial-refused.txt` | invariant | A dock seam carrying an out-of-range RCS pointing dial is refused with the seam named, not loaded into the hull that will leave when the seam is cut. |
 
 ## ui (79)
 

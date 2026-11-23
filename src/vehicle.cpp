@@ -3132,8 +3132,10 @@ void Vehicle::steering_log(double time) {
        rcs/rcs_hw carries it a third time since #595, and the live column is the one
        that tells a diagnosis apart: rcs_hw says what the fitted ring could lever,
        rcs= says what it can lever NOW -- 0 with the switch shut, 0 with the tank dry,
-       and reduced while the translation keys are spending the same bells (the priority
-       is stored in the row's limit, so it shows here rather than hiding in the mixer).
+       reduced while the translation keys are spending the same bells, and reduced
+       again by the hull's own attitude dial, which att_lim= names (the priority and the
+       dial are both stored in the row's limit, so they show here rather than hiding in
+       the mixer).
        TVC carries it a fourth time since #768, in three spellings because the nozzles
        have one more state than the other three channels: tvc_rating is what the last
        ApplyThrust ARMED, tvc_rating_full is what the ignited stage could lever at full
@@ -3165,10 +3167,19 @@ void Vehicle::steering_log(double time) {
     /* #1124: say what the hull's attitude dial ALLOWS, the way the [rcs] row prints
        lim=NN% for the keys. Only when it is off the default, so a clean line means a
        clean dial. rcs_hw= beside it stays undimmed on purpose -- that column is the
-       promise, this one is the permission. */
-    const std::string attLim = (rcs_attitude_frac != 1.0)
-        ? (" att_lim=" + std::to_string((int)std::lround(rcs_attitude_frac * 100.0)) + "%")
-        : std::string();
+       promise, this one is the permission.
+       The value is only ever printed as a percent when it IS one: std::lround(NaN) is
+       UB and would hand the column something like -2147483648. Both doors refuse a bad
+       dial (refuseSavedRcsAttFrac at the CLI and in the loader), so this is the belt --
+       att_lim=?% says "a field is wrong here" instead of inventing a plausible one. */
+    std::string attLim;
+    if(rcs_attitude_frac != 1.0) {
+        attLim = " att_lim="
+               + ((rcs_attitude_frac >= 0.0 && rcs_attitude_frac <= 1.0)
+                  ? std::to_string((int)std::lround(rcs_attitude_frac * 100.0))
+                  : std::string("?"))
+               + "%";
+    }
     printf("[steerlog] t=%.1fs ship=\"%s\" powered=%d wheels_on=%d fins_on=%d "
            "fins_fitted=%d "
            "wheels=%.0f/%.0f/%.0f wheels_hw=%.0f/%.0f/%.0f "

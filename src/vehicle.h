@@ -639,7 +639,8 @@ public:
        actuators let go and only the wind-up and the brake burn cost anything. The
        brake point stays the law's own (sqrt(2*alpha*E) falling under the ceiling), so
        it moves whenever the authority moves under it -- wheels saturating, air thinning,
-       the throttle closing, #595 taking the bells for a translation key.
+       the throttle closing, #595 taking the bells for a translation key, or #1124's
+       attitude dial dimming what the ring may spend on pointing.
        Out of reach on purpose: kill-rot (no w_des there -- it pushes as hard as the
        rate it is killing, so it is already self-limiting) and the translation keys
        (the player's own hands, #595's precedent).
@@ -680,9 +681,16 @@ public:
        attitudeAuthorityHardware() ignores this field, so the Systems row and
        [steerlog]'s rcs_hw= still say what the ring IS worth. att_lim=NN% rides
        [steerlog] to say what it is being allowed to do.
-       0 is the dimmer's end, not the switch: the rows stay present with a zero
-       limit, so a law still asks and the shortfall reads tau_ask>0 / tau_spent=0
-       rather than the no-rows-at-all shape rcs_attitude_enabled=false gives. */
+       0 is the dimmer's end, not the switch: the rows stay PRESENT with a zero limit,
+       so it is still a ring the hull has. How visibly that reads depends on the law.
+       kill-rot asks whenever any actuator rows exist at all (its guard is every row
+       set being empty), so there the shortfall reads tau_ask>0 / tau_spent=0 --
+       flight/1124-d pins that. An
+       alignment law budgets its ask from alpha, and alpha is 0 with nothing to lever,
+       so at 0 % it asks nothing and looks exactly like the switch; that is honest, the
+       torque really is unavailable either way. What must NOT collapse is the rows
+       themselves: dropping them at 0 % would silence kill-rot too, and the switch is
+       the only thing that should do that. */
     double rcs_attitude_frac = 1.0;
 
     double dvRocket_ = 0.0;

@@ -178,7 +178,9 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "thin on. The nozzles keep their ratings, only what the keys ask "
                    "for shrinks, so attitude stays honest while a heavy hull stops "
                    "being shoved at full force. 0 turns the keys off; attitude, if "
-                   "enabled, still fires the ring to hold heading")
+                   "enabled, still fires the ring to hold heading. The ACTIVE ship "
+                   "gets it -- with several --startship specs the others keep the "
+                   "default, as they do for --sas-rate")
         ->check(CLI::Range(0.0, 1.0));
     app.add_option("--rcs-att-frac", args.rcs_att_frac,
                    "How much of this hull's RCS ring it may spend on POINTING, 0..1 "
@@ -190,7 +192,8 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                    "keep their ratings -- the Systems window's hardware figure, "
                    "rcs_hw=, stays undimmed. 0 leaves the ring pointed at nothing while "
                    "the keys still push; rcs_attitude_enabled=0 is the switch that "
-                   "removes the rows instead")
+                   "removes the rows instead. The ACTIVE ship gets it, as with "
+                   "--rcs-frac")
         ->check(CLI::Range(0.0, 1.0));
     app.add_option("--ascent", args.ascent,
                    "Fly the active ship to a circular orbit: ALTITUDE[,INCLINATION] "
@@ -830,8 +833,9 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                  "price shows), the same pair for its aero surfaces, the gimbals, "
                  "and what the last actuated substep asked against what it spent. "
                  "The instrument for 'why didn't that turn?': a shut switch, a dead "
-                 "battery and a line no drum covers all answer 0, and the flags say "
-                 "which of the three it was");
+                 "battery, a line no drum covers and a dialed-down RCS half all "
+                 "answer 0 or less, and the flags say which of the four it was "
+                 "(rcs_on=, wheels_on=, fins_on=, att_lim=)");
 
     app.add_flag("--prox-log", args.prox_log,
                  "Print proximity engage/release events, the active-ship "

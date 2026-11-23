@@ -9,11 +9,13 @@ KIND invariant
 #
 # Meanwhile the attitude columns read 0/0/0 live against 138/0/138 hardware, which is
 # the shape this dial makes on purpose: 0 % is the dimmer's END, not the switch. The
-# rows are still there (rcs_on=1, and a law still asks them), they are simply not
+# rows are still there (rcs_on=1, and the hull still HAS a ring), they are simply not
 # allowed any gas. rcs_attitude_enabled=0 would remove them instead, and the live rcs=
 # figure would come from a hull with no rows at all -- flight/595's off-switch shape.
+# flight/1124-d is the case that shows the two shapes differ where it shows: a law's
+# ask.
 ARGS --time-accel 1 --sim-steps 480 --startship rcs_box_pair,res/ships/rcs_box_pair.json,Kerbin,inertial-orbit --steering-log --drag-log --fuel-log --rcs-att-frac 0 --sim-press 2000,3000,N
-EXPECT RCS: pointing limited to 0% of what the ring leaves after the keys
+EXPECT RCS: attitude limited to 0% of what the ring leaves after the keys
 EXPECT [rcs] cmd=(120 0 -0)N ach=(120 0 -0)N
 EXPECT rcs=0/0/0 rcs_hw=138/0/138 rcs_on=1 att_lim=0%
 FORBID error:

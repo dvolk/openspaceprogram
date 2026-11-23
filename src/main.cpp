@@ -1051,13 +1051,14 @@ int main(int argc, char **argv)
             printf("RCS: translation limited to %.0f%% of what the ring can do that way\n",
                    args.rcs_frac * 100.0);
         }
-        /* --rcs-att-frac: #1124's second dial. The referent is the LEFTOVER, not the
-           ring -- the keys spend first (#595's priority) -- and it is per-axis torque
-           rather than one hull-wide figure, so the printf says which of the two doors
-           it closed and what sits underneath it. */
+        /* --rcs-att-frac: #1124's second dial, named the way the Systems slider and the
+           flag name it so one handle has one spelling in the player's ear. The referent
+           is the LEFTOVER, not the ring -- the keys spend first (#595's priority) -- and
+           it is per-axis torque rather than one hull-wide figure, so the printf says
+           which of the two doors it closed and what sits underneath it. */
         if(args.rcs_att_frac != 1.0 && first != nullptr) {
             first->rcs_attitude_frac = args.rcs_att_frac;
-            printf("RCS: pointing limited to %.0f%% of what the ring leaves after the keys\n",
+            printf("RCS: attitude limited to %.0f%% of what the ring leaves after the keys\n",
                    args.rcs_att_frac * 100.0);
         }
 

@@ -1,0 +1,22 @@
+NAME saved-seam-rcs-pointing-dial-refused
+CLAIM A dock seam carrying an out-of-range RCS pointing dial is refused with the seam named, not loaded into the hull that will leave when the seam is cut.
+KIND invariant
+# A seam freezes the absorbed vessel's ORDERS (#657), and the pointing dial is one of
+# them now (#1124): it is copied onto the hull that walks away at the cut, so a poisoned
+# figure there poisons THAT hull's laws rather than the station's. The seam block is
+# written behind one "anything non-default?" gate, so the field is easy to lose on the
+# way out and easy to forget on the way in -- the reader's name is the same, but the
+# check has to happen per seam and say WHICH seam (the same two uids the shape check
+# above uses).
+#
+# Fixture mint (re-mint together with the ship name and uids below):
+#   cp -r e2e/fixtures/save_docked e2e/fixtures/save_docked_bad_att
+#   then add "rcs_attitude_frac": 2.0 to the one entry of "docks" in ships/v0.json
+# flight/79 loads the clean save_docked, so the pair is the same joint either side of
+# the refusal. The sentence is the ship-side one with "a dock seam (8, 1) with" spliced
+# in, which is what names the seam rather than blaming the hull.
+ARGS --load e2e/fixtures/save_docked_bad_att --timeout 4
+EXPECT Load failed: load: saved ship 'dockprobe' has a dock seam (8, 1) with RCS attitude fraction 2.000000, not a 0..1 fraction
+FORBID Loaded game from
+EXIT 1
+LIMIT 60

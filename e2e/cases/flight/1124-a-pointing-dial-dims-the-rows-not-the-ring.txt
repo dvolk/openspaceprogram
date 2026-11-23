@@ -3,8 +3,9 @@ CLAIM A hull's RCS attitude dial caps how much of its ring may steer without re-
 KIND invariant
 # rcs_box_pair surface-mounts two 5-bell boxes rated 60 N A BELL, and carries no
 # wheels, fins or gimbals, so the whole attitude authority of this hull is its ring.
-# About roll those 12 bells bring 138 N m, and that is what BOTH [steerlog] columns
-# read with the dial at its default.
+# About roll, and again about yaw, those 12 bells bring 138 N m (pitch is the axis they
+# share nothing about), and that is what BOTH [steerlog] columns read with the dial at
+# its default.
 #
 # Dialed to 50 % the two columns split, and the split IS the claim. rcs= is the live
 # authority a law plans against and the stick asks through, so it halves to 69/0/69;
@@ -17,7 +18,7 @@ KIND invariant
 # in flight/110 or flight/1067 stays green while it does, because those cases only watch
 # what the ring delivers. This line is where a re-rating goes red.
 ARGS --time-accel 1 --sim-steps 240 --startship rcs_box_pair,res/ships/rcs_box_pair.json,Kerbin,inertial-orbit --steering-log --rcs-att-frac 0.5
-EXPECT RCS: pointing limited to 50% of what the ring leaves after the keys
+EXPECT RCS: attitude limited to 50% of what the ring leaves after the keys
 EXPECT rcs=69/0/69 rcs_hw=138/0/138 rcs_on=1 att_lim=50%
 FORBID error:
 FORBID rcs_hw=69/0/69

@@ -11,16 +11,20 @@ KIND invariant
 # never rotates (|w| stays ~0.0003 where the default run reaches 0.3148), tau_spent is 0
 # on every row, and the tank never moves (the default run drinks 0.4 kg).
 #
-# tau_ask stays above 0 and mode stays killrot, which is the difference between this
-# dial and #425's switch: 0 % leaves a ring that is present and unallowed; switching the
-# ring off removes the rows and the law stops asking at all.
+# tau_ask stays above 0 and mode stays killrot: kill-rot asks whenever the ring's ROWS
+# exist (its guard is row presence), so 0 % leaves a ring that is present and unallowed
+# and the shortfall reads ask>0 / spent=0. Switching the ring off removes the rows and
+# silences the ask, which is the shape #425's switch owns and the reason this dial must
+# not implement zero by dropping rows. (An ALIGNMENT law budgets its ask from alpha
+# instead, and alpha is 0 here either way, so --autopilot prograde cannot tell the two
+# apart; this press pattern can.)
 ARGS --time-accel 1 --startship rcs_test,res/ships/rcs_test.json,Kerbin,inertial-orbit
 ARGS --slew-log --fuel-log --no-paint --rcs-att-frac 0
 ARGS --sim-press 3000,600,S,6000,3000,X
 ARGS --timeout 12
 LIMIT 40
 EXPECT [slew]
-EXPECT RCS: pointing limited to 0% of what the ring leaves after the keys
+EXPECT RCS: attitude limited to 0% of what the ring leaves after the keys
 FORBID error:
 CHECK len(slew) >= 15
 CHECK all(s["mode"] == "killrot" for s in slew)

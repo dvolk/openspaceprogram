@@ -7,15 +7,16 @@ KIND invariant
 #   [rcs]     the keys ask 60 N (50 % of the 120 N the ring can bring to bear along +X,
 #             #1119's per-direction ceiling) and each firing bell spends 30 N of its
 #             60 N rating;
-#   [steerlog] roll authority reads 69/0/69 while nothing is pressed -- half of the 138
-#             N m the ring is worth -- and drops to 69/0/52 DURING the press, because
-#             the two bells spending gas have only half of their leftover left to steer
-#             with. rcs_hw= never moves: the ring is still worth 138 N m.
+#   [steerlog] the R/P/Y authority reads 69/0/69 while nothing is pressed -- half of
+#             the 138 N m the ring is worth -- and the YAW figure drops to 52 DURING the
+#             press (69/0/52), because the two bells spending gas are the pair that
+#             levers yaw and they have only half of their leftover left to steer with.
+#             roll stays 69. rcs_hw= never moves: the ring is still worth 138 N m.
 # Neither dial alone shows this pair moving together, and a dial that reached the
 # RATINGS would put rcs_hw= at 69/0/69 and fail the same line from the other side.
 ARGS --time-accel 1 --sim-steps 480 --startship rcs_box_pair,res/ships/rcs_box_pair.json,Kerbin,inertial-orbit --steering-log --drag-log --rcs-frac 0.5 --rcs-att-frac 0.5 --sim-press 2000,3000,N
 EXPECT RCS: translation limited to 50% of what the ring can do that way
-EXPECT RCS: pointing limited to 50% of what the ring leaves after the keys
+EXPECT RCS: attitude limited to 50% of what the ring leaves after the keys
 EXPECT [rcs] cmd=(60 0 -0)N ach=(60 0 -0)N lim=50%
 FORBID error:
 FORBID rcs_hw=69/0/69
