@@ -801,7 +801,7 @@ static double ascentDvNeed(const TerrainBody &b, double apo_asl) {
    stands on Kerbin's sea floor, 328 m BELOW its sea level (no shipped pad does that --
    #1007 moved the one that did, and #1063 deleted it).
    test_buildings prints every shipped pad's deck as [padalt] and pins the
-   fictional system's four, so a comment quoting one of these can be checked. The
+   fictional system's five, so a comment quoting one of these can be checked. The
    margin is what stands in for everything the measurement leaves out -- including
    max_height itself, which is measured at load rather than authored. */
 static constexpr double kGuidanceTerrainMargin = 500.0;
@@ -2312,7 +2312,8 @@ void drawUIReadouts(Game &g) {
         /* StaticBuilding::dir is a unit up in the body's ROTATING frame -- the very frame
            the map's pixels are baked in (equirect.h) -- so a site's pixel is equirectLonLat
            straight, no transform. */
-        struct SiteMark { ImVec2 px; const std::string *name; };
+        struct SiteMark { ImVec2 px; const std::string *name; const std::string *id;
+                          double lon, lat; };
         // Reused: one entry per VAB pad on the mapped body, rebuilt every frame
         // the window is open. The name pointers are into the body's pads, which
         // outlive the frame.
@@ -2329,7 +2330,25 @@ void drawUIReadouts(Game &g) {
             if(p->driven()) { continue; }
             double lon, lat;
             equirectLonLat(p->dir, lon, lat);
-            site_marks.push_back({ map_px(lon, lat), &p->display_name });
+            site_marks.push_back({ map_px(lon, lat), &p->display_name, &p->id, lon, lat });
+        }
+        /* The MARKS, published by the code that draws them. --surfmap-log's sites=
+           counts the flag filter inside the BAKE (src/surfmap.cpp), which is a different
+           file from this loop: change the filter or the loop here and sites= stays green
+           while the window draws no triangle -- and "the pad is not on the surface map"
+           is exactly what #1133 was filed about. So the window says what it marked, on a
+           gate like the other window logs: one row per mark, each carrying the count, and
+           one marks=0 row when the body has none -- so a set that vanishes mid-run cannot
+           hide behind the rows an earlier frame printed.
+           Degrees, not pixels: px is the player's pan and zoom, and a case that reddens
+           when a window is resized pins nothing about the feature (#872 says the same
+           about its size gate). */
+        const bool sm_pub_due = g.args.surfmap_log
+                             && g.logDue(kGateSurfMark, g.logClockMs(), 1000);
+        if(sm_pub_due && site_marks.empty()) {
+            printf("[surfmark] t=%.1fs body=\"%s\" marks=0\n",
+                   g.time, sm_body->name.c_str());
+            fflush(stdout);
         }
         if(!site_marks.empty()) {
             const ImU32 site_fill =
@@ -2363,6 +2382,16 @@ void drawUIReadouts(Game &g) {
                                     ImVec2(q.x + sr, q.y + sr * 0.8f),
                                     site_edge, 1.0f);
                 }
+                /* Printed where the triangle is made, not where the list is built: a
+                   mark that reaches this point has been drawn. */
+                if(sm_pub_due) {
+                    printf("[surfmark] t=%.1fs body=\"%s\" marks=%d id=\"%s\" "
+                           "lon=%.4f deg lat=%.4f deg\n",
+                           g.time, sm_body->name.c_str(), (int)site_marks.size(),
+                           m.id->c_str(),
+                           m.lon * 180.0 / std::numbers::pi,
+                           m.lat * 180.0 / std::numbers::pi);
+                }
                 if(!g.surfmap.site_labels) { continue; }
                 const char *nm = m.name->c_str();
                 const ImVec2 ts = ImGui::CalcTextSize(nm);
@@ -2376,6 +2405,7 @@ void drawUIReadouts(Game &g) {
                 dl->AddText(ImVec2(tx + 1.0f, ty + 1.0f), site_edge, nm);
                 dl->AddText(ImVec2(tx, ty), site_text, nm);
             }
+            if(sm_pub_due) { fflush(stdout); }
             dl->PopClipRect();
         }
 

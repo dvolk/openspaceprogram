@@ -210,7 +210,8 @@ inline double flightPathAngle(const OrbitElements &o) {
    clears kConicSpeedFloor many times over while sin(gamma) collapses: the "plane" is
    then the heading of the last sideways cm/s, and its unit normal reverses between
    frames (#900, measured on a vertical climb off a pole pad -- the 870 fixture's,
-   since #1063 took the shipped one out -- 10 of 27
+   since no shipped pad stands at a pole: #1007 moved Kerbin's off lat 90, #1063
+   deleted it, #1133 brought it back at 88.8 deg -- 10 of 27
    consecutive targets jumped more than 90 deg, the worst 174 deg, while |v| ran
    6.9 .. 21.3 m/s).
    The quantity to bound is therefore h / r, the TANGENTIAL speed: m/s whatever the

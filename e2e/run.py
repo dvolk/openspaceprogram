@@ -39,7 +39,7 @@ and crash strings are forbidden by default, so a case names only its own
 refusals; NOGLCHECK opts out of the GL drains for timing-sensitive cases.
 CHECK sees out and
 the parsed logs (orbit/dbg/att/eva/fuel/drainlog/power/dv/mass/drag/shake/cam/
-terrain/surf/xfer/porkchop/surfmap/solar/mapb/plane/slew/toast/scene) plus
+terrain/surf/xfer/porkchop/surfmap/surfmark/solar/mapb/plane/slew/toast/scene) plus
 first/last, `re`, and the pure builtins `abs len any all max min float int zip
 set sum sorted tuple range` (#910). A CHECK evaluates against an empty
 `__builtins__` -- that is what keeps a case out of the filesystem and the
@@ -359,6 +359,20 @@ SURFMAP_RE = re.compile(
     # sits between that and this column.
     r"(?:\s+anchor_src=\"[^\"]*\")?"
     r"\s+elev_cache=(hit|miss|-)"
+)
+# --surfmap-log's SECOND tag: the sites the Surface Map window actually marks (src/gameui.cpp),
+# published on a 1 s gate while the window is open. [surfmap]'s sites= counts the VAB_LAUNCH_PAD
+# filter during the BAKE (src/surfmap.cpp) and says nothing about this loop -- #1133's symptom
+# was a pad that had stopped appearing on the map, and a count from the other file cannot see a
+# draw loop that draws nothing. Every row carries the count, and a body with no marks prints one
+# marks=0 row, so a set that vanishes mid-run cannot hide behind the rows an earlier frame
+# printed. lon/lat are the degrees the mark's pixel comes from (equirectLonLat of the pad's dir),
+# not the pixel: px belongs to the player's pan and zoom. lon unwraps to [0, 360), so an authored
+# west-negative Earth site prints one turn later (alcantara -44.4175 -> 315.5825), the same
+# spelling tests/test_buildings.cpp documents.
+SURFMARK_RE = re.compile(
+    r"\[surfmark\]\s+t=([\d.]+)s\s+body=\"([^\"]*)\"\s+marks=(\d+)"
+    r"(?:\s+id=\"([^\"]*)\"\s+lon=([-\d.]+) deg\s+lat=([-\d.]+) deg)?"
 )
 # --solar-log (src/cli.cpp's flag, printed by the kGateSolar block in tick.cpp): the
 # star as the world states it, and the ground under the hull as the world states it.
@@ -804,6 +818,7 @@ ROW_PARSERS = [
     ("plane", PLANE_RE, "world"), ("xfer", XFER_RE, "world"),
     ("relvel", RELVEL_RE, "world"),
     ("porkchop", PORKCHOP_RE, "world"), ("surfmap", SURFMAP_RE, "world"),
+    ("surfmark", SURFMARK_RE, "world"),
     ("solar", SOLAR_RE, "world"), ("slew", SLEW_RE, "world"), ("perf", PERF_RE, "out"),
     ("toast", TOAST_RE, "out"), ("att", ATT_RE, "world"), ("eva", EVA_RE, "world"),
     ("drainlog", DRAINLOG_RE, "world"), ("power", POWER_RE, "world"), ("dv", DV_RE, "world"),
@@ -1589,6 +1604,23 @@ def parse_surfmap(out):
             "wind_arrow_rows": None if warrowrows is None else int(warrowrows),
             "wind_rows_from": wrowsfrom,
             "wind_note": wnote,
+        })
+    return rows
+
+
+def parse_surfmark(out):
+    # The marks the Surface Map window draws, published on a gate while it is open. See
+    # SURFMARK_RE: this is the draw-side witness, where [surfmap]'s sites= is the bake-side
+    # count. The marks= column is on every row; the id/lon/lat tail is absent on the marks=0
+    # row, which is a body with nothing to mark -- an absence the case can see.
+    rows = []
+    for m in SURFMARK_RE.finditer(out):
+        (t, body, marks, mid, lon, lat) = m.groups()
+        rows.append({
+            "t": float(t), "body": body, "marks": int(marks),
+            "id": mid,
+            "lon": None if lon is None else float(lon),
+            "lat": None if lat is None else float(lat),
         })
     return rows
 
@@ -2552,6 +2584,7 @@ def run_case(case):
     xfer = parse_scoped(world, parse_xfer)
     porkchop = parse_scoped(world, parse_porkchop)
     surfmap = parse_scoped(world, parse_surfmap)
+    surfmark = parse_scoped(world, parse_surfmark)
     solar = parse_scoped(world, parse_solar)
     att = parse_scoped(world, parse_att)
     ascent = parse_scoped(world, parse_ascent)
@@ -2594,7 +2627,7 @@ def run_case(case):
     rec_all, rec_any = recording_aggregates(vacuous)
     ns = {
         "out": out, "orbit": orbit, "dbg": dbg, "bldg": bldg, "xfer": xfer,
-        "porkchop": porkchop, "surfmap": surfmap, "solar": solar, "att": att, "ascent": ascent, "eva": eva,
+        "porkchop": porkchop, "surfmap": surfmap, "surfmark": surfmark, "solar": solar, "att": att, "ascent": ascent, "eva": eva,
         "fuel": fuel, "drainlog": drainlog, "power": power, "dv": dv, "mass": mass,
         "drag": drag, "shake": shake,
         "rec": rec,

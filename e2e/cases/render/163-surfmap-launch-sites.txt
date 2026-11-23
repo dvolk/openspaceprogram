@@ -30,5 +30,9 @@ EXPECT [surfmap]
 CHECK len(surfmap) >= 2
 CHECK last(surfmap)["body"] == "Earth"
 CHECK last(surfmap)["sites"] == 14
+# The same count from the other half of the window: [surfmark] is what src/gameui.cpp
+# marks each frame (one row per mark on a 1 s gate, each carrying the frame's count), so a
+# bake that counts fourteen and a window that marks none cannot both be true.
+CHECK last(surfmark)["marks"] == 14
 FORBID error:
 FORBID FAILED

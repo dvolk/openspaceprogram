@@ -18,8 +18,9 @@
 # The pole comes from a fixture now: e2e/fixtures/systems/870-kerbin-polar-pad.json is the
 # shipped Kerbin verbatim -- air, mass, rotation, seed -- with one pad authored at lat 90.
 # The shipped polar_pad used to BE that pad, and #1007 moved it to the nearest dry flat
-# ground, 240 km off the pole, where the ground moves ~3.6 m/s and this state does not
-# exist. Same body and same air, so every band quoted above carries over unchanged.
+# ground -- 88.8 deg, 12.6 km (1.2 deg) off the pole, where the ground moves ~3.6 m/s and
+# this state does not exist. Same body and same air, so every band quoted above carries
+# over unchanged.
 NAME sas-prograde-with-no-conic-refuses
 CLAIM SAS prograde on a hull with no conic refuses instead of steering at solver residue: the mode latches, every autopilot row says no-target, and none shows a heading being chased.
 KIND invariant

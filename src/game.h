@@ -688,7 +688,8 @@ inline PoseSituation poseSituation(const TerrainBody *body, const glm::vec3 &dir
    or only the first one fires. Wall-clock clocks unless --sim-steps replaces
    them (logClockMs, below). All share --orbit-interval (Game::
    orbit_log_interval_ms) except the ones whose cadence is fixed where they are
-   polled: kGateSkyDim, and the tick.cpp state logs (spin/mass/fuel/drain/
+   polled: kGateSkyDim, kGateSurfMark (the Surface Map's drawn-site publish, fixed
+   at 1 s where the window paints), and the tick.cpp state logs (spin/mass/fuel/drain/
    power/slew), which keep the rate each was written to sample at.
    Wall clock is what makes a log readable at any instant the player can see:
    a SIM-clock gate prints nothing while paused and floods at warp (#374).
@@ -699,7 +700,7 @@ enum LogGate { kGateOrbit, kGateDbg, kGateInfo, kGateAtt, kGateShake,
                kGateSkyDim, kGateXfer, kGateDv, kGateCompound, kGateProxSnap,
                kGateSpin, kGateMass, kGateFuel, kGateDrain, kGatePower,
                kGateSteer, kGateSlew, kGateAscent, kGateRec, kGateSolar,
-               kGateBldg, kGateRelVel, kGateCount };
+               kGateBldg, kGateRelVel, kGateSurfMark, kGateCount };
 
 /* A headless test hook (cli.h --atlas-dump / --map-dump): fires act() once,
    at/after ms on the schedule clock (Game::schedClockMs(): loop_start_ms normally,

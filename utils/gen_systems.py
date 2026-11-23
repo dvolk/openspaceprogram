@@ -180,9 +180,10 @@ eerbon = {
     # place, being hand-edited inside generated output. The merged list's
     # first VAB_LAUNCH_PAD is the game's default site, so the table's order is
     # deliberate. This system adds no inline pads: #1063 dropped the inline
-    # polar pad, which was already 708 km from the pole once #1007 moved it off
-    # Eerbon's sea (its pole ground sits 77 m under water), and both the CLI's
-    # site= and the VAB dropdown reach any pad by name.
+    # polar pad, which stood at 86.9 deg -- 32.5 km off the pole on this 600 km
+    # world -- once #1007 moved it off Eerbon's sea (its pole ground sits 77 m
+    # under water), and both the CLI's site= and the VAB dropdown reach any pad
+    # by name.
     "world_buildings_files": ["res/data/old_launch_sites.json"],
     "bodies": [
         {
@@ -712,10 +713,11 @@ ksp = {
     # res/data/earth_launch_sites.json is named for the one body it serves.
     "world_buildings_files": ["res/data/ksp_launch_sites.json"],
     # No inline pads here either (#1063). Kerbin's sites are main_space_port,
-    # ksc_runway and the orbital kerbin_dock, all in the table above. The inline
-    # polar pad earned its keep only while it stood at lat 90: a hull parked
+    # ksc_runway, polar_pad and the orbital kerbin_dock, all in the table above
+    # (#1133 put polar_pad back there as a normal row). The INLINE polar pad
+    # earned its keep only while it stood at lat 90: a hull parked
     # there has |omega x r| -> 0 on a world that DOES turn, which is what four
-    # e2e cases wanted. #1007 moved it 240 km off the pole to dry ground --
+    # e2e cases wanted. #1007 moved it 12.6 km off the pole (1.2 deg) to dry ground --
     # Kerbin's pole ground sits 328 m under Kerbin's own sea -- and #1063
     # dropped it, since the CLI's site= and the VAB dropdown already pick a
     # pad. That polar state is authored by

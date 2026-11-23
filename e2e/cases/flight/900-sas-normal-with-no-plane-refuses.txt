@@ -45,10 +45,10 @@
 # which runs at 10 Hz from t = 0.017, and not by the marker.
 # The pad is authored, not shipped: e2e/fixtures/systems/870-kerbin-polar-pad.json is the
 # shipped Kerbin verbatim (air, mass, rotation, seed) with one pad at lat 90. The shipped
-# polar_pad used to be that pad; #1007 moved it 240 km off the pole to the nearest dry flat
-# ground, and a launch from there starts with ~3.6 m/s of sideways ground motion instead of
-# none -- which is a different climb from the one whose bands are quoted above. Same body
-# and same air here, so those bands carry over.
+# polar_pad used to be that pad; #1007 moved it 12.6 km (1.2 deg) off the pole to the
+# nearest dry flat ground, and a launch from there starts with ~3.6 m/s of sideways ground
+# motion instead of none -- which is a different climb from the one whose bands are quoted
+# above. Same body and same air here, so those bands carry over.
 NAME sas-normal-with-no-plane-refuses
 CLAIM SAS normal on a near-radial Kerbin climb refuses instead of steering at a plane made of residue, and the drawn normal dashes on the same rows.
 KIND invariant

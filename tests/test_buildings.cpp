@@ -705,8 +705,9 @@ int main() {
                (alcantara -44.4175 -> 315.5825). The pole pad used to be the
                other interesting one -- cos(90 deg) is ~6e-17, not 0, so its
                longitude survived atan2 rather than landing on an arbitrary
-               meridian -- and no shipped pad sits at a pole since #1063 took
-               it out.
+               meridian -- and no shipped pad sits at a pole: #1007 moved
+               the one that did off lat 90, #1063 took it out, and #1133 put
+               polar_pad back at 88.8 deg rather than 90.
                Driven buildings (orbital, air) have no fixed surface lat/lon:
                skip the projection and the deck-grounding check for them -- an
                air entry carries lat/lon but floats 56 km up, not on the ground. */

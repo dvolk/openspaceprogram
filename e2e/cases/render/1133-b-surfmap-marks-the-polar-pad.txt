@@ -4,18 +4,31 @@
 # nothing on Kerbin went red (#1133 asks for the pad back; the map half of that symptom
 # is this case, the picker half is vab/1133-a).
 #
-# The count is the pin because the marker filter is a flag string: drop
-# VAB_LAUNCH_PAD from a row, or the flag test from surfmap.cpp's loop, and a pad stops
-# being drawn while everything still loads and launches. kerbin_dock carries
-# VAB_LAUNCH_PAD too and must NOT count: the loop skips driven() buildings, since a
-# station on a Kepler orbit has no place on an equirectangular ground map. So the
-# number is three -- main space port, KSC runway, polar pad -- and a fourth would mean
-# something orbital got painted onto the terrain.
+# Two counters, because the Surface Map has two halves and they live in different files:
+# [surfmap]'s sites= counts the VAB_LAUNCH_PAD filter during the BAKE (src/surfmap.cpp),
+# and [surfmark] prints what src/gameui.cpp marks each frame -- one row per mark on a 1 s
+# gate while the window is open, each row carrying that frame's count, and a lone marks=0
+# row when the body has none. A count from the bake cannot see a draw loop that marks
+# nothing -- measured: putting `continue` as the first line of that loop's body leaves the
+# bake printing sites=3 here and sites=14 in 163, whose own sites pin stays green, while the
+# log prints NO [surfmark] row at all -- not even the marks=0 row, because that one asks
+# whether the bake's list is empty, and the bake still found three sites. Which is the hole
+# this case was written into when its CLAIM says "marks". Both halves are pinned now.
 #
-# The polar pad is at 88.8, not 90, so its marker sits ~1.2 degrees off the top row
-# rather than smeared along the pole: #1007 found Kerbin's pole ground 328 m under the
-# body's own sea. tests/test_buildings pins that each site projects back to the degrees
-# it was authored with; this pins that the map asks for the right NUMBER of them.
+# kerbin_dock carries VAB_LAUNCH_PAD too and must NOT appear in either: both loops skip
+# driven() buildings, since a station on a Kepler orbit has no place on an equirectangular
+# ground map. So the set is three -- main space port, KSC runway, polar pad -- and a
+# fourth would mean something orbital got painted onto the terrain.
+#
+# The degrees in the [surfmark] rows are what the pixel is computed FROM
+# (equirectLonLat of the pad's dir), so a convention slip -- lon sign, degrees vs radians,
+# the rotating frame -- moves a marker to the far side of the planet and shows up here as
+# well as in tests/test_buildings' authored-degrees round-trip. They are degrees rather
+# than pixels on purpose: px belongs to the player's pan and zoom, and a case that reddens
+# when a window gets resized pins nothing about the feature (#872 says the same about its
+# size gate). The polar pad is at 88.8, not 90, so its mark sits 1.2 deg -- 12.6 km on
+# Kerbin's 600 km radius -- off the top row instead of smeared along the pole: #1007 found
+# Kerbin's pole ground 328 m under the body's own sea.
 NAME surfmap-marks-the-polar-pad
 CLAIM The Surface Map marks all three of Kerbin's ground pads.
 KIND golden
@@ -23,13 +36,25 @@ ARGS --system res/systems/ksp_system.json --startship racer,res/ships/racer.json
 ARGS --timeout 10 --surfmap-log --surfmap-n 128
 ARGS --ui-click 2000,"Windows/Surface Map"
 EXPECT [surfmap]
+EXPECT [surfmark]
 CHECK len(surfmap) >= 1
 CHECK last(surfmap)["body"] == "Kerbin"
 CHECK last(surfmap)["sites"] == 3
+# The same three from the window's own publish: marks= is the count this frame marked,
+# and the id set is read off the LAST published group (rows print in draw order, so all
+# of one frame shares one t).
+CHECK last(surfmark)["marks"] == 3
+CHECK (lambda s: set(m["id"] for m in surfmark if m["t"] == s["t"] and m["id"]) == set(["main_space_port", "ksc_runway", "polar_pad"]))(last(surfmark))
+CHECK (lambda p: abs(p["lat"] - 88.8) < 1e-3 and abs(p["lon"] - 171.4) < 1e-3)([m for m in surfmark if m["id"] == "polar_pad"][-1])
 FORBID error:
 FORBID FAILED
-# MUTATION (measured, one data edit). Strip VAB_LAUNCH_PAD from the polar_pad row and
-# the line prints sites=2 -- the marker loop stops seeing it while the pad still loads
-# and the system still has 7 buildings, so test_buildings' count pin stays green. The
-# picker half goes red at the same time (vab/1133-a: "##Combo_00/Polar pad FAILED not
-# found"), which is the pair this data needs: one flag, two player-visible doors.
+# MUTATION (measured, one data edit). Strip VAB_LAUNCH_PAD from the polar_pad row and the
+# bake prints sites=2 while the window publishes marks=2 rows for main_space_port and
+# ksc_runway only. Nothing else notices: the row still loads, the system still has 7
+# buildings, and tests/test_buildings passes end to end -- rc=0, its polar_pad deck pin
+# still printing 50.1 -- because no unit test filters on that flag. The picker half goes
+# red at the same time (vab/1133-a: "##Combo_00/Polar pad FAILED not found"), which is the
+# pair this data needs: one flag, two player-visible doors.
+# MUTATION (measured, one src edit): `continue` as the first line of the draw loop's body
+# in src/gameui.cpp. 163 keeps its sites==14 pin and fails only the new [surfmark] line;
+# here EXPECT [surfmark] and all three [surfmark] CHECKs go red.
