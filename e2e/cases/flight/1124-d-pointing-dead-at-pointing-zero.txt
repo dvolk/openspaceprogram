@@ -2,14 +2,16 @@ NAME pointing-dead-at-pointing-zero
 CLAIM With the pointing dial at 0 neither SAS nor the manual stick can turn this hull with its ring: no torque spent, no hydrazine burned, and the tap that would have spun it does nothing (#1124).
 KIND invariant
 # rcs_test is #595's ring-only hull: no wheels, no fins, no gimbals, so its ENTIRE
-# attitude authority is the 37 N m its pods lever about pitch. flight/677 and
-# flight/1067-c both watch kill-rot spend exactly that to bring a 0.31 rad/s spin down.
+# attitude authority is the 138 N m its four rcs_box units lever about pitch (276 N m
+# about roll). flight/677 and
+# flight/1067-c both watch kill-rot spend exactly that pitch figure to bring a 0.93 rad/s
+# spin down.
 #
 # Here the spin never arrives in the first place. The tap is an attitude key (S, 600 ms)
 # and the dial dims the stick as well as the law -- both ask through the same authority
 # rows, which is what #678's SAS dial deliberately does NOT do -- so at 0 % the hull
-# never rotates (|w| stays ~0.0003 where the default run reaches 0.3148), tau_spent is 0
-# on every row, and the tank never moves (the default run drinks 0.4 kg).
+# never rotates (|w| stays ~0.0003 where the default run reaches ~0.9), tau_spent is 0
+# on every row, and the tank never moves (the default run drinks 0.1-0.3 kg).
 #
 # tau_ask stays above 0 and mode stays killrot: kill-rot asks whenever the ring's ROWS
 # exist (its guard is row presence), so 0 % leaves a ring that is present and unallowed
