@@ -975,6 +975,14 @@
       "radius": 1.0,
       "height": 0.25,
       "rcs_thrust": 200,
+      "rcs_nozzle_dirs": [
+        [1, 0, 0],
+        [-1, 0, 0],
+        [0, 1, 0],
+        [0, -1, 0],
+        [0, 0, 1],
+        [0, 0, -1]
+      ],
       "drag": 0.6,
       "drag_forward": 1.1,
       "drag_side": 0.2,
@@ -990,6 +998,14 @@
       "radius": 1.5,
       "height": 0.375,
       "rcs_thrust": 450,
+      "rcs_nozzle_dirs": [
+        [1, 0, 0],
+        [-1, 0, 0],
+        [0, 1, 0],
+        [0, -1, 0],
+        [0, 0, 1],
+        [0, 0, -1]
+      ],
       "drag": 0.6,
       "drag_forward": 1.1,
       "drag_side": 0.2,
@@ -1005,6 +1021,14 @@
       "radius": 2.25,
       "height": 0.562,
       "rcs_thrust": 1012.5,
+      "rcs_nozzle_dirs": [
+        [1, 0, 0],
+        [-1, 0, 0],
+        [0, 1, 0],
+        [0, -1, 0],
+        [0, 0, 1],
+        [0, 0, -1]
+      ],
       "drag": 0.6,
       "drag_forward": 1.1,
       "drag_side": 0.2,

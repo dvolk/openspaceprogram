@@ -392,6 +392,16 @@ EXTRA_FIELDS = {
     "rcs_box":           {"mass": 12.0, "rcs_thrust": 60,
                           "rcs_nozzle_dirs": [
                               [1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]},
+    # Round pods carry six bells too, but the count used to be an accident of
+    # PartDef's legacy fallback (#1119). Authored here so the bell count is a
+    # chosen number; the six axes in the fallback's own order (+X,-X,+Y,-Y,+Z,-Z)
+    # keep the enumeration byte-identical.
+    "rcs_r1":            {"rcs_nozzle_dirs": [[1, 0, 0], [-1, 0, 0], [0, 1, 0],
+                                              [0, -1, 0], [0, 0, 1], [0, 0, -1]]},
+    "rcs_r1.5":          {"rcs_nozzle_dirs": [[1, 0, 0], [-1, 0, 0], [0, 1, 0],
+                                              [0, -1, 0], [0, 0, 1], [0, 0, -1]]},
+    "rcs_r2.25":         {"rcs_nozzle_dirs": [[1, 0, 0], [-1, 0, 0], [0, 1, 0],
+                                              [0, -1, 0], [0, 0, 1], [0, 0, -1]]},
     # barometer: tiny stick instrument, mass declared (mesh supplies shape only);
     # scores biome-specific science only on the surface (res/data/experiments.json).
     "barometer":         {"mass": 10, "experiment_family": "barometer",
