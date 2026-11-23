@@ -458,6 +458,20 @@ PartsCatalog load_parts_catalog(const char *path) {
                                          + std::to_string(PartDef::kMaxRcsNozzles) + " dirs");
             }
         }
+        /* The rating and the bells are ONE claim -- N N per bell, and the bells
+           that claim spends. #1120 removed the fallback that used to supply the
+           bell half (six dirs along the part's own axes), which turned every
+           rated part into a full six-axis ring at the CoM: reach, arms and
+           plumes invented for it. Either half alone is data the model cannot
+           use, so both are refused, as "wheel_axes" without "torque" is. */
+        if(d.rcs_thrust > 0.0 && d.rcs_nozzles.empty()) {
+            throw std::runtime_error(ctx + "\"rcs_thrust\" needs \"rcs_nozzle_dirs\":"
+                                     + " an RCS-rated part with no bells has no ring");
+        }
+        if(d.rcs_thrust <= 0.0 && !d.rcs_nozzles.empty()) {
+            throw std::runtime_error(ctx + "\"rcs_nozzle_dirs\" needs \"rcs_thrust\" > 0 (N):"
+                                     + " bells on a part with no RCS rating can never fire");
+        }
 
         /* Engine gimbal (TVC): a part either cannot gimbal at all or needs a
            nonzero slew rate to reach its limit -- a limit with a dead

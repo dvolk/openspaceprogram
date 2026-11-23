@@ -2,7 +2,10 @@
   "name": "rcs_test",
   "testship": true,
   "parts": [
-    { "part": "rcs_r1", "id": "rcs_1" },
-    { "part": "mono_tank_r1", "id": "tank_1", "parent": "rcs_1" }
+    { "part": "mono_tank_r1", "id": "tank_1" },
+    { "part": "rcs_box", "id": "box_a", "parent": "tank_1", "attach": "surface", "angle": 0 },
+    { "part": "rcs_box", "id": "box_b", "parent": "tank_1", "attach": "surface", "angle": 90 },
+    { "part": "rcs_box", "id": "box_c", "parent": "tank_1", "attach": "surface", "angle": 180 },
+    { "part": "rcs_box", "id": "box_d", "parent": "tank_1", "attach": "surface", "angle": 270 }
   ]
 }

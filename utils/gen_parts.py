@@ -30,11 +30,10 @@ NUCLEAR_THRUST_PER_M2 = 30000.0  # N, thrust at radius = 1 m (scales with r^2)
 NUCLEAR_EXHAUST_VELOCITY = 9000.0  # m/s (Isp = 9000/9.81 ~ 917 s), ~2x chemical
 NUCLEAR_MASS_PER_N = 0.03         # kg per newton -- reactor + shielding, ~3x chemical
 HYDRAZINE_DENSITY = 100.0        # kg/m^3, monopropellant hydrazine (mono)
-RCS_THRUST_PER_M2 = 200.0        # N PER BELL at radius = 1 m (scales with r^2). The
-                                 # rating is per orifice, not per pod (#1119): a round
-                                 # pod carries six bells, so rcs_r1 is 6 x 200 N of
-                                 # installed thrust, reachable only a direction at a
-                                 # time -- see rcsReachableAlong() in src/rcs.h.
+# RCS rings are authored, not scaled: a part declares its per-bell rating and its
+# bells. A size-scaled rating implies bells on faces the part's own mounts
+# occupy (#1120 removed the round inline pods that came with exactly that
+# fiction). Reach is rcsReachableAlong() in src/rcs.h, never the installed figure.
 
 # Jet (air-breathing): T = T_fan + m_f*V_E + rho*A*v*(V_E - v) (src/drag.h jetThrust)
 JET_FAN_PER_M2    = 90000.0      # N, static (fan) thrust at radius = 1 m
@@ -56,7 +55,6 @@ MASS_DENSITY = {
     # on a stack that carries four of them (#951). A cap that houses a chute bay
     # should say so the way `chute` does -- a declared mass, not a density.
     "nose_cap":       25.0,
-    "rcs":            40.0,
     "cargo":          40.0,
     # A lifting body is thin structure -- cargo's shell density suits it.
     "liftbody":       40.0,
@@ -271,9 +269,8 @@ PARTS = [
     ("mono_tank_r1",     "mono_tank",      "meshes/reaction_wheel_r1h0.25.obj",   "textures/reaction_wheel.png"),
     ("mono_tank_r1.5",   "mono_tank",      "meshes/reaction_wheel_r1.5h0.375.obj","textures/reaction_wheel.png"),
     ("mono_tank_r2.25",  "mono_tank",      "meshes/reaction_wheel_r2.25h0.5625.obj","textures/reaction_wheel.png"),
-    ("rcs_r1",           "rcs",            "meshes/reaction_wheel_r1h0.25.obj",   "textures/reaction_wheel.png"),
-    ("rcs_r1.5",         "rcs",            "meshes/reaction_wheel_r1.5h0.375.obj","textures/reaction_wheel.png"),
-    ("rcs_r2.25",        "rcs",            "meshes/reaction_wheel_r2.25h0.5625.obj","textures/reaction_wheel.png"),
+    # rcs_box is the only RCS hardware: a surface-mounted cube with authored
+    # bells, so it cannot claim a face its mount occupies (#1120).
     ("rcs_box",          "rcs",            "meshes/rcs_box.obj",                  "textures/rcs_box.png"),
     ("adapter_r1to1.5",  "adapter",        "meshes/adapter_r1to1.5.obj",          "textures/adapter.png"),
     ("adapter_r1to2.25", "adapter",        "meshes/adapter_r1to2.25.obj",         "textures/adapter.png"),
@@ -389,23 +386,15 @@ EXTRA_FIELDS = {
     "liftbody_4m":       {"body_lift": 0.9},
     "materials_pod":     {"experiment_family": "materials study",
                           "experiment_storage": "instrument"},
-    # rcs_box: a flush 0.3 m cube of five fixed bells, not a round pod. Mass and
+    # rcs_box: a flush 0.3 m cube of five fixed bells, surface-mounted. Mass and
     # the per-nozzle rating are DECLARED (like the decouplers'), and the bells
     # are authored -- the -X mount face has none, so it cannot fire into the
-    # hull (src/rcs.h, #428).
+    # hull (src/rcs.h, #428). It is the catalog's ONLY RCS hardware: a part whose
+    # rating scaled with its size implied bells on faces its mounts occupy
+    # (#1120 deleted rcs_r1/.5/2.25, which did exactly that as inline stack parts).
     "rcs_box":           {"mass": 12.0, "rcs_thrust": 60,
                           "rcs_nozzle_dirs": [
                               [1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]},
-    # Round pods carry six bells too, but the count used to be an accident of
-    # PartDef's legacy fallback (#1119). Authored here so the bell count is a
-    # chosen number; the six axes in the fallback's own order (+X,-X,+Y,-Y,+Z,-Z)
-    # keep the enumeration byte-identical.
-    "rcs_r1":            {"rcs_nozzle_dirs": [[1, 0, 0], [-1, 0, 0], [0, 1, 0],
-                                              [0, -1, 0], [0, 0, 1], [0, 0, -1]]},
-    "rcs_r1.5":          {"rcs_nozzle_dirs": [[1, 0, 0], [-1, 0, 0], [0, 1, 0],
-                                              [0, -1, 0], [0, 0, 1], [0, 0, -1]]},
-    "rcs_r2.25":         {"rcs_nozzle_dirs": [[1, 0, 0], [-1, 0, 0], [0, 1, 0],
-                                              [0, -1, 0], [0, 0, 1], [0, 0, -1]]},
     # barometer: tiny stick instrument, mass declared (mesh supplies shape only);
     # scores biome-specific science only on the surface (res/data/experiments.json).
     "barometer":         {"mass": 10, "experiment_family": "barometer",
@@ -743,15 +732,15 @@ def generate(name, ptype, mesh, texture):
         e["height"] = height
         e["capacity"] = {"jetfuel": clean(0.5 * volume * JET_FUEL_DENSITY)}
     elif ptype == "rcs":
-
-        # The round pods scale with their face area; rcs_box declares its mass
-        # and rating (a fixed box of nozzles does not scale).
-        declared = EXTRA_FIELDS.get(name, {})
-        e["mass"] = clean(declared.get("mass", volume * MASS_DENSITY[ptype]))
+        # A box of fixed nozzles scales with nothing: mass, the per-bell rating
+        # and the bells themselves are DECLARED (EXTRA_FIELDS), the way the
+        # decouplers' are. #1120: the size-scaled round pods that used to fall
+        # out of this branch claimed bells on their stack faces.
+        declared = EXTRA_FIELDS[name]
+        e["mass"] = clean(declared["mass"])
         e["radius"] = radius
         e["height"] = height
-        e["rcs_thrust"] = clean(declared.get("rcs_thrust",
-                                             RCS_THRUST_PER_M2 * radius * radius))
+        e["rcs_thrust"] = clean(declared["rcs_thrust"])
     elif ptype in ("decoupler", "docking_port", "barometer", "thermometer", "chute"):
         # mass is declared in EXTRA_FIELDS; radius/height follow the mesh
         e["mass"] = clean(EXTRA_FIELDS[name]["mass"])

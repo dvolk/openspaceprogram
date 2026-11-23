@@ -1131,26 +1131,43 @@ int main() {
 
     /* RCS nozzle enumeration (PartDef::rcsNozzleCount/Dir): the sim builds
        its allocator columns in this order and render draws a plume per slot
-       off Part::rcsFired -- a drift lands plumes on un-fired nozzles. */
+       off Part::rcsFired -- a drift lands plumes on un-fired nozzles.
+       #1120: a rating with no dirs used to become six bells along the part's
+       own axes, so every rated part was a full six-axis ring at the CoM.
+       The rating and the bells are one claim now, and BOTH halves alone are
+       refused -- like "wheel_axes" on a part with no "torque". */
     {
         const char *nz = "/tmp/test_shipload_rcsnoz.json";
         std::ofstream f(nz);
         f << "{ \"parts\": [ "
-             "{ \"name\": \"pod\", \"type\": \"engine\", \"mesh\": \"a.obj\", "
-             "\"texture\": \"a.png\", \"mass\": 1.0, \"rcs_thrust\": 60 }, "
              "{ \"name\": \"box\", \"type\": \"engine\", \"mesh\": \"a.obj\", "
              "\"texture\": \"a.png\", \"mass\": 1.0, \"rcs_thrust\": 60, "
              "\"rcs_nozzle_dirs\": [[1,0,0],[0,2,0],[0,0,1],[0,0,-1]] } ] }";
         f.close();
         PartsCatalog ncat = load_parts_catalog(nz);
-        const PartDef *pod = ncat.find("pod");
-        CHECK(pod->rcsNozzleCount() == 6);  // no dirs -> legacy six
-        const glm::dvec3 want[6] = {{1,0,0},{-1,0,0},{0,1,0},{0,-1,0},{0,0,1},{0,0,-1}};
-        for(int i = 0; i < 6; i++) { CHECK(vnear(pod->rcsNozzleDir(i), want[i])); }
         const PartDef *box = ncat.find("box");
-        CHECK(box->rcsNozzleCount() == 4);
+        CHECK(box->rcsNozzleCount() == 4);  // the authored count, not a magic six
         CHECK(vnear(box->rcsNozzleDir(1), glm::dvec3(0,1,0)));  // normalized, parse order
         std::remove(nz);
+        // The fallback this refuses is what made an RCS rating mean "thrust in
+        // six directions from the CoM" whatever the author actually placed.
+        const char *nb = "/tmp/test_shipload_rcsnobell.json";
+        std::ofstream g(nb);
+        g << "{ \"parts\": [ { \"name\": \"magic\", \"type\": \"engine\", \"mesh\": \"a.obj\", "
+              "\"texture\": \"a.png\", \"mass\": 1.0, \"rcs_thrust\": 60 } ] }";
+        g.close();
+        CHECK(expect_throw_saying([&]{ load_parts_catalog(nb); }, "needs \"rcs_nozzle_dirs\""));
+        std::remove(nb);
+        // The other half: bells the flight model can never fire (isRcs() reads
+        // the rating), so an author who writes only dirs has no RCS part.
+        const char *nt = "/tmp/test_shipload_rcsnorating.json";
+        std::ofstream h(nt);
+        h << "{ \"parts\": [ { \"name\": \"deadbell\", \"type\": \"engine\", \"mesh\": \"a.obj\", "
+              "\"texture\": \"a.png\", \"mass\": 1.0, "
+              "\"rcs_nozzle_dirs\": [[1,0,0],[-1,0,0]] } ] }";
+        h.close();
+        CHECK(expect_throw_saying([&]{ load_parts_catalog(nt); }, "needs \"rcs_thrust\""));
+        std::remove(nt);
         // The cap IS Part::rcsFired's size: a seventh dir must be refused at load.
         const char *ng = "/tmp/test_shipload_rcsnoz7.json";
         std::ofstream g7(ng);

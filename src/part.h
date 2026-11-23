@@ -94,8 +94,8 @@ struct Part {
        stop by the solver has no travel left for trim (#603, filed not fixed). */
     double trimDeg = 0.0;
     /* Per-nozzle thrust (N) fired THIS RCS substep, indexed by
-       PartDef::rcsNozzleCount()/rcsNozzleDir() (authored order, else the
-       legacy six). Transient like controlDefl: applyRcsForce zeroes it every
+       PartDef::rcsNozzleCount()/rcsNozzleDir() (the authored order).
+       Transient like controlDefl: applyRcsForce zeroes it every
        substep and rewrites the nozzles that fired; goOnRails zeroes it.
        Render-only -- the per-nozzle plumes (render.cpp). */
     double rcsFired[PartDef::kMaxRcsNozzles] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};

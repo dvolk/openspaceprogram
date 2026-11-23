@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 462 |
+| `invariant` | a behaviour or a player route the game must keep | 463 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 52 |
 | `harness` | CLI/test-engine plumbing, not game spec | 16 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **534** |
+| | **total** | **535** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -277,7 +277,7 @@ judgement. Select by number, name or path, e.g.
 | `science/830-the-dossier-carries-the-lag-beside-the-swing-it-modifies.txt` | invariant | A world the shipped catalogue gives a ground phase lag says so in the same block as the swing it bends -- the knob in radians of phase, how far past its sun its hottest ground can sit, and the measured solar day that converts the two -- while the swing itself stays the law's two ends, so the identity that ties those ends still closes, AND the block prints what the lag leaves: an equator-at-equinox pair strictly inside the law's ends and narrowing as the knob grows. |
 | `science/840-a-lagged-summit-prices-the-forcing-its-own-world-wears.txt` | invariant | On a world that authors both a phase lag and a height term, the atlas's summit row is the temperature pair that world's sea-level equator actually wears at that epoch, moved down by the lapse -- not the law's two ends moved down, which on AltoFrio read 97.2 to 319.9 K against a Surface Map painting 99.19 to 316.53: a summit colder than the coldest pixel and hotter than the hottest one. |
 
-## vab (44)
+## vab (45)
 
 | case | kind | pins |
 |---|---|---|
@@ -325,6 +325,7 @@ judgement. Select by number, name or path, e.g.
 | `vab/818-b-startship-alt-outside-the-sphere-of-influence.txt` | invariant | An altitude past the body's sphere of influence is refused by name, with the SOI's height printed, instead of placing a hull whose speed comes from another body's gravity. |
 | `vab/1073-a-ladder-click-places.txt` | invariant | A ladder armed from the palette surface-places on a tank click and launches with the ship. |
 | `vab/1078-a-small-ladders-click-place.txt` | invariant | A 0.5 m ladder armed from the palette surface-places on a tank click and launches with the ship. |
+| `vab/1120-a-catalog-rcs-rating-needs-authored-bells.txt` | invariant | A parts catalog that rates RCS without authoring bells is refused at boot and named, instead of booting a hull that thrusts six ways from its CoM. |
 
 ## save (61)
 

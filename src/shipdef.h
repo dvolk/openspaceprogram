@@ -369,8 +369,8 @@ struct PartDef {
                               // a body's own sea level is not the rating (#630).
     double jet_intake_area;   // m^2; effective intake/capture area (the ram term)
     double rcs_thrust;        // N; > 0 -> RCS translation authority (hydrazine mono).
-                              // Rated thrust PER ACTUATOR (per nozzle; for a
-                              // nozzle-less legacy pod, per axis).
+                              // Rated thrust PER ACTUATOR (per bell). A rating with
+                              // no rcs_nozzles is refused at load (#1120).
     /* Nozzle BELL (exhaust-ray) directions in the part's LOCAL frame,
        unit-normalized (src/rcs.h allocator, #428): a bell throws gas along
        its dir and the ship is pushed OPPOSITE it (reaction), so dirs are NOT
@@ -378,22 +378,24 @@ struct PartDef {
        box omits its mount face (a bell there would fire into the hull).
        For a surface-mounted part the mount side is the SURFACE NODE's side
        -- the synthesized srf node points -X, so the omitted bell is -X
-       (child +X faces away from the hull). Empty -> legacy omnidirectional
-       pod: six dirs along the part's own axes (symmetric pairs). */
+       (child +X faces away from the hull).
+       An RCS-rated part AUTHORS its bells: the loaders refuse a rating with
+       none (#1120). An empty list used to stand for a magical omnidirectional
+       pod -- six dirs along the part's own axes -- which invented hardware no
+       author placed: the ring's reach, its arms and its plumes all came from
+       the model, so a pod bolted flat to a hull still pushed the hull from
+       its CoM in all six directions. */
     std::vector<glm::dvec3> rcs_nozzles;
     /* The ONE nozzle enumeration (parsed order capped at kMaxRcsNozzles):
        the sim builds its allocator columns in this order and render draws a
        plume per slot off Part::rcsFired, so a plume always lands on a nozzle
-       that fired. */
+       that fired. kMaxRcsNozzles is the authoring cap, not a count a part
+       gets for free. */
     static constexpr size_t kMaxRcsNozzles = 6;  // == sizeof Part::rcsFired
-    size_t rcsNozzleCount() const { return rcs_nozzles.empty() ? kMaxRcsNozzles : rcs_nozzles.size(); }
+    size_t rcsNozzleCount() const { return rcs_nozzles.size(); }
     glm::dvec3 rcsNozzleDir(size_t i) const {
         assert(i < rcsNozzleCount());
-        if(!rcs_nozzles.empty()) { return rcs_nozzles[i]; }
-        // Legacy pod: +X,-X,+Y,-Y,+Z,-Z along the part's own axes.
-        glm::dvec3 d(0.0);
-        d[i / 2] = (i % 2 == 0) ? 1.0 : -1.0;
-        return d;
+        return rcs_nozzles[i];
     }
     /* Engine gimbal / TVC (src/gimbal.h): the nozzle may swing +/-gimbal_max
        (rad) at gimbal_rate (rad/s). gimbal_max = 0 -> the thrust line stays

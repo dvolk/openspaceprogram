@@ -1,0 +1,20 @@
+NAME catalog-rcs-rating-needs-authored-bells
+CLAIM A parts catalog that rates RCS without authoring bells is refused at boot and named, instead of booting a hull that thrusts six ways from its CoM.
+KIND invariant
+# #1120 deleted the fallback that supplied the bell half (an empty rcs_nozzle_dirs
+# meant six dirs along the part's own axes) and the rcs_r1/.5/2.25 pods that lived
+# on it. A rating and its bells are one claim, so the loader refuses either half
+# alone -- the same verdict "wheel_axes" on a part with no "torque" gets.
+#
+# box_ok is FIRST in the fixture so the refusal proves it was the rating with no
+# bells that failed, not the file: an authored five-bell box parses, the un-authored
+# 200 N rating is named in the sentence.
+#
+# tests/test_shipload.cpp pins both sentences at the loader. This case drives the
+# boot path, which is new: main.cpp loaded the catalog OUTSIDE a try/catch, so a
+# bad parts.json reached std::terminate with no message at all. EXIT 1 is as much
+# the claim as the text.
+ARGS --parts e2e/fixtures/parts_no_bells.json --timeout 4
+EXPECT parts: magic_pod in e2e/fixtures/parts_no_bells.json: "rcs_thrust" needs "rcs_nozzle_dirs": an RCS-rated part with no bells has no ring
+EXIT 1
+LIMIT 60

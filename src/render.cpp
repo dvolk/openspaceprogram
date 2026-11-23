@@ -1257,7 +1257,7 @@ void paintWorld(Game &g) {
                    (length 4, a 1-unit gap from the pivot). Start the strip
                    AT THE BELL'S FACE (part radius out along the ray, then
                    close the mesh's own gap): the flame is 4*sz long --
-                   ~0.8 m at the box's 60 N, ~1.4 m at a legacy pod's 200 N. */
+                   ~0.8 m at the box's 60 N, ~1.4 m at a round pod's 200 N. */
                 const double sz = 0.025 * std::sqrt(N);
                 const double sx = 0.25 * sz;
                 glm::dmat4 Model = glm::translate(podPos + zw * (sz - p->def->radius))

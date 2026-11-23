@@ -778,9 +778,17 @@ int main(int argc, char **argv)
     /* parts.json gives mass + behavior, the defs give stack order + offsets.
        Ships sharing a (body, scenario) get spaced apart; each pad ship stands
        on its named site, else the body's default. The catalog moves into the
-       Game below: everything that mints a Part or a ship reads it there. */
-    PartsCatalog parts =
-        load_parts_catalog(resdir::path(args.parts_file).c_str());
+       Game below: everything that mints a Part or a ship reads it there. A
+       data bug is reported like the roster's and the systems' rather than
+       allowed to reach std::terminate (#1120 gave this loader new refusals). */
+    PartsCatalog parts;
+    try {
+        parts = load_parts_catalog(resdir::path(args.parts_file).c_str());
+    } catch(const std::exception &e) {
+        printf("error: %s\n", e.what());
+        fflush(stdout);
+        return 1;
+    }
 
     /* World buildings: placed once physics + the part shader are live, before
        any ship stands on a pad. */

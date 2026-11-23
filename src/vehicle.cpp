@@ -5472,11 +5472,9 @@ static std::string nozzleTag(const glm::dvec3 &d) {
 void Vehicle::enumerateRcsNozzles() {
     /* Nozzle model (#428): authored dirs are the pods' BELL directions
        (exhaust rays, facing out of the exposed faces) in the part's LOCAL
-       frame; the ship is pushed OPPOSITE a bell. A pod without dirs is the
-       legacy omnidirectional unit -- six dirs along the part's own axes
-       (symmetric, so the sign flip is invisible there). rcs_thrust is PER
-       nozzle. The enumeration buffers are members (rcsNoz...): this runs
-       every substep and must not malloc. */
+       frame; the ship is pushed OPPOSITE a bell. rcs_thrust is PER nozzle.
+       The enumeration buffers are members (rcsNoz...): this runs every
+       substep and must not malloc. */
     std::vector<RcsNozzle> &noz = rcsNoz;
     std::vector<size_t> &nozPart = rcsNozPart;
     std::vector<size_t> &nozLocal = rcsNozLocal;
@@ -5487,6 +5485,9 @@ void Vehicle::enumerateRcsNozzles() {
     for(size_t pi = 0; pi < parts.size(); pi++) {
         const Part *p = parts[pi];
         if(!p->isRcs()) { continue; }
+        /* A rated pod with no bells is authored garbage: the loaders refuse it
+           (#1120). Only an in-memory PartDef -- a test fixture -- can get here. */
+        assert(p->def->rcsNozzleCount() > 0);
         const glm::dvec3 axes[3] = { partAxis(p, 0), partAxis(p, 1), partAxis(p, 2) };
         const auto addNozzle = [&](const glm::dvec3 &local, size_t localIdx) {
             glm::dvec3 d(0.0);
@@ -5499,8 +5500,8 @@ void Vehicle::enumerateRcsNozzles() {
             nozPart.push_back(pi);
             nozLocal.push_back(localIdx);
         };
-        // The one enumeration (PartDef::rcsNozzleDir): authored dirs in order,
-        // else the legacy six. Render walks the same slots for the plumes.
+        // The one enumeration (PartDef::rcsNozzleDir): the authored dirs, in
+        // order. Render walks the same slots for the plumes.
         for(size_t ni = 0; ni < p->def->rcsNozzleCount(); ni++) {
             addNozzle(p->def->rcsNozzleDir(ni), ni);
         }

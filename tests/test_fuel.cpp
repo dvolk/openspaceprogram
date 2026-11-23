@@ -114,6 +114,15 @@ static Part *addPart(Ship &s, double h2, double lox, bool engine = false,
     }
     d.fuel_barrier = barrier;
     d.rcs_thrust = rcsThrust;
+    if(rcsThrust > 0.0) {
+        /* #1120: a rated part AUTHORS its bells -- the six dirs along the
+           part's own axes that an empty list used to imply are gone, and
+           nothing here goes through the loader that refuses the mismatch.
+           Axis pairs, so every direction these tests demand is reachable at
+           the full rating. */
+        d.rcs_nozzles = { glm::dvec3(1,0,0), glm::dvec3(-1,0,0), glm::dvec3(0,1,0),
+                          glm::dvec3(0,-1,0), glm::dvec3(0,0,1), glm::dvec3(0,0,-1) };
+    }
     d.capacity[(int)ResourceType::Hydrazine] = hyd;
     /* The parser forces a fuel wall on every decoupler (shipdef.cpp), so a
        fixture that asks for a decoupler gets the wall with it -- staging treats a
@@ -927,8 +936,8 @@ static void test_applythrust_last_dribble_fits() {
        owned by the tick.cpp substep loop and emulated here);
      * the recorded vectors are the applied forces: the thrust entries sum
        to lastThrustForce, and the single pod's entry equals lastRcsAch.
-   One engine + one legacy RCS pod (empty rcs_nozzles -> the six axis bells),
-   both parked at the origin: engine thrust +Z, rcsDir +Z allocated onto the
+   One engine + one six-bell RCS pod (authored axis pairs), both parked at the
+   origin: engine thrust +Z, rcsDir +Z allocated onto the
    -Z bell (the ship is pushed opposite the bell). */
 static void test_force_overlay_recording() {
     printf("== Force overlay: lastForceVecs records the substep's applied forces ==\n");

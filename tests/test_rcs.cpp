@@ -145,10 +145,11 @@ static void test_bound_redistributes() {
     CHECK_TRUE(near(F.z, 200.0, 1e-6), "sub-rating demand fully delivered");
 }
 
-static void test_legacy_pod_is_omnidirectional() {
-    printf("== rcsAllocate: legacy 6-dir pod hits any demand within rating ==\n");
-    /* Six dirs along the part axes at one arm, like the synthesized legacy
-       pod. Any direction must land exactly (opposite pairs: one fires). */
+static void test_six_bell_ring_is_omnidirectional() {
+    printf("== rcsAllocate: a six-bell ring hits any demand within rating ==\n");
+    /* Six dirs along the part axes at one arm: an honest omnidirectional ring
+       (the shape the deleted round pods pretended to be). Any direction must
+       land exactly (opposite pairs: one fires). */
     std::vector<RcsNozzle> pod;
     const glm::dvec3 arms = glm::dvec3(0.5, 0.2, -0.3);
     const glm::dvec3 dirs[6] = {{1,0,0},{-1,0,0},{0,1,0},{0,-1,0},{0,0,1},{0,0,-1}};
@@ -163,7 +164,7 @@ static void test_legacy_pod_is_omnidirectional() {
     CHECK_TRUE(firing == 3, "one nozzle per used axis (no opposed waste-firing)");
     /* The pod is off-center (arms != 0), so spin comes along; that is the
        honest physics, and the demanded force still lands. */
-    CHECK_TRUE(glm::length(T) > 1.0, "off-center legacy pod also spins the ship");
+    CHECK_TRUE(glm::length(T) > 1.0, "an off-center ring also spins the ship");
 }
 
 static void test_zero_demand_and_empty() {
@@ -310,7 +311,7 @@ static void test_reachable_along_is_a_ceiling() {
     CHECK_NEAR(ucap * c45 * c45, glm::dot(F, u), 1e-6,
                "fed its own cap, an oblique ring delivers cos^2 of it: ask != delivery");
 
-    /* A legacy 6-dir pod: the pre-#1119 ceiling was one rating per PART, which is
+    /* A six-bell ring: the pre-#1119 ceiling was one rating per PART, which is
        neither of these. Six bells do not make 1200 N available in any direction;
        an axis reaches one rating, a diagonal reaches two bells' projections. */
     std::vector<RcsNozzle> pod;
@@ -335,7 +336,7 @@ int main() {
     printf("\n");
     test_bound_redistributes();
     printf("\n");
-    test_legacy_pod_is_omnidirectional();
+    test_six_bell_ring_is_omnidirectional();
     printf("\n");
     test_zero_demand_and_empty();
     printf("\n");
