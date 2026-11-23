@@ -137,7 +137,7 @@ void validateStaging(const BuildShip &ship, std::vector<std::string> &warns);
    also how a stray 9 in the middle of a ladder stops being seven dead presses (#1023).
 
    Decouplers at the same key SHARE a label on purpose. A ring of four is one press, and
-   it is shipped, not hypothetical -- #540 counts them on 4 of 32 hulls.
+   it is shipped, not hypothetical -- #540 counted them on four hulls.
 
    No cut may ride a press INSIDE the press of a cut that contains it. The outer press takes the
    inner cut with it (droppedPartsAtStage spans the whole subtree), so an authored pair running the
@@ -216,8 +216,8 @@ struct StagingPlan {
        full sentence -- 160+ characters, about twice the width of a screen once drawToasts puts
        it in the big font (#1027) -- so it belongs in the log and --fleet-report, not in a
        three-second banner. Named kinds are only where the generic verdict would be WRONG:
-       a build with no decoupler is a one-stage rocket, not a broken one, and that is 25 of the
-       32 shipped hulls (--fleet-report). Every other refusal says the stack has a shape the
+       a build with no decoupler is a one-stage rocket, not a broken one, and that is 28 of the
+       35 shipped hulls (--fleet-report). Every other refusal says the stack has a shape the
        short line cannot carry, which is why the detail stays in the log. */
     enum class Refusal : unsigned { Other, NoDecoupler };
     Refusal refusal = Refusal::Other;

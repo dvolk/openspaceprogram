@@ -9,17 +9,20 @@
 # Three clicks, one per outcome the button has:
 #   rootcut        refused: its only decoupler would have to take the whole ship, and that press
 #                  is refused in flight, so the label would be spent on nothing (#541)
-#   skiff          refused for the commonest reason of all -- no decoupler anywhere, 25 of the
-#                  32 shipped hulls -- where "can't" would call a one-stage ship broken
-#   central_radial applied: four parts move, and the note says the engine nobody numbered now
-#                  lights as soon as the stack cuts it loose (#1033). A real change, still
-#                  detail, so it is a log line and not a second banner. This hull used to earn a
-#                  different note -- "1 engine pair(s) carried one label and would now light
-#                  apart" -- because before #1033 its two engines came out of the pair pass
-#                  sharing one label while the plan pulled them apart. Now the free-label pass
-#                  numbers central_engine on its own (no cut under it, so the top label), and the
-#                  pair never reaches that count. staging.cpp's own survey measured this rule
-#                  over res/ships and named central_radial as the hull whose labels it moved.
+#   skiff          refused for the commonest reason of all -- no decoupler anywhere, 28 of the
+#                  35 shipped hulls say so in --fleet-report -- where "can't" would call a
+#                  one-stage ship broken
+#   central_radial applied: four parts move, and the note is the free-engine rule (#1033) speaking
+#                  for central_engine -- nothing sits under it, so it takes the top label and, as
+#                  the note says, "burns from the pad" rather than waiting for a press. A real
+#                  change, still detail, so it is a log line and not a second banner. This hull
+#                  used to earn a different note -- "1 engine pair(s) carried one label and would
+#                  now light apart" -- because before #1033 central_engine stayed on the floor
+#                  label while its pair booster_engine went up with the cut, so the plan pulled
+#                  apart a pair the build had labelled together. Now central_engine is numbered
+#                  with them, that count is zero, and one more part moved: 3 became 4.
+#                  staging.cpp's own survey of this rule over res/ships names central_radial as
+#                  the hull whose labels it moved.
 #
 # rootcut and central_radial need Game Debug's dev-vehicles switch (a fixture, a testship),
 # flipped once and left on. No --width/--height: a small window stops the VAB top bar taking

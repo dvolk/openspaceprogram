@@ -8343,7 +8343,7 @@ void drawVabUI(Game &g) {
                    Undo still points at the player's own last edit. Two verdicts rather than
                    one: a ship with no decoupler is not broken, it is a single stage, and "can't"
                    on it reads as a broken feature -- that is the commonest refusal by a wide
-                   margin (25 of 32 shipped hulls, --fleet-report). */
+                   margin (28 of 35 shipped hulls, --fleet-report). */
                 if(plan.refusal == StagingPlan::Refusal::NoDecoupler) {
                     g.toast("Auto-stage: this ship has no decoupler to split");
                 } else {

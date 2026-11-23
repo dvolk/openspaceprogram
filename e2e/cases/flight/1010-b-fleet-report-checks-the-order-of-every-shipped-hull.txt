@@ -8,7 +8,7 @@
 #
 # The auto-stage line (#1012) is the same argument from the other side: what the STACK implies,
 # printed on a copy so nothing rewrites res/ships. Its FORBID is an invariant rather than a
-# count -- a plan that applies must leave the checker with nothing to say, and over 32 hulls
+# count -- a plan that applies must leave the checker with nothing to say, and over 35 hulls
 # that is cheaper than a test and far less likely to drift.
 NAME fleet-report-checks-the-order-of-every-shipped-hull
 CLAIM --fleet-report runs the staging checker and the auto-stager over every hull and reports both verdicts.

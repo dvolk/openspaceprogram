@@ -1025,7 +1025,7 @@ std::vector<StageRow> computeStaging(const BuildShip &ship, double g,
    -- but a wide ladder is presses the player or the ascent law has to spend, which is #1018.
 
    Deliberately warn-only. A refuse today would mostly punish content: --fleet-report calls 7
-   of 32 hulls GROUNDED and 25 of the 32 are "testship" fixtures hidden from the picker
+   of 35 hulls GROUNDED and 25 of the 35 are "testship" fixtures hidden from the picker
    (#950). The one rule that could become a refuse is the root-part decoupler: it can never
    split, and game.cpp already refuses it at the press and spends the label anyway (#541), so
    the launch is not ruined -- but once #1011's window shows the part, a refuse there is the
@@ -1469,7 +1469,7 @@ StagingPlan autoStage(BuildShip &ship, bool fuelStaging, bool fromScratch) {
         /* One label, and the checker has nothing to say about it. Assigning anything else
            would invent presses that separate nothing. The kind is named because it is the
            refusal a short banner would get WRONG: nothing is broken here, the ship is a
-           single stage, and this is 25 of the 32 shipped hulls (--fleet-report). */
+           single stage, and this is 28 of the 35 shipped hulls (--fleet-report). */
         std::snprintf(buf, sizeof buf,
                       "refuse: no decoupler in the build -- one label is the answer, so there "
                       "is nothing to assign");

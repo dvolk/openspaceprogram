@@ -4,16 +4,20 @@
 # the undo is the build as it was loaded -- right down to the two verdicts the authored
 # numbering earns, which only exist if every label came home.
 #
-# Five, not the four this case shipped with: #1033 gives an engine the player never numbered
-# the label at which the stack cuts it loose, and on this hull that is eng_up -- authored 1,
-# plan 2, since dec_boost below it plans label 3. It is one more part to put back, which is
-# exactly what an undo has to be right about, so eng_up is pinned at both ends of the trip
-# (1012-b pins it at label 2 after the auto-stage).
+# Five, not the four this case shipped with: the free-engine rule (#1033) numbers an engine the
+# player never numbered one label below the smallest plan label among the cuts strictly beneath it,
+# and on this hull that is eng_up -- authored 1, plan 2, because dec_boost below it plans 3. One
+# more part to put back, which is exactly what an undo has to be right about. eng_up is pinned
+# here at the trip's END (stage=1 after Undo); --stage-dump takes exactly one instant, so this run
+# cannot see it at label 2 -- 1012-b pins that end of the trip.
 #
 # The Undo button is what a test drives, not Ctrl+Z: --sim-press carries no modifiers
 # (keys.h's slotSimKey), so a chord cannot be sent. Both paths call vabUndoStaging. The
 # toast spells the chord anyway ("-- Ctrl+Z to take it back"), so the EXPECT carries it: a
-# player is told how to undo, and this case can only press the button.
+# player is told how to undo, and this case can only press the button. That literal is a known
+# wart (#1135: the button two pixels away reads the same chord out of the key map, so a rebind
+# makes the toast lie); pinning it here is deliberate -- whoever fixes #1135 moves this EXPECT
+# with it rather than finding it red by surprise.
 #
 # No --width/--height: a small window stops the VAB top bar taking clicks (#1017).
 NAME undo-takes-a-bulk-renumber-back

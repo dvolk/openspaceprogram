@@ -10,11 +10,15 @@
 # presses, each of which drops something.
 #
 # Five parts move, not the four this case shipped with. eng_up carries label 1 like the rest of
-# the top of the stack, and #1033 numbers an engine the player never numbered one label below the
-# smallest cut under it -- dec_boost plans 3 here, so eng_up comes along to 2. That is a change
-# to the build, so it counts, and the note line pinned below is the game saying why. (Before
-# #1033 an engine like this stayed lit at the pad, which is the #1020 note instead. The toast's
-# "-- Ctrl+Z to take it back" tail is #1013, and 1013-a drives that undo.)
+# the top of the stack, and the free-engine rule (#1033) numbers an engine the player never
+# numbered one label below the smallest plan label among the cuts strictly beneath it -- dec_boost
+# plans 3 here, so eng_up comes along to 2. Labels count down and a thruster burns from
+# `stage >= the active label` (vehicle.cpp:7430), so label 2 means it starts at the press that
+# fires dec_boost: loose at last, and burning then. That is a change to the build, so it counts,
+# and the note line pinned below is the game saying so. Before #1033 eng_up stayed on the floor
+# label 1, which is NOT pad-lit -- the counter comes down from the top, so it would have waited
+# until both presses were spent. Neither shape prints the #1020 pad-lit note on this hull. (The
+# toast's "-- Ctrl+Z to take it back" tail is #1013; 1013-a drives that undo.)
 #
 # No --width/--height: a small window stops the VAB top bar taking clicks (#1017), and
 # every step here is a click.
