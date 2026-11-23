@@ -1987,10 +1987,10 @@
       "mass": 128,
       "radius": 2.0,
       "height": 1.6,
-      "body_lift": 0.9,
+      "body_lift": 0.65,
       "drag": 0.4,
       "drag_forward": 0.1,
-      "drag_side": 1.1,
+      "drag_side": 1.0,
       "drag_backward": 0.5
     }
   ]

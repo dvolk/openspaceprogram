@@ -141,13 +141,16 @@ DRAG_CD = {
     "cargo":          {"drag": 0.7, "drag_forward": 1.0, "drag_side": 1.1,
                        "drag_backward": 1.0},
     # #1097: the flat lifting-body hull. Edge-on is the low-drag case (the chord
-    # runs with the flow); broadside is a flat plate at rest. forward 0.1 /
-    # backward 0.5 is not a claim that a symmetric plate flies better one way --
-    # it is the catalog's bluffer-base convention (fuselage 0.10/0.20: the lee
-    # face sits in the wake). Its LIFT is not a surface law -- it rides the
-    # authored body_lift anchor in EXTRA_FIELDS -- and the lift+drag pair wants
-    # a joint first-flight fit, filed as #1107.
-    "liftbody":       {"drag": 0.4, "drag_forward": 0.1, "drag_side": 1.1,
+    # runs with the flow); broadside is a flat plate at rest, so cdSide IS the
+    # plate's normal-force coefficient: 1.0 x the ship's drag_cd 1.2 = 1.20, inside
+    # the measured 1.17-1.28. #1107 fitted that against body_lift as a PAIR -- the
+    # two anchors push the same hull 90 deg apart, so what has to land right is the
+    # pair's best glide, body_lift / (2 sqrt(cdSide x cdForward)) = 1.03, a flat
+    # plate's ~1:1. tests/test_aerosweep.cpp sweeps the shipped def and pins it.
+    # forward 0.1 / backward 0.5 is not a claim that a symmetric plate flies better
+    # one way -- it is the catalog's bluffer-base convention (fuselage 0.10/0.20:
+    # the lee face sits in the wake).
+    "liftbody":       {"drag": 0.4, "drag_forward": 0.1, "drag_side": 1.0,
                        "drag_backward": 0.5},
     "engine":         {"drag": 0.6, "drag_forward": 0.9, "drag_side": 1.0,
                        "drag_backward": 0.9},
@@ -382,9 +385,12 @@ EXTRA_FIELDS = {
     "kerbal":            {"mass": 87.05, "capacity": {"hydrazine": 10.0},
                           "inventory_capacity": 3, "experiment_storage": "courier"},
     "cargo":             {"inventory_capacity": 10},
-    # #1097: the signed body-lift anchor (drag.h::bodyLiftCdA). 0.9 on a flat
-    # plate is where the sin cos kernel stays honest.
-    "liftbody_4m":       {"body_lift": 0.9},
+    # #1097: the signed body-lift anchor (drag.h::bodyLiftCdA), fitted AGAINST the
+    # drag anchors by #1107 rather than on its own: over cdSide 1.0 / cdForward 0.1
+    # the pair's best glide is body_lift / (2 sqrt(cdSide x cdForward)), so 0.65
+    # buys 1.03 -- a flat plate's ~1:1 ceiling. The first pass at 0.9 bought 1.36,
+    # which is a plate gliding better than a plate. tests/test_aerosweep.cpp pins it.
+    "liftbody_4m":       {"body_lift": 0.65},
     "materials_pod":     {"experiment_family": "materials study",
                           "experiment_storage": "instrument"},
     # rcs_box: a flush 0.3 m cube of five fixed bells, surface-mounted. Mass and

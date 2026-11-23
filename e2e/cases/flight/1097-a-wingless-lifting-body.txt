@@ -7,31 +7,41 @@
 # -- the first part in the catalog to opt in; every pre-existing def stays at 0), no wings,
 # no tails, no pilot, spawned prograde into 8.5 km air and left completely alone.
 #
+# THE ANCHORS ARE A PAIR (#1107). body_lift and the three drag anchors were re-fitted
+# against each other on 2026-11-23: cl 0.65, cdForward 0.1, cdSide 1.0 (was 0.9 / 0.1 /
+# 1.1). At 90 deg the sin cos kernel is silent, so the whole broadside normal force is
+# drag_cd x cdSide = 1.20 -- inside a real flat plate's 1.17-1.28, where the old 1.32 sat
+# outside -- and the pair's best glide, cl / (2 sqrt(cdSide x cdForward)), is 1.03, i.e.
+# at the ~1:1 a plate can do rather than a third over it. tests/test_aerosweep.cpp sweeps
+# the shipped def over alpha and pins those three claims; this file pins what the PAIR
+# does in a real flight, which is where the ratio is read, not assumed.
+#
 # The hull is deliberately ONE part: the force acts at the part's PROJECTED
 # CENTROID (#1106), and liftbody_4m's plate is point-symmetric, so that centroid
 # IS its mount -- the one bolt, which is the pivot: the arm is zero and there is
 # no pitch moment at all. Attitude stays exactly where the bed put it
 # and the angle of attack grows only as gravity bends the flight path under it. That
-# makes the run readable: AoA is 22 deg at the first logged row and climbs as gravity
+# makes the run readable: AoA is 24.9 deg at the first logged row and climbs as gravity
 # steepens the path beneath the plate, and the whole story is the vertical force balance.
 #
-# THE RUN'S SHAPE (measured): 800 scripted ticks at time-accel 4 print 13 [drag] rows
-# 4 sim-seconds apart, t=4 s to t=52 s. At t=4 the hull flies 21.7 deg AoA with
-# SideCdA 0.00 / BodyCdA +1.56: the #947 law acts on this hull NOTHING (every part
+# THE RUN'S SHAPE (measured, byte-identical over four concurrent copies -- a free hull
+# has no contact solver to split on): 800 scripted ticks at time-accel 4 print 13 [drag]
+# rows 4 sim-seconds apart, t=4 s to t=52 s. At t=4 the hull flies 24.9 deg AoA with
+# SideCdA 0.00 / BodyCdA +1.35: the #947 law acts on this hull NOTHING (every part
 # exposed, refused floored to zero) while the #1097 law acts on everything it sees --
 # the exposed half of the two laws' split, in the shipped log (the middle and hidden
 # halves are pinned in test_aerosweep). |F| settles to ~1.2 kN and holds against the
 # 1.26 kN weight (128 kg) for the rest of the fall; Ld stays positive throughout
-# (1.29 -> 0.08 as the flow swings under the plate, BodyCdA -- a force meter now, q x
-# it is the summed lift's size -- peaking +3.29 at t=20 then decaying to +0.67), and
-# the 48 s of flying lose 1.0 km of altitude where a ballistic drop would have lost
-# ~11 km. With one part there is no restoring moment, so the plate never trims at a
-# fixed AoA -- a hull that cruises level needs tails, and that balance is a bed of
-# its own, not this law's job. Since #1106 the same rows also print a CLa=/SM= pair
-# for a wingless hull (CLa>0, SM +0.00 neutral here); the pair's numbers are pinned
-# by the hull-only benches in test_aerosweep, not re-pinned on this bed.
+# (0.96 -> 0.01 as the flow swings under the plate, BodyCdA -- a force meter now, q x
+# it is the summed lift's size -- peaking +2.36 at t=12 then decaying to +0.10 as
+# cos -> 0 at 88.9 deg), and the 48 s of flying lose 1.12 km of altitude where a
+# ballistic drop would have lost ~11 km. With one part there is no restoring moment, so
+# the plate never trims at a fixed AoA -- a hull that cruises level needs tails, and that
+# balance is a bed of its own, not this law's job. Since #1106 the same rows also print a
+# CLa=/SM= pair for a wingless hull (CLa>0 at first, SM +0.00 neutral here); the pair's
+# numbers are pinned by the hull-only benches in test_aerosweep, not re-pinned on this bed.
 NAME wingless-lifting-body
-CLAIM A flat plate with an authored body_lift and no lifting surfaces flies: BodyCdA > 0 on every row while SideCdA stays 0.00 (the exposed half of the #947/#1097 split) and the surface-lift column |L| stays 0, Ld > 0, and the sink is bounded far short of ballistic.
+CLAIM A flat plate with an authored body_lift and no lifting surfaces flies: BodyCdA > 0 on every row while SideCdA stays 0.00 (the exposed half of the #947/#1097 split) and the surface-lift column |L| stays 0, Ld > 0 and never better than a flat plate's, and the sink is bounded far short of ballistic.
 KIND golden
 ARGS --startship liftbody,res/ships/liftbody.json,Kerbin,flying-cruise
 ARGS --drag-log --time-accel 4 --sim-steps 800 --timeout 300 --no-paint
@@ -41,12 +51,13 @@ FORBID error:
 CHECK len(drag) >= 10
 # THE BILL EXISTS, at a scale that is not rounding. BodyCdA folds the sin in (q x it
 # is the summed body-lift force's SIZE): the plate's silhouette on the row (A=) is
-# 4.2..6.6 m2 and body_lift 0.9 x drag_cd 1.2 x sin x cos puts it at +1.56 on the
-# first row, peaking +3.29 at t=20, decaying to +0.67 at t=52 as the near-vertical
-# fall drives cos -> 0. The 0.5 floor keeps that honest tail in with a quarter to
-# spare; 2.5 on the peak is the same margin mid-arc.
-CHECK all(d["bodycda"] >= 0.5 for d in drag if d.get("bodycda") is not None)
-CHECK max(d["bodycda"] for d in drag if d.get("bodycda") is not None) >= 2.5
+# 4.5..6.7 m2 and body_lift 0.65 x drag_cd 1.2 x sin x cos puts it at +1.35 on the
+# first row, peaking +2.36 at t=12 and decaying to +0.10 at t=52, where the near-
+# vertical fall (AoA 88.9) drives cos -> 0. 2.0 on the peak keeps the mid-arc story
+# with 15% to spare; 0.05 on the tail is the print quantum with a factor of two, which
+# is all a decaying column can honestly promise.
+CHECK all(d["bodycda"] >= 0.05 for d in drag if d.get("bodycda") is not None)
+CHECK max(d["bodycda"] for d in drag if d.get("bodycda") is not None) >= 2.0
 # THE PARTITION, ITS EXPOSED HALF: a fully exposed hull is refused NOTHING by the
 # axial union, so the crossflow law keeps its hands off while the body-lift law acts
 # on everything it sees. Pinned exactly on 0.00: this hull is one part, so "exposed"
@@ -59,9 +70,25 @@ CHECK all(d["sidecda"] == 0.0 for d in drag if d.get("sidecda") is not None)
 CHECK all(d["L"] == 0.0 for d in drag)
 # The force is perpendicular to the flow, so it reads as Ld>0 with no wings aboard
 # (the |L| column is SURFACE lift and stays 0 -- Ld= is the air's split of the total
-# force, which is exactly the point). Measured 1.29 at t=4, still >= 0.9 at t=8.
+# force, which is exactly the point). Measured 0.96 at t=4, still >= 0.9 at t=8.
 CHECK all(d["ld"] > 0.0 for d in drag if d.get("ld") is not None)
 CHECK any(d["ld"] >= 0.9 for d in drag if d.get("ld") is not None and d["t"] <= 8.0)
+# THE PAIR'S CEILING, from the flight rather than the bench: the closed form
+# cl / (2 sqrt(cdSide x cdForward)) = 1.03 at 17.5 deg, and no row of a real arc beats
+# it (measured max 0.96). A hull that ever logged Ld above ~1.05 with no wing aboard
+# would be gliding better than a flat plate, which is the #1107 failure mode.
+CHECK max(d["ld"] for d in drag if d.get("ld") is not None) <= 1.05
+# ONE LINE OF ARITHMETIC, not two laws: Ld x (drag_cd x Cd x A) == BodyCdA on every
+# row that prints enough digits (1.2 is the default bill multiplier; 5% is the print
+# quantum -- the worst measured is 2.7%, on the row where Ld rounds from 0.13). The
+# lift column and the drag column are the same pair of anchors seen from two sides.
+CHECK all(abs(d["ld"] * 1.2 * d["cd"] * d["a"] - d["bodycda"]) <= 0.05 * d["bodycda"] for d in drag if d.get("ld") is not None and d["ld"] >= 0.1 and d.get("a") is not None)
+# THE BROADSIDE ANCHOR, read off the arc: the hull weathervanes toward broadside
+# (AoA 24.9 -> 88.9), so the axial Cd climbs to cdSide = 1.0 and cannot pass it --
+# the blend's max over alpha IS cdSide for this def. Under the old 1.1 the top row
+# printed 1.091; a ceiling here is what makes the refit visible in flight.
+CHECK all(d["cd"] <= 1.0005 for d in drag)
+CHECK max(d["cd"] for d in drag) >= 0.9995
 # ONE-PART HULL: the lift lands on the projected centroid, and this plate's
 # centroid IS the mount, and the mount IS the pivot -- the lever reads zero
 # honestly rather than hiding a fabricated arm (cf. #947's review, where a
@@ -69,6 +96,6 @@ CHECK any(d["ld"] >= 0.9 for d in drag if d.get("ld") is not None and d["t"] <= 
 # mean something: the arm is now real geometry that happens to be zero, not a
 # law that cannot see one.
 CHECK all(d["bodycp"] == 0.0 for d in drag if d.get("bodycp") is not None)
-# THE GLIDE, bounded: 48 s of flying lose 1.02 km (measured); a ballistic fall from the
+# THE GLIDE, bounded: 48 s of flying lose 1.12 km (measured); a ballistic fall from the
 # same bed would lose ~11.3 km. The 3 km floor is that gap with room for the transient.
 CHECK drag[-1]["alt_asl"] - drag[0]["alt_asl"] > -3000.0

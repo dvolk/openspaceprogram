@@ -1467,9 +1467,10 @@ void tick(Game &g) {
                    can see is the along-flow part of the offset (#512's caveat).
                    0.00 is the reading for
                    every flight-pinned hull; the catalog's liftbody_4m is the
-                   first part a player can opt in with, its drag anchors not yet
-                   re-fitted (partCd's drag_side share already prices some crossflow
-                   pressure). */
+                   first part a player can opt in with, its body_lift and drag
+                   anchors fitted as a PAIR (#1107): drag_cd x drag_side = 1.20
+                   at broadside, best glide 1.03 -- because partCd's drag_side
+                   share already prices some crossflow pressure. */
                 if(g.ship->lastDragAlphaValid) {
                     printf(" SideCdA=%.2f m2 SideCp=%+.2f m",
                            g.ship->lastSideCdA, g.ship->lastSideCpLever);

@@ -64,6 +64,7 @@
 #include <glm/glm.hpp>
 
 #include "drag.h"      // flowDirection, liftCurve, liftSlopeMach, waveCd, kSupersonicMach
+#include "shipdef.h"   // load_parts_catalog: #1107 reads the shipped anchors, no copy
 #include "physics.h"   // SetAngVelocity: the rate column
 #include "vehicle.h"   // Vehicle + Part (inline); pulls in Bullet (btcommon.h)
 #include "terrain.h"   // TerrainBody: the air this hull flies in
@@ -97,8 +98,10 @@ static TerrainBody *mkAirBall() {
    meshThicknessToChord read; a def with no mesh falls back to the authored cylinder
    and bills a plate's planform as its edge (#559), so a bench about areas has to give
    the box. */
-static Part *mkPlate(std::deque<PartDef> &defs, const char *name, double mass,
-                     double mx, double my, double mz) {
+/* The collision box and its silhouette verts, for a def that lives somewhere else.
+   test_the_lifting_body_pair_is_fitted hangs this on res/data/parts.json's own part so
+   its pins read the SHIPPED anchors instead of a hand-copy of them. */
+static Body *mkBoxBody(double mass, double mx, double my, double mz) {
     Body *b = new Body;
     b->btBody = nullptr;
     b->shape = new btBoxShape(btVector3((float)mx, (float)my, (float)mz));
@@ -107,6 +110,12 @@ static Part *mkPlate(std::deque<PartDef> &defs, const char *name, double mass,
         b->hullVerts.push_back(glm::dvec3(
             (i & 1) ? mx : -mx, (i & 2) ? my : -my, (i & 4) ? mz : -mz));
     }
+    return b;
+}
+
+static Part *mkPlate(std::deque<PartDef> &defs, const char *name, double mass,
+                     double mx, double my, double mz) {
+    Body *b = mkBoxBody(mass, mx, my, mz);
     defs.push_back(PartDef());
     PartDef &d = defs.back();
     d.name = name;
@@ -1271,6 +1280,144 @@ static void test_hull_lift_arm_is_the_projected_centroid() {
     teardown(fwd);
 }
 
+/* --- the shipped pair (#1107) -------------------------------------------------
+   Every other body-lift pin here is about the LAW on a def this file authored. This
+   one is about the CONTENT: every catalog part that opts in with body_lift, read out
+   of res/data/parts.json, so the numbers are the ones the game bills.
+
+   The pair is one hull part's two normal-force anchors -- the axial blend's drag_side
+   share and body_lift -- and they have to be answered TOGETHER, because at mid alpha
+   they push the same hull from two directions that are 90 deg apart. Three questions,
+   all of them ratios so the fixture's area cancels:
+
+     BROADSIDE (alpha 90). The sin cos kernel is silent there (sin 90 = 1, cos 90 = 0),
+       so the whole normal force is the axial blend: drag_cd x drag_side per unit q per
+       unit broadside silhouette. A real flat plate's normal-force coefficient sits
+       near 1.17-1.28; the model's own Newtonian guardrail (the +-3.0 body_lift bound
+       in shipdef.cpp) puts the ceiling at 2.0.
+     THE GLIDING CEILING. For this kernel L/D(alpha) = cl sin a cos a / (cdS sin^2 a +
+       cdF cos^2 a), so the best glide is closed-form: cl / (2 sqrt(cdS x cdF)), at
+       tan a = sqrt(cdF / cdS). A flat plate glides at about 1:1 -- an anchor that buys
+       more than that is billing pressure on the windward face that the leeward face
+       then has to give back as suction the plate cannot make.
+     THE NEWTONIAN SUM. A HALF-shielded opted-in part takes #947's crossflow AND this
+       kernel's force (different area measures, drag.h), so the pair's TOTAL force
+       perpendicular to the part -- D sin a + L cos a -- against a Newtonian plate of
+       the part's own broadside silhouette A(90), has to stay under 2 sin^2 a.
+
+   liftbody_4m was authored 0.9 / 1.1 / 0.1 (cl / cdS / cdF): broadside 1.32, which is
+   outside the plate band, and a 1.36 glide, a third over the plate ceiling -- the two
+   halves were each picked, never against each other. Fitted as a pair: 0.65 / 1.0 /
+   0.1 puts broadside at 1.20 (inside the band) and the glide at 1.03 (at the ceiling).
+   The flight arc that rides these numbers is e2e flight/1097-a. */
+static void test_the_lifting_body_pair_is_fitted() {
+    printf("== #1107: the catalog's body_lift anchors, read off res/data/parts.json ==\n");
+    PartsCatalog cat = load_parts_catalog("res/data/parts.json");
+    int fitted = 0;
+    for(const PartDef &d : cat.parts) {
+        if(d.body_lift == 0.0) { continue; }
+        fitted++;
+        CHECK_TRUE(d.has_mesh_extents,
+                   "a shipped part with a mesh carries the extents the load read");
+        const double mx = 0.5 * (d.mesh_max.x - d.mesh_min.x);
+        const double my = 0.5 * (d.mesh_max.y - d.mesh_min.y);
+        const double mz = 0.5 * (d.mesh_max.z - d.mesh_min.z);
+        Vehicle *v = new Vehicle;
+        v->name = d.name;
+        Part *p = new Part;
+        p->body = mkBoxBody(d.mass, mx, my, mz);
+        p->def = &d;
+        p->stage = 1;
+        v->setRoot(p);
+        TerrainBody *air = mkAirBall();
+        v->m_parent = air;
+        v->init();
+        v->placeShip(glm::dvec3(0.0, 0.0, 601000.0), glm::dmat3(1.0));
+        const double cdMul = v->drag_cd;
+        printf("[pair] %s: box %.2f x %.2f x %.2f m, cl %+.2f, cdF %.2f cdS %.2f "
+               "cdB %.2f, drag_cd %.2f\n", d.name.c_str(), 2.0 * mx, 2.0 * my,
+               2.0 * mz, d.body_lift, d.drag_forward, d.drag_side, d.drag_backward,
+               cdMul);
+
+        /* Broadside first: the pass's own Cd at 90 deg IS drag_side (partCd's c = 0
+           row), so the readout and the anchor cannot drift apart. */
+        fly(v, 100.0, 90.0, 0.0);
+        report(v, 100.0, 90.0, 0.0);
+        const double broadside = cdMul * v->lastDragCd;
+        CHECK_REL(v->lastDragCd, d.drag_side, 1e-9,
+                  "at 90 deg the pass's Cd is the authored drag_side, nothing else");
+        CHECK_TRUE(broadside >= 1.17 && broadside <= 1.28,
+                   "the broadside bill drag_cd x drag_side sits inside a real flat "
+                   "plate's 1.17-1.28 normal-force range");
+        const double A90 = v->lastDragArea;
+        CHECK_TRUE(A90 > 0.0, "a broadside hull bills area");
+
+        /* The alpha sweep, 100 m/s: Mach 0.30, under the transonic band, so no wave
+           term moves the blend the closed form below assumes. */
+        const double alphas[] = { 0.0, 10.0, 15.0, 18.0, 20.0, 30.0, 45.0,
+                                  60.0, 70.0, 80.0, 90.0 };
+        double ldPeak = 0.0, cnPeak = 0.0, cnAtPeak = 0.0;
+        for(double al : alphas) {
+            fly(v, 100.0, al, 0.0);
+            report(v, 100.0, al, 0.0);
+            const double a = al * std::numbers::pi / 180.0;
+            const double s = std::sin(a), c = std::cos(a);
+            const double q = 0.5 * v->lastDragRho * 100.0 * 100.0;
+            const double D = v->lastFlowDrag, L = v->lastFlowLift;
+            CHECK_TRUE(D > 0.0, "the axial bill is never negative");
+            /* The pair's own ratio, read off the columns --drag-log prints: lift over
+               drag IS the body-lift column over the axial bill. Exact because one
+               part's visible silhouette is the union, so the area cancels here. */
+            const double ld = L / D;
+            CHECK_REL(v->lastBodyCdA, ld * cdMul * v->lastDragCd * v->lastDragArea,
+                      1e-9, "Ld x (drag_cd x Cd x A) == BodyCdA: the two halves of "
+                            "the pair are one line of arithmetic");
+            const double cn = (D * s + L * c) / (q * A90);
+            printf("[pair] alpha %5.1f  L/D %7.4f  D %9.2f N  L %9.2f N"
+                   "  CN %7.4f qS  Newtonian %7.4f qS\n",
+                   al, ld, D, L, cn, 2.0 * s * s);
+            if(ld > ldPeak) { ldPeak = ld; }
+            if(cn > cnPeak) { cnPeak = cn; cnAtPeak = al; }
+        }
+        /* The closed form, checked against the sweep rather than quoted: the sampled
+           rows cannot beat the analytic peak, and one of them lands within a few
+           percent of it. */
+        const double ldWant = d.body_lift / (2.0 * std::sqrt(d.drag_side * d.drag_forward));
+        printf("[pair] %s: broadside %.3f  measured L/D peak %.4f  closed form %.4f"
+               "  (at tan a = sqrt(cdF/cdS) = %.2f, a = %.1f deg)  CN peak %.3f qS at "
+               "%.0f deg (Newtonian 2.0 qS)\n",
+               d.name.c_str(), broadside, ldPeak, ldWant,
+               std::sqrt(d.drag_forward / d.drag_side),
+               std::atan(std::sqrt(d.drag_forward / d.drag_side)) * 180.0
+                   / std::numbers::pi,
+               cnPeak, cnAtPeak);
+        CHECK_TRUE(ldPeak <= ldWant * 1.001,
+                   "no sampled alpha beats the closed-form glide ceiling");
+        CHECK_REL(ldPeak, ldWant, 0.05,
+                  "and a sampled row gets within 5% of it, so the ceiling is real "
+                  "and not an unreachable formula");
+        CHECK_TRUE(ldWant <= 1.05,
+                   "the pair's best glide stays at the flat plate's ~1:1 -- an anchor "
+                   "above it bills a leeward suction the plate cannot make");
+        CHECK_TRUE(cnPeak <= 2.0,
+                   "the pair's total normal force never exceeds a Newtonian plate's "
+                   "2 qS on the same broadside silhouette");
+
+        /* The blend's other half, for the record: past 90 deg the axial share flips to
+           drag_backward, where the sin cos kernel mirrors into the other side. Nothing
+           in the shipped arc runs there -- a hull weathervanes TO broadside, it does
+           not fly backwards -- so this is a print, not a claim. */
+        fly(v, 100.0, 120.0, 0.0);
+        printf("[pair] alpha 120 (record only): Cd %.3f  L/D %7.4f  BodyCdA %+.3f\n",
+               v->lastDragCd, v->lastFlowLift / v->lastFlowDrag, v->lastBodyCdA);
+        delete v->m_parent;
+        v->m_parent = nullptr;
+        delete v;
+    }
+    CHECK_TRUE(fitted == 1,
+               "exactly one catalog part opts in today, so this loop is the family");
+}
+
 /* THE RATE COLUMN: the same hull with an angular velocity, which is #487's whole
    question and the column #655's header said was missing. A rotating airframe carries
    each surface through the air (drag.h::localFlow, #483), so every surface meets the
@@ -1438,6 +1585,7 @@ int main() {
     test_body_lift_stays_out_of_the_surface_systems();
     test_hull_only_build_answers_the_pair();
     test_hull_lift_arm_is_the_projected_centroid();
+    test_the_lifting_body_pair_is_fitted();
     test_rate_column();
     test_neutral_fin_alpha_gate();
     printf("%d checks, %d failures\n", g_checks, g_failures);

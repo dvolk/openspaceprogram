@@ -511,8 +511,12 @@ struct PartDef {
        family opts in WITH re-fitted drag anchors, because the part's drag_side
        already bills a crossflow pressure share (partCd's drag_side x (1-c^2)
        weight) and opting in without re-fitting over-charges pressure. The
-       catalog's one opt-in so far, liftbody_4m, is a new family with no legacy
-       pins: its anchors are a first guess, not a re-fit. Mutually exclusive
+       catalog's one opt-in so far, liftbody_4m, IS fitted as a pair (#1107):
+       drag_cd x drag_side = 1.20 sits inside a real flat plate's 1.17-1.28
+       broadside, and body_lift / (2 sqrt(drag_side x drag_forward)) = 1.03 keeps
+       the pair's best glide at the ~1:1 a plate can do. tests/test_aerosweep
+       sweeps every opted-in catalog part over alpha and pins both halves, so a
+       family cannot opt in unfitted without going red. Mutually exclusive
        with the surface laws: a part with lift_area or control_area lifts
        through liftCurve/controlForce and must not pay twice. */
     double body_lift = 0.0;
