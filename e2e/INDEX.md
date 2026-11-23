@@ -8,9 +8,9 @@ kind says how much weight the assertions carry.
 |---|---|---|
 | `invariant` | a behaviour or a player route the game must keep | 465 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 53 |
-| `harness` | CLI/test-engine plumbing, not game spec | 16 |
+| `harness` | CLI/test-engine plumbing, not game spec | 18 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **538** |
+| | **total** | **540** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -574,7 +574,7 @@ judgement. Select by number, name or path, e.g.
 | `render/892-radial-pair-in-a-tipping-bubble.txt` | invariant | Inside a building bubble whose deck tips, the radial in/out pair tracks the planet instead of the station. |
 | `render/1133-b-surfmap-marks-the-polar-pad.txt` | golden | The Surface Map marks all three of Kerbin's ground pads. |
 
-## harness (17)
+## harness (19)
 
 | case | kind | pins |
 |---|---|---|
@@ -583,6 +583,8 @@ judgement. Select by number, name or path, e.g.
 | `harness/136-ui-list-title.txt` | harness | The live imgui registry reports the title menu's labels. |
 | `harness/137-ui-click-failures.txt` | harness | A bad --ui-click path fails loudly as not-found, never as a stray click. |
 | `harness/155-idle-headless-never.txt` | harness | The offscreen driver never reports the window occluded. |
+| `harness/169-a-covered-click-fails-loudly.txt` | harness | A --ui-click whose point imgui resolves to a different window refuses with MISMATCH instead of passing as the aimed widget. |
+| `harness/169-b-scrolled-out-row-reports-not-found.txt` | harness | A palette row scrolled out of view reports not found rather than clicking a stranger, and --ui-scroll makes it clickable. |
 | `harness/175-sim-press-digit-keys.txt` | harness | Digit keys sent by --sim-press parse as digits, not raw SDL keycodes. |
 | `harness/272-ui-click-disabled-widget.txt` | harness | A click on a disabled widget lands but activates nothing. |
 | `harness/274-ui-combo-map-plane.txt` | harness | A Combo is addressable by its label and its popup by nesting depth. |

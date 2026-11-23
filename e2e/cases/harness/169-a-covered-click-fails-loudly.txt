@@ -1,0 +1,38 @@
+# #169 asked to see the MISMATCH guard fire, because until then it was a message
+# nobody had evidence for. This is that evidence: an item that is drawn, labelled
+# and legal to aim at, with another window on top of it at the release frame.
+#
+# The Surface Map window's Body combo is the cover. At 1600x900 its combo frame is
+# 548,287-919,307 and the popup opens directly beneath it, so the popup's preview
+# row -- the combo's own display of its current value -- spans 548,313-872,331.
+# The row under it, "Reset view", is 651,311-732,331: its centre 692,321 sits
+# inside that preview row. The aimed button stays in the registry because imgui
+# submits covered windows too -- occlusion is not clipping -- so the aim resolves,
+# the point is the button's centre, and at release imgui has hovered the popup row
+# instead. That is the whole guard: compare what imgui hovered against what was
+# aimed at, and refuse if they disagree.
+#
+# What this case deliberately does NOT claim is that nothing happened. The hook
+# presses at the aimed point and only then compares hovers, so a covered click
+# lands on whatever was drawn there -- here the preview row, which re-selects the
+# body the map already had. Hence both lines for one path: a pressed line and a
+# refusal. A MISMATCH is a loud report, not an undo; a case that aims at a covered
+# widget should expect side effects.
+#
+# The aim is by path, so the geometry is not pinned to a pixel size: a combo popup
+# always opens under its frame. What is pinned is the reason string's first words.
+# The hovered label is the popup preview row's label -- "active ship's body
+# (Earth)" -- so if the shipped combo ever stops drawing that row first, this
+# reason wording changes and the case wants re-reading.
+NAME covered-click-fails-loudly
+CLAIM A --ui-click whose point imgui resolves to a different window refuses with MISMATCH instead of passing as the aimed widget.
+KIND harness
+ARGS --width 1600 --height 900 --timeout 7 --system res/systems/solar_system.json
+ARGS --startship v,res/ships/skiff_trim.json,Earth,pad
+ARGS --ui-click 2000,"Windows/Surface Map"
+ARGS --ui-click 3200,"Surface Map/Body"
+ARGS --ui-click 4400,"Surface Map/Reset view"
+EXPECT path="Windows/Surface Map" window="Windows" label="Surface Map"
+EXPECT path="Surface Map/Body" window="Surface Map" label="Body"
+EXPECT path="Surface Map/Reset view" FAILED MISMATCH
+FORBID error:

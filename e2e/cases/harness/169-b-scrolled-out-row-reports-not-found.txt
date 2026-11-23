@@ -1,0 +1,55 @@
+# #169 also asked to see the "clipped" refusal fire, on the theory that an item
+# scrolled out of its child window registers with a rect that would land the click
+# on whatever is drawn there. Measured, that is not what a scrolled row does, and
+# the shape that does happen is worth pinning because every palette case hits it.
+#
+# imgui's test-engine ITEM_ADD hook does fire before ItemAdd()'s clip early-out
+# (imgui.cpp:11503, then the IsClippedEx copy at 11509-11515), so a row below the
+# fold IS in the registry. But the label comes from the separate ITEM_INFO call,
+# which every widget makes only AFTER ItemAdd returns true -- so a fully clipped
+# row is registered anonymous. --ui-click cannot match an anonymous entry, and
+# --ui-list prints only labelled ones. Hence:
+#
+#   [uiclick] path="Palette/Ladder (2m)##ladder" FAILED not found (no such item
+#             drawn within 2.0s; --ui-list dumps what is)
+#
+# Measured on the VAB palette at 1920x1080 (rows 18 px apart from y=42): unscrolled
+# the dump prints 26 palette rows and the last is "Jet (2m)" at 1642,474-1884,492,
+# while items= says 139 registered. --ui-scroll the list to the bottom and the same
+# dump prints the ladder at 1642,415-1884,433 and NO "Jet (2m)" -- the labelled set
+# is exactly the rows imgui thought were visible, and which rows those are follows
+# the scrollbar. So the registry never offers a clickable rect for a row that is
+# out of view, and the click never lands on a stranger: it says not found.
+#
+# Two consequences pinned here. (1) The remedy is --ui-scroll, not a different
+# label: the second click presses. (2) A --ui-click keeps polling for 2.0 s, so a
+# click whose wait is still open when a later --ui-scroll brings the row in WILL
+# press it -- measured with the click at 2000 ms landing at 3.07 s after a scroll
+# at 3.01 s. A case that wants to see the failure must let the 2.0 s expire before
+# scrolling, which is why the scroll here waits until 4600 ms.
+#
+# The " clipped" tag this case cannot produce is not a bug in the dump: it marks a
+# LABELLED item whose drawn rect is degenerate, and no shipped window produces one.
+# Making the not-found message name scrolling as the likely cause is filed
+# separately from #169, which the guard-firing question can close on.
+NAME scrolled-out-palette-row-is-not-drawn
+CLAIM A palette row scrolled out of view reports not found rather than clicking a stranger, and --ui-scroll makes it clickable.
+KIND harness
+ARGS --timeout 9 --frame-cap 30
+ARGS --startship racer,res/ships/racer.json,Kerbin,pad
+ARGS --sim-press 1000,0,4
+ARGS --ui-click 2000,"Palette/Ladder (2m)##ladder"
+ARGS --ui-scroll 4600,"Palette/Capsule (2m)##capsule",-30
+ARGS --ui-click 5400,"Palette/Ladder (2m)##ladder"
+ARGS --ui-list 6200
+EXPECT path="Palette/Ladder (2m)##ladder" FAILED not found
+EXPECT path="Palette/Ladder (2m)##ladder" window="Palette/palette_parts_
+EXPECT [uiscroll]
+FORBID FAILED clipped
+FORBID error:
+# The out-of-view half of the same fact, read off the dump taken with the list at
+# the bottom: the row that was on screen at rest is no longer offered at all, and
+# the ladder is. items= says more is registered than the dump prints.
+CHECK len([ln for ln in out.splitlines() if 'Jet (2m)' in ln]) == 0
+CHECK len([ln for ln in out.splitlines() if 'Ladder (2m)##ladder' in ln and 'rect=' in ln]) == 1
+CHECK len([ln for ln in out.splitlines() if 'no such item drawn' in ln]) == 1
