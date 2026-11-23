@@ -110,7 +110,8 @@ CONTROL_AREA_FRACTION = 0.5
 DRAG_CD = {
     "capsule":        {"drag": 1.0, "drag_forward": 0.35, "drag_side": 0.8,
                        "drag_backward": 1.3},
-    # thin disc (wheel / battery / rtg / mono / rcs / decoupler / dock port)
+    # thin disc (wheel / battery / rtg / mono / decoupler / dock port); the one
+    # rcs part overrides this family by name -- a cube is not a disc
     "reaction_wheel": {"drag": 0.6, "drag_forward": 1.1, "drag_side": 0.2,
                        "drag_backward": 1.1},
     "materials_pod":  {"drag": 0.6, "drag_forward": 1.1, "drag_side": 0.2,
@@ -736,7 +737,11 @@ def generate(name, ptype, mesh, texture):
         # and the bells themselves are DECLARED (EXTRA_FIELDS), the way the
         # decouplers' are. #1120: the size-scaled round pods that used to fall
         # out of this branch claimed bells on their stack faces.
-        declared = EXTRA_FIELDS[name]
+        declared = EXTRA_FIELDS.get(name)
+        if not declared or "mass" not in declared or "rcs_thrust" not in declared:
+            raise SystemExit("%s: an rcs part declares its mass, rcs_thrust and "
+                             "rcs_nozzle_dirs in EXTRA_FIELDS -- there is no "
+                             "size-scaled RCS rating any more (#1120)" % name)
         e["mass"] = clean(declared["mass"])
         e["radius"] = radius
         e["height"] = height

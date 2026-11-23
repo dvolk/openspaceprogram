@@ -1168,6 +1168,16 @@ int main() {
         h.close();
         CHECK(expect_throw_saying([&]{ load_parts_catalog(nt); }, "needs \"rcs_thrust\""));
         std::remove(nt);
+        // An EMPTY authored list gets a sentence about the list, not one asking
+        // for a key the author already wrote.
+        const char *ne = "/tmp/test_shipload_rcsempty.json";
+        std::ofstream fne(ne);
+        fne << "{ \"parts\": [ { \"name\": \"emptylist\", \"type\": \"engine\", \"mesh\": \"a.obj\", "
+              "\"texture\": \"a.png\", \"mass\": 1.0, \"rcs_thrust\": 60, "
+              "\"rcs_nozzle_dirs\": [] } ] }";
+        fne.close();
+        CHECK(expect_throw_saying([&]{ load_parts_catalog(ne); }, "\"rcs_nozzle_dirs\" is empty"));
+        std::remove(ne);
         // The cap IS Part::rcsFired's size: a seventh dir must be refused at load.
         const char *ng = "/tmp/test_shipload_rcsnoz7.json";
         std::ofstream g7(ng);
@@ -1445,6 +1455,37 @@ int main() {
         f.close();
         CHECK(expect_throw_saying([&]{ load_ship_def(zf, cat); }, "is off the end of parent"));
         std::remove(zf);
+    }
+    /* The implicit parent is the previous row: harmless down a stack, wrong across
+       a SURFACE mount. #1120 moved an RCS row in res/ships/small_docker.json and
+       the fuel tank and the orbital engine ended up parented to a 0.3 m box
+       bolted to the side of the mono tank -- same mass, hull falls over on the
+       pad. The omitted key is refused there; naming a surface-mounted parent is
+       an author meaning it, and stays legal. */
+    {
+        const char *sc = "/tmp/test_ship_srfchain.json";
+        std::ofstream f(sc);
+        f << "{ \"name\": \"srfchain\", \"parts\": [ "
+             " { \"part\": \"tank_r1h1\", \"id\": \"tank_1\" }, "
+             " { \"part\": \"rcs_box\", \"id\": \"box_1\", \"parent\": \"tank_1\", "
+             "   \"attach\": \"surface\", \"angle\": 0 }, "
+             " { \"part\": \"engine\", \"id\": \"eng_1\" } ] }";
+        f.close();
+        CHECK(expect_throw_saying([&]{ load_ship_def(sc, cat); },
+                                  "which is surface-mounted"));
+        std::remove(sc);
+        const char *sn = "/tmp/test_ship_srfchain_named.json";
+        std::ofstream g(sn);
+        g << "{ \"name\": \"srfchain\", \"parts\": [ "
+             " { \"part\": \"tank_r1h1\", \"id\": \"tank_1\" }, "
+             " { \"part\": \"rcs_box\", \"id\": \"box_1\", \"parent\": \"tank_1\", "
+             "   \"attach\": \"surface\", \"angle\": 0 }, "
+             " { \"part\": \"engine\", \"id\": \"eng_1\", \"parent\": \"tank_1\" } ] }";
+        g.close();
+        ShipDef sdef = load_ship_def(sn, cat);
+        CHECK(sdef.parts.size() == 3);
+        CHECK(sdef.parts[2].parent == 0);   // the tank, not the box
+        std::remove(sn);
     }
 
     // tanker (shipped def): core tank + engine below, four side pods

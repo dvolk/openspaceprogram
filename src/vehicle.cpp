@@ -5485,8 +5485,8 @@ void Vehicle::enumerateRcsNozzles() {
     for(size_t pi = 0; pi < parts.size(); pi++) {
         const Part *p = parts[pi];
         if(!p->isRcs()) { continue; }
-        /* A rated pod with no bells is authored garbage: the loaders refuse it
-           (#1120). Only an in-memory PartDef -- a test fixture -- can get here. */
+        /* A rated part with no bells is authored garbage: the parts loader refuses
+           it (#1120). Only an in-memory PartDef -- a test fixture -- can get here. */
         assert(p->def->rcsNozzleCount() > 0);
         const glm::dvec3 axes[3] = { partAxis(p, 0), partAxis(p, 1), partAxis(p, 2) };
         const auto addNozzle = [&](const glm::dvec3 &local, size_t localIdx) {
@@ -7547,7 +7547,9 @@ Vehicle::AttitudeAuthority Vehicle::attitudeAuthorityRows(bool switchesApply) {
                    arm in metres: times the bell's thrust that is the N m a full bell
                    actually levers. Do NOT normalize this and re-scale by thrust -- that
                    prices a bell at its thrust and throws the arm away, which is what the
-                   first run of #595 measured on rcs_test: a 0.185 m pod arm gave
+                   first run of #595 measured on rcs_test -- then a single 0.185 m pod
+                   arm, a rig #1120 replaced with four boxes at the tank wall, so those
+                   figures are historical. It gave
                    alpha_full 5.9 rad/s where the ring delivers 1.1, and the slew law
                    planned a maneuver the bells could not do, so SAS limit-cycled the hull
                    out to 2.6 rad of error and drank 2.7 kg of hydrazine doing it. The

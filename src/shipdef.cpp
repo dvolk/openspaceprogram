@@ -465,6 +465,11 @@ PartsCatalog load_parts_catalog(const char *path) {
            plumes invented for it. Either half alone is data the model cannot
            use, so both are refused, as "wheel_axes" without "torque" is. */
         if(d.rcs_thrust > 0.0 && d.rcs_nozzles.empty()) {
+            if(pv.contains("rcs_nozzle_dirs")) {
+                // The author DID write the key -- say so rather than ask for it.
+                throw std::runtime_error(ctx + "\"rcs_nozzle_dirs\" is empty:"
+                                         + " an RCS-rated part must author at least one bell");
+            }
             throw std::runtime_error(ctx + "\"rcs_thrust\" needs \"rcs_nozzle_dirs\":"
                                      + " an RCS-rated part with no bells has no ring");
         }
@@ -1130,6 +1135,19 @@ ShipDef shipDefFromJson(const nlohmann::json &doc, const PartsCatalog &catalog,
                 throw std::runtime_error(pctx
                                          + why
                                          + " (a fuel link cannot have parts attached)");
+            }
+            /* A surface-mounted part is a bracket on the SIDE of something, so the
+               implicit chain must not continue through it: the next row would hang
+               off that bracket. #1120 hit exactly this moving an RCS row in
+               res/ships/small_docker.json -- a fuel tank and the orbital engine
+               ended up parented to a 0.3 m box, and the hull fell over on the pad.
+               Only the OMITTED key is refused: naming a surface-mounted parent is
+               an author meaning it. */
+            if(!pv.contains("parent") && pp.isSurfaceEdge()) {
+                throw std::runtime_error(pctx
+                                         + "has no \"parent\", so it defaults to the previous"
+                                         + " entry '" + pp.id + "', which is surface-mounted"
+                                         + " -- name the part it hangs from");
             }
         }
 

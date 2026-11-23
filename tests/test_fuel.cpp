@@ -115,11 +115,12 @@ static Part *addPart(Ship &s, double h2, double lox, bool engine = false,
     d.fuel_barrier = barrier;
     d.rcs_thrust = rcsThrust;
     if(rcsThrust > 0.0) {
-        /* #1120: a rated part AUTHORS its bells -- the six dirs along the
-           part's own axes that an empty list used to imply are gone, and
-           nothing here goes through the loader that refuses the mismatch.
-           Axis pairs, so every direction these tests demand is reachable at
-           the full rating. */
+        /* #1120: a rated part AUTHORS its bells -- the six dirs an empty list
+           used to imply are gone, and nothing here goes through the loader that
+           refuses the mismatch. This is a SYNTHETIC rig, not catalogue hardware:
+           a 2 m cube with a bell on each face, chosen so every direction these
+           force/fuel tests demand is reachable at the rated figure. The shipped
+           ring is rcs_box's five face bells, and the flight cases use it. */
         d.rcs_nozzles = { glm::dvec3(1,0,0), glm::dvec3(-1,0,0), glm::dvec3(0,1,0),
                           glm::dvec3(0,-1,0), glm::dvec3(0,0,1), glm::dvec3(0,0,-1) };
     }

@@ -1256,8 +1256,8 @@ void paintWorld(Game &g) {
                 /* engine_plume.obj units: half-width 2, strip spans z -1..-5
                    (length 4, a 1-unit gap from the pivot). Start the strip
                    AT THE BELL'S FACE (part radius out along the ray, then
-                   close the mesh's own gap): the flame is 4*sz long --
-                   ~0.8 m at the box's 60 N, ~1.4 m at a round pod's 200 N. */
+                   close the mesh's own gap): the flame is 4*sz long, so ~0.8 m at
+                   the shipped box's 60 N and ~1.6 m at a 250 N bell. */
                 const double sz = 0.025 * std::sqrt(N);
                 const double sx = 0.25 * sz;
                 glm::dmat4 Model = glm::translate(podPos + zw * (sz - p->def->radius))

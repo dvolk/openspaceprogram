@@ -758,8 +758,15 @@ int main(int argc, char **argv)
     skybox.load(sys.skybox_faces);
 
     /* Experiment family table (res/data/experiments.json). Loaded before the
-       ships so the cross-check below has it. */
-    loadExperimentDefs(resdir::path(args.experiments_file).c_str());
+       ships so the cross-check below has it. Reported like the roster's and the
+       parts catalogue's: a data bug is a message, not std::terminate. */
+    try {
+        loadExperimentDefs(resdir::path(args.experiments_file).c_str());
+    } catch(const std::exception &e) {
+        printf("error: %s\n", e.what());
+        fflush(stdout);
+        return 1;
+    }
 
     /* The kerbal roster (res/data/kerbals.json): the named people a capsule
        seat draws from. A data bug is reported like the system loader's rather
@@ -791,9 +798,16 @@ int main(int argc, char **argv)
     }
 
     /* World buildings: placed once physics + the part shader are live, before
-       any ship stands on a pad. */
-    BuildingsCatalog buildings =
-        load_buildings_catalog(resdir::path("res/data/buildings.json").c_str());
+       any ship stands on a pad. Same rule as the other data files: a bad table
+       is a reported error, not std::terminate. */
+    BuildingsCatalog buildings;
+    try {
+        buildings = load_buildings_catalog(resdir::path("res/data/buildings.json").c_str());
+    } catch(const std::exception &e) {
+        printf("error: %s\n", e.what());
+        fflush(stdout);
+        return 1;
+    }
     place_world_buildings(sys, buildings, partsshader, sun);
 
     /* A family with no def silently falls back to generic behavior -- a

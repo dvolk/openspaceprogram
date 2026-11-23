@@ -379,7 +379,7 @@ struct PartDef {
        For a surface-mounted part the mount side is the SURFACE NODE's side
        -- the synthesized srf node points -X, so the omitted bell is -X
        (child +X faces away from the hull).
-       An RCS-rated part AUTHORS its bells: the loaders refuse a rating with
+       An RCS-rated part AUTHORS its bells: the parts loader refuses a rating with
        none (#1120). An empty list used to stand for a magical omnidirectional
        pod -- six dirs along the part's own axes -- which invented hardware no
        author placed: the ring's reach, its arms and its plumes all came from

@@ -23,10 +23,10 @@ DockTestShips build_dock_test_ships(const std::string &mode,
 {
     const PartDef *defPort = part_catalog.find("docking_port_r1");
     const PartDef *defCap  = part_catalog.find("capsule");
-    /* rcs_box in the stack line rather than surface-mounted: this fixture only
-       needs the pair to carry a ring, and keeping the same part count and stack
-       length is what keeps the port arc the modes space below unchanged (#1120
-       removed the round pod this used to be). */
+    /* rcs_box stacked where the round pod (#1120) used to sit: this fixture only
+       needs the pair to carry a ring, and the port arc below is recomputed from
+       the built hull's COM-to-port distance, so the box being 5 cm taller than
+       the pod it replaces moves the pair rather than skewing it. */
     const PartDef *defRcs  = part_catalog.find("rcs_box");
     const PartDef *defMono = part_catalog.find("mono_tank_r1");
     const PartDef *defRw   = part_catalog.find("reaction_wheel");
