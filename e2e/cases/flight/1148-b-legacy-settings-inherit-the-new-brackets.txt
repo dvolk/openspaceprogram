@@ -1,0 +1,36 @@
+# A settings.json written BEFORE #1148 is a trap for the reader that has it. The
+# game wrote one the first time anyone pressed Save in Controls, and the old file
+# binds cam_speed_up to ']' (sc 48) and cam_speed_down to '[' (sc 47) and knows
+# nothing about prev_ship. settings_read merges per slot, and a present list REPLACES
+# the defaults -- so replayed as-is that file puts the brackets back on the camera
+# ladder while the new prev_ship slot keeps its default '['. One press then moves the
+# free camera AND jumps the fleet, which is precisely the collision the swap was made
+# to avoid, and the ']' alias silently disappears from Next ship.
+#
+# Measured before the fix, with such a file loaded: the Controls column read
+# "Camera speed up = ]", "Next ship = F6" (no alias), "Previous ship = [" -- and
+# `--sim-press 2000,0,[` printed "Active ship 8 of 8: power test" while cam_speed
+# halved in the same press.
+#
+# The fix is a version on the key map (settings_write writes keybinds_version: 2;
+# settings_read ignores a v1 file's entries for the four slots the move touched and
+# prints one line saying so). Everything the player bound elsewhere survives -- that
+# half is pinned in tests/test_settings.cpp, which also pins that a v2 file is
+# replayed verbatim. This case pins the player-visible half: from a v1 file, the
+# brackets walk the fleet.
+#
+# The sequence is deliberately tight: from ship 1, '[' wraps to the tail and ']' comes
+# back. If the migration ever stops applying, '[' does nothing here and the file's own
+# camera binding takes over, so the ordered CHECK fails rather than passing quietly.
+NAME legacy-settings-inherit-the-new-brackets
+CLAIM A settings.json written before the brackets moved still hands '[' and ']' to the fleet rather than to camera speed.
+KIND invariant
+WRITE settings.json {"keybinds": {"cam_speed_up": [{"sc": 48, "mods": 0}], "cam_speed_down": [{"sc": 47, "mods": 0}], "next_ship": [{"sc": 63, "mods": 0}]}}
+ARGS --startships e2e/fixtures/startships.json --time-accel 1 --timeout 6
+ARGS --sim-press 2000,0,[
+ARGS --sim-press 3000,0,]
+EXPECT [settings] key map predates #1148
+EXPECT Active ship 8 of 8: power test
+EXPECT Active ship 1 of 8: racer
+CHECK [ln.split("Active ship ")[1].split(" of")[0] for ln in out.splitlines() if "Active ship " in ln] == ["8", "1"]
+FORBID error:

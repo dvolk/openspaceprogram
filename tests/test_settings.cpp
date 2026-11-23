@@ -165,6 +165,42 @@ int main() {
     assert(hasBind(tk.keybinds, Slot::Thrust, SDL_SCANCODE_T, 0));   // default kept
     assert(hasBind(tk.keybinds, Slot::KillRot, SDL_SCANCODE_X, 0));  // default kept
 
+    /* 5b) #1148 moved the brackets -- and a settings.json written BEFORE it is a trap
+       if replayed verbatim: cam_speed_up/down would put ']' and '[' back on the camera
+       ladder while prev_ship, a slot that file never heard of, keeps the new '['
+       default. One press then moves the camera AND jumps the fleet, which is the exact
+       collision the swap exists to avoid. So a v1 file's entries for the four touched
+       slots are ignored and their defaults stand; what the player bound elsewhere is
+       untouched. A v2 file is replayed as written, so a deliberate rebind still wins. */
+    nlohmann::json v1;
+    v1["keybinds"]["cam_speed_up"]   = nlohmann::json::array({{{"sc", (int)SDL_SCANCODE_RIGHTBRACKET}, {"mods", 0}}});
+    v1["keybinds"]["cam_speed_down"] = nlohmann::json::array({{{"sc", (int)SDL_SCANCODE_LEFTBRACKET},  {"mods", 0}}});
+    v1["keybinds"]["next_ship"]      = nlohmann::json::array({{{"sc", (int)SDL_SCANCODE_F6},           {"mods", 0}}});
+    v1["keybinds"]["thrust"]         = nlohmann::json::array({{{"sc", (int)SDL_SCANCODE_J},            {"mods", 0}}});
+    SettingsData old1;
+    settings_read(v1, old1);
+    assert(hasBind(old1.keybinds, Slot::CamSpeedUp, SDL_SCANCODE_EQUALS, 0));
+    assert(hasBind(old1.keybinds, Slot::CamSpeedDown, SDL_SCANCODE_MINUS, 0));
+    assert(!hasBind(old1.keybinds, Slot::CamSpeedUp, SDL_SCANCODE_RIGHTBRACKET, 0));
+    assert(!hasBind(old1.keybinds, Slot::CamSpeedDown, SDL_SCANCODE_LEFTBRACKET, 0));
+    assert(hasBind(old1.keybinds, Slot::NextShip, SDL_SCANCODE_F6, 0));
+    assert(hasBind(old1.keybinds, Slot::NextShip, SDL_SCANCODE_RIGHTBRACKET, 0));  // the alias survives
+    assert(hasBind(old1.keybinds, Slot::PrevShip, SDL_SCANCODE_LEFTBRACKET, 0));
+    // J is not thrust's default (T is), so this says the untouched slots came from the file.
+    assert(hasBind(old1.keybinds, Slot::Thrust, SDL_SCANCODE_J, 0));
+    assert(!hasBind(old1.keybinds, Slot::Thrust, SDL_SCANCODE_T, 0));
+
+    nlohmann::json v2 = v1;
+    v2["keybinds_version"] = 2;
+    SettingsData now;
+    settings_read(v2, now);
+    assert(hasBind(now.keybinds, Slot::CamSpeedUp, SDL_SCANCODE_RIGHTBRACKET, 0)); // honoured, not reset
+    assert(!hasBind(now.keybinds, Slot::CamSpeedUp, SDL_SCANCODE_EQUALS, 0));
+    // And a file written by this build round-trips its own version forward.
+    nlohmann::json wj;
+    settings_write(SettingsData(), wj);
+    assert(wj.contains("keybinds_version") && wj["keybinds_version"].get<int>() == 2);
+
     // 6) a hand-edited cam_shake outside the 0-3 range is clamped (the
     //    CLI range guard does not reach the file path).
     SettingsData cs;

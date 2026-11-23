@@ -31,8 +31,14 @@ ARGS --width 1600 --height 900 --timeout 7 --system res/systems/solar_system.jso
 ARGS --startship v,res/ships/skiff_trim.json,Earth,pad
 ARGS --ui-click 2000,"Windows/Surface Map"
 ARGS --ui-click 3200,"Surface Map/Body"
+ARGS --ui-list 3800
 ARGS --ui-click 4400,"Surface Map/Reset view"
 EXPECT path="Windows/Surface Map" window="Windows" label="Surface Map"
 EXPECT path="Surface Map/Body" window="Surface Map" label="Body"
 EXPECT path="Surface Map/Reset view" FAILED MISMATCH
 FORBID error:
+# The dump is taken while the popup is open so a layout move explains itself instead of
+# looking like the guard broke: this asserts the popup's first (preview) row really does
+# straddle the aimed row vertically. Their x bands are the same window's controls, so the
+# vertical overlap is the whole construction.
+CHECK (lambda rv, pop: pop[0] < rv[1] and rv[0] < pop[1])([float(x) for x in re.search(r'label="Reset view" rect=\d+,(\d+)-\d+,(\d+)', out).groups()], [float(x) for x in re.search(r'window="##Combo_00" label="[^"]*" rect=\d+,(\d+)-\d+,(\d+)', out).groups()])

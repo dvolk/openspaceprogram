@@ -34,8 +34,9 @@ static void surfaceMapSize(ImGuiSizeCallbackData *d) {
    the screen keeps its lower rows off the viewport for good: imgui never draws
    them, the window has no scroll range to bring them back, and --ui-click
    faithfully answers "not found" for a widget no player can see either. Measured
-   at 1920x1080, ui_scale 1.0: the Controls window (63 rebind rows) registers only
-   41 of them, losing its Camera and EVA groups and its Save/Back buttons; at the
+   at 1920x1080, ui_scale 1.0: the Controls window -- 63 rebind rows when this was
+   measured, 66 slots since #1148 -- registers only 41 of them, losing its Camera and
+   EVA groups and its Save/Back buttons; at the
    ui_scale 1.4 a saved settings.json can carry, the Settings window clips four
    rows including its own Save/Back -- and at 2.0 it loses the very DPI slider
    that would undo it.
@@ -76,9 +77,11 @@ const WinDef kWins[W_Count] = {
     },
     [W_Controls] = {
         .name = "Controls", .label = "Controls",
-        // 63 rebind rows (~1600px of content): content-fit would push the
-        // Camera/EVA groups and the Save button below the viewport, unreachable
-        // and unscrollable. Bounded + capped, so they scroll into view.
+        // 66 slot rows, ~1760px of content measured at 1920x1080 (38 rows fit on
+        // screen at rest): content-fit would push the Camera/EVA groups and the Save
+        // button below the viewport, unreachable and unscrollable. Bounded + capped, so
+        // the wheel brings them back -- it takes ~15 notches, since the wheel steps
+        // ~68px here, which is why a case scrolling to the last row asks for a lot.
         .opts = { .slot = ui::Slot::BottomCenter,
                   .initial_size = ImVec2(600.0f, 1000.0f),
                   .size_cb = &capToWorkArea, .closable = true,

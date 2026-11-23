@@ -70,6 +70,10 @@ void settings_write(const SettingsData &s, nlohmann::json &j) {
         kb[name] = arr;
     }
     j["keybinds"] = kb;
+    /* The key map has a version because keys MOVE (see settings_read): a file that
+       predates the move would otherwise be replayed verbatim against defaults that
+       already assume the new layout. 2 = #1148, the brackets to fleet cycling. */
+    j["keybinds_version"] = 2;
 }
 
 void settings_read(const nlohmann::json &j, SettingsData &s) {
@@ -200,11 +204,34 @@ void settings_read(const nlohmann::json &j, SettingsData &s) {
         s.flip_roll = j["flip_roll"].get<bool>();
     }
     // keybinds: per-slot merge; a present-but-empty list clears that slot.
+    /* The four slots #1148 moved are ignored when the file predates the move. A v1
+       file is a trap replayed against defaults that already assume the new layout: its
+       cam_speed_up/down put '[' and ']' back on the camera ladder, its next_ship holds
+       only F6, and prev_ship -- a slot that file never heard of -- keeps the new
+       default '['. One press would then move the camera AND jump the fleet, the exact
+       collision the swap exists to avoid. Everything the player bound elsewhere
+       survives. */
+    int kbv = 1;
+    if(j.contains("keybinds_version") && j["keybinds_version"].is_number_integer()) {
+        kbv = j["keybinds_version"].get<int>();
+    }
+    const bool kb_moved = kbv < 2;
+    bool kb_moved_said = false;
     if(j.contains("keybinds") && j["keybinds"].is_object()) {
         const nlohmann::json &kbo = j["keybinds"];
         for(auto it = kbo.begin(); it != kbo.end(); ++it) {
             Slot slot = slotFromName(it.key().c_str());
             if(slot == Slot::SLOT_COUNT) { continue; }   // unknown slot: skip
+            if(kb_moved && (slot == Slot::CamSpeedUp || slot == Slot::CamSpeedDown
+                         || slot == Slot::NextShip   || slot == Slot::PrevShip)) {
+                if(!kb_moved_said) {
+                    kb_moved_said = true;
+                    printf("[settings] key map predates #1148: '[' and ']' now step "
+                           "through the fleet and camera speed moved to - / = (those "
+                           "four slots retook their defaults)\n");
+                }
+                continue;
+            }
             if(!it.value().is_array()) { continue; }     // mistyped: skip
             const nlohmann::json &arr = it.value();
             if(arr.empty()) {

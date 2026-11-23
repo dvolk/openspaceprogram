@@ -50,3 +50,7 @@ EXPECT label="-"
 EXPECT rebind##prev_ship
 FORBID FAILED
 FORBID error:
+# Uniqueness, so a bare "[" cannot pass on some other window's row: exactly one readout
+# prints "[" and exactly one prints the pair on Next ship.
+CHECK len([ln for ln in out.splitlines() if 'label="[" rect=' in ln]) == 1
+CHECK len([ln for ln in out.splitlines() if 'label="F6 / ]" rect=' in ln]) == 1

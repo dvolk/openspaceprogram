@@ -14,7 +14,7 @@
 #             drawn within 2.0s; --ui-list dumps what is)
 #
 # Measured on the VAB palette at 1920x1080 (rows 18 px apart from y=42): unscrolled
-# the dump prints 26 palette rows and the last is "Jet (2m)" at 1642,474-1884,492,
+# the dump prints 25 palette rows and the last is "Jet (2m)" at 1642,474-1884,492,
 # while items= says 139 registered. --ui-scroll the list to the bottom and the same
 # dump prints the ladder at 1642,415-1884,433 and NO "Jet (2m)" -- the labelled set
 # is exactly the rows imgui thought were visible, and which rows those are follows
@@ -24,20 +24,31 @@
 # Two consequences pinned here. (1) The remedy is --ui-scroll, not a different
 # label: the second click presses. (2) A --ui-click keeps polling for 2.0 s, so a
 # click whose wait is still open when a later --ui-scroll brings the row in WILL
-# press it -- measured with the click at 2000 ms landing at 3.07 s after a scroll
-# at 3.01 s. A case that wants to see the failure must let the 2.0 s expire before
+# press it -- measured with the click at 2000 ms landing at 3.08 s after a scroll at
+# 3.01 s. A case that wants to see the failure must let the 2.0 s expire before
 # scrolling, which is why the scroll here waits until 4600 ms.
 #
-# The " clipped" tag this case cannot produce is not a bug in the dump: it marks a
-# LABELLED item whose drawn rect is degenerate, and no shipped window produces one.
-# Making the not-found message name scrolling as the likely cause is filed
-# separately from #169, which the guard-firing question can close on.
+# How much scroll to ask for: the wheel steps ~68 px a notch and the palette's
+# ScrollMaxY is ~1080 px, so -30 saturates at the bottom -- -100 lands on the same
+# band, and -10 does not reach it. "Ladder (2m)" is five rows from the end of the
+# palette list (the catalog's 86 parts, minus the fuel links and the kerbal the
+# palette hides), which is why the scroll amount is generous. That also
+# makes the specific labels a fact about res/data/parts.json: the disjointness CHECK
+# below is the one that survives a part being added, because it never names a row.
+#
+# The " clipped" tag this case does not produce is not a bug in the dump: it marks a
+# LABELED item whose drawn rect is degenerate. The palette never yields one (a row
+# fully out of view is never labeled). The Controls window does -- 28 of its 66
+# readout rows at 1920x1080 -- because readout labels are ours, not imgui's, and that
+# is #1150. Making the not-found message name scrolling as the likely cause is filed
+# as #1149, which is where the refusal's wording belongs.
 NAME scrolled-out-palette-row-is-not-drawn
 CLAIM A palette row scrolled out of view reports not found rather than clicking a stranger, and --ui-scroll makes it clickable.
 KIND harness
 ARGS --timeout 9 --frame-cap 30
 ARGS --startship racer,res/ships/racer.json,Kerbin,pad
 ARGS --sim-press 1000,0,4
+ARGS --ui-list 1500
 ARGS --ui-click 2000,"Palette/Ladder (2m)##ladder"
 ARGS --ui-scroll 4600,"Palette/Capsule (2m)##capsule",-30
 ARGS --ui-click 5400,"Palette/Ladder (2m)##ladder"
@@ -47,9 +58,13 @@ EXPECT path="Palette/Ladder (2m)##ladder" window="Palette/palette_parts_
 EXPECT [uiscroll]
 FORBID FAILED clipped
 FORBID error:
-# The out-of-view half of the same fact, read off the dump taken with the list at
-# the bottom: the row that was on screen at rest is no longer offered at all, and
-# the ladder is. items= says more is registered than the dump prints.
-CHECK len([ln for ln in out.splitlines() if 'Jet (2m)' in ln]) == 0
+# The out-of-view half of the same fact: the labelled palette rows offered at rest and
+# the ones offered at the bottom do not overlap at all, so which rows are clickable
+# follows the scrollbar. Deliberately names no part -- it holds whatever the catalog is.
+# (The pattern is anchored to "[uilist] " because a --ui-click line carries the same
+# window= and label= fields, and the pressed line lands between the two dumps.)
+CHECK len(set(re.findall('\[uilist\] window="Palette/palette_parts[^"]*" label="([^"]+)"', out.split("[uilist] loop=")[1])) & set(re.findall('\[uilist\] window="Palette/palette_parts[^"]*" label="([^"]+)"', out.split("[uilist] loop=")[2]))) == 0
+# And the row the case is about: absent from the dump at rest, present once after the
+# scroll, exactly one not-found refusal in between.
 CHECK len([ln for ln in out.splitlines() if 'Ladder (2m)##ladder' in ln and 'rect=' in ln]) == 1
 CHECK len([ln for ln in out.splitlines() if 'no such item drawn' in ln]) == 1

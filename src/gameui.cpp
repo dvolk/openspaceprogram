@@ -3761,7 +3761,11 @@ void drawUIReadouts(Game &g) {
                    F6 and ']' (#1148), and a row that hides one of the two is a row a
                    player cannot trust. Bindings that differ only by which side of a
                    modifier (Toggle free camera's two shift sides) print as two
-                   labels, which is the honest reading -- they ARE different keys.
+                   labels, which is the honest reading -- they ARE different keys, and
+                   a binding names one concrete side. Measured, the widest join today
+                   ends at x=1013 with the rebind button at x=1025, so a third binding
+                   would paint over the button; SameLine does not wrap, so wrap it at
+                   the column's own width instead.
                    uiText, not TextColored, so the key a player reads is a row the
                    harness can pin (#601): the bracket on this row is the whole
                    discoverability of the new binding. */
@@ -3771,7 +3775,9 @@ void drawUIReadouts(Game &g) {
                     shown += bindLabel(b);
                 }
                 ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.7f, 0.7f, 0.85f, 1.0f));
+                ImGui::PushTextWrapPos(355.0f);   // 140px of column, 10px shy of the button
                 uiText("%s", shown.empty() ? "(unbound)" : shown.c_str());
+                ImGui::PopTextWrapPos();
                 ImGui::PopStyleColor();
                 ImGui::SameLine(365.0f);
                 const bool capturing = (g.rebind_capture_slot == (int)i);

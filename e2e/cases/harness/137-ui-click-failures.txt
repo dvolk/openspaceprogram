@@ -6,17 +6,20 @@
 # The ambiguous half used to be demonstrated by the Controls window, whose 63
 # rebind buttons were all labelled "rebind" (#165). #165 is fixed now -- every
 # row is "rebind##<slotName>" -- and no shipped window carries two identical
-# CLICKABLE labels any more. Re-measured with this case's own setup after #1148
-# added a slot (1920x1080, Controls open): --ui-list 2600 reports items=231 and
-# prints 151 named rows, 85 of them clickable -- 38 rebind + 38 clear, for the
-# slots that fit above the fold (#1150 is the window running off the display),
-# plus the title menu's own rows -- and no label repeats. The key column's 66
-# readout rows DO repeat ("W" three times, once per movement group), but a
-# readout row is never a match target: findMatches() skips it.text, which is what
-# #601's marker is for. So the case pins only the not-found shape and the
-# MISMATCH guard. findMatches()'s "ambiguous (N matches)" branch is live code
-# with nothing left in the shipped UI to exercise it; a synthetic duplicate would
-# be the only way to pin it.
+# CLICKABLE labels any more. Re-measured after #1148 added a slot (1920x1080, this
+# case's own sequence, dump at 4.0s): the key map holds 66 slots, and 38 of them
+# fit on screen -- 37 `rebind##` rows plus one `press a key...##warp_up`, because
+# this case clicked that row into capture mode, plus 38 `clear##` rows. No label
+# repeats among the clickable rows. (The totals are left out on purpose: which
+# rows are drawn depends on when the dump lands, and the Title Menu's own rows
+# include a version string that changes every commit -- a CHECK on a count here
+# would be a flake factory.) The key column's 66 readout rows DO repeat ("W"
+# three times, once per movement group, 28 of the whole set tagged clipped as the
+# window runs below the display -- #1150), but a readout row is never a match
+# target: findMatches() skips it.text, which is what #601's marker is for. So the
+# case pins only the not-found shape and the MISMATCH guard. findMatches()'s
+# "ambiguous (N matches)" branch is live code with nothing left in the shipped UI
+# to exercise it; a synthetic duplicate would be the only way to pin it.
 NAME ui-click-failures
 CLAIM A bad --ui-click path fails loudly as not-found, never as a stray click.
 KIND harness

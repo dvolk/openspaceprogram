@@ -244,7 +244,7 @@ void tick(Game &g) {
         const SlotProbe slotActive{key, modState, &g.binds, &g.args.sim_presses};
 
         if (g.camera->mode == CAM_FREE) {
-            /* cam_speed (the [/] ladder) and the roll step are per-TICK
+            /* cam_speed (the -/= ladder since #1148) and the roll step are per-TICK
                amounts: scaling by dt*60 keeps the free cam's felt speed
                independent of --physics-hz. */
             const double cam_rate = g.dt * 60.0;
