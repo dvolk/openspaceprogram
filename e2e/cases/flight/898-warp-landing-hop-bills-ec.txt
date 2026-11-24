@@ -3,7 +3,7 @@
 # meets the atmosphere, and railsTick's guard read the flag AFTER the advance -- while the
 # rails-warp branch of tick.cpp never runs the substep loop that might have billed the
 # hull instead. So the landing hop belonged to no biller at all: `power_test` crossed the
-# top of Kerbin's air 4.2 Wh short of what its own rows print (a 50 s hop at the 301.6 W
+# top of Kerbin's air 4.2 Wh short of what its own rows print (a 50 s hop at the 303.5 W
 # this hull's gen and air imply), and every warp-down lands with one such free hop.
 #
 # Warp 1000x, deliberately. The endpoint test shares the SoI test's blind spot (#164), and

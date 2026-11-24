@@ -19,10 +19,10 @@ EXPECT Main loop starting
 EXPECT [vab] entered the editor (sim keeps coasting)
 CHECK re.search(r"\[vab\] launched '.*' \(1 parts\)", out)
 # 1336.55 = the tube's catalog mass (1142.45 kg, which gen_parts.py weighs off the
-# mesh's own 6.24 m^3) plus two auto-filled seats at 97.05 kg each (87.05 kerbal +
-# 10 kg suit). So the row says both that the MESH loaded -- the figure comes from the
-# mesh's volume -- and WHICH of the two 2 m capsules got rooted: the cone with its
-# single seat reads 1246.87.
+# mesh's own 6.24 m^3) plus two auto-filled seats at 97.05 kg each (seatOccupantMass:
+# an 87.05 kg kerbal carrying its suit's 10 kg hydrazine load). So the row says both
+# that the MESH loaded -- the figure comes from the mesh's volume -- and WHICH of the
+# two 2 m capsules got rooted: the same recipe on the cone measures 1246.87.
 CHECK (lambda ms: len(ms) >= 1 and all(abs(float(m) - 1336.55) < 0.01 for m in ms))(re.findall(r'\[mass\] t=\S+ ship="[^"]*" parts=1 mass=([\d.]+) kg', out))
 FORBID FAILED
 FORBID error:

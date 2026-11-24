@@ -5,7 +5,7 @@
 # and it silently broke the one state a player most often reads the window in. The
 # substep loop is gated on time_accel != 0, so a paused process never ticks: a load, a
 # quickload (F9) or a fresh spawn carries the member's 0.0 seed, and the window printed
-# `Net: +0.0 W (charging)` under `Generation: 298.4 W` and `Const draw: 600.0 W`, with
+# `Net: +0.0 W (charging)` under `Generation: 296.5 W` and `Const draw: 600.0 W`, with
 # #896's `Aboard:` row dashed. The pre-#659 window computed the sum from its own live
 # term rows, so it got this right by accident.
 #
@@ -17,12 +17,12 @@
 # The fix is a zero-length powerTick() while paused (tick.cpp): netWh is 0, so nothing
 # is spent, and the record and the gate say what the first unpaused substep would say.
 # This case is what keeps it fixed. It pins the sign rather than a figure where it can:
-# `power_test` makes 298.45 W against 600 W of life support, so the balance is negative
+# `power_test` makes 296.54 W against 600 W of life support, so the balance is negative
 # no matter how the parts move, and the identity CHECK is the window's four rows being
 # one arithmetic -- which is the same claim ui/601 makes about a RUNNING hull.
 #
 # --power-log is here because the log is what the harness reads: paused rows used to
-# print `net=0.0W` beside `gen=298.4W const_draw=600.0W`, an arithmetic the row itself
+# print `net=0.0W` beside `gen=296.5W const_draw=600.0W`, an arithmetic the row itself
 # contradicts.
 NAME paused-hull-still-has-its-balance
 CLAIM a paused Systems window shows this hull's real power balance, not a tick that never ran.
@@ -39,7 +39,7 @@ CHECK float(re.search('label="Net: +([-+]?[0-9.]+) W', out).group(1)) < -100.0
 # (ui/601). 0.2 W is the four one-decimal printings.
 CHECK abs(float(re.search('label="Net: +([-+]?[0-9.]+) W', out).group(1)) - (float(re.search('label="Generation: +([0-9.]+) W', out).group(1)) - float(re.search('label="Const draw: +([0-9.]+) W', out).group(1)) - float(re.search('label="Active: +([0-9.]+) W', out).group(1)))) < 0.2
 # #896's promise, in the state it was written for: hours aboard, not a dash, and in the
-# right order of magnitude (12000 Wh / 301.6 W = 39.8 h). Band rather than figure: a
+# right order of magnitude (12000 Wh / 303.5 W = 39.5 h). Band rather than figure: a
 # parts rebalance moves the number, the claim is that it is there and plausible.
 CHECK 10.0 < float(re.search('label="Aboard: +([0-9.]+) h', out).group(1)) < 100.0
 # The log row contradicts itself if the record is missing: these are the same three

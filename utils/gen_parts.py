@@ -537,12 +537,21 @@ for _n, _f in EXTRA_FIELDS.items():
 
 def mesh_geom(mesh_file):
     """(radius, height, volume, planform, extents, bounds): half largest x/y
-    span, z span, enclosed volume (or bounding-cylinder fallback if not
-    watertight), the area of the mesh's x/z footprint, the raw (x, y, z)
+    span, z span, enclosed volume (bounding-cylinder fallback only for a genuinely
+    OPEN mesh, e.g. an engine shroud), the area of the mesh's x/z footprint, the raw (x, y, z)
     spans, and the (min, max) corners. Off-centre meshes (the landing leg)
     need bounds: their PartDef radius is the SYMMETRISED half-span
     (meshHalfSpan), not half the full span."""
     t = trimesh.load_mesh(os.path.join(REPO_ROOT, "res", mesh_file), process=False)
+    # Watertightness is a property of the GEOMETRY, not of how the file happens to
+    # split vertices for texture corners. With process=False, a .obj that carries a
+    # UV per corner -- every Blender-authored part in res/meshes, and anything with
+    # per-face UV islands -- loads as a pile of disconnected faces that reports
+    # itself OPEN, so the volume below fell back to the bounding cylinder: the 2 m
+    # cone capsule was weighed at 1149.82 kg instead of the 499.82 kg its own mesh
+    # encloses, and a cone's bounding cylinder is 3x the cone. Merging first means
+    # only genuinely open meshes (an engine shroud) take the fallback.
+    t.merge_vertices(merge_tex=True, merge_norm=True)
     ext = t.extents                       # (x, y, z) spans
     radius = max(ext[0], ext[1]) / 2.0
     height = ext[2]

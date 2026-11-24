@@ -12,10 +12,10 @@
 # what the drums deliver (#648), which no build screen can know.
 #
 # Then the two verdicts, printed only on a hull that earns one. The first is at rest:
-# power_test generates 298 W against 600 W of life support, so it burns 302 W out of a
+# power_test generates 297 W against 600 W of life support, so it burns 303 W out of a
 # 12000 Wh pool -- 40 hours of existing, and the reason #652's silent mid-warp black-out is
 # reachable by playing normally. The second is powerTick's own gate (#642): the drums are
-# worth 2475 W and the hull makes 298, so steering runs on the store rather than the
+# worth 2475 W and the hull makes 297, so steering runs on the store rather than the
 # generator -- and a hull with a big RTG and no battery says so too, which the old
 # gen-against-life-support reading of this balance could not see.
 #
@@ -27,7 +27,7 @@
 # where the per-part watt row gets pinned -- and ui/644-part-card is where the flight card is.
 # Everything the case reads has happened by 8s, which is why --timeout is 14 and not 30.
 NAME vab-prints-what-the-assembly-costs-the-pool
-CLAIM The VAB prints the assembly's electrical balance -- 298 W generated, 600 W constant, 12000 Wh stored, 2475 W of rated drum draw -- says it drains at rest and that its drums outrun its generator, and puts 2250 W on the big wheel block's own card.
+CLAIM The VAB prints the assembly's electrical balance -- 297 W generated, 600 W constant, 12000 Wh stored, 2475 W of rated drum draw -- says it drains at rest and that its drums outrun its generator, and puts 2250 W on the big wheel block's own card.
 KIND golden
 ARGS --width 1600 --height 900 --timeout 14
 ARGS --startship power_test,res/ships/power_test.json,Kerbin,rot-orbit
@@ -44,9 +44,9 @@ ARGS --sim-mouse 6500,0,CUR,CUR,RMB
 ARGS --ui-list 8000
 EXPECT [scene] flight -> vab (push)
 EXPECT [uifocus] 'wheel_1' ->
-EXPECT [uilist] window="VAB" label="EC: gen 298 W  const 600 W  store 12000 Wh"
+EXPECT [uilist] window="VAB" label="EC: gen 297 W  const 600 W  store 12000 Wh"
 EXPECT [uilist] window="VAB" label="EC: wheels 2475 W rated"
-EXPECT [uilist] window="VAB" label="EC: at rest drains 302 W, 40 h aboard"
+EXPECT [uilist] window="VAB" label="EC: at rest drains 303 W, 40 h aboard"
 EXPECT [uilist] window="VAB" label="EC: full drums need 3075 W, store runs them"
 EXPECT [uilist] window="Reaction Wheel (4.5m)##wheel_1" label="Power: 2250 W while commanding (one drum at full demand)"
 FORBID error:

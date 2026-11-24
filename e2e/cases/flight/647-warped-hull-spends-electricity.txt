@@ -1,7 +1,7 @@
 # A hull coasting on rails is not under physics. tick.cpp's substep loop -- the only
 # caller of powerTick -- skips railed hulls, so a warped transfer billed nothing at all:
-# power_test (298 W of rtg against 600 W of life support) held `Charge: 12000.0 /
-# 12000.0 Wh` through a whole warp and only started falling at the printed 301.6 W the
+# power_test (297 W of rtg against 600 W of life support) held `Charge: 12000.0 /
+# 12000.0 Wh` through a whole warp and only started falling at the printed 303.5 W the
 # moment it was back under physics (#647).
 #
 # railsTick now bills a railed hull one warp hop at a time, and the identity flight/377
@@ -22,7 +22,7 @@
 # ... and the case #652 describes: at 10000x the crossing happens ~143,000 sim-seconds in,
 # off-screen and unheard, and the player only finds the wheels cut when they reach the far
 # end and cannot point for a brake burn. Now the crossing itself says so, once, with the
-# diagnosis attached -- this hull's 298 W of rtg cannot cover 600 W of air, so the pool can
+# diagnosis attached -- this hull's 297 W of rtg cannot cover 600 W of air, so the pool can
 # never climb back and the latch never re-arms.
 #
 # No W press: control input leaves the rails and drops warp to 1x, so a commanded window
@@ -48,7 +48,7 @@ CHECK max(r["t"] for r in power) > 100000.0
 CHECK len(power) >= 10
 CHECK power[0]["charge"] == 12000.0 and power[0]["powered"] == 1
 CHECK all(0.0 <= r["charge"] <= r["capacity"] for r in power)
-# 298.4 W of rtg against 600 W of air: on rails or off, the pool can only ever fall. A
+# 296.5 W of rtg against 600 W of air: on rails or off, the pool can only ever fall. A
 # rising charge would mean the balance was computed somewhere other than where the watts
 # are printed.
 CHECK all(b["charge"] <= a["charge"] for a, b in zip(power, power[1:]))

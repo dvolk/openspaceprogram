@@ -2,9 +2,9 @@
 # table, and the two answers disagreed in a way a player notices: the flight number went UP when
 # the player pressed stage. mars_explorer_mk1 on Kerbin orbit, three presses, no throttle:
 #   dv_left  9490.4 -> 12834.6 -> 8687.8 -> 1707.8   at mass 106521 -> 35679 -> 9617 -> 3626
-# (those masses are as measured when #948 was filed; #951 has since lightened this hull's four
-# nose caps by 11952 kg, so the first row now reads 94568.94 -- the SHAPE is the story, not the
-# size)
+# (those masses are as measured when #948 was filed. #951 lightened this hull's four nose caps by
+# 11952 kg and the mesh-volume mass model (#1170's follow-up) cut another 2339 kg, so the first
+# row now reads 92229.84 -- the SHAPE is the story, not the size)
 # getDeltaV() is ONE ideal burn: everything every tank holds that any engine could burn, at the
 # exhaust velocity of the FIRST rocket in part order -- for this ship the nuclear engine's 9000
 # m/s, so 69 t of chemical propellant gets priced at nuclear Isp. Then the 4-ring separation
@@ -18,8 +18,8 @@
 # actually carry (crew and inventory ride the hull, which PartDef cannot know). That figure is
 # monotone under a stage press ON THIS SHIP: a press deletes the row for the label that fired, and
 # it also re-prices the rows under it, because a dropped label's period was modelled as spending
-# fuel that some surviving engine can still reach. Here the deleted row (3609.9 m/s) is bigger
-# than the gain from re-pricing (~1550 m/s), so the sum falls. That contest is content-dependent
+# fuel that some surviving engine can still reach. Here the deleted row (3716.5 m/s) is bigger
+# than the gain from re-pricing (~1590 m/s), so the sum falls. That contest is content-dependent
 # and is tracked as #952; this case is the tripwire if it ever flips.
 NAME staged-dv-plan-never-rises
 CLAIM The flight delta-v readout is the ship's staged plan: it never rises across a stage press, it starts at the VAB's figure for the same build (minus the mass a flown ship carries and an authored build does not), and with one engine type left it agrees with the coarse single-burn figure.
@@ -32,37 +32,38 @@ EXPECT [dv]
 # --sim-steps, not --timeout: the third press lands at t=6 and every claim below reads the LAST
 # row, so a wall-clock gate that ends the run at t=5 under load would test a half-staged ship.
 # 780 logic ticks is 13 s at 60 Hz, which is past the last press with room.
-# THE PRESSES LANDED, and landed hard: the ship sheds 26x its mass across the run (94568.94 kg to
-# 3626.25 kg), so the monotonicity below is not being handed to it by an idle coast. Nothing burns:
+# THE PRESSES LANDED, and landed hard: the ship sheds 31x its mass across the run (92229.84 kg to
+# 2966.77 kg), so the monotonicity below is not being handed to it by an idle coast. Nothing burns:
 # the throttle stays shut, so every mass step here is a separation.
 CHECK len(dv) >= 6
 CHECK dv[0]["mass"] > 90000.0
 CHECK dv[-1]["mass"] < 5000.0
 # THE POINT OF THE FIX: the plan only goes down. Row to row it is identical while nothing happens
 # (no burn, and the cache only re-runs the walk when the totals move), steps down at each press,
-# and never climbs. The 0.5 m/s of slack is float noise in a 12 km/s sum, not a wobble allowance.
+# and never climbs. The 0.5 m/s of slack is float noise in a 14 km/s sum, not a wobble allowance.
 CHECK all(b["dv_staged"] <= a["dv_staged"] + 0.5 for a, b in zip(dv, dv[1:]))
 CHECK dv[0]["dv_staged"] - dv[-1]["dv_staged"] > 9800.0
 # THE SAME QUESTION AS THE VAB, and it nearly agrees. `osp --fleet-report` walks this ship through
-# computeStaging at authored full tanks (wet 94471.9 kg) and prints stage rows 3609.9 + 2419.3 +
-# 2995.4 + 3949.1 = 12973.7 m/s. The live ship at spawn holds the same fuel and 97.0 kg more --
-# the crew the build tree does not carry -- which is 1.5% of the plan: 12780.7 m/s measured. The
+# computeStaging at authored full tanks (wet 92132.8 kg) and prints stage rows 3716.5 + 2502.1 +
+# 3314.9 + 5122.5 = 14656.0 m/s. The live ship at spawn holds the same fuel and 97.0 kg more --
+# the crew the build tree does not carry -- which is 2% of the plan: 14360.0 m/s measured. The
 # VAB figure is therefore a ceiling (same fuel, less mass). The band's lower end is 3% of slack:
 # enough that a small part-table tweak does not trip this line, tight enough that the readout
 # cannot drift back toward the old 9490 m/s without going red. Both ends come from
 # res/ships/mars_explorer_mk1.json plus res/data/parts.json, so a real change moves both together
-# -- #951 moving the nose-cap density is exactly such a change: it took the VAB figure from
-# 12386.4 to 12973.7 and this row from 12195.2 to 12780.7, both re-pinned here.
-CHECK 12400.0 < dv[0]["dv_staged"] < 12973.7
+# -- #951 moving the nose-cap density is exactly such a change (12386.4 -> 12973.7 there,
+# 12195.2 -> 12780.7 here), and so is the mesh-volume mass model that followed #1170
+# (12973.7 -> 14656.0 there, 12780.7 -> 14360.0 here). Both re-pinned.
+CHECK 13900.0 < dv[0]["dv_staged"] < 14656.0
 # THE OLD NUMBER STILL JUMPS, and that is #41's territory, not this case's: the coarse figure is
 # still what it is, still priced at the first rocket's ve. What is pinned is the SIGN -- the
-# coarse figure rises across a press (11917.9 -> 12834.6, +916.7 m/s) while the staged plan falls.
+# coarse figure rises across a press (12396.9 -> 13351.8, +954.9 m/s) while the staged plan falls.
 # The size is not pinned: it is content-dependent (it was +3344 m/s before #951 lightened the
 # caps), so the band only says the rise is still big enough to see.
 CHECK max(b["dv_left"] - a["dv_left"] for a, b in zip(dv, dv[1:])) > 500.0
 # WHERE THE TWO MODELS MEET: after the last press the ship carries one rocket engine -- the
 # nuke, H2 only -- so the union mask, the single ve and the staged walk are the same arithmetic,
-# and both read 1707.8 m/s. If they ever part ways on a single-engine ship, the disagreement is
+# and both read 2120.4 m/s. If they ever part ways on a single-engine ship, the disagreement is
 # in the mass bookkeeping, not in the engine model.
 CHECK abs(dv[-1]["dv_staged"] - dv[-1]["dv_left"]) < 1.0
 # The plan's own rows print in the window (stage number, dv, engine count), so a pilot can see

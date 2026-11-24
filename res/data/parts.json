@@ -6,7 +6,7 @@
       "display_name": "Capsule (2m)",
       "mesh": "meshes/capsule.obj",
       "texture": "textures/capsule.png",
-      "mass": 1149.82,
+      "mass": 499.82,
       "radius": 1.0,
       "height": 2.0,
       "torque": 200,
@@ -42,7 +42,7 @@
       "display_name": "Capsule (1m)",
       "mesh": "meshes/capsule_r0.5h1.5.obj",
       "texture": "textures/capsule.png",
-      "mass": 215.59,
+      "mass": 93.72,
       "radius": 0.5,
       "height": 1.5,
       "torque": 100,
@@ -82,7 +82,7 @@
       "display_name": "Capsule (3m)",
       "mesh": "meshes/capsule_r1.5h3.obj",
       "texture": "textures/capsule.png",
-      "mass": 3880.65,
+      "mass": 1686.9,
       "radius": 1.5,
       "height": 3.0,
       "torque": 300,
@@ -122,7 +122,7 @@
       "display_name": "Capsule (4.5m)",
       "mesh": "meshes/capsule_r2.25h4.5.obj",
       "texture": "textures/capsule.png",
-      "mass": 13097.2,
+      "mass": 5693.28,
       "radius": 2.25,
       "height": 4.5,
       "torque": 450,
@@ -201,7 +201,7 @@
       "radius": 0.4,
       "height": 4.0,
       "capacity": {
-        "jetfuel": 70.37
+        "jetfuel": 55.91
       },
       "ladder": {
         "a": [
@@ -236,7 +236,7 @@
       "radius": 0.5,
       "height": 3.5,
       "capacity": {
-        "jetfuel": 96.21
+        "jetfuel": 76.45
       },
       "ladder": {
         "a": [
@@ -271,7 +271,7 @@
       "radius": 0.5,
       "height": 6.0,
       "capacity": {
-        "jetfuel": 164.93
+        "jetfuel": 131.05
       },
       "ladder": {
         "a": [
@@ -306,7 +306,7 @@
       "radius": 1.0,
       "height": 6.0,
       "capacity": {
-        "jetfuel": 659.73
+        "jetfuel": 524.2
       },
       "ladder": {
         "a": [
@@ -339,7 +339,7 @@
       "display_name": "Reaction Wheel (2m)",
       "mesh": "meshes/reaction_wheel_r1h0.25.obj",
       "texture": "textures/reaction_wheel.png",
-      "mass": 100.53,
+      "mass": 99.89,
       "radius": 1.0,
       "height": 0.25,
       "torque": 2000,
@@ -356,7 +356,7 @@
       "display_name": "Reaction Wheel (3m)",
       "mesh": "meshes/reaction_wheel_r1.5h0.375.obj",
       "texture": "textures/reaction_wheel.png",
-      "mass": 339.29,
+      "mass": 337.12,
       "radius": 1.5,
       "height": 0.375,
       "torque": 3000,
@@ -373,7 +373,7 @@
       "display_name": "Reaction Wheel (4.5m)",
       "mesh": "meshes/reaction_wheel_r2.25h0.5625.obj",
       "texture": "textures/reaction_wheel.png",
-      "mass": 1145.11,
+      "mass": 1137.77,
       "radius": 2.25,
       "height": 0.562,
       "torque": 4500,
@@ -390,11 +390,11 @@
       "display_name": "Battery (2m)",
       "mesh": "meshes/reaction_wheel_r1h0.25.obj",
       "texture": "textures/reaction_wheel.png",
-      "mass": 863.94,
+      "mass": 858.4,
       "radius": 1.0,
       "height": 0.25,
       "capacity": {
-        "ec": 157079.63
+        "ec": 156072.25
       },
       "drag": 0.6,
       "drag_forward": 1.1,
@@ -407,11 +407,11 @@
       "display_name": "Battery (3m)",
       "mesh": "meshes/reaction_wheel_r1.5h0.375.obj",
       "texture": "textures/reaction_wheel.png",
-      "mass": 2915.79,
+      "mass": 2897.09,
       "radius": 1.5,
       "height": 0.375,
       "capacity": {
-        "ec": 530143.76
+        "ec": 526743.94
       },
       "drag": 0.6,
       "drag_forward": 1.1,
@@ -424,11 +424,11 @@
       "display_name": "Battery (4.5m)",
       "mesh": "meshes/reaction_wheel_r2.25h0.5625.obj",
       "texture": "textures/reaction_wheel.png",
-      "mass": 9840.79,
+      "mass": 9777.68,
       "radius": 2.25,
       "height": 0.562,
       "capacity": {
-        "ec": 1789235.19
+        "ec": 1777760.62
       },
       "drag": 0.6,
       "drag_forward": 1.1,
@@ -441,10 +441,10 @@
       "display_name": "RTG (2m)",
       "mesh": "meshes/reaction_wheel_r1h0.25.obj",
       "texture": "textures/reaction_wheel.png",
-      "mass": 117.81,
+      "mass": 117.05,
       "radius": 1.0,
       "height": 0.25,
-      "power_gen": 298.45,
+      "power_gen": 296.54,
       "drag": 0.6,
       "drag_forward": 1.1,
       "drag_side": 0.2,
@@ -456,10 +456,10 @@
       "display_name": "RTG (3m)",
       "mesh": "meshes/reaction_wheel_r1.5h0.375.obj",
       "texture": "textures/reaction_wheel.png",
-      "mass": 397.61,
+      "mass": 395.06,
       "radius": 1.5,
       "height": 0.375,
-      "power_gen": 1007.27,
+      "power_gen": 1000.81,
       "drag": 0.6,
       "drag_forward": 1.1,
       "drag_side": 0.2,
@@ -471,10 +471,10 @@
       "display_name": "RTG (4.5m)",
       "mesh": "meshes/reaction_wheel_r2.25h0.5625.obj",
       "texture": "textures/reaction_wheel.png",
-      "mass": 1341.93,
+      "mass": 1333.32,
       "radius": 2.25,
       "height": 0.562,
-      "power_gen": 3399.55,
+      "power_gen": 3377.75,
       "drag": 0.6,
       "drag_forward": 1.1,
       "drag_side": 0.2,
@@ -690,11 +690,11 @@
       "display_name": "Jet Fuel Tank (0.8m x 2m)",
       "mesh": "meshes/tank_r0.4h2.obj",
       "texture": "textures/fuel_tank.png",
-      "mass": 13.37,
+      "mass": 13.28,
       "radius": 0.4,
       "height": 2.0,
       "capacity": {
-        "jetfuel": 70.37
+        "jetfuel": 69.92
       },
       "drag": 0.7,
       "drag_forward": 1.0,
@@ -707,11 +707,11 @@
       "display_name": "Jet Fuel Tank (2m x 1m)",
       "mesh": "meshes/tank_r1h1.obj",
       "texture": "textures/fuel_tank.png",
-      "mass": 41.78,
+      "mass": 41.52,
       "radius": 1.0,
       "height": 1.0,
       "capacity": {
-        "jetfuel": 219.91
+        "jetfuel": 218.5
       },
       "drag": 0.7,
       "drag_forward": 1.0,
@@ -724,11 +724,11 @@
       "display_name": "Jet Fuel Tank (2m x 3m)",
       "mesh": "meshes/tank_r1h3.obj",
       "texture": "textures/fuel_tank.png",
-      "mass": 125.35,
+      "mass": 124.55,
       "radius": 1.0,
       "height": 3.0,
       "capacity": {
-        "jetfuel": 659.73
+        "jetfuel": 655.5
       },
       "drag": 0.7,
       "drag_forward": 1.0,
@@ -741,11 +741,11 @@
       "display_name": "Jet Fuel Tank (2m x 5m)",
       "mesh": "meshes/tank_r1h5.obj",
       "texture": "textures/fuel_tank.png",
-      "mass": 208.92,
+      "mass": 207.58,
       "radius": 1.0,
       "height": 5.0,
       "capacity": {
-        "jetfuel": 1099.56
+        "jetfuel": 1092.51
       },
       "drag": 0.7,
       "drag_forward": 1.0,
@@ -758,12 +758,12 @@
       "display_name": "Fuel Tank (2m x 2m)",
       "mesh": "meshes/fuel_tank.obj",
       "texture": "textures/fuel_tank.png",
-      "mass": 83.57,
+      "mass": 83.03,
       "radius": 1.0,
       "height": 2.0,
       "capacity": {
-        "hydrogen": 417.83,
-        "lox": 417.83
+        "hydrogen": 415.15,
+        "lox": 415.15
       },
       "drag": 0.7,
       "drag_forward": 1.0,
@@ -776,12 +776,12 @@
       "display_name": "Fuel Tank (2m x 1m)",
       "mesh": "meshes/tank_r1h1.obj",
       "texture": "textures/fuel_tank.png",
-      "mass": 41.78,
+      "mass": 41.52,
       "radius": 1.0,
       "height": 1.0,
       "capacity": {
-        "hydrogen": 208.92,
-        "lox": 208.92
+        "hydrogen": 207.58,
+        "lox": 207.58
       },
       "drag": 0.7,
       "drag_forward": 1.0,
@@ -794,12 +794,12 @@
       "display_name": "Fuel Tank (2m x 3m)",
       "mesh": "meshes/tank_r1h3.obj",
       "texture": "textures/fuel_tank.png",
-      "mass": 125.35,
+      "mass": 124.55,
       "radius": 1.0,
       "height": 3.0,
       "capacity": {
-        "hydrogen": 626.75,
-        "lox": 626.75
+        "hydrogen": 622.73,
+        "lox": 622.73
       },
       "drag": 0.7,
       "drag_forward": 1.0,
@@ -812,12 +812,12 @@
       "display_name": "Fuel Tank (2m x 5m)",
       "mesh": "meshes/tank_r1h5.obj",
       "texture": "textures/fuel_tank.png",
-      "mass": 208.92,
+      "mass": 207.58,
       "radius": 1.0,
       "height": 5.0,
       "capacity": {
-        "hydrogen": 1044.58,
-        "lox": 1044.58
+        "hydrogen": 1037.88,
+        "lox": 1037.88
       },
       "drag": 0.7,
       "drag_forward": 1.0,
@@ -830,12 +830,12 @@
       "display_name": "Fuel Tank (3m x 1m)",
       "mesh": "meshes/tank_r1.5h1.obj",
       "texture": "textures/fuel_tank.png",
-      "mass": 94.01,
+      "mass": 93.41,
       "radius": 1.5,
       "height": 1.0,
       "capacity": {
-        "hydrogen": 470.06,
-        "lox": 470.06
+        "hydrogen": 467.05,
+        "lox": 467.05
       },
       "drag": 0.7,
       "drag_forward": 1.0,
@@ -848,12 +848,12 @@
       "display_name": "Fuel Tank (3m x 2m)",
       "mesh": "meshes/tank_r1.5h2.obj",
       "texture": "textures/fuel_tank.png",
-      "mass": 188.02,
+      "mass": 186.82,
       "radius": 1.5,
       "height": 2.0,
       "capacity": {
-        "hydrogen": 940.12,
-        "lox": 940.12
+        "hydrogen": 934.09,
+        "lox": 934.09
       },
       "drag": 0.7,
       "drag_forward": 1.0,
@@ -866,12 +866,12 @@
       "display_name": "Fuel Tank (3m x 3m)",
       "mesh": "meshes/tank_r1.5h3.obj",
       "texture": "textures/fuel_tank.png",
-      "mass": 282.04,
+      "mass": 280.23,
       "radius": 1.5,
       "height": 3.0,
       "capacity": {
-        "hydrogen": 1410.18,
-        "lox": 1410.18
+        "hydrogen": 1401.14,
+        "lox": 1401.14
       },
       "drag": 0.7,
       "drag_forward": 1.0,
@@ -884,12 +884,12 @@
       "display_name": "Fuel Tank (3m x 5m)",
       "mesh": "meshes/tank_r1.5h5.obj",
       "texture": "textures/fuel_tank.png",
-      "mass": 470.06,
+      "mass": 467.05,
       "radius": 1.5,
       "height": 5.0,
       "capacity": {
-        "hydrogen": 2350.3,
-        "lox": 2350.3
+        "hydrogen": 2335.23,
+        "lox": 2335.23
       },
       "drag": 0.7,
       "drag_forward": 1.0,
@@ -902,12 +902,12 @@
       "display_name": "Fuel Tank (4.5m x 1m)",
       "mesh": "meshes/tank_r2.25h1.obj",
       "texture": "textures/fuel_tank.png",
-      "mass": 211.53,
+      "mass": 210.17,
       "radius": 2.25,
       "height": 1.0,
       "capacity": {
-        "hydrogen": 1057.64,
-        "lox": 1057.64
+        "hydrogen": 1050.85,
+        "lox": 1050.85
       },
       "drag": 0.7,
       "drag_forward": 1.0,
@@ -920,12 +920,12 @@
       "display_name": "Fuel Tank (4.5m x 3m)",
       "mesh": "meshes/tank_r2.25h3.obj",
       "texture": "textures/fuel_tank.png",
-      "mass": 634.58,
+      "mass": 630.51,
       "radius": 2.25,
       "height": 3.0,
       "capacity": {
-        "hydrogen": 3172.91,
-        "lox": 3172.91
+        "hydrogen": 3152.56,
+        "lox": 3152.56
       },
       "drag": 0.7,
       "drag_forward": 1.0,
@@ -938,12 +938,12 @@
       "display_name": "Fuel Tank (4.5m x 5m)",
       "mesh": "meshes/tank_r2.25h5.obj",
       "texture": "textures/fuel_tank.png",
-      "mass": 1057.64,
+      "mass": 1050.85,
       "radius": 2.25,
       "height": 5.0,
       "capacity": {
-        "hydrogen": 5288.18,
-        "lox": 5288.18
+        "hydrogen": 5254.27,
+        "lox": 5254.27
       },
       "drag": 0.7,
       "drag_forward": 1.0,
@@ -956,11 +956,11 @@
       "display_name": "Mono Tank (2m)",
       "mesh": "meshes/reaction_wheel_r1h0.25.obj",
       "texture": "textures/reaction_wheel.png",
-      "mass": 10.45,
+      "mass": 10.38,
       "radius": 1.0,
       "height": 0.25,
       "capacity": {
-        "hydrazine": 78.54
+        "hydrazine": 78.04
       },
       "drag": 0.6,
       "drag_forward": 1.1,
@@ -973,11 +973,11 @@
       "display_name": "Mono Tank (3m)",
       "mesh": "meshes/reaction_wheel_r1.5h0.375.obj",
       "texture": "textures/reaction_wheel.png",
-      "mass": 35.25,
+      "mass": 35.03,
       "radius": 1.5,
       "height": 0.375,
       "capacity": {
-        "hydrazine": 265.07
+        "hydrazine": 263.37
       },
       "drag": 0.6,
       "drag_forward": 1.1,
@@ -990,11 +990,11 @@
       "display_name": "Mono Tank (4.5m)",
       "mesh": "meshes/reaction_wheel_r2.25h0.5625.obj",
       "texture": "textures/reaction_wheel.png",
-      "mass": 118.98,
+      "mass": 118.22,
       "radius": 2.25,
       "height": 0.562,
       "capacity": {
-        "hydrazine": 894.62
+        "hydrazine": 888.88
       },
       "drag": 0.6,
       "drag_forward": 1.1,
@@ -1351,7 +1351,7 @@
       "display_name": "Nose Cap (2m)",
       "mesh": "meshes/nose_cap.obj",
       "texture": "textures/nose_cap.png",
-      "mass": 39.27,
+      "mass": 13.01,
       "radius": 1.0,
       "height": 0.5,
       "drag": 0.6,
@@ -1365,7 +1365,7 @@
       "display_name": "Nose Cap (3m)",
       "mesh": "meshes/nose_cap_r1.5h0.75.obj",
       "texture": "textures/nose_cap.png",
-      "mass": 132.54,
+      "mass": 43.9,
       "radius": 1.5,
       "height": 0.75,
       "drag": 0.6,
@@ -1379,7 +1379,7 @@
       "display_name": "Nose Cap (4.5m)",
       "mesh": "meshes/nose_cap_r2.25h1.125.obj",
       "texture": "textures/nose_cap.png",
-      "mass": 447.31,
+      "mass": 148.15,
       "radius": 2.25,
       "height": 1.125,
       "drag": 0.6,
@@ -1412,7 +1412,7 @@
       "display_name": "Cargo Crate (2m)",
       "mesh": "meshes/fuel_tank.obj",
       "texture": "textures/fuel_tank.png",
-      "mass": 251.33,
+      "mass": 249.72,
       "radius": 1.0,
       "height": 2.0,
       "inventory_capacity": 10,
@@ -1427,7 +1427,7 @@
       "display_name": "Materials Pod (2m)",
       "mesh": "meshes/materials_pod.obj",
       "texture": "textures/materials_pod.png",
-      "mass": 47.12,
+      "mass": 46.82,
       "radius": 1.0,
       "height": 0.25,
       "experiment_family": "materials study",

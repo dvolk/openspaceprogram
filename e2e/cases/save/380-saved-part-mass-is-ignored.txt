@@ -24,7 +24,7 @@ ARGS --sim-press 4300,0,PERIOD
 # owned mass, the hull would read ~98116 kg. It reads what the parts file says.
 EXPECT Loaded game from e2e/fixtures/save_stale_mass (active: racer)
 EXPECT [toast] Loaded fixtures/save_stale_mass
-CHECK abs(max(float(m) for m in re.findall(r'\[mass\] t=\S+ ship="racer" parts=\d+ mass=([\d.]+) kg', out)) - 2766.63) < 0.05
+CHECK abs(max(float(m) for m in re.findall(r'\[mass\] t=\S+ ship="racer" parts=\d+ mass=([\d.]+) kg', out)) - 2115.45) < 0.05
 FORBID Load failed
 FORBID [load] refused
 FORBID error:

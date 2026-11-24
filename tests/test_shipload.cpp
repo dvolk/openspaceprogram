@@ -447,12 +447,14 @@ int main() {
                 CHECK(near(cylDef->drag_forward, 1.0));
                 CHECK(near(cylDef->drag_backward, cylDef->drag_forward));
                 CHECK(cylDef->drag_side < cylDef->drag_forward);
-                /* 1142.45, not the cone's 1149.82: gen_parts.py weighs a
-                   watertight mesh at its real volume (6.24 m^3 for 32 straight
-                   sides) and only falls back to the bounding cylinder (6.283 m^3)
-                   when the mesh is open, as the Blender cone's is. So a heavier
-                   cylinder than its own bounding cylinder means a bad mesh. */
-                CHECK(cylDef->mass < cone->mass);
+                /* 1142.45 = 6.2429 m^3 (the mesh's own enclosed volume: 32 straight
+                   sides) at the capsule family's 183 kg/m^3. If the mesh ever stops
+                   proving watertight, gen_parts.py falls back to the bounding
+                   cylinder and the figure becomes 1149.82 -- so this is pinned to
+                   the mesh number exactly, not to a band. And the tube really is
+                   the roomier hull: 6.24 m^3 against the cone's 2.73, which is why
+                   it carries 2 crew where the cone carries 1. */
+                CHECK(cylDef->mass > cone->mass);
                 CHECK(near(cylDef->mass, 1142.45));
                 /* Same radius, same height, same family: without a shape word the
                    VAB list shows two identical "Capsule (2m)" rows and the pilot
@@ -921,7 +923,7 @@ int main() {
        pins them to the same arithmetic: buildPower() sums PartDef's own terms -- the very
        accessors powerTick() and wheelDemandWatts() sum -- over power_test, the electrical
        fixture that flight/377 and ui/601 already fly and print (2475.0 W of rated drum
-       draw, 600.0 W of life support, 298.45 W of RTG, a 12 kWh capsule pool). If the catalog
+       draw, 600.0 W of life support, 296.54 W of RTG, a 12 kWh capsule pool). If the catalog
        moves, all four move together; if only the build screen moves, this goes red.
        The first checks are the accessor's own rules, which no shipped part happens to
        violate: the wheel GATE is the torque, so a watt figure authored on a part with no
@@ -979,17 +981,17 @@ int main() {
         const BuildPower pw = buildPower(BuildShip::fromShipDef(pt));
         printf("power_test EC: gen %.2f W  const %.1f W  wheels %.1f W (rated)  store %.0f Wh\n",
                pw.genW, pw.constW, pw.wheelRatingW, pw.storeWh);
-        CHECK(near(pw.genW, 298.45));
+        CHECK(near(pw.genW, 296.54));
         CHECK(near(pw.constW, 600.0));
         CHECK(near(pw.wheelRatingW, 2475.0));   // ui/601's Active row, at full demand
         CHECK(near(pw.storeWh, 12000.0));
-        /* The VAB's at-rest row prints this pair, at whole watts (302 W, 40 h), and
-           flight/377's coast slope is the same 301.55 W in Wh/s. Banded rather than exact
+        /* The VAB's at-rest row prints this pair, at whole watts (303 W, 40 h), and
+           flight/377's coast slope is the same 303.46 W in Wh/s. Banded rather than exact
            because the row rounds; the band is what the row prints. */
-        CHECK(near(pw.constW - pw.genW, 301.55));
+        CHECK(near(pw.constW - pw.genW, 303.46));
         const double hours = pw.storeWh / (pw.constW - pw.genW);
         CHECK(hours > 39.0 && hours < 40.0);    // "40 h aboard": the point of asking
-        /* powerTick's gate at the worst the drums can ask: 298 W covers neither the life
+        /* powerTick's gate at the worst the drums can ask: 297 W covers neither the life
            support nor the rated drums, so this hull steers on its store -- which is what
            the VAB's second verdict row now says out loud (#642). */
         CHECK(pw.genW < pw.constW + pw.wheelRatingW);

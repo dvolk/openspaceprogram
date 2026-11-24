@@ -1,6 +1,6 @@
 # The hours-aboard row (#896) has two branches, and the charging one had no live coverage:
-# every PRESET ship draws more than it generates (power_test's 298 W RTG sits under its
-# 600 W of air), but the parts catalog ships a bigger one -- rtg_r1.5h0.375 at 1007.3 W --
+# every PRESET ship draws more than it generates (power_test's 297 W RTG sits under its
+# 600 W of air), but the parts catalog ships a bigger one -- rtg_r1.5h0.375 at 1000.8 W --
 # so a hull built from catalog parts pays for its air and still charges. surplus_test is
 # power_test with that RTG swapped in, which is the cheapest way to stand in that regime
 # without deciding what a real probe should carry (that call is #899's).

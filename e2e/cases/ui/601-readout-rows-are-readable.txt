@@ -81,7 +81,7 @@ CHECK abs(float(re.search('label="Net: +([-+]?[0-9.]+) W', out).group(1)) - (flo
 # CHECK re-derives from printed watts: an hours figure of 247 re-derived from a net printed
 # as one decimal can sit 0.28 off and still be exactly right, so an absolute 0.1 band would
 # redden a correct row on any hull whose drain is under ~sqrt(store) watts. parts.json
-# already spells power as 298.45, so that is not hypothetical.
+# already spells power as 296.54, so that is not hypothetical.
 # What this CHECK is BLIND to, and the fixture's fault rather than the assertion's:
 # power_test sits at 11998.2 of 12000.0 Wh, so swapping charge for capacity in the printer
 # changes the row by 0.0007 h and survives. Killing that mutation needs a hull read well
@@ -95,9 +95,9 @@ CHECK abs(float(re.search('label="Aboard: +([0-9.]+) h', out).group(1)) - float(
 # Matched as a PAIR (net with active), not on net alone. --ui-list fires on WALL clock
 # and log rows are stamped with SIM time, so the harness cannot name the row that was
 # current when the dump happened -- `last(power)` is the end of the run, not the dump
-# (measured: the dump reads Active 2475.0 / Net -2776.6 while the last row reads
-# active=0.0W net=-301.6W). Matching one field therefore passes for a window quoting any
-# phase of the run: this row set has 20 rows at net=-301.6W and 9 at -2776.6W, so a Net
+# (measured: the dump reads Active 2475.0 / Net -2778.5 while the last row reads
+# active=0.0W net=-303.5W). Matching one field therefore passes for a window quoting any
+# phase of the run: this row set has 20 rows at net=-303.5W and 10 at -2778.5W, so a Net
 # row stuck on the coast figure sails through. Requiring the same row's bill to match is
 # what pins the moment. 0.2 W is print rounding -- the same figure quoted twice.
 CHECK any(abs(float(re.search('label="Net: +([-+]?[0-9.]+) W', out).group(1)) - p["net"]) < 0.2 and abs(float(re.search('label="Active: +([0-9.]+) W', out).group(1)) - p["active"]) < 0.2 for p in power)

@@ -6,7 +6,7 @@
 # MAKING power, or stopped LOSING it, kept its battery bar green.
 #
 # power_test is the smallest ship that shows all of it: a 600 W capsule, a
-# 298.45 W RTG and a 2250 W wheel on a 12000 Wh battery. The RTG does NOT cover
+# 296.54 W RTG and a 2250 W wheel on a 12000 Wh battery. The RTG does NOT cover
 # life support, so the battery has to fall over a coast. That is the #379
 # regression: a substep's 4.65e-4 Wh sat under half a float ULP at 12000, so
 # drainEC's `have - share` rounded straight back to `have` and the charge sat at
@@ -27,7 +27,7 @@ FORBID FAILED
 # The ship's own numbers, steady on every row: one RTG, one capsule, one 12 kWh
 # battery, and the wheels stay online the whole time because there is charge.
 CHECK len(power) >= 20
-CHECK all(r["gen"] == 298.4 and r["const_draw"] == 600.0 and r["capacity"] == 12000.0 for r in power)
+CHECK all(r["gen"] == 296.5 and r["const_draw"] == 600.0 and r["capacity"] == 12000.0 for r in power)
 CHECK all(r["powered"] == 1 for r in power)
 CHECK all(0.0 <= r["charge"] <= r["capacity"] for r in power)
 # Generation is under the constant draw, so the pool can only ever fall. A
@@ -42,7 +42,7 @@ CHECK first([r for r in power if r["t"] < 3.0])["charge"] > last([r for r in pow
 CHECK first([r for r in power if r["t"] > 8.5])["charge"] > last([r for r in power if r["t"] > 8.5])["charge"]
 # The post-release coast is the long one (rows 8.6 -> 19.8 s), which is what makes
 # the slope readable at all: charge prints to only 0.1 Wh, so the 0.9 Wh that moves
-# across the window carries ~10% quantisation (a 0.5 s row at 302 W net is 0.042 Wh,
+# across the window carries ~10% quantisation (a 0.5 s row at 303 W net is 0.042 Wh,
 # so several rows print the same value in a row) -- comfortably inside the 20% band,
 # where two adjacent rows would be all rounding error. The expected Wh/s comes out of
 # the gen= and const_draw= the rows themselves print, not out of parts.json.
