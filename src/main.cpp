@@ -1170,6 +1170,8 @@ int main(int argc, char **argv)
     Texture * radial_out_indicator_texture = get_texture("res/textures/radial_out_icon.png", false);
     Texture * normal_plus_indicator_texture = get_texture("res/textures/normal_plus_icon.png", false);
     Texture * normal_minus_indicator_texture = get_texture("res/textures/normal_minus_icon.png", false);
+    // #1145/#1157: the transfer target's own mark.
+    Texture * target_icon_texture = get_texture("res/textures/target_icon.png", false);
 
     // Marker hues: one per direction family, so the ring around the ship reads by
     // colour. billboardshader.fs tints with this uniform and ignores the texture
@@ -1180,6 +1182,12 @@ int main(int argc, char **argv)
     const glm::vec4 retrograde_color  = glm::vec4(1.00f, 0.25f, 0.25f, 1.0f);
     const glm::vec4 radial_color      = glm::vec4(0.75f, 0.35f, 1.00f, 1.0f);
     const glm::vec4 normal_color      = glm::vec4(0.30f, 0.55f, 1.00f, 1.0f);
+    // #55ee55, the authored green of target_icon.png -- which the shader throws
+    // away, so the two are kept equal by hand if the art ever changes. It is not
+    // prograde_color on purpose: a green square sitting on a green diamond is a
+    // legibility problem, and this is lighter and a ring rather than a direction.
+    const glm::vec4 target_color      = glm::vec4(85.0f / 255.0f, 238.0f / 255.0f,
+                                                  85.0f / 255.0f, 1.0f);
 
     Billboard *front_indicator =
         mk_billboard(billboardshader, front_indicator_texture, 1.0, 1.0, front_color);
@@ -1218,12 +1226,11 @@ int main(int argc, char **argv)
         mk_billboard(billboardshader, prograde_indicator_texture, 1.0, 1.0, aircolor);
     Billboard *air_retrograde_indicator =
         mk_billboard(billboardshader, retrograde_indicator_texture, 1.0, 1.0, aircolor);
-    /* #1145: the selected transfer target's own mark. White, and sharing the
-       prograde glyph for now -- the square icon that should replace this is
-       res/textures/target_icon.png, and this one line is the whole swap. */
+    /* #1145: the selected transfer target's own mark -- its square icon (#1157),
+       1.0 x 1.0 like the rest, so the mark's screen size comes from Draw's 10 m
+       sphere and not from the art. */
     Billboard *target_indicator =
-        mk_billboard(billboardshader, prograde_indicator_texture, 1.0, 1.0,
-                     glm::vec4(1.0f, 1.0f, 1.0f, 1.0f));
+        mk_billboard(billboardshader, target_icon_texture, 1.0, 1.0, target_color);
 
     const float camFov = (float)glm::radians(args.camFovDeg);
     // The drawable size the Renderer actually got (the WM may have clamped it).
