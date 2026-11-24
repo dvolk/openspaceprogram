@@ -3,6 +3,13 @@ CLAIM The materials pod holds several findings before they are couriered.
 KIND golden
 ARGS --time-accel 1 --timeout 8 --width 1920 --height 1080
 ARGS --startship labpod,res/ships/labpod.json,Kerbin,rot-orbit
+# The camera starts broadside on the stack, and the 0.2 m-thick materials pod hides behind
+# the capsule there. A part PICK ray-tests the COLLISION hull (pick.cpp), so this pod was
+# only ever aimable because a 0.1 m hull margin fattened every collider past its own
+# drawing; #1152 took that margin off and the pick now matches what is on screen. The short
+# RMB-drag below (yaw ~0.5 rad) is what a player does with the mouse in exactly this
+# situation, and it is what lets --ui-focus land on the pod.
+ARGS --sim-mouse 400,600,1060,540,RMB
 ARGS --ui-focus 1000,labpod/materials_pod_1
 ARGS --sim-mouse 1100,0,CUR,CUR,RMB
 ARGS --ui-click 1500,"labpod > Materials Pod (2m)##1/Run Experiment##pod_run"

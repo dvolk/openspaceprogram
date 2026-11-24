@@ -6297,7 +6297,13 @@ double Vehicle::dockCaptureRange(const Part *pa, const Part *pb) {
     if(pa == nullptr || pb == nullptr || pa->def == nullptr || pb->def == nullptr) {
         return 0.0;
     }
+    assert(pa->body != nullptr && pb->body != nullptr);   // a built part always has one
     const double depth = std::min(pa->def->height, pb->def->height);
+    /* An unbounded depth (a hand-written or corrupt ship def: shipdef.cpp only asked for
+       "> 0") would make this the biggest gate in the world and mate hulls across a map.
+       Returning 0 makes it a gate that never opens instead -- the direction a broken def
+       should fail in. */
+    if(!std::isfinite(depth)) { return 0.0; }
     const double standoff = effectiveHullMargin(pa->body) + effectiveHullMargin(pb->body);
     return std::max(kDockCaptureFrac * depth, 1.25 * standoff);
 }

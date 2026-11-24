@@ -11,10 +11,17 @@
 # has not rolled (89.998 deg, tmp/aero/n573_surf_mut.log, from pointing syncShipView at
 # partRot(controller) instead of attitudeBasis()).
 #
-# The window stops at t=3.6 s. The wheel keeps driving after the 2-5 s press and the nose
+# The window stops at t=3.3 s. The wheel keeps driving after the 2-5 s press and the nose
 # passes through vertical, where the SURFACE window's roll reference flips by 180 deg --
 # a property of the roll formula, not of the frame. So the pitch check below pins the
-# RESPONSE rather than a clean value.
+# RESPONSE rather than a clean value. That crossing used to fall between the 3.6 and 3.9
+# samples and now falls between 3.3 and 3.6 (roll=-0.098 at 3.6 on the old numbers,
+# roll=-179.706 there now): the hull's collision skin was carrying a third of its
+# rotational inertia (see the margin note in src/physics.cpp), so the same wheel command
+# turns this hull a third faster, and a window written against the old crossing goes red on
+# a formula flip rather than on anything about the HUD. 3.3 s sits clear of the crossing at
+# either inertia -- the pitch it still sees is -61.5 deg at the shipped 0 margin, -52.1 with
+# OSP_HULL_MARGIN=0.1.
 NAME hud-speaks-the-hull
 CLAIM The SURFACE window's pitch/roll/heading describe the hull the keys turn, even though the crew sit on a wheel that is rolled 90 deg about the stack.
 KIND invariant
@@ -30,16 +37,17 @@ CHECK len(surf) >= 10
 # Hands-off before the press: the hull holds its attitude, so the roll pin below is not
 # merely "nothing moved".
 CHECK all(abs(s["pitch"]) < 1.0 for s in surf if s["t"] <= 2.1)
-# The S press moves the displayed pitch by tens of degrees (measured -79 deg by t=3.6).
+# The S press moves the displayed pitch by tens of degrees (measured -86.7 deg by t=3.6).
 CHECK min(s["pitch"] for s in surf if 2.4 <= s["t"] <= 3.6) < -50.0
 # ... while the hull has not rolled at all. Against the 90 deg a seat-frame HUD prints,
-# 5 deg is a wide net: this is the check that makes the case bite.
-CHECK all(abs(s["roll"]) < 5.0 for s in surf if s["t"] <= 3.6)
+# 5 deg is a wide net: this is the check that makes the case bite. The window ends at 3.3 s,
+# ahead of the nose passing vertical -- see the header, where the same reason moved it.
+CHECK all(abs(s["roll"]) < 5.0 for s in surf if s["t"] <= 3.3)
 # And pitching is not turning. This used to read `abs(hdg - 249.2) < 1.0`, which pinned the
 # spawn's ABSOLUTE heading -- a number that belongs to the bed, not to the law: the hull now
 # starts at 110.8 deg (the bed's epoch/rotation moved under it) and the check went red while
 # the drift itself was unchanged at 0.197 deg across the whole window. What the case means is
 # SPREAD, so that is what it pins now: an S press that yaws would show up here no matter where
-# the run starts. The window still stops at 3.6 s to dodge the roll-formula flip (hdg jumps a
-# clean 180 deg -- 110.9 to 290.8 -- at t=3.9 when the nose passes vertical).
-CHECK max(s["hdg"] for s in surf if s["t"] <= 3.6) - min(s["hdg"] for s in surf if s["t"] <= 3.6) < 1.0
+# the run starts. The window stops at 3.3 s for the same reason as the roll one: past the
+# crossing hdg jumps a clean 180 deg (110.9 to 290.6 in the run measured for this file).
+CHECK max(s["hdg"] for s in surf if s["t"] <= 3.3) - min(s["hdg"] for s in surf if s["t"] <= 3.3) < 1.0

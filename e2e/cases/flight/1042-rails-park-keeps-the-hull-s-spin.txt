@@ -35,9 +35,11 @@ CHECK len(dockwin) >= 6
 CHECK len([s for s in shipswitch if s["verb"] == "switch"]) == 2
 CHECK all(r["twist"] is not None for r in (first(dockwin), last(dockwin)))
 # Both ends are spinning pairs, so the equality below cannot be satisfied by a dead rig.
-# The authored roll is 4 deg/s and the dial reports it to 4.00 on every measurable row.
-CHECK first(dockwin)["twist"] > 1.0
-CHECK last(dockwin)["twist"] > 1.0
+# The authored roll is 4 deg/s and the dial reads 4.00 on every measurable row, so the
+# band is the figure itself rather than "some spin": at > 1.0 a rig that had lost most of
+# its spin -- which is exactly what the rails used to do -- would still clear the floor.
+CHECK 3.9 < first(dockwin)["twist"] < 4.1
+CHECK 3.9 < last(dockwin)["twist"] < 4.1
 # The round trip. Measured across the two runs of this case: with the old zeroing the dial
 # reads twist=4.00 before the F6 pair and 0.00 after it -- one hull's spin against the
 # other's stationary one. With rail_omega carried, the same schedule prints 4.00 through

@@ -47,18 +47,22 @@ CHECK all(s["tau_spent"] <= 145.0 for s in slew)
 # 104/103 from rounding alone. Hence 2 N m of slack, not 1.
 CHECK all(s["tau_spent"] > 130.0 for s in slew if s["mode"] == "stick")
 CHECK all(abs(s["tau_ask"] - s["tau_spent"]) < 2.0 for s in slew if s["mode"] == "stick")
-# AND THE RAMP BELONGS TO THE HARDWARE. 138 N m over this hull's 86 kg m^2 about pitch is
-# 1.605 rad/s^2 -- flight/595's prograde rows print that Ieff and call the quotient
-# alpha=1.606; neither the killrot rows nor the tap rows this case reads carry an Ieff
-# column, so the figure is quoted from there rather than from here. The slope between the
-# first and last tap row is 1.6002..1.6039 in the fourteen runs taken for this case (six
-# alone, eight in concurrent fours), so the tap accelerates the hull at whatever the ring
+# AND THE RAMP BELONGS TO THE HARDWARE. 138 N m over this hull's 66 kg m^2 about pitch is
+# 2.10 rad/s^2 -- flight/595's prograde rows print that Ieff and call the quotient alpha;
+# neither the killrot rows nor the tap rows this case reads carry an Ieff column, so the
+# figure is quoted from there rather than from here. It used to read 86 kg m^2 and 1.60, and
+# the change is #1152 taking the hull's default collision skin off: Bullet prices a convex
+# hull's inertia off the margin-inflated AABB, Vehicle sums that per part into the compound,
+# and a 0.1 m skin on a 1 m tank is worth a third of the result (src/physics.cpp's margin
+# note). Same actuators, same 138 N m, honest hull.
+# The slope between the first and last tap row is 2.0963..2.0978 in the four runs taken for
+# this case (tmp/night7/rep_*.log), so the tap accelerates the hull at whatever the ring
 # is worth no matter where the translation dial sits. What DOES move is when the release
-# lands: the tap rows end at t=3.550..3.667 and leave 0.80..0.99 rad/s, because --sim-press
+# lands: the tap rows end at t=3.567..3.667 and leave 1.05..1.29 rad/s, because --sim-press
 # without --sim-steps is wall-clock timed (#138, #871). That spread is the 14-17 % #1130
 # read as the dial biting, and it is why the slope rather than the endpoint is pinnable.
 # len() guards the lambda: with a single row the slope is a division by zero.
-CHECK (lambda st: len(st) >= 2 and 1.58 < (st[-1]["wnorm"] - st[0]["wnorm"]) / (st[-1]["t"] - st[0]["t"]) < 1.62)([s for s in slew if s["mode"] == "stick"])
+CHECK (lambda st: len(st) >= 2 and 2.08 < (st[-1]["wnorm"] - st[0]["wnorm"]) / (st[-1]["t"] - st[0]["t"]) < 2.12)([s for s in slew if s["mode"] == "stick"])
 # AND THE SPIN GOES AWAY with the keys' dial at zero.
 CHECK max(s["wnorm"] for s in slew) > 0.25
 CHECK min(s["wnorm"] for s in slew) < 0.01

@@ -1427,11 +1427,24 @@ static void test_the_capture_distance_is_the_ports_own_size() {
     p1->body->hull_margin = -1.0;
     p225->body->hull_margin = -1.0;
 
-    /* A port with no def has no size to scale from, and must not hand the caller a gate at
-       zero -- dockRead's own null contract returns no measurement at all. */
+    /* A port with no def has no size to scale from, so the answer is 0 -- a capture
+       distance of nothing is a gate that never opens, which is the direction a broken
+       part should fail in. It is also unreachable from the gate: dockRead() reports
+       unmeasurable for a port it cannot read, and dockSituation() answers before the
+       distance gates are ever asked. */
     Part bare;
     CHECK_NEAR(Vehicle::dockCaptureRange(p1, &bare), 0.0, 1e-12,
                "no def, no capture distance");
+
+    /* The other two gates' figures, by value, for the same reason as the rows above: the
+       situation test asks the law for its boundary, so nothing there notices a retune.
+       Both are numbers a pilot's hands are tuned to -- 5 deg of axis, 15 cm/s of closure
+       -- and moving either also moves the e2e pins that fly them: flight/47 mates at the
+       scripted 0.09 m/s, flight/1026-a refuses at 40 deg outside this cone. */
+    CHECK_NEAR(Vehicle::kDockAlign, 0.996195, 1e-6, "the axis gate is a 5 deg cone");
+    const double cone = std::acos(Vehicle::kDockAlign) * 180.0 / std::numbers::pi;
+    CHECK(cone > 4.99 && cone < 5.01);
+    CHECK_NEAR(Vehicle::kDockMaxV, 0.15, 1e-12, "and capture needs 15 cm/s or less");
 }
 
 static void test_the_dock_situation_says_why_a_pair_will_not_mate() {

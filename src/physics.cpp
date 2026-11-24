@@ -36,9 +36,17 @@ PhysicsEngine *physics;
    terrain the 0.5 m was worse still: it is taller than the shipped suspension travel, so
    wheels bottomed out and the hull rode as a bump stop. Both terms are read live, so the
    analytic ground, the pad lift and a resting suit move with them.
-   `make test` is green at 0 for both knobs. They stay settable for anyone who wants the
-   floatier behaviour, and for the thin-part case if it ever comes back now that parts
-   are one body. */
+
+   The margin sentence about mass properties is not a footnote: it is how much of a hull's
+   rotational inertia a skin is worth. Taking it off cut rcs_test's pitch inertia from
+   86 to 66 kg m^2, so the same rated 138 N m ramps at 2.10 rad/s^2 instead of 1.60
+   (flight/1067-c), and a ground kerbal's attitude servo can finally out-torque its own
+   feet -- it now performs the point-to-point turns it always asked for (crew/186). A
+   parked hull also sits inside its old skin: the pad stager's recorder row reads 0.4 m
+   lower (flight/990). Those three are pinned at the new figures, so MOVING A DEFAULT HERE
+   re-mints them; run the whole e2e battery, not `make test`, which does not cover them.
+   The knobs stay settable for anyone who wants the floatier behaviour, and for the
+   thin-part case if it ever comes back now that parts are one body. */
 static double envMargin(const char *name, double fallback) {
     const char *e = getenv(name);
     // A negative margin inverts the shape's AABB; the JSON paths reject it, so

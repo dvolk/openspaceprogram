@@ -4,6 +4,12 @@ CLAIM Pod study, EVA take/store and recover score the sample.
 KIND golden
 ARGS --time-accel 1 --timeout 9 --width 1920 --height 1080
 ARGS --startship labpod,res/ships/labpod.json,Kerbin,rot-orbit
+# The camera starts broadside, where the 0.2 m-thick materials pod hides behind the
+# capsule. A part PICK ray-tests the collision hull (pick.cpp), and this pod was only
+# aimable at all because a 0.1 m hull margin used to fatten every collider past its own
+# drawing -- #1152 took that off, so the pick now matches the picture and the view has to
+# move. One short RMB-drag (yaw ~0.5 rad) is what a player does here.
+ARGS --sim-mouse 300,500,1060,540,RMB
 ARGS --ui-focus 1000,labpod/materials_pod_1
 ARGS --sim-mouse 1100,0,CUR,CUR,RMB
 ARGS --ui-click 1500,"labpod > Materials Pod (2m)##1/Run Experiment##pod_run"

@@ -232,13 +232,17 @@ DockTestShips build_dock_test_ships(const std::string &mode,
        sideways -- which would fail the distance gates as well as the cone one and leave
        the fixture testing two things at once. Place, read where the port went, place
        again shifted by the difference.
-       The angle is 40 deg, not the 16 that would do: nothing flies the probe, so the pair
-       wanders, and a yaw set just outside the cone is inside it (or far outside it) by the
-       time the window is on screen. Measured across several runs of the 3 s end-to-end
-       case: the face gap the panel first prints is 1.2 m, the last line some 2.5 s later
-       says 4.2 m (separating at 1.2 m/s), and the misalignment drifts from 38 to 46 deg.
-       The verdict stays `misaligned` through all of it because the gate asks the axis
-       question before the distance one -- the same order tests/test_dock.cpp pins. */
+       The angle is 40 deg, not the 6 that would clear the cone: this fixture owns the
+       angle and the gate owns the cone, and a slim margin here means a retune of the cone
+       can quietly turn the end-to-end case into one that measures nothing.
+       The pair used to drift out of any band one could name -- the fixture's authored
+       velocity was a few cm/s off, so the panel's first line read a 1.2 m face gap and
+       its last a 4.2 m one (separating at 1.2 m/s) while the misalignment wandered from
+       38 to 46 deg. #1152 fixed that velocity: the same 3 s run now prints align=37.4
+       with the faces at 0.78 m on every row, so the verdict is no longer a race against
+       drift and the 40 deg is only a margin. The verdict stays `misaligned` through all
+       of it because the gate asks the axis question before the distance one -- the same
+       order tests/test_dock.cpp pins. */
     probe->placeShipAtCom(rP, faceAlong(faceDir));      // the aligned pose
     if(yawDeg != 0.0) {
         const glm::dvec3 port0 = probe->partPos(prPort);    // where its port belongs

@@ -15,9 +15,12 @@
 # rcs_test is four rcs_box units bolted to the skin of a 1 m mono tank (#1120 took out the
 # round pod this hull used to be), so a --steering-log run on it prices the ring at
 # 276/138/138 N m (R/P/Y) -- it can roll as well as pitch and yaw -- and the prograde law
-# steers against alpha 1.60 rad/s^2 on Ieff 86 kg m^2. Those are the numbers the rows
+# steers against alpha 2.10 rad/s^2 on Ieff 66 kg m^2. Those are the numbers the rows
 # print: a bell ring is a weak actuator next to a drum, and the case says so rather than
-# dressing it up.
+# dressing it up. (The pair used to read 1.60 on 86. #1152 took the hull's default collision
+# skin off, and that skin was carrying a third of this hull's rotational inertia -- Bullet
+# prices a convex hull's inertia off the margin-inflated AABB, and Vehicle sums it per part.
+# See the margin note in src/physics.cpp: the torque never moved, the hull got honest.)
 NAME rcs-turns-a-wheel-less-hull
 CLAIM With no wheels and no engine, a thruster ring holds prograde: it has authority, spends hydrazine to use it, and closes a stick disturbance.
 KIND invariant
@@ -46,13 +49,20 @@ CHECK len(slew) >= 40
 # (1.602-1.631 across runs), whether or not anything is being asked for -- a rating, not a
 # spend. The floor is three quarters of that rating: #595's bug was alpha 0, and a ring
 # that quietly lost half its leverage is still this case's business.
-CHECK all(s["alpha_full"] > 1.2 for s in slew)
-CHECK all(s["alpha"] > 1.2 for s in slew)
+CHECK all(s["alpha_full"] > 1.6 for s in slew)
+CHECK all(s["alpha"] > 1.6 for s in slew)
+# AND THE HULL'S OWN INERTIA, printed on every row. This is the only e2e row where the
+# inertia itself is visible, so it is where the collision-skin coupling gets pinned: 66 for
+# this hull at the shipped 0 margin, 86 when OSP_HULL_MARGIN=0.1 inflated its collision hull
+# and, through it, its box inertia (src/physics.cpp). Pinning the figure is what stops the
+# next margin change from being a silent 30% retune of every authority in the game.
+CHECK all(abs(s["Ieff"] - 66.0) < 1.0 for s in slew)
 # THE RING MOVES THE HULL: during the hold the only thing acting is thruster gas, and the
-# rate it buys is what the rows say it can (138 N m on Ieff 86 is 1.6 rad/s^2, so 600 ms
-# of full bells is ~0.9 rad/s; measured -0.86..-0.96 in the window). -0.5 keeps room for
-# the row grid itself shifting ~0.05 s between runs, which is #1054's shape.
-CHECK min(s["w_slew"] for s in slew if 3.0 < s["t"] < 3.7) < -0.5
+# rate it buys is what the rows say it can (138 N m on Ieff 66 is 2.1 rad/s^2, so 600 ms
+# of full bells is ~1.26 rad/s; measured -1.16 in the window). It was -0.86..-0.96 when the
+# collision skin was still in Ieff, which is why the floor below moved with it: -0.9 keeps
+# room for the row grid itself shifting ~0.05 s between runs, which is #1054's shape.
+CHECK min(s["w_slew"] for s in slew if 3.0 < s["t"] < 3.7) < -0.9
 CHECK max(s["tau_spent"] for s in slew if 3.0 < s["t"] < 3.7) > 100
 # AND THE SAME RING PUTS IT BACK: the error peaks near 0.55 rad and is gone by the end. A
 # hull that could not turn would still be sitting at its tap angle, so the tail window is

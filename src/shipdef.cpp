@@ -395,14 +395,17 @@ PartsCatalog load_parts_catalog(const char *path) {
                 throw std::runtime_error(ctx + "\"mass\" must be > 0 (kg)");
             }
 
-            /* Defaults are the legacy 2 m cube, so pre-size parts are unchanged. */
+            /* Defaults are the legacy 2 m cube, so pre-size parts are unchanged.
+               Finite as well as positive: an overflowing literal (1e400 reads as inf)
+               passes a bare "> 0" and then makes every size-derived figure inf -- the
+               dock capture distance among them (Vehicle::dockCaptureRange). */
             d.radius = optNumber(pv, "radius", 1.0, ctx, "m");
             d.height = optNumber(pv, "height", 2.0, ctx, "m");
-            if(d.radius <= 0.0) {
-                throw std::runtime_error(ctx + "\"radius\" must be > 0 (m)");
+            if(!(d.radius > 0.0) || !std::isfinite(d.radius)) {
+                throw std::runtime_error(ctx + "\"radius\" must be a finite > 0 (m)");
             }
-            if(d.height <= 0.0) {
-                throw std::runtime_error(ctx + "\"height\" must be > 0 (m)");
+            if(!(d.height > 0.0) || !std::isfinite(d.height)) {
+                throw std::runtime_error(ctx + "\"height\" must be a finite > 0 (m)");
             }
         }
 

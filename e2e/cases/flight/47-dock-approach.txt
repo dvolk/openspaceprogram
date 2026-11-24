@@ -8,13 +8,17 @@ KIND invariant
 # over three times the cap -- and the case was at the mercy of how many physics substeps a
 # wall-clock press happened to catch (the flake this used to document). No keys are pressed
 # here, so the mate has exactly one cause: the approach.
-# The d= pin is the ticket. absorbShip is a rigid rebase, so whatever face gap the capture
-# tick measures is the air that stays between the ports forever; 1.5 m of gate used to mean
-# a docked pair holding each other at arm's length. Anything under 0.1 m means the gate did
-# what it now says.
+# The d=/cap= pair is the ticket. absorbShip is a rigid rebase, so whatever face gap the
+# capture tick measures is the air that stays between the ports forever; 1.5 m of gate used
+# to mean a docked pair holding each other at arm's length. So the pin is not "d starts with
+# 0.0" -- it is d < cap, with cap read off the same row: the gate's own distance for this
+# pair, printed since #1152. A digit pattern sat 0.5 mm from the boundary and went red at
+# --physics-hz 120, where a coarser tick lets the pair cross in bigger steps and d prints
+# 0.100. Comparing the two figures says what is actually claimed, and the cap > 0.05 floor
+# keeps the comparison from being vacuous.
 ARGS --dock-test approach --time-accel 1 --timeout 8
 EXPECT Dock-test (approach)
 EXPECT [dock] t=
 EXPECT a="dockprobe" b="dockstation"
-CHECK len(re.findall(r'\[dock\] t=\S+ a="dockprobe" b="dockstation" d=0\.0\d\d m v=', out)) == 1
+CHECK (lambda x: len(x) == 1 and 0.05 < float(x[0][1]) and float(x[0][0]) < float(x[0][1]))(re.findall(r'\[dock\] t=\S+ a="dockprobe" b="dockstation" d=([-\d.]+) m cap=([-\d.]+) m v=', out))
 FORBID error:

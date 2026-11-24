@@ -11,7 +11,11 @@
 # subtracting radius and subtracting seaLevelRadius().
 # alt_agl is the other half of the pair: it is the SURFACE-relative readout, so it
 # must NOT carry the datum (its numbers are in tmp/aero/n412_pad_base.log and
-# n412_pad_fix.log: 8.89346 m both worlds, while alt_asl moves 129.753 -> 29.753).
+# n412_pad_fix.log: 8.89346 m both worlds when this case was written, while alt_asl moved
+# 129.753 -> 29.753). Those three rest figures are 0.2 m lower since #1152 -- 8.69346 and
+# 129.553 -> 29.553 -- because a hull and the pad it stands on each used to carry a 0.1 m
+# collision skin, and alt_agl IS the sum of the two. The datum did not move; the skins did.
+# Nothing below pins a rest height, which is why this case stayed green through it.
 # The biome flips to "ocean" for the ground point under the ship, which is the
 # datum reaching terragen.h's splashdown rule -- the reason a real sea_level is
 # worth having at all, and impossible to see on a shipped body.

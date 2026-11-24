@@ -5,6 +5,12 @@ CLAIM One finding is couriered home and scores; one left on the walker does not.
 KIND golden
 ARGS --time-accel 1 --timeout 10 --frame-cap 30 --width 1920 --height 1080
 ARGS --startship labpod,res/ships/labpod.json,Kerbin,rot-orbit
+# A short RMB-drag (yaw ~0.5 rad) before the aims: the camera starts broadside on the
+# stack, and a part PICK ray-tests the collision hull (pick.cpp). The 0.2 m-thick materials
+# pod used to be aimable there only because a 0.1 m hull margin fattened every collider past
+# its own drawing; #1152 took that margin off, so the pick now matches what is drawn and
+# this case has to move the view the way a player would.
+ARGS --sim-mouse 300,500,1060,540,RMB
 ARGS --ui-focus 700,labpod/capsule_1
 ARGS --sim-mouse 800,0,CUR,CUR,RMB
 ARGS --ui-click 1000,"labpod > Capsule (2m)##0/Run Experiment"

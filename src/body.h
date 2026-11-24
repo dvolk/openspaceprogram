@@ -37,7 +37,8 @@ struct Body {
     Texture *texture = nullptr;
 
     /* collision convex-hull margin (m); -1 = not set -> physics default
-       (OSP_HULL_MARGIN / 0.1). */
+       (OSP_HULL_MARGIN, which is 0 since #1152). A part that sets one here also
+       raises that pair's dock capture distance -- see Vehicle::dockCaptureRange. */
     double hull_margin = -1.0;
 
     /* The rigid body, or null. A ship PART has no rigid body of its own -- the

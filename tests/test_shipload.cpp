@@ -3729,6 +3729,16 @@ int main() {
                  "\"height\": -1 } ] }";
         }
         CHECK(expect_throw([&](){ load_parts_catalog(bad); }));
+        /* ... and finite. A part that overflows to inf passes "> 0" and hands every
+           size-derived law an inf to work with; Vehicle::dockCaptureRange would have
+           opened its gate at any distance. */
+        {
+            std::ofstream f(bad);
+            f << "{ \"parts\": [ { \"name\": \"x\", \"type\": \"engine\", "
+                 "\"mesh\": \"a.obj\", \"texture\": \"a.png\", \"mass\": 1.0, "
+                 "\"height\": 1e400 } ] }";
+        }
+        CHECK(expect_throw([&](){ load_parts_catalog(bad); }));
         std::remove(bad);
     }
 

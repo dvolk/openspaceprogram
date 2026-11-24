@@ -31,6 +31,20 @@
 # Resources bar above it on purpose. That rect is also what sizes the approach dial
 # (dockDialRadius, gameui.cpp) -- the ring takes whatever square the window has -- so the
 # pin doubles as "the instrument is the size the panel declares, not a collapsed one".
+# cap= IS THE GATE (#1152). Every other case that cares about the capture distance asks the
+# law in C++ or reads only a verdict here; this is the row where the pair's own distance
+# reaches an e2e case as a figure, so it is where the dial's capture ring gets pinned to the
+# gate it draws. The fixture's ports are r1s -- 0.25 m deep, so 0.4 of the shallower one is
+# 0.10 m -- and the faces sit 0.78 m away, seven capture distances short, which is why the
+# panel has two candidate gates and still names the axis.
+# The `is not None` half is not decoration: DOCKWIN_RE's figure block is optional (a
+# why-only row has no line to plot), so a measurable row that lost a column parses as a
+# short row and keeps matching. Without it this case could print the word and lose every
+# number.
+CHECK len(dockwin) >= 3
+CHECK all(r["cap"] is not None and abs(r["cap"] - 0.10) < 0.005 for r in dockwin)
+CHECK all(r["gap"] is not None and r["gap"] > 5.0 * r["cap"] for r in dockwin)
+CHECK all(r["why"] == "misaligned" for r in dockwin)
 NAME docking-window-says-why-a-dock-refuses
 CLAIM The Docking panel reports the gate that stopped a mate, and the pair it calls refused really does not mate.
 KIND invariant

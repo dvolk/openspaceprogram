@@ -9,10 +9,17 @@
 NAME eva-jump-padwall
 CLAIM A jump into the pad wall ends instead of gliding along the ground forever.
 KIND invariant
-# --timeout is load-bearing, not slack: the wall bump spins the suit up to the
-# 6 rad/s slew cap and it needs ~2 s to right itself, so an 8 s run leaves that
-# spin inside the last-4 s window and the |w| check fails.
-ARGS --timeout 17 --eva-log --att-log --orbit-interval 0.5 --sim-press 8000,5000,W --sim-press 9000,0,SPACE --frame-cap 30
+# --timeout is load-bearing, not slack: the wall bump spins the suit up and it takes
+# seconds to right itself, so a run that is too short leaves that spin inside the last-4 s
+# window and the |w| check fails. It used to need ~2 s (up to the 6 rad/s slew cap) and the
+# timeout was 17. #1152 took the collision skin out of the suit's inertia, and the same
+# authority now overshoots: the suit rocks -- |w| up to 4.06, alternating sign sample to
+# sample, about 5 deg of nose travel -- for ~4 s before it settles (measured: rocking rows
+# through t=26857.4, dead still from t=26858.0). The rocking is the suit's attitude relay
+# chasing its own deadband with more torque than it used to have; see the issue filed from
+# this retune. The pins below wait it out rather than pretend it is not there: the axis
+# check is what the case is actually about, and it holds THROUGH the rocking.
+ARGS --timeout 22 --eva-log --att-log --orbit-interval 0.5 --sim-press 8000,5000,W --sim-press 9000,0,SPACE --frame-cap 30
 # Reached by the Save/Load sheet, not --load: Game Debug ticks the e2e
 # fixture root, the sheet picks the "fixtures" game, the slot filter
 # narrows the fixture list to this one row, and row + Load button do

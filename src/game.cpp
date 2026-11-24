@@ -2608,9 +2608,13 @@ void Game::updateDocking() {
        swallowed it spends the next substep colliding with a ghost. */
     retire(b);
     toast("Docked with %s", bName.c_str());
-    printf("[dock] t=%.3f a=\"%s\" b=\"%s\" d=%.3f m v=%.3f m/s\n",
+    /* cap= is the gate's own capture distance for this pair (#1152), printed beside the
+       gap it just let through: a case can then pin "the mate happened inside the distance
+       the gate asked for" instead of matching digits of a gap that only stays at 0.0xx
+       while the physics tick rate does. */
+    printf("[dock] t=%.3f a=\"%s\" b=\"%s\" d=%.3f m cap=%.3f m v=%.3f m/s\n",
            time, a->displayName().c_str(), bName.c_str(),
-           s.read.faceGap, s.read.relSpeed);
+           s.read.faceGap, s.read.captureRange, s.read.relSpeed);
 }
 
 /* #1039: the Docking panel's question -- is this the hull that just mated, and with

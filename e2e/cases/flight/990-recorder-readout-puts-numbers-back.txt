@@ -53,28 +53,35 @@
 # rows but prints nothing, so it is the eye's business. Pinning is the half that
 # leaves evidence, and it is the half a pilot uses to move the pointer away.
 #
-# WHAT THE PINNED ROW IS (#1132 family D, re-minted 2026_11_23), column by column, because
+# WHAT THE PINNED ROW IS (#1132 family D, re-minted 2026_11_24), column by column, because
 # this one broke and the digits are worth reading rather than swapping. The sample sits at
-# mission t=23.00 s with the stager parked on the pad at alt_asl 268.469 m -- which has not
-# moved since the row was minted, because the pad does not move. Of the other four columns, two
-# are Kerbin's authored air and two are the hull's own residue:
-#   q=20.2534 is 1/2 rho tas^2 with rho ~1.194 and tas ~5.83 m/s -- the deck wind read at this
-#     altitude (5 m/s at 0 ramping to 40 m/s at 11205 m), not a hull moving at 20 m/s. The old
-#     row read 20.1511: 0.51% down in q, which is 0.25% of air speed, since q goes as tas^2.
-#   aoa=-90.019 is that same flow arriving broadside at a nose-up hull.
-#   v=0.0142148 and gamma=0.000217918 are the integrator's residue: the hull is standing still,
-#     so the speed and flight-path angle are noise at the 1e-2 m/s scale, and they are the two
-#     columns that move when anything in the aero or contact law moves. The previous row read
-#     0.0281101 and 0.000653727 for the same still hull.
+# mission t=23.00 s with the stager parked on the pad at alt_asl 268.069 m. That figure did
+# move, by 0.4 m, when #1152 took the collision skins off by default: a hull used to stop
+# its own margin plus the terrain's away from the ground it stands on, and the row's
+# altitude IS that rest height (a stager on the pad reads alt_agl 11.006 now, 11.206 with
+# OSP_HULL_MARGIN=0.1 OSP_TERRAIN_MARGIN=0.5). The pad has not moved; the hull sits inside
+# where its skin used to stop it. Of the other four columns, two are Kerbin's authored air
+# and two are the hull's own residue:
+#   q=20.2187 is 1/2 rho tas^2 with rho ~1.194 and tas ~5.82 m/s -- the deck wind read at
+#     this altitude (5 m/s at 0 ramping to 40 m/s at 11205 m), not a hull moving at 20 m/s.
+#     The row minted before the skin change read 20.2534 at 268.469 m: 0.17% down, which is
+#     0.08% of air speed, since q goes as tas^2 and only the altitude moved.
+#   aoa=-90.0707 is that same flow arriving broadside at a nose-up hull.
+#   v=0.0174538 and gamma=-0.00132029 are the integrator's residue: the hull is standing
+#     still, so the speed and flight-path angle are noise at the 1e-2 m/s scale, and they are
+#     the two columns that move when anything in the aero or contact law moves. The previous
+#     row read 0.0142148 and 0.000217918 for the same still hull; gamma changed sign, which
+#     is what a residue that small does.
 # So the exact digits are a snapshot of jitter standing in 5.8 m/s of wind, and this file is
 # where that fact gets re-minted, not argued: flight/395-surface-aoa-readout is the case that
 # pins the wind's numbers as laws. Measured byte-identical across three standalone runs and
 # four concurrent ones, so the row is reproducible even though its v and gamma columns are
 # residue -- the same schedule on the same build gives the same residue.
 # Three of the columns are one number, and the CHECKs below say so without pinning the jitter:
-#     sqrt(2 q / rho) = sqrt(2 x 20.2534 / 1.1941) = 5.8243 m/s of air over the hull, while the
-#     authored ramp (5 m/s at 0, 40 m/s at 11205 m) reads 5.8386 at alt_asl 268.469 m. The
-#     0.0143 difference IS the row's own v=0.0142148, pointing into the wind.
+#     sqrt(2 q / rho) = sqrt(2 x 20.2187 / 1.1941) = 5.8193 m/s of air over the hull, while the
+#     authored ramp (5 m/s at 0, 40 m/s at 11205 m) reads 5.8373 at alt_asl 268.069 m. The
+#     0.018 difference is the row's own v=0.0174538, pointing into the wind -- the residue
+#     again, in the third decimal.
 # So q and aoa are pinned as bands -- what the air makes, within the jitter of a still hull --
 # and only the EXPECT line above pins the digits. A hull moving at 20 m/s would bill ~240, so
 # the q band is a claim about the air; aoa within half a degree of -90 is a claim about the
@@ -94,7 +101,7 @@ ARGS --sim-mouse 8400,0,776,620,1
 ARGS --ui-click 9000,"Recorder/Unpin"
 ARGS --sim-mouse 9400,600,700,560,1
 ARGS --sim-mouse 9600,0,950,560,0
-EXPECT [recwin] pin t=23.00 alt_asl=268.469 v=0.0142148 q=20.2534 aoa=-90.019 gamma=0.000217918
+EXPECT [recwin] pin t=23.00 alt_asl=268.069 v=0.0174538 q=20.2187 aoa=-90.0707 gamma=-0.00132029
 EXPECT [recwin] unpin
 EXPECT [recwin] fit=off
 CHECK out.count("[recwin] pin ") == 1
