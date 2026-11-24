@@ -394,16 +394,23 @@ int main() {
             CHECK(vnear(cyl.lo, glm::dvec3(-1.0, -1.0, -1.0)));
             CHECK(vnear(cyl.hi, glm::dvec3( 1.0,  1.0,  1.0)));
             // Widest vertex ring at one z. The cap centres sit at r = 0 on the
-            // same planes, so they never win this against a real ring.
+            // same planes, so they never win this against a real ring. Indent is
+            // skipped rather than assumed -- a generated .obj writes `v ` at column
+            // 0, a Blender one may not -- and the z band is 1e-5 because the
+            // generator writes 6 dp and the end plane is exactly +-1.0.
             auto ringMax = [](const std::string &bytes, double z) {
                 double best = -1.0;
                 std::istringstream in(bytes);
                 std::string ln;
                 while(std::getline(in, ln)) {
+                    const size_t at = ln.find_first_not_of(" \t");
+                    if(at == std::string::npos
+                       || ln[at] != 'v' || ln.size() <= at + 2 || ln[at + 1] != ' ') {
+                        continue;
+                    }
                     double x = 0.0, y = 0.0, vz = 0.0;
-                    if(ln.size() > 2 && ln[0] == 'v' && ln[1] == ' '
-                       && 3 == sscanf(ln.c_str() + 2, "%lf %lf %lf", &x, &y, &vz)
-                       && std::fabs(vz - z) <= 1e-4) {
+                    if(3 == sscanf(ln.c_str() + at + 2, "%lf %lf %lf", &x, &y, &vz)
+                       && std::fabs(vz - z) <= 1e-5) {
                         const double r = std::sqrt(x * x + y * y);
                         if(r > best) best = r;
                     }
@@ -446,7 +453,11 @@ int main() {
                    straight wall a spoiler and the other a parachute. */
                 CHECK(near(cylDef->drag_forward, 1.0));
                 CHECK(near(cylDef->drag_backward, cylDef->drag_forward));
-                CHECK(cylDef->drag_side < cylDef->drag_forward);
+                /* 0.9, not just "less than the blunt end": a straight wall presents
+                   its own silhouette sideways and buys nothing for it, which is the
+                   figure gen_parts.py authors for this part by name. Pinning the
+                   number means a family default that crept back over it is visible. */
+                CHECK(near(cylDef->drag_side, 0.9));
                 /* 1142.45 = 6.2429 m^3 (the mesh's own enclosed volume: 32 straight
                    sides) at the capsule family's 183 kg/m^3. If the mesh ever stops
                    proving watertight, gen_parts.py falls back to the bounding
@@ -835,7 +846,7 @@ int main() {
                                          d.ladder_b - d.ladder_a)) < 0.01);
             }
         }
-        CHECK(crewLadders >= 8);   // five capsules + four crewed fuselages
+        CHECK(crewLadders == 9);   // five capsules + four crewed fuselages
 
         // A well-formed spec loads; out normalizes like a node dir.
         const char *lok = "/tmp/test_shipload_ladder.json";
