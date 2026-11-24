@@ -2454,15 +2454,16 @@ public:
 
        WHAT THEY WERE: 1.5 m, cos 15 deg, 2 m/s, none of which anyone derived. A docking
        port is 0.25 m deep (nodes at +-0.125 m), so 1.5 m of face gap is six port-depths
-       of daylight -- and since absorbShip() is a rigid rebase that keeps every part's
+       of daylight -- and since absorbShip() was a rigid rebase that keeps every part's
        world pose, that gap became part of the hull: measured 0.750 m for the fixture
-       pair parked nose-to-nose, 1.495 m after an approach burn. (#1153 has since pulled
-       the seam shut inside absorbShip, so a capture inside these gates leaves the faces
-       touching; what these numbers still decide is how far that snap may move a hull.)
-       The old numbers were
-       also inconsistent with this game's own authority: an rcs_box is 60 N, so on the
-       6560 kg fixture pair translation is 0.0091 m/s^2 and stopping from 2 m/s needs
-       219 m of corridor. No player could have obeyed it.
+       pair parked nose-to-nose, 1.495 m after an approach burn. (#1153 pulls the seam
+       shut inside absorbShip now, so a capture inside these gates leaves the faces at the
+       pair's own standoff. What these numbers still decide is how far the mated FACES
+       slide and how much the pair TURNS; how far the donor's far end swings is that turn
+       times its distance from the seam, which is the figure that reads as a jump.)
+       The old numbers were also inconsistent with this game's own authority: an rcs_box is
+       60 N, so on the 6560 kg fixture pair translation is 0.0091 m/s^2 and stopping from
+       2 m/s needs 219 m of corridor. No player could have obeyed it.
 
        WHAT THEY ARE NOW, and the anchor for each:
          capture  a fraction of the SHALLOWER port's own depth (dockCaptureRange below).
@@ -2478,6 +2479,13 @@ public:
                   damper. It is also reachable: 0.15 m/s needs 1.2 m and 16 s of one
                   rcs_box, which is the corridor the Docking window's dial shows. */
     static constexpr double kDockCaptureFrac = 0.4;  // of the shallower port's depth
+    /* How close THESE two parts can sit before their collision hulls touch, m measured
+       between the presented faces: each hull is inflated by effectiveHullMargin(), so the
+       floor is the sum of the two -- 0 with the shipped margins (physics.cpp:58 defaults
+       OSP_HULL_MARGIN to 0), metres under that knob. Both dockCaptureRange's floor and
+       #1153's seam snap are stated in terms of it, so a mated seam closes to the tightest
+       distance this game's own collider can hold rather than to a geometric ideal. */
+    static double dockStandoff(const Part *pa, const Part *pb);
     /* The distance at which THESE two ports capture, m between the presented faces.
        A function and not a constant because it is a property of the pair; the gate,
        the dial's ring and the unit tests all call it, so nobody invents a boundary.
@@ -2601,10 +2609,12 @@ public:
 
     /* How far a dock had to pull the donor onto the survivor, out of #1153's snap. The
        play path prints it on [dock] so a case can pin the snap happened rather than infer
-       it from a post-dock screenshot. */
+       it from a post-dock screenshot. Both figures describe the MATED PORT: the donor is
+       rigid, so a part d metres from the seam swings about d * sin(turn) further than
+       `shift` -- that far-end figure, not this one, is what the eye catches. */
     struct DockSnap {
         double shift = 0.0;   // m the donor's mated port travelled
-        double turn = 0.0;    // deg the donor turned
+        double turn = 0.0;    // deg the donor turned (degrees; DockRead speaks radians)
     };
 
     /* Fold B into this ship at the mated port. B's shell is deleted by the

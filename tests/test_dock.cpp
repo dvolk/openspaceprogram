@@ -31,7 +31,9 @@
 //   - ROUND-TRIP: absorbShip then extractSubtreeAsShip(seam.root) restores
 //     BOTH ships' parts to their original world poses -- the split is the
 //     exact inverse of the merge on geometry. This is the invariant the
-//     future "dropped stage becomes a ship" relies on.
+//     future "dropped stage becomes a ship" relies on. Both dock fixtures
+//     here hand absorbShip no port pair; a SNAPPED dock (#1153) does not undo
+//     its snap on undock, and test_a_dock_snaps_the_seam_shut pins that.
 //   - THE MERGED MASS (#583): Vehicle::refuseDockWith, the sentence the dock gate
 //     prints instead of folding two totals that stop being one. A range check, not a
 //     size limit: the pair that still fits has to merge.
@@ -374,15 +376,20 @@ static void test_absorb() {
 /* --- the weld snaps the seam shut (#1153, closing #1163) ------------------- */
 /* The capture gate decides a pair is joined; until #1153 the merge then welded them at
    whatever pose that tick happened to be reading, so the air and the tilt at contact
-   became permanent structure -- #1163 measured a play-path dock left at a 0.100 m face
-   gap with the bores 2.6 deg off. The seam is now pulled shut by ONE rigid motion of the
-   donor (the survivor is the frame the merge speaks, so it must not jump). Pinned here:
-   where the mated ports end up, that the survivor never moved, that the donor stayed rigid,
-   that the correction is the bore straightening and NOT a roll (a port is radially
-   symmetric, so snapping its twist would swing a hull for nothing), and that the reported
+   became permanent structure: a play-path dock of the shipped r1 pair kept a 0.099 m face
+   gap, and on a capture arriving 4 deg off the line -- --dock-test tilt -- the bores came
+   out 3.75 deg off anti-parallel as well. The seam is now pulled shut by ONE rigid motion
+   of the donor (the survivor is the frame the merge speaks, so it must not jump). Pinned
+   here: where the mated ports end up (at the pair's collision standoff, not at a geometric
+   zero), that the survivor never moved, that the donor stayed rigid, that the correction is
+   the bore straightening and NOT a roll (a port is radially symmetric, so snapping its
+   twist would swing a hull for nothing), how far the donor's FAR end swings -- that is the
+   figure the eye catches, and it is not bounded by captureRange -- and that the reported
    figures are the measured motion rather than the arithmetic that made it.
-   The no-portB caller -- every other test in this file -- is pinned by those fixtures
-   already: with no measured pair the merge stays exactly what it was, world poses kept. */
+   The last block pins what undock does with a snapped seam: it does NOT undo the snap. The
+   pair splits back in the pose the weld made. The ROUND-TRIP test below pins the exact
+   inverse, and can only, because it passes no port pair -- as does every other test here,
+   which is how the old merge stays the old merge for a caller with nothing measured. */
 static void test_a_dock_snaps_the_seam_shut() {
     printf("== absorbShip snaps the mated faces together (#1153) ==\n");
 
@@ -453,13 +460,15 @@ static void test_a_dock_snaps_the_seam_shut() {
     A.v->absorbShip(B.v, portA, portB, &snap);
 
     /* THE SEAM IS STRAIGHT. One sentence does most of the work: B's port centre sits
-       exactly one port-depth (two half-heights) along the bore A presents, so there is no
-       air left, no kink, and the pair is at the distance the parts were built for. */
+       exactly one port-depth (two half-heights) plus the pair's collision standoff along
+       the bore A presents, so there is no air left past what the two colliders can hold, no
+       kink, and the pair is at the distance the parts were built for. */
     const glm::dvec3 portA1 = worldPos(A.v, portA);
     const glm::dvec3 portB1 = worldPos(A.v, portB);
     const glm::dvec3 axisA = -A.v->partAxis(portA, 2);  // A presents its -Z face: B hangs below
-    CHECK_NEAR(glm::length(portB1 - portA1 - axisA * (2.0 * kPortHz)), 0.0, 1e-12,
-               "mated centres: one port-depth along A's own bore, no gap and no kink");
+    const double seamGap = Vehicle::dockStandoff(portA, portB);
+    CHECK_NEAR(glm::length(portB1 - portA1 - axisA * (2.0 * kPortHz + seamGap)), 0.0, 1e-12,
+               "mated centres: one port-depth and the standoff, along A's own bore");
     CHECK_NEAR(glm::dot(A.v->partAxis(portB, 2), axisA), -1.0, 1e-12,
                "and the two bores are anti-parallel");
 
@@ -491,6 +500,34 @@ static void test_a_dock_snaps_the_seam_shut() {
                "shift= is how far the donor's mated port actually travelled");
     CHECK_TRUE(snap.shift > 0.05 && snap.shift < 0.15,
                "and the donor really moved: about the air, plus what the tilt costs");
+
+    /* HOW FAR THE PLAYER WATCHES THE SHIP MOVE. snap.shift is the MATED PORT's travel; the
+       donor is rigid, so a part d metres out from the seam swings about d * sin(turn)
+       further than that. This tank sits 1.625 m down the bore, so the same 4 deg correction
+       moves it well over the port's own shift -- the "bounded by captureRange" reading of
+       the gate is true of the FACE only, and it is this figure that decides whether a snap
+       looks like a click or a shove. (On a 16.6 m donor at the 5 deg cone edge: 1.45 m.) */
+    const double farShift = glm::length(worldPos(A.v, tankB) - tankB0);
+    CHECK_TRUE(farShift > 1.2 * snap.shift && farShift < 0.30,
+               "the donor's far end swings further than its mated port does");
+
+    /* UNDOCK DOES NOT UNDO THE SNAP. The split comes back in the pose the weld made --
+       faces at the pair's standoff, bores still straight -- not in the pose the capture tick
+       happened to read. This is a decision, not an accident: the alternative is undock
+       teleporting a hull back through the ~10 cm the snap took up, into whatever the pilot
+       has built there meanwhile. The ROUND-TRIP test below restores the original world poses
+       exactly, and only can, because it hands absorbShip no port pair. */
+    Vehicle *split = A.v->extractSubtreeAsShip(portB, "B");
+    CHECK_TRUE(split != nullptr && split->parts.size() == 2,
+               "the snapped seam still splits back out at its seam root");
+    if(split != nullptr) {
+        const Vehicle::DockRead back = A.v->dockRead(portA, split, portB);
+        CHECK_NEAR(back.faceGap, seamGap, 1e-12,
+                   "and comes apart in the SNAPPED pose, not the pose it arrived in");
+        CHECK_NEAR(back.axisCosA, 1.0, 1e-12, "no kink across the split, my side");
+        CHECK_NEAR(back.axisCosB, 1.0, 1e-12, "no kink across the split, theirs");
+        destroyShip(split);
+    }
 
     destroyShip(B.v);   // the empty shell absorbShip left behind
     destroyShip(A.v);

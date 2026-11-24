@@ -2649,15 +2649,24 @@ void Game::updateDocking() {
        gap it just let through: a case can then pin "the mate happened inside the distance
        the gate asked for" instead of matching digits of a gap that only stays at 0.0xx
        while the physics tick rate does.
-       snap=/turn= are how far #1153's weld pulled the DONOR, so the correction the player
-       sees is a number a case can pin rather than something to squint at in a screenshot.
-       postgap=/postkink= are NOT the snap's own arithmetic echoed back: they are a fresh
-       dockRead of the two ports inside the merged hull, measuring the parts the ship was
-       actually built from. Both read zero on a snapped dock. The pair is needed, not just
-       one of them: a translation with no rotation leaves the two face CENTRES coincident
-       (postgap=0.000) with the seam still crooked, and a rotation with no translation
-       straightens the bores and leaves the air. A pair whose port centres coincided has no
-       line to measure either of them against, so both read -1. */
+       snap=/turn= are how far #1153's weld pulled the DONOR's mated port, so the correction
+       the player sees is a number a case can pin rather than something to squint at in a
+       screenshot. Neither is the size of the visible jump: the donor is rigid, so the far
+       end of its stack swings by turn times its distance from the seam.
+       postgap=/postkink= are a fresh dockRead of the two ports inside the merged hull. They
+       are NOT an independent verdict on how good the mate was -- a snapped seam reads
+       postgap=dockStandoff (0.000 with the shipped margins) and postkink=0.00 for ANY
+       correct merge, because that is what the snap asks for. What they catch is the merge
+       failing to deliver the motion it computed: the transform reaching B's parts but not
+       all of them, one half of the pair written from a stale pose, the snap never applied.
+       Both are needed, and each has a defect only it sees: translating without rotating
+       leaves the two face CENTRES together (postgap at the standoff) with the seam still
+       crooked; rotating without translating straightens the bores and keeps the air.
+       postkink is the sum of each bore's deviation from the joining line, not the angle
+       between the bores: a straight seam whose port centres sit off each other sideways
+       would read nonzero as well, which is another mate that should not have happened.
+       A pair whose port centres coincided has no line to measure either figure against, so
+       both read -1. */
     const Vehicle::DockRead post = a->dockRead(s.arm, a, s.target);
     printf("[dock] t=%.3f a=\"%s\" b=\"%s\" d=%.3f m cap=%.3f m v=%.3f m/s "
            "snap=%.3f m turn=%.2f deg postgap=%.3f m postkink=%.2f deg\n",
