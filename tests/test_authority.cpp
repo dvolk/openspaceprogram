@@ -2363,7 +2363,10 @@ static void test_a_bell_that_levers_a_hair_is_not_a_steering_row() {
        the Makefile never sets NDEBUG, so the shipped ./osp aborted on it. */
     v->armRcs(glm::dvec3(0.0, -1.0, 0.0));
     v->rcsPlan();
-    CHECK_NEAR(0.0, glm::length(v->lastRcsCmd), 0.0,
+    /* lastRcsCmd is the floor's tell: with the cut removed this ask reaches nnls, settles
+       all-zero anyway, and the cmd still gets recorded -- so THIS check is what pins the
+       floor, and the c check below is what pins the consequence (the fuel draw reads c). */
+    CHECK_NEAR(glm::length(v->lastRcsCmd), 0.0, 0.0,
                "an axis the ring only touches records no burn at all: no cmd, no [rcs] row");
     bool anyOpen = false;
     for(double f : v->rcsScratch.c) { if(f > 0.0) { anyOpen = true; } }
@@ -2376,11 +2379,53 @@ static void test_a_bell_that_levers_a_hair_is_not_a_steering_row() {
        rcsPlan reads rcsNoz, never the rows. */
     v->armRcs(glm::dvec3(-1.0, 0.0, 0.0));
     v->rcsPlan();
-    CHECK_NEAR(101.24995, glm::length(v->lastRcsCmd), 1e-3,
+    CHECK_NEAR(glm::length(v->lastRcsCmd), 101.24995, 1e-3,
                "a served axis asks at its own reach: 100 + sin(0.01)x100 + sin(2e-3)x100"
                " + sin(5e-4)x100, weak bells and all");
     CHECK_TRUE(v->rcsScratch.c[0] > 0.9, "and bell 0 opens for it");
     destroyShip(v);
+}
+
+/* THE HAIR-AXIS CUT, PINNED FROM BOTH SIDES (#1147). The fixture above reaches 1e-5 N on the
+   floored axis, four decades under the 0.1 N bar this cut sets -- so it says the cut exists,
+   not where it is. Here the same shape lands either side of it: a pod with one bell facing -X
+   (100 N) and one tilted a hair off perpendicular, whose reach along -Y is rating x sin(tilt).
+   With the ring's best bell at 100 N the bar is 0.1 N, so tilt 2e-3 (0.115 deg off
+   perpendicular, 0.2 N of reach) PLANS and tilt 5e-4 (0.029 deg, 0.05 N) does not. Move the
+   constant to 1e-2 and the 2e-3 row goes red; move it to 1e-6 and the 5e-4 row goes red.
+   #679 pinned its own cut this way (bells 4 and 5 of that fixture); copying that discipline
+   is what keeps the constant from being free.
+   The third row pins WHICH quantity the floor rides on: the same ring with the Systems dial
+   at 1e-6 asks 2e-7 N -- six decades under the 0.1 N bar -- and still plans, because the bar
+   is on Fcap (reach) and not on Fmax (reach x dial). That is #1067's whole rule: the dial
+   rides the demand, never the hardware. */
+static void test_the_hair_axis_cut_is_relative() {
+    printf("== #1147: the hair-axis cut is relative, and not on the dial ==\n");
+    auto ask = [](double tiltY, double frac) -> double {
+        std::deque<PartDef> defs;
+        RcsProbe *v = new RcsProbe;
+        v->name = "hair tilt";
+        Part *pod = mkPart(defs, "pod", 100.0, 1.0, 0.0, 0.0);
+        defs.back().rcs_thrust = 100.0;
+        defs.back().rcs_nozzles = { glm::dvec3(1.0, 0.0, 0.0), glm::dvec3(0.0, tiltY, 1.0) };
+        defs.back().capacity[(int)ResourceType::Hydrazine] = 1.0;
+        v->setRoot(pod);
+        v->init();
+        v->placeShip(glm::dvec3(0.0, 0.0, 0.0), glm::dmat3(1.0));
+        v->rcs_thrust_frac = frac;
+        v->armRcs(glm::dvec3(0.0, -1.0, 0.0));
+        v->rcsPlan();
+        const double cmd = glm::length(v->lastRcsCmd);
+        destroyShip(v);
+        return cmd;
+    };
+    CHECK_NEAR(ask(2e-3, 1.0), 0.2, 1e-6,
+               "0.2 N of reach is above a 0.1 N bar: the ask is made and recorded");
+    CHECK_NEAR(ask(5e-4, 1.0), 0.0, 0.0,
+               "0.05 N of reach is under it: no ask, no burn, no [rcs] row");
+    CHECK_NEAR(ask(2e-3, 1e-6), 2e-7, 1e-12,
+               "the same ring dialed to 1e-6 still plans at 2e-7 N, because the floor is on"
+               " the reach and not on the dialed ask (#1067)");
 }
 
 /* THE INLINE ROOM IS SIZED FOR THE SHIPPED FLEET, not for a fixture (#1131).
@@ -2926,6 +2971,8 @@ int main() {
     test_a_lifting_plate_answers_its_own_angle();
     test_a_ring_of_bells_is_a_row_of_actuators();
     test_a_bell_that_levers_a_hair_is_not_a_steering_row();
+    test_the_hair_axis_cut_is_relative();
+    printf("\n");
     test_the_row_buffers_fit_the_shipped_fleet();
     test_the_aim_is_measured_once();
     test_the_aim_keeps_its_doors_shut();

@@ -328,8 +328,9 @@ static void test_reachable_along_is_a_ceiling() {
    1e-7 rad off its line, so rcsReachableAlong(-Y) is 1e-7 x 100 = 1e-5 N. Feed the solver
    exactly that ask and it decides that no column is worth tolX -- firing the hair bell to
    buy 1e-5 N of -Y would add 100 N along -Z -- so the active set empties. That used to be an
-   assert (rcs.h:167), and the Makefile never sets NDEBUG, so the shipped ./osp aborted.
-   An empty active set is the solver SAYING "fire nothing", which is the right answer here. */
+   assert (src/rcs.h, which fired at line 174 of the pre-fix file), and the Makefile never
+   sets NDEBUG, so the shipped ./osp aborted. An empty active set is the solver SAYING "fire
+   nothing", which is the right answer here. */
 static void test_an_axis_only_touched_settles_empty() {
     printf("== rcsAllocate: an axis the ring only touches fires nothing ==\n");
     const std::vector<RcsNozzle> noz = {
@@ -342,7 +343,7 @@ static void test_an_axis_only_touched_settles_empty() {
     };
     const glm::dvec3 down(0.0, -1.0, 0.0);
     const double cap = rcsReachableAlong(noz, down);
-    CHECK_NEAR(1e-5, cap, 1e-12, "only the 1e-7-rad bell projects onto -Y: 1e-5 N of reach");
+    CHECK_NEAR(cap, 1e-5, 1e-12, "only the 1e-7-rad bell projects onto -Y: 1e-5 N of reach");
     const std::vector<double> c = rcsAllocate(noz, down * cap);
     printf("   c:");
     for(double v : c) { printf(" %.3g", v); }

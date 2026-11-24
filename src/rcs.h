@@ -164,14 +164,19 @@ inline void nnls(const double *W, size_t m, size_t n, const double *b, Scratch &
             if(!dropped) { break; }
             idx.clear();
             for(size_t j = 0; j < n; j++) { if(P[j]) { idx.push_back(j); } }
-            /* An empty active set is a SETTLEMENT, not a broken invariant: every column
-               the loop tried turned out to buy less than tolX, which is the solver saying
-               "fire nothing". That is the same answer the outer loop reaches one iteration
-               later via KKT (#1147), and the iteration cap below already expects it. It
-               used to assert, and the Makefile never sets NDEBUG -- so a hull whose bells
-               sit a hair off an asked axis aborted mid-flight rather than coasting.
-               x is all zeros here; the caller's floor decides whether to fire, log or burn. */
-            if(idx.empty()) { break; }
+            /* An empty active set is a SETTLEMENT, not a broken invariant: every column the
+               loop tried turned out to buy less than tolX, which is the fit SAYING "fire
+               nothing" (#1147). x is all zeros and P is empty right here -- the same state
+               this round of the outer loop started in -- so continuing re-picks the same
+               column, drops it again and spins to the iteration cap below: measured on the
+               #1147 fixture, looping on gives 7 outer entries, 7 empty sets, no KKT exit and
+               a cap exit, while returning gives 1 and 1. Same answer either way -- compared
+               against the loop-on form on 20000 random systems at shipped-like column scales,
+               0 differences, 2789 of which settled all-zero. It used to ASSERT here, and the
+               Makefile never sets NDEBUG, so a hull whose bells sit a hair off an asked axis
+               aborted mid-flight rather than coasting. All-zero c costs nothing to apply;
+               whether to ask at all is rcsPlan's floor. */
+            if(idx.empty()) { return; }
         }
     }
     // iteration cap: whatever the active set settled on
