@@ -11,9 +11,11 @@
 #include <filesystem>
 #include <fstream>
 #include <map>
+#include <numbers>
 #include <random>
 #include <string>
 
+#include "angmath.h"  // acosUnit: the residual kink across a mated seam
 #include "eva.h"      // Kerbal
 #include "inventory.h" // inventoryRemove / inventoryAdd
 #include "part.h"     // load_suit_def / make_suit (the crew pool's suits)
@@ -2626,7 +2628,8 @@ void Game::updateDocking() {
        on a pair whose totals still fit in one Body. */
     Vehicle *b = s.b;
     const std::string bName = b->displayName();
-    a->absorbShip(b, s.arm);
+    Vehicle::DockSnap snap;
+    a->absorbShip(b, s.arm, s.target, &snap);
     a->dockTargetShip = nullptr;   // the intent is consumed by the dock
     a->dockTargetPort = nullptr;   // (both halves: re-arm and re-target on
     a->dockArmPort = nullptr;      //  a redock)
@@ -2645,10 +2648,25 @@ void Game::updateDocking() {
     /* cap= is the gate's own capture distance for this pair (#1152), printed beside the
        gap it just let through: a case can then pin "the mate happened inside the distance
        the gate asked for" instead of matching digits of a gap that only stays at 0.0xx
-       while the physics tick rate does. */
-    printf("[dock] t=%.3f a=\"%s\" b=\"%s\" d=%.3f m cap=%.3f m v=%.3f m/s\n",
+       while the physics tick rate does.
+       snap=/turn= are how far #1153's weld pulled the DONOR, so the correction the player
+       sees is a number a case can pin rather than something to squint at in a screenshot.
+       postgap=/postkink= are NOT the snap's own arithmetic echoed back: they are a fresh
+       dockRead of the two ports inside the merged hull, measuring the parts the ship was
+       actually built from. Both read zero on a snapped dock. The pair is needed, not just
+       one of them: a translation with no rotation leaves the two face CENTRES coincident
+       (postgap=0.000) with the seam still crooked, and a rotation with no translation
+       straightens the bores and leaves the air. A pair whose port centres coincided has no
+       line to measure either of them against, so both read -1. */
+    const Vehicle::DockRead post = a->dockRead(s.arm, a, s.target);
+    printf("[dock] t=%.3f a=\"%s\" b=\"%s\" d=%.3f m cap=%.3f m v=%.3f m/s "
+           "snap=%.3f m turn=%.2f deg postgap=%.3f m postkink=%.2f deg\n",
            time, a->displayName().c_str(), bName.c_str(),
-           s.read.faceGap, s.read.captureRange, s.read.relSpeed);
+           s.read.faceGap, s.read.captureRange, s.read.relSpeed,
+           snap.shift, snap.turn,
+           post.measurable ? post.faceGap : -1.0,
+           post.measurable ? (acosUnit(post.axisCosA) + acosUnit(post.axisCosB))
+                             * 180.0 / std::numbers::pi : -1.0);
 }
 
 /* #1039: the Docking panel's question -- is this the hull that just mated, and with

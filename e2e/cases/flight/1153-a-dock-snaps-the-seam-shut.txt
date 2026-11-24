@@ -1,0 +1,31 @@
+NAME dock snaps the seam shut
+CLAIM A pair that captures tilted welds straight: the donor is moved by about the air and the tilt, and the mated seam is left with neither.
+KIND invariant
+# --dock-test tilt is --dock-test approach with the probe's bore 4 deg off the joining line
+# -- inside the 5 deg cone (cos 4 deg = 0.9976 > kDockAlign = 0.9962), so the pair still
+# mates, and it is the only fixture that gives #1153's snap an angle to take up. `approach`
+# arrives with nothing to straighten and `misaligned` is refused at 40 deg, so a snap that
+# never ran at all would leave both of those untouched. If kDockAlign is ever retuned below
+# 4 deg, the FIXTURE has to move with it (as with misaligned's 40 deg) and this row stops
+# printing until someone does -- a dock that refuses is not a dock that snapped.
+# The two pins that matter are the post- ones, and they are a fresh dockRead of the two
+# ports INSIDE the merged hull, not the snap's own arithmetic echoed back:
+#   postgap=  the air left between the presented faces, 0.000 m when the seam is shut
+#   postkink= the bores' deviation from the joining line summed, 0.00 deg when it is straight
+# Both are needed and neither is enough: a translation with no rotation leaves the two face
+# CENTRES coincident (postgap=0.000) with the station still bent, and a rotation with no
+# translation straightens the bores and keeps the air. Mutation-checked both ways -- see the
+# notes in tmp/night7/comment_1153.md.
+# snap=/turn= are what the DONOR moved, so the size of the correction is a number rather
+# than something to squint at on screen. They are pinned loosely and nonzero: their exact
+# values belong to the fixture (approach prints snap=0.099 m turn=0.00 deg for the same
+# 0.099 m of air, because an aligned dock has only the gap to take up).
+# Bound on the player's side: the snap cannot be bigger than the gates that let the mate
+# happen -- 0.10 m of face for the shipped r1 pair, 10 deg between the two bores -- so a
+# retune of kDockCaptureFrac or kDockAlign retunes the visible jump with it.
+ARGS --dock-test tilt --time-accel 1 --timeout 8
+EXPECT Dock-test (tilt)
+EXPECT [dock] t=
+EXPECT a="dockprobe" b="dockstation"
+CHECK (lambda x: len(x) == 1 and 0.05 < float(x[0][3]) < 0.20 and 0.5 < float(x[0][4]) < 5.0 and abs(float(x[0][5])) < 0.001 and abs(float(x[0][6])) < 0.05)(re.findall(r'\[dock\] t=\S+ a="dockprobe" b="dockstation" d=([-\d.]+) m cap=([-\d.]+) m v=([-\d.]+) m/s snap=([-\d.]+) m turn=([-\d.]+) deg postgap=([-\d.]+) m postkink=([-\d.]+) deg', out))
+FORBID error:

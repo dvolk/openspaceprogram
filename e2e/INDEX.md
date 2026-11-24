@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 476 |
+| `invariant` | a behaviour or a player route the game must keep | 477 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 57 |
 | `harness` | CLI/test-engine plumbing, not game spec | 18 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **555** |
+| | **total** | **556** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -18,7 +18,7 @@ paces a run: how much e2e a change deserves is the caller's
 judgement. Select by number, name or path, e.g.
 `python3 e2e/run.py save/172 262`.
 
-## flight (183)
+## flight (184)
 
 | case | kind | pins |
 |---|---|---|
@@ -46,7 +46,7 @@ judgement. Select by number, name or path, e.g.
 | `flight/44-ship-rcs-fuel.txt` | golden | RCS translation burns monopropellant at the expected rate. |
 | `flight/45-dock.txt` | invariant | Two ports in range mate into one vessel and the absorbed hull leaves the world once. |
 | `flight/46-undock.txt` | invariant | Undock splits the vessel in two and restores both as flyable ships. |
-| `flight/47-dock-approach.txt` | invariant | A closing rate inside the pair's own gate mates it, and the weld keeps the gap inside that gate. |
+| `flight/47-dock-approach.txt` | invariant | A closing rate inside the pair's own gate mates it, and the weld leaves no air and no kink at the seam. |
 | `flight/48-com-torque.txt` | invariant | Thrust through the COM produces no spurious torque. |
 | `flight/49-drag-ascent.txt` | invariant | Drag reduces ascent acceleration and the drag log reports finite forces. |
 | `flight/50-cam-shake.txt` | invariant | Camera shake tracks thrust, rises while burning and decays to zero. |
@@ -202,6 +202,7 @@ judgement. Select by number, name or path, e.g.
 | `flight/1126-a-half-dialed-ring-spends-half.txt` | invariant | At half pointing authority this ring spends half of what flight/677 spends at full on the same press: 69 N m of torque at 1.05 rad/s^2 and 0.028 kg/s of hydrazine (#1126). |
 | `flight/1148-b-legacy-settings-inherit-the-new-brackets.txt` | invariant | A settings.json written before the brackets moved still hands '[' and ']' to the fleet rather than to camera speed. |
 | `flight/1148-brackets-cycle-ships.txt` | invariant | [ steps the active ship backwards and ] forwards, wrapping around the fleet, and the Controls window shows both brackets on the ship slots and -/= on camera speed. |
+| `flight/1153-a-dock-snaps-the-seam-shut.txt` | invariant | A pair that captures tilted welds straight: the donor is moved by about the air and the tilt, and the mated seam is left with neither. |
 | `flight/1158-a-legs-stand-close-to-their-feet.txt` | golden | A landed hull's drawn footpads rest within 0.06 m of the ground, on suspension that has neither gone slack nor reached its bump stops. |
 | `flight/1158-b-gear-stands-close-on-the-runway.txt` | golden | A geared hull's drawn tyres touch the runway within 0.1 m, with suspension stroke left over. |
 | `flight/1158-c-short-strut-catches-a-hop.txt` | golden | A legged hull that hops off its pads and comes down at 6 m/s does not reach its bump stops, tip, or keep bouncing. |

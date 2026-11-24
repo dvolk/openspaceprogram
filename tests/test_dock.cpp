@@ -38,8 +38,12 @@
 //   - THE CAPTURE DISTANCE (#1152): Vehicle::dockCaptureRange -- how close the faces have
 //     to be before the gate closes, scaled off the shallower port's own depth with a floor
 //     at the pair's collision standoff. The old global 1.5 m is what made a docked pair
-//     look like two ships holding each other at arm's length, because absorbShip welds the
-//     pair at whatever gap the capture tick measured.
+//     look like two ships holding each other at arm's length, because absorbShip used to
+//     weld the pair at whatever gap the capture tick measured.
+//   - THE SNAP (#1153): pass absorbShip the mated port pair and the seam is pulled shut
+//     before the weld -- faces coincident, bores anti-parallel, the donor's twist about its
+//     own bore left exactly as it was -- with one rigid motion of the DONOR only. The
+//     survivor is the frame the merge speaks and must not jump.
 //   - THE SITUATION OF AN INTENT (#1026): Vehicle::dockRead's figures and
 //     Vehicle::dockSituation's verdict -- the one pass that now decides a dock (the gate
 //     switches on it) AND feeds the Docking window, so the numbers a pilot reads are the
@@ -364,6 +368,131 @@ static void test_absorb() {
     CHECK_NEAR(A.v->hull->mass, 2300.0, 1e-6, "absorb: hull mass is the union, fuel included");
 
     destroyShip(B.v);   // empty shell (its old compound references, not owns)
+    destroyShip(A.v);
+}
+
+/* --- the weld snaps the seam shut (#1153, closing #1163) ------------------- */
+/* The capture gate decides a pair is joined; until #1153 the merge then welded them at
+   whatever pose that tick happened to be reading, so the air and the tilt at contact
+   became permanent structure -- #1163 measured a play-path dock left at a 0.100 m face
+   gap with the bores 2.6 deg off. The seam is now pulled shut by ONE rigid motion of the
+   donor (the survivor is the frame the merge speaks, so it must not jump). Pinned here:
+   where the mated ports end up, that the survivor never moved, that the donor stayed rigid,
+   that the correction is the bore straightening and NOT a roll (a port is radially
+   symmetric, so snapping its twist would swing a hull for nothing), and that the reported
+   figures are the measured motion rather than the arithmetic that made it.
+   The no-portB caller -- every other test in this file -- is pinned by those fixtures
+   already: with no measured pair the merge stays exactly what it was, world poses kept. */
+static void test_a_dock_snaps_the_seam_shut() {
+    printf("== absorbShip snaps the mated faces together (#1153) ==\n");
+
+    /* A: tank (root) + port below it, at the world origin -- A's port centre sits at
+       z = -1.625 and the face it presents downward is at z = -1.75. */
+    Ship A; A.v = new Vehicle; A.v->name = "A";
+    Part *tankA = mkPart(A, "tankA", 1000.0, 1.0, 1.0, kTankHz, false, false, 100.0);
+    Part *portA = mkPart(A, "portA",   50.0, 1.0, 1.0, kPortHz, true);
+    A.v->setRoot(tankA);
+    A.v->attachDown(portA);
+    A.v->controller = tankA;
+    A.v->init();
+    A.v->placeShip(glm::dvec3(0.0), glm::dmat3(1.0));
+
+    /* B arrives short of face contact with its bore 4 deg off the line and ROLLED 25 deg
+       about its own bore. The tilt is most of the cone but inside it (asked below, so a
+       retune of kDockAlign tells us rather than leaving the fixture measuring a dock the
+       gate would never have allowed), and 4 deg is what the --dock-test tilt mode authors
+       too. The roll is what makes "no roll snap" assertable: on an unrolled fixture a snap
+       that squared up the whole BASIS instead of just the bore would pass every check here. */
+    const double tiltDeg = 4.0;
+    const double rollDeg = 25.0;
+    const double tiltRad = tiltDeg * std::numbers::pi / 180.0;
+    const glm::dmat3 rotB0 = glm::mat3_cast(
+        glm::angleAxis(tiltRad, glm::dvec3(1.0, 0.0, 0.0))
+        * glm::angleAxis(rollDeg * std::numbers::pi / 180.0, glm::dvec3(0.0, 0.0, 1.0)));
+    /* B's port CENTRE sits on the line A's bore points down, at the depth that leaves
+       `air` between the two PRESENTED faces. The faces are what the gate measures, and a
+       tilted port's face sits off its centre, so the depth is not the gap: solve for the
+       drop whose face-to-face distance IS the air. 90% of the pair's own capture distance
+       is inside the gate with margin, and is still a seam worth measuring. */
+    Ship B; B.v = new Vehicle; B.v->name = "B";
+    Part *portB = mkPart(B, "portB",   50.0, 1.0, 1.0, kPortHz, true);
+    Part *tankB = mkPart(B, "tankB", 1000.0, 1.0, 1.0, kTankHz, false, false, 100.0);
+    B.v->setRoot(portB);
+    B.v->attachDown(tankB);
+    B.v->controller = portB;
+    B.v->init();
+    const double air = 0.9 * Vehicle::dockCaptureRange(portA, portB);
+    const double faceAz = -(kTankHz + 2.0 * kPortHz);     // A's downward face, z = -1.75
+    const double drop = std::sqrt(air * air
+                                  - std::pow(kPortHz * std::sin(tiltRad), 2.0));
+    B.v->placeShip(glm::dvec3(0.0, 0.0, faceAz - kPortHz * std::cos(tiltRad) - drop), rotB0);
+
+    /* First the gate, so this file pins the SAME pair the play path would mate. */
+    A.v->dockArmPort = portA;
+    A.v->dockTargetShip = B.v;
+    A.v->dockTargetPort = portB;
+    const Vehicle::DockSit s = A.v->dockSituation();
+    CHECK_TRUE(s.why == Vehicle::DockSit::Go,
+               "kinked and short of face is still a pair the gate mates");
+    CHECK_NEAR(s.read.faceGap, air, 1e-12, "the air this fixture authors, measured face to face");
+    CHECK_NEAR(s.read.axisCosA, 1.0, 1e-12, "A points straight down the joining line");
+    CHECK_NEAR(s.read.axisCosB, std::cos(tiltRad), 1e-12,
+               "and B's whole error is its bore, which is what bounds the snap");
+    CHECK_TRUE(s.read.axisCosB > Vehicle::kDockAlign, "inside the cone, so the mate is legal");
+
+    /* Poses before, read through the ship that owns each part at the time. */
+    const glm::dvec3 portA0 = worldPos(A.v, portA);
+    const glm::dvec3 tankA0 = worldPos(A.v, tankA);
+    const glm::dvec3 tankB0 = worldPos(B.v, tankB);
+    glm::dvec3 pbPre; glm::dmat3 rbPre;
+    B.v->partWorldPose(portB, pbPre, rbPre);
+    const glm::dvec3 boreB0 = rbPre[2];
+    const double span0 = glm::length(tankB0 - worldPos(B.v, portB));
+
+    Vehicle::DockSnap snap;
+    A.v->absorbShip(B.v, portA, portB, &snap);
+
+    /* THE SEAM IS STRAIGHT. One sentence does most of the work: B's port centre sits
+       exactly one port-depth (two half-heights) along the bore A presents, so there is no
+       air left, no kink, and the pair is at the distance the parts were built for. */
+    const glm::dvec3 portA1 = worldPos(A.v, portA);
+    const glm::dvec3 portB1 = worldPos(A.v, portB);
+    const glm::dvec3 axisA = -A.v->partAxis(portA, 2);  // A presents its -Z face: B hangs below
+    CHECK_NEAR(glm::length(portB1 - portA1 - axisA * (2.0 * kPortHz)), 0.0, 1e-12,
+               "mated centres: one port-depth along A's own bore, no gap and no kink");
+    CHECK_NEAR(glm::dot(A.v->partAxis(portB, 2), axisA), -1.0, 1e-12,
+               "and the two bores are anti-parallel");
+
+    /* The survivor is the frame: it does not move, not one part. */
+    CHECK_NEAR(glm::length(portA1 - portA0), 0.0, 1e-12, "absorb: the survivor's port stays put");
+    CHECK_NEAR(glm::length(worldPos(A.v, tankA) - tankA0), 0.0, 1e-12,
+               "absorb: and neither does its tank");
+
+    /* The donor moved as ONE rigid body -- nothing inside it was re-shaped by the snap. */
+    CHECK_NEAR(glm::length(worldPos(A.v, tankB) - portB1), span0, 1e-12,
+               "the donor stays rigid: port to tank keeps its length");
+
+    /* NO ROLL SNAP. Recover the rotation the donor actually got from its base before and
+       after, and ask what it turned about: at right angles to the bore means the twist
+       about the bore is exactly what it was. A snap that squared up the basis instead would
+       turn B 25 deg about its own axis here. */
+    glm::dvec3 pbPost; glm::dmat3 rbPost;
+    A.v->partWorldPose(portB, pbPost, rbPost);
+    const glm::dmat3 R = rbPost * glm::transpose(rbPre);
+    const glm::dvec3 spinAxis(R[1][2] - R[2][1], R[0][2] - R[2][0], R[1][0] - R[0][1]);
+    CHECK_NEAR(glm::dot(glm::normalize(spinAxis), boreB0), 0.0, 1e-12,
+               "the correction is a bore straightening, not a roll about the bore");
+
+    /* The figures the play path prints are the measured motion, not the arithmetic that
+       produced them, and they are not both zero: a snap that quietly stopped running has to
+       fail something rather than print a plausible 0. */
+    CHECK_NEAR(snap.turn, tiltDeg, 1e-9, "turn= names the tilt it took up");
+    CHECK_NEAR(snap.shift, glm::length(pbPost - pbPre), 1e-12,
+               "shift= is how far the donor's mated port actually travelled");
+    CHECK_TRUE(snap.shift > 0.05 && snap.shift < 0.15,
+               "and the donor really moved: about the air, plus what the tilt costs");
+
+    destroyShip(B.v);   // the empty shell absorbShip left behind
     destroyShip(A.v);
 }
 
@@ -1985,6 +2114,7 @@ static void test_a_sideways_port_moves_the_dial_but_not_the_verdict() {
 
 int main() {
     test_absorb();
+    test_a_dock_snaps_the_seam_shut();
     test_a_dock_keeps_the_pair_s_momentum();
     printf("\n");
     test_a_dock_keeps_the_pair_s_spin();

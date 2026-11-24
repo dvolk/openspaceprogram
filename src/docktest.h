@@ -15,10 +15,13 @@ struct DockTestShips {
     Vehicle *station;  // the target (root = its engine, port at the tail)
 };
 
-/* Build the pair for the given --dock-test mode (near | approach | corridor | spin |
+/* Build the pair for the given --dock-test mode (near | approach | tilt | corridor | spin |
    misaligned | stale-arm | stale-target). Both start co-moving on the same circular
    orbit; `approach` also gets a scripted closing rate down the port axis, because a
-   wall-clock engine press cannot land under #1152's 0.15 m/s capture cap. `corridor` is a
+   wall-clock engine press cannot land under #1152's 0.15 m/s capture cap. `tilt` is
+   approach with the probe's bore 4 deg off the joining line -- still inside the cone, so it
+   mates, and it is the only fixture whose dock has an angle for #1153's snap to take up.
+   `corridor` is a
    wide (8 m) aligned pair at rest for a terminal approach flown by hand, and `spin` is the
    same pair with the probe rolling 4 deg/s about its own bore (#1042's dial figure).
    Throws if parts are missing. stale-arm is misaligned's geometry plus a second

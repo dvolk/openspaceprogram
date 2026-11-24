@@ -6516,7 +6516,7 @@ std::string Vehicle::refuseDockWith(Vehicle *B) {
            + "\": the two hulls together weigh more than the game can store";
 }
 
-void Vehicle::absorbShip(Vehicle *B, Part *portA) {
+void Vehicle::absorbShip(Vehicle *B, Part *portA, Part *portB, DockSnap *snap) {
     if(B == nullptr || B == this || B->parts.empty()) { return; }
     if(portA == nullptr || !portA->isDockingPort()) { return; }
     /* THE ORDERS DO NOT CROSS A DOCK. The merged hull is flown from A, so A's enable
@@ -6537,9 +6537,80 @@ void Vehicle::absorbShip(Vehicle *B, Part *portA) {
     B->frameS(pB, RB);
     const glm::dmat3 T_rot = glm::transpose(RA) * RB;
     const glm::dvec3 T_pos = glm::transpose(RA) * (pB - pA);
+    /* #1153: SNAP THE SEAM SHUT, then weld. A capture is a decision that this pair is
+       joined, so what the player should see afterwards is the bolt closed, not the moment
+       of contact frozen in. Until now the merge was a pure rebase, so the air and the
+       tilt that the capture tick happened to be reading became part of the hull: measured
+       on the shipped r1 pair, a play-path dock welded at a 0.100 m face gap with the two
+       bores 2.6 deg off anti-parallel, and a kinked station is something no player can
+       undo -- every part built on it inherits the kink.
+       The correction is ONE rigid motion, applied to the donor only: A is the frame the
+       merge is expressed in and the hull the pilot flies, so it must not jump. It puts the
+       two PRESENTED faces (the same faces Vehicle::dockRead measured the gates against, so
+       this closes the pair the gate actually opened) on one point, with their bore axes
+       anti-parallel, pivoting on A's face.
+       NOT CORRECTED: the roll about the bore. A port is radially symmetric and nothing
+       downstream reads a docked pair's relative twist, so snapping roll would swing a whole
+       hull for nothing.
+       HOW BIG IT CAN GET is not a new threshold -- it is the same measurement the gate
+       passed: at most `captureRange` of face (0.10 m for two r1 ports) and at most
+       2 * acos(kDockAlign) of turn (each bore sits within 5 deg of the joining line, so the
+       pair can be at most 10 deg off each other, and the axis through both faces takes up
+       the whole of it). Retuning kDockCaptureFrac or kDockAlign retunes the snap with it,
+       which is the "play with the tolerances" knob the ticket asks for and the reason there
+       is deliberately no kDockSnap constant here.
+       The momentum bookkeeping below reads B as it was MOVING, pre-snap: the snap is a
+       weld constraint, not a force, and it displaces B's mass by at most captureRange, so
+       the r x m v it does not carry is bounded by m_B * captureRange * relSpeed.
+       `portB == nullptr` -- the unit fixtures, and any caller with no measured pair --
+       keeps the old merge exactly: weld where they stood. */
+    glm::dmat3 snapRot(1.0);
+    glm::dvec3 snapPos(0.0);
+    double snapTurn = 0.0;
+    if(snap != nullptr) { *snap = DockSnap{}; }
+    if(portB != nullptr && portB != portA && portB->owner == B
+       && portB->isDockingPort()) {
+        const glm::dvec3 posA = portA->localPos;
+        const glm::dmat3 rotA = portA->localRot;
+        /* B's port pose AFTER the rebase, so the snap and the rebase are one motion. */
+        const glm::dvec3 posB = T_rot * portB->localPos + T_pos;
+        const glm::dmat3 rotB = T_rot * portB->localRot;
+        const glm::dvec3 join = posB - posA;
+        /* dockRead's bail: coincident centres give no line, so no face is the presented
+           one and there is nothing well-defined to close. */
+        if(glm::length(join) > 1e-12) {
+            const double sA = glm::dot(rotA[2], join) >= 0.0 ? 1.0 : -1.0;
+            const double sB = glm::dot(rotB[2], -join) >= 0.0 ? 1.0 : -1.0;
+            const glm::dvec3 axisA = rotA[2] * sA;
+            const glm::dvec3 axisB = rotB[2] * sB;
+            const glm::dvec3 faceA = posA + axisA * (portA->def->height * 0.5);
+            const glm::dvec3 faceB = posB + axisB * (portB->def->height * 0.5);
+            /* The MINIMAL turn that sets the two bores against each other: about the axis
+               both are already in, so nothing else about either hull moves. A zero-length
+               cross means the bores are already anti-parallel (nothing to do) or parallel
+               (a 180 deg flip about an axis nobody asked for -- the gates refuse that pair,
+               so leaving it alone is the honest answer rather than a chosen direction). */
+            const glm::dvec3 kraw = glm::cross(axisB, -axisA);
+            const double kl = glm::length(kraw);
+            if(kl > 1e-12) {
+                snapTurn = acosUnit(glm::dot(axisB, -axisA));
+                const glm::dvec3 k = kraw / kl;
+                snapRot = glm::dmat3(rotAbout(k, snapTurn, glm::dvec3(1.0, 0.0, 0.0)),
+                                     rotAbout(k, snapTurn, glm::dvec3(0.0, 1.0, 0.0)),
+                                     rotAbout(k, snapTurn, glm::dvec3(0.0, 0.0, 1.0)));
+            }
+            snapPos = faceA - snapRot * faceB;
+            if(snap != nullptr) {
+                /* What the donor's mated port actually travelled -- the figure a player
+                   would call the size of the snap, and the one an e2e row can pin. */
+                snap->shift = glm::length(snapRot * posB + snapPos - posB);
+                snap->turn = snapTurn * 180.0 / std::numbers::pi;
+            }
+        }
+    }
     for(Part *q : B->parts) {
-        q->localPos = T_rot * q->localPos + T_pos;
-        q->localRot = T_rot * q->localRot;
+        q->localPos = snapRot * (T_rot * q->localPos + T_pos) + snapPos;
+        q->localRot = snapRot * T_rot * q->localRot;
         q->gimbal[0] = q->gimbal[1] = 0.0;  // fresh actuators in the merged frame
     }
 

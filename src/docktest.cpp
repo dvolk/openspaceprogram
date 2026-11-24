@@ -79,6 +79,14 @@ DockTestShips build_dock_test_ships(const std::string &mode,
        measures it, nothing is spinning unless a mode asks for it. */
     double spinDeg = 0.0;
     if(mode == "approach") { gap = 0.55; closeV = 0.09; }
+    /* #1153: approach's geometry with the probe's bore 4 deg off the joining line, which
+       is INSIDE the cone (cos 4 deg = 0.9976 >= kDockAlign 0.9962), so the pair still
+       mates -- and the snap has ~4 deg and ~0.1 m of seam to take up. No other fixture can
+       measure that: `misaligned` is refused at 40 deg and `approach` arrives with nothing
+       to straighten, so a snap that never ran would pass both. The angle is deliberately
+       most of the cone rather than a token 1 deg, so the turn= figure clears a print step
+       and the case cannot go vacuous if the cone is ever retuned. */
+    else if(mode == "tilt") { gap = 0.55; closeV = 0.09; yawDeg = 4.0; }
     /* A pair 8 m apart, aligned and at rest, for a terminal approach flown by hand:
        RCS forward is N, up I, right L, and the Docking window's dial is the instrument.
        No case flies it -- it is the fixture the human test of #1152's numbers runs on. */
@@ -89,8 +97,8 @@ DockTestShips build_dock_test_ships(const std::string &mode,
     else if(mode == "stale-target") { gap = 1.0; yawDeg = 40.0; shedTarget = true; }
     else if(mode != "near") {
         throw std::runtime_error("--dock-test: unknown mode '" + mode
-                                 + "' (near | approach | corridor | spin | misaligned"
-                                 + " | stale-arm | stale-target)");
+                                 + "' (near | approach | tilt | corridor | spin"
+                                 + " | misaligned | stale-arm | stale-target)");
     }
 
     const ScenarioDef *sc = scenario_by_name("rot-orbit");

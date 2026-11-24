@@ -1,5 +1,5 @@
 NAME dock-approach
-CLAIM A closing rate inside the pair's own gate mates it, and the weld keeps the gap inside that gate.
+CLAIM A closing rate inside the pair's own gate mates it, and the weld leaves no air and no kink at the seam.
 KIND invariant
 # --dock-test approach puts the two ports 0.55 m apart on the station's port AXIS -- face
 # gap 0.30 m -- and gives the probe 0.09 m/s along it. The r1 pair captures inside 0.10 m of
@@ -8,9 +8,11 @@ KIND invariant
 # over three times the cap -- and the case was at the mercy of how many physics substeps a
 # wall-clock press happened to catch (the flake this used to document). No keys are pressed
 # here, so the mate has exactly one cause: the approach.
-# The d=/cap= pair is the ticket. absorbShip is a rigid rebase, so whatever face gap the
-# capture tick measures is the air that stays between the ports forever; 1.5 m of gate used
-# to mean a docked pair holding each other at arm's length.
+# The d=/cap= pair is the ticket. absorbShip used to be a plain rigid rebase, so whatever
+# face gap the capture tick measured was the air that stayed between the ports forever; 1.5 m
+# of gate used to mean a docked pair holding each other at arm's length. #1153 pulls that air
+# shut at the weld -- postgap= below is what says so -- while d= stays the capture tick's own
+# reading, so the row still shows how far the gate let the pair come.
 # cap= is the gate's own distance for this pair, printed since #1152, and it is pinned
 # ABSOLUTELY at 0.10 m -- two r1 ports are 0.25 m deep, and the law is 0.4 x the shallower.
 # That is the sentence which catches arm's length: with OSP_HULL_MARGIN=0.5 the pair mates at
@@ -22,9 +24,13 @@ KIND invariant
 # 0.100 -- equal to cap, not under it. Measured: 0.099 at 15/30/60/75 Hz, 0.100 at
 # 90/120/200 Hz. The 0.05 floor says the pair flew most of the 0.30 m gap rather than
 # starting already welded.
+# postgap=/postkink= are a fresh dockRead of the two ports INSIDE the merged hull (#1153):
+# the air and the crookedness the ship was actually built with. This pair has no tilt, so
+# turn= has nothing to take up and both post- figures read zero; the tilted capture, where
+# the snap has real work to do, is 1153-a.
 ARGS --dock-test approach --time-accel 1 --timeout 8
 EXPECT Dock-test (approach)
 EXPECT [dock] t=
 EXPECT a="dockprobe" b="dockstation"
-CHECK (lambda x: len(x) == 1 and 0.05 < float(x[0][0]) < 0.12 and abs(float(x[0][1]) - 0.10) < 0.02 and float(x[0][0]) <= float(x[0][1]) + 0.001)(re.findall(r'\[dock\] t=\S+ a="dockprobe" b="dockstation" d=([-\d.]+) m cap=([-\d.]+) m v=', out))
+CHECK (lambda x: len(x) == 1 and 0.05 < float(x[0][0]) < 0.12 and abs(float(x[0][1]) - 0.10) < 0.02 and float(x[0][0]) <= float(x[0][1]) + 0.001 and float(x[0][4]) < 0.05 and abs(float(x[0][5])) < 0.001 and abs(float(x[0][6])) < 0.05)(re.findall(r'\[dock\] t=\S+ a="dockprobe" b="dockstation" d=([-\d.]+) m cap=([-\d.]+) m v=([-\d.]+) m/s snap=([-\d.]+) m turn=([-\d.]+) deg postgap=([-\d.]+) m postkink=([-\d.]+) deg', out))
 FORBID error:

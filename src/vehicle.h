@@ -2456,7 +2456,10 @@ public:
        port is 0.25 m deep (nodes at +-0.125 m), so 1.5 m of face gap is six port-depths
        of daylight -- and since absorbShip() is a rigid rebase that keeps every part's
        world pose, that gap became part of the hull: measured 0.750 m for the fixture
-       pair parked nose-to-nose, 1.495 m after an approach burn. The old numbers were
+       pair parked nose-to-nose, 1.495 m after an approach burn. (#1153 has since pulled
+       the seam shut inside absorbShip, so a capture inside these gates leaves the faces
+       touching; what these numbers still decide is how far that snap may move a hull.)
+       The old numbers were
        also inconsistent with this game's own authority: an rcs_box is 60 N, so on the
        6560 kg fixture pair translation is 0.0091 m/s^2 and stopping from 2 m/s needs
        219 m of corridor. No player could have obeyed it.
@@ -2596,10 +2599,24 @@ public:
 
     std::string refuseDockWith(Vehicle *B);
 
+    /* How far a dock had to pull the donor onto the survivor, out of #1153's snap. The
+       play path prints it on [dock] so a case can pin the snap happened rather than infer
+       it from a post-dock screenshot. */
+    struct DockSnap {
+        double shift = 0.0;   // m the donor's mated port travelled
+        double turn = 0.0;    // deg the donor turned
+    };
+
     /* Fold B into this ship at the mated port. B's shell is deleted by the
        caller, B's journal is dropped (#49). B's crew ride along because a seat
-       belongs to its capsule Part, which moves with the part tree. */
-    void absorbShip(Vehicle *B, Part *portA);
+       belongs to its capsule Part, which moves with the part tree.
+       `portB` is B's half of the mated pair, the port the gate measured (see
+       absorbShip's snap block, #1153): given it, the seam is pulled shut -- the two
+       presented faces coincident, the bores anti-parallel -- before the weld, and
+       `snap` comes back with how far that moved the donor. Pass neither and the merge
+       is what it always was: a weld at whatever pose the capture tick found. */
+    void absorbShip(Vehicle *B, Part *portA, Part *portB = nullptr,
+                    DockSnap *snap = nullptr);
 
     /* Extract the subtree rooted at `root` into a new Vehicle, rebased into a new
        frame S' = the root's old frame. The new ship inherits frame/home/sun, takes
