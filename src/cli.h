@@ -155,6 +155,9 @@ struct GameArgs {
     /* The HUD's target relative-velocity markers (#873). Billboards, so this is
        the only witness that a target reached that code at all. */
     bool relvel_log = false;
+    /* The HUD's target mark (#1145): what it points at, in the render frame.
+       Also a billboard, so this is the only witness it was placed at all. */
+    bool tgtmark_log = false;
     bool porkchop_log = false;   // the launch-window grid min
     int porkchop_n = 256;
     std::vector<int> porkchop_bench; // sweep these sizes off one snapshot

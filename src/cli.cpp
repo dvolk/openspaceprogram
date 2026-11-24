@@ -627,6 +627,13 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                  "The markers are billboards, so this is the only way to see "
                  "that a target reached them at all");
 
+    app.add_flag("--tgtmark-log", args.tgtmark_log,
+                 "Periodically print where the HUD's transfer-target mark "
+                 "points: the target, its kind, that point in the render "
+                 "frame, its distance from the focus body's centre, and its "
+                 "distance from the camera. Another billboard, so this is how "
+                 "a case knows the mark was placed rather than not drawn");
+
     app.add_option("--transfer-target", args.transfer_target,
                    "Transfer planner target: a child body of the ship's "
                    "current body, another ship in the same body, or an "

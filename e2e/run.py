@@ -280,6 +280,18 @@ RELVEL_RE = re.compile(
     r"rel_spd=([-\d.e+]+) m/s\s+tgt_v=([-\d.e+]+) m/s\s+"
     r"rel=\[([-\d.]+) ([-\d.]+) ([-\d.]+)\]"
 )
+# --tgtmark-log (render.cpp): where the HUD's transfer-target mark points (#1145).
+# Also a billboard in the 3D pass, so the row is again the only witness that a target
+# of a given KIND reached the marker code at all. com is the point the mark was aimed
+# AT, in this pass's own render frame; r_f is that point's distance from the FOCUS
+# body's centre -- the authored number a case can hold it to (the Kerbin station
+# fixture sits 400 km over a 600 km Kerbin, so 1.0e6 m) instead of trusting that a
+# mark exists -- and dist is eye to target, which is what a fixed-size-on-screen
+# marker has to be indifferent to.
+TGTMARK_RE = re.compile(
+    r"\[tgtmark\]\s+t=([\d.]+)s\s+target=\"([^\"]*)\"\s+kind=(\w+)\s+"
+    r"com=\[([-\d.]+) ([-\d.]+) ([-\d.]+)\] m\s+r_f=([-\d.e+]+) m\s+dist=([-\d.e+]+) m"
+)
 PORKCHOP_RE = re.compile(
     r"\[porkchop\]\s+t=([\d.]+)s\s+target=\"([^\"]*)\"\s+"
     r"(\d+)x(\d+)\s+dep=\[([-\d.e+]+),([-\d.e+]+)\]s\s+tof=\[([-\d.e+]+),([-\d.e+]+)\]s\s+"
@@ -831,7 +843,7 @@ ROW_PARSERS = [
     ("mapb", MAP_RE, "world"), ("mapbldg", MAPBLDG_RE, "world"),
     ("dbg", DBG_RE, "world"), ("bldg", BLDG_RE, "world"),
     ("plane", PLANE_RE, "world"), ("xfer", XFER_RE, "world"),
-    ("relvel", RELVEL_RE, "world"),
+    ("relvel", RELVEL_RE, "world"), ("tgtmark", TGTMARK_RE, "world"),
     ("porkchop", PORKCHOP_RE, "world"), ("surfmap", SURFMAP_RE, "world"),
     ("surfmark", SURFMARK_RE, "world"),
     ("solar", SOLAR_RE, "world"), ("slew", SLEW_RE, "world"), ("perf", PERF_RE, "out"),
@@ -1522,6 +1534,26 @@ def parse_relvel(out):
             # target - you, in the ship's own render frame: the retro marker's
             # direction, and -rel for the prograde one.
             "rel": (float(rx), float(ry), float(rz)),
+        })
+    return rows
+
+
+def parse_tgtmark(out):
+    rows = []
+    for m in TGTMARK_RE.finditer(out):
+        (t, target, kind, cx, cy, cz, r_f, dist) = m.groups()
+        rows.append({
+            "t": float(t), "target": target,
+            # body / ship / station: which kind of target the mark followed.
+            "kind": kind,
+            # The target's own point in this pass's render frame -- the same
+            # targetState() the solver and [relvel] lift (#1145).
+            "com": (float(cx), float(cy), float(cz)),
+            # |com| about the focus body's centre: an authored distance, so a
+            # CHECK can hold the mark to the target's real orbit.
+            "r_f": float(r_f),
+            # Eye to target, which the marker's screen size ignores by design.
+            "dist": float(dist),
         })
     return rows
 
@@ -2651,6 +2683,7 @@ def run_case(case):
     mapb = parse_scoped(world, parse_mapb)
     mapbldg = parse_scoped(world, parse_mapbldg)
     relvel = parse_scoped(world, parse_relvel)
+    tgtmark = parse_scoped(world, parse_tgtmark)
     plane = parse_scoped(world, parse_plane)
     slew = parse_scoped(world, parse_slew)
     shipswitch = parse_shipswitch(world)
@@ -2681,7 +2714,7 @@ def run_case(case):
         "terrain": terrain,
         "surf": surf, "orbinfo": orbinfo, "dockwin": dockwin,
         "mapb": mapb, "mapbldg": mapbldg,
-        "plane": plane, "slew": slew, "relvel": relvel,
+        "plane": plane, "slew": slew, "relvel": relvel, "tgtmark": tgtmark,
         # The handoffs themselves: [{"verb": switch/removed/unchanged/none, "name": ...}].
         "shipswitch": shipswitch,
         # Every scripted UI action the game admitted to, whole-run like toast/scene.
@@ -3417,6 +3450,25 @@ def self_test():
     # "dv=-1" as "dv=" plus junk would hide a printf bug.
     if parse_relvel(good_rv.replace("rel_spd=1762.8765", "rel_spd=-1"))[0]["rel_spd"] != -1.0:
         fails.append("parse_relvel did not read a signed rel_spd=")
+
+    # #1145: [tgtmark] is the only face the target mark has, and every CHECK about it
+    # walks these columns, so the row shape gets the same guard [relvel] has.
+    good_tm = ('[tgtmark] t=2.9s target="Kerbin station" kind=station '
+               'com=[683893.562 -344590.855 643075.998] m r_f=1000000.0 m dist=765673.0 m')
+    if TGTMARK_RE.match(good_tm) is None:
+        fails.append("the #1145 pin's clean [tgtmark] line stopped matching TGTMARK_RE")
+    for lost in (" kind=station", ' target="Kerbin station"', " r_f=1000000.0 m",
+                 " dist=765673.0 m", "com=[683893.562 -344590.855 643075.998] m"):
+        if TGTMARK_RE.match(good_tm.replace(lost, "")) is not None:
+            fails.append("TGTMARK_RE matched a [tgtmark] row missing%s" % lost)
+    if TGTMARK_RE.match(good_tm.replace(
+            "com=[683893.562 -344590.855 643075.998]",
+            "com=(683893.562,-344590.855,643075.998)")) is not None:
+        fails.append("TGTMARK_RE took a parenthesised com=, so the #1145 pins read noise")
+    tm = parse_tgtmark(good_tm)[0]
+    if (tm["kind"] != "station" or tm["r_f"] != 1000000.0 or tm["dist"] != 765673.0
+            or tm["com"] != (683893.562, -344590.855, 643075.998)):
+        fails.append("parse_tgtmark misread kind, r_f, dist or com")
 
     # #447: a row belongs to the ship that was ACTIVE when it printed, and the
     # marker that says so carries no timestamp -- line order is the only evidence,

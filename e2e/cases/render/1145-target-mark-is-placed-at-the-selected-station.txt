@@ -1,0 +1,27 @@
+# The mark is the whole ticket (#1145): a selected transfer target has to be visible
+# in the world, not only as a line of text in the TARGET window. Like the pair in
+# 873-b it is a billboard in the 3D pass, so --tgtmark-log is the only face it has:
+# nothing else in the log would notice if a kind of target fell through the draw.
+#
+# The number a case can hold is r_f -- the target point's distance from the FOCUS
+# body's centre. For this fixture that is the station's authored 400 km over a 600 km
+# Kerbin, so 1.0e6 m. Aim the mark at the ship's own CoM, lift it out of the inertial
+# frame into the rotating one, or use the bubble frame's origin instead of the
+# station's, and that number moves. Let the target never reach the draw and there are
+# no rows at all, which is why this case COUNTS them (see the note by ROW_PARSERS).
+NAME target-mark-is-placed-at-the-selected-station
+CLAIM The HUD marks a selected transfer target at the target's own point: station kind, at its authored orbit radius in the render frame.
+KIND invariant
+ARGS --time-accel 1 --timeout 5 --startship racer,res/ships/racer.json,Kerbin,pad
+ARGS --transfer-target "Kerbin station" --tgtmark-log --orbit-interval 1.0
+FORBID error:
+CHECK len(tgtmark) >= 3
+CHECK all(r["kind"] == "station" and r["target"] == "Kerbin station" for r in tgtmark)
+# 600 km of Kerbin plus the station's authored 400 km.
+CHECK all(abs(r["r_f"] - 1.0e6) < 1.0 for r in tgtmark)
+# The mark is a DIRECTION from the eye, and the draw skips a direction under 1e-9
+# (glm would normalize it into NaN). The eye is on the pad and the station is not.
+CHECK all(r["dist"] > 1.0e5 for r in tgtmark)
+# com and r_f describe the one point, so they cannot drift apart: the frame change
+# between them is a rotation about a shared centre.
+CHECK all(abs(sum(p * p for p in r["com"]) ** 0.5 - r["r_f"]) < 1.0 for r in tgtmark)

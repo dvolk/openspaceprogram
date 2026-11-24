@@ -1,0 +1,16 @@
+# The mark belongs to a SELECTED target (#1145), so with nothing selected there is
+# nothing to mark and the draw sits inside `if(const auto *xt = planner.target())`.
+#
+# This is the row-count guard under the station case next door: TGTMARK_RE is
+# positional, so a column inserted or renamed in the printf empties the list, and
+# `all(...)` over an empty list is TRUE. Here the emptiness is the CLAIM, so the case
+# states the count rather than leaning on all(). Same fixture, same flag, one
+# argument missing -- if --tgtmark-log printed rows with no target, this fails.
+NAME no-selected-target-no-mark
+CLAIM With no transfer target selected the HUD places no target mark.
+KIND invariant
+ARGS --time-accel 1 --timeout 5 --startship racer,res/ships/racer.json,Kerbin,pad
+ARGS --tgtmark-log --orbit-interval 1.0
+FORBID error:
+FORBID [tgtmark]
+CHECK len(tgtmark) == 0

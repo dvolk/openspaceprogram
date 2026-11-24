@@ -700,7 +700,7 @@ enum LogGate { kGateOrbit, kGateDbg, kGateInfo, kGateAtt, kGateShake,
                kGateSkyDim, kGateXfer, kGateDv, kGateCompound, kGateProxSnap,
                kGateSpin, kGateMass, kGateFuel, kGateDrain, kGatePower,
                kGateSteer, kGateSlew, kGateAscent, kGateRec, kGateSolar,
-               kGateBldg, kGateRelVel, kGateSurfMark, kGateCount };
+               kGateBldg, kGateRelVel, kGateSurfMark, kGateTgtMark, kGateCount };
 
 /* A headless test hook (cli.h --atlas-dump / --map-dump): fires act() once,
    at/after ms on the schedule clock (Game::schedClockMs(): loop_start_ms normally,
@@ -1116,6 +1116,10 @@ struct Game {
        speeds the green one is the ground's direction, not the plane's. */
     Billboard *air_prograde_indicator = nullptr;
     Billboard *air_retrograde_indicator = nullptr;
+    /* #1145: the selected transfer target, marked the way the burn markers are
+       marked -- a quad 10 m from the eye, along the eye->target direction
+       instead of along a burn. Fixed size on screen like the rest of the HUD. */
+    Billboard *target_indicator = nullptr;
 
     // --- the draw toggles (the Settings window writes, render.cpp reads) --
     bool physics_debug_drawing = false;

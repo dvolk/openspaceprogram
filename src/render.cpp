@@ -1438,6 +1438,47 @@ void paintWorld(Game &g) {
             }
         }
     }
+    /* And the target itself (#1145). The pair above answer "which way do I burn";
+       this one answers "which way is the thing I'm going to", so a selected
+       target is visible in the world and not only as text in the TARGET window.
+       It is drawn the way every other marker is drawn: Draw stands its quad 10 m
+       from the eye along whatever vector it is handed, which is what keeps the
+       screen size fixed -- pointed AT the target rather than at a burn.
+       The point is targetState's, the same state the solver, the map's Target
+       plane and the relvel readout all lift: the mark cannot point somewhere the
+       plan does not look. Depth is off for this whole block, so it shows through
+       a world in front of it -- for a body target that is not a courtesy, its
+       centre is inside the body by construction. */
+    if(const auto *xt = planner.target()) {
+        Frame *inertial = rf->getNonRotFrame();
+        const TransferPlanner::TargetState st = planner.targetState(*xt, inertial);
+        glm::dvec3 pS, vS;
+        switchFrameState(inertial, rf, st.r, st.v, pS, vS);
+        /* Draw takes a DIRECTION, and a zero-length one normalizes to NaN and
+           blanks the quad -- same guard the two markers above run. It happens
+           when the eye is at the target: a chase cam on a ship that is itself
+           the selected target. */
+        const glm::dvec3 eye2tgt = pS - camera->pos;
+        if(glm::length(eye2tgt) > 1e-9) {
+            g.target_indicator->pos = eye2tgt;
+            g.target_indicator->Draw(camera, std::numbers::pi);
+        }
+        /* --tgtmark-log: what the mark points at, at the --orbit-interval gate,
+           in this pass's own frame. com is the point the direction was measured
+           to; r_f is that point's distance from the FOCUS body's centre -- the
+           authored number a case can hold it to (the Kerbin station fixture sits
+           400 km over a 600 km Kerbin, so 1.0e6 m) instead of taking "it drew
+           something" on faith. Paint pass only, like --relvel-log: this is a
+           quad, not an imgui widget, so --no-paint prints nothing at all. */
+        if(g.args.tgtmark_log
+           && g.logDue(kGateTgtMark, g.logClockMs(), g.orbit_log_interval_ms)) {
+            printf("[tgtmark] t=%.1fs target=\"%s\" kind=%s com=[%.3f %.3f %.3f] m "
+                   "r_f=%.1f m dist=%.1f m\n",
+                   g.time, xt->name, kindName(xt->kind()), pS.x, pS.y, pS.z,
+                   glm::length(st.r), glm::length(eye2tgt));
+            fflush(stdout);
+        }
+    }
     }
     // horizon_indicator->pos = groundHed;
     // horizon_indicator->Draw(camera, std::numbers::pi);

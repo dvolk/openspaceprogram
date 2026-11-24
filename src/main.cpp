@@ -1218,6 +1218,12 @@ int main(int argc, char **argv)
         mk_billboard(billboardshader, prograde_indicator_texture, 1.0, 1.0, aircolor);
     Billboard *air_retrograde_indicator =
         mk_billboard(billboardshader, retrograde_indicator_texture, 1.0, 1.0, aircolor);
+    /* #1145: the selected transfer target's own mark. White, and sharing the
+       prograde glyph for now -- the square icon that should replace this is
+       res/textures/target_icon.png, and this one line is the whole swap. */
+    Billboard *target_indicator =
+        mk_billboard(billboardshader, prograde_indicator_texture, 1.0, 1.0,
+                     glm::vec4(1.0f, 1.0f, 1.0f, 1.0f));
 
     const float camFov = (float)glm::radians(args.camFovDeg);
     // The drawable size the Renderer actually got (the WM may have clamped it).
@@ -1446,6 +1452,7 @@ int main(int argc, char **argv)
     game.relvel_retro_indicator = relvel_retro_indicator;
     game.air_prograde_indicator = air_prograde_indicator;
     game.air_retrograde_indicator = air_retrograde_indicator;
+    game.target_indicator = target_indicator;
 
     // --timeout: wall-clock budget for the run (0 = run until closed).
     // events.cpp and the timeout check below both measure from this.
@@ -2213,6 +2220,7 @@ int main(int argc, char **argv)
     delete relvel_retro_indicator;
     delete air_prograde_indicator;
     delete air_retrograde_indicator;
+    delete target_indicator;
 
     game.audio.shutdown();
 
