@@ -541,7 +541,7 @@ EVA_RE = re.compile(
 # contact ray misses), comp= is the suspension compression the ride height comes
 # from, travel= the stroke the part was authored with.
 LEGLOG_RE = re.compile(
-    r"\[leglog\]\s+t=([\d.]+)s\s+(.+?)\s+(leg|gear)\s+uid=(\d+)\s+"
+    r'\[leglog\]\s+t=([\d.]+)s\s+ship="(.+?)"\s+(leg|gear)\s+uid=(\d+)\s+'
     r"mesh=([-\d.]+) m\s+(?:gap=air|gap=([-\d.]+) m)\s+"
     r"comp=([-\d.]+) m\s+travel=([-\d.]+)\s+k=([-\d.]+)"
 )
@@ -867,7 +867,7 @@ ROW_PARSERS = [
     ("surfmark", SURFMARK_RE, "world"),
     ("solar", SOLAR_RE, "world"), ("slew", SLEW_RE, "world"), ("perf", PERF_RE, "out"),
     ("toast", TOAST_RE, "out"), ("att", ATT_RE, "world"), ("eva", EVA_RE, "world"),
-    ("leg", LEGLOG_RE, "world"),
+    ("leglog", LEGLOG_RE, "world"),
     ("drainlog", DRAINLOG_RE, "world"), ("power", POWER_RE, "world"), ("dv", DV_RE, "world"),
     ("mass", MASS_RE, "world"), ("drag", DRAG_RE, "world"), ("shake", SHAKE_RE, "world"),
     ("cam", CAM_RE, "world"), ("terrain", TERRAIN_RE, "world"), ("surf", SURF_RE, "world"),
@@ -1821,16 +1821,23 @@ def parse_leglog(out):
         t, ship, kind, uid, mesh, gap, comp, travel, k = m.groups()
         rows.append({
             "t": float(t), "ship": ship, "kind": kind, "uid": int(uid),
-            # Where the bottom of the DRAWN mesh sits, part-local: negative, and
-            # the negation of the def's leg_foot / wheel_radius. #1158 is about
-            # this column matching the gap column.
+            # The part's DRAWN bottom, positive: -min(z) over Body::hullVerts, so
+            # it reads like the def's leg_foot / wheel_radius it is being compared
+            # against (0.05 leg, 0.35 gear). A case that does not pin this column
+            # is reading a gap measured from wherever the logger guessed.
             "mesh": float(mesh),
-            # How far that mesh bottom floats above the ground it stands on. None
-            # when the leg is in the air ("gap=air"), which is what a hop row looks
-            # like -- a row with a gap is a row that is touching something.
+            # How far that drawn bottom sits above the ground the row measured.
+            # None ONLY when the probe got no answer at all, which happens in a
+            # building bubble or with no parent body -- on a planet groundContact's
+            # analytic fall-through always answers, so a row with a gap is not
+            # necessarily a row that is touching: an airborne leg reads its
+            # distance to the terrain below (7.8 m in 1158-c's hop, 86 km for a
+            # parked hull if the logger were not gated on hullInWorld).
             "gap": float(gap) if gap is not None else None,
-            # Suspension compression, 0..travel. The ride height is travel - comp,
-            # so a gap and a comp cannot both be small unless travel is small.
+            # Suspension compression, 0..travel, computed off MESH (the drawn
+            # bottom) rather than the def face, so gap + comp == travel whenever
+            # the clamp is inactive. The ride height is travel - comp, which is
+            # the same quantity as the landing stroke (#1158).
             "comp": float(comp), "travel": float(travel), "k": float(k),
         })
     return rows
@@ -2719,7 +2726,7 @@ def run_case(case):
     att = parse_scoped(world, parse_att)
     ascent = parse_scoped(world, parse_ascent)
     eva = parse_scoped(world, parse_eva)
-    leg = parse_scoped(world, parse_leglog)
+    leglog = parse_scoped(world, parse_leglog)
     fuel = parse_scoped(world, parse_fuel)
     drainlog = parse_scoped(world, parse_drainlog)
     power = parse_scoped(world, parse_power)
@@ -2759,7 +2766,7 @@ def run_case(case):
     rec_all, rec_any = recording_aggregates(vacuous)
     ns = {
         "out": out, "orbit": orbit, "dbg": dbg, "bldg": bldg, "xfer": xfer,
-        "porkchop": porkchop, "surfmap": surfmap, "surfmark": surfmark, "solar": solar, "att": att, "ascent": ascent, "eva": eva, "leg": leg,
+        "porkchop": porkchop, "surfmap": surfmap, "surfmark": surfmark, "solar": solar, "att": att, "ascent": ascent, "eva": eva, "leglog": leglog,
         "fuel": fuel, "drainlog": drainlog, "power": power, "dv": dv, "mass": mass,
         "drag": drag, "shake": shake,
         "rec": rec,

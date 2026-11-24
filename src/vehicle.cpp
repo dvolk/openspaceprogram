@@ -5359,12 +5359,22 @@ void Vehicle::applyGroundForces(double h) {
    cannot quietly disagree with what is drawn (both shipped parts agree today:
    leg -0.05 vs leg_foot 0.05, gear -0.35 vs wheel_radius 0.35). */
 void Vehicle::logLegContacts(double t) {
-    if(gearParts.empty() && legParts.empty()) { return; }
+    /* The same precondition applyGroundForces has: a hull that is not in the
+       world has no ground to report against (a parked legged hull otherwise
+       prints an 86 km "float", and partWorldPose would dereference hull). */
+    if((gearParts.empty() && legParts.empty()) || hull == nullptr || !hullInWorld()) { return; }
     const std::string name = displayName();
     auto row = [&](Part *p, const char *kind, double travel, double spring) {
         glm::dvec3 origin; glm::dmat3 pRot;
         partWorldPose(p, origin, pRot);
-        double mesh = 0.0;
+        /* The drawn bottom, as the min over the hull verts. Missing geometry is
+           skipped rather than reported as mesh=0.000: seeding the min with 0.0
+           turns "no verts" (captureHullVerts only fills a btConvexHullShape,
+           physics.cpp) into a plausible-looking gap measured from the part
+           origin instead of from the rubber. Same guard applyShadowMapDrag's
+           part loop uses (3977). */
+        if(p->body == nullptr || p->body->hullVerts.empty()) { return; }
+        double mesh = p->body->hullVerts[0].z;
         for(const glm::dvec3 &v : p->body->hullVerts) { mesh = std::min(mesh, v.z); }
         mesh = -mesh;
         const glm::dvec3 down = -(pRot * glm::dvec3(0.0, 0.0, 1.0));
@@ -5372,12 +5382,12 @@ void Vehicle::logLegContacts(double t) {
         glm::dvec3 hit, n;
         double dist;
         if(!groundContact(origin, down, reach, dist, hit, n)) {
-            printf("[leglog] t=%.3fs %s %s uid=%llu mesh=%.3f m gap=air travel=%.2f k=%.0f N/m\n",
+            printf("[leglog] t=%.3fs ship=\"%s\" %s uid=%llu mesh=%.3f m gap=air travel=%.3f k=%.0f N/m\n",
                    t, name.c_str(), kind, (unsigned long long)p->uid, mesh, travel, spring);
             return;
         }
         const double comp = std::clamp((mesh + travel) - dist, 0.0, travel);
-        printf("[leglog] t=%.3fs %s %s uid=%llu mesh=%.3f m gap=%.3f m comp=%.3f m travel=%.2f k=%.0f N/m\n",
+        printf("[leglog] t=%.3fs ship=\"%s\" %s uid=%llu mesh=%.3f m gap=%.3f m comp=%.3f m travel=%.3f k=%.0f N/m\n",
                t, name.c_str(), kind, (unsigned long long)p->uid, mesh, dist - mesh,
                comp, travel, spring);
     };

@@ -440,12 +440,15 @@ EXTRA_FIELDS = {
     # touchdown are ONE quantity. Raising the spring makes the float worse (less
     # compression = more unused strut); the only way to have both is a strut that
     # telescopes, so the drawn mesh slides with compression -- an issue, not a
-    # tweak here. What 0.2 -> 0.15 buys: a skiff's tyres sit 0.044..0.075 m off
-    # the deck instead of 0.095..0.126. What it costs: the loaded main compresses
-    # 0.106 of 0.15, so the gear sinks to its bump stops -- hull collision, the
-    # scrub/pump regime wheel.h refuses to rest on -- above ~1.15 t on three
-    # wheels (0.2 was ~1.53 t). e2e 1158-b pins at least 0.03 m of stroke still
-    # free, which is what turns that ceiling red for a heavier hull.
+    # tweak here (#1166). What 0.4 -> 0.15 buys: a skiff's tyres sit 0.041..0.077
+    # m off the deck instead of 0.29..0.33 (0.092..0.126 at the half-step 0.2).
+    # What it costs is the load ceiling, and the load is uneven: the main wheel
+    # takes 42% of the 659 kg hull on a third of the wheels, compressing
+    # 0.106..0.109 of its 0.15, so a ~38% heavier plane puts THAT wheel on its
+    # bump stops -- not the 74% (n*k*travel = 1.15 t) an even share implies. On
+    # the stops the hull is held by collision, the scrub/pump regime wheel.h
+    # refuses to rest on. e2e 1158-b pins 0.02 m of stroke still free on every
+    # wheel, which is what turns that ceiling red.
     "gear":              {"mass": 30.0, "wheel_travel": 0.15, "wheel_spring": 25000.0,
                           "wheel_damp": 3000.0, "wheel_steer": 0.0,
                           "nodes": [{"id": "srf", "pos": [0.0, 0.0, 0.65],
@@ -464,14 +467,17 @@ EXTRA_FIELDS["gear_nose"] = dict(EXTRA_FIELDS["gear"], wheel_steer=20.0)
 # splay 20 deg, plate-thick 0.08): node x = -(2.6*tan(20) + 0.04) = -0.986.
 # travel is the float AND the landing stroke -- see the gear note above
 # (#1158). 0.4 -> 0.15 puts the racer_legs footpads 0.024..0.038 m off the
-# ground instead of 0.27..0.29 m, at a rest compression of 0.112..0.126 of the
-# stroke. The ceiling that trades away: 4 legs at k=60000 hold 36 kN, so a
-# legged stack heavier than ~3.7 t sits on its bump stops (the racer_legs hull
-# is 2.93 t) -- a heavier lander needs more legs, not a longer strut. Hard
-# landings turned out NOT to be the constraint: measured arrivals of 6.0 and
-# 10.8 m/s stay upright at 0.20/0.15/0.13 alike (worst nose.z 0.967), and the
-# hull tips over at ~15.7 m/s at every travel, so stroke length is not what
-# saves a bad landing. e2e 1158-a/c pin the float and the reserve.
+# ground instead of 0.273..0.302 m, at a rest compression of 0.112..0.126 of the
+# stroke. The ceiling that trades away: 4 legs at k=60000 hold 36 kN, which an
+# even share says is 3.7 t -- but the measured share is uneven (0.112..0.126
+# across the four), so the FIRST leg to reach its stops does so at ~3.5 t (the
+# racer_legs hull is 2.93 t). A heavier lander needs more legs, not a longer
+# strut. Hard landings turned out NOT to be the constraint: measured arrivals of
+# 6.0 and 10.8 m/s stay upright at 0.20/0.15/0.13 alike (worst nose.z 0.967), and
+# the hull tips over at ~15.7 m/s at every travel, so stroke length is not what
+# saves a bad landing. What travel does set is whether the hull rocks on after a
+# hop: at 0.2 the same 6 m/s arrival keeps |w| at 0.074 after t=5 s against
+# 0.032 at 0.15 (e2e 1158-c). 1158-a/c pin the float and the reserve.
 EXTRA_FIELDS["leg"] = {"mass": 40.0, "leg_foot": 0.05, "leg_travel": 0.15,
                        "leg_spring": 60000.0, "leg_damp": 8000.0,
                        "nodes": [{"id": "srf", "pos": [-0.986, 0.0, 2.6],

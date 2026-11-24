@@ -1,24 +1,26 @@
 # THE OTHER HALF OF SHORTENING THE STRUT (#1158). 1158-a and 1158-b buy a smaller visible
 # float by cutting leg_travel from 0.4 to 0.15, and the same number is the whole landing
-# stroke: compression is clamped to travel, so a hard arrival that used to have 0.4 m of strut
-# to spend now has 0.15. This case lands on it hard enough to find out, because "it stands
-# lower" is worthless if the hull then bottoms out and tips.
+# stroke: compression is clamped to travel. This case lands on the shortened strut hard enough
+# to find out what that costs, because "it stands lower" is worthless if the hull then bottoms
+# out and tips.
 #
 # Stage after 0.5 s, throttle for 600 ms (T; the keys are SIM-clocked under --sim-steps,
 # #472): the racer_legs hull reaches alt 11.5 m and comes back at 6.04 m/s (t=2.4). It does not
 # tip -- worst nose.z 0.9927 through the rebound -- and it settles (|w| under 0.032 after t=5,
-# 0.0000 by the end, |v| 0.01). The honest cost, which this case does NOT paper over: peak
-# compression is 0.145 of the 0.15 stroke, and near-stop rows keep appearing between t=3.7 and
-# t=5.4 as the hull rocks. At travel 0.2 the same arrival peaks at 0.186 of 0.20, so the strut
-# is nearly spent either way; the real difference is the load ceiling (see 1158-a).
+# 0.0000 by the end, |v| 0.01 at the last row). The honest cost, which this case does not paper
+# over: peak compression is 0.145 of the 0.15 stroke, and rows with comp >= 0.14 keep appearing
+# between t=3.7 and t=5.4 as the hull rocks. At travel 0.2 the same arrival peaks at 0.186 of
+# 0.20 -- nearly spent too -- but the hull keeps bouncing: |w| over the t > 5 rows reaches 0.074
+# instead of 0.032, which is what reddens this case at the old travel. So this is a tuning pin,
+# not an invariant: it pins the stroke that leaves the hull rock-free after a hop.
 #
-# And stroke length is NOT what saves a bad landing: measured arrivals of 15.7 m/s tip the hull
-# (nose.z goes negative, |w| peaks ~2 rad/s) at travel 0.20, 0.15 and 0.13 alike. What a
-# landing needs is a strut that stays spring-borne, not a longer one -- hence the telescoping
-# strut issue, which would take the float out of the picture entirely.
+# And stroke length is NOT what saves a genuinely bad landing: measured arrivals of 15.7 m/s
+# tip the hull (nose.z goes to -0.35..-0.42, |w| peaks 1.5..2.0 rad/s) at travel 0.20, 0.15 and
+# 0.13 alike. What a landing needs is a strut that stays spring-borne, not a longer one -- hence
+# #1166, which would take the float out of the picture entirely.
 NAME short-strut-catches-a-hop
 CLAIM A legged hull that hops off its pads and comes down at 6 m/s does not reach its bump stops, tip, or keep bouncing.
-KIND invariant
+KIND golden
 ARGS --time-accel 1 --sim-steps 1200 --startship rl,res/ships/racer_legs.json,Kerbin,pad
 ARGS --leg-log --dbg-log --att-log --no-paint --orbit-interval 0.2
 ARGS --sim-press 500,0,SPACE,700,600,T
@@ -29,13 +31,19 @@ FORBID error:
 # It really flew: 2.6 m of climb over the run (spawn rest 8.9 m), and a fast arrival.
 CHECK max(d["alt"] for d in dbg) > 11.0
 CHECK max(d["v"] for d in dbg) > 5.0
-# The legs left the ground during the hop: the probe's reach is mesh+travel+0.2 = 0.4 m, so a
-# gap of metres means the footpad is hanging in the air under a flying hull.
-CHECK max(r["gap"] for r in leg if r["gap"] is not None) > 1.0
+# The legs left the ground during the hop. gap is the drawn footpad's distance to the terrain
+# under the hull, and on a planet groundContact's analytic fall-through answers however far
+# away it is (7.8 m at the top of this hop), so a large gap IS the airborne row.
+CHECK max(r["gap"] for r in leglog if r["gap"] is not None) > 1.0
 # The clamp never engaged: compression stayed under travel (peak 0.145 of 0.15), so the spring
 # was holding the hull rather than the leg sitting solid on its stop.
-CHECK all(r["comp"] < r["travel"] for r in leg)
-CHECK all(abs(r["gap"] + r["comp"] - r["travel"]) < 0.01 for r in leg if r["comp"] > 0)
+CHECK all(r["comp"] < r["travel"] for r in leglog)
+# ... and the two columns are the real thing, not a degenerate read: the mesh pin is 1158-a's,
+# repeated here because this case is the one that asserts a comp MAGNITUDE, and a logger whose
+# mesh read collapsed to 0 would report comp ~0.07 and pass a bare `comp < travel`.
+CHECK all(abs(r["mesh"] - 0.05) < 0.005 for r in leglog)
+CHECK max(r["comp"] for r in leglog) > 0.05
+CHECK all(abs(r["gap"] + r["comp"] - r["travel"]) < 0.01 for r in leglog if r["comp"] > 0)
 # Upright the whole way, including the rebound row (worst 0.9927).
 CHECK all(a["nose"][2] > 0.98 for a in att)
 # And it settles: no residual rock after the bounce, and standing still at the end.

@@ -6,8 +6,8 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 477 |
-| `golden` | tuned numbers or a content table -- update deliberately when tuning | 56 |
+| `invariant` | a behaviour or a player route the game must keep | 476 |
+| `golden` | tuned numbers or a content table -- update deliberately when tuning | 57 |
 | `harness` | CLI/test-engine plumbing, not game spec | 18 |
 | `canary` | only proves the thing boots | 4 |
 | | **total** | **555** |
@@ -204,7 +204,7 @@ judgement. Select by number, name or path, e.g.
 | `flight/1148-brackets-cycle-ships.txt` | invariant | [ steps the active ship backwards and ] forwards, wrapping around the fleet, and the Controls window shows both brackets on the ship slots and -/= on camera speed. |
 | `flight/1158-a-legs-stand-close-to-their-feet.txt` | golden | A landed hull's drawn footpads rest within 0.06 m of the ground, on suspension that has neither gone slack nor reached its bump stops. |
 | `flight/1158-b-gear-stands-close-on-the-runway.txt` | golden | A geared hull's drawn tyres touch the runway within 0.1 m, with suspension stroke left over. |
-| `flight/1158-c-short-strut-catches-a-hop.txt` | invariant | A legged hull that hops off its pads and comes down at 6 m/s does not reach its bump stops, tip, or keep bouncing. |
+| `flight/1158-c-short-strut-catches-a-hop.txt` | golden | A legged hull that hops off its pads and comes down at 6 m/s does not reach its bump stops, tip, or keep bouncing. |
 
 ## crew (43)
 
