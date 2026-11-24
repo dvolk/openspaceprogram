@@ -280,17 +280,22 @@ RELVEL_RE = re.compile(
     r"rel_spd=([-\d.e+]+) m/s\s+tgt_v=([-\d.e+]+) m/s\s+"
     r"rel=\[([-\d.]+) ([-\d.]+) ([-\d.]+)\]"
 )
-# --tgtmark-log (render.cpp): where the HUD's transfer-target mark points (#1145).
-# Also a billboard in the 3D pass, so the row is again the only witness that a target
-# of a given KIND reached the marker code at all. com is the point the mark was aimed
-# AT, in this pass's own render frame; r_f is that point's distance from the FOCUS
-# body's centre -- the authored number a case can hold it to (the Kerbin station
-# fixture sits 400 km over a 600 km Kerbin, so 1.0e6 m) instead of trusting that a
-# mark exists -- and dist is eye to target, which is what a fixed-size-on-screen
-# marker has to be indifferent to.
+# --tgtmark-log (render.cpp): what the HUD's transfer-target mark was HANDED
+# (#1145). A billboard in the 3D pass leaves no other face, but no stdout row can
+# prove a GL draw ran, so this one stops proving anything else either: com is the
+# target's point in this pass's render frame, r_f that point's distance from the
+# FOCUS body's centre (the authored number a case can hold it to -- the Kerbin
+# station fixture sits 400 km over a 600 km Kerbin, so 1.0e6 m), cam is the eye,
+# dist is eye to target (the marker's screen size is indifferent to it by design),
+# dir is the normalized vector the billboard itself received -- read back off the
+# marker, as [planelog]'s rdl= is -- and drawn says whether the guard above the
+# draw let it happen at all. dir DASHES when drawn=0, so an absence parses as an
+# absence rather than as the stale vector the marker held last frame.
 TGTMARK_RE = re.compile(
     r"\[tgtmark\]\s+t=([\d.]+)s\s+target=\"([^\"]*)\"\s+kind=(\w+)\s+"
-    r"com=\[([-\d.]+) ([-\d.]+) ([-\d.]+)\] m\s+r_f=([-\d.e+]+) m\s+dist=([-\d.e+]+) m"
+    r"com=\[([-\d.]+) ([-\d.]+) ([-\d.]+)\] m\s+r_f=([-\d.e+]+) m\s+"
+    r"cam=\[([-\d.]+) ([-\d.]+) ([-\d.]+)\] m\s+dist=([-\d.e+]+) m\s+"
+    r"dir=(?:\[([-\d.]+) ([-\d.]+) ([-\d.]+)\]|-)\s+drawn=([01])"
 )
 PORKCHOP_RE = re.compile(
     r"\[porkchop\]\s+t=([\d.]+)s\s+target=\"([^\"]*)\"\s+"
@@ -1541,7 +1546,8 @@ def parse_relvel(out):
 def parse_tgtmark(out):
     rows = []
     for m in TGTMARK_RE.finditer(out):
-        (t, target, kind, cx, cy, cz, r_f, dist) = m.groups()
+        (t, target, kind, cx, cy, cz, r_f, ex, ey, ez, dist,
+         dx, dy, dz, drawn) = m.groups()
         rows.append({
             "t": float(t), "target": target,
             # body / ship / station: which kind of target the mark followed.
@@ -1552,8 +1558,14 @@ def parse_tgtmark(out):
             # |com| about the focus body's centre: an authored distance, so a
             # CHECK can hold the mark to the target's real orbit.
             "r_f": float(r_f),
+            # The eye, in the same frame as com -- what makes dir checkable.
+            "cam": (float(ex), float(ey), float(ez)),
             # Eye to target, which the marker's screen size ignores by design.
             "dist": float(dist),
+            # The unit vector the billboard itself was handed; None when the row
+            # dashes it, which is the guard above the draw saying no.
+            "dir": (float(dx), float(dy), float(dz)) if dx is not None else None,
+            "drawn": int(drawn),
         })
     return rows
 
@@ -3454,11 +3466,15 @@ def self_test():
     # #1145: [tgtmark] is the only face the target mark has, and every CHECK about it
     # walks these columns, so the row shape gets the same guard [relvel] has.
     good_tm = ('[tgtmark] t=2.9s target="Kerbin station" kind=station '
-               'com=[683893.562 -344590.855 643075.998] m r_f=1000000.0 m dist=765673.0 m')
+               'com=[683893.562 -344590.855 643075.998] m r_f=1000000.0 m '
+               'cam=[3011.252 3001.246 600248.962] m dist=765673.0 m '
+               'dir=[0.889260 -0.453969 0.055934] drawn=1')
     if TGTMARK_RE.match(good_tm) is None:
         fails.append("the #1145 pin's clean [tgtmark] line stopped matching TGTMARK_RE")
     for lost in (" kind=station", ' target="Kerbin station"', " r_f=1000000.0 m",
-                 " dist=765673.0 m", "com=[683893.562 -344590.855 643075.998] m"):
+                 " dist=765673.0 m", "com=[683893.562 -344590.855 643075.998] m",
+                 " cam=[3011.252 3001.246 600248.962] m",
+                 " dir=[0.889260 -0.453969 0.055934]", " drawn=1"):
         if TGTMARK_RE.match(good_tm.replace(lost, "")) is not None:
             fails.append("TGTMARK_RE matched a [tgtmark] row missing%s" % lost)
     if TGTMARK_RE.match(good_tm.replace(
@@ -3467,8 +3483,16 @@ def self_test():
         fails.append("TGTMARK_RE took a parenthesised com=, so the #1145 pins read noise")
     tm = parse_tgtmark(good_tm)[0]
     if (tm["kind"] != "station" or tm["r_f"] != 1000000.0 or tm["dist"] != 765673.0
-            or tm["com"] != (683893.562, -344590.855, 643075.998)):
-        fails.append("parse_tgtmark misread kind, r_f, dist or com")
+            or tm["com"] != (683893.562, -344590.855, 643075.998)
+            or tm["cam"] != (3011.252, 3001.246, 600248.962)
+            or tm["dir"] != (0.889260, -0.453969, 0.055934) or tm["drawn"] != 1):
+        fails.append("parse_tgtmark misread kind, r_f, cam, dist, dir or drawn")
+    # The skipped-draw row dashes dir rather than repeating the vector the marker
+    # held last frame, so a case can tell "not placed" from "placed there".
+    tm0 = parse_tgtmark(good_tm.replace(
+        "dir=[0.889260 -0.453969 0.055934] drawn=1", "dir=- drawn=0"))[0]
+    if tm0["dir"] is not None or tm0["drawn"] != 0:
+        fails.append("the #1145 row's dashed dir= did not read as an absence")
 
     # #447: a row belongs to the ship that was ACTIVE when it printed, and the
     # marker that says so carries no timestamp -- line order is the only evidence,

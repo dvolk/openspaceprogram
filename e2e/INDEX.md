@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 469 |
+| `invariant` | a behaviour or a player route the game must keep | 470 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 53 |
 | `harness` | CLI/test-engine plumbing, not game spec | 18 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **544** |
+| | **total** | **545** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -481,7 +481,7 @@ judgement. Select by number, name or path, e.g.
 | `ui/1090-a-hull-card-form-row.txt` | invariant | Body part cards print the merged aero block -- credit row, hull flow row, watts row -- at cadence; the hull flow row agrees across the ship's body cards; the upwind capsule reads a real area and cd; no surface AoA row on body cards. |
 | `ui/1115-a-part-card-dashes-in-vacuum.txt` | invariant | Above the air, a body card prints the dashed trio and a surface card the dashed pair -- exact spellings, same row counts as the live blocks, and a never-billed peak that still answers 0.0 W. |
 
-## render (92)
+## render (93)
 
 | case | kind | pins |
 |---|---|---|
@@ -576,7 +576,8 @@ judgement. Select by number, name or path, e.g.
 | `render/892-radial-pair-in-a-tipping-bubble.txt` | invariant | Inside a building bubble whose deck tips, the radial in/out pair tracks the planet instead of the station. |
 | `render/1133-b-surfmap-marks-the-polar-pad.txt` | golden | The Surface Map marks all three of Kerbin's ground pads. |
 | `render/1145-b-no-selected-target-no-mark.txt` | invariant | With no transfer target selected the HUD places no target mark. |
-| `render/1145-target-mark-is-placed-at-the-selected-station.txt` | invariant | The HUD marks a selected transfer target at the target's own point: station kind, at its authored orbit radius in the render frame. |
+| `render/1145-c-body-target-mark-sits-on-the-authored-mun-distance.txt` | invariant | A body target gets the mark at its centre, at the Kerbin-Mun distance its authored orbital rate implies. |
+| `render/1145-target-mark-is-placed-at-the-selected-station.txt` | invariant | The HUD marks a selected transfer target at the target's own point: station kind, at its authored orbit radius, with the marker handed the eye-to-target direction. |
 
 ## harness (19)
 

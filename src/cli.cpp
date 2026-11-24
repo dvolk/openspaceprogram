@@ -628,11 +628,13 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                  "that a target reached them at all");
 
     app.add_flag("--tgtmark-log", args.tgtmark_log,
-                 "Periodically print where the HUD's transfer-target mark "
-                 "points: the target, its kind, that point in the render "
-                 "frame, its distance from the focus body's centre, and its "
-                 "distance from the camera. Another billboard, so this is how "
-                 "a case knows the mark was placed rather than not drawn");
+                 "Periodically print what the HUD's transfer-target mark was "
+                 "handed: the target, its kind, its point in the render frame, "
+                 "that point's distance from the focus body's centre, the "
+                 "camera, the eye-to-target distance, the normalized vector the "
+                 "billboard itself received (- when the draw was skipped) and "
+                 "whether it drew. The mark is a billboard, so this is its only "
+                 "face -- it records the placement, not the pixels");
 
     app.add_option("--transfer-target", args.transfer_target,
                    "Transfer planner target: a child body of the ship's "

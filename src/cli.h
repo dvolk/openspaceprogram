@@ -155,8 +155,9 @@ struct GameArgs {
     /* The HUD's target relative-velocity markers (#873). Billboards, so this is
        the only witness that a target reached that code at all. */
     bool relvel_log = false;
-    /* The HUD's target mark (#1145): what it points at, in the render frame.
-       Also a billboard, so this is the only witness it was placed at all. */
+    /* The HUD's target mark (#1145): the point it aims at, the eye, and the
+       vector the billboard was actually handed. A billboard leaves no other
+       face, but a row records a placement, not pixels. */
     bool tgtmark_log = false;
     bool porkchop_log = false;   // the launch-window grid min
     int porkchop_n = 256;

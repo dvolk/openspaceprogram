@@ -1,0 +1,41 @@
+# #1145 ships one mark for three kinds of target, and `kind=` exists in the row so
+# each can be held separately. The station case next door covers `station`; this one
+# covers `body`, which has no other marker witness at all -- a BODY target
+# deliberately gets neither relative-velocity marker (there is no direction at a
+# planet worth burning against), so before this the only evidence a planet target
+# reached the marker code was the TARGET window's text.
+#
+# Mun's authored orbit is a rate, not a distance: inertial orb_ang_speed
+# 4.520797578987212e-05 rad/s (res/systems/ksp_system.json). Kepler gives the
+# radius it implies: a = (mu / n^2)^(1/3) with mu = 6.674e-11 * 5.292e22 =
+# 3.5319e12, so a = 1.2000e7 m. The row's r_f is the Mun's centre distance from
+# Kerbin, so it has to sit on that -- which also means the mark is aimed at the
+# centre of a body the player is standing on: 3 m below the horizon line from the
+# pad, and drawn there anyway because depth is off for the whole HUD block (that
+# is the #1156 conversation, not a bug in the placement).
+NAME body-target-mark-sits-on-the-authored-mun-distance
+CLAIM A body target gets the mark at its centre, at the Kerbin-Mun distance its authored orbital rate implies.
+KIND invariant
+ARGS --time-accel 1 --timeout 5 --startship racer,res/ships/racer.json,Kerbin,pad
+ARGS --transfer-target Mun --tgtmark-log --orbit-interval 1.0
+FORBID error:
+CHECK len(tgtmark) >= 3
+CHECK all(r["kind"] == "body" and r["target"] == "Mun" for r in tgtmark)
+CHECK all(r["drawn"] == 1 for r in tgtmark)
+# (6.674e-11 * 5.292e22 / 4.520797578987212e-05^2)^(1/3) = 1.20003e7 m.
+CHECK all(abs(r["r_f"] - 1.2e7) < 1.0e4 for r in tgtmark)
+# Eye to target: measured 1.2505e7 m, falling ~76 m/s as the Mun comes around. Not
+# the lift guard -- at 1.2e7 m a 600 km frame error is 5% and stays inside any sane
+# band (dropping the lift reads 1.2596e7). It is here to hold the mark to the Mun
+# rather than to something near Kerbin.
+CHECK all(1.19e7 < r["dist"] < 1.31e7 for r in tgtmark)
+# The Mun's phase at t=0 is authored -- orbits Kerbin, inertial orb_ang_speed
+# 4.520797578987212e-05, arg_peri 0, true_anomaly0 1.7 -- so its position in
+# Kerbin's inertial frame, which is this run's render frame, is a fixture fact
+# rather than something to re-derive. Measured 6.34e6 / -1.76e6 / -1.004e7, drifting
+# ~8 km across the run. 8% per axis: the only CHECK here that separates a lifted
+# point from an unlifted one, because the unlifted read is -1.55e6 / 0 / -1.19e7
+# while its r_f, its dist and its dir law all stay internally perfect.
+CHECK all(abs(r["com"][0] - 6.34e6) < 1.0e6 and abs(r["com"][1] + 1.76e6) < 1.0e6 and abs(r["com"][2] + 1.004e7) < 1.0e6 for r in tgtmark)
+CHECK all(abs(sum(d * d for d in r["dir"]) - 1.0) < 1e-5 for r in tgtmark)
+CHECK all(abs(r["dir"][i] - (r["com"][i] - r["cam"][i]) / r["dist"]) < 1e-5 for r in tgtmark for i in (0, 1, 2))

@@ -1368,6 +1368,23 @@ void paintWorld(Game &g) {
         g.burn_indicator->pos = planner.xfer.burn_dir;
         g.burn_indicator->Draw(camera, std::numbers::pi);
     }
+    /* The transfer target, resolved and lifted ONCE for this paint frame: the
+       relative-velocity pair below reads its inertial velocity, the target mark
+       reads its point. Every other marker reads a state the state pass computed
+       once (refreshShipState); the transfer target has no such field yet, so the
+       least this pass can do is not walk the frame tree per marker group. */
+    Frame *tgt_inertial = ship->frame->getNonRotFrame();
+    const auto *xt = planner.target();
+    const TransferPlanner::TargetState tstate =
+        xt != nullptr ? planner.targetState(*xt, tgt_inertial)
+                      : TransferPlanner::TargetState{};
+    // The target's point in THIS render frame. switchFrameState always produces
+    // the velocity too; only the mark's caller has no use for it.
+    glm::dvec3 tgt_pt = glm::dvec3(0.0), tgt_vel = glm::dvec3(0.0);
+    if(xt != nullptr) {
+        switchFrameState(tgt_inertial, ship->frame, tstate.r, tstate.v,
+                         tgt_pt, tgt_vel);
+    }
     /* Target relative velocity: two markers (you-target / target-you).
        A BODY target gets neither: its relative state is the intercept the
        TARGET window already prints, and there is no direction at a planet worth
@@ -1376,18 +1393,18 @@ void paintWorld(Game &g) {
     {
         // Both velocities into the shared inertial frame (stasis + frame
         // velocity), then the difference back into this render frame.
-        Frame *inertial = ship->frame->getNonRotFrame();
+        Frame *inertial = tgt_inertial;
         Frame *sf = ship->frame;
-        const auto *xt = planner.target();
         const char *rel_kind = nullptr;
         const char *rel_name = nullptr;
         glm::dvec3 tv = glm::dvec3(0.0);
         if(xt != nullptr && xt->kind() != TargetKind::body) {
-            /* The same lift the solver uses (TransferPlanner::targetState), so
-               the markers cannot disagree with the plan printed for the target
-               -- and a station contributes the velocity its own pose law drives
-               (#850), with no COM offset or stasis term to get wrong. */
-            tv = planner.targetState(*xt, inertial).v;
+            /* The solver's own lift (TransferPlanner::targetState, resolved once
+               above for this frame), so the markers cannot disagree with the plan
+               printed for the target -- and a station contributes the velocity its
+               own pose law drives (#850), with no COM offset or stasis term to
+               get wrong. */
+            tv = tstate.v;
             rel_kind = kindName(xt->kind());
             rel_name = xt->name;
         } else if(ship->dockTargetShip != nullptr
@@ -1444,38 +1461,55 @@ void paintWorld(Game &g) {
        It is drawn the way every other marker is drawn: Draw stands its quad 10 m
        from the eye along whatever vector it is handed, which is what keeps the
        screen size fixed -- pointed AT the target rather than at a burn.
-       The point is targetState's, the same state the solver, the map's Target
-       plane and the relvel readout all lift: the mark cannot point somewhere the
-       plan does not look. Depth is off for this whole block, so it shows through
-       a world in front of it -- for a body target that is not a courtesy, its
+       Deliberately NOT gated on planner.xfer.valid the way the burn marker is:
+       the mark answers where the target is, and a target with no solution yet is
+       still the target. Depth is off for this whole block, so it shows through a
+       world in front of it -- for a body target that is not a courtesy, its
        centre is inside the body by construction. */
-    if(const auto *xt = planner.target()) {
-        Frame *inertial = rf->getNonRotFrame();
-        const TransferPlanner::TargetState st = planner.targetState(*xt, inertial);
-        glm::dvec3 pS, vS;
-        switchFrameState(inertial, rf, st.r, st.v, pS, vS);
+    if(xt != nullptr) {
         /* Draw takes a DIRECTION, and a zero-length one normalizes to NaN and
-           blanks the quad -- same guard the two markers above run. It happens
-           when the eye is at the target: a chase cam on a ship that is itself
-           the selected target. */
-        const glm::dvec3 eye2tgt = pS - camera->pos;
-        if(glm::length(eye2tgt) > 1e-9) {
+           blanks the quad -- same defence the two markers above run. What is
+           reachable is the hull parked at the station it has selected (measured:
+           39.9 m inside the target's own bubble, 6.6 m between two hulls on
+           pads); the active hull is never one of its own target rows, so "a chase
+           cam on the target itself" is not. */
+        const glm::dvec3 eye2tgt = tgt_pt - camera->pos;
+        const double dist = glm::length(eye2tgt);
+        const bool placed = dist > 1e-9;
+        if(placed) {
             g.target_indicator->pos = eye2tgt;
             g.target_indicator->Draw(camera, std::numbers::pi);
         }
-        /* --tgtmark-log: what the mark points at, at the --orbit-interval gate,
-           in this pass's own frame. com is the point the direction was measured
-           to; r_f is that point's distance from the FOCUS body's centre -- the
-           authored number a case can hold it to (the Kerbin station fixture sits
-           400 km over a 600 km Kerbin, so 1.0e6 m) instead of taking "it drew
-           something" on faith. Paint pass only, like --relvel-log: this is a
-           quad, not an imgui widget, so --no-paint prints nothing at all. */
+        /* --tgtmark-log: what the marker was actually GIVEN, at the
+           --orbit-interval gate, in this pass's own frame. com is the target's
+           point; r_f is that point's distance from the FOCUS body's centre --
+           the authored number a case can hold it to (the Kerbin station fixture
+           sits 400 km over a 600 km Kerbin, so 1.0e6 m) rather than trusting
+           that a mark exists; cam is the eye, which is what lets a case test
+           dir against com - cam instead of taking it on faith; dist is eye to
+           target, which the marker's screen size is indifferent to by design;
+           dir is the normalized vector the billboard itself was handed, read
+           back off the marker as [planelog]'s rdl= is, and dashes when the guard
+           above skipped the draw. drawn= is that guard's decision, not a GPU
+           receipt: deleting the Draw call leaves this row byte-identical, so
+           nothing here can prove a GL draw ran -- and it stops proving anything
+           else either. Paint pass only, like --relvel-log: --no-paint prints
+           nothing at all. */
         if(g.args.tgtmark_log
            && g.logDue(kGateTgtMark, g.logClockMs(), g.orbit_log_interval_ms)) {
+            char dirbuf[64];
+            if(placed) {
+                const glm::dvec3 dn = glm::normalize(g.target_indicator->pos);
+                snprintf(dirbuf, sizeof dirbuf, "[%.6f %.6f %.6f]",
+                         dn.x, dn.y, dn.z);
+            } else {
+                snprintf(dirbuf, sizeof dirbuf, "-");
+            }
             printf("[tgtmark] t=%.1fs target=\"%s\" kind=%s com=[%.3f %.3f %.3f] m "
-                   "r_f=%.1f m dist=%.1f m\n",
-                   g.time, xt->name, kindName(xt->kind()), pS.x, pS.y, pS.z,
-                   glm::length(st.r), glm::length(eye2tgt));
+                   "r_f=%.1f m cam=[%.3f %.3f %.3f] m dist=%.1f m dir=%s drawn=%d\n",
+                   g.time, xt->name, kindName(xt->kind()), tgt_pt.x, tgt_pt.y,
+                   tgt_pt.z, glm::length(tstate.r), camera->pos.x, camera->pos.y,
+                   camera->pos.z, dist, dirbuf, placed ? 1 : 0);
             fflush(stdout);
         }
     }

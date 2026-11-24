@@ -3,25 +3,39 @@
 # 873-b it is a billboard in the 3D pass, so --tgtmark-log is the only face it has:
 # nothing else in the log would notice if a kind of target fell through the draw.
 #
-# The number a case can hold is r_f -- the target point's distance from the FOCUS
-# body's centre. For this fixture that is the station's authored 400 km over a 600 km
-# Kerbin, so 1.0e6 m. Aim the mark at the ship's own CoM, lift it out of the inertial
-# frame into the rotating one, or use the bubble frame's origin instead of the
-# station's, and that number moves. Let the target never reach the draw and there are
-# no rows at all, which is why this case COUNTS them (see the note by ROW_PARSERS).
+# No stdout row can prove pixels landed, so this row stops proving anything else
+# either, and every CHECK below is against a column that a wrong placement changes:
+#   r_f   the target point's distance from the FOCUS body's centre -- here the
+#         station's authored 400 km over a 600 km Kerbin, so 1.0e6 m. Read the
+#         target out of the ROTATING frame, or use the bubble frame's origin
+#         instead of the station's point, and it moves.
+#   dist  eye to target. The bound is what catches a missing frame lift: measured,
+#         dropping switchFrameState and passing the inertial r straight through
+#         reads dist=1.164e6 here, 52% off, while len() and kind stay identical.
+#   dir   the normalized vector the billboard ITSELF was handed, read back off the
+#         marker the way [planelog]'s rdl= is. Point the mark at the ship's own
+#         CoM and dir changes while every other column stays byte-identical, which
+#         is why an earlier version of this case passed with the feature deleted.
+#   drawn whether the guard above the draw let the quad be placed at all (the row
+#         dashes dir when it is 0, so an absence is not last frame's vector).
+#         Deleting the Draw() call itself leaves every column byte-identical:
+#         stdout cannot see the GPU, so what this case holds is the placement.
 NAME target-mark-is-placed-at-the-selected-station
-CLAIM The HUD marks a selected transfer target at the target's own point: station kind, at its authored orbit radius in the render frame.
+CLAIM The HUD marks a selected transfer target at the target's own point: station kind, at its authored orbit radius, with the marker handed the eye-to-target direction.
 KIND invariant
 ARGS --time-accel 1 --timeout 5 --startship racer,res/ships/racer.json,Kerbin,pad
 ARGS --transfer-target "Kerbin station" --tgtmark-log --orbit-interval 1.0
 FORBID error:
 CHECK len(tgtmark) >= 3
 CHECK all(r["kind"] == "station" and r["target"] == "Kerbin station" for r in tgtmark)
+CHECK all(r["drawn"] == 1 for r in tgtmark)
 # 600 km of Kerbin plus the station's authored 400 km.
 CHECK all(abs(r["r_f"] - 1.0e6) < 1.0 for r in tgtmark)
-# The mark is a DIRECTION from the eye, and the draw skips a direction under 1e-9
-# (glm would normalize it into NaN). The eye is on the pad and the station is not.
-CHECK all(r["dist"] > 1.0e5 for r in tgtmark)
-# com and r_f describe the one point, so they cannot drift apart: the frame change
-# between them is a rotation about a shared centre.
-CHECK all(abs(sum(p * p for p in r["com"]) ** 0.5 - r["r_f"]) < 1.0 for r in tgtmark)
+# Measured rows drift 7.648e5 -> 7.666e5 across the run (the station moves while
+# the pad turns), so a 7.0e5..8.5e5 band is loose on the physics and tight on the
+# geometry: no frame lift reads 1.164e6.
+CHECK all(7.0e5 < r["dist"] < 8.5e5 for r in tgtmark)
+# The vector the marker holds IS the unit eye->target direction of the two points
+# the same row prints. (1e-5: com/cam are at mm and dir at 1e-6.)
+CHECK all(abs(sum(d * d for d in r["dir"]) - 1.0) < 1e-5 for r in tgtmark)
+CHECK all(abs(r["dir"][i] - (r["com"][i] - r["cam"][i]) / r["dist"]) < 1e-5 for r in tgtmark for i in (0, 1, 2))
