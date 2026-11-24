@@ -24,11 +24,14 @@ not pinned -- see UNPINNED).
 
 Byte-exactness catches a generator that drifted. It does not catch one that got WORSE in a
 way the engine cannot see, so TOPO below also checks the regenerated text for the topology
-the hand-authored art uses -- wall quads and one ngon per end, one normal per face, one UV
-island per face with real area. See the comment there for why nobody notices in game and
-everyone notices in Blender.
+the hand-authored art uses -- wall quads and one ngon per end, one normal per face -- and
+for UVs a painter can work on. The island rule is deliberately stricter than the
+Blender-authored family, which lathes its wall as one continuous strip (3 islands across 34
+faces): a generator has no reason to join cells, so per-face cells are what it has to keep.
+See the comment on TOPO for what each check is for, and utils/inspect_mesh_blender.py for
+reading the same properties in the editor.
 
-Usage: python3 utils/check_mesh_pins.py [--verbose]
+Usage: python3 utils/check_mesh_pins.py [--verbose] [--committed]
 """
 import os
 import re
@@ -165,34 +168,78 @@ TOPO = {
     "meshes/adapter_r2.25to1.obj": 34,
     "meshes/capsule_cyl_r1h2.obj": 34,     # 32 wall quads + one ngon per end
 }
-TOPO_MIN_UV_AREA = 0.5
+# One face's share of the 0..1 canvas, not the sum over the part: the 624-panel
+# fuselages would clear a summed floor the 34-face adapters fail. The lofted family gives
+# each face 0.021; the collapsed meshes in #1173 give theirs 0.000 (every corner lands on
+# one texel, so the part addresses one colour), and nose_cap.obj's overlapping faces
+# 0.0078. This sits between the good figure and the worst.
+TOPO_MIN_FACE_UV_AREA = 0.012
+
+
+def obj_corner(field, nv, nt, nn):
+    """One `v[/vt[/vn]]` corner as (v, vt, vn) 1-based indices, None where the field
+    leaves one out (`f 1 2 3`, `f 1//2`). Negative indices count from the end, which the
+    spec allows and which only resolves once the file has been read. None if the corner
+    does not parse or lands out of range -- reported rather than crashing, because this
+    gate runs against generated text that a future generator may format differently."""
+    out = []
+    for k, part in enumerate(field.split("/")[:3]):
+        if not part:
+            out.append(None)
+            continue
+        try:
+            i = int(part)
+        except ValueError:
+            return None
+        size = (nv, nt, nn)[k]
+        i = i if i > 0 else size + 1 + i
+        if not 1 <= i <= size:
+            return None
+        out.append(i)
+    while len(out) < 3:
+        out.append(None)
+    return out
 
 
 def topo_problems(path, want_faces):
     """Why this .obj would be hard to paint, or [] if it is paintable."""
-    uvs, faces = [], []      # faces: (vertex idx, uv idx, normal idx) per corner
+    vs, uvs, ns, raw = [], [], [], []
     with open(path, encoding="utf-8", errors="replace") as fh:
         for ln in fh:
-            if ln.startswith("vt "):
+            if ln.startswith("v "):
+                vs.append(ln)
+            elif ln.startswith("vt "):
                 t = ln.split()
                 uvs.append((float(t[1]), float(t[2])))
+            elif ln.startswith("vn "):
+                ns.append(ln)
             elif ln.startswith("f "):
-                c = [p.split("/") for p in ln.split()[1:]]
-                faces.append(([int(x[0]) for x in c],
-                              [int(x[1]) for x in c] if len(c[0]) > 1 else [],
-                              [int(x[2]) for x in c] if len(c[0]) > 2 else []))
+                raw.append(ln.split()[1:])
     bad = []
+    faces = []
+    for fields in raw:
+        corners = [obj_corner(x, len(vs), len(uvs), len(ns)) for x in fields]
+        if any(c is None or c[0] is None for c in corners):
+            bad.append("face `f %s` does not parse, so every count below is a guess"
+                       % " ".join(fields))
+            return bad
+        faces.append(tuple(zip(*corners)))     # (verts, uvs, normals), one index per corner
+
     tri = sum(1 for f in faces if len(f[0]) == 3)
     if tri:
         bad.append("%d triangles: the authored family is wall quads plus one ngon per "
                    "end, and a triangulated wall unwraps into zig-zag slivers" % tri)
     if len(faces) != want_faces:
         bad.append("%d faces, expected %d" % (len(faces), want_faces))
-    mixed = sum(1 for f in faces if len(set(f[2])) != 1)
+    no_norm = sum(1 for f in faces if any(x is None for x in f[2]))
+    if no_norm:
+        bad.append("%d faces carry no normal at all, so they shade off the smoothing of "
+                   "whatever they happen to touch" % no_norm)
+    mixed = sum(1 for f in faces if all(x is not None for x in f[2]) and len(set(f[2])) != 1)
     if mixed:
         bad.append("%d faces carry more than one normal, so a face's own flat shading "
                    "blends into whatever meets it" % mixed)
-    if any(not f[1] for f in faces):
+    if any(x is None for f in faces for x in f[1]):
         bad.append("a face has no uv, so it has no canvas to paint on")
         return bad
 
@@ -217,8 +264,14 @@ def topo_problems(path, want_faces):
         if len(sides) != 2:
             continue
         (ka, ja), (kb, jb) = sides
+        va, vb = faces[ka][0], faces[kb][0]
         ua, ub = faces[ka][1], faces[kb][1]
-        if ua[ja] == ub[jb] and ua[ja - 1] == ub[jb - 1]:
+        # Consistently-wound neighbours run a shared edge opposite ways, so A's corner ja
+        # and B's corner jb-1 sit on the same vertex, and A's ja-1 pairs with B's jb.
+        # Compare the wrong corners and every mesh looks seamless.
+        if va[ja] != vb[jb - 1] or va[ja - 1] != vb[jb]:
+            continue
+        if ua[ja] == ub[jb - 1] and ua[ja - 1] == ub[jb]:
             ra, rb = find(ka), find(kb)
             if ra != rb:
                 parent[rb] = ra
@@ -227,7 +280,7 @@ def topo_problems(path, want_faces):
         bad.append("%d uv islands for %d faces: paint one patch and several change"
                    % (islands, len(faces)))
 
-    area = 0.0
+    small = []
     for f in faces:
         pts = [uvs[i - 1] for i in f[1]]
         a = 0.0
@@ -235,10 +288,12 @@ def topo_problems(path, want_faces):
             x1, y1 = pts[i]
             x2, y2 = pts[(i + 1) % len(pts)]
             a += x1 * y2 - x2 * y1
-        area += abs(a) * 0.5
-    if area < TOPO_MIN_UV_AREA:
-        bad.append("uv islands cover %.3f of the canvas (min %.2f): the texture is being "
-                   "read as almost one colour whatever it holds" % (area, TOPO_MIN_UV_AREA))
+        small.append(abs(a) * 0.5)
+    thin = [a for a in small if a < TOPO_MIN_FACE_UV_AREA]
+    if thin:
+        bad.append("%d faces hold %.4f of the canvas each (min %.3f): the texture is being "
+                   "read as almost one colour whatever it holds"
+                   % (len(thin), min(thin), TOPO_MIN_FACE_UV_AREA))
     return bad
 
 
@@ -259,7 +314,17 @@ def regenerate(script, argv, outs, out_root):
 
 def main():
     verbose = "--verbose" in sys.argv
+    # --committed runs the stdlib half only: TOPO against the shipped text, plus the
+    # coverage scan. It regenerates nothing, so it needs no trimesh and runs on the lint
+    # runner. It cannot say whether an asset still matches its generator -- that half
+    # imports trimesh through the generators, so it belongs to `make test` (test-art).
+    committed = "--committed" in sys.argv
     pinned = sum(len(outs) for _, _, outs in PINS)
+    # A TOPO row naming something PINS never regenerates is a check that silently stops
+    # running, which is the failure mode this whole file exists to avoid.
+    assert set(TOPO) <= {o for _, _, outs in PINS for o in outs}, \
+        "TOPO lists an asset that PINS does not regenerate"
+    topo_ran = 0
     # A pin whose asset has gone missing is the loudest failure there is: the gate would
     # otherwise compare nothing and stay green.
     for _, _, outs in PINS:
@@ -269,28 +334,36 @@ def main():
                 return 1
 
     drift = []
-    tmp = tempfile.mkdtemp(prefix="meshpins_", dir=os.path.join(REPO, "tmp"))
-    for script, argv, outs in PINS:
-        root = os.path.join(tmp, script[:-3] + "_" + "_".join(argv))
-        cmd = regenerate(script, argv, outs, root)
-        r = subprocess.run(cmd, capture_output=True, text=True)
-        if r.returncode != 0:
-            drift.append("%s %s: exit %d: %s"
-                         % (script, " ".join(argv), r.returncode,
-                            (r.stderr.strip().splitlines() or ["(no stderr)"])[-1]))
-            continue
-        for rel in outs:
-            made, ship = os.path.join(root, "res", rel), os.path.join(REPO, "res", rel)
-            if not os.path.exists(made):
-                drift.append("%s: wrote no res/%s" % (script, rel))
+    if committed:
+        # The no-dependency half: the shipped text against TOPO, no generators run.
+        for rel in sorted(TOPO):
+            topo_ran += 1
+            for why in topo_problems(os.path.join(REPO, "res", rel), TOPO[rel]):
+                drift.append("res/%s: %s" % (rel, why))
+    else:
+        tmp = tempfile.mkdtemp(prefix="meshpins_", dir=os.path.join(REPO, "tmp"))
+        for script, argv, outs in PINS:
+            root = os.path.join(tmp, script[:-3] + "_" + "_".join(argv))
+            cmd = regenerate(script, argv, outs, root)
+            r = subprocess.run(cmd, capture_output=True, text=True)
+            if r.returncode != 0:
+                drift.append("%s %s: exit %d: %s"
+                             % (script, " ".join(argv), r.returncode,
+                                (r.stderr.strip().splitlines() or ["(no stderr)"])[-1]))
                 continue
-            if open(made, "rb").read() != open(ship, "rb").read():
-                drift.append("res/%s is not what %s %s writes today"
-                             % (rel, script, " ".join(argv)))
-                continue
-            if rel in TOPO:
-                for why in topo_problems(made, TOPO[rel]):
-                    drift.append("res/%s: %s" % (rel, why))
+            for rel in outs:
+                made, ship = os.path.join(root, "res", rel), os.path.join(REPO, "res", rel)
+                if not os.path.exists(made):
+                    drift.append("%s: wrote no res/%s" % (script, rel))
+                    continue
+                if open(made, "rb").read() != open(ship, "rb").read():
+                    drift.append("res/%s is not what %s %s writes today"
+                                 % (rel, script, " ".join(argv)))
+                    continue
+                if rel in TOPO:
+                    topo_ran += 1
+                    for why in topo_problems(made, TOPO[rel]):
+                        drift.append("res/%s: %s" % (rel, why))
 
     # Coverage: every generated-asset CLAIM needs a pin or a reason.
     unclaimed = []
@@ -311,10 +384,18 @@ def main():
         print("FAIL: res/%s claims to be generated but is neither pinned nor excused in "
               "utils/check_mesh_pins.py" % rel)
     if verbose or not (drift or unclaimed):
-        print("mesh pins: %d assets regenerated from %d generators, %d drifted, "
-              "%d paintable-topology checks, %d claims excused, %d claims unpinned"
-              % (pinned, len({s for s, _, _ in PINS}), len(drift), len(TOPO),
-                 len(UNPINNED), len(unclaimed)))
+        head = ("art topology: shipped files checked as committed, no generators run"
+                if committed else
+                "mesh pins: %d assets regenerated from %d generators, %d drifted"
+                % (pinned, len({s for s, _, _ in PINS}), len(drift)))
+        print("%s, %d paintable-topology checks, %d claims excused, %d claims unpinned"
+              % (head, topo_ran, len(UNPINNED), len(unclaimed)))
+        if topo_ran < len(TOPO):
+            print("note: %d of %d TOPO rows were skipped because their asset did not "
+                  "regenerate byte-exact" % (len(TOPO) - topo_ran, len(TOPO)))
+        if topo_ran < len(TOPO):
+            print("note: %d of %d TOPO rows were skipped because their asset did not "
+                  "regenerate byte-exact" % (len(TOPO) - topo_ran, len(TOPO)))
     return 1 if (drift or unclaimed) else 0
 
 

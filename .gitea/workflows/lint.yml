@@ -3,7 +3,8 @@
 # runs `make test-gen`, which depends on `make lint`. That is the whole guard set needing
 # only the stdlib -- hygiene, file size, JSON parseability and secret shapes
 # (utils/ci_lint.py), then the generator pins that keep res/systems/*.json honest, #682's
-# atmosphere band, and the e2e index plus the case-file schema. Measured: ~1.5 s of work.
+# atmosphere band, the e2e index plus the case-file schema, and the paintability of the
+# committed meshes. Measured: ~1.5 s of work, plus 0.03 s for the mesh topology table.
 #
 # Nothing heavier belongs here. `make test` builds every translation unit against SDL3,
 # bullet and assimp, and the e2e battery boots the game with GL -- those need a bigger
@@ -34,3 +35,8 @@ jobs:
       # One gate step: test-gen takes lint as a prerequisite, so the log shows both and
       # nothing runs twice.
       - run: make test-gen
+      # The no-module half of the art gate (#1051, #1170): the shipped meshes against the
+      # paintability table, regenerating nothing. The regeneration half needs trimesh, so
+      # it lives in `make test` (test-art) instead; this step costs 0.03 s and catches a
+      # committed mesh that triangulated its walls or collapsed its UVs.
+      - run: python3 utils/check_mesh_pins.py --committed

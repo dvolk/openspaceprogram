@@ -47,7 +47,7 @@
 # ring is worth (1124-a's split, on this hull), and the spend below lands on the first of
 # them. The bill is read off --drain-log rather than [fuel] for the reason 677 spells out:
 # [fuel] prints one decimal and this maneuver costs under 0.1 kg -- at EVERY dial the tank
-# printed 78.5/78.5 from start to finish, so the fuel-pin shape the ticket suggested
+# printed 78.0/78.0 from start to finish, so the fuel-pin shape the ticket suggested
 # (first-vs-last > 0.05) could not have been read here at all.
 NAME half-dialed-ring-spends-half
 CLAIM At half pointing authority this ring spends half of what flight/677 spends at full on the same press: 69 N m of torque at 1.05 rad/s^2 and 0.028 kg/s of hydrazine (#1126).

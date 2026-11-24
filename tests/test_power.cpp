@@ -975,8 +975,8 @@ static void test_drain_prorata_across_batteries() {
 }
 
 /* A substep's worth of Wh must survive the store. powerTick runs per substep,
-   so on a big battery one substep is a tiny number: power_test's 600 W capsule
-   behind a 298.45 W RTG nets 301.55 W, and at h=1/180 s that is 4.65e-4 Wh.
+   so on a big battery one substep is a tiny number: this fixture's 600 W draw
+   behind a 298.45 W generator nets 301.55 W, and at h=1/180 s that is 4.65e-4 Wh.
    resources.current used to be float, where half an ULP at 12000 is 4.9e-4 --
    so `have - share` rounded straight back to `have` and the ship lost NOTHING
    while coasting, forever: the EC gate was decorative and the battery bar

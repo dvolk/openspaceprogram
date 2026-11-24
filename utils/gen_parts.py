@@ -562,7 +562,12 @@ def mesh_geom(mesh_file):
     if t.is_watertight:
         volume = float(t.volume)
         # A watertight mesh wound inside-out has a NEGATIVE volume, and volume
-        # is what every mass below is minted from.
+        # is what every mass below is minted from. A zero-volume watertight mesh is
+        # the other half of the trap: merging the corners of a shell with no
+        # thickness -- chute_canopy.obj is a canopy of flat quads -- closes it into
+        # something trimesh calls watertight enclosing nothing. It is only ever
+        # referenced as chute_mesh, so mesh_geom never sees it today; if it ever
+        # becomes a part's own mesh, this fires instead of minting a massless part.
         assert volume > 0.0, mesh_file
     else:
         volume = math.pi * radius * radius * height
@@ -1055,6 +1060,22 @@ def dump_parts(parts):
                   lambda m: "[%s, %s, %s]" % m.groups(), text)
 
 
+ASSET_KEYS = ("mesh", "texture", "chute_mesh", "chute_texture",
+              "shroud", "shroud_texture")
+
+
+def check_assets(parts):
+    """Every asset the catalog names has to exist in res/. A wrong string here is
+    invisible until the part renders black in the VAB, and the art pins
+    (check_mesh_pins.py) only weigh files that are already named correctly."""
+    for p in parts:
+        for k in ASSET_KEYS:
+            v = p.get(k)
+            if v is not None:
+                assert os.path.exists(os.path.join(REPO_ROOT, "res", v)), \
+                    "part %s names res/%s, which is not in the tree" % (p["name"], v)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--out", default=os.path.join(REPO_ROOT, "res", "data", "parts.json"),
@@ -1067,6 +1088,7 @@ def main():
     a = ap.parse_args()
 
     parts = [generate(*p) for p in PARTS]
+    check_assets(parts)
 
     if a.check:
         raise SystemExit(0 if check(parts, a.out) else 1)

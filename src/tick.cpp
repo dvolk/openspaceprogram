@@ -440,7 +440,7 @@ void tick(Game &g) {
            powerTick strikes its balance on, and a hull that has not ticked in this
            process -- a load, a quickload, a fresh spawn -- would otherwise print a
            record of a tick that never happened next to live term rows: "+0.0 W
-           (charging)" under 298.4 W of generation and 600.0 W of life support, in
+           (charging)" under 296.5 W of generation and 600.0 W of life support, in
            exactly the state a player pauses to decide whether to raise the warp
            dial. The EC gate and the wheels' brown-out latch that this also refreshes
            are DURATIONS, never the caller's step (#898), so a paused call reaches

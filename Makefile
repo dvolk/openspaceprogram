@@ -708,6 +708,20 @@ test-parts:
 		echo "test-parts: SKIP parts.json drift pin -- missing python module: trimesh" >&2; \
 	fi
 
+# The art gate (#1051, #1170): regenerate every generated mesh/texture, compare it
+# byte-for-byte with what ships, then check the lofted family still has the topology a
+# painter needs. Only the generators import trimesh -- the gate itself is stdlib -- so it
+# belongs in `make test` (3 s) and not only in test-py, where until now nothing but a
+# hand run invoked it. The half that needs no modules at all runs in CI as
+# `check_mesh_pins.py --committed`.
+.PHONY: test-art
+test-art:
+	@if python3 -c "import importlib.util as u; exit(1 if u.find_spec('trimesh') is None else 0)"; then \
+		python3 utils/check_mesh_pins.py; \
+	else \
+		echo "test-art: SKIP generated-art drift pin -- missing python module: trimesh" >&2; \
+	fi
+
 # Runs the whole list rather than stopping at the first red test: the old
 # `$(foreach ... || exit 1; )` aborted it, so one failure near the front hid which tests
 # never ran (nine silently skipped in tmp/maketest_526b.log). The summary exists because
@@ -715,7 +729,7 @@ test-parts:
 # the game binary: no unit test spawns ./osp (they link the code they test), and e2e
 # passes --game the binary it asked for.
 .PHONY: test
-test: test-gen test-parts $(addprefix $(TESTDIR)/,$(TESTS))
+test: test-gen test-parts test-art $(addprefix $(TESTDIR)/,$(TESTS))
 	@fail=""; n=0; \
 	for t in $(TESTS); do \
 	  n=`expr $$n + 1`; \
@@ -739,15 +753,20 @@ test: test-gen test-parts $(addprefix $(TESTDIR)/,$(TESTS))
 #              drifting from its generator (#186: the ksp Kuiper radii sat
 #              1.5x out for two days because nothing regenerated them).
 # test-py   -- adds the pins that import third-party modules
-#              (trimesh for the part meshes and for check_mesh_pins.py,
+#              (trimesh for the part meshes and for the art gate's generators,
 #              numpy+PIL for the heightmap and skybox faces). parts.json is
 #              the one that bites -- its generator had no row for the
 #              parachute, so the next regenerate would have deleted the part
 #              from the catalog. check_mesh_pins.py is #1051: the art those
 #              scripts write had no drift pin at all, and four of them wrote
-#              into res/ with no way to point them elsewhere. They run here
-#              and in CI; on a box without the modules they are reported as
-#              skipped instead of quietly vanishing (#220).
+#              into res/ with no way to point them elsewhere. parts.json and
+#              the art gate now also run inside `make test` (test-parts,
+#              test-art); on a box without the modules both report themselves
+#              skipped instead of quietly vanishing (#220). CI cannot run
+#              either -- the lint runner installs no python modules at all --
+#              so what CI runs is the gate's no-module half,
+#              `check_mesh_pins.py --committed`, which weighs the shipped art
+#              against TOPO without regenerating it.
 
 # The gates that cost no compiler: hygiene, file size, JSON parseability, secret shapes,
 # and a byte-compile pass over the python tooling. The Actions job runs exactly this --
@@ -819,7 +838,7 @@ test-py: test-gen
 		echo "         (pip install trimesh numpy pillow, or run these in CI)" >&2; \
 	else \
 		python3 utils/gen_parts.py --check && \
-		python3 utils/check_mesh_pins.py && \
+		$(MAKE) test-art && \
 		python3 utils/heightmaps/gen_earth_hm.py --verify && \
 		python3 utils/skybox/make_skybox.py --verify --out res/skybox/dsm_1024_g3_ds2; \
 	fi

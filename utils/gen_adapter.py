@@ -107,6 +107,12 @@ def main():
                 u = 0.0 if j in (0, 3) else 1.0
                 v = 0.0 if j in (0, 1) else 1.0
             else:
+                # Both ends map their ring onto the same disc inside their cell. The
+                # bottom face is wound the other way (see the reversed ring above), so
+                # walking a disc in CORNER order runs opposite ways at the two ends: a
+                # stroke that follows the corner order mirrors between them. Flat fills
+                # and radial gradients do not care; a painted seam that has to line up
+                # across a cap edge would.
                 u = 0.5 + 0.5 * math.cos(ang[vi])
                 v = 0.5 + 0.5 * math.sin(ang[vi])
             uvs.append((cx + inset + u * span, cy + inset + v * span))

@@ -43,7 +43,7 @@ CHECK all(m["parts"] == 3 for m in mass if m["ship"] != "stager")
 # there is nothing else that could have spent the difference.
 CHECK len({m["mass"] for m in mass if m["ship"] == "stager"}) == 2
 # The headline: the stage's mass left the ship that dropped it and is all of it
-# sitting on the new one. Measured 4235.86 = 2766.63 + 1469.23, a gap of 0.00 --
+# sitting on the new one. Measured 3573.42 = 2110.09 + 1463.33, a gap of 0.00 --
 # both sides of the sum are printed at 2dp, so the only slack is that rounding
 # (0.015 kg worst case). 0.05 kg is still 30000x smaller than the stage.
 CHECK abs(first([m for m in mass if m["ship"] == "stager"])["mass"] - last([m for m in mass if m["ship"] == "stager"])["mass"] - last([m for m in mass if m["ship"] != "stager"])["mass"]) < 0.05
@@ -51,12 +51,12 @@ CHECK abs(first([m for m in mass if m["ship"] == "stager"])["mass"] - last([m fo
 # world for the whole run (a hull out of the world prints no hullmass at all), so
 # the sum above is a physics statement and not just a bookkeeping one. 0.05 kg is
 # far tighter than the engine's own contract -- refreshCompound() tolerates a
-# hull up to kMassRebuildFrac (0.1%, i.e. 4.2 kg here) off its part table -- and
+# hull up to kMassRebuildFrac (0.1%, i.e. 3.6 kg here) off its part table -- and
 # it is only that tight because both ships rebuilt at the split and nothing
 # drains in between. Do NOT copy this line into a thrusting case: there the
 # analytic ledger runs ahead of the hull by design and it fails legitimately.
 # It also does NOT catch a missed rebuild: leaving a survivor's compound stale
-# lets Bullet accelerate 4235.9 kg for one tick, unseen, because on the physics
+# lets Bullet accelerate 3573.4 kg for one tick, unseen, because on the physics
 # path refreshCompound() re-makes any hull past that band on the next tick, well
 # before the next 0.5 s sample. The engine self-heals that one; the mass that has
 # to add up is the part table's, and that is the line above.

@@ -3456,14 +3456,14 @@ def self_test():
     # figure has no "no value" state to spell: powerTick always pays a number. A row
     # that lost the field, or ever grew a dash, drops out and #408 names it rather
     # than handing every reader of power["net"] a None nobody asked for.
-    good_power = ('[powerlog] t=5.0s ship="power_test" powered=1 gen=298.4W '
+    good_power = ('[powerlog] t=5.0s ship="power_test" powered=1 gen=296.5W '
                   'const_draw=600.0W charge=11996.3Wh capacity=12000.0Wh '
-                  'active=2475.0W net=-2776.6W')
-    if parse_power(good_power)[0]["net"] != -2776.6:
+                  'active=2475.0W net=-2778.5W')
+    if parse_power(good_power)[0]["net"] != -2778.5:
         fails.append("parse_power lost the #659 net= column")
-    for label, mangled in (("missing", good_power.replace(" net=-2776.6W", "")),
-                           ("dashed", good_power.replace("net=-2776.6W", "net=-")),
-                           ("mangled", good_power.replace("net=-2776.6W", "net=near-2776.6W"))):
+    for label, mangled in (("missing", good_power.replace(" net=-2778.5W", "")),
+                           ("dashed", good_power.replace("net=-2778.5W", "net=-")),
+                           ("mangled", good_power.replace("net=-2778.5W", "net=near-2778.5W"))):
         if POWER_RE.match(mangled) is not None:
             fails.append("POWER_RE matched a [powerlog] row whose net= field is %s" % label)
 
@@ -3575,8 +3575,8 @@ def self_test():
         fails.append("parse_scoped lost the line order across ship segments")
     if [r.get("ship") for r in parse_scoped(good_orb, parse_orbinfo)] != [None]:
         fails.append("a run that never switched ships invented a handoff")
-    mass_line = '[mass] t=0.333s ship="stager" parts=7 mass=4235.86 kg ' \
-                 'hullmass=4235.86 kg railed=0'
+    mass_line = '[mass] t=0.333s ship="stager" parts=7 mass=3573.42 kg ' \
+                 'hullmass=3573.42 kg railed=0'
     if [r.get("ship") for r in parse_scoped("Active ship 3 of 3: tanker\n" + mass_line,
                                             parse_mass)] != ["stager"]:
         fails.append("the marker overwrote the ship [mass] printed for its own row")

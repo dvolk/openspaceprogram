@@ -9,17 +9,26 @@ triangulated wall unwraps into zig-zag slivers, a mesh whose UVs are all (0.5, 0
 addresses one texel and so cannot be painted at all, and a cap corner that carries the
 wall's radial normal shades the flat end of a frustum as a shallow dome.
 
-Numbers this reports, and what the shipped art does about them:
+Numbers this reports, measured on the shipped art (Blender 4.5.9):
 
   quad/ngon counts   the Blender-authored family (tank_r1h3.obj, capsule.obj) is 32 wall
-                     quads + 2 ngon caps; every generator-authored mesh is all triangles.
-  uv_islands         one per face in the authored family (34), so each face owns a patch
-                     of the PNG; gen_fuselage.py collapses to 1 island covering 0 area.
-  uv_area            the summed area of the islands. Over 1.0 means islands overlap each
-                     other across the canvas: paint one panel, several change.
+                     quads + 2 ngon caps, and the lofted generators (gen_adapter.py: the
+                     six adapters, capsule_cyl_r1h2) now match it. The other 31 generated
+                     meshes are still all triangles -- #1173.
+  uv_islands         the two families differ here on purpose. The authored lathe keeps the
+                     wall as one continuous strip, so capsule.obj and tank_r1h3.obj have 3
+                     islands (wall + two caps); the generators give every face its own cell
+                     (34 islands). Both are paintable. What is not paintable is 1 island
+                     where there should be many: gen_fuselage.py points all 624 faces at
+                     one point (uv_area 0.000), and nose_cap.obj has 1 island of overlapping
+                     faces (uv_area 1.453) -- paint one panel, several change.
+  uv_area            summed area of the islands over the 0..1 canvas. Over 1.0 means the
+                     islands overlap each other.
   max_smooth_gap     the largest angle between a loop normal and its own face normal.
                      0.0 is one normal per face (the house style); 90 deg means a cap is
-                     being smoothed into the wall it meets at a right angle.
+                     being smoothed into the wall it meets at a right angle. The plates are
+                     blended too: 70.5 deg on wing_r1h1.obj, 54.7 deg on leg.obj -- a
+                     machined plate reads as slightly rounded.
 
 Blender is NOT a build or CI dependency -- lint.yml is stdlib-only on purpose and the
 enforcing gate for these properties lives in utils/check_mesh_pins.py. This script is
@@ -45,7 +54,10 @@ def uv_islands(me):
 
     Two faces are the same island when the edge they share carries the same UV on both
     sides; a seam (the same vertex at two different UVs) breaks the join. Blender 4.5's
-    Python API has no MeshEdge.link_loops, so loops are indexed by their vertex pair."""
+    Python API has no MeshEdge.link_loops, so loops are indexed by their vertex pair --
+    and both loops of the pair have to be kept, because the two faces that meet at an
+    edge traverse it opposite ways. Keep only the loop at one end and the compare joins
+    each corner to the corner across the edge, which makes every mesh read seamless."""
     uv = me.uv_layers.active
     if uv is None:
         return None
@@ -55,7 +67,8 @@ def uv_islands(me):
         for k in range(len(li)):
             a = me.loops[li[k]].vertex_index
             b = me.loops[li[k - 1]].vertex_index
-            by_edge.setdefault((a, b) if a < b else (b, a), []).append((li[k], p.index))
+            by_edge.setdefault((a, b) if a < b else (b, a), []).append(
+                (p.index, li[k], li[k - 1]))
     parent = list(range(len(me.polygons)))
 
     def find(a):
@@ -67,8 +80,14 @@ def uv_islands(me):
     for sides in by_edge.values():
         if len(sides) != 2:
             continue
-        (la, fa), (lb, fb) = sides
-        if tuple(uv.data[la].uv) == tuple(uv.data[lb].uv):
+        (fa, a0, a1), (fb, b0, b1) = sides
+        # Pair the loops that sit on the same vertex, whichever way each face wound it.
+        if me.loops[a0].vertex_index == me.loops[b0].vertex_index:
+            ca, cb, da, db = a0, b0, a1, b1
+        else:
+            ca, cb, da, db = a0, b1, a1, b0
+        if (tuple(uv.data[ca].uv) == tuple(uv.data[cb].uv)
+                and tuple(uv.data[da].uv) == tuple(uv.data[db].uv)):
             ra, rb = find(fa), find(fb)
             if ra != rb:
                 parent[rb] = ra

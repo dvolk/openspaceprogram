@@ -45,15 +45,15 @@ ARGS --ui-type 4600,"VAB TopBar/##vehfilter",tanker
 ARGS --ui-click 5100,"VAB TopBar/##vabload"
 ARGS --ui-click 5700,"tanker"
 ARGS --ui-click 6300,"VAB TopBar/Load"
-EXPECT [vab] part window: 'tank_r1.5h3_2' seats 0, carries 1410.2kg H2, 1410.2kg LOX
+EXPECT [vab] part window: 'tank_r1.5h3_2' seats 0, carries 1401.1kg H2, 1401.1kg LOX
 EXPECT [vab] part window: 'capsule_1' seats 1, carries 2000.0Wh EC
 # The same figures, read off the card instead of off the log line: the trailing
 # " text" marker (the CHECK below) says the row was DRAWN, which is what an imgui
 # Text row used to make unassertable.
-EXPECT [uilist] window="Fuel Tank (3m x 3m)##tank_r1.5h3_2" label="Mass: 282.040kg + 2820.360kg at launch"
+EXPECT [uilist] window="Fuel Tank (3m x 3m)##tank_r1.5h3_2" label="Mass: 280.230kg + 2802.280kg at launch"
 EXPECT [uilist] window="Fuel Tank (3m x 3m)##tank_r1.5h3_2" label="Size: 3.0m dia x 3.0m"
-EXPECT [uilist] window="Fuel Tank (3m x 3m)##tank_r1.5h3_2" label="Carries 1410.2kg Hydrogen"
-EXPECT [uilist] window="Fuel Tank (3m x 3m)##tank_r1.5h3_2" label="Carries 1410.2kg LOX"
+EXPECT [uilist] window="Fuel Tank (3m x 3m)##tank_r1.5h3_2" label="Carries 1401.1kg Hydrogen"
+EXPECT [uilist] window="Fuel Tank (3m x 3m)##tank_r1.5h3_2" label="Carries 1401.1kg LOX"
 # Type + Mass + Size + two Carries rows, and no staff row (a tank has no seats). The
 # count is the tripwire: it moves if a row is deleted, renamed or hidden by a clip.
 CHECK len([l for l in out.split("\n") if l.rstrip().endswith(" text") and 'window="Fuel Tank (3m x 3m)##tank_r1.5h3_2"' in l]) == 5
