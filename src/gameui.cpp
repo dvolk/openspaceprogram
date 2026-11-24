@@ -6302,8 +6302,12 @@ static void drawDashRing(ImDrawList *dl, const ImVec2 &c, float rad, ImU32 col, 
    wiki names the two figures and the cone; the numbers on the rings come off a screenshot of
    the instrument, so where they disagree with the prose the prose wins and these scales are
    ours to change -- and #1152 changed them, because the gates moved into the last metre:
-     offset   captureRange/20 at the centre, then 10x, 100x, 1000x (a 2 m port pair:
-              5 mm, 5 cm, 50 cm, 5 m). The capture ring lands at ~0.43 of the radius.
+     offset   the CENTRE is captureRange/20 and the rim is 1000x that. The four grid rings
+              are quarter-radii because the degree ruler needs them (rings 1..4 = 5, 10,
+              15, 20 deg), so on the metre ruler they fall at 5.6x, 31.6x, 178x and 1000x
+              the centre -- for the shipped 0.10 m r1 pair: centre 5 mm, rings at 2.8 cm,
+              16 cm, 89 cm, 5 m. The capture ring lands at 0.43 of the radius, which is
+              log10(20)/3 and not a quarter-radius; it sits between rings 1 and 2.
      drift    kDockMaxV/100 at the centre, then x10, x100 -- so the OUTER ring IS the
               speed gate: an arrow that reaches the rim is too fast to capture.
      turn     0 deg at the centre, then 5, 10, 15, 20 deg     (marked on rings 2 and 4)
@@ -6364,6 +6368,9 @@ static void dockApproachDial(const Vehicle::DockRead &r) {
        ring sits at the same 0.43 of the radius whatever the port sizes -- and the drift
        ruler's rim is kDockMaxV, which makes the outer ring the speed gate's own picture.
        Neither depends on the current range, so the grid cannot creep under the pilot. */
+    /* The clamp is for a port shallower than 5 cm, which nothing shipped has (the thinnest
+       port depth gives captureRange 0.10). Under captureRange 0.02 the 0.43-of-the-radius
+       figure in the header stops holding, because the centre stops tracking the pair. */
     const double mFloor = std::max(1e-3, r.captureRange / 20.0);
     const double mDecades = 3.0;
     const double dFloor = Vehicle::kDockMaxV / 100.0;

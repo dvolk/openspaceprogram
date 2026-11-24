@@ -42,7 +42,9 @@ CHECK 3.9 < first(dockwin)["twist"] < 4.1
 CHECK 3.9 < last(dockwin)["twist"] < 4.1
 # The round trip. Measured across the two runs of this case: with the old zeroing the dial
 # reads twist=4.00 before the F6 pair and 0.00 after it -- one hull's spin against the
-# other's stationary one. With rail_omega carried, the same schedule prints 4.00 through
-# all nine measurable rows, so the band below is only allowing what the rails round trip
-# could not itself change, while the defect misses it by the whole 4.
-CHECK abs(last(dockwin)["twist"] - first(dockwin)["twist"]) < 0.3
+# other's stationary one. With rail_omega carried, the same schedule prints 4.00 on every
+# one of the six measurable rows, so the difference below is pinned tighter than the bands
+# above: at < 0.05 it is one print step, i.e. it says the rails round trip changed nothing.
+# (A band of 0.3 here was decoration, not a check -- with both ends inside (3.9, 4.1) the
+# difference cannot exceed 0.2, so it could never fire.)
+CHECK abs(last(dockwin)["twist"] - first(dockwin)["twist"]) < 0.05

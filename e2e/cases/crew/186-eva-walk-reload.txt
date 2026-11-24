@@ -48,21 +48,30 @@ CHECK (last(eva)["vel"][0]**2 + last(eva)["vel"][1]**2 + last(eva)["vel"][2]**2)
 CHECK all(sum(n*f for n,f in zip(a["nose"], first(att)["nose"])) > 0.9 for a in att if a["t"] > first(att)["t"] + 1.0)
 # NOT SPINNING -- with the rate half keyed on WHERE the rate is high, which is what #1152
 # forced. Under the old 0.1 m hull skin the suit's attitude servo could not actuate at all:
-# every one of the 40 attlog rows read |w| = 0.0001, so the old "max |w| < 1.0" was pinning
+# every one of the 41 attlog rows read |w| <= 0.032, so the old "max |w| < 1.0" was pinning
 # an INABILITY to turn rather than an absence of tumble (measured both ways:
-# OSP_HULL_MARGIN=0.1 -> max 0.0001, at the shipped 0 -> max 6.0). The skin was worth about
+# OSP_HULL_MARGIN=0.1 -> max 0.032, at the shipped 0 -> max 6.0). The skin was worth about
 # a third of the kerbal's rotational inertia, the same coupling src/physics.cpp's margin
 # note shouts about for rcs_test. With it off, the servo gets its way twice per run: once at
-# the load's contact settle (t 3.1..3.3, which leaves the kerbal turned 41 deg about its own
-# long axis) and once at the W press (t~5.4), turning it back. Both are point-to-point, not
-# a spin: the rows either side read 0.0001, and nose.dot stays 1.00005 throughout.
+# the load's contact settle (t~3.3) and once at the W press (t~5.3), which take the kerbal
+# 41 deg about its own long axis and back. Both are point-to-point, not a spin: the rows
+# either side read 0.0001, and nose.dot stays 1.00005 throughout.
 # What CANNOT be pinned is the peak. The servo slews at kMaxRate (src/eva.cpp) and the
-# 0.23 s attlog lands at whatever phase -- 4.0620, 4.0620, 4.0620, 4.9646 across four runs,
-# and 6.0000 whenever a sample falls inside the slew -- so a ceiling on the peak is a bet on
-# sampling phase, which is how this case went flaky. What is pinnable is that there are two
-# such samples, not a run of them: the friction defect this case is named for holds a high
-# rate tick after tick. And the walking window itself -- where that defect shows, and where
-# these two turns are over -- stays quiet.
-CHECK sum(1 for a in att if a["t"] > first(att)["t"] + 1.0 and a["wnorm"] > 1.0) <= 2
-CHECK max(a["wnorm"] for a in att if a["t"] > 6.0) < 1.0
+# 0.234 s attlog lands at whatever phase -- rows above 1 rad/s read {2.7080, 1.3540},
+# {2.7080, 6.0000}, {1.3540, 1.3540} across three runs -- so a ceiling on the peak is a bet
+# on sampling phase, which is how this case went flaky. What is pinnable is that there are a
+# couple of such samples, not a run of them: the friction defect this case is named for
+# holds a high rate tick after tick. And the walking window itself -- where that defect
+# shows, and where these two turns are over -- stays quiet. The window is relative for the
+# same reason as the state checks above; an absolute t here sat 0.6 s from the W-press turn.
+CHECK len(att) >= 30
+CHECK sum(1 for a in att if a["wnorm"] > 1.0) <= 3
+CHECK max(a["wnorm"] for a in att if a["t"] > first(att)["t"] + 3.0) < 1.0
 CHECK last(att)["wnorm"] < 0.01
+# AND THE SERVO ACTUATES, which is the half the old ceiling was hiding: with the skin back on
+# every CHECK above passes on a kerbal that never turns (max |w| 0.032). The turns are ABOUT
+# the long axis, so the nose test cannot see them; they show up as the hull's right vector
+# swinging around it. min right.dot over the run is 0.7504 = cos 41.0 deg (2/2 runs at the
+# shipped margin) and 1.0000 with the skin back on. Pinned on the axis geometry rather than
+# on a rate sample, so sampling phase cannot undo it.
+CHECK min(sum(r*f for r,f in zip(a["right"], first(att)["right"])) for a in att) < 0.8

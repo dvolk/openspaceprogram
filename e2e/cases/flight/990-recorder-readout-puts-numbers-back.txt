@@ -17,7 +17,7 @@
 #      warp coast keeps the pointer proportional.
 #
 #   2. The numbers are the ring's own, and therefore the trace's: ONE sampler feeds
-#      both sinks (#966/#972's rule), so alt_asl=268.469 v=0.0142148 here is the row
+#      both sinks (#966/#972's rule), so alt_asl=268.069 v=0.0174538 here is the row
 #      the flight log wrote at that moment, not a second reading taken for the
 #      picture. They print as %.6g, enough digits to tell 45210 from 45211.
 #

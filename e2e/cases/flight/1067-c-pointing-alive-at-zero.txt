@@ -55,12 +55,13 @@ CHECK all(abs(s["tau_ask"] - s["tau_spent"]) < 2.0 for s in slew if s["mode"] ==
 # hull's inertia off the margin-inflated AABB, Vehicle sums that per part into the compound,
 # and a 0.1 m skin on a 1 m tank is worth a third of the result (src/physics.cpp's margin
 # note). Same actuators, same 138 N m, honest hull.
-# The slope between the first and last tap row is 2.0963..2.0978 in the four runs taken for
-# this case (tmp/night7/rep_*.log), so the tap accelerates the hull at whatever the ring
-# is worth no matter where the translation dial sits. What DOES move is when the release
-# lands: the tap rows end at t=3.567..3.667 and leave 1.05..1.29 rad/s, because --sim-press
-# without --sim-steps is wall-clock timed (#138, #871). That spread is the 14-17 % #1130
-# read as the dial biting, and it is why the slope rather than the endpoint is pinnable.
+# The slope between the first and last tap row is 2.0963..2.0978 in the six runs taken for
+# this case (four in tmp/night7/rep_*.log, two in the review pass), so the tap accelerates
+# the hull at whatever the ring is worth no matter where the translation dial sits. What DOES
+# move is when the release lands: the tap rows end at t=3.55..3.67 and leave 1.05..1.29 rad/s,
+# because --sim-press without --sim-steps is wall-clock timed (#138, #871). That spread is
+# the 14-17 % #1130 read as the dial biting, and it is why the slope rather than the endpoint
+# is pinnable.
 # len() guards the lambda: with a single row the slope is a division by zero.
 CHECK (lambda st: len(st) >= 2 and 2.08 < (st[-1]["wnorm"] - st[0]["wnorm"]) / (st[-1]["t"] - st[0]["t"]) < 2.12)([s for s in slew if s["mode"] == "stick"])
 # AND THE SPIN GOES AWAY with the keys' dial at zero.

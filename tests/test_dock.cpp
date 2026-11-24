@@ -1421,9 +1421,18 @@ static void test_the_capture_distance_is_the_ports_own_size() {
     p225->body->hull_margin = 0.1;
     CHECK_NEAR(Vehicle::dockCaptureRange(p1, p225), 0.25, 1e-12,
                "0.1 m of margin on each: the floor lifts that pair's gate to 0.25 m");
-    CHECK_TRUE(Vehicle::dockCaptureRange(p1, p225)
-                   > effectiveHullMargin(p1->body) + effectiveHullMargin(p225->body),
-               "and a gated pair always stops short of contact, never short of the gate");
+    /* Reachability, for every margin a part could carry: the gate must stay WIDER than the
+       gap the two colliders force, or the pilot holds every key down and the approach ends
+       TooWide forever. This is the sweep the single figure above cannot be: deleting the
+       floor reddens the 0.1 m rows and wider (0.4 x 0.25 = 0.1 m of gate against a 0.2 m
+       standoff), and pulling the 1.25 coefficient down to 1.0 -- where the gate equals the
+       standoff, which the gate's >= then never satisfies -- reddens all six. */
+    for(double m : {0.0, 0.025, 0.05, 0.1, 0.25, 0.5}) {
+        p1->body->hull_margin = m;
+        p225->body->hull_margin = m;
+        CHECK_TRUE(Vehicle::dockCaptureRange(p1, p225) > 2.0 * m,
+                   "the gate stays wider than the collider standoff at every margin");
+    }
     p1->body->hull_margin = -1.0;
     p225->body->hull_margin = -1.0;
 

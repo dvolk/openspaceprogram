@@ -9,16 +9,16 @@
 NAME eva-jump-padwall
 CLAIM A jump into the pad wall ends instead of gliding along the ground forever.
 KIND invariant
-# --timeout is load-bearing, not slack: the wall bump spins the suit up and it takes
-# seconds to right itself, so a run that is too short leaves that spin inside the last-4 s
-# window and the |w| check fails. It used to need ~2 s (up to the 6 rad/s slew cap) and the
-# timeout was 17. #1152 took the collision skin out of the suit's inertia, and the same
-# authority now overshoots: the suit rocks -- |w| up to 4.06, alternating sign sample to
-# sample, about 5 deg of nose travel -- for ~4 s before it settles (measured: rocking rows
-# through t=26857.4, dead still from t=26858.0). The rocking is the suit's attitude relay
-# chasing its own deadband with more torque than it used to have; see the issue filed from
-# this retune. The pins below wait it out rather than pretend it is not there: the axis
-# check is what the case is actually about, and it holds THROUGH the rocking.
+# --timeout is load-bearing, not slack: the wall bump spins the suit up and the wobble lasts
+# ~4-5 s -- rocking rows (|w| > 0.05) run through t=26857.3/26857.4 in two runs, and rows
+# above 0.01 keep going to t=26863.6/26865.4 -- so a run whose last-4 s window opens before
+# that ends up measuring the wobble, not the kerbal at rest. At --timeout 17 the window
+# opened 0.2 s after the rocking stopped, which still passed but is a load landmine; at 22 it
+# opens 4.9 s after. #1152 is not what made the wobble: at OSP_HULL_MARGIN=0.1 the rocking
+# ends at the same sample and the peak is if anything higher (max |w| 5.1564 with the skin,
+# 4.0620 without). What #1152 did is give the suit's attitude servo real authority at all --
+# with the skin in it could barely actuate -- so the relay now chases its own deadband
+# (#1159). The pins below wait it out rather than pretend it is not there.
 ARGS --timeout 22 --eva-log --att-log --orbit-interval 0.5 --sim-press 8000,5000,W --sim-press 9000,0,SPACE --frame-cap 30
 # Reached by the Save/Load sheet, not --load: Game Debug ticks the e2e
 # fixture root, the sheet picks the "fixtures" game, the slot filter
@@ -50,5 +50,9 @@ CHECK first(eva)["mass"] - last(eva)["mass"] < 0.2
 CHECK max(a["wnorm"] for a in att if a["t"] > last(att)["t"] - 4.0) < 1.0
 # "Stood back up" = the long axis (nose = local +Z) along the local vertical,
 # measured against the kerbal's own position rather than a pre-jump sample (the
-# first sample lands mid-settle, |w| ~0.9 rad/s).
-CHECK all(sum(n*p for n,p in zip(a["nose"], last(eva)["pos"])) / sum(p*p for p in last(eva)["pos"])**0.5 > 0.9 for a in att if a["t"] > last(att)["t"] - 4.0)
+# first sample lands mid-settle, |w| ~0.9 rad/s). The window starts a second after
+# the load rather than at the end of the run: the old last-4 s filter began at
+# t=26862.3, past every rocking row, so it never saw one and could not claim what
+# it says. Measured min nose.local-vertical is 0.99999 over the whole run, so this
+# costs nothing and pins the axis THROUGH the wobble.
+CHECK all(sum(n*p for n,p in zip(a["nose"], last(eva)["pos"])) / sum(p*p for p in last(eva)["pos"])**0.5 > 0.9 for a in att if a["t"] > first(att)["t"] + 1.0)

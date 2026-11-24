@@ -45,23 +45,27 @@ FORBID error:
 FORBID FAILED
 CHECK len(slew) >= 40
 # THE AUTHORITY EXISTS. alpha is the pointing budget the laws steer against, and it used to
-# read 0.000 on this hull for as long as it coasted. It is now 1.60 rad/s^2 in every row
-# (1.602-1.631 across runs), whether or not anything is being asked for -- a rating, not a
-# spend. The floor is three quarters of that rating: #595's bug was alpha 0, and a ring
-# that quietly lost half its leverage is still this case's business.
+# read 0.000 on this hull for as long as it coasted. It is now 2.10 rad/s^2 in every row
+# (2.098-2.103 across runs, at the shipped 0 margin; 1.601-1.609 with OSP_HULL_MARGIN=0.1),
+# whether or not anything is being asked for -- a rating, not a spend. The floor is three
+# quarters of that rating: #595's bug was alpha 0, and a ring that quietly lost half its
+# leverage is still this case's business.
 CHECK all(s["alpha_full"] > 1.6 for s in slew)
 CHECK all(s["alpha"] > 1.6 for s in slew)
 # AND THE HULL'S OWN INERTIA, printed on every row. This is the only e2e row where the
 # inertia itself is visible, so it is where the collision-skin coupling gets pinned: 66 for
 # this hull at the shipped 0 margin, 86 when OSP_HULL_MARGIN=0.1 inflated its collision hull
 # and, through it, its box inertia (src/physics.cpp). Pinning the figure is what stops the
-# next margin change from being a silent 30% retune of every authority in the game.
+# next margin change from being a silent 30% retune of every authority in the game. Note the
+# granularity: Ieff prints %.0f, so this pin is one print step wide -- it sees 65 or 67 and
+# nothing smaller. The alpha floors above are the finer instrument.
 CHECK all(abs(s["Ieff"] - 66.0) < 1.0 for s in slew)
 # THE RING MOVES THE HULL: during the hold the only thing acting is thruster gas, and the
 # rate it buys is what the rows say it can (138 N m on Ieff 66 is 2.1 rad/s^2, so 600 ms
-# of full bells is ~1.26 rad/s; measured -1.16 in the window). It was -0.86..-0.96 when the
-# collision skin was still in Ieff, which is why the floor below moved with it: -0.9 keeps
-# room for the row grid itself shifting ~0.05 s between runs, which is #1054's shape.
+# of full bells is ~1.26 rad/s; measured -1.16 to -1.23 in the window across four runs). It
+# was -0.86..-0.96 when the collision skin was still in Ieff, which is why the floor below
+# moved with it: -0.9 keeps room for the row grid itself shifting ~0.05 s between runs,
+# which is #1054's shape.
 CHECK min(s["w_slew"] for s in slew if 3.0 < s["t"] < 3.7) < -0.9
 CHECK max(s["tau_spent"] for s in slew if 3.0 < s["t"] < 3.7) > 100
 # AND THE SAME RING PUTS IT BACK: the error peaks near 0.55 rad and is gone by the end. A
