@@ -322,6 +322,45 @@ static void test_reachable_along_is_a_ceiling() {
                "two bells project onto a diagonal");
 }
 
+/* #1147: an axis the ring can only TOUCH. The six bells below are the #679 fixture of
+   tests/test_authority.cpp as the solver sees it (enumerateRcsNozzles negates the authored
+   dirs, so these are the effective ones): five of them are shut against -Y and the sixth is
+   1e-7 rad off its line, so rcsReachableAlong(-Y) is 1e-7 x 100 = 1e-5 N. Feed the solver
+   exactly that ask and it decides that no column is worth tolX -- firing the hair bell to
+   buy 1e-5 N of -Y would add 100 N along -Z -- so the active set empties. That used to be an
+   assert (rcs.h:167), and the Makefile never sets NDEBUG, so the shipped ./osp aborted.
+   An empty active set is the solver SAYING "fire nothing", which is the right answer here. */
+static void test_an_axis_only_touched_settles_empty() {
+    printf("== rcsAllocate: an axis the ring only touches fires nothing ==\n");
+    const std::vector<RcsNozzle> noz = {
+        nz(glm::dvec3(-1.0, 0.0, 0.0), glm::dvec3(0.0, 0.0, 1.0), 100.0),
+        nz(glm::dvec3(0.0, 0.0, -1.0), glm::dvec3(0.0, 0.0, 1.0), 100.0),
+        nz(glm::dvec3(0.0, -1e-7, -1.0), glm::dvec3(0.0, 0.0, 1.0), 100.0),
+        nz(glm::dvec3(-0.01, 0.0, -1.0), glm::dvec3(0.0, 0.0, 1.0), 100.0),
+        nz(glm::dvec3(-2e-3, 0.0, -1.0), glm::dvec3(0.0, 0.0, 1.0), 100.0),
+        nz(glm::dvec3(-5e-4, 0.0, -1.0), glm::dvec3(0.0, 0.0, 1.0), 100.0),
+    };
+    const glm::dvec3 down(0.0, -1.0, 0.0);
+    const double cap = rcsReachableAlong(noz, down);
+    CHECK_NEAR(1e-5, cap, 1e-12, "only the 1e-7-rad bell projects onto -Y: 1e-5 N of reach");
+    const std::vector<double> c = rcsAllocate(noz, down * cap);
+    printf("   c:");
+    for(double v : c) { printf(" %.3g", v); }
+    printf("\n");
+    CHECK_TRUE(c.size() == noz.size(), "one answer per bell, dead ones included");
+    for(size_t i = 0; i < c.size(); i++) {
+        CHECK_TRUE(c[i] <= 1e-6, "no bell opens for an ask this ring cannot serve");
+    }
+    glm::dvec3 F, T;
+    achieved(noz, c, F, T);
+    CHECK_TRUE(glm::length(F) < 1e-3, "and nothing is delivered: settlement, not shortfall");
+    /* The other side of the same fixture: an axis these bells DO cover still spends, so the
+       settlement above is the geometry talking and not a solver that has stopped trying. */
+    const std::vector<double> c2 = rcsAllocate(noz, glm::dvec3(-50.0, 0.0, 0.0));
+    achieved(noz, c2, F, T);
+    CHECK_TRUE(glm::length(F) > 40.0, "the same ring spends freely along -X");
+}
+
 int main() {
     printf("=== rcs.h: nozzle allocator ===\n\n");
     test_one_way();
@@ -345,6 +384,8 @@ int main() {
     test_golden_answers();
     printf("\n");
     test_reachable_along_is_a_ceiling();
+    printf("\n");
+    test_an_axis_only_touched_settles_empty();
 
     printf("\n%d checks, %d failures\n", g_checks, g_failures);
     if(g_failures == 0) {

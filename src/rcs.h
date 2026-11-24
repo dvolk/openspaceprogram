@@ -164,7 +164,14 @@ inline void nnls(const double *W, size_t m, size_t n, const double *b, Scratch &
             if(!dropped) { break; }
             idx.clear();
             for(size_t j = 0; j < n; j++) { if(P[j]) { idx.push_back(j); } }
-            assert(!idx.empty());
+            /* An empty active set is a SETTLEMENT, not a broken invariant: every column
+               the loop tried turned out to buy less than tolX, which is the solver saying
+               "fire nothing". That is the same answer the outer loop reaches one iteration
+               later via KKT (#1147), and the iteration cap below already expects it. It
+               used to assert, and the Makefile never sets NDEBUG -- so a hull whose bells
+               sit a hair off an asked axis aborted mid-flight rather than coasting.
+               x is all zeros here; the caller's floor decides whether to fire, log or burn. */
+            if(idx.empty()) { break; }
         }
     }
     // iteration cap: whatever the active set settled on

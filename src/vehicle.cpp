@@ -5620,7 +5620,22 @@ void Vehicle::rcsPlan() {
        rcsReachableAlong, rcs.h). */
     const double Fcap = rcsReachableAlong(rcsNoz, dirW);
     const double Fmax = Fcap * rcs_thrust_frac;
-    if(!(Fmax > 1e-9) || glm::length2(dirW) < 1e-12) { rcsScratch.c.assign(N, 0.0); return; }
+    /* #1147: and the asked direction has to be one this ring can SERVE, not merely touch.
+       A bell a hair off the axis projects a hair: the four radial bells of rcs_test's boxes
+       reach 1e-14 N along an authored axis, and a box mounted at 1e-7 rad -- a VAB rotate,
+       a docking offset -- reaches 1e-5. The 1e-9 floor below lets that through, and the
+       solve then has to price a 100 N bell against 1e-5 N of ask: on a ring whose only claim
+       to the axis IS that hair it answers "no column is worth tolX", which is an empty
+       active set. Cut it here instead, RELATIVE at 0.1% of this ring's own best bell,
+       because hulls run from a 0.5 m pod to a station -- the same shape #679 chose for the
+       torque rows. It rides on Fcap (geometry) and never on rcs_thrust_frac, so the dial can
+       throttle a real ask as far as it likes and still plan (flight/1067-b). */
+    double bestBell = 0.0;
+    for(const RcsNozzle &nz : rcsNoz) { bestBell = std::max(bestBell, nz.thrust); }
+    if(Fcap < 1e-3 * bestBell || !(Fmax > 1e-9) || glm::length2(dirW) < 1e-12) {
+        rcsScratch.c.assign(N, 0.0);
+        return;
+    }
     const glm::dvec3 Fdem = dirW * Fmax;  // authority on the key, dialed by #1067
     lastRcsCmd = Fdem;
     rcsAllocateInto(rcsNoz, Fdem, rcsScratch);

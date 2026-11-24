@@ -2355,12 +2355,31 @@ static void test_a_bell_that_levers_a_hair_is_not_a_steering_row() {
                "the ask it could answer, it answered -- the guard removes rows, not authority");
     CHECK_NEAR(0.0, turn.x, 0.0,
                "and the hair of X buys nothing at all, which is what the hull pays for");
-    /* "And it is still a pusher" is structural rather than pinned here: rcsPlan reads
-       rcsNoz, never the attitude rows, so the cut cannot reach translation. The flying
-       proof is flight/1119-b-rcs-bell-scarce-axis, whose +X-tagged bells ARE the radial
-       (degenerate-lever) ones. Trying to pin it in this fixture asks along -Y, which
-       only bell 2 projects onto at all -- 1e-7 of it -- and that demand empties nnls'
-       active set and trips its assert (src/rcs.h:167), filed as #1147. */
+    /* THE TRANSLATION HALF, which is where #1147 lived. Ask this ring to TRANSLATE along
+       -Y and only bell 2 projects onto it at all -- 1e-7 rad of a 100 N bell, so
+       rcsReachableAlong returns 1e-5 N. rcsPlan now cuts that ask before the solve (0.1% of
+       this ring's best bell = 0.1 N), so no bell opens and no ask is recorded. Before the
+       floor the call reached nnls, which emptied its active set and hit its assert -- and
+       the Makefile never sets NDEBUG, so the shipped ./osp aborted on it. */
+    v->armRcs(glm::dvec3(0.0, -1.0, 0.0));
+    v->rcsPlan();
+    CHECK_NEAR(0.0, glm::length(v->lastRcsCmd), 0.0,
+               "an axis the ring only touches records no burn at all: no cmd, no [rcs] row");
+    bool anyOpen = false;
+    for(double f : v->rcsScratch.c) { if(f > 0.0) { anyOpen = true; } }
+    CHECK_TRUE(!anyOpen, "and no bell is fractionally open, which is what the fuel draw reads");
+    /* The ring itself is fine -- an axis it DOES own asks and spends, so the two lines above
+       are the geometry talking and not a plan that stopped trying. Along -X the reach is
+       bell 0's 100 N plus all three weak bells' projections (1.0 + 0.2 + 0.05), i.e. the
+       101.2 the attitude pins above add up PLUS the 5e-4 bell's 0.05 -- because the #679 cut
+       that drops that bell from the ATTITUDE rows is a cut on levers, not on pushers:
+       rcsPlan reads rcsNoz, never the rows. */
+    v->armRcs(glm::dvec3(-1.0, 0.0, 0.0));
+    v->rcsPlan();
+    CHECK_NEAR(101.24995, glm::length(v->lastRcsCmd), 1e-3,
+               "a served axis asks at its own reach: 100 + sin(0.01)x100 + sin(2e-3)x100"
+               " + sin(5e-4)x100, weak bells and all");
+    CHECK_TRUE(v->rcsScratch.c[0] > 0.9, "and bell 0 opens for it");
     destroyShip(v);
 }
 
