@@ -31,6 +31,12 @@ faces): a generator has no reason to join cells, so per-face cells are what it h
 See the comment on TOPO for what each check is for, and utils/inspect_mesh_blender.py for
 reading the same properties in the editor.
 
+Every rule in topo_problems() has a case in SELFTEST that must make it fire, run on every
+invocation before any asset is weighed. That exists because the first version's island
+compare could not fail and the seven green pins were quoted as proof (#1170 review round);
+the summary line reports the rules run and the failures, so a rule that goes silent stops
+the gate.
+
 Usage: python3 utils/check_mesh_pins.py [--verbose] [--committed]
 """
 import os
@@ -298,6 +304,155 @@ def topo_problems(path, want_faces):
 
 
 
+# Positive control: these rules have to be able to FAIL. The first version of the island
+# compare joined each corner against the corner ACROSS the shared edge rather than the one
+# on it, so it joined nothing at all and every shipped mesh reported "one island per face"
+# -- output that read like evidence and proved nothing (#1170 review round). Each case is a
+# tiny .obj and the phrase in the problem it must produce; "" means the case has to come
+# back clean. Written into a temp tree and run through topo_problems() on every invocation,
+# before any real asset is weighed, so a rule that stops firing reddens the gate the same
+# way a drifted asset does.
+ST_SEAMED = """v 0 0 0
+v 1 0 0
+v 1 1 0
+v 0 1 0
+v 2 0 0
+v 2 1 0
+vt 0.0 0.0
+vt 1.0 0.0
+vt 1.0 1.0
+vt 0.0 1.0
+vt 1.0 0.0
+vt 2.0 0.0
+vt 2.0 1.0
+vt 1.0 1.0
+vn 0 0 1
+vn 0 0 1
+f 1/1/1 2/2/1 3/3/1 4/4/1
+f 2/5/2 5/6/2 6/7/2 3/8/2
+"""
+ST_UNSEAMED = """v 0 0 0
+v 1 0 0
+v 1 1 0
+v 0 1 0
+v 2 0 0
+v 2 1 0
+vt 0.0 0.0
+vt 1.0 0.0
+vt 1.0 1.0
+vt 0.0 1.0
+vn 0 0 1
+vn 0 0 1
+f 1/1/1 2/2/1 3/3/1 4/4/1
+f 2/2/2 5/1/2 6/4/2 3/3/2
+"""
+ST_COLLAPSED = """v 0 0 0
+v 1 0 0
+v 1 1 0
+v 0 1 0
+v 2 0 0
+v 2 1 0
+vt 0.5 0.5
+vn 0 0 1
+vn 0 0 1
+f 1/1/1 2/1/1 3/1/1 4/1/1
+f 2/1/2 5/1/2 6/1/2 3/1/2
+"""
+ST_NO_UV = """v 0 0 0
+v 1 0 0
+v 1 1 0
+vn 0 0 1
+f 1//1 2//1 3//1
+"""
+ST_GARBAGE = """v 0 0 0
+v 1 0 0
+v 1 1 0
+vt 0.0 0.0
+vt 1.0 0.0
+vt 1.0 1.0
+f 1/1 2/2 nope/3
+"""
+ST_RANGE = """v 0 0 0
+v 1 0 0
+v 1 1 0
+vt 0.0 0.0
+vt 1.0 0.0
+vt 1.0 1.0
+f 1/1 2/2 99/3
+"""
+ST_NEGATIVE = """v 0 0 0
+v 1 0 0
+v 1 1 0
+v 0 1 0
+vt 0.0 0.0
+vt 1.0 0.0
+vt 1.0 1.0
+vt 0.0 1.0
+vn 0 0 1
+f -4/-4/-1 -3/-3/-1 -2/-2/-1 -1/-1/-1
+"""
+ST_MIXED_NORMAL = """v 0 0 0
+v 1 0 0
+v 1 1 0
+v 0 1 0
+vt 0.0 0.0
+vt 1.0 0.0
+vt 1.0 1.0
+vt 0.0 1.0
+vn 0 0 1
+vn 0 1 0
+f 1/1/1 2/2/2 3/3/2 4/4/1
+"""
+ST_NO_NORMAL = """v 0 0 0
+v 1 0 0
+v 1 1 0
+v 0 1 0
+vt 0.0 0.0
+vt 1.0 0.0
+vt 1.0 1.0
+vt 0.0 1.0
+f 1/1 2/2 3/3 4/4
+"""
+ST_TRIANGLE = """v 0 0 0
+v 1 0 0
+v 1 1 0
+vt 0.0 0.0
+vt 1.0 0.0
+vt 1.0 1.0
+vn 0 0 1
+f 1/1/1 2/2/1 3/3/1
+"""
+SELFTEST = [
+    (2, "two wall quads, seamed", ST_SEAMED, ""),
+    (1, "negative indices resolve against the tables", ST_NEGATIVE, ""),
+    (2, "two wall quads with no seam", ST_UNSEAMED, "uv islands"),
+    (2, "islands collapsed onto one texel", ST_COLLAPSED, "of the canvas"),
+    (1, "a triangle where the family is quads", ST_TRIANGLE, "triangles"),
+    (1, "a face with no uv field (f 1//1)", ST_NO_UV, "no uv"),
+    (1, "a corner that does not parse", ST_GARBAGE, "does not parse"),
+    (1, "a corner index out of range", ST_RANGE, "does not parse"),
+    (1, "a face carrying two normals", ST_MIXED_NORMAL, "more than one normal"),
+    (1, "a face carrying no normal at all", ST_NO_NORMAL, "no normal"),
+]
+
+
+def self_test():
+    """Why each rule above still fires, or the reasons it stopped firing."""
+    bad = []
+    tmpd = tempfile.mkdtemp(prefix="meshpins_selftest_")
+    for k, (want_faces, label, text, phrase) in enumerate(SELFTEST):
+        path = os.path.join(tmpd, "case%d.obj" % k)
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(text)
+        problems = topo_problems(path, want_faces)
+        if phrase == "" and problems:
+            bad.append("self-test `%s` should be clean, got: %s" % (label, problems))
+        elif phrase and not any(phrase in p for p in problems):
+            bad.append("self-test `%s` should report a problem naming %r, got: %s"
+                       % (label, phrase, problems))
+    return bad
+
+
 def regenerate(script, argv, outs, out_root):
     """Run one generator so its outputs land under out_root/res/. Returns its argv."""
     cmd = [sys.executable, os.path.join(HERE, script)] + list(argv)
@@ -333,7 +488,8 @@ def main():
                 print("FAIL: pinned asset is gone: res/%s" % rel)
                 return 1
 
-    drift = []
+    st_fail = self_test()
+    drift = list(st_fail)
     if committed:
         # The no-dependency half: the shipped text against TOPO, no generators run.
         for rel in sorted(TOPO):
@@ -387,9 +543,11 @@ def main():
         head = ("art topology: shipped files checked as committed, no generators run"
                 if committed else
                 "mesh pins: %d assets regenerated from %d generators, %d drifted"
-                % (pinned, len({s for s, _, _ in PINS}), len(drift)))
-        print("%s, %d paintable-topology checks, %d claims excused, %d claims unpinned"
-              % (head, topo_ran, len(UNPINNED), len(unclaimed)))
+                % (pinned, len({s for s, _, _ in PINS}), len(drift) - len(st_fail)))
+        print("%s, %d paintable-topology checks, %d self-test rules, %d self-test "
+              "failures, %d claims excused, %d claims unpinned"
+              % (head, topo_ran, len(SELFTEST), len(st_fail), len(UNPINNED),
+                 len(unclaimed)))
         if topo_ran < len(TOPO):
             print("note: %d of %d TOPO rows were skipped because their asset did not "
                   "regenerate byte-exact" % (len(TOPO) - topo_ran, len(TOPO)))
