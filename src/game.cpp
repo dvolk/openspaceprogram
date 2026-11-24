@@ -1731,7 +1731,11 @@ void Game::select_vehicle(Vehicle *v) {
     Vehicle *was = ship;
     if(ship != nullptr) {
         ship->releaseControl();
-        ship->goOnRails();
+        /* A suit left on a ladder hangs there while the player flies another
+           ship (eva.h's disarm note), and the hang needs a live hull: parking a
+           gripped one here drops the kerbal the same way the proximity pass did
+           (#1162). */
+        if(!anySuitHangsOn(ship)) { ship->goOnRails(); }
     }
     v->leaveRails();
     ship = v;
@@ -2216,10 +2220,17 @@ void Game::toggle_eva() {
 bool Game::enter_rails_warp() {
     for(auto *s : vehicles) {
         if(!s->canRail()) {
-            printf("Rails warp refused: '%s' is in the atmosphere "
-                   "(warp stays %d)\n", s->displayName().c_str(), time_accel);
-            toast("Rails warp refused: '%s' is in the atmosphere",
-                  s->displayName().c_str());
+            /* Two refusals share this gate since #1162: a hull in the air, and a
+               suit hanging on a ladder (Kerbal::canRail). The prose has to say
+               which -- a kerbal at a pad hatch is emphatically not "in the
+               atmosphere", and the player who is offered that reason will look
+               for a flight problem that is not there. */
+            const bool hanging = s->isEva()
+                && static_cast<const Kerbal *>(s)->ladderGrip() != 0;
+            const char *why = hanging ? "is on a ladder" : "is in the atmosphere";
+            printf("Rails warp refused: '%s' %s (warp stays %d)\n",
+                   s->displayName().c_str(), why, time_accel);
+            toast("Rails warp refused: '%s' %s", s->displayName().c_str(), why);
             return false;
         }
     }
@@ -2283,6 +2294,14 @@ void Game::gateBuildingColliders() {
     }
 }
 
+bool Game::anySuitHangsOn(const Vehicle *v) const {
+    for(Vehicle *x : vehicles) {
+        if(x == v || !x->isEva()) { continue; }
+        if(static_cast<const Kerbal *>(x)->gripsLadderOf(v)) { return true; }
+    }
+    return false;
+}
+
 /* Proximity: keep the ships near the active one live, park the rest. The
    ground/fly regime comes from inTerrainBand(), not isGrounded(): its speed
    term would flip a still-settling lander to the wide in-air radii. */
@@ -2332,7 +2351,13 @@ void Game::updateProximity() {
             if(args.prox_log) { printf("[prox] t=%.3f %s ENGAGED at %.1f m (< %.1f m, %s)\n",
                                        time, s->displayName().c_str(), d, r_on,
                                        grounded ? "ground" : "fly"); }
-        } else if(!s->onRails && d > r_off) {
+        } else if(!s->onRails && d > r_off && !anySuitHangsOn(s)) {
+            /* The distance is centre-to-centre (gapTo), so a hull longer than the
+               release radius reads FAR while a suit is on it: heavy_asp on a pad
+               measured 20.2 m with a kerbal on its top-hatch ladder, parked, and
+               resolveLadder() dropped the grip -- a 12 m fall onto its own stage
+               (#1162). A hung-on hull stays live; the next tick parks it once the
+               suit is off. */
             /* Only say RELEASED when it really parked. An airborne hull fails
                canRail() (#937), so this branch used to print a release on every
                tick for a dropped stage that would never park -- hundreds of

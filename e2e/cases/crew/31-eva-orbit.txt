@@ -10,13 +10,14 @@ EXPECT Active ship 2 of 2: Ash
 FORBID error:
 CHECK len(orbit) > 5
 CHECK all(o["ecc"] < 0.01 and 2000.0 < o["v"] < 2500.0 for o in orbit if o["t"] > 1.3)
-# The switch parks the ship once; the hatch-ladder wake (kerbalEVA, #1073)
-# takes it straight off the rails -- the grip needs a live hull on the first
-# tick, before the proximity pass runs -- so proximity has nothing to ENGAGE.
-# What must still hold: the ship is never RELEASED (the hanging suit keeps it
-# near), and the suit hangs in ladder mode rather than drifting free.
-CHECK out.count("parked on rails") == 1
-CHECK out.count("left the rails") >= 1
+# The switch used to park the hull and the hatch-ladder wake (kerbalEVA, #1073) take it
+# straight off again -- the grip needs a live hull on the first tick, before the proximity
+# pass runs. #1162 removes the detour: select_vehicle() will not park a hull a suit is on,
+# so racer never touches the rails here at all. What has to hold either way: the hull stays
+# live (the hang needs it) and the suit hangs in ladder mode rather than drifting free.
+CHECK out.count("parked on rails") == 0
+CHECK out.count("left the rails") == 0
 CHECK out.count("RELEASED") == 0
+CHECK any("racer" in l and "LIVE" in l for l in out.splitlines() if l.startswith("[prox]   "))
 CHECK len(eva) > 3
 CHECK all(e["mode"] == "ladder" and e["ladder"] != 0 for e in eva)

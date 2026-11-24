@@ -1375,6 +1375,12 @@ struct Game {
     std::vector<ProxNeighbour> prox_;
     double prox_stamp_ = -1.0;
     void updateProximity();
+    /* True when a suit in the fleet is hanging on a ladder of `v`. Both places
+       that park a hull ask it first: resolveLadder() refuses a grip on an
+       on-rails ship, so parking one under a kerbal drops them (#1162) -- and
+       Vehicle::gapTo is centre-to-centre, so a tall stack reads past the release
+       radius with a kerbal clinging to its top hatch. */
+    bool anySuitHangsOn(const Vehicle *v) const;
     /* Cut loose a hull the sim can neither park nor keep any reason to run
        (#939): airborne (canRail() refuses anything airborne, so today it stays
        under physics forever however far it gets), uncrewed, not docked, not the

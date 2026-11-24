@@ -125,6 +125,14 @@ public:
        (a gone part -- staged away between save and load -- clears it). */
     uint64_t ladderGrip() const { return ladderUid; }
     void restoreLadder(uint64_t uid) { ladderUid = uid; }
+    /* True when the grip this suit holds is a ladder ON `v`. Reads the DURABLE
+       half (the uid), not the per-tick part cache, so it answers before
+       resolveLadder() has looked anything up -- the proximity pass and the ship
+       switch ask on the same tick they decide to park, and a grip that resolves
+       one tick late is a kerbal on the ground. #1162: parking a railed hull out
+       from under a hanging suit drops the suit -- resolveLadder() refuses a grip
+       on an on-rails ship (#1073), by design. */
+    bool gripsLadderOf(const Vehicle *v) const;
 
     /* The hatch hold pose on a capsule's ladder, in the capsule vehicle's
        frame: the top end (the hatch) plus the hang offset, body along the
@@ -166,6 +174,15 @@ public:
        (part.h), and minting this class IS going EVA (Game::kerbalEVA), while
        deleting one IS boarding (Game::kerbalBoard). So a Kerbal is never
        contained and never railed for being aboard. */
+
+    /* ... but a walking one is railed like any other hull UNLESS it is hanging
+       on someone else's ladder. Its pose is that hull's pose, so there is no
+       park to freeze into: the suit hangs in mid-air, and when the hull it hangs
+       from is parked beside it the grip dies (#1073's refusal in resolveLadder)
+       and the kerbal falls. Refusing at the gate covers every park site -- the
+       proximity pass, the ship switch, the start-of-run rails warp, rails warp,
+       the save commit -- rather than a guard at each (#1162). */
+    bool canRail() override;
 
     // Capsule-center altitude above the surface when standing at rest: half
     // the suit plus the two collision margins that meet there. The surface's

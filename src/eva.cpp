@@ -179,6 +179,27 @@ Part *Kerbal::nearestLadder(const std::vector<Vehicle *> &vehicles, double reach
     return best;
 }
 
+bool Kerbal::canRail() {
+    /* A grip is a park the suit does not own: applyLadder steers it against the
+       hull it hangs from, and railsTick has no such law -- parked, the suit is a
+       frozen pose in mid-air, and the hull parked beside it takes the grip away
+       the next tick (resolveLadder's on-rails refusal, #1073). Letting the suit
+       rail is what made #1162's second face: switch ships while hanging and
+       settleVehicles() parks the suit itself ("Ash frozen on rails"), 33 m up.
+       Everything else rails as it always did: standing on the pad, or weightless
+       off-world. */
+    if(ladderUid != 0) { return false; }
+    return Vehicle::canRail();
+}
+
+bool Kerbal::gripsLadderOf(const Vehicle *v) const {
+    if(ladderUid == 0 || v == nullptr) { return false; }
+    for(const Part *p : v->parts) {
+        if(p->uid == ladderUid) { return true; }
+    }
+    return false;
+}
+
 bool Kerbal::resolveLadder(const std::vector<Vehicle *> &vehicles) {
     const uint64_t prevUid = ladderUid;
     const Part *prevPart = ladderPart;

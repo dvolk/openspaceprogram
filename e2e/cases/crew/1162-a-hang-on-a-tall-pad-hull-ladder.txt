@@ -1,0 +1,55 @@
+# HANGING ON A TALL HULL'S LADDER (#1162). heavy_asp on the pad is the one shipped hull
+# where stepping out dropped the kerbal: it grabbed the capsule's hatch ladder at t=1.0 and
+# about half a second later was in mode=space falling at 10 m/s, landing on one of its own
+# stages 12 m below.
+#
+# Nothing about the ladder was wrong. The prox pass decided the hull was far away:
+#
+#   [prox] t=1.100 heavy_asp RELEASED at 20.2 m (> 20.0 m, ground)
+#   @@@ heavy_asp frozen on rails (grounded around Kerbin)
+#
+# -- because Vehicle::gapTo is CENTRE-to-centre, and heavy_asp is a ~25 m asparagus stack.
+# The kerbal on the top hatch is 20.1 m from that stack's COM at all times, so the ground
+# release radius (20 m) parks the hull out from under the suit, and resolveLadder() refuses
+# a grip on an on-rails hull (by design, #1073: a railed ship's pose is a frozen park and the
+# hang law reads its parts per substep). The grip dies, the suit falls. racer on the same pad
+# measures ~11 m and never trips it; heavy_asp in ORBIT uses the wide fly radii and never
+# trips it either -- which is exactly the "works fine everywhere else" of the report.
+#
+# The fix is not a bigger radius (a stack can be arbitrarily tall) but the fact the pass was
+# blind to: a hull with a suit hanging on it is not "away". Game::anySuitHangsOn() reads the
+# grip through its DURABLE half -- the ladder part's uid -- so it answers on the same tick the
+# park is decided, before resolveLadder() has cached the part. select_vehicle() asks the same
+# question, because switching ships used to park the hull the suit was left on and drop it the
+# same way (eva.h's disarm note says a kerbal left on a ladder hangs there while the player
+# flies elsewhere -- that promise needs a live hull to keep).
+#
+# --sim-steps rather than --timeout: a fall is the most timing-sensitive thing in this family
+# (#138, #871), and the case is 1 s of wall time instead of 10.
+NAME hang-on-a-tall-pad-hull-ladder
+CLAIM Stepping out onto the hatch ladder of a 25 m stack on the pad keeps the kerbal hanging there: the proximity pass may not park a hull a suit is on (#1162).
+KIND invariant
+ARGS --time-accel 1 --sim-steps 600 --startship heavy_asp,res/ships/heavy_asp.json,Kerbin,pad
+ARGS --eva-log --prox-log --no-paint --sim-press 1000,0,V
+LIMIT 20
+EXPECT EVA: 'Ash' out of 'heavy_asp' part 0
+EXPECT [prox]
+FORBID error:
+FORBID RELEASED
+FORBID frozen on rails
+CHECK len(eva) >= 5
+# The grip is real, not a free-fall that happens to be pointed at the hull.
+CHECK all(e["mode"] == "ladder" and e["ladder"] != 0 for e in eva if e["t"] > 1.0)
+# And it stays at the hatch. The defect reads alt 28.73 m at t=2.1 and 22.19 m at t=3.1
+# (grounded, on its own stage); the hold sits at 33.88 m through the whole run, so a fall of
+# even a metre reddens this. Measured spread over the rows: max-min = 0.04 m.
+CHECK min(e["alt"] for e in eva if e["t"] > 1.0) > 33.0
+CHECK max(e["alt"] for e in eva if e["t"] > 1.0) - min(e["alt"] for e in eva if e["t"] > 1.0) < 0.25
+# Velocity, because alt alone could be read by a suit that slid down and stopped: the hang is
+# still (the servo holds it), not parked at the bottom of a slide.
+CHECK all(max(abs(c) for c in e["vel"]) < 0.5 for e in eva if e["t"] > 1.5)
+# The neighbour line is the pass's own record: heavy_asp sits at 20.1 m -- past the 20 m
+# ground release radius -- and the pass left it LIVE. That is the fix, in the log the pass
+# prints for itself.
+CHECK any("heavy_asp" in l and "LIVE" in l for l in out.splitlines())
+CHECK all("heavy_asp" not in l or "LIVE" in l for l in out.splitlines() if l.startswith("[prox]  "))

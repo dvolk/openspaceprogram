@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 471 |
+| `invariant` | a behaviour or a player route the game must keep | 473 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 53 |
 | `harness` | CLI/test-engine plumbing, not game spec | 18 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **546** |
+| | **total** | **548** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -203,7 +203,7 @@ judgement. Select by number, name or path, e.g.
 | `flight/1148-b-legacy-settings-inherit-the-new-brackets.txt` | invariant | A settings.json written before the brackets moved still hands '[' and ']' to the fleet rather than to camera speed. |
 | `flight/1148-brackets-cycle-ships.txt` | invariant | [ steps the active ship backwards and ] forwards, wrapping around the fleet, and the Controls window shows both brackets on the ship slots and -/= on camera speed. |
 
-## crew (37)
+## crew (39)
 
 | case | kind | pins |
 |---|---|---|
@@ -244,6 +244,8 @@ judgement. Select by number, name or path, e.g.
 | `crew/1073-g-ladder-down-compose.txt` | invariant | Climbing down transfers capsule ladder to tank ladder and grounds at the bottom. |
 | `crew/1073-h-ladder-up-compose.txt` | invariant | Re-grab from the pad takes the ladder bottom; climbing up transfers tank to capsule and reaches the hatch. |
 | `crew/1095-a-regrab-after-descent.txt` | invariant | After walking down a ladder to the ground, G grips and W climbs back up. |
+| `crew/1162-a-hang-on-a-tall-pad-hull-ladder.txt` | invariant | Stepping out onto the hatch ladder of a 25 m stack on the pad keeps the kerbal hanging there: the proximity pass may not park a hull a suit is on (#1162). |
+| `crew/1162-b-hang-through-a-ship-switch.txt` | invariant | Flying the hull while a kerbal is left on its ladder keeps the kerbal hanging there: a gripping suit may not go on rails (#1162). |
 
 ## science (31)
 

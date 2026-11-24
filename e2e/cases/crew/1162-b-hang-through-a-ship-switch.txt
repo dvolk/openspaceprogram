@@ -1,0 +1,50 @@
+# HANGING THROUGH A SHIP SWITCH (#1162, the other half of 1162-a). Stepping out of
+# heavy_asp onto its hatch ladder and then flying the hull -- F6/']', Slot::NextShip --
+# used to end the walk:
+#
+#   [prox] t=4.000 Ash RELEASED at 20.1 m (> 20.0 m, ground)
+#   @@@ Ash frozen on rails (grounded around Kerbin)
+#
+# and the [evalog] rows stop, because --eva-log prints for the ACTIVE hull only. The suit
+# was parked out of the world while still gripping part 9: isGrounded() called a hang 34 m
+# up "grounded around Kerbin" (the analytic terrain band is generous), so Game::settleVehicles
+# happily parked every hull it was not flying, including the walking one. Its pose froze in
+# mid-air and the grip died on the next resolveLadder (#1073's on-rails refusal), so
+# switching back dropped a kerbal from 34 m onto its own stage.
+#
+# The gate is Kerbal::canRail: a hanging suit has no park of its own -- its pose IS the
+# hull it grips -- so it refuses the rails while ladderUid != 0. One gate covers every park
+# site (the proximity pass, settleVehicles, select_vehicle, the start-of-run warp,
+# enter_rails_warp, the save commit) instead of a guard at each. 1162-a covers the twin
+# problem on the other side: a hull with a suit on it must not park either.
+#
+# --sim-steps makes the whole thing step-identical (#472): the key schedule runs on the
+# SIM clock there (Game::schedClockMs), so the presses land at t=1.0/3.0/5.5 exactly, on
+# any box, and the run is 2.6 s of wall time instead of 15.
+NAME hang-through-a-ship-switch
+CLAIM Flying the hull while a kerbal is left on its ladder keeps the kerbal hanging there: a gripping suit may not go on rails (#1162).
+KIND invariant
+ARGS --time-accel 1 --sim-steps 900 --startship heavy_asp,res/ships/heavy_asp.json,Kerbin,pad
+ARGS --eva-log --prox-log --no-paint --sim-press 1000,0,V
+ARGS --sim-press 3000,0,RIGHTBRACKET --sim-press 5500,0,RIGHTBRACKET
+LIMIT 25
+EXPECT EVA: 'Ash' out of 'heavy_asp' part 0
+# Both switches happened: out to the hull and back to the suit.
+EXPECT Active ship 1 of 2: heavy_asp
+EXPECT Active ship 2 of 2: Ash
+FORBID error:
+FORBID frozen on rails
+FORBID RELEASED
+CHECK len(eva) >= 8
+# The pass's own record: while the suit was the hull nobody was flying it stayed LIVE.
+# The unfixed run prints the same field as "on-rails".
+CHECK any("Ash" in l and "LIVE" in l for l in out.splitlines() if l.startswith("[prox]   "))
+# Back on the suit it is still hanging on the same ladder part, at the hatch, not on the
+# ground and not fallen. Measured rows: alt 33.88 m and ladder=9 at every t after the
+# switch back.
+CHECK all(e["mode"] == "ladder" and e["ladder"] != 0 for e in eva if e["t"] >= 6.0)
+CHECK min(e["alt"] for e in eva if e["t"] >= 6.0) > 33.0
+CHECK max(e["alt"] for e in eva) - min(e["alt"] for e in eva) < 0.25
+# Still still after the round trip: the disarm a switched-away suit gets zeroes the climb
+# demand but keeps the grip, so the hang holds rather than sliding.
+CHECK all(max(abs(c) for c in e["vel"]) < 0.5 for e in eva if e["t"] >= 7.0)

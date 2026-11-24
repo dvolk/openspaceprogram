@@ -2805,8 +2805,10 @@ public:
     /* Rail-eligible: GROUNDED freezes in the rotating surface frame; anything
        clear of the air coasts on its conic. Periapsis is deliberately NOT a gate
        -- a departure burn can drop it below the surface while the ship is high
-       and climbing. railsTick stops a conic at the air/ground instead. */
-    bool canRail();
+       and climbing. railsTick stops a conic at the air/ground instead.
+       Virtual because a suit that is hanging on someone else's hull has no park
+       of its own: see Kerbal::canRail (#1162). */
+    virtual bool canRail();
 
     /* Park out of the world and coast analytically. False if not rail-eligible. */
     bool goOnRails();
