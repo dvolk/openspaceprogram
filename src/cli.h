@@ -165,6 +165,7 @@ struct GameArgs {
     std::string porkchop_dump;       // write each grid as CSV
 
     bool eva_log = false;        // the kerbal's mode + pos/vel
+    bool leg_log = false;        // each gear/leg contact vs its own drawn mesh (#1158)
     bool surfmap_log = false;    // the map's albedo/shaded means
     int surfmap_n = 512;         // the map width (h = n/2); 256 used to be the default and
                                  // made the wind arrows' heads ~2 px (#780)

@@ -137,12 +137,27 @@ public:
     /* The hatch hold pose on a capsule's ladder, in the capsule vehicle's
        frame: the top end (the hatch) plus the hang offset, body along the
        slope facing the hull. Game::kerbalEVA spawns the walker here (#1073).
-       False if the def carries no ladder (the caller's fallback). */
-    static bool hatchPose(const Part *cap, glm::dvec3 &pos, glm::dmat3 &rot);
+       False if the def carries no ladder (the caller's fallback). It is static
+       because the Kerbal vehicle does not exist yet at that call -- the suit
+       is still a seat part -- so the suit def comes in as an argument. */
+    static bool hatchPose(const Part *cap, const PartDef *suit,
+                          glm::dvec3 &pos, glm::dmat3 &rot);
+
+    /* How far off the ladder line the suit's CENTRE hangs (#1158): the hull
+       half-width plus a hand's-width working gap. Used by both the hang servo
+       and the hatch pose, so a suit cannot be spawned somewhere the servo
+       would then drag it from. */
+    static double ladderHoldOff(const PartDef *suit);
 
     /* What the regime is, for the --eva-log row (#421's e2e assertions read it). */
     EvaMode evaMode() const { return mode; }
     bool evaGrounded() const { return grounded; }
+
+    /* --eva-log: how far off the grabbed ladder's LINE the suit actually hangs,
+       along the ladder's out normal (#1158). Measured, not the commanded hold:
+       the servo sags, and the e2e pin wants where the body really is. 0 when
+       not hanging. */
+    double hangOffLine() const;
 
     /* The QE yaw offset, for the save and the log. It is the difference between the
        pose the save holds and the camera-facing attitude the space law would slew back

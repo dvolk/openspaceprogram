@@ -32,7 +32,7 @@ static const double kFloorDrop   = 0.4;     // m below restAlt -> snap back up
 // a lateral offset is a smooth slide, not a teleport. e2e pins the behavior
 // (climb direction/speed band, transfer, stable hang), not these numbers.
 static const double kClimbSpeed    = 1.5;   // m/s the hold point travels along the segment
-static const double kLadderHold    = 0.45;  // m off the line (clears both margins)
+static const double kLadderClear   = 0.08;  // m between the suit hull and the rails
 static const double kLadderP       = 200.0; // /s^2 position spring (gravity sag g/kP ~ 5 cm)
 static const double kLadderD       = 28.0;  // /s damping (~critical: 2*sqrt(kP))
 static const double kLadderHoldAccel = 30.0;// m/s^2 servo clamp
@@ -63,6 +63,19 @@ double Kerbal::restAlt() const {
     const double surf = onDeck() ? effectiveHullMargin(frame->building->body)
                                  : terrainMargin();
     return parts[0]->def->height / 2.0 + hullMargin() + surf;
+}
+
+double Kerbal::ladderHoldOff(const PartDef *suit) {
+    /* Off the ladder LINE, measured along the ladder's `out` normal: the
+       suit's own hull half-width plus a working gap, so the body hangs at the
+       rails rather than in the air beside them (#1158).
+       0.45 used to be the number, and it was a MARGIN number -- the #1073 era
+       carried hull 0.1 + terrain 0.1, a 0.2 m skin that had to be stood off.
+       Both defaults went to 0 in #1152 and the constant stayed, leaving a
+       0.4 m wide kerbal half a metre off the ladder. The half-width is the
+       catalog radius -- the same def field restAlt reads the standing height
+       from, and the convex hull of kerbal.obj is +-0.199 m in x and y. */
+    return suit->radius + kLadderClear;
 }
 
 bool Kerbal::inStationBubble() const {
@@ -302,7 +315,7 @@ void Kerbal::applyLadder(double h) {
     ladderSegment(A, B, out);
     const glm::dvec3 u = glm::normalize(B - A);
     const glm::dvec3 pos = partPos(controller);
-    const glm::dvec3 hold = ladderHold(A, u, ladderS, out, kLadderHold);
+    const glm::dvec3 hold = ladderHold(A, u, ladderS, out, ladderHoldOff(parts[0]->def));
     /* One position PD toward the hold point, all three axes: it pulls the
        kerbal onto the line on grab, slides it across a transfer gap, holds
        it against gravity (sag g/kLadderP ~ 5 cm) and tracks the climbing
@@ -325,7 +338,15 @@ void Kerbal::applyLadder(double h) {
     slewTo(evaStandTarget(u, -out), h, kLadderTorque);
 }
 
-bool Kerbal::hatchPose(const Part *cap, glm::dvec3 &pos, glm::dmat3 &rot) {
+double Kerbal::hangOffLine() const {
+    if(ladderPart == nullptr || !ladderPart->isLadder()) { return 0.0; }
+    glm::dvec3 A, B, out;
+    ladderSegment(A, B, out);
+    return glm::dot(partPos(controller) - A, glm::normalize(out));
+}
+
+bool Kerbal::hatchPose(const Part *cap, const PartDef *suit,
+                       glm::dvec3 &pos, glm::dmat3 &rot) {
     assert(cap != nullptr && cap->owner != nullptr);
     if(!cap->isLadder()) { return false; }
     glm::dvec3 p; glm::dmat3 r;
@@ -333,7 +354,7 @@ bool Kerbal::hatchPose(const Part *cap, glm::dvec3 &pos, glm::dmat3 &rot) {
     const glm::dvec3 A = p + r * cap->def->ladder_a;
     const glm::dvec3 B = p + r * cap->def->ladder_b;
     const glm::dvec3 out = r * cap->def->ladder_out;
-    pos = B + out * kLadderHold;
+    pos = B + out * ladderHoldOff(suit);
     rot = evaStandTarget(glm::normalize(B - A), -out);
     return true;
 }

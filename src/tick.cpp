@@ -1647,6 +1647,15 @@ void tick(Game &g) {
             }
         }
 
+        /* --leg-log (#1158): each gear wheel / leg footpad's own contact vs its
+           drawn mesh. Not gated on time_accel -- a landed hull you are NOT flying
+           is the common case, and the rows are once per interval like compound-check. */
+        if(g.args.leg_log) {
+            if(g.logDue(kGateLeg, g.logClockMs(), g.orbit_log_interval_ms)) {
+                for(auto *s : vehicles) { s->logLegContacts(g.time); }
+            }
+        }
+
         // --eva-log: the kerbal's mode + state (the EVA e2e assertions)
         if(g.ship && g.args.eva_log && g.ship->isEva()) {
             const Uint32 now_ms = g.logClockMs();
@@ -1665,17 +1674,25 @@ void tick(Game &g) {
                 const char *modeName = (k->evaMode() == EVA_GROUND) ? "ground"
                                      : (k->evaMode() == EVA_LADDER) ? "ladder"
                                      : "space";
+                /* #1158: the ladder rows carry how far off the rails the body
+                   actually hangs. The commanded offset is the suit's hull
+                   half-width plus a working gap; this is the measured one, so a
+                   case can tell "hugging the ladder" from "hovering beside it". */
+                char hangoff[48] = "";
+                if(k->evaMode() == EVA_LADDER) {
+                    snprintf(hangoff, sizeof(hangoff), " hangoff=%.3f m", k->hangOffLine());
+                }
                 printf("[evalog] t=%.1fs mode=%s grounded=%d "
                        "pos=[%.1f %.1f %.1f] vel=[%.2f %.2f %.2f] "
                        "face=[%.3f %.3f %.3f] alt=%.2f m viewyaw=%.3f "
-                       "rcs=%d mass=%.3fkg ladder=%llu\n",
+                       "rcs=%d mass=%.3fkg ladder=%llu%s\n",
                        g.time, modeName,
                        (int)k->evaGrounded(), p.x, p.y, p.z, v.x, v.y, v.z,
                        face.x, face.y, face.z,
                        glm::length(p_rot) - (double)k->m_parent->GetTerrainHeight(
                            glm::vec3(glm::normalize(p_rot))),
                        k->viewYawOffset(), (int)k->rcsBurned(),
-                       k->getMass(), (unsigned long long)k->ladderGrip());
+                       k->getMass(), (unsigned long long)k->ladderGrip(), hangoff);
                 fflush(stdout);
             }
         }

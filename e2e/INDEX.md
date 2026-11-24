@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 476 |
-| `golden` | tuned numbers or a content table -- update deliberately when tuning | 53 |
+| `invariant` | a behaviour or a player route the game must keep | 477 |
+| `golden` | tuned numbers or a content table -- update deliberately when tuning | 56 |
 | `harness` | CLI/test-engine plumbing, not game spec | 18 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **551** |
+| | **total** | **555** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -18,7 +18,7 @@ paces a run: how much e2e a change deserves is the caller's
 judgement. Select by number, name or path, e.g.
 `python3 e2e/run.py save/172 262`.
 
-## flight (180)
+## flight (183)
 
 | case | kind | pins |
 |---|---|---|
@@ -202,8 +202,11 @@ judgement. Select by number, name or path, e.g.
 | `flight/1126-a-half-dialed-ring-spends-half.txt` | invariant | At half pointing authority this ring spends half of what flight/677 spends at full on the same press: 69 N m of torque at 1.05 rad/s^2 and 0.028 kg/s of hydrazine (#1126). |
 | `flight/1148-b-legacy-settings-inherit-the-new-brackets.txt` | invariant | A settings.json written before the brackets moved still hands '[' and ']' to the fleet rather than to camera speed. |
 | `flight/1148-brackets-cycle-ships.txt` | invariant | [ steps the active ship backwards and ] forwards, wrapping around the fleet, and the Controls window shows both brackets on the ship slots and -/= on camera speed. |
+| `flight/1158-a-legs-stand-close-to-their-feet.txt` | golden | A landed hull's drawn footpads rest within 0.06 m of the ground, on suspension that has neither gone slack nor reached its bump stops. |
+| `flight/1158-b-gear-stands-close-on-the-runway.txt` | golden | A geared hull's drawn tyres touch the runway within 0.1 m, with suspension stroke left over. |
+| `flight/1158-c-short-strut-catches-a-hop.txt` | invariant | A legged hull that hops off its pads and comes down at 6 m/s does not reach its bump stops, tip, or keep bouncing. |
 
-## crew (42)
+## crew (43)
 
 | case | kind | pins |
 |---|---|---|
@@ -244,6 +247,7 @@ judgement. Select by number, name or path, e.g.
 | `crew/1073-g-ladder-down-compose.txt` | invariant | Climbing down transfers capsule ladder to tank ladder and grounds at the bottom. |
 | `crew/1073-h-ladder-up-compose.txt` | invariant | Re-grab from the pad takes the ladder bottom; climbing up transfers tank to capsule and reaches the hatch. |
 | `crew/1095-a-regrab-after-descent.txt` | invariant | After walking down a ladder to the ground, G grips and W climbs back up. |
+| `crew/1158-d-kerbal-hugs-the-ladder.txt` | golden | A kerbal hanging on a ladder hangs at its own hull width off the rails (~0.26 m), not half a metre out in the air, and holds that offset steadily. |
 | `crew/1162-a-hang-on-a-tall-pad-hull-ladder.txt` | invariant | Stepping out onto the top-hatch ladder of a hull taller than the ground release radius keeps the kerbal hanging there: the proximity pass may not park a hull a suit is on (#1162). |
 | `crew/1162-b-hang-through-a-ship-switch.txt` | invariant | Flying the hull while a kerbal is left on its ladder keeps the kerbal hanging there: a gripping suit may not go on rails (#1162). |
 | `crew/1162-c-rails-warp-refused-while-a-suit-hangs.txt` | invariant | Asking for rails warp while a kerbal hangs on a ladder is refused, and the refusal says "on a ladder" (#1162). |

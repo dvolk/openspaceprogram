@@ -908,6 +908,13 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                  "grounded state, position and velocity to stdout; the "
                  "instrument for the EVA e2e tests");
 
+    app.add_flag("--leg-log", args.leg_log,
+                 "Periodically print, for every ship that has them, each "
+                 "landing-gear wheel and landing-leg footpad: gap= is how far "
+                 "its DRAWN mesh bottom sits above the ground it is standing on "
+                 "(the visible float, #1158) and comp= is the suspension "
+                 "compression the ride height comes from");
+
     app.add_option("--postfx", args.postfx_spec,
                    "Post-processing effect, in the order given; repeatable "
                    "and/or comma-separated (e.g. --postfx cas,grain). "

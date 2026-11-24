@@ -1941,7 +1941,7 @@ void Game::kerbalEVA(Part *suit) {
     const glm::dvec3 capVel = ship->partVel(capPart);
     glm::dvec3 hatchPos(0.0);
     glm::dmat3 hatchRot(1.0);
-    const bool onLadder = Kerbal::hatchPose(capPart, hatchPos, hatchRot);
+    const bool onLadder = Kerbal::hatchPose(capPart, suit->def, hatchPos, hatchRot);
     /* In a platform bubble the deck is the ground: local +Z up, deck top at
        z=0 (#850). normalize(capCom) would point from the BUILDING, and the
        terrain radius below would place the walker a planet away. */

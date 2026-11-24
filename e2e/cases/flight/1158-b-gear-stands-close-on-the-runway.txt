@@ -1,0 +1,34 @@
+# THE WHEELS OF A GEARED HULL, SAME QUESTION AS 1158-a (#1158). A plane on the runway looked
+# like it sat on invisible tyres: gear.obj draws a wheel whose bottom is 0.35 m below the part
+# origin (matching wheel_radius = 0.35, so the DRAWN wheel is right), yet the hull rested ~0.3
+# m higher than that. The gap was wheel_travel = 0.4 -- the contact face rides at the drawn
+# radius and the strut holds the hull up by the unused part of its stroke, so the visible
+# float is travel - W/(n*k) exactly (src/wheel.h "RIDE HEIGHT").
+#
+# The runway hull is where the trade-off bites, because a gear spring is soft (25000 N/m
+# against a leg's 60000) and the tyres carry the whole hull. At 0.15 the loaded main compresses
+# 0.106 m of its stroke, leaving 0.044 -- so a 659 kg skiff has 78% of load headroom on three
+# wheels, and a heavier plane needs more wheels or a stiffer spring, not a longer strut. The
+# last CHECK below is what turns that red.
+#
+# 850-runway-rest already pins that the hull does not sink or slide here; this pins where the
+# drawn rubber meets the deck.
+NAME gear-stands-close-on-the-runway
+CLAIM A geared hull's drawn tyres touch the runway within 0.1 m, with suspension stroke left over.
+KIND golden
+ARGS --time-accel 1 --sim-steps 400 --startship skiffgear,res/ships/skiff_gear.json,Kerbin,pad,site=ksc_runway
+ARGS --leg-log --no-paint --orbit-interval 0.5
+LIMIT 20
+EXPECT [leglog]
+FORBID error:
+CHECK len(leg) >= 12
+# Three wheels (two mains + nose gear), all of them on the deck.
+CHECK all(r["kind"] == "gear" and r["gap"] is not None for r in leg if r["t"] > 1.0)
+# Measured 0.044 / 0.073 / 0.075 m; at travel 0.2 the same hull reads 0.095..0.126 and at 0.4
+# it read 0.29..0.33. The band is looser than the legs' because the gear spring is soft and
+# the nose wheel barely loads.
+CHECK max(r["gap"] for r in leg if r["t"] > 1.0) < 0.1
+CHECK all(abs(r["gap"] + r["comp"] - r["travel"]) < 0.01 for r in leg if r["comp"] > 0)
+# Loaded (0.075..0.106 m in) and not at the bump stop -- the load-headroom guard, see 1158-a.
+CHECK all(0.03 < r["comp"] < r["travel"] - 0.03 for r in leg if r["t"] > 1.0)
+CHECK all(abs(r["mesh"] - 0.35) < 0.005 for r in leg)

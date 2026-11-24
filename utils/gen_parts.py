@@ -431,10 +431,22 @@ EXTRA_FIELDS = {
     # gear: mass + suspension declared (one size for v1). wheel_radius is derived
     # from the mesh in generate(). The surface node is the strut top (+Z), so the
     # wheel hangs below the belly it is bolted to; the rolling direction is the
-    # part's +Y (src/wheel.h). Spring sized so a ~2.4 kN main-wheel load compresses
-    # ~0.1 m of the 0.4 m travel, leaving the hull clear of the deck's collision
-    # margins (reports/runway-wheels2026_11_14).
-    "gear":              {"mass": 30.0, "wheel_travel": 0.4, "wheel_spring": 25000.0,
+    # part's +Y (src/wheel.h).
+    #
+    # SPRING-ONLY SUPPORT, spelled out (#1158, wheel.h "RIDE HEIGHT"): the
+    # contact face rides (travel - compression) above the ray hit, so
+    #     float = travel - W/(n*k)     and     landing stroke = travel - comp
+    # i.e. the visible float above the drawn tyre and the stroke left for a
+    # touchdown are ONE quantity. Raising the spring makes the float worse (less
+    # compression = more unused strut); the only way to have both is a strut that
+    # telescopes, so the drawn mesh slides with compression -- an issue, not a
+    # tweak here. What 0.2 -> 0.15 buys: a skiff's tyres sit 0.044..0.075 m off
+    # the deck instead of 0.095..0.126. What it costs: the loaded main compresses
+    # 0.106 of 0.15, so the gear sinks to its bump stops -- hull collision, the
+    # scrub/pump regime wheel.h refuses to rest on -- above ~1.15 t on three
+    # wheels (0.2 was ~1.53 t). e2e 1158-b pins at least 0.03 m of stroke still
+    # free, which is what turns that ceiling red for a heavier hull.
+    "gear":              {"mass": 30.0, "wheel_travel": 0.15, "wheel_spring": 25000.0,
                           "wheel_damp": 3000.0, "wheel_steer": 0.0,
                           "nodes": [{"id": "srf", "pos": [0.0, 0.0, 0.65],
                                      "dir": [0.0, 0.0, 1.0], "surface": True}]},
@@ -450,10 +462,17 @@ EXTRA_FIELDS["gear_nose"] = dict(EXTRA_FIELDS["gear"], wheel_steer=20.0)
 # the wheel_radius analogue for the leg ground loop. The surface node is the
 # plate's hull-side face; keep in sync with gen_leg.py's defaults (drop 2.6,
 # splay 20 deg, plate-thick 0.08): node x = -(2.6*tan(20) + 0.04) = -0.986.
-# Spring sized so the racer's ~6.5 kN per-leg load compresses ~0.11 m of the
-# 0.4 m travel, leaving ~3.5 m/s of touchdown absorption before bottoming out
-# (reports/landing-legs2026_11_21).
-EXTRA_FIELDS["leg"] = {"mass": 40.0, "leg_foot": 0.05, "leg_travel": 0.4,
+# travel is the float AND the landing stroke -- see the gear note above
+# (#1158). 0.4 -> 0.15 puts the racer_legs footpads 0.024..0.038 m off the
+# ground instead of 0.27..0.29 m, at a rest compression of 0.112..0.126 of the
+# stroke. The ceiling that trades away: 4 legs at k=60000 hold 36 kN, so a
+# legged stack heavier than ~3.7 t sits on its bump stops (the racer_legs hull
+# is 2.93 t) -- a heavier lander needs more legs, not a longer strut. Hard
+# landings turned out NOT to be the constraint: measured arrivals of 6.0 and
+# 10.8 m/s stay upright at 0.20/0.15/0.13 alike (worst nose.z 0.967), and the
+# hull tips over at ~15.7 m/s at every travel, so stroke length is not what
+# saves a bad landing. e2e 1158-a/c pin the float and the reserve.
+EXTRA_FIELDS["leg"] = {"mass": 40.0, "leg_foot": 0.05, "leg_travel": 0.15,
                        "leg_spring": 60000.0, "leg_damp": 8000.0,
                        "nodes": [{"id": "srf", "pos": [-0.986, 0.0, 2.6],
                                   "dir": [-1.0, 0.0, 0.0], "surface": True}]}

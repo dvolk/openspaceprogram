@@ -5351,6 +5351,40 @@ void Vehicle::applyGroundForces(double h) {
     }
 }
 
+/* --leg-log (#1158). One row per suspension element, from the tick rather than
+   the substep loop: re-run the SAME contact ray applyGroundForces uses and report
+   where the part's own DRAWN bottom is relative to the ground. The contact face is
+   read off the collision hull's part-local vertices (Body::hullVerts, the convex
+   hull of the mesh) rather than the def's leg_foot / wheel_radius, so the gap
+   cannot quietly disagree with what is drawn (both shipped parts agree today:
+   leg -0.05 vs leg_foot 0.05, gear -0.35 vs wheel_radius 0.35). */
+void Vehicle::logLegContacts(double t) {
+    if(gearParts.empty() && legParts.empty()) { return; }
+    const std::string name = displayName();
+    auto row = [&](Part *p, const char *kind, double travel, double spring) {
+        glm::dvec3 origin; glm::dmat3 pRot;
+        partWorldPose(p, origin, pRot);
+        double mesh = 0.0;
+        for(const glm::dvec3 &v : p->body->hullVerts) { mesh = std::min(mesh, v.z); }
+        mesh = -mesh;
+        const glm::dvec3 down = -(pRot * glm::dvec3(0.0, 0.0, 1.0));
+        const double reach = mesh + travel + 0.2;
+        glm::dvec3 hit, n;
+        double dist;
+        if(!groundContact(origin, down, reach, dist, hit, n)) {
+            printf("[leglog] t=%.3fs %s %s uid=%llu mesh=%.3f m gap=air travel=%.2f k=%.0f N/m\n",
+                   t, name.c_str(), kind, (unsigned long long)p->uid, mesh, travel, spring);
+            return;
+        }
+        const double comp = std::clamp((mesh + travel) - dist, 0.0, travel);
+        printf("[leglog] t=%.3fs %s %s uid=%llu mesh=%.3f m gap=%.3f m comp=%.3f m travel=%.2f k=%.0f N/m\n",
+               t, name.c_str(), kind, (unsigned long long)p->uid, mesh, dist - mesh,
+               comp, travel, spring);
+    };
+    for(Part *p : gearParts) { row(p, "gear", p->def->wheel_travel, p->def->wheel_spring); }
+    for(Part *p : legParts) { row(p, "leg", p->def->leg_travel, p->def->leg_spring); }
+}
+
 void Vehicle::applyControlForces(double h) {
     /* The force overlay's per-substep clear lives in the tick.cpp substep
        loop (it feeds the aero + control appliers together); this override

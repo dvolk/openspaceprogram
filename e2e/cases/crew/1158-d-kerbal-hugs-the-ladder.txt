@@ -1,0 +1,43 @@
+# A KERBAL ON A LADDER, AND HOW FAR OFF THE RAILS IT HANGS (#1158). The report asks for the
+# suit to come back to the meshes now that the margins are gone. It had drifted by a margin
+# that no longer exists: applyLadder aimed at `ladder line + out * kLadderHold`, with
+#
+#   kLadderHold = 0.45  // m off the line (clears both margins)
+#
+# written in the #1073 era, when OSP_HULL_MARGIN and OSP_TERRAIN_MARGIN defaulted to 0.1 each
+# and a body needed a 0.2 m skin stood off. #1152 took both defaults to 0; the constant stayed,
+# so a kerbal 0.398 m wide hung 0.45 m away from the ladder it was holding, in mid-air.
+#
+# The hold is now derived from the suit: radius + a working gap (0.199 + 0.08). Measured on
+# the racer's capsule ladder, hangoff -- the component of the body's offset from the ladder's
+# bottom end along the ladder's own `out` normal -- is 0.261 m, identical at every logged row
+# from t=1.5 s to t=7.6 s. The commanded 0.279 sits 0.018 above that because the hang is a
+# position servo and gravity sags it; the sag is part of what "hanging" means, so the case
+# pins the measured value with room, not the commanded one.
+#
+# This is the ladder half of the ticket; 1158-a/b/c are the legs and gears, where the float is
+# a suspension ride height rather than a stale constant.
+NAME kerbal-hugs-the-ladder
+CLAIM A kerbal hanging on a ladder hangs at its own hull width off the rails (~0.26 m), not half a metre out in the air, and holds that offset steadily.
+KIND golden
+ARGS --time-accel 1 --sim-steps 600 --startship racer,res/ships/racer.json,Kerbin,pad
+ARGS --eva-log --no-paint --orbit-interval 0.25 --sim-press 1000,0,V
+LIMIT 20
+EXPECT [evalog]
+FORBID error:
+CHECK len(eva) >= 8
+CHECK all(e["mode"] == "ladder" and e["ladder"] != 0 for e in eva if e["t"] > 1.0)
+# The column exists on every hang row: hangoff is printed only for mode=ladder, so a row
+# without it is a row where the property is undefined.
+CHECK all(e["hangoff"] is not None for e in eva if e["mode"] == "ladder")
+# Measured 0.261 m, every row. The lower bound is the suit's own half-width (0.199): below it
+# the body is inside the rails. The upper bound is where the old margin-era constant parked it
+# (0.45 commanded, ~0.43 measured), so the regression this case exists for reads red here.
+CHECK all(0.20 < e["hangoff"] < 0.32 for e in eva if e["t"] > 1.5)
+# Steadiest thing in the family: the servo holds the offset, so the spread over the hang is
+# centimetres, not the 0.1 m a pumping or sliding body would show.
+CHECK (lambda es: max(e["hangoff"] for e in es) - min(e["hangoff"] for e in es) < 0.02)([e for e in eva if e["t"] > 1.5])
+# The offset is sideways, not along the ladder: a kerbal that slid down toward the bottom end
+# would keep hangoff and lose altitude, so both are pinned. alt sits at 10.69 m through the run.
+CHECK max(e["alt"] for e in eva if e["t"] > 1.5) - min(e["alt"] for e in eva if e["t"] > 1.5) < 0.05
+CHECK all(max(abs(c) for c in e["vel"]) < 0.5 for e in eva if e["t"] > 1.5)

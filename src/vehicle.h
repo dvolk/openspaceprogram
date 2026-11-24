@@ -2149,6 +2149,14 @@ public:
                        double reach, double &dist, glm::dvec3 &hit,
                        glm::dvec3 &n);
 
+    /* --leg-log: one row per gear wheel / leg footpad, printed from the tick
+       (not the substep loop) by re-running the same contact ray. gap= is the
+       distance from the part's DRAWN mesh bottom -- the lowest vertex of its
+       convex hull, which today agrees with the def face it contacts (leg_foot
+       0.05, wheel_radius 0.35) -- to the ground; that is the float the player
+       sees (#1158). A no-op for a hull with neither. */
+    void logLegContacts(double t);
+
     /* Brakes: the parking latch. Spawn sets it, O toggles it, and it travels in
        the save as the player's control state. (A ship parked on a balloon
        platform rests at v=0 in the building's bubble frame, #850 -- parking no

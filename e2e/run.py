@@ -531,6 +531,19 @@ EVA_RE = re.compile(
     # #1073: the grabbed ladder part's uid (0 = not on a ladder). Optional, so
     # the pre-ladder grammar still parses.
     r"(?:\s+ladder=(\d+))?"
+    # #1158: how far off the grabbed ladder's line the body actually hangs, along
+    # the ladder's out normal (ladder rows only). Optional, same reason.
+    r"(?:\s+hangoff=([-\d.]+) m)?"
+)
+# --leg-log (#1158): one row per suspension element -- a gear wheel or a leg
+# footpad -- and where its own DRAWN contact face sits relative to the ground.
+# gap= is that distance (the visible float the ticket is about; "air" when the
+# contact ray misses), comp= is the suspension compression the ride height comes
+# from, travel= the stroke the part was authored with.
+LEGLOG_RE = re.compile(
+    r"\[leglog\]\s+t=([\d.]+)s\s+(.+?)\s+(leg|gear)\s+uid=(\d+)\s+"
+    r"mesh=([-\d.]+) m\s+(?:gap=air|gap=([-\d.]+) m)\s+"
+    r"comp=([-\d.]+) m\s+travel=([-\d.]+)\s+k=([-\d.]+)"
 )
 DRAINLOG_RE = re.compile(
     r"\[drainlog\]\s+t=([\d.]+)s\s+dt=([\d.]+)s\s+ship=\"([^\"]*)\"\s+"
@@ -854,6 +867,7 @@ ROW_PARSERS = [
     ("surfmark", SURFMARK_RE, "world"),
     ("solar", SOLAR_RE, "world"), ("slew", SLEW_RE, "world"), ("perf", PERF_RE, "out"),
     ("toast", TOAST_RE, "out"), ("att", ATT_RE, "world"), ("eva", EVA_RE, "world"),
+    ("leg", LEGLOG_RE, "world"),
     ("drainlog", DRAINLOG_RE, "world"), ("power", POWER_RE, "world"), ("dv", DV_RE, "world"),
     ("mass", MASS_RE, "world"), ("drag", DRAG_RE, "world"), ("shake", SHAKE_RE, "world"),
     ("cam", CAM_RE, "world"), ("terrain", TERRAIN_RE, "world"), ("surf", SURF_RE, "world"),
@@ -1779,7 +1793,7 @@ def parse_eva(out):
     rows = []
     for m in EVA_RE.finditer(out):
         (t, mode, grounded, px, py, pz, vx, vy, vz,
-         fx, fy, fz, alt, viewyaw, rcs, mass, ladder) = m.groups()
+         fx, fy, fz, alt, viewyaw, rcs, mass, ladder, hangoff) = m.groups()
         rows.append({
             "t": float(t), "mode": mode, "grounded": int(grounded),
             "pos": (float(px), float(py), float(pz)),
@@ -1794,6 +1808,30 @@ def parse_eva(out):
             "mass": float(mass) if mass is not None else None,
             # the grabbed ladder part's uid, 0 = none (#1073).
             "ladder": int(ladder) if ladder is not None else None,
+            # how far off the ladder line the body hangs, along its out normal
+            # (#1158). The suit hull is +-0.199 m, so ~0.28 is hugging the rails.
+            "hangoff": float(hangoff) if hangoff is not None else None,
+        })
+    return rows
+
+
+def parse_leglog(out):
+    rows = []
+    for m in LEGLOG_RE.finditer(out):
+        t, ship, kind, uid, mesh, gap, comp, travel, k = m.groups()
+        rows.append({
+            "t": float(t), "ship": ship, "kind": kind, "uid": int(uid),
+            # Where the bottom of the DRAWN mesh sits, part-local: negative, and
+            # the negation of the def's leg_foot / wheel_radius. #1158 is about
+            # this column matching the gap column.
+            "mesh": float(mesh),
+            # How far that mesh bottom floats above the ground it stands on. None
+            # when the leg is in the air ("gap=air"), which is what a hop row looks
+            # like -- a row with a gap is a row that is touching something.
+            "gap": float(gap) if gap is not None else None,
+            # Suspension compression, 0..travel. The ride height is travel - comp,
+            # so a gap and a comp cannot both be small unless travel is small.
+            "comp": float(comp), "travel": float(travel), "k": float(k),
         })
     return rows
 
@@ -2681,6 +2719,7 @@ def run_case(case):
     att = parse_scoped(world, parse_att)
     ascent = parse_scoped(world, parse_ascent)
     eva = parse_scoped(world, parse_eva)
+    leg = parse_scoped(world, parse_leglog)
     fuel = parse_scoped(world, parse_fuel)
     drainlog = parse_scoped(world, parse_drainlog)
     power = parse_scoped(world, parse_power)
@@ -2720,7 +2759,7 @@ def run_case(case):
     rec_all, rec_any = recording_aggregates(vacuous)
     ns = {
         "out": out, "orbit": orbit, "dbg": dbg, "bldg": bldg, "xfer": xfer,
-        "porkchop": porkchop, "surfmap": surfmap, "surfmark": surfmark, "solar": solar, "att": att, "ascent": ascent, "eva": eva,
+        "porkchop": porkchop, "surfmap": surfmap, "surfmark": surfmark, "solar": solar, "att": att, "ascent": ascent, "eva": eva, "leg": leg,
         "fuel": fuel, "drainlog": drainlog, "power": power, "dv": dv, "mass": mass,
         "drag": drag, "shake": shake,
         "rec": rec,
