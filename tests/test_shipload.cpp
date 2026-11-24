@@ -20,6 +20,7 @@
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <sstream>   // #1170: the ring-radius pin reads a mesh's vertex lines
 #include <dirent.h>
 #include <stdexcept>
 #include <string>
@@ -379,6 +380,86 @@ int main() {
         CHECK(cap.hasExtents);
         CHECK(vnear(cap.lo, glm::dvec3(-1.0, -1.0, -1.0)));
         CHECK(vnear(cap.hi, glm::dvec3( 1.0,  1.0,  1.0)));
+        /* The flat-nosed 2 m capsule (#1170). The cone above is 2 m across at its
+           base and 0.5 m at its top, so the 2 m docking port that caps a crew
+           cabin overhangs it by 0.75 m: the bore still stacks, but the flange
+           hangs in the air beside the shoulder. A cylinder whose top ring is as
+           wide as its base lands that port flush. PartDef's bounding box cannot
+           tell the two shapes apart -- both measure 2x2x2 -- so the flat top is
+           pinned by reading the ring radii back out of the mesh bytes. */
+        {
+            const MeshGeom cyl = readMeshGeom("meshes/capsule_cyl_r1h2.obj");
+            CHECK(cyl.readable);
+            CHECK(cyl.hasExtents);
+            CHECK(vnear(cyl.lo, glm::dvec3(-1.0, -1.0, -1.0)));
+            CHECK(vnear(cyl.hi, glm::dvec3( 1.0,  1.0,  1.0)));
+            // Widest vertex ring at one z. The cap centres sit at r = 0 on the
+            // same planes, so they never win this against a real ring.
+            auto ringMax = [](const std::string &bytes, double z) {
+                double best = -1.0;
+                std::istringstream in(bytes);
+                std::string ln;
+                while(std::getline(in, ln)) {
+                    double x = 0.0, y = 0.0, vz = 0.0;
+                    if(ln.size() > 2 && ln[0] == 'v' && ln[1] == ' '
+                       && 3 == sscanf(ln.c_str() + 2, "%lf %lf %lf", &x, &y, &vz)
+                       && std::fabs(vz - z) <= 1e-4) {
+                        const double r = std::sqrt(x * x + y * y);
+                        if(r > best) best = r;
+                    }
+                }
+                return best;
+            };
+            const PartDef *cylDef = cat.find("capsule_cyl_r1h2");
+            CHECK(cylDef != nullptr);
+            const PartDef *cone = cat.find("capsule");
+            CHECK(cone != nullptr);
+            if(cylDef != nullptr && cone != nullptr) {
+                const double top = ringMax(cyl.bytes, cylDef->height / 2.0);
+                const double bot = ringMax(cyl.bytes, -cylDef->height / 2.0);
+                CHECK(top > 0.0);
+                CHECK(near(top, cylDef->radius));   // straight wall, both ends
+                CHECK(near(bot, cylDef->radius));
+                CHECK(near(top, bot));
+                CHECK(near(ringMax(cap.bytes, cone->height / 2.0), 0.25));
+                /* The flush fact against the part that cares: the shipped 2 m
+                   port's radius IS the nose's radius, so its flange lands on the
+                   face instead of 0.75 m out over the cone's shoulder. */
+                const PartDef *port = cat.find("docking_port_r1");
+                CHECK(port != nullptr);
+                if(port != nullptr) CHECK(near(top, port->radius));
+
+                // Behaviour is type-derived, so only the part's own scale is
+                // authored: 2 crew (a 6.24 m^3 cabin, against the cone's 2.73),
+                // and life support and the battery both price per crew -- exactly
+                // twice the 1-crew cone's figures below.
+                CHECK(cylDef->type == "capsule");
+                CHECK(cylDef->crew_capacity == 2);
+                CHECK(cylDef->experiment_storage == ExpStorage::Container);
+                CHECK(near(cylDef->powerConstW(), 2.0 * cone->powerConstW()));
+                CHECK(near(cylDef->batteryWh(), 2.0 * cone->batteryWh()));
+                CHECK(cylDef->isLadder());
+                CHECK(near(cylDef->ladder_out.x, 1.0));   // straight off the wall
+                /* A cylinder is mirror-symmetric about its midplane, so nose-in
+                   and base-in must pay the same Cd. The cone's 0.35 forward is
+                   its pointed shoulder; copying it would make one end of a
+                   straight wall a spoiler and the other a parachute. */
+                CHECK(near(cylDef->drag_forward, 1.0));
+                CHECK(near(cylDef->drag_backward, cylDef->drag_forward));
+                CHECK(cylDef->drag_side < cylDef->drag_forward);
+                /* 1142.45, not the cone's 1149.82: gen_parts.py weighs a
+                   watertight mesh at its real volume (6.24 m^3 for 32 straight
+                   sides) and only falls back to the bounding cylinder (6.283 m^3)
+                   when the mesh is open, as the Blender cone's is. So a heavier
+                   cylinder than its own bounding cylinder means a bad mesh. */
+                CHECK(cylDef->mass < cone->mass);
+                CHECK(near(cylDef->mass, 1142.45));
+                /* Same radius, same height, same family: without a shape word the
+                   VAB list shows two identical "Capsule (2m)" rows and the pilot
+                   buys the wrong one. */
+                CHECK(cylDef->display_name != cone->display_name);
+            }
+        }
         {
             const std::string f = "/tmp/test_extents_fallback.json";
             std::ofstream o(f);
@@ -744,12 +825,15 @@ int main() {
                 CHECK(near(d.ladder_a.y, 0.0));
                 CHECK(near(d.ladder_a.z, -d.height / 2.0));
                 CHECK(d.ladder_b.z > d.ladder_a.z);
-                CHECK(d.ladder_b.x < d.ladder_a.x);   // up the slope, inward
+                /* Up the hull. Cones come inward as they climb; a straight wall
+                   (#1170's cylinder capsule) keeps the same radius, so `<=` is
+                   the rule and `<` was an accident of the one shipped shape. */
+                CHECK(d.ladder_b.x <= d.ladder_a.x);
                 CHECK(std::fabs(glm::dot(d.ladder_out,
                                          d.ladder_b - d.ladder_a)) < 0.01);
             }
         }
-        CHECK(crewLadders >= 8);   // four capsules + four crewed fuselages
+        CHECK(crewLadders >= 8);   // five capsules + four crewed fuselages
 
         // A well-formed spec loads; out normalizes like a node dir.
         const char *lok = "/tmp/test_shipload_ladder.json";

@@ -1,0 +1,28 @@
+NAME cylinder-capsule-root-place
+CLAIM The palette offers the flat-nosed 2 m capsule under a label the cone's does not shadow, and a one-part hull rooted on it loads and flies at the catalog's mass.
+KIND invariant
+# The two 2 m capsules share radius, height and family, so the VAB row is the only
+# place a player can tell them apart: a palette click that lands on the cone instead
+# of the tube builds the wrong hull silently. The mass row is what says the MESH came
+# with it -- the catalog figure is derived from the mesh's own volume, and a part that
+# failed to load would not be a hull at all.
+ARGS --timeout 11.5 --mass-log
+ARGS --ui-click 1000,"Title Menu/New Game"
+ARGS --ui-click 1600,"New Game/Start"
+ARGS --sim-press 2600,0,4
+ARGS --sim-press 3100,0,F1
+ARGS --ui-click 3600,"Game Debug/Dev vehicles in the VAB picker"
+ARGS --sim-press 4100,0,F1
+ARGS --ui-click 4300,"Capsule (2m, cylinder)##capsule_cyl_r1h2"
+ARGS --sim-mouse 5000,0,960,540,LMB --ui-click 6000,"VAB TopBar/LAUNCH"
+EXPECT Main loop starting
+EXPECT [vab] entered the editor (sim keeps coasting)
+CHECK re.search(r"\[vab\] launched '.*' \(1 parts\)", out)
+# 1336.55 = the tube's catalog mass (1142.45 kg, which gen_parts.py weighs off the
+# mesh's own 6.24 m^3) plus two auto-filled seats at 97.05 kg each (87.05 kerbal +
+# 10 kg suit). So the row says both that the MESH loaded -- the figure comes from the
+# mesh's volume -- and WHICH of the two 2 m capsules got rooted: the cone with its
+# single seat reads 1246.87.
+CHECK (lambda ms: len(ms) >= 1 and all(abs(float(m) - 1336.55) < 0.01 for m in ms))(re.findall(r'\[mass\] t=\S+ ship="[^"]*" parts=1 mass=([\d.]+) kg', out))
+FORBID FAILED
+FORBID error:

@@ -218,6 +218,14 @@ DRAG_CD = {
 # with no slipstream face along its own axis, so it has no low-drag side.
 DRAG_CD_BY_NAME = {
     "rcs_box":        {"drag": 0.8, "drag_side": 1.1},
+    # The flat-topped capsule (#1170). The cone family's 0.35 forward is what a
+    # pointed shoulder buys; this part has two flat discs and a straight wall, so
+    # neither end is streamlined. A cylinder is mirror-symmetric about its own
+    # midplane, so forward and backward MUST agree -- an asymmetric pair here would
+    # be billing a force that reversing the flow cannot produce. Blunt bodies sit
+    # near 1.0 against their own silhouette, which is what the area terms use.
+    "capsule_cyl_r1h2": {"drag": 1.0, "drag_forward": 1.0, "drag_side": 0.9,
+                         "drag_backward": 1.0},
 }
 
 # The Cd family those tables write. It is NOT a legal EXTRA_FIELDS key: that
@@ -234,6 +242,12 @@ PARTS = [
     ("capsule_r0.5h1.5", "capsule",        "meshes/capsule_r0.5h1.5.obj",         "textures/capsule.png"),
     ("capsule_r1.5h3",   "capsule",        "meshes/capsule_r1.5h3.obj",           "textures/capsule.png"),
     ("capsule_r2.25h4.5","capsule",        "meshes/capsule_r2.25h4.5.obj",        "textures/capsule.png"),
+    # The flat-topped pod (#1170). Every other capsule is a truncated cone whose top
+    # radius is a quarter of its base, so a 2 m docking port (docking_port_r1, radius
+    # 1.0) bolted on top sits on a slope with 0.75 m of ring overhanging the
+    # shoulder. Same radius and height as `capsule`, straight wall: the port's radius
+    # IS the capsule's, so it lands flush and its bore stays on the stack axis.
+    ("capsule_cyl_r1h2", "capsule",        "meshes/capsule_cyl_r1h2.obj",         "textures/capsule.png"),
     ("fuselage_r0.4h4",  "fuselage",       "meshes/fuselage_r0.4h4.obj",          "textures/capsule.png"),
     ("fuselage_r0.5h3.5","fuselage",       "meshes/fuselage_r0.5h3.5.obj",        "textures/capsule.png"),
     ("fuselage_r0.5h6",  "fuselage",       "meshes/fuselage_r0.5h6.obj",          "textures/capsule.png"),
@@ -378,6 +392,13 @@ EXTRA_FIELDS = {
     "capsule_r0.5h1.5":  {"crew_capacity": 1, "experiment_storage": "container"},
     "capsule_r1.5h3":    {"crew_capacity": 3, "experiment_storage": "container"},
     "capsule_r2.25h4.5": {"crew_capacity": 6, "experiment_storage": "container"},
+    # 2 crew, not the cone's 1: the straight wall is what buys it. The cabin a
+    # kerbal actually fits in is 6.24 m3 against the cone r1h2's 2.73, and the
+    # family's own ladder (1m:1, 2m cone:1, 3m:3, 4.5m:6) puts that volume between
+    # the 2 m cone and the 3 m one. Life support and the built-in battery ride this
+    # number (CAPSULE_LIFE_SUPPORT_W_PER_CREW / _BATTERY_WH_PER_CREW), so the pod
+    # that carries two also drains for two.
+    "capsule_cyl_r1h2": {"crew_capacity": 2, "experiment_storage": "container"},
     "fuselage_r0.4h4":   {"crew_capacity": 1, "mass": 130.0},
     "fuselage_r0.5h3.5": {"crew_capacity": 2, "mass": 180.0},
     "fuselage_r0.5h6":   {"crew_capacity": 2, "mass": 220.0},
@@ -676,6 +697,12 @@ def display_name_for(name, ptype, radius, height):
         if m:
             return "%s %s to %s" % (base, clean(m.group(1)), clean(m.group(2)))
         return base
+    # The straight-walled pods say so: at 2 m a cylinder and the shipped cone are
+    # otherwise two palette rows reading "Capsule (2m)" with nothing to tell a
+    # player which one takes a docking port flush (#1170). Prefix rule, so a 3 m
+    # cylinder inherits the label instead of a per-name exception.
+    if name.startswith("capsule_cyl"):
+        return "%s (%sm, cylinder)" % (base, clean(radius * 2.0))
     # base name + DIAMETER (radius * 2); tanks also carry height
     d = clean(radius * 2.0)
     if ptype in ("fuel_tank", "jet_tank"):

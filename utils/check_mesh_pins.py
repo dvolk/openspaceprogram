@@ -79,6 +79,12 @@ PINS = [
      ["meshes/adapter_r2.25to1.5.obj"]),
     ("gen_adapter.py", ["--r1", "2.25", "--r2", "1", "--height", "1.125"],
      ["meshes/adapter_r2.25to1.obj"]),
+    # The flat-topped capsule (#1170) is the same shape family with equal radii: a
+    # frustum whose top is as wide as its base is a straight wall. Reusing the
+    # adapter's generator rather than writing a second 60-line one that would differ
+    # from it in nothing but the name in the header.
+    ("gen_adapter.py", ["--r1", "1", "--r2", "1", "--height", "2"],
+     ["meshes/capsule_cyl_r1h2.obj"]),
     # Shrouds: r is 0.98x the engine it wraps, so the name does not carry it.
     ("gen_engine_shroud.py", ["--radius", "0.98", "--height", "2"], ["meshes/engine_shroud.obj"]),
     ("gen_engine_shroud.py", ["--radius", "1.47", "--height", "3"],

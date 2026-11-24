@@ -2236,15 +2236,23 @@ def parse_ui_actions(out):
 def ui_actions(args):
     """The UI actions a case schedules, as [(flag, tag, path)] in schedule order.
     Read off the tokenized ARGS, which is what the game receives: the value is
-    MS,"PATH"[,extra], so the path is the second comma field -- and for a click,
-    the last (a click takes no third field, and no shipped label holds a comma)."""
+    MS,"PATH"[,extra]. Split the way cli.cpp splits it, per flag -- a click's path
+    runs to the end of the value because a label can hold a comma ("Capsule (2m,
+    cylinder)", #1170), a scroll's TARGET ends at the LAST comma (NOTCHES is the
+    trailing int), and --ui-type is the one flag whose path cannot hold a comma
+    (TEXT follows the next one)."""
     out = []
     for i, tok in enumerate(args):
         tag = UI_ACTION_FLAGS.get(tok)
         if tag is None or i + 1 >= len(args):
             continue
         _ms, _, rest = args[i + 1].partition(",")
-        path = rest.split(",")[0] if tag == "uiclick" else rest.partition(",")[0]
+        if tag == "uiclick":
+            path = rest
+        elif tag == "uiscroll":
+            path = rest.rpartition(",")[0]
+        else:
+            path = rest.partition(",")[0]
         out.append((tok, tag, path))
     return out
 
@@ -3623,6 +3631,19 @@ def self_test():
                                          "Settings/Apply DPI"]:
         fails.append("the scheduled UI actions were not read off ARGS: %r"
                      % (ui_specs,))
+    # A label that holds a comma is the trap. cli.cpp splits a CLICK's path to the
+    # end of the value and a SCROLL's TARGET at the LAST comma, so a guard that
+    # splits at the first one names a path the game never printed and reddens a
+    # case that clicked fine -- which is what #1170's "Capsule (2m, cylinder)" did.
+    comma_specs = ui_actions(shlex.split(
+        '--ui-click 4300,"Capsule (2m, cylinder)##capsule_cyl_r1h2" '
+        '--ui-scroll 4500,"Save/Load,slot 1",3 '
+        '--ui-type 4700,"##newgame_name",my,game'))
+    if [(t, p) for _f, t, p in comma_specs] != [
+            ("uiclick", "Capsule (2m, cylinder)##capsule_cyl_r1h2"),
+            ("uiscroll", "Save/Load,slot 1"),
+            ("uitype", "##newgame_name")]:
+        fails.append("a comma-bearing UI path was mis-split: %r" % (comma_specs,))
     all_rows = ui_clicks + ui_types + ui_scrolls
     pinned = ['path="Settings/Apply DPI" FAILED disabled']
     if ui_action_gaps(ui_specs, all_rows, pinned) != (
@@ -3715,7 +3736,8 @@ def self_test():
           "every world-scoped row stamped with the vessel that was active when it "
           "printed, in line order, and [mass]'s own ship= kept; a scripted UI action "
           "the game never reported, and a FAILED line with no EXPECT behind it, both "
-          "named; regex-shaped EXPECT/FORBID refused at parse while literal text "
+          "named, and a click or scroll path that holds a comma split the way cli.cpp "
+          "splits it; regex-shaped EXPECT/FORBID refused at parse while literal text "
           "containing brackets stays legal; re.search, walrus, comprehension and "
           "immediately-called lambda CHECKs accepted; CHECK failed/raised wording "
           "intact; a batch selector that matches no case named and the run refused "
