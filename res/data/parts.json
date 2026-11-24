@@ -161,7 +161,7 @@
       "type": "capsule",
       "display_name": "Capsule (2m, cylinder)",
       "mesh": "meshes/capsule_cyl_r1h2.obj",
-      "texture": "textures/capsule.png",
+      "texture": "textures/capsule_cyl.png",
       "mass": 1142.45,
       "radius": 1.0,
       "height": 2.0,

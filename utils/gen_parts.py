@@ -247,7 +247,11 @@ PARTS = [
     # 1.0) bolted on top sits on a slope with 0.75 m of ring overhanging the
     # shoulder. Same radius and height as `capsule`, straight wall: the port's radius
     # IS the capsule's, so it lands flush and its bore stays on the stack axis.
-    ("capsule_cyl_r1h2", "capsule",        "meshes/capsule_cyl_r1h2.obj",         "textures/capsule.png"),
+    # Its own texture, not the cone's: capsule.png is painted face-by-face for the
+    # cone's islands, and the tube's wall is a different set of patches entirely. It
+    # starts as one flat fill at the cone's dominant colour (41,41,41) -- a canvas to
+    # draw on rather than a picture borrowed from a different shape.
+    ("capsule_cyl_r1h2", "capsule",        "meshes/capsule_cyl_r1h2.obj",         "textures/capsule_cyl.png"),
     ("fuselage_r0.4h4",  "fuselage",       "meshes/fuselage_r0.4h4.obj",          "textures/capsule.png"),
     ("fuselage_r0.5h3.5","fuselage",       "meshes/fuselage_r0.5h3.5.obj",        "textures/capsule.png"),
     ("fuselage_r0.5h6",  "fuselage",       "meshes/fuselage_r0.5h6.obj",          "textures/capsule.png"),
