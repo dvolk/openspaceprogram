@@ -1,0 +1,44 @@
+NAME approach-ladder-points-out-of-the-targeted-port
+CLAIM A targeted docking port shows a ladder of 2 m squares normal out of the face it presents to the armed hull, and the ladder goes away when the dock consumes the intent.
+KIND invariant
+# --dock-test approach arms dockprobe's port at dockstation's and closes at 0.09 m/s, so
+# the intent -- the thing #1146 draws on -- is live from the first painted frame and dies at
+# the mate about 2.2 s in. The ladder is ten GL_LINE_LOOP draws in the world pass with depth
+# on: no stdout row can prove a rasterizer lit them, so every CHECK below is against the
+# placement the painter was handed, and none of them claims pixels.
+#   rungs/edge/step  what is drawn, from the constants in vehicle.h. The ticket's numbers
+#                    (2 m squares, every 2 m, 20 m of ladder) are tuning, not physics; the
+#                    unit test in tests/test_dock.cpp pins them there too, so a retune is a
+#                    decision made twice rather than a surprise in render.cpp.
+#   axis             the port's bore, unit length. A ladder that ignored the port's own
+#                    frame -- screen-oriented instead of port-oriented -- still prints a unit
+#                    vector here, so this column alone does not pin "oriented with the port";
+#                    the ru/rv pins in the unit test do. What it DOES pin is that the mouth
+#                    the rungs run out of is the bore the capture gate measures along.
+#   along/near       how far out from the face the mating hull stands, and which rung that
+#                    highlights. This pair starts 0.30 m of face gap short and closes, so
+#                    along sits inside the first rung the whole run: near is 1, not 0, which
+#                    is the clamp that keeps a highlight at all inside the first step. The
+#                    trend between consecutive rows is the closing rate -- 0.09 m/s at 1 s
+#                    rows -- so the ladder's own measure of the approach is tied to the
+#                    approach, not to a plausible constant.
+#   drawn=0 why=     the intent is consumed by the mate (Game::updateDocking clears both
+#                    halves), so the ladder stops. A row for the negative branch matters for
+#                    the same reason #873's does: a feature that silently stopped drawing is
+#                    otherwise indistinguishable from one that never ran.
+ARGS --dock-test approach --time-accel 1 --timeout 8 --dockhud-log --orbit-interval 1.0
+EXPECT Dock-test (approach)
+EXPECT [dock] t=
+EXPECT [dockhud] t=
+# The three constants the painter reads, on every row it drew.
+CHECK (lambda r: len(r) >= 2 and all(a[0] == "10" and a[1] == "2.00" and a[2] == "2.00" for a in r))(re.findall(r'\[dockhud\] t=\S+ target="dockstation" port=docking_port_r1 rungs=(\d+) edge=([-\d.]+) m step=([-\d.]+) m ', out))
+# The bore the rungs run out of is unit length, the mating hull stands inside the first rung
+# (0.30 m of face gap opening, closing), and that rung is the highlighted one.
+CHECK (lambda r: len(r) >= 2 and all(abs(sum(float(v) * float(v) for v in a[0].split()) - 1.0) < 1e-3 and 0.05 < float(a[1]) < 1.0 and a[2] == "1" for a in r))(re.findall(r'axis=\[([-\d. ]+)\] along=([-\d.]+) m near=(\d+) drawn=1', out))
+# Two rows 1 s apart, closing at the fixture's 0.09 m/s. The band is the print step of the
+# gate rather than the physics: the same two rows measured 0.347 -> 0.255, so 0.092. (One
+# capture group, so findall hands back strings, not 1-tuples -- r[0] is a whole number here.)
+CHECK (lambda r: len(r) >= 2 and abs((float(r[0]) - float(r[1])) - 0.09) < 0.03)(re.findall(r'\[dockhud\] t=\S+ target="dockstation" port=docking_port_r1 rungs=\d+ edge=[-\d.]+ m step=[-\d.]+ m face=\[[-\d. ]+\] m axis=\[[-\d. ]+\] along=([-\d.]+) m near=\d+ drawn=1', out))
+# And it stops once the dock has consumed the intent.
+CHECK re.search(r'\[dockhud\] t=\S+ drawn=0 why=no-target', out) is not None
+FORBID error:

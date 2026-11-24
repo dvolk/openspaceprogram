@@ -701,6 +701,7 @@ enum LogGate { kGateOrbit, kGateDbg, kGateInfo, kGateAtt, kGateShake,
                kGateSpin, kGateMass, kGateFuel, kGateDrain, kGatePower,
                kGateSteer, kGateSlew, kGateAscent, kGateRec, kGateSolar,
                kGateBldg, kGateRelVel, kGateSurfMark, kGateTgtMark, kGateLeg,
+               kGateDockHud,
                kGateCount };
 
 /* A headless test hook (cli.h --atlas-dump / --map-dump): fires act() once,
@@ -1100,6 +1101,9 @@ struct Game {
     // Unit segment 0 -> +X. --cam-gizmo draws it once per axis with the axis
     // and its length composed into the MVP (#876).
     Mesh *cam_gizmo_seg = nullptr;
+    // 1 m square in its own XY plane (GL_LINE_LOOP). The #1146 docking approach ladder
+    // is this mesh placed by a targeted port's basis, one draw per rung.
+    Mesh *dock_rung_sq = nullptr;
     Billboard *front_indicator = nullptr;
     Billboard *prograde_indicator = nullptr;
     Billboard *retrograde_indicator = nullptr;

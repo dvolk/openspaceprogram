@@ -6364,6 +6364,31 @@ double Vehicle::dockStandoff(const Part *pa, const Part *pb) {
     return effectiveHullMargin(pa->body) + effectiveHullMargin(pb->body);
 }
 
+void Vehicle::dockFace(const Part *p, const glm::dvec3 &pP, const glm::dmat3 &pR,
+                       const glm::dvec3 &toward, glm::dvec3 &axis, glm::dvec3 &face) {
+    assert(p != nullptr && p->def != nullptr);   // a built part with a def: every caller
+    const double s = (glm::dot(pR[2], toward - pP) >= 0.0) ? 1.0 : -1.0;
+    axis = pR[2] * s;
+    face = pP + axis * (p->def->height * 0.5);
+}
+
+Vehicle::DockLadder Vehicle::dockLadder(const Part *port,
+                                        const glm::dvec3 &approachFrom) const {
+    DockLadder l;
+    if(port == nullptr || !port->isDockingPort()) { return l; }
+    glm::dvec3 pP;
+    glm::dmat3 pR;
+    partWorldPose(port, pP, pR);
+    dockFace(port, pP, pR, approachFrom, l.axis, l.face);
+    /* The squares lie on the port's own X and Y. That basis is chosen WITHOUT reference to
+       which face was picked, so the ladder keeps the port's roll when the mouth flips to the
+       other end: a rung plane has no side to get wrong. */
+    l.ru = pR[0];
+    l.rv = pR[1];
+    l.valid = true;
+    return l;
+}
+
 double Vehicle::dockCaptureRange(const Part *pa, const Part *pb) {
     if(pa == nullptr || pb == nullptr || pa->def == nullptr || pb->def == nullptr) {
         return 0.0;
@@ -6389,11 +6414,11 @@ Vehicle::DockRead Vehicle::dockRead(const Part *pa, const Vehicle *b,
     const double d = glm::length(dir);
     if(d < 1e-9) { return r; }   // measurable stays false
     const glm::dvec3 n = dir / d;
-    // Each port presents the face closest to the other part: +Z or -Z.
-    const double sA = (glm::dot(paR[2], dir) >= 0.0) ? 1.0 : -1.0;
-    const double sB = (glm::dot(pbR[2], paP - pbP) >= 0.0) ? 1.0 : -1.0;
-    const glm::dvec3 axisA = paR[2] * sA;
-    const glm::dvec3 axisB = pbR[2] * sB;
+    /* Each port presents the face closest to the other part: +Z or -Z. One helper, so the
+       snap (#1153) and the ladder (#1146) cannot drift from what the gate measured. */
+    glm::dvec3 axisA, faceA, axisB, faceB;
+    dockFace(pa, paP, paR, pbP, axisA, faceA);
+    dockFace(pb, pbP, pbR, paP, axisB, faceB);
     r.measurable = true;
     r.portRange = d;
     r.axisCosA = glm::dot(axisA, n);
@@ -6414,8 +6439,6 @@ Vehicle::DockRead Vehicle::dockRead(const Part *pa, const Vehicle *b,
     const double lineCos = glm::dot(axisA, n);
     r.turnYaw = std::atan2(glm::dot(crossA, -keyR[1]), lineCos);   // yaw-right (D)
     r.turnPitch = std::atan2(glm::dot(crossA, -keyR[0]), lineCos); // pitch-up (W)
-    const glm::dvec3 faceA = paP + axisA * (pa->def->height * 0.5);
-    const glm::dvec3 faceB = pbP + axisB * (pb->def->height * 0.5);
     r.faceGap = glm::length(faceA - faceB);
     r.captureRange = dockCaptureRange(pa, pb);
     const glm::dvec3 rv = partVel(pa) - b->partVel(pb);
@@ -6599,12 +6622,9 @@ void Vehicle::absorbShip(Vehicle *B, Part *portA, Part *portB, DockSnap *snap) {
         /* dockRead's bail, at its threshold: coincident centres give no line, so neither
            face is THE presented one and there is nothing well-defined to close. */
         if(glm::length(join) > 1e-9) {
-            const double sA = glm::dot(rotA[2], join) >= 0.0 ? 1.0 : -1.0;
-            const double sB = glm::dot(rotB[2], -join) >= 0.0 ? 1.0 : -1.0;
-            const glm::dvec3 axisA = rotA[2] * sA;
-            const glm::dvec3 axisB = rotB[2] * sB;
-            const glm::dvec3 faceA = posA + axisA * (portA->def->height * 0.5);
-            const glm::dvec3 faceB = posB + axisB * (portB->def->height * 0.5);
+            glm::dvec3 axisA, faceA, axisB, faceB;
+            dockFace(portA, posA, rotA, posB, axisA, faceA);
+            dockFace(portB, posB, rotB, posA, axisB, faceB);
             /* The MINIMAL turn that sets the two bores against each other: about the axis
                both are already in, so nothing else about either hull moves. A zero-length
                cross means the bores are already anti-parallel (nothing to do), or that the

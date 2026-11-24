@@ -159,6 +159,10 @@ struct GameArgs {
        vector the billboard was actually handed. A billboard leaves no other
        face, but a row records a placement, not pixels. */
     bool tgtmark_log = false;
+    /* The docking approach ladder (#1146): the face and bore the rungs were placed from,
+       how far up it the mating hull stands, and whether the ladder was drawn at all. Ten
+       line loops leave no other face. */
+    bool dockhud_log = false;
     bool porkchop_log = false;   // the launch-window grid min
     int porkchop_n = 256;
     std::vector<int> porkchop_bench; // sweep these sizes off one snapshot

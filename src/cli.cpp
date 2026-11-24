@@ -636,6 +636,15 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                  "whether it drew. The mark is a billboard, so this is its only "
                  "face -- it records the placement, not the pixels");
 
+    app.add_flag("--dockhud-log", args.dockhud_log,
+                 "Periodically print what the docking approach ladder (#1146) was "
+                 "placed by: the targeted port and its ship, the rung count and "
+                 "spacing, the presented face and bore axis in the active ship's "
+                 "frame, how far out along that axis the mating hull stands and "
+                 "which rung that highlights, and whether the ladder drew (with the "
+                 "reason when it did not). Ten line loops leave no other face -- this "
+                 "records the placement, not the pixels");
+
     app.add_option("--transfer-target", args.transfer_target,
                    "Transfer planner target: a child body of the ship's "
                    "current body, another ship in the same body, or an "

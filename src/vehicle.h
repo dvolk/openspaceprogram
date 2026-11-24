@@ -2497,6 +2497,40 @@ public:
     static constexpr double kDockAlign   = 0.996195; // cos(5 deg) axis misalignment
     static constexpr double kDockMaxV    = 0.15;     // m/s relative speed at capture
 
+    /* Which face a port presents toward a point, and its outward normal there: the port's
+       +Z or -Z, whichever faces `toward`, at +-def->height/2 off its centre. Three passes
+       need that choice and have to make it the same way -- dockRead() for both halves of a
+       pair, absorbShip()'s snap (#1153) for the seam it closes, and the approach ladder
+       (#1146) for the mouth it runs out of -- so a rung on screen cannot disagree with the
+       gap the gate measured. All three vectors are in ONE frame, whichever the caller is
+       already working in; nothing here lifts between frames. */
+    static void dockFace(const Part *p, const glm::dvec3 &pP, const glm::dmat3 &pR,
+                         const glm::dvec3 &toward, glm::dvec3 &axis, glm::dvec3 &face);
+
+    /* The approach ladder (#1146): squares normal out of the port a hull has targeted, so
+       the line to fly and the port's own roll are visible in the world and not only as
+       numbers in the Docking window. Their size is a tuning number for the eye, not
+       physics -- nothing in the docking law reads them -- but they are named here so the
+       drawn ladder and its log line cannot disagree about what a rung is. */
+    static constexpr double kDockRungEdge = 2.0;   // m across each square
+    static constexpr double kDockRungStep = 2.0;   // m between rung centres
+    static constexpr int kDockRungCount = 10;      // -> 20 m of ladder
+    struct DockLadder {
+        bool valid = false;
+        /* Everything in the PORT's own ship's frame; the painter lifts once. Rung n sits
+           at face + axis * (kDockRungStep * n) for n = 1..kDockRungCount -- the first rung
+           is a step out, not on the face itself, so it never lies in the port's own skin.
+           ru/rv are the port's own in-plane axes: the squares ride the port's roll rather
+           than the screen's, which is what "oriented with the port" means. */
+        glm::dvec3 face;
+        glm::dvec3 axis;   // out of that face: the rung plane's normal
+        glm::dvec3 ru, rv;
+    };
+    /* The ladder for one of THIS ship's ports, measured toward `approachFrom` -- the point
+       the mating hull is coming from, in the same frame. Not a DockRead: the ladder is one
+       port's geometry, drawn whether or not a second port is anywhere near it. */
+    DockLadder dockLadder(const Part *port, const glm::dvec3 &approachFrom) const;
+
     /* What these two ports look like to each other (#1026). ONE pass, shared by the
        dock gate and the Docking window, so a row a pilot reads cannot disagree with the
        rule that actually mates the hulls: the figures AND the three gate verdicts come

@@ -1441,6 +1441,20 @@ int main(int argc, char **argv)
         cam_gizmo_seg->InitMesh(seg);
     }
 
+    /* #1146: a 1 m square in its own XY plane, drawn GL_LINE_LOOP. The docking approach
+       ladder is this mesh scaled to the rung edge and placed by the port's own basis, so
+       ten rungs cost no per-rung buffers -- the same shape as the gizmo segment above. */
+    Mesh *dock_rung_sq = new Mesh;
+    {
+        PosInterface sq;
+        const float h = 0.5f;
+        sq.positions.push_back(glm::vec3(-h, -h, 0.0f));
+        sq.positions.push_back(glm::vec3(h, -h, 0.0f));
+        sq.positions.push_back(glm::vec3(h, h, 0.0f));
+        sq.positions.push_back(glm::vec3(-h, h, 0.0f));
+        dock_rung_sq->InitMesh(sq);
+    }
+
     game.skyboxshader = skyboxshader;
     game.lineshader = lineshader;
     // game.partsshader was set at boot, before anything minted a Part.
@@ -1451,6 +1465,7 @@ int main(int argc, char **argv)
     game.ref_node_an = ref_node_an;
     game.ref_node_dn = ref_node_dn;
     game.cam_gizmo_seg = cam_gizmo_seg;
+    game.dock_rung_sq = dock_rung_sq;
     game.front_indicator = front_indicator;
     game.prograde_indicator = prograde_indicator;
     game.retrograde_indicator = retrograde_indicator;

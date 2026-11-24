@@ -43,9 +43,19 @@
 //     look like two ships holding each other at arm's length, because absorbShip used to
 //     weld the pair at whatever gap the capture tick measured.
 //   - THE SNAP (#1153): pass absorbShip the mated port pair and the seam is pulled shut
-//     before the weld -- faces coincident, bores anti-parallel, the donor's twist about its
-//     own bore left exactly as it was -- with one rigid motion of the DONOR only. The
-//     survivor is the frame the merge speaks and must not jump.
+//     before the weld -- faces at the pair's own collision standoff (0 m at the shipped
+//     hull margins), bores anti-parallel, the donor's twist about its own bore left exactly
+//     as it was -- with one rigid motion of the DONOR only. The survivor is the frame the
+//     merge speaks and must not jump.
+//   - THE APPROACH LADDER (#1146): Vehicle::dockLadder -- the face, bore and in-plane basis
+//     a targeted port's rungs are placed from. It is ONE port's geometry, not a pair's, so
+//     it answers before anything is in range; it picks the mouth that faces the hull coming
+//     (the same sign rule dockRead uses, now shared through dockFace) and keeps the port's
+//     own roll for the squares. The cross-check that matters is here: for a pair parked
+//     face to face, the two ladders' faces ARE the pair faceGap is measured between and
+//     their axes ARE the pair the cone is tested against, so the HUD cannot disagree with
+//     the gate. Ten GL line loops leave no headless face at all, so this geometry is all of
+//     the feature a unit test can hold; e2e/cases/render/1146-a holds the placement log.
 //   - THE SITUATION OF AN INTENT (#1026): Vehicle::dockRead's figures and
 //     Vehicle::dockSituation's verdict -- the one pass that now decides a dock (the gate
 //     switches on it) AND feeds the Docking window, so the numbers a pilot reads are the
@@ -530,6 +540,94 @@ static void test_a_dock_snaps_the_seam_shut() {
     }
 
     destroyShip(B.v);   // the empty shell absorbShip left behind
+    destroyShip(A.v);
+}
+
+/* --- the #1146 approach ladder -------------------------------------------
+   A targeted port sprays squares normal out of its mouth so the approach line and the
+   port's roll are visible in the world. Ten GL line loops cannot be asserted from a
+   headless binary, so what is pinned here is the geometry the painter is handed, plus the
+   claim the whole feature rests on: that geometry comes out of the SAME face the capture
+   gate measures, so a rung cannot sit on the far side of a port the gate is closing. A
+   ladder is ONE port's geometry, not a pair's, so the fixture asks it before any second
+   port is in range at all. */
+static void test_the_approach_ladder_runs_out_of_the_presented_face() {
+    printf("== the approach ladder runs out of the face a port presents (#1146) ==\n");
+
+    /* A is ROLLED 25 deg about its own bore. A roll about Z leaves the bore and the port
+       centre where the unrolled fixtures put them, so the pair below stays the standard
+       face-to-face stack while the ladder's in-plane basis -- the thing that decides which
+       way the squares point -- stops being the world's. On an unrolled hull, ru == X and
+       rv == Y pass for the wrong reason. */
+    Ship A; A.v = new Vehicle; A.v->name = "A";
+    Part *tankA = mkPart(A, "tankA", 1000.0, 1.0, 1.0, kTankHz, false);
+    Part *portA = mkPart(A, "portA",   50.0, 1.0, 1.0, kPortHz, true);
+    A.v->setRoot(tankA);
+    A.v->attachDown(portA);
+    A.v->controller = tankA;
+    A.v->init();
+    A.v->placeShip(glm::dvec3(0.0), glm::mat3_cast(
+        glm::angleAxis(25.0 * std::numbers::pi / 180.0, glm::dvec3(0.0, 0.0, 1.0))));
+    const glm::dvec3 portAPos = worldPos(A.v, portA);
+    const glm::dmat3 portARot = A.v->partRot(portA);
+
+    /* Measured from below: the mouth that faces the hull coming from there. */
+    const Vehicle::DockLadder down = A.v->dockLadder(
+        portA, portAPos - portARot[2] * 10.0);
+    CHECK_TRUE(down.valid, "a docking port answers a ladder request");
+    CHECK_NEAR(glm::dot(down.axis, -portARot[2]), 1.0, 1e-12,
+               "the rungs run out of the face that looks at the approaching hull");
+    CHECK_NEAR(glm::length(down.face - (portAPos - portARot[2] * kPortHz)), 0.0, 1e-12,
+               "the first rung's plane is the presented face, def/2 off the port centre");
+    CHECK_NEAR(glm::dot(down.ru, portARot[0]), 1.0, 1e-12, "the square rides the port's own X");
+    CHECK_NEAR(glm::dot(down.rv, portARot[1]), 1.0, 1e-12, "and its Y, not the screen's");
+
+    /* The same port seen from the other end: a port has two mouths and the ladder picks the
+       near one, which is the sign rule dockRead() uses. Its in-plane basis does NOT flip --
+       a rung plane has no side to get wrong. */
+    const Vehicle::DockLadder up = A.v->dockLadder(portA, portAPos + portARot[2] * 10.0);
+    CHECK_NEAR(glm::dot(up.axis, portARot[2]), 1.0, 1e-12, "seen from above, the mouth flips");
+    CHECK_NEAR(glm::length(up.face - (portAPos + portARot[2] * kPortHz)), 0.0, 1e-12,
+               "and so does the face the rungs start from");
+    CHECK_NEAR(glm::dot(up.ru, down.ru), 1.0, 1e-12, "the squares keep the port's roll");
+
+    /* THE AGREEMENT. With a second hull parked face-to-face, the two ladders' mouths are
+       the two faces whose distance the gate calls faceGap, and their axes are the two axes
+       whose cosines kDockAlign is tested against. Nothing else in the game keeps the HUD
+       and the gate on the same rule; this does. */
+    Ship B; B.v = new Vehicle; B.v->name = "B";
+    Part *portB = mkPart(B, "portB",   50.0, 1.0, 1.0, kPortHz, true);
+    Part *tankB = mkPart(B, "tankB", 1000.0, 1.0, 1.0, kTankHz, false);
+    B.v->setRoot(portB);
+    B.v->attachDown(tankB);
+    B.v->controller = portB;
+    B.v->init();
+    B.v->placeShip(glm::dvec3(0.0, 0.0, -1.875), glm::dmat3(1.0));
+    const glm::dvec3 portBPos = worldPos(B.v, portB);
+    const Vehicle::DockRead r = A.v->dockRead(portA, B.v, portB);
+    const glm::dvec3 n = (portBPos - portAPos) / glm::length(portBPos - portAPos);
+    const Vehicle::DockLadder ladA = A.v->dockLadder(portA, portBPos);
+    const Vehicle::DockLadder ladB = B.v->dockLadder(portB, portAPos);
+    CHECK_NEAR(glm::dot(ladA.axis, n), r.axisCosA, 1e-12,
+               "my ladder's bore is the axis the gate measured");
+    CHECK_NEAR(glm::dot(ladB.axis, -n), r.axisCosB, 1e-12, "and theirs");
+    CHECK_NEAR(glm::length(ladA.face - ladB.face), r.faceGap, 1e-12,
+               "the two mouths are the pair faceGap is measured between");
+
+    /* Not a port, and no port at all: a ladder request has to say so rather than hand the
+       painter a face at the origin. */
+    CHECK_TRUE(!A.v->dockLadder(tankA, portBPos).valid, "a tank presents no mouth");
+    CHECK_TRUE(!A.v->dockLadder(nullptr, portBPos).valid, "and no port presents none");
+
+    /* The ticket's numbers, named once (the painter places rung i at face + axis * step * i
+       for i in 1..count, so count * step is the ladder's reach). A retune should trip here
+       and be a decision, not a surprise in the render code. */
+    CHECK_NEAR(Vehicle::kDockRungEdge, 2.0, 1e-12, "2 m squares");
+    CHECK_NEAR(Vehicle::kDockRungStep, 2.0, 1e-12, "every 2 m");
+    CHECK_NEAR(Vehicle::kDockRungCount * Vehicle::kDockRungStep, 20.0, 1e-12,
+               "for 20 m of ladder");
+
+    destroyShip(B.v);
     destroyShip(A.v);
 }
 
@@ -2152,6 +2250,7 @@ static void test_a_sideways_port_moves_the_dial_but_not_the_verdict() {
 int main() {
     test_absorb();
     test_a_dock_snaps_the_seam_shut();
+    test_the_approach_ladder_runs_out_of_the_presented_face();
     test_a_dock_keeps_the_pair_s_momentum();
     printf("\n");
     test_a_dock_keeps_the_pair_s_spin();
