@@ -40,10 +40,24 @@ DockTestShips build_dock_test_ships(const std::string &mode,
                                  "missing from the parts catalog");
     }
 
-    /* The COM-arc spacing that puts the port FACES `gap` metres apart in the aligned
-       modes (the arc is built from each hull's COM-to-port distance, so it holds for
-       their stacks as built, not for a yawed one -- see the banner below). */
-    double gap = 1.0;
+    /* Port CENTRE spacing along the orbit arc. The arc is built from each hull's
+       COM-to-port distance, so it holds for their stacks as built, not for a yawed one
+       (see the banner below). The FACES sit half a port depth closer on each side: two
+       25 cm r1 ports at a 1.0 m centre gap read a 0.75 m face gap, measured.
+       #1152 retuned these spacings, because the r1 pair now captures inside 0.10 m of
+       face gap rather than 1.5 m: a fixture that is meant to mate has to start inside
+       its own gate. The refusal fixtures keep their 1 m spacing on purpose -- at 0.05 m
+       a 40 deg yaw would drive the two port meshes through each other and the fixture
+       would be testing the contact solver as well. */
+    double gap = 0.30;
+    /* The scripted closing rate, m/s, added along the line joining the two hulls in
+       their shared rotating frame (both sit at rest in it as placed, so this IS the
+       relative speed the gate measures). #1152: the approach fixture used to fire the
+       50 kN engine for 30 ms, which arrives at 0.51 m/s -- over three times the capture
+       cap, and at 0.0091 m/s^2 of RCS authority no player could have flown that legally.
+       A scripted rate has no key timing in it, so the case cannot flake on how many
+       substeps a wall-clock press happened to cover (#47's old comment). */
+    double closeV = 0.0;
     /* #1026: yaw the probe off the line to the station so the two port axes leave the
        kDockAlign cone. The Docking window's end-to-end case needs a pair the gate refuses
        -- with the other two modes it opens at once and the panel has nothing to explain. */
@@ -57,14 +71,26 @@ DockTestShips build_dock_test_ships(const std::string &mode,
        ship hands that port to a new vessel and the probe's intent points at a hull that
        no longer carries it. */
     bool shedTarget = false;
-    if(mode == "approach") { gap = 2.0; }
-    else if(mode == "misaligned") { yawDeg = 40.0; }
-    else if(mode == "stale-arm") { yawDeg = 40.0; shedArm = true; }
-    else if(mode == "stale-target") { yawDeg = 40.0; shedTarget = true; }
+    /* #1042: 4 deg/s of roll about the probe's own bore. A roll about the bore leaves the
+       cone and both distance gates exactly as they were, so the case measures spin and
+       nothing else. The fixture used to supply that spin by accident -- the authored
+       velocity was a few cm/s off, which drove the two port meshes through each other and
+       let the contact torques tumble the pair. With the pair now co-moving as the world
+       measures it, nothing is spinning unless a mode asks for it. */
+    double spinDeg = 0.0;
+    if(mode == "approach") { gap = 0.55; closeV = 0.09; }
+    /* A pair 8 m apart, aligned and at rest, for a terminal approach flown by hand:
+       RCS forward is N, up I, right L, and the Docking window's dial is the instrument.
+       No case flies it -- it is the fixture the human test of #1152's numbers runs on. */
+    else if(mode == "corridor") { gap = 8.0; }
+    else if(mode == "spin") { gap = 8.0; spinDeg = 4.0; }
+    else if(mode == "misaligned") { gap = 1.0; yawDeg = 40.0; }
+    else if(mode == "stale-arm") { gap = 1.0; yawDeg = 40.0; shedArm = true; }
+    else if(mode == "stale-target") { gap = 1.0; yawDeg = 40.0; shedTarget = true; }
     else if(mode != "near") {
         throw std::runtime_error("--dock-test: unknown mode '" + mode
-                                 + "' (near | approach | misaligned | stale-arm"
-                                 + " | stale-target)");
+                                 + "' (near | approach | corridor | spin | misaligned"
+                                 + " | stale-arm | stale-target)");
     }
 
     const ScenarioDef *sc = scenario_by_name("rot-orbit");
@@ -178,19 +204,28 @@ DockTestShips build_dock_test_ships(const std::string &mode,
              + h_i * glm::dot(h_i, v) * (1.0 - std::cos(a));
     };
     const glm::dvec3 rP_i = rotH(rS_i, th);
-    const glm::dvec3 vP_i = rotH(vS_i, th);
-    /* Inertial -> the ship's rotating frame (the inverse of comStateIn):
-       rotate back, drop the frame offset, subtract the frame's own velocity
-       and the point's stasis velocity. */
+    /* Inertial -> the ship's rotating frame (the inverse of comStateIn): rotate back
+       and drop the frame offset. The probe's VELOCITY is not built the same way -- see
+       the setVelocity below. */
     const glm::dmat3 Rinv = glm::transpose(station->frame->GetOrientRelTo(inert));
     const glm::dvec3 pOff = station->frame->GetPositionRelTo(inert);
-    const glm::dvec3 vFrm = station->frame->GetVelocityRelTo(inert);
-    const glm::dvec3 rP = Rinv * (rP_i - pOff);
-    const glm::dvec3 vP = Rinv * (vP_i - vFrm)
-                        - station->frame->GetStasisVelocity(rP);
-    /* Face the station: the probe's port is on its +Z, so aim +Z at the
-       station (ahead along the orbit) for a clean aligned dock. */
-    const glm::dvec3 faceDir = glm::normalize(rS - rP);
+    glm::dvec3 rP = Rinv * (rP_i - pOff);
+    /* The docking reference is the PORT, so the spacing is authored at the port and the
+       probe's COM is shifted until its port lands exactly on the station's port axis.
+       The arc maths above is only the neighbourhood: it leaves centimetres of slop, and
+       #1152's gate has no room for that -- at a 0.10 m capture distance and a 5 deg cone
+       the entire lateral budget is 9 mm, and a 4 cm offset reads 16 deg of misalignment by
+       the time a 0.2 m gap closes (measured, and the reason the approach fixture used to
+       jam on its own port rims instead of mating). Place, read where the port went, place
+       again shifted by the difference: COM to port is a translation, so one pass is exact. */
+    const glm::dvec3 portB = station->partPos(stPort);
+    const glm::dvec3 axisOut = glm::normalize(portB - rS);   // out of the station's tail
+    const glm::dvec3 want = portB + gap * axisOut;           // the probe's port belongs here
+    probe->placeShipAtCom(rP, faceAlong(-axisOut));
+    rP += want - probe->partPos(prPort);
+    /* Face the station: the probe's port is on its +Z, so aim +Z down the port axis
+       for a clean aligned dock. */
+    const glm::dvec3 faceDir = -axisOut;
     /* "misaligned" yaws that aim off the line, and takes the yaw AROUND THE PORT rather
        than around the COM: this is a seven-part stack whose port sits metres out from its
        own centre of mass, so a yaw about the COM swings the port more than a metre
@@ -213,9 +248,22 @@ DockTestShips build_dock_test_ships(const std::string &mode,
         probe->placeShipAtCom(rP + (port0 - port1), faceAlong(aim));
     }
     probe->enterWorld();
-    // Co-moving on the same orbit: zero relative speed -> the kDockMaxV gate
-    // passes the moment the gap is inside capture.
-    probe->setVelocity(vP);
+    /* Co-moving means what the world measures, not what the arc maths implies: the probe
+       takes the station's own hull velocity plus the scripted closing rate down the port
+       axis. Deriving it instead as a rotated copy of the station's inertial state -- the
+       textbook way onto the same circular orbit one phase angle behind -- left a relative
+       velocity of about 0.04 m/s, almost all of it "up": the first panel line reads
+       drift=-0.01,-0.04 and 8 s later the ports sit 0.35 m apart sideways at an 8 m range.
+       The old 1.5 m gate hid that completely; at 0.10 m and 5 deg it is the entire
+       lateral budget, and the approach fixture spent its closure jammed against the
+       station's port rim instead of mating. */
+    probe->setVelocity(GetVelocity(station->hull) + closeV * faceDir);
+    if(spinDeg != 0.0) {
+        /* Roll about the bore: that axis IS the probe's port axis, so the cone and both
+           distance gates read exactly the figures they would at rest and the only thing the
+           dial gains is twist= -- |w_a - w_b|, measured against a station that sits still. */
+        SetAngVelocity(probe->hull, faceDir * (spinDeg * std::numbers::pi / 180.0));
+    }
 
     /* Docking is intent-driven (Game::updateDocking needs BOTH halves): the
        probe's port is armed, the station's port targeted -- what the player
@@ -233,9 +281,9 @@ DockTestShips build_dock_test_ships(const std::string &mode,
        contradiction in one log. */
     if(yawDeg == 0.0) {
         printf("Dock-test (%s): station '%s' + probe '%s', arc gap %.2f m, "
-               "|v| = %.1f m/s\n",
+               "closing %.2f m/s, |v| = %.1f m/s\n",
                mode.c_str(), station->name.c_str(), probe->name.c_str(),
-               gap, glm::length(GetVelocity(station->hull)));
+               gap, closeV, glm::length(GetVelocity(station->hull)));
     } else {
         printf("Dock-test (%s): station '%s' + probe '%s', arc gap %.2f m, "
                "yaw %.0f deg about the port, |v| = %.1f m/s\n",
@@ -257,6 +305,13 @@ DockTestShips build_dock_test_ships(const std::string &mode,
         printf("Dock-test (stale-target): the targeted port rides %s's stage-1 decoupler, "
                "so a press on that hull cuts it away from the intent\n",
                station->name.c_str());
+    }
+    /* And the spin, named the same way: what the FIXTURE asked for. The dial's twist= row
+       is the measured half, and a case that wants to know the pair was ever spinning reads
+       this line rather than inferring it from a nonzero figure (#1042). */
+    if(spinDeg != 0.0) {
+        printf("Dock-test (%s): the probe rolls at %.0f deg/s about its own bore\n",
+               mode.c_str(), spinDeg);
     }
 
     DockTestShips d;

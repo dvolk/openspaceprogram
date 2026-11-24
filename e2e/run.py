@@ -780,7 +780,8 @@ DOCKWIN_RE = re.compile(
     r"\[dockwin\] a=\"([^\"]*)\" b=\"([^\"]*)\" why=([a-z]+)"
     r"(?:\s+align=([-\d.e+]+),([-\d.e+]+)\s+turn=([-\d.e+]+),([-\d.e+]+)"
     r"\s+push=([-\d.e+]+),([-\d.e+]+)\s+drift=([-\d.e+]+),([-\d.e+]+)"
-    r"\s+twist=([-\d.e+]+)\s+rng=([-\d.e+]+)\s+gap=([-\d.e+]+)\s+speed=([-\d.e+]+)"
+    r"\s+twist=([-\d.e+]+)\s+rng=([-\d.e+]+)\s+gap=([-\d.e+]+)\s+cap=([-\d.e+]+)"
+    r"\s+speed=([-\d.e+]+)"
     r"\s+along=([-\d.e+]+)\s+closing=([-\d.e+]+))?"
     r"\s+at=([-\d.]+),([-\d.]+)\s+size=([-\d.]+),([-\d.]+)"
 )
@@ -1986,7 +1987,7 @@ def parse_surf(out):
 def parse_dockwin(out):
     rows = []
     for m in DOCKWIN_RE.finditer(out):
-        (a, b, why, alA, alB, tnY, tnP, pR, pU, dR, dU, tw, rng, gap, spd, alng, cls,
+        (a, b, why, alA, alB, tnY, tnP, pR, pU, dR, dU, tw, rng, gap, cap, spd, alng, cls,
          atx, aty, szx, szy) = m.groups()
         rows.append({
             "a": a, "b": b, "why": why,
@@ -2000,7 +2001,11 @@ def parse_dockwin(out):
             # The RELATIVE spin the dial points at (gameui.cpp): |w_a - w_b| in deg/s,
             # which is #1041's figure -- not the flight panel's "Angular rate", which is
             # spin against the hull's own frame and moves when a hull changes frames.
-            "twist": num(tw), "rng": num(rng), "gap": num(gap),
+            # The pair's own capture distance (Vehicle::dockCaptureRange, #1152): 0.4 of
+            # the shallower port's depth, floored at the collision standoff. This is the
+            # radius the window draws its capture ring at, so a case can pin the gate the
+            # pilot is being asked to fly into.
+            "twist": num(tw), "rng": num(rng), "gap": num(gap), "cap": num(cap),
             "speed": num(spd), "along": num(alng), "closing": num(cls),
             "at": (float(atx), float(aty)), "size": (float(szx), float(szy)),
         })

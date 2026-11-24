@@ -46,7 +46,7 @@ judgement. Select by number, name or path, e.g.
 | `flight/44-ship-rcs-fuel.txt` | golden | RCS translation burns monopropellant at the expected rate. |
 | `flight/45-dock.txt` | invariant | Two ports in range mate into one vessel and the absorbed hull leaves the world once. |
 | `flight/46-undock.txt` | invariant | Undock splits the vessel in two and restores both as flyable ships. |
-| `flight/47-dock-approach.txt` | invariant | A short approach burn closes the last metres and captures. |
+| `flight/47-dock-approach.txt` | invariant | A closing rate inside the pair's own gate mates it, and the weld keeps the gap inside that gate. |
 | `flight/48-com-torque.txt` | invariant | Thrust through the COM produces no spurious torque. |
 | `flight/49-drag-ascent.txt` | invariant | Drag reduces ascent acceleration and the drag log reports finite forces. |
 | `flight/50-cam-shake.txt` | invariant | Camera shake tracks thrust, rises while burning and decays to zero. |

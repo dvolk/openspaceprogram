@@ -12,19 +12,21 @@
 # against the hull's own frame and jumps when F6 parks a hull and wakes it again -- which
 # is exactly the bug, wearing a disguise: a row that changes when nobody touched anything.
 #
-# The --dock-test pair is not inert: it drifts and turns, and the misaligned fixture holds
-# the pair apart (the cone refuses the mate, so this run never docks and both hulls stay
-# selectable). The measured twist here is a few deg/s. Zeroing one hull's spin against the
-# other's leaves the pair twisting at whatever the survivor kept, so the claim this case
-# makes is the round trip, not the number: the twist the dial read before the F6 pair is
-# the twist it reads after, and both are well clear of zero -- a case that only pinned
-# "twist is unchanged" would pass on a world where nothing was ever spinning.
+# --dock-test spin is an 8 m aligned pair -- too far to ever mate, so the run keeps both
+# hulls selectable -- with the probe rolling 4 deg/s about its own bore. A roll about the
+# bore is the one spin that changes nothing else about the pair: the cone and both distance
+# gates read the same figures as at rest, so the dial's twist= is the whole subject. The
+# fixture used to supply spin by accident: its authored velocity was a few cm/s off, which
+# drove the two port meshes through each other and let the contact torques tumble the pair
+# (that is where the old 3.7 deg/s came from, and why this case read a drifting, wandering
+# rig). #1152 cleaned that velocity up, so a case that wants spin now asks for it.
 NAME rails-park-keeps-the-hull-s-spin
 CLAIM Parking a hull on rails and waking it keeps the spin it had: the docking dial's relative twist is the same figure on both sides of an F6 round trip, and not zero.
 KIND invariant
-ARGS --dock-test misaligned --time-accel 1 --timeout 6 --width 1280 --height 720
+ARGS --dock-test spin --time-accel 1 --timeout 6 --width 1280 --height 720
 ARGS --ui-click 1500,"Windows/Docking"
 ARGS --sim-press 3000,0,F6,4500,0,F6
+EXPECT Dock-test (spin): the probe rolls at 4 deg/s about its own bore
 FORBID FAILED
 # The window has to have been open across the whole sequence, and the two handoffs have
 # to have happened: without them this is a run where nothing was parked and every CHECK
@@ -33,11 +35,12 @@ CHECK len(dockwin) >= 6
 CHECK len([s for s in shipswitch if s["verb"] == "switch"]) == 2
 CHECK all(r["twist"] is not None for r in (first(dockwin), last(dockwin)))
 # Both ends are spinning pairs, so the equality below cannot be satisfied by a dead rig.
+# The authored roll is 4 deg/s and the dial reports it to 4.00 on every measurable row.
 CHECK first(dockwin)["twist"] > 1.0
 CHECK last(dockwin)["twist"] > 1.0
 # The round trip. Measured across the two runs of this case: with the old zeroing the dial
-# reads twist=3.73 before the F6 pair and 0.00 after it -- one hull's spin against the
-# other's surviving rate. With rail_omega carried, the same schedule prints
-# 3.72, 3.71, 3.70 across the whole run, so the pair's own drift is ~0.03 deg/s and the
-# band below is ten times that, while the defect misses it by 3.7.
+# reads twist=4.00 before the F6 pair and 0.00 after it -- one hull's spin against the
+# other's stationary one. With rail_omega carried, the same schedule prints 4.00 through
+# all nine measurable rows, so the band below is only allowing what the rails round trip
+# could not itself change, while the defect misses it by the whole 4.
 CHECK abs(last(dockwin)["twist"] - first(dockwin)["twist"]) < 0.3

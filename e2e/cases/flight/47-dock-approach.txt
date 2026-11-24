@@ -1,13 +1,20 @@
 NAME dock-approach
-CLAIM A short approach burn closes the last metres and captures.
+CLAIM A closing rate inside the pair's own gate mates it, and the weld keeps the gap inside that gate.
 KIND invariant
-# --timeout 8: the 30 ms T-burn is wall-clock quantized (catches 1 or 2
-# physics substeps), so the dock lands at sim t~1.04 OR t~1.46; the slow
-# mode overflowed a 4 s wall budget under battery load. Pre-existing flake,
-# not spin-related (identical distribution before/after issue #101).
+# --dock-test approach puts the two ports 0.55 m apart on the station's port AXIS -- face
+# gap 0.30 m -- and gives the probe 0.09 m/s along it. The r1 pair captures inside 0.10 m of
+# face gap at 0.15 m/s or slower (#1152), so the mate lands about 2.2 s in, measured.
+# The fixture used to fire the 50 kN engine for 30 ms instead. That arrived at 0.51 m/s --
+# over three times the cap -- and the case was at the mercy of how many physics substeps a
+# wall-clock press happened to catch (the flake this used to document). No keys are pressed
+# here, so the mate has exactly one cause: the approach.
+# The d= pin is the ticket. absorbShip is a rigid rebase, so whatever face gap the capture
+# tick measures is the air that stays between the ports forever; 1.5 m of gate used to mean
+# a docked pair holding each other at arm's length. Anything under 0.1 m means the gate did
+# what it now says.
 ARGS --dock-test approach --time-accel 1 --timeout 8
-ARGS --sim-press 500,30,T
 EXPECT Dock-test (approach)
 EXPECT [dock] t=
 EXPECT a="dockprobe" b="dockstation"
+CHECK len(re.findall(r'\[dock\] t=\S+ a="dockprobe" b="dockstation" d=0\.0\d\d m v=', out)) == 1
 FORBID error:

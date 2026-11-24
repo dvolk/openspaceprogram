@@ -3,13 +3,16 @@
 # Game::updateDocking returned silently, six different ways.
 #
 # --dock-test misaligned builds the shipped docking pair and yaws the probe 40 deg about
-# its OWN PORT, so the port axes leave the kDockAlign cone (15 deg) while the faces start
-# inside kDockCapture (1.5 m). 40 rather than the 16 that would do: nothing flies the
-# probe, so the pair wanders -- the face gap reads 1.2 m on the first panel line and about
-# 4.2 m on the last some 2.5 s later, while the misalignment drifts 38 -> 46 deg. The
-# verdict is `misaligned` for every line of that because the gate asks the axis before the
-# distance, so this case pins that order from the other side of 1026-b, where a rails
-# state outranks the same geometry.
+# its OWN PORT, so its axis leaves the kDockAlign cone (5 deg since #1152). The pair also
+# sits at a 0.78 m face gap, which is well outside this r1 pair's 0.10 m capture distance,
+# so two gates could answer and the panel picks the axis: the gate asks the axis question
+# before the distance one, and this is what pins that order from the other side of 1026-b,
+# where a rails state outranks the same geometry.
+# 40 deg rather than the 6 that would clear the cone: the angle is the fixture's, the cone
+# is the game's, and a margin here means a retune of the cone cannot quietly turn this case
+# into one that measures nothing. Since #1152 fixed the fixture's authored velocity the pair
+# does not wander at all: every one of the six rows a 3 s run prints reads align=37.4 with
+# the faces at 0.78 m, so the verdict is not a race against drift.
 # This is the state where a player is doing everything they can see -- closing on a port
 # they line up by eye -- and nothing tells them the answer is rotation. The panel is the
 # approach dial for a pair like this, and at this fixture both of its markers sit pinned on

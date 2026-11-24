@@ -35,6 +35,11 @@
 //   - THE MERGED MASS (#583): Vehicle::refuseDockWith, the sentence the dock gate
 //     prints instead of folding two totals that stop being one. A range check, not a
 //     size limit: the pair that still fits has to merge.
+//   - THE CAPTURE DISTANCE (#1152): Vehicle::dockCaptureRange -- how close the faces have
+//     to be before the gate closes, scaled off the shallower port's own depth with a floor
+//     at the pair's collision standoff. The old global 1.5 m is what made a docked pair
+//     look like two ships holding each other at arm's length, because absorbShip welds the
+//     pair at whatever gap the capture tick measured.
 //   - THE SITUATION OF AN INTENT (#1026): Vehicle::dockRead's figures and
 //     Vehicle::dockSituation's verdict -- the one pass that now decides a dock (the gate
 //     switches on it) AND feeds the Docking window, so the numbers a pilot reads are the
@@ -1381,6 +1386,54 @@ static void test_dock_mass_door() {
    The fixtures are two single-port hulls: A's port at the world origin facing +Z, B's
    port facing it, faces touching at z = -kPortHz. One part per hull keeps a part's pose
    equal to the hull's, so each row below can be worked out by hand. */
+/* #1152. THE CAPTURE DISTANCE IS THE PORTS' OWN SIZE. The gate used to be a global 1.5 m,
+   which on a 0.25 m-deep port is six port-depths of daylight: absorbShip welds the pair at
+   whatever gap the capture tick measured, so every "docked" hull in the game carried up to
+   1.5 m of air between the ports that had just joined (the ticket's screenshot). The law is
+   now 0.4 of the SHALLOWER port's depth, floored at 1.25x the pair's collision standoff.
+   Pinned by value for the three shipped port sizes: the situation test above asks the law
+   for its boundary rather than a literal, so it cannot see the law itself move. These rows
+   assume the shipped hull margin, which is what the last one checks. */
+static void test_the_capture_distance_is_the_ports_own_size() {
+    printf("== dockCaptureRange: the ports set the distance, not a global ==\n");
+    Ship s;                              // just owns the PartDefs these Parts point at
+    Part *p1   = mkPart(s, "r1",   50.0, 1.0,  1.0,  0.125,   true);   // 0.25 m deep
+    Part *p15  = mkPart(s, "r15",  50.0, 1.5,  1.5,  0.1875,  true);   // 0.375 m
+    Part *p225 = mkPart(s, "r225", 50.0, 2.25, 2.25, 0.28125, true);   // 0.5625 m
+    CHECK_NEAR(effectiveHullMargin(p1->body), 0.0, 1e-12,
+               "at the shipped default a part carries no collision margin of its own");
+    CHECK_NEAR(Vehicle::dockCaptureRange(p1, p1), 0.10, 1e-12,
+               "the shipped r1 pair captures at 10 cm of face gap");
+    CHECK_NEAR(Vehicle::dockCaptureRange(p15, p15), 0.15, 1e-12,
+               "a 50% deeper port opens 50% wider");
+    CHECK_NEAR(Vehicle::dockCaptureRange(p225, p225), 0.225, 1e-12,
+               "and the biggest port in the game still captures inside a quarter metre");
+    CHECK_NEAR(Vehicle::dockCaptureRange(p1, p225), 0.10, 1e-12,
+               "a big port cannot out-reach a small one: the shallower governs");
+    CHECK_NEAR(Vehicle::dockCaptureRange(p225, p1), 0.10, 1e-12,
+               "whichever of the two is the armed one");
+
+    /* The floor, and the reason it exists. A pair whose colliders stop them 0.2 m apart can
+       never be flown inside a 0.10 m gate: the approach ends TooWide with the pilot holding
+       every key down, which is the unreachable-gate bug this function would otherwise
+       reintroduce the moment a part carries a margin. */
+    p1->body->hull_margin = 0.1;
+    p225->body->hull_margin = 0.1;
+    CHECK_NEAR(Vehicle::dockCaptureRange(p1, p225), 0.25, 1e-12,
+               "0.1 m of margin on each: the floor lifts that pair's gate to 0.25 m");
+    CHECK_TRUE(Vehicle::dockCaptureRange(p1, p225)
+                   > effectiveHullMargin(p1->body) + effectiveHullMargin(p225->body),
+               "and a gated pair always stops short of contact, never short of the gate");
+    p1->body->hull_margin = -1.0;
+    p225->body->hull_margin = -1.0;
+
+    /* A port with no def has no size to scale from, and must not hand the caller a gate at
+       zero -- dockRead's own null contract returns no measurement at all. */
+    Part bare;
+    CHECK_NEAR(Vehicle::dockCaptureRange(p1, &bare), 0.0, 1e-12,
+               "no def, no capture distance");
+}
+
 static void test_the_dock_situation_says_why_a_pair_will_not_mate() {
     printf("== dockRead/dockSituation: the gates, and what stopped this dock ==\n");
 
@@ -1401,6 +1454,12 @@ static void test_the_dock_situation_says_why_a_pair_will_not_mate() {
     A.v->dockArmPort = portA;
     A.v->dockTargetShip = B.v;
     A.v->dockTargetPort = portB;
+    /* The capture distance THIS pair gets (#1152: it is the ports' own size, not a
+       global constant). Asked from the law so the boundary rows below stay boundaries if
+       the law is retuned again; the law itself is pinned by value in
+       test_the_capture_distance_is_the_ports_own_size(). */
+    const double cap = Vehicle::dockCaptureRange(portA, portB);
+    CHECK_NEAR(cap, 0.10, 1e-12, "two 0.25 m ports: capture opens at 10 cm of face gap");
 
     /* The aligned pair, faces touching: every gate open. */
     Vehicle::DockSit s = A.v->dockSituation();
@@ -1447,15 +1506,32 @@ static void test_the_dock_situation_says_why_a_pair_will_not_mate() {
     B.v->placeShip(glm::dvec3(0.0, 0.0, -(2.0 * kPortHz) - 1.5), glm::dmat3(1.0));
     s = A.v->dockSituation();
     CHECK_NEAR(s.read.faceGap, 1.5, 1e-12, "the gap is measured face to face");
-    CHECK_TRUE(s.read.faceGap >= Vehicle::kDockCapture,
-               "and that distance is the number the capture gate tests");
+    CHECK_TRUE(s.read.faceGap >= cap,
+               "and 1.5 m is outside the capture gate this pair gets (#1152: 1.5 m used to "
+               "BE the gate, six port-depths of daylight on a 0.25 m port)");
 
-    /* And it lands EXACTLY on kDockCapture, which is the valuable part: the gate tests
-       `>=`, so this is the pair that separates it from a `>`. Pinned against the constant
-       rather than a literal, and again below with the 1% pair. */
-    CHECK_NEAR(s.read.faceGap, Vehicle::kDockCapture, 1e-12,
-               "on the boundary, not near it");
-    CHECK_TRUE(s.why == Vehicle::DockSit::TooWide, "on the limit is outside it, quietly");
+    /* Exactly ON the boundary is the row that separates a `>=` from a `>`, and it cannot
+       be done with this pair: 0.4 x 0.25 m is 0.1 m, which is not a binary fraction, so the
+       read lands a few times 1e-17 off its own threshold and the verdict there is a
+       rounding coin flip (measured: the row below reads TooWide at 1.5 m and GO at a
+       distance that should have been exactly the limit). The same discrimination with a
+       floor that IS representable: give both ports 0.1 m of collision margin, which floors
+       their captureRange at 1.25 x 0.2 = 0.25 m, and place the faces exactly 0.5 m apart
+       about two 0.125 m port halves. */
+    portA->body->hull_margin = portB->body->hull_margin = 0.1;
+    CHECK_NEAR(Vehicle::dockCaptureRange(portA, portB), 0.25, 1e-15,
+               "the margined pair's floor");
+    B.v->placeShip(glm::dvec3(0.0, 0.0, -(2.0 * kPortHz) - 0.25), glm::dmat3(1.0));
+    s = A.v->dockSituation();
+    CHECK_NEAR(s.read.faceGap, 0.25, 1e-15, "faces exactly on that floor");
+    CHECK_TRUE(s.read.shutGap, "exactly on the limit is outside it");
+    CHECK_TRUE(s.why == Vehicle::DockSit::TooWide, "and the verdict agrees");
+    B.v->placeShip(glm::dvec3(0.0, 0.0, -(2.0 * kPortHz) - 0.2499999), glm::dmat3(1.0));
+    s = A.v->dockSituation();
+    CHECK_TRUE(!s.read.shutGap, "1e-7 inside it: the lamp goes green");
+    CHECK_TRUE(s.why == Vehicle::DockSit::Go, "so the gate is >=, not >");
+    portA->body->hull_margin = portB->body->hull_margin = -1.0;
+    B.v->placeShip(glm::dvec3(0.0, 0.0, -(2.0 * kPortHz)), glm::dmat3(1.0));
 
     /* Off-axis: turn B 25 deg about its own port, which is the one rotation that moves
        the FACE without moving either port centre. cos 25 = 0.906 is outside the cone,
@@ -1477,7 +1553,7 @@ static void test_the_dock_situation_says_why_a_pair_will_not_mate() {
                "off their line, in the key that gets me back on it");
     CHECK_NEAR(s.read.pushUp, 0.0, 1e-12, "and nothing up or down");
     CHECK_NEAR(s.read.turnYaw, 0.0, 1e-12, "my bore is still on the line, so no turn asked");
-    CHECK_TRUE(s.read.faceGap < Vehicle::kDockCapture,
+    CHECK_TRUE(s.read.faceGap < cap,
                "close enough to mate, which is why the axis is the only reason not to");
     CHECK_TRUE(s.why == Vehicle::DockSit::Misaligned, "off-axis: MISALIGNED");
 
@@ -1515,12 +1591,12 @@ static void test_the_dock_situation_says_why_a_pair_will_not_mate() {
     /* The capture boundary the same way, since the window prints that row too: 1% inside
        fits, 1% outside does not. Together with the exact-on-limit row above, this pins the
        gate's `>=` against a `>` and against a bare `<`. */
-    B.v->placeShip(glm::dvec3(0.0, 0.0, -(2.0 * kPortHz) - Vehicle::kDockCapture * 0.99),
+    B.v->placeShip(glm::dvec3(0.0, 0.0, -(2.0 * kPortHz) - cap * 0.99),
                    glm::dmat3(1.0));
     s = A.v->dockSituation();
     CHECK_TRUE(!s.read.shutGap, "1% inside capture: the gap lamp stays green");
     CHECK_TRUE(s.why == Vehicle::DockSit::Go, "and the pair mates");
-    B.v->placeShip(glm::dvec3(0.0, 0.0, -(2.0 * kPortHz) - Vehicle::kDockCapture * 1.01),
+    B.v->placeShip(glm::dvec3(0.0, 0.0, -(2.0 * kPortHz) - cap * 1.01),
                    glm::dmat3(1.0));
     s = A.v->dockSituation();
     CHECK_TRUE(s.read.shutGap, "1% outside: the lamp the window lights");
@@ -1785,7 +1861,8 @@ static void test_the_dock_situation_says_why_a_pair_will_not_mate() {
     G.v->setVelocity(glm::dvec3(0.0));
     H.v->placeShip(glm::dvec3(0.0, 0.0, -(2.0 * kPortHz)), glm::dmat3(1.0));   // unyaw, unshift
     s = G.v->dockSituation();
-    CHECK_TRUE(s.read.faceGap < Vehicle::kDockCapture, "order: now inside capture");
+    CHECK_TRUE(s.read.faceGap < Vehicle::dockCaptureRange(portG, portH),
+               "order: now inside capture");
     CHECK_TRUE(s.why == Vehicle::DockSit::Mass,
                "so the mass door is the only gate left standing, and it speaks");
     CHECK_TRUE(!s.massWhy.empty(),
@@ -1900,6 +1977,7 @@ int main() {
     test_seam_kept_across_stage();
     test_experiments_ride_parts();
     test_dock_mass_door();
+    test_the_capture_distance_is_the_ports_own_size();
     test_the_dock_situation_says_why_a_pair_will_not_mate();
     test_a_sideways_port_moves_the_dial_but_not_the_verdict();
 

@@ -6301,31 +6301,38 @@ static void drawDashRing(ImDrawList *dl, const ImVec2 &c, float rad, ImU32 col, 
    1/4, 1/2, 3/4 and 1 of the radius, and three quantities read off those same radii. The
    wiki names the two figures and the cone; the numbers on the rings come off a screenshot of
    the instrument, so where they disagree with the prose the prose wins and these scales are
-   ours to change:
-     offset   0.1 m at the centre, then 1, 10, 100, 1000 m    (screenshot marks 0,1,2,3)
-     drift    0.01 m/s at the centre, then 0.1, 1, 10, 100    (screenshot marks -1,0,1,2)
+   ours to change -- and #1152 changed them, because the gates moved into the last metre:
+     offset   captureRange/20 at the centre, then 10x, 100x, 1000x (a 2 m port pair:
+              5 mm, 5 cm, 50 cm, 5 m). The capture ring lands at ~0.43 of the radius.
+     drift    kDockMaxV/100 at the centre, then x10, x100 -- so the OUTER ring IS the
+              speed gate: an arrow that reaches the rim is too fast to capture.
      turn     0 deg at the centre, then 5, 10, 15, 20 deg     (marked on rings 2 and 4)
    Log for the two metres-and-metres-per-second quantities because an approach spans decades;
    linear for the angle because there is nothing to compress.
+   The metre ruler tracks the PAIR's capture distance, not the current range, so the grid
+   does not creep while you fly it, and a 4.5 m port gets a coarser ruler than a 2 m one.
+   Past the rim the markers pin to it and only their bearing means anything: this is a
+   terminal-phase instrument, and the long figures are what [dockwin] prints at 2 Hz.
    THREE GATE CIRCLES, one per gate figure, each coloured by the gate's own flag:
-     axisCosA's circle, on the degree scale at acos(kDockAlign) -- ring 3 while that constant
-       is 15 deg. The wiki's cone is one circle for both markers, which mixes units; drawing
-       the two halves separately is the one place this dial is clearer than the instrument it
-       copies.
+     axisCosA's circle, on the degree scale at acos(kDockAlign) -- ring 1 while that
+       constant is 5 deg. The wiki's cone is one circle for both markers, which mixes
+       units; drawing the two halves separately is the one place this dial is clearer
+       than the instrument it copies.
      axisCosB's circle, on the metre scale at range*sin(kDockAlign) -- "as you approach the
        dock, it gets smaller", verbatim from the wiki. SIN, not TAN: the perpendicular
        distance from this port's centre to their bore line IS range*sin(their axis error), so
        the circle and the gate agree exactly (TAN is 0.55 deg looser).
-     kDockCapture, a fixed ring on the metre scale, so the distance gate has a picture at all
-       -- see the comment at its draw.
+     captureRange, a ring on the metre scale for THIS pair, so the distance gate has a
+       picture at all -- see the comment at its draw.
    So a green pair of axis circles IS shutAxis being open, and a green capture ring IS the
    distance gate open; the markers keep one colour each.
    The circles are told apart by STROKE, not colour (#1046) -- colour is already spent on the
    gate state, and two of them cross anyway. DASHED means the degree ruler, SOLID means the
-   metre ruler. The axis pair coincides at range ~386 m, where coneRad/topRad on the degree
-   ruler maps to the same pixel radius as range*sin(kDockAlign) on the metre ruler: every long
-   approach passes straight through it, and there a half-shut gate used to draw two rings a
-   pixel apart with nothing saying which belongs to the x and which to the +.
+   metre ruler. On the shipped numbers the cone circle crosses the degree circle at
+   range = captureRange/20 x 10^(0.25 x 3)/sin(kDockAlign) ~ 0.32 m and crosses the capture
+   ring at captureRange/sin(kDockAlign) ~ 1.15 m: every terminal approach passes through
+   both, and there a half-shut gate draws two rings a pixel apart with nothing saying which
+   belongs to the x and which to the +.
      x     = the rotation to command: radius = the angle in degrees, side = the key that
              closes it (right half = D, top half = W).
      +     = the translation to command: radius = how far off their bore line (the approach
@@ -6352,8 +6359,16 @@ static void dockApproachDial(const Vehicle::DockRead &r) {
     const float lw = 1.0f;
     const double kc = Vehicle::kDockAlign;
     const double coneRad = acosUnit(kc);
+    /* The rulers (#1152). Both are pinned to the gates rather than to round numbers: the
+       metre ruler's floor is a twentieth of THIS pair's capture distance -- so the capture
+       ring sits at the same 0.43 of the radius whatever the port sizes -- and the drift
+       ruler's rim is kDockMaxV, which makes the outer ring the speed gate's own picture.
+       Neither depends on the current range, so the grid cannot creep under the pilot. */
+    const double mFloor = std::max(1e-3, r.captureRange / 20.0);
+    const double mDecades = 3.0;
+    const double dFloor = Vehicle::kDockMaxV / 100.0;
     /* The turn scale's rim is 20 deg, which is the MFD's mark on its outer ring. Our cone
-       is 15 deg TODAY, so the gate circle below happens to sit on ring 3; if kDockAlign
+       is 5 deg TODAY, so the gate circle below happens to sit on ring 1; if kDockAlign
        moves the circle moves with it and the ruler does not. */
     const double topRad = 20.0 / 180.0 * std::numbers::pi;
     const ImU32 openCol = IM_COL32(96, 196, 118, 235);
@@ -6377,25 +6392,25 @@ static void dockApproachDial(const Vehicle::DockRead &r) {
     const bool openB = r.axisCosB >= Vehicle::kDockAlign;
     // Their half of the gate, on the metre scale, floating at range*sin(kDockAlign).
     const double coneM = r.portRange * std::sin(coneRad);
-    const float coneRU = std::min(1.0f, dialU(coneM, 0.1, 4.0));
-    /* Two pixels of floor. Below range ~0.39 m, coneM falls under the ruler's 0.1 m centre
+    const float coneRU = std::min(1.0f, dialU(coneM, mFloor, mDecades));
+    /* Two pixels of floor. Below range ~5.7 cm coneM falls under the ruler's centre value
        and a radius-0 circle would erase the cue at the one moment it matters most. */
     dl->AddCircle(c, std::max(2.0f, R * coneRU), openB ? openCol : shutCol, 64, lw);
     // My half of the gate, on the degree scale. The only circle on that ruler, so it is the
     // one that carries the dashed stroke: the ruler a circle belongs to has to be readable
-    // without a legend, because at range ~386 m this and the cone circle share a radius.
+    // without a legend, because at range ~0.32 m this and the cone circle share a radius.
     const float gateU = std::min(1.0f, (float)(coneRad / topRad));
     drawDashRing(dl, c, R * gateU, openA ? openCol : shutCol, lw);
-    /* The distance gate: a fixed ring at kDockCapture read off the metre ruler, coloured by
-       the gate's own shutGap, so the ring going green IS the gate opening. Careful about
-       what it does NOT mean: kDockCapture is the gap BETWEEN FACES, an along-path distance,
-       while this ruler measures distance OFF the path. The ring is a marked threshold, not a
-       boundary the + has to cross -- but the cone circle's radius is monotone in range, so
-       the two crossing at range = kDockCapture/sin(kDockAlign) = 5.8 m is a legible "the
-       last metres have started", which is the cue the panel was missing: a pair can sit with
-       both axis circles green and both markers centred for tens of metres and refuse purely
-       on distance. */
-    dl->AddCircle(c, R * dialU(Vehicle::kDockCapture, 0.1, 4.0),
+    /* The distance gate: a ring at THIS pair's captureRange read off the metre ruler,
+       coloured by the gate's own shutGap, so the ring going green IS the gate opening.
+       Careful about what it does NOT mean: captureRange is the gap BETWEEN FACES, an
+       along-path distance, while this ruler measures distance OFF the path. The ring is a
+       marked threshold, not a boundary the + has to cross -- but the cone circle's radius
+       is monotone in range, so the two crossing at range = captureRange/sin(kDockAlign)
+       ~ 1.15 m is a legible "the last metres have started", which is the cue the panel was
+       missing: a pair can sit with both axis circles green and both markers centred for
+       tens of metres and refuse purely on distance. */
+    dl->AddCircle(c, R * dialU(r.captureRange, mFloor, mDecades),
                   r.shutGap ? shutCol : openCol, 64, lw);
     /* Marker radii come from the quantity each half of the gate compares, NOT from hypot of
        the two figures the keys reach. The push and turn figures are a PROJECTION of a
@@ -6414,7 +6429,7 @@ static void dockApproachDial(const Vehicle::DockRead &r) {
     const double turnTrue = acosUnit(r.axisCosA);
     const double offProj = std::hypot(r.pushRight, r.pushUp);
     const double turnProj = std::hypot(r.turnYaw, r.turnPitch);
-    const float pu = dialU(offTrue, 0.1, 4.0);
+    const float pu = dialU(offTrue, mFloor, mDecades);
     const float tu = std::min(1.0f, (float)(turnTrue / topRad));
     /* Sizes from the MFD screenshot, not the wiki text: the x spans three quarters of the
        dial radius, the + a whole radius. Big markers make a marker that moved a fraction of
@@ -6443,14 +6458,15 @@ static void dockApproachDial(const Vehicle::DockRead &r) {
     } else {
         dl->AddCircle(c, std::max(2.0f, R * pu), pathCol, 12, lw);
     }
-    /* The velocity arrow starts at the centre and its length is the drift speed on the
-       0.01..100 m/s scale. Unlike the markers it IS the projection, on purpose: this is
+    /* The velocity arrow starts at the centre and its length is the drift speed on a scale
+       whose RIM is kDockMaxV: an arrow that reaches the outer ring is a pair the speed gate
+       has already refused. Unlike the markers it IS the projection, on purpose: this is
        advice about motion the keys can counter, not a gate's verdict, so the along-nose part
        it drops is part they cannot counter either. A centred + with an arrow is not centred.
        Drawn LAST: its tail sits on the centre crosshair, so underneath it the arrow just
        disappeared. */
     const double driftM = std::hypot(r.driftRight, r.driftUp);
-    const float au = dialU(driftM, 0.01, 4.0);
+    const float au = dialU(driftM, dFloor, 2.0);
     const double vx = driftM > 0.0 ? r.driftRight / driftM : 0.0;
     const double vy = driftM > 0.0 ? -r.driftUp / driftM : 0.0;
     const ImVec2 ap(c.x + au * vx * R, c.y + au * vy * R);
@@ -6601,7 +6617,7 @@ void drawUIDock(Game &g) {
                    between the rotation keys and the stick, never to the RCS channels. */
                 printf("[dockwin] a=\"%s\" b=\"%s\" why=%s align=%.1f,%.1f"
                        " turn=%+.1f,%+.1f push=%+.2f,%+.2f drift=%+.2f,%+.2f"
-                       " twist=%.2f rng=%.2f gap=%.2f speed=%.2f"
+                       " twist=%.2f rng=%.2f gap=%.2f cap=%.3f speed=%.2f"
                        " along=%.2f closing=%+.2f at=%.0f,%.0f size=%.0f,%.0f\n",
                        a->displayName().c_str(),
                        bTok,
@@ -6611,7 +6627,8 @@ void drawUIDock(Game &g) {
                        d.turnYaw * rad2deg, d.turnPitch * rad2deg,
                        d.pushRight, d.pushUp, d.driftRight, d.driftUp,
                        twistDeg,
-                       s.read.portRange, s.read.faceGap, s.read.relSpeed, s.read.along,
+                       s.read.portRange, s.read.faceGap, s.read.captureRange,
+                       s.read.relSpeed, s.read.along,
                        s.read.closing, wp.x, wp.y, wsz.x, wsz.y);
             } else {
                 printf("[dockwin] a=\"%s\" b=\"%s\" why=%s at=%.0f,%.0f size=%.0f,%.0f\n",

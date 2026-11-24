@@ -24,7 +24,21 @@ PhysicsEngine *physics;
    SUM to the visible gap -- anything placing a vessel on a floor must read these,
    not bake a constant (build_ship's lift, Kerbal::restAlt). The margin also
    reaches mass properties: a convex hull inherits a BOX inertia over the
-   margin-inflated AABB, and calculateLocalInertia adds the margin a SECOND time. */
+   margin-inflated AABB, and calculateLocalInertia adds the margin a SECOND time.
+
+   Both default to 0 (#1152). The 0.1 hull margin came in with 9dad3150 as a
+   stability fix for an era when every WELDED part was its own rigid body: the then
+   0.5 m margin overlapped neighbouring parts by a metre and the solver's per-substep
+   impulse tumbled a thin wheel disc. A ship is ONE compound body now (rebuildCompound),
+   so its parts never meet, and all a margin buys today is a standoff between separate
+   hulls -- measured as 0.2 m of air under a craft parked on a pad (alt_agl 8.893 with
+   the margin at 0.1, 8.693 at 0), and 0.2 m of it welded into every docked pair. On raw
+   terrain the 0.5 m was worse still: it is taller than the shipped suspension travel, so
+   wheels bottomed out and the hull rode as a bump stop. Both terms are read live, so the
+   analytic ground, the pad lift and a resting suit move with them.
+   `make test` is green at 0 for both knobs. They stay settable for anyone who wants the
+   floatier behaviour, and for the thin-part case if it ever comes back now that parts
+   are one body. */
 static double envMargin(const char *name, double fallback) {
     const char *e = getenv(name);
     // A negative margin inverts the shape's AABB; the JSON paths reject it, so
@@ -33,9 +47,9 @@ static double envMargin(const char *name, double fallback) {
     return fallback;
 }
 
-double hullMargin() { return envMargin("OSP_HULL_MARGIN", 0.1); }
+double hullMargin() { return envMargin("OSP_HULL_MARGIN", 0.0); }
 
-double terrainMargin() { return envMargin("OSP_TERRAIN_MARGIN", 0.5); }
+double terrainMargin() { return envMargin("OSP_TERRAIN_MARGIN", 0.0); }
 
 double effectiveHullMargin(const Body *body) {
     return (body->hull_margin >= 0.0) ? body->hull_margin : hullMargin();

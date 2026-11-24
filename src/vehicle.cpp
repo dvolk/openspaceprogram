@@ -5185,11 +5185,12 @@ bool Vehicle::groundContact(const glm::dvec3 &from, const glm::dvec3 &down,
     if(m_parent != nullptr && frame->building == nullptr) {
         // Collision meshes only exist at max-LOD leaves; the analytic ground
         // is the fall-through for the gaps, offset by the terrain margin so it
-        // agrees with the height a ray hits the collision mesh at. Note the
-        // 0.5 m terrain margin is taller than the shipped suspension travel,
-        // so on raw terrain the suspension bottoms out and the hulls ride as
-        // bump stops -- a deck (0.1 m margin) is the working surface.
-        // OSP_TERRAIN_MARGIN / OSP_HULL_MARGIN tune both at runtime.
+        // agrees with the height a ray hits the collision mesh at. The margin
+        // defaults to 0 (#1152), so raw terrain is a working surface for the
+        // shipped suspension; raising OSP_TERRAIN_MARGIN past the wheel travel
+        // makes the hulls ride as bump stops instead, which is how it behaved
+        // at the old 0.5 m. Both knobs are read live, so this term and the
+        // contacts they agree with move together.
         const glm::dvec3 radial = glm::normalize(from);
         dist = glm::length(from)
              - ((double)m_parent->GetTerrainHeight(glm::vec3(radial)) + terrainMargin());
@@ -6278,6 +6279,29 @@ std::vector<Part *> Vehicle::stagedDecouplers(int stage) {
    Everything is measured at the PORTS, never at the COMs: a 20 m stack meeting a
    station reads the gap between two port faces, not the distance between two hull
    centres. */
+/* The pair's capture distance (#1152): a fraction of the shallower port's own depth,
+   floored clear of the collision standoff.
+
+   The fraction is the whole point -- two 25 cm parts meet inside 10 cm, and the 4.5 m
+   port's 56 cm body gets 22.5 cm -- so the gate asks for a distance that belongs to the
+   hardware rather than one the ports happen to be smaller than.
+
+   The floor is what makes the gate reachable. Each part's collision hull is inflated by
+   its effective margin, so two facing parts stop with their FACES about marginA + marginB
+   apart; a capture distance under that can never be met, and the gate would just sit at
+   TooWide forever. The nearest child shapes at capture are the two ports, so their
+   margins are the pair to ask. At the shipped 0 m margin the floor is 0 and the fraction
+   decides; with OSP_HULL_MARGIN raised it takes over, with 25% of the standoff left as
+   clearance. tests/test_dock.cpp pins both halves. */
+double Vehicle::dockCaptureRange(const Part *pa, const Part *pb) {
+    if(pa == nullptr || pb == nullptr || pa->def == nullptr || pb->def == nullptr) {
+        return 0.0;
+    }
+    const double depth = std::min(pa->def->height, pb->def->height);
+    const double standoff = effectiveHullMargin(pa->body) + effectiveHullMargin(pb->body);
+    return std::max(kDockCaptureFrac * depth, 1.25 * standoff);
+}
+
 Vehicle::DockRead Vehicle::dockRead(const Part *pa, const Vehicle *b,
                                     const Part *pb) const {
     DockRead r;
@@ -6317,6 +6341,7 @@ Vehicle::DockRead Vehicle::dockRead(const Part *pa, const Vehicle *b,
     const glm::dvec3 faceA = paP + axisA * (pa->def->height * 0.5);
     const glm::dvec3 faceB = pbP + axisB * (pb->def->height * 0.5);
     r.faceGap = glm::length(faceA - faceB);
+    r.captureRange = dockCaptureRange(pa, pb);
     const glm::dvec3 rv = partVel(pa) - b->partVel(pb);
     r.relSpeed = glm::length(rv);
     /* The nudge rows, in the ARMED port's frame. `along` is signed so a pilot can tell
@@ -6351,7 +6376,7 @@ Vehicle::DockRead Vehicle::dockRead(const Part *pa, const Vehicle *b,
        same cosines the gate compared (the dial's two circles), never from a boundary the
        UI invents, so the drawing cannot disagree with the verdict that refused the mate. */
     r.shutAxis = r.axisCosA < kDockAlign || r.axisCosB < kDockAlign;
-    r.shutGap = r.faceGap >= kDockCapture;
+    r.shutGap = r.faceGap >= r.captureRange;
     r.shutSpeed = r.relSpeed > kDockMaxV;
     return r;
 }
@@ -6408,9 +6433,10 @@ Vehicle::DockSit Vehicle::dockSituation() {
    ~1e308 kg each, i.e. hand-edited saves -- but the loaded-pair case is NOT covered
    by the save doors, which each judge ONE ship, and this is the one place in play the
    quantity changes. The merged POSE spread gets no door here: both hulls passed
-   validateShipParts, and docking needs the ports within kDockCapture (vehicle.h) of
-   each other, so a merged spread can only reach the bound if the ships were already
-   ~1e154 m across -- hulls broken in a hundred other ways long before the dock. */
+   validateShipParts, and docking needs the ports within the pair's captureRange
+   (vehicle.h) of each other, so a merged spread can only reach the bound if the
+   ships were already ~1e154 m across -- hulls broken in a hundred other ways long
+   before the dock. */
 std::string Vehicle::refuseDockWith(Vehicle *B) {
     assert(B != nullptr && B != this);   // the dock gate ruled these out
     if(std::isfinite(getMass() + B->getMass())) { return ""; }

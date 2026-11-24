@@ -2397,7 +2397,8 @@ void Game::updateProximity() {
        (enter_rails_warp), so inside an atmosphere the cap was not defending the
        rails boundary at all -- it was confiscating the 10x physics rung, the
        only warp available there. Docking is not a casualty: capture is gated at
-       kDockMaxV = 2 m/s inside kDockCapture = 1.5 m, nowhere near the gate. */
+       kDockMaxV = 0.15 m/s inside a capture distance of centimetres (#1152),
+       nowhere near this gate. */
     const double rails_floor = (double)(kRailsWarp - 1);
     if(!bearing_down && cap < rails_floor) { cap = rails_floor; }
     if(any_engaged && time_accel > cap) {

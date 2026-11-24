@@ -2439,14 +2439,44 @@ public:
     Part *dockTargetPort = nullptr;
     Part *dockArmPort = nullptr;   // this ship's port to mate with (mandatory)
 
-    /* Docking capture thresholds. They live here rather than in Game because
+    /* Docking capture thresholds (#1152). They live here rather than in Game because
        Vehicle::dockRead is the pass that measures what they judge, and the two readers
        of that measurement -- the dock gate in Game::updateDocking and the Docking window
-       (#1026) -- must quote the same numbers. Hulls are 0.1 m inflated, so a slow
-       aligned approach locks before the hulls touch. */
-    static constexpr double kDockCapture = 1.5;   // m, port face-centre distance
-    static constexpr double kDockAlign   = 0.966; // cos(15 deg) axis misalignment
-    static constexpr double kDockMaxV    = 2.0;   // m/s relative speed at capture
+       (#1026) -- must quote the same numbers.
+
+       WHAT THEY WERE: 1.5 m, cos 15 deg, 2 m/s, none of which anyone derived. A docking
+       port is 0.25 m deep (nodes at +-0.125 m), so 1.5 m of face gap is six port-depths
+       of daylight -- and since absorbShip() is a rigid rebase that keeps every part's
+       world pose, that gap became part of the hull: measured 0.750 m for the fixture
+       pair parked nose-to-nose, 1.495 m after an approach burn. The old numbers were
+       also inconsistent with this game's own authority: an rcs_box is 60 N, so on the
+       6560 kg fixture pair translation is 0.0091 m/s^2 and stopping from 2 m/s needs
+       219 m of corridor. No player could have obeyed it.
+
+       WHAT THEY ARE NOW, and the anchor for each:
+         capture  a fraction of the SHALLOWER port's own depth (dockCaptureRange below).
+                  Real capture geometry is decided by the thing being bolted together,
+                  not by a round number, so a 4.5 m port is easier than a 2 m one.
+         align    5 deg. A hard mate of two flat rings takes single-digit degrees; the
+                  wider cones belong to funnelled probe systems, which these are not.
+                  The lateral allowance falls out of the same cone: range * tan(5 deg) is
+                  ~9 mm at the r1 capture distance, i.e. a real RMS MATE tolerance.
+         speed    0.15 m/s. Crewed contact speeds are ~0.1 m/s and robotic berthing is
+                  ~0.01-0.02; the fixture pair is 6560 kg, so this cap is ~1000 kg m/s
+                  of capture momentum against a Progress's ~700, into a weld with no
+                  damper. It is also reachable: 0.15 m/s needs 1.2 m and 16 s of one
+                  rcs_box, which is the corridor the Docking window's dial shows. */
+    static constexpr double kDockCaptureFrac = 0.4;  // of the shallower port's depth
+    /* The distance at which THESE two ports capture, m between the presented faces.
+       A function and not a constant because it is a property of the pair; the gate,
+       the dial's ring and the unit tests all call it, so nobody invents a boundary.
+       The floor matters as much as the fraction: a collision hull is inflated by
+       effectiveHullMargin(), so two parts cannot be pushed closer than twice that.
+       max() keeps the gate OUTSIDE the standoff -- a capture distance the hulls can
+       never reach is a gate that silently never opens. */
+    static double dockCaptureRange(const Part *pa, const Part *pb);
+    static constexpr double kDockAlign   = 0.996195; // cos(5 deg) axis misalignment
+    static constexpr double kDockMaxV    = 0.15;     // m/s relative speed at capture
 
     /* What these two ports look like to each other (#1026). ONE pass, shared by the
        dock gate and the Docking window, so a row a pilot reads cannot disagree with the
@@ -2462,7 +2492,11 @@ public:
            axis and the line joining the port centres -- what kDockAlign is tested
            against, and why they run near 1 rather than near 0. */
         double axisCosA = 1.0, axisCosB = 1.0;
-        double faceGap = 0.0;   // m between the two presented faces (kDockCapture)
+        double faceGap = 0.0;   // m between the two presented faces
+        /* The pair's own capture distance, m: dockCaptureRange(pa, pb), carried here so
+           the Docking window draws the SAME ring the gate compares against rather than
+           re-deriving a threshold the ports do not agree with. */
+        double captureRange = 0.0;
         double relSpeed = 0.0;  // m/s at the two ports (kDockMaxV)
         /* The corrections the Docking window plots, signed so that POSITIVE MEANS THE
            NAMED KEY: turn D, turn W, push L, push I. They are resolved on the axes the
@@ -2527,7 +2561,7 @@ public:
             ArmGone,       // the armed port left with a stage press
             Unmeasurable,  // the port centres are at one point: no axis to compare
             Misaligned,    // a face is outside the kDockAlign cone
-            TooWide,       // the faces are further than kDockCapture
+            TooWide,       // the faces are further than the pair's captureRange
             TooFast,       // the ports move relative to each other past kDockMaxV
             Mass,          // refuseDockWith: the pair would not fit in one Body (#583)
             Go,            // every gate open: the next tick mates them
