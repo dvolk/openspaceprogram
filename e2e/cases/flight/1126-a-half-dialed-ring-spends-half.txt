@@ -2,80 +2,102 @@
 # that is supposed to cover four things at once: the readouts, the ask, the solve's bounds
 # and the kilograms of hydrazine. Its two ends are pinned. flight/1124-d pins 0 % -- no
 # torque, no gram, and a ring that is present-but-unallowed rather than absent -- and
-# flight/1124-c plus #1130's cases pin the READOUT half at every dial. The spend leg in the
-# MIDDLE rested on one assert and one zero:
+# flight/677 pins 100 % on this very fixture (138 N m, 0.056 kg/s). Three cases run the dial
+# at 50 % (1124-a, 1124-b, 1067-a) and NOT ONE OF THEM READS A SPEND COLUMN: they pin rows,
+# budgets and readouts. What the applier spends in the middle rested on one line,
 #
-#     src/vehicle.cpp, actuate side:  assert(rset[i] <= a.rcs[i].limit * (1 + 1e-9))
+#     assert(rset[i] <= a.rcs[i].limit * (1 + 1e-9))
 #
-# which is two different weaknesses in one line. It is gone in any NDEBUG build (#1065 is
-# the open question about whether that is true here), and it is a BOUND, not a proportion:
-# an applier that dimmed the readouts but re-derived its own fraction from the nozzle
-# ratings somewhere else would sit comfortably under that bound and keep every pin in the
-# repo green. Only 1124-d's exact zero would notice, and only at the end of the travel.
+# which is a BOUND, not a proportion -- an applier sitting anywhere under it passes -- and is
+# gone in any NDEBUG build (#1065 is the open question about whether that is true here).
 #
-# So: the same fixture and the same press as flight/677, one click off full throttle.
-# Measured, and this case is the middle row of that table:
+# So: flight/677's fixture and press at 50 %, run with --sim-steps 720 rather than
+# --timeout 12 so the whole thing is step-identical (#472) -- six concurrent copies of these
+# ARGS print the same numbers to the last digit, and the case costs 0.5 s instead of 12.4.
+# Measured on the pristine binary at three dials (this case pins the middle row):
 #
-#   --rcs-att-frac   max tau_spent   max drain kg/s   drain integral   peak |w| rad/s
-#   1.0 (flight/677) 138 N m         0.056            0.095-0.10       ~1.05
-#   0.5 (this case)   69 N m         0.028            0.048            0.5422
-#   0.25              35 N m         0.014            0.024            0.2712
+#   frac   peak |w| rad/s   slope d|w|/dt    max tau_spent   max hold ask   drain max   integral
+#   1.0    1.2589           2.0978           138 N m         12561 N m      0.056 kg/s  0.0895
+#   0.5    0.6296           1.0488           69 N m           6282 N m      0.028 kg/s  0.0450
+#   0.25   0.3149           0.5244            35 N m          3143 N m      0.014 kg/s  0.0225
 #
-# 138 is the ring's own pitch rating (a --steering-log run prices rcs_test at 276/138/138
-# N m R/P/Y), so the dial's line is literal: half the authority, half the torque the
-# hardware delivers, half the propellant it costs. The two ends of the ratio live in
-# different cases because a case is one run of one binary; 677 holds the top row, 1124-d
-# holds the bottom, and this holds the middle. What makes the three together a pin rather
-# than three numbers is that 69 and 0.028 are each EXACTLY half of 677's figures at a print
-# precision fine enough to see it (tau prints at %.0f, the drain rate at %.3f).
+# Everything halves: the torque, the propellant, and the ANGULAR ACCELERATION the pilot
+# feels (1.0488 = half of the 2.0978 that flight/1067-c pins at full authority). The 0.25 row
+# is prose, not a pin -- nothing below reads it.
 #
-# The SHAPE is the other half of the claim, and it says the dial cuts the demand and caps
-# the hardware, not that it dims nozzles after the fact:
+# The slope is what gets pinned rather than the peak, because the slope IS the claim -- half
+# authority is a hull that picks up rate at half the pace -- and it is the figure that survives
+# the press timing: a wall-clock press release moves the peak (slope x hold), which is why 677
+# and 1067-c only dare pin bands on their ~1.05 and 2.098. The hull still stops dead (tail rows
+# print 0.000 kg/s and |w| 0.0000).
 #
-#   [slew] t=3.117 mode=stick   tau_ask=69   tau_spent=69     <- the tap: asked = spent
-#   [slew] t=6.150 mode=killrot tau_ask=6282 tau_spent=69     <- the hold: capped at 69
+# The SHAPE is the other half of the claim -- the dial cuts the demand and caps the hardware,
+# it does not dim nozzles after the ask:
 #
-# The tap's rows ask exactly what the dimmed rows ALLOW and spend all of it, because
-# killRotDemand's counterpart for the stick is budgeted from the authority rows (#1130).
-# The hold's rows ask 91x what they get: kill-rot budgets from I*(-w)/h, so the demand
-# towers and the dimmed ceiling is what answers it. tau_ask stays huge while tau_spent
-# flattens at the cap -- the same ask>0/spent=0 shape 1124-d reads at 0 %, at half height.
+#   [slew] t=3.100 mode=stick   tau_ask=69   tau_spent=69     <- the tap: asked = spent
+#   [slew] t=6.100 mode=killrot tau_ask=6282 tau_spent=69     <- the hold: capped at 69
 #
-# The bill is read off --drain-log rather than [fuel] for the reason 677 spells out: [fuel]
-# prints one decimal and the whole maneuver costs under 0.1 kg, so the tank never appears to
-# move. --no-paint because nothing here is a picture (#666 proved the numbers hold without it).
+# The tap's rows ask exactly what the dimmed rows ALLOW and spend all of it, because the
+# stick's demand is budgeted from the authority rows (#1130). The hold's rows ask 91x what
+# they get: kill-rot budgets from I*(-w)/h, so the demand towers while the dimmed ceiling
+# answers it. That is 1124-d's ask>0 / spent=0 reading at half height.
+#
+# [steerlog] is on so the ratio is inside this one run rather than only across three cases:
+# rcs=138/69/69 is the live authority a law plans against and rcs_hw=276/138/138 is what the
+# ring is worth (1124-a's split, on this hull), and the spend below lands on the first of
+# them. The bill is read off --drain-log rather than [fuel] for the reason 677 spells out:
+# [fuel] prints one decimal and this maneuver costs under 0.1 kg -- at EVERY dial the tank
+# printed 78.5/78.5 from start to finish, so the fuel-pin shape the ticket suggested
+# (first-vs-last > 0.05) could not have been read here at all.
 NAME half-dialed-ring-spends-half
-CLAIM At half pointing authority this ring spends half: 69 N m of torque and 0.028 kg/s of hydrazine, exactly half of what flight/677 spends at full on the same press (#1126).
+CLAIM At half pointing authority this ring spends half of what flight/677 spends at full on the same press: 69 N m of torque at 1.05 rad/s^2 and 0.028 kg/s of hydrazine (#1126).
 KIND invariant
-ARGS --time-accel 1 --startship rcs_test,res/ships/rcs_test.json,Kerbin,inertial-orbit
-ARGS --slew-log --drain-log --no-paint --rcs-att-frac 0.5
+ARGS --time-accel 1 --sim-steps 720 --startship rcs_test,res/ships/rcs_test.json,Kerbin,inertial-orbit
+ARGS --slew-log --drain-log --steering-log --no-paint --rcs-att-frac 0.5
 ARGS --sim-press 3000,600,S,6000,3000,X
-ARGS --timeout 12
 LIMIT 40
 EXPECT [slew]
 EXPECT [drainlog]
+EXPECT RCS: attitude limited to 50% of what the ring leaves after the keys
+EXPECT rcs=138/69/69 rcs_hw=276/138/138 rcs_on=1 att_lim=50%
 FORBID error:
+# --- fixture sanity (verbatim from 677: these say the hull is the one the table describes) ---
 CHECK len(slew) >= 15
 CHECK all(s["mode"] == "killrot" for s in slew if s["t"] > 6.0)
+CHECK sum(1 for s in slew if s["mode"] == "stick") >= 4
+# --- the dial is where the player left it, in every row. The live figure is what the spend
+# below has to match, so it is the one pinned row-by-row; the rcs_hw= figure is pinned by the
+# EXPECT above only, because its yaw print moves 138 -> 139 once the tap has burned fuel and
+# shifted the COM (0.7% of a 138 N m ring), and that is the geometry being honest, not a pin.
+CHECK all("att_lim=50%" in l and "rcs=138/69/69" in l for l in out.splitlines() if "[steerlog]" in l)
 # THE TAP SPENDS THE DIMMED CEILING, in full. Equality of the two columns is the point: the
 # ask was cut before it reached the ring, so nothing is left on the table. +-1 because both
 # print at %.0f and 69 is this fixture's golden, not a rounding boundary.
-CHECK sum(1 for s in slew if s["mode"] == "stick") >= 4
 CHECK all(abs(s["tau_ask"] - 69.0) <= 1.0 and abs(s["tau_spent"] - s["tau_ask"]) <= 1.0 for s in slew if s["mode"] == "stick")
-# THE HOLD IS CAPPED, NOT SILENCED: kill-rot still asks 4 orders of magnitude more than the
-# half ring can answer (6282 N m at the first hold row), and what comes back is 69. At 0 %
-# (1124-d) the same rows read ask=5 / spent=0; at 50 % they read ask=huge / spent=69.
+# THE HOLD IS CAPPED, NOT SILENCED: kill-rot still budgets from I*(-w)/h, so it asks 6282 N m
+# (91x what it gets) and the dimmed row cap is what answers. If the stick's budgeting were
+# ever applied to this law too, ask would fall to 69 = spent and this line is what notices.
 CHECK max(s["tau_ask"] for s in slew if s["mode"] == "killrot") > 1000
 CHECK max(s["tau_spent"] for s in slew) > 64.0
 CHECK all(s["tau_spent"] <= 72.0 for s in slew)
-# THE BILL FOLLOWS THE TORQUE, not the readout: 0.028 kg/s against 677's 0.056 kg/s at the
-# same moment of the same maneuver. +-0.003 around half, and the integral over the run under
-# half of 677's 0.15 ceiling with a floor so a build that spent torque but charged nothing
-# still reddens here. (Rate x dt is an upper bound on the kilograms, not the burn -- #1143.)
-CHECK 0.025 <= max(r["rates"][0] for r in drainlog) <= 0.031
-CHECK 0.02 < sum(r["rates"][0] * r["dt"] for r in drainlog) < 0.075
-# WHAT THE HALF BUY IS HALF A SLEW: 0.54 rad/s from the same 600 ms tap where 677 reaches
-# ~1.05, and still put down flat before the key comes up at 9.0 -- half authority is a
-# slower hull, not a hull that never stops.
-CHECK 0.40 < max(s["wnorm"] for s in slew) < 0.65
+# HALF THE RATE GAIN: 1.0488 rad/s^2 measured between the first and last tap row, exactly
+# half of the 2.0978 flight/1067-c pins on this hull at full authority, and identical at
+# --physics-hz 60 and 120. len() guards the lambda (#1067-c's idiom).
+CHECK (lambda st: len(st) >= 2 and 1.02 < (st[-1]["wnorm"] - st[0]["wnorm"]) / (st[-1]["t"] - st[0]["t"]) < 1.08)([s for s in slew if s["mode"] == "stick"])
+CHECK 0.58 < max(s["wnorm"] for s in slew) < 0.68
 CHECK all(s["wnorm"] < 0.02 for s in slew if s["t"] > 8.0)
+# THE BILL FOLLOWS THE TORQUE, not the readout: 0.028 kg/s against 677's 0.056 at the same
+# moment of the same maneuver. Mind that on this fixture the two are not independent
+# instruments -- rate/torque is a constant 4.06e-4 kg/s per N m (0.056/138 = 0.028/69 =
+# 0.014/35) -- so what these two lines can catch is the ALLOCATION stopping being billed:
+# charging the bells as if the dial were not dimmed puts 0.056 kg/s and 0.090 kg back, and
+# reddens this case and these two lines while 677, 1124-d, 1067-c and 679 all stay green.
+# The integral is still only an upper bound on the kilograms, because a drain row's rate
+# divides by the seconds it FLOWED while dt= is the whole window (#1143) -- but under
+# --sim-steps it is at least reproducible: 0.0450 in all six runs of a 6-way concurrent batch.
+CHECK 0.025 <= max(r["rates"][0] for r in drainlog) <= 0.031
+CHECK 0.035 < sum(r["rates"][0] * r["dt"] for r in drainlog) < 0.06
+# AND THEN IT STOPS PAYING: the spin is down by t=6.7 and the tank is flat for the rest of
+# the hold -- half authority is a slower hull, not one that leaks. No other case reads a
+# quiet tail at a dialed limit (679's quiet tail is at full).
+CHECK all(r["rates"][0] < 0.005 for r in drainlog if r["t"] > 7.5)

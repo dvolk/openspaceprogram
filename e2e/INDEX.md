@@ -199,7 +199,7 @@ judgement. Select by number, name or path, e.g.
 | `flight/1124-b-two-rcs-dials-compose-on-one-ring.txt` | invariant | The keys' dial and the pointing dial share one ring and compose instead of fighting: half the keys still asks 60 N, and the bells it leaves still steer at half (#1124, #1067, #595). |
 | `flight/1124-c-translation-keys-alive-at-pointing-zero.txt` | invariant | With the pointing dial at 0 the same ring still pushes at the full ask: the two RCS doors are independent and only the steering half went dark (#1124). |
 | `flight/1124-d-pointing-dead-at-pointing-zero.txt` | invariant | With the pointing dial at 0 neither SAS nor the manual stick can turn this hull with its ring: no torque spent, no hydrazine burned, and the tap that would have spun it does nothing (#1124). |
-| `flight/1126-a-half-dialed-ring-spends-half.txt` | invariant | At half pointing authority this ring spends half: 69 N m of torque and 0.028 kg/s of hydrazine, exactly half of what flight/677 spends at full on the same press (#1126). |
+| `flight/1126-a-half-dialed-ring-spends-half.txt` | invariant | At half pointing authority this ring spends half of what flight/677 spends at full on the same press: 69 N m of torque at 1.05 rad/s^2 and 0.028 kg/s of hydrazine (#1126). |
 | `flight/1148-b-legacy-settings-inherit-the-new-brackets.txt` | invariant | A settings.json written before the brackets moved still hands '[' and ']' to the fleet rather than to camera speed. |
 | `flight/1148-brackets-cycle-ships.txt` | invariant | [ steps the active ship backwards and ] forwards, wrapping around the fleet, and the Controls window shows both brackets on the ship slots and -/= on camera speed. |
 
