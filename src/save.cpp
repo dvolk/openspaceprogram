@@ -1880,7 +1880,12 @@ void commitSaveWorld(Game &g, BuiltSave *bp, bool fleetAlreadyGone) {
             if(!s.dock_target_ship.empty()) {
                 std::map<std::string, Vehicle *>::const_iterator t =
                     b->bySlug.find(s.dock_target_ship);
-                if(t != b->bySlug.end()) {
+                if(t != b->bySlug.end() && t->second != v) {
+                    /* A hull cannot be its own docking target; dockSituation() refuses that
+                       pair (MyRails), so a file that says otherwise -- hand-edited, or from
+                       a build that never checked -- must not arm intent the game will
+                       contradict on screen all session. Same guard #1154 put on the other
+                       restore path. */
                     v->dockTargetShip = t->second;
                     v->dockTargetPort = findSavedPart(b->savedUidToPart,
                                                       s.dock_target_port, t->second);

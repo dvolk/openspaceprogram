@@ -6364,12 +6364,12 @@ double Vehicle::dockStandoff(const Part *pa, const Part *pb) {
     return effectiveHullMargin(pa->body) + effectiveHullMargin(pb->body);
 }
 
-void Vehicle::dockFace(const Part *p, const glm::dvec3 &pP, const glm::dmat3 &pR,
-                       const glm::dvec3 &toward, glm::dvec3 &axis, glm::dvec3 &face) {
+Vehicle::DockFace Vehicle::dockFace(const Part *p, const glm::dvec3 &pP,
+                                    const glm::dmat3 &pR, const glm::dvec3 &toward) {
     assert(p != nullptr && p->def != nullptr);   // a built part with a def: every caller
     const double s = (glm::dot(pR[2], toward - pP) >= 0.0) ? 1.0 : -1.0;
-    axis = pR[2] * s;
-    face = pP + axis * (p->def->height * 0.5);
+    const glm::dvec3 axis = pR[2] * s;
+    return {axis, pP + axis * (p->def->height * 0.5)};
 }
 
 Vehicle::DockLadder Vehicle::dockLadder(const Part *port,
@@ -6379,7 +6379,9 @@ Vehicle::DockLadder Vehicle::dockLadder(const Part *port,
     glm::dvec3 pP;
     glm::dmat3 pR;
     partWorldPose(port, pP, pR);
-    dockFace(port, pP, pR, approachFrom, l.axis, l.face);
+    const DockFace f = dockFace(port, pP, pR, approachFrom);
+    l.axis = f.axis;
+    l.face = f.face;
     /* The squares lie on the port's own X and Y. That basis is chosen WITHOUT reference to
        which face was picked, so the ladder keeps the port's roll when the mouth flips to the
        other end: a rung plane has no side to get wrong. */
@@ -6387,6 +6389,12 @@ Vehicle::DockLadder Vehicle::dockLadder(const Part *port,
     l.rv = pR[1];
     l.valid = true;
     return l;
+}
+
+int Vehicle::dockRungAt(double along) {
+    if(!(along > 0.0) || along > kDockRungCount * kDockRungStep) { return 0; }
+    return std::clamp(static_cast<int>(std::lround(along / kDockRungStep)),
+                      1, kDockRungCount);
 }
 
 double Vehicle::dockCaptureRange(const Part *pa, const Part *pb) {
@@ -6416,9 +6424,10 @@ Vehicle::DockRead Vehicle::dockRead(const Part *pa, const Vehicle *b,
     const glm::dvec3 n = dir / d;
     /* Each port presents the face closest to the other part: +Z or -Z. One helper, so the
        snap (#1153) and the ladder (#1146) cannot drift from what the gate measured. */
-    glm::dvec3 axisA, faceA, axisB, faceB;
-    dockFace(pa, paP, paR, pbP, axisA, faceA);
-    dockFace(pb, pbP, pbR, paP, axisB, faceB);
+    const DockFace fA = dockFace(pa, paP, paR, pbP);
+    const DockFace fB = dockFace(pb, pbP, pbR, paP);
+    const glm::dvec3 &axisA = fA.axis, &faceA = fA.face;
+    const glm::dvec3 &axisB = fB.axis, &faceB = fB.face;
     r.measurable = true;
     r.portRange = d;
     r.axisCosA = glm::dot(axisA, n);
@@ -6525,6 +6534,42 @@ Vehicle::DockSit Vehicle::dockSituation() {
     return s;
 }
 
+/* The verdict's one-word token (what a test greps), its sentence (what a pilot reads), and
+   whether the world still draws an approach guide for it (#1146), in ONE table indexed by
+   Why -- the same reason #1026 gave for the table when it lived in the UI: two switches need
+   two fallbacks, and theirs disagreed (one said "go", one said nothing). It lives with the
+   enum now because a second reader arrived: the Docking window prints [dockwin] why= and
+   --dockhud-log prints why=, and those two must not spell the same refusal differently. The
+   guide column is here too because it is the same decision about the same verdict: show the
+   pilot a way in, or don't. A GEOMETRIC refusal shows one -- off-axis, too wide, too fast,
+   the mass door are what flying along the port's bore fixes. The rest do not: a hull on the
+   rails, a hull in another frame, an arm or target that is gone, ports at one point, mean
+   there is no mate to guide, and a 20 m ladder glowing while the window says the target is
+   on the rails is the bug this column exists to prevent. Each row names its enumerator
+   because the ORDER is the enum's order. */
+static const struct { const char *token; const char *sentence; bool guide; } kDockWhy[] = {
+    {/*MyRails      */ "myrails",      "this hull is on the rails -- drop warp",         false},
+    {/*NoArm        */ "noarm",        "no port armed on this hull",                    false},
+    {/*NoTarget     */ "notarget",     "no target port set",                            false},
+    {/*TargetGone   */ "targetgone",   "the target no longer carries that port",        false},
+    {/*TargetRails  */ "targetrails",  "the target is still on the rails -- drop warp", false},
+    {/*OtherFrame   */ "otherframe",   "the two hulls are in different frames",         false},
+    {/*ArmGone      */ "armgone",      "the armed port is gone",                        false},
+    {/*Unmeasurable */ "unmeasurable", "the two ports are at one point",                false},
+    {/*Misaligned   */ "misaligned",   "a port face is off-axis",                        true},
+    {/*TooWide      */ "toowide",      "the port faces are too far apart",               true},
+    {/*TooFast      */ "toofast",      "the ports move past each other too fast",        true},
+    {/*Mass         */ "mass",         "",                                             true},  // #583's own sentence beats a paraphrase
+    {/*Go           */ "go",           "GO: the hulls mate this tick",                   true},
+};
+static_assert(sizeof kDockWhy / sizeof kDockWhy[0] == (size_t)Vehicle::DockSit::Go + 1,
+              "Vehicle::DockSit::Why changed: add a row here, in the enum's order, and a "
+              "case in Game::updateDocking");
+
+const char *Vehicle::dockWhyToken(DockSit::Why w) { return kDockWhy[(size_t)w].token; }
+const char *Vehicle::dockWhySentence(DockSit::Why w) { return kDockWhy[(size_t)w].sentence; }
+bool Vehicle::dockGuideWanted(DockSit::Why w) { return kDockWhy[(size_t)w].guide; }
+
 /* #583. getMass() is the same sum rebuildCompound() hands Bullet (effectiveMass over
    the parts, part.h), so the two totals here are exactly the two the merged Body is
    about to add. No ceiling beyond that: the game stores mass in a double, and this
@@ -6622,9 +6667,10 @@ void Vehicle::absorbShip(Vehicle *B, Part *portA, Part *portB, DockSnap *snap) {
         /* dockRead's bail, at its threshold: coincident centres give no line, so neither
            face is THE presented one and there is nothing well-defined to close. */
         if(glm::length(join) > 1e-9) {
-            glm::dvec3 axisA, faceA, axisB, faceB;
-            dockFace(portA, posA, rotA, posB, axisA, faceA);
-            dockFace(portB, posB, rotB, posA, axisB, faceB);
+            const DockFace fA = dockFace(portA, posA, rotA, posB);
+            const DockFace fB = dockFace(portB, posB, rotB, posA);
+            const glm::dvec3 &axisA = fA.axis, &faceA = fA.face;
+            const glm::dvec3 &axisB = fB.axis, &faceB = fB.face;
             /* The MINIMAL turn that sets the two bores against each other: about the axis
                both are already in, so nothing else about either hull moves. A zero-length
                cross means the bores are already anti-parallel (nothing to do), or that the

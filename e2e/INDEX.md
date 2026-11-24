@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 478 |
+| `invariant` | a behaviour or a player route the game must keep | 480 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 57 |
 | `harness` | CLI/test-engine plumbing, not game spec | 18 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **557** |
+| | **total** | **559** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -492,7 +492,7 @@ judgement. Select by number, name or path, e.g.
 | `ui/1090-a-hull-card-form-row.txt` | invariant | Body part cards print the merged aero block -- credit row, hull flow row, watts row -- at cadence; the hull flow row agrees across the ship's body cards; the upwind capsule reads a real area and cd; no surface AoA row on body cards. |
 | `ui/1115-a-part-card-dashes-in-vacuum.txt` | invariant | Above the air, a body card prints the dashed trio and a surface card the dashed pair -- exact spellings, same row counts as the live blocks, and a never-billed peak that still answers 0.0 W. |
 
-## render (94)
+## render (96)
 
 | case | kind | pins |
 |---|---|---|
@@ -589,7 +589,9 @@ judgement. Select by number, name or path, e.g.
 | `render/1145-b-no-selected-target-no-mark.txt` | invariant | With no transfer target selected the HUD places no target mark. |
 | `render/1145-c-body-target-mark-sits-on-the-authored-mun-distance.txt` | invariant | A body target gets the mark at its centre, at the Kerbin-Mun distance its authored orbital rate implies. |
 | `render/1145-target-mark-is-placed-at-the-selected-station.txt` | invariant | The HUD marks a selected transfer target at the target's own point: station kind, at its authored orbit radius, with the marker handed the eye-to-target direction. |
-| `render/1146-a-approach-ladder-points-out-of-the-targeted-port.txt` | invariant | A targeted docking port shows a ladder of 2 m squares normal out of the face it presents to the armed hull, and the ladder goes away when the dock consumes the intent. |
+| `render/1146-a-approach-ladder-points-out-of-the-targeted-port.txt` | invariant | A targeted docking port shows a ladder of 2 m squares normal out of the face it presents to the armed hull, sized and spaced by one set of constants, and it stops when the dock consumes the intent. |
+| `render/1146-b-approach-ladder-counts-rungs-up-to-its-reach-and-then-says-nothing.txt` | invariant | Out along the bore the ladder highlights the rung at the port's own face gap and, past its 20 m of rungs, stops claiming a rung at all rather than sticking at the last one. |
+| `render/1146-c-approach-ladder-stays-dark-while-the-gate-refuses-the-pair.txt` | invariant | Warp puts the targeted station on the rails, the capture gate refuses the pair for that named reason, and the ladder draws nothing rather than holding up a 20 m guide for a mate that cannot happen. |
 
 ## harness (19)
 

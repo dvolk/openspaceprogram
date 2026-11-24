@@ -619,13 +619,47 @@ static void test_the_approach_ladder_runs_out_of_the_presented_face() {
     CHECK_TRUE(!A.v->dockLadder(tankA, portBPos).valid, "a tank presents no mouth");
     CHECK_TRUE(!A.v->dockLadder(nullptr, portBPos).valid, "and no port presents none");
 
-    /* The ticket's numbers, named once (the painter places rung i at face + axis * step * i
-       for i in 1..count, so count * step is the ladder's reach). A retune should trip here
-       and be a decision, not a surprise in the render code. */
-    CHECK_NEAR(Vehicle::kDockRungEdge, 2.0, 1e-12, "2 m squares");
-    CHECK_NEAR(Vehicle::kDockRungStep, 2.0, 1e-12, "every 2 m");
-    CHECK_NEAR(Vehicle::kDockRungCount * Vehicle::kDockRungStep, 20.0, 1e-12,
-               "for 20 m of ladder");
+    /* WHICH RUNG. The painter lights the rung at the gap between the two PRESENTED faces --
+       the same two faces #1152's gate measures -- so this asks for that gap in the painter's
+       own spelling (the armed port's face, then the target's ladder toward it) and holds it
+       against the gate's faceGap. B is moved off the face first because the stack above sits
+       face-to-face, where 0 == 0 would pass for any rule. */
+    B.v->placeShip(glm::dvec3(0.0, 0.0, -2.875), glm::dmat3(1.0));   // 1 m of daylight
+    const glm::dvec3 portBPos2 = worldPos(B.v, portB);
+    const Vehicle::DockRead r2 = A.v->dockRead(portA, B.v, portB);
+    const Vehicle::DockFace faceA = Vehicle::dockFace(
+        portA, worldPos(A.v, portA), A.v->partRot(portA), portBPos2);
+    const Vehicle::DockLadder ladB2 = B.v->dockLadder(portB, faceA.face);
+    CHECK_NEAR(r2.faceGap, 1.0, 1e-12, "1 m of daylight, measured face to face");
+    CHECK_NEAR(glm::dot(faceA.face - ladB2.face, ladB2.axis), r2.faceGap, 1e-12,
+               "the ladder's distance figure IS the gate's face gap, not a port-centre one");
+
+    /* And the rung that figure picks, including the two edges the highlight has to get right:
+       a hull past the ladder's reach is level with NO rung (clamping to the last one would
+       keep saying "here" from 200 m out), and so is one that has gone through the mouth. */
+    CHECK_TRUE(Vehicle::dockRungAt(0.347) == 1, "inside the first step, rung 1");
+    CHECK_TRUE(Vehicle::dockRungAt(14.2) == 7, "14 m out is the 7th rung of 2 m");
+    CHECK_TRUE(Vehicle::dockRungAt(20.0) == 10, "the last rung is inside the ladder");
+    CHECK_TRUE(Vehicle::dockRungAt(20.001) == 0, "and one mm past it, nothing is");
+    CHECK_TRUE(Vehicle::dockRungAt(200.0) == 0, "200 m out is not level with rung 10");
+    CHECK_TRUE(Vehicle::dockRungAt(0.0) == 0, "at the face, no rung is in front of nothing");
+    CHECK_TRUE(Vehicle::dockRungAt(-1.0) == 0, "past the mouth, the ladder is behind the hull");
+    CHECK_TRUE(Vehicle::dockRungAt(std::nan("")) == 0, "a NaN picks no rung rather than the last");
+
+    /* Who may hold a ladder up at all. The geometric refusals draw -- flying along the bore
+       is exactly how a pilot fixes off-axis, too-wide, too-fast -- and nothing else does.
+       This is not a style rule: before the painter asked the gate, it kept its own notion of
+       "intent is live" and drew the full 20 m guide for a station the gate was refusing with
+       "the target is still on the rails -- drop warp", so the world and the Docking window
+       contradicted each other on the same frame, at every frame the pilot looked. The 5 + 8
+       rows are all 13 verdicts; vehicle.cpp's static_assert stops that from drifting. */
+    using Why = Vehicle::DockSit::Why;
+    const Why draws[] = {Why::Go, Why::Misaligned, Why::TooWide, Why::TooFast, Why::Mass};
+    const Why staysDark[] = {Why::MyRails, Why::NoArm, Why::NoTarget, Why::TargetGone,
+                             Why::TargetRails, Why::OtherFrame, Why::ArmGone,
+                             Why::Unmeasurable};
+    for(Why w : draws) { CHECK_TRUE(Vehicle::dockGuideWanted(w), Vehicle::dockWhyToken(w)); }
+    for(Why w : staysDark) { CHECK_TRUE(!Vehicle::dockGuideWanted(w), Vehicle::dockWhyToken(w)); }
 
     destroyShip(B.v);
     destroyShip(A.v);
@@ -2249,8 +2283,12 @@ static void test_a_sideways_port_moves_the_dial_but_not_the_verdict() {
 
 int main() {
     test_absorb();
-    test_a_dock_snaps_the_seam_shut();
+    /* The ladder runs BEFORE the snap test on purpose. dockRead, absorbShip's #1153 snap and
+       the ladder all share Vehicle::dockFace now, and a regression in that one rule dies on
+       absorbShip's precondition assert -- which aborts the binary and prints nothing about the
+       rule that broke. Asking here first turns an abort into named CHECK failures. */
     test_the_approach_ladder_runs_out_of_the_presented_face();
+    test_a_dock_snaps_the_seam_shut();
     test_a_dock_keeps_the_pair_s_momentum();
     printf("\n");
     test_a_dock_keeps_the_pair_s_spin();

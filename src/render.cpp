@@ -1082,111 +1082,102 @@ static void drawCamGizmo(Game &g) {
     }
 }
 
-/* #1146: the docking approach ladder. A hull that has TARGETED a port gets squares normal
-   out of that port's presented face, oriented with the port, so the line to fly and the
-   angle of the mouth live in the world instead of only as numbers in the Docking window.
+/* #1146: the docking approach ladder. A hull whose docking intent names a port gets squares
+   normal out of that port's presented face, oriented with the port, so the line to fly and
+   the angle of the mouth live in the world instead of only as numbers in the Docking window.
      The rungs are a fixed WORLD size, which is the whole point and the opposite of every
-   other HUD mark: the billboards above stand 10 m from the eye and hold their SCREEN size
+   other HUD mark: the billboards below stand 10 m from the eye and hold their SCREEN size
    (#1145), so a ladder drawn that way would show ten identical squares however far off they
-   were and say nothing about distance. Here the shrinkage IS the reading. It also means a
-   station 400 km away draws nothing a rasterizer would light -- a 2 m square there is about
-   0.002 px -- and that is the target mark's job, not this one's. This is the last-20-m tool.
+   were and say nothing about distance. Here the shrinkage IS the reading. The cost is the
+   flip side of the same arithmetic: at the shipped camera (935 px/rad at 1080p) a 2 m rung is
+   0.0047 px at 400 km, so this is the last-20-m tool and the target mark stays the one for
+   orbital range. Nothing here culls on that yet -- #1168.
      Depth is left ON: the caller is the opaque world pass, not the depth-off marker block
-   that follows. A rung behind the target is hidden BY the target, which is what stops a
-   ladder reading as a hatch punched through a station's own hull. Hence the same render-frame
-   placement every other world draw site uses (-renderOrigin, so the float cast quantizes on
-   ship-relative numbers).
-     Drawn whenever the intent names a port, not only when the gate is near opening: the ask
-   is "when a docking port is selected as a target", and a ladder that appeared only inside
-   some range would be missing at exactly the moments it is there to guide. */
+   that follows, so a rung behind the target is hidden BY the target instead of reading as a
+   hatch through the station's own hull. Like every other world draw site this works on
+   render-grid numbers (-renderOrigin, so the float cast quantizes on ship-relative values).
+     The gate is ASKED, not re-derived. dockSituation() is the verdict the Docking window
+   prints and Game::updateDocking acts on, so the world cannot hold up a 20 m "come in this
+   way" guide for a mate the gate has refused for a named reason -- target still on the rails,
+   the two hulls in different frames, no armed port -- while the window says so beside it. That
+   is also what makes the geometry cheap: a pair the gate will not mate is skipped, so every
+   drawn pair is same-frame and there is no frame lift to get wrong or to test, and the datum
+   for "which rung am I level with" is always the armed port instead of slipping to the COM
+   (metres of jump) when a stage press drops it.
+     The refusals that DO draw are the geometric ones -- misaligned, too wide, too fast, the
+   mass door -- because those are exactly what the ladder is there to help a pilot fix. That
+   split is Vehicle::dockGuideWanted(), a column of the same table that says the verdict out
+   loud, and tests/test_dock.cpp pins which verdicts are in it. */
 static void drawDockLadder(Game &g) {
     Vehicle *ship = g.ship;
-    Vehicle *ts = ship != nullptr ? ship->dockTargetShip : nullptr;
-    Part *tp = ship != nullptr ? ship->dockTargetPort : nullptr;
-    const char *skip = nullptr;   // why nothing was drawn, when nothing was
-    Vehicle::DockLadder lad;
-    bool placed = false;
-    double along = 0.0;           // m out from the face to the mating hull, along the axis
-    if(ts == nullptr || tp == nullptr) {
-        skip = "no-target";
-    } else {
-        // dockSituation()'s belt, on the paint side: the target must still carry the port.
-        bool holds = false;
-        for(Part *p : ts->parts) { if(p == tp) { holds = true; break; } }
-        if(!holds || !tp->isDockingPort()) { skip = "port-gone"; }
-    }
-    if(skip == nullptr) {
-        /* Where the mating hull is, in the TARGET's frame: its armed port if it has one
-           (that is the half that mates), else its COM. The ladder points out of whichever
-           face that hull is approaching, which is the same rule the capture gate uses, so
-           the rungs cannot sit on the far side of a port the gate is about to close. */
-        glm::dvec3 from = ship->get_center_of_mass();
-        if(ship->dockArmPort != nullptr) { from = ship->partPos(ship->dockArmPort); }
-        glm::dvec3 fromT, vel;
-        switchFrameState(ship->frame, ts->frame, from, glm::dvec3(0.0), fromT, vel);
-        lad = ts->dockLadder(tp, fromT);
-        if(!lad.valid) { skip = "not-a-port"; }
-        else {
-            along = glm::dot(fromT - lad.face, lad.axis);
-            placed = true;
-        }
-    }
-    if(placed) {
-        // Into the frame this pass draws in (the active ship's), then onto the render grid.
-        Camera *camera = g.camera;
-        Frame *rf = ship->frame;
-        glm::dvec3 faceR, vel;
-        switchFrameState(ts->frame, rf, lad.face, glm::dvec3(0.0), faceR, vel);
-        const glm::dmat3 O = ts->frame->GetOrientRelTo(rf);
-        const glm::dvec3 axis = O * lad.axis, ru = O * lad.ru, rv = O * lad.rv;
-        const glm::dvec3 org = faceR - camera->GetRenderOrigin();
-        /* The rung the mating hull is level with reads brighter. Every rung is the same
-           WORLD size, so on screen a uniform ladder is just a shrinking tunnel; this one
-           says how far up it you stand, which is the ticket's "how to approach it". Inside
-           the first rung the nearest rung IS rung 1, so the highlight only drops out when
-           the hull is past the face (along <= 0), where the ladder is behind it. */
-        const int nearRung = (along > 0.0)
-            ? std::clamp(static_cast<int>(std::lround(along / Vehicle::kDockRungStep)),
-                         1, Vehicle::kDockRungCount)
-            : 0;
-        glLineWidth(2.0f);
-        g.lineshader->Bind();
-        const glm::dmat4 VP = glm::dmat4(camera->GetProjection()) * camera->GetView();
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        const double s = Vehicle::kDockRungEdge;
-        for(int i = 1; i <= Vehicle::kDockRungCount; i++) {
-            const glm::dvec3 c = org + axis * (Vehicle::kDockRungStep * i);
-            g.lineshader->setUniform_mat4(0,
-                VP * glm::translate(c) * glm::dmat4(glm::dmat3(ru * s, rv * s, axis)));
-            g.lineshader->setUniform_vec4(1, (i == nearRung)
-                ? glm::vec4(1.0f, 1.0f, 1.0f, 0.9f)      // the rung you are level with
-                : glm::vec4(0.25f, 0.9f, 1.0f, 0.45f));  // cyan, like the plane overlay
-            g.dock_rung_sq->Draw(GL_LINE_LOOP);
-        }
-        glDisable(GL_BLEND);
-        glLineWidth(1.0f);   // global state: the next GL_LINES drawer inherits it
+    const Vehicle::DockSit s = ship->dockSituation();
+    if(!Vehicle::dockGuideWanted(s.why)) {
+        /* #873's lesson: say why nothing is drawn, in the same word the window uses, rather
+           than letting "stopped" look like "never ran". */
         if(g.args.dockhud_log
            && g.logDue(kGateDockHud, g.logClockMs(), g.orbit_log_interval_ms)) {
-            /* What the rungs were PLACED by, in this pass's own frame -- face in the active
-               ship's frame coordinates (as [tgtmark]'s com= is) and axis a unit vector a
-               case can hold against the port's own bore. along is signed: negative means the
-               mating hull is on the far side of the face, so no rung is highlighted.
-               drawn= is this function's decision, not a GPU receipt: deleting the Draw loop
-               leaves the row byte-identical. Paint pass only, like --relvel-log: --no-paint
-               prints nothing at all. */
-            printf("[dockhud] t=%.1fs target=\"%s\" port=%s rungs=%d edge=%.2f m "
-                   "step=%.2f m face=[%.3f %.3f %.3f] m axis=[%.4f %.4f %.4f] "
-                   "along=%.3f m near=%d drawn=%d\n",
-                   g.time, ts->displayName().c_str(), tp->def->name.c_str(),
-                   Vehicle::kDockRungCount, Vehicle::kDockRungEdge,
-                   Vehicle::kDockRungStep, faceR.x, faceR.y, faceR.z,
-                   axis.x, axis.y, axis.z, along, nearRung, 1);
+            printf("[dockhud] t=%.1fs drawn=0 why=%s\n", g.time,
+                   Vehicle::dockWhyToken(s.why));
             fflush(stdout);
         }
-    } else if(g.args.dockhud_log
-              && g.logDue(kGateDockHud, g.logClockMs(), g.orbit_log_interval_ms)) {
-        printf("[dockhud] t=%.1fs drawn=0 why=%s\n", g.time, skip);
+        return;
+    }
+    /* arm/target non-null and same-frame: dockSituation() just certified it, including that
+       the target still carries this port, so no belt of my own here -- a scan that
+       dereferenced a freed Part would have been the illusion of one, not the thing.
+         The distance the ladder speaks in is measured FACE to FACE, the same two faces the
+       capture gate measures, not port-centre to port-centre and not to the hull's COM (which
+       used to make this column jump metres when a stage press dropped the armed port, and
+       meant a different number for where you bolted the port). So faceout below IS [dock]'s
+       d= for an on-axis pair, and the highlighted rung is the one at that gap. */
+    const glm::dvec3 targetPos = s.b->partPos(s.target);
+    const glm::dvec3 armFace = Vehicle::dockFace(
+        s.arm, ship->partPos(s.arm), ship->partRot(s.arm), targetPos).face;
+    const Vehicle::DockLadder lad = s.b->dockLadder(s.target, armFace);
+    assert(lad.valid);
+    Camera *camera = g.camera;
+    const glm::dvec3 org = lad.face - camera->GetRenderOrigin();
+    const double faceout = glm::dot(armFace - lad.face, lad.axis);
+    const int nearRung = Vehicle::dockRungAt(faceout);
+    glLineWidth(2.0f);
+    g.lineshader->Bind();
+    const glm::dmat4 VP = glm::dmat4(camera->GetProjection()) * camera->GetView();
+    const GLboolean hadBlend = glIsEnabled(GL_BLEND);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    const double s2 = Vehicle::kDockRungEdge;
+    for(int i = 1; i <= Vehicle::kDockRungCount; i++) {
+        const glm::dvec3 c = org + lad.axis * (Vehicle::kDockRungStep * i);
+        g.lineshader->setUniform_mat4(0,
+            VP * glm::translate(c) * glm::dmat4(glm::dmat3(lad.ru * s2, lad.rv * s2, lad.axis)));
+        g.lineshader->setUniform_vec4(1, (i == nearRung)
+            ? glm::vec4(1.0f, 1.0f, 1.0f, 0.9f)      // the rung you are level with
+            : glm::vec4(0.25f, 0.9f, 1.0f, 0.45f));  // cyan, like the plane overlay
+        g.dock_rung_sq->Draw(GL_LINE_LOOP);
+    }
+    if(!hadBlend) { glDisable(GL_BLEND); }   // leave the world pass's state as we found it
+    glLineWidth(1.0f);   // global state: the next GL_LINES drawer inherits it
+    if(g.args.dockhud_log
+       && g.logDue(kGateDockHud, g.logClockMs(), g.orbit_log_interval_ms)) {
+        /* What the rungs were PLACED by. face/axis are in the active ship's frame, which the
+           gate has just confirmed the target shares (as [tgtmark]'s com= is that frame's);
+           axis is a unit vector a case can hold against the port's own bore. faceout is the
+           gap between the two PRESENTED faces measured along the target's bore -- the same
+           quantity [dock] calls d= for an on-axis pair, signed, and NOT a camera range. near
+           is dockRungAt(faceout): 0 means "level with no rung", either behind the face or
+           past the 20 m the ladder reaches. why= is the gate's own verdict, so a row can be
+           read beside [dockwin]'s.
+           drawn= is this function's decision, not a GPU receipt: deleting the Draw loop leaves
+           the row byte-identical -- the closest stdout gets is [perf]'s draws= column. Paint
+           pass only, like --relvel-log: --no-paint prints nothing at all. */
+        printf("[dockhud] t=%.1fs target=\"%s\" port=%s why=%s rungs=%d edge=%.2f m "
+               "step=%.2f m face=[%.3f %.3f %.3f] m axis=[%.4f %.4f %.4f] "
+               "faceout=%.3f m near=%d drawn=1\n",
+               g.time, s.b->displayName().c_str(), s.target->def->name.c_str(),
+               Vehicle::dockWhyToken(s.why),
+               Vehicle::kDockRungCount, Vehicle::kDockRungEdge,
+               Vehicle::kDockRungStep, lad.face.x, lad.face.y, lad.face.z,
+               lad.axis.x, lad.axis.y, lad.axis.z, faceout, nearRung);
         fflush(stdout);
     }
 }

@@ -2502,10 +2502,14 @@ public:
        need that choice and have to make it the same way -- dockRead() for both halves of a
        pair, absorbShip()'s snap (#1153) for the seam it closes, and the approach ladder
        (#1146) for the mouth it runs out of -- so a rung on screen cannot disagree with the
-       gap the gate measured. All three vectors are in ONE frame, whichever the caller is
-       already working in; nothing here lifts between frames. */
-    static void dockFace(const Part *p, const glm::dvec3 &pP, const glm::dmat3 &pR,
-                         const glm::dvec3 &toward, glm::dvec3 &axis, glm::dvec3 &face);
+       gap the gate measured. All the inputs and both outputs are in ONE frame, whichever the
+       caller is already working in; nothing here lifts between frames. */
+    struct DockFace {
+        glm::dvec3 axis;   // outward normal of the presented face, unit
+        glm::dvec3 face;   // its centre
+    };
+    static DockFace dockFace(const Part *p, const glm::dvec3 &pP, const glm::dmat3 &pR,
+                             const glm::dvec3 &toward);
 
     /* The approach ladder (#1146): squares normal out of the port a hull has targeted, so
        the line to fly and the port's own roll are visible in the world and not only as
@@ -2515,9 +2519,16 @@ public:
     static constexpr double kDockRungEdge = 2.0;   // m across each square
     static constexpr double kDockRungStep = 2.0;   // m between rung centres
     static constexpr int kDockRungCount = 10;      // -> 20 m of ladder
+    /* Which rung a hull standing `along` metres out from the face is level with, or 0 when
+       it is level with none: behind the face (along <= 0, the ladder is behind it) or PAST
+       THE LADDER'S REACH, where clamping to the last rung would keep saying "here" to a hull
+       200 m out. render.cpp lights that rung; the rule lives here so a test can hold it. */
+    static int dockRungAt(double along);
     struct DockLadder {
         bool valid = false;
-        /* Everything in the PORT's own ship's frame; the painter lifts once. Rung n sits
+        /* Everything in the PORT's own ship's frame, which is the frame a same-frame pair
+           shares -- dockSituation() refuses every other pairing, and the painter asks it
+           first, so a rung is placed in the same frame the parts are drawn in. Rung n sits
            at face + axis * (kDockRungStep * n) for n = 1..kDockRungCount -- the first rung
            is a step out, not on the face itself, so it never lies in the port's own skin.
            ru/rv are the port's own in-plane axes: the squares ride the port's roll rather
@@ -2626,6 +2637,21 @@ public:
         DockRead read;
         std::string massWhy;     // the #583 sentence, "" when the pair fits
     };
+    /* How a verdict is SAID: the one word a test greps, and the sentence a pilot reads. One
+       table in vehicle.cpp, indexed by Why, because a verdict now has two readers -- the
+       Docking window's [dockwin] row and --dockhud-log's why= -- and two spellings of the
+       same refusal is how #1026's first version shipped an empty verdict in one place and a
+       stale word in the other. Adding an enumerator stops compiling at that table. */
+    static const char *dockWhyToken(DockSit::Why w);
+    static const char *dockWhySentence(DockSit::Why w);
+    /* Does this verdict still want the world to show a way in (#1146's approach ladder)?
+       True for the geometric refusals -- misalignment, width, speed, the mass door -- which
+       are exactly what a pilot can fix by flying along the port's bore, and false for
+       everything else, including the pair-level refusals (on the rails, another frame, no
+       armed port) where a 20 m green ladder would contradict the Docking window beside it.
+       Here rather than spelled out in the painter so the split is a testable fact; the ladder
+       itself cannot be eyeballed headless. */
+    static bool dockGuideWanted(DockSit::Why w);
     DockSit dockSituation();
     /* The dock gate's own door (#583): "" if folding `B` into this ship gives a hull
        the game can hold, else the sentence to say instead. A ship's mass total is

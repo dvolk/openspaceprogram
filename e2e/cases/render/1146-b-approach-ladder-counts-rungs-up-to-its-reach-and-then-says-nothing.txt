@@ -1,0 +1,37 @@
+NAME approach-ladder-counts-rungs-up-to-its-reach-and-then-says-nothing
+CLAIM Out along the bore the ladder highlights the rung at the port's own face gap and, past its 20 m of rungs, stops claiming a rung at all rather than sticking at the last one.
+KIND invariant
+# --dock-test stale-target parks dockprobe 1 m of arc behind dockstation with a 40 deg yaw,
+# and the two orbits pull them apart along the bore at roughly 2.3 m per 2 s, so one 24 s run
+# walks the whole ladder and 8 m past it. --orbit-interval 2.0 prints [dockhud] every 2 s,
+# which is about one rung per row.
+#   This is the case that gives the reach teeth. The numbers -- 2 m squares, 2 m apart, 10 of
+#   them -- are tuning a designer will change, so they are not pinned here; what is pinned is
+#   the RELATION between the printed distance and the printed highlight:
+#     near == round(faceout / step) while faceout is inside count x step, and near == 0 past
+#     it. 18.812 m reads rung 9, 21.110 m reads nothing.
+#   A highlight that clamped -- which is what a naive implementation does -- keeps saying "the
+#   10th rung, just ahead" from 30 m, 300 m, anywhere. It would look fine on screen at the
+#   start of an approach and lie for the rest of the session, which is the failure mode this
+#   row exists to catch: the ladder is a distance instrument, and an instrument that stops
+#   resolving distance while still showing one is worse than no ladder.
+#   The 13 verdicts' draw/no-draw split is pinned in tests/test_dock.cpp; 1146-c pins the
+#   branch that a fixture CAN reach. Nothing here claims pixels -- see 1146-a for what a
+#   [dockhud] row does and does not prove.
+ARGS --dock-test stale-target --time-accel 1 --timeout 24 --dockhud-log --orbit-interval 2.0
+EXPECT Dock-test (stale-target)
+EXPECT [dockhud] t=
+# The pair is refused for a GEOMETRIC reason the ladder is there to help fix, so it draws --
+# and it keeps drawing as they drift, because the gate does not refuse on distance.
+CHECK (lambda r: len(r) >= 8 and all(a[0] == "misaligned" and a[1] == "1" for a in r))(re.findall(r'\[dockhud\] t=\S+ target="dockstation" port=docking_port_r1 why=(\w+) rungs=\d+ edge=[-\d.]+ m step=[-\d.]+ m face=\[[-\d. ]+\] m axis=\[[-\d. ]+\] faceout=[-\d.]+ m near=\d+ drawn=(\d+)', out))
+# The distance walked: strictly increasing, starting inside the first rung and finishing past
+# the ladder's end. Measured 2.555 -> 27.864 m over these rows.
+CHECK (lambda r: len(r) >= 8 and all(float(r[i]) < float(r[i + 1]) for i in range(len(r) - 1)) and float(r[0]) < 4.0 and float(r[-1]) > 24.0)(re.findall(r'\[dockhud\] t=\S+ target="dockstation" port=docking_port_r1 why=\w+ rungs=\d+ edge=[-\d.]+ m step=[-\d.]+ m face=\[[-\d. ]+\] m axis=\[[-\d. ]+\] faceout=([-\d.]+) m near=\d+ drawn=1', out))
+# The instrument itself: each row's highlight is the rung AT its own printed gap (the step is
+# printed, not assumed), and every row past count x step of rungs highlights none. Groups come
+# in row order: rungs, step, faceout, near. Measured: 2.555/2 -> 1, 7.079/2 -> 4, 18.812/2 ->
+# 9, then 21.110 and beyond -> 0. The +0.5 is std::lround's own rule (the CHECK sandbox has no
+# round(), which is a good thing here: round() rounds half to even and the game rounds half
+# away from zero); tests/test_dock.cpp pins the half-step edge itself.
+CHECK (lambda r: len(r) >= 8 and all((int(a[3]) == 0 if float(a[2]) > float(a[1]) * int(a[0]) else int(a[3]) == int(float(a[2]) / float(a[1]) + 0.5)) for a in r))(re.findall(r'rungs=(\d+) edge=[-\d.]+ m step=([-\d.]+) m face=\[[-\d. ]+\] m axis=\[[-\d. ]+\] faceout=([-\d.]+) m near=(\d+) drawn=1', out))
+FORBID error:

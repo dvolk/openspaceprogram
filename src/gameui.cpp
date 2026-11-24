@@ -6221,32 +6221,11 @@ void drawUIRecorder(Game &g) {
 
 /* --- the docking panel (#1026) --------------------------------------------- */
 
-/* The gate's answer, as the one word a test greps and the sentence a pilot reads, in
-   ONE table indexed by Vehicle::DockSit::Why. It is a table rather than two switches
-   because two switches need two fallbacks, and theirs disagreed (one said "go", one said
-   nothing) while neither was the point: the assert below is what makes adding an
-   enumerator stop compiling here, where the fix is a line, instead of printing an empty
-   verdict in the window and a stale token in the log. Each row carries its enumerator's
-   name because the ORDER is the enum's order. */
-struct DockWhy { const char *token; const char *sentence; };
-static const DockWhy kDockWhy[] = {
-    {/*MyRails      */ "myrails",      "this hull is on the rails -- drop warp"},
-    {/*NoArm        */ "noarm",        "no port armed on this hull"},
-    {/*NoTarget     */ "notarget",     "no target port set"},
-    {/*TargetGone   */ "targetgone",   "the target no longer carries that port"},
-    {/*TargetRails  */ "targetrails",  "the target is still on the rails -- drop warp"},
-    {/*OtherFrame   */ "otherframe",   "the two hulls are in different frames"},
-    {/*ArmGone      */ "armgone",      "the armed port is gone"},
-    {/*Unmeasurable */ "unmeasurable", "the two ports are at one point"},
-    {/*Misaligned   */ "misaligned",   "a port face is off-axis"},
-    {/*TooWide      */ "toowide",      "the port faces are too far apart"},
-    {/*TooFast      */ "toofast",      "the ports move past each other too fast"},
-    {/*Mass         */ "mass",         ""},  // #583's own sentence beats a paraphrase
-    {/*Go           */ "go",           "GO: the hulls mate this tick"},
-};
-static_assert(sizeof kDockWhy / sizeof kDockWhy[0] == (size_t)Vehicle::DockSit::Go + 1,
-              "Vehicle::DockSit::Why changed: add a row here, in the enum's order, and a "
-              "case in Game::updateDocking");
+/* The verdict's token and sentence are ONE table on Vehicle now (vehicle.cpp, next to the
+   DockSit enum) because a second reader arrived: the world's approach ladder names the same
+   refusal in --dockhud-log (#1146). Reading it through Vehicle::dockWhyToken/
+   dockWhySentence is what keeps [dockwin]'s why= and [dockhud]'s why= the same word, and the
+   static_assert over that table is what stops compiling when an enumerator is added. */
 
 /* The live line's cadence, named rather than a bare 0.5: the part windows set this 2 Hz
    rule in #734 and spell it kReadSec (gameui.cpp:3830). Wall seconds, not sim seconds --
@@ -6551,11 +6530,11 @@ void drawUIDock(Game &g) {
             /* No Mass case here on purpose: dockSituation() only reaches the #583 mass door
                after a measurable read, so an unmeasurable pair cannot be refused on mass. */
             if(justMated) {
-                /* Past tense on purpose: kDockWhy[Go].sentence is written for the tick the
+                /* Past tense on purpose: dockWhySentence(Go) is written for the tick the
                    gate is acting on, which is the one tick this panel never gets to draw. */
                 uiText("GO: %s mated with %s", a->displayName().c_str(), matedWith.c_str());
             } else {
-                uiText("%s", kDockWhy[(size_t)s.why].sentence);
+                uiText("%s", Vehicle::dockWhySentence(s.why));
             }
             if(s.why == Vehicle::DockSit::MyRails || s.why == Vehicle::DockSit::TargetRails) {
                 /* The rails are a warp switch, so name the switch. The number here is the
@@ -6567,7 +6546,7 @@ void drawUIDock(Game &g) {
         } else {
             if(!s.massWhy.empty()) {
                 /* The one refusal with no ruler to put it on: the #583 mass door has no
-                   figure on the dial, and kDockWhy[Mass].sentence is empty because the game
+                   figure on the dial, and dockWhySentence(Mass) is empty because the game
                    already wrote a better sentence. Print it above the drawing rather than
                    hand the player a normal-looking dial and silence. */
                 uiText("%s", s.massWhy.c_str());
@@ -6613,7 +6592,7 @@ void drawUIDock(Game &g) {
                the arrow row shows; after a mate that other hull is gone. The latch can only
                ever reach the token-only branch below: dockSituation() answers NoArm before
                it builds a read, so `measurable` and `justMated` cannot both hold. */
-            const char *whyTok = kDockWhy[(size_t)(justMated ? Vehicle::DockSit::Go : s.why)].token;
+            const char *whyTok = Vehicle::dockWhyToken(justMated ? Vehicle::DockSit::Go : s.why);
             const char *bTok = s.b ? s.b->displayName().c_str()
                                    : (justMated ? matedWith.c_str() : "");
             if(s.read.measurable) {

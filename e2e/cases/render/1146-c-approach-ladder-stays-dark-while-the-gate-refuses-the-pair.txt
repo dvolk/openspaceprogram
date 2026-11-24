@@ -1,0 +1,27 @@
+NAME approach-ladder-stays-dark-while-the-gate-refuses-the-pair
+CLAIM Warp puts the targeted station on the rails, the capture gate refuses the pair for that named reason, and the ladder draws nothing rather than holding up a 20 m guide for a mate that cannot happen.
+KIND invariant
+# The same fixture as 1146-b at --time-accel 16 instead of 1. At that acceleration the station
+# is on its rails, so dockSituation() answers targetrails -- "the target is still on the rails
+# -- drop warp", which is what the Docking window says out loud in [dockwin] -- and the ladder
+# asks that same gate before it draws.
+#   This row is the guard for a bug that was live for one commit: the painter had kept its own
+#   notion of "an approach intent exists" (target set, arm set, hull not on rails) instead of
+#   asking, so the world showed ten bright cyan squares pointing at a station the game was
+#   refusing to mate, at every frame the pilot looked, while the window beside it named the
+#   refusal. Measured then as an interleaving of [dockhud] drawn=1 rows with [dockwin]
+#   why=targetrails rows. Now: no drawn=1 row at all, and the dark branch says WHY in the
+#   gate's own token, so a ladder that stopped drawing for the wrong reason is still legible
+#   (#873's lesson).
+#   The other pair-level refusals -- no armed port, a hull in another frame, a target that
+#   stopped carrying the port -- have no fixture that reaches them from the command line, so
+#   the draw/no-draw split over all 13 verdicts is pinned in tests/test_dock.cpp against
+#   Vehicle::dockGuideWanted(). This case is the one branch the game can actually be driven
+#   into.
+ARGS --dock-test stale-target --time-accel 16 --timeout 6 --dockhud-log --orbit-interval 2.0
+EXPECT Dock-test (stale-target)
+EXPECT [dockhud] t=
+# Every row the ladder logs here is a refusal, and the refusal is the rails one.
+CHECK (lambda r: len(r) >= 2 and all(a == "targetrails" for a in r))(re.findall(r'\[dockhud\] t=\S+ drawn=0 why=(\w+)', out))
+FORBID [dockhud] t=.*drawn=1
+FORBID error:
