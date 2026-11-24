@@ -126,12 +126,12 @@ public:
     uint64_t ladderGrip() const { return ladderUid; }
     void restoreLadder(uint64_t uid) { ladderUid = uid; }
     /* True when the grip this suit holds is a ladder ON `v`. Reads the DURABLE
-       half (the uid), not the per-tick part cache, so it answers before
-       resolveLadder() has looked anything up -- the proximity pass and the ship
-       switch ask on the same tick they decide to park, and a grip that resolves
-       one tick late is a kerbal on the ground. #1162: parking a railed hull out
-       from under a hanging suit drops the suit -- resolveLadder() refuses a grip
-       on an on-rails ship (#1073), by design. */
+       half (the uid), not the per-tick part cache: the cache is a raw Part* with a
+       lifetime tied to the fleet, it is empty for a suit that has not ticked, and
+       the uid follows the ladder part across staging and undock (extractSubtreeAs-
+       Ship, absorbShip), which a cached pointer cannot promise. #1162: parking a
+       railed hull out from under a hanging suit drops the suit -- resolveLadder()
+       refuses a grip on an on-rails ship (#1073), by design. */
     bool gripsLadderOf(const Vehicle *v) const;
 
     /* The hatch hold pose on a capsule's ladder, in the capsule vehicle's

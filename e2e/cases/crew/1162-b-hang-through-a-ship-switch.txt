@@ -6,17 +6,25 @@
 #   [prox]   Ash dist=20.1 m rate=-0.0 m/s alt=289 m on-rails
 #
 # isGrounded() calls a hang 34 m up "grounded around Kerbin" (the analytic terrain band is
-# generous), so Game::settleVehicles() parks every hull it is not flying, walking ones
-# included. Her pose then sits frozen in mid-air with no law running on it -- railsTick has
-# no ladder law -- and resolveLadder() (#1073) refuses a grip on a railed hull, so the hang
-# only comes back if something wakes her. Switch away and straight back and she re-grips;
-# leave her out there and the hull parks too, and that is 1162-a's 12 m fall.
+# generous), so the switch's own ship->goOnRails() (select_vehicle, game.cpp:1738) parks the
+# suit it is leaving. Her pose then sits frozen in mid-air with no law running on it --
+# railsTick has no ladder law -- and resolveLadder() (#1073) refuses a grip on a railed hull,
+# so the hang only comes back if something wakes her. Switch away and straight back and she
+# re-grips; leave her out there and the hull parks too, which is 1162-a's fall.
 #
 # The gate is Kerbal::canRail: a hanging suit has no park of its own -- its pose IS the
 # hull it grips -- so it refuses the rails while ladderUid != 0. One gate covers every park
-# site (the proximity pass, settleVehicles, select_vehicle, the start-of-run warp,
-# enter_rails_warp, the save commit) instead of a guard at each. 1162-a covers the twin
-# problem on the other side: a hull with a suit on it must not park either.
+# site (the proximity pass, select_vehicle, the start-of-run warp clamp, enter_rails_warp,
+# the save commit) instead of a guard at each. 1162-a covers the twin problem on the other
+# side: a hull with a suit on it must not park either -- and it is the twin that bites here,
+# because with ONLY the hull guard removed this same command drops her: the switch parks the
+# hull, resolveLadder() takes the grip, and the evalog goes
+#
+#   [evalog] t=4.0s mode=space alt=34.12 m ladder=0 vel=[0.00 -0.00 -9.84]
+#
+# The park that freezes her is the switch itself -- game.cpp:1738 parks the ship you switch
+# TO, whatever its neighbours are; the 2.2 m between racer and heavy_asp only matters later,
+# as the reason the proximity pass wakes the hull again.
 #
 # --sim-steps makes the whole thing step-identical (#472): the key schedule runs on the
 # SIM clock there (Game::schedClockMs), so the presses land at t=1.0/3.0/5.5 exactly, on

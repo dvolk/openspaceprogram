@@ -8570,6 +8570,12 @@ bool Vehicle::canRail() {
 bool Vehicle::goOnRails() {
     if(onRails) { return true; }
     if(!canRail()) { return false; }
+    /* The invariant the gate exists for, pinned where `onRails` is written: a
+       suit holding a ladder grip has no park of its own -- its pose IS the hull it
+       hangs from -- so it must never reach here gripping one (#1162). canRail() is
+       what refuses it, at all six park sites at once; this is the catch if that
+       override ever moves. */
+    assert(!isEva() || static_cast<const Kerbal *>(this)->ladderGrip() == 0);
 
     /* The COM state in the body's inertial frame node, where the trajectory
        is a Kepler conic. The SPIN is carried (#1042) and the rails turn the

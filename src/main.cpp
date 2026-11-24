@@ -1367,8 +1367,12 @@ int main(int argc, char **argv)
         bool all_eligible = true;
         for(auto *s : game.vehicles) {
             if(!s->canRail()) {
-                printf("Rails warp refused at start: '%s' is in the atmosphere; "
-                       "clamping time accel to 10\n", s->displayName().c_str());
+                /* railRefusalReason, not a hardcoded atmosphere: a save can load
+                   with a kerbal gripping a ladder, and a suit on a hatch is not
+                   "in the atmosphere" (#1162). */
+                printf("Rails warp refused at start: '%s' %s; "
+                       "clamping time accel to 10\n", s->displayName().c_str(),
+                       game.railRefusalReason(s));
                 all_eligible = false;
                 break;
             }

@@ -1,0 +1,41 @@
+# THE SAVE IS THE FOURTH HOLE (#1162 review round). The three live park sites ask the grip
+# question now; the load takes its orders from the file, and the file can say anything. A
+# save written BEFORE the fix describes exactly the broken world: the old proximity pass
+# parked the hull out from under the suit on the tick she stepped out, and the save recorded
+# both of them parked -- v0 ladderstack onRails true, v1 Ash onRails false ladder_uid 9.
+#
+# Loading that without the guard put her 8.75 m up with no grip and nothing simulating her:
+#
+#   @@@ ladderstack frozen on rails (grounded around Kerbin)
+#   @@@ Ash frozen on rails (grounded around Kerbin)
+#   [prox]   Ash dist=20.1 m rate=-0.0 m/s alt=289 m on-rails     (forever)
+#
+# -- because Kerbal::resolveLadder() refuses a grip on an on-rails hull (#1073), so the uid
+# clears and the late re-remap pass in save.cpp finds nothing to hang on.
+#
+# With the guard, commitSaveWorld collects the hulls that saved grips point at BEFORE it
+# parks anything, and refuses to park them whatever the file says:
+#
+#   [crew] a kerbal grips a ladder on 'ladderstack': kept in the world
+#   [evalog] t=4.0s mode=ladder grounded=0 alt=8.75 m ladder=1
+#
+# The fixture is a real quicksave from a ladderstack on the pad (4 parts, so it stays small)
+# with v0's onRails flipped to true by hand -- the shape a pre-fix save has. A gripping suit
+# can never be parked by canRail() (1162-b), so v1 stays false in every save this build
+# writes.
+NAME load-a-save-that-parked-the-hull-under-a-hanging-suit
+CLAIM Loading a save that parks a hull its kerbal is gripping keeps that hull in the world and the grip alive (#1162).
+KIND invariant
+ARGS --load e2e/fixtures/save_hang_parked_hull --time-accel 1 --sim-steps 600 --eva-log --prox-log --no-paint
+LIMIT 20
+EXPECT [crew] loaded 'Ash' on EVA
+EXPECT [crew] a kerbal grips a ladder on 'ladderstack': kept in the world
+FORBID error:
+FORBID frozen on rails
+FORBID RELEASED
+CHECK len(eva) >= 5
+# The grip survived the round trip: part 9 in the file re-mints to a live uid (1 here) and
+# the law runs again -- 8.75 m at the hatch, not on the pad under it.
+CHECK all(e["mode"] == "ladder" and e["ladder"] != 0 for e in eva)
+CHECK min(e["alt"] for e in eva) > 8.4
+CHECK max(e["alt"] for e in eva) - min(e["alt"] for e in eva) < 0.25

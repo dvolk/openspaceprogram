@@ -1,0 +1,36 @@
+# RAILS WARP WHILE A SUIT HANGS (#1162, the player-facing half of Kerbal::canRail).
+# Kerbal::canRail refuses the rails while ladderUid != 0, so a hanging suit vetoes
+# rails warp for the whole fleet -- and the refusal has to say which of the two reasons
+# it is. Measured on the pad, suit out at t=1.0, warp dial tapped at t=3.0 and 3.6:
+#
+#   [toast] Time accel: 10x                                  <- 10 is under kRailsWarp
+#   Rails warp refused: 'Ash' is on a ladder (warp stays 10)
+#   [toast] Rails warp refused: 'Ash' is on a ladder
+#
+# Before the split both sites said "is in the atmosphere" -- for a kerbal standing on a
+# hatch ladder 34 m up, a reason that sends the player looking for a flight problem that
+# is not there. main.cpp's start-of-run clamp (a --load at --time-accel 100) uses the same
+# Game::railRefusalReason() door; only this one is pinned here.
+#
+# The veto is the cost of the fix and is ticketed as #1165. What this case pins is that
+# the veto is honest and that the hang survives the long 10x stretch after it: the suit is
+# still on part 9 at 33.88 m at t=63.2, the last row 600 steps buys at that rate.
+NAME rails-warp-refused-while-a-suit-hangs
+CLAIM Asking for rails warp while a kerbal hangs on a ladder is refused, and the refusal says "on a ladder" (#1162).
+KIND invariant
+ARGS --time-accel 1 --sim-steps 600 --startship heavy_asp,res/ships/heavy_asp.json,Kerbin,pad
+ARGS --eva-log --prox-log --no-paint --sim-press 1000,0,V
+ARGS --sim-press 3000,0,PERIOD --sim-press 3600,0,PERIOD
+LIMIT 20
+EXPECT [toast] Time accel: 10x
+EXPECT Rails warp refused: 'Ash' is on a ladder (warp stays 10)
+EXPECT [toast] Rails warp refused: 'Ash' is on a ladder
+FORBID error:
+FORBID is in the atmosphere
+FORBID frozen on rails
+CHECK len(eva) >= 8
+CHECK all(e["mode"] == "ladder" and e["ladder"] != 0 for e in eva if e["t"] > 1.0)
+CHECK min(e["alt"] for e in eva if e["t"] > 1.0) > 33.0
+# The run went on at 10x with the pair live (measured last row t=63.2 s), so this is not a
+# refusal that quietly ended the flight.
+CHECK max(e["t"] for e in eva) > 50.0

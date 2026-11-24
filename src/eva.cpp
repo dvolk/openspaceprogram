@@ -185,9 +185,10 @@ bool Kerbal::canRail() {
        frozen pose in mid-air, and the hull parked beside it takes the grip away
        the next tick (resolveLadder's on-rails refusal, #1073). Letting the suit
        rail is what made #1162's second face: switch ships while hanging and
-       settleVehicles() parks the suit itself ("Ash frozen on rails"), 33 m up.
-       Everything else rails as it always did: standing on the pad, or weightless
-       off-world. */
+       select_vehicle() parks the suit itself -- isGrounded() counts a hang 34 m up
+       as "grounded around Kerbin", so the park is refused by nobody upstream
+       ("Ash frozen on rails"). Everything else rails as it always did: standing
+       on the pad, or weightless off-world. */
     if(ladderUid != 0) { return false; }
     return Vehicle::canRail();
 }

@@ -1851,6 +1851,26 @@ void commitSaveWorld(Game &g, BuiltSave *bp, bool fleetAlreadyGone) {
     g.driveBuildingPoses();
     g.gateBuildingColliders();
 
+    /* Hulls that a saved kerbal is gripping, collected before the world-state
+       loop parks anything. A host stays in the world whatever its own onRails
+       flag says: resolveLadder() refuses a grip on an on-rails ship (#1073), so
+       parking it clears the grip on the kerbal's first resolve and she loads as a
+       pose frozen tens of metres up with no law running on it (#1162). Not only a
+       hand-edited-file concern -- a save written before that fix has exactly this
+       shape, because the old proximity pass parked the host out from under the
+       suit on the tick she stepped out and the file recorded both parked. */
+    std::vector<Vehicle *> gripHosts;
+    for(const SaveShip &s : b->saves) {
+        if(s.ladder_uid == 0) { continue; }
+        const std::map<uint64_t, Part *>::const_iterator lp =
+            b->savedUidToPart.find(s.ladder_uid);
+        if(lp == b->savedUidToPart.end() || lp->second->owner == nullptr) { continue; }
+        Vehicle *host = lp->second->owner;
+        if(std::find(gripHosts.begin(), gripHosts.end(), host) == gripHosts.end()) {
+            gripHosts.push_back(host);
+        }
+    }
+
     /* Phase 2: cross-references + world state. A dock INTENT naming a gone part
        stays lenient, unlike a dock SEAM (a dropped seam strands a real joint). */
     for(size_t i = 0; i < b->saves.size(); i++) {
@@ -1890,9 +1910,14 @@ void commitSaveWorld(Game &g, BuiltSave *bp, bool fleetAlreadyGone) {
         // build left the hull out of the world: this is the one place it is
         // added or parked. A non-rail-eligible ship stays live. Crew too --
         // a walking kerbal that was saved live is not on rails.
-        if(s.onRails) {
+        if(s.onRails && std::find(gripHosts.begin(), gripHosts.end(), v)
+                        == gripHosts.end()) {
             if(!v->goOnRails()) { v->enterWorld(); }
         } else {
+            if(s.onRails) {   // the file said parked; a grip says otherwise
+                printf("[crew] a kerbal grips a ladder on '%s': kept in the world\n",
+                       v->displayName().c_str());
+            }
             v->enterWorld();
         }
     }

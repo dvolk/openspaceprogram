@@ -2220,17 +2220,10 @@ void Game::toggle_eva() {
 bool Game::enter_rails_warp() {
     for(auto *s : vehicles) {
         if(!s->canRail()) {
-            /* Two refusals share this gate since #1162: a hull in the air, and a
-               suit hanging on a ladder (Kerbal::canRail). The prose has to say
-               which -- a kerbal at a pad hatch is emphatically not "in the
-               atmosphere", and the player who is offered that reason will look
-               for a flight problem that is not there. */
-            const bool hanging = s->isEva()
-                && static_cast<const Kerbal *>(s)->ladderGrip() != 0;
-            const char *why = hanging ? "is on a ladder" : "is in the atmosphere";
             printf("Rails warp refused: '%s' %s (warp stays %d)\n",
-                   s->displayName().c_str(), why, time_accel);
-            toast("Rails warp refused: '%s' %s", s->displayName().c_str(), why);
+                   s->displayName().c_str(), railRefusalReason(s), time_accel);
+            toast("Rails warp refused: '%s' %s",
+                  s->displayName().c_str(), railRefusalReason(s));
             return false;
         }
     }
@@ -2300,6 +2293,17 @@ bool Game::anySuitHangsOn(const Vehicle *v) const {
         if(static_cast<const Kerbal *>(x)->gripsLadderOf(v)) { return true; }
     }
     return false;
+}
+
+const char *Game::railRefusalReason(const Vehicle *v) const {
+    /* Phrase, not a sentence: both call sites wrap it in "Rails warp refused:
+       '%s' %s". A suit that refuses because of its grip says so; everything else
+       that canRail() refuses is airborne inside an air, which is what the line
+       has always said. */
+    if(v->isEva() && static_cast<const Kerbal *>(v)->ladderGrip() != 0) {
+        return "is on a ladder";
+    }
+    return "is in the atmosphere";
 }
 
 /* Proximity: keep the ships near the active one live, park the rest. The
@@ -2513,6 +2517,11 @@ void Game::cullFarDebris() {
         if(flyable_by_anyone) { continue; }
         if(!v->seams.empty()) { continue; }
         if(v->canRail()) { continue; }   // parkable already: grounded, or vacuum
+        /* And a hull a suit is hanging on is not debris either: this is the one
+           verb left that can put a hull out of the world under a kerbal (the
+           proximity pass and the ship switch ask #1162's guard, and
+           ui_remove_vehicle refuses). The suit itself was skipped above. */
+        if(anySuitHangsOn(v)) { continue; }
         if(n.dist <= args.cull_radius) { continue; }
         loose.push_back({v, n.dist});
     }
@@ -2862,6 +2871,15 @@ bool Game::ui_remove_vehicle(Vehicle *v) {
     }
     if(firstVehicleSeat(v) != nullptr) {
         toast("Cannot remove %s -- EVA its crew out first", v->displayName().c_str());
+        return false;
+    }
+    /* A hull with a kerbal hanging on its ladder is crewed in every way that
+       matters: deleting it leaves her in mid-air with a dead grip (resolveLadder
+       #1073), which is #1162's fall reached through the Ship List's x instead of
+       through the proximity pass. */
+    if(anySuitHangsOn(v)) {
+        toast("Cannot remove %s -- a kerbal is hanging on its ladder",
+              v->displayName().c_str());
         return false;
     }
     const bool wasActive = (v == ship);

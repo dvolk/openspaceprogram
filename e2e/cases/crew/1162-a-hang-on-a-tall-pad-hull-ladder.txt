@@ -8,27 +8,29 @@
 #   [prox] t=1.017 heavy_asp RELEASED at 20.2 m (> 20.0 m, ground)
 #   @@@ heavy_asp frozen on rails (grounded around Kerbin)
 #
-# -- because Vehicle::gapTo is CENTRE-to-centre, and heavy_asp is a ~25 m asparagus stack.
-# The kerbal on the top hatch is 20.1 m from that stack's COM at all times, so the ground
-# release radius (20 m) parks the hull out from under the suit, and resolveLadder() refuses
-# a grip on an on-rails hull (by design, #1073: a railed ship's pose is a frozen park and the
-# hang law reads its parts per substep). The grip dies, the suit falls. racer on the same pad
-# measures ~11 m and never trips it; heavy_asp in ORBIT uses the wide fly radii and never
-# trips it either -- which is exactly the "works fine everywhere else" of the report.
+# -- because Vehicle::gapTo is CENTRE-to-centre. heavy_asp is tall enough that a kerbal on
+# its top hatch is 20.1 m from the stack's COM at all times, so the ground release radius
+# (20 m) parks the hull out from under the suit, and resolveLadder() refuses a grip on an
+# on-rails hull (by design, #1073: a railed ship's pose is a frozen park and the hang law
+# reads its parts per substep). The grip dies, the suit falls. racer on the same pad measures
+# 2.2 m and never trips it; heavy_asp in ORBIT uses the wide fly radii and never trips it
+# either -- which is exactly the "works fine everywhere else" of the report.
 #
 # The fix is not a bigger radius (a stack can be arbitrarily tall) but the fact the pass was
 # blind to: a hull with a suit hanging on it is not "away". Game::anySuitHangsOn() reads the
-# grip through its DURABLE half -- the ladder part's uid -- so it answers on the same tick the
-# park is decided, before resolveLadder() has cached the part. select_vehicle() asks the same
-# question, because switching ships used to park the hull the suit was left on and drop it the
-# same way (eva.h's disarm note says a kerbal left on a ladder hangs there while the player
-# flies elsewhere -- that promise needs a live hull to keep).
+# grip through its DURABLE half -- the ladder part's uid -- because the cached part pointer
+# is not durable: applyLadder and disengageLadder clear it whenever the suit stops ticking
+# (a ship switch, #734) or the law re-aims, while the uid survives a park and only needs the
+# save's uid map on the load path. select_vehicle() asks the same question, because switching
+# ships used to park the hull the suit was left on and drop it the same way (eva.h's disarm
+# note says a kerbal left on a ladder hangs there while the player flies elsewhere -- that
+# promise needs a live hull to keep).
 #
 # --sim-steps rather than --timeout: a fall is the most timing-sensitive thing in this family
 # (#138, #871), and under --sim-steps the --sim-press schedule runs on the SIM clock
 # (Game::schedClockMs, #472), so V lands at t=1.0 exactly on any box. 2 s of wall time.
 NAME hang-on-a-tall-pad-hull-ladder
-CLAIM Stepping out onto the hatch ladder of a 25 m stack on the pad keeps the kerbal hanging there: the proximity pass may not park a hull a suit is on (#1162).
+CLAIM Stepping out onto the top-hatch ladder of a hull taller than the ground release radius keeps the kerbal hanging there: the proximity pass may not park a hull a suit is on (#1162).
 KIND invariant
 ARGS --time-accel 1 --sim-steps 600 --startship heavy_asp,res/ships/heavy_asp.json,Kerbin,pad
 ARGS --eva-log --prox-log --no-paint --sim-press 1000,0,V
@@ -43,8 +45,9 @@ CHECK len(eva) >= 5
 CHECK all(e["mode"] == "ladder" and e["ladder"] != 0 for e in eva if e["t"] > 1.0)
 # And it stays at the hatch. With the guard neutered this same command reads alt 28.90 m at
 # t=2.0 and 22.19 m at t=3.0 (grounded, on its own stage); the hold sits at 33.88 m through
-# the whole run, so a fall of even a metre reddens this. Measured spread over the rows:
-# max-min = 0.04 m.
+# the whole run, so a fall of even a metre reddens this. Measured alt values in a passing
+# run: 33.92 at t=1.0 (the grab row) and 33.88 at every row after -- so the spread over the
+# t > 1.0 rows this CHECK reads is 0.00 m, and 0.04 m over all rows.
 CHECK min(e["alt"] for e in eva if e["t"] > 1.0) > 33.0
 CHECK max(e["alt"] for e in eva if e["t"] > 1.0) - min(e["alt"] for e in eva if e["t"] > 1.0) < 0.25
 # Velocity, because alt alone could be read by a suit that slid down and stopped: the hang is

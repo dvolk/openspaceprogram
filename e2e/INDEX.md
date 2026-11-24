@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 473 |
+| `invariant` | a behaviour or a player route the game must keep | 476 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 53 |
 | `harness` | CLI/test-engine plumbing, not game spec | 18 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **548** |
+| | **total** | **551** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -203,7 +203,7 @@ judgement. Select by number, name or path, e.g.
 | `flight/1148-b-legacy-settings-inherit-the-new-brackets.txt` | invariant | A settings.json written before the brackets moved still hands '[' and ']' to the fleet rather than to camera speed. |
 | `flight/1148-brackets-cycle-ships.txt` | invariant | [ steps the active ship backwards and ] forwards, wrapping around the fleet, and the Controls window shows both brackets on the ship slots and -/= on camera speed. |
 
-## crew (39)
+## crew (42)
 
 | case | kind | pins |
 |---|---|---|
@@ -244,8 +244,11 @@ judgement. Select by number, name or path, e.g.
 | `crew/1073-g-ladder-down-compose.txt` | invariant | Climbing down transfers capsule ladder to tank ladder and grounds at the bottom. |
 | `crew/1073-h-ladder-up-compose.txt` | invariant | Re-grab from the pad takes the ladder bottom; climbing up transfers tank to capsule and reaches the hatch. |
 | `crew/1095-a-regrab-after-descent.txt` | invariant | After walking down a ladder to the ground, G grips and W climbs back up. |
-| `crew/1162-a-hang-on-a-tall-pad-hull-ladder.txt` | invariant | Stepping out onto the hatch ladder of a 25 m stack on the pad keeps the kerbal hanging there: the proximity pass may not park a hull a suit is on (#1162). |
+| `crew/1162-a-hang-on-a-tall-pad-hull-ladder.txt` | invariant | Stepping out onto the top-hatch ladder of a hull taller than the ground release radius keeps the kerbal hanging there: the proximity pass may not park a hull a suit is on (#1162). |
 | `crew/1162-b-hang-through-a-ship-switch.txt` | invariant | Flying the hull while a kerbal is left on its ladder keeps the kerbal hanging there: a gripping suit may not go on rails (#1162). |
+| `crew/1162-c-rails-warp-refused-while-a-suit-hangs.txt` | invariant | Asking for rails warp while a kerbal hangs on a ladder is refused, and the refusal says "on a ladder" (#1162). |
+| `crew/1162-d-remove-a-hull-a-suit-hangs-on-refused.txt` | invariant | Clicking remove on a hull that a kerbal is hanging on is refused and the kerbal keeps hanging (#1162). |
+| `crew/1162-e-load-a-save-that-parked-the-hull-under-a-hanging-suit.txt` | invariant | Loading a save that parks a hull its kerbal is gripping keeps that hull in the world and the grip alive (#1162). |
 
 ## science (31)
 

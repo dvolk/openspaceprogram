@@ -1,0 +1,38 @@
+# THE SHIP LIST'S x IS THE THIRD HOLE (#1162 review round). 1162-a closed the proximity
+# pass and 1162-b closed the ship switch; the review found the verb nobody had looked at:
+# Game::ui_remove_vehicle deleted a hull a kerbal was hanging on, and she dropped exactly as
+# she did before the fix -- measured with the guard absent:
+#
+#   Removed 'heavy_asp' (active unchanged: Ash)
+#   [evalog] t=4.0s mode=space alt=28.99 m ladder=0 vel=[0.00 -0.00 -9.70]
+#   [evalog] t=5.0s mode=space alt=14.46 m ladder=0 vel=[0.00 -0.00 -19.29]
+#   [evalog] t=6.0s mode=ground alt= 5.44 m
+#
+# With the guard:
+#
+#   [toast] Cannot remove heavy_asp -- a kerbal is hanging on its ladder
+#
+# That is the same policy the verb already runs on crew: a hull with anyone aboard is
+# refused ("EVA its crew out first"), and a kerbal on a ladder is aboard in every way that
+# matters -- her pose is that hull's pose. cullFarDebris gets the same question (it skips
+# EVA hulls, but a hung-on booster is exactly the population it cuts loose).
+#
+# --ui-click rather than --sim-mouse: it hit-tests through imgui, so a renamed or hidden
+# control fails the case instead of clicking empty space (src/uiinput.cpp).
+NAME remove-a-hull-a-suit-hangs-on-refused
+CLAIM Clicking remove on a hull that a kerbal is hanging on is refused and the kerbal keeps hanging (#1162).
+KIND invariant
+ARGS --time-accel 1 --sim-steps 600 --startship heavy_asp,res/ships/heavy_asp.json,Kerbin,pad
+ARGS --eva-log --prox-log --no-paint --sim-press 1000,0,V
+ARGS --ui-click 1500,"Windows/Ship List" --ui-click 3000,"Ship List/x##rm_heavy_asp"
+LIMIT 20
+EXPECT [toast] Cannot remove heavy_asp -- a kerbal is hanging on its ladder
+FORBID error:
+FORBID Removed 'heavy_asp'
+FORBID frozen on rails
+CHECK len(eva) >= 6
+CHECK all(e["mode"] == "ladder" and e["ladder"] != 0 for e in eva if e["t"] > 1.0)
+CHECK min(e["alt"] for e in eva if e["t"] > 1.0) > 33.0
+# The hull is still there after the refused press, at the same hold point through t=9.
+CHECK max(e["t"] for e in eva) >= 9.0
+CHECK all("heavy_asp" not in l or "LIVE" in l for l in out.splitlines() if l.startswith("[prox]  "))

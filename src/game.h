@@ -1381,6 +1381,13 @@ struct Game {
        Vehicle::gapTo is centre-to-centre, so a tall stack reads past the release
        radius with a kerbal clinging to its top hatch. */
     bool anySuitHangsOn(const Vehicle *v) const;
+    /* Why canRail() refuses this hull, in the words the player is shown. Two
+       refusals share that gate (#1162): a hull flying inside an air, and a suit
+       hanging on a ladder -- and a kerbal at a pad hatch is emphatically not "in
+       the atmosphere", so whoever prints the refusal has to say which one it is.
+       Both rails-warp sites use it (Game::enter_rails_warp and main.cpp's
+       start-of-run clamp). */
+    const char *railRefusalReason(const Vehicle *v) const;
     /* Cut loose a hull the sim can neither park nor keep any reason to run
        (#939): airborne (canRail() refuses anything airborne, so today it stays
        under physics forever however far it gets), uncrewed, not docked, not the
