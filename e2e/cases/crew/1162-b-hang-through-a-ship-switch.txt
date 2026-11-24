@@ -1,16 +1,16 @@
 # HANGING THROUGH A SHIP SWITCH (#1162, the other half of 1162-a). Stepping out of
 # heavy_asp onto its hatch ladder and then flying the hull -- F6/']', Slot::NextShip --
-# used to end the walk:
+# took the walking kerbal out of the world while she was still gripping part 9:
 #
-#   [prox] t=4.000 Ash RELEASED at 20.1 m (> 20.0 m, ground)
 #   @@@ Ash frozen on rails (grounded around Kerbin)
+#   [prox]   Ash dist=20.1 m rate=-0.0 m/s alt=289 m on-rails
 #
-# and the [evalog] rows stop, because --eva-log prints for the ACTIVE hull only. The suit
-# was parked out of the world while still gripping part 9: isGrounded() called a hang 34 m
-# up "grounded around Kerbin" (the analytic terrain band is generous), so Game::settleVehicles
-# happily parked every hull it was not flying, including the walking one. Its pose froze in
-# mid-air and the grip died on the next resolveLadder (#1073's on-rails refusal), so
-# switching back dropped a kerbal from 34 m onto its own stage.
+# isGrounded() calls a hang 34 m up "grounded around Kerbin" (the analytic terrain band is
+# generous), so Game::settleVehicles() parks every hull it is not flying, walking ones
+# included. Her pose then sits frozen in mid-air with no law running on it -- railsTick has
+# no ladder law -- and resolveLadder() (#1073) refuses a grip on a railed hull, so the hang
+# only comes back if something wakes her. Switch away and straight back and she re-grips;
+# leave her out there and the hull parks too, and that is 1162-a's 12 m fall.
 #
 # The gate is Kerbal::canRail: a hanging suit has no park of its own -- its pose IS the
 # hull it grips -- so it refuses the rails while ladderUid != 0. One gate covers every park

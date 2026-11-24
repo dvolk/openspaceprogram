@@ -1,11 +1,11 @@
 # HANGING ON A TALL HULL'S LADDER (#1162). heavy_asp on the pad is the one shipped hull
 # where stepping out dropped the kerbal: it grabbed the capsule's hatch ladder at t=1.0 and
-# about half a second later was in mode=space falling at 10 m/s, landing on one of its own
-# stages 12 m below.
+# by the next logged row (t=2.0) was in mode=space falling at 9.84 m/s, landing on one of
+# its own stages 11.7 m below.
 #
 # Nothing about the ladder was wrong. The prox pass decided the hull was far away:
 #
-#   [prox] t=1.100 heavy_asp RELEASED at 20.2 m (> 20.0 m, ground)
+#   [prox] t=1.017 heavy_asp RELEASED at 20.2 m (> 20.0 m, ground)
 #   @@@ heavy_asp frozen on rails (grounded around Kerbin)
 #
 # -- because Vehicle::gapTo is CENTRE-to-centre, and heavy_asp is a ~25 m asparagus stack.
@@ -25,7 +25,8 @@
 # flies elsewhere -- that promise needs a live hull to keep).
 #
 # --sim-steps rather than --timeout: a fall is the most timing-sensitive thing in this family
-# (#138, #871), and the case is 1 s of wall time instead of 10.
+# (#138, #871), and under --sim-steps the --sim-press schedule runs on the SIM clock
+# (Game::schedClockMs, #472), so V lands at t=1.0 exactly on any box. 2 s of wall time.
 NAME hang-on-a-tall-pad-hull-ladder
 CLAIM Stepping out onto the hatch ladder of a 25 m stack on the pad keeps the kerbal hanging there: the proximity pass may not park a hull a suit is on (#1162).
 KIND invariant
@@ -40,9 +41,10 @@ FORBID frozen on rails
 CHECK len(eva) >= 5
 # The grip is real, not a free-fall that happens to be pointed at the hull.
 CHECK all(e["mode"] == "ladder" and e["ladder"] != 0 for e in eva if e["t"] > 1.0)
-# And it stays at the hatch. The defect reads alt 28.73 m at t=2.1 and 22.19 m at t=3.1
-# (grounded, on its own stage); the hold sits at 33.88 m through the whole run, so a fall of
-# even a metre reddens this. Measured spread over the rows: max-min = 0.04 m.
+# And it stays at the hatch. With the guard neutered this same command reads alt 28.90 m at
+# t=2.0 and 22.19 m at t=3.0 (grounded, on its own stage); the hold sits at 33.88 m through
+# the whole run, so a fall of even a metre reddens this. Measured spread over the rows:
+# max-min = 0.04 m.
 CHECK min(e["alt"] for e in eva if e["t"] > 1.0) > 33.0
 CHECK max(e["alt"] for e in eva if e["t"] > 1.0) - min(e["alt"] for e in eva if e["t"] > 1.0) < 0.25
 # Velocity, because alt alone could be read by a suit that slid down and stopped: the hang is

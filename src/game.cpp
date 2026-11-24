@@ -2355,9 +2355,9 @@ void Game::updateProximity() {
             /* The distance is centre-to-centre (gapTo), so a hull longer than the
                release radius reads FAR while a suit is on it: heavy_asp on a pad
                measured 20.2 m with a kerbal on its top-hatch ladder, parked, and
-               resolveLadder() dropped the grip -- a 12 m fall onto its own stage
-               (#1162). A hung-on hull stays live; the next tick parks it once the
-               suit is off. */
+               resolveLadder() dropped the grip -- 33.88 m down to 22.19 m, on her
+               own stage (#1162). A hung-on hull stays live; the next tick parks it
+               once the suit is off. */
             /* Only say RELEASED when it really parked. An airborne hull fails
                canRail() (#937), so this branch used to print a release on every
                tick for a dropped stage that would never park -- hundreds of
