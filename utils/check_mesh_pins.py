@@ -465,13 +465,14 @@ STYLE_OK = {
                                     "file faces"),
     "meshes/balloon_platform_deck.obj": ("off their own face normal", "no uv field"),
 }
-# #1178: these four generators average normals at the corner. Stage 1 gives each face its
-# own normal, which makes these 12 rows stale -- and the check above says so if it forgets.
-STYLE_OK.update({("meshes/%s.obj" % n): ("off their own face normal", "zero uv area")
+# #1178 is closed for the plate families: gen_wing, gen_runway, gen_station and gen_leg now
+# write one normal per face. What is left on those files is the canvas, not the shading --
+# #1173, which Stages 2/3 fix.
+STYLE_OK.update({("meshes/%s.obj" % n): ("zero uv area",)
                  for n in ("fin_r0.6h0.8", "fin_r0.8h0.7", "fin_r1h2", "wing_r0.7h1",
                            "wing_r1h1", "wing_r2h2", "wing_r3h1.8", "wing_r4h1.5",
                            "runway")})
-STYLE_OK.update({("meshes/%s.obj" % n): ("off their own face normal", "no uv field")
+STYLE_OK.update({("meshes/%s.obj" % n): ("no uv field",)
                  for n in ("station", "spacedock", "leg")})
 # #1173, the rest: the fuselages fill the whole surface with vt 0.5 0.5, the shrouds are a
 # degenerate strip, and the ladders have no uv layer at all. Stages 2/3 give them islands.

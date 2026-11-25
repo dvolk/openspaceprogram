@@ -8,6 +8,7 @@ import os
 import numpy as np
 import trimesh
 
+from flatten_normals import flatten
 from gen_out import add_args, ship
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -38,7 +39,13 @@ def main():
 
     for name, mesh in [("station", station()), ("spacedock", dock())]:
         dst = ship(a.out, "meshes", name + ".obj", force=a.force)
-        mesh.export(dst, include_normals=True)
+        # trimesh writes area-weighted corner normals, so a box station shades like a
+        # balloon. flatten() gives every face its own normal (#1178) and copies the
+        # positions through untouched, which is what keeps the collision hull and the
+        # volume-derived mass exactly where they were.
+        text, _ = flatten(mesh.export(file_type="obj", include_normals=True))
+        with open(dst, "w") as f:
+            f.write(text)
         print("%s: extents %s" % (dst, np.round(mesh.extents, 2)))
 
 
