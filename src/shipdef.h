@@ -198,8 +198,8 @@ struct PartDef {
        axis), read off the mesh file when the catalog is parsed. Anything that
        asks where this part's surface is, or how wide it actually is, reads this
        rather than the cylinder above.
-       Derived from the .obj's `v` lines: the same bytes geom_fingerprint hashes
-       and the same vertices mesh.cpp hands Bullet to convex-hull (physics.cpp
+       Derived from the .obj's `v` lines: the same corners geom_fingerprint hashes
+       (#1182) and the same vertices mesh.cpp hands Bullet to convex-hull (physics.cpp
        BuildHull), whose aiProcess flags transform nothing, so this IS the hull's
        box before Bullet grows it by the shape's collision margin. Missing mesh
        or no vertices -> has_mesh_extents false, and the helpers below fall back
@@ -298,7 +298,7 @@ struct PartDef {
        size above. */
     std::vector<Node> nodes;
 
-    /* What this part's SHAPE was, hashed: the mesh file's bytes, radius, height
+    /* What this part's SHAPE was, hashed: its mesh's corner positions, radius, height
        and the attach nodes (partGeomFingerprint). load_parts_catalog fills it
        and nothing writes it afterwards. A save records it per part (save.h,
        #456) because a save keeps SOLVED part poses rather than the attach spec
@@ -1112,7 +1112,7 @@ PartsCatalog load_parts_catalog(const char *path);
 ShipDef load_ship_def(const char *path, const PartsCatalog &catalog);
 
 /* A part's mesh file read ONCE: the bounding box of its vertices (#457) and the
-   vertex digest the fingerprint mixes (#1182). load_parts_catalog calls this per
+   corner set the fingerprint hashes (#1182). load_parts_catalog calls this per
    part and feeds both, so a part costs one file read rather than two. */
 struct MeshGeom {
     bool readable = false;     // false -> no file (the catalog never required one)
@@ -1120,14 +1120,15 @@ struct MeshGeom {
     glm::dvec3 lo = glm::dvec3(0.0);
     glm::dvec3 hi = glm::dvec3(0.0);
     std::string bytes;         // exact contents; the scan reads them, the fingerprint does not
-    size_t vertLines = 0;      // 'v' lines seen, whether or not they parsed
-    uint64_t vertDigest = 0;   // a multiset hash of the parsed vertices, as assimp stores them
+    size_t cornerCount = 0;    // DISTINCT corners, as JoinIdenticalVertices leaves them
+    uint64_t vertDigest = 0;   // a hash of that corner set: per-corner hashes, summed
 };
 MeshGeom readMeshGeom(const std::string &meshSubpath);
 
 /* The vertex scan readMeshGeom runs over the file it read, split out so a test can
-   feed text directly and say what a digest is blind to (precision) and what it is
-   not (a moved vertex). `g.bytes` must already hold the text. */
+   feed text directly and say what the corner set is blind to (precision, order, a
+   repeated corner) and what it is not (a corner that moved). `g.bytes` must already
+   hold the text. */
 void scanMeshGeom(MeshGeom &g);
 
 /* FNV-1a over everything that decides where a part's solved poses sit: the mesh's
@@ -1139,7 +1140,11 @@ void scanMeshGeom(MeshGeom &g);
    instead of rebuilding the ship silently wrong.
    Components are hashed as float, which is what assimp stores and what the collision
    hull is built from: a re-export that adds digits without changing the float leaves
-   the fingerprint alone, which is the point of #1182. What that gives up on purpose:
+   the fingerprint alone, which is the point of #1182. The corners go in as a SET,
+   because assimp runs JoinIdenticalVertices and Bullet hulls what comes out, and six
+   shipped meshes list a corner twice (barometer.obj and decoupler_radial.obj carry 28
+   duplicate lines of 36) -- a re-export that deduplicates has not reshaped anything.
+   What that gives up on purpose:
    a re-triangulation or a winding flip keeps the vertex set and so keeps the
    fingerprint, while it does change how the part draws -- a saved pose does not care.
    A mesh file that cannot be read folds in one stable value rather than throwing:

@@ -584,7 +584,8 @@ int main(int argc, char **argv)
     /* resdir resolves res/ from the executable's directory (resdir.h). SDL owns
        the pointer; the first path() call freezes the root, so this sits ahead of
        every asset load below -- including the part catalog's geometry
-       fingerprints, which hash the mesh FILES (shipdef.cpp, #456). */
+       fingerprints, which read the mesh FILES (shipdef.cpp, #456; #1182 hashes
+       their corners, but it still has to open them). */
     resdir::setHint(SDL_GetBasePath());
     const Uint32 sim_win_id = SDL_GetWindowID(display.get_display());
     /* --sim-press: keycodes -> scancodes now SDL is up (the CLI parse ran before

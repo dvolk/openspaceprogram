@@ -12,6 +12,7 @@
 #include <map>
 #include <numbers>
 #include <stdexcept>
+#include <unordered_set>   // the corner set a part's geometry fingerprint hashes
 
 #include <glm/gtc/quaternion.hpp>   // angleAxis / mat3_cast
 #include <nlohmann/json.hpp>
@@ -194,15 +195,17 @@ static glm::dvec3 parse_vec3(const nlohmann::json &obj, const char *key,
    how far it stuck out. a27bcd1 is the repro: the wing's mesh went 2x2 -> 4x2
    and its radius 1.0 -> 2.0, so every pre-commit save rebuilds its wings 1 m
    inside the fuselage, +30 kg and +6 m2 of lift each, with nobody told.
-   The mesh goes in as its VERTEX POSITIONS, hashed as a multiset (each vertex
+   The mesh goes in as its VERTEX POSITIONS, hashed as a SET (each distinct corner
    hashed on its own, then summed), and each component taken as the float assimp
    stores. #1182: hashing the file's bytes instead meant a normals-only edit --
    Stage 1 of reports/art-regen2026_11_25 rewrote twelve .obj files' `vn` lines
    and no coordinate -- moved every fingerprint, and a save then refused with
    "geometry is not what this save recorded" about geometry that had not moved.
-   Multiset rather than in-order: a re-export that lists the same vertices in a
-   different order is the same hull, and physics builds btConvexHullShape from the
-   vertex set, so order is not something a pose can depend on.
+   A set, not a sequence and not a multiset: assimp runs JoinIdenticalVertices,
+   physics convex-hulls what comes out, and six shipped meshes already list a
+   corner twice (barometer.obj and decoupler_radial.obj carry 28 duplicate lines
+   of 36), so a re-export that reorders or deduplicates is the same hull, and
+   order is not something a pose can depend on.
    What this gives up on purpose, against the alternatives:
    - a re-triangulation or a winding flip keeps the vertex set and so the
      fingerprint. It changes how a part draws, never where a child was bolted.
@@ -223,11 +226,11 @@ static glm::dvec3 parse_vec3(const nlohmann::json &obj, const char *key,
    before that commit refuses once, in words, and re-saving stamps the new value. */
 static const uint64_t kGeomEpoch = 2;
 
-/* A part's mesh file, read once: the vertices that go into geom_fingerprint, and the
-   bounding box of the same (#457). Both are properties of the FILE, so
-   the 19 catalog entries that share a mesh with another entry could share this
-   read too; they do not, because the whole catalog parse costs ~3 ms and a
-   cache would be the only thing in it. */
+/* A part's mesh file, read once: the corners that go into geom_fingerprint, and the
+   bounding box of the same (#457). Both are properties of the FILE, so the 20
+   redundant reads here (33 of the 87 catalog entries share a mesh with another
+   entry) could share this read too; they do not, because the whole catalog parse
+   costs ~3 ms and a cache would be the only thing in it. */
 MeshGeom readMeshGeom(const std::string &meshSubpath) {
     MeshGeom g;
     /* A directory is readable until you try to read it, and then libstdc++
@@ -271,17 +274,21 @@ void scanMeshGeom(MeshGeom &g) {
        the aiProcess flags mesh.cpp passes (CalcTangentSpace/Triangulate/
        JoinIdenticalVertices/SortByPType) transform nothing -- so this box is the
        box BuildHull convex-hulls and the box drag.h projects. Measured over the
-       shipped catalog (tmp/ext_vs_assimp.cpp): all 46 unique meshes agree with
-       what assimp loads to <1e-8 m (assimp holds vertices as float, the file has
-       doubles). The one way they could part: mesh.cpp takes scene->mMeshes[0]
-       only, so a .obj holding several objects would leave the sim with less
-       geometry than this box claims -- no such file today, and an assimp change
-       that moves the hull is what kGeomEpoch is for.
+       shipped catalog (tmp/ext_vs_assimp.cpp, rebuilt 2026-11-25): all 66 unique
+       meshes agree with what assimp loads, worst case 3.6e-8 m (assimp holds
+       vertices as float, the file has doubles), and none of them yields more than
+       one assimp mesh. Ways the two can still part, none of them shipped today:
+       mesh.cpp takes scene->mMeshes[0] only, so a .obj holding several objects
+       leaves the sim with less geometry than this box claims; a UTF-8 BOM hides
+       the first vertex from this scan; a hex-float token ('v 0x1.8p-4 ...') is a
+       corner to strtod and garbage to assimp. An assimp change that moves the
+       hull is what kGeomEpoch is for.
        Scanned by hand rather than with getline + an istringstream per line: that
-       version cost ~5 ms over the catalog, several times the hash over the same
-       bytes, for a boot-only step. */
+       version costs ~5.5 ms over the catalog's 86 mesh reads against ~1 ms here,
+       for a boot-only step. */
     char *base = g.bytes.data();
     char *end = base + g.bytes.size();
+    std::unordered_set<uint64_t> corners;   // the fingerprint's mesh half (#1182)
     for(char *p = base; p < end; ) {
         char *s = p;
         // assimp tolerates an indent; a scan that does not would read a
@@ -298,17 +305,14 @@ void scanMeshGeom(MeshGeom &g) {
                 if(stop == q) { ok = false; break; }
                 q = stop;
             }
-            g.vertLines++;
             if(ok) {
                 /* The mesh half of partGeomFingerprint (#1182): this corner as assimp
                    stores it -- float, which is also what the collision hull is built
                    from. So a vertex line that only gains digits leaves the fingerprint
                    alone and one that shifts by more than a float ulp moves it. Hashed
-                   per corner and SUMMED rather than mixed in sequence: physics builds a
-                   btConvexHullShape from the vertex SET, so a re-export that lists the
-                   same corners in another order is the same hull. A line that will not
-                   parse still counts in vertLines and adds nothing to the digest, so a
-                   mangled vertex moves the pair rather than hiding in it. */
+                   per corner and collected into a SET: assimp runs
+                   JoinIdenticalVertices and Bullet hulls what comes out, so a corner
+                   listed twice is one corner, and six shipped meshes list repeats. */
                 uint64_t vh = fnv::start();
                 for(int k = 0; k < 3; k++) {
                     // + 0.0f: -0.0 and 0.0 are the same corner, but not the same bits,
@@ -316,7 +320,7 @@ void scanMeshGeom(MeshGeom &g) {
                     const float f = (float) val[k] + 0.0f;
                     fnv::mix(vh, (uint64_t) std::bit_cast<uint32_t>(f));
                 }
-                g.vertDigest += vh;
+                corners.insert(vh);
                 const glm::dvec3 v(val[0], val[1], val[2]);
                 if(!g.hasExtents) {
                     g.lo = g.hi = v;
@@ -331,6 +335,12 @@ void scanMeshGeom(MeshGeom &g) {
         if(nl == nullptr) { break; }
         p = nl + 1;
     }
+    /* Summed, not mixed in sequence: the hull is a vertex SET, so a re-export that
+       lists the same corners in another order is the same shape and a saved pose
+       cannot depend on the order. XOR would be worse -- two copies of a corner would
+       cancel it out. */
+    for(uint64_t c : corners) { g.vertDigest += c; }
+    g.cornerCount = corners.size();
 }
 
 uint64_t partGeomFingerprint(const PartDef &d, const MeshGeom &mg) {
@@ -340,13 +350,18 @@ uint64_t partGeomFingerprint(const PartDef &d, const MeshGeom &mg) {
     fnv::mixText(h, d.mesh);
     fnv::mixDouble(h, d.radius);
     fnv::mixDouble(h, d.height);
-    if(!mg.readable) {
+    if(!mg.readable || mg.cornerCount == 0) {
+        /* Missing, unreadable, or a file with no vertex line in it: one stable value,
+           which is what readMeshGeom promises ("an EMPTY file hashes the same as a
+           missing one"). With the mesh half down to one mixed value that promise was
+           easy to lose -- zero corners would otherwise mix two zeroes and split the
+           two cases apart. */
         fnv::mix(h, 0);
     } else {
-        /* The corners, not the file's bytes (#1182). vertLines goes with the digest
-           so a file whose vertex lines changed COUNT moves even if two different
-           corner sets ever summed to the same value. */
-        fnv::mix(h, (uint64_t) mg.vertLines);
+        /* The corners, not the file's bytes (#1182). cornerCount rides with the digest
+           so a corner set that changed SIZE moves even if two different sets ever
+           summed to the same value. */
+        fnv::mix(h, (uint64_t) mg.cornerCount);
         fnv::mix(h, mg.vertDigest);
     }
     /* Nodes last: they are usually synthesized from radius/height, and an
