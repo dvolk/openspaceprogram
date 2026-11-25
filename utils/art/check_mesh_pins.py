@@ -211,8 +211,10 @@ TOPO = {
 # its 3.14 m^2 base disc at 46656 -- a 28x difference in share at exactly the same px/m, which
 # the old floor read as the small face being broken. Texels is what the rule's sentence claims.
 # The floor is a 32x32 patch: well above the collapsed meshes in #1173, which address 0 (every
-# corner lands on one texel, so the part reads one colour), and half the smallest face the
-# 32-segment lathe produces today. More segments per band, and this floor says so.
+# corner lands on one texel, so the part reads one colour), and 64% of the smallest face the
+# 32-segment lathe produces today (1591 texels on nose_cap_r1.5h0.75). More segments per band
+# and this floor says so; a finer lathe has to raise the canvas or the segment count, not the
+# floor.
 TOPO_MIN_FACE_TEXELS = 1024.0
 
 
@@ -321,6 +323,22 @@ def topo_problems(path, want_faces):
     if mixed:
         bad.append("%d faces carry more than one normal, so a face's own flat shading "
                    "blends into whatever meets it" % mixed)
+    # Winding, from the corner order alone: an edge two faces share has to run one way in
+    # each of them. These meshes take their normal from the winding (one per face), so an
+    # edge running the same way twice means one face is inside out and shades the inside of
+    # the part. Every size rule here reads an inside-out cap as perfect, and so does the
+    # engine, which is why the generator asserts the same thing at the source.
+    dirs = {}
+    for f in faces:
+        vi = f[0]
+        for j in range(len(vi)):
+            a, b = vi[j], vi[j - 1]
+            dirs.setdefault((a, b) if a < b else (b, a), []).append((a, b))
+    flip = sum(1 for dd in dirs.values() if len(dd) == 2 and dd[0] == dd[1])
+    if flip:
+        bad.append("%d shared edges run the same way in both faces: one face of each pair "
+                   "is inside out, so its normal shades the inside of the part" % flip)
+
     if any(x is None for f in faces for x in f[1]):
         bad.append("a face has no uv, so it has no canvas to paint on")
         return bad
@@ -392,10 +410,13 @@ def topo_problems(path, want_faces):
     outside = [b for b in boxes if b[0] < -1e-6 or b[1] < -1e-6
                or b[2] > 1.0 + 1e-6 or b[3] > 1.0 + 1e-6]
     if outside:
-        bad.append("%d islands lie partly outside the canvas (one spans u %.4f..%.4f): "
-                   "the sampler clamps at 0 and 1, so what falls out there paints as an "
-                   "edge colour of the texture"
-                   % (len(outside), min(b[0] for b in outside), max(b[2] for b in outside)))
+        bad.append("%d islands lie partly outside the canvas, reaching u %.4f..%.4f "
+                   "v %.4f..%.4f: the sampler clamps at 0 and 1, so what falls out there "
+                   "paints as an edge colour of the texture"
+                   % (len(outside), min(b[0] for b in outside), max(b[2] for b in outside),
+                      min(b[1] for b in outside), max(b[3] for b in outside)))
+    # Zero-area islands (the #1173 collapse) cannot overlap by this test -- the two boxes
+    # coincide rather than cross -- and the texel floor above is what reports them.
     over = 0
     for i in range(len(boxes)):
         for j in range(i + 1, len(boxes)):
@@ -540,7 +561,7 @@ def style_problems(path, budget=FACE_BUDGET, check_density=True):
             a3 = face_area3(vs, f[0])
             if ua > 0.0 and a3 > 0.0:
                 dens.append(CANVAS_PX * math.sqrt(ua / a3))
-        if len(dens) > 2 and dens[0] > 0.0 and dens[-1] > 0.0:
+        if len(dens) > 2:      # every entry is positive: ua and a3 are both checked above
             dens.sort()
             med = dens[len(dens) // 2]
             spread = max(dens[-1] / med, med / dens[0])
@@ -619,10 +640,10 @@ vt 0.0 0.0
 vt 0.4 0.0
 vt 0.4 0.4
 vt 0.0 0.4
-vt 0.6 0.4
-vt 1.0 0.4
-vt 1.0 0.8
-vt 0.6 0.8
+vt 0.4 0.0
+vt 0.8 0.0
+vt 0.8 0.4
+vt 0.4 0.4
 vn 0 0 1
 vn 0 0 1
 f 1/1/1 2/2/1 3/3/1 4/4/1
@@ -665,6 +686,47 @@ vt 0.5 0.5
 vt -0.25 0.5
 vn 0 0 1
 f 1/1/1 2/2/1 3/3/1 4/4/1
+"""
+ST_OFF_HIGH = """v 0 0 0
+v 1 0 0
+v 1 1 0
+v 0 1 0
+vt 0.75 0.0
+vt 1.25 0.0
+vt 1.25 0.5
+vt 0.75 0.5
+vn 0 0 1
+f 1/1/1 2/2/1 3/3/1 4/4/1
+"""
+ST_OFF_V = """v 0 0 0
+v 1 0 0
+v 1 1 0
+v 0 1 0
+vt 0.2 -0.2
+vt 0.8 -0.2
+vt 0.8 0.3
+vt 0.2 0.3
+vn 0 0 1
+f 1/1/1 2/2/1 3/3/1 4/4/1
+"""
+ST_REVERSED_CAP = """v 0 0 0
+v 1 0 0
+v 1 1 0
+v 0 1 0
+v 2 0 0
+v 2 1 0
+vt 0.0 0.0
+vt 0.4 0.0
+vt 0.4 0.4
+vt 0.0 0.4
+vt 0.4 0.0
+vt 0.8 0.0
+vt 0.8 0.4
+vt 0.4 0.4
+vn 0 0 1
+vn 0 0 1
+f 1/1/1 2/2/1 3/3/1 4/4/1
+f 2/5/2 3/8/2 6/7/2 5/6/2
 """
 ST_OVERLAP = """v 0 0 0
 v 1 0 0
@@ -847,7 +909,13 @@ SELFTEST = [
     (1, "a face carrying no normal at all", ST_NO_NORMAL, "no normal"),
     (1, "one flat face under four identical normals", ST_SAME_VALUE_NORMAL, ""),
     (1, "an island reaching past u = 0", ST_OFF_CANVAS, "outside the canvas"),
+    (1, "an island reaching past u = 1", ST_OFF_HIGH, "outside the canvas"),
+    (1, "an island reaching past v = 0, u legal", ST_OFF_V, "outside the canvas"),
     (2, "two islands laid over each other", ST_OVERLAP, "pairs of islands overlap"),
+    # The winding case needs no uv at all, which is the point: the size and layout rules
+    # above all pass on a mesh whose caps face the wrong way.
+    (2, "a shared edge wound the same way by both its faces", ST_REVERSED_CAP,
+     "same way in both faces"),
 ]
 
 # The style rules need the same treatment: each has a case that must make it fire, and a
