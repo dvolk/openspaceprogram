@@ -5224,12 +5224,17 @@ void Vehicle::applyGroundForces(double h) {
     /* The load the REST of this substep put on the hull, for the static hold
        (src/wheel.h, #1184). tick.cpp runs gravity, control and air before this
        call and integrates after it, so Bullet's accumulator is exactly that
-       list -- read ONCE, here, before the first contact pushes back into it.
-       Split across every contact the hull could hold with: like the momentum
-       clamps below, this uses the part counts rather than this substep's touch
-       count, so a hull standing on three of four legs under-holds a little
-       instead of over-holding. */
+       list. Read ONCE, here: both loops below ApplyForce into that same
+       accumulator, so a read inside either one would have the ground cancel its
+       own hold.
+       Split across every contact the hull COULD hold with, not the ones that
+       touched -- the same part-count habit the #770 clamps below use, though
+       those divide gear and legs by separate denominators. A hull standing on
+       three of four legs therefore holds 3/4 of the load and the rest keeps
+       creeping; soft is the safe direction (over-holding moves a hull nothing
+       pushed), but it is 1/n of the load, not a rounding error (#1194). */
     const size_t holders = gearParts.size() + legParts.size();
+    assert(holders > 0);   // the early return above is what makes this true
     const glm::dvec3 holdShare = GetAccumulatedForce(hull) / (double)holders;
     for(Part *p : gearParts) {
         const PartDef &d = *p->def;

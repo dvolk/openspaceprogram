@@ -57,14 +57,19 @@ struct Input {
     /* Same budget along the strut normal, spent on the STRUT's closing rate
        (#862). 0 turns that clamp off. See force(). */
     double normalStopRate = 0.0;
-    /* N: the tangential force the REST of this substep has already handed the
-       hull -- gravity's slope component, air, thrust -- as this contact's share
-       of it. A contact answers it up to what its friction circle leaves, while
-       its patch creeps: that is static friction, and without it the tire pair
-       is pure damping, so a steady side load parks a hull at a permanent crawl
-       (#1184). Zero means "nothing to hold", which is also what a caller on a
-       body with no air and a level pad reads. Defaulted so the pins that predate
-       it read unchanged. */
+    /* N: the force the REST of this substep has already handed the hull --
+       gravity, air, thrust -- as this contact's share of it. Pass the whole
+       vector; force() throws away the part along the normal, which is the
+       suspension's business. A contact answers what is left, up to what its
+       friction circle leaves, while its patch creeps: that is static friction,
+       and without it the tire pair is pure damping, so a steady side load parks
+       a hull at a permanent crawl (#1184). Zero means "nothing to hold", which
+       is also what a caller on a body with no air and a level pad reads.
+       Defaulted so the pins that predate it read unchanged.
+       A DRIVE force must not go in here: the hold cancels a zero-slip load up to
+       mu*N, so a rover's motor fed through this would be braked by its own
+       wheels at rest. The longitudinal slot (top of this header) is where the
+       wheel decides what it wants, distinct from what the hull was handed. */
     glm::dvec3 push{0.0, 0.0, 0.0};
 };
 
@@ -128,14 +133,15 @@ inline glm::dvec3 force(const Input &in) {
     }
 
     /* Static friction (#1184): a surface holds a patch still, it does not merely
-       damp it. Kerbin authors 5 m/s of surface wind, ~380 N of air on a parked
+       damp it. Kerbin authors 5 m/s of surface wind, 386 N of air on a parked
        2.2 t lander; against a tire pair proportional to SLIP that parks the hull
-       at a permanent crawl of load/gain, and since the budget above makes the
-       gain m/h, the crawl grows with the substep: 0.01 m/s at warp 1, 0.05 m/s
-       at warp 10, which is 21 m of track and the edge of the pad in three
-       minutes of sim. A balloon deck reads no wind at all (its bubble moves with
-       the air), which is why the same hull sat still there and the bug looked
-       pad-specific.
+       at a permanent crawl of load/gain, and it got worse the coarser the
+       substep was -- measured with this block compiled out, racerlegs on the
+       Kerbin pad: 0.20 m in 19 s at warp 1 (0.010 m/s), and at warp 10 it walked
+       18 m in 191 s, which is off the pad edge and into a fall (|v| 0.95 m/s
+       coming down).
+       A balloon deck reads no wind at all (its bubble moves with the air), which
+       is why the same hull sat still there and the bug looked pad-specific.
        The hold cancels the push the rest of THIS substep handed the hull, so it
        is exact rather than one step behind: the tick loop runs gravity, control
        and air, then this, and nothing integrates until physics_tick. Along the
@@ -148,10 +154,17 @@ inline glm::dvec3 force(const Input &in) {
        remove the drag from its stopping distance -- and a throttled braked plane
        from its acceleration -- in silence. Above the band the law is exactly
        what it was before this block existed.
+       What that buys, and it is tuning nobody has weighed yet: a legged hull can
+       now stand on a slope up to atan(kGrip) = 42 deg, where before any slope at
+       all slid it. It also means a parked hull takes mu*N before it budges --
+       0.9 * 5.4 kN = 4.9 kN for one footpad of a 2.2 t lander on four legs -- so
+       pushing one off a pad is a legs/staging action, not a gentle thrust one.
        The share is the linear push over the contacts that can hold, not the
-       couple that push would actually produce at this patch: the leg springs
-       carry the tipping, and the moments here are small (416 Nm on a hull whose
-       leg pair restores at ~60 kNm/rad). */
+       couple that push would actually produce at this patch: the tipping goes
+       into the leg struts, not into stiction, and it is small -- a parked
+       racerlegs reads 421 Nm of wind couple in --drag-log and leans 0.13 deg off
+       its deck normal, where pads that bit the couple unevenly would keep it
+       level (#1193). */
     const glm::dvec3 pushT = in.push - n * glm::dot(in.push, n);
     double hLat = 0.0, hLong = 0.0;
     if(slipMag <= kSlipEps) {

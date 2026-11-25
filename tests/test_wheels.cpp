@@ -242,11 +242,15 @@ int main() {
         wheel::Input free_ = rest(0.1);
         free_.push = glm::dvec3(0.0, 500.0, 0.0);
         CHECK_NEAR(wheel::force(free_).y, 0.0, 1e-9, "unbraked: no fore-and-aft hold");
-        // l = n x f = -X, so a +X push is a -500 lateral demand, held back at +X.
+        // l = n x f = -X, so a +X push asks for +500 along l, which is a force
+        // applied at -X -- opposing the push, as it must be.
         free_.push = glm::dvec3(500.0, 0.0, 0.0);
         CHECK_NEAR(wheel::force(free_).x, -500.0, 1e-9, "a free wheel still grips sideways");
 
         // A push along the normal is the suspension's business, not the tire's.
+        // With n = +Z these two CHECKs cannot tell whether force() projects push
+        // into the ground plane at all (l and f are already in it), so the
+        // tilted-deck block below is what weighs that projection.
         wheel::Input down = rest(0.1);
         down.brake = 1.0;
         down.push = glm::dvec3(0.0, 0.0, -5000.0);
@@ -343,6 +347,38 @@ int main() {
         CHECK_NEAR(wheel::force(parked).y,
                    -wheel::kRollResist * 1000.0 * std::tanh(0.2 / wheel::kSlipEps), 1e-9,
                    "and rolls fore-and-aft: rolling resistance only, no hold");
+    }
+
+    /* The player-facing shape of #1184: a hull parked on a SLOPE, where the load
+       to hold is gravity itself. n = normalize(0, 0.6, 1) is a 31 deg deck, whose
+       downhill axis is f and whose normal is n, and a 1000 N vertical load then
+       asks 1000*sin(31) = 514.5 N in the plane -- well inside the 900 N circle of
+       this patch, so a held patch reads exactly that and nothing else.
+       (Note what this does NOT pin: dropping force()'s projection of push into
+       the ground plane changes nothing here or anywhere, because l and f are
+       perpendicular to n by construction, so the normal part of push cannot
+       reach dot(pushT, l) or dot(pushT, f). That line is insurance for a caller
+       that fails to project its own `forward`, which both shipped loops do.) */
+    {
+        const glm::dvec3 n = glm::normalize(glm::dvec3(0.0, 0.6, 1.0));
+        const glm::dvec3 f = glm::normalize(glm::dvec3(0.0, 1.0, 0.0)
+                                             - n * n.y);
+        const double downSlope = 1000.0 * 0.6 / std::sqrt(1.36);
+        wheel::Input hill = rest(0.1);
+        hill.normal = n;
+        hill.forward = f;
+        hill.brake = 1.0;
+        hill.push = glm::dvec3(0.0, 0.0, -1000.0);   // a weight-like load, straight down
+        const glm::dvec3 F = wheel::force(hill);
+        CHECK_NEAR(glm::dot(F, f), -downSlope, 1e-6, "the deck holds the slope component");
+        CHECK_NEAR(glm::dot(F, n), 1000.0, 1e-6, "while the strut carries the rest");
+        CHECK_NEAR(glm::dot(F, glm::cross(n, f)), 0.0, 1e-6, "and nothing appears across it");
+
+        // The same deck with the brake off: a wheel is free to roll away, and the
+        // hold must not invent a force that keeps it on the hill.
+        hill.brake = 0.0;
+        CHECK_NEAR(glm::dot(wheel::force(hill), f), 0.0, 1e-12,
+                   "an unbraked wheel holds no slope at all");
     }
 
     printf("test_wheels: %d checks, %d failures\n", g_checks, g_failures);

@@ -456,10 +456,13 @@ void ApplyTorque(Body *body, glm::dvec3 torque) {
 }
 
 glm::dvec3 GetAccumulatedForce(Body *body) {
-    // Bullet's per-step accumulator: everything applied since the last
-    // stepSimulation cleared it. Bullet's own contact solving has not run here
-    // (the game drives the hull with its own force appliers), so this is the
-    // applier loop's total -- which is what a static-friction hold needs.
+    /* Bullet's per-step force accumulator: everything applied since the last
+       stepSimulation cleared it, so exactly this substep's applier loop. Bullet
+       solves its contacts as impulses, never through this accumulator, so the
+       number says nothing about any contact friction the solver may also apply
+       -- which is fine as long as the ground law's ride height keeps the hull
+       off its own collision hull (src/wheel.h's RIDE HEIGHT note; --leg-log's
+       gap= is that separation, and 0.05-0.06 m for both shipped parts). */
     const btVector3 &f = getRigidBody(body)->getTotalForce();
     return glm::dvec3(f.getX(), f.getY(), f.getZ());
 }

@@ -3,19 +3,21 @@ CLAIM A legged hull parked on the pad stays parked when time accelerates: the wi
 KIND invariant
 ARGS --time-accel 10
 ARGS --startship racerlegs,res/ships/racer_legs.json,Kerbin,pad
-ARGS --timeout 25 --dbg-log --att-log --drag-log
+ARGS --timeout 25 --dbg-log --att-log --drag-log --leg-log
 EXPECT [dbg]
 EXPECT [attlog]
 EXPECT [drag]
+EXPECT [leglog]
 # The load has to exist or the case proves nothing: Kerbin authors 5 m/s of
-# surface wind (res/systems/ksp_system.json), ~380 N of air on this hull at rest.
+# surface wind (res/systems/ksp_system.json), 386 N of air on this hull at rest.
 CHECK len(dbg) > 5
 CHECK max(d["F"] for d in drag) > 100.0
 # #1184's crawl. The ground law damped slip but never HELD, so a parked hull sat
-# at load/gain: 0.05 m/s at this substep -- 21 m of track in three minutes of sim,
-# the pad edge, and then the fall (alt 8.4 -> 1.4 m). Warp only sets the rate: the
-# same hull crept 0.01 m/s at warp 1, and looked fine at warp 12+ only because
-# past kRailsWarp the hull rides rails and never reaches the ground law at all.
+# at load/gain: 0.20 m in 19 s at warp 1 (0.010 m/s), and 18 m in 191 s at this
+# warp -- the pad edge, then the fall (alt 8.4 -> 2.7 m, |v| up to 0.95). Warp
+# only sets the rate, and warp >= kRailsWarp (11) looks fine for a different
+# reason: the hull rides rails there and never reaches the ground law at all.
+# [dbg] prints |v| at 2 dp (src/tick.cpp), so this really means "reads 0.00".
 CHECK abs(dbg[-1]["v"]) < 0.01
 CHECK (lambda cs: max(cs) - min(cs) < 0.5)([d["pos"][0] for d in dbg])
 CHECK (lambda cs: max(cs) - min(cs) < 0.5)([d["pos"][1] for d in dbg])
@@ -24,5 +26,12 @@ CHECK max(d["alt"] for d in dbg) - min(d["alt"] for d in dbg) < 0.5
 # Under physics, not a rail: the LEGS are what hold it up.
 CHECK all(a["railed"] == 0 for a in att)
 CHECK all(a["wnorm"] < 0.01 for a in att[-5:])
+# And the legs are carrying it as SPRINGS, not as bumps: every footpad is
+# compressed and still floating clear of the deck (#1072's ride height). If a
+# future change let the hull rest on its own collision hull instead, Bullet's
+# hull-on-pad friction (4.0 x 4.0, vs the ground law's kGrip = 0.9 -- #1195)
+# would hold this hull and the case would pass without the hold it is about.
+CHECK len(leglog) > 8
+CHECK all(l["comp"] > 0.01 and l["comp"] < l["travel"] and l["gap"] is not None and l["gap"] > 0.0 for l in leglog)
 FORBID error:
 FORBID FAILED
