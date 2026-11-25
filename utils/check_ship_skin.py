@@ -15,14 +15,19 @@ That is not only cosmetic. The part's convex hull joins the ship's compound shap
 floating part is a floating collision blob and an extra term in the drag silhouette, and
 the parallel-axis term in the principal-axis solve uses the (too far out) child position
 -- on `skiff`, `skiff_gear` and `skiff_trim` that is a moment arm ~0.17 m longer than
-authored. 18 of the 93 surface edges the shipped roster weighs sit outside tolerance today
-(res/ships AND e2e/vehicles -- the fixtures are the hulls the e2e cases fly, so they move
-with any rule change too); each is waived below at the value measured when this gate was
-written, so the gate catches the NEXT one instead of re-litigating those. Engine bodies used
+authored. When this gate was written, 18 of the 93 surface edges the shipped roster weighs sat
+outside tolerance (res/ships AND e2e/vehicles -- the fixtures are the hulls the e2e cases fly, so
+they move with any rule change too); each was waived below at the value measured then, so the
+gate catches the NEXT one instead of re-litigating those. Engine bodies used
 to fill that list: their bounding box is the stack wall while their skin near the midplane is a
 pinch, so anything bolted beside one hung off nothing. gen_engine.py keeps the throat below
 z = 0, which took 10 of those 28 rows inside tolerance and improved the rest (skiff:elev_l
-0.1666 -> 0.1101 m, skiff:rudder 0.1626 -> 0.0625 m).
+0.1666 -> 0.1101 m, skiff:rudder 0.1626 -> 0.0625 m). That generator is shelved now and the
+hand-authored family is back in res/meshes, so the pile grew: 28 of the 93 surface edges
+and 26 of the 68 surface nodes are outside tolerance today, 35 of them waived and 13 of those
+grown past the value their waiver records. The engine rows are the rule, not the authoring --
+the hand engines are widest at their stack end, so their side mounts float by 0.239..0.538 m
+under a height-blind rule.
 
 WHAT THIS FILE DOES: it re-computes every shipped surface edge with the same ray rule the
 loader uses (ellipseContact, src/shipdef.cpp:1609) and weighs the result against the parent
@@ -474,9 +479,14 @@ def gate(label, rows, waivers, key_of, tol, verbose, check_stale=True):
                      row.get("angle", 0.0), row.get("contact", row.get("node_off", 0.0)),
                      row["skin"], row["gap"]))
     over = [r for r in rows if abs(r["gap"]) > tol]
-    print("%s: %d rows weighed, %d outside %.0f cm, %d waived"
+    # Rows whose gap grew past the value their waiver recorded are a different animal from a
+    # row nobody waived: the waiver is evidence this mount used to land where it should, so the
+    # mesh or the rule moved. Splitting them keeps a regression from hiding in the pile (#153).
+    worse = sum(1 for _, why in bad if why.startswith("worse"))
+    print("%s: %d rows weighed, %d outside %.0f cm, %d waived%s"
           % (label, len(rows), len(over), tol * 100.0,
-             sum(1 for r in over if key_of(r) in waivers)))
+             sum(1 for r in over if key_of(r) in waivers),
+             "" if not worse else ", %d of them WORSE than the waiver they sit under" % worse))
     for row, why in bad:
         if "ship" in row:
             where = "%s on %s at z=%.2f (%s" % (row["ship"], row["part"], row["z"],

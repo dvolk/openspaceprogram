@@ -38,6 +38,11 @@ jobs:
       # The no-module half of the art gate (#1051, #1170, #1178): the shipped meshes against the
       # paintability and house-style tables, regenerating nothing. The regeneration half needs
       # trimesh, so it lives in `make test` (test-art) instead. This step costs 0.13 s over the
-      # 82 shipped meshes and catches a committed mesh that triangulated its walls, collapsed its
-      # UVs, or shades as one gradient instead of faces.
+      # 82 shipped meshes.
+      # Advisory since 2026-11-25 (owner's call: art is hand-edited here), so this step REPORTS
+      # a mesh that triangulated its walls, collapsed its UVs, or shades as one gradient -- it
+      # does not go red for it. What still reddens CI: the SELFTEST controls inside this script
+      # (a rule that stopped being able to fail) and anything make test-gen runs. The strict
+      # mode exists locally as `make art-strict` and is red by design until the shelved-art
+      # warnings (#1191, #1173) and the #153 attach pile are cleared.
       - run: python3 utils/art/check_mesh_pins.py --committed

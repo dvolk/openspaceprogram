@@ -42,8 +42,9 @@ near-straight skirt, and that is what the curve gives -- chords of 51.7, 25.0, 9
 axis on engine (r1 h2) at 3 bands. The power law this replaces (t**2) left the throat near-axially
 and opened out toward the exit instead: 11.9, 32.4, 46.6 deg, a wall that gets worse going down.
 That reads as a funnel, not a nozzle, and it is what the owner caught. The curve costs one ring per
---bell-bands, so it is bought with triangles and not with texels: the pins ship 3 bands (162 faces
-at 32 segments, against 624 for a fuselage).
+--bell-bands, so it is bought with triangles and not with texels: the default of 3 bands gives 162
+faces at 32 segments (130 at 2 bands, which is what the pinned rows asked for before the family
+went back to hand art), against 624 for a fuselage.
 
 Three laws the profile cannot break:
 

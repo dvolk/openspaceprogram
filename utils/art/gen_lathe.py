@@ -18,8 +18,12 @@ UVs are the part this file exists to fix. The adapter generator it replaced gave
 the SAME grid cell, so a cap got 3 to 6 times the texel density of the wall it meets: half
 the part painted sharp and half blurred (#1176). The nose cap and shroud generators left UVs
 that collapse to one point, so painting them could not change the part at all (#1173). All
-three of those scripts are gone; the emitter here is pinned over all 26 lathed meshes -- 18
-profiled by this file, plus the 8 engine bodies whose rings gen_engine.py computes.
+three of those scripts are gone. The emitter is still here and still exact, but since 2026-11-25
+it is pinned over one lathed mesh (capsule_cyl_r1h2): the adapters, nose caps and shrouds it also
+writes went back to hand art, along with the 8 engine bodies whose rings gen_engine.py computes
+(SHELVED in check_mesh_pins.py, which quotes the uv-drift measurement behind that). The counts
+below were measured over the whole 26-mesh family while it was generated, and stand as what the
+emitter does rather than as what the catalogue pins.
 
 Here each face gets its OWN island, drawn congruent to itself -- a wall quad becomes an
 isosceles trapezoid of its true edge lengths, a cap becomes a disc of its true radius --
@@ -103,7 +107,8 @@ def pack(shapes, margin):
     several placement orders with the best result kept. What the order is worth depends on
     the part: on the fattest adapter the best and worst orders differ by a third of the
     canvas (uv scale 0.1864 against 0.1614, measured), and on a straight shroud not at all
-    -- measured over the 26 pinned meshes that reach it, 8 need only one order (all five
+    -- measured over the 26 family meshes that reach it (25 of them shelved now), 8 need only
+    one order (all five
     orders agree) and the widest is four -- the engine bodies, two cap discs plus four
     differently sized bands -- so the duplicates are dropped below rather than bisected.
     Fixed orders and a fixed tie-break keep it deterministic, which matters

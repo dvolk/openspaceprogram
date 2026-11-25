@@ -729,6 +729,26 @@ test-art:
 		echo "test-art: SKIP generated-art drift pin -- missing python module: trimesh" >&2; \
 	fi
 
+# The strict side of the same switches (utils/art/README.md, "Editing art by hand"). These
+# are expected to be RED today and are not build gates: 14 hits from the shelved hand art
+# (adapter corner normals #1191, zero-uv-area shroud walls #1173) and the 32-row #153 attach
+# pile. Run one when you want the whole pile in front of you, or before adding a generated
+# asset so its drift has nowhere to hide.
+.PHONY: art-strict
+art-strict:
+	@fails=""; for c in "utils/art/check_mesh_pins.py --strict" \
+		"utils/art/gen_parts.py --check --strict" "utils/check_ship_skin.py --strict"; do \
+		python3 $$c || fails="$$fails `basename $$c`"; \
+	done; \
+	if [ -n "$$fails" ]; then echo "art-strict: red:`echo $$fails`" >&2; exit 1; fi
+
+# The geom-stamp half: the same fixture sweep tests/test_shipload.cpp runs as a WARN, with
+# stale stamps red. A stale stamp is what makes the loader refuse a saved ship, so the fix
+# is `python3 utils/art/restamp.py` and then rebuild.
+.PHONY: geom-strict
+geom-strict: tests
+	@OSP_STRICT_GEOM=1 $(TESTDIR)/test_shipload
+
 # Runs the whole list rather than stopping at the first red test: the old
 # `$(foreach ... || exit 1; )` aborted it, so one failure near the front hid which tests
 # never ran (nine silently skipped in tmp/maketest_526b.log). The summary exists because
@@ -813,10 +833,11 @@ test-gen: lint
 	python3 utils/check_atmo_band.py --self-test
 	python3 utils/check_atmo_band.py res/systems/*.json
 # #153: a "surface" attach whose contact is off the parent's skin. A shorthand edge lands
-# on the parent's WIDEST slice, so on a cone the part floats -- 28 shipped rows do today
-# (res/ships and e2e/vehicles, which the checker finds itself), waived at the value each
-# was measured at. The gate is that a new floating mount, or a waived row that got worse,
-# fails. It re-spells the loader's ray rule instead of calling into it (the check_atmo_band
+# on the parent's WIDEST slice, so on a cone the part floats -- 54 shipped rows sit outside
+# 2 cm today (28 contact edges over 93, 26 surface nodes over 68), 35 of them waived at the
+# value each was measured when this gate was written. The gate is that a new floating mount,
+# or a waived row whose gap grew past its waiver, counts: 32 do today, 13 of them grown.
+# It re-spells the loader's ray rule instead of calling into it (the check_atmo_band
 # / atmo_profile reasoning): a gate built on the loader's own numbers could only catch a
 # bad authoring value, not the rule itself drifting.
 # Advisory since 2026-11-25: that pile IS the #153 rule rather than an authoring slip, and it
