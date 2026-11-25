@@ -31,7 +31,17 @@ faces): a generator has no reason to join cells, so per-face cells are what it h
 See the comment on TOPO for what each check is for, and utils/inspect_mesh_blender.py for
 reading the same properties in the editor.
 
-Every rule in topo_problems() has a case in SELFTEST that must make it fire, run on every
+TOPO only speaks for the seven lofted assets that have always been paintable.
+style_problems() and STYLE_OK below weigh the whole catalogue against the house rules the
+audit wrote down (Stage 0 of reports/art-regen2026_11_25): flat normals unless a named part
+is rounded on purpose (#1178), a uv layer whose faces enclose real area (#1173), a face
+budget, and per-part texel density for generated meshes only -- authored art has no
+generator to answer to (#1176). The 41 excuse rows are that debt, counted. Both directions
+are checked: a problem no row covers fails, and a row that stops matching a problem fails,
+so the pile can only shrink.
+
+Every rule in topo_problems() and style_problems() has a case in SELFTEST that must make it
+fire, run on every
 invocation before any asset is weighed. That exists because the first version's island
 compare could not fail and the seven green pins were quoted as proof (#1170 review round);
 the summary line reports the rules run and the failures, so a rule that goes silent stops
@@ -39,6 +49,7 @@ the gate.
 
 Usage: python3 utils/check_mesh_pins.py [--verbose] [--committed]
 """
+import math
 import os
 import re
 import subprocess
@@ -204,29 +215,44 @@ def obj_corner(field, nv, nt, nn):
     return out
 
 
-def topo_problems(path, want_faces):
-    """Why this .obj would be hard to paint, or [] if it is paintable."""
-    vs, uvs, ns, raw = [], [], [], []
+def read_faces(path):
+    """(verts, uvs, normals, faces, bad) straight off the text. Stdlib on purpose: the
+    committed half of this gate runs on the lint runner, where neither Blender nor trimesh
+    is available. Each face is (verts, uvs, normals) of 1-based indices, one per corner,
+    None where the corner text leaves that field out (`f 1 2 3`, `f 1//2`). `bad` names the
+    first corner that will not resolve, because every count below it is then a guess."""
+    vs, uvs, nvs, raw = [], [], [], []
     with open(path, encoding="utf-8", errors="replace") as fh:
         for ln in fh:
             if ln.startswith("v "):
-                vs.append(ln)
+                t = ln.split()
+                vs.append((float(t[1]), float(t[2]), float(t[3])))
             elif ln.startswith("vt "):
                 t = ln.split()
                 uvs.append((float(t[1]), float(t[2])))
             elif ln.startswith("vn "):
-                ns.append(ln)
+                t = ln.split()
+                nvs.append((float(t[1]), float(t[2]), float(t[3])))
             elif ln.startswith("f "):
                 raw.append(ln.split()[1:])
-    bad = []
-    faces = []
+    faces, bad = [], None
     for fields in raw:
-        corners = [obj_corner(x, len(vs), len(uvs), len(ns)) for x in fields]
+        corners = [obj_corner(x, len(vs), len(uvs), len(nvs)) for x in fields]
         if any(c is None or c[0] is None for c in corners):
-            bad.append("face `f %s` does not parse, so every count below is a guess"
-                       % " ".join(fields))
-            return bad
+            if bad is None:
+                bad = "face `f %s` does not parse, so every count below is a guess" \
+                      % " ".join(fields)
+            continue
         faces.append(tuple(zip(*corners)))     # (verts, uvs, normals), one index per corner
+    return vs, uvs, nvs, faces, bad
+
+
+def topo_problems(path, want_faces):
+    """Why this .obj would be hard to paint, or [] if it is paintable."""
+    vs, uvs, nvs, faces, unparsable = read_faces(path)
+    if unparsable:
+        return [unparsable]
+    bad = []
 
     tri = sum(1 for f in faces if len(f[0]) == 3)
     if tri:
@@ -238,7 +264,12 @@ def topo_problems(path, want_faces):
     if no_norm:
         bad.append("%d faces carry no normal at all, so they shade off the smoothing of "
                    "whatever they happen to touch" % no_norm)
-    mixed = sum(1 for f in faces if all(x is not None for x in f[2]) and len(set(f[2])) != 1)
+    # By VALUE, not by index. A face whose corners name three different `vn` lines holding
+    # the same unit vector is flat: decoupler_radial.obj, barometer.obj and the ladders are
+    # all written that way, and an index compare calls every one of them mixed.
+    # ST_SAME_VALUE_NORMAL is the control that keeps this true.
+    mixed = sum(1 for f in faces if all(x is not None for x in f[2])
+                and len({nvs[i - 1] for i in f[2]}) != 1)
     if mixed:
         bad.append("%d faces carry more than one normal, so a face's own flat shading "
                    "blends into whatever meets it" % mixed)
@@ -299,6 +330,175 @@ def topo_problems(path, want_faces):
                    % (len(thin), min(thin), TOPO_MIN_FACE_UV_AREA))
     return bad
 
+
+# ---------------------------------------------------------------------------------
+# House style, weighed across the catalogue rather than across TOPO's seven rows
+# (Stage 0 of reports/art-regen2026_11_25).
+#
+# Two findings drove this. #1178: the box families (fins, wings, runway, station, spacedock,
+# leg) shade as one soft gradient because their generators average normals at the corner --
+# the engine interpolates whatever the file says, so nothing goes wrong in code and the art
+# just stops reading as a flat plate. #1173: 31 meshes address a single texel, so painting
+# them changes a pixel nobody can see.
+#
+# These rules stay separate from topo_problems() on purpose: a flat plate legitimately fails
+# the island and ngon expectations TOPO holds for the lofted family, so adding plates to
+# TOPO reports four problems where the honest report is one.
+FLAT_MAX_DEG = 5.0     # 5 reproduces the audit's flat/smooth split with nothing in between
+FACE_BUDGET = 650      # FILE faces, not drawn triangles: assimp triangulates on import, so
+                       # a quad-heavy part draws about twice this (fuselage: 624 -> ~1248)
+DENSITY_MAX_SPREAD = 2.0
+CANVAS_PX = 512.0      # what parts.json textures are authored at. The rule below is a ratio,
+                       # so this only scales the px/m figures it prints, never what fails.
+
+
+def poly_area2(pts):
+    a = 0.0
+    for i in range(len(pts)):
+        x1, y1 = pts[i]
+        x2, y2 = pts[(i + 1) % len(pts)]
+        a += x1 * y2 - x2 * y1
+    return abs(a) * 0.5
+
+
+def face_area3(vs, vi):
+    """Enclosed area of one face, fan-triangulated (ngons included)."""
+    a = 0.0
+    for j in range(1, len(vi) - 1):
+        p, q, r = vs[vi[0] - 1], vs[vi[j] - 1], vs[vi[j + 1] - 1]
+        ux, uy, uz = q[0] - p[0], q[1] - p[1], q[2] - p[2]
+        wx, wy, wz = r[0] - p[0], r[1] - p[1], r[2] - p[2]
+        cx, cy, cz = uy * wz - uz * wy, uz * wx - ux * wz, ux * wy - uy * wx
+        a += 0.5 * math.sqrt(cx * cx + cy * cy + cz * cz)
+    return a
+
+
+def style_problems(path, rel, budget=FACE_BUDGET, check_density=True):
+    """How one .obj departs from the house style, as problem text. Reports everything:
+    excuses are applied by the caller (see STYLE_OK), so no rule can be switched off by
+    a whitelist and then quietly stop running."""
+    vs, uvs, nvs, faces, unparsable = read_faces(path)
+    if unparsable:
+        return [unparsable]
+    out = []
+
+    if len(faces) > budget:
+        out.append("%d file faces, over the %d budget: it draws near twice that once assimp "
+                   "triangulates" % (len(faces), budget))
+
+    # Shading: every corner normal should be the normal of the face it belongs to.
+    worst = 0.0
+    for f in faces:
+        vi = f[0]
+        if len(vi) < 3:
+            continue
+        p, q, r = vs[vi[0] - 1], vs[vi[1] - 1], vs[vi[2] - 1]
+        ux, uy, uz = q[0] - p[0], q[1] - p[1], q[2] - p[2]
+        wx, wy, wz = r[0] - p[0], r[1] - p[1], r[2] - p[2]
+        nx, ny, nz = uy * wz - uz * wy, uz * wx - ux * wz, ux * wy - uy * wx
+        ln = math.sqrt(nx * nx + ny * ny + nz * nz)
+        if ln == 0.0:
+            continue
+        for i in f[2]:
+            if i is None:
+                continue
+            m = nvs[i - 1]
+            ml = math.sqrt(m[0] * m[0] + m[1] * m[1] + m[2] * m[2])
+            if ml == 0.0:
+                continue
+            d = (nx * m[0] + ny * m[1] + nz * m[2]) / (ln * ml)
+            worst = max(worst, math.degrees(math.acos(max(-1.0, min(1.0, d)))))
+    if worst > FLAT_MAX_DEG:
+        out.append("%.1f deg: corners sit that far off their own face normal, so a flat part "
+                   "shades as a rounded lump (#1178)" % worst)
+
+    # Paintability: a face with no uv, or with one that encloses no area, samples one texel.
+    no_uv = sum(1 for f in faces if any(x is None for x in f[1]))
+    if no_uv:
+        out.append("%d faces carry no uv field, so they sample texel 0 of whatever texture "
+                   "the part names (#1173)" % no_uv)
+    else:
+        areas = [poly_area2([uvs[i - 1] for i in f[1]]) for f in faces]
+        zero = sum(1 for a in areas if a <= 0.0)
+        if zero == len(faces):
+            # A strip is not the same defect as a point: the shrouds run 32 texels along
+            # v = 0, so painting a ROW of their texture does change what draws.
+            out.append("every face encloses zero uv area (%d distinct texels between them), "
+                       "so painting one face cannot change the part (#1173)"
+                       % len({uvs[f[1][0] - 1] for f in faces}))
+        elif zero:
+            out.append("%d of %d faces enclose zero uv area (#1173)" % (zero, len(faces)))
+
+    # Density (#1176): one face of the part must not be several times coarser or finer than
+    # its neighbours, or half the part reads sharp and half reads blurred.
+    if check_density:
+        dens = []
+        for f in faces:
+            if any(x is None for x in f[1]):
+                continue
+            ua = poly_area2([uvs[i - 1] for i in f[1]])
+            a3 = face_area3(vs, f[0])
+            if ua > 0.0 and a3 > 0.0:
+                dens.append(CANVAS_PX * math.sqrt(ua / a3))
+        if len(dens) > 2:
+            dens.sort()
+            med = dens[len(dens) // 2]
+            spread = max(dens[-1] / med, med / dens[0])
+            if spread > DENSITY_MAX_SPREAD:
+                out.append("texel density spread %.1fx the part median (%.0f..%.0f px/m): "
+                           "one half of this part paints sharp and the other blurs (#1176)"
+                           % (spread, dens[0], dens[-1]))
+    return out
+
+
+# rel -> the rule fragments it is allowed to break, with the reason it still does. Checked
+# in both directions: a problem no fragment covers fails, and a fragment that no longer
+# matches a problem fails too, so this table can only shrink -- the same teeth UNPINNED
+# needed and did not have.
+STYLE_OK = {
+    # Rounded on purpose: a wheel, a figure, a balloon. Nothing in the plan flattens these,
+    # and flattening the platform would cost it six times the corners (3950 -> 23544) while
+    # buying nothing (#1179).
+    "meshes/gear.obj": ("off their own face normal", "no uv field"),
+    "meshes/kerbal.obj": ("off their own face normal", "no uv field"),
+    "meshes/balloon_platform.obj": ("off their own face normal", "no uv field",
+                                    "file faces"),
+    "meshes/balloon_platform_deck.obj": ("off their own face normal", "no uv field"),
+}
+# #1178: these four generators average normals at the corner. Stage 1 gives each face its
+# own normal, which makes these 12 rows stale -- and the check above says so if it forgets.
+STYLE_OK.update({("meshes/%s.obj" % n): ("off their own face normal", "zero uv area")
+                 for n in ("fin_r0.6h0.8", "fin_r0.8h0.7", "fin_r1h2", "wing_r0.7h1",
+                           "wing_r1h1", "wing_r2h2", "wing_r3h1.8", "wing_r4h1.5",
+                           "runway")})
+STYLE_OK.update({("meshes/%s.obj" % n): ("off their own face normal", "no uv field")
+                 for n in ("station", "spacedock", "leg")})
+# #1173, the rest: the fuselages fill the whole surface with vt 0.5 0.5, the shrouds are a
+# degenerate strip, and the ladders have no uv layer at all. Stages 2/3 give them islands.
+STYLE_OK.update({("meshes/%s.obj" % n): ("zero uv area",) for n in
+                 ("fuselage_r0.4h4", "fuselage_r0.5h3.5", "fuselage_r0.5h6",
+                  "fuselage_r1h6", "engine_shroud", "engine_r0.25h1_shroud",
+                  "engine_r1.5h3_shroud", "engine_r2.25h4.5_shroud", "nuclear_engine_shroud",
+                  "orbital_engine_shroud", "orbital_engine_r1.5h1.5_shroud",
+                  "orbital_engine_r2.25h2.25_shroud")})
+STYLE_OK.update({("meshes/%s.obj" % n): ("no uv field",)
+                 for n in ("ladder", "ladder_0.5m", "ladder_1m")})
+# #1176, and only where a generator is responsible: the lofted family maps a whole cell per
+# face, so the 32-gon caps hold several times the density of the wall quads they meet.
+# Stage 2's unwrap is what fixes these.
+STYLE_OK.update({("meshes/%s.obj" % n): ("density spread",) for n in
+                 ("adapter_r1.5to1", "adapter_r1.5to2.25", "adapter_r1to1.5",
+                  "adapter_r1to2.25", "adapter_r2.25to1.5", "adapter_r2.25to1",
+                  "capsule_cyl_r1h2", "nose_cap", "decoupler_radial", "barometer")})
+
+
+def apply_excuses(rel, problems, table):
+    """(unexcused problems, stale fragments). A fragment that stops matching is a failure
+    so that the debt tables cannot quietly outlive the debt."""
+    frags = table.get(rel, ())
+    unexcused = [p for p in problems if not any(frag in p for frag in frags)]
+    stale = [f for f in frags if not any(f in p for p in problems)]
+    return unexcused, stale
 
 
 # Positive control: these rules have to be able to FAIL. The first version of the island
@@ -419,6 +619,23 @@ vt 1.0 1.0
 vn 0 0 1
 f 1/1/1 2/2/1 3/3/1
 """
+# The control for comparing normals by value: four `vn` lines holding the same vector,
+# named one per corner. An index compare calls this face mixed, which is how
+# decoupler_radial.obj, barometer.obj and the ladders used to read as defects.
+ST_SAME_VALUE_NORMAL = """v 0 0 0
+v 1 0 0
+v 1 1 0
+v 0 1 0
+vt 0.0 0.0
+vt 1.0 0.0
+vt 1.0 1.0
+vt 0.0 1.0
+vn 0 0 1
+vn 0 0 1
+vn 0 0 1
+vn 0 0 1
+f 1/1/1 2/2/2 3/3/3 4/4/4
+"""
 SELFTEST = [
     (2, "two wall quads, seamed", ST_SEAMED, ""),
     (1, "negative indices resolve against the tables", ST_NEGATIVE, ""),
@@ -430,6 +647,98 @@ SELFTEST = [
     (1, "a corner index out of range", ST_RANGE, "does not parse"),
     (1, "a face carrying two normals", ST_MIXED_NORMAL, "more than one normal"),
     (1, "a face carrying no normal at all", ST_NO_NORMAL, "no normal"),
+    (1, "one flat face under four identical normals", ST_SAME_VALUE_NORMAL, ""),
+]
+
+# The style rules need the same treatment: each has a case that must make it fire, and a
+# couple that must come back clean so a rule cannot fire on everything. Cases are
+# (label, text, face budget, phrase); "" means the case has to come back clean.
+ST_BLEND_NORMAL = """v 0 0 0
+v 1 0 0
+v 1 1 0
+v 0 1 0
+vt 0.0 0.0
+vt 1.0 0.0
+vt 1.0 1.0
+vt 0.0 1.0
+vn 0.577350 0.577350 0.577350
+f 1/1/1 2/2/1 3/3/1 4/4/1
+"""
+ST_FLAT_NORMAL = """v 0 0 0
+v 1 0 0
+v 1 1 0
+v 0 1 0
+vt 0.0 0.0
+vt 1.0 0.0
+vt 1.0 1.0
+vt 0.0 1.0
+vn 0 0 1
+f 1/1/1 2/2/1 3/3/1 4/4/1
+"""
+ST_ZERO_UV_AREA = """v 0 0 0
+v 1 0 0
+v 1 1 0
+v 0 1 0
+vt 0.5 0.5
+vn 0 0 1
+f 1/1/1 2/1/1 3/1/1 4/1/1
+"""
+ST_TWO_QUADS = """v 0 0 0
+v 1 0 0
+v 1 0 1
+v 0 0 1
+v 2 0 0
+v 3 0 0
+v 3 0 1
+v 2 0 1
+vt 0.0 0.0
+vt 0.5 0.0
+vt 0.5 0.5
+vt 0.0 0.5
+vt 0.5 0.5
+vt 1.0 0.5
+vt 1.0 1.0
+vt 0.5 1.0
+vn 0 -1 0
+f 1/1/1 2/2/1 3/3/1 4/4/1
+f 5/5/1 6/6/1 7/7/1 8/8/1
+"""
+ST_DENSITY_SPREAD = """v 0 0 0
+v 1 0 0
+v 1 0 1
+v 0 0 1
+v 2 0 0
+v 3 0 0
+v 3 0 1
+v 2 0 1
+v 4 0 0
+v 5 0 0
+v 5 0 1
+v 4 0 1
+vt 0.0 0.0
+vt 0.1 0.0
+vt 0.1 0.1
+vt 0.0 0.1
+vt 0.0 0.5
+vt 0.5 0.5
+vt 0.5 1.0
+vt 0.0 1.0
+vt 0.5 0.5
+vt 1.0 0.5
+vt 1.0 1.0
+vt 0.5 1.0
+vn 0 -1 0
+f 1/1/1 2/2/1 3/3/1 4/4/1
+f 5/5/1 6/6/1 7/7/1 8/8/1
+f 9/9/1 10/10/1 11/11/1 12/12/1
+"""
+SELFTEST_STYLE = [
+    ("blended corner normals", ST_BLEND_NORMAL, 650, "off their own face normal"),
+    ("one flat face, flat normals", ST_FLAT_NORMAL, 650, ""),
+    ("a whole face collapsed to one texel", ST_ZERO_UV_AREA, 650, "zero uv area"),
+    ("two quads against a budget of one", ST_TWO_QUADS, 1, "file faces"),
+    ("two quads, no budget pressure", ST_TWO_QUADS, 650, ""),
+    ("three quads, one tenth the texel density", ST_DENSITY_SPREAD, 650, "density spread"),
 ]
 
 
@@ -446,6 +755,17 @@ def self_test():
             bad.append("self-test `%s` should be clean, got: %s" % (label, problems))
         elif phrase and not any(phrase in p for p in problems):
             bad.append("self-test `%s` should report a problem naming %r, got: %s"
+                       % (label, phrase, problems))
+    for k, (label, text, budget, phrase) in enumerate(SELFTEST_STYLE):
+        path = os.path.join(tmpd, "style%d.obj" % k)
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(text)
+        # rel is not in STYLE_OK, so nothing here can be excused away.
+        problems = style_problems(path, "self-test/%s.obj" % label, budget=budget)
+        if phrase == "" and problems:
+            bad.append("style self-test `%s` should be clean, got: %s" % (label, problems))
+        elif phrase and not any(phrase in p for p in problems):
+            bad.append("style self-test `%s` should report a problem naming %r, got: %s"
                        % (label, phrase, problems))
     return bad
 
@@ -493,6 +813,31 @@ def main():
 
     st_fail = self_test()
     drift = list(st_fail)
+
+    # House style over the whole catalogue, in both halves. The committed files are what a
+    # player sees, and the regenerate half byte-compares, so a generator cannot drift into
+    # unpaintable or gradient-shaded art without the pin failing first anyway.
+    generated = {o for _, _, outs in PINS for o in outs}
+    style_ran = 0
+    for name in sorted(os.listdir(os.path.join(REPO, "res", "meshes"))):
+        if not name.endswith(".obj"):
+            continue
+        rel = "meshes/" + name
+        style_ran += 1
+        # #1176's density rule asks what a generator emitted; the authored half of the
+        # catalogue has no generator to answer to.
+        probs = style_problems(os.path.join(REPO, "res", rel), rel,
+                               check_density=rel in generated)
+        unexcused, stale = apply_excuses(rel, probs, STYLE_OK)
+        for p in unexcused:
+            drift.append("res/%s: %s" % (rel, p))
+        for frag in stale:
+            drift.append("res/%s: STYLE_OK excuses %r, which no longer matches a problem, "
+                         "so drop the row" % (rel, frag))
+    for rel in STYLE_OK:
+        if not os.path.exists(os.path.join(REPO, "res", rel)):
+            drift.append("res/%s: STYLE_OK excuses an asset that is gone" % rel)
+
     if committed:
         # The no-dependency half: the shipped text against TOPO, no generators run.
         for rel in sorted(TOPO):
@@ -547,13 +892,11 @@ def main():
                 if committed else
                 "mesh pins: %d assets regenerated from %d generators, %d drifted"
                 % (pinned, len({s for s, _, _ in PINS}), len(drift) - len(st_fail)))
-        print("%s, %d paintable-topology checks, %d self-test rules, %d self-test "
-              "failures, %d claims excused, %d claims unpinned"
-              % (head, topo_ran, len(SELFTEST), len(st_fail), len(UNPINNED),
-                 len(unclaimed)))
-        if topo_ran < len(TOPO):
-            print("note: %d of %d TOPO rows were skipped because their asset did not "
-                  "regenerate byte-exact" % (len(TOPO) - topo_ran, len(TOPO)))
+        print("%s, %d paintable-topology checks, %d style checks over the catalogue "
+              "(%d rows excused), %d self-test rules, %d self-test failures, %d claims "
+              "excused, %d claims unpinned"
+              % (head, topo_ran, style_ran, len(STYLE_OK), len(SELFTEST) + len(SELFTEST_STYLE),
+                 len(st_fail), len(UNPINNED), len(unclaimed)))
         if topo_ran < len(TOPO):
             print("note: %d of %d TOPO rows were skipped because their asset did not "
                   "regenerate byte-exact" % (len(TOPO) - topo_ran, len(TOPO)))
