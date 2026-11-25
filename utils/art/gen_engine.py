@@ -58,15 +58,26 @@ faces that project the same way. Measured on this profile at 32 segments:
 
     islands      130 -> 13
     canvas fill  0.606 -> 0.779
-    px/m         88..88 (spread 1.00) -> 77..103 (spread 1.35)
+    px/m         88..88 (spread 1.00) -> 77..104 (spread 1.29)
 
 The density wander is the cost of the join, and it is the same order as the art that already
 ships: tank_r1h3.obj measures 67..82 px/m, spread 1.22, against the gate's 2.0 ceiling
-(check_mesh_pins.py DENSITY_MAX_SPREAD). Geometry does not move -- same 160 verts, 130 faces,
-128 wall quads and 2 ngon discs, one normal per face, same volume to the printed precision --
-and 4.5.9's unwrap is deterministic, so the byte-exact pin still works: two runs of the same
-argv produced identical files. The angle limit and the gutter are pinned as argv, which makes
-changing either a diff rather than a silent re-pack.
+(check_mesh_pins.py DENSITY_MAX_SPREAD). Spread is the gate's measure -- worst face over the
+part median, both ways -- and 1.29 is the worst of the eight bodies; the others land 1.10..1.28.
+Geometry does not move -- same 160 verts, 130 faces, 128 wall quads and 2 ngon discs, one normal
+per face, same volume to the printed precision -- and 4.5.9's unwrap is deterministic, so the
+byte-exact pin still works: two runs of the same argv produced identical files. The angle limit
+and the gutter are pinned as argv, which makes changing either a diff rather than a silent
+re-pack.
+
+The axis pair on the way out of Blender is obj_import's own, restated rather than left to
+defaults (uv_smart_blender.py). `up_axis="Z"` -- the intuitive choice for a world-Z-up file --
+turns the part 90 deg, and nothing downstream notices except an engine lying on its side. So the
+generator checks that the unwrap only moved texture coordinates: `v`/`f` counts and each face's
+corner cycle (the exporter pools 576 `vt` lines into 317, so face identity is the only honest
+compare), and that the stack wall and the exit ring still sit at z = +/-H/2 at radii R and r_e.
+A bounding box cannot prove a part stands up: engine, engine_r1.5h3 and engine_r2.25h4.5 all box
+out as cubes, and a turned cube boxes out the same size.
 
 Blender is a dependency of this generator, and so of `make test` (test-art) and of any art run;
 it is NOT a dependency of lint.yml, which runs check_mesh_pins.py --committed and regenerates
@@ -85,6 +96,7 @@ air-breathers wear these nozzles too until they get their own duct profile.
 """
 
 import argparse
+import math
 import os
 import subprocess
 import sys
@@ -100,6 +112,9 @@ BELL_POWER = 2.0
 
 BLENDER = os.environ.get("BLENDER", os.path.expanduser("~/opt/blender-4.5.9-linux-x64/blender"))
 UNWRAP = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uv_smart_blender.py")
+# A background Blender that hangs would otherwise hang `make test` with it. 120 s is about 60x
+# what this takes (2 s for 130 faces), so it only ever fires on a real wedge.
+UNWRAP_TIMEOUT_S = 120
 
 
 def bell_rings(radius, height, exit_frac, eps, bell_frac, stack_frac, bell_bands):
@@ -133,9 +148,13 @@ def smart_unwrap(src, dst, angle_deg, margin):
         sys.exit("%s: no Blender. This generator hands its geometry to Blender for the UV pass "
                  "(uv_smart_blender.py); set BLENDER=/path/to/blender. CI is unaffected -- it "
                  "runs check_mesh_pins.py --committed, which regenerates nothing." % BLENDER)
-    r = subprocess.run([BLENDER, "--background", "--factory-startup", "--python", UNWRAP,
-                        "--", src, dst, repr(angle_deg), repr(margin)],
-                       capture_output=True, text=True)
+    try:
+        r = subprocess.run([BLENDER, "--background", "--factory-startup", "--python", UNWRAP,
+                            "--", src, dst, repr(angle_deg), repr(margin)],
+                           capture_output=True, text=True, timeout=UNWRAP_TIMEOUT_S)
+    except subprocess.TimeoutExpired as exc:
+        sys.exit("Smart UV Project on %s was still running after %d s, so %s was not written: "
+                 "%s" % (src, UNWRAP_TIMEOUT_S, dst, exc))
     if r.returncode or not os.path.exists(dst):
         sys.exit("Smart UV Project failed on %s (exit %d):\n%s\n%s"
                  % (src, r.returncode, r.stdout, r.stderr))
@@ -149,6 +168,9 @@ def read_body(path):
         return "".join(ln for ln in fh if not ln.startswith("#"))
 
 
+# These three read the OBJ text directly rather than going through check_mesh_pins.read_faces:
+# the gate inspects one committed file and returns index tables, while this has to compare two
+# texts of the same surface side by side, which needs coordinates and corner cycles.
 def count(lines, pfx):
     return sum(1 for ln in lines if ln.startswith(pfx))
 
@@ -181,7 +203,11 @@ def bbox(lines):
     return lo, hi
 
 
-def main():
+def verts(lines):
+    return [tuple(float(x) for x in ln.split()[1:4]) for ln in lines if ln.startswith("v ")]
+
+
+def main(argv=None):
     ap = argparse.ArgumentParser(description="lathe a rocket engine body: a stack shell "
                                              "over an expansion-ratio bell, unwrapped for "
                                              "painting")
@@ -215,7 +241,7 @@ def main():
     ap.add_argument("--caps", choices=["both", "base", "top", "none"], default="both",
                     help="which ends are closed; an open exit reads as a hole, so both")
     ap.add_argument("--name", default="Engine", help="object name written into the file")
-    a = ap.parse_args()
+    a = ap.parse_args(argv)
     if a.radius <= 0.0 or a.height <= 0.0:
         ap.error("--radius and --height are sizes, not shapes: both > 0")
     if a.eps <= 1.0:
@@ -260,6 +286,9 @@ def main():
 
     with tempfile.TemporaryDirectory(prefix="gen_engine-") as td:
         lathe = os.path.join(td, "lathe.obj")
+        # gen_lathe names the header; Blender drops that file's comments, so the header that
+        # reaches res/ is the one written below. The name here only helps when reading a
+        # leftover temp file.
         gen_lathe.main([lathe, "--profile", profile_arg(rings), "--segments", str(a.segments),
                         "--caps", a.caps, "--name", a.name], generator="gen_engine.py")
         with open(lathe, encoding="utf-8") as fh:
@@ -283,6 +312,27 @@ def main():
             assert abs(src_lo[k] - out_lo[k]) < 1e-6 and abs(src_hi[k] - out_hi[k]) < 1e-6, \
                    "the unwrap moved the part's extent along %s: %.4f..%.4f -> %.4f..%.4f" \
                    % ("xyz"[k], src_lo[k], src_hi[k], out_lo[k], out_hi[k])
+        # That one only compares the file with itself, so it cannot see a part that turned
+        # quarter-way: engine (r1 h2), engine_r1.5h3 and engine_r2.25h4.5 box out as cubes, and
+        # a rotated cube boxes out exactly as wide and as tall. Say the law from the profile
+        # instead. The stack wall is the top ring (R at z = +H/2) and the nozzle exit is the
+        # bottom ring (r_e at z = -H/2); a turned part still puts vertices in those planes, but
+        # at the wrong distance from the axis -- quarter-turning (1,1,0) about X lands it at
+        # (1,-1,1), a radius of 1.414 where the profile says 1.
+        out_v = verts(unwrapped)
+        for z_want, r_want, what in ((a.height / 2.0, a.radius, "stack wall"),
+                                     (-a.height / 2.0, exit_radius(a.radius, a.exit_frac),
+                                      "nozzle exit")):
+            ring = [p for p in out_v if abs(p[2] - z_want) < 1e-6]
+            assert len(ring) == a.segments, \
+                   "only %d vertices at z = %+.4f, expected the %d of the %s ring: the axis " \
+                   "round-trip laid the part on its side (uv_smart_blender.py must restate " \
+                   "obj_import's own axis pair)" % (len(ring), z_want, a.segments, what)
+            rad = [math.hypot(p[0], p[1]) for p in ring]
+            assert min(rad) > r_want - 1e-6 and max(rad) < r_want + 1e-6, \
+                   "the %s ring at z = %+.4f spans radius %.4f..%.4f, expected %.4f: the " \
+                   "profile moved or the envelope left the part" \
+                   % (what, z_want, min(rad), max(rad), r_want)
 
         header = ("# generated by gen_engine.py (profile %s segs=%d caps=%s "
                   "smart_uv=%gdeg/%g)\n"

@@ -4,24 +4,28 @@
 A "surface" edge says a part is bolted to the side of another part. The shorthand
 ("angle" + "z", no "point"/"normal") computes where that bolt lands from the parent's
 cross-section -- and the loader takes that cross-section from the parent's mesh BOUNDING
-BOX (src/shipdef.cpp:1138 meshHalfSpan): the widest half-width the parent reaches at ANY
-height, paired with the authored height. For a cylinder those agree. For a cone the pair
-is a lie at every height except the widest one: `capsule`'s bounding box says 1.0 m of
-half-width, while its skin at z = 0 is 0.625 m, so a part bolted at mid-height lands
-0.375 m out in the air, and the rudder on `skiff`'s jet cone floats 0.16 m off the hull it
+BOX (meshHalfSpan, src/shipdef.h:220, applied at src/shipdef.cpp:1289): the widest half-width
+the parent reaches at ANY height, paired with the authored height. For a cylinder those agree.
+For a cone the pair is a lie at every height except the widest one: `capsule`'s bounding box
+says 1.0 m of half-width, while its skin at z = 0 is 0.625 m, so a part bolted at mid-height
+lands 0.375 m out in the air, and the rudder on `skiff`'s jet cone floats 0.16 m off the hull it
 claims to touch.
 
 That is not only cosmetic. The part's convex hull joins the ship's compound shape, so a
 floating part is a floating collision blob and an extra term in the drag silhouette, and
 the parallel-axis term in the principal-axis solve uses the (too far out) child position
 -- on `skiff`, `skiff_gear` and `skiff_trim` that is a moment arm ~0.17 m longer than
-authored. 28 of the 83 surface edges the shipped roster weighs sit outside tolerance today
+authored. 18 of the 93 surface edges the shipped roster weighs sit outside tolerance today
 (res/ships AND e2e/vehicles -- the fixtures are the hulls the e2e cases fly, so they move
 with any rule change too); each is waived below at the value measured when this gate was
-written, so the gate catches the NEXT one instead of re-litigating those.
+written, so the gate catches the NEXT one instead of re-litigating those. Engine bodies used
+to fill that list: their bounding box is the stack wall while their skin near the midplane is a
+pinch, so anything bolted beside one hung off nothing. gen_engine.py keeps the throat below
+z = 0, which took 10 of those 28 rows inside tolerance and improved the rest (skiff:elev_l
+0.1666 -> 0.1101 m, skiff:rudder 0.1626 -> 0.0625 m).
 
 WHAT THIS FILE DOES: it re-computes every shipped surface edge with the same ray rule the
-loader uses (ellipseContact, shipdef.cpp:1458) and weighs the result against the parent
+loader uses (ellipseContact, src/shipdef.cpp:1609) and weighs the result against the parent
 mesh's ACTUAL skin along that ray at that height. It is a second spelling of the rule, not
 a call into it -- the same reason utils/atmo_profile.py re-spells atmo.h: a gate built on
 the loader's own numbers could only ever catch a mistyped authoring value, while an
@@ -32,10 +36,10 @@ reads as wide as its widest side and is never called falsely floating), then the
 support function max(ca*x + sa*y) at the authored height, interpolated between vertex
 z-levels and clamped outside them, compared against the loader's ray length. The measure
 is therefore lenient by a few percent mid-slope, where vertex rings are far apart --
-enough to catch a 0.24 m offset without claiming a mesh bulges. A mesh that runs past its
+enough to catch a 0.36 m offset without claiming a mesh bulges. A mesh that runs past its
 authored cylinder is normal (engine bells flare) and is not refused on its own; the one
 range refusal copied from the loader is a shorthand row whose authored `z` runs past the
-end of the parent (shipdef.cpp:1150), which an authored "point" is allowed to do.
+end of the parent (shipdef.cpp:1302), which an authored "point" is allowed to do.
 
 Only ROUND parents are weighed. The loader's ellipse is a surface of revolution: on a plate
 it lands on the face and the tip exactly (#457) and buries a diagonal mount inside the
@@ -47,10 +51,12 @@ THE SECOND MECHANISM, weighed here too (and named on #153): synthesizeNodes (shi
 puts a part's surface node at -radius, again the WIDEST radius rather than the skin at the
 node's own height. The child's node is what lands on the contact, so a part whose node
 stands off its own skin hangs that far OUTSIDE the contact no matter how honest the contact
-is -- 26 of the 70 round-cross-section part types do (23 from the rule, up to 1.12 m for
-`nose_cap_r2.25h1.125`, 0.84 m for `capsule_r2.25h4.5`, 0.24 m for plain `engine`; plus the
-three docking ports, which AUTHOR their node at the bottom flange on purpose -- #1081 --
-so their "burial" equals the radius and is the design, not drift). Fixing
+is -- 17 of the 68 node rows weighed do (14 from the rule, up to 1.12 m for
+`nose_cap_r2.25h1.125`, 0.84 m for `capsule_r2.25h4.5`; plus the three docking ports, which
+AUTHOR their node at the bottom flange on purpose -- #1081 -- so their "burial" equals the
+radius and is the design, not drift). The engine bodies are off that list now: a throat below
+the midplane puts their side node on the chamber wall, where it read 0.24 m for plain `engine`
+when this gate was written. Fixing
 it moves geom_fingerprint (nodes are hashed, #456), so every existing save would report a
 reshaped ship; that is why it is a decision and not a drive-by.
 

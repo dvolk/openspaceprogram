@@ -10,7 +10,7 @@ rewrote a shipped asset in passing (gen_gear.py has no argparse at all: `python3
 utils/art/gen_gear.py --help` just generated the gear).
 
 So: regenerate into a temp tree, byte-compare against the committed file, and fail on drift.
-Byte-exact, not "close enough" -- all 53 pinned assets reproduce byte-exactly today, so an exact
+Byte-exact, not "close enough" -- all 54 pinned assets reproduce byte-exactly today, so an exact
 comparison costs nothing and catches a formatter version bump, an axis typo, a float that stopped
 rounding the same way.
 
@@ -272,8 +272,11 @@ TOPO = {
     "meshes/orbital_engine_r2.25h2.25_shroud.obj": 32,
     # Engine bodies, new to this check with gen_engine.py: 4 wall bands (nozzle x2, shoulder,
     # chamber) and two discs, at 32 segments. They were never checked before -- a Blender
-    # export with no generator claim sits outside both PINS and TOPO, which is how 128 faces
-    # at 87 texels each and 409 overlapping island pairs shipped on engine.obj (#1173).
+    # export with no generator claim sits outside both PINS and TOPO, which is how the shipped
+    # engine.obj carried 162 faces whose thinnest addressed 87 texels (#1173). Correcting what
+    # this comment used to claim: it also said "409 overlapping island pairs", which was a
+    # bounding-box count from the scan that is now gone; weighed by real shared uv area that
+    # mesh overlaps nowhere. Its defect was resolution, not overlap.
     "meshes/engine.obj": 130,
     "meshes/engine_r1.5h3.obj": 130,
     "meshes/engine_r2.25h4.5.obj": 130,
@@ -298,16 +301,27 @@ TOPO = {
 # floor.
 TOPO_MIN_FACE_TEXELS = 1024.0
 # Rows whose faces cannot reach 1024 at any sane canvas, with the floor they do keep. The
-# engine bodies are the case: 130 faces each, so one 512^2 canvas leaves 100..264 texels on
-# the thinnest of them however the patches are packed. There the floor is not the real rule
-# -- #1187's rule is texel DENSITY (px per metre), which every face gets whatever the part
-# size is, and 48 px/m on a 0.196 x 0.35 m wall quad is 9 x 17 texels whether the engine is a
-# metre across or five. What the row floor still catches is a collapse: halving a face's uv
-# area trips it, and so does the #1173 pattern of naming one texel per corner.
-TOPO_FACE_TEXELS = {("meshes/%s.obj" % n): 96.0 for n in
+# engine bodies are the case: 130 faces each, so one 512^2 canvas leaves the thinnest face at
+# 99.8..264.0 texels however the patches pack (orbital_engine_r2.25h2.25 99.8,
+# orbital_engine_r1.5h1.5 101.3, orbital_engine 105.3, engine 159.3, the two tall r1.5/r2.25
+# bodies 198.8, nuclear_engine 226.6, the 0.25 m jet body 264.0). The floor sits at 0.72x the
+# smallest of those: a nudge to --uv-margin or a Blender point release does not trip it, while
+# a halved face still does.
+#
+# This floor is the weaker rule for these rows, and #1187 replaces it with texel DENSITY: the
+# thinnest face of each part is 0.0031..0.1317 m^2, so at the 48 px/m the owner asked for it
+# lands between 7 and 303 texels depending only on how big the part is. A per-face texel count
+# cannot say anything useful about a family that is scaled; px/m can, and to be worth having
+# it needs the real PNG size rather than CANVAS_PX.
+TOPO_FACE_TEXELS = {("meshes/%s.obj" % n): 72.0 for n in
                     ("engine", "engine_r1.5h3", "engine_r2.25h4.5", "engine_r0.25h1",
                      "orbital_engine", "orbital_engine_r1.5h1.5",
                      "orbital_engine_r2.25h2.25", "nuclear_engine")}
+# What counts as two faces really overlapping, as a fraction of the canvas. One texel at
+# 512^2 is 3.8e-6 of it, so this is a tenth of a texel squared: faces that meet along an edge
+# come out at 0.0 (measured 0.0 over all 26 TOPO rows), and a folded face comes out at its
+# whole area.
+UV_OVERLAP_MIN = 1e-7
 
 
 def obj_corner(field, nv, nt, nn):
@@ -495,18 +509,14 @@ def topo_problems(path, want_faces, min_texels=TOPO_MIN_FACE_TEXELS):
                    "read as almost one colour whatever it holds"
                    % (len(thin), min(thin), min_texels))
 
-    # Where the islands sit, not just how big they are. A generator that lays an island
+    # Where the layout sits, not just how big it is. A generator that lays an island
     # out about its own centre instead of from its corner puts half of it at negative uv:
     # src/texture.cpp clamps, so the part paints in an edge colour that nobody painted,
     # and the other half can land on top of a neighbour's island. gen_lathe.py hit both
     # (a cap disc spanning u -0.27..0.29, a nose cap with 17 islands under its base disc)
-    # while every size rule above stayed happy, which is why this check exists.
-    #
-    # The box is the ISLAND's, not the face's. Inside one joined patch the corner boxes of
-    # neighbouring faces overlap by construction -- that is what "joined" means -- so a
-    # per-face scan would report every Smart-UV'd engine as a pile of overlaps. The gutter
-    # the sampler needs is between patches. ST_UNSEAMED is the control: two faces, one
-    # island, coincident boxes, no problem.
+    # while every size rule above stayed happy, which is why this check exists. The box is
+    # the ISLAND's here: the gutter the sampler needs is between patches. ST_UNSEAMED is the
+    # control -- two faces, one island, their boxes meeting exactly along the seam, clean.
     boxes = []
     for g in groups:
         xs = [uvs[i - 1][0] for k in g for i in faces[k][1]]
@@ -520,18 +530,35 @@ def topo_problems(path, want_faces, min_texels=TOPO_MIN_FACE_TEXELS):
                    "paints as an edge colour of the texture"
                    % (len(outside), min(b[0] for b in outside), max(b[2] for b in outside),
                       min(b[1] for b in outside), max(b[3] for b in outside)))
-    # Zero-area islands (the #1173 collapse) cannot overlap by this test -- the two boxes
-    # coincide rather than cross -- and the texel floor above is what reports them.
-    over = 0
-    for i in range(len(boxes)):
-        for j in range(i + 1, len(boxes)):
-            a, b = boxes[i], boxes[j]
-            if (min(a[2], b[2]) - max(a[0], b[0]) > 1e-6
-                    and min(a[3], b[3]) - max(a[1], b[1]) > 1e-6):
+
+    # Do two faces share uv area? By real polygon area, not by box: engine.obj's 130 faces
+    # have 202 pairs whose corner boxes overlap and 0 pairs that actually overlap, because a
+    # joined patch IS a set of faces whose boxes meet. No adjacency bookkeeping is needed --
+    # stitched neighbours share exact uv coordinates, so their polygons meet along a line and
+    # the clipped area is exactly 0.0 (measured: 188..204 box candidates per engine body, 0
+    # with real area). A box scan cannot see the defect the rule is for either -- one face
+    # folded on top of its own neighbour (ST_FOLDED): inside one island that face has a legal
+    # normal, legal area, legal winding, and boxes that meet every neighbour's; only the shared
+    # area says "paint here and change there". Zero-area faces (the #1173 collapse) share
+    # nothing by this test, which is why the texel floor above is what reports them.
+    polys = [[uvs[i - 1] for i in f[1]] for f in faces]
+    fboxes = [(min(p[0] for p in q), min(p[1] for p in q),
+               max(p[0] for p in q), max(p[1] for p in q)) for q in polys]
+    over, worst = 0, 0.0
+    for i in range(len(polys)):
+        for j in range(i + 1, len(polys)):
+            a, b = fboxes[i], fboxes[j]
+            if (min(a[2], b[2]) - max(a[0], b[0]) <= 0.0
+                    or min(a[3], b[3]) - max(a[1], b[1]) <= 0.0):
+                continue       # boxes apart, so nothing can overlap: the cheap cut first
+            ar = uv_overlap_area(polys[i], polys[j])
+            if ar > UV_OVERLAP_MIN:
                 over += 1
+                worst = max(worst, ar)
     if over:
-        bad.append("%d pairs of islands overlap: a painted patch would show through its "
-                   "neighbour, and the mip filter blends across the seam" % over)
+        bad.append("%d pairs of faces share uv area (worst %.4f of the canvas): paint one "
+                   "patch and another face changes too, and the mip filter blends across it"
+                   % (over, worst))
     return bad
 
 
@@ -575,6 +602,57 @@ def face_area3(vs, vi):
         cx, cy, cz = uy * wz - uz * wy, uz * wx - ux * wz, ux * wy - uy * wx
         a += 0.5 * math.sqrt(cx * cx + cy * cy + cz * cz)
     return a
+
+
+def _ccw(poly):
+    """Order a uv polygon counter-clockwise: the clipper below keeps what sits left of each
+    of the clipper's edges, so its edges have to face inward."""
+    s = 0.0
+    for i in range(len(poly)):
+        x1, y1 = poly[i]
+        x2, y2 = poly[(i + 1) % len(poly)]
+        s += x1 * y2 - x2 * y1
+    return poly if s > 0.0 else poly[::-1]
+
+
+def _clip_halfplane(poly, a, b):
+    """Sutherland-Hodgman: cut `poly` to the left of the ray a -> b."""
+    ax, ay = a
+    dx, dy = b[0] - ax, b[1] - ay
+    out = []
+    for i in range(len(poly)):
+        p, q = poly[i], poly[i - 1]
+        dp = dx * (p[1] - ay) - dy * (p[0] - ax)
+        dq = dx * (q[1] - ay) - dy * (q[0] - ax)
+        if dp >= 0.0:
+            if dq < 0.0:
+                t = dq / (dq - dp)
+                out.append((q[0] + t * (p[0] - q[0]), q[1] + t * (p[1] - q[1])))
+            out.append(p)
+        elif dq >= 0.0:
+            t = dq / (dq - dp)
+            out.append((q[0] + t * (p[0] - q[0]), q[1] + t * (p[1] - q[1])))
+    return out
+
+
+def uv_overlap_area(pa, pb):
+    """How much uv area two faces share. Sutherland-Hodgman wants a convex clipper, so `pb`
+    is clipped as a fan of triangles from its own first corner -- honest for the shapes this
+    gate weighs (a band of a surface of revolution, a disc, a cone fan about the axis), which
+    are convex. Two faces that merely meet along an edge come out 0.0, which is why the rule
+    below needs no "but they are neighbours" exception: touching is what a patch is."""
+    pbc = _ccw(pb)
+    total = 0.0
+    for i in range(1, len(pbc) - 1):
+        tri = (pbc[0], pbc[i], pbc[i + 1])
+        poly = list(pa)
+        for k in range(3):
+            if len(poly) < 3:
+                break
+            poly = _clip_halfplane(poly, tri[k], tri[(k + 1) % 3])
+        if len(poly) >= 3:
+            total += poly_area2(poly)
+    return total
 
 
 def style_problems(path, budget=FACE_BUDGET, check_density=True):
@@ -761,13 +839,15 @@ v 0 1 0
 v 2 0 0
 v 2 1 0
 vt 0.0 0.0
+vt 0.5 0.0
+vt 0.5 1.0
+vt 0.0 1.0
 vt 1.0 0.0
 vt 1.0 1.0
-vt 0.0 1.0
 vn 0 0 1
 vn 0 0 1
 f 1/1/1 2/2/1 3/3/1 4/4/1
-f 2/2/2 5/1/2 6/4/2 3/3/2
+f 2/2/2 5/5/2 6/6/2 3/3/2
 """
 ST_COLLAPSED = """v 0 0 0
 v 1 0 0
@@ -853,6 +933,25 @@ vn 0 0 1
 f 1/1/1 2/2/1 3/3/1 4/4/1
 f 5/5/1 6/6/1 7/7/1 8/8/1
 """
+ST_FOLDED = """v 0 0 0
+v 1 0 0
+v 1 1 0
+v 0 1 0
+v 2 0 0.5
+v 2 1 0.5
+vt 0.0 0.0
+vt 1.0 0.0
+vt 1.0 1.0
+vt 0.0 1.0
+vn 0 0 1
+vn 0 0 1
+f 1/1/1 2/2/1 3/3/1 4/4/1
+f 2/2/2 5/1/2 6/4/2 3/3/2
+"""
+# The second face shares the edge v2-v3 AND its uv on both sides, so the island compare joins
+# them into one patch -- and it is laid exactly on top of the first. Winding is fine, every
+# face has real area, nothing is off-canvas, and every box coincides with every neighbour's
+# because that is what a joined patch looks like. Only the shared area reports it.
 ST_NO_UV = """v 0 0 0
 v 1 0 0
 v 1 1 0
@@ -1002,7 +1101,7 @@ f 1/1/1 2/2/2 3/3/3 4/4/4
 SELFTEST = [
     (2, "two wall quads, seamed", ST_SEAMED, ""),
     (1, "negative indices resolve against the tables", ST_NEGATIVE, ""),
-    (2, "two wall quads joined into one patch: one island, coincident corner boxes",
+    (2, "two wall quads joined into one patch: one island, boxes meeting along the seam",
      ST_UNSEAMED, ""),
     (2, "islands collapsed onto one texel", ST_COLLAPSED, "texels"),
     (1, "a triangle where the family is quads", ST_TRIANGLE, "triangles"),
@@ -1017,7 +1116,8 @@ SELFTEST = [
     (1, "an island reaching past u = 0", ST_OFF_CANVAS, "outside the canvas"),
     (1, "an island reaching past u = 1", ST_OFF_HIGH, "outside the canvas"),
     (1, "an island reaching past v = 0, u legal", ST_OFF_V, "outside the canvas"),
-    (2, "two islands laid over each other", ST_OVERLAP, "pairs of islands overlap"),
+    (2, "two islands laid over each other", ST_OVERLAP, "share uv area"),
+    (2, "one face folded onto its own neighbour, seam-free", ST_FOLDED, "share uv area"),
     # The winding case needs no uv at all, which is the point: the size and layout rules
     # above all pass on a mesh whose caps face the wrong way.
     (2, "a shared edge wound the same way by both its faces", ST_REVERSED_CAP,
