@@ -88,45 +88,58 @@ PINS = [
     # one -- gen_* takes one destination path per call.
     ("gen_decoupler_radial.py", ["--width", "0.1", "--depth", "0.1", "--length", "0.5"],
      ["meshes/barometer.obj"]),
-    ("gen_nose_cap.py", [], ["meshes/nose_cap.obj"]),
+    # The lofted family (#1173, #1176): adapters, the flat-topped capsule, nose caps and
+    # engine shrouds are one shape read three ways -- a frustum between two stack radii, a
+    # frustum that closes to the axis, an open tube -- so they are one generator. Names are
+    # the part's own: r<A>to<B> for adapters, r<R>h<H> for caps and shrouds.
+    ("gen_lathe.py", ["--r1", "1", "--r2", "0", "--height", "0.5", "--caps", "base",
+                      "--name", "NoseCap"], ["meshes/nose_cap.obj"]),
+    ("gen_lathe.py", ["--r1", "1.5", "--r2", "0", "--height", "0.75", "--caps", "base",
+                      "--name", "NoseCap"], ["meshes/nose_cap_r1.5h0.75.obj"]),
+    ("gen_lathe.py", ["--r1", "2.25", "--r2", "0", "--height", "1.125", "--caps", "base",
+                      "--name", "NoseCap"], ["meshes/nose_cap_r2.25h1.125.obj"]),
     # Fuselages: the part name IS the radius and height.
     ("gen_fuselage.py", ["--radius", "0.4", "--height", "4"], ["meshes/fuselage_r0.4h4.obj"]),
     ("gen_fuselage.py", ["--radius", "0.5", "--height", "3.5"], ["meshes/fuselage_r0.5h3.5.obj"]),
     ("gen_fuselage.py", ["--radius", "0.5", "--height", "6"], ["meshes/fuselage_r0.5h6.obj"]),
     ("gen_fuselage.py", ["--radius", "1", "--height", "6"], ["meshes/fuselage_r1h6.obj"]),
     # Adapters: name is r<A>to<B>; the height is what the header records.
-    ("gen_adapter.py", ["--r1", "1.5", "--r2", "1", "--height", "0.75"],
+    ("gen_lathe.py", ["--r1", "1.5", "--r2", "1", "--height", "0.75"],
      ["meshes/adapter_r1.5to1.obj"]),
-    ("gen_adapter.py", ["--r1", "1.5", "--r2", "2.25", "--height", "1.125"],
+    ("gen_lathe.py", ["--r1", "1.5", "--r2", "2.25", "--height", "1.125"],
      ["meshes/adapter_r1.5to2.25.obj"]),
-    ("gen_adapter.py", ["--r1", "1", "--r2", "1.5", "--height", "0.75"],
+    ("gen_lathe.py", ["--r1", "1", "--r2", "1.5", "--height", "0.75"],
      ["meshes/adapter_r1to1.5.obj"]),
-    ("gen_adapter.py", ["--r1", "1", "--r2", "2.25", "--height", "1.125"],
+    ("gen_lathe.py", ["--r1", "1", "--r2", "2.25", "--height", "1.125"],
      ["meshes/adapter_r1to2.25.obj"]),
-    ("gen_adapter.py", ["--r1", "2.25", "--r2", "1.5", "--height", "1.125"],
+    ("gen_lathe.py", ["--r1", "2.25", "--r2", "1.5", "--height", "1.125"],
      ["meshes/adapter_r2.25to1.5.obj"]),
-    ("gen_adapter.py", ["--r1", "2.25", "--r2", "1", "--height", "1.125"],
+    ("gen_lathe.py", ["--r1", "2.25", "--r2", "1", "--height", "1.125"],
      ["meshes/adapter_r2.25to1.obj"]),
-    # The flat-topped capsule (#1170) is the same shape family with equal radii: a
-    # frustum whose top is as wide as its base is a straight wall. Reusing the
-    # adapter's generator rather than writing a second 60-line one that would differ
-    # from it in nothing but the name in the header.
-    ("gen_adapter.py", ["--r1", "1", "--r2", "1", "--height", "2",
-                        "--name", "capsule_cyl"], ["meshes/capsule_cyl_r1h2.obj"]),
-    # Shrouds: r is 0.98x the engine it wraps, so the name does not carry it.
-    ("gen_engine_shroud.py", ["--radius", "0.98", "--height", "2"], ["meshes/engine_shroud.obj"]),
-    ("gen_engine_shroud.py", ["--radius", "1.47", "--height", "3"],
-     ["meshes/engine_r1.5h3_shroud.obj"]),
-    ("gen_engine_shroud.py", ["--radius", "2.205", "--height", "4.5"],
-     ["meshes/engine_r2.25h4.5_shroud.obj"]),
-    ("gen_engine_shroud.py", ["--radius", "0.98", "--height", "3"],
-     ["meshes/nuclear_engine_shroud.obj"]),
-    ("gen_engine_shroud.py", ["--radius", "1.47", "--height", "1.5"],
+    # The flat-topped capsule (#1170) is the same shape with equal radii: a frustum whose
+    # top is as wide as its base is a straight wall.
+    ("gen_lathe.py", ["--r1", "1", "--r2", "1", "--height", "2",
+                      "--name", "capsule_cyl"], ["meshes/capsule_cyl_r1h2.obj"]),
+    # Shrouds: open tubes, so neither end is capped; r is 0.98x the engine it wraps, which
+    # is why the name does not carry it.
+    ("gen_lathe.py", ["--r1", "0.98", "--r2", "0.98", "--height", "2", "--caps", "none",
+                      "--name", "EngineShroud"], ["meshes/engine_shroud.obj"]),
+    ("gen_lathe.py", ["--r1", "0.245", "--r2", "0.245", "--height", "1", "--caps", "none",
+                      "--name", "EngineShroud"], ["meshes/engine_r0.25h1_shroud.obj"]),
+    ("gen_lathe.py", ["--r1", "1.47", "--r2", "1.47", "--height", "3", "--caps", "none",
+                      "--name", "EngineShroud"], ["meshes/engine_r1.5h3_shroud.obj"]),
+    ("gen_lathe.py", ["--r1", "2.205", "--r2", "2.205", "--height", "4.5", "--caps", "none",
+                      "--name", "EngineShroud"], ["meshes/engine_r2.25h4.5_shroud.obj"]),
+    ("gen_lathe.py", ["--r1", "0.98", "--r2", "0.98", "--height", "3", "--caps", "none",
+                      "--name", "EngineShroud"], ["meshes/nuclear_engine_shroud.obj"]),
+    ("gen_lathe.py", ["--r1", "1.47", "--r2", "1.47", "--height", "1.5", "--caps", "none",
+                      "--name", "EngineShroud"],
      ["meshes/orbital_engine_r1.5h1.5_shroud.obj"]),
-    ("gen_engine_shroud.py", ["--radius", "2.205", "--height", "2.25"],
+    ("gen_lathe.py", ["--r1", "2.205", "--r2", "2.205", "--height", "2.25", "--caps", "none",
+                      "--name", "EngineShroud"],
      ["meshes/orbital_engine_r2.25h2.25_shroud.obj"]),
-    ("gen_engine_shroud.py", ["--radius", "0.98", "--height", "1"],
-     ["meshes/orbital_engine_shroud.obj"]),
+    ("gen_lathe.py", ["--r1", "0.98", "--r2", "0.98", "--height", "1", "--caps", "none",
+                      "--name", "EngineShroud"], ["meshes/orbital_engine_shroud.obj"]),
     # Wings and fins: rect planform, thickness from the header.
     ("gen_wing.py", ["--planform", "rect", "--chord", "2", "--span", "2", "--thickness", "0.1"],
      ["meshes/fin_r1h2.obj"]),
@@ -149,15 +162,6 @@ PINS = [
 # Assets that declare a generator but do not reproduce from it. Each needs a reason, and a
 # new claim without a pin here fails the coverage check below.
 UNPINNED = {
-    "meshes/nose_cap_r1.5h0.75.obj":
-        "gen_nose_cap.py's header says the unit cap (r=1 h=0.5); this is a uniform rescale "
-        "of it (34 of 198 lines differ), which gen_nose_cap.py's own note describes but does "
-        "not do",
-    "meshes/nose_cap_r2.25h1.125.obj":
-        "as nose_cap_r1.5h0.75.obj: a rescale carrying the unit cap's header",
-    "meshes/engine_r0.25h1_shroud.obj":
-        "header copies r=0.98 h=2 from engine_shroud.obj; the file is a different cylinder "
-        "(64 of 194 lines differ), so the header is a lie",
     "textures/terrain_detail.png":
         "gen_terrain_detail.py regenerates a 4.5 KB image against a 6.3 MB committed one -- "
         "different size/format, so the shipped map is not this script's output today",
@@ -183,13 +187,33 @@ TOPO = {
     "meshes/adapter_r2.25to1.5.obj": 34,
     "meshes/adapter_r2.25to1.obj": 34,
     "meshes/capsule_cyl_r1h2.obj": 34,     # 32 wall quads + one ngon per end
+    # The rest of the lathe family, which #1173 caught painting nothing: a nose cap is a
+    # cone band (32 triangles about the axis point) plus the disc that closes its base, and
+    # a shroud is an open tube, so its wall has no caps at all.
+    "meshes/nose_cap.obj": 33,
+    "meshes/nose_cap_r1.5h0.75.obj": 33,
+    "meshes/nose_cap_r2.25h1.125.obj": 33,
+    "meshes/engine_shroud.obj": 32,
+    "meshes/engine_r0.25h1_shroud.obj": 32,
+    "meshes/engine_r1.5h3_shroud.obj": 32,
+    "meshes/engine_r2.25h4.5_shroud.obj": 32,
+    "meshes/nuclear_engine_shroud.obj": 32,
+    "meshes/orbital_engine_shroud.obj": 32,
+    "meshes/orbital_engine_r1.5h1.5_shroud.obj": 32,
+    "meshes/orbital_engine_r2.25h2.25_shroud.obj": 32,
 }
-# One face's share of the 0..1 canvas, not the sum over the part: the 624-panel
-# fuselages would clear a summed floor the 34-face adapters fail. The lofted family gives
-# each face 0.021; the collapsed meshes in #1173 give theirs 0.000 (every corner lands on
-# one texel, so the part addresses one colour), and nose_cap.obj's overlapping faces
-# 0.0078. This sits between the good figure and the worst.
-TOPO_MIN_FACE_UV_AREA = 0.012
+# How many texels one face gets to hold paint: its uv area times the texture size the
+# engine loads (CANVAS_PX), weighed per face rather than summed so the 624-panel fuselages
+# cannot clear a floor the 34-face adapters fail. This used to be a share of the uv canvas
+# (0.012), which cannot tell a collapsed island from a small face at full resolution: the
+# shipped lofted meshes give every face the same 0.021 share and a 6x texel-density error with
+# it (#1176), while gen_lathe.py puts a nose cap's 0.11 m^2 cone triangle at 1632 texels and
+# its 3.14 m^2 base disc at 46656 -- a 28x difference in share at exactly the same px/m, which
+# the old floor read as the small face being broken. Texels is what the rule's sentence claims.
+# The floor is a 32x32 patch: well above the collapsed meshes in #1173, which address 0 (every
+# corner lands on one texel, so the part reads one colour), and half the smallest face the
+# 32-segment lathe produces today. More segments per band, and this floor says so.
+TOPO_MIN_FACE_TEXELS = 1024.0
 
 
 def obj_corner(field, nv, nt, nn):
@@ -266,10 +290,22 @@ def topo_problems(path, want_faces):
         return [unparsable]
     bad = []
 
-    tri = sum(1 for f in faces if len(f[0]) == 3)
-    if tri:
+    # A triangle is the sign of a wall somebody triangulated: the strip then unwraps into
+    # zig-zag slivers. A closed tip is not that. A cone fan -- n congruent triangles all
+    # meeting at one vertex, the axis point -- is the honest primitive for a nose cap, and
+    # gen_lathe.py gives each one an island congruent to itself. The tell is that a tip
+    # carries three quarters of the mesh's triangle corners; a triangulated wall spreads
+    # its corners along a row, so no corner of it holds that many of them.
+    tri = [f for f in faces if len(f[0]) == 3]
+    corners = {}
+    for f in tri:
+        for v in f[0]:
+            corners[v] = corners.get(v, 0) + 1
+    tip = max(4, 3 * len(tri) // 4)
+    slivers = sum(1 for f in tri if not any(corners[v] >= tip for v in f[0]))
+    if slivers:
         bad.append("%d triangles: the authored family is wall quads plus one ngon per "
-                   "end, and a triangulated wall unwraps into zig-zag slivers" % tri)
+                   "end, and a triangulated wall unwraps into zig-zag slivers" % slivers)
     if len(faces) != want_faces:
         bad.append("%d faces, expected %d" % (len(faces), want_faces))
     no_norm = sum(1 for f in faces if any(x is None for x in f[2]))
@@ -335,11 +371,12 @@ def topo_problems(path, want_faces):
             x2, y2 = pts[(i + 1) % len(pts)]
             a += x1 * y2 - x2 * y1
         small.append(abs(a) * 0.5)
-    thin = [a for a in small if a < TOPO_MIN_FACE_UV_AREA]
+    tex = [a * CANVAS_PX * CANVAS_PX for a in small]
+    thin = [t for t in tex if t < TOPO_MIN_FACE_TEXELS]
     if thin:
-        bad.append("%d faces hold %.4f of the canvas each (min %.3f): the texture is being "
+        bad.append("%d faces address %.0f texels each (min %.0f): the texture is being "
                    "read as almost one colour whatever it holds"
-                   % (len(thin), min(thin), TOPO_MIN_FACE_UV_AREA))
+                   % (len(thin), min(thin), TOPO_MIN_FACE_TEXELS))
     return bad
 
 
@@ -511,23 +548,19 @@ STYLE_OK.update({("meshes/%s.obj" % n): ("every face encloses zero uv area",)
                            "runway")})
 STYLE_OK.update({("meshes/%s.obj" % n): ("no uv field",)
                  for n in ("station", "spacedock", "leg")})
-# #1173, the rest: the fuselages fill the whole surface with vt 0.5 0.5, the shrouds are a
-# degenerate strip, and the ladders have no uv layer at all. Stages 2/3 give them islands.
+# #1173, the rest: the fuselages fill the whole surface with vt 0.5 0.5 and the ladders have
+# no uv layer at all. Stage 3 gives the fuselages islands. The eight shrouds left this list
+# when gen_lathe.py took them over: 32 wall quads, an island each, real area on every one.
 STYLE_OK.update({("meshes/%s.obj" % n): ("every face encloses zero uv area",) for n in
                  ("fuselage_r0.4h4", "fuselage_r0.5h3.5", "fuselage_r0.5h6",
-                  "fuselage_r1h6", "engine_shroud", "engine_r0.25h1_shroud",
-                  "engine_r1.5h3_shroud", "engine_r2.25h4.5_shroud", "nuclear_engine_shroud",
-                  "orbital_engine_shroud", "orbital_engine_r1.5h1.5_shroud",
-                  "orbital_engine_r2.25h2.25_shroud")})
+                  "fuselage_r1h6")})
 STYLE_OK.update({("meshes/%s.obj" % n): ("no uv field",)
                  for n in ("ladder", "ladder_0.5m", "ladder_1m")})
-# #1176, and only where a generator is responsible: the lofted family maps a whole cell per
-# face, so the 32-gon caps hold several times the density of the wall quads they meet.
-# Stage 2's unwrap is what fixes these.
+# #1176, and only where a generator is responsible. The lofted family left this list in
+# Stage 2: every island is now congruent to its face and all share one scale, so density is
+# equal by construction rather than an operator's approximation of it.
 STYLE_OK.update({("meshes/%s.obj" % n): ("density spread",) for n in
-                 ("adapter_r1.5to1", "adapter_r1.5to2.25", "adapter_r1to1.5",
-                  "adapter_r1to2.25", "adapter_r2.25to1.5", "adapter_r2.25to1",
-                  "capsule_cyl_r1h2", "nose_cap", "decoupler_radial", "barometer")})
+                 ("decoupler_radial", "barometer")})
 
 
 def apply_excuses(rel, problems, table):
@@ -657,6 +690,71 @@ vt 1.0 1.0
 vn 0 0 1
 f 1/1/1 2/2/1 3/3/1
 """
+# A wall strip somebody triangulated: consistent diagonals, one normal a face, an island
+# a face. Every rule is satisfied except the one this case exists to prove -- no corner of
+# it carries three quarters of the triangles, so the triangulated wall still reads as one.
+ST_TRIS_STRIP = """v 0 0 0
+v 1 0 0
+v 2 0 0
+v 3 0 0
+v 0 0 1
+v 1 0 1
+v 2 0 1
+v 3 0 1
+vt 0.00 0.00
+vt 0.10 0.00
+vt 0.00 0.10
+vt 0.20 0.00
+vt 0.30 0.00
+vt 0.20 0.10
+vt 0.40 0.00
+vt 0.50 0.00
+vt 0.40 0.10
+vt 0.00 0.20
+vt 0.10 0.20
+vt 0.00 0.30
+vt 0.20 0.20
+vt 0.30 0.20
+vt 0.20 0.30
+vt 0.40 0.20
+vt 0.50 0.20
+vt 0.40 0.30
+vn 0 -1 0
+f 1/1/1 2/2/1 6/3/1
+f 1/4/1 6/5/1 5/6/1
+f 2/7/1 3/8/1 7/9/1
+f 2/10/1 7/11/1 6/12/1
+f 3/13/1 4/14/1 8/15/1
+f 3/16/1 8/17/1 7/18/1
+"""
+# The other half of that rule: a cone tip is a fan of congruent triangles about one
+# vertex, which is how a nose cap closes, and must come back clean.
+ST_CONE_FAN = """v 1 0 0
+v 0 1 0
+v -1 0 0
+v 0 -1 0
+v 0 0 1
+vt 0.00 0.00
+vt 0.10 0.00
+vt 0.00 0.10
+vt 0.20 0.00
+vt 0.30 0.00
+vt 0.20 0.10
+vt 0.40 0.00
+vt 0.50 0.00
+vt 0.40 0.10
+vt 0.00 0.20
+vt 0.10 0.20
+vt 0.00 0.30
+vn 1 1 1
+vn -1 1 1
+vn -1 -1 1
+vn 1 -1 1
+f 1/1/1 2/2/1 5/3/1
+f 2/4/2 3/5/2 5/6/2
+f 3/7/3 4/8/3 5/9/3
+f 4/10/4 1/11/4 5/12/4
+"""
 # The control for comparing normals by value: four `vn` lines holding the same vector,
 # named one per corner. An index compare calls this face mixed, which is how
 # decoupler_radial.obj, barometer.obj and the ladders used to read as defects.
@@ -678,8 +776,10 @@ SELFTEST = [
     (2, "two wall quads, seamed", ST_SEAMED, ""),
     (1, "negative indices resolve against the tables", ST_NEGATIVE, ""),
     (2, "two wall quads with no seam", ST_UNSEAMED, "uv islands"),
-    (2, "islands collapsed onto one texel", ST_COLLAPSED, "of the canvas"),
+    (2, "islands collapsed onto one texel", ST_COLLAPSED, "texels"),
     (1, "a triangle where the family is quads", ST_TRIANGLE, "triangles"),
+    (6, "a wall strip triangulated, not quadded", ST_TRIS_STRIP, "triangles"),
+    (4, "a cone tip: triangles about one vertex", ST_CONE_FAN, ""),
     (1, "a face with no uv field (f 1//1)", ST_NO_UV, "no uv"),
     (1, "a corner that does not parse", ST_GARBAGE, "does not parse"),
     (1, "a corner index out of range", ST_RANGE, "does not parse"),
