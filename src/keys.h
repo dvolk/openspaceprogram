@@ -1,6 +1,7 @@
 // keys.h -- the rebindable key map. A Slot is a logical action; a KeyBind is
 // a scancode + modifiers that must be EXACTLY present (plain binding = no
-// modifiers held). The same physical key may back several slots (one per mode).
+// modifiers held; Alt is not a bindable modifier -- see KMOD_PRECISION).
+// The same physical key may back several slots (one per mode).
 // Pure logic (SDL headers only), headless-testable.
 #pragma once
 
@@ -16,6 +17,14 @@
 // LShift/RShift (and L/R Ctrl, Alt) are DISTINCT: a binding names the exact
 // side. SDL_KMOD_SHIFT is L|R -- a value no single press produces.
 static const Uint16 KMOD_RELEVANT = SDL_KMOD_SHIFT | SDL_KMOD_CTRL | SDL_KMOD_ALT;
+
+/* Alt (either side) is RESERVED for the precision dim (#1164), so it is stripped
+   from the pressed-modifier mask before the exact-modifier test. A binding names
+   the modifiers it wants, so an Alt chord would otherwise unarm every plain
+   flight key the moment the pilot reaches for precision. Alt reaches its own slot
+   as a plain key instead (Slot::PrecisionDim), which also makes it reachable from
+   --sim-press, where a modifier-based reading could not be. */
+static const Uint16 KMOD_PRECISION = SDL_KMOD_LALT | SDL_KMOD_RALT;
 
 // One rebindable control. SLOT_COUNT is the array bound.
 enum class Slot {
@@ -72,6 +81,8 @@ enum class Slot {
     RcsDown,       // ship down
     RcsLeft,       // ship left
     RcsRight,      // ship right
+    // Held alongside the flight keys to cut RCS authority (#1164): Alt, either side.
+    PrecisionDim,
     // --- Camera: held commands in free mode (tick.cpp) -------------------
     CamForward,
     CamBack,
@@ -105,6 +116,10 @@ struct KeyBindings {
     KeyBindings();
     void resetDefaults();
 };
+
+// The modifiers a binding is allowed to see: KMOD_RELEVANT minus the reserved
+// precision Alt. Use this wherever pressed modifiers meet a binding, capture included.
+Uint16 relevantMods(Uint16 mods);
 
 bool bindingMatches(const KeyBind &b, SDL_Scancode sc, Uint16 mods);
 

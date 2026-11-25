@@ -64,6 +64,7 @@ struct Ship {
 struct RcsProbe : Vehicle {
     using Vehicle::rcsDir;
     using Vehicle::armRcs;
+    using Vehicle::kPrecisionDim;   // the #1164 depth, so the pin is not a magic third
 };
 
 /* A box part with the fields this model reads: `torque` (>0 makes it a reaction
@@ -2225,6 +2226,27 @@ static void test_a_ring_of_bells_is_a_row_of_actuators() {
                "while the hardware figure never noticed -- which is how a player tells "
                "a dimmed ring from a broken one");
     v->rcs_attitude_frac = 1.0;
+
+    /* #1164: the PRECISION DIM -- Alt, a key held right now rather than a dial, and it
+       rides BOTH multiplications: a third of the translation ask and a third of every
+       leftover for pointing. The ring's WORTH still reads full, which is how a dimmed
+       hull is told apart from a broken one on screen and in [rcs]'s prec=. */
+    v->setPrecisionDim(true);
+    CHECK_NEAR(RcsProbe::kPrecisionDim, v->precisionDim(), 1e-12,
+               "the door arms exactly a third");
+    v->rcsPlan();
+    CHECK_NEAR(100.0 / 3.0, glm::length(v->lastRcsCmd), 1e-9,
+               "the translation ask is a third of the ring's reach along X");
+    const Vehicle::AttitudeAuthority prec = v->attitudeAuthority();
+    CHECK_NEAR(100.0 / 3.0, v->attitudeTorqueAbout(prec, -y), 1e-9,
+               "and the unspent bell levers a third of its turn for pointing");
+    CHECK_NEAR(100.0, v->attitudeTorqueAbout(v->attitudeAuthorityHardware(), y), 1e-9,
+               "while the hardware view never noticed -- a dim is not a re-rating");
+    v->setPrecisionDim(false);
+    CHECK_NEAR(1.0, v->precisionDim(), 1e-12, "letting go is exactly full authority again");
+    v->rcsPlan();
+    CHECK_NEAR(100.0, glm::length(v->lastRcsCmd), 1e-9,
+               "and the ask comes back whole -- the dim is per-tick, not sticky");
     destroyShip(v);
 }
 

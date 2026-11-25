@@ -1,8 +1,9 @@
 // test_keys.cpp -- keys.h/.cpp: the rebindable key map. The exact-modifier
-// lookup (a plain binding fires only with no Shift/Ctrl/Alt held; a combo
-// fires only with exactly its modifiers), the default map (the previously
-// hardcoded keys land on the right scancodes, cam/eva up-down on R/F, the
-// #1148 brackets on the fleet and -/= on camera speed), the --sim-press
+// lookup (a plain binding fires only with no Shift/Ctrl held; a combo
+// fires only with exactly its modifiers; Alt is stripped from the mask because
+// it backs the #1164 precision dim as a plain key of its own), the default map
+// (the previously hardcoded keys land on the right scancodes, cam/eva up-down on
+// R/F, the #1148 brackets on the fleet and -/= on camera speed), the --sim-press
 // plain-key compatibility, and the naming round-trip.
 // Pure logic: compiles src/keys.cpp with no SDL link (no SDL calls).
 #include <cassert>
@@ -149,6 +150,57 @@ int main() {
     assert(!slotHeld(Slot::Thrust, key, SDL_KMOD_LSHIFT, kb));
     key[SDL_SCANCODE_T] = false;
     assert(!slotHeld(Slot::Thrust, key, 0, kb));
+
+    /* 4b) #1164: ALT IS NOT A MODIFIER, it is a key. The exact-modifier rule used to
+       make a held Alt disarm every plain flight binding -- the ticket's "Alt parks the
+       vessel keys", which is the only reason anyone could park a hull one handed. Now
+       Alt is stripped from the pressed mask (relevantMods) and reaches its OWN slot as
+       a plain binding, so the pilot keeps WASD/T/N/I and the rings get dimmed instead.
+       These pins are the whole contract: the dim arms, the plain keys survive it, the
+       Shift and Ctrl chords are untouched by it, and an Alt chord is dead on purpose. */
+    assert(hasPlain(Slot::PrecisionDim, SDL_SCANCODE_LALT));
+    assert(hasPlain(Slot::PrecisionDim, SDL_SCANCODE_RALT));
+    assert(slotGroup(Slot::PrecisionDim) == SlotGroup::Flight);
+    assert(std::string(slotName(Slot::PrecisionDim)) == "precision_dim");
+    assert(slotFromName("precision_dim") == Slot::PrecisionDim);
+    // --sim-press carries no modifiers, so a plain binding is what makes the dim
+    // driveable from an e2e case at all.
+    assert(slotSimKey(Slot::PrecisionDim, SDL_SCANCODE_LALT, kb));
+
+    // relevantMods: Alt out, everything else exactly as pressed (side included).
+    assert(relevantMods(0) == 0);
+    assert(relevantMods(SDL_KMOD_LALT) == 0);
+    assert(relevantMods(SDL_KMOD_RALT) == 0);
+    assert(relevantMods(SDL_KMOD_ALT) == 0);           // the L|R union goes too
+    assert(relevantMods(SDL_KMOD_LALT | SDL_KMOD_LSHIFT) == SDL_KMOD_LSHIFT);
+    assert(relevantMods(SDL_KMOD_LALT | SDL_KMOD_LCTRL) == SDL_KMOD_LCTRL);
+
+    key[SDL_SCANCODE_LALT] = true;
+    // The dim itself arms -- on its own pressed mods, and with the union bit.
+    assert(slotHeld(Slot::PrecisionDim, key, SDL_KMOD_LALT, kb));
+    assert(slotHeld(Slot::PrecisionDim, key, SDL_KMOD_ALT, kb));
+    // The plain flight keys stay armed under it (this is the fix).
+    key[SDL_SCANCODE_T] = true;
+    assert(slotHeld(Slot::Thrust, key, SDL_KMOD_LALT, kb));
+    assert(slotHeld(Slot::Thrust, key, SDL_KMOD_ALT, kb));
+    // A chord keeps working with Alt held: the latch is LShift+T, and Alt must not
+    // count as an extra modifier against it.
+    assert(slotFired(Slot::ThrustLatch, SDL_SCANCODE_T, SDL_KMOD_LSHIFT | SDL_KMOD_LALT, kb));
+    assert(slotFired(Slot::ToggleFreeCam, SDL_SCANCODE_C, SDL_KMOD_RSHIFT | SDL_KMOD_RALT, kb));
+    assert(slotFired(Slot::UndoStaging, SDL_SCANCODE_Z, SDL_KMOD_LCTRL | SDL_KMOD_LALT, kb));
+    // And a Shift chord still does NOT become a plain slot just because Alt is down.
+    assert(!slotFired(Slot::Thrust, SDL_SCANCODE_T, SDL_KMOD_LSHIFT | SDL_KMOD_LALT, kb));
+    key[SDL_SCANCODE_LALT] = false;
+    key[SDL_SCANCODE_T] = false;
+
+    // An Alt chord can be recorded but never fires: Alt has no binding to chord with,
+    // so settings.json is the only way to make one. Better dead than ambiguous.
+    KeyBindings kbAlt;
+    kbAlt.perSlot[(size_t)Slot::Thrust].clear();
+    kbAlt.perSlot[(size_t)Slot::Thrust].push_back(KeyBind{SDL_SCANCODE_T, SDL_KMOD_LALT});
+    assert(!slotFired(Slot::Thrust, SDL_SCANCODE_T, SDL_KMOD_LALT, kbAlt));
+    assert(!slotHeld(Slot::Thrust, key, SDL_KMOD_LALT, kbAlt));
+    assert(!slotSimKey(Slot::Thrust, SDL_SCANCODE_T, kbAlt));
 
     // 5) slotSimKey: a synthetic (modifier-less) --sim-press key backs a
     //    plain binding, but not a combo one.

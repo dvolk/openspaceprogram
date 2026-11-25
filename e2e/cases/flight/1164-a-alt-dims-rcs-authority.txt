@@ -1,0 +1,32 @@
+NAME alt-holds-the-ring-at-a-third
+CLAIM Holding Alt cuts RCS authority to a third -- the translation ask AND the pointing rows -- without re-rating the ring (#1164).
+KIND invariant
+# rcs_box_pair again, because flight/1067-a already pins it at full authority: a held
+# N asks 120 N (two bells, one per box, along -Z) and each bell spends 60 N, with the
+# live [steerlog] pointing figure reading 138/0/69 while the ring's HARDWARE figure is
+# 138/0/138. Hold Alt over the same window and every permission shrinks by the same
+# third: cmd 40 N, each bell 20 N, the live rcs= row 46/0/38. The hardware row does NOT
+# move, which is the half the newtons cannot show on their own -- a dim that reached the
+# bells' RATINGS would print 46/0/46 there too, and the hull would then be a weaker ring
+# rather than a restrained one (#595's lesson, quoted by the #1124 dial case).
+#
+# THE KEY CONTRACT, which is the other half of the ticket: Alt is a plain binding of its
+# own (Slot::PrecisionDim), not a modifier chord, because the exact-modifier rule means a
+# chord would disarm WASD/T/N/I for the whole time it is held -- the old "Alt parks the
+# vessel keys". The N key press and the Alt press share the window below, and the [rcs]
+# rows prove both landed: the ask exists (so N fired) and it is a third (so Alt fired).
+# tests/test_keys.cpp pins the matching rule itself, including Shift and Ctrl chords
+# surviving an Alt held over them.
+ARGS --time-accel 1 --sim-steps 480 --startship rcs_box_pair,res/ships/rcs_box_pair.json,Kerbin,inertial-orbit --att-log --drag-log --steering-log --sim-press 2000,3000,N,2000,3000,LALT
+EXPECT [rcs] cmd=(40 0
+EXPECT ach=(40 0 -0)N prec=33%
+CHECK "box_l[-Z]=20N box_r[-Z]=20N" in out
+CHECK "box_l[-Z]=60N" not in out
+CHECK "cmd=(120 0" not in out
+CHECK len([r for r in re.findall(r'\[rcs\][^\n]*prec=33%', out)]) >= 2
+CHECK re.search(r'\[steerlog\][^\n]*rcs=46/0/38 rcs_hw=138/0/138', out)
+CHECK re.search(r'\[steerlog\][^\n]*rcs=138/0/138 rcs_hw=138/0/138', out)
+CHECK len([a for a in att if 3.0 <= a["t"] <= 5.0]) == 3
+CHECK max(a["wnorm"] for a in att) < 0.02
+FORBID error:
+FORBID FAILED

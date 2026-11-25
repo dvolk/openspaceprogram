@@ -204,6 +204,7 @@ void tick(Game &g) {
             g.ship->clearThrust();
             g.ship->clearRotCmd();
             g.ship->clearRcs();
+            g.ship->setPrecisionDim(false);   // #1164: same per-tick rule as the stick
         }
         /* The suit's half of that rule (#215). A kerbal's laws run per substep for
            EVERY live hull, but its control state is armed once a tick for one ship
@@ -265,6 +266,15 @@ void tick(Game &g) {
         if (g.camera->mode != CAM_FREE) {
             bool game_running = (g.time_accel > 0);
             if(g.ship && curScene(g).pilot) {
+            /* #1164: the precision dim. Alt cuts this hull's RCS AUTHORITY for this
+               tick only -- cleared at the top of every tick beside the stick -- and
+               it cuts authority rather than the command because the RCS keys carry a
+               sign, not an amount. Not armed on a suit: a kerbal's jets are not a
+               ring this gate reaches (no rcsNoz rows), so a readout saying "dimmed"
+               there would describe nothing. */
+            if(!g.ship->isEva()) {
+                g.ship->setPrecisionDim(slotActive.held(Slot::PrecisionDim));
+            }
             // Touching the controls wakes a railed active ship (you cannot
             // maneuver on rails). A rails warp drops to 1x on the way out.
             if(g.ship->onRails && g.time_accel > 0) {
@@ -1565,6 +1575,14 @@ void tick(Game &g) {
                        Only shows when the hull's figure is not the default. */
                     if(g.ship->rcs_thrust_frac != 1.0) {
                         printf(" lim=%.0f%%", g.ship->rcs_thrust_frac * 100.0);
+                    }
+                    /* #1164: and when Alt is holding the ring down further. Shown
+                       apart from lim= because the two have different authors -- the
+                       dial is the hull's setting, this is a key held right now -- and
+                       a cmd= that is a third of what lim= promises is otherwise
+                       invisible here. */
+                    if(g.ship->precisionDim() != 1.0) {
+                        printf(" prec=%.0f%%", g.ship->precisionDim() * 100.0);
                     }
                     for(const Vehicle::RcsNozzleLog &nl : g.ship->lastRcsNozzles) {
                         printf(" %s[%s]=%.0fN", nl.part.c_str(), nl.tag.c_str(),

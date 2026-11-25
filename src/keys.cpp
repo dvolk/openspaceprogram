@@ -90,6 +90,10 @@ void KeyBindings::resetDefaults() {
     add(Slot::RcsDown,       SDL_SCANCODE_K);
     add(Slot::RcsLeft,       SDL_SCANCODE_J);
     add(Slot::RcsRight,      SDL_SCANCODE_L);
+    // Precision dim (#1164): Alt is a plain binding, not a modifier chord, so the
+    // held flight keys stay armed under it and --sim-press can drive it.
+    add(Slot::PrecisionDim,  SDL_SCANCODE_LALT);
+    add(Slot::PrecisionDim,  SDL_SCANCODE_RALT);
 
     // Camera (free mode, tick.cpp)
     add(Slot::CamForward,    SDL_SCANCODE_W);
@@ -117,10 +121,17 @@ void KeyBindings::resetDefaults() {
 
 KeyBindings::KeyBindings() { resetDefaults(); }
 
-// Exact-modifier rule: (pressed modifiers & relevant) == binding. A plain
-// binding (mods 0) therefore fires only with no Shift/Ctrl/Alt held.
+/* Exact-modifier rule: relevantMods(pressed) == binding. A plain binding (mods 0)
+   therefore fires only with no Shift/Ctrl held. Alt is NOT relevant (#1164): it is
+   the precision dim, so WASD/T/N/I stay armed while the pilot holds it. The cost is
+   that an Alt chord (a hand-edited settings.json entry) can never fire -- Alt has
+   no binding to chord with. */
+Uint16 relevantMods(Uint16 mods) {
+    return (mods & KMOD_RELEVANT) & ~KMOD_PRECISION;
+}
+
 bool bindingMatches(const KeyBind &b, SDL_Scancode sc, Uint16 mods) {
-    return b.sc == sc && (mods & KMOD_RELEVANT) == b.mods;
+    return b.sc == sc && relevantMods(mods) == b.mods;
 }
 
 bool slotFired(Slot s, SDL_Scancode sc, Uint16 mods, const KeyBindings &kb) {
@@ -132,7 +143,7 @@ bool slotFired(Slot s, SDL_Scancode sc, Uint16 mods, const KeyBindings &kb) {
 
 bool slotHeld(Slot s, const bool *keyState, Uint16 mods, const KeyBindings &kb) {
     for (const auto &b : kb.perSlot[(size_t)s]) {
-        if (keyState[b.sc] && (mods & KMOD_RELEVANT) == b.mods) { return true; }
+        if (keyState[b.sc] && relevantMods(mods) == b.mods) { return true; }
     }
     return false;
 }
@@ -209,6 +220,7 @@ const char *slotName(Slot s) {
         case Slot::RcsDown:        return "rcs_down";
         case Slot::RcsLeft:        return "rcs_left";
         case Slot::RcsRight:       return "rcs_right";
+        case Slot::PrecisionDim:   return "precision_dim";
         case Slot::CamForward:     return "cam_forward";
         case Slot::CamBack:        return "cam_back";
         case Slot::CamStrafeLeft:  return "cam_strafe_left";
@@ -291,6 +303,7 @@ const char *slotLabel(Slot s) {
         case Slot::RcsDown:        return "RCS down";
         case Slot::RcsLeft:        return "RCS left";
         case Slot::RcsRight:       return "RCS right";
+        case Slot::PrecisionDim:   return "Precision dim (hold)";
         case Slot::CamForward:     return "Camera forward";
         case Slot::CamBack:        return "Camera back";
         case Slot::CamStrafeLeft:  return "Camera strafe left";
@@ -337,6 +350,7 @@ SlotGroup slotGroup(Slot s) {
         case Slot::SlewPrograde: case Slot::SlewRetrograde:
         case Slot::RcsForward: case Slot::RcsBack:
         case Slot::RcsUp: case Slot::RcsDown: case Slot::RcsLeft: case Slot::RcsRight:
+        case Slot::PrecisionDim:
             return SlotGroup::Flight;
         case Slot::CamForward: case Slot::CamBack:
         case Slot::CamStrafeLeft: case Slot::CamStrafeRight:

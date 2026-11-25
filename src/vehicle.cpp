@@ -5682,7 +5682,11 @@ void Vehicle::rcsPlan() {
        oblique to the asked direction lands short of its capped ask (see
        rcsReachableAlong, rcs.h). */
     const double Fcap = rcsReachableAlong(rcsNoz, dirW);
-    const double Fmax = Fcap * rcs_thrust_frac;
+    /* #1164: precision_frac rides HERE, beside the dial, so Alt dims the same
+       ceiling the Systems slider sets -- and only the ceiling. The shape floor
+       below stays a Fcap test, so a dimmed hull still plans (the #1067 zero-path
+       reasoning holds for the same reason). */
+    const double Fmax = Fcap * rcs_thrust_frac * precision_frac;
     /* #1147: and the asked direction has to be one this ring can SERVE, not merely touch.
        A bell a hair off the axis projects a hair: the four radial bells of rcs_test's boxes
        reach ~1e-14 N along an authored axis, and a box mounted at 1e-7 rad -- a VAB rotate,
@@ -7989,9 +7993,17 @@ Vehicle::AttitudeAuthority Vehicle::attitudeAuthorityRows(bool switchesApply) {
                    never on the lever above, which is the bell's rating and what the
                    hardware view promises. One multiplication at the row is what keeps
                    the figure a law plans against, the stick's ask, the solve's bound
-                   and the actual spend from being four numbers (#599's lesson). */
+                   and the actual spend from being four numbers (#599's lesson).
+                   #1164: the precision dim rides the SAME multiplication, for the same
+                   reason. Alt therefore dims RCS POINTING as well as the keys -- a law
+                   flying with RCS gets gentler too, which is what an approach wants --
+                   while the wheels and the TVC disk keep their authority, so a hull
+                   with real reaction wheels barely notices. Hardware mode (switches
+                   ignored) ignores the dim as it ignores the dial: both are what the
+                   player is ALLOWING this tick, never what the ring IS worth. */
                 const double left = switchesApply
-                    ? (1.0 - (i < rcsScratch.c.size() ? rcsScratch.c[i] : 0.0)) * rcs_attitude_frac
+                    ? (1.0 - (i < rcsScratch.c.size() ? rcsScratch.c[i] : 0.0))
+                      * rcs_attitude_frac * precision_frac
                     : 1.0;
                 if(!(left > 0.0)) {
                     a.rcs.push_back({ glm::dvec3(0.0), 0.0, true });

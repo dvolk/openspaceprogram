@@ -2740,6 +2740,20 @@ protected:
        allocator in this same corner, clamping once against the capability model, and a
        writer that bypasses it is a ship that turns harder than the player asked for. */
     float stick[3] = {0.0f, 0.0f, 0.0f};   // manual demand: roll / pitch / yaw, -1..1
+    /* #1164: the precision dim. Holding Alt (Slot::PrecisionDim, either side)
+       multiplies RCS AUTHORITY by this for one tick, on top of the Systems dials:
+       rcs_thrust_frac * precision_frac caps the translation keys in rcsPlan, and
+       the same factor rides each bell's leftover in attitudeAuthorityRows() beside
+       rcs_attitude_frac. It multiplies authority rather than the command because
+       the RCS keys are sign-only -- ShipCmd(RcsNose, +1) has no amount to turn
+       down -- so the only thing a dim can reach is what the rings are allowed to
+       spend. Per-tick pilot intent like stick[], NOT a saved dial: the tick writes
+       1.0 whenever the key is not held, and the Systems sliders keep saying what
+       the hull is set to. kPrecisionDim is the depth of the dim -- a third, since
+       an approach wants the same ring gentler, not off, and the dials still scale
+       the result. */
+    static constexpr double kPrecisionDim = 1.0 / 3.0;
+    double precision_frac = 1.0;
     SlewMode slew = SlewNone;              // ENGAGED this tick -- see slewMode()
     SlewMode slewRequest = SlewNone;       // latched on the Autopilot window
     /* The aim a law named for SlewFree (#606). Per-STATE, not per-tick intent like
@@ -2824,6 +2838,13 @@ protected:
     glm::dvec3 killRotDemand(double h, const AttitudeAuthority &auth);
 
 public:
+
+    /* #1164: the precision dim, armed by Alt. The tick writes it EVERY tick --
+       a dim that outlived the key leaves a hull gentle with nothing held -- and
+       nothing else writes it: the Systems dials stay the hull's own setting.
+       Read back by [rcs]'s prec= and the Systems window. */
+    void setPrecisionDim(bool dim) { precision_frac = dim ? kPrecisionDim : 1.0; }
+    double precisionDim() const { return precision_frac; }
 
     // --- physical rotation model -------------
     glm::dvec3 GetPositionRelTo(const Part *part, Frame *relTo);

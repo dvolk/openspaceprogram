@@ -1401,7 +1401,7 @@ void drawUIReadouts(Game &g) {
         // job there), Alt+wheel in orbit cam (plain wheel stays the distance
         // zoom) -- without moving this number; leaving Flight puts this figure
         // back (scene.cpp flightExit).
-        ImGui::TextDisabled("In flight: scroll (free/first cam) or Alt+scroll nudges FOV\nfor that flight only; leaving Flight restores this. (Alt\nalso parks the held vessel keys while it is down.)");
+        ImGui::TextDisabled("In flight: scroll (free/first cam) or Alt+scroll nudges FOV\nfor that flight only; leaving Flight restores this. (Alt\nalso drops RCS authority to a third while it is\nheld, #1164 -- the keys keep working, gentler.)");
         // Terrain LOD: a patch subdivides while it projects wider than args.terrain_px
         // [real screen px]. 64/32 are gone: the budget is per patch, so they explode the
         // patch count and the async builder never reaches max_depth -- where the collision
@@ -3679,6 +3679,16 @@ void drawUIReadouts(Game &g) {
             /* This imgui has no step argument, so the snap to whole percent lives
                here: the figure printed on the slider is the figure rcsPlan uses. */
             ship->rcs_thrust_frac = (double)std::lroundf(pct) / 100.0;
+        }
+        /* #1164: Alt's precision dim is a key held right now, not a setting, so it
+           gets a line rather than a widget -- and the line only exists while the key
+           IS held. Both sliders keep reading the hull's own dial; without this row,
+           a hull that shoves a third as hard as the sliders promise has nothing on
+           screen to say why (the [rcs] trace prints prec= for the same reason). */
+        if(ship->precisionDim() != 1.0) {
+            ImGui::TextColored(ImVec4(0.55f, 0.85f, 1.0f, 1.0f),
+                               "Alt held: RCS at %.0f %% of both limits above",
+                               ship->precisionDim() * 100.0);
         }
         /* The fourth door (#768): the nozzles. A hull whose only steering is its gimbals
            has been pointing itself with its throttle since the first shipped rocket, and

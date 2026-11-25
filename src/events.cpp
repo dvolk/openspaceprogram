@@ -542,7 +542,10 @@ void poll_events(Game &g) {
                 || (sc == SDL_SCANCODE_RCTRL)  || (sc == SDL_SCANCODE_LALT)
                 || (sc == SDL_SCANCODE_RALT);
             if(sc != SDL_SCANCODE_UNKNOWN && !modKey) {
-                const Uint16 mods = ev.key.mod & KMOD_RELEVANT;
+                /* Alt is not a bindable modifier (#1164): relevantMods strips it, so
+                   holding Alt mid-capture changes nothing rather than recording a
+                   chord that the matching rule can never fire. */
+                const Uint16 mods = relevantMods(ev.key.mod);
                 std::vector<KeyBind> &v =
                     g.binds.perSlot[(size_t)g.rebind_capture_slot];
                 v.clear();
