@@ -19,6 +19,7 @@ middleware/glew/
 # Runtime-generated
 imgui.ini
 settings.json
+*~
 
 # Audio assets: kept local until we've listened to them in game and decided
 # (the res/audio/*.ogg + res/audio/*.mp3 are the unconverted OpenGameArt sources; the
@@ -45,6 +46,7 @@ tmp/
 staging/**/bakes/
 staging/**/data/
 staging/**/preview/
+staging/orbiter-data/
 
 # Agent tooling local state (mimocode: plans, node_modules, cron lock; qwen:
 # settings + scratch) -- local, never commit
