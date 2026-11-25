@@ -2,7 +2,7 @@
 """Generate the runway .obj: a flat box slab. Long axis X, width Y, depth -Z.
 The TOP face sits at z=0 (the building origin, like space_port.obj), so the
 slab hangs below the deck a ship stands on. Shared verts + outward winding keep
-it watertight for the collision hull and the volume check (utils/check_mesh.py).
+it watertight for the collision hull and the volume check (utils/art/check_mesh.py).
 """
 
 import argparse

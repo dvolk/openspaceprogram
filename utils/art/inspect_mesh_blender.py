@@ -31,13 +31,13 @@ Numbers this reports, measured on the shipped art (Blender 4.5.9):
                      machined plate reads as slightly rounded.
 
 Blender is NOT a build or CI dependency -- lint.yml is stdlib-only on purpose and the
-enforcing gate for these properties lives in utils/check_mesh_pins.py. This script is
+enforcing gate for these properties lives in utils/art/check_mesh_pins.py. This script is
 for whoever is painting a part, or for checking a generator change by eye. It needs a
 local Blender; on this box that is ~/opt/blender-4.5.9-linux-x64/blender (LTS 4.5.9,
 the version whose numbers the tickets quote).
 
 Usage:
-  <blender> --background --factory-startup --python utils/inspect_mesh_blender.py -- \
+  <blender> --background --factory-startup --python utils/art/inspect_mesh_blender.py -- \
       res/meshes/capsule_cyl_r1h2.obj res/meshes/tank_r1h3.obj ...
 """
 import math

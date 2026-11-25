@@ -71,7 +71,7 @@ static nlohmann::json read_json(const char *path) {
    deck floating over a dip, or bury the deck inside a hill (a pad ship would
    spawn in the ground). Footprint and depth are the building mesh's box, top
    face at the origin: space_port.obj is x -12.99..12.99, y -41.11..15.00,
-   z -10..0; runway.obj (utils/gen_runway.py) is x +-450, y +-15, z -4..0.
+   z -10..0; runway.obj (utils/art/gen_runway.py) is x +-450, y +-15, z -4..0.
    Re-derive from the OBJ's v lines if a mesh changes. */
 static void check_pad_grounding(const std::string &logical,
                                 const WorldBuilding &w, TerrainBody *hb) {

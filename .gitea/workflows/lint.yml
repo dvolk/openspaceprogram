@@ -39,4 +39,4 @@ jobs:
       # paintability table, regenerating nothing. The regeneration half needs trimesh, so
       # it lives in `make test` (test-art) instead; this step costs 0.03 s and catches a
       # committed mesh that triangulated its walls or collapsed its UVs.
-      - run: python3 utils/check_mesh_pins.py --committed
+      - run: python3 utils/art/check_mesh_pins.py --committed

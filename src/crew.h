@@ -38,7 +38,7 @@ const char *skill_name(Skill s);
 glm::vec3 kerbal_complexion(uint64_t id);   // the fully lit suit color
 glm::vec3 kerbal_tint(uint64_t id);         // what multiplies the texture to get it
 
-/* The suit texture's flat green, exactly as utils/gen_kerbal.py writes it into
+/* The suit texture's flat green, exactly as utils/art/gen_kerbal.py writes it into
    textures/kerbal.png. It is the thing the tint multiplies, and the UI needs it
    to show a swatch: a table row has no texture, only the fully lit complexion.
    tests/test_roster.cpp pins it to that literal: a mirrored constant with no

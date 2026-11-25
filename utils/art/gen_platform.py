@@ -16,7 +16,6 @@ import trimesh
 
 from gen_out import add_args, ship
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 DECK_R = 40.0      # hex circumradius: 80 m across corners
 DECK_T = 2.0       # slab thickness, below z=0
@@ -51,7 +50,7 @@ def visual():
 def main():
     ap = argparse.ArgumentParser(
         description="Generate res/meshes/balloon_platform*.obj (sizing story in the header)")
-    add_args(ap, ROOT)
+    add_args(ap)
     a = ap.parse_args()
 
     d = deck()

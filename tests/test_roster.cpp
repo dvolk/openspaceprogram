@@ -116,7 +116,7 @@ int main() {
            kerbal -- a roster entry with id 0 is refused above, so the shade
            function is never asked for one (#394). */
 
-        /* kKerbalBaseGreen mirrors the literal utils/gen_kerbal.py writes into
+        /* kKerbalBaseGreen mirrors the literal utils/art/gen_kerbal.py writes into
            textures/kerbal.png. A mirror with nothing pinning it drifts, and
            then the tint no longer produces the complexion it claims to. */
         CHECK(std::abs(kKerbalBaseGreen.r * 255.0f - 60.0f) < 0.01f);

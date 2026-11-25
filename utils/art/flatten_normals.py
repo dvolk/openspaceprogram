@@ -15,8 +15,8 @@ What is NOT preserved is the file's layout: comments and `mtllib`/`o`/`usemtl`/`
 above the vertex block, blank lines go, and CRLF becomes LF. assimp reads either order, and
 nothing diffs these files by hand.
 
-  python3 utils/flatten_normals.py --check res/meshes/gear.obj   # report, write nothing
-  python3 utils/flatten_normals.py --in-place tmp/leg.obj        # rewrite one file
+  python3 utils/art/flatten_normals.py --check res/meshes/gear.obj   # report, write nothing
+  python3 utils/art/flatten_normals.py --in-place tmp/leg.obj        # rewrite one file
 
 There is no default write path on purpose (#1051's rule): a generator that wants this applies
 flatten() to the text before writing it, the way gen_station.py and gen_leg.py do.

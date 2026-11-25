@@ -14,7 +14,6 @@ import os
 
 from gen_out import add_args, ship
 
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 LADDER_RGB = (150, 152, 158)   # neutral grey, distinct from the tank skin
 
@@ -40,7 +39,7 @@ def main():
                     help="climb length along Z (m)")
     ap.add_argument("--name", default="ladder",
                     help="asset base name under res/ (size variants: ladder_1m etc.)")
-    add_args(ap, REPO_ROOT)
+    add_args(ap)
     a = ap.parse_args()
     hx, hy, hz = a.thick / 2.0, a.wide / 2.0, a.length / 2.0
 

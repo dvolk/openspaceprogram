@@ -9,7 +9,6 @@ import trimesh
 
 from gen_out import add_args, ship
 
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 RADIUS = 0.2         # m, cross-section
 CYL_HEIGHT = 0.35    # m, cylinder section (total height = 0.75)
@@ -32,7 +31,7 @@ def build_capsule():
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    add_args(ap, REPO_ROOT)
+    add_args(ap)
     ap.add_argument("--dry-run", action="store_true",
                     help="print the geometry without writing")
     a = ap.parse_args()

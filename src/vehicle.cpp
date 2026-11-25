@@ -2945,7 +2945,7 @@ double Vehicle::wheelDemandWatts() const {
        not the part type, so a command pod's built-in drums are billed exactly like a
        wheel block's: the bill follows the authority the hull spends rather than the
        cosmetic choice of part (#596). What the catalog charges per N m of rating -- one
-       constant, WHEEL_DRAW_WATTS_PER_NM in utils/gen_parts.py -- and why it charges per
+       constant, WHEEL_DRAW_WATTS_PER_NM in utils/art/gen_parts.py -- and why it charges per
        housing rather than per drum (#593) is said there, not here. */
     if(not wheels_enabled) { return 0.0; }
     double w = 0.0;

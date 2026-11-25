@@ -13,7 +13,6 @@ import trimesh
 
 from gen_out import add_args, ship
 
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 R = 0.35          # wheel radius (m) -- also PartDef.wheel_radius
 WIDTH = 0.22      # wheel width along the axle (X)
@@ -24,7 +23,7 @@ STRUT_TOP = 0.65  # mount face height (the surface node sits here)
 def main():
     ap = argparse.ArgumentParser(
         description="Generate res/meshes/gear.obj (this module's header has the part frame)")
-    add_args(ap, REPO_ROOT)
+    add_args(ap)
     a = ap.parse_args()
 
     wheel = trimesh.creation.cylinder(radius=R, height=WIDTH, sections=24)

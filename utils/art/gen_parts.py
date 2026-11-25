@@ -12,7 +12,7 @@ import re
 
 import trimesh
 
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+from gen_out import REPO_ROOT   # the one spelling (utils/art is two levels down)
 
 # --- physical constants (SI) ------------------------------------------------
 EXHAUST_VELOCITY = 4400.0        # m/s, H2/LOX vacuum (Isp = 4400/9.81 ~ 449 s)
@@ -345,17 +345,17 @@ PARTS = [
     ("aileron_r0.8h0.7", "aileron",        "meshes/fin_r0.8h0.7.obj",            "textures/aileron.png"),
     # the parachute rides the nose-cap hull; the canopy is an overlay mesh
     ("chute",            "chute",          "meshes/nose_cap.obj",                 "textures/nose_cap.png"),
-    # landing gear (utils/gen_gear.py): a wheel on a strut, surface-mounted under
+    # landing gear (utils/art/gen_gear.py): a wheel on a strut, surface-mounted under
     # the hull. The ground law (src/wheel.h) rolls it; one size for v1. gear_nose
     # is the same wheel with steering (the nose wheel); the mains stay fixed.
     ("gear",             "gear",           "meshes/gear.obj",                     "textures/gear.png"),
     ("gear_nose",        "gear",           "meshes/gear.obj",                     "textures/gear.png"),
-    # rocket landing leg (utils/gen_leg.py): a footpad on a splayed strut with
+    # rocket landing leg (utils/art/gen_leg.py): a footpad on a splayed strut with
     # a mount plate at the top, surface-mounted on a tank's side. The ground
     # law (src/wheel.h via the leg loop) stands it; one size for v1, sized for
     # the 2 m engine class (reports/landing-legs2026_11_21).
     ("leg",              "leg",            "meshes/leg.obj",                      "textures/gear.png"),
-    # EVA ladder (utils/gen_ladder.py): a long box surface-mounted on the hull's
+    # EVA ladder (utils/art/gen_ladder.py): a long box surface-mounted on the hull's
     # side; the kerbal climbs the segment its "ladder" field authors. Three
     # sizes (#1078): 2 m, 1 m and 0.5 m -- all one art family, the length is
     # the size. (0.25 m waits on a pass over the EVA transfer bands, #1093.)

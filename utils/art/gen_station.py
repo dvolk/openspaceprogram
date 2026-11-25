@@ -11,8 +11,6 @@ import trimesh
 from flatten_normals import flatten
 from gen_out import add_args, ship
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
 
 def station():
     # A central hub with two perpendicular arms (a cross). Non-convex overall.
@@ -34,7 +32,7 @@ def dock():
 def main():
     ap = argparse.ArgumentParser(
         description="Generate res/meshes/{station,spacedock}.obj (v1 building shapes)")
-    add_args(ap, ROOT)
+    add_args(ap)
     a = ap.parse_args()
 
     for name, mesh in [("station", station()), ("spacedock", dock())]:

@@ -703,7 +703,7 @@ tests: $(addprefix $(TESTDIR)/,$(TESTS))
 .PHONY: test-parts
 test-parts:
 	@if python3 -c "import importlib.util as u; exit(1 if u.find_spec('trimesh') is None else 0)"; then \
-		python3 utils/gen_parts.py --check; \
+		python3 utils/art/gen_parts.py --check; \
 	else \
 		echo "test-parts: SKIP parts.json drift pin -- missing python module: trimesh" >&2; \
 	fi
@@ -717,7 +717,7 @@ test-parts:
 .PHONY: test-art
 test-art:
 	@if python3 -c "import importlib.util as u; exit(1 if u.find_spec('trimesh') is None else 0)"; then \
-		python3 utils/check_mesh_pins.py; \
+		python3 utils/art/check_mesh_pins.py; \
 	else \
 		echo "test-art: SKIP generated-art drift pin -- missing python module: trimesh" >&2; \
 	fi
@@ -837,7 +837,7 @@ test-py: test-gen
 		echo "test-py: SKIP parts/mesh/heightmap/skybox pins -- missing python module(s): $(PY_MISSING)" >&2; \
 		echo "         (pip install trimesh numpy pillow, or run these in CI)" >&2; \
 	else \
-		python3 utils/gen_parts.py --check && \
+		python3 utils/art/gen_parts.py --check && \
 		$(MAKE) test-art && \
 		python3 utils/heightmaps/gen_earth_hm.py --verify && \
 		python3 utils/skybox/make_skybox.py --verify --out res/skybox/dsm_1024_g3_ds2; \

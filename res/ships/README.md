@@ -132,7 +132,7 @@ should be built from this recipe and get its own row here.
    pod's bottom one -- and the engine at the back of the tank. That is the shape a
    player builds and the shape every other window reads: crew, charge, propellant and
    staging all live on pods and tanks. A `fuselage_r*` (the smooth spindle from
-   `utils/gen_fuselage.py`, Cd 0.10 nose-first, crew, declared dry mass, half the
+   `utils/art/gen_fuselage.py`, Cd 0.10 nose-first, crew, declared dry mass, half the
    bounding volume as jet fuel) is the smooth ALTERNATIVE, not the default: it flies
    better and it is a thing nobody would build. A body MAY be several parts either way:
    same-cd parts average in the area-weighted mean, and the silhouette unions, so a
