@@ -11,6 +11,10 @@ keeps the vertex/uv index text it shipped with, so nothing is re-serialised: no 
 a no-op the second time it runs, and no position that can shift. Volume, mass, collision
 hulls and every mass pin stay exactly as they were.
 
+What is NOT preserved is the file's layout: comments and `mtllib`/`o`/`usemtl`/`s` lines move
+above the vertex block, blank lines go, and CRLF becomes LF. assimp reads either order, and
+nothing diffs these files by hand.
+
   python3 utils/flatten_normals.py --check res/meshes/gear.obj   # report, write nothing
   python3 utils/flatten_normals.py --in-place tmp/leg.obj        # rewrite one file
 
@@ -65,11 +69,12 @@ def corner_field(field, counts, line):
 def parse(text):
     """(lead, v lines, vt lines, normal values, face fields, vertices).
 
-    Raises on geometry after a face (the index tables would be ambiguous) and on more than
-    one object: src/mesh.cpp:47 reads mMeshes[0] only, so a multi-object file flattened here
-    would merge objects silently and drop the rest."""
+    Raises on geometry after a face (the index tables would be ambiguous) and on a file split
+    into more than one object or material group: src/mesh.cpp:47 reads mMeshes[0] only, and
+    assimp starts a new mesh at each `o`/`g`/`usemtl`, so flattening such a file would merge
+    the groups into one and hoist the later `usemtl` over every face."""
     lead, v_lines, vt_lines, vn_values, faces, verts = [], [], [], [], [], []
-    objects = 0
+    splits = {}
     seen_face = False
     for ln in text.splitlines():
         t = ln.split()
@@ -96,12 +101,14 @@ def parse(text):
             seen_face = True
             faces.append(t[1:])
         else:
-            if kind == "o":
-                objects += 1
+            if kind in ("o", "g", "usemtl"):
+                splits[kind] = splits.get(kind, 0) + 1
             lead.append(ln.rstrip("\n"))
-    if objects > 1:
-        raise ValueError("%d objects in one file: src/mesh.cpp reads mMeshes[0] only, so "
-                         "flattening here would merge them and lose the rest" % objects)
+    for kind, n in sorted(splits.items()):
+        if n > 1:
+            raise ValueError("%d `%s` lines in one file: assimp starts a mesh at each of "
+                             "them and src/mesh.cpp reads mMeshes[0] only, so flattening "
+                             "here would merge the groups and lose the rest" % (n, kind))
     return lead, v_lines, vt_lines, vn_values, faces, verts
 
 
@@ -122,7 +129,7 @@ def flatten(text):
     out.extend(v_lines)
     out.extend(vt_lines)
     for k, n in enumerate(normals):
-        out.append("vn %.6f %.6f %.6f" % tuple(x + 0.0 for x in n))   # no "-0.000000"
+        out.append("vn %.6f %.6f %.6f" % tuple(x + 0.0 for x in n))   # -0.0 + 0.0 is 0.0
     for k, fields in enumerate(faces):
         refs = []
         for f in fields:
@@ -148,6 +155,11 @@ def not_flat_faces(text, tol=1e-9):
     for fields in faces:
         line = "f " + " ".join(fields)
         corners = [corner_field(f, counts, line) for f in fields]
+        if len(corners) < 3:
+            # flatten() refuses such a face rather than invent a normal, so --check must not
+            # certify it healthy: the two functions have to agree about what is broken.
+            bad += 1
+            continue
         if any(c[2] is None for c in corners):
             bad += 1                      # no normal of its own to agree with
             continue
@@ -166,23 +178,30 @@ def main():
     mode.add_argument("--in-place", action="store_true",
                       help="rewrite each file (a generator should call flatten() instead)")
     a = ap.parse_args()
-    dirty = 0
+    dirty = failed = 0
     for p in a.paths:
-        text = open(p, encoding="utf-8").read()
-        bad, nf = not_flat_faces(text)
-        if not bad:
-            print("%s: already per-face flat (%d faces)" % (p, nf))
+        try:
+            text = open(p, encoding="utf-8").read()      # strict: a lossy read must not be
+            bad, nf = not_flat_faces(text)               # written back as if it were a fix
+            if not bad:
+                print("%s: already per-face flat (%d faces)" % (p, nf))
+                continue
+            dirty += 1
+            if a.check:
+                print("%s: %d of %d faces do not carry one normal across their corners"
+                      % (p, bad, nf))
+                continue
+            flat, _ = flatten(text)
+        except (OSError, ValueError) as exc:
+            # A file this tool cannot read is a report, not a traceback: the caller is a
+            # generator loop or a shell one-liner over the whole catalogue.
+            print("%s: %s" % (p, exc))
+            failed += 1
             continue
-        dirty += 1
-        if a.check:
-            print("%s: %d of %d faces do not carry one normal across their corners"
-                  % (p, bad, nf))
-            continue
-        flat, _ = flatten(text)
         with open(p, "w", encoding="utf-8") as fh:
             fh.write(flat)
         print("%s: rewrote %d faces with one normal each" % (p, nf))
-    return 1 if (a.check and dirty) else 0
+    return 1 if (failed or (a.check and dirty)) else 0
 
 
 if __name__ == "__main__":

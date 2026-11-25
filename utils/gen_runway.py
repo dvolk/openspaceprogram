@@ -69,7 +69,7 @@ def main():
     for _ in corners:                      # flat-fill texture: UVs are a formality
         out.append("vt 0.000000 0.000000")
     for n in face_normals:                 # one normal per face, not averaged at the corner
-        out.append("vn %.6f %.6f %.6f" % tuple(x + 0.0 for x in n))   # no "-0.000000"
+        out.append("vn %.6f %.6f %.6f" % tuple(x + 0.0 for x in n))   # -0.0 + 0.0 is 0.0
     for k, (i0, i1, i2) in enumerate(faces):
         out.append("f %d/%d/%d %d/%d/%d %d/%d/%d" % (
             i0+1, i0+1, k+1, i1+1, i1+1, k+1, i2+1, i2+1, k+1))
