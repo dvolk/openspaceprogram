@@ -709,11 +709,18 @@ test-parts:
 	fi
 
 # The art gate (#1051, #1170): regenerate every generated mesh/texture, compare it
-# byte-for-byte with what ships, then check the lofted family still has the topology a
-# painter needs. Only the generators import trimesh -- the gate itself is stdlib -- so it
-# belongs in `make test` (3 s) and not only in test-py, where until now nothing but a
+# byte-for-byte with what ships, then weigh the topology and uv layout a painter needs.
+# Only the generators import trimesh -- the gate itself is stdlib -- so it belongs in
+# `make test` (3 s) and not only in test-py, where until now nothing but a
 # hand run invoked it. The half that needs no modules at all runs in CI as
 # `check_mesh_pins.py --committed`.
+# Advisory by default since 2026-11-25 (owner's call): asset drift prints WARN lines and the
+# build stays green, because this art is edited by hand as often as it is generated -- the
+# engines, adapters, nose caps and shrouds are hand-edited outright (see SHELVED in
+# utils/art/check_mesh_pins.py). A self-test failure -- a rule that stopped being able to
+# fail -- stays red either way. To make drift red again:
+# `python3 utils/art/check_mesh_pins.py --strict`, and for the parts.json pin
+# `python3 utils/art/gen_parts.py --check --strict`.
 .PHONY: test-art
 test-art:
 	@if python3 -c "import importlib.util as u; exit(1 if u.find_spec('trimesh') is None else 0)"; then \
@@ -812,6 +819,9 @@ test-gen: lint
 # fails. It re-spells the loader's ray rule instead of calling into it (the check_atmo_band
 # / atmo_profile reasoning): a gate built on the loader's own numbers could only catch a
 # bad authoring value, not the rule itself drifting.
+# Advisory since 2026-11-25: that pile IS the #153 rule rather than an authoring slip, and it
+# moves whenever a mesh is edited by hand, so rows print as WARN and the build stays green.
+# --strict reddens them; a row the loader REFUSES (that ship does not load) stays an error.
 	python3 utils/check_ship_skin.py --self-test
 	python3 utils/check_ship_skin.py
 # Parses EVERY case file, so a stale fixture path fails here -- on every commit

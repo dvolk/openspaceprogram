@@ -12,22 +12,24 @@ wall's radial normal shades the flat end of a frustum as a shallow dome.
 Numbers this reports, measured on the shipped art (Blender 4.5.9):
 
   quad/ngon counts   the Blender-authored family (tank_r1h3.obj, capsule.obj) is 32 wall
-                     quads + 2 ngon caps, and the 18 meshes from gen_lathe.py (adapters,
-                     capsule, nose caps, shrouds) match it. The 8 engine bodies from
-                     gen_engine.py are the same shape at the same 32 segments: 128 wall quads
-                     (four bands) plus 2 ngon discs. Of the 56 meshes still outside that set,
-                     26 are all triangles -- #1173.
-  uv_islands         the three families differ here on purpose. The authored lathe keeps the
-                     wall as one continuous strip, so capsule.obj and tank_r1h3.obj have 3
-                     islands (wall + two caps); the profiled generators give every face its
-                     own cell (34 islands); the engine bodies are unwrapped by Smart UV
-                     Project into 11-14 patches, which is what makes a ring around a nozzle
-                     drawable when the wall is a 32-gon. Both extremes are paintable. What is
-                     not paintable is 1 island where there should be many:
-                     gen_fuselage.py points all 624 faces at one point (uv_area 0.000) --
-                     paint one panel, several change. The lofted family used to read that way
-                     too (nose_cap.obj: 1 island, uv_area 1.453 over the canvas);
-                     gen_lathe.py gave it 33.
+                     quads + 2 ngon caps, and capsule_cyl_r1h2.obj -- the only profiled mesh
+                     still pinned -- matches it. The eight engine bodies are the hand-authored
+                     family again (192 verts, 162 faces at 32 segments: five wall bands and
+                     two discs), and so are the adapters (128 faces), nose caps (64) and
+                     shrouds (64), which gen_lathe.py used to rewrite at 34/33/32 faces. Of
+                     the meshes still outside the quad set, 26 are all triangles -- #1173.
+  uv_islands         the families differ here on purpose. The authored lathe keeps the wall as
+                     one continuous strip, so capsule.obj and tank_r1h3.obj have 3 islands
+                     (wall + two caps); gen_lathe.py gives every face its own cell (34
+                     islands); the hand engine family shares ONE layout across the six bodies
+                     that wear engine.png -- identical face for face (worst deviation 0.000 of
+                     the canvas), which is what lets one striped texture paint six sizes.
+                     Both extremes are paintable. What is not paintable is 1 island where
+                     there should be many: gen_fuselage.py points all 624 faces at one point
+                     (uv_area 0.000) -- paint one panel, several change. The reverted shrouds
+                     read that way today (every face encloses zero uv area, 32 distinct texels
+                     between them), which is one of the warnings the gate prints over the
+                     shelved art.
   uv_area            summed area of the islands over the 0..1 canvas. Over 1.0 means the
                      islands overlap each other.
   max_smooth_gap     the largest angle between a loop normal and its own face normal.

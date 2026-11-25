@@ -2,42 +2,44 @@
 """Unwrap a generated mesh the way a person would in the editor: Smart UV Project.
 
 gen_lathe.py lays one island per face, packed by its own shelf packer. That is exact and
-script-reproducible, and it is unusable to paint: engine.obj at 32 segments is 130 islands
-scattered over the canvas, so a ring around a nozzle or a stripe down a chamber cannot be
-drawn -- each band comes back as 32 separate patches. The hand-authored family does not look
-like that (capsule.obj is 3 islands: the wall as one strip and two caps), which is why that
+script-reproducible, and it is unusable to paint: engine.obj at 32 segments and three bell bands
+is 162 islands scattered over the canvas, so a ring around a nozzle or a stripe down a chamber
+cannot be drawn -- each band comes back as 32 separate patches. The hand-authored family does not
+look like that (capsule.obj is 3 islands: the wall as one strip and two caps), which is why that
 art could be painted at all.
 
 Smart UV Project joins faces that project in the same direction, so each band of a lathe
 unrolls as a few long arc patches instead of 32 single quads, and it packs them tighter than
-the shelf packer does. Measured on this profile at 32 segments (tmp/night7, 4.5.9):
+the shelf packer does. Measured on this profile at 32 segments, 3 bell bands (tmp/night7, 4.5.9):
 
-    islands  130 -> 13      canvas fill 0.606 -> 0.779
-    px/m across the part  88..88 (spread 1.00) -> 77..104 (spread 1.29)
+    islands  162 -> 12      canvas fill 0.575 -> 0.785
+    px/m across the part  88..88 (spread 1.00) -> 76..102 (spread 1.29)
 
 The density wander is the cost, and it is the size of the debt the hand-authored parts
 already carry: tank_r1h3.obj measures 67..82 px/m, spread 1.22, and the gate's ceiling
 (check_mesh_pins.py DENSITY_MAX_SPREAD) is 2.0. Spread is the gate's measure -- worst face over
-the part median -- and 1.29 is the worst of the eight bodies, the others 1.10..1.28. Geometry
-does not move: same 130 faces, same quads and ngon discs, one normal per face, same volume to
-the exported precision. The exporter does write `s 1` smoothing groups; this project's assimp
-ignores them (middleware/assimp/code/AssetLib/Obj/ObjFileParser.cpp:405 skips the field), so the
-flat shading comes from the one `vn` per face, as everywhere else in the catalogue.
+the part median -- and 1.32 is the worst of the eight bodies (orbital_engine), the others
+1.13..1.29. Geometry does not move: same 162 faces, same quads and ngon discs, one normal per
+face, same volume to the exported precision. The exporter does write `s 1` smoothing groups; this
+project's assimp ignores them
+(middleware/assimp/code/AssetLib/Obj/ObjFileParser.cpp:405 skips the field), so the flat shading
+comes from the one `vn` per face, as everywhere else in the catalogue.
 
-Determinism matters here because check_mesh_pins.py byte-compares a regenerated engine
-against the committed one. Blender 4.5.9's Smart UV Project is deterministic: two runs on the
-same input produced byte-identical .obj files, in a different cwd and with a different TMPDIR
-(md5 36dd58a3c74a6fc2e8d39b7dfec6d045, matching the committed file). The angle limit and margin
-are pinned as argv in PINS, so a change to either is a diff.
+Determinism was what made this pinnable: Blender 4.5.9's Smart UV Project is deterministic --
+two runs on the same input produced byte-identical .obj files, in a different cwd and with a
+different TMPDIR (md5 36dd58a3c74a6fc2e8d39b7dfec6d045, matching the file that was committed
+then). The engine bodies are not pinned any more (check_mesh_pins.py SHELVED), so nothing
+byte-compares them today; the note stays because anyone who re-pins a body needs to know the
+unwrap reproduces, and that the angle limit and margin decide the entire layout.
 
 This script does NOT write the provenance header; the caller that invoked Blender does, so
 the file keeps claiming the generator that made it (check_mesh_pins.py HEADER scans for that
 first line) and keeps the profile that produced it readable.
 
 Blender is not a build or CI dependency -- lint.yml runs check_mesh_pins.py --committed,
-which inspects shipped meshes and regenerates nothing. Blender is a dependency of `make test`
-(test-art) and of any run of gen_engine.py, on this box
-~/opt/blender-4.5.9-linux-x64/blender.
+which inspects shipped meshes and regenerates nothing. Since the engine bodies were shelved it
+is a dependency of nothing that `make test` runs: only of a hand run of gen_engine.py, on this
+box at ~/opt/blender-4.5.9-linux-x64/blender.
 
 Usage:
   <blender> --background --factory-startup --python utils/art/uv_smart_blender.py -- \

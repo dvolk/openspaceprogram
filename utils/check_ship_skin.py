@@ -70,11 +70,15 @@ vertex spacing (the skin here is interpolated between vertex z-levels) and insid
 player can see; above it, `skiff`'s elevators, `power_test`'s RTG and company are already
 visible. --tol overrides it for an author asking "what if".
 
-Usage:  python3 utils/check_ship_skin.py                 # gate: res/ships + e2e/vehicles
+Usage:  python3 utils/check_ship_skin.py                 # advisory: res/ships + e2e/vehicles
         python3 utils/check_ship_skin.py --verbose        # every weighed row
         python3 utils/check_ship_skin.py --emit-allow     # the WAIVERS literals, sorted
+        python3 utils/check_ship_skin.py --strict         # offenders exit non-zero
         python3 utils/check_ship_skin.py --self-test      # the checker's own pins
-Exit:   0 clean, 1 offenders (or a stale waiver, or a malformed def), 2 bad input.
+Exit:   0 clean or (by default) offenders -- which print as WARN -- 1 offenders under --strict,
+        a refused row (the loader would not load that ship), a malformed def, or a self-test
+        failure; 2 bad input. Advisory by default since 2026-11-25: the offender pile is the
+        #153 rule itself, and it moves every time a mesh is edited by hand.
 """
 import argparse
 import collections
@@ -710,6 +714,11 @@ def main(argv):
                     help="tolerance in metres; an exploratory --tol also stops the "
                          "stale-waiver check, since every waiver would read stale at it")
     ap.add_argument("--verbose", action="store_true", help="print every weighed row")
+    ap.add_argument("--strict", action="store_true",
+                    help="exit non-zero when attach rows sit outside the tolerance. Default "
+                         "is advisory (WARN, exit 0): that pile is #153, and it moves whenever "
+                         "a mesh is edited by hand. A row the loader refuses is an error "
+                         "either way.")
     ap.add_argument("--emit-allow", action="store_true",
                     help="print the CONTACT_WAIVERS / NODE_WAIVERS literals")
     ap.add_argument("--self-test", action="store_true")
@@ -776,22 +785,29 @@ def main(argv):
         print("}")
         return 0
 
-    bad = 0
+    gaps = 0
     print("%d ship defs, %d part defs, %d surface edges weighed "
           "(%d skipped: no mesh, no def, a plate parent, or a dangling parent)"
           % (len(ships), len(defs), len(rows), skipped))
-    bad += gate("surface contacts", rows, CONTACT_WAIVERS,
-                lambda r: "%s:%s->%s" % (r["ship"], r["id"], r["parent"]),
-                args.tol, args.verbose, check_stale=(args.tol == TOL_M))
-    bad += gate("surface nodes", nrows, NODE_WAIVERS, lambda r: r["part"],
-                args.tol, args.verbose, check_stale=(args.tol == TOL_M))
+    gaps += gate("surface contacts", rows, CONTACT_WAIVERS,
+                 lambda r: "%s:%s->%s" % (r["ship"], r["id"], r["parent"]),
+                 args.tol, args.verbose, check_stale=(args.tol == TOL_M))
+    gaps += gate("surface nodes", nrows, NODE_WAIVERS, lambda r: r["part"],
+                 args.tol, args.verbose, check_stale=(args.tol == TOL_M))
     for line in refused:
         print("  REFUSED %s -- the loader would not load this" % line)
-    bad += len(refused)
-    if bad:
-        print("check_ship_skin: %d problems -- see #153" % bad)
-        return 1
-    return 0
+    # Advisory by default since 2026-11-25 (owner's call): the gap rows are the #153 pile --
+    # the attach rule plants a side mount at the parent's widest ring at any height rather than
+    # at its skin at the mount's height -- and which rows are in it moves with the art, since
+    # the meshes get edited by hand. A REFUSED row is different in kind: that ship does not
+    # load, so it stays an error in either mode. --strict reddens the gaps too.
+    if gaps:
+        print("%s check_ship_skin: %d attach rows outside %g cm -- see #153%s"
+              % ("" if args.strict else "WARN:", gaps, 100 * args.tol,
+                 "" if args.strict else "; --strict reddens these"))
+    if refused:
+        print("check_ship_skin: %d rows the loader refuses" % len(refused))
+    return 1 if (refused or (gaps and args.strict)) else 0
 
 
 if __name__ == "__main__":

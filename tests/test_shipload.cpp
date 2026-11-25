@@ -180,6 +180,11 @@ int main() {
             }
             return false;
         };
+        // Advisory by default since 2026-11-25 (owner's call): a mesh edit makes these
+        // stamps stale, and meshes are edited by hand here. The hexes print either way, and
+        // utils/art/restamp.py rewrites them; OSP_STRICT_GEOM=1 makes a stale stamp red.
+        const bool strictGeom = getenv("OSP_STRICT_GEOM") != nullptr;
+        int staleStamps = 0;
         int stamped = 0;
         for(const auto &dir : std::filesystem::directory_iterator("e2e/fixtures")) {
             if(!dir.is_directory()) { continue; }
@@ -210,10 +215,17 @@ int main() {
                         printf("stale geom: %s id=%s part=%s mesh=%s recorded %s, catalog now "
                                "%s\n", path.c_str(), id.c_str(), slug.c_str(),
                                pd->mesh.c_str(), have.c_str(), want.c_str());
+                        ++staleStamps;
+                        if(strictGeom) { CHECK(have == want); }
                     }
-                    CHECK(have == want);
                 }
             }
+        }
+        if(staleStamps && !strictGeom) {
+            printf("WARN: %d of %d geom stamps under e2e/fixtures are stale -- advisory, not "
+                   "a failure. One command fixes them: python3 utils/art/restamp.py. Worth "
+                   "fixing before the save cases next: a stale stamp is exactly what makes "
+                   "the loader refuse a saved ship.\n", staleStamps, stamped);
         }
         // The sweep only means something if it actually found stamped parts.
         CHECK(stamped >= 20);

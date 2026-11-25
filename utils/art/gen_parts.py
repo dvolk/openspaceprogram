@@ -1084,14 +1084,23 @@ def main():
                     help="print the catalog table without writing")
     ap.add_argument("--check", action="store_true",
                     help="verify the committed parts.json still matches this "
-                         "script, without writing anything; exit non-zero on drift")
+                         "script, without writing anything")
+    ap.add_argument("--strict", action="store_true",
+                    help="with --check, exit non-zero on drift. Default is advisory "
+                         "(WARN, exit 0): the numbers get hand-edited too, and this is a "
+                         "two-person project, not a release pipeline.")
     a = ap.parse_args()
 
     parts = [generate(*p) for p in PARTS]
     check_assets(parts)
 
     if a.check:
-        raise SystemExit(0 if check(parts, a.out) else 1)
+        ok = check(parts, a.out)
+        if not ok and not a.strict:
+            print("WARN: parts.json drifted from gen_parts.py -- advisory, not a build "
+                  "failure. Reconcile by hand or run 'python3 utils/art/gen_parts.py' "
+                  "(it overwrites the JSON). --strict reddens this.")
+        raise SystemExit(0 if (ok or not a.strict) else 1)
 
     print("generated catalog: %d parts" % len(parts))
     print("(Isp = EXHAUST_VELOCITY/9.81 = %.0f s; propellant = %.0f kg/m^3)" % (

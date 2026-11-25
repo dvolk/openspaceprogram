@@ -1,6 +1,15 @@
 #!/usr/bin/env python3
 """Generate a rocket engine BODY as a .obj: a stack shell over a de Laval bell.
 
+NOT WIRED INTO THE CATALOGUE (2026-11-25): the shipped engine meshes are the hand-authored
+family, and this generator is not pinned -- see SHELVED in check_mesh_pins.py. It stays
+because the hand family's nozzle is an hourglass (below) and because the attach law that shapes
+engine art (#153) is worth seeing in numbers before anyone reshapes the art again. To use it:
+run it, unwrap what it writes, and repaint engine.png for the new layout -- the six bodies that
+share that texture need ONE layout between them, which is what the hand family has and what a
+per-body unwrap destroys (measured: worst uv drift 1.036 of the canvas across the family,
+against 0.000 for the hand-authored set).
+
 Eight meshes -- engine, engine_r1.5h3, engine_r2.25h4.5, engine_r0.25h1, the three orbital
 engines and the nuclear engine. They came out of one Blender file scaled per size class, which
 is why every one of them has the same wrong nozzle: sampling radius against height on the
@@ -19,16 +28,22 @@ decides the rings. The nozzle occupies the bottom of the envelope, the chamber t
            |   \\      |              shoulder: one band, R down to the throat
            |    \\    /
            |     \\__/               throat, the narrowest ring, r_t, below z = 0
-           |      \\                 nozzle: r(z) = r_t + (r_e - r_t) * t**p, opening downward
+           |      \\                 nozzle: r(z) = r_t + (r_e - r_t) * f(t), f saturating,
+           |                       opening downward -- steepest just under the throat
     -H/2   |_______\\__|             exit ring r_e, then the exit disc
 
-The shape is the ratio, not the curve: eps = (r_e / r_t)^2, area expansion ratio. Sea-level
-nozzles are short and stubby (eps ~4-6, a bell that would be overexpanded at the pad); vacuum
-nozzles open wide (eps ~10-16). Same generator, different number in the pin. p=2 (BELL_POWER)
-holds the wall near-axial where it leaves the throat and opens it out toward the exit, which is
-what makes a bell read as a bell rather than a cone. The curve costs one ring per --bell-bands,
-so it is bought with triangles, not with texels: the pins ship 2 bands (130 faces at 32
-segments, against 624 for a fuselage).
+The shape is the ratio first and the curve second: eps = (r_e / r_t)^2, area expansion ratio. Sea-
+level nozzles are short and stubby (eps ~4-6, a bell that would be overexpanded at the pad); vacuum
+nozzles open wide (eps ~10-16). Same generator, different number in the pin.
+
+The wall saturates rather than steepening: f(t) = (1 - exp(-k t)) / (1 - exp(-k)) for t = how far
+down the bell, k = --bell-turn. A bell turns hardest just below the throat and then runs a shallow,
+near-straight skirt, and that is what the curve gives -- chords of 51.7, 25.0, 9.7 deg from the
+axis on engine (r1 h2) at 3 bands. The power law this replaces (t**2) left the throat near-axially
+and opened out toward the exit instead: 11.9, 32.4, 46.6 deg, a wall that gets worse going down.
+That reads as a funnel, not a nozzle, and it is what the owner caught. The curve costs one ring per
+--bell-bands, so it is bought with triangles and not with texels: the pins ship 3 bands (162 faces
+at 32 segments, against 624 for a fuselage).
 
 Three laws the profile cannot break:
 
@@ -54,21 +69,21 @@ shelf packer. A lathe's one-island-per-face is exact and needs no Blender, but a
 band's 32 quads land as 32 scattered patches, so nobody can draw a ring around a nozzle or a
 stripe down a chamber in an image editor -- and the hand-authored parts are not laid out that
 way either (capsule.obj is 3 islands: the wall as one strip, plus two caps). Smart UV joins
-faces that project the same way. Measured on this profile at 32 segments:
+faces that project the same way. Measured on this profile at 32 segments, 3 bell bands:
 
-    islands      130 -> 13
-    canvas fill  0.606 -> 0.779
-    px/m         88..88 (spread 1.00) -> 77..104 (spread 1.29)
+    islands      162 -> 12
+    canvas fill  0.575 -> 0.785
+    px/m         88..88 (spread 1.00) -> 76..102 (spread 1.29)
 
 The density wander is the cost of the join, and it is the same order as the art that already
 ships: tank_r1h3.obj measures 67..82 px/m, spread 1.22, against the gate's 2.0 ceiling
 (check_mesh_pins.py DENSITY_MAX_SPREAD). Spread is the gate's measure -- worst face over the
-part median, both ways -- and 1.29 is the worst of the eight bodies; the others land 1.10..1.28.
-Geometry does not move -- same 160 verts, 130 faces, 128 wall quads and 2 ngon discs, one normal
-per face, same volume to the printed precision -- and 4.5.9's unwrap is deterministic, so the
-byte-exact pin still works: two runs of the same argv produced identical files. The angle limit
-and the gutter are pinned as argv, which makes changing either a diff rather than a silent
-re-pack.
+part median, both ways -- and 1.32 is the worst of the eight bodies (orbital_engine); the others
+land 1.13..1.29. Geometry does not move -- same 192 verts, 162 faces, 160 wall quads and 2 ngon
+discs, one normal per face, same volume to the printed precision -- and 4.5.9's unwrap is
+deterministic, so the byte-exact pin still works: two runs of the same argv produced identical
+files. The angle limit and the gutter are pinned as argv, which makes changing either a diff
+rather than a silent re-pack.
 
 The axis pair on the way out of Blender is obj_import's own, restated rather than left to
 defaults (uv_smart_blender.py). `up_axis="Z"` -- the intuitive choice for a world-Z-up file --
@@ -79,9 +94,10 @@ compare), and that the stack wall and the exit ring still sit at z = +/-H/2 at r
 A bounding box cannot prove a part stands up: engine, engine_r1.5h3 and engine_r2.25h4.5 all box
 out as cubes, and a turned cube boxes out the same size.
 
-Blender is a dependency of this generator, and so of `make test` (test-art) and of any art run;
-it is NOT a dependency of lint.yml, which runs check_mesh_pins.py --committed and regenerates
-nothing. It is found at ~/opt/blender-4.5.9-linux-x64/blender or at $BLENDER.
+Blender is a dependency of this generator -- and since the engine bodies went out of the pinned
+set, of nothing that `make test` runs. It is not a build or CI dependency: lint.yml runs
+check_mesh_pins.py --committed, which regenerates nothing. It is found at
+~/opt/blender-4.5.9-linux-x64/blender or at $BLENDER.
 
 Not to be confused with the part's `shroud`, which gen_lathe.py still makes: that is a straight
 tube at 98% of body radius, drawn only when a part hangs off the exhaust face
@@ -104,11 +120,18 @@ import tempfile
 
 import gen_lathe
 
-# What the bell's wall looks like between throat and exit: r = r_t + (r_e - r_t) * t**p.
-# p=1 is a cone; p>1 holds the wall near-axial at the throat and opens it out toward the exit,
-# which is the shape a bell has. Fixed here rather than exposed -- at this segment count the
-# difference between p=1.8 and p=2.4 is under a millimetre of silhouette.
-BELL_POWER = 2.0
+# How the bell's wall opens between throat and exit. r = r_t + (r_e - r_t) * f(t), t = how far
+# down the bell. f must SATURATE: a real de Laval bell does its turning just below the throat and
+# then runs a shallow near-straight skirt. A power law (t**p) does the opposite -- it leaves the
+# throat axially and steepens into the exit ring -- which is what made the shipped bell splay open
+# at the lip. Chords from the axis on engine (r1 h2, 3 bands, mean 32.4 deg):
+#
+#     t**2 (what shipped)      11.9 -> 32.4 -> 46.6     flare gets worse going down
+#     this, k = 3              51.7 -> 25.0 ->  9.7     shoulder under the throat, then a skirt
+#     this, k = 6              58.8 -> 12.6 ->  1.7     shoulder, then nearly a straight tube
+#
+# k is pinned as argv (--bell-turn) rather than fixed, so tightening the shoulder is a diff.
+BELL_TURN = 3.0
 
 BLENDER = os.environ.get("BLENDER", os.path.expanduser("~/opt/blender-4.5.9-linux-x64/blender"))
 UNWRAP = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uv_smart_blender.py")
@@ -117,19 +140,25 @@ UNWRAP = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uv_smart_blen
 UNWRAP_TIMEOUT_S = 120
 
 
-def bell_rings(radius, height, exit_frac, eps, bell_frac, stack_frac, bell_bands):
+def bell_shape(t, turn):
+    """How far the wall has opened at fraction t of the way down the bell: it turns hardest at
+    the throat and saturates toward the exit ring. See BELL_TURN for the measured chords."""
+    return (1.0 - math.exp(-turn * t)) / (1.0 - math.exp(-turn))
+
+
+def bell_rings(radius, height, exit_frac, eps, bell_frac, stack_frac, bell_bands, turn):
     """The profile as [(radius, z), ...] low z first: exit ring, bell interior, throat,
     one converging band up to the stack wall, stack wall."""
     r_e = exit_radius(radius, exit_frac)
     r_t = r_e / (eps ** 0.5)
     z_throat = -height / 2.0 + bell_frac * height
     bell_len = bell_frac * height
-    # Walk down the bell from the throat: t is how far down, so the radius grows as t**p --
-    # slow at first (the wall leaves the throat near-axially) and fast near the exit ring.
+    # Walk down the bell from the throat. The first chord below the throat is the steepest one
+    # and each next one lies flatter, which is what a bell skirt looks like.
     up = []
     for i in range(bell_bands + 1):
         t = i / float(bell_bands)
-        up.append((r_t + (r_e - r_t) * t ** BELL_POWER, z_throat - bell_len * t))
+        up.append((r_t + (r_e - r_t) * bell_shape(t, turn), z_throat - bell_len * t))
     up.append((radius, z_throat + stack_frac * height))
     up.append((radius, height / 2.0))
     up.sort(key=lambda t: t[1])
@@ -227,10 +256,14 @@ def main(argv=None):
     ap.add_argument("--stack-frac", type=float, default=0.15,
                     help="how much of the height the shoulder takes -- the band from the "
                          "throat out to the stack wall; the straight chamber gets the rest")
-    ap.add_argument("--bell-bands", type=int, default=2,
-                    help="rings across the nozzle (1 = exit and throat, a straight wall; 2 "
-                         "buys the curve, and costs triangles rather than texels now that the "
-                         "canvas follows the part's size)")
+    ap.add_argument("--bell-bands", type=int, default=3,
+                    help="rings across the nozzle (2 = exit and throat, a straight wall; 3 buys "
+                         "the curve, and costs triangles rather than texels now that the canvas "
+                         "follows the part's size)")
+    ap.add_argument("--bell-turn", type=float, default=BELL_TURN,
+                    help="how fast the wall turns at the throat: the chord angles saturate down "
+                         "the skirt, so a bigger number is a tighter shoulder and a straighter "
+                         "skirt (see BELL_TURN)")
     ap.add_argument("--segments", type=int, default=32,
                     help="rings about the axis; 32 is what every other stack part uses")
     ap.add_argument("--uv-angle", type=float, default=66.0,
@@ -256,6 +289,9 @@ def main(argv=None):
                  % (a.bell_frac, a.stack_frac))
     if a.bell_bands < 1:
         ap.error("--bell-bands >= 1 (exit ring, that many steps up, throat ring)")
+    if a.bell_turn < 0.1:
+        ap.error("--bell-turn >= 0.1: the shape is (1 - exp(-turn*t)) / (1 - exp(-turn)), so a "
+                 "turn of 0 has no room to saturate")
     if a.segments % 4:
         ap.error("--segments must be a multiple of 4: a polygon with a vertex at angle 0 and "
                  "any other count misses one axis (a decagon spans 1.000 in X, 0.951 in Y), "
@@ -268,7 +304,7 @@ def main(argv=None):
                  "(0.001 is one texel at 512^2)")
 
     rings = bell_rings(a.radius, a.height, a.exit_frac, a.eps, a.bell_frac,
-                       a.stack_frac, a.bell_bands)
+                       a.stack_frac, a.bell_bands, a.bell_turn)
     # The lathe sorts and validates the profile, so check here only what a lathe cannot see:
     # that the ring list describes a bell (widest at the exit plane, narrowest at a throat in
     # the middle) inside the size the caller asked for.
