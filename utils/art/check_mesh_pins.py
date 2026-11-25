@@ -10,7 +10,7 @@ rewrote a shipped asset in passing (gen_gear.py has no argparse at all: `python3
 utils/art/gen_gear.py --help` just generated the gear).
 
 So: regenerate into a temp tree, byte-compare against the committed file, and fail on drift.
-Byte-exact, not "close enough" -- all 45 pinned assets reproduce byte-exactly today, so an exact
+Byte-exact, not "close enough" -- all 53 pinned assets reproduce byte-exactly today, so an exact
 comparison costs nothing and catches a formatter version bump, an axis typo, a float that stopped
 rounding the same way.
 
@@ -21,19 +21,25 @@ to appear in PINS or in UNPINNED with a reason, so adding a generated asset with
 fails here rather than joining the unpinned pile. Textures carry no header, so they are only
 as covered as this list says: the two PNGs written beside a pinned mesh (`kerbal.png`,
 `ladder.png`) are weighed, `textures/terrain_detail.png` has a UNPINNED row explaining why the
-shipped map is not its script's output, and `gen_flat_tex.py`'s fills are pinned nowhere -- a PNG
-declares no generator, so the coverage scan cannot notice one missing (#1183).
+shipped map is not its script's output, and the fills `gen_flat_tex.py` can write are pinned one
+row each -- `textures/engine.png` is, the rest are not, because a PNG declares no generator and
+the coverage scan cannot notice one missing (#1183).
 
 Byte-exactness catches a generator that drifted. It does not catch one that got WORSE in a
 way the engine cannot see, so TOPO below also checks the regenerated text for the topology
 the hand-authored art uses -- wall quads and one ngon per end, one normal per face -- and
-for UVs a painter can work on. The island rule is deliberately stricter than the
-Blender-authored family, which lathes its wall as one continuous strip (3 islands across 34
-faces): a generator has no reason to join cells, so per-face cells are what it has to keep.
-See the comment on TOPO for what each check is for, and utils/art/inspect_mesh_blender.py for
-reading the same properties in the editor.
+for UVs a painter can work on. The lathe family keeps one island per face, which is what makes
+its texel density exact by construction; the engine bodies join faces into long patches with
+Blender's Smart UV Project instead, because 130 separate quads cannot be stroked across in an
+image editor and the hand-authored parts were never laid out that way either (capsule.obj:
+3 islands across 34 faces). Both regimes are weighed the same way below: real uv area per
+face, inside the canvas, no patch laid over another. See the comment on TOPO for what each
+check is for, and utils/art/inspect_mesh_blender.py for reading the same properties in the
+editor.
 
-TOPO speaks for the 18 lofted-family assets, all of which gen_lathe.py writes.
+TOPO speaks for the 26 lathed assets: 18 that gen_lathe.py writes from a profile it is given,
+plus the 8 engine bodies whose rings gen_engine.py computes, hands to the same emitter, and
+then unwraps through uv_smart_blender.py.
 style_problems() and STYLE_OK below weigh the whole catalogue against the house rules the
 audit wrote down (Stage 0 of reports/art-regen2026_11_25): flat normals unless a named part
 is rounded on purpose (#1178), a uv layer whose faces enclose real area (#1173), a face
@@ -140,6 +146,69 @@ PINS = [
      ["meshes/orbital_engine_r2.25h2.25_shroud.obj"]),
     ("gen_lathe.py", ["--r1", "0.98", "--r2", "0.98", "--height", "1", "--caps", "none",
                       "--name", "EngineShroud"], ["meshes/orbital_engine_shroud.obj"]),
+    # Engine bodies (#1173). These came out of one Blender file scaled per size class, with a
+    # hand-placed "nozzle" that narrows to r=0.127 and only widens to 0.35 at the exit plane.
+    # gen_engine.py computes the rings from an expansion ratio and hands the geometry to
+    # gen_lathe.py, so the ratio is a number in the pin instead of control points.
+    # 32 segments: every other stack part is a 32-gon (tank_r1h3, capsule, the adapters, the
+    # shrouds), so where an engine meets a tank the silhouette stops showing a facet seam, and
+    # the count is a multiple of 4 so the polygon reaches both axes and
+    # utils/check_ship_skin.py keeps weighing these parts at all. Two bands across the nozzle
+    # buys the curve; the pins used to take one because a fixed 512^2 canvas could not feed a
+    # second band's 32 faces, which was an artefact of the canvas rather than of the part
+    # (#1187: the canvas follows the part's surface, so the curve costs triangles only).
+    # The uv pair is Blender's Smart UV Project: 130 faces join into 11..14 patches, which is
+    # what makes a ring around a nozzle or a stripe down a chamber drawable at all. Pinned as
+    # argv because changing either one re-lays out every patch.
+    ("gen_engine.py", ["--radius", "1", "--height", "2", "--eps", "6", "--exit-frac", "0.75",
+                       "--bell-frac", "0.35", "--stack-frac", "0.15", "--segments", "32",
+                       "--bell-bands", "2", "--uv-angle", "66", "--uv-margin", "0.008",
+                       "--caps", "both", "--name", "Engine"],
+     ["meshes/engine.obj"]),
+    ("gen_engine.py", ["--radius", "1.5", "--height", "3", "--eps", "6", "--exit-frac", "0.75",
+                       "--bell-frac", "0.35", "--stack-frac", "0.15", "--segments", "32",
+                       "--bell-bands", "2", "--uv-angle", "66", "--uv-margin", "0.008",
+                       "--caps", "both", "--name", "Engine"],
+     ["meshes/engine_r1.5h3.obj"]),
+    ("gen_engine.py", ["--radius", "2.25", "--height", "4.5", "--eps", "6", "--exit-frac",
+                       "0.75", "--bell-frac", "0.35", "--stack-frac", "0.15", "--segments", "32",
+                       "--bell-bands", "2", "--uv-angle", "66", "--uv-margin", "0.008",
+                       "--caps", "both", "--name", "Engine"],
+     ["meshes/engine_r2.25h4.5.obj"]),
+    ("gen_engine.py", ["--radius", "0.25", "--height", "1", "--eps", "6", "--exit-frac", "0.75",
+                       "--bell-frac", "0.35", "--stack-frac", "0.15", "--segments", "32",
+                       "--bell-bands", "2", "--uv-angle", "66", "--uv-margin", "0.008",
+                       "--caps", "both", "--name", "Engine"],
+     ["meshes/engine_r0.25h1.obj"]),
+    ("gen_engine.py", ["--radius", "1", "--height", "1", "--eps", "10", "--exit-frac", "0.75",
+                       "--bell-frac", "0.35", "--stack-frac", "0.15", "--segments", "32",
+                       "--bell-bands", "2", "--uv-angle", "66", "--uv-margin", "0.008",
+                       "--caps", "both", "--name", "OrbitalEngine"],
+     ["meshes/orbital_engine.obj"]),
+    ("gen_engine.py", ["--radius", "1.5", "--height", "1.5", "--eps", "10", "--exit-frac",
+                       "0.75", "--bell-frac", "0.35", "--stack-frac", "0.15", "--segments", "32",
+                       "--bell-bands", "2", "--uv-angle", "66", "--uv-margin", "0.008",
+                       "--caps", "both", "--name", "OrbitalEngine"],
+     ["meshes/orbital_engine_r1.5h1.5.obj"]),
+    ("gen_engine.py", ["--radius", "2.25", "--height", "2.25", "--eps", "10", "--exit-frac",
+                       "0.75", "--bell-frac", "0.35", "--stack-frac", "0.15", "--segments", "32",
+                       "--bell-bands", "2", "--uv-angle", "66", "--uv-margin", "0.008",
+                       "--caps", "both", "--name", "OrbitalEngine"],
+     ["meshes/orbital_engine_r2.25h2.25.obj"]),
+    # The nuclear engine: a wide, low-expansion nozzle, which is what a gas-core reactor looks
+    # like, and the roomiest of the family at 227 texels on its worst face.
+    ("gen_engine.py", ["--radius", "1", "--height", "3", "--eps", "5", "--exit-frac", "0.75",
+                       "--bell-frac", "0.35", "--stack-frac", "0.15", "--segments", "32",
+                       "--bell-bands", "2", "--uv-angle", "66", "--uv-margin", "0.008",
+                       "--caps", "both", "--name", "NuclearEngine"],
+     ["meshes/nuclear_engine.obj"]),
+    # The texture those eight bodies share. It used to be Blender's UV grid with a few
+    # patches recoloured -- 34% (150,150,150), 34% (64,64,64), 23% (36,36,36) -- so the part
+    # drew as a checkerboard rather than as a part, and no rule weighed it because a PNG
+    # declares no generator (#1183). A flat mid grey (the old image's mean) until Stage 3
+    # paints it: islands, per-face pixel addressing, and the size-class canvases (#1187).
+    ("gen_flat_tex.py", ["--rgb", "103", "103", "103", "--size", "512"],
+     ["textures/engine.png"]),
     # Wings and fins: rect planform, thickness from the header.
     ("gen_wing.py", ["--planform", "rect", "--chord", "2", "--span", "2", "--thickness", "0.1"],
      ["meshes/fin_r1h2.obj"]),
@@ -201,6 +270,18 @@ TOPO = {
     "meshes/orbital_engine_shroud.obj": 32,
     "meshes/orbital_engine_r1.5h1.5_shroud.obj": 32,
     "meshes/orbital_engine_r2.25h2.25_shroud.obj": 32,
+    # Engine bodies, new to this check with gen_engine.py: 4 wall bands (nozzle x2, shoulder,
+    # chamber) and two discs, at 32 segments. They were never checked before -- a Blender
+    # export with no generator claim sits outside both PINS and TOPO, which is how 128 faces
+    # at 87 texels each and 409 overlapping island pairs shipped on engine.obj (#1173).
+    "meshes/engine.obj": 130,
+    "meshes/engine_r1.5h3.obj": 130,
+    "meshes/engine_r2.25h4.5.obj": 130,
+    "meshes/engine_r0.25h1.obj": 130,
+    "meshes/orbital_engine.obj": 130,
+    "meshes/orbital_engine_r1.5h1.5.obj": 130,
+    "meshes/orbital_engine_r2.25h2.25.obj": 130,
+    "meshes/nuclear_engine.obj": 130,
 }
 # How many texels one face gets to hold paint: its uv area times the texture size the
 # engine loads (CANVAS_PX), weighed per face rather than summed so the 624-panel fuselages
@@ -216,6 +297,17 @@ TOPO = {
 # and this floor says so; a finer lathe has to raise the canvas or the segment count, not the
 # floor.
 TOPO_MIN_FACE_TEXELS = 1024.0
+# Rows whose faces cannot reach 1024 at any sane canvas, with the floor they do keep. The
+# engine bodies are the case: 130 faces each, so one 512^2 canvas leaves 100..264 texels on
+# the thinnest of them however the patches are packed. There the floor is not the real rule
+# -- #1187's rule is texel DENSITY (px per metre), which every face gets whatever the part
+# size is, and 48 px/m on a 0.196 x 0.35 m wall quad is 9 x 17 texels whether the engine is a
+# metre across or five. What the row floor still catches is a collapse: halving a face's uv
+# area trips it, and so does the #1173 pattern of naming one texel per corner.
+TOPO_FACE_TEXELS = {("meshes/%s.obj" % n): 96.0 for n in
+                    ("engine", "engine_r1.5h3", "engine_r2.25h4.5", "engine_r0.25h1",
+                     "orbital_engine", "orbital_engine_r1.5h1.5",
+                     "orbital_engine_r2.25h2.25", "nuclear_engine")}
 
 
 def obj_corner(field, nv, nt, nn):
@@ -285,7 +377,7 @@ def read_faces(path):
     return vs, uvs, nvs, faces, bad
 
 
-def topo_problems(path, want_faces):
+def topo_problems(path, want_faces, min_texels=TOPO_MIN_FACE_TEXELS):
     """Why this .obj would be hard to paint, or [] if it is paintable."""
     vs, uvs, nvs, faces, unparsable = read_faces(path)
     if unparsable:
@@ -375,10 +467,17 @@ def topo_problems(path, want_faces):
             ra, rb = find(ka), find(kb)
             if ra != rb:
                 parent[rb] = ra
-    islands = len({find(k) for k in range(len(faces))})
-    if islands != len(faces):
-        bad.append("%d uv islands for %d faces: paint one patch and several change"
-                   % (islands, len(faces)))
+    islands = {}
+    for k in range(len(faces)):
+        islands.setdefault(find(k), []).append(k)
+    # No rule on how MANY islands a mesh has. The lathe family keeps one per face because
+    # that is what makes its density exact by construction; the engine bodies join faces into
+    # long patches on purpose (uv_smart_blender.py), which is the only way a ring around a
+    # nozzle or a stripe down a chamber can be stroked in an image editor at all -- 130
+    # separate quads cannot be painted, and the hand-authored parts were never laid out that
+    # way either (capsule.obj: 3 islands across 34 faces). What still bites is the geometry of
+    # the layout below: real area per face, inside the canvas, no island laid over another.
+    groups = list(islands.values())
 
     small = []
     for f in faces:
@@ -390,11 +489,11 @@ def topo_problems(path, want_faces):
             a += x1 * y2 - x2 * y1
         small.append(abs(a) * 0.5)
     tex = [a * CANVAS_PX * CANVAS_PX for a in small]
-    thin = [t for t in tex if t < TOPO_MIN_FACE_TEXELS]
+    thin = [t for t in tex if t < min_texels]
     if thin:
         bad.append("%d faces address %.0f texels each (min %.0f): the texture is being "
                    "read as almost one colour whatever it holds"
-                   % (len(thin), min(thin), TOPO_MIN_FACE_TEXELS))
+                   % (len(thin), min(thin), min_texels))
 
     # Where the islands sit, not just how big they are. A generator that lays an island
     # out about its own centre instead of from its corner puts half of it at negative uv:
@@ -402,10 +501,16 @@ def topo_problems(path, want_faces):
     # and the other half can land on top of a neighbour's island. gen_lathe.py hit both
     # (a cap disc spanning u -0.27..0.29, a nose cap with 17 islands under its base disc)
     # while every size rule above stayed happy, which is why this check exists.
+    #
+    # The box is the ISLAND's, not the face's. Inside one joined patch the corner boxes of
+    # neighbouring faces overlap by construction -- that is what "joined" means -- so a
+    # per-face scan would report every Smart-UV'd engine as a pile of overlaps. The gutter
+    # the sampler needs is between patches. ST_UNSEAMED is the control: two faces, one
+    # island, coincident boxes, no problem.
     boxes = []
-    for f in faces:
-        xs = [uvs[i - 1][0] for i in f[1]]
-        ys = [uvs[i - 1][1] for i in f[1]]
+    for g in groups:
+        xs = [uvs[i - 1][0] for k in g for i in faces[k][1]]
+        ys = [uvs[i - 1][1] for k in g for i in faces[k][1]]
         boxes.append((min(xs), min(ys), max(xs), max(ys)))
     outside = [b for b in boxes if b[0] < -1e-6 or b[1] < -1e-6
                or b[2] > 1.0 + 1e-6 or b[3] > 1.0 + 1e-6]
@@ -897,7 +1002,8 @@ f 1/1/1 2/2/2 3/3/3 4/4/4
 SELFTEST = [
     (2, "two wall quads, seamed", ST_SEAMED, ""),
     (1, "negative indices resolve against the tables", ST_NEGATIVE, ""),
-    (2, "two wall quads with no seam", ST_UNSEAMED, "uv islands"),
+    (2, "two wall quads joined into one patch: one island, coincident corner boxes",
+     ST_UNSEAMED, ""),
     (2, "islands collapsed onto one texel", ST_COLLAPSED, "texels"),
     (1, "a triangle where the family is quads", ST_TRIANGLE, "triangles"),
     (6, "a wall strip triangulated, not quadded", ST_TRIS_STRIP, "triangles"),
@@ -1082,6 +1188,21 @@ def self_test():
     return bad
 
 
+def topo_row(rel, path):
+    """TOPO's answer for one asset, floor included. A row that names its own floor in
+    TOPO_FACE_TEXELS is also weighed against the default one: an override that stops being
+    needed is dead weight, the same way a STYLE_OK fragment that stops matching a problem is,
+    so the exception table can only shrink too."""
+    floor = TOPO_FACE_TEXELS.get(rel)
+    problems = topo_problems(path, TOPO[rel], floor or TOPO_MIN_FACE_TEXELS)
+    if floor is not None and not any("texels each" in p
+                                     for p in topo_problems(path, TOPO[rel])):
+        problems.append("TOPO_FACE_TEXELS floors this row at %.0f but every face clears the "
+                        "default %.0f, so drop the row"
+                        % (floor, TOPO_MIN_FACE_TEXELS))
+    return problems
+
+
 def regenerate(script, argv, outs, out_root):
     """Run one generator so its outputs land under out_root/res/. Returns its argv."""
     cmd = [sys.executable, os.path.join(HERE, script)] + list(argv)
@@ -1154,7 +1275,7 @@ def main():
         # The no-dependency half: the shipped text against TOPO, no generators run.
         for rel in sorted(TOPO):
             topo_ran += 1
-            for why in topo_problems(os.path.join(REPO, "res", rel), TOPO[rel]):
+            for why in topo_row(rel, os.path.join(REPO, "res", rel)):
                 drift.append("res/%s: %s" % (rel, why))
     else:
         tmp = tempfile.mkdtemp(prefix="meshpins_", dir=os.path.join(REPO, "tmp"))
@@ -1178,7 +1299,7 @@ def main():
                     continue
                 if rel in TOPO:
                     topo_ran += 1
-                    for why in topo_problems(made, TOPO[rel]):
+                    for why in topo_row(rel, made):
                         drift.append("res/%s: %s" % (rel, why))
 
     # Coverage: every generated-asset CLAIM needs a pin or a reason.

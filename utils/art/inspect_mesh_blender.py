@@ -13,16 +13,21 @@ Numbers this reports, measured on the shipped art (Blender 4.5.9):
 
   quad/ngon counts   the Blender-authored family (tank_r1h3.obj, capsule.obj) is 32 wall
                      quads + 2 ngon caps, and the 18 meshes from gen_lathe.py (adapters,
-                     capsule, nose caps, shrouds) match it. Most of the other 64 meshes are
-                     still all triangles -- #1173.
-  uv_islands         the two families differ here on purpose. The authored lathe keeps the
+                     capsule, nose caps, shrouds) match it. The 8 engine bodies from
+                     gen_engine.py are the same shape at the same 32 segments: 128 wall quads
+                     (four bands) plus 2 ngon discs. Of the 56 meshes still outside that set,
+                     26 are all triangles -- #1173.
+  uv_islands         the three families differ here on purpose. The authored lathe keeps the
                      wall as one continuous strip, so capsule.obj and tank_r1h3.obj have 3
-                     islands (wall + two caps); the generators give every face its own cell
-                     (34 islands). Both are paintable. What is not paintable is 1 island
-                     where there should be many: gen_fuselage.py points all 624 faces at
-                     one point (uv_area 0.000) -- paint one panel, several change. The
-                     lofted family used to read that way too (nose_cap.obj: 1 island,
-                     uv_area 1.453 over the canvas); gen_lathe.py gave it 33.
+                     islands (wall + two caps); the profiled generators give every face its
+                     own cell (34 islands); the engine bodies are unwrapped by Smart UV
+                     Project into 11-14 patches, which is what makes a ring around a nozzle
+                     drawable when the wall is a 32-gon. Both extremes are paintable. What is
+                     not paintable is 1 island where there should be many:
+                     gen_fuselage.py points all 624 faces at one point (uv_area 0.000) --
+                     paint one panel, several change. The lofted family used to read that way
+                     too (nose_cap.obj: 1 island, uv_area 1.453 over the canvas);
+                     gen_lathe.py gave it 33.
   uv_area            summed area of the islands over the 0..1 canvas. Over 1.0 means the
                      islands overlap each other.
   max_smooth_gap     the largest angle between a loop normal and its own face normal.
