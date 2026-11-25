@@ -115,7 +115,7 @@
         0.0,
         0.0
       ],
-      "geom": "10cdff52c67e2d94",
+      "geom": "1397482ba8acfbc0",
       "id": "wing_l",
       "parent": 10,
       "part": "wing_r4h1.5",
@@ -138,7 +138,7 @@
         0.0,
         0.0
       ],
-      "geom": "10cdff52c67e2d94",
+      "geom": "1397482ba8acfbc0",
       "id": "wing_r",
       "parent": 10,
       "part": "wing_r4h1.5",
@@ -172,7 +172,7 @@
         0.0,
         0.0
       ],
-      "geom": "351b12ca42808f87",
+      "geom": "a92e996ce076bee7",
       "id": "tail_l",
       "parent": 11,
       "part": "wing_r1h1",
@@ -206,7 +206,7 @@
         0.0,
         0.0
       ],
-      "geom": "351b12ca42808f87",
+      "geom": "a92e996ce076bee7",
       "id": "tail_r",
       "parent": 11,
       "part": "wing_r1h1",
@@ -240,7 +240,7 @@
         0.0,
         0.0
       ],
-      "geom": "6052ddda974f95c4",
+      "geom": "d2444d045cc14c9a",
       "id": "fin",
       "parent": 11,
       "part": "wing_r0.7h1",
@@ -274,7 +274,7 @@
         0.0,
         0.0
       ],
-      "geom": "526e497fea737b96",
+      "geom": "d1609216581a80f8",
       "id": "elev_l",
       "parent": 11,
       "part": "elevator_r0.8h0.7",
@@ -297,7 +297,7 @@
         0.0,
         0.0
       ],
-      "geom": "526e497fea737b96",
+      "geom": "d1609216581a80f8",
       "id": "elev_r",
       "parent": 11,
       "part": "elevator_r0.8h0.7",
@@ -331,7 +331,7 @@
         0.0,
         0.0
       ],
-      "geom": "bb6df7cad747641c",
+      "geom": "0e8e9bef8baafc48",
       "id": "rudder",
       "parent": 11,
       "part": "rudder_r0.6h0.8",
@@ -365,7 +365,7 @@
         0.0,
         0.0
       ],
-      "geom": "526e497fea737b96",
+      "geom": "d1609216581a80f8",
       "id": "ail_l",
       "parent": 12,
       "part": "aileron_r0.8h0.7",
@@ -388,7 +388,7 @@
         0.0,
         0.0
       ],
-      "geom": "526e497fea737b96",
+      "geom": "d1609216581a80f8",
       "id": "ail_r",
       "parent": 13,
       "part": "aileron_r0.8h0.7",

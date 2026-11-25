@@ -161,34 +161,62 @@ int main() {
            passes while no file is ever opened. Say so out loud instead. */
         CHECK(std::filesystem::exists("res/meshes/capsule.obj"));
 
-        /* The two #456 fixtures carry REAL fingerprints, so retouching one of
-           those four meshes makes them stale. Pin them here, where the failure
-           says "the fixture is out of date, re-stamp it", rather than surfacing
-           as an e2e refusal that names a part the case never touched. */
-        struct GeomFixture { const char *path; const char *badId; };
-        const GeomFixture fxs[] = {
+        /* Every e2e fixture that records a part's geometry fingerprint is pinned here, not
+           just the two #456 fixtures. A Stage-1 art commit (reports/art-regen2026_11_25)
+           rewrote the `vn` lines of twelve meshes and silently made case 867 refuse its own
+           save: the fingerprints live in fixture JSON, so nothing in `make test-gen` saw it
+           and only an e2e run did. Weigh them here, where a stale value fails as
+           "re-stamp this hex" instead of surfacing as a refusal that names a part the case
+           never mentions. */
+        struct GeomDrift { const char *path; const char *badId; };
+        const GeomDrift deliberateDrift[] = {
             // The deliberate drift each case is about is the LAST hex digit.
             { "e2e/fixtures/save_geom_stale/ships/v0.json", "engine_1" },
             { "e2e/fixtures/save_geom_stale_root/ships/v0.json", "capsule_1" },
         };
-        for(const GeomFixture &fx : fxs) {
-            std::ifstream f(fx.path);
-            CHECK(f.is_open());   // a fixture that moved fails here, not in e2e
-            if(!f.is_open()) { continue; }
-            nlohmann::json doc = nlohmann::json::parse(f, nullptr, false);
-            CHECK(!doc.is_discarded());
-            if(doc.is_discarded() || !doc.contains("parts")) { continue; }
-            for(auto &&e : doc["parts"]) {
-                const std::string id = e.value("id", std::string(""));
-                const PartDef *pd = cat.find(e.value("part", std::string("")));
-                CHECK(pd != nullptr);
-                if(pd == nullptr) { continue; }
-                const std::string want = geomFingerprintHex(pd->geom_fingerprint);
-                const std::string have = e.value("geom", std::string(""));
-                if(id == fx.badId) { CHECK(have != want); }
-                else { CHECK(have == want); }
+        auto isDeliberate = [&](const std::string &path, const std::string &id) {
+            for(const GeomDrift &g : deliberateDrift) {
+                if(path == g.path && id == g.badId) { return true; }
+            }
+            return false;
+        };
+        int stamped = 0;
+        for(const auto &dir : std::filesystem::directory_iterator("e2e/fixtures")) {
+            if(!dir.is_directory()) { continue; }
+            const std::filesystem::path ships = dir.path() / "ships";
+            if(!std::filesystem::is_directory(ships)) { continue; }
+            for(const auto &entry : std::filesystem::directory_iterator(ships)) {
+                if(entry.path().extension() != ".json") { continue; }
+                const std::string path = entry.path().generic_string();
+                std::ifstream f(path);
+                CHECK(f.is_open());   // a fixture that moved fails here, not in e2e
+                if(!f.is_open()) { continue; }
+                nlohmann::json doc = nlohmann::json::parse(f, nullptr, false);
+                CHECK(!doc.is_discarded());
+                if(doc.is_discarded() || !doc.contains("parts")) { continue; }
+                for(auto &&e : doc["parts"]) {
+                    const std::string id = e.value("id", std::string(""));
+                    const std::string slug = e.value("part", std::string(""));
+                    const PartDef *pd = cat.find(slug);
+                    if(pd == nullptr) { continue; }   // the unknown-slug fixtures are the point
+                    const std::string want = geomFingerprintHex(pd->geom_fingerprint);
+                    const std::string have = e.value("geom", std::string(""));
+                    if(have.empty()) { continue; }   // authored fixture: not stamped, not checked
+                    ++stamped;
+                    if(isDeliberate(path, id)) { CHECK(have != want); continue; }
+                    if(have != want) {
+                        // Print the fix rather than making anyone re-derive it: the mesh is
+                        // the usual cause, and the two hexes are what to search and replace.
+                        printf("stale geom: %s id=%s part=%s mesh=%s recorded %s, catalog now "
+                               "%s\n", path.c_str(), id.c_str(), slug.c_str(),
+                               pd->mesh.c_str(), have.c_str(), want.c_str());
+                    }
+                    CHECK(have == want);
+                }
             }
         }
+        // The sweep only means something if it actually found stamped parts.
+        CHECK(stamped >= 20);
     }
 
     /* Per-part extents (#457): the mesh's own bounding box, read off the mesh
