@@ -6,7 +6,6 @@ direction +Y, strut up +Z. The surface-attach node is authored at the strut top
 (parts.json "nodes"), so the gear hangs below a fuselage belly.
 """
 import argparse
-import os
 
 import numpy as np
 import trimesh

@@ -10,7 +10,6 @@ platform needs ~13,500 m3 of helium; six balloons r=8.5 m carry ~15,400 m3
 (~14% margin). Tethers ~60 m for visual impact.
 """
 import argparse
-import os
 import numpy as np
 import trimesh
 

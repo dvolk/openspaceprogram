@@ -4,7 +4,6 @@ Simple v1 shapes (the torus-hab collision case is noted in the plan). Authored i
 the building's local frame; body-fixed attitude points local +Z at the planet.
 """
 import argparse
-import os
 import numpy as np
 import trimesh
 

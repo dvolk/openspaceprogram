@@ -8,7 +8,6 @@ thin along X with its hull-side face carrying the surface node (parts.json
 child's +Z along the parent's stack axis (shipdef.cpp surfaceMatingRot).
 """
 import argparse
-import os
 
 import numpy as np
 import trimesh

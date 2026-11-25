@@ -10,7 +10,6 @@ Size variants (#1078): --length <L> --name ladder_<L>m writes only
 meshes/<name>.obj -- the grey texture is shared with the base part."""
 
 import argparse
-import os
 
 from gen_out import add_args, ship
 

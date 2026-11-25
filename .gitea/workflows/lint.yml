@@ -35,8 +35,9 @@ jobs:
       # One gate step: test-gen takes lint as a prerequisite, so the log shows both and
       # nothing runs twice.
       - run: make test-gen
-      # The no-module half of the art gate (#1051, #1170): the shipped meshes against the
-      # paintability table, regenerating nothing. The regeneration half needs trimesh, so
-      # it lives in `make test` (test-art) instead; this step costs 0.03 s and catches a
-      # committed mesh that triangulated its walls or collapsed its UVs.
+      # The no-module half of the art gate (#1051, #1170, #1178): the shipped meshes against the
+      # paintability and house-style tables, regenerating nothing. The regeneration half needs
+      # trimesh, so it lives in `make test` (test-art) instead. This step costs 0.13 s over the
+      # 82 shipped meshes and catches a committed mesh that triangulated its walls, collapsed its
+      # UVs, or shades as one gradient instead of faces.
       - run: python3 utils/art/check_mesh_pins.py --committed

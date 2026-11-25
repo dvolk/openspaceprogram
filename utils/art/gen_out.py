@@ -18,6 +18,11 @@ import os
 # levels below it. Seven copies of that line is seven to move the next time the tree
 # changes, so they read it from here instead.
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# And say so out loud if this file ever sits somewhere else. ship() only refuses to
+# overwrite, so a root with no res/ under it would quietly create one: the loud failure each
+# generator used to have by deriving this line itself went away with the seven copies.
+assert os.path.isdir(os.path.join(REPO_ROOT, "res", "meshes")), \
+    "gen_out.REPO_ROOT resolved to %s, which has no res/meshes under it" % REPO_ROOT
 
 
 def add_args(ap, repo_root=REPO_ROOT):

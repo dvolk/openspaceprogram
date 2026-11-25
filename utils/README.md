@@ -83,6 +83,7 @@ drift pin: #186 was a Kuiper radius sitting 1.5x out for two days because nothin
   generators fail loudly, and the six that name their own output fail on the spot
   (`gen_out.ship()` refuses to replace a file that exists). In `art/` nobody re-derives it -- they
   import `REPO_ROOT` from `gen_out.py`.
-- A module opens by saying what it generates and where its source of truth is. 29 of the 34
-  top-level scripts use a docstring and 5 a `#` header; either is fine, having neither is not.
+- A module opens by saying what it generates and where its source of truth is. 13 of the 18
+  scripts at this level use a docstring and 5 a `#` header; all 21 under `art/` use a docstring.
+  Either is fine, having neither is not.
 - `art/check_mesh.py` inspects one mesh; `art/rescale_obj.py` rewrites one. No gate runs either.
