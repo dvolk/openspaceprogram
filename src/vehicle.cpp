@@ -5221,6 +5221,16 @@ void Vehicle::applyGroundForces(double h) {
     const glm::dvec3 com = get_center_of_mass();
     const glm::dvec3 vel = GetVelocity(hull);
     const glm::dvec3 omega = GetAngVelocity(hull);
+    /* The load the REST of this substep put on the hull, for the static hold
+       (src/wheel.h, #1184). tick.cpp runs gravity, control and air before this
+       call and integrates after it, so Bullet's accumulator is exactly that
+       list -- read ONCE, here, before the first contact pushes back into it.
+       Split across every contact the hull could hold with: like the momentum
+       clamps below, this uses the part counts rather than this substep's touch
+       count, so a hull standing on three of four legs under-holds a little
+       instead of over-holding. */
+    const size_t holders = gearParts.size() + legParts.size();
+    const glm::dvec3 holdShare = GetAccumulatedForce(hull) / (double)holders;
     for(Part *p : gearParts) {
         const PartDef &d = *p->def;
         glm::dvec3 axle; glm::dmat3 pRot;
@@ -5268,6 +5278,8 @@ void Vehicle::applyGroundForces(double h) {
         in.forward      = f;
         in.contactVel   = vRel + glm::cross(omega, rel);
         in.brake        = brakesOn ? 1.0 : 0.0;
+        in.push         = holdShare;   // the wheel answers a steady load across it,
+                                       // and fore-and-aft only while braked (#1184)
         /* The momentum this contact may spend stopping the slip in ONE substep
            (wheel.h, #770). Measured at THIS patch -- a tangential push here also
            buys pitch, so the linear mass alone is too generous -- and divided
@@ -5334,6 +5346,8 @@ void Vehicle::applyGroundForces(double h) {
         in.forward      = f;
         in.contactVel   = vRel + glm::cross(omega, rel);
         in.brake        = 1.0;
+        in.push         = holdShare;   // a footpad holds in every tangential
+                                       // direction (#1184)
         /* The momentum clamps, same pot as the gear (#770/#862), split across
            the legs. A hull with BOTH gear and legs touching spends slightly
            more than the one pot (two denominators); rare, and the softer

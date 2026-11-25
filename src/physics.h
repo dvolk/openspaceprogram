@@ -77,6 +77,13 @@ void AddPhysicsBody(Body *body);
 void ApplyForce(Body *body, glm::dvec3 rel, glm::dvec3 force);
 void ApplyCentralForce(Body *body, glm::dvec3 force);
 void ApplyTorque(Body *body, glm::dvec3 torque);
+/* N: everything this body's appliers have handed it SO FAR this substep --
+   gravity, control, air -- since Bullet clears the accumulator when it
+   integrates (physics_tick, after the applier loop in tick.cpp). The ground law
+   reads it once per substep so a contact can ANSWER a steady load instead of
+   only damping one: src/wheel.h's static hold (#1184). Read it before the ground
+   adds its own share, or the hold starts cancelling the ground. */
+glm::dvec3 GetAccumulatedForce(Body *body);
 /* the body's local moment-of-inertia diagonal (kg m^2), from its shape at its
    current mass */
 glm::dvec3 getInertiaDiag(Body *body);

@@ -455,6 +455,15 @@ void ApplyTorque(Body *body, glm::dvec3 torque) {
     getRigidBody(body)->applyTorque(btVector3(torque.x, torque.y, torque.z));
 }
 
+glm::dvec3 GetAccumulatedForce(Body *body) {
+    // Bullet's per-step accumulator: everything applied since the last
+    // stepSimulation cleared it. Bullet's own contact solving has not run here
+    // (the game drives the hull with its own force appliers), so this is the
+    // applier loop's total -- which is what a static-friction hold needs.
+    const btVector3 &f = getRigidBody(body)->getTotalForce();
+    return glm::dvec3(f.getX(), f.getY(), f.getZ());
+}
+
 /* The shape's inertia diagonal at the Body's current mass. Read from the SHAPE,
    not a rigid body's stored props: a ship part has no rigid body. The
    per-kilogram figure is cached on the Body (Body::inertiaPerKg). */

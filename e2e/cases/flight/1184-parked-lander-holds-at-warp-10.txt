@@ -1,0 +1,28 @@
+NAME parked-lander-holds-at-warp-10
+CLAIM A legged hull parked on the pad stays parked when time accelerates: the wind pushes on it and its footpads hold it.
+KIND invariant
+ARGS --time-accel 10
+ARGS --startship racerlegs,res/ships/racer_legs.json,Kerbin,pad
+ARGS --timeout 25 --dbg-log --att-log --drag-log
+EXPECT [dbg]
+EXPECT [attlog]
+EXPECT [drag]
+# The load has to exist or the case proves nothing: Kerbin authors 5 m/s of
+# surface wind (res/systems/ksp_system.json), ~380 N of air on this hull at rest.
+CHECK len(dbg) > 5
+CHECK max(d["F"] for d in drag) > 100.0
+# #1184's crawl. The ground law damped slip but never HELD, so a parked hull sat
+# at load/gain: 0.05 m/s at this substep -- 21 m of track in three minutes of sim,
+# the pad edge, and then the fall (alt 8.4 -> 1.4 m). Warp only sets the rate: the
+# same hull crept 0.01 m/s at warp 1, and looked fine at warp 12+ only because
+# past kRailsWarp the hull rides rails and never reaches the ground law at all.
+CHECK abs(dbg[-1]["v"]) < 0.01
+CHECK (lambda cs: max(cs) - min(cs) < 0.5)([d["pos"][0] for d in dbg])
+CHECK (lambda cs: max(cs) - min(cs) < 0.5)([d["pos"][1] for d in dbg])
+CHECK (lambda cs: max(cs) - min(cs) < 0.5)([d["pos"][2] for d in dbg])
+CHECK max(d["alt"] for d in dbg) - min(d["alt"] for d in dbg) < 0.5
+# Under physics, not a rail: the LEGS are what hold it up.
+CHECK all(a["railed"] == 0 for a in att)
+CHECK all(a["wnorm"] < 0.01 for a in att[-5:])
+FORBID error:
+FORBID FAILED

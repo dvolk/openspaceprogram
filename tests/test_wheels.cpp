@@ -220,6 +220,131 @@ int main() {
                " capped %.0f N\n", h, damperRaw, dvRaw, v0, damperCap);
     }
 
+    /* STATIC FRICTION (#1184). A surface holds a patch still; it does not merely
+       damp it. Kerbin authors 5 m/s of surface wind, which is ~380 N of air on a
+       parked 2.2 t lander, and against a tire pair proportional to SLIP that
+       parked the hull at a permanent crawl -- load/gain, with the gain m/h from
+       the momentum budget above, so the crawl grew with the substep: 0.01 m/s at
+       warp 1, 0.05 m/s at warp 10, 21 m of track and the edge of the pad in three
+       minutes of sim. The pins below are that wind, in N, on a contact whose
+       whole friction circle (mu*N = 900 N here) is far bigger than the load. */
+    {
+        // A footpad (brake held on) answers a steady fore-and-aft load exactly.
+        wheel::Input pad = rest(0.1);            // N = 10000*0.1 = 1000, circle 900
+        pad.brake = 1.0;
+        pad.push = glm::dvec3(0.0, 500.0, 0.0);  // the substep's push, +forward
+        const glm::dvec3 held = wheel::force(pad);
+        CHECK_NEAR(held.y, -500.0, 1e-9, "the hold cancels the push, not a fraction of it");
+        CHECK_NEAR(held.z, 1000.0, 1e-9, "the suspension is untouched by it");
+
+        // A free wheel holds ACROSS itself but rolls fore-and-aft: otherwise a
+        // wheeled hull could never be pushed along its own wheels by the wind.
+        wheel::Input free_ = rest(0.1);
+        free_.push = glm::dvec3(0.0, 500.0, 0.0);
+        CHECK_NEAR(wheel::force(free_).y, 0.0, 1e-9, "unbraked: no fore-and-aft hold");
+        // l = n x f = -X, so a +X push is a -500 lateral demand, held back at +X.
+        free_.push = glm::dvec3(500.0, 0.0, 0.0);
+        CHECK_NEAR(wheel::force(free_).x, -500.0, 1e-9, "a free wheel still grips sideways");
+
+        // A push along the normal is the suspension's business, not the tire's.
+        wheel::Input down = rest(0.1);
+        down.brake = 1.0;
+        down.push = glm::dvec3(0.0, 0.0, -5000.0);
+        CHECK_NEAR(wheel::force(down).z, 1000.0, 1e-9, "no hold along the strut");
+        CHECK_NEAR(wheel::force(down).y, 0.0, 1e-9, "and no invented tangential force");
+
+        // The circle, not the momentum budget, bounds the hold. The old note here
+        // warned that a caller capping the pair at stopRate*|v| would cancel a
+        // hold in silence, so pin that the budget bounds only the velocity terms.
+        wheel::Input poor = rest(0.1);
+        poor.brake = 1.0;
+        poor.stopRate = 1.0;                     // a hull with almost no slip momentum
+        poor.push = glm::dvec3(0.0, 500.0, 0.0);
+        CHECK_NEAR(wheel::force(poor).y, -500.0, 1e-9,
+                   "a steady load is held even where the slip budget is nothing");
+
+        // Overwhelm it and the surface gives, at mu*N exactly.
+        wheel::Input slip = rest(0.1);
+        slip.brake = 1.0;
+        slip.push = glm::dvec3(0.0, 5000.0, 0.0);
+        CHECK_NEAR(wheel::force(slip).y, -wheel::kGrip * 1000.0, 1e-9,
+                   "past the circle the hull slides, at mu*N");
+
+        // One circle for the sum: damping and holding together cannot exceed it.
+        // The slip is inside the creep band (0.1 m/s) so the hold is live at all.
+        wheel::Input both = rest(0.1);
+        both.brake = 1.0;
+        both.push = glm::dvec3(600.0, 0.0, 0.0);      // 600 N of hold, sideways
+        both.contactVel = glm::dvec3(0.1, 0.0, 0.0);  // and 400 N of tire to damp
+        const glm::dvec3 tot = wheel::force(both);
+        const double tangential = std::sqrt(tot.x * tot.x + tot.y * tot.y);
+        CHECK_NEAR(tangential, wheel::kGrip * 1000.0, 1e-9,
+                   "the pair shares one mu*N rather than each getting one");
+        CHECK_NEAR(tot.z, 1000.0, 1e-9, "and the sum leaves the strut alone");
+    }
+
+    /* The hold is STICTION, so it only exists while the patch creeps (the same
+       kSlipEps band the tanh knee uses). An ungated hold answers a SLIDING
+       contact too, and that is a different bug with the same signature: a braked
+       hull rolling out is under kinetic friction, and cancelling this substep's
+       air force there silently deletes the drag from its stopping distance (and
+       a throttled braked plane from its acceleration). */
+    {
+        // 6 m/s of rolling under a 500 N fore-and-aft load: the load is not held.
+        wheel::Input roll = rest(0.1);
+        roll.brake = 1.0;
+        roll.contactVel = glm::dvec3(0.0, 6.0, 0.0);
+        roll.push = glm::dvec3(0.0, 500.0, 0.0);
+        const double withLoad = wheel::force(roll).y;
+        roll.push = glm::dvec3(0.0);
+        CHECK_NEAR(withLoad, wheel::force(roll).y, 1e-12,
+                   "a sliding wheel neither holds nor un-holds the substep's air");
+        CHECK_TRUE(withLoad < 0.0, "and it still brakes the roll");
+        CHECK_NEAR(withLoad, -(wheel::kRollResist + wheel::kBrakeGrip) * 1000.0, 1e-9,
+                   "the brake at full kinetic grip, unmodified");
+
+        // Same across the wheel: a drifting wheel grips by slip, not by holding.
+        // N is 5x here (compression 0.5) so mu*N = 4500 leaves the 1600 N of slip
+        // grip unscaled -- otherwise the circle clips both sides and the pin proves
+        // nothing.
+        wheel::Input drift = rest(0.5);
+        drift.brake = 1.0;
+        drift.contactVel = glm::dvec3(0.4, 0.0, 0.0);
+        drift.push = glm::dvec3(500.0, 0.0, 0.0);
+        const double drifted = wheel::force(drift).x;
+        drift.push = glm::dvec3(0.0);
+        CHECK_NEAR(drifted, wheel::force(drift).x, 1e-12, "no lateral hold past the band");
+        CHECK_NEAR(drifted, -wheel::kLatStiff * 0.4, 1e-9, "just the slip grip");
+
+        // The band edge: 0.2 m/s creeps (full hold), 0.4 m/s slides (none). The
+        // load is 400 N, not 500, because at 0.2 m/s of braked slip the tyre is
+        // already 478 N into mu*N = 900 and a bigger load would clip the circle
+        // instead of showing the hold.
+        wheel::Input edge = rest(0.1);
+        edge.brake = 1.0;
+        edge.push = glm::dvec3(0.0, 400.0, 0.0);
+        edge.contactVel = glm::dvec3(0.0, 0.2, 0.0);
+        const double creep = wheel::force(edge).y;
+        edge.push = glm::dvec3(0.0);
+        CHECK_NEAR(creep - wheel::force(edge).y, -400.0, 1e-9, "creeping: the hold is full");
+        edge.contactVel = glm::dvec3(0.0, 0.4, 0.0);
+        edge.push = glm::dvec3(0.0, 400.0, 0.0);
+        const double sliding = wheel::force(edge).y;
+        edge.push = glm::dvec3(0.0);
+        CHECK_NEAR(sliding - wheel::force(edge).y, 0.0, 1e-12, "sliding: no hold at all");
+
+        // A free wheel holds ACROSS itself at rest, so the gate is about slip, not
+        // about the brake: without this, a wheeled hull would weathervane downwind.
+        wheel::Input parked = rest(0.1);
+        parked.contactVel = glm::dvec3(0.0, 0.2, 0.0);   // rolling free, slowly
+        parked.push = glm::dvec3(500.0, 0.0, 0.0);       // and a crossload on it
+        CHECK_NEAR(wheel::force(parked).x, -500.0, 1e-9,
+                   "a slow free wheel still grips sideways");
+        CHECK_NEAR(wheel::force(parked).y,
+                   -wheel::kRollResist * 1000.0 * std::tanh(0.2 / wheel::kSlipEps), 1e-9,
+                   "and rolls fore-and-aft: rolling resistance only, no hold");
+    }
+
     printf("test_wheels: %d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }
