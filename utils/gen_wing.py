@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """Generate a wing/fin .obj: a flat plate (span X, chord +Z, thickness Y).
-Shared verts + smooth normals keep the mesh watertight (for volume/mass); CCW winding.
+Shared verts keep the mesh watertight (for volume/mass). The normals are corner-AVERAGED
+today, which is the bug in #1178: averaging makes a board read as one soft gradient, so no
+face edge is readable. Per-FACE normals are the fix.
 
 Axes are the SURFACE-MOUNT frame, because that is how a plate part is used: the
 synthesized surface node sits at -radius (shipdef.h synthesizeNodes), so -X is
 the hull side and +X is outboard, and the mating rotation lays the part's +Z
 along the parent's stack axis (shipdef.cpp surfaceMatingRot). So X = the span
-(root at the hull, tip outboard) and Z = the chord (fore-aft). res/meshes/
-wing.obj predates this naming -- it is 2x2, so only its orientation, not its
-size, would change if regenerated."""
+(root at the hull, tip outboard) and Z = the chord (fore-aft)."""
 
 import argparse
 import math

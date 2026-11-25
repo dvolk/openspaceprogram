@@ -145,9 +145,6 @@ UNPINNED = {
     "meshes/engine_r0.25h1_shroud.obj":
         "header copies r=0.98 h=2 from engine_shroud.obj; the file is a different cylinder "
         "(64 of 194 lines differ), so the header is a lie",
-    "meshes/wing.obj":
-        "gen_wing.py with the recorded delta defaults is 4 bytes and 13 lines off, so the "
-        "committed plate is not what the script writes today",
     "textures/terrain_detail.png":
         "gen_terrain_detail.py regenerates a 4.5 KB image against a 6.3 MB committed one -- "
         "different size/format, so the shipped map is not this script's output today",
@@ -487,6 +484,12 @@ def main():
             if not os.path.exists(os.path.join(REPO, "res", rel)):
                 print("FAIL: pinned asset is gone: res/%s" % rel)
                 return 1
+    # The other direction: an excuse naming a file that has been deleted leaves the coverage
+    # check accounting for an asset that no longer exists, so the pile still looks closed.
+    for rel in UNPINNED:
+        if not os.path.exists(os.path.join(REPO, "res", rel)):
+            print("FAIL: unpinned excuse names an asset that is gone: res/%s" % rel)
+            return 1
 
     st_fail = self_test()
     drift = list(st_fail)
