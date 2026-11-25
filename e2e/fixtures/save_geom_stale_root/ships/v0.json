@@ -54,7 +54,7 @@
         0.0,
         0.0
       ],
-      "geom": "fee5c00de77ca96e",
+      "geom": "90e639e8e5f6f0dc",
       "id": "reaction_wheel_1",
       "parent": 1,
       "part": "reaction_wheel",
@@ -77,7 +77,7 @@
         0.0,
         0.0
       ],
-      "geom": "b784b012319f8af9",
+      "geom": "7ee642a820f1996f",
       "id": "fuel_tank_1",
       "parent": 2,
       "part": "fuel_tank",
@@ -100,7 +100,7 @@
         0.0,
         0.0
       ],
-      "geom": "aeca0efd6dea53ef",
+      "geom": "14e4bfcf0f9d7fc0",
       "id": "engine_1",
       "parent": 3,
       "part": "engine",

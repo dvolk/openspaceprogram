@@ -1111,26 +1111,40 @@ struct PartsCatalog {
 PartsCatalog load_parts_catalog(const char *path);
 ShipDef load_ship_def(const char *path, const PartsCatalog &catalog);
 
-/* A part's mesh file read ONCE: the bytes the fingerprint hashes and the
-   bounding box of its vertices. load_parts_catalog calls this per part and
-   feeds both halves, so a part costs one file read rather than two. */
+/* A part's mesh file read ONCE: the bounding box of its vertices (#457) and the
+   vertex digest the fingerprint mixes (#1182). load_parts_catalog calls this per
+   part and feeds both, so a part costs one file read rather than two. */
 struct MeshGeom {
     bool readable = false;     // false -> no file (the catalog never required one)
     bool hasExtents = false;   // false -> no vertex line in it
     glm::dvec3 lo = glm::dvec3(0.0);
     glm::dvec3 hi = glm::dvec3(0.0);
-    std::string bytes;         // exact contents, hashed verbatim
+    std::string bytes;         // exact contents; the scan reads them, the fingerprint does not
+    size_t vertLines = 0;      // 'v' lines seen, whether or not they parsed
+    uint64_t vertDigest = 0;   // a multiset hash of the parsed vertices, as assimp stores them
 };
 MeshGeom readMeshGeom(const std::string &meshSubpath);
 
-/* FNV-1a over everything that decides a part's SHAPE: the mesh FILE's bytes,
-   radius, height, and every attach node (id, pos, dir, surface). load_parts_
-   catalog computes it once per part; a save records it (save.h, #456) so a
-   parts-file or mesh change that would reshape a saved ship is refused instead
-   of rebuilding the ship silently wrong.
-   A mesh file that cannot be read folds in an empty stream rather than
-   throwing: the catalog never required the file to exist, and a file that shows
-   up later moves the fingerprint -- which is the point.
+/* The vertex scan readMeshGeom runs over the file it read, split out so a test can
+   feed text directly and say what a digest is blind to (precision) and what it is
+   not (a moved vertex). `g.bytes` must already hold the text. */
+void scanMeshGeom(MeshGeom &g);
+
+/* FNV-1a over everything that decides where a part's solved poses sit: the mesh's
+   VERTEX POSITIONS (not the file's bytes -- #1182: a normals-only or comment-only
+   edit moved every fingerprint and a save then refused while claiming the geometry
+   had changed), its radius and height, and every attach node (id, pos, dir,
+   surface). load_parts_catalog computes it once per part; a save records it (save.h,
+   #456) so a parts-file or mesh change that would reshape a saved ship is refused
+   instead of rebuilding the ship silently wrong.
+   Components are hashed as float, which is what assimp stores and what the collision
+   hull is built from: a re-export that adds digits without changing the float leaves
+   the fingerprint alone, which is the point of #1182. What that gives up on purpose:
+   a re-triangulation or a winding flip keeps the vertex set and so keeps the
+   fingerprint, while it does change how the part draws -- a saved pose does not care.
+   A mesh file that cannot be read folds in one stable value rather than throwing:
+   the catalog never required the file to exist, and a file that shows up later moves
+   the fingerprint -- which is the point.
    Not covered: what a part's geometry DOES rather than where it sits -- its
    drag and lift areas, and the chute canopy anchor (shipdef.h puts it at
    height/2 + 0.75*sqrt(chute_area), so retuning chute_area visibly moves the

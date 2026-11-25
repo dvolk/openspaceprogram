@@ -1,6 +1,7 @@
 #include "shipdef.h"
 
 #include <cassert>
+#include <bit>          // bit_cast: a float corner's bits, for the geometry digest
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -193,24 +194,37 @@ static glm::dvec3 parse_vec3(const nlohmann::json &obj, const char *key,
    how far it stuck out. a27bcd1 is the repro: the wing's mesh went 2x2 -> 4x2
    and its radius 1.0 -> 2.0, so every pre-commit save rebuilds its wings 1 m
    inside the fuselage, +30 kg and +6 m2 of lift each, with nobody told.
-   The mesh goes in as the FILE's bytes rather than parsed vertices: assimp is
-   not in this translation unit (the parse stays GL-free and headless-testable),
-   and an in-place edit and a swapped path are the same event to a save. The cost
-   is that a re-export changing only comments or float precision moves the value
-   too -- a false refusal, which is the safe direction: it costs a sentence
-   rather than flying a ship nobody built. */
-/* Bump when the SHAPE a mesh file yields changes without the file's bytes
-   changing. A saved pose was solved against the hull assimp BUILT from the .obj
+   The mesh goes in as its VERTEX POSITIONS, hashed as a multiset (each vertex
+   hashed on its own, then summed), and each component taken as the float assimp
+   stores. #1182: hashing the file's bytes instead meant a normals-only edit --
+   Stage 1 of reports/art-regen2026_11_25 rewrote twelve .obj files' `vn` lines
+   and no coordinate -- moved every fingerprint, and a save then refused with
+   "geometry is not what this save recorded" about geometry that had not moved.
+   Multiset rather than in-order: a re-export that lists the same vertices in a
+   different order is the same hull, and physics builds btConvexHullShape from the
+   vertex set, so order is not something a pose can depend on.
+   What this gives up on purpose, against the alternatives:
+   - a re-triangulation or a winding flip keeps the vertex set and so the
+     fingerprint. It changes how a part draws, never where a child was bolted.
+   - a volume (or extents) summary would be cheaper to read in a log, but it
+     cannot see a shape change that preserves the scalar, and we ship a pair that
+     proves the point: adapter_r1.5to1 and adapter_r1to1.5 are different parts with
+     IDENTICAL frustum volume, because that formula is symmetric in the two radii.
+     A flipped adapter is exactly the reshape #456 exists to refuse. */
+/* Bump when the SHAPE a mesh file yields changes without anything the fingerprint
+   reads changing. A saved pose was solved against the hull assimp BUILT from the .obj
    (vab.cpp raycasts body->hullVerts, part.cpp feeds get_mesh through
    mesh.cpp's post-processing flags), so an assimp pin bump or a flag change
    moves every hull and leaves every .obj byte identical -- #456's failure mode
    with nothing in the file to see it. This is also the lever for any change to
    what partGeomFingerprint itself covers: bump it and every existing save says
-   so in words, rather than as a pair of meaningless hex numbers. */
-static const uint64_t kGeomEpoch = 1;
+   so in words, rather than as a pair of meaningless hex numbers.
+   1 -> 2 for #1182 (file bytes -> vertex positions), 2026-11-25: every save written
+   before that commit refuses once, in words, and re-saving stamps the new value. */
+static const uint64_t kGeomEpoch = 2;
 
-/* A part's mesh file, read once: the bytes that go into geom_fingerprint and
-   the bounding box of its vertices (#457). Both are properties of the FILE, so
+/* A part's mesh file, read once: the vertices that go into geom_fingerprint, and the
+   bounding box of the same (#457). Both are properties of the FILE, so
    the 19 catalog entries that share a mesh with another entry could share this
    read too; they do not, because the whole catalog parse costs ~3 ms and a
    cache would be the only thing in it. */
@@ -244,6 +258,14 @@ MeshGeom readMeshGeom(const std::string &meshSubpath) {
         g.readable = false;
         return g;
     }
+    scanMeshGeom(g);
+    return g;
+}
+
+/* The vertex scan readMeshGeom runs over the bytes it read, split out so a test can
+   feed it text and say what the digest is blind to (precision, corner order) and what
+   it is not (a corner that moved). `g.bytes` must already hold the file's text. */
+void scanMeshGeom(MeshGeom &g) {
     /* The vertices, scanned out of the same bytes: a vertex line is 'v' at the
        start of a line plus three floats, which is how assimp reads them too, and
        the aiProcess flags mesh.cpp passes (CalcTangentSpace/Triangulate/
@@ -257,8 +279,7 @@ MeshGeom readMeshGeom(const std::string &meshSubpath) {
        that moves the hull is what kGeomEpoch is for.
        Scanned by hand rather than with getline + an istringstream per line: that
        version cost ~5 ms over the catalog, several times the hash over the same
-       bytes, for a boot-only step. An unparseable line only costs an extent, not
-       the hash, which still covers the exact bytes. */
+       bytes, for a boot-only step. */
     char *base = g.bytes.data();
     char *end = base + g.bytes.size();
     for(char *p = base; p < end; ) {
@@ -277,7 +298,25 @@ MeshGeom readMeshGeom(const std::string &meshSubpath) {
                 if(stop == q) { ok = false; break; }
                 q = stop;
             }
+            g.vertLines++;
             if(ok) {
+                /* The mesh half of partGeomFingerprint (#1182): this corner as assimp
+                   stores it -- float, which is also what the collision hull is built
+                   from. So a vertex line that only gains digits leaves the fingerprint
+                   alone and one that shifts by more than a float ulp moves it. Hashed
+                   per corner and SUMMED rather than mixed in sequence: physics builds a
+                   btConvexHullShape from the vertex SET, so a re-export that lists the
+                   same corners in another order is the same hull. A line that will not
+                   parse still counts in vertLines and adds nothing to the digest, so a
+                   mangled vertex moves the pair rather than hiding in it. */
+                uint64_t vh = fnv::start();
+                for(int k = 0; k < 3; k++) {
+                    // + 0.0f: -0.0 and 0.0 are the same corner, but not the same bits,
+                    // and a generator's formatter can flip one without touching shape.
+                    const float f = (float) val[k] + 0.0f;
+                    fnv::mix(vh, (uint64_t) std::bit_cast<uint32_t>(f));
+                }
+                g.vertDigest += vh;
                 const glm::dvec3 v(val[0], val[1], val[2]);
                 if(!g.hasExtents) {
                     g.lo = g.hi = v;
@@ -292,7 +331,6 @@ MeshGeom readMeshGeom(const std::string &meshSubpath) {
         if(nl == nullptr) { break; }
         p = nl + 1;
     }
-    return g;
 }
 
 uint64_t partGeomFingerprint(const PartDef &d, const MeshGeom &mg) {
@@ -305,10 +343,11 @@ uint64_t partGeomFingerprint(const PartDef &d, const MeshGeom &mg) {
     if(!mg.readable) {
         fnv::mix(h, 0);
     } else {
-        for(size_t k = 0; k < mg.bytes.size(); k++) {
-            h = (h ^ (uint64_t)(unsigned char)mg.bytes[k]) * 1099511628211ull;
-        }
-        fnv::mix(h, (uint64_t)mg.bytes.size());
+        /* The corners, not the file's bytes (#1182). vertLines goes with the digest
+           so a file whose vertex lines changed COUNT moves even if two different
+           corner sets ever summed to the same value. */
+        fnv::mix(h, (uint64_t) mg.vertLines);
+        fnv::mix(h, mg.vertDigest);
     }
     /* Nodes last: they are usually synthesized from radius/height, and an
        authored set is exactly the kind of edit that moves a bolt point. */

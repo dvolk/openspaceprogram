@@ -32,7 +32,7 @@
         0.0,
         0.0
       ],
-      "geom": "a89ab8a179b54f2f",
+      "geom": "1176960b51f9e46c",
       "id": "pod",
       "part": "capsule_r0.5h1.5",
       "seats": [
@@ -69,7 +69,7 @@
         0.0,
         70.37
       ],
-      "geom": "d03662b0238b85e6",
+      "geom": "4ea9d76e397e5c5c",
       "id": "tank",
       "parent": 9,
       "part": "jet_tank_r0.4h2",
@@ -92,7 +92,7 @@
         0.0,
         0.0
       ],
-      "geom": "e0e92bbfa8a805db",
+      "geom": "3abb2e220d128042",
       "id": "engine",
       "parent": 10,
       "part": "jet_r0.25h1",
@@ -115,7 +115,7 @@
         0.0,
         0.0
       ],
-      "geom": "1397482ba8acfbc0",
+      "geom": "acbb7cccec2c1e74",
       "id": "wing_l",
       "parent": 10,
       "part": "wing_r4h1.5",
@@ -138,7 +138,7 @@
         0.0,
         0.0
       ],
-      "geom": "1397482ba8acfbc0",
+      "geom": "acbb7cccec2c1e74",
       "id": "wing_r",
       "parent": 10,
       "part": "wing_r4h1.5",
@@ -172,7 +172,7 @@
         0.0,
         0.0
       ],
-      "geom": "a92e996ce076bee7",
+      "geom": "06d479a5bd305879",
       "id": "tail_l",
       "parent": 11,
       "part": "wing_r1h1",
@@ -206,7 +206,7 @@
         0.0,
         0.0
       ],
-      "geom": "a92e996ce076bee7",
+      "geom": "06d479a5bd305879",
       "id": "tail_r",
       "parent": 11,
       "part": "wing_r1h1",
@@ -240,7 +240,7 @@
         0.0,
         0.0
       ],
-      "geom": "d2444d045cc14c9a",
+      "geom": "7593d9902aeb44c8",
       "id": "fin",
       "parent": 11,
       "part": "wing_r0.7h1",
@@ -274,7 +274,7 @@
         0.0,
         0.0
       ],
-      "geom": "d1609216581a80f8",
+      "geom": "83b986ed44e1b191",
       "id": "elev_l",
       "parent": 11,
       "part": "elevator_r0.8h0.7",
@@ -297,7 +297,7 @@
         0.0,
         0.0
       ],
-      "geom": "d1609216581a80f8",
+      "geom": "83b986ed44e1b191",
       "id": "elev_r",
       "parent": 11,
       "part": "elevator_r0.8h0.7",
@@ -331,7 +331,7 @@
         0.0,
         0.0
       ],
-      "geom": "0e8e9bef8baafc48",
+      "geom": "f7dedd9ee33b436d",
       "id": "rudder",
       "parent": 11,
       "part": "rudder_r0.6h0.8",
@@ -365,7 +365,7 @@
         0.0,
         0.0
       ],
-      "geom": "d1609216581a80f8",
+      "geom": "83b986ed44e1b191",
       "id": "ail_l",
       "parent": 12,
       "part": "aileron_r0.8h0.7",
@@ -388,7 +388,7 @@
         0.0,
         0.0
       ],
-      "geom": "d1609216581a80f8",
+      "geom": "83b986ed44e1b191",
       "id": "ail_r",
       "parent": 13,
       "part": "aileron_r0.8h0.7",
@@ -422,7 +422,7 @@
         0.0,
         0.0
       ],
-      "geom": "e3daf584430f877a",
+      "geom": "ea5dd8f0f9661428",
       "id": "nose_gear",
       "parent": 9,
       "part": "gear_nose",
@@ -456,7 +456,7 @@
         0.0,
         0.0
       ],
-      "geom": "e3daf584430f877a",
+      "geom": "ea5dd8f0f9661428",
       "id": "main_l",
       "parent": 10,
       "part": "gear",
@@ -490,7 +490,7 @@
         0.0,
         0.0
       ],
-      "geom": "e3daf584430f877a",
+      "geom": "ea5dd8f0f9661428",
       "id": "main_r",
       "parent": 10,
       "part": "gear",
