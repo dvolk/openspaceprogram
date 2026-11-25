@@ -12,16 +12,17 @@ wall's radial normal shades the flat end of a frustum as a shallow dome.
 Numbers this reports, measured on the shipped art (Blender 4.5.9):
 
   quad/ngon counts   the Blender-authored family (tank_r1h3.obj, capsule.obj) is 32 wall
-                     quads + 2 ngon caps, and the lofted generators (gen_adapter.py: the
-                     six adapters, capsule_cyl_r1h2) now match it. The other 31 generated
-                     meshes are still all triangles -- #1173.
+                     quads + 2 ngon caps, and the 18 meshes from gen_lathe.py (adapters,
+                     capsule, nose caps, shrouds) match it. Most of the other 64 meshes are
+                     still all triangles -- #1173.
   uv_islands         the two families differ here on purpose. The authored lathe keeps the
                      wall as one continuous strip, so capsule.obj and tank_r1h3.obj have 3
                      islands (wall + two caps); the generators give every face its own cell
                      (34 islands). Both are paintable. What is not paintable is 1 island
                      where there should be many: gen_fuselage.py points all 624 faces at
-                     one point (uv_area 0.000), and nose_cap.obj has 1 island of overlapping
-                     faces (uv_area 1.453) -- paint one panel, several change.
+                     one point (uv_area 0.000) -- paint one panel, several change. The
+                     lofted family used to read that way too (nose_cap.obj: 1 island,
+                     uv_area 1.453 over the canvas); gen_lathe.py gave it 33.
   uv_area            summed area of the islands over the 0..1 canvas. Over 1.0 means the
                      islands overlap each other.
   max_smooth_gap     the largest angle between a loop normal and its own face normal.

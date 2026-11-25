@@ -19,15 +19,14 @@ cell, so a cap got 3 to 6 times the texel density of the wall it meets: half the
 painted sharp and half blurred (#1176). Nose caps and shrouds got UVs that collapse to
 one point, so painting them cannot change the part at all (#1173).
 
-Here each face gets its OWN island, drawn congruent to itself -- a wall quad becomes a
-trapezoid of its true edge lengths, a cap becomes a disc of its true radius -- and every
-island shares one scale, chosen as the largest that packs the canvas. Congruent plus
-one scale is what makes texel density exactly equal across the part by construction,
-rather than an operator's approximation of it. The one exception is the flat ends of a
-solid: they are mating surfaces that nobody sees once the stack is built, and on a fat
-adapter two discs are over half the part's surface, so they are allowed to pack finer --
-never below half the wall's linear density, which is the gate's own ceiling on how far
-texel density may spread across one part.
+Here each face gets its OWN island, drawn congruent to itself -- a wall quad becomes an
+isosceles trapezoid of its true edge lengths, a cap becomes a disc of its true radius --
+and every island shares one scale, chosen as the largest that packs the canvas.
+Congruent plus one scale is what makes texel density exactly equal across the part by
+construction, rather than an operator's approximation of it: the gate measures the
+ratio and finds 1.00 on all 18 of these meshes. It costs a fatter adapter most of its
+canvas, because two discs are over half a fat adapter's surface, and the fix for that is
+a bigger canvas (#1173), not a thinner part.
 
 That rules out the continuous strip. A frustum's wall does not unroll into a
 rectangle: isometrically it is an annulus sector (200 deg for r1.5to1, 268 deg for
@@ -41,12 +40,6 @@ gen_adapter argued for: a painter's patch belongs to one face, and the mip filte
 
 import argparse
 import math
-
-# The art gate's floor for one face, in canvas texels (check_mesh_pins.py,
-# TOPO_MIN_FACE_TEXELS / CANVAS_PX). Named here rather than read from the gate so the gate
-# stays runnable without this file; if the two drift, the gate's message says which.
-CANVAS_PX = 512.0
-FLOOR_TEXELS = 1024.0
 
 
 def unit(v):
@@ -64,10 +57,10 @@ def cross(a, b):
             a[0] * b[1] - a[1] * b[0])
 
 
-def parse_profile(a):
+def parse_profile(ap, a):
     """The profile as [(radius, z), ...], low z first. --r1/--r2/--height is the
     two-ring shorthand every adapter already names."""
-    if a.profile:
+    if a.profile is not None:
         rings = []
         for tok in a.profile.split(","):
             tok = tok.strip()
@@ -77,9 +70,9 @@ def parse_profile(a):
                 r, z = tok.split("@")
                 rings.append((float(r), float(z)))
             except ValueError:
-                a.error("bad profile token %r: want radius@z" % tok)
+                ap.error("bad profile token %r: want radius@z" % tok)
         if len(rings) < 2:
-            a.error("profile needs at least two rings")
+            ap.error("profile needs at least two rings")
         rings.sort(key=lambda t: t[1])
         return rings
     if a.height is None:
@@ -95,10 +88,10 @@ def poly_area(poly):
     return abs(a) / 2.0
 
 
-def pack(shapes, margin, floor):
+def pack(shapes, margin):
     """Largest scale at which the shapes fit a unit canvas, with that scale's positions.
 
-    shapes is [(bbox_w, bbox_h, is_flat_end, polygon_area), ...]. Guillotine packing:
+    shapes is [(bbox_w, bbox_h, polygon_area), ...], one entry per face. Guillotine
     best-area fit, remainder split along whichever side has more left over, tried under
     several placement orders with the best result kept -- the order a bin packer sees the
     shapes in is worth 20% of the canvas here, and picking among five fixed orders is
@@ -106,29 +99,24 @@ def pack(shapes, margin, floor):
     solver's luck. A shelf packer, by contrast, gave every cap disc a row of its own and
     left the rest of that row empty: on a fat adapter that lost a third of the canvas.
 
-    The flat ends of a solid are mating surfaces: nobody sees them once the stack is
-    built, and on a fat adapter a pair of discs is over half the part's surface, so at
-    equal density they push the wall's resolution under the floor. So the ends are
-    allowed to give ground -- never past half the wall's linear density, which is the
-    ceiling the gate puts on texel-density spread. Returns (scale, end_scale, positions).
+    One scale for every island, because equal density is the whole point of the layout:
+    the flat ends of a stack are invisible once it is built, so a fatter end would be
+    worth less canvas than the wall, but thinning them is thinning the part's density.
+    If the canvas cannot hold the floor, the gate says so and the part is wrong.
+    Returns (scale, positions, turned).
     """
-    areas = [shapes[k][3] for k in range(len(shapes))]
-    walls = [a for k, a in enumerate(areas) if not shapes[k][2]]
-    min_wall = min(walls or areas)
+    areas = [shapes[k][2] for k in range(len(shapes))]
     keys = [lambda k: -max(shapes[k][:2]), lambda k: -shapes[k][1],
             lambda k: -shapes[k][0], lambda k: -areas[k], lambda k: areas[k]]
     orders = [sorted(range(len(shapes)), key=lambda k: (keyf(k), k)) for keyf in keys]
 
-    def fits(s, fs, order):
+    def fits(s, order):
         # Each island owns a gutter ring, so two neighbours keep 2*margin between their
         # polygons and the canvas edge keeps margin. A face may be laid on its side:
         # island orientation is free in uv space, and a wall quad rotated 90 deg fills a
         # short wide remainder that an upright one cannot.
-        cell = {}
-        for k in range(len(shapes)):
-            k_scale = s * (fs if shapes[k][2] else 1.0)
-            cell[k] = (shapes[k][0] * k_scale + 2.0 * margin,
-                       shapes[k][1] * k_scale + 2.0 * margin)
+        cell = [(shapes[k][0] * s + 2.0 * margin, shapes[k][1] * s + 2.0 * margin)
+                for k in range(len(shapes))]
         free = [(0.0, 0.0, 1.0, 1.0)]
         pos, turned = {}, {}
         for k in order:
@@ -145,6 +133,8 @@ def pack(shapes, margin, floor):
                 return None
             x, y, fw, fh = free[pick[1]]
             w, h = pick[2]
+            # add_face moved each polygon's bbox to (0, 0), so a cell of w x h holds it
+            # with margin to spare on all four sides rather than two.
             pos[k] = (x + margin, y + margin)
             turned[k] = (w, h) != (w0, h0)
             free.pop(pick[1])
@@ -156,34 +146,26 @@ def pack(shapes, margin, floor):
                 free.append((x + w, y, fw - w, h))
         return pos, turned
 
-    def largest(fs):
-        # Search each order independently: the fits are monotone in s, so a bisection per
-        # order finds its ceiling, and the best ceiling over orders is the layout.
-        best_scale, best_pos, best_turned = 0.0, None, None
-        for order in orders:
-            lo, hi, got = 0.0, 4.0, None
-            for _ in range(48):              # ~1e-14 on a uv coordinate: bytes pin stably
-                mid = (lo + hi) / 2.0
-                p = fits(mid, fs, order)
-                if p is None:
-                    hi = mid
-                else:
-                    lo, got = mid, p
-            if lo > best_scale:
-                best_scale, best_pos, best_turned = lo, got[0], got[1]
-        return best_scale, best_pos, best_turned
-
-    # Wall density is what the part is judged on, so ask first for a layout that holds it,
-    # and only thin the ends if the canvas cannot take it.
-    for fs in (1.0, 1.0 / math.sqrt(2.0), 0.6):
-        scale, pos, turned = largest(fs)
-        if (scale * scale) * min_wall >= floor or fs == 0.6:
-            return scale, fs, (pos or {}), (turned or {})
-    return 0.0, 0.6, {}, {}
+    # Search each order independently: the fits are monotone in s, so a bisection per
+    # order finds its ceiling, and the best ceiling over orders is the layout.
+    best_scale, best_pos, best_turned = 0.0, None, None
+    for order in orders:
+        lo, hi, got = 0.0, 4.0, None
+        for _ in range(48):                  # ~1e-14 on a uv coordinate: bytes pin stably
+            mid = (lo + hi) / 2.0
+            p = fits(mid, order)
+            if p is None:
+                hi = mid
+            else:
+                lo, got = mid, p
+        if lo > best_scale:
+            best_scale, best_pos, best_turned = lo, got[0], got[1]
+    return best_scale, best_pos, best_turned
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap = argparse.ArgumentParser(description="lathe a radius profile into a solid of "
+                                             "revolution for the lofted part family")
     ap.add_argument("dst", help="destination .obj")
     ap.add_argument("--profile", help='"radius@z" rings, low z first')
     ap.add_argument("--r1", type=float, default=1.0, help="radius at the -Z end")
@@ -197,12 +179,23 @@ def main():
                     help="gap between islands, as a fraction of the canvas")
     ap.add_argument("--name", default="Lathe", help="object name written into the file")
     a = ap.parse_args()
-    rings = parse_profile(a)
+    rings = parse_profile(ap, a)
     n = a.segments
-    if n < 3 or any(r < 0 for r, _ in rings):
-        ap.error("segments >= 3 and radii >= 0")
+    if n < 3:
+        ap.error("segments >= 3")
+    if any(r < 0.0 or not math.isfinite(r) for r, _ in rings) or \
+       any(not math.isfinite(z) for _, z in rings):
+        ap.error("profile radii must be finite and >= 0, and z finite")
     if any(z2 <= z1 for (_, z1), (_, z2) in zip(rings, rings[1:])):
         ap.error("profile z must strictly increase")
+    # A zero radius is the axis, so it belongs at an end of the profile (a cone, a nose
+    # cap) -- never between two rings, whose band would have no wall to stand on.
+    if all(r == 0.0 for r, _z in rings):
+        ap.error("a profile of nothing but axis is not a solid")
+    if any(r == 0.0 and i not in (0, len(rings) - 1) for i, (r, _z) in enumerate(rings)):
+        ap.error("a zero radius has to be the first or last ring of the profile")
+    if not 0.0 < a.margin <= 0.05:
+        ap.error("--margin is a fraction of the canvas: 0 < margin <= 0.05")
 
     ang = [2.0 * math.pi * i / n for i in range(n)]
     # A zero-radius ring is the axis: one vertex, not n coincident ones. That is what
@@ -230,6 +223,17 @@ def main():
     # that test too, but it hands the painter 32 slivers where there is one disc, and
     # the engine triangulates on import anyway.
     faces = []
+
+    def add_face(idx, poly):
+        # The packer gives an island a cell of its bbox size, so the polygon has to sit
+        # with its bbox at (0, 0). A cap disc built about the origin instead parks half
+        # of it outside the cell: off the canvas, or on top of a neighbour's island.
+        xs = [p[0] for p in poly]
+        ys = [p[1] for p in poly]
+        x0, y0 = min(xs), min(ys)
+        faces.append((idx, [(x - x0, y - y0) for (x, y) in poly],
+                      max(xs) - x0, max(ys) - y0))
+
     for b in range(len(rings) - 1):
         r_lo, z_lo = rings[b]
         r_hi, z_hi = rings[b + 1]
@@ -237,27 +241,36 @@ def main():
         if r_lo == 0.0 or r_hi == 0.0:
             # A cone band: one triangle per segment, congruent in UV -- base the chord
             # on the ring side, the legs the slant from the axis vertex.
-            rim, tip = (ring_idx[b], ring_idx[b + 1][0]) if r_hi == 0.0 \
+            tip_up = r_hi == 0.0
+            rim, tip = (ring_idx[b], ring_idx[b + 1][0]) if tip_up \
                 else (ring_idx[b + 1], ring_idx[b][0])
-            r = r_lo if r_hi == 0.0 else r_hi
+            r = r_lo if tip_up else r_hi
             base = chord(r)
             leg = math.hypot(dz, r)
             htri = math.sqrt(max(leg * leg - (base / 2.0) ** 2, 0.0))
             tri = [(0.0, 0.0), (base, 0.0), (base / 2.0, htri)]
             for i in range(n):
                 j = (i + 1) % n
-                idx = [rim[i], rim[j], tip] if r_hi == 0.0 else [tip, rim[i], rim[j]]
-                faces.append((idx, tri, base, htri, False))
+                # The rim edge has to run the opposite way to the band it meets, so the
+                # winding mirrors with which end of the axis the tip sits at: rim, rim+1,
+                # tip going up the +Z cone, rim, tip, rim+1 going down the -Z one.
+                idx = [rim[i], rim[j], tip] if tip_up else [rim[i], tip, rim[j]]
+                add_face(idx, tri)
             continue
         c_lo, c_hi = chord(r_lo), chord(r_hi)
         slant = math.hypot(dz, dr)
         off = (c_lo - c_hi) / 2.0
-        poly = [(0.0, 0.0), (c_lo, 0.0), (off + c_hi, slant), (off, slant)]
+        # The wall quad is planar -- an isosceles trapezoid with legs the slant -- but a
+        # trapezoid whose chords differ stands shorter than its leg by the offset they
+        # leave between the rim corners. Drawing it at the leg's full length would make
+        # the legs sqrt(off^2 + slant^2) and overstate the island's area, which is the
+        # density. |off| < |dr| <= slant, so the square root is always real.
+        rise = math.sqrt(slant * slant - off * off)
+        poly = [(0.0, 0.0), (c_lo, 0.0), (off + c_hi, rise), (off, rise)]
         for i in range(n):
             j = (i + 1) % n
-            faces.append(([ring_idx[b][i], ring_idx[b][j],
-                           ring_idx[b + 1][j], ring_idx[b + 1][i]], poly,
-                          max(c_lo, c_hi), slant, False))
+            add_face([ring_idx[b][i], ring_idx[b][j],
+                      ring_idx[b + 1][j], ring_idx[b + 1][i]], poly)
     for band, closed in ((0, a.caps in ("both", "base")),
                          (len(rings) - 1, a.caps in ("both", "top"))):
         if not closed or rings[band][0] == 0.0:
@@ -267,17 +280,13 @@ def main():
         idx = [ring_idx[band][k] for k in walk]
         order_ang = [ang[k] for k in walk]
         poly = [(r * math.cos(t), r * math.sin(t)) for t in order_ang]
-        faces.append((idx, poly, 2.0 * r, 2.0 * r, True))
+        add_face(idx, poly)
 
-    shapes = [(f[2], f[3], f[4], poly_area(f[1])) for f in faces]
-    wall_min = min([s[3] for s in shapes if not s[2]] or [s[3] for s in shapes])
-    scale, end_scale, origin, turned = pack(shapes, a.margin,
-                                            FLOOR_TEXELS / (CANVAS_PX * CANVAS_PX))
-    if end_scale != 1.0:
-        print("note: the flat ends pack at %.3f of the wall's uv scale (%.3f of its texel "
-              "density) so the wall's faces still address %.0f texels each"
-              % (end_scale, end_scale * end_scale,
-                 scale * scale * wall_min * CANVAS_PX * CANVAS_PX))
+    shapes = [(f[2], f[3], poly_area(f[1])) for f in faces]
+    scale, origin, turned = pack(shapes, a.margin)
+    if not origin:
+        ap.error("no uv layout fits: %d islands at margin %g exceed the canvas"
+                 % (len(faces), a.margin))
 
     # One normal per face: flat shading, as the authored parts do it, and the reason a
     # flat end stays flat under the light. Every face here is planar -- a band of a
@@ -285,7 +294,7 @@ def main():
     # corners carry the normal. Asserting it points away from the axis is what keeps the
     # winding conventions above honest: an inward face would shade as a hole.
     normals = []
-    for idx, _poly, _w, _h, _end in faces:
+    for idx, _poly, _w, _h in faces:
         nv = unit(cross(sub(verts[idx[1]], verts[idx[0]]), sub(verts[idx[2]], verts[idx[0]])))
         cx = sum(verts[i][0] for i in idx) / len(idx)
         cy = sum(verts[i][1] for i in idx) / len(idx)
@@ -293,23 +302,35 @@ def main():
         normals.append(nv)
 
     uvs = []
-    for k, (idx, poly, _w, _h, is_end) in enumerate(faces):
+    for k, (idx, poly, _w, _h) in enumerate(faces):
         ox, oy = origin[k]
-        k_scale = scale * (end_scale if is_end else 1.0)
         # A turned island enters the cell rotated a quarter turn: (u, v) -> (h - v, u).
         pts = [(_h - v, u) for (u, v) in poly] if turned[k] else poly
         for (u, v) in pts:
-            uvs.append((ox + u * k_scale, oy + v * k_scale))
+            uvs.append((ox + u * scale, oy + v * scale))
 
-    def base_of(k):
-        return sum(len(f[0]) for f in faces[:k])
+    # vt indices per face, as a running total instead of a rescan of the face list: the
+    # f lines are the file's bulk and this runs once per corner.
+    vbase, bases = 0, []
+    for f in faces:
+        bases.append(vbase)
+        vbase += len(f[0])
 
-    desc = ("profile " + ",".join("%g@%g" % t for t in rings) if a.profile
+    # The gate checks this on the shipped file; checking it here means a packing bug
+    # fails the build instead of shipping art that clips at the canvas edge.
+    for k in range(len(faces)):
+        span = uvs[bases[k]:bases[k] + len(faces[k][0])]
+        us = [p[0] for p in span]
+        vt = [p[1] for p in span]
+        assert (min(us) >= -1e-9 and max(us) <= 1.0 + 1e-9
+                and min(vt) >= -1e-9 and max(vt) <= 1.0 + 1e-9), \
+               "island %d of %d falls outside the canvas" % (k + 1, len(faces))
+
+    desc = ("profile " + ",".join("%g@%g" % t for t in rings) if a.profile is not None
             else "frustum r1=%g r2=%g h=%g"
                  % (rings[0][0], rings[-1][0], rings[-1][1] - rings[0][1]))
-    out = ["# generated by gen_lathe.py (%s segs=%d caps=%s uvscale=%.6f%s)"
-           % (desc, n, a.caps, scale,
-              "" if end_scale == 1.0 else " uvends=%.6f" % end_scale),
+    out = ["# generated by gen_lathe.py (%s segs=%d caps=%s uvscale=%.6f)"
+           % (desc, n, a.caps, scale),
            "o %s" % a.name]
     for v in verts:
         out.append("v %.6f %.6f %.6f" % v)
@@ -318,7 +339,7 @@ def main():
     for v in normals:
         out.append("vn %.6f %.6f %.6f" % v)
     for k, face in enumerate(faces):
-        out.append("f " + " ".join("%d/%d/%d" % (vi + 1, base_of(k) + j + 1, k + 1)
+        out.append("f " + " ".join("%d/%d/%d" % (vi + 1, bases[k] + j + 1, k + 1)
                                    for j, vi in enumerate(face[0])))
     out.append("")
     with open(a.dst, "w") as fh:
@@ -326,10 +347,9 @@ def main():
     quads = sum(1 for f in faces if len(f[0]) == 4)
     tris = sum(1 for f in faces if len(f[0]) == 3)
     print("%s: %d verts, %d faces (%d wall quads + %d cone triangles + %d cap ngons), "
-          "%d uv islands, uv scale %.4f%s"
+          "%d uv islands, uv scale %.4f"
           % (a.dst, len(verts), len(faces), quads, tris, len(faces) - quads - tris,
-             len(faces), scale,
-             "" if end_scale == 1.0 else " (ends %.4f)" % end_scale))
+             len(faces), scale))
 
 
 if __name__ == "__main__":

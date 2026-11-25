@@ -9,7 +9,7 @@ fuselage is, and it is one part with one Cd instead of four with four. The profi
 is the shape the Cd family assumes: no separation on the nose, a mild adverse
 gradient over the tail, and a base sized for the engine that bolts onto it.
 
-Same OBJ conventions as gen_nose_cap.py / gen_wing.py."""
+Same OBJ conventions as gen_lathe.py / gen_wing.py."""
 import argparse
 import math
 
