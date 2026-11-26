@@ -43,7 +43,8 @@ FORBID phase=failed
 # stage is 633.03 kg of it). Red here means 220 km is no longer a two-stage hop
 # on Moho, so re-derive the ask -- see the header -- rather than widen the bands.
 CHECK len(mass) >= 4
-CHECK abs(mass[0]["mass"] - 3516.62) < 1.0
+CHECK mass[0]["ship"] == "stager" and mass[0]["parts"] == 7 and abs(mass[0]["mass"] - 3516.62) < 1.0
+CHECK any(m["ship"] == "stager Decoupler (2m)" and m["parts"] == 3 and abs(m["mass"] - 633.03) < 1.0 for m in mass)
 # The mission the press exists for: the press row above says the stage was dry,
 # so without it the law has no thrust and the phase ends Failed with "the tanks
 # are dry". "done" is the staging result, not a coincidence of the profile.

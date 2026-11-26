@@ -17,6 +17,7 @@
 #include "btcommon.h"  // complete Bullet types (double precision)
 #include <BulletCollision/CollisionDispatch/btCollisionWorld.h>
 
+#include <cassert>
 #include <cmath>
 #include <numbers>
 
@@ -154,30 +155,23 @@ bool pickShipPart(Game &g, int px, int py,
 
 std::string aimAtPoint(Game &g, const glm::dvec3 &pS,
                        const std::function<bool(int, int)> &verify,
-                       double &sx, double &sy,
-                       const UiCoverTest &covered) {
+                       double &sx, double &sy, UiCoverTest covered) {
+    assert(covered != nullptr);   // pick.h: a spiral without the UI gate verifies pixels the game would refuse
     if(g.camera == nullptr) { return "no camera"; }
     double ox = 0, oy = 0;
     if(!projectPixel(g, pS, ox, oy)) { return "behind the camera"; }
     const int vw = g.camera->viewport_w, vh = g.camera->viewport_h;
-    /* "Aim here" only means something if a click HERE arrives, so `covered`
-       belongs in what makes a pixel clickable: imgui reports WantCaptureMouse
-       whenever one of its windows is under the cursor, and both mouse halves of
-       the editor (vabUpdate's hover, vabClickAfterUI's act) stand down on that.
-       tanker's engine_1 measured exactly this -- the aim verified at 960,647, the
-       Staging window covered it, and four cases lost their [vab] select
-       downstream (#1132). */
+    /* Why a pixel that picks the part can still be unclickable: see UiCoverTest
+       in pick.h (#1132). The first covering window is the one named on failure. */
     const char *cover = nullptr;
     auto hits = [&](int px, int py) {
         if(px < 0 || py < 0 || px >= vw || py >= vh) { return false; }
         if(!verify(px, py)) { return false; }
-        if(covered) {
-            const char *w = covered(px, py);
-            if(w != nullptr) { if(cover == nullptr) { cover = w; } return false; }
-        }
+        const char *w = covered(px, py);
+        if(w != nullptr) { if(cover == nullptr) { cover = w; } return false; }
         return true;
     };
-    if(hits((int)ox, (int)oy)) { sx = ox; sy = oy; return std::string(); }
+    if(hits((int)ox, (int)oy)) { sx = (int)ox; sy = (int)oy; return std::string(); }
     // Rings around the projected centre. A part's screen footprint is a few
     // tens of pixels at the editor's framing, so this reaches past any single
     // part while staying cheap (each probe is one pick over the ship).
@@ -190,15 +184,15 @@ std::string aimAtPoint(Game &g, const glm::dvec3 &pS,
         }
     }
     if(cover != nullptr) {
-        return std::string("every pixel that picks it stands under the ")
-             + cover + " window (move or close that window)";
+        return std::string("every pixel the spiral tried that picks it stands under the ")
+             + cover + " window (orbit so the part clears it, or TAB hides the windows)";
     }
     return "not clickable from this camera angle (orbit and aim again)";
 }
 
 std::string flightAimAtPart(Game &g, const std::string &shipName,
                             const std::string &partId, double &sx, double &sy,
-                            const UiCoverTest &covered) {
+                            UiCoverTest covered) {
     if(g.ship == nullptr) { return "no active ship to pick against"; }
     Vehicle *want = nullptr;
     for(Vehicle *s : g.vehicles) {

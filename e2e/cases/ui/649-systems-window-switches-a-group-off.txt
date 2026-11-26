@@ -88,9 +88,10 @@ EXPECT [uilist] window="Systems" label="  on   108843 N m (pitch/yaw disk)"
 FORBID FAILED
 FORBID error:
 # The mass behind the drum and nozzle figures on this hull (see ui/768 for the arithmetic).
-# Red here means the quoted N m are stale, not that a switch broke.
-CHECK len(mass) >= 4
-CHECK all(m["ship"] == "power_test" and abs(m["mass"] - 16997.28) < 1.0 for m in mass)
+# Red here means the quoted N m are stale, not that a switch broke. One reading, not the
+# whole run: ui/768 owns that claim, and a variant of this bed that burned or trimmed would
+# move later rows for reasons this case has nothing to do with.
+CHECK mass[0]["ship"] == "power_test" and abs(mass[0]["mass"] - 16997.28) < 1.0
 # The model's own answer, either side of the click, and in that order. Both columns on one
 # row: the live figure moved and the hardware figure did not, which is the pair the window
 # is built to show.

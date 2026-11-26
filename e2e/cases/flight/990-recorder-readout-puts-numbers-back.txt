@@ -95,8 +95,10 @@ CHECK (lambda m: 20.0 < float(m.group(4)) < 20.8 and abs(float(m.group(5)) + 90.
 # The other two columns, banded rather than trusted to the EXPECT: v and gamma are what a
 # still hull's integrator leaves behind, so the claim is "standing still", not the digits.
 CHECK (lambda m: abs(float(m.group(3))) < 0.05 and abs(float(m.group(6))) < 0.005)(re.search(r"\[recwin\] pin t=([\d.]+) alt_asl=([-\d.e+]+) v=([-\d.e+]+) q=([-\d.e+]+) aoa=([-\d.e+]+) gamma=([-\d.e+]+)", out))
-# And the rest height the mesh moves: a band, so a hull that starts standing a decimetre
-# off its pads reddens here instead of only breaking the digit line.
+# And the rest height the mesh moves: a band, so a hull that starts half a metre lower
+# or a metre and a half higher reddens here instead of only breaking the digit line.
+# Deliberately that loose: the digits above are the pin, and every art pass over the
+# engines moves this figure by decimetres (451d7093 moved it 0.478).
 CHECK (lambda m: 267.0 < float(m.group(2)) < 269.0)(re.search(r"\[recwin\] pin t=([\d.]+) alt_asl=([-\d.e+]+)", out))
 NAME recorder-readout-puts-numbers-back
 CLAIM Clicking the Recorder graph pins a readout of that sample's readings on the mission clock, a toggled-on channel appears in it, Unpin releases it, and a drag pans without pinning.

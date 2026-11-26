@@ -17,8 +17,12 @@ KIND invariant
 ARGS --timeout 4 --startship racer,res/ships/racer.json,Kerbin,pad
 FORBID error:
 CHECK (mm := re.search(r"\[mapfit\] Kerbin: body 600000 m, fit (\d+) m -> ([\d.]+) m/px", out)) is not None and 600200.0 < float(mm.group(1)) < 600350.0
-# (re-searched, not reused: each CHECK gets its own namespace)
-CHECK (mm := re.search(r"\[mapfit\] Kerbin: body 600000 m, fit (\d+) m -> ([\d.]+) m/px", out)) is not None and abs(float(mm.group(2)) - float(mm.group(1)) / 100.0) < 0.05
+# Re-searched rather than reusing the previous CHECK's mm: the runner evals every
+# CHECK against one shared namespace, so a reused walrus would work right up to the
+# moment the first CHECK's regex changes and this one quietly reads a stale match.
+# 0.06, not a tighter tie: the game prints the extent at %.0f and the scale at %.1f
+# (gameui.cpp), so the two roundings alone can sit 0.055 apart.
+CHECK (mm := re.search(r"\[mapfit\] Kerbin: body 600000 m, fit (\d+) m -> ([\d.]+) m/px", out)) is not None and abs(float(mm.group(2)) - float(mm.group(1)) / 100.0) < 0.06
 # The fit is the view a focus opens with, not a per-frame camera: one line for
 # the whole run, so a latch that re-fires every draw fails here.
 CHECK len(re.findall(r"\[mapfit\]", out)) == 1

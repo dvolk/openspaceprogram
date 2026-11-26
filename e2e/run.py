@@ -1034,8 +1034,12 @@ MISSING_OK_RE = re.compile(r"^#\s*missing-ok:\s*(\S+)")
 # action under (uiinput.cpp: the press at :481, the refusals at :182/:188, the
 # typed echo at :360). A case that schedules an action the game never reported did
 # not run the story its CHECKs weigh (#860), so the runner pairs them up.
+# --ui-focus belongs here too, even though its rows look nothing like the others
+# (parse_ui_focus): an aim can now fail outright -- every pixel that picks the part
+# stands under an imgui window (#1132) -- and a case that never noticed was red for
+# some downstream row instead of for the aim that never happened.
 UI_ACTION_FLAGS = {"--ui-click": "uiclick", "--ui-scroll": "uiscroll",
-                   "--ui-type": "uitype"}
+                   "--ui-type": "uitype", "--ui-focus": "uifocus"}
 
 
 def fixture_path(token):
@@ -2233,6 +2237,27 @@ def parse_ui_actions(out):
     return clicks, types, scrolls
 
 
+# The aim's own report (events.cpp: aimed at :110, refused at :104, and the CUR
+# re-aim at :162/:170). There is no widget path here: the game projects the named
+# PART to a pixel, so the row's "path" is the part the case asked for.
+UIFOCUS_ROW_RE = re.compile(r"^\[uifocus\] '([^']*)' "
+                            r"(?:re-aim )?(-> -?\d+,-?\d+|FAILED .*)$", re.MULTILINE)
+
+
+def parse_ui_focus(out):
+    """Every [uifocus] row, in the row shape ui_action_gaps reads. A re-aim row
+    counts as that part's aim too: the case scheduled one aim and the game answered
+    it again on the CUR frame, which only ever adds rows, never hides one."""
+    rows = []
+    for m in UIFOCUS_ROW_RE.finditer(out):
+        part, tail = m.group(1), m.group(2)
+        refused = tail.startswith("FAILED ")
+        rows.append({"path": part, "ok": not refused,
+                     "why": tail[len("FAILED "):] if refused else None,
+                     "line": m.group(0), "tag": "uifocus"})
+    return rows
+
+
 def ui_actions(args):
     """The UI actions a case schedules, as [(flag, tag, path)] in schedule order.
     Read off the tokenized ARGS, which is what the game receives: the value is
@@ -2759,6 +2784,7 @@ def run_case(case):
     slew = parse_scoped(world, parse_slew)
     shipswitch = parse_shipswitch(world)
     uiclick, uitype, uiscroll = parse_ui_actions(out)
+    uifocus = parse_ui_focus(out)
     perf = parse_perf(out)
     toast = parse_toast(out)
     simreport = parse_sim_report(out)
@@ -2790,6 +2816,7 @@ def run_case(case):
         "shipswitch": shipswitch,
         # Every scripted UI action the game admitted to, whole-run like toast/scene.
         "uiclick": uiclick, "uitype": uitype, "uiscroll": uiscroll,
+        "uifocus": uifocus,
         "perf": perf,
         "scene": scene,
         "toast": toast,
@@ -2845,12 +2872,13 @@ def run_case(case):
     # `FORBID FAILED` turned a missed click red, and then for the wrong reason (the
     # substring, not the story). Both halves are named here.
     missed, refused = ui_action_gaps(ui_actions(case["args"]),
-                                     uiclick + uitype + uiscroll, case["expect"])
+                                     uiclick + uitype + uiscroll + uifocus,
+                                     case["expect"])
     for flag, tag, path in missed:
         diag.append("%s: the case asked for %s ...,%r and the game never reported it -- "
                     "no [%s] line for that path, so whatever the CHECKs weigh, this run "
-                    "never clicked it (a schedule runs on wall time while the UI advances "
-                    "on sim time) (#860)" % (tag, flag, path, tag))
+                    "never ran that action (a schedule runs on wall time while the UI "
+                    "advances on sim time) (#860)" % (tag, flag, path, tag))
     for r in refused[:3]:
         diag.append("%s: the game refused a scripted UI action the case did not ask for "
                     "-- pin it with an EXPECT if the refusal is the point: %s"
@@ -3650,6 +3678,31 @@ def self_test():
             [("--ui-click", "uiclick", "fixtures")], []):
         fails.append("a click the game never reported is not named: %r"
                      % (ui_action_gaps(ui_specs, all_rows, pinned)[0],))
+    # --ui-focus reports the same two unreal halves in a row shape of its own: the
+    # aim prints "-> x,y" when it found a pixel a click can reach and FAILED when it
+    # did not (since #1132, that includes every pixel standing under an imgui
+    # window). A CUR re-aim answers the same part twice, and a refusal the case did
+    # not pin is the case's business even when nothing else went missing.
+    focus_rows = parse_ui_focus(
+        "[uifocus] 'skiff_trim/pod' -> 960,540\n"
+        "[uifocus] 'tanker/engine_1' FAILED every pixel the spiral tried that "
+        "picks it stands under the Staging window\n"
+        "[uifocus] 'racer/pod' re-aim FAILED not clickable from this camera angle")
+    if [(r["path"], r["ok"]) for r in focus_rows] != [
+            ("skiff_trim/pod", True), ("tanker/engine_1", False),
+            ("racer/pod", False)]:
+        fails.append("the [uifocus] rows are not the three the log printed: %r"
+                     % (focus_rows,))
+    if ui_actions(shlex.split("--ui-focus 2000,skiff_trim/pod")) != [
+            ("--ui-focus", "uifocus", "skiff_trim/pod")]:
+        fails.append("a scheduled --ui-focus was not read off ARGS")
+    focus_missed, focus_refused = ui_action_gaps(
+        ui_actions(shlex.split("--ui-focus 1000,skiff_trim/pod "
+                               "--ui-focus 2000,tanker/engine_1")),
+        focus_rows, ["'tanker/engine_1' FAILED"])
+    if focus_missed or [r["path"] for r in focus_refused] != ["racer/pod"]:
+        fails.append("an unpinned aim refusal is not named: %r / %r"
+                     % (focus_missed, focus_refused))
     missed, refused = ui_action_gaps(ui_specs, all_rows, [])
     if len(refused) != 1 or refused[0]["path"] != "Settings/Apply DPI":
         fails.append("a FAILED line with no EXPECT behind it is not named: %r"

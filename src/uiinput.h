@@ -57,10 +57,12 @@ void uiTextDisabled(const char *fmt, ...) IM_FMTARGS(1);
 void uiTextId(const char *shown, const char *id);
 
 /* Which imgui window would take a click at this pixel, or nullptr when the 3D
-   view under it would. Mirrors FindHoveredWindowEx's gate -- WasActive, not
-   Hidden, no NoMouseInputs, inside OuterRectClipped -- because that is exactly
-   what makes io.WantCaptureMouse true, which is what vabClickAfterUI and the
-   flight pick refuse a click on. Runs before the frame's imgui pass, so it
-   reports the previous frame's layout: the same one-frame lag the VAB hover
-   already lives with. */
+   view under it would. Calls ImGui::FindHoveredWindowEx -- the same function
+   UpdateHoveredWindowAndCaptureFlags uses -- so the padding, z-order and flag
+   exemptions cannot drift from imgui. While any popup is open it names the top
+   popup: imgui sets WantCaptureMouse from `has_open_popup` alone, so no world
+   pixel is clickable then (imgui.cpp:5546). That is exactly what
+   vabClickAfterUI and the flight pick refuse a click on. Runs before the frame's
+   imgui pass, so it reports the previous frame's layout -- one frame behind the
+   VAB's own gate, exact in flight. */
 const char *uiWindowAtPixel(int px, int py);

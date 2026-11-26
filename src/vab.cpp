@@ -96,9 +96,8 @@ std::string nextBuildId(const BuildShip &bs, const std::string &base, int &n) {
 /* Where part <id> can be CLICKED, for --ui-focus. The spiral in aimAtPoint is
    load-bearing, not decoration: tanker's part 1 projects to 960,540 from the
    default VAB view and the pick there returns part 3, so the projection alone
-   would aim a click at the wrong part. uiWindowAtPixel is the other half of
-   "clickable": a pixel under one of imgui's windows never reaches vabUpdate or
-   vabClickAfterUI, because both stand down on WantCaptureMouse. */
+   would aim a click at the wrong part. uiWindowAtPixel supplies the other half of
+   "clickable" (see UiCoverTest in pick.h). */
 std::string vabAimAtPart(Game &g, const std::string &id, double &sx, double &sy) {
     if(!sceneIs(g, SceneId::Vab)) { return "not in the VAB editor"; }
     int want = -1;

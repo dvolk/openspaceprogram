@@ -26,29 +26,21 @@
 
 const char *uiWindowAtPixel(int px, int py) {
     ImGuiContext *gc = ImGui::GetCurrentContext();
-    if(gc == nullptr) { return nullptr; }
-    const ImVec2 p((float)px, (float)py);
-    /* The border a click still counts against: imgui pads the hit rect by
-       WindowBorderHoverPadding unless the window cannot be resized or is
-       auto-sized. Without the pad the aim lands one pixel clear of a window and
-       the click then hovers it anyway (measured: 957,641 vs a Staging window
-       whose top edge is at 642). */
-    const ImVec2 touch(gc->Style.TouchExtraPadding.x, gc->Style.TouchExtraPadding.y);
-    const float bh = gc->Style.WindowBorderHoverPadding;
-    const ImVec2 borderPad = ImMax(touch, ImVec2(bh, bh));
-    /* Reverse z-order, top-most wins, exactly as FindHoveredWindowEx does; a
-       window drawn with NoMouseInputs never becomes HoveredWindow, so it never
-       swallows a click either. */
-    for(int i = gc->Windows.Size - 1; i >= 0; i--) {
-        ImGuiWindow *w = gc->Windows[i];
-        if(!w->WasActive || w->Hidden) { continue; }
-        if(w->Flags & ImGuiWindowFlags_NoMouseInputs) { continue; }
-        const ImVec2 wp = (w->Flags & (ImGuiWindowFlags_NoResize
-                                      | ImGuiWindowFlags_AlwaysAutoResize))
-                        ? touch : borderPad;
-        if(w->OuterRectClipped.ContainsWithPad(p, wp)) { return w->Name; }
+    assert(gc != nullptr);
+    /* imgui.cpp:5546 sets WantCaptureMouse from `has_open_popup` alone, so while
+       anything is open NO world pixel is clickable -- report the popup instead of
+       the window whose rect happens to cover the pixel, which would send the
+       reader to move the wrong window. */
+    if(gc->OpenPopupStack.Size > 0) {
+        ImGuiWindow *top = gc->OpenPopupStack.back().Window;
+        return top != nullptr ? top->Name : "an open popup";
     }
-    return nullptr;
+    /* imgui's own hit-test rather than a copy of it: this is the function
+       UpdateHoveredWindowAndCaptureFlags calls, so the border padding, the z-order
+       and the flag exemptions cannot drift from it on an imgui bump. */
+    ImGuiWindow *hovered = nullptr;
+    ImGui::FindHoveredWindowEx(ImVec2((float)px, (float)py), false, &hovered, nullptr);
+    return hovered != nullptr ? hovered->Name : nullptr;
 }
 
 namespace {
