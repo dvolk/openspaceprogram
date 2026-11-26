@@ -1,33 +1,36 @@
 NAME static-margin
-CLAIM The VAB's static margin and the flight log's SM are the same number: a hands-off skiff with 0.31 m of margin flies at +3.6..+4.0 deg of angle of attack and stays wings-level through a 15 s glide (8540 m down to 8475 m).
+CLAIM The VAB's static margin and the flight log's SM are the same number: a hands-off skiff with 0.55 m of margin flies at +2.4..+2.6 deg of angle of attack and stays wings-level through a 15 s glide (8498 m down to 8267 m).
 KIND invariant
 ARGS --time-accel 1 --startship skiff,res/ships/skiff.json,Kerbin,flying-cruise
 ARGS --sim-steps 900 --drag-log --mass-log
 EXPECT [drag]
 CHECK len(drag) >= 4
 CHECK all(d.get("sm") is not None for d in drag)
-# +0.31 m on every row, and the bench agrees with it: buildStability() on
-# res/ships/skiff.json with one suit answers CLa 168.000 m2/rad and SM +0.3122 m. The
-# air prints 168.62..169.93 for the slope -- the bench's 168.0 dressed by
-# Prandtl-Glauert at this run's Mach plus the cos(alpha) dip in drag.h::LiftSlopeSum
-# (168.0 / sqrt(1 - 0.162^2) x cos(3.6 deg) = 170.1 against the 169.93 the row prints),
+# +0.55 m on every row, and the bench agrees with it: buildStability() on
+# res/ships/skiff.json with one suit answers CLa 168.000 m2/rad and SM +0.5532 m. The
+# air prints 170.17..172.04 for the slope -- the bench's 168.0 dressed by Prandtl-Glauert
+# at this run's Mach plus the cos(alpha) dip in drag.h::LiftSlopeSum
+# (168.0 / sqrt(1 - 0.219^2) x cos(2.4 deg) = 172.0 against the 172.04 the row prints),
 # and nothing more.
-# This row read +0.55 at +2.5 deg until the masses moved, and what moved is the mass,
-# not the lifting rig: #1171 weighs a part off its own mesh instead of the cylinder
-# around it, so the skiff launches at 446.24 kg where flight/490 used to log 568.65 kg.
-# The parts that lost most are AFT (tank and bell), so the COM walked aft and a margin
-# defined as "how far behind the COM the lift change sits" fell 0.24 m. The airframe
-# follows mechanically -- a weaker margin needs more alpha to hold the same nose, hence
-# +2.5 -> +3.6..+4.0. The geometry did not move: res/data/parts.json changed no
-# lift_area, lift_slope, radius or height in that window, only mass.
+# This row reads +0.55 again after a season at +0.31. #1171 weighs a part off its own
+# mesh instead of the cylinder around it, which took 121.87 kg out of the POD alone: the
+# COM walked 0.24 m aft and a margin defined as "how far behind the COM the lift change
+# sits" fell with it (#1203 -- the hull's along-flow bill crossed in front of the COM and
+# the airframe started levering alpha instead of weathervaning it). What put it back is
+# not a re-scale and not a reshaping: it is an authored outfit allowance on the pod
+# (#1204's interim, POD_OUTFIT_KG in utils/art/gen_parts.py), because a crew pod's seat,
+# panel, life support and drums are mass that no closed shell mesh encloses. lift_area,
+# lift_slope, radius and height are untouched; only mass moved, and the airframe follows
+# mechanically -- a stronger margin needs less alpha to hold the same nose, hence the
+# +3.6..+4.0 this row carried at 446 kg coming back down to +2.4..+2.6.
 # Hence the mass pin below: it is the cause, and a band on SM alone would not say so
 # next time.
-CHECK any(m["ship"] == "skiff" and abs(m["mass"] - 446.24) < 1.0 for m in mass)
-# The 0.08 m band -- 0.04 under this run's +0.31 and 0.04 over -- still separates this
-# hull from the SAME BUILD with no crew: the bench answers -0.0001 m for the empty
-# skiff, so one suit is now the entire margin (it used to add 0.18 m to a 0.37 m base).
-# Losing a seat reddens this, and so does a rig that has started to diverge.
-CHECK all(0.27 < d["sm"] < 0.35 for d in drag if d.get("sm") is not None)
-CHECK all(3.4 < d["aoa"] < 4.2 for d in drag if d["aoa"] is not None)
+CHECK any(m["ship"] == "skiff" and abs(m["mass"] - 568.11) < 1.0 for m in mass)
+# The 0.08 m band -- 0.04 under this run's +0.55 and 0.04 over -- still separates this
+# hull from the SAME BUILD with no crew: the bench answers +0.3714 m for the empty skiff,
+# so one suit adds 0.18 m of the margin. Losing a seat reddens this, and so does a rig
+# that has started to diverge.
+CHECK all(0.51 < d["sm"] < 0.59 for d in drag if d.get("sm") is not None)
+CHECK all(2.2 < d["aoa"] < 2.8 for d in drag if d["aoa"] is not None)
 CHECK all(d["up"] > 0.9 for d in drag)
 FORBID error:

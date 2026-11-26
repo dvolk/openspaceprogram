@@ -61,6 +61,19 @@ MASS_DENSITY = {
     "materials_pod":  60.0,
 }
 
+# A crew pod is more than the shell its mesh encloses: seat, harness, instrument panel,
+# life support, hatch hardware and the drums inside it scale with the SEATS, not with the
+# volume around them. #1171's volume basis priced the skiff's pod at 93.72 kg -- less
+# than the 97.05 kg kerbal in it -- and the sample glider's balance point walked aft:
+# static margin +0.55 -> +0.31 and its hull bill moved in FRONT of the COM, so the
+# airframe diverges in pitch instead of weathervaning (#1203). Interim: one declared
+# allowance on the pod the shipped airframes use, at the mass their aero bands were
+# pinned against. The law -- per seat, acting at the seat, without double-counting the
+# occupant -- is #1204.
+POD_OUTFIT_KG = {
+    "capsule_r0.5h1.5": 121.87,
+}
+
 CAPSULE_TORQUE_PER_M = 200.0
 WHEEL_TORQUE_PER_M = 2000.0
 
@@ -898,7 +911,7 @@ def generate(name, ptype, mesh, texture):
         e["radius"] = radius
         e["height"] = height
     else:  # capsule / reaction_wheel / adapter / nose_cap / cargo
-        e["mass"] = clean(volume * MASS_DENSITY[ptype])
+        e["mass"] = clean(volume * MASS_DENSITY[ptype] + POD_OUTFIT_KG.get(name, 0.0))
         e["radius"] = radius
         e["height"] = height
         if ptype == "capsule":

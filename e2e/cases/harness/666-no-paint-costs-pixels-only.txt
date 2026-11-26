@@ -18,12 +18,13 @@ EXPECT paint: off (--no-paint
 EXPECT [drag]
 EXPECT Screenshot saved
 # Still the same cruise. This 15 s window is all throttle, so it is the first half of a
-# phugoid: the hull holds +3.5..+3.6 deg while the excess lift trades its speed for
-# height, and by the last row it is up 320 m doing 41 m/s at +1.4 deg. Re-derived for
-# #1171's masses (flight/490's header has the story: the pod alone is 121.87 kg lighter,
-# so the COM walked aft and the trim walked up from 2.5 to 3.6 deg); what matters HERE is
-# that the unpainted run's rows match the painted one's, which is why the band is the
-# airframe's and not a screenshot's.
+# phugoid: the hull holds +2.4..+2.6 deg while the throttle's excess trades itself for
+# height -- 81.4 -> 105.6 m/s, up 145 m by the last row. Re-measured on the restored pod
+# mass (#1171's shell-only weighing is what moved it; #1204's allowance moved it back --
+# flight/454 and flight/490 carry the story). The AoA band below is the airframe's,
+# deliberately wide of one arc's extremes, because what matters HERE is that the
+# unpainted run's rows match the painted one's, which is why the band is the airframe's
+# and not a screenshot's.
 CHECK len(drag) >= 15
 CHECK all(1.2 < d["aoa"] < 3.9 for d in drag if d["aoa"] is not None)
 CHECK min(d["v"] for d in drag if d["t"] <= 10.0) > 50.0

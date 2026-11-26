@@ -42,7 +42,7 @@
       "display_name": "Capsule (1m)",
       "mesh": "meshes/capsule_r0.5h1.5.obj",
       "texture": "textures/capsule.png",
-      "mass": 93.72,
+      "mass": 215.59,
       "radius": 0.5,
       "height": 1.5,
       "torque": 100,
