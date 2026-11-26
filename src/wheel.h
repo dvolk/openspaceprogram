@@ -82,8 +82,9 @@ inline glm::dvec3 force(const Input &in) {
        The damper gets the same treatment as the tire pair (#862). It is an
        EXPLICIT force held for a whole substep, so damp*compressRate over-corrects
        the closing rate once the strut's own gain passes what one substep can
-       spend: damp*h > m/n, i.e. h > m/(n*wheel_damp) = 658.65/9000 = 0.073 s for
-       shipped gear under a 658 kg hull -- a hand-set --physics-hz 30. The strut
+       spend: damp*h > m/n, i.e. h > m/(n*wheel_damp) = 658.11/9000 = 0.073 s for
+       shipped gear under a 658 kg hull (flight/1158-b pins that mass) -- a hand-set
+       --physics-hz 30. The strut
        then pumped: every substep reversed the closing rate, and a parked hull
        walked across the balloon deck at that substep while holding still at 60 Hz.
        The SPRING is deliberately not capped -- it is what holds the hull up, and

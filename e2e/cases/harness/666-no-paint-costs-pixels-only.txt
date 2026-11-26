@@ -26,7 +26,10 @@ EXPECT Screenshot saved
 # unpainted run's rows match the painted one's, which is why the band is the airframe's
 # and not a screenshot's.
 CHECK len(drag) >= 15
-CHECK all(1.2 < d["aoa"] < 3.9 for d in drag if d["aoa"] is not None)
+# Tightened to sit around this arc's real +2.4..+2.6 rather than the 1.2..3.9 inherited
+# from an arc that no longer happens: a paint canary still has to notice the airframe
+# moving, and a band 20x the spread of the measurement doesn't.
+CHECK all(2.0 < d["aoa"] < 3.2 for d in drag if d["aoa"] is not None)
 CHECK min(d["v"] for d in drag if d["t"] <= 10.0) > 50.0
 # The bed, not the airframe: flying-cruise spawns at 0.1 x the body's air top, and #682
 # moved that top 70 -> 85 km, so the spawn row reads 8501 m where this floor used to say

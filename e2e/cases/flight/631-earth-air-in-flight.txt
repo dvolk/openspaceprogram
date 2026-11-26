@@ -80,7 +80,8 @@ CHECK max(d["airA"] for d in drag) - min(d["airA"] for d in drag) > 2.0
 # dossier pins at Earth's datum: a goes as sqrt(T) for one gas.
 CHECK all(abs(d["airA"] / 340.3 - (d["airT"] / 288.15) ** 0.5) < 0.01 for d in drag)
 # IT BILLS: 178.6-181.4 kN of form drag on the entry row (t=0.7-0.8 s: 468.0-480.0 m/s at
-# 8562-8577 m, Mach 1.53-1.57) against the 568.65 kg the [mass] line prints for this hull
+# 8562-8577 m, Mach 1.53-1.57) against the 568.11 kg this hull lifts off with (this rig logs
+# --drag-log only; 568.11 is what flight/454 and flight/490 pin for res/ships/skiff.json)
 # -- 314-319 m/s2, a 32 g start, which is what the flying-slow bed is known to do (#451).
 # The slowest row of the arc still bills 31.3-31.8 kN. The floor sits far under the peak so
 # a lighter entry still proves the air is being paid for rather than merely printed.

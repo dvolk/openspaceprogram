@@ -513,6 +513,37 @@ int main() {
                 CHECK(cylDef->display_name != cone->display_name);
             }
         }
+        /* Every pod weighed. Until now the 1 m pod's mass was pinned NOWHERE in this
+           suite: test_stability.cpp pins only verdicts (valid / slope > 0 / margin > 0),
+           and the one absolute part mass here is the 2 m tube above. capsule_r0.5h1.5
+           carries #1204's interim outfit allowance -- 93.72 of shell + 121.87 of outfit
+           = 215.59 -- and that number is what the skiff's whole aero case family
+           (flight/454, flight/490, flight/1158-b) is pinned against; those are e2e, which
+           CI never runs (#1205), so the catalogue itself needs a floor.
+           Exact, not banded, for the same reason the tube above is: the ways this breaks
+           are known and discrete -- a mesh that stops proving watertight falls back to the
+           bounding cylinder, a family density that moves, or #1204's per-seat law landing.
+           When #1204 does land, all five rows below move together and this pin is the
+           place that says so; the per-seat cost (mass / crew_capacity) is listed beside
+           each because the interim's non-monotonicity IS the finding -- the smallest pod
+           is now the cheapest seat in the family. */
+        {
+            struct PodPin { const char *name; double mass; int seats; };
+            static const PodPin pods[] = {
+                {"capsule_r0.5h1.5",   215.59, 1},   // 93.72 shell + 121.87 outfit
+                {"capsule",            499.82, 1},
+                {"capsule_cyl_r1h2",  1142.45, 2},
+                {"capsule_r1.5h3",    1686.90, 3},
+                {"capsule_r2.25h4.5", 5693.28, 6},
+            };
+            for(const PodPin &p : pods) {
+                const PartDef *d = cat.find(p.name);
+                CHECK(d != nullptr);
+                if(d == nullptr) { continue; }
+                CHECK(near(d->mass, p.mass));
+                CHECK(d->crew_capacity == p.seats);
+            }
+        }
         {
             const std::string f = "/tmp/test_extents_fallback.json";
             std::ofstream o(f);

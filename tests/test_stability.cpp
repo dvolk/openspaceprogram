@@ -57,7 +57,7 @@ static Fixture load_all() {
    says CLa 168.0 and SM +0.552 for the crewed hull; the air says 167.82-167.84 and
    +0.55 at this hull's zero-moment AoA of 2.5 deg -- the cos(alpha) dip in
    drag.h::LiftSlopeSum, not a second law. Mass walks during a run as well, but barely
-   (568.65 -> 568.26 kg across flight/490's 50 s), and on this hull the propellant sits
+   (568.11 -> 567.54 kg across flight/490's 50 s), and on this hull the propellant sits
    AFT of the crewed COM, so burning it moves the COM forward and the margin slightly UP
    rather than down. */
 static void test_shipped_against_flight(const Fixture &f) {

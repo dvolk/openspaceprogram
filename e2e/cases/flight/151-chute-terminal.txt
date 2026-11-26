@@ -61,10 +61,18 @@ CHECK len([d for d in drag if d.get("aoa") is not None and abs(d["aoa"]) > 170 a
 # at AoA 178.5 reads 3.32 with Chute already at 25.00, which is exactly the case the filter
 # used to assume it had excluded ("the row where the canopy is still paying out reads 3.32").
 # It is not excluded, and a band over a swing is a sampling result. So the tight band keys on
-# the hang -- within half a degree of nose-up, where the reading is stable to 0.03 across the
-# eleven settled rows -- and the swing gets its own ceiling rather than the tight band
-# stretched until it only says "not the mid-flip 4.40".
-CHECK len([d for d in drag if d.get("aoa") is not None and abs(d["aoa"]) >= 179.5 and d.get("chute", 0) > 20.0]) >= 6
-CHECK all(3.05 < d["a"] < 3.20 for d in drag if d.get("aoa") is not None and abs(d["aoa"]) >= 179.5 and d.get("chute", 0) > 20.0)
+# the hang proper -- within 0.2 deg of nose-up, where eleven rows read 3.12..3.15 -- and the
+# swing gets its own ceiling rather than the tight band stretched until it only says "not the
+# mid-flip 4.40".
+# The cut and the count are both chosen against the sampler, not the airframe. [drag] rows are
+# gated on WALL clock (g.logDue(kGateDrag, now_ms, ...) in src/tick.cpp) under a wall --timeout,
+# so how many rows exist is machine speed: this box runs ~2.0x and gets 16 rows to sim t=31.9.
+# The |AoA| >= 8 hang-row count above already fixes that floor, so this one only has to stop the
+# settled band passing on an empty selection (#653) -- four, not six, because a six needed 1.5x
+# average rate and would turn a slow box into a FAIL about parachutes. And the cut is 0.2 deg,
+# not 0.5, because the reading moves ~0.06 m2 per half degree of AoA: at 179.5 the worst settled
+# row is 3.18, only 0.02 under a 3.20 ceiling, which is a sampling-phase pin, not an airframe one.
+CHECK len([d for d in drag if d.get("aoa") is not None and abs(d["aoa"]) >= 179.8 and d.get("chute", 0) > 20.0]) >= 4
+CHECK all(3.05 < d["a"] < 3.20 for d in drag if d.get("aoa") is not None and abs(d["aoa"]) >= 179.8 and d.get("chute", 0) > 20.0)
 CHECK all(d["a"] < 3.40 for d in drag if d.get("aoa") is not None and abs(d["aoa"]) > 170 and d.get("chute", 0) > 20.0)
 FORBID error:

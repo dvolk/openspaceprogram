@@ -41,6 +41,8 @@ CHECK max(r["gap"] for r in leglog if r["t"] > 1.0) < 0.1
 CHECK all(abs(r["mesh"] - 0.35) < 0.005 for r in leglog)
 CHECK all(abs(r["gap"] + r["comp"] - r["travel"]) < 0.01 for r in leglog if r["comp"] > 0)
 # Loaded (0.073..0.109 m in) and not at the bump stop -- the load-headroom guard, see 1158-a.
-# The heaviest corner (uid 22, 41% of the hull) sits 0.021 m off its stop, so this guard is
-# now doing real work: another 300 kg on this hull reddens it.
+# The heaviest corner (uid 22, 41% of the hull) has 0.044 m of its 0.15 stroke left. The guard
+# reserves 0.02 m of that, so 0.024 m is what this case can lose: it reddens at comp 0.13, i.e.
+# 0.13*25000/(9.81*0.41) = 808 kg of hull, about +150 kg. Bottoming the tyre is another ~275 kg
+# past that. On the 536 kg hull this line sat 0.036 m from the reserve's edge instead.
 CHECK all(0.03 < r["comp"] < r["travel"] - 0.02 for r in leglog if r["t"] > 1.0)

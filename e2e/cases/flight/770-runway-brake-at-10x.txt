@@ -19,7 +19,8 @@ EXPECT [dbg]
 # What it measures is that the clamp did not eat the rolling law. That is still the job;
 # what the flight looks like while doing it is not what this file used to say.
 # WHAT THE AERO RUN DID TO THIS ROLL (#1132 family D, re-measured 2026_11_23). The hull
-# weighs 658.65 kg x Kerbin's 9.8112 m/s2 = 6462 N -- the [mass] row prints the 658.65, so
+# weighs 658.11 kg x Kerbin's 9.8112 m/s2 = 6457 N -- the [mass] row prints the 658.11 (it
+# was 658.65 before #1171 and #1204's pod allowance moved it back, not to the same digit), so
 # the pin below is the game's own number and not a hand calculation. Skiffgear carries two
 # 4 m wings, a tail, an elevator pair, ailerons and a rudder, and once it is rolling the air
 # bills them: L_up = +4961.4 N world-up at 40.0 m/s, +4650.0 N at 44.4 m/s, three quarters of

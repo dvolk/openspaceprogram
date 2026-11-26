@@ -17,9 +17,14 @@ KIND golden
 # +0.31 and FormCp -0.11 -> +0.17, i.e. the hull's drag crossed to in FRONT of the
 # balance point and started levering alpha instead of weathervaning. That is #1203, and
 # for a stretch this case pinned only |FormCp| <= 0.25 m and a 3.5 s burn, because on a
-# 446 kg hull the 20 s burn below departs the airframe (AoA 18.5 with the kick, 58.4 /
-# Beta -43.9 with no press at all -- tmp/night10/g2_nopress.log) and bands over a
-# departure are a run, not a law.
+# 446 kg hull the 20 s burn below departs the airframe. Measured on that hull with
+# --parts, same binary, three rigs of 50 rows each:
+#   no press at all ................ AoA 3.6..4.0,   Beta -0.0      (a benign glide)
+#   throttle, no rudder kick ....... AoA -6.2..58.4, Beta -43.9..11.3
+#   throttle + the kick below ...... AoA -2.4..18.5, Beta -15.8..6.0
+# So it is the THROTTLE that levers this hull, not the sideslip kick: untouched, even the
+# wrong-balanced airframe holds four degrees. That is the honest shape of #1203, and
+# bands over a departure are a run, not a law -- hence the 3.5 s burn this case carried.
 # WHAT PUT IT BACK: POD_OUTFIT_KG in utils/art/gen_parts.py (#1204's interim) -- a
 # declared allowance for the seat, panel, life support and drums that a closed shell
 # mesh cannot enclose, 121.87 kg on capsule_r0.5h1.5. The launch mass, the margin and
@@ -86,7 +91,11 @@ CHECK all(0.51 < d["sm"] < 0.59 for d in drag if d.get("sm") is not None)
 # after the press: an oscillation the weathervane (CpL +0.72..+0.83, SideCp -1.14..-1.22
 # on those rows) is winning, crossing zero five times and shrinking each time.
 CHECK 4.0 < max(abs(d["beta"]) for d in drag if d.get("beta") is not None) < 8.0
-CHECK all(abs(d["beta"]) < 1.5 for d in drag if d["t"] >= 36.0)
+# The CLAIM's "inside 0.2 deg" is the assertion, not decoration: measured max 0.20 deg over
+# the fifteen rows from t=36 s on, so the ceiling sits at 0.35 -- 1.75x the measurement,
+# still 6x under the peak. A 1.5 deg ceiling (which is what this line said) would let a hull
+# that barely settles pass while contradicting the sentence a reader trusts.
+CHECK all(abs(d["beta"]) < 0.35 for d in drag if d["t"] >= 36.0)
 # The bill, cruise rows: pod+tank+engine union 0.80..0.81 m2, which since #945 is the
 # POD's alone (capsule drag_forward 0.35) rather than a mean of the stack's anchors
 # (capsule 0.35, tank 1.0, engine 0.15 -- the 0.57-0.60 this used to read), because the
@@ -98,6 +107,12 @@ CHECK all(abs(d["beta"]) < 1.5 for d in drag if d["t"] >= 36.0)
 # exactly the six rows of the kick's swing, which is the thing that makes the same stack
 # present 0.85 m2 rather than 0.81. Those rows get their own ceiling, not the cruise
 # band stretched until it tests nothing.
+# The count first, because all() over an empty selection passes (#653). Four of the bands
+# below hang off this one predicate, and the failure they exist to catch -- Beta never
+# settling after the kick -- is precisely the failure that empties it: if every row kept
+# |Beta| > 1.0, all four cruise bands would go green having tested nothing, while
+# len(drag) >= 40 above stayed satisfied. Measured 44 of the 50 rows.
+CHECK len([d for d in drag if abs(d["aoa"]) <= 6 and abs(d["beta"]) <= 1.0]) >= 35
 CHECK all(0.78 < d["a"] < 0.83 for d in drag if d.get("a") and abs(d["aoa"]) <= 6 and abs(d["beta"]) <= 1.0)
 CHECK all(d["a"] < 0.90 for d in drag if d.get("a"))
 # The CLAIM's Cd pair is pinned beside the area it weights: 0.37..0.38 on cruise rows,

@@ -65,11 +65,18 @@ MASS_DENSITY = {
 # life support, hatch hardware and the drums inside it scale with the SEATS, not with the
 # volume around them. #1171's volume basis priced the skiff's pod at 93.72 kg -- less
 # than the 97.05 kg kerbal in it -- and the sample glider's balance point walked aft:
-# static margin +0.55 -> +0.31 and its hull bill moved in FRONT of the COM, so the
-# airframe diverges in pitch instead of weathervaning (#1203). Interim: one declared
-# allowance on the pod the shipped airframes use, at the mass their aero bands were
-# pinned against. The law -- per seat, acting at the seat, without double-counting the
-# occupant -- is #1204.
+# static margin +0.55 -> +0.31 and its hull bill moved in FRONT of the COM, so under
+# throttle the airframe diverges in pitch instead of weathervaning (#1203; hands off,
+# even that hull holds 4 deg). Interim: one declared allowance on the pod the shipped
+# airframes use, at the mass their aero bands were pinned against.
+# READ THE NUMBER AS WHAT IT IS: 93.72 + 121.87 = 215.59 is exactly what
+# capsule_r0.5h1.5 cost BEFORE #1171, and 121.87 = (pi r^2 h - V_mesh) x 183. So this
+# restores a mass, it is not a measured bill for a seat and a panel -- it is the same
+# bounding-cylinder interior #1171 took away, billed by name instead of by geometry.
+# It also makes this the cheapest seat in the family (215.59/1 against capsule's 499.82/1
+# and capsule_r2.25h4.5's 5693.28/6), which is the opposite of what an outfit allowance
+# is for. The law -- per seat, acting at the seat, without double-counting the occupant,
+# across all five pods -- is #1204.
 POD_OUTFIT_KG = {
     "capsule_r0.5h1.5": 121.87,
 }
@@ -553,9 +560,11 @@ for _n, _f in EXTRA_FIELDS.items():
 
 
 def mesh_geom(mesh_file):
-    """(radius, height, volume, planform, extents, bounds): half largest x/y
-    span, z span, enclosed volume (bounding-cylinder fallback only for a genuinely
-    OPEN mesh, e.g. an engine shroud), the area of the mesh's x/z footprint, the raw (x, y, z)
+    """(radius, height, volume, planform, extents, bounds, volume_is_shell): half
+    largest x/y span, z span, enclosed volume (bounding-cylinder fallback only for a
+    genuinely OPEN mesh, e.g. an engine shroud -- volume_is_shell says which happened,
+    because an allowance added on top of a fallback volume bills the same interior
+    twice), the area of the mesh's x/z footprint, the raw (x, y, z)
     spans, and the (min, max) corners. Off-centre meshes (the landing leg)
     need bounds: their PartDef radius is the SYMMETRISED half-span
     (meshHalfSpan), not half the full span."""
@@ -574,6 +583,7 @@ def mesh_geom(mesh_file):
     height = ext[2]
     if t.is_watertight:
         volume = float(t.volume)
+        volume_is_shell = True
         # A watertight mesh wound inside-out has a NEGATIVE volume, and volume
         # is what every mass below is minted from. A zero-volume watertight mesh is
         # the other half of the trap: merging the corners of a shell with no
@@ -584,10 +594,12 @@ def mesh_geom(mesh_file):
         assert volume > 0.0, mesh_file
     else:
         volume = math.pi * radius * radius * height
+        volume_is_shell = False
     return (round(radius, 3), round(height, 3), volume,
             hull_area([(v[0], v[2]) for v in t.vertices]),
             (float(ext[0]), float(ext[1]), float(ext[2])),
-            (t.bounds[0].tolist(), t.bounds[1].tolist()))
+            (t.bounds[0].tolist(), t.bounds[1].tolist()),
+            volume_is_shell)
 
 
 def hull_area(pts):
@@ -747,7 +759,7 @@ def generate(name, ptype, mesh, texture):
         e.update(EXTRA_FIELDS[name])
         return e
 
-    radius, height, volume, planform, extents, bounds = mesh_geom(mesh)
+    radius, height, volume, planform, extents, bounds, volume_is_shell = mesh_geom(mesh)
     e = {
         "name": name,
         "type": ptype,
@@ -911,7 +923,13 @@ def generate(name, ptype, mesh, texture):
         e["radius"] = radius
         e["height"] = height
     else:  # capsule / reaction_wheel / adapter / nose_cap / cargo
-        e["mass"] = clean(volume * MASS_DENSITY[ptype] + POD_OUTFIT_KG.get(name, 0.0))
+        outfit = POD_OUTFIT_KG.get(name, 0.0)
+        # The allowance rides ON TOP of the shell's own volume, so it needs the shell.
+        # On mesh_geom's bounding-cylinder fallback it bills that interior twice, and
+        # nothing else here would notice -- capsule_r0.5h1.5 would go 215.59 -> 337.46.
+        assert outfit == 0.0 or volume_is_shell, (
+            name, "outfit allowance on a fallback volume")
+        e["mass"] = clean(volume * MASS_DENSITY[ptype] + outfit)
         e["radius"] = radius
         e["height"] = height
         if ptype == "capsule":
@@ -1106,6 +1124,12 @@ def main():
 
     parts = [generate(*p) for p in PARTS]
     check_assets(parts)
+
+    # A renamed or dropped pod would otherwise shed its allowance in silence: the hull
+    # loses 121.87 kg at its nose and the next person chases the flight model instead of
+    # the catalogue (#1203 is what that chase looks like).
+    unauthored = sorted(set(POD_OUTFIT_KG) - {e["name"] for e in parts})
+    assert not unauthored, "POD_OUTFIT_KG names parts that do not exist: %s" % unauthored
 
     if a.check:
         ok = check(parts, a.out)
