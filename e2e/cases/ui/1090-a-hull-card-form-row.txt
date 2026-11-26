@@ -26,10 +26,22 @@
 # by accident. The row COUNTS and the exact dashed spellings are pinned by the
 # sibling ui/1115-a: above the air, not parked (every shipped atmosphere authors
 # wind, so the pad prints live rows -- #1115's premise, corrected by audit).
+#
+# WHY THE BED IS flying-trim (#1201, 2026_11_26): this case used to open on
+# flying-cruise, and by the time these eleven dumps run that bed has the hull
+# mid-zoom-climb -- +14.2 deg ramping to +20.7 with q falling 35 -> 22 Pa, exactly
+# the over-trimmed opening vehicle.cpp:332 admits to ("~1.9x" the trim point, #693).
+# Every figure on the card then LEGITIMATELY sweeps: pod credit 0.76 -> 0.88 m2,
+# tank shelter 66.1 -> 41.5 %. That made the cadence guard below (at most 5 distinct
+# pod rows in 11 reads) fail for the wrong reason -- the panel is held, the air is
+# moving. So the fixture moved rather than the band, because everything above
+# describes a steady cruise. On #693's airframe-keyed load bed the same 11 reads see
+# ONE pod row (0.77 m2, cd 0.36) and the tank's shelter holds at 77%, which is the
+# #1105 claim the case was written around.
 NAME hull-card-form-row
 CLAIM Body part cards print the merged aero block -- credit row, hull flow row, watts row -- at cadence; the hull flow row agrees across the ship's body cards; the upwind capsule reads a real area and cd; no surface AoA row on body cards.
 KIND invariant
-ARGS --time-accel 1 --sim-steps 600 --width 1920 --height 1080 --startship skiff_trim,res/ships/skiff_trim.json,Kerbin,flying-cruise
+ARGS --time-accel 1 --sim-steps 600 --width 1920 --height 1080 --startship skiff_trim,res/ships/skiff_trim.json,Kerbin,flying-trim
 ARGS --ui-focus 2000,skiff_trim/pod
 ARGS --sim-mouse 2200,0,CUR,CUR,RMB
 # The tank sits behind the pod along the flight line -- that occlusion IS the story

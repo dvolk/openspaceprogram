@@ -4,12 +4,21 @@
 # m/pixel, within 0.05% of the old flat 6000 the map was tuned at. The exact
 # figure is the launch site's rotation speed; what must not move is that the
 # BODY, not an orbit, sets the zoom.
+#
+# It used to pin "fit 600264 m" as text, and moved to 600263 -- one metre in 600
+# km, exactly the incidental thing the paragraph above says not to care about.
+# So the digits became a band and the claim became the arithmetic: the printed
+# scale is the printed extent over kMapFitRadiusPx = 100 px (gameui.cpp:5191,
+# constants.h:237), and the extent sits just above the body's own radius rather
+# than below it.
 NAME map-fit-landed-body-floor
 CLAIM A landed ship opens framed on the body's disk.
 KIND invariant
 ARGS --timeout 4 --startship racer,res/ships/racer.json,Kerbin,pad
 FORBID error:
-CHECK re.search(r"\[mapfit\] Kerbin: body 600000 m, fit 600264 m -> 6002\.6 m/px", out)
+CHECK (mm := re.search(r"\[mapfit\] Kerbin: body 600000 m, fit (\d+) m -> ([\d.]+) m/px", out)) is not None and 600200.0 < float(mm.group(1)) < 600350.0
+# (re-searched, not reused: each CHECK gets its own namespace)
+CHECK (mm := re.search(r"\[mapfit\] Kerbin: body 600000 m, fit (\d+) m -> ([\d.]+) m/px", out)) is not None and abs(float(mm.group(2)) - float(mm.group(1)) / 100.0) < 0.05
 # The fit is the view a focus opens with, not a per-frame camera: one line for
 # the whole run, so a latch that re-fires every draw fails here.
 CHECK len(re.findall(r"\[mapfit\]", out)) == 1
