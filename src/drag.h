@@ -513,16 +513,19 @@ inline double liftSlopeMach(double cl, double mach) {
    WHAT THIS DOES NOT TOUCH: a blunt body's cd. The hull's form drag comes from
    surfaceFormCdA / partCd on projected silhouette, which has no chord and no thickness
    ratio to put into the formula. The deeper reason not to extrapolate is that the
-   blunt-body curve is not this curve: a pod's cd barely moves from subsonic to
-   hypersonic, and a blunt nose can even bill LESS once a shock stands off it, so any
-   multiplier on the body anchors would be a guess dressed as a law. #635 landed the
-   alternative to that guess -- a SECOND anchor set on the part (PartDef::dragForwardSup
-   and friends) joined by regimeMix, with no arithmetic invented in between -- and the
-   catalogue authors it (utils/art/gen_parts.py DRAG_CD_SUP): 68 of 87 parts, every one
-   of them measured off its own mesh rather than multiplied. The one that matters is a
-   fuselage's nose, 0.10 subsonic against 0.45 above the band. What the join still
-   cannot do is the band's SHAPE: a real blunt body steps as a shock stands off the
-   nose rather than ramping straight across 0.5 Mach.
+   blunt-body curve is not this curve, and it is not uniform across one body either: a
+   blunt nose can bill LESS once a shock stands off it, a flat base bills more than
+   anything else on the hull, so any MULTIPLIER on the body anchors would be a guess
+   dressed as a law. #635 landed the alternative to that guess -- a SECOND anchor set on
+   the part (PartDef::dragForwardSup and friends) joined by regimeMix, with no
+   arithmetic invented in between -- and the catalogue authors it (utils/art/gen_parts.py
+   DRAG_CD_SUP): 64 of 87 parts, each column measured on that family's own mesh. What
+   that says per axis: a blunt broadside moves ~20%, a streamlined nose moves most (a
+   fuselage bills 0.12 subsonic and 0.374 above the band, 3.1x), and a flat end is where
+   Newtonian over-prices, so the anchors cap at 1.35 of PHYSICAL cd -- the hull bills
+   drag_cd x the anchor, which is why the table and the field disagree by 1.2. What the
+   join still cannot do is the band's SHAPE: a real blunt body steps as a shock stands
+   off the nose rather than ramping straight across 0.5 Mach.
    t/c comes off the mesh box the edge-area law already reads (PartDef::meshThickness-
    ToChord): every shipped surface is 0.044-0.086, so at the game's wing chord cd_wave
    lands beside the 0.01 profile cd those parts author -- at M 1.65 it is 0.0076, i.e.

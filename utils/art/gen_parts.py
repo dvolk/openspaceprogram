@@ -128,10 +128,14 @@ CONTROL_AREA_FRACTION = 0.5
 # drag = symmetric default; drag_forward/side/backward by how the part faces
 # the flow (nose +Z / broadside / base -Z). Keyed by TYPE (shape family).
 
-# The thin disc: reaction wheel, battery, rtg, mono tank, decoupler, dock port,
-# materials pod, barometer/thermometer stick, the small rcs puck. Ten types, one
-# shape -- a ~2.0 x 2.0 x 0.25 m puck -- so one dict, and the numbers were
-# measured on reaction_wheel's own mesh (tmp/n1099/dump_verts.py, faceprobe2).
+# Ten types share one Cd dict. Seven of them are the puck: a ~2.0 x 2.0 x 0.25 m
+# cylinder (reaction wheel, battery, rtg, mono tank, decoupler, dock port, materials
+# pod). Three are NOT -- barometer and thermometer are 0.05 x 0.5 m sticks, rcs_box a
+# small cube -- and they ride along because a bluff box's numbers are not wrong for
+# them either and their areas are tiny (0.05 m2 and 0.09 m2 broadside against the
+# puck's 0.50). Read the argument below as being about the puck; DRAG_CD_SUP leaves
+# the sticks and the cube out precisely because the puck's measurement says nothing
+# about them.
 #
 # #1208: drag_side used to be 0.2, which is what a THIN plate is worth edge-on.
 # That figure is small only because a thin plate's shadow edge-on is a hairline
@@ -266,73 +270,89 @@ DRAG_KEYS = ("drag", "drag_forward", "drag_side", "drag_backward")
 # supersonic one (src/shipdef.h dragForwardSup()), never 0. That is the honest claim
 # for a small strut of gear or a leg; it is not the claim for a blunt body.
 #
-# The numbers come from a rule, then a hand per family:
-#     sup = max(subsonic, min(newtonian_measured, 1.35))
-# newtonian_measured being the Newtonian integral over the part's OWN shipped mesh
-# (tmp/n1099/faceprobe2; fwd = the part's +Z end into the flow, broad = perpendicular,
-# bwd = -Z), referenced to that mesh's own projected area -- which is what partCd bills
-# on. Two corrections to it:
-#   - the 1.35 cap. Newtonian gives Cp = 2 on every face normal to the flow and no lee
-#     suction behind it, so a flat end reads exactly 2.000. A real flat disc measures
-#     ~1.1-1.3, so the axial column wants capping.
-#   - the broadside column (1.17-1.33 across every fat body) is the one to take at face
-#     value: that is where the surfaces are blunt shoulders, which is exactly what
-#     Newtonian is good at.
+# THE TABLE HOLDS PHYSICAL Cd, not the authored anchor, and the conversion is code, not
+# arithmetic in your head. The hull bills drag_cd x the part's cd (src/vehicle.h
+# drag_cd = 1.2, "--drag-cd"), which is why e.g. liftbody's drag_side 1.0 is described
+# in DRAG_CD above as "1.0 x the ship's drag_cd 1.2 = 1.20, inside the measured
+# 1.17-1.28". So a probe figure goes into the table as measured and comes out of the
+# generator divided:
+#     anchor = max(subsonic anchor, min(physical / DRAG_CD_MULT, cap / DRAG_CD_MULT))
+# Getting this wrong is not academic: authoring the probe's 1.331 straight into
+# drag_side_sup bills 1.597, 20% over the measurement it cites as its source, and puts
+# one part's broadside on two scales -- 1.32 (measured) subsonic, 1.60 supersonic.
+#
+# physical comes from the Newtonian integral over the part's OWN shipped mesh
+# (tmp/n1099/faceprobe2, referenced to that mesh's own projected area, which is what
+# partCd bills on). Read the probe's output carefully: its columns are FLOW directions,
+# so its "axial(+z)" column is the game's BACKWARD (flow toward +Z puts the base upwind)
+# and its "base(-z)" column is the game's FORWARD. The order below is the game's:
+#   fwd / side / bwd
+# Two corrections the rule applies to those columns:
+#   - the cap. Newtonian gives Cp = 2 on every face normal to the flow and no lee
+#     suction behind it, so a flat end reads exactly 2.000 where a real flat disc
+#     measures ~1.1-1.3. Cap the PHYSICAL value at 1.35.
+#   - the floor. max(subsonic, ...): a part never gets cheaper by being faster.
+# The broadside column is the one to take at face value -- 1.17-1.33 across every fat
+# body, exactly the blunt-shoulder case Newtonian is good at. The axial column is the
+# one that needs the cap.
 # What the table is FOR: fuselage nose-on is authored 0.10, a genuine subsonic figure,
-# and Newtonian puts the same shape at 0.37-0.50. That gap is the wall a spaceplane has
-# to push through; nothing else here moves a subsonic hull at all (regimeMix is 0 below
-# Mach 0.75).
-#   fwd  / side / bwd
+# and the same shape measures 0.374 nose-first. That is the wall a spaceplane pushes
+# through; nothing here moves a subsonic hull at all (regimeMix is 0 below Mach 0.75).
+DRAG_CD_MULT = 1.2        # src/vehicle.h ShipDef::drag_cd -- the bill multiplier
+DRAG_SUP_PHYS_CAP = 1.35  # a real flat disc, not Newtonian's 2.000
+
 DRAG_CD_SUP = {
-    # the nose stays cheap (the shipped pod's pointed end is pointed), the base is blunt
-    "capsule":        (0.45, 1.2, 1.5),
-    # blunt cylinder, already ~1.0 both ends
-    "fuel_tank":      (1.2, 1.3, 1.2),
-    "jet_tank":       (1.2, 1.3, 1.2),
-    "cargo":          (1.2, 1.3, 1.2),
-    # engine bells, nozzles and the adapter cones: blunt both ends, no streamlined side
-    "engine":         (1.15, 1.2, 1.15),
-    "orbital_engine": (1.15, 1.2, 1.15),
-    "nuclear_engine": (1.15, 1.2, 1.15),
-    "adapter":        (1.15, 1.2, 1.15),
-    # A nacelle is a shrouded duct, and jetThrust's ram term already prices the momentum
-    # its intake captures -- so wave cd on the SAME momentum double-counts it. Raise the
-    # nose least of any family here.
-    "jet":            (0.3, 1.2, 1.1),
-    # the disc family: blunt both faces, and since #1208 the broadside is blunt too (a
-    # 0.25 m wall is a wall at any Mach), so the whole set sits at Newtonian's capped
-    # broadside. rcs_box inherits this; being a cube, it is blunt either way.
-    "reaction_wheel": (1.3, 1.3, 1.3),
-    "materials_pod":  (1.3, 1.3, 1.3),
-    "barometer":      (1.3, 1.3, 1.3),
-    "thermometer":    (1.3, 1.3, 1.3),
-    "battery":        (1.3, 1.3, 1.3),
-    "rtg":            (1.3, 1.3, 1.3),
-    "mono_tank":      (1.3, 1.3, 1.3),
-    "rcs":            (1.3, 1.3, 1.3),
-    "decoupler":      (1.3, 1.3, 1.3),
-    "docking_port":   (1.3, 1.3, 1.3),
-    # THE WALL. 0.10 nose-first is what a smooth body is worth under Mach 0.8; above the
-    # band the same 0.5 x 6 m hull referenced to its own 0.78 m2 disc pays ~4x that.
-    "fuselage":       (0.45, 1.2, 0.5),
-    # a shallow cone (0.5 m on a 2 m base) is nearly a flat disc apex-first
-    "nose_cap":       (0.6, 0.9, 1.5),
-    # Deliberately modest: #1107 solved this hull's glide as a PAIR (body_lift 0.65 against
-    # drag_side 1.0 / drag_forward 0.1 -> best glide 1.03), and body_lift has no regime law
-    # yet (drag.h #1097), so raising only its cd across the band would bend a flight path
-    # that nothing else in the pass is bending.
-    "liftbody":       (0.25, 1.2, 0.7),
-    "kerbal":         (1.0, 1.1, 1.0),
-    # Left out on purpose -- chute (its own CdA term dominates), gear, leg, ladder (small
-    # area), and every LIFTING/STEERING surface (wing, rudder, elevator, aileron), whose
-    # regime cd is its thickness-to-chord through drag.h::waveCd. The loader refuses these
-    # keys on a part with lift_area or control_area, so a typo here fails at startup.
+    # The 2 m pod (family yardstick; capsule_r0.5h1.5 measures 0.234/1.253/2.000 --
+    # a pointed end stays pointed either way, so the family number is not a big lie).
+    "capsule":        (0.354, 1.168, 2.000),
+    # blunt cylinder both ends
+    "fuel_tank":      (2.000, 1.331, 2.000),
+    "jet_tank":       (2.000, 1.331, 2.000),
+    "cargo":          (2.000, 1.331, 2.000),
+    # engine bells: measured on `engine`'s mesh; orbital/nuclear reuse it
+    "engine":         (0.421, 1.213, 2.000),
+    "orbital_engine": (0.421, 1.213, 2.000),
+    "nuclear_engine": (0.421, 1.213, 2.000),
+    "adapter":        (1.228, 0.924, 2.000),
+    # The 2 m nacelle. Its nose is NOT cut below the measurement here even though
+    # jetThrust prices the momentum its intake captures: the intake's momentum DEFECT
+    # (ram drag) is nowhere in the aero bill at all, which is #1207 -- that is where
+    # this argument belongs, not as a hand-cut against a measured number.
+    "jet":            (0.421, 1.213, 2.000),
+    # The pucks (wheel / battery / rtg / mono tank / decoupler / dock port / pod).
+    # barometer, thermometer and rcs_box stay out: they are a 0.05 m stick and a small
+    # cube, and the puck's measurement says nothing about either.
+    "reaction_wheel": (2.000, 1.331, 2.000),
+    "materials_pod":  (2.000, 1.331, 2.000),
+    "battery":        (2.000, 1.331, 2.000),
+    "rtg":            (2.000, 1.331, 2.000),
+    "mono_tank":      (2.000, 1.331, 2.000),
+    "decoupler":      (2.000, 1.331, 2.000),
+    "docking_port":   (2.000, 1.331, 2.000),
+    # THE WALL, measured on fuselage_r0.5h6: 0.374 nose-first against the authored 0.10.
+    # The family spans r0.4 (0.458) to r1 (0.726); the spaceplane hull is the slim end.
+    "fuselage":       (0.374, 1.301, 0.470),
+    # a shallow cone (0.5 m on a 2 m base) is nearly a flat disc apex-first; its
+    # broadside measures 0.268, so the subsonic 0.9 floors that axis (Newtonian is not
+    # reliable on a slender side, and the floor is what keeps the pair honest)
+    "nose_cap":       (1.597, 0.268, 2.000),
+    "kerbal":         (0.998, 1.171, 0.998),
+    # liftbody is ABSENT on purpose. #1107 solved this hull's glide as a PAIR -- body_lift
+    # 0.65 against drag_side 1.0 / drag_forward 0.1, best glide body_lift / (2 sqrt(cdSide
+    # x cdForward)) = 1.03 -- and body_lift has NO regime law (drag.h #1097). Raising only
+    # the cd across the band collapses that closed form to 0.59, so it bends a fitted
+    # flight path with nothing bending the lift beside it. Author both numbers or neither.
+    # Left out: chute (its own CdA term dominates), gear, leg, ladder (small area), the
+    # small rcs puck, and every LIFTING/STEERING surface (wing, rudder, elevator, aileron),
+    # whose regime cd is its thickness-to-chord through drag.h::waveCd. The loader refuses
+    # these keys on a part with lift_area or control_area, so a typo here fails at startup.
 }
 
 # A part whose shape is not its type's (the flat-topped capsule has two flat discs,
 # not a pointed shoulder).
 DRAG_CD_SUP_BY_NAME = {
-    "capsule_cyl_r1h2": (1.2, 1.3, 1.2),
+    "capsule_cyl_r1h2": (2.000, 1.331, 2.000),
+    "jet_r0.25h1":      (0.293, 1.299, 2.000),
 }
 
 DRAG_SUP_KEYS = ("drag_forward_sup", "drag_side_sup", "drag_backward_sup")
@@ -1077,8 +1097,14 @@ def generate(name, ptype, mesh, texture):
         # drag.h joins this set against the subsonic one across the band, so a
         # supersonic family whose subsonic anchors are missing joins against 0.
         assert all(k in d for k in DRAG_KEYS[1:]), name
-        for _k, _v in zip(DRAG_SUP_KEYS, sup):
-            e[_k] = _v
+        assert len(sup) == len(DRAG_SUP_KEYS), (name, sup)
+        for _k, _sub_key, _phys in zip(DRAG_SUP_KEYS, DRAG_KEYS[1:], sup):
+            # The table holds PHYSICAL cd; the hull bills drag_cd x the anchor, so the
+            # division happens here and nowhere else. Cap the flat end (Newtonian's 2.0
+            # has no lee suction behind it), floor at the subsonic anchor (a part never
+            # gets cheaper by being faster).
+            v = min(_phys / DRAG_CD_MULT, DRAG_SUP_PHYS_CAP / DRAG_CD_MULT)
+            e[_k] = round(max(v, d[_sub_key]), 3)
     return e
 
 
@@ -1222,6 +1248,21 @@ def main():
     # the catalogue (#1203 is what that chase looks like).
     unauthored = sorted(set(POD_OUTFIT_KG) - {e["name"] for e in parts})
     assert not unauthored, "POD_OUTFIT_KG names parts that do not exist: %s" % unauthored
+
+    # Same failure mode, wider net: an override dict whose key stopped matching a part
+    # is never consulted, and the part silently reverts to its type's family -- a Cd
+    # number that vanished rather than a loud error. #1208 collapsed ten identical Cd
+    # dicts into one, which makes exactly this mistake easier to make.
+    named = {e["name"] for e in parts}
+    for _tbl, _what in ((EXTRA_FIELDS, "EXTRA_FIELDS"),
+                        (DRAG_CD_BY_NAME, "DRAG_CD_BY_NAME"),
+                        (DRAG_CD_SUP_BY_NAME, "DRAG_CD_SUP_BY_NAME")):
+        dead = sorted(set(_tbl) - named)
+        assert not dead, "%s names parts that do not exist: %s" % (_what, dead)
+    kind = {p[1] for p in PARTS}
+    for _tbl, _what in ((DRAG_CD, "DRAG_CD"), (DRAG_CD_SUP, "DRAG_CD_SUP")):
+        dead = sorted(set(_tbl) - kind)
+        assert not dead, "%s names part types that do not exist: %s" % (_what, dead)
 
     if a.check:
         ok = check(parts, a.out)

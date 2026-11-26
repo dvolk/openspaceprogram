@@ -717,10 +717,15 @@ $(TESTS):
 .PHONY: tests
 tests: $(addprefix $(TESTDIR)/,$(TESTS))
 
+# parts.json is STRICT while the art pin below stays advisory: unlike a mesh a painter
+# touches by hand, every number in that file comes out of gen_parts.py, so a hand edit
+# there has no legitimate story -- it means a generated anchor (the #635 supersonic
+# anchors, #1208's broadside fix, #1203's pod allowance) was quietly overwritten and the
+# flight model is the thing that ends up looking wrong.
 .PHONY: test-parts
 test-parts:
 	@if python3 -c "import importlib.util as u; exit(1 if u.find_spec('trimesh') is None else 0)"; then \
-		python3 utils/art/gen_parts.py --check; \
+		python3 utils/art/gen_parts.py --check --strict; \
 	else \
 		echo "test-parts: SKIP parts.json drift pin -- missing python module: trimesh" >&2; \
 	fi
@@ -735,9 +740,9 @@ test-parts:
 # build stays green, because this art is edited by hand as often as it is generated -- the
 # engines, adapters, nose caps and shrouds are hand-edited outright (see SHELVED in
 # utils/art/check_mesh_pins.py). A self-test failure -- a rule that stopped being able to
-# fail -- stays red either way. To make drift red again:
-# `python3 utils/art/check_mesh_pins.py --strict`, and for the parts.json pin
-# `python3 utils/art/gen_parts.py --check --strict`.
+# fail -- stays red either way. To make asset drift red again:
+# `python3 utils/art/check_mesh_pins.py --strict`. parts.json is no longer in the
+# advisory pile -- see test-parts above.
 .PHONY: test-art
 test-art:
 	@if python3 -c "import importlib.util as u; exit(1 if u.find_spec('trimesh') is None else 0)"; then \

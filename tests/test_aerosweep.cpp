@@ -1367,12 +1367,20 @@ static void test_the_lifting_body_pair_is_fitted() {
         return;
     }
     /* #635 shipped state: the catalogue authors the second anchor set for its body
-       parts. 68 of 87 do; the 19 that do not are the lifting/steering surfaces (their
+       parts -- 64 of 87. The 23 that do not are the lifting/steering surfaces (their
        regime cd is thickness-to-chord through waveCd), the chute (its own CdA term),
-       gear, leg, ladder, and the virtual fuel link. Absent means "the subsonic anchor"
-       (src/shipdef.h), never 0, so an unfitted part pays one cd at M 0.2 and M 7. */
+       gear, leg, ladder, the liftbody (its #1107 glide was solved as a PAIR against
+       body_lift, which has no regime law), the barometer/thermometer sticks and the
+       rcs cube (the puck measurement says nothing about them), and the virtual fuel
+       link. Absent means "the subsonic anchor" (src/shipdef.h), never 0. */
     {
-        int declared = 0, surfacesWith = 0, cheaperSup = 0;
+        /* The hull bills drag_cd x the anchor (src/vehicle.h, 1.2 by default), so the
+           table in gen_parts.py holds PHYSICAL cd and the generator divides. If that
+           division ever gets applied twice -- or not at all -- the shipped numbers sit
+           off the measurement they cite by exactly 20%, and this is what says so. */
+        const double cdMul = 1.2;
+        const double anchorCap = 1.35 / cdMul;   // a real flat disc, not Newtonian's 2.0
+        int declared = 0, surfacesWith = 0, cheaperSup = 0, overCap = 0;
         for(const PartDef &d : cat.parts) {
             if(d.drag_forward_sup > 0.0 || d.drag_side_sup > 0.0
                || d.drag_backward_sup > 0.0) { declared++; }
@@ -1380,27 +1388,35 @@ static void test_the_lifting_body_pair_is_fitted() {
                 if(d.drag_forward_sup > 0.0 || d.drag_side_sup > 0.0
                    || d.drag_backward_sup > 0.0) { surfacesWith++; }
             }
-            /* The authoring rule is sup = max(subsonic, min(newtonian, 1.35)), so a
-               part never gets CHEAPER by being faster. A transposed pair in
-               gen_parts.py would do exactly that, and nothing else would notice. */
+            /* The rule is sup = max(subsonic, min(measured / cdMul, cap / cdMul)), so a
+               part never gets CHEAPER by being faster, and never authors an anchor above
+               the cap unless its own subsonic anchor already is. A transposed pair in
+               the generator would break one of these and nothing else would notice. */
             if(d.dragForwardSup() < d.drag_forward
                || d.dragSideSup() < d.drag_side
                || d.dragBackwardSup() < d.drag_backward) { cheaperSup++; }
+            const double capF = d.drag_forward > anchorCap ? d.drag_forward : anchorCap;
+            const double capS = d.drag_side > anchorCap ? d.drag_side : anchorCap;
+            const double capB = d.drag_backward > anchorCap ? d.drag_backward : anchorCap;
+            if(d.dragForwardSup() > capF + 1e-9 || d.dragSideSup() > capS + 1e-9
+               || d.dragBackwardSup() > capB + 1e-9) { overCap++; }
         }
         printf("[pair] %d of %d catalogued parts declare supersonic cd anchors\n",
                declared, (int)cat.parts.size());
-        CHECK_TRUE(declared == 68, "#635: the body families author the supersonic band");
+        CHECK_TRUE(declared == 64, "#635: the body families author the supersonic band");
         CHECK_TRUE(surfacesWith == 0, "and no lifting/steering surface does");
         CHECK_TRUE(cheaperSup == 0, "no part is cheaper at Mach 6 than at Mach 0.2");
+        CHECK_TRUE(overCap == 0, "no supersonic anchor escapes the fitted rule's cap");
         /* The number the whole change is for: a fuselage's nose. 0.10 is what a smooth
-           body is worth subsonic; above the band the same shape is ~4x that, and that
-           gap -- not any of the blunt bodies -- is what a spaceplane pushes through. */
+           body is worth subsonic; measured nose-first on its own mesh it is 0.374, so
+           above the band the bill rises ~3.1x on the part that makes a spaceplane's
+           hull. (The probe columns are in tmp/n635/newton.txt.) */
         const PartDef *fus = cat.find("fuselage_r0.5h6");
         CHECK_TRUE(fus != nullptr, "fuselage_r0.5h6 is catalogued");
         if(fus != nullptr) {
             CHECK_NEAR(fus->drag_forward, 0.10, 1e-9, "nose-on stays a subsonic figure");
-            CHECK_NEAR(fus->dragForwardSup(), 0.45, 1e-9,
-                       "#635: and the same nose is ~4.5x that above the band");
+            CHECK_NEAR(cdMul * fus->dragForwardSup(), 0.374, 1e-3,
+                       "#635: and above the band it bills what the mesh measures, 0.374");
         }
     }
     /* And the loader refuses them on a SURFACE: a lifting or steering part is out of

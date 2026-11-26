@@ -14,8 +14,8 @@
 # of air bills |F| = 236.1 N (Cd 0.985) and |tau| = 41.9 Nm before the engine even lights
 # ([drag] t=0.9s, |v| = 0); mid-climb that torque reaches 804.5 N m. #1208 re-measured the
 # parked row: it read |F| = 227.9 N at Cd 0.949 until the disc family's broadside cd went
-# 0.2 -> 0.9, which is +3.7% on this hull -- the one reaction wheel it carries is now worth
-# 0.45 m2 of side CdA instead of 0.10. Nothing holds it -- the run is
+# 0.2 -> 0.9, which is +3.7% on this hull -- the one reaction wheel it carries now bills
+# 0.54 m2 of SideCdA (1.2 x cd x its 0.50 m2 broadside shadow) instead of 0.12. Nothing holds it -- the run is
 # unguided -- so the hull leans west into the wind (pitch 90.00 -> 63.1 deg, 26.9 deg off
 # vertical) and gains GROUND speed with it (hs 1e-2 -> 7.5 m/s), and hdg settles at
 # 269.71-270.20 across four runs: due west, straight upwind of an east wind. That is why the
