@@ -5292,6 +5292,7 @@ bool Vehicle::groundContact(const glm::dvec3 &from, const glm::dvec3 &down,
    neither. Forces accumulate on the one body like aero and thrust; nothing
    integrates until physics_tick. */
 double Vehicle::groundShareN(size_t contacts) {
+    assert(m_parent != nullptr && frame != nullptr);   // hullInWorld()'s own precondition
     if(contacts == 0) { return 0.0; }
     const double G = 6.674e-11;
     const glm::dvec3 com = get_center_of_mass();
@@ -5327,9 +5328,12 @@ void Vehicle::applyGroundForces(double h) {
     const glm::dvec3 holdShare = GetAccumulatedForce(hull) / (double)holders;
     /* A hull of ANY mass stands on its springs rather than on Bullet collision,
        which is where the ground law stops working (#1215): past its designed ride
-       each strut rates itself to the share it carries. */
-    const double strutShareN = groundShareN(gearParts.size());
-    const double padShareN = groundShareN(legParts.size());
+       each strut rates itself to the share it carries. One share across BOTH loops,
+       from `holders` -- on a gear-only or leg-only hull that is the same number the
+       loops already divide by, and on a mixed hull (the VAB allows it, no shipped
+       def uses it) two separate denominators would make the pair twice as stiff as
+       the load needs. */
+    const double strutShareN = groundShareN(holders);
     for(Part *p : gearParts) {
         const PartDef &d = *p->def;
         glm::dvec3 axle; glm::dmat3 pRot;
@@ -5343,7 +5347,7 @@ void Vehicle::applyGroundForces(double h) {
         if(!groundContact(axle, down, reach, dist, hit, n)) { continue; }
         const double compression = std::clamp((R + T) - dist, 0.0, T);
         double spring = d.wheel_spring, damp = d.wheel_damp;
-        wheel::sizeToStrut(strutShareN, spring, damp);
+        wheel::sizeToStrut(strutShareN, d.wheel_travel, spring, damp);
         if(compression <= 0.0) { continue; }   // airborne: no force
         /* The ground is stationary in the ship's frame: terrain and pads are
            static in the rot frame, and a balloon platform's deck is static in
@@ -5428,7 +5432,7 @@ void Vehicle::applyGroundForces(double h) {
         if(!groundContact(foot, down, reach, dist, hit, n)) { continue; }
         const double compression = std::clamp((pad + T) - dist, 0.0, T);
         double spring = d.leg_spring, damp = d.leg_damp;
-        wheel::sizeToStrut(padShareN, spring, damp);   // same ceiling as the gear
+        wheel::sizeToStrut(strutShareN, d.leg_travel, spring, damp);   // same ceiling as the gear
         if(compression <= 0.0) { continue; }   // airborne: no force
         const glm::dvec3 vRel = vel;
         // wheel::force needs a non-degenerate in-plane axis; the part's +Y
@@ -5481,7 +5485,7 @@ void Vehicle::logLegContacts(double t) {
        prints an 86 km "float", and partWorldPose would dereference hull). */
     if((gearParts.empty() && legParts.empty()) || hull == nullptr || !hullInWorld()) { return; }
     const std::string name = displayName();
-    auto row = [&](Part *p, const char *kind, double travel, double spring) {
+    auto row = [&](Part *p, const char *kind, double travel, double spring, double damp) {
         glm::dvec3 origin; glm::dmat3 pRot;
         partWorldPose(p, origin, pRot);
         /* The drawn bottom, as the min over the hull verts. Missing geometry is
@@ -5499,29 +5503,30 @@ void Vehicle::logLegContacts(double t) {
         glm::dvec3 hit, n;
         double dist;
         if(!groundContact(origin, down, reach, dist, hit, n)) {
-            printf("[leglog] t=%.3fs ship=\"%s\" %s uid=%llu mesh=%.3f m gap=air travel=%.3f k=%.0f N/m\n",
-                   t, name.c_str(), kind, (unsigned long long)p->uid, mesh, travel, spring);
+            printf("[leglog] t=%.3fs ship=\"%s\" %s uid=%llu mesh=%.3f m gap=air travel=%.3f k=%.0f N/m c=%.0f N s/m\n",
+                   t, name.c_str(), kind, (unsigned long long)p->uid, mesh, travel, spring, damp);
             return;
         }
         const double comp = std::clamp((mesh + travel) - dist, 0.0, travel);
-        printf("[leglog] t=%.3fs ship=\"%s\" %s uid=%llu mesh=%.3f m gap=%.3f m comp=%.3f m travel=%.3f k=%.0f N/m\n",
+        printf("[leglog] t=%.3fs ship=\"%s\" %s uid=%llu mesh=%.3f m gap=%.3f m comp=%.3f m travel=%.3f k=%.0f N/m c=%.0f N s/m\n",
                t, name.c_str(), kind, (unsigned long long)p->uid, mesh, dist - mesh,
-               comp, travel, spring);
+               comp, travel, spring, damp);
     };
-    /* k= is the rate the ground pass is USING, so a hull that out-rates its
-       catalogue strut shows the sized number here rather than one the sim no
-       longer applies (#1215). */
-    const double gearShare = groundShareN(gearParts.size());
-    const double legShare = groundShareN(legParts.size());
+    /* k= and c= are the rates the ground pass is USING, so a hull that out-rates
+       its catalogue strut shows the sized numbers here rather than ones the sim no
+       longer applies (#1215). The c/k column pair is also how the damper rule is
+       read: under sizeToStrut the ratio stays the authored one (linear), where the
+       intuitive sqrt(k) would shrink it as k grows. */
+    const double share = groundShareN(gearParts.size() + legParts.size());
     for(Part *p : gearParts) {
         double k = p->def->wheel_spring, c = p->def->wheel_damp;
-        wheel::sizeToStrut(gearShare, k, c);
-        row(p, "gear", p->def->wheel_travel, k);
+        wheel::sizeToStrut(share, p->def->wheel_travel, k, c);
+        row(p, "gear", p->def->wheel_travel, k, c);
     }
     for(Part *p : legParts) {
         double k = p->def->leg_spring, c = p->def->leg_damp;
-        wheel::sizeToStrut(legShare, k, c);
-        row(p, "leg", p->def->leg_travel, k);
+        wheel::sizeToStrut(share, p->def->leg_travel, k, c);
+        row(p, "leg", p->def->leg_travel, k, c);
     }
 }
 

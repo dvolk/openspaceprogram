@@ -30,6 +30,13 @@ CHECK mass[-1]["mass"] < mass[0]["mass"] - 5.0
 # 4061.6*9.81/3/0.106 = 125 kN/m to sit at the designed ride. The authored 25000
 # is what used to leave the hull on the deck, so a row still reading it is the bug.
 CHECK all(r["k"] > 100000 for r in leglog if r["t"] > 1.0)
+# ...and the damper rose WITH it, one-for-one. c/k must stay the authored 3000/25000,
+# which is the whole damping rule: heave on this branch is omega = sqrt(g/ride) with the
+# mass cancelled out of it, so a ratio held constant is a damping ratio held constant.
+# Scale the damper sqrt(k) -- the reflex from c = 2 sqrt(k m) -- and c/k falls to 0.054
+# here, zeta 0.26 against the skiff's 0.64, and the plane rings for a couple of seconds
+# on every touchdown. That is the failure this line is drawn against.
+CHECK all(abs(r["c"] / r["k"] - 0.12) < 0.005 for r in leglog if r["t"] > 1.0)
 # Standing on the springs, never at the bump stop. The reserve here is thinner than
 # the skiff's 0.02 m (1158-b) because the load is uneven the same way it is there:
 # the nose corner carries ~1.24x the even share, so it rides at 0.132 of its 0.15

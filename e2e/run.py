@@ -539,11 +539,17 @@ EVA_RE = re.compile(
 # footpad -- and where its own DRAWN contact face sits relative to the ground.
 # gap= is that distance (the visible float the ticket is about; "air" when the
 # contact ray misses), comp= is the suspension compression the ride height comes
-# from, travel= the stroke the part was authored with.
+# from, travel= the stroke the part was authored with, k= and c= the spring rate
+# and damper rate the ground pass is actually USING, which sizeToStrut raises past
+# a designed ride (#1215). A row printed from the airborne branch (gap=air, no
+# comp=) does not match this regex, so every parsed row has a real gap and comp.
 LEGLOG_RE = re.compile(
     r'\[leglog\]\s+t=([\d.]+)s\s+ship="(.+?)"\s+(leg|gear)\s+uid=(\d+)\s+'
     r"mesh=([-\d.]+) m\s+(?:gap=air|gap=([-\d.]+) m)\s+"
-    r"comp=([-\d.]+) m\s+travel=([-\d.]+)\s+k=([-\d.]+)"
+    r"comp=([-\d.]+) m\s+travel=([-\d.]+)\s+k=([-\d.]+) N/m\s+c=([-\d.]+) N s/m"
+    # c= is NOT optional: the printer and this parser ship in the same tree, so a
+    # row without it is a printer that lost the column, not a field nobody asked for.
+    # Same shape as POWER_RE's net=.
 )
 DRAINLOG_RE = re.compile(
     r"\[drainlog\]\s+t=([\d.]+)s\s+dt=([\d.]+)s\s+ship=\"([^\"]*)\"\s+"
@@ -1822,7 +1828,7 @@ def parse_eva(out):
 def parse_leglog(out):
     rows = []
     for m in LEGLOG_RE.finditer(out):
-        t, ship, kind, uid, mesh, gap, comp, travel, k = m.groups()
+        t, ship, kind, uid, mesh, gap, comp, travel, k, c = m.groups()
         rows.append({
             "t": float(t), "ship": ship, "kind": kind, "uid": int(uid),
             # The part's DRAWN bottom, positive: -min(z) over Body::hullVerts, so
@@ -1843,6 +1849,10 @@ def parse_leglog(out):
             # the clamp is inactive. The ride height is travel - comp, which is
             # the same quantity as the landing stroke (#1158).
             "comp": float(comp), "travel": float(travel), "k": float(k),
+            # c/k is the damping ratio in one read: sizeToStrut scales the two
+            # together, so a heavy hull whose k is 5x authored reads c 5x authored
+            # too. A sqrt(k) damper would show the ratio SHRINKING with mass.
+            "c": float(c),
         })
     return rows
 

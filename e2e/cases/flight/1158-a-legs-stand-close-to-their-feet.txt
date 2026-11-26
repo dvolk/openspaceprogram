@@ -72,3 +72,9 @@ CHECK all(abs(r["gap"] + r["comp"] - r["travel"]) < 0.01 for r in leglog if r["c
 # close again; when this case was written the share was uneven enough (0.112..0.126) that
 # the ideal overstate the headroom by half a tonne.
 CHECK all(0.05 < r["comp"] < r["travel"] - 0.01 for r in leglog if r["t"] > 1.0)
+# And this hull is NOT the one sizeToStrut rescues: 2270.09 kg over four legs is 5571 N a
+# footpad, under the 60000 x 0.106 = 6360 N the authored leg already carries at the
+# designed ride, so k= must still read the catalogue. That is what makes the leg branch of
+# the sizing rule observable at all -- a shipped legged hull crossing 2594 kg (6360*4/g)
+# reddens this line and has to be re-tuned rather than silently riding a sized strut.
+CHECK all(abs(r["k"] - 60000.0) < 1.0 for r in leglog if r["t"] > 1.0)

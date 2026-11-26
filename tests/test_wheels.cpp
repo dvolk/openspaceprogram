@@ -381,11 +381,12 @@ int main() {
                    "an unbraked wheel holds no slope at all");
     }
 
-    /* sizeToStrut: a hull of ANY mass stands on its springs, not on Bullet
-       collision. Four things to hold: at or under the designed ride the authored
-       rate survives exactly (so no shipped hull moves); past it k = share /
-       kRideStroke, which parks the static stroke on the designed ride instead of
-       on the bump stop; the damper follows sqrt(k) so the damping ratio holds;
+    /* sizeToStrut: any hull stands on its springs, not on Bullet collision. Five
+       things to hold: at or under the designed ride the authored pair survives
+       exactly (so no shipped hull moves); past it k = share / ride, which parks the
+       static stroke on the designed ride instead of on the bump stop; the damper
+       scales LINEARLY with k, which is what keeps the heave mode at a constant
+       damping ratio; the ride never exceeds what the part's own travel can reach;
        and the stroke below travel is left over for a landing. */
     {
         const double kAuth = 25000.0, cAuth = 3000.0, travel = 0.15;
@@ -393,7 +394,7 @@ int main() {
         // 0.106 of its 0.15 (e2e 1158-b reads the free stroke). That hull has to
         // pass through this rule untouched, bit for bit.
         double k = kAuth, c = cAuth;
-        wheel::sizeToStrut(kAuth * wheel::kRideStroke, k, c);
+        wheel::sizeToStrut(kAuth * wheel::kRideStroke, travel, k, c);
         CHECK_NEAR(k, kAuth, 1e-9, "a hull at the designed ride keeps its authored spring");
         CHECK_NEAR(c, cAuth, 1e-9, "and its authored damper");
 
@@ -405,20 +406,42 @@ int main() {
         const double heavyShare = 13273.0;
         CHECK_TRUE(kAuth * travel < heavyShare, "the authored strut cannot hold a 4 t hull");
         k = kAuth; c = cAuth;
-        wheel::sizeToStrut(heavyShare, k, c);
+        wheel::sizeToStrut(heavyShare, travel, k, c);
         CHECK_NEAR(k, heavyShare / wheel::kRideStroke, 1e-6,
                    "a heavier hull rates the strut to what it carries");
-        CHECK_NEAR(c, cAuth * std::sqrt(k / kAuth), 1e-6, "and scales the damper with sqrt(k)");
         CHECK_NEAR(k * wheel::kRideStroke, heavyShare, 1e-6,
                    "so the static stroke lands back on the designed ride");
         CHECK_TRUE(wheel::kRideStroke < travel, "which stays inside the stroke a landing needs");
+        // The damper goes up with k one-for-one. Scaling it sqrt(k) instead -- the
+        // reflex from c = 2 sqrt(k m) -- is what the comment in wheel.h refuses: on
+        // this branch omega is pinned at sqrt(g/ride), mass-free, while k carries the
+        // mass, so sqrt leaves zeta falling like 1/sqrt(mass). Measured: the skiff
+        // sits at 3000 / (2 sqrt(25000 * 219.4)) = 0.64 while sqrt-scaling a 4 t
+        // hull lands at 0.26, i.e. ~40% overshoot and a couple of seconds of heave
+        // ring at every touchdown, on exactly the hull this rule exists to rescue.
+        CHECK_NEAR(c, cAuth * (k / kAuth), 1e-6, "the damper scales with k, linearly");
+        CHECK_NEAR(c / k, cAuth / kAuth, 1e-12, "so c/k, and with it zeta, does not move");
+
+        // A short-travel part is never sized for a stroke it cannot reach: the ride
+        // clamps to kRideMaxFraction of its travel, which leaves a stiffer strut that
+        // still stands on its spring rather than a soft one parked on its stop.
+        const double shortTravel = 0.02;
+        k = kAuth; c = cAuth;
+        wheel::sizeToStrut(heavyShare, shortTravel, k, c);
+        CHECK_NEAR(k, heavyShare / (wheel::kRideMaxFraction * shortTravel), 1e-6,
+                   "a short-travel strut sizes to ITS stroke, not the default ride");
+        CHECK_TRUE(k * wheel::kRideMaxFraction * shortTravel <= heavyShare,
+                   "and never sits past that fraction of its travel");
+        CHECK_TRUE(k > heavyShare / wheel::kRideStroke, "which makes it stiffer still");
 
         // And nothing happens where no sizing is needed.
         k = kAuth; c = cAuth;
-        wheel::sizeToStrut(1000.0, k, c);
+        wheel::sizeToStrut(1000.0, travel, k, c);
         CHECK_NEAR(k, kAuth, 1e-9, "a light hull is not stiffened");
-        wheel::sizeToStrut(0.0, k, c);
+        wheel::sizeToStrut(0.0, travel, k, c);
         CHECK_NEAR(c, cAuth, 1e-9, "and a wheel in the air changes nothing");
+        wheel::sizeToStrut(heavyShare, 0.0, k, c);
+        CHECK_NEAR(k, kAuth, 1e-9, "and a part with no travel to size against is left alone");
     }
 
     printf("test_wheels: %d checks, %d failures\n", g_checks, g_failures);

@@ -926,8 +926,10 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                  "its DRAWN mesh bottom sits above the ground it is standing on "
                  "(the visible float, #1158) and comp= is the suspension "
                  "compression the ride height comes from; k= is the spring rate "
-                 "the ground pass is using, which past the designed ride is "
-                 "sized to the hull rather than the catalogue (#1215)");
+                 "the ground pass is USING, which past the designed ride is "
+                 "sized to the hull rather than the catalogue (#1215), and c= "
+                 "is the damper rate it uses with it -- the c/k ratio is how "
+                 "the damping rule gets read");
 
     app.add_option("--postfx", args.postfx_spec,
                    "Post-processing effect, in the order given; repeatable "
