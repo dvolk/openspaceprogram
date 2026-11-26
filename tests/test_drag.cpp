@@ -3106,12 +3106,13 @@ static void test_silhouetteBill() {
             polys.push_back(rect(-1.0, -1.0, 1.0, 1.0));
             SilhouettePart at;
             at.cd = 0.35 + 0.3 * k;
+            at.cdSup = 1.20 + 0.3 * k;           // #635: the same part, other anchors
             at.depth = 3 - k;                    // part 0 is the upwind one
             at.cp = glm::dvec3(0.0, 0.0, double(k));
             atts.push_back(at);
         }
-        std::vector<double> vis(3, 0.0), visCd(3, 0.0);
-        const SilhouetteBill b = silhouetteBill(polys, atts, &vis, &visCd);
+        std::vector<double> vis(3, 0.0), visCd(3, 0.0), visCdSup(3, 0.0);
+        const SilhouetteBill b = silhouetteBill(polys, atts, &vis, &visCd, &visCdSup);
         CHECK_REL(b.area, 4.0, 1e-12, "a stack silhouettes one face");
         CHECK_REL(vis[0], 4.0, 1e-12, "the front part keeps the whole face");
         CHECK_REL(vis[1], 0.0, 1e-12, "the middle part is invisible");
@@ -3126,6 +3127,18 @@ static void test_silhouetteBill() {
         double sumCd = 0.0;
         for(double v : visCd) { sumCd += v; }
         CHECK_REL(sumCd, b.cdNum, 1e-12, "and the credits sum to the bill's numerator");
+        /* #635: the strip loop bills BOTH anchor sets off the SAME partition. That
+           is what lets the cache store two numbers per direction and the caller join
+           them by Mach: the occluded parts are occluded in both columns, so mixing
+           cannot leak an area the air never saw. */
+        CHECK_REL(b.cdNumSup / b.area, 1.20, 1e-12,
+                  "the supersonic numerator is the same keeper's, at its own anchors");
+        CHECK_REL(visCdSup[0], 4.0 * 1.20, 1e-12, "its supersonic credit bills at cdSup");
+        CHECK_REL(visCdSup[1], 0.0, 1e-12, "an occluded part credits nothing there either");
+        double sumSup = 0.0;
+        for(double v : visCdSup) { sumSup += v; }
+        CHECK_REL(sumSup, b.cdNumSup, 1e-12,
+                  "and that column sums to its own numerator, not the subsonic one");
         double sum = 0.0;
         for(double v : vis) { sum += v; }
         CHECK_REL(sum, b.area, 1e-12, "the credits partition the silhouette");
@@ -3585,7 +3598,7 @@ static void test_silhouetteMemo() {
     CHECK_TRUE(memo.fillAround(0.3, 0.1, 0,
                                [](double, double, std::vector<double> &,
                                   std::vector<double> &, std::vector<double> &,
-                                  std::vector<glm::dvec3> &) {
+                                  std::vector<glm::dvec3> &, std::vector<double> &) {
                                    return SilhouetteBill(); }) == 0,
                "a zero budget fills nothing (and costs nothing)");
 
@@ -3597,16 +3610,23 @@ static void test_silhouetteMemo() {
        the cd numerator, and a cp that walks with the angles. */
     const auto exactBill = [&](double a, double b, std::vector<double> &pv,
                                std::vector<double> &pcd, std::vector<double> &ppj,
-                               std::vector<glm::dvec3> &pcp) {
+                               std::vector<glm::dvec3> &pcp,
+                               std::vector<double> &pcdsup) {
         SilhouetteBill bl;
         bl.area = exact(a, b);
         bl.cdNum = 3.0 * bl.area;
+        bl.cdNumSup = 5.0 * bl.area;   // #635: a DIFFERENT anchor set, same linearity
         bl.cpNum = glm::dvec3(2.0 * a, -1.0 * b, 0.5);   // linear, so bilinear is exact
         /* A two-part partition of every node, linear like the scalars: 60/40 of
            the area, both parts voting cd 3, so the blended columns are checkable
            against the blended bill (#1090). */
         pv = { 0.6 * bl.area, 0.4 * bl.area };
         pcd = { 1.8 * bl.area, 1.2 * bl.area };
+        /* #635: the same 60/40 split billed at the supersonic anchors (cd 5 each),
+           so this column's sum is exactly bl.cdNumSup at every node -- which is what
+           lets the caller mix it against pcd by ONE regime weight and still have the
+           parts sum to the ship's number. */
+        pcdsup = { 3.0 * bl.area, 2.0 * bl.area };
         /* And the own-shadow column (#947), told so that slot 0 is FULLY EXPOSED
            (shadow == credit) while slot 1 hides behind it by a linear, positive
            amount: exactly the shape the crossflow law leans on. */
@@ -3623,8 +3643,8 @@ static void test_silhouetteMemo() {
     int calls = 0;
     const auto counted = [&](double a, double b, std::vector<double> &pv,
                              std::vector<double> &pcd, std::vector<double> &ppj,
-                             std::vector<glm::dvec3> &pcp) {
-        calls++; return exactBill(a, b, pv, pcd, ppj, pcp);
+                             std::vector<glm::dvec3> &pcp, std::vector<double> &pcdsup) {
+        calls++; return exactBill(a, b, pv, pcd, ppj, pcp, pcdsup);
     };
     CHECK_TRUE(memo.fillAround(0.11, -0.31, 4, counted) == 4,
                "a fresh cell fills its four corners");
@@ -3648,7 +3668,9 @@ static void test_silhouetteMemo() {
         CHECK_REL(bl.cdNum / bl.area, 3.0, 1e-6, "so the coefficient survives the blend");
         std::vector<double> wantV, wantC, wantP;
         std::vector<glm::dvec3> wantCP;
-        const SilhouetteBill want = exactBill(0.13, -0.29, wantV, wantC, wantP, wantCP);
+        std::vector<double> wantSup;
+        const SilhouetteBill want = exactBill(0.13, -0.29, wantV, wantC, wantP,
+                                              wantCP, wantSup);
         CHECK_REL(glm::length(bl.cpNum - want.cpNum), 0.0, 1e-5 * glm::length(want.cpNum),
                    "and so does the cp numerator (same basis at every node)");
         /* THE PARTITION HITS TOO (#1090). Same four nodes, same weights, one row
@@ -3657,17 +3679,44 @@ static void test_silhouetteMemo() {
            area and cd numerator, and each part's own cd survives -- so a part
            window or a heating law reading these on a HIT reads the same KIND of
            number the exact pass would have computed. */
-        std::vector<double> vis, cdA, proj;
+        std::vector<double> vis, cdA, proj, cdSup;
         std::vector<glm::dvec3> cpP;
-        CHECK_TRUE(memo.lookup(0.13, -0.29, bl, &vis, &cdA, &proj, &cpP),
+        CHECK_TRUE(memo.lookup(0.13, -0.29, bl, &vis, &cdA, &proj, &cpP, &cdSup),
                    "the hit carries the partition");
-        CHECK_TRUE(vis.size() == 2 && cdA.size() == 2 && proj.size() == 2,
+        CHECK_TRUE(vis.size() == 2 && cdA.size() == 2 && proj.size() == 2
+                   && cdSup.size() == 2,
                    "one row per part in each column");
         CHECK_REL(vis[0], wantV[0], 1e-9, "the 60% part keeps its 60%, blended");
         CHECK_REL(vis[1], wantV[1], 1e-9, "and the 40% part its 40%");
         CHECK_REL(vis[0] + vis[1], bl.area, 1e-12, "the columns still sum to the blended area");
         CHECK_REL(cdA[0] + cdA[1], bl.cdNum, 1e-12, "and their credits to the blended numerator");
         CHECK_REL(cdA[0] / vis[0], 3.0, 1e-9, "each part's own cd survives the blend");
+        /* THE SUPERSONIC CREDIT COLUMN (#635). The node holds TWO bills because the
+           chart is keyed on flow direction and Mach is not a direction, so this
+           column must blend with the same weights and sum to the blended supersonic
+           numerator -- otherwise mixing it against cdA by one regime weight would
+           invent an amount no part paid, and the hull's watts would stop equalling
+           the sum of the parts'. */
+        CHECK_REL(bl.cdNumSup, 5.0 * bl.area, 1e-6,
+                  "the supersonic numerator blends on the same area");
+        CHECK_REL(cdSup[0], wantSup[0], 1e-9, "part 0's supersonic credit blends");
+        CHECK_REL(cdSup[1], wantSup[1], 1e-9, "and part 1's");
+        CHECK_REL(cdSup[0] + cdSup[1], bl.cdNumSup, 1e-12,
+                  "their sum is the blended supersonic numerator");
+        CHECK_REL(cdSup[0] / vis[0], 5.0, 1e-9,
+                  "and its own cd survives, distinct from the subsonic column");
+        /* The join the caller actually does, on the blended columns: one weight,
+           both columns, and the parts still sum to the ship. mixAnchor's linearity
+           is the whole reason the cache can hold two numbers per node. */
+        {
+            const double w = 0.4;
+            double sum = 0.0;
+            for(size_t t = 0; t < cdA.size(); t++) {
+                sum += mixAnchor(w, cdA[t], cdSup[t]);
+            }
+            CHECK_REL(sum, mixAnchor(w, bl.cdNum, bl.cdNumSup), 1e-12,
+                      "one regime weight keeps SUM(part CdA) == the mixed numerator");
+        }
         /* THE SHADOW COLUMN (#947): the exposed part's credit equals its own shadow
            THROUGH the blend -- both columns carry the identical linear function, so
            the bilinear weights cancel to identity and the crossflow law bills that
@@ -4022,6 +4071,65 @@ static void test_partCd() {
     // clamped, not amplified -- c=+1.5 behaves like the forward anchor.
     CHECK_REL(partCd(fwd, side, bwd,  1.5), fwd, 1e-12, "c>1 clamps to forward");
     CHECK_REL(partCd(fwd, side, bwd, -1.5), bwd, 1e-12, "c<-1 clamps to backward");
+
+    /* #635: THE SAME BLEND AT TWO ANCHOR SETS, joined by regime. The shipped
+       catalogue authors one set, so this is the seam every future body number will
+       be measured against -- and the identity below is what keeps 446 kg of skiff
+       flying exactly as it did before the second set existed. */
+    {
+        const double sfwd = 1.10, sside = 1.25, sbwd = 1.70;
+        // Below the band and above it: each anchor set, hit exactly.
+        CHECK_REL(partCd(fwd, side, bwd, sfwd, sside, sbwd, 1.0, 0.0), fwd, 1e-12,
+                  "mix 0 -> the subsonic forward anchor");
+        CHECK_REL(partCd(fwd, side, bwd, sfwd, sside, sbwd, 1.0, 1.0), sfwd, 1e-12,
+                  "mix 1 -> the supersonic forward anchor");
+        CHECK_REL(partCd(fwd, side, bwd, sfwd, sside, sbwd, 0.0, 1.0), sside, 1e-12,
+                  "and the orientation blend still runs at mix 1");
+        CHECK_REL(partCd(fwd, side, bwd, sfwd, sside, sbwd, -1.0, 1.0), sbwd, 1e-12,
+                  "including the base anchor");
+        // Mid-band: straight join in the anchors, so it equals the join of the
+        // blends (linearity -- the property the silhouette cache depends on).
+        for(double mix : { 0.25, 0.5, 0.75 }) {
+            for(double c : { 1.0, 0.5, 0.0, -0.5, -1.0 }) {
+                const double a = partCd(fwd, side, bwd, c);
+                const double b = partCd(sfwd, sside, sbwd, c);
+                CHECK_REL(partCd(fwd, side, bwd, sfwd, sside, sbwd, c, mix),
+                          a + (b - a) * mix, 1e-12,
+                          "the join is linear in the anchors, at any attitude");
+            }
+        }
+        // A part that declares nothing is exactly as Mach-blind as it was.
+        CHECK_REL(partCd(fwd, side, bwd, fwd, side, bwd, 0.3, 1.0),
+                  partCd(fwd, side, bwd, 0.3), 1e-12,
+                  "equal anchor sets -> the mix buys nothing (every shipped part)");
+    }
+
+    /* bodyRegimeMix owns the band: the same two edges liftSlopeMach (#543 A5) and
+       waveCd (A5b) use, pinned here so a hull's regime cannot start somewhere the
+       wing's does not. */
+    {
+        CHECK_REL(bodyRegimeMix(0.0), 0.0, 1e-12, "no airspeed, no mix");
+        CHECK_REL(bodyRegimeMix(kTransonicMach), 0.0, 1e-12,
+                  "the band's low edge is still the subsonic anchors");
+        CHECK_REL(bodyRegimeMix(kSupersonicMach), 1.0, 1e-12,
+                  "its high edge is the supersonic anchors");
+        CHECK_REL(bodyRegimeMix(1.0), 0.5, 1e-12, "Mach 1 sits halfway across");
+        CHECK_REL(bodyRegimeMix(7.0), 1.0, 1e-12, "and stays there hypersonic");
+        CHECK_REL(bodyRegimeMix(-3.0), 0.0, 1e-12, "a nonsense Mach mixes nothing");
+        CHECK_REL(bodyRegimeMix(std::nan("")), 0.0, 1e-12,
+                  "NaN pays the subsonic anchors rather than inventing a number");
+        bool mono = true;
+        for(double m = 0.75; m < 1.25; m += 0.01) {
+            if(!(bodyRegimeMix(m) <= bodyRegimeMix(m + 0.01))) { mono = false; }
+        }
+        CHECK_TRUE(mono, "the join never steps back through the band");
+    }
+
+    // mixAnchor: the single-anchor form #947's crossflow needs (no attitude blend).
+    CHECK_REL(mixAnchor(0.0, 0.8, 1.25), 0.8, 1e-12, "mix 0 -> the subsonic anchor");
+    CHECK_REL(mixAnchor(1.0, 0.8, 1.25), 1.25, 1e-12, "mix 1 -> the supersonic anchor");
+    CHECK_REL(mixAnchor(0.5, 0.8, 1.25), 1.025, 1e-12, "between -> straight join");
+    CHECK_REL(mixAnchor(0.5, 1.0, 1.0), 1.0, 1e-12, "equal anchors stay put");
 }
 
 static void test_surfaceFormCdA() {

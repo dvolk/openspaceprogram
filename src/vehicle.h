@@ -311,11 +311,17 @@ public:
        times its own projected centroid, in the same frame S cpNum lives in, so
        cp == aeroSilPartCp[i] / aeroSilPartVis[i] is where THAT part's share of
        the union's pressure sits -- and the weighted sum of the parts' copies IS
-       the cpNum the axial force acts at, hit or miss (products blend linearly). */
+       the cpNum the axial force acts at, hit or miss (products blend linearly).
+       `aeroSilPartCdSupA` is the eighth (#635): the same credits billed at the
+       parts' SUPERSONIC anchors, so their sum is the bill's cdNumSup. The caller
+       mixes it with aeroSilPartCdA by one bodyRegimeMix per substep -- one mix for
+       the whole hull pass, so SUM(part CdA) stays exactly the hull's cdNum x area
+       whatever the airspeed is. */
     std::vector<double> aeroSilPartVis;
     std::vector<double> aeroSilPartCdA;
     std::vector<double> aeroSilPartProj;
     std::vector<glm::dvec3> aeroSilPartCp;
+    std::vector<double> aeroSilPartCdSupA;
     std::vector<Part *> aeroSilPartPtr;
     // Scratch for filling cache nodes: those polygons belong to the cell
     // corners' flow directions, not the substep's, so they need their own set.

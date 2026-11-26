@@ -30,6 +30,7 @@ PartDef::PartDef()
       crew_capacity(0), inventory_capacity(0), decoupler(false), docking_port(false),
       fuel_barrier(false), fuel_link(false), hull_margin(-1.0),
       drag(0.0), drag_forward(0.0), drag_side(0.0), drag_backward(0.0),
+      drag_forward_sup(0.0), drag_side_sup(0.0), drag_backward_sup(0.0),
       lift_area(0.0), cl(0.0), stall_angle(0.0),
       control_area(0.0), control_axis(ControlAxis::Pitch), cl_control(0.0),
       max_deflection(0.0), chute_area(0.0),
@@ -774,6 +775,30 @@ PartsCatalog load_parts_catalog(const char *path) {
         if(d.drag_backward < 0.0) {
             throw std::runtime_error(ctx +
                 "\"drag_backward\" must be >= 0 (dimensionless)");
+        }
+        /* #635: the same three anchors priced above the sound bar. They default to
+           0, which the read path (PartDef::dragForwardSup and friends) spells
+           UNAUTHORED: the part keeps paying its subsonic anchor at every Mach, as it
+           always did. Defaulting them HERE to the subsonic value instead would be a
+           second place holding that rule, and a hand-built def -- a bench, a scratch
+           --parts catalogue -- would miss it and bill zero drag hypersonic. No upper
+           guardrail: these are coefficients, not a slope, so an over-authored body
+           bills a lot of drag, which is loud in the flight log rather than silently
+           divergent. */
+        d.drag_forward_sup = optNumber(pv, "drag_forward_sup", 0.0, ctx);
+        if(d.drag_forward_sup < 0.0) {
+            throw std::runtime_error(ctx +
+                "\"drag_forward_sup\" must be >= 0 (dimensionless)");
+        }
+        d.drag_side_sup = optNumber(pv, "drag_side_sup", 0.0, ctx);
+        if(d.drag_side_sup < 0.0) {
+            throw std::runtime_error(ctx +
+                "\"drag_side_sup\" must be >= 0 (dimensionless)");
+        }
+        d.drag_backward_sup = optNumber(pv, "drag_backward_sup", 0.0, ctx);
+        if(d.drag_backward_sup < 0.0) {
+            throw std::runtime_error(ctx +
+                "\"drag_backward_sup\" must be >= 0 (dimensionless)");
         }
         /* #1097: signed body-lift anchor. Sane-magnitude bound because this one
            drives, not trims: the kernel's peak force is q x drag_cd x cl x A / 2

@@ -502,6 +502,42 @@ struct PartDef {
     double drag_forward;  // cd with the part's NOSE into the flow. Defaults to `drag`.
     double drag_side;     // cd broadside. Defaults to `drag`.
     double drag_backward; // cd with the part's BASE into the flow. Defaults to `drag`.
+    /* #635: the SAME three anchors, priced in the supersonic regime, joined to the
+       ones above by drag.h::bodyRegimeMix across the same 0.75..1.25 band the slope
+       law (#543 A5) and the surface wave law (A5b) already own. An absent one IS the
+       subsonic anchor beside it (see the accessors below), not a law: a blunt body's
+       cd curve is NOT a wing's. A
+       wing's wave drag comes off its thickness and DECAYS above the band; a pod's
+       barely moves from subsonic to hypersonic, a blunt nose can even bill LESS once
+       a shock stands off it, and a flat base bills more than anything else on the
+       hull. So there is no multiplier here to invent -- the catalogue authors numbers
+       and the join is a seam to measure them against. What each one is FOR: the
+       broadside anchor is the one Newtonian theory gets right for a blunt shoulder
+       (tmp/n1099/faceprobe2 measures 1.17-1.33 across the shipped meshes, where the
+       subsonic anchors sit 0.8-1.1); the axial anchors are where a heat shield lives,
+       and Newtonian's 2.0 for a flat end has no lee suction behind it, so a real
+       shield authors nearer 1.1-1.7. A part that declares nothing is exactly as
+       Mach-blind as it was before this field existed. */
+    double drag_forward_sup;   // cd nose-in above the band. 0 = inherit drag_forward.
+    double drag_side_sup;      // cd broadside above the band. 0 = inherit drag_side.
+    double drag_backward_sup;  // cd base-in above the band. 0 = inherit drag_backward.
+    /* Read them through these, never bare: a catalogue that predates #635, a scratch
+       --parts file, or a bench that builds a PartDef by hand leaves the fields at 0,
+       and 0 there means UNAUTHORED, not zero drag -- the part pays its subsonic
+       anchor at every Mach, exactly as it did before the fields existed. A part
+       cannot author a supersonic anchor of exactly 0 (nothing in this catalogue is
+       dragless nose-on, and the fallback would silently swallow it); anything above
+       0 is honoured. One rule, in one place, so the read path cannot disagree with
+       the loader about what an absent anchor means. */
+    double dragForwardSup() const {
+        return drag_forward_sup > 0.0 ? drag_forward_sup : drag_forward;
+    }
+    double dragSideSup() const {
+        return drag_side_sup > 0.0 ? drag_side_sup : drag_side;
+    }
+    double dragBackwardSup() const {
+        return drag_backward_sup > 0.0 ? drag_backward_sup : drag_backward;
+    }
     /* #1097: signed BODY-lift anchor (drag.h::bodyLiftCdA) — the cl a flat plate
        at angle of attack carries across its own upwind silhouette. The lift lies
        in the plane of the part's +z axis and the flow, so a hull family authors

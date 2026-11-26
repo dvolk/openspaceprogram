@@ -1209,9 +1209,13 @@ inline double unionProjectedArea(const std::vector<std::vector<glm::dvec2>> &pol
    it started at. They are the columns the design audit reads to show which parts
    stopped voting (#945) -- and since #1090 the columns every body part's Form row
    reads: `visible` is the part's slice of the union, `visCd` that slice billed at
-   the part's own cd (their sums are exactly the bill's area and cdNum). */
+   the part's own cd (their sums are exactly the bill's area and cdNum). #635 adds
+   `visCdSup`: the same slices billed at the parts' SUPERSONIC anchors, so the sum
+   of a column is its bill's matching cdNum -- and the two cdNums are what the
+   caller mixes by regime, never the strips themselves. */
 struct SilhouettePart {
-    double cd = 0.0;
+    double cd = 0.0;      // the part's cd at its SUBSONIC anchors, blended by attitude
+    double cdSup = 0.0;   // #635: the same blend at the SUPERSONIC anchors
     double depth = 0.0;
     glm::dvec3 cp = glm::dvec3(0.0);
 };
@@ -1219,16 +1223,19 @@ struct SilhouettePart {
 struct SilhouetteBill {
     double area = 0.0;
     double cdNum = 0.0;              // SUM visible_i * cd_i
+    double cdNumSup = 0.0;           // SUM visible_i * cdSup_i (#635)
     glm::dvec3 cpNum = glm::dvec3(0.0);   // SUM visible_i * cp_i
 };
 
 inline SilhouetteBill silhouetteBill(const std::vector<std::vector<glm::dvec2>> &polys,
                                     const std::vector<SilhouettePart> &atts,
                                     std::vector<double> *visible = nullptr,
-                                    std::vector<double> *visCd = nullptr) {
+                                    std::vector<double> *visCd = nullptr,
+                                    std::vector<double> *visCdSup = nullptr) {
     assert(atts.size() == polys.size());
     if(visible) { assert(visible->size() == polys.size()); }
     if(visCd) { assert(visCd->size() == polys.size()); }
+    if(visCdSup) { assert(visCdSup->size() == polys.size()); }
     SilhouetteBill b;
     static thread_local std::vector<size_t> order;
     static thread_local std::vector<double> ys;
@@ -1273,9 +1280,11 @@ inline SilhouetteBill silhouetteBill(const std::vector<std::vector<glm::dvec2>> 
                 const SilhouettePart &pa = atts[bd.poly];
                 b.area += w;
                 b.cdNum += w * pa.cd;
+                b.cdNumSup += w * pa.cdSup;
                 b.cpNum += w * pa.cp;
                 if(visible) { (*visible)[bd.poly] += w; }
                 if(visCd) { (*visCd)[bd.poly] += w * pa.cd; }
+                if(visCdSup) { (*visCdSup)[bd.poly] += w * pa.cdSup; }
                 break;
             }
         }
@@ -1353,6 +1362,17 @@ struct SilhouetteMemo {
        (#945). The table is 41 kB a ship, which is not worth a precision fight. */
     std::vector<double> area;  // [m^2]; node (i, j) at j * kSteps + i
     std::vector<double> cdNum; // SUM visible_i * cd_i at that node
+    /* #635: the same bill at the parts' SUPERSONIC cd anchors. The chart is keyed on
+       flow DIRECTION, and Mach is not a direction -- a table per Mach would refill on
+       every substep of an accelerating ship. So the node keeps one number per ANCHOR
+       SET and the caller joins them by bodyRegimeMix(mach), which is linear:
+       cdNum_eff = (1 - mix) * cdNum + mix * cdNumSup. That holds because partCd's
+       regime join is linear in the anchors and the strip credits are linear in the
+       areas, so both bills blend bilinearly across nodes exactly as cdNum does today.
+       A part with no authored supersonic anchors has cdSup == cd, so cdNumSup == cdNum
+       and the join is the identity -- which is the state of the whole shipped
+       catalogue until parts.json declares the anchors. */
+    std::vector<double> cdNumSup;
     /* SUM visible_i * cpLocal_i, in the COMPOUND's own axes -- not the node's flow
        plane. Two neighbouring nodes build their plane bases from different reference
        axes once |d.x| crosses 0.9 (flowPlane), so plane coordinates cannot be blended
@@ -1380,6 +1400,10 @@ struct SilhouetteMemo {
        node of a generation agrees on what slot t means. */
     std::vector<std::vector<double>> partVis;
     std::vector<std::vector<double>> partVisCd;
+    /* #635: the same credits at the supersonic anchors, so a chart HIT can hand the
+       Form row the cd the FORCE is paying rather than the subsonic one. Σ this column
+       == cdNumSup at every node, by the same construction as partVisCd == cdNum. */
+    std::vector<std::vector<double>> partVisCdSup;
     /* And the third column (#947): each part's OWN projected area at that node --
        not a slice of the union, the whole polygon the part threw at that flow. It
        sits beside the credits on purpose: visible/ownProj is the fraction of a
@@ -1410,10 +1434,12 @@ struct SilhouetteMemo {
     void reset() {
         area.assign(kSteps * kSteps, 0.0);
         cdNum.assign(kSteps * kSteps, 0.0);
+        cdNumSup.assign(kSteps * kSteps, 0.0);
         for(std::vector<double> &c : cpNum) { c.assign(kSteps * kSteps, 0.0); }
         stamp.assign(kSteps * kSteps, 0u);
         partVis.clear();
         partVisCd.clear();
+        partVisCdSup.clear();
         partProj.clear();
         for(std::vector<std::vector<double>> &c : partCp) { c.clear(); }
         gen = 1;                   // 0 means "never filled"
@@ -1426,10 +1452,12 @@ struct SilhouetteMemo {
     void clear() {
         std::vector<double>().swap(area);
         std::vector<double>().swap(cdNum);
+        std::vector<double>().swap(cdNumSup);
         for(std::vector<double> &c : cpNum) { std::vector<double>().swap(c); }
         std::vector<uint32_t>().swap(stamp);
         std::vector<std::vector<double>>().swap(partVis);
         std::vector<std::vector<double>>().swap(partVisCd);
+        std::vector<std::vector<double>>().swap(partVisCdSup);
         std::vector<std::vector<double>>().swap(partProj);
         for(std::vector<std::vector<double>> &c : partCp) {
             std::vector<std::vector<double>>().swap(c);
@@ -1499,12 +1527,15 @@ struct SilhouetteMemo {
        `vis`/`visCd`, when given, get the BLENDED partition columns (#1090): the
        same bilinear weights per part slot, so their sums equal the blended area and
        cdNum by the same linearity that makes each node's columns the bill. `proj`
-       gets the blended OWN-shadow column (#947) the same way. */
+       gets the blended OWN-shadow column (#947) the same way. #635 adds `visCdSup`:
+       the same partition at the parts' SUPERSONIC anchors, which the caller joins
+       against `visCd` by bodyRegimeMix -- see SilhouetteMemo::cdNumSup. */
     bool lookup(double alpha, double beta, SilhouetteBill &out,
                 std::vector<double> *vis = nullptr,
                 std::vector<double> *visCd = nullptr,
                 std::vector<double> *proj = nullptr,
-                std::vector<glm::dvec3> *cp = nullptr) const {
+                std::vector<glm::dvec3> *cp = nullptr,
+                std::vector<double> *visCdSup = nullptr) const {
         if(area.empty() || !std::isfinite(alpha) || !std::isfinite(beta)) { return false; }
         fold(alpha, beta);
         if(!charted(alpha, beta)) { return false; }
@@ -1530,8 +1561,10 @@ struct SilhouetteMemo {
         };
         out.area = bl(area);
         out.cdNum = bl(cdNum);
+        out.cdNumSup = bl(cdNumSup);
         out.cpNum = glm::dvec3(bl(cpNum[0]), bl(cpNum[1]), bl(cpNum[2]));
-        if(vis != nullptr || visCd != nullptr || proj != nullptr || cp != nullptr) {
+        if(vis != nullptr || visCd != nullptr || proj != nullptr || cp != nullptr
+           || visCdSup != nullptr) {
             /* One part, one slot, at all four corners of this generation's cell --
                a size that disagrees is a stale column under a live stamp, i.e. a
                bug, and blending it would invent an area no part ever paid. */
@@ -1554,6 +1587,17 @@ struct SilhouetteMemo {
                 visCd->resize(n1);
                 for(size_t t = 0; t < n1; t++) {
                     (*visCd)[t] = bl2(partVisCd, t);
+                }
+            }
+            if(visCdSup != nullptr) {
+                const size_t n1s = partVisCdSup[k00].size();
+                assert(n1s == partVisCdSup[k00 + 1].size()
+                       && n1s == partVisCdSup[k00 + kSteps].size()
+                       && n1s == partVisCdSup[k00 + kSteps + 1].size()
+                       && "credit columns must agree across a generation's cell");
+                visCdSup->resize(n1s);
+                for(size_t t = 0; t < n1s; t++) {
+                    (*visCdSup)[t] = bl2(partVisCdSup, t);
                 }
             }
             if(proj != nullptr) {
@@ -1593,11 +1637,12 @@ struct SilhouetteMemo {
     }
 
     /* Fill this cell's missing corners, at most `budget` of them -- the caller
-       spreads the cost over substeps. `exact(alpha, beta, vis, visCd, proj, cp)`
-       computes the bill at a node AND its partition columns -- the callback sizes
-       and fills the column vectors in its own polys order, and the memo
-       keeps them beside the scalars (#1090, #947; #1106 adds the cp products:
-       visible x the part's projected centroid, compound-frame components). The
+       spreads the cost over substeps. `exact(alpha, beta, vis, visCd, proj, cp,
+       visCdSup)` computes the bill at a node AND its partition columns -- the
+       callback sizes and fills the column vectors in its own polys order, and the
+       memo keeps them beside the scalars (#1090, #947; #1106 adds the cp products:
+       visible x the part's projected centroid, compound-frame components; #635 adds
+       the seventh, the same partition billed at the SUPERSONIC anchors). The
        caller holds the parts, the ship frame and the union. Returns how many
        nodes were filled. A
        direction outside the cached range fills nothing: it is answered by the
@@ -1615,6 +1660,7 @@ struct SilhouetteMemo {
         if(partVis.size() != area.size()) {
             partVis.assign(area.size(), std::vector<double>());
             partVisCd.assign(area.size(), std::vector<double>());
+            partVisCdSup.assign(area.size(), std::vector<double>());
             partProj.assign(area.size(), std::vector<double>());
             for(std::vector<std::vector<double>> &c : partCp) {
                 c.assign(area.size(), std::vector<double>());
@@ -1628,17 +1674,19 @@ struct SilhouetteMemo {
                 const int i = i0 + di, j = j0 + dj;
                 const size_t k = (size_t)j * kSteps + i;
                 if(stamp[k] == gen) { continue; }
-                std::vector<double> pv, pcd, ppj;
+                std::vector<double> pv, pcd, ppj, pcdsup;
                 std::vector<glm::dvec3> pcp;
-                const SilhouetteBill nb = exact(alphaAt(i), betaAt(j), pv, pcd, ppj,
-                                                pcp);
+                const SilhouetteBill nb = exact(alphaAt(i), betaAt(j), pv, pcd,
+                                                ppj, pcp, pcdsup);
                 area[k] = nb.area;
                 cdNum[k] = nb.cdNum;
+                cdNumSup[k] = nb.cdNumSup;
                 cpNum[0][k] = nb.cpNum.x;
                 cpNum[1][k] = nb.cpNum.y;
                 cpNum[2][k] = nb.cpNum.z;
                 partVis[k] = std::move(pv);
                 partVisCd[k] = std::move(pcd);
+                partVisCdSup[k] = std::move(pcdsup);
                 partProj[k] = std::move(ppj);
                 partCp[0][k].resize(pcp.size());
                 partCp[1][k].resize(pcp.size());
@@ -1932,6 +1980,48 @@ inline double partCd(double cdForward, double cdSide, double cdBackward,
     const double cw = (c > 0.0) ? c2 : 0.0;   // forward weight (nose-in)
     const double bw = (c < 0.0) ? c2 : 0.0;   // backward weight (base-in)
     return cdSide * (1.0 - c2) + cdForward * cw + cdBackward * bw;
+}
+
+/* HOW FAR INTO THE BAND A BODY'S cd HAS MOVED (#635). The same two edges the slope
+   law (liftSlopeMach) and the surface wave law (waveCd) already own, so the three
+   halves of the law cannot disagree about where the regime starts:
+     M <= kTransonicMach   0 -- the part pays its authored subsonic anchors.
+     M >= kSupersonicMach  1 -- it pays its authored supersonic anchors.
+     between               straight join in the mix, in the same device A5/A5b use.
+   The join is a join, not a curve: a real blunt body's cd does not climb linearly
+   through 0.75..1.25, it steps as a shock stands off the nose, and a slender body's
+   climbs late and steep. What the catalogue can support today is one anchor per side
+   per regime and a linear join; the shape of the band is #635's open half, and this
+   is the seam it will be measured against. */
+inline double bodyRegimeMix(double mach) {
+    if(!(mach > kTransonicMach)) { return 0.0; }
+    if(mach >= kSupersonicMach) { return 1.0; }
+    return (mach - kTransonicMach) / (kSupersonicMach - kTransonicMach);
+}
+
+/* A BODY's cd at a given regime: the orientation blend above, run on each regime's
+   anchors, joined by bodyRegimeMix. The join is LINEAR in the anchors, which is what
+   lets the silhouette cache keep two numbers per node (the same bill at each anchor
+   set) and blend them here rather than re-projecting every time the airspeed changes
+   -- the chart is keyed on flow DIRECTION, and Mach is not a direction. A part with no
+   authored supersonic anchors has both sets equal, so the mix buys nothing and every
+   shipped number stays exactly where it was until parts.json declares otherwise. */
+inline double partCd(double cdForward, double cdSide, double cdBackward,
+                     double cdFwdSup, double cdSideSup, double cdBackSup,
+                     double cosAxisFlow, double mix) {
+    const double sub = partCd(cdForward, cdSide, cdBackward, cosAxisFlow);
+    if(!(mix > 0.0)) { return sub; }
+    const double sup = partCd(cdFwdSup, cdSideSup, cdBackSup, cosAxisFlow);
+    return (mix >= 1.0) ? sup : sub + (sup - sub) * mix;
+}
+
+/* One ANCHOR (not a whole orientation blend) across the same join. #947's crossflow
+   bills the broadside anchor directly -- it has no cos(axis,flow) to blend by, the
+   sin already lives in sideStripCdA -- so it needs this one rather than partCd. */
+inline double mixAnchor(double mix, double sub, double sup) {
+    if(!(mix > 0.0)) { return sub; }
+    if(mix >= 1.0) { return sup; }
+    return sub + (sup - sub) * mix;
 }
 
 /* #947: the part's SIDE-STRIP area -- the two lateral face pairs of the mesh box,

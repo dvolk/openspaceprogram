@@ -1600,6 +1600,7 @@ void Vehicle::rebuildCompound() {
         aeroSilPartCdA.clear();
         aeroSilPartProj.clear();
         aeroSilPartCp.clear();
+        aeroSilPartCdSupA.clear();
         aeroSilPartPtr.clear();
         aeroSilNode.clear();
         aeroSilNodeAtt.clear();
@@ -3999,6 +4000,15 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
             at.cd = p->def ? partCd(p->def->drag_forward, p->def->drag_side,
                                     p->def->drag_backward, noseDot)
                            : 0.0;
+            /* #635: the SAME attitude blend at the part's supersonic anchors. The
+               chart is keyed on flow DIRECTION, so a node cannot hold "cd at this
+               Mach" -- it holds cd at each anchor SET and the caller joins the two
+               by bodyRegimeMix once per substep. That join is linear, so every
+               partition identity this cache owns still holds; a per-Mach table would
+               refill on every substep that changed speed. */
+            at.cdSup = p->def ? partCd(p->def->dragForwardSup(), p->def->dragSideSup(),
+                                       p->def->dragBackwardSup(), noseDot)
+                              : 0.0;
             const glm::dvec2 mount2{glm::dot(p->localPos, pl.u),
                                     glm::dot(p->localPos, pl.w)};
             const glm::dvec2 cpOff2 = silhouetteCpOffset2(poly, mount2);
@@ -4044,19 +4054,23 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
     // The fourth is the credit x the part's projected centroid (#1106): the product,
     // not the centroid, so the blend stays linear and the parts' weighted sum IS the
     // node's cpNum. Free: the centroid is already on the attachment and the credit
-    // already came out of the strip loop.
+    // already came out of the strip loop. The fifth (#635) is the same credit billed
+    // at the part's SUPERSONIC anchors; the node keeps both sets because the chart
+    // keys on direction and Mach is not a direction, and the caller mixes them once
+    // per substep -- linearly, so the partition sums stay the bill's own numbers.
     auto billAtS = [&](const glm::dvec3 &dirLocal, std::vector<double> &pv,
                        std::vector<double> &pcd, std::vector<double> &ppj,
-                       std::vector<glm::dvec3> &pcp) {
+                       std::vector<glm::dvec3> &pcp, std::vector<double> &pcdsup) {
         projectSilhouette(dirLocal, aeroSilNode, aeroSilNodeAtt, nullptr);
         pv.assign(aeroSilNode.size(), 0.0);
         pcd.assign(aeroSilNode.size(), 0.0);
+        pcdsup.assign(aeroSilNode.size(), 0.0);
         ppj.resize(aeroSilNode.size());
         for(size_t i = 0; i < aeroSilNode.size(); i++) {
             ppj[i] = polygonArea2(aeroSilNode[i]);
         }
         const SilhouetteBill nb = silhouetteBill(aeroSilNode, aeroSilNodeAtt,
-                                                 &pv, &pcd);
+                                                 &pv, &pcd, &pcdsup);
         pcp.resize(aeroSilNode.size());
         for(size_t i = 0; i < aeroSilNode.size(); i++) {
             pcp[i] = pv[i] * aeroSilNodeAtt[i].cp;
@@ -4155,7 +4169,8 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
         if(!dumping && lastDragAlphaValid) {
             fromChart = aeroSil.lookup(alpha, fr.beta, bill,
                                        &aeroSilPartVis, &aeroSilPartCdA,
-                                       &aeroSilPartProj, &aeroSilPartCp);
+                                       &aeroSilPartProj, &aeroSilPartCp,
+                                       &aeroSilPartCdSupA);
         }
         if(!fromChart && (dumping || lastDragAlphaValid)) {
             if(dumping) {
@@ -4170,10 +4185,11 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
                 aeroSil.fillAround(alpha, fr.beta, kSilFillNodes,
                                    [&](double na, double nb, std::vector<double> &pv,
                                        std::vector<double> &pcd, std::vector<double> &ppj,
-                                       std::vector<glm::dvec3> &pcp) {
+                                       std::vector<glm::dvec3> &pcp,
+                                       std::vector<double> &pcdsup) {
                                        return billAtS(glm::transpose(sRot)
                                            * flowDirection(na, nb, right, up, nose),
-                                           pv, pcd, ppj, pcp);
+                                           pv, pcd, ppj, pcp, pcdsup);
                                    });
             }
             /* #1090: the exact pass bills WITH its partition columns out, not only
@@ -4185,12 +4201,14 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
                exposed part, since credits and shadow come from one polygon. */
             aeroSilPartVis.assign(aeroSilParts.size(), 0.0);
             aeroSilPartCdA.assign(aeroSilParts.size(), 0.0);
+            aeroSilPartCdSupA.assign(aeroSilParts.size(), 0.0);
             aeroSilPartProj.resize(aeroSilParts.size());
             for(size_t i = 0; i < aeroSilParts.size(); i++) {
                 aeroSilPartProj[i] = polygonArea2(aeroSilParts[i]);
             }
             bill = silhouetteBill(aeroSilParts, aeroSilPartAtt,
-                                  &aeroSilPartVis, &aeroSilPartCdA);
+                                  &aeroSilPartVis, &aeroSilPartCdA,
+                                  &aeroSilPartCdSupA);
             /* #1106: the cp products, filled the same way on a MISS as they are
                blended on a HIT -- one spelling of "current per part", two ways of
                making it current. */
@@ -4210,8 +4228,27 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
            silhouette, so the mean was mostly tanks arguing a cd the air cannot see.
            Crediting every strip of the silhouette to the upwind-most part that covers
            it makes the credits a partition of the area, so the denominator here IS
-           the area the force is billed on and the two halves cannot drift apart. */
-        lastDragCd = (A_ship > 0.0) ? (bill.cdNum / A_ship) : 0.0;
+           the area the force is billed on and the two halves cannot drift apart.
+           #635: WHICH anchors that air is actually paying for. The chart kept one
+           bill per anchor SET per node -- cdNum at the subsonic anchors, cdNumSup at
+           the supersonic ones -- because it is keyed on flow DIRECTION and Mach is not
+           a direction. This is where the two become the one number the force bills,
+           over the same 0.75..1.25 band the slope law (#543 A5) and the surface wave
+           law (A5b) already own, so none of the three can disagree about where the
+           regime starts. The join is LINEAR, and the per-part columns below take this
+           same mix rather than their own, which is what keeps
+           SUM(part CdA) == cdNumShip at any airspeed.
+           The Mach is the free-stream one at the COM -- the same lastAirV / lastAirA
+           the --drag-log row prints as Mach= beside Cd=, so a reader can take the
+           printed Mach, read a part's two anchor sets, and close this row by hand.
+           Deliberately not the cp's LOCAL Mach (which the #486 sweep can move): the
+           hull bill is one number for one body, so its regime mix has to be one
+           number too, and a mix that varied per part would break the identity above.
+           Until parts.json declares the sup anchors the two sets are equal and this
+           join is the identity -- which is every shipped number staying where it was. */
+        const double hullMix = bodyRegimeMix(lastAirV * invAirA);
+        const double cdNumShip = mixAnchor(hullMix, bill.cdNum, bill.cdNumSup);
+        lastDragCd = (A_ship > 0.0) ? (cdNumShip / A_ship) : 0.0;
         /* The cp in the compound's own axes, which is the one frame every chart node
            shares; frame S is where it is used. Degenerate: no billed area, so act
            through the COM. */
@@ -4325,7 +4362,8 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
         if(lastDragAlphaValid) {
             assert(aeroSilPartPtr.size() == aeroSilPartVis.size()
                    && aeroSilPartVis.size() == aeroSilPartCdA.size()
-                   && aeroSilPartCdA.size() == aeroSilPartProj.size()
+                   && aeroSilPartCdA.size() == aeroSilPartCdSupA.size()
+                   && aeroSilPartCdSupA.size() == aeroSilPartProj.size()
                    && aeroSilPartProj.size() == aeroSilPartCp.size());
             const double qv = lfCp.q * std::sqrt(lfCp.vp2);
             /* #1114: the hull's whole bill and the flow it is struck in, BEFORE
@@ -4356,8 +4394,13 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
                 assert(p->owner == this);   // the twin was rebuilt THIS pass; a
                                             // stale slot is the #1090 split bug
                 p->formVis = (float)aeroSilPartVis[i];
-                p->formCdA = (float)aeroSilPartCdA[i];
-                p->formDragWatts = (float)(drag_cd * qv * aeroSilPartCdA[i]);
+                /* #635: the same hull mix the ship number used, so this column is
+                   still a PARTITION of lastDragCd x lastDragArea -- the watts below
+                   sum to lastFormWatts at Mach 6 exactly as they do at Mach 0.2. */
+                const double cdA = mixAnchor(hullMix, aeroSilPartCdA[i],
+                                             aeroSilPartCdSupA[i]);
+                p->formCdA = (float)cdA;
+                p->formDragWatts = (float)(drag_cd * qv * cdA);
                 /* #947: THE CROSSFLOW NORMAL FORCE. The union bill charges a part
                    only where the air MEETS it; a body hidden behind another along
                    the flow was billed nothing at all -- not for its frontal disc
@@ -4390,8 +4433,13 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
                    opposing how the part slides sideways through the air. Like the
                    surfaces (#483), this answers the flow AT THE PART -- pitch and
                    yaw rotation sweep each flank through the air, and a distributed
-                   normal force finally damps that swing the way fins do. It is NOT
-                   merged into CpL/FormCp: two perpendicular lines of action cannot
+                   normal force finally damps that swing the way fins do. Since #635
+                   it reads that anchor MIXED across the regime band, like every other
+                   body number this pass bills: a broadside cylinder's normal-force
+                   coefficient is precisely where Newtonian theory is most trustworthy
+                   above the sound bar (1.17-1.33 measured over the shipped meshes,
+                   against 0.8-1.1 authored subsonically). It is NOT merged into
+                   CpL/FormCp: two perpendicular lines of action cannot
                    share one CdA-weighted lever, so the log gets its own
                    SideCdA=/SideCp= pair. Lateral occlusion (flanks shielded SIDE
                    ways, asparagus bundles) is knowingly unmodeled -- a second
@@ -4523,7 +4571,9 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
                 const double unbilled =
                     sideStripCdA(hx, hy, p->def->meshHalfLength(), dirPart) * refused;
                 const double cda = (unbilled > 0.0)
-                    ? (drag_cd * p->def->drag_side * unbilled) : 0.0;
+                    ? (drag_cd * mixAnchor(hullMix, p->def->drag_side,
+                                           p->def->dragSideSup()) * unbilled)
+                    : 0.0;
                 if(cda > 0.0) {
                     const glm::dvec3 perp = uhat - axisW * glm::dot(axisW, uhat);
                     const double perp2 = glm::length2(perp);
@@ -6800,6 +6850,7 @@ void Vehicle::absorbShip(Vehicle *B, Part *portA, Part *portB, DockSnap *snap) {
     B->aeroSilPartCdA.clear();
     B->aeroSilPartProj.clear();
     B->aeroSilPartCp.clear();
+    B->aeroSilPartCdSupA.clear();
     B->aeroSilPartPtr.clear();
     B->aeroSilNode.clear();
     B->aeroSil.clear();
