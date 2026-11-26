@@ -6,11 +6,21 @@
 # park -- airborne inside an atmosphere -- and this case is what pins that the
 # !canRail() guard is a guard and not a coincidence. flight/939-far-stage-is-cut-
 # loose shows the fire; this one shows the non-fire on identical geometry.
+#
+# Two numbers moved when #1171 made stager 3516.62 kg instead of ~4.1 t. The ask
+# is 220 km, because at 100 km (and at 160 km) the boost stage is still not dry
+# when the law reaches Done on Moho, so nothing separates and this case pins an
+# absence -- flight/928 works that arithmetic out. And --cull-radius came DOWN to
+# 1000 m: at the higher orbit the dropped stage is parked soon after it clears
+# the 2 km engage radius, so its LIVE proximity rows now reach only ~2.4 km
+# rather than the 5.4-9.5 km the old geometry produced. With the radius at 5 km
+# the FORBID below would have been true by geometry; at 1 km there are two LIVE
+# rows past it, so the silence is the canRail() guard doing its job.
 NAME far-stage-in-vacuum-is-parked-not-cut
 CLAIM A dropped stage the sim is able to park is never cut loose.
 KIND invariant
-ARGS --startship stager,res/ships/stager.json,Moho,pad --ascent 100e3 --time-accel 10
-ARGS --ascent-log --prox-log --orbit-log --orbit-interval 5 --cull-radius 5000
+ARGS --startship stager,res/ships/stager.json,Moho,pad --ascent 220e3 --time-accel 10
+ARGS --ascent-log --prox-log --orbit-log --orbit-interval 5 --cull-radius 1000
 ARGS --sim-steps 6000 --timeout 200 --no-paint
 LIMIT 60
 # The press happened, so the absence of a cut below is about a dropped stage.
@@ -18,11 +28,15 @@ EXPECT autopilot press: staged
 EXPECT Stage: dropped 1 ship(s) / 3 part(s); now on stage 1 of 2
 FORBID [cull]
 FORBID Cut loose
-# And the neighbour is still in the world well past the radius. It matters that
-# it is listed as LIVE rather than parked: --prox-fly-off is 10 km, so at the
-# 5.4-9.5 km these rows cover the hull has not been released yet either. The
-# non-fire is therefore the canRail() guard doing its job, not hysteresis
-# happening to keep it close, and not the sim having given up on it.
+# And the neighbour is still in the world while live. It matters that it is
+# listed as LIVE rather than parked: --prox-fly-off is 10 km, so these rows are
+# all well inside a release the sim has not granted yet. The non-fire is
+# therefore the canRail() guard doing its job, not hysteresis happening to keep
+# it close, and not the sim having given up on it.
 EXPECT stager Decoupler (2m) dist=
 EXPECT LIVE
-CHECK last(orbit)["peri_asl"] > 99e3
+# The teeth the radius came down to buy: at least one LIVE row with a four-figure
+# distance, i.e. beyond --cull-radius. Measured 606.6, 1779.7 and 2379.3 m LIVE;
+# after that the hull is on rails and stops being a proximity neighbour at all.
+CHECK re.search(r'Decoupler \(2m\) dist=\d{4,}\.\d m rate=[+\-0-9.]+ m/s alt=\d+ m LIVE', out)
+CHECK last(orbit)["peri_asl"] > 219e3

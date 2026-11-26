@@ -2,19 +2,32 @@
 # the point here is the PRESS, not the air, and on an airless hull a staging
 # failure has exactly one cause. stager is two stages whose upper engine cannot
 # drink the lower stage's tank (no fuel links in res/ships/stager.json), so the
-# stack goes dry at ~100 km unless somebody separates it -- which is the whole
-# difference between phase=done and why="the tanks are dry" (#928).
+# stack goes dry unless somebody separates it -- which is the whole difference
+# between phase=done and why="the tanks are dry" (#928).
+#
+# THE ASK IS 220 KM, NOT 100 KM, because the hull got lighter under the case.
+# The law presses on stage_due || dry (guidance.cpp:335), so a mission that
+# reaches its ask with the boost stage's tanks still standing never asks, and
+# #1171 -- parts weighed off their own mesh -- made stager 3516.62 kg. Measured
+# on this build: at 100 km the flight finishes at t=562 s with the first stage
+# still un-drained and no press at all; the same is true at 160 km (t=737.8 s,
+# still no press). At 220 km the boost stage drains mid-climb and the press lands
+# at t=891.3s reading "(stage drained + dry)" -- empty stage, nothing to burn --
+# with the verdict 18 s later. So the ask moved to keep the premise, not the
+# numbers pretty. Kerbin with the same hull and the same 100 km ask still presses
+# at t=73.7s (flight/939-far-stage-is-cut-loose): the difference is Moho's well,
+# not a law that stopped asking. The hull mass is pinned below so the next
+# #1171-shaped retune reddens THAT line instead of losing the press silently.
 NAME autopilot-presses-a-drained-stage
 CLAIM The ascent autopilot separates a drained stage by itself and still makes the ask.
 KIND invariant
-ARGS --startship stager,res/ships/stager.json,Moho,pad --ascent 100e3 --time-accel 10
-ARGS --ascent-log --orbit-log --orbit-interval 1
+ARGS --startship stager,res/ships/stager.json,Moho,pad --ascent 220e3 --time-accel 10
+ARGS --ascent-log --orbit-log --orbit-interval 1 --mass-log
 ARGS --sim-steps 6000 --timeout 200 --no-paint
-# 6000 logic ticks covers ~607 s of sim: the climb buys its time at warp 10 and
-# the Done verdict hands the clock back to 1x (#612), so the last ~1300 ticks are
-# worth ~20 s. The verdict lands at ~587 s, which leaves ~20 s of sim and ~1300
-# ticks of margin -- the same shape as the 610 case, sized off its own flight
-# rather than guessed.
+# 6000 logic ticks is ~1000 s of sim at warp 10 (0.1667 s of sim a tick), and the
+# Done verdict hands the clock back to 1x (#612). The verdict lands at ~910 s, so
+# ~5400 ticks buy the flight and the last ~600 ticks are worth ~10 s: enough
+# margin to see a stall, not enough to run the case long.
 LIMIT 60
 EXPECT Autopilot: ascent armed on 'stager'
 # The press, and the press ACCEPTED: stageVehicle() answers with an outcome and
@@ -26,13 +39,18 @@ EXPECT autopilot press: staged
 EXPECT Stage: dropped 1 ship(s) / 3 part(s); now on stage 1 of 2
 FORBID autopilot press: refused
 FORBID phase=failed
-# The mission the press exists for. Without it the law fails dry at ~936 m/s of
-# delta-v with periapsis ~218 km underground, so "done" is the staging result and
-# not a coincidence of the profile.
+# The mass the ask was sized against (3516.62 kg spawn, 7 parts; the dropped
+# stage is 633.03 kg of it). Red here means 220 km is no longer a two-stage hop
+# on Moho, so re-derive the ask -- see the header -- rather than widen the bands.
+CHECK len(mass) >= 4
+CHECK abs(mass[0]["mass"] - 3516.62) < 1.0
+# The mission the press exists for: the press row above says the stage was dry,
+# so without it the law has no thrust and the phase ends Failed with "the tanks
+# are dry". "done" is the staging result, not a coincidence of the profile.
 CHECK last(ascent)["phase"] == "done"
 CHECK last(ascent)["why"] == "periapsis at the ask, apoapsis inside the band"
-CHECK last(orbit)["peri_asl"] > 99e3
-CHECK abs(last(orbit)["apo_asl"] - 100e3) < 5e3
+CHECK last(orbit)["peri_asl"] > 219e3
+CHECK abs(last(orbit)["apo_asl"] - 220e3) < 5e3
 CHECK last(ascent)["dv_exp"] > 1050.0
 # The lever is closed on the tick the mission finished -- the same pin the 610
 # case makes, restated here because a hull that has just split in two is the more

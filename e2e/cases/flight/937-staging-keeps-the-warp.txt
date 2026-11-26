@@ -8,10 +8,18 @@
 # worse than slow -- an airborne stage can NEVER be parked (canRail() is
 # isGrounded() || !inAtmosphere()), so the cap does not lift for the rest of the
 # flight, however far the booster gets (#937).
+#
+# The ask is 220 km, not the 100 km this case was written against, and the reason
+# is not the warp law: #1171 weighs parts off their own mesh, stager is 3516.62 kg,
+# and on Moho a 100 km hop no longer drains the boost stage -- so the autopilot
+# never presses and the FORBIDs below would be pinning an absence. At 220 km the
+# press lands at t=891.3s and the cap question is asked again, 18 s before the
+# verdict. flight/928 works the arithmetic out; this case only needs the press to
+# happen, so it does not restate it.
 NAME staging-keeps-the-warp
 CLAIM Pressing the stage does not put the clock at 1x.
 KIND invariant
-ARGS --startship stager,res/ships/stager.json,Moho,pad --ascent 100e3 --time-accel 10
+ARGS --startship stager,res/ships/stager.json,Moho,pad --ascent 220e3 --time-accel 10
 ARGS --ascent-log --prox-log --orbit-log --orbit-interval 5 --sim-steps 6000 --timeout 200 --no-paint
 LIMIT 60
 # The press happened, so the FORBIDs below are about a press and not about a flight
@@ -22,4 +30,4 @@ FORBID Close approach
 FORBID warp CAPPED
 # And the flight is still a flight: the cap was never the thing holding it up.
 CHECK last(ascent)["phase"] == "done"
-CHECK last(orbit)["peri_asl"] > 99e3
+CHECK last(orbit)["peri_asl"] > 219e3
