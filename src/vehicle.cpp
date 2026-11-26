@@ -5291,6 +5291,14 @@ bool Vehicle::groundContact(const glm::dvec3 &from, const glm::dvec3 &down,
    demand, the leg stands with the brake held on. A no-op for a hull with
    neither. Forces accumulate on the one body like aero and thrust; nothing
    integrates until physics_tick. */
+double Vehicle::groundShareN(size_t contacts) {
+    if(contacts == 0) { return 0.0; }
+    const double G = 6.674e-11;
+    const glm::dvec3 com = get_center_of_mass();
+    const double gLocal = G * m_parent->mass / glm::length2(com - frame->gravity_center);
+    return getMass() * gLocal / (double)contacts;
+}
+
 void Vehicle::applyGroundForces(double h) {
     if((gearParts.empty() && legParts.empty()) || hull == nullptr || !hullInWorld()) { return; }
     /* h is the substep the tire force is held for, and the momentum clamp below
@@ -5317,6 +5325,11 @@ void Vehicle::applyGroundForces(double h) {
     const size_t holders = gearParts.size() + legParts.size();
     assert(holders > 0);   // the early return above is what makes this true
     const glm::dvec3 holdShare = GetAccumulatedForce(hull) / (double)holders;
+    /* A hull of ANY mass stands on its springs rather than on Bullet collision,
+       which is where the ground law stops working (#1215): past its designed ride
+       each strut rates itself to the share it carries. */
+    const double strutShareN = groundShareN(gearParts.size());
+    const double padShareN = groundShareN(legParts.size());
     for(Part *p : gearParts) {
         const PartDef &d = *p->def;
         glm::dvec3 axle; glm::dmat3 pRot;
@@ -5329,6 +5342,8 @@ void Vehicle::applyGroundForces(double h) {
         double dist;
         if(!groundContact(axle, down, reach, dist, hit, n)) { continue; }
         const double compression = std::clamp((R + T) - dist, 0.0, T);
+        double spring = d.wheel_spring, damp = d.wheel_damp;
+        wheel::sizeToStrut(strutShareN, spring, damp);
         if(compression <= 0.0) { continue; }   // airborne: no force
         /* The ground is stationary in the ship's frame: terrain and pads are
            static in the rot frame, and a balloon platform's deck is static in
@@ -5358,8 +5373,8 @@ void Vehicle::applyGroundForces(double h) {
         wheel::Input in;
         in.compression  = compression;
         in.compressRate = -glm::dot(vRel + glm::cross(omega, axle - com), n);
-        in.spring       = d.wheel_spring;
-        in.damp         = d.wheel_damp;
+        in.spring       = spring;
+        in.damp         = damp;
         in.normal       = n;
         in.forward      = f;
         in.contactVel   = vRel + glm::cross(omega, rel);
@@ -5412,6 +5427,8 @@ void Vehicle::applyGroundForces(double h) {
         double dist;
         if(!groundContact(foot, down, reach, dist, hit, n)) { continue; }
         const double compression = std::clamp((pad + T) - dist, 0.0, T);
+        double spring = d.leg_spring, damp = d.leg_damp;
+        wheel::sizeToStrut(padShareN, spring, damp);   // same ceiling as the gear
         if(compression <= 0.0) { continue; }   // airborne: no force
         const glm::dvec3 vRel = vel;
         // wheel::force needs a non-degenerate in-plane axis; the part's +Y
@@ -5426,8 +5443,8 @@ void Vehicle::applyGroundForces(double h) {
         wheel::Input in;
         in.compression  = compression;
         in.compressRate = -glm::dot(vRel + glm::cross(omega, foot - com), n);
-        in.spring       = d.leg_spring;
-        in.damp         = d.leg_damp;
+        in.spring       = spring;
+        in.damp         = damp;
         in.normal       = n;
         in.forward      = f;
         in.contactVel   = vRel + glm::cross(omega, rel);
@@ -5491,8 +5508,21 @@ void Vehicle::logLegContacts(double t) {
                t, name.c_str(), kind, (unsigned long long)p->uid, mesh, dist - mesh,
                comp, travel, spring);
     };
-    for(Part *p : gearParts) { row(p, "gear", p->def->wheel_travel, p->def->wheel_spring); }
-    for(Part *p : legParts) { row(p, "leg", p->def->leg_travel, p->def->leg_spring); }
+    /* k= is the rate the ground pass is USING, so a hull that out-rates its
+       catalogue strut shows the sized number here rather than one the sim no
+       longer applies (#1215). */
+    const double gearShare = groundShareN(gearParts.size());
+    const double legShare = groundShareN(legParts.size());
+    for(Part *p : gearParts) {
+        double k = p->def->wheel_spring, c = p->def->wheel_damp;
+        wheel::sizeToStrut(gearShare, k, c);
+        row(p, "gear", p->def->wheel_travel, k);
+    }
+    for(Part *p : legParts) {
+        double k = p->def->leg_spring, c = p->def->leg_damp;
+        wheel::sizeToStrut(legShare, k, c);
+        row(p, "leg", p->def->leg_travel, k);
+    }
 }
 
 void Vehicle::applyControlForces(double h) {

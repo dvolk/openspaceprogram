@@ -1,0 +1,45 @@
+# A 4 TONNE AIRFRAME ON THE SHIPPED GEAR (#1215). The spaceplane is six times the
+# skiff, and one strut can only ever push spring*travel = 25000 * 0.15 = 3.75 kN, so
+# three of them topped out at 11.25 kN against ~39.8 kN of weight. The wheels sank
+# onto their bump stops and Bullet's collision carried the hull instead -- the regime
+# src/wheel.h's RIDE HEIGHT note refuses to rest in. To the player that read as a
+# plane glued to the runway: brakes off, throttle open, nothing moves, and at high
+# throttle it lurches and pitches over because it is pivoting on a stuck nose wheel.
+#
+# wheel::sizeToStrut parks the static stroke at kRideStroke (0.106 m, the ride the
+# shipped skiff already sits at) for any hull mass, so a heavy hull stands on its
+# springs at a stiffer rate instead of on the deck. This is the heavy end of 1158-b,
+# which pins the light end: the skiff still reads its authored 25000 N/m here.
+NAME heavy-plane-rolls-off-the-runway
+CLAIM A 4 t plane stands on its springs and rolls down the runway and leaves it.
+KIND invariant
+ARGS --time-accel 1 --startship spaceplane,res/ships/spaceplane.json,Kerbin,pad,site=ksc_runway
+ARGS --timeout 14 --dbg-log --leg-log --mass-log --orbit-interval 0.5 --no-paint
+# Brakes are latched on at spawn; release them (O) before the roll, then hold T.
+ARGS --sim-press 500,0,O
+ARGS --sim-press 1000,12000,T
+EXPECT [dbg]
+FORBID error:
+CHECK len(leglog) >= 12
+# The mass the k band below is derived from. Only the first rows: the jet burns
+# fuel down the deck, so a band over the whole run measures the engine, not the hull.
+CHECK len(mass) >= 4
+CHECK abs(mass[0]["mass"] - 4061.63) < 1.0
+CHECK mass[-1]["mass"] < mass[0]["mass"] - 5.0
+# Sized, not authored: 4061.6 kg over three wheels at Kerbin g needs
+# 4061.6*9.81/3/0.106 = 125 kN/m to sit at the designed ride. The authored 25000
+# is what used to leave the hull on the deck, so a row still reading it is the bug.
+CHECK all(r["k"] > 100000 for r in leglog if r["t"] > 1.0)
+# Standing on the springs, never at the bump stop. The reserve here is thinner than
+# the skiff's 0.02 m (1158-b) because the load is uneven the same way it is there:
+# the nose corner carries ~1.24x the even share, so it rides at 0.132 of its 0.15
+# while the mains sit at 0.086..0.098. Stroke past that is #1166's telescoping
+# strut, not a stiffer spring -- a stiffer spring only moves the float.
+CHECK all(r["comp"] < r["travel"] - 0.01 for r in leglog if r["t"] > 1.0 and r["gap"] is not None)
+# The drawn rubber stays off the deck: the ride height is real, not sunk in.
+CHECK all(r["gap"] > 0.01 for r in leglog if r["t"] > 1.0 and r["gap"] is not None)
+# And it actually goes: before the fix |v| never passed 2.6 m/s in 14 s of throttle.
+CHECK max(d["v"] for d in dbg) > 60
+# ...and leaves the deck (measured 2.4 m to 55.8 m, then it settles back -- the
+# stick-free margin is the airframe's own problem, pinned on #1211).
+CHECK max(d["alt"] for d in dbg) - first(dbg)["alt"] > 15

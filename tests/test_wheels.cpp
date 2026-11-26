@@ -381,6 +381,46 @@ int main() {
                    "an unbraked wheel holds no slope at all");
     }
 
+    /* sizeToStrut: a hull of ANY mass stands on its springs, not on Bullet
+       collision. Four things to hold: at or under the designed ride the authored
+       rate survives exactly (so no shipped hull moves); past it k = share /
+       kRideStroke, which parks the static stroke on the designed ride instead of
+       on the bump stop; the damper follows sqrt(k) so the damping ratio holds;
+       and the stroke below travel is left over for a landing. */
+    {
+        const double kAuth = 25000.0, cAuth = 3000.0, travel = 0.15;
+        // The shipped datum: the skiff's loaded main wheel is 25000 N/m compressing
+        // 0.106 of its 0.15 (e2e 1158-b reads the free stroke). That hull has to
+        // pass through this rule untouched, bit for bit.
+        double k = kAuth, c = cAuth;
+        wheel::sizeToStrut(kAuth * wheel::kRideStroke, k, c);
+        CHECK_NEAR(k, kAuth, 1e-9, "a hull at the designed ride keeps its authored spring");
+        CHECK_NEAR(c, cAuth, 1e-9, "and its authored damper");
+
+        // A 4.1 t spaceplane on three wheels is ~13.3 kN a wheel, against the
+        // 3.75 kN (k x travel) the authored strut can ever push. Before this rule
+        // that hull sat on the runway on collision: 9.2 kN of spring against
+        // 39.8 kN of weight, nose wheel on its bump stops, and the player read it
+        // as a plane glued to the deck.
+        const double heavyShare = 13273.0;
+        CHECK_TRUE(kAuth * travel < heavyShare, "the authored strut cannot hold a 4 t hull");
+        k = kAuth; c = cAuth;
+        wheel::sizeToStrut(heavyShare, k, c);
+        CHECK_NEAR(k, heavyShare / wheel::kRideStroke, 1e-6,
+                   "a heavier hull rates the strut to what it carries");
+        CHECK_NEAR(c, cAuth * std::sqrt(k / kAuth), 1e-6, "and scales the damper with sqrt(k)");
+        CHECK_NEAR(k * wheel::kRideStroke, heavyShare, 1e-6,
+                   "so the static stroke lands back on the designed ride");
+        CHECK_TRUE(wheel::kRideStroke < travel, "which stays inside the stroke a landing needs");
+
+        // And nothing happens where no sizing is needed.
+        k = kAuth; c = cAuth;
+        wheel::sizeToStrut(1000.0, k, c);
+        CHECK_NEAR(k, kAuth, 1e-9, "a light hull is not stiffened");
+        wheel::sizeToStrut(0.0, k, c);
+        CHECK_NEAR(c, cAuth, 1e-9, "and a wheel in the air changes nothing");
+    }
+
     printf("test_wheels: %d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

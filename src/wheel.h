@@ -37,6 +37,32 @@ inline constexpr double kLatStiff   = 4000.0; // N per (m/s) of lateral slip
 inline constexpr double kBrakeGrip  = 0.8;    // brake friction coefficient
 inline constexpr double kSlipEps    = 0.3;    // m/s, tanh knee (viscous near 0)
 
+/* A strut is authored ONCE, against the airframe it was tuned with, and a hull a
+   few times heavier out-rates it: the spring can only ever push spring*travel, so
+   the wheel sinks onto its bump stops and the hull rests on BULLET COLLISION
+   instead -- the scrub-and-pump regime this file's RIDE HEIGHT note refuses. That
+   is not a heavier plane being unfriendly; it is the ground law stopping working,
+   and it reads to the player as a plane glued to the runway (a 4.1 t spaceplane on
+   the skiff's 1.15 t of strut: 9.2 kN of spring against 39.8 kN of weight).
+   So past its designed ride the strut sizes itself to the load it carries. Under
+   the designed ride nothing happens: a light hull keeps exactly the suspension it
+   was authored with, bit for bit. The damper follows sqrt(k) so the damping ratio
+   c/(2*sqrt(k*m)) stays put while k rises with m.
+   kRideStroke is the compression the shipped gear was tuned at, not a new knob:
+   the skiff's loaded main wheel compresses 0.106..0.109 of its 0.15 (e2e 1158-b),
+   so at 0.106 that hull needs exactly its authored 25000 N/m and is untouched.
+   The DRAWN wheel still does not telescope, so ride height and landing stroke
+   remain one quantity (#1166) -- this fixes the load ceiling, not the float. Both
+   ground loops call it: wheels on their even share, footpads on theirs. */
+inline constexpr double kRideStroke = 0.106;  // m of static compression a strut is sized for
+inline void sizeToStrut(double staticShareN, double &spring, double &damp) {
+    if(staticShareN <= 0.0 || spring <= 0.0) { return; }
+    const double need = staticShareN / kRideStroke;
+    if(need <= spring) { return; }
+    damp *= std::sqrt(need / spring);
+    spring = need;
+}
+
 // Everything force() needs about one wheel this substep. The caller computes
 // the contact (ray + analytic fall-through) and the patch velocity; this header
 // only turns those into a force.

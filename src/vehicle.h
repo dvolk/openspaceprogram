@@ -2155,12 +2155,20 @@ public:
                        double reach, double &dist, glm::dvec3 &hit,
                        glm::dvec3 &n);
 
+    /* The weight one ground contact would carry under an even split of the hull
+       (N), for the self-sizing strut (src/wheel.h::sizeToStrut). Point-mass
+       gravity, as applyGravity computes it; the frame's centrifugal term is left
+       out -- a few percent on Kerbin, and the rule is a load floor, not a trim. */
+    double groundShareN(size_t contacts);
+
     /* --leg-log: one row per gear wheel / leg footpad, printed from the tick
        (not the substep loop) by re-running the same contact ray. gap= is the
        distance from the part's DRAWN mesh bottom -- the lowest vertex of its
        convex hull, which today agrees with the def face it contacts (leg_foot
        0.05, wheel_radius 0.35) -- to the ground; that is the float the player
-       sees (#1158). A no-op for a hull with neither. */
+       sees (#1158). k= is the spring rate the ground pass is USING, which past
+       the designed ride is the sized one, not the catalogue's (#1215). A no-op
+       for a hull with neither. */
     void logLegContacts(double t);
 
     /* Brakes: the parking latch. Spawn sets it, O toggles it, and it travels in

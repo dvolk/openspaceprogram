@@ -855,8 +855,8 @@ test-gen: lint
 	python3 utils/check_atmo_band.py --self-test
 	python3 utils/check_atmo_band.py res/systems/*.json
 # #153: a "surface" attach whose contact is off the parent's skin. A shorthand edge lands
-# on the parent's WIDEST slice, so on a cone the part floats -- 54 shipped rows sit outside
-# 2 cm today (28 contact edges over 93, 26 surface nodes over 68), 35 of them waived at the
+# on the parent's WIDEST slice, so on a cone the part floats -- 56 shipped rows sit outside
+# 2 cm today (28 contact edges over 109, 28 surface nodes over 70), 37 of them waived at the
 # value each was measured when this gate was written. The gate is that a new floating mount,
 # or a waived row whose gap grew past its waiver, counts: 32 do today, 13 of them grown.
 # It re-spells the loader's ray rule instead of calling into it (the check_atmo_band

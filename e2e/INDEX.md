@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 484 |
+| `invariant` | a behaviour or a player route the game must keep | 485 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 57 |
 | `harness` | CLI/test-engine plumbing, not game spec | 18 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **563** |
+| | **total** | **564** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -18,7 +18,7 @@ paces a run: how much e2e a change deserves is the caller's
 judgement. Select by number, name or path, e.g.
 `python3 e2e/run.py save/172 262`.
 
-## flight (187)
+## flight (188)
 
 | case | kind | pins |
 |---|---|---|
@@ -209,6 +209,7 @@ judgement. Select by number, name or path, e.g.
 | `flight/1164-a-alt-dims-rcs-authority.txt` | invariant | Holding Alt cuts RCS authority to a third -- the translation ask AND the pointing rows -- without re-rating the ring, and letting go brings the whole ring back (#1164). |
 | `flight/1164-b-alt-composes-with-the-rcs-dials.txt` | invariant | Alt's third multiplies the Systems dials rather than replacing them: a hull dialed to 50 % and held with Alt asks a sixth, and the pointing rows take the same two cuts (#1164, #1067, #1124). |
 | `flight/1184-parked-lander-holds-at-warp-10.txt` | invariant | A legged hull parked on the pad stays parked when time accelerates: the wind pushes on it and its footpads hold it. |
+| `flight/1215-heavy-plane-rolls-off-the-runway.txt` | invariant | A 4 t plane stands on its springs and rolls down the runway and leaves it. |
 
 ## crew (43)
 
