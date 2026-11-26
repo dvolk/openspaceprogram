@@ -259,6 +259,84 @@ DRAG_CD_BY_NAME = {
 # table is applied before the family, so a drag key there is silently clobbered.
 DRAG_KEYS = ("drag", "drag_forward", "drag_side", "drag_backward")
 
+# #635: the same three shape anchors for the SUPERSONIC band. src/drag.h joins the
+# two anchor sets across kTransonicMach..kSupersonicMach with regimeMix, on the free-
+# stream Mach, once per substep. A family absent here means its cd does NOT change
+# across the band -- the C++ accessors answer the subsonic anchor when there is no
+# supersonic one (src/shipdef.h dragForwardSup()), never 0. That is the honest claim
+# for a small strut of gear or a leg; it is not the claim for a blunt body.
+#
+# The numbers come from a rule, then a hand per family:
+#     sup = max(subsonic, min(newtonian_measured, 1.35))
+# newtonian_measured being the Newtonian integral over the part's OWN shipped mesh
+# (tmp/n1099/faceprobe2; fwd = the part's +Z end into the flow, broad = perpendicular,
+# bwd = -Z), referenced to that mesh's own projected area -- which is what partCd bills
+# on. Two corrections to it:
+#   - the 1.35 cap. Newtonian gives Cp = 2 on every face normal to the flow and no lee
+#     suction behind it, so a flat end reads exactly 2.000. A real flat disc measures
+#     ~1.1-1.3, so the axial column wants capping.
+#   - the broadside column (1.17-1.33 across every fat body) is the one to take at face
+#     value: that is where the surfaces are blunt shoulders, which is exactly what
+#     Newtonian is good at.
+# What the table is FOR: fuselage nose-on is authored 0.10, a genuine subsonic figure,
+# and Newtonian puts the same shape at 0.37-0.50. That gap is the wall a spaceplane has
+# to push through; nothing else here moves a subsonic hull at all (regimeMix is 0 below
+# Mach 0.75).
+#   fwd  / side / bwd
+DRAG_CD_SUP = {
+    # the nose stays cheap (the shipped pod's pointed end is pointed), the base is blunt
+    "capsule":        (0.45, 1.2, 1.5),
+    # blunt cylinder, already ~1.0 both ends
+    "fuel_tank":      (1.2, 1.3, 1.2),
+    "jet_tank":       (1.2, 1.3, 1.2),
+    "cargo":          (1.2, 1.3, 1.2),
+    # engine bells, nozzles and the adapter cones: blunt both ends, no streamlined side
+    "engine":         (1.15, 1.2, 1.15),
+    "orbital_engine": (1.15, 1.2, 1.15),
+    "nuclear_engine": (1.15, 1.2, 1.15),
+    "adapter":        (1.15, 1.2, 1.15),
+    # A nacelle is a shrouded duct, and jetThrust's ram term already prices the momentum
+    # its intake captures -- so wave cd on the SAME momentum double-counts it. Raise the
+    # nose least of any family here.
+    "jet":            (0.3, 1.2, 1.1),
+    # the disc family: blunt both faces, and since #1208 the broadside is blunt too (a
+    # 0.25 m wall is a wall at any Mach), so the whole set sits at Newtonian's capped
+    # broadside. rcs_box inherits this; being a cube, it is blunt either way.
+    "reaction_wheel": (1.3, 1.3, 1.3),
+    "materials_pod":  (1.3, 1.3, 1.3),
+    "barometer":      (1.3, 1.3, 1.3),
+    "thermometer":    (1.3, 1.3, 1.3),
+    "battery":        (1.3, 1.3, 1.3),
+    "rtg":            (1.3, 1.3, 1.3),
+    "mono_tank":      (1.3, 1.3, 1.3),
+    "rcs":            (1.3, 1.3, 1.3),
+    "decoupler":      (1.3, 1.3, 1.3),
+    "docking_port":   (1.3, 1.3, 1.3),
+    # THE WALL. 0.10 nose-first is what a smooth body is worth under Mach 0.8; above the
+    # band the same 0.5 x 6 m hull referenced to its own 0.78 m2 disc pays ~4x that.
+    "fuselage":       (0.45, 1.2, 0.5),
+    # a shallow cone (0.5 m on a 2 m base) is nearly a flat disc apex-first
+    "nose_cap":       (0.6, 0.9, 1.5),
+    # Deliberately modest: #1107 solved this hull's glide as a PAIR (body_lift 0.65 against
+    # drag_side 1.0 / drag_forward 0.1 -> best glide 1.03), and body_lift has no regime law
+    # yet (drag.h #1097), so raising only its cd across the band would bend a flight path
+    # that nothing else in the pass is bending.
+    "liftbody":       (0.25, 1.2, 0.7),
+    "kerbal":         (1.0, 1.1, 1.0),
+    # Left out on purpose -- chute (its own CdA term dominates), gear, leg, ladder (small
+    # area), and every LIFTING/STEERING surface (wing, rudder, elevator, aileron), whose
+    # regime cd is its thickness-to-chord through drag.h::waveCd. The loader refuses these
+    # keys on a part with lift_area or control_area, so a typo here fails at startup.
+}
+
+# A part whose shape is not its type's (the flat-topped capsule has two flat discs,
+# not a pointed shoulder).
+DRAG_CD_SUP_BY_NAME = {
+    "capsule_cyl_r1h2": (1.2, 1.3, 1.2),
+}
+
+DRAG_SUP_KEYS = ("drag_forward_sup", "drag_side_sup", "drag_backward_sup")
+
 # --- the catalog: (name, type, mesh, texture). Add a part = add a line. ----
 # fuel_link is virtual (mesh/texture = None). Radial sizes 1.0 / 1.5 / 2.25 m.
 PARTS = [
@@ -563,7 +641,7 @@ for _n, _f in EXTRA_FIELDS.items():
         if _k in _f:
             assert _f[_k].startswith(_pfx), _f[_k]
     # ... and no part declares a Cd here, where DRAG_CD would overwrite it
-    assert not (set(_f) & set(DRAG_KEYS)), _n
+    assert not (set(_f) & (set(DRAG_KEYS) | set(DRAG_SUP_KEYS))), _n
 
 
 def mesh_geom(mesh_file):
@@ -994,6 +1072,13 @@ def generate(name, ptype, mesh, texture):
         assert set(d) == set(DRAG_KEYS), name
         for _k in DRAG_KEYS:
             e[_k] = d[_k]
+    sup = DRAG_CD_SUP_BY_NAME.get(name, DRAG_CD_SUP.get(ptype))
+    if sup:
+        # drag.h joins this set against the subsonic one across the band, so a
+        # supersonic family whose subsonic anchors are missing joins against 0.
+        assert all(k in d for k in DRAG_KEYS[1:]), name
+        for _k, _v in zip(DRAG_SUP_KEYS, sup):
+            e[_k] = _v
     return e
 
 

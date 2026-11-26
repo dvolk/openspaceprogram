@@ -505,10 +505,9 @@ struct PartDef {
     /* #635: the SAME three anchors, priced in the supersonic regime, joined to the
        ones above by drag.h::regimeMix across the same 0.75..1.25 band the slope
        law (#543 A5) and the surface wave law (A5b) already own. An absent one IS the
-       subsonic anchor beside it (see the accessors below), not a law: a blunt body's
-       cd curve is NOT a wing's. A wing's wave drag comes off its thickness and DECAYS
-       above the band; a pod's
-       barely moves from subsonic to hypersonic, a blunt nose can even bill LESS once
+       subsonic anchor, not a law: a blunt body's cd curve is NOT a wing's. A wing's
+       wave drag comes off its thickness and DECAYS above the band; a pod's barely
+       moves from subsonic to hypersonic, a blunt nose can even bill LESS once
        a shock stands off it, and a flat base bills more than anything else on the
        hull. So there is no multiplier here to invent -- the catalogue authors numbers
        and the join is a seam to measure them against. What each one is FOR: the

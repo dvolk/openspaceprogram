@@ -517,11 +517,12 @@ inline double liftSlopeMach(double cl, double mach) {
    hypersonic, and a blunt nose can even bill LESS once a shock stands off it, so any
    multiplier on the body anchors would be a guess dressed as a law. #635 landed the
    alternative to that guess -- a SECOND anchor set on the part (PartDef::dragForwardSup
-   and friends) joined by regimeMix, with no arithmetic invented in between -- and what
-   it deliberately does not supply is the numbers: parts.json still declares none, so
-   every shipped hull pays the same cd at M 0.2 and M 4.4 until the catalogue is fitted.
-   The band's SHAPE is #635's other open half: a real blunt body steps as a shock
-   stands off the nose rather than ramping straight, and this join cannot do that.
+   and friends) joined by regimeMix, with no arithmetic invented in between -- and the
+   catalogue authors it (utils/art/gen_parts.py DRAG_CD_SUP): 68 of 87 parts, every one
+   of them measured off its own mesh rather than multiplied. The one that matters is a
+   fuselage's nose, 0.10 subsonic against 0.45 above the band. What the join still
+   cannot do is the band's SHAPE: a real blunt body steps as a shock stands off the
+   nose rather than ramping straight across 0.5 Mach.
    t/c comes off the mesh box the edge-area law already reads (PartDef::meshThickness-
    ToChord): every shipped surface is 0.044-0.086, so at the game's wing chord cd_wave
    lands beside the 0.01 profile cd those parts author -- at M 1.65 it is 0.0076, i.e.

@@ -34,7 +34,10 @@
       "drag": 1.0,
       "drag_forward": 0.35,
       "drag_side": 0.8,
-      "drag_backward": 1.3
+      "drag_backward": 1.3,
+      "drag_forward_sup": 0.45,
+      "drag_side_sup": 1.2,
+      "drag_backward_sup": 1.5
     },
     {
       "name": "capsule_r0.5h1.5",
@@ -74,7 +77,10 @@
       "drag": 1.0,
       "drag_forward": 0.35,
       "drag_side": 0.8,
-      "drag_backward": 1.3
+      "drag_backward": 1.3,
+      "drag_forward_sup": 0.45,
+      "drag_side_sup": 1.2,
+      "drag_backward_sup": 1.5
     },
     {
       "name": "capsule_r1.5h3",
@@ -114,7 +120,10 @@
       "drag": 1.0,
       "drag_forward": 0.35,
       "drag_side": 0.8,
-      "drag_backward": 1.3
+      "drag_backward": 1.3,
+      "drag_forward_sup": 0.45,
+      "drag_side_sup": 1.2,
+      "drag_backward_sup": 1.5
     },
     {
       "name": "capsule_r2.25h4.5",
@@ -154,7 +163,10 @@
       "drag": 1.0,
       "drag_forward": 0.35,
       "drag_side": 0.8,
-      "drag_backward": 1.3
+      "drag_backward": 1.3,
+      "drag_forward_sup": 0.45,
+      "drag_side_sup": 1.2,
+      "drag_backward_sup": 1.5
     },
     {
       "name": "capsule_cyl_r1h2",
@@ -190,7 +202,10 @@
       "drag": 1.0,
       "drag_forward": 1.0,
       "drag_side": 0.9,
-      "drag_backward": 1.0
+      "drag_backward": 1.0,
+      "drag_forward_sup": 1.2,
+      "drag_side_sup": 1.3,
+      "drag_backward_sup": 1.2
     },
     {
       "name": "fuselage_r0.4h4",
@@ -225,7 +240,10 @@
       "drag": 0.6,
       "drag_forward": 0.1,
       "drag_side": 0.9,
-      "drag_backward": 0.2
+      "drag_backward": 0.2,
+      "drag_forward_sup": 0.45,
+      "drag_side_sup": 1.2,
+      "drag_backward_sup": 0.5
     },
     {
       "name": "fuselage_r0.5h3.5",
@@ -260,7 +278,10 @@
       "drag": 0.6,
       "drag_forward": 0.1,
       "drag_side": 0.9,
-      "drag_backward": 0.2
+      "drag_backward": 0.2,
+      "drag_forward_sup": 0.45,
+      "drag_side_sup": 1.2,
+      "drag_backward_sup": 0.5
     },
     {
       "name": "fuselage_r0.5h6",
@@ -295,7 +316,10 @@
       "drag": 0.6,
       "drag_forward": 0.1,
       "drag_side": 0.9,
-      "drag_backward": 0.2
+      "drag_backward": 0.2,
+      "drag_forward_sup": 0.45,
+      "drag_side_sup": 1.2,
+      "drag_backward_sup": 0.5
     },
     {
       "name": "fuselage_r1h6",
@@ -331,7 +355,10 @@
       "drag": 0.6,
       "drag_forward": 0.1,
       "drag_side": 0.9,
-      "drag_backward": 0.2
+      "drag_backward": 0.2,
+      "drag_forward_sup": 0.45,
+      "drag_side_sup": 1.2,
+      "drag_backward_sup": 0.5
     },
     {
       "name": "reaction_wheel",
@@ -348,7 +375,10 @@
       "drag": 0.6,
       "drag_forward": 1.1,
       "drag_side": 0.9,
-      "drag_backward": 1.1
+      "drag_backward": 1.1,
+      "drag_forward_sup": 1.3,
+      "drag_side_sup": 1.3,
+      "drag_backward_sup": 1.3
     },
     {
       "name": "reaction_wheel_r1.5h0.375",
@@ -365,7 +395,10 @@
       "drag": 0.6,
       "drag_forward": 1.1,
       "drag_side": 0.9,
-      "drag_backward": 1.1
+      "drag_backward": 1.1,
+      "drag_forward_sup": 1.3,
+      "drag_side_sup": 1.3,
+      "drag_backward_sup": 1.3
     },
     {
       "name": "reaction_wheel_r2.25h0.5625",
@@ -382,7 +415,10 @@
       "drag": 0.6,
       "drag_forward": 1.1,
       "drag_side": 0.9,
-      "drag_backward": 1.1
+      "drag_backward": 1.1,
+      "drag_forward_sup": 1.3,
+      "drag_side_sup": 1.3,
+      "drag_backward_sup": 1.3
     },
     {
       "name": "battery",
@@ -399,7 +435,10 @@
       "drag": 0.6,
       "drag_forward": 1.1,
       "drag_side": 0.9,
-      "drag_backward": 1.1
+      "drag_backward": 1.1,
+      "drag_forward_sup": 1.3,
+      "drag_side_sup": 1.3,
+      "drag_backward_sup": 1.3
     },
     {
       "name": "battery_r1.5h0.375",
@@ -416,7 +455,10 @@
       "drag": 0.6,
       "drag_forward": 1.1,
       "drag_side": 0.9,
-      "drag_backward": 1.1
+      "drag_backward": 1.1,
+      "drag_forward_sup": 1.3,
+      "drag_side_sup": 1.3,
+      "drag_backward_sup": 1.3
     },
     {
       "name": "battery_r2.25h0.5625",
@@ -433,7 +475,10 @@
       "drag": 0.6,
       "drag_forward": 1.1,
       "drag_side": 0.9,
-      "drag_backward": 1.1
+      "drag_backward": 1.1,
+      "drag_forward_sup": 1.3,
+      "drag_side_sup": 1.3,
+      "drag_backward_sup": 1.3
     },
     {
       "name": "rtg",
@@ -448,7 +493,10 @@
       "drag": 0.6,
       "drag_forward": 1.1,
       "drag_side": 0.9,
-      "drag_backward": 1.1
+      "drag_backward": 1.1,
+      "drag_forward_sup": 1.3,
+      "drag_side_sup": 1.3,
+      "drag_backward_sup": 1.3
     },
     {
       "name": "rtg_r1.5h0.375",
@@ -463,7 +511,10 @@
       "drag": 0.6,
       "drag_forward": 1.1,
       "drag_side": 0.9,
-      "drag_backward": 1.1
+      "drag_backward": 1.1,
+      "drag_forward_sup": 1.3,
+      "drag_side_sup": 1.3,
+      "drag_backward_sup": 1.3
     },
     {
       "name": "rtg_r2.25h0.5625",
@@ -478,7 +529,10 @@
       "drag": 0.6,
       "drag_forward": 1.1,
       "drag_side": 0.9,
-      "drag_backward": 1.1
+      "drag_backward": 1.1,
+      "drag_forward_sup": 1.3,
+      "drag_side_sup": 1.3,
+      "drag_backward_sup": 1.3
     },
     {
       "name": "engine",
@@ -501,7 +555,10 @@
       "drag": 0.6,
       "drag_forward": 0.9,
       "drag_side": 1.0,
-      "drag_backward": 0.9
+      "drag_backward": 0.9,
+      "drag_forward_sup": 1.15,
+      "drag_side_sup": 1.2,
+      "drag_backward_sup": 1.15
     },
     {
       "name": "engine_r1.5h3",
@@ -524,7 +581,10 @@
       "drag": 0.6,
       "drag_forward": 0.9,
       "drag_side": 1.0,
-      "drag_backward": 0.9
+      "drag_backward": 0.9,
+      "drag_forward_sup": 1.15,
+      "drag_side_sup": 1.2,
+      "drag_backward_sup": 1.15
     },
     {
       "name": "engine_r2.25h4.5",
@@ -547,7 +607,10 @@
       "drag": 0.6,
       "drag_forward": 0.9,
       "drag_side": 1.0,
-      "drag_backward": 0.9
+      "drag_backward": 0.9,
+      "drag_forward_sup": 1.15,
+      "drag_side_sup": 1.2,
+      "drag_backward_sup": 1.15
     },
     {
       "name": "orbital_engine",
@@ -570,7 +633,10 @@
       "drag": 0.6,
       "drag_forward": 0.9,
       "drag_side": 1.0,
-      "drag_backward": 0.9
+      "drag_backward": 0.9,
+      "drag_forward_sup": 1.15,
+      "drag_side_sup": 1.2,
+      "drag_backward_sup": 1.15
     },
     {
       "name": "orbital_engine_r1.5h1.5",
@@ -593,7 +659,10 @@
       "drag": 0.6,
       "drag_forward": 0.9,
       "drag_side": 1.0,
-      "drag_backward": 0.9
+      "drag_backward": 0.9,
+      "drag_forward_sup": 1.15,
+      "drag_side_sup": 1.2,
+      "drag_backward_sup": 1.15
     },
     {
       "name": "orbital_engine_r2.25h2.25",
@@ -616,7 +685,10 @@
       "drag": 0.6,
       "drag_forward": 0.9,
       "drag_side": 1.0,
-      "drag_backward": 0.9
+      "drag_backward": 0.9,
+      "drag_forward_sup": 1.15,
+      "drag_side_sup": 1.2,
+      "drag_backward_sup": 1.15
     },
     {
       "name": "nuclear_engine",
@@ -636,7 +708,10 @@
       "drag": 0.6,
       "drag_forward": 0.9,
       "drag_side": 1.0,
-      "drag_backward": 0.9
+      "drag_backward": 0.9,
+      "drag_forward_sup": 1.15,
+      "drag_side_sup": 1.2,
+      "drag_backward_sup": 1.15
     },
     {
       "name": "jet",
@@ -659,7 +734,10 @@
       "drag": 0.6,
       "drag_forward": 0.15,
       "drag_side": 1.0,
-      "drag_backward": 0.9
+      "drag_backward": 0.9,
+      "drag_forward_sup": 0.3,
+      "drag_side_sup": 1.2,
+      "drag_backward_sup": 1.1
     },
     {
       "name": "jet_r0.25h1",
@@ -682,7 +760,10 @@
       "drag": 0.6,
       "drag_forward": 0.15,
       "drag_side": 1.0,
-      "drag_backward": 0.9
+      "drag_backward": 0.9,
+      "drag_forward_sup": 0.3,
+      "drag_side_sup": 1.2,
+      "drag_backward_sup": 1.1
     },
     {
       "name": "jet_tank_r0.4h2",
@@ -699,7 +780,10 @@
       "drag": 0.7,
       "drag_forward": 1.0,
       "drag_side": 1.1,
-      "drag_backward": 1.0
+      "drag_backward": 1.0,
+      "drag_forward_sup": 1.2,
+      "drag_side_sup": 1.3,
+      "drag_backward_sup": 1.2
     },
     {
       "name": "jet_tank_r1h1",
@@ -716,7 +800,10 @@
       "drag": 0.7,
       "drag_forward": 1.0,
       "drag_side": 1.1,
-      "drag_backward": 1.0
+      "drag_backward": 1.0,
+      "drag_forward_sup": 1.2,
+      "drag_side_sup": 1.3,
+      "drag_backward_sup": 1.2
     },
     {
       "name": "jet_tank_r1h3",
@@ -733,7 +820,10 @@
       "drag": 0.7,
       "drag_forward": 1.0,
       "drag_side": 1.1,
-      "drag_backward": 1.0
+      "drag_backward": 1.0,
+      "drag_forward_sup": 1.2,
+      "drag_side_sup": 1.3,
+      "drag_backward_sup": 1.2
     },
     {
       "name": "jet_tank_r1h5",
@@ -750,7 +840,10 @@
       "drag": 0.7,
       "drag_forward": 1.0,
       "drag_side": 1.1,
-      "drag_backward": 1.0
+      "drag_backward": 1.0,
+      "drag_forward_sup": 1.2,
+      "drag_side_sup": 1.3,
+      "drag_backward_sup": 1.2
     },
     {
       "name": "fuel_tank",
@@ -768,7 +861,10 @@
       "drag": 0.7,
       "drag_forward": 1.0,
       "drag_side": 1.1,
-      "drag_backward": 1.0
+      "drag_backward": 1.0,
+      "drag_forward_sup": 1.2,
+      "drag_side_sup": 1.3,
+      "drag_backward_sup": 1.2
     },
     {
       "name": "tank_r1h1",
@@ -786,7 +882,10 @@
       "drag": 0.7,
       "drag_forward": 1.0,
       "drag_side": 1.1,
-      "drag_backward": 1.0
+      "drag_backward": 1.0,
+      "drag_forward_sup": 1.2,
+      "drag_side_sup": 1.3,
+      "drag_backward_sup": 1.2
     },
     {
       "name": "tank_r1h3",
@@ -804,7 +903,10 @@
       "drag": 0.7,
       "drag_forward": 1.0,
       "drag_side": 1.1,
-      "drag_backward": 1.0
+      "drag_backward": 1.0,
+      "drag_forward_sup": 1.2,
+      "drag_side_sup": 1.3,
+      "drag_backward_sup": 1.2
     },
     {
       "name": "tank_r1h5",
@@ -822,7 +924,10 @@
       "drag": 0.7,
       "drag_forward": 1.0,
       "drag_side": 1.1,
-      "drag_backward": 1.0
+      "drag_backward": 1.0,
+      "drag_forward_sup": 1.2,
+      "drag_side_sup": 1.3,
+      "drag_backward_sup": 1.2
     },
     {
       "name": "tank_r1.5h1",
@@ -840,7 +945,10 @@
       "drag": 0.7,
       "drag_forward": 1.0,
       "drag_side": 1.1,
-      "drag_backward": 1.0
+      "drag_backward": 1.0,
+      "drag_forward_sup": 1.2,
+      "drag_side_sup": 1.3,
+      "drag_backward_sup": 1.2
     },
     {
       "name": "tank_r1.5h2",
@@ -858,7 +966,10 @@
       "drag": 0.7,
       "drag_forward": 1.0,
       "drag_side": 1.1,
-      "drag_backward": 1.0
+      "drag_backward": 1.0,
+      "drag_forward_sup": 1.2,
+      "drag_side_sup": 1.3,
+      "drag_backward_sup": 1.2
     },
     {
       "name": "tank_r1.5h3",
@@ -876,7 +987,10 @@
       "drag": 0.7,
       "drag_forward": 1.0,
       "drag_side": 1.1,
-      "drag_backward": 1.0
+      "drag_backward": 1.0,
+      "drag_forward_sup": 1.2,
+      "drag_side_sup": 1.3,
+      "drag_backward_sup": 1.2
     },
     {
       "name": "tank_r1.5h5",
@@ -894,7 +1008,10 @@
       "drag": 0.7,
       "drag_forward": 1.0,
       "drag_side": 1.1,
-      "drag_backward": 1.0
+      "drag_backward": 1.0,
+      "drag_forward_sup": 1.2,
+      "drag_side_sup": 1.3,
+      "drag_backward_sup": 1.2
     },
     {
       "name": "tank_r2.25h1",
@@ -912,7 +1029,10 @@
       "drag": 0.7,
       "drag_forward": 1.0,
       "drag_side": 1.1,
-      "drag_backward": 1.0
+      "drag_backward": 1.0,
+      "drag_forward_sup": 1.2,
+      "drag_side_sup": 1.3,
+      "drag_backward_sup": 1.2
     },
     {
       "name": "tank_r2.25h3",
@@ -930,7 +1050,10 @@
       "drag": 0.7,
       "drag_forward": 1.0,
       "drag_side": 1.1,
-      "drag_backward": 1.0
+      "drag_backward": 1.0,
+      "drag_forward_sup": 1.2,
+      "drag_side_sup": 1.3,
+      "drag_backward_sup": 1.2
     },
     {
       "name": "tank_r2.25h5",
@@ -948,7 +1071,10 @@
       "drag": 0.7,
       "drag_forward": 1.0,
       "drag_side": 1.1,
-      "drag_backward": 1.0
+      "drag_backward": 1.0,
+      "drag_forward_sup": 1.2,
+      "drag_side_sup": 1.3,
+      "drag_backward_sup": 1.2
     },
     {
       "name": "mono_tank_r1",
@@ -965,7 +1091,10 @@
       "drag": 0.6,
       "drag_forward": 1.1,
       "drag_side": 0.9,
-      "drag_backward": 1.1
+      "drag_backward": 1.1,
+      "drag_forward_sup": 1.3,
+      "drag_side_sup": 1.3,
+      "drag_backward_sup": 1.3
     },
     {
       "name": "mono_tank_r1.5",
@@ -982,7 +1111,10 @@
       "drag": 0.6,
       "drag_forward": 1.1,
       "drag_side": 0.9,
-      "drag_backward": 1.1
+      "drag_backward": 1.1,
+      "drag_forward_sup": 1.3,
+      "drag_side_sup": 1.3,
+      "drag_backward_sup": 1.3
     },
     {
       "name": "mono_tank_r2.25",
@@ -999,7 +1131,10 @@
       "drag": 0.6,
       "drag_forward": 1.1,
       "drag_side": 0.9,
-      "drag_backward": 1.1
+      "drag_backward": 1.1,
+      "drag_forward_sup": 1.3,
+      "drag_side_sup": 1.3,
+      "drag_backward_sup": 1.3
     },
     {
       "name": "rcs_box",
@@ -1021,7 +1156,10 @@
       "drag": 0.8,
       "drag_forward": 1.1,
       "drag_side": 1.1,
-      "drag_backward": 1.1
+      "drag_backward": 1.1,
+      "drag_forward_sup": 1.3,
+      "drag_side_sup": 1.3,
+      "drag_backward_sup": 1.3
     },
     {
       "name": "adapter_r1to1.5",
@@ -1035,7 +1173,10 @@
       "drag": 0.2,
       "drag_forward": 0.9,
       "drag_side": 1.0,
-      "drag_backward": 0.9
+      "drag_backward": 0.9,
+      "drag_forward_sup": 1.15,
+      "drag_side_sup": 1.2,
+      "drag_backward_sup": 1.15
     },
     {
       "name": "adapter_r1to2.25",
@@ -1049,7 +1190,10 @@
       "drag": 0.2,
       "drag_forward": 0.9,
       "drag_side": 1.0,
-      "drag_backward": 0.9
+      "drag_backward": 0.9,
+      "drag_forward_sup": 1.15,
+      "drag_side_sup": 1.2,
+      "drag_backward_sup": 1.15
     },
     {
       "name": "adapter_r1.5to1",
@@ -1063,7 +1207,10 @@
       "drag": 0.2,
       "drag_forward": 0.9,
       "drag_side": 1.0,
-      "drag_backward": 0.9
+      "drag_backward": 0.9,
+      "drag_forward_sup": 1.15,
+      "drag_side_sup": 1.2,
+      "drag_backward_sup": 1.15
     },
     {
       "name": "adapter_r1.5to2.25",
@@ -1077,7 +1224,10 @@
       "drag": 0.2,
       "drag_forward": 0.9,
       "drag_side": 1.0,
-      "drag_backward": 0.9
+      "drag_backward": 0.9,
+      "drag_forward_sup": 1.15,
+      "drag_side_sup": 1.2,
+      "drag_backward_sup": 1.15
     },
     {
       "name": "adapter_r2.25to1",
@@ -1091,7 +1241,10 @@
       "drag": 0.2,
       "drag_forward": 0.9,
       "drag_side": 1.0,
-      "drag_backward": 0.9
+      "drag_backward": 0.9,
+      "drag_forward_sup": 1.15,
+      "drag_side_sup": 1.2,
+      "drag_backward_sup": 1.15
     },
     {
       "name": "adapter_r2.25to1.5",
@@ -1105,7 +1258,10 @@
       "drag": 0.2,
       "drag_forward": 0.9,
       "drag_side": 1.0,
-      "drag_backward": 0.9
+      "drag_backward": 0.9,
+      "drag_forward_sup": 1.15,
+      "drag_side_sup": 1.2,
+      "drag_backward_sup": 1.15
     },
     {
       "name": "decoupler_r1",
@@ -1121,7 +1277,10 @@
       "drag": 0.6,
       "drag_forward": 1.1,
       "drag_side": 0.9,
-      "drag_backward": 1.1
+      "drag_backward": 1.1,
+      "drag_forward_sup": 1.3,
+      "drag_side_sup": 1.3,
+      "drag_backward_sup": 1.3
     },
     {
       "name": "decoupler_r1.5",
@@ -1137,7 +1296,10 @@
       "drag": 0.6,
       "drag_forward": 1.1,
       "drag_side": 0.9,
-      "drag_backward": 1.1
+      "drag_backward": 1.1,
+      "drag_forward_sup": 1.3,
+      "drag_side_sup": 1.3,
+      "drag_backward_sup": 1.3
     },
     {
       "name": "decoupler_r2.25",
@@ -1153,7 +1315,10 @@
       "drag": 0.6,
       "drag_forward": 1.1,
       "drag_side": 0.9,
-      "drag_backward": 1.1
+      "drag_backward": 1.1,
+      "drag_forward_sup": 1.3,
+      "drag_side_sup": 1.3,
+      "drag_backward_sup": 1.3
     },
     {
       "name": "decoupler_radial",
@@ -1169,7 +1334,10 @@
       "drag": 0.6,
       "drag_forward": 1.1,
       "drag_side": 0.9,
-      "drag_backward": 1.1
+      "drag_backward": 1.1,
+      "drag_forward_sup": 1.3,
+      "drag_side_sup": 1.3,
+      "drag_backward_sup": 1.3
     },
     {
       "name": "docking_port_r1",
@@ -1227,7 +1395,10 @@
       "drag": 0.6,
       "drag_forward": 1.1,
       "drag_side": 0.9,
-      "drag_backward": 1.1
+      "drag_backward": 1.1,
+      "drag_forward_sup": 1.3,
+      "drag_side_sup": 1.3,
+      "drag_backward_sup": 1.3
     },
     {
       "name": "docking_port_r1.5",
@@ -1285,7 +1456,10 @@
       "drag": 0.6,
       "drag_forward": 1.1,
       "drag_side": 0.9,
-      "drag_backward": 1.1
+      "drag_backward": 1.1,
+      "drag_forward_sup": 1.3,
+      "drag_side_sup": 1.3,
+      "drag_backward_sup": 1.3
     },
     {
       "name": "docking_port_r2.25",
@@ -1343,7 +1517,10 @@
       "drag": 0.6,
       "drag_forward": 1.1,
       "drag_side": 0.9,
-      "drag_backward": 1.1
+      "drag_backward": 1.1,
+      "drag_forward_sup": 1.3,
+      "drag_side_sup": 1.3,
+      "drag_backward_sup": 1.3
     },
     {
       "name": "nose_cap",
@@ -1357,7 +1534,10 @@
       "drag": 0.6,
       "drag_forward": 0.35,
       "drag_side": 0.9,
-      "drag_backward": 1.3
+      "drag_backward": 1.3,
+      "drag_forward_sup": 0.6,
+      "drag_side_sup": 0.9,
+      "drag_backward_sup": 1.5
     },
     {
       "name": "nose_cap_r1.5h0.75",
@@ -1371,7 +1551,10 @@
       "drag": 0.6,
       "drag_forward": 0.35,
       "drag_side": 0.9,
-      "drag_backward": 1.3
+      "drag_backward": 1.3,
+      "drag_forward_sup": 0.6,
+      "drag_side_sup": 0.9,
+      "drag_backward_sup": 1.5
     },
     {
       "name": "nose_cap_r2.25h1.125",
@@ -1385,7 +1568,10 @@
       "drag": 0.6,
       "drag_forward": 0.35,
       "drag_side": 0.9,
-      "drag_backward": 1.3
+      "drag_backward": 1.3,
+      "drag_forward_sup": 0.6,
+      "drag_side_sup": 0.9,
+      "drag_backward_sup": 1.5
     },
     {
       "name": "kerbal",
@@ -1404,7 +1590,10 @@
       "drag": 0.5,
       "drag_forward": 0.5,
       "drag_side": 0.9,
-      "drag_backward": 0.9
+      "drag_backward": 0.9,
+      "drag_forward_sup": 1.0,
+      "drag_side_sup": 1.1,
+      "drag_backward_sup": 1.0
     },
     {
       "name": "cargo",
@@ -1419,7 +1608,10 @@
       "drag": 0.7,
       "drag_forward": 1.0,
       "drag_side": 1.1,
-      "drag_backward": 1.0
+      "drag_backward": 1.0,
+      "drag_forward_sup": 1.2,
+      "drag_side_sup": 1.3,
+      "drag_backward_sup": 1.2
     },
     {
       "name": "materials_pod",
@@ -1435,7 +1627,10 @@
       "drag": 0.6,
       "drag_forward": 1.1,
       "drag_side": 0.9,
-      "drag_backward": 1.1
+      "drag_backward": 1.1,
+      "drag_forward_sup": 1.3,
+      "drag_side_sup": 1.3,
+      "drag_backward_sup": 1.3
     },
     {
       "name": "barometer",
@@ -1451,7 +1646,10 @@
       "drag": 0.6,
       "drag_forward": 1.1,
       "drag_side": 0.9,
-      "drag_backward": 1.1
+      "drag_backward": 1.1,
+      "drag_forward_sup": 1.3,
+      "drag_side_sup": 1.3,
+      "drag_backward_sup": 1.3
     },
     {
       "name": "thermometer",
@@ -1467,7 +1665,10 @@
       "drag": 0.6,
       "drag_forward": 1.1,
       "drag_side": 0.9,
-      "drag_backward": 1.1
+      "drag_backward": 1.1,
+      "drag_forward_sup": 1.3,
+      "drag_side_sup": 1.3,
+      "drag_backward_sup": 1.3
     },
     {
       "name": "wing",
@@ -2027,7 +2228,10 @@
       "drag": 0.4,
       "drag_forward": 0.1,
       "drag_side": 1.0,
-      "drag_backward": 0.5
+      "drag_backward": 0.5,
+      "drag_forward_sup": 0.25,
+      "drag_side_sup": 1.2,
+      "drag_backward_sup": 0.7
     }
   ]
 }

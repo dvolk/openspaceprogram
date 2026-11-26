@@ -1366,21 +1366,42 @@ static void test_the_lifting_body_pair_is_fitted() {
         CHECK_TRUE(false, "res/data/parts.json loads (run from the repo root)");
         return;
     }
-    /* #635 staged state, pinned rather than asserted in a commit message: the seam
-       exists and the catalogue uses none of it, so every hull pays one cd at M 0.2
-       and the same at M 7. When a family IS fitted, this pin reddens on purpose --
-       change it to count what was fitted, do not delete it. */
+    /* #635 shipped state: the catalogue authors the second anchor set for its body
+       parts. 68 of 87 do; the 19 that do not are the lifting/steering surfaces (their
+       regime cd is thickness-to-chord through waveCd), the chute (its own CdA term),
+       gear, leg, ladder, and the virtual fuel link. Absent means "the subsonic anchor"
+       (src/shipdef.h), never 0, so an unfitted part pays one cd at M 0.2 and M 7. */
     {
-        int declared = 0;
+        int declared = 0, surfacesWith = 0, cheaperSup = 0;
         for(const PartDef &d : cat.parts) {
             if(d.drag_forward_sup > 0.0 || d.drag_side_sup > 0.0
                || d.drag_backward_sup > 0.0) { declared++; }
+            if(d.lift_area > 0.0 || d.control_area > 0.0) {
+                if(d.drag_forward_sup > 0.0 || d.drag_side_sup > 0.0
+                   || d.drag_backward_sup > 0.0) { surfacesWith++; }
+            }
+            /* The authoring rule is sup = max(subsonic, min(newtonian, 1.35)), so a
+               part never gets CHEAPER by being faster. A transposed pair in
+               gen_parts.py would do exactly that, and nothing else would notice. */
+            if(d.dragForwardSup() < d.drag_forward
+               || d.dragSideSup() < d.drag_side
+               || d.dragBackwardSup() < d.drag_backward) { cheaperSup++; }
         }
         printf("[pair] %d of %d catalogued parts declare supersonic cd anchors\n",
                declared, (int)cat.parts.size());
-        CHECK_TRUE(declared == 0,
-                   "#635: no shipped part declares the supersonic anchors yet (fit "
-                   "this pin deliberately if that changes)");
+        CHECK_TRUE(declared == 68, "#635: the body families author the supersonic band");
+        CHECK_TRUE(surfacesWith == 0, "and no lifting/steering surface does");
+        CHECK_TRUE(cheaperSup == 0, "no part is cheaper at Mach 6 than at Mach 0.2");
+        /* The number the whole change is for: a fuselage's nose. 0.10 is what a smooth
+           body is worth subsonic; above the band the same shape is ~4x that, and that
+           gap -- not any of the blunt bodies -- is what a spaceplane pushes through. */
+        const PartDef *fus = cat.find("fuselage_r0.5h6");
+        CHECK_TRUE(fus != nullptr, "fuselage_r0.5h6 is catalogued");
+        if(fus != nullptr) {
+            CHECK_NEAR(fus->drag_forward, 0.10, 1e-9, "nose-on stays a subsonic figure");
+            CHECK_NEAR(fus->dragForwardSup(), 0.45, 1e-9,
+                       "#635: and the same nose is ~4.5x that above the band");
+        }
     }
     /* And the loader refuses them on a SURFACE: a lifting or steering part is out of
        the hull silhouette pass, so a wing's *_sup key would be parsed, stored and
