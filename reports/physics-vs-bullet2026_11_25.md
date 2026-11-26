@@ -124,14 +124,15 @@ The reasons are in the comments, not in folklore:
    `vehicle.cpp:5255,5338` — the ride allowance `(travel - compression)` goes to zero, the
    wheel's convex child meets the surface, and since every part contributes a shape to the
    one compound (`rebuildCompound` `vehicle.cpp:1619`, no opt-out for wheels) Bullet's
-   impulses stack on top of a spring already pushing at `k * travel`. Nothing in the ground
-   law says which support wins or how they hand over. #1166 owns this from the other side
-   (a strut's float and its stroke are one number; `n*k*travel` is the load ceiling) and
-   `1158-a`/`1158-b` keep a heavy hull from sinking quietly, but the double-support regime
-   itself is unspecified. (Measured hulls are lighter than #1166's table: `racer_legs`
-   2270 kg, `skiff_gear` 536 kg; the spring sums above match those weights to 0.5 %, so
-   the resting compression is still the equilibrium, not stiction holding the hull up.)
-   The margin comment knows the geometry from yet another side: with
+   contacts fire. The *normal* share then settles itself — the hull sinks until spring force
+   plus solver normal equals the weight, and a softer spring simply gives the solver more —
+   but the transient is a maxed spring explicit over a 0.056 s substep next to solver
+   impulses, and the *friction* answer jumps from `kGrip = 0.9` to Bullet's pair product with
+   no rule between them. #1166 owns the float/stroke identity and `n*k*travel` as the load
+   ceiling, #1195 owns the two-friction answer, and `1158-b` keeps a heavy gear hull from
+   sinking quietly (`1158-a`'s equivalent pin is red on master for a different reason — the
+   hull is ~600 kg lighter than the pin assumes, #1181). The margin comment knows the
+   geometry from yet another side: with
    the old 0.5 m margin "wheels bottomed out and the hull rode as a bump stop"
    (`physics.cpp:37`).
 2. **Ordering is load-bearing.** `GetAccumulatedForce` must be read before the ground
@@ -189,7 +190,7 @@ should be driven by wanting clusters, not by wanting a joint.
 - Fix the stale per-part-body comment (`vehicle.cpp:32`). **done here**
 - Add one line to DESIGN.md saying what Bullet is and is not, so the question stops
   needing to be asked. **done here**
-- Filed: #1195 (three unrelated friction coefficients), and the uncommented
+- Filed: #1195 (three unrelated friction coefficients), and #1199 for the uncommented
   `setApplySpeculativeContactRestitution(true)` at `physics.cpp:183` — which turns out to
   be inert here: that flag only acts on Bullet's *predictive* manifolds, and those exist
   only when a body has a CCD motion threshold (`btDiscreteDynamicsWorld.cpp:863`), which we
@@ -197,8 +198,9 @@ should be driven by wanting clusters, not by wanting a joint.
   (`grep -rn Restitution src/` → one hit, the flag itself). So the line is either a
   leftover or a bet on a future where parts author bounce; either way it should say so. The
   missing CCD is not a bug — it is warp working as designed — but it is why
-  `vehicle.cpp:9038` exists. The bottom-out double-support seam above is #1166's territory;
-  commented there rather than filed twice.
+  `vehicle.cpp:9038` exists. The bottoming-strut seam above is already #1166 (float vs
+  stroke, load ceiling) and #1195 (which friction answers), so it is commented there rather
+  than filed a third time.
 
 ## Re-deriving the claims
 
