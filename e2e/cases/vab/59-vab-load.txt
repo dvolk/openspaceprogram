@@ -21,6 +21,14 @@ ARGS --ui-click 8500,"VAB TopBar/##vabload"
 # The open popup must not offer a testship: this pins the default side of
 # (308 pins the opt-in side).
 ARGS --ui-list 8900
+# The popup is nine rows tall and the stock list is now ten (heavy_asp through
+# stager), so the row this case wants sits below the fold -- the bare click reads
+# "not found", and the dump above cannot see the bottom of the list either.
+# --ui-scroll is what a player does (harness/169-b pins that remedy and why the
+# registry never offers a row imgui did not draw), and the second dump widens the
+# no-testship pin from the first screen to the whole list.
+ARGS --ui-scroll 8950,"##Combo_00",-2
+ARGS --ui-list 9050
 ARGS --ui-click 9100,"##Combo_00/stager"
 ARGS --ui-click 9700,"VAB TopBar/Load"
 # Save keeps the loaded identity, which used to be the UI's job: vabLoad itself
@@ -45,5 +53,11 @@ EXPECT [vab] saved stager
 EXPECT [vab] launched 'stager' (7 parts)
 CHECK 'label="stager"' in out
 CHECK 'label="baropod"' not in out
+# Both screens of the popup, and no testship on either: the unscrolled dump only
+# proves the first nine rows, so it is the pair that pins the whole default list.
+# stager lands in the second dump only -- that is the fold, and the click that
+# follows it is the remedy.
+CHECK all('label="baropod"' not in d and 'label="power_test"' not in d for d in out.split("[uilist] loop=")[1:])
+CHECK 'label="stager"' in out.split("[uilist] loop=")[2]
 FORBID FAILED
 FORBID error:

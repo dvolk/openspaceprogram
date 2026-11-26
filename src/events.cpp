@@ -90,7 +90,8 @@ void emit_sim_events(Game &g) {
            on an unrelated pixel. */
         if(!sceneIs(g, SceneId::Flight)) { return "not in the flight scene"; }
         return flightAimAtPart(g, f.part.substr(0, slash),
-                               f.part.substr(slash + 1), sx, sy);
+                               f.part.substr(slash + 1), sx, sy,
+                               uiWindowAtPixel);
     };
     if(!g.args.ui_focuses.empty()) {
         const Uint32 now = g.schedClockMs();  // sim ms under --sim-steps (#472)

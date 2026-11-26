@@ -61,16 +61,28 @@ bool pickShipPart(Game &g, int px, int py,
    must run the same pick a click would. If no pixel in the spiral confirms it,
    the part really is hidden from this angle and the case has to orbit, exactly
    as a player would. */
+/* Who answers "which imgui window, if any, would take a click at this pixel?"
+   (uiinput.cpp's uiWindowAtPixel). The spiral needs it: io.WantCaptureMouse is
+   true whenever a window is under the cursor, and the game's own mouse halves
+   stand down on that, so a pixel that picks the right part UNDER a window is not
+   a clickable pixel -- tanker's engine_1 measured exactly that (the aim verified
+   at 960,647, the Staging window covered it, and four cases lost their
+   [vab] select downstream, #1132). Injected rather than called so the picking
+   layer stays free of imgui, and a unit test can stub it. Empty = no UI gate. */
+using UiCoverTest = std::function<const char *(int, int)>;
+
 std::string aimAtPoint(Game &g, const glm::dvec3 &pS,
                        const std::function<bool(int, int)> &verify,
-                       double &sx, double &sy);
+                       double &sx, double &sy,
+                       const UiCoverTest &covered = UiCoverTest());
 
 /* Where <partId> on the ship named <shipName> can be CLICKED, for --ui-focus.
    Mirrors the VAB's vabAimAtPart. Precondition: the flight scene is live -- the
    caller gates it, because these pixels only mean ship parts there (from the VAB
    they mean the build tree, so an aim would either lie or hit something else). */
 std::string flightAimAtPart(Game &g, const std::string &shipName,
-                            const std::string &partId, double &sx, double &sy);
+                            const std::string &partId, double &sx, double &sy,
+                            const UiCoverTest &covered = UiCoverTest());
 
 /* The first vessel standing on a launch pad's deck, null if the deck is
    clear. Rays go up the pad's own axis from below the deck, so a ship that

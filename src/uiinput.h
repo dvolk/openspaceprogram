@@ -55,3 +55,12 @@ void uiTextDisabled(const char *fmt, ...) IM_FMTARGS(1);
    uniqueness rule), and the registered rect is the DRAWN text, so a clipping check measures
    what is actually on screen. Same rule as uiText: never a click target. */
 void uiTextId(const char *shown, const char *id);
+
+/* Which imgui window would take a click at this pixel, or nullptr when the 3D
+   view under it would. Mirrors FindHoveredWindowEx's gate -- WasActive, not
+   Hidden, no NoMouseInputs, inside OuterRectClipped -- because that is exactly
+   what makes io.WantCaptureMouse true, which is what vabClickAfterUI and the
+   flight pick refuse a click on. Runs before the frame's imgui pass, so it
+   reports the previous frame's layout: the same one-frame lag the VAB hover
+   already lives with. */
+const char *uiWindowAtPixel(int px, int py);

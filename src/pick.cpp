@@ -154,14 +154,28 @@ bool pickShipPart(Game &g, int px, int py,
 
 std::string aimAtPoint(Game &g, const glm::dvec3 &pS,
                        const std::function<bool(int, int)> &verify,
-                       double &sx, double &sy) {
+                       double &sx, double &sy,
+                       const UiCoverTest &covered) {
     if(g.camera == nullptr) { return "no camera"; }
     double ox = 0, oy = 0;
     if(!projectPixel(g, pS, ox, oy)) { return "behind the camera"; }
     const int vw = g.camera->viewport_w, vh = g.camera->viewport_h;
+    /* "Aim here" only means something if a click HERE arrives, so `covered`
+       belongs in what makes a pixel clickable: imgui reports WantCaptureMouse
+       whenever one of its windows is under the cursor, and both mouse halves of
+       the editor (vabUpdate's hover, vabClickAfterUI's act) stand down on that.
+       tanker's engine_1 measured exactly this -- the aim verified at 960,647, the
+       Staging window covered it, and four cases lost their [vab] select
+       downstream (#1132). */
+    const char *cover = nullptr;
     auto hits = [&](int px, int py) {
         if(px < 0 || py < 0 || px >= vw || py >= vh) { return false; }
-        return verify(px, py);
+        if(!verify(px, py)) { return false; }
+        if(covered) {
+            const char *w = covered(px, py);
+            if(w != nullptr) { if(cover == nullptr) { cover = w; } return false; }
+        }
+        return true;
     };
     if(hits((int)ox, (int)oy)) { sx = ox; sy = oy; return std::string(); }
     // Rings around the projected centre. A part's screen footprint is a few
@@ -175,11 +189,16 @@ std::string aimAtPoint(Game &g, const glm::dvec3 &pS,
             if(hits(px, py)) { sx = px; sy = py; return std::string(); }
         }
     }
+    if(cover != nullptr) {
+        return std::string("every pixel that picks it stands under the ")
+             + cover + " window (move or close that window)";
+    }
     return "not clickable from this camera angle (orbit and aim again)";
 }
 
 std::string flightAimAtPart(Game &g, const std::string &shipName,
-                            const std::string &partId, double &sx, double &sy) {
+                            const std::string &partId, double &sx, double &sy,
+                            const UiCoverTest &covered) {
     if(g.ship == nullptr) { return "no active ship to pick against"; }
     Vehicle *want = nullptr;
     for(Vehicle *s : g.vehicles) {
@@ -214,7 +233,7 @@ std::string flightAimAtPart(Game &g, const std::string &shipName,
         PickBodyHit hit;
         return pickShipPart(g, px, py, gotShip, gotPart, hit)
             && gotShip == want && gotPart == wantPart;
-    }, sx, sy);
+    }, sx, sy, covered);
 }
 
 /* One deck holds one ship: two grounded ships wake and torque each other, so an

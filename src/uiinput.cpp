@@ -24,6 +24,33 @@
 #include "game.h"
 #include "siminput.h"   // UiClick
 
+const char *uiWindowAtPixel(int px, int py) {
+    ImGuiContext *gc = ImGui::GetCurrentContext();
+    if(gc == nullptr) { return nullptr; }
+    const ImVec2 p((float)px, (float)py);
+    /* The border a click still counts against: imgui pads the hit rect by
+       WindowBorderHoverPadding unless the window cannot be resized or is
+       auto-sized. Without the pad the aim lands one pixel clear of a window and
+       the click then hovers it anyway (measured: 957,641 vs a Staging window
+       whose top edge is at 642). */
+    const ImVec2 touch(gc->Style.TouchExtraPadding.x, gc->Style.TouchExtraPadding.y);
+    const float bh = gc->Style.WindowBorderHoverPadding;
+    const ImVec2 borderPad = ImMax(touch, ImVec2(bh, bh));
+    /* Reverse z-order, top-most wins, exactly as FindHoveredWindowEx does; a
+       window drawn with NoMouseInputs never becomes HoveredWindow, so it never
+       swallows a click either. */
+    for(int i = gc->Windows.Size - 1; i >= 0; i--) {
+        ImGuiWindow *w = gc->Windows[i];
+        if(!w->WasActive || w->Hidden) { continue; }
+        if(w->Flags & ImGuiWindowFlags_NoMouseInputs) { continue; }
+        const ImVec2 wp = (w->Flags & (ImGuiWindowFlags_NoResize
+                                      | ImGuiWindowFlags_AlwaysAutoResize))
+                        ? touch : borderPad;
+        if(w->OuterRectClipped.ContainsWithPad(p, wp)) { return w->Name; }
+    }
+    return nullptr;
+}
+
 namespace {
 
 struct UiItem {
