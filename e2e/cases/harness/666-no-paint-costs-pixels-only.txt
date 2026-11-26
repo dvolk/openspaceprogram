@@ -17,12 +17,20 @@ ARGS --sim-press 3000,0,F12
 EXPECT paint: off (--no-paint
 EXPECT [drag]
 EXPECT Screenshot saved
-# Still the same cruise: the AoA band is flight/490's, and the hull is still at
-# 7 km doing 80 m/s.
+# Still the same cruise. This 15 s window is all throttle, so it is the first half of a
+# phugoid: the hull holds +3.5..+3.6 deg while the excess lift trades its speed for
+# height, and by the last row it is up 320 m doing 41 m/s at +1.4 deg. Re-derived for
+# #1171's masses (flight/490's header has the story: the pod alone is 121.87 kg lighter,
+# so the COM walked aft and the trim walked up from 2.5 to 3.6 deg); what matters HERE is
+# that the unpainted run's rows match the painted one's, which is why the band is the
+# airframe's and not a screenshot's.
 CHECK len(drag) >= 15
-CHECK all(2.3 < d["aoa"] < 3.0 for d in drag if d["aoa"] is not None)
-CHECK min(d["v"] for d in drag if d["t"] <= 10.0) > 60.0
-CHECK min(d["alt_asl"] for d in drag if d["t"] <= 10.0) > 6950.0
+CHECK all(1.2 < d["aoa"] < 3.9 for d in drag if d["aoa"] is not None)
+CHECK min(d["v"] for d in drag if d["t"] <= 10.0) > 50.0
+# The bed, not the airframe: flying-cruise spawns at 0.1 x the body's air top, and #682
+# moved that top 70 -> 85 km, so the spawn row reads 8501 m where this floor used to say
+# 6950. It tracks the bed; it is here to notice the bed moving.
+CHECK min(d["alt_asl"] for d in drag if d["t"] <= 10.0) > 8400.0
 # And the UI is live: a readout row from the state pass that --no-paint keeps.
 CHECK re.search(r'window="Vessel Info" label="Angular rate: [0-9.]+deg/s"', out)
 FILE screenshots/*.png

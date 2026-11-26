@@ -1,24 +1,33 @@
 NAME static-margin
-CLAIM The VAB's static margin and the flight log's SM are the same number: a hands-off skiff with 0.55 m of margin flies at +2.5..+2.7 deg of angle of attack and stays wings-level through a 15 s glide (7000 m down to 6893 m).
+CLAIM The VAB's static margin and the flight log's SM are the same number: a hands-off skiff with 0.31 m of margin flies at +3.6..+4.0 deg of angle of attack and stays wings-level through a 15 s glide (8540 m down to 8475 m).
 KIND invariant
 ARGS --time-accel 1 --startship skiff,res/ships/skiff.json,Kerbin,flying-cruise
-ARGS --sim-steps 900 --drag-log
+ARGS --sim-steps 900 --drag-log --mass-log
 EXPECT [drag]
 CHECK len(drag) >= 4
 CHECK all(d.get("sm") is not None for d in drag)
-# 0.55 m on every row (test_stability gets +0.552 from the parts alone). #568's
-# pod-on-tank hull reads 0.18 m less than the one-piece spindle it replaced
-# (+0.73), which is the stack's own COM walking aft -- the full tank and the engine
-# hang 1.75-3.25 m behind the pod -- not a change in the lifting rig. #567 then
-# grew the wing from 12 x 1.8 to 16 x 1.5 and the slope with it (153.6 -> 168.0
-# m2/rad authored, and flight reads 167.82-167.84 only because of the cos(alpha)
-# dip), which cost 0.026 m of margin. The mechanism is the weighting, not the
-# chord: SM is the slope-weighted mean station, and the wing's slope grew at the
-# FORWARD station -- (129.6 x -0.32 + 24 x -1.97) / 153.6 = -0.578 m of neutral
-# point became (144 x -0.32 + 24 x -1.97) / 168 = -0.556 m. The 0.08 m band -- 0.03 m
-# under this run's +0.55 and 0.05 m over it -- is what separates this from the spindle's
-# +0.73 and from a rig that has started to diverge.
-CHECK all(0.52 < d["sm"] < 0.60 for d in drag if d.get("sm") is not None)
-CHECK all(2.3 < d["aoa"] < 3.0 for d in drag if d["aoa"] is not None)
+# +0.31 m on every row, and the bench agrees with it: buildStability() on
+# res/ships/skiff.json with one suit answers CLa 168.000 m2/rad and SM +0.3122 m. The
+# air prints 168.62..169.93 for the slope -- the bench's 168.0 dressed by
+# Prandtl-Glauert at this run's Mach plus the cos(alpha) dip in drag.h::LiftSlopeSum
+# (168.0 / sqrt(1 - 0.162^2) x cos(3.6 deg) = 170.1 against the 169.93 the row prints),
+# and nothing more.
+# This row read +0.55 at +2.5 deg until the masses moved, and what moved is the mass,
+# not the lifting rig: #1171 weighs a part off its own mesh instead of the cylinder
+# around it, so the skiff launches at 446.24 kg where flight/490 used to log 568.65 kg.
+# The parts that lost most are AFT (tank and bell), so the COM walked aft and a margin
+# defined as "how far behind the COM the lift change sits" fell 0.24 m. The airframe
+# follows mechanically -- a weaker margin needs more alpha to hold the same nose, hence
+# +2.5 -> +3.6..+4.0. The geometry did not move: res/data/parts.json changed no
+# lift_area, lift_slope, radius or height in that window, only mass.
+# Hence the mass pin below: it is the cause, and a band on SM alone would not say so
+# next time.
+CHECK any(m["ship"] == "skiff" and abs(m["mass"] - 446.24) < 1.0 for m in mass)
+# The 0.08 m band -- 0.04 under this run's +0.31 and 0.04 over -- still separates this
+# hull from the SAME BUILD with no crew: the bench answers -0.0001 m for the empty
+# skiff, so one suit is now the entire margin (it used to add 0.18 m to a 0.37 m base).
+# Losing a seat reddens this, and so does a rig that has started to diverge.
+CHECK all(0.27 < d["sm"] < 0.35 for d in drag if d.get("sm") is not None)
+CHECK all(3.4 < d["aoa"] < 4.2 for d in drag if d["aoa"] is not None)
 CHECK all(d["up"] > 0.9 for d in drag)
 FORBID error:
