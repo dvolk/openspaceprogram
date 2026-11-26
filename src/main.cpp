@@ -37,6 +37,7 @@
 #include "gldebug.h"
 #include "frame.h"
 #include "shipdef.h"
+#include "constants.h"  // kRingMeshRadiusM: the ring meshes the plane overlay scales about the eye
 #include "fmt.h"        // fmt_accel: --fleet-report's pad g, the dossier's readout
 #include "staging.h"  // --fleet-report: the same staging table the VAB draws
 #include "equirect.h"  // wrapLonDeg: a --startship lon is STORED wrapped
@@ -1407,7 +1408,7 @@ int main(int argc, char **argv)
     Mesh *ref_node_an = new Mesh;
     Mesh *ref_node_dn = new Mesh;
     {
-        const float r = 1000;
+        const float r = (float)kRingMeshRadiusM;
         const float tick = 40;
         const int n = 128;
         PosInterface xzinterface;

@@ -248,6 +248,14 @@ inline constexpr float kMapFitRadiusPx = 100.0f;
 inline constexpr float kNodeAnRgb[3] = {0.35f, 0.95f, 0.45f};
 inline constexpr float kNodeDnRgb[3] = {0.95f, 0.30f, 0.25f};
 
+/* [C] The radius of the ring meshes that the reference circles and the orbital-plane overlay
+   share: main.cpp builds them, render.cpp draws them CAMERA-CENTRED (the view's translation is
+   dropped), so that radius is pure depth -- scaling the mesh about the eye moves no pixel on
+   screen and only decides who wins the depth test (#1180). The build site and the scaling site
+   must agree, which is why it is a constant and not main.cpp's local 1000.
+   Where: the ring meshes (main.cpp), the overlay block and drawOrbitPlane (render.cpp). */
+inline constexpr double kRingMeshRadiusM = 1000.0;
+
 /* [C] The offset between kelvin and degrees Celsius, spelled ONCE (#707). Every file, law and
    log in this project is kelvin; this exists only for the readouts a player reads as weather --
    a ground you could stand on is more legible as -58 C than as 215 K. Never feed it to a law:

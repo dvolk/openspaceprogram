@@ -1295,6 +1295,63 @@ void paintWorld(Game &g) {
         }
     }
 
+    /* The orbital-plane overlay and the reference circles (Settings "Orbital
+       plane" / "Reference circles"). Both drop the view's TRANSLATION, so every
+       ring is centred on the camera: they read as orientation rings around the
+       viewpoint rather than lines painted at a fixed place in the world.
+       --plane-log reports what the orbital-plane overlay draws, so asking for the
+       log draws it: the overlay is otherwise a settings checkbox and the flag
+       would print nothing.
+
+       They are drawn HERE -- after the bodies and the hulls, before every in-world
+       marker, plume and the cam gizmo -- with the depth test live and depth writes
+       off (#1180). At the mesh's own radius a ring was the nearest thing on
+       screen: 1000 m from the eye against a 600 km planet, so under
+       glDepthFunc(GL_GEQUAL) the line painted straight across the world. Because
+       the rings are camera-centred their radius is PURE depth -- a point and its
+       multiple project to the same pixel -- so scaling the mesh about the eye
+       costs nothing on screen and only decides who wins the test. Push the ring
+       past the focus body's far limb and the body wins exactly where it covers the
+       line, and the hull wins wherever it covers it (the camera sits a chase
+       distance off the hull, so that was already true). The transparent shells
+       above never write depth, so the only depths in play are terrain, bodies and
+       hulls; with depth writes off the rings hide nothing either, and they still
+       paint over the starfield, which writes none. */
+    if(g.draw_ref_circles || g.draw_orbit_plane || g.args.plane_log) {
+        glLineWidth(4);
+        g.lineshader->Bind();
+        /* 2x the far limb (eye to centre plus the body's radius): past it, every
+           direction the body covers is a direction the body wins. Uniform scale,
+           so the node ticks ride with the rings. */
+        const double far = 2.0 * (glm::length(localBody->CameraInBodyFrame(camera))
+                                  + localBody->seaLevelRadius());
+        const double sc = far / kRingMeshRadiusM;
+        const glm::dmat4 VP = glm::dmat4(camera->GetProjection())
+                            * glm::dmat4(glm::dmat3(camera->GetView()))
+                            * glm::dmat4(glm::dvec4(sc, 0, 0, 0), glm::dvec4(0, sc, 0, 0),
+                                         glm::dvec4(0, 0, sc, 0), glm::dvec4(0, 0, 0, 1));
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glDepthMask(GL_FALSE);
+        if(g.draw_ref_circles) {
+            g.lineshader->setUniform_mat4(0, VP);
+            // XZ plane (flat / orbital-equatorial reference): green
+            g.lineshader->setUniform_vec4(1, glm::vec4(0, 1, 0, 0.5));
+            g.ref_circle_xz->Draw(GL_LINE_LOOP);
+            // XY plane (vertical / meridian reference): magenta
+            g.lineshader->setUniform_vec4(1, glm::vec4(1, 0, 1, 0.5));
+            g.ref_circle_xy->Draw(GL_LINE_LOOP);
+        }
+        if(ship && (g.draw_orbit_plane || g.args.plane_log)) {
+            drawOrbitPlane(g, VP);
+        }
+        glDepthMask(GL_TRUE);
+        glDisable(GL_BLEND);
+        // Restore: the width is global state, and the Bullet debug drawer draws
+        // GL_LINES with whatever the last setter left.
+        glLineWidth(1.0f);
+    }
+
     /* draw engine plume */
     glm::dmat4 View = camera->GetView();
     glm::mat4 Projection = camera->GetProjection();
@@ -1622,32 +1679,6 @@ void paintWorld(Game &g) {
     // horizon_indicator->pos = groundHed;
     // horizon_indicator->Draw(camera, std::numbers::pi);
 
-    /* Both overlays drop the view's TRANSLATION, so every ring is centred on the
-       camera: they read as orientation rings around the viewpoint rather than
-       lines painted at a fixed place in the world. --plane-log reports what the
-       orbital-plane overlay draws, so asking for the log draws it: the overlay
-       is otherwise a settings checkbox and the flag would print nothing. */
-    if(g.draw_ref_circles || g.draw_orbit_plane || g.args.plane_log) {
-        glLineWidth(4);
-        g.lineshader->Bind();
-        const glm::dmat4 VP = glm::dmat4(camera->GetProjection())
-                            * glm::dmat4(glm::dmat3(camera->GetView()));
-        if(g.draw_ref_circles) {
-            g.lineshader->setUniform_mat4(0, VP);
-            // XZ plane (flat / orbital-equatorial reference): green
-            g.lineshader->setUniform_vec4(1, glm::vec4(0, 1, 0, 0.5));
-            g.ref_circle_xz->Draw(GL_LINE_LOOP);
-            // XY plane (vertical / meridian reference): magenta
-            g.lineshader->setUniform_vec4(1, glm::vec4(1, 0, 1, 0.5));
-            g.ref_circle_xy->Draw(GL_LINE_LOOP);
-        }
-        if(ship && (g.draw_orbit_plane || g.args.plane_log)) {
-            drawOrbitPlane(g, VP);
-        }
-        // Restore: the width is global state, and the Bullet debug drawer draws
-        // GL_LINES with whatever the last setter left.
-        glLineWidth(1.0f);
-    }
     if(g.args.cam_gizmo) {
         glLineWidth(3);
         g.lineshader->Bind();
