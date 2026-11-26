@@ -10,7 +10,7 @@ rewrote a shipped asset in passing (gen_gear.py has no argparse at all: `python3
 utils/art/gen_gear.py --help` just generated the gear).
 
 So: regenerate into a temp tree, byte-compare against the committed file, and report drift.
-Byte-exact, not "close enough" -- all 28 pinned assets reproduce byte-exactly today, so an
+Byte-exact, not "close enough" -- all 31 pinned assets reproduce byte-exactly today, so an
 exact comparison costs nothing and catches a formatter version bump, an axis typo, a float
 that stopped rounding the same way.
 
@@ -40,8 +40,8 @@ Byte-exactness catches a generator that drifted. It does not catch one that got 
 way the engine cannot see, so TOPO below also checks the regenerated text for the topology the
 hand-authored art uses -- wall quads and one ngon per end, one normal per face -- and for UVs a
 painter can work on: real uv area per face, inside the canvas, no patch laid over another. That
-is one row now (the flat-topped capsule); the lofted and engine families are shelved, so the
-checks run over whatever is pinned rather than over a family.
+is three rows now (the flat-topped capsule and the two nose cones); the lofted and engine
+families are shelved, so the checks run over whatever is pinned rather than over a family.
 utils/art/inspect_mesh_blender.py prints the same properties for looking at.
 
 style_problems() and STYLE_OK below weigh the whole catalogue against the house rules the
@@ -116,9 +116,12 @@ PINS = [
     # top is as wide as its base is a straight wall.
     ("gen_lathe.py", ["--r1", "1", "--r2", "1", "--height", "2",
                       "--name", "capsule_cyl"], ["meshes/capsule_cyl_r1h2.obj"]),
-    # The slender nose cones (#1211): the same lathe closing to the axis, and closed at
-    # the BASE only -- the open rim is the join face the spine bolts into, which is why
-    # the part name carries the base radius: it has to equal the stack's.
+    # The slender nose cones (#1211): the same lathe closing to the axis, capped at the
+    # base by --caps base. The cap is not cosmetic: gen_parts.py mints mass from the
+    # watertight volume and falls back to the bounding cylinder when a mesh is open, which
+    # would triple these parts (the capsule's old 1149-vs-500 kg trap). The base disc ends
+    # up buried in the neck at the join, so it never sees flow. The part name carries the
+    # base radius because it has to equal the stack's.
     ("gen_lathe.py", ["--r1", "1", "--r2", "0", "--height", "2", "--caps", "base",
                       "--name", "NoseCone"], ["meshes/nose_cone_r1h2.obj"]),
     ("gen_lathe.py", ["--r1", "1", "--r2", "0", "--height", "3", "--caps", "base",

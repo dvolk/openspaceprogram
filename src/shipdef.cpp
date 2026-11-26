@@ -229,7 +229,7 @@ static const uint64_t kGeomEpoch = 2;
 
 /* A part's mesh file, read once: the corners that go into geom_fingerprint, and the
    bounding box of the same (#457). Both are properties of the FILE, so the 20
-   redundant reads here (33 of the 87 catalog entries share a mesh with another
+   redundant reads here (33 of the 89 catalog entries share a mesh with another
    entry) could share this read too; they do not, because the whole catalog parse
    costs ~3 ms and a cache would be the only thing in it. */
 MeshGeom readMeshGeom(const std::string &meshSubpath) {

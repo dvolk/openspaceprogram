@@ -23,8 +23,8 @@ to fill that list: their bounding box is the stack wall while their skin near th
 pinch, so anything bolted beside one hung off nothing. gen_engine.py keeps the throat below
 z = 0, which took 10 of those 28 rows inside tolerance and improved the rest (skiff:elev_l
 0.1666 -> 0.1101 m, skiff:rudder 0.1626 -> 0.0625 m). That generator is shelved now and the
-hand-authored family is back in res/meshes, so the pile grew: 28 of the 93 surface edges
-and 26 of the 68 surface nodes are outside tolerance today, 35 of them waived and 13 of those
+hand-authored family is back in res/meshes, so the pile grew: 28 of the 109 surface edges
+and 28 of the 70 surface nodes are outside tolerance today, 37 of them waived and 13 of those
 grown past the value their waiver records. The engine rows are the rule, not the authoring --
 the hand engines are widest at their stack end, so their side mounts float by 0.239..0.538 m
 under a height-blind rule.
@@ -429,6 +429,12 @@ NODE_WAIVERS = {
     "capsule_r1.5h3": 0.5625,
     "chute": 0.5000,
     "nose_cap": 0.5000,
+    # A cone's synthesized side node sits at the base radius while the skin tapers away
+    # from it, so the node is half a radius off the mesh at mid-height -- inherent to the
+    # shape, and the same taper class the engine rows above. Noses get built with the
+    # stack node, not with a side mount.
+    "nose_cone_r1h2": 0.5000,
+    "nose_cone_r1h3": 0.5000,
     "adapter_r1.5to2.25": 0.3750,
     "adapter_r2.25to1.5": 0.3750,
     "capsule": 0.3750,

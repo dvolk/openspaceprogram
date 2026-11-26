@@ -519,7 +519,7 @@ inline double liftSlopeMach(double cl, double mach) {
    dressed as a law. #635 landed the alternative to that guess -- a SECOND anchor set on
    the part (PartDef::dragForwardSup and friends) joined by regimeMix, with no
    arithmetic invented in between -- and the catalogue authors it (utils/art/gen_parts.py
-   DRAG_CD_SUP): 64 of 87 parts, each column measured on that family's own mesh. What
+   DRAG_CD_SUP): 66 of 89 parts, each column measured on that family's own mesh. What
    that says per axis: a blunt broadside moves ~20%, a streamlined nose moves most (a
    fuselage bills 0.12 subsonic and 0.374 above the band, 3.1x), and a flat end is where
    Newtonian over-prices, so the anchors cap at 1.35 of PHYSICAL cd -- the hull bills

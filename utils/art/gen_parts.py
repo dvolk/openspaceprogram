@@ -216,10 +216,11 @@ DRAG_CD = {
     # base disc measures 0.397 and at h/r 3 0.198, so the family's whole claim is the
     # slenderness. Subsonic nose-first 0.15 sits between a smooth body (fuselage's
     # 0.10) and a shoulder; the fitted supersonic anchors below carry the measurement.
-    # The base is 1.1, NOT nose_cap's 1.3: 1.3 is the one authored number that the
-    # supersonic floor cannot pull back under the flat-disc cap, so it bills 1.56 at
-    # every Mach (#1212). 1.1 bills 1.32, inside the 1.35 the same file calls a real
-    # flat disc.
+    # The base is 1.1, NOT nose_cap's 1.3. The floor runs after the cap
+    # (max(sub, min(phys/1.2, 1.35/1.2))), so an authored 1.3 becomes 1.56 physical at
+    # every Mach (#1212) and inherits that error. At 1.1 the subsonic bill is 1.32 and
+    # the supersonic floor holds the blunt end at exactly the 1.35 the same file calls a
+    # real flat disc -- at the cap, not above it.
     "nose_cone":      {"drag": 0.6, "drag_forward": 0.15, "drag_side": 0.9,
                        "drag_backward": 1.1},
     "kerbal":         {"drag": 0.5, "drag_forward": 0.5, "drag_side": 0.9,
@@ -384,8 +385,10 @@ DRAG_CD_SUP_BY_NAME = {
     # The axial column is Newtonian's `2 sin^2(theta)` on the base disc to three
     # digits -- h/r 2 -> 0.400, h/r 3 -> 0.200 -- which is the whole reason these
     # parts exist: the three shipped nose caps are all h/r 0.50 and read 1.597, a
-    # wall with a dimple in it (#1211). Broadside is the column to take at face
-    # value; the base is Newtonian's bare 2.000, which the cap pulls back to 1.35.
+    # wall with a dimple in it (#1211). The base is Newtonian's bare 2.000, which the
+    # cap pulls back to 1.35. The broadside column is honest for r1h3 (1.199 ships)
+    # and thrown away for r1h2: the subsonic side anchor 0.9 is the floor, so it bills
+    # 1.08 instead of the measured 1.067 -- #1212's max() rule in miniature.
     "nose_cone_r1h2":   (0.397, 1.067, 2.000),
     "nose_cone_r1h3":   (0.198, 1.199, 2.000),
 }
@@ -1142,6 +1145,12 @@ def generate(name, ptype, mesh, texture):
         for _k in DRAG_KEYS:
             e[_k] = d[_k]
     sup = DRAG_CD_SUP_BY_NAME.get(name, DRAG_CD_SUP.get(ptype))
+    if ptype == "nose_cone":
+        # A cone's drag IS its slenderness (2 sin^2 theta), so the family has no
+        # family-wide row: each size has to be measured over its own mesh. Without
+        # this, a new radius/height pair would silently bill the subsonic guess at
+        # every Mach and the family's whole point would evaporate one row at a time.
+        assert name in DRAG_CD_SUP_BY_NAME, (name, "measure it with tmp/n1099/faceprobe2")
     if sup:
         # drag.h joins this set against the subsonic one across the band, so a
         # supersonic family whose subsonic anchors are missing joins against 0.
