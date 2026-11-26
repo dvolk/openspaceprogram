@@ -59,16 +59,19 @@
 # The fourth door (#768) is the nozzles, and it moved that count 9 -> 10. power_test's
 # engine_r2.25h4.5 IS gimballed (res/data/parts.json, 0.0873 rad at 1.5708 rad/s), so
 # unlike the fins and the ring this hull has something to vector: the row quotes
-# 129710 N m -- the ignited stage's rated thrust through this hull's own stack lever and
+# 108843 N m -- the ignited stage's rated thrust through this hull's own stack lever and
 # sin(gimbal_max), the same product --steering-log prints as tvc_rating_full (and as
-# tvc_hw, which is the same figure with the enable switches ignored). What the switch
+# tvc_hw, which is the same figure with the enable switches ignored). That product is hull
+# geometry, not a constant: it was 129710 until #1171 changed where a stacked hull's centre
+# of mass sits, and ui/768's header works the arithmetic out so the next drift costs a
+# minute rather than an afternoon. What the switch
 # itself does is pinned by ui/768-systems-window-shuts-the-nozzles; here it only has to be
 # PRESENT, because a row that appears and disappears with the group's state is the failure
 # this window was designed against.
 NAME systems-window-switches-a-group-off
 CLAIM The Systems window is listed in the Windows panel and prints the EC balance, and its Reaction wheels checkbox drops the live authority in --steering-log from 4950 N m to 0 while the row still quotes the 4950 N m the switch gives up.
 KIND golden
-ARGS --width 1600 --height 900 --timeout 12 --steering-log
+ARGS --width 1600 --height 900 --timeout 12 --steering-log --mass-log
 ARGS --startship power_test,res/ships/power_test.json,Kerbin,rot-orbit
 ARGS --ui-click 2000,"Windows/Systems"
 ARGS --ui-click 2600,"Windows/Systems"
@@ -81,9 +84,13 @@ EXPECT [uilist] window="Systems" label="  on   4950 / 4950 / 4950 N m (R/P/Y)"
 EXPECT [uilist] window="Systems" label="  off  4950 / 4950 / 4950 N m (R/P/Y)"
 EXPECT [uilist] window="Systems" label="  on   no aero surfaces on this hull"
 EXPECT [uilist] window="Systems" label="  on   no thruster pods on this hull"
-EXPECT [uilist] window="Systems" label="  on   129710 N m (pitch/yaw disk)"
+EXPECT [uilist] window="Systems" label="  on   108843 N m (pitch/yaw disk)"
 FORBID FAILED
 FORBID error:
+# The mass behind the drum and nozzle figures on this hull (see ui/768 for the arithmetic).
+# Red here means the quoted N m are stale, not that a switch broke.
+CHECK len(mass) >= 4
+CHECK all(m["ship"] == "power_test" and abs(m["mass"] - 16997.28) < 1.0 for m in mass)
 # The model's own answer, either side of the click, and in that order. Both columns on one
 # row: the live figure moved and the hardware figure did not, which is the pair the window
 # is built to show.

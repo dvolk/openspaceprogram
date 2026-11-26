@@ -20,11 +20,11 @@
 # is the #608 rating -- rated thrust over the ignited stage times sin(gimbal_max) -- and it
 # is the one that moves, because on this hull nothing is throttled up, so tvc_rating
 # (what the last ApplyThrust armed) is already 0 either way. tvc_fitted stays 1 on both
-# sides: the switch hides a capability, it does not unbolt an engine, and the row's 129710 N
+# sides: the switch hides a capability, it does not unbolt an engine, and the row's 108843 N
 # m is the HARDWARE figure -- what the switch is giving up -- which is why the row reads
 # "off" with the same number it read "on" (#575: quote the hardware, never a third
 # arithmetic). tvc_hw= is that hardware figure in the log, added with this case: without it
-# the log had no switch-immune TVC column at all, so 129710 on the window against 0 in the
+# the log had no switch-immune TVC column at all, so 108843 on the window against 0 in the
 # log could not be told apart from a stage that had gone out. It is the nozzles' share of the
 # wheels_hw / surfaces_hw / rcs_hw pair.
 #
@@ -33,30 +33,46 @@
 # this hull". Its engine_r2.25h4.5 IS gimballed -- 0.0873 rad at 1.5708 rad/s in
 # res/data/parts.json -- and so are 23 other shipped hulls; what makes power_test useful
 # here is that it is the one of them where the two neighbouring groups are absent, so the
-# 129710 N m on the row can only be the nozzles' own.
+# 108843 N m on the row can only be the nozzles' own.
+#
+# THAT FIGURE MOVED, and it is worth recording how, because a figure like this looks like a
+# bug when it drifts. It is hull geometry, not a constant: rated thrust over the ignited stage
+# (28.76 + 28.76 kg/s at 4400 m/s = 253 kN) times the engine's lever to this hull's COM times
+# sin(gimbal_max) = sin(0.0873), i.e. about 22.1 kN per metre of lever. 108843 says a 4.9 m
+# lever; the 129710 this case was written against said 5.9 m. #1171 began weighing parts off
+# their own mesh instead of the cylinder around them, which changed where a stacked hull's
+# centre of mass sits, which changed the lever. Nothing about the nozzles or the switch
+# changed, and the pair the case is really about -- live figure falls to 0, hardware figure
+# does not -- is switch-for-switch the same. The hull mass is pinned below so that the next
+# retune reddens THAT line and says "the mass behind these figures moved", instead of leaving
+# someone to re-derive 22.1 kN/m from scratch.
 NAME systems-window-shuts-the-nozzles
-CLAIM The Systems window's Thrust vectoring checkbox drops the live gimballed rating in --steering-log from 129710 N m to 0 while the window keeps printing 129710 N m beside the now-off switch, and says nothing about the engines being gone.
+CLAIM The Systems window's Thrust vectoring checkbox drops the live gimballed rating in --steering-log from 108843 N m to 0 while the window keeps printing 108843 N m beside the now-off switch, and says nothing about the engines being gone.
 KIND golden
-ARGS --width 1600 --height 900 --timeout 12 --steering-log
+ARGS --width 1600 --height 900 --timeout 12 --steering-log --mass-log
 ARGS --startship power_test,res/ships/power_test.json,Kerbin,rot-orbit
 ARGS --ui-click 2000,"Windows/Systems"
 ARGS --ui-list 3400
 ARGS --ui-click 4000,"Systems/Thrust vectoring"
 ARGS --ui-list 5000
-EXPECT [uilist] window="Systems" label="  on   129710 N m (pitch/yaw disk)"
-EXPECT [uilist] window="Systems" label="  off  129710 N m (pitch/yaw disk)"
+EXPECT [uilist] window="Systems" label="  on   108843 N m (pitch/yaw disk)"
+EXPECT [uilist] window="Systems" label="  off  108843 N m (pitch/yaw disk)"
 FORBID FAILED
 FORBID error:
+# The mass the disk figure is derived from. If this goes red, the 108843 above is stale
+# arithmetic rather than a broken switch: re-derive the lever, do not re-tune the nozzles.
+CHECK len(mass) >= 4
+CHECK all(m["ship"] == "power_test" and abs(m["mass"] - 16997.28) < 1.0 for m in mass)
 # The model's own answer, either side of the click, in that order. tvc_fitted=1 on both
 # rows is the point: the fitting is still there, the switch is what changed.
-CHECK re.search(r'\[steerlog\][^\n]*tvc_on=1 tvc_fitted=1 [^\n]*tvc_rating_full=129710', out)
+CHECK re.search(r'\[steerlog\][^\n]*tvc_on=1 tvc_fitted=1 [^\n]*tvc_rating_full=108843', out)
 CHECK re.search(r'\[steerlog\][^\n]*tvc_on=0 tvc_fitted=1 [^\n]*tvc_rating_full=0 ', out)
-CHECK out.index('tvc_rating_full=129710') < out.index('tvc_rating_full=0 ')
-# And the switch-immune column, on the shut side: the window keeps quoting 129710 N m, so
+CHECK out.index('tvc_rating_full=108843') < out.index('tvc_rating_full=0 ')
+# And the switch-immune column, on the shut side: the window keeps quoting 108843 N m, so
 # the log has to be able to say the fitting is still rated at that. Without tvc_hw= the pair
-# "129710 on the window / 0 in the log" is undiagnosable -- a shut door and a dead stage read
+# "108843 on the window / 0 in the log" is undiagnosable -- a shut door and a dead stage read
 # the same.
-CHECK re.search(r'\[steerlog\][^\n]*tvc_rating_full=0 tvc_hw=129710', out)
+CHECK re.search(r'\[steerlog\][^\n]*tvc_rating_full=0 tvc_hw=108843', out)
 # One row per switch group, whatever the group's state -- the row that says "off" has to be
 # the SAME row that said "on", not a replacement caption. Counted per dump so a row that
 # vanished with the door closed shows up as [11, 10] instead of looking plausible. The count
