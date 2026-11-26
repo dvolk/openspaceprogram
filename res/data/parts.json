@@ -347,7 +347,7 @@
       "power_draw": 1000,
       "drag": 0.6,
       "drag_forward": 1.1,
-      "drag_side": 0.2,
+      "drag_side": 0.9,
       "drag_backward": 1.1
     },
     {
@@ -364,7 +364,7 @@
       "power_draw": 1500,
       "drag": 0.6,
       "drag_forward": 1.1,
-      "drag_side": 0.2,
+      "drag_side": 0.9,
       "drag_backward": 1.1
     },
     {
@@ -381,7 +381,7 @@
       "power_draw": 2250,
       "drag": 0.6,
       "drag_forward": 1.1,
-      "drag_side": 0.2,
+      "drag_side": 0.9,
       "drag_backward": 1.1
     },
     {
@@ -398,7 +398,7 @@
       },
       "drag": 0.6,
       "drag_forward": 1.1,
-      "drag_side": 0.2,
+      "drag_side": 0.9,
       "drag_backward": 1.1
     },
     {
@@ -415,7 +415,7 @@
       },
       "drag": 0.6,
       "drag_forward": 1.1,
-      "drag_side": 0.2,
+      "drag_side": 0.9,
       "drag_backward": 1.1
     },
     {
@@ -432,7 +432,7 @@
       },
       "drag": 0.6,
       "drag_forward": 1.1,
-      "drag_side": 0.2,
+      "drag_side": 0.9,
       "drag_backward": 1.1
     },
     {
@@ -447,7 +447,7 @@
       "power_gen": 296.54,
       "drag": 0.6,
       "drag_forward": 1.1,
-      "drag_side": 0.2,
+      "drag_side": 0.9,
       "drag_backward": 1.1
     },
     {
@@ -462,7 +462,7 @@
       "power_gen": 1000.81,
       "drag": 0.6,
       "drag_forward": 1.1,
-      "drag_side": 0.2,
+      "drag_side": 0.9,
       "drag_backward": 1.1
     },
     {
@@ -477,7 +477,7 @@
       "power_gen": 3377.75,
       "drag": 0.6,
       "drag_forward": 1.1,
-      "drag_side": 0.2,
+      "drag_side": 0.9,
       "drag_backward": 1.1
     },
     {
@@ -964,7 +964,7 @@
       },
       "drag": 0.6,
       "drag_forward": 1.1,
-      "drag_side": 0.2,
+      "drag_side": 0.9,
       "drag_backward": 1.1
     },
     {
@@ -981,7 +981,7 @@
       },
       "drag": 0.6,
       "drag_forward": 1.1,
-      "drag_side": 0.2,
+      "drag_side": 0.9,
       "drag_backward": 1.1
     },
     {
@@ -998,7 +998,7 @@
       },
       "drag": 0.6,
       "drag_forward": 1.1,
-      "drag_side": 0.2,
+      "drag_side": 0.9,
       "drag_backward": 1.1
     },
     {
@@ -1120,7 +1120,7 @@
       "fuel_barrier": true,
       "drag": 0.6,
       "drag_forward": 1.1,
-      "drag_side": 0.2,
+      "drag_side": 0.9,
       "drag_backward": 1.1
     },
     {
@@ -1136,7 +1136,7 @@
       "fuel_barrier": true,
       "drag": 0.6,
       "drag_forward": 1.1,
-      "drag_side": 0.2,
+      "drag_side": 0.9,
       "drag_backward": 1.1
     },
     {
@@ -1152,7 +1152,7 @@
       "fuel_barrier": true,
       "drag": 0.6,
       "drag_forward": 1.1,
-      "drag_side": 0.2,
+      "drag_side": 0.9,
       "drag_backward": 1.1
     },
     {
@@ -1168,7 +1168,7 @@
       "fuel_barrier": true,
       "drag": 0.6,
       "drag_forward": 1.1,
-      "drag_side": 0.2,
+      "drag_side": 0.9,
       "drag_backward": 1.1
     },
     {
@@ -1226,7 +1226,7 @@
       ],
       "drag": 0.6,
       "drag_forward": 1.1,
-      "drag_side": 0.2,
+      "drag_side": 0.9,
       "drag_backward": 1.1
     },
     {
@@ -1284,7 +1284,7 @@
       ],
       "drag": 0.6,
       "drag_forward": 1.1,
-      "drag_side": 0.2,
+      "drag_side": 0.9,
       "drag_backward": 1.1
     },
     {
@@ -1342,7 +1342,7 @@
       ],
       "drag": 0.6,
       "drag_forward": 1.1,
-      "drag_side": 0.2,
+      "drag_side": 0.9,
       "drag_backward": 1.1
     },
     {
@@ -1434,7 +1434,7 @@
       "experiment_storage": "instrument",
       "drag": 0.6,
       "drag_forward": 1.1,
-      "drag_side": 0.2,
+      "drag_side": 0.9,
       "drag_backward": 1.1
     },
     {
@@ -1450,7 +1450,7 @@
       "experiment_storage": "instrument",
       "drag": 0.6,
       "drag_forward": 1.1,
-      "drag_side": 0.2,
+      "drag_side": 0.9,
       "drag_backward": 1.1
     },
     {
@@ -1466,7 +1466,7 @@
       "experiment_storage": "instrument",
       "drag": 0.6,
       "drag_forward": 1.1,
-      "drag_side": 0.2,
+      "drag_side": 0.9,
       "drag_backward": 1.1
     },
     {

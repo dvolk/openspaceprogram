@@ -11,8 +11,11 @@
 # broadside at the pad, and shrinking to the wind's own angle as the climb outruns it.
 # AND THE WIND TURNS THE HULL OVER (#1132 family D, re-measured 2026_11_23). A tall blunt
 # stack nose-up presents A = 9.87 m2 of side with its area centroid below its CoM, so 5.8 m/s
-# of air bills |F| = 227.9 N and |tau| = 149.3 Nm before the engine even lights ([drag]
-# t=0.3s, |v| = 0); mid-climb that torque reaches 804.5 N m. Nothing holds it -- the run is
+# of air bills |F| = 236.1 N (Cd 0.985) and |tau| = 41.9 Nm before the engine even lights
+# ([drag] t=0.9s, |v| = 0); mid-climb that torque reaches 804.5 N m. #1208 re-measured the
+# parked row: it read |F| = 227.9 N at Cd 0.949 until the disc family's broadside cd went
+# 0.2 -> 0.9, which is +3.7% on this hull -- the one reaction wheel it carries is now worth
+# 0.45 m2 of side CdA instead of 0.10. Nothing holds it -- the run is
 # unguided -- so the hull leans west into the wind (pitch 90.00 -> 63.1 deg, 26.9 deg off
 # vertical) and gains GROUND speed with it (hs 1e-2 -> 7.5 m/s), and hdg settles at
 # 269.71-270.20 across four runs: due west, straight upwind of an east wind. That is why the
@@ -131,11 +134,14 @@ CHECK all(abs(s["aoa"]) < 5.0 for s in surf if s["pitch"] < 70.0)
 # to 0.018. Measured |aprg| - |aoa| = -0.45 .. +0.02 over twelve rows and four runs; the widest
 # is the first climbing row, where aoa moves ~50 deg/s (it walks -90.00 -> -64.79 in one 0.5 s
 # row), so 0.45 deg is about 9 ms between the view's snapshot and the drag substep that fills
-# lastDragAlpha -- two readers of one flow, not two numbers. The tolerance is 0.5 deg, which is
-# only ~10% above that worst case: it is a sampling-skew pin, and it needs re-measuring if the
-# onset ever gets faster. If either reader were reading the ground instead of the air the gap is
-# tens of degrees.
-CHECK all(abs(abs(s["aprg"]) - abs(s["aoa"])) < 0.5 for s in surf)
+# lastDragAlpha -- two readers of one flow, not two numbers. #1208 re-measured it: the disc
+# family's broadside cd went 0.2 -> 0.9, the wind grabs this stack harder, and that worst row
+# now reads 0.455 .. 0.511 over NINE runs, so the old 0.5 deg window sat INSIDE the run-to-run
+# spread (0.056 deg) instead of above it -- this case was a coin flip that #1208 happened to
+# land on. Window is 0.75 deg: ~1.5x the worst measured row, still ~30x under the
+# tens-of-degrees gap that either reader reading the ground instead of the air would show.
+# It stays a sampling-skew pin, not a value pin.
+CHECK all(abs(abs(s["aprg"]) - abs(s["aoa"])) < 0.75 for s in surf)
 # Where the flow lies IN the pitch plane -- straight up, an east wind, a hull heading ~270 deg
 # -- the yaw angle answers ~0 and the pair is well-conditioned.
 CHECK all(abs(s["beta"]) < 0.1 for s in surf if s["vs"] > 2.0)

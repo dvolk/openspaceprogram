@@ -127,32 +127,39 @@ CONTROL_AREA_FRACTION = 0.5
 # Per-type aerodynamic shape coefficients (src/drag.h partCd).
 # drag = symmetric default; drag_forward/side/backward by how the part faces
 # the flow (nose +Z / broadside / base -Z). Keyed by TYPE (shape family).
+
+# The thin disc: reaction wheel, battery, rtg, mono tank, decoupler, dock port,
+# materials pod, barometer/thermometer stick, the small rcs puck. Ten types, one
+# shape -- a ~2.0 x 2.0 x 0.25 m puck -- so one dict, and the numbers were
+# measured on reaction_wheel's own mesh (tmp/n1099/dump_verts.py, faceprobe2).
+#
+# #1208: drag_side used to be 0.2, which is what a THIN plate is worth edge-on.
+# That figure is small only because a thin plate's shadow edge-on is a hairline
+# (thickness x span), and the silhouette law already does that part for us --
+# it bills cdSide over the part's ACTUAL projected area, and this puck's broadside
+# shadow is 0.50 m2 of blunt wall. A blunt body at zero incidence pays roughly one
+# dynamic pressure of base suction behind it, so its own shadow is worth cd ~0.9;
+# face-on stays 1.1. Newtonian on the same mesh says 1.331 broadside, and #635
+# gives that band its twin in DRAG_CD_SUP below -- the pair has to be decided
+# together, because #947's crossflow reads the same anchor at every Mach.
+DISC_CD = {"drag": 0.6, "drag_forward": 1.1, "drag_side": 0.9,
+           "drag_backward": 1.1}
+
 DRAG_CD = {
     "capsule":        {"drag": 1.0, "drag_forward": 0.35, "drag_side": 0.8,
                        "drag_backward": 1.3},
-    # thin disc (wheel / battery / rtg / mono / decoupler / dock port); the one
-    # rcs part overrides this family by name -- a cube is not a disc
-    "reaction_wheel": {"drag": 0.6, "drag_forward": 1.1, "drag_side": 0.2,
-                       "drag_backward": 1.1},
-    "materials_pod":  {"drag": 0.6, "drag_forward": 1.1, "drag_side": 0.2,
-                       "drag_backward": 1.1},
-    "barometer":      {"drag": 0.6, "drag_forward": 1.1, "drag_side": 0.2,
-                       "drag_backward": 1.1},
+    # the one rcs part overrides this family by name -- a cube is not a disc
+    "reaction_wheel": DISC_CD,
+    "materials_pod":  DISC_CD,
+    "barometer":      DISC_CD,
     # Same stick, same shape -- the thermometer reuses the barometer's mesh.
-    "thermometer":    {"drag": 0.6, "drag_forward": 1.1, "drag_side": 0.2,
-                       "drag_backward": 1.1},
-    "battery":        {"drag": 0.6, "drag_forward": 1.1, "drag_side": 0.2,
-                       "drag_backward": 1.1},
-    "rtg":            {"drag": 0.6, "drag_forward": 1.1, "drag_side": 0.2,
-                       "drag_backward": 1.1},
-    "mono_tank":      {"drag": 0.6, "drag_forward": 1.1, "drag_side": 0.2,
-                       "drag_backward": 1.1},
-    "rcs":            {"drag": 0.6, "drag_forward": 1.1, "drag_side": 0.2,
-                       "drag_backward": 1.1},
-    "decoupler":      {"drag": 0.6, "drag_forward": 1.1, "drag_side": 0.2,
-                       "drag_backward": 1.1},
-    "docking_port":   {"drag": 0.6, "drag_forward": 1.1, "drag_side": 0.2,
-                       "drag_backward": 1.1},
+    "thermometer":    DISC_CD,
+    "battery":        DISC_CD,
+    "rtg":            DISC_CD,
+    "mono_tank":      DISC_CD,
+    "rcs":            DISC_CD,
+    "decoupler":      DISC_CD,
+    "docking_port":   DISC_CD,
     # blunt cylinder (tank / crate)
     "fuel_tank":      {"drag": 0.7, "drag_forward": 1.0, "drag_side": 1.1,
                        "drag_backward": 1.0},
