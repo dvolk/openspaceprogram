@@ -36,8 +36,10 @@
 # pod rows in 11 reads) fail for the wrong reason -- the panel is held, the air is
 # moving. So the fixture moved rather than the band, because everything above
 # describes a steady cruise. On #693's airframe-keyed load bed the same 11 reads see
-# ONE pod row (0.77 m2, cd 0.36) and the tank's shelter holds at 77%, which is the
-# #1105 claim the case was written around.
+# ONE pod row (0.77 m2, cd 0.36) and the tank's shelter holding at 76.8..78.1 % --
+# every cell here is one published hull frame per read (#1114), and the tank's
+# fraction is the one that feels the hull's own jitter, so 9 distinct tank rows over
+# 11 reads is physics rather than an unheld panel.
 NAME hull-card-form-row
 CLAIM Body part cards print the merged aero block -- credit row, hull flow row, watts row -- at cadence; the hull flow row agrees across the ship's body cards; the upwind capsule reads a real area and cd; no surface AoA row on body cards.
 KIND invariant

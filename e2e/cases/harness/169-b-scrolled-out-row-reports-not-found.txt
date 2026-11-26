@@ -63,7 +63,9 @@ FORBID error:
 # follows the scrollbar. Deliberately names no part -- it holds whatever the catalog is.
 # (The pattern is anchored to "[uilist] " because a --ui-click line carries the same
 # window= and label= fields, and the pressed line lands between the two dumps.)
-CHECK len(set(re.findall('\[uilist\] window="Palette/palette_parts[^"]*" label="([^"]+)"', out.split("[uilist] loop=")[1])) & set(re.findall('\[uilist\] window="Palette/palette_parts[^"]*" label="([^"]+)"', out.split("[uilist] loop=")[2]))) == 0
+# r'' because the runner parses every CHECK on every run, and "\[" in a plain
+# literal is a SyntaxWarning that prints over the run's own output.
+CHECK len(set(re.findall(r'\[uilist\] window="Palette/palette_parts[^"]*" label="([^"]+)"', out.split("[uilist] loop=")[1])) & set(re.findall(r'\[uilist\] window="Palette/palette_parts[^"]*" label="([^"]+)"', out.split("[uilist] loop=")[2]))) == 0
 # And the row the case is about: absent from the dump at rest, present once after the
 # scroll, exactly one not-found refusal in between.
 CHECK len([ln for ln in out.splitlines() if 'Ladder (2m)##ladder' in ln and 'rect=' in ln]) == 1
