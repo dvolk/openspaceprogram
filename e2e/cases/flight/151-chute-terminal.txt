@@ -56,5 +56,15 @@ CHECK last(att)["wnorm"] < 1
 CHECK any(d.get("aoa") is not None and abs(d["aoa"]) > 90 for d in drag)
 CHECK all(d.get("a", 0.0) > 0 for d in drag if d.get("aoa") is not None and abs(d["aoa"]) > 90)
 CHECK len([d for d in drag if d.get("aoa") is not None and abs(d["aoa"]) > 170 and d.get("chute", 0) > 20.0]) >= 8
-CHECK all(3.05 < d["a"] < 3.28 for d in drag if d.get("aoa") is not None and abs(d["aoa"]) > 170 and d.get("chute", 0) > 20.0)
+# A full canopy is not a settled hull. #1171 halved `capsule` (1149.82 -> 499.82 kg in
+# 2cf8364f), so this hull now swings longer and the sampler lands inside the swing: the row
+# at AoA 178.5 reads 3.32 with Chute already at 25.00, which is exactly the case the filter
+# used to assume it had excluded ("the row where the canopy is still paying out reads 3.32").
+# It is not excluded, and a band over a swing is a sampling result. So the tight band keys on
+# the hang -- within half a degree of nose-up, where the reading is stable to 0.03 across the
+# eleven settled rows -- and the swing gets its own ceiling rather than the tight band
+# stretched until it only says "not the mid-flip 4.40".
+CHECK len([d for d in drag if d.get("aoa") is not None and abs(d["aoa"]) >= 179.5 and d.get("chute", 0) > 20.0]) >= 6
+CHECK all(3.05 < d["a"] < 3.20 for d in drag if d.get("aoa") is not None and abs(d["aoa"]) >= 179.5 and d.get("chute", 0) > 20.0)
+CHECK all(d["a"] < 3.40 for d in drag if d.get("aoa") is not None and abs(d["aoa"]) > 170 and d.get("chute", 0) > 20.0)
 FORBID error:
