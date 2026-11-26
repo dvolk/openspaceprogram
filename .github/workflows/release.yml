@@ -59,7 +59,14 @@ jobs:
           # build-<sha>, not v*: v* is the release namespace the version reads its
           # base from, so naming builds after tags would move the version.
           TAG="build-$(git rev-parse --short=12 HEAD)"
-          FILES="dist/osp-*-linux.tar.xz dist/osp-*-windows.zip dist/osp-*-linux+windows.tar.xz dist/osp-*-x86_64.AppImage dist/*.deb dist/SHA256SUMS"
+          FILES="dist/osp-*-linux.tar.xz dist/osp-*-windows.zip dist/osp-*-x86_64.AppImage dist/SHA256SUMS"
+
+          # The release carries the three standard downloads. The .deb and the
+          # combined linux+windows tar are still built by `make artifacts` -- they
+          # are useful locally -- but stay off the page, so the sums describe
+          # exactly what is attached.
+          ( cd dist && sha256sum osp-*-linux.tar.xz osp-*-windows.zip \
+              osp-*-x86_64.AppImage > SHA256SUMS )
 
           # create (draft) -> upload -> publish, so a failed upload never leaves a
           # public release with half its files. gh release create with assets does
@@ -70,8 +77,7 @@ jobs:
               --draft \
               --target "${{ github.sha }}" \
               --prerelease \
-              --title "osp $VER" \
-              --notes "Dev build of $(git log -1 --format='%h %s')."
+              --title "osp $VER"
           fi
           gh release upload "$TAG" $FILES --clobber
           gh release edit "$TAG" --draft=false --prerelease
