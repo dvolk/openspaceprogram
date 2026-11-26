@@ -516,8 +516,9 @@ struct PartDef {
        of PHYSICAL cd across the shipped meshes, which is what the authored 0.8-1.1
        becomes once the hull's drag_cd 1.2 bills it); the axial anchors are where a heat shield lives,
        and Newtonian's 2.0 for a flat end has no lee suction behind it, so a real
-       shield authors nearer 1.1-1.7. A part that declares nothing is exactly as
-       Mach-blind as it was before this field existed.
+       shield measures nearer 1.1-1.35 PHYSICAL -- an authored anchor up to
+       1.35 / 1.2 = 1.125, which is the cap utils/art/gen_parts.py applies. A part that
+       declares nothing is exactly as Mach-blind as it was before this field existed.
        BODY PARTS ONLY: these three are read in the hull silhouette pass and #947's
        crossflow, both of which skip a part whose planform makes it a surface
        (drag.h::isAeroSurface). A LIFTING or STEERING part's regime cd is waveCd off its

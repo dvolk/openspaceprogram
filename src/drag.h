@@ -523,7 +523,11 @@ inline double liftSlopeMach(double cl, double mach) {
    that says per axis: a blunt broadside moves ~20%, a streamlined nose moves most (a
    fuselage bills 0.12 subsonic and 0.374 above the band, 3.1x), and a flat end is where
    Newtonian over-prices, so the anchors cap at 1.35 of PHYSICAL cd -- the hull bills
-   drag_cd x the anchor, which is why the table and the field disagree by 1.2. What the
+   drag_cd x the anchor, which is why the table and the field disagree by 1.2. Read the
+   two rule halves before quoting a number as measured: max(subsonic, ...) DISCARDS the
+   column wherever a part already pays more subsonically than the probe reads (a slender
+   broadside, where Newtonian has no face to press on), and that floor outranks the cap,
+   so a capsule's base still bills 1.56 (#1212). What the
    join still cannot do is the band's SHAPE: a real blunt body steps as a shock stands
    off the nose rather than ramping straight across 0.5 Mach.
    t/c comes off the mesh box the edge-area law already reads (PartDef::meshThickness-

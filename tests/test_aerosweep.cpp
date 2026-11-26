@@ -69,6 +69,7 @@
 #include "shipdef.h"   // load_parts_catalog: #1107 reads the shipped anchors, no copy
 #include "physics.h"   // SetAngVelocity: the rate column
 #include "vehicle.h"   // Vehicle + Part (inline); pulls in Bullet (btcommon.h)
+#include "cli.h"       // GameArgs (the shipped --drag-cd default, pinned below)
 #include "terrain.h"   // TerrainBody: the air this hull flies in
 #include "tchecks.h"
 
@@ -622,9 +623,10 @@ static void test_heat_hooks() {
     Bench b = mkBench();
     /* #635: fit the pod's SUPERSONIC anchors so every partition pin this loop makes
        runs with the two anchor sets DIFFERENT. The same pins pass trivially while
-       cdSup == cd (which is every shipped part today), which is exactly why they are
-       worth making here: a consumer that skips the mix, mixes at the wrong Mach, or
-       mixes the wrong column reddens now rather than when the catalogue is fitted. */
+       cdSup == cd (23 of the 87 shipped parts are still like that -- the ones with no
+       anchor set), which is exactly why they are worth making here: a consumer that
+       skips the mix, mixes at the wrong Mach, or mixes the wrong column reddens now
+       rather than when the catalogue is fitted. */
     PartDef &podDef = b.defs.back();
     podDef.drag_forward_sup = 0.70;
     podDef.drag_side_sup = 1.40;
@@ -1379,6 +1381,11 @@ static void test_the_lifting_body_pair_is_fitted() {
            division ever gets applied twice -- or not at all -- the shipped numbers sit
            off the measurement they cite by exactly 20%, and this is what says so. */
         const double cdMul = 1.2;
+        /* And that literal is the game's, not this test's memory of it. gen_parts.py
+           divides its PHYSICAL table by a python 1.2 it cannot see over here, so the
+           two literals are only linked by this line. */
+        CHECK_NEAR(cdMul, GameArgs{}.drag_cd, 1e-12,
+                   "the bill multiplier here is the shipped --drag-cd default");
         const double anchorCap = 1.35 / cdMul;   // a real flat disc, not Newtonian's 2.0
         int declared = 0, surfacesWith = 0, cheaperSup = 0, overCap = 0;
         for(const PartDef &d : cat.parts) {

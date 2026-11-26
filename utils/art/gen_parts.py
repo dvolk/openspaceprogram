@@ -142,8 +142,10 @@ CONTROL_AREA_FRACTION = 0.5
 # (thickness x span), and the silhouette law already does that part for us --
 # it bills cdSide over the part's ACTUAL projected area, and this puck's broadside
 # shadow is 0.50 m2 of blunt wall. A blunt body at zero incidence pays roughly one
-# dynamic pressure of base suction behind it, so its own shadow is worth cd ~0.9;
-# face-on stays 1.1. Newtonian on the same mesh says 1.331 broadside, and #635
+# dynamic pressure of base suction behind it, so its own shadow is worth cd ~1.0
+# PHYSICAL -- which is authored 0.9, billed back up to 1.08. Face-on stays authored
+# 1.1 (1.32 billed, just under the 1.35 flat-disc cap below). Newtonian on the same
+# mesh says 1.331 broadside, and #635
 # gives that band its twin in DRAG_CD_SUP below -- the pair has to be decided
 # together, because #947's crossflow reads the same anchor at every Mach.
 DISC_CD = {"drag": 0.6, "drag_forward": 1.1, "drag_side": 0.9,
@@ -198,9 +200,9 @@ DRAG_CD = {
                        "drag_backward": 0.9},
     "adapter":        {"drag": 0.2, "drag_forward": 0.9, "drag_side": 1.0,
                        "drag_backward": 0.9},
-    # AEROPLANE FUSELAGE (gen_fuselage.py): one smooth body at Cd 0.10 nose-first,
-    # replacing a capsule (0.35) + tank (1.0) + shroud (0.9) + wheel (1.1) stack
-    # whose area-weighted Cd is 0.84.
+    # AEROPLANE FUSELAGE (gen_fuselage.py): one smooth body authoring Cd 0.10
+    # nose-first (0.12 billed), replacing a capsule (0.35) + tank (1.0) + shroud
+    # (0.9) + wheel (1.1) stack whose area-weighted AUTHORED Cd is 0.84.
     "fuselage":       {"drag": 0.6, "drag_forward": 0.10, "drag_side": 0.9,
                        "drag_backward": 0.20},
     # cone (apex = +Z): tip-first sleek, flat base blunt
@@ -291,14 +293,25 @@ DRAG_KEYS = ("drag", "drag_forward", "drag_side", "drag_backward")
 #   - the cap. Newtonian gives Cp = 2 on every face normal to the flow and no lee
 #     suction behind it, so a flat end reads exactly 2.000 where a real flat disc
 #     measures ~1.1-1.3. Cap the PHYSICAL value at 1.35.
-#   - the floor. max(subsonic, ...): a part never gets cheaper by being faster.
+#   - the floor. max(subsonic, ...): a part never gets cheaper by being faster. It
+#     outranks the cap, and it quietly throws the column away on a quarter of the fitted
+#     axes -- nose_cap broadside measures 0.268 and still bills the authored 0.9 (its
+#     subsonic anchor), engine noses measure 0.421 and bill 1.08. Both are the right
+#     call: Newtonian says little about a face that is nearly parallel to the flow, and
+#     a part's subsonic anchor is a fitted number, not a guess. But do not quote those
+#     rows as measured. The cap does NOT reach the two families whose BASE is authored
+#     blunt subsonically (capsule, nose_cap: drag_backward 1.3, so 1.56 billed at every
+#     Mach) -- the floor is above it there. That predates this table and wants its own
+#     argument, not a cap: #1212.
 # The broadside column is the one to take at face value -- 1.17-1.33 across every fat
 # body, exactly the blunt-shoulder case Newtonian is good at. The axial column is the
 # one that needs the cap.
 # What the table is FOR: fuselage nose-on is authored 0.10, a genuine subsonic figure,
 # and the same shape measures 0.374 nose-first. That is the wall a spaceplane pushes
 # through; nothing here moves a subsonic hull at all (regimeMix is 0 below Mach 0.75).
-DRAG_CD_MULT = 1.2        # src/vehicle.h ShipDef::drag_cd -- the bill multiplier
+DRAG_CD_MULT = 1.2        # src/vehicle.h Vehicle::drag_cd (cli.h --drag-cd) -- the bill
+                        # multiplier. Not pinned to the C++ default from here; the C++
+                        # side states the same 1.2 in test_aerosweep's catalogue pin.
 DRAG_SUP_PHYS_CAP = 1.35  # a real flat disc, not Newtonian's 2.000
 
 DRAG_CD_SUP = {

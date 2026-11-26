@@ -4461,8 +4461,10 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
                    regime being quoted rather than left behind. A broadside cylinder's
                    normal-force coefficient is precisely where Newtonian theory is most
                    trustworthy
-                   above the sound bar (1.17-1.33 measured over the shipped meshes,
-                   against 0.8-1.1 authored subsonically). It is NOT merged into
+                   above the sound bar (1.17-1.33 PHYSICAL measured over the shipped
+                   meshes; the authored 0.8-1.1 subsonic is 0.96-1.32 once drag_cd
+                   bills it, so the two halves of that comparison meet on one scale).
+                   It is NOT merged into
                    CpL/FormCp: two perpendicular lines of action cannot
                    share one CdA-weighted lever, so the log gets its own
                    SideCdA=/SideCp= pair. Lateral occlusion (flanks shielded SIDE
