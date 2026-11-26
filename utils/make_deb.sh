@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Build a binary .deb for osp into dist/ -- the .deb counterpart of make_appimage.sh.
 #   ./utils/make_deb.sh [DISTDIR] [OSP_BIN]
-# Version comes from src/version.h (make version / git describe), so it matches `osp --version`.
+# Version comes from src/version.h (make version), so it matches `osp --version`.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 

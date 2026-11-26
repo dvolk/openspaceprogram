@@ -42,7 +42,7 @@ A file that is not UTF-8 text is a HOLE, not a skip, so it is reported rather th
 shrugged off: a res/**/*.json saved as UTF-16 by a Windows editor, or carrying an embedded
 NUL, is exactly the shape that makes nlohmann answer half a system at runtime. A file with
 a UTF-16 byte-order mark is decoded and scanned as the text it is; anything else binary
-(57 tracked files today, all genuinely so: png, ico, ttf, i16, pdf, gz) sees the size gate
+(a few dozen tracked files today, all genuinely so: png, ico, ttf, i16, pdf, gz, wav) sees the size gate
 and nothing else, which is why the count of files is printed with every verdict.
 
 The JSON gate is RFC-strict, not Python-strict: json.loads accepts NaN and Infinity, the

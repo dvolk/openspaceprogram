@@ -141,9 +141,9 @@ endif
 ifeq ($(OS),windows)
 WINDRES=x86_64-w64-mingw32-windres
 RES_OBJ=$(OBJDIR)/osp_res.o
-# VERSIONINFO's numeric fields want N,N,N: the leading vN.N(.N) of git
-# describe, zero-padded. An untagged tree yields 0.0.0 there while the
-# string fields still carry the full describe. Recursive on purpose -- a
+# VERSIONINFO's numeric fields want N,N,N: the leading vN.N(.N) of the version
+# string, zero-padded. A version with no such prefix yields 0.0.0 there while
+# the string fields still carry the whole version. Recursive on purpose -- a
 # `:=` would read src/version.h before the `version` target refreshes it.
 VER_NUM=$(shell sed -n 's/^\#define VERSION "v\{0,1\}\([0-9]\+\)\.\([0-9]\+\)\(\.\([0-9]\+\)\)\?.*/\1 \2 \4/p' $(SRCDIR)/version.h 2>/dev/null)
 VER=$(if $(VER_NUM),$(VER_NUM),0) 0 0 0
@@ -272,8 +272,17 @@ $(RES_OBJ): release/osp.rc $(SRCDIR)/version.h release/openspaceprogram.ico
 	$(WINDRES) $(WINDRESFLAGS) -i $< -o $@
 endif
 
-# Embed git version in src/version.h. Three files include it: src/cli.cpp,
+# Embed the build version in src/version.h. Three files include it: src/cli.cpp,
 # src/gameui.cpp, tests/test_cli.cpp. VERSION=1.0 overrides.
+#
+# The version is "<base>-<commits from the root>-g<sha>", e.g. v0.0.1-1937-g2926de54.
+# <base> is the nearest reachable v*.* tag, or v0.0.1 when the clone has none (a
+# fresh GitHub checkout before its tags arrive). Cutting a release is
+# `git tag v0.1.0 && git push --tags`; no number is maintained by hand. The count
+# runs from the root rather than from the tag, so a clone that lags on tags
+# differs only in the base, and a .deb never gets a version dpkg rejects for not
+# starting with a digit. -dirty marks uncommitted tracked changes, matching git
+# describe's suffix.
 #
 # `version` is a phony probe (it always runs, so the header is re-checked every
 # build), and the WRITE lives in src/version.h's own recipe. That placement is the
@@ -293,9 +302,17 @@ endif
 # never sees a truncated header, and fail loudly rather than silently if there is
 # nothing to write and no header to keep.
 VERSION_REFRESH = VERSION_STRING="$(VERSION)"; \
-  [ -e "./.git" ] && GITVERSION=$$( git describe --tags --always --dirty --match "v*.*" ) && VERSION_STRING=$$GITVERSION ; \
+  if [ -z "$$VERSION_STRING" ] && [ -e "./.git" ]; then \
+    BASE=$$(git describe --tags --abbrev=0 --match "v*.*" 2>/dev/null || echo v0.0.1); \
+    N=$$(git rev-list --count HEAD 2>/dev/null); \
+    SHA=$$(git rev-parse --short=8 HEAD 2>/dev/null); \
+    if [ -n "$$N" ] && [ -n "$$SHA" ]; then \
+      VERSION_STRING="$$BASE-$$N-g$$SHA"; \
+      [ -z "$$(git status --porcelain --untracked-files=no 2>/dev/null)" ] || VERSION_STRING="$$VERSION_STRING-dirty"; \
+    fi ; \
+  fi ; \
   [ -e "src/version.h" ] && OLDVERSION=$$(grep VERSION src/version.h|cut -d '"' -f2) ; \
-  if [ -z "$$VERSION_STRING" ] && [ ! -e src/version.h ]; then echo "version: no git describe and no src/version.h -- pass VERSION=x.y.z" >&2 ; exit 1 ; fi ; \
+  if [ -z "$$VERSION_STRING" ] && [ ! -e src/version.h ]; then echo "version: no git and no src/version.h -- pass VERSION=x.y.z" >&2 ; exit 1 ; fi ; \
   if [ -n "$$VERSION_STRING" ] && [ "x$$VERSION_STRING" != "x$$OLDVERSION" ]; then echo "\#define VERSION \"$$VERSION_STRING\"" > src/version.h.tmp && mv -f src/version.h.tmp src/version.h && echo "version: $$VERSION_STRING" >&2 ; fi
 
 .PHONY: version
@@ -303,8 +320,8 @@ version:
 	@$(VERSION_REFRESH)
 
 # The write lives here, not only in `version` (see above). `make version` runs the
-# body a second time; it is a no-op the second time round, and one extra
-# `git describe` (~66 ms) against a build that costs minutes.
+# body a second time; it is a no-op the second time round, and a few git calls
+# (~50 ms) against a build that costs minutes.
 src/version.h: version
 	@$(VERSION_REFRESH)
 

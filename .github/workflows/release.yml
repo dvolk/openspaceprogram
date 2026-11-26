@@ -1,0 +1,78 @@
+# Manual release build: GitHub's "Actions" tab -> "build" -> "Run workflow".
+# Nothing fires on push. One Linux runner produces every artifact -- the Windows
+# .exe is a mingw cross-build (bootstrap.sh OS=windows), so no Windows host is
+# involved -- and then `make artifacts` does the packaging (tar.xz, .zip,
+# AppImage, .deb, SHA256SUMS) exactly as it does locally.
+name: build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# Two presses on the same commit would race for the same release; queue, don't cancel.
+concurrency:
+  group: build-release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The version needs full history for its commit count, and the tags this
+          # clone carries are what name its base.
+          fetch-depth: 0
+
+      - name: deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            g++ cmake make curl pkg-config python3 zip xz-utils dpkg-dev debhelper \
+            libgl1-mesa-dev libx11-dev libxext-dev libxcursor-dev libxi-dev \
+            libxfixes-dev libxrandr-dev libxrender-dev libxss-dev \
+            libpulse-dev libasound2-dev \
+            g++-mingw-w64-x86-64 binutils-mingw-w64-x86-64
+
+      - name: middleware
+        run: |
+          ./bootstrap.sh
+          OS=windows ./bootstrap.sh
+
+      - name: package
+        run: |
+          # The wavs are in git; this only fires on a tree that predates them.
+          if ! ls res/audio/*.wav >/dev/null 2>&1; then
+            echo "::warning::no res/audio/*.wav here -- this build ships silent"
+          fi
+          make artifacts
+
+      - name: publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          VER=$(sed -n 's/^#define VERSION "\(.*\)"/\1/p' src/version.h)
+          # build-<sha>, not v*: v* is the release namespace the version reads its
+          # base from, so naming builds after tags would move the version.
+          TAG="build-$(git rev-parse --short=12 HEAD)"
+          FILES="dist/osp-*-linux.tar.xz dist/osp-*-windows.zip dist/osp-*-linux+windows.tar.xz dist/osp-*-x86_64.AppImage dist/*.deb dist/SHA256SUMS"
+
+          # create (draft) -> upload -> publish, so a failed upload never leaves a
+          # public release with half its files. gh release create with assets does
+          # the draft dance itself but leaves the draft behind if an upload dies,
+          # and every later re-run then quietly keeps uploading to that draft.
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" \
+              --draft \
+              --target "${{ github.sha }}" \
+              --prerelease \
+              --title "osp $VER" \
+              --notes "Dev build of $(git log -1 --format='%h %s')."
+          fi
+          gh release upload "$TAG" $FILES --clobber
+          gh release edit "$TAG" --draft=false --prerelease
+          gh release view "$TAG" --json url -q .url
