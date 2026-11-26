@@ -173,10 +173,12 @@ struct Part {
        but #945's partition says which strips of that union are THIS part's, and these
        are its columns: formVis is the visible area credited to it this substep (the
        occluded part of a tank behind a capsule keeps nothing), formCdA is that area x
-       the part's cd as the flow faced it -- the credit the ship's cd mean is summed
-       over -- and formDragWatts splits the hull's drag power by that credit (flow at
+       the part's cd as the flow faced it -- at the regime that flow is in, which is
+       the same hull-wide mix the ship's cd mean uses, never this part's own (#635) --
+       and formDragWatts splits the hull's drag power by that credit (flow at
        the cp, not at this mount: an accounting share, not a local bill). Summed across
-       the body parts they are exactly lastDragArea, cdNum, and the hull's watts; a
+       the body parts they are exactly lastDragArea, the cd numerator the force pays on
+       (mixAnchor'd between the two anchor sets, drag.h), and the hull's watts; a
        lifting surface stays 0 in all three because it is not in the union.
        Written EVERY billed substep, chart HIT included (blended from the cached
        nodes' columns -- vehicle.h, SilhouetteMemo #1090) and zeroed when the
@@ -184,7 +186,7 @@ struct Part {
        figure older than the pass that refused to have one. The part window's Form
    row is the first consumer; a heating or stress law is the reason it exists. */
     float formVis = 0.0f;         // [m^2] credited visible silhouette area, this substep
-    float formCdA = 0.0f;         // [m^2] visible x partCd at that flow (the bill's share)
+    float formCdA = 0.0f;         // [m^2] visible x partCd at that flow AND regime (#635)
     float formDragWatts = 0.0f;   // [W] this part's credit share of the hull's drag power
     /* #947's crossflow bill, by part (#1105) -- named for the ship's SideCdA=/SideCp=
        pair, NOT for the form trio above: the crossflow force is not part of that bill
@@ -192,7 +194,7 @@ struct Part {
        CdA-weighted lever (vehicle.cpp, #947). sideRefused is the fraction of THIS
        part's own shadow the union hid -- the discount that stops the axial and
        crossflow bills charging one flank twice -- and sideCdA is the CdA that leaves
-       it to lever sideways this substep (drag_side x mesh strip x refused,
+       it to lever sideways this substep (drag_side mixed across the regime band,
        drag.h::sideStripCdA). The two split where the law splits: refused is a
        MEASUREMENT, kept even when nothing was billed, while sideCdA is written only
        inside the gates that bill -- so summing it over the parts IS the ship's

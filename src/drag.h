@@ -463,6 +463,20 @@ inline glm::dvec3 liftDirection(const glm::dvec3 &v_rel,
 inline constexpr double kTransonicMach = 0.75;
 inline constexpr double kSupersonicMach = 1.25;
 
+/* HOW FAR ACROSS THE BAND a Mach number is, written ONCE. Three laws join across
+   this band -- liftSlopeMach (#543 A5), waveCd (A5b) and the body cd anchors (#635)
+   -- and each of them used to spell the ramp inline. Sharing the two constants was
+   never enough: a curve edit in one of them silently un-shares the join, and "the
+   three halves cannot disagree about where the regime starts" stops being true.
+   0 at or below the low edge, 1 at or above the high edge, straight between. NaN pays
+   0 (the !(mach > lo) shape), so a law that mixes by this never invents a number out
+   of a nonsense Mach. */
+inline double regimeMix(double mach) {
+    if(!(mach > kTransonicMach)) { return 0.0; }
+    if(mach >= kSupersonicMach) { return 1.0; }
+    return (mach - kTransonicMach) / (kSupersonicMach - kTransonicMach);
+}
+
 inline double liftSlopeMach(double cl, double mach) {
     if(!(cl > 0.0) || !(mach > 0.0)) { return cl; }   // no lift, no air, no correction
     if(mach <= kTransonicMach) { return cl / std::sqrt(1.0 - mach * mach); }
@@ -471,7 +485,7 @@ inline double liftSlopeMach(double cl, double mach) {
     if(mach < kSupersonicMach) {
         // Weights, not `sub + (sup - sub) * t`: with a non-finite authored cl the
         // difference form answers NaN out of inf - inf, where this one stays inf.
-        const double t = (mach - kTransonicMach) / (kSupersonicMach - kTransonicMach);
+        const double t = regimeMix(mach);
         return subSlope * (1.0 - t) + supSlope * t;
     }
     return 4.0 / std::sqrt(mach * mach - 1.0);
@@ -501,11 +515,13 @@ inline double liftSlopeMach(double cl, double mach) {
    ratio to put into the formula. The deeper reason not to extrapolate is that the
    blunt-body curve is not this curve: a pod's cd barely moves from subsonic to
    hypersonic, and a blunt nose can even bill LESS once a shock stands off it, so any
-   multiplier on the body anchors would be a guess dressed as a law. Nothing in the
-   game can measure that today -- partCd reads no Mach at all, so a hull prints one Cd
-   at M 0.2 and the same at M 4.4, and flight/151's flat column is the omission, not
-   evidence about pods. Getting it right means authored supersonic anchors per body
-   part (real numbers, not a multiplier) -- filed as #635 rather than guessed at here.
+   multiplier on the body anchors would be a guess dressed as a law. #635 landed the
+   alternative to that guess -- a SECOND anchor set on the part (PartDef::dragForwardSup
+   and friends) joined by regimeMix, with no arithmetic invented in between -- and what
+   it deliberately does not supply is the numbers: parts.json still declares none, so
+   every shipped hull pays the same cd at M 0.2 and M 4.4 until the catalogue is fitted.
+   The band's SHAPE is #635's other open half: a real blunt body steps as a shock
+   stands off the nose rather than ramping straight, and this join cannot do that.
    t/c comes off the mesh box the edge-area law already reads (PartDef::meshThickness-
    ToChord): every shipped surface is 0.044-0.086, so at the game's wing chord cd_wave
    lands beside the 0.01 profile cd those parts author -- at M 1.65 it is 0.0076, i.e.
@@ -528,7 +544,7 @@ inline double waveCd(double thicknessToChord, double mach) {
     // The join's high edge IS the M 1.25 Ackeret value, so the two branches meet.
     const double supEdge = 4.0 * tc * tc / std::sqrt(kSupersonicMach * kSupersonicMach - 1.0);
     if(mach < kSupersonicMach) {
-        return supEdge * (mach - kTransonicMach) / (kSupersonicMach - kTransonicMach);
+        return supEdge * regimeMix(mach);
     }
     return 4.0 * tc * tc / std::sqrt(mach * mach - 1.0);
 }
@@ -1359,13 +1375,14 @@ struct SilhouetteMemo {
        float numerator leaves ~1e-7 on cd/A even where the answer is exact by
        construction, and tests/test_aerosweep.cpp pins lastDragCd == 0.35 at 1e-12
        through this table -- with float cdNum that pin read 0.349999994 and died
-       (#945). The table is 41 kB a ship, which is not worth a precision fight. */
+       (#945). The scalars are 6 x 961 x 8 = 46 kB a ship (area, cdNum, cdNumSup,
+       cpNum x 3) plus a 4 kB stamp, which is not worth a precision fight. */
     std::vector<double> area;  // [m^2]; node (i, j) at j * kSteps + i
     std::vector<double> cdNum; // SUM visible_i * cd_i at that node
     /* #635: the same bill at the parts' SUPERSONIC cd anchors. The chart is keyed on
        flow DIRECTION, and Mach is not a direction -- a table per Mach would refill on
        every substep of an accelerating ship. So the node keeps one number per ANCHOR
-       SET and the caller joins them by bodyRegimeMix(mach), which is linear:
+       SET and the caller joins them by regimeMix(mach), which is linear:
        cdNum_eff = (1 - mix) * cdNum + mix * cdNumSup. That holds because partCd's
        regime join is linear in the anchors and the strip credits are linear in the
        areas, so both bills blend bilinearly across nodes exactly as cdNum does today.
@@ -1388,11 +1405,12 @@ struct SilhouetteMemo {
        makes per-part numbers exist on a HIT, not just on the exact pass: the force
        law still never reads them, but the part window's Form row does, and a
        heating or stress law is meant to. Cost is bounded and lazy: one double per
-       body part per FILLED node (three scalar columns, ~24 B x parts; #1106's cp
-       products add three more, 48 B), plus a shell
-       of empty slots that appears with the first fill (961 x 144 B of vector
-       headers, plus one allocation per column per filled node -- six now, and a
-       hull with no opted-in part still pays three of them for columns nothing
+       body part per FILLED node (four scalar columns -- visible, cd, the #635
+       supersonic cd and the own-shadow -- at ~32 B x parts; #1106's cp products add
+       three more, 56 B), plus a shell
+       of empty slots that appears with the first fill (961 x 168 B of vector
+       headers, plus one allocation per column per filled node -- seven now, and a
+       hull with no opted-in part still pays four of the seven for columns nothing
        reads; skipping them behind an aeroHasBodyLift flag is the filed
        follow-up). Slot order is projectSilhouette's
        parts order; a generation is born with one part set and one order (the
@@ -1466,7 +1484,8 @@ struct SilhouetteMemo {
     }
     // Geometry changed: nothing in the table is trustworthy. No allocation here --
     // a parked or orbital ship that never flies in a direction should not pay
-    // 41 kB for a table it never consults (fillAround allocates on first use).
+    // 50 kB of scalars for a table it never consults (fillAround allocates on first
+    // use, and the partition columns cost more again -- see the cost note above).
     void invalidate() {
         gen++;
         if(gen == 0) { gen = 1; }   // skip 0: it means "never filled"
@@ -1529,7 +1548,7 @@ struct SilhouetteMemo {
        cdNum by the same linearity that makes each node's columns the bill. `proj`
        gets the blended OWN-shadow column (#947) the same way. #635 adds `visCdSup`:
        the same partition at the parts' SUPERSONIC anchors, which the caller joins
-       against `visCd` by bodyRegimeMix -- see SilhouetteMemo::cdNumSup. */
+       against `visCd` by regimeMix -- see SilhouetteMemo::cdNumSup. */
     bool lookup(double alpha, double beta, SilhouetteBill &out,
                 std::vector<double> *vis = nullptr,
                 std::vector<double> *visCd = nullptr,
@@ -1653,7 +1672,7 @@ struct SilhouetteMemo {
         fold(alpha, beta);
         if(!charted(alpha, beta)) { return 0; }
         /* The table appears the first time a ship actually asks for a direction.
-           A ship that never flies in one never pays for it (41 kB each). */
+           A ship that never flies in one never pays for it (50 kB of scalars each). */
         if(area.empty()) {
             reset();
         }
@@ -1982,46 +2001,40 @@ inline double partCd(double cdForward, double cdSide, double cdBackward,
     return cdSide * (1.0 - c2) + cdForward * cw + cdBackward * bw;
 }
 
-/* HOW FAR INTO THE BAND A BODY'S cd HAS MOVED (#635). The same two edges the slope
-   law (liftSlopeMach) and the surface wave law (waveCd) already own, so the three
-   halves of the law cannot disagree about where the regime starts:
-     M <= kTransonicMach   0 -- the part pays its authored subsonic anchors.
-     M >= kSupersonicMach  1 -- it pays its authored supersonic anchors.
-     between               straight join in the mix, in the same device A5/A5b use.
-   The join is a join, not a curve: a real blunt body's cd does not climb linearly
-   through 0.75..1.25, it steps as a shock stands off the nose, and a slender body's
-   climbs late and steep. What the catalogue can support today is one anchor per side
-   per regime and a linear join; the shape of the band is #635's open half, and this
-   is the seam it will be measured against. */
-inline double bodyRegimeMix(double mach) {
-    if(!(mach > kTransonicMach)) { return 0.0; }
-    if(mach >= kSupersonicMach) { return 1.0; }
-    return (mach - kTransonicMach) / (kSupersonicMach - kTransonicMach);
-}
-
 /* A BODY's cd at a given regime: the orientation blend above, run on each regime's
-   anchors, joined by bodyRegimeMix. The join is LINEAR in the anchors, which is what
-   lets the silhouette cache keep two numbers per node (the same bill at each anchor
-   set) and blend them here rather than re-projecting every time the airspeed changes
-   -- the chart is keyed on flow DIRECTION, and Mach is not a direction. A part with no
-   authored supersonic anchors has both sets equal, so the mix buys nothing and every
-   shipped number stays exactly where it was until parts.json declares otherwise. */
+   anchors, joined by the shared band weight regimeMix (#635). The join is LINEAR in
+   the anchors, which is what lets the silhouette cache keep two numbers per node (the
+   same bill at each anchor set) and blend them here rather than re-projecting every
+   time the airspeed changes -- the chart is keyed on flow DIRECTION, and Mach is not a
+   direction. A part with no authored supersonic anchors has both sets equal, so the
+   mix buys nothing and every shipped number stays exactly where it was until
+   parts.json declares otherwise.
+
+   NO LIVE CALLER: the force path runs the 4-arg blend at each anchor set (vehicle.cpp
+   projectSilhouette) and joins the resulting BILLS with mixAnchor below, because
+   blending per part and then joining is the same linear operation the cache already
+   does -- so this overload exists to STATE that linearity, and tests/test_drag.cpp
+   pins it against the two-step path. Keep the two in step, or the cache's promise
+   (SUM part CdA == the hull's cd numerator) is a hope rather than a fact. */
 inline double partCd(double cdForward, double cdSide, double cdBackward,
                      double cdFwdSup, double cdSideSup, double cdBackSup,
                      double cosAxisFlow, double mix) {
     const double sub = partCd(cdForward, cdSide, cdBackward, cosAxisFlow);
     if(!(mix > 0.0)) { return sub; }
     const double sup = partCd(cdFwdSup, cdSideSup, cdBackSup, cosAxisFlow);
-    return (mix >= 1.0) ? sup : sub + (sup - sub) * mix;
+    // Weights, not `sub + (sup - sub) * mix`, for the reason liftSlopeMach gives
+    // above: a non-finite anchor answers NaN out of inf - inf where this stays inf.
+    return (mix >= 1.0) ? sup : sub * (1.0 - mix) + sup * mix;
 }
 
 /* One ANCHOR (not a whole orientation blend) across the same join. #947's crossflow
    bills the broadside anchor directly -- it has no cos(axis,flow) to blend by, the
-   sin already lives in sideStripCdA -- so it needs this one rather than partCd. */
+   sin already lives in sideStripCdA -- so it needs this one rather than partCd. The
+   guards at the ends keep a non-finite anchor out of a 0-weight multiplication. */
 inline double mixAnchor(double mix, double sub, double sup) {
     if(!(mix > 0.0)) { return sub; }
     if(mix >= 1.0) { return sup; }
-    return sub + (sup - sub) * mix;
+    return sub * (1.0 - mix) + sup * mix;
 }
 
 /* #947: the part's SIDE-STRIP area -- the two lateral face pairs of the mesh box,

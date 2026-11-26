@@ -503,11 +503,11 @@ struct PartDef {
     double drag_side;     // cd broadside. Defaults to `drag`.
     double drag_backward; // cd with the part's BASE into the flow. Defaults to `drag`.
     /* #635: the SAME three anchors, priced in the supersonic regime, joined to the
-       ones above by drag.h::bodyRegimeMix across the same 0.75..1.25 band the slope
+       ones above by drag.h::regimeMix across the same 0.75..1.25 band the slope
        law (#543 A5) and the surface wave law (A5b) already own. An absent one IS the
        subsonic anchor beside it (see the accessors below), not a law: a blunt body's
-       cd curve is NOT a wing's. A
-       wing's wave drag comes off its thickness and DECAYS above the band; a pod's
+       cd curve is NOT a wing's. A wing's wave drag comes off its thickness and DECAYS
+       above the band; a pod's
        barely moves from subsonic to hypersonic, a blunt nose can even bill LESS once
        a shock stands off it, and a flat base bills more than anything else on the
        hull. So there is no multiplier here to invent -- the catalogue authors numbers
@@ -517,7 +517,14 @@ struct PartDef {
        subsonic anchors sit 0.8-1.1); the axial anchors are where a heat shield lives,
        and Newtonian's 2.0 for a flat end has no lee suction behind it, so a real
        shield authors nearer 1.1-1.7. A part that declares nothing is exactly as
-       Mach-blind as it was before this field existed. */
+       Mach-blind as it was before this field existed.
+       BODY PARTS ONLY: these three are read in the hull silhouette pass and #947's
+       crossflow, both of which skip a part whose planform makes it a surface
+       (drag.h::isAeroSurface). A LIFTING or STEERING part's regime cd is waveCd off its
+       own thickness-to-chord, not a second anchor set -- so the loader refuses these
+       keys on a surface rather than filing them unread. A surface's blunt broadside and
+       edge anchors stay regime-blind; whether they should move too is a separate call,
+       not an accident of this field. */
     double drag_forward_sup;   // cd nose-in above the band. 0 = inherit drag_forward.
     double drag_side_sup;      // cd broadside above the band. 0 = inherit drag_side.
     double drag_backward_sup;  // cd base-in above the band. 0 = inherit drag_backward.

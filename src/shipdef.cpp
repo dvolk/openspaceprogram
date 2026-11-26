@@ -829,6 +829,22 @@ PartsCatalog load_parts_catalog(const char *path) {
         if(d.control_area < 0.0) {
             throw std::runtime_error(ctx + "\"control_area\" must be >= 0 (m^2)");
         }
+        /* #635's supersonic anchors belong to BODY parts only. A lifting or steering
+           part is out of the hull silhouette pass entirely (drag.h::isAeroSurface,
+           vehicle.cpp projectSilhouette), and its regime cd is waveCd off its own
+           thickness-to-chord (#543 A5b) -- so these keys on a surface would be parsed,
+           stored and never read. Refuse them the way this loader refuses every other
+           pair of mutually exclusive fields, rather than leaving an author to discover
+           it by watching a number not move. */
+        if(d.lift_area > 0.0 || d.control_area > 0.0) {
+            if(d.drag_forward_sup > 0.0 || d.drag_side_sup > 0.0
+               || d.drag_backward_sup > 0.0) {
+                throw std::runtime_error(ctx +
+                    "\"drag_forward_sup\"/\"drag_side_sup\"/\"drag_backward_sup\" are"
+                    " body-part anchors; a lifting or steering part's supersonic cd is"
+                    " its own thickness-to-chord (drag.h::waveCd)");
+            }
+        }
         // An unknown axis is a load error, not a silent default.
         const std::string axis = optString(pv, "control_axis", std::string("pitch"), ctx);
         if(axis == "pitch")      { d.control_axis = ControlAxis::Pitch; }

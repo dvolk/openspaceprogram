@@ -314,7 +314,7 @@ public:
        the cpNum the axial force acts at, hit or miss (products blend linearly).
        `aeroSilPartCdSupA` is the eighth (#635): the same credits billed at the
        parts' SUPERSONIC anchors, so their sum is the bill's cdNumSup. The caller
-       mixes it with aeroSilPartCdA by one bodyRegimeMix per substep -- one mix for
+       mixes it with aeroSilPartCdA by one regimeMix per substep -- one mix for
        the whole hull pass, so SUM(part CdA) stays exactly the hull's cdNum x area
        whatever the airspeed is. */
     std::vector<double> aeroSilPartVis;

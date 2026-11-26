@@ -4104,25 +4104,34 @@ static void test_partCd() {
                   "equal anchor sets -> the mix buys nothing (every shipped part)");
     }
 
-    /* bodyRegimeMix owns the band: the same two edges liftSlopeMach (#543 A5) and
-       waveCd (A5b) use, pinned here so a hull's regime cannot start somewhere the
-       wing's does not. */
+    /* regimeMix owns the band: the same function liftSlopeMach (#543 A5) and waveCd
+       (A5b) call, pinned here so a hull's regime cannot start somewhere the wing's
+       does not -- and pinned THROUGH those two laws below, because sharing the two
+       constants is not the same as sharing the join. */
     {
-        CHECK_REL(bodyRegimeMix(0.0), 0.0, 1e-12, "no airspeed, no mix");
-        CHECK_REL(bodyRegimeMix(kTransonicMach), 0.0, 1e-12,
+        CHECK_REL(regimeMix(0.0), 0.0, 1e-12, "no airspeed, no mix");
+        CHECK_REL(regimeMix(kTransonicMach), 0.0, 1e-12,
                   "the band's low edge is still the subsonic anchors");
-        CHECK_REL(bodyRegimeMix(kSupersonicMach), 1.0, 1e-12,
+        CHECK_REL(regimeMix(kSupersonicMach), 1.0, 1e-12,
                   "its high edge is the supersonic anchors");
-        CHECK_REL(bodyRegimeMix(1.0), 0.5, 1e-12, "Mach 1 sits halfway across");
-        CHECK_REL(bodyRegimeMix(7.0), 1.0, 1e-12, "and stays there hypersonic");
-        CHECK_REL(bodyRegimeMix(-3.0), 0.0, 1e-12, "a nonsense Mach mixes nothing");
-        CHECK_REL(bodyRegimeMix(std::nan("")), 0.0, 1e-12,
+        CHECK_REL(regimeMix(1.0), 0.5, 1e-12, "Mach 1 sits halfway across");
+        CHECK_REL(regimeMix(7.0), 1.0, 1e-12, "and stays there hypersonic");
+        CHECK_REL(regimeMix(-3.0), 0.0, 1e-12, "a nonsense Mach mixes nothing");
+        CHECK_REL(regimeMix(std::nan("")), 0.0, 1e-12,
                   "NaN pays the subsonic anchors rather than inventing a number");
         bool mono = true;
         for(double m = 0.75; m < 1.25; m += 0.01) {
-            if(!(bodyRegimeMix(m) <= bodyRegimeMix(m + 0.01))) { mono = false; }
+            if(!(regimeMix(m) <= regimeMix(m + 0.01))) { mono = false; }
         }
         CHECK_TRUE(mono, "the join never steps back through the band");
+        // The other two laws run the SAME join, not a copy of it: at the band's
+        // midpoint each sits halfway between its own two edge values.
+        CHECK_REL(waveCd(0.05, 1.0), 0.5 * waveCd(0.05, kSupersonicMach), 1e-12,
+                  "waveCd's ramp IS regimeMix (half way at Mach 1)");
+        const double subEdge = 6.0 / std::sqrt(1.0 - kTransonicMach * kTransonicMach);
+        const double supEdge = 4.0 / std::sqrt(kSupersonicMach * kSupersonicMach - 1.0);
+        CHECK_REL(liftSlopeMach(6.0, 1.0), 0.5 * (subEdge + supEdge), 1e-12,
+                  "and so is liftSlopeMach's");
     }
 
     // mixAnchor: the single-anchor form #947's crossflow needs (no attitude blend).
@@ -4130,6 +4139,15 @@ static void test_partCd() {
     CHECK_REL(mixAnchor(1.0, 0.8, 1.25), 1.25, 1e-12, "mix 1 -> the supersonic anchor");
     CHECK_REL(mixAnchor(0.5, 0.8, 1.25), 1.025, 1e-12, "between -> straight join");
     CHECK_REL(mixAnchor(0.5, 1.0, 1.0), 1.0, 1e-12, "equal anchors stay put");
+    /* The ends are short-circuited, not multiplied by zero: a non-finite anchor at the
+       regime nobody is paying for must not poison the number (the weights form turns
+       inf x 0 into NaN). Same reason liftSlopeMach gives for preferring weights. */
+    CHECK_REL(mixAnchor(0.0, 0.8, HUGE_VAL), 0.8, 1e-12,
+              "an infinite supersonic anchor is not consulted at mix 0");
+    CHECK_TRUE(std::isinf(mixAnchor(1.0, 0.8, HUGE_VAL)),
+               "and at mix 1 it is the answer, not inf - inf");
+    CHECK_REL(partCd(0.35, 0.8, 1.3, HUGE_VAL, HUGE_VAL, HUGE_VAL, 1.0, 0.0), 0.35,
+              1e-12, "the 8-arg blend keeps the same guard: mix 0 pays the subsonic set");
 }
 
 static void test_surfaceFormCdA() {

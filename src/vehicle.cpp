@@ -1822,10 +1822,18 @@ static uint64_t aeroGeomFingerprint(const std::vector<Part *> &parts) {
         }
         /* And what it contributes to that silhouette: the cd anchors the
            coefficient is made of, and the planform that decides whether the part is
-           body here at all (#945 caches both per flow direction). */
+           body here at all (#945 caches both per flow direction). The list must stay
+           exactly "the def fields the cache stores a function of": #635 added a
+           SECOND cached cd -- cdNumSup / partVisCdSup, at the supersonic anchors --
+           and leaving those three out would let a def edited in place keep a matching
+           key and answer with a supersonic bill its parts no longer earn, which is
+           the one failure mode this key exists to close. */
         h = mix(h, std::bit_cast<uint64_t>(p->def ? p->def->drag_forward : 0.0));
         h = mix(h, std::bit_cast<uint64_t>(p->def ? p->def->drag_side : 0.0));
         h = mix(h, std::bit_cast<uint64_t>(p->def ? p->def->drag_backward : 0.0));
+        h = mix(h, std::bit_cast<uint64_t>(p->def ? p->def->drag_forward_sup : 0.0));
+        h = mix(h, std::bit_cast<uint64_t>(p->def ? p->def->drag_side_sup : 0.0));
+        h = mix(h, std::bit_cast<uint64_t>(p->def ? p->def->drag_backward_sup : 0.0));
         h = mix(h, std::bit_cast<uint64_t>(p->def ? p->def->lift_area : 0.0));
         h = mix(h, std::bit_cast<uint64_t>(p->def ? p->def->control_area : 0.0));
     }
@@ -4003,7 +4011,7 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
             /* #635: the SAME attitude blend at the part's supersonic anchors. The
                chart is keyed on flow DIRECTION, so a node cannot hold "cd at this
                Mach" -- it holds cd at each anchor SET and the caller joins the two
-               by bodyRegimeMix once per substep. That join is linear, so every
+               by regimeMix once per substep. That join is linear, so every
                partition identity this cache owns still holds; a per-Mach table would
                refill on every substep that changed speed. */
             at.cdSup = p->def ? partCd(p->def->dragForwardSup(), p->def->dragSideSup(),
@@ -4239,14 +4247,18 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
            same mix rather than their own, which is what keeps
            SUM(part CdA) == cdNumShip at any airspeed.
            The Mach is the free-stream one at the COM -- the same lastAirV / lastAirA
-           the --drag-log row prints as Mach= beside Cd=, so a reader can take the
-           printed Mach, read a part's two anchor sets, and close this row by hand.
+           the --drag-log row prints as Mach= beside Cd=, so that row closes by hand:
+           take the printed Mach, read a part's two anchor sets, get the printed Cd.
            Deliberately not the cp's LOCAL Mach (which the #486 sweep can move): the
            hull bill is one number for one body, so its regime mix has to be one
            number too, and a mix that varied per part would break the identity above.
+           The part card does NOT close the same way: it stamps lastFormMach, which is
+           the flow at cp, so on a spinning hull the Mach beside a card's CdA is not
+           the Mach that set its mix. Same for SideCdA. Both are the right sample for
+           the force at that point and the wrong one for this join.
            Until parts.json declares the sup anchors the two sets are equal and this
            join is the identity -- which is every shipped number staying where it was. */
-        const double hullMix = bodyRegimeMix(lastAirV * invAirA);
+        const double hullMix = regimeMix(lastAirV * invAirA);
         const double cdNumShip = mixAnchor(hullMix, bill.cdNum, bill.cdNumSup);
         lastDragCd = (A_ship > 0.0) ? (cdNumShip / A_ship) : 0.0;
         /* The cp in the compound's own axes, which is the one frame every chart node
@@ -4280,7 +4292,14 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
                 /* #512: cpOff is how far this part's AREA sits from the bolt that
                    holds it -- the cp's arm per part. Zero means the hull is centred
                    on its mount and the mount says something; a third of a metre or
-                   more means the mount is not where the drag pushes. */
+                   more means the mount is not where the drag pushes.
+                   #635 caveat, before anyone reconciles this column with Cd=: the
+                   per-row `cd` is the SUBSONIC anchor blend (SilDumpRow carries one
+                   cd, taken at projection time), while the ship summary below prints
+                   the regime-MIXED lastDragCd -- and its "(was ...)" pair is the
+                   legacy own-area vote, a second axis of difference. Two ships' worth
+                   of meaning in one delta; read the regime off the --drag-log Mach
+                   before blaming the partition. */
                 printf("[ship] %-16s m %7.1f fwd %6.2f right %6.2f up %6.2f"
                        " projA %5.2f visA %5.2f dep %7.2f cd %.2f liftA %.2f ctrlA %.2f"
                        " noseDot %5.2f cpOff %5.2f (f %6.2f r %6.2f u %6.2f)\n",
@@ -4434,9 +4453,14 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
                    surfaces (#483), this answers the flow AT THE PART -- pitch and
                    yaw rotation sweep each flank through the air, and a distributed
                    normal force finally damps that swing the way fins do. Since #635
-                   it reads that anchor MIXED across the regime band, like every other
-                   body number this pass bills: a broadside cylinder's normal-force
-                   coefficient is precisely where Newtonian theory is most trustworthy
+                   it reads that anchor MIXED across the regime band, like every body
+                   CD this pass bills -- not like #1097's body_lift, which has no
+                   regime law yet, so the #1107 lift/drag pair (BodyCdA against
+                   SideCdA) stays quoted at the SUBSONIC anchors even here: if a family
+                   authors *_sup, that pairing arithmetic has to be re-solved at the
+                   regime being quoted rather than left behind. A broadside cylinder's
+                   normal-force coefficient is precisely where Newtonian theory is most
+                   trustworthy
                    above the sound bar (1.17-1.33 measured over the shipped meshes,
                    against 0.8-1.1 authored subsonically). It is NOT merged into
                    CpL/FormCp: two perpendicular lines of action cannot

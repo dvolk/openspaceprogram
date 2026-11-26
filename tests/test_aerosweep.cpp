@@ -57,6 +57,7 @@
 #include <algorithm>   // std::max/min: which tab sign loads the airframe
 #include <cstdio>
 #include <deque>
+#include <fstream>     // std::ofstream: a scratch catalogue for the loader's anchor rules
 #include <stdexcept>   // std::exception: what load_parts_catalog throws
 #include <numbers>
 #include <utility>   // std::make_pair: the (Induced, net L) pair per trim shot
@@ -619,6 +620,15 @@ static void test_surface_authority_curve() {
 static void test_heat_hooks() {
     printf("== the energy hook a heating model would read, and what it misses ==\n");
     Bench b = mkBench();
+    /* #635: fit the pod's SUPERSONIC anchors so every partition pin this loop makes
+       runs with the two anchor sets DIFFERENT. The same pins pass trivially while
+       cdSup == cd (which is every shipped part today), which is exactly why they are
+       worth making here: a consumer that skips the mix, mixes at the wrong Mach, or
+       mixes the wrong column reddens now rather than when the catalogue is fitted. */
+    PartDef &podDef = b.defs.back();
+    podDef.drag_forward_sup = 0.70;
+    podDef.drag_side_sup = 1.40;
+    podDef.drag_backward_sup = 1.80;
     Part *wing = mkPlate(b.defs, "wing", 20.0, 2.0, 0.05, 1.0);
     setSurface(b.defs.back(), 8.0, true);
     b.v->attachMode(wing, 0, AttachMode::Down);
@@ -629,6 +639,7 @@ static void test_heat_hooks() {
 
     const double speeds[3] = { 300.0, 1000.0, 2000.0 };
     double prevW = -1.0;
+    bool sawBand = false, sawSup = false;   // #635: did the pins below leave the identity?
     for(double sp : speeds) {
         /* 20 km up on this body: rho = 1.225 x e^-2.5. placeShip again because the
            column is a profile, not one flight. */
@@ -684,6 +695,23 @@ static void test_heat_hooks() {
         CHECK_NEAR(b.v->lastFormWatts, sumW, std::fabs(sumW) * 1e-5 + 1e-9,
                    "#1114: the body-card hold's criterion (the hull's whole bill) IS the "
                    "partition sum -- the product and the columns cannot drift apart");
+        /* #635, with the anchors now different: the hull's cd is the REGIME JOIN of
+           the two forward anchors (alpha 0 on the root part means c = +1, so partCd
+           hits the forward anchor of whichever set), and the pod's credit column is
+           billed at that same joined number. `machShip` is the free-stream Mach the
+           [drag] row prints, which is the one the hull mixes at -- not the cp's local
+           flow, and the bench flies unrotating so the two are equal anyway. */
+        const double machShip = sp / b.v->lastAirA;
+        const double mix = regimeMix(machShip);
+        if(mix > 0.0 && mix < 1.0) { sawBand = true; }
+        if(mix >= 1.0) { sawSup = true; }
+        CHECK_NEAR(b.v->lastDragCd, mixAnchor(mix, 0.35, 0.70), 1e-5,
+                   "#635: the hull cd IS the regime join of the two forward anchors");
+        CHECK_NEAR((double)b.v->parts[0]->formCdA,
+                   mixAnchor(mix, 0.35, 0.70) * b.v->lastDragArea,
+                   b.v->lastDragArea * 1e-5,
+                   "#635: the part's credit is billed at the MIXED cd, not the "
+                   "subsonic one -- and still sums to the ship's number");
         CHECK_NEAR((double)b.v->parts[0]->aeroDragWatts, 0.0, 0.0,
                    "a body still folds no SURFACE watts: the hull share is the form trio, "
                    "so #730's sum-over-surfaces reading keeps its meaning");
@@ -694,6 +722,10 @@ static void test_heat_hooks() {
         }
         prevW = (double)b.v->parts[1]->aeroDragWatts;
     }
+    /* If this reddens, the loop above has quietly become the identity again -- one
+       speed list change and every #635 pin above passes for the wrong reason. */
+    CHECK_TRUE(sawBand, "one shot landed inside the 0.75..1.25 band (part-mixed cd)");
+    CHECK_TRUE(sawSup, "and one landed past it (fully supersonic cd)");
     /* #947's anti-double-count, pinned away from the kernel excuse: at 30 deg
        ANGLE OF ATTACK a body's side strip is genuinely nonzero, so a zero here can
        only come from the discount -- the pod's credit equals its own shadow at
@@ -1333,6 +1365,39 @@ static void test_the_lifting_body_pair_is_fitted() {
         printf("[pair] catalog load failed: %s\n", e.what());
         CHECK_TRUE(false, "res/data/parts.json loads (run from the repo root)");
         return;
+    }
+    /* #635 staged state, pinned rather than asserted in a commit message: the seam
+       exists and the catalogue uses none of it, so every hull pays one cd at M 0.2
+       and the same at M 7. When a family IS fitted, this pin reddens on purpose --
+       change it to count what was fitted, do not delete it. */
+    {
+        int declared = 0;
+        for(const PartDef &d : cat.parts) {
+            if(d.drag_forward_sup > 0.0 || d.drag_side_sup > 0.0
+               || d.drag_backward_sup > 0.0) { declared++; }
+        }
+        printf("[pair] %d of %d catalogued parts declare supersonic cd anchors\n",
+               declared, (int)cat.parts.size());
+        CHECK_TRUE(declared == 0,
+                   "#635: no shipped part declares the supersonic anchors yet (fit "
+                   "this pin deliberately if that changes)");
+    }
+    /* And the loader refuses them on a SURFACE: a lifting or steering part is out of
+       the hull silhouette pass, so a wing's *_sup key would be parsed, stored and
+       never read -- a number that does nothing is worse than an error. */
+    {
+        const char *f = "/tmp/test_sup_on_wing.json";
+        std::ofstream o(f);
+        o << "{ \"parts\": [ { \"name\": \"w\", \"type\": \"wing\", "
+             "\"mesh\": \"w.obj\", \"texture\": \"w.png\", \"mass\": 1.0, "
+             "\"lift_area\": 8.0, \"cl\": 6.0, \"stall_angle\": 0.35, "
+             "\"drag_side_sup\": 1.2 } ] }";
+        o.close();
+        bool threw = false;
+        try { load_parts_catalog(f); }
+        catch(const std::exception &e) { threw = true; }
+        std::remove(f);
+        CHECK_TRUE(threw, "a lifting surface may not declare body supersonic anchors");
     }
     int fitted = 0;
     for(const PartDef &d : cat.parts) {
