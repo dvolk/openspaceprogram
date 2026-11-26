@@ -623,7 +623,7 @@ static void test_heat_hooks() {
     Bench b = mkBench();
     /* #635: fit the pod's SUPERSONIC anchors so every partition pin this loop makes
        runs with the two anchor sets DIFFERENT. The same pins pass trivially while
-       cdSup == cd (23 of the 87 shipped parts are still like that -- the ones with no
+       cdSup == cd (23 of the 89 shipped parts are still like that -- the ones with no
        anchor set), which is exactly why they are worth making here: a consumer that
        skips the mix, mixes at the wrong Mach, or mixes the wrong column reddens now
        rather than when the catalogue is fitted. */
@@ -1369,7 +1369,7 @@ static void test_the_lifting_body_pair_is_fitted() {
         return;
     }
     /* #635 shipped state: the catalogue authors the second anchor set for its body
-       parts -- 64 of 87. The 23 that do not are the lifting/steering surfaces (their
+       parts -- 66 of 89. The 23 that do not are the lifting/steering surfaces (their
        regime cd is thickness-to-chord through waveCd), the chute (its own CdA term),
        gear, leg, ladder, the liftbody (its #1107 glide was solved as a PAIR against
        body_lift, which has no regime law), the barometer/thermometer sticks and the
@@ -1410,10 +1410,31 @@ static void test_the_lifting_body_pair_is_fitted() {
         }
         printf("[pair] %d of %d catalogued parts declare supersonic cd anchors\n",
                declared, (int)cat.parts.size());
-        CHECK_TRUE(declared == 64, "#635: the body families author the supersonic band");
+        CHECK_TRUE(declared == 66, "#635: the body families author the supersonic band");
         CHECK_TRUE(surfacesWith == 0, "and no lifting/steering surface does");
         CHECK_TRUE(cheaperSup == 0, "no part is cheaper at Mach 6 than at Mach 0.2");
         CHECK_TRUE(overCap == 0, "no supersonic anchor escapes the fitted rule's cap");
+        /* #1211: THE SLENDER NOSE. The two `nose_cone_*` anchors are not fitted and not
+           guessed -- they are the cone integral over the shipped meshes (tmp/n1099/
+           faceprobe2): Newtonian `2 sin^2(theta)` on the base disc, 0.397 at h/r 2 and
+           0.198 at h/r 3. Pinned against the bill multiplier so the scale cannot drift,
+           and against the shipped caps, whose h/r 0.50 mesh measures 1.597 nose-on --
+           a wall with a dimple in it. A part is allowed to go blunt again; it is not
+           allowed to start claiming it is a nose. */
+        const PartDef *cn2 = cat.find("nose_cone_r1h2");
+        const PartDef *cn3 = cat.find("nose_cone_r1h3");
+        const PartDef *cap = cat.find("nose_cap");
+        CHECK_TRUE(cn2 != nullptr && cn3 != nullptr && cap != nullptr,
+                   "the nose cone family ships beside the caps");
+        if(cn2 != nullptr && cn3 != nullptr && cap != nullptr) {
+            CHECK_NEAR(cdMul * cn2->dragForwardSup(), 0.397, 1e-3,
+                       "nose_cone_r1h2 bills the cone cd measured over its own mesh");
+            CHECK_NEAR(cdMul * cn3->dragForwardSup(), 0.198, 1e-3,
+                       "nose_cone_r1h3 bills the cone cd measured over its own mesh");
+            CHECK_TRUE(cdMul * cn3->dragForwardSup()
+                           < 0.25 * cdMul * cap->dragForwardSup(),
+                       "a slender cone is worth under a quarter of the shallow cap");
+        }
         /* The number the whole change is for: a fuselage's nose. 0.10 is what a smooth
            body is worth subsonic; measured nose-first on its own mesh it is 0.374, so
            above the band the bill rises ~3.1x on the part that makes a spaceplane's

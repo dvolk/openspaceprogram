@@ -1,0 +1,32 @@
+{
+  "name": "spaceplane",
+  "parts": [
+    {"part": "nose_cone_r1h3", "id": "NOSE", "stage": 1},
+    {"part": "capsule_cyl_r1h2", "id": "POD", "parent": "NOSE", "attach": "down", "stage": 1},
+    {"part": "mono_tank_r1", "id": "MONO", "parent": "POD", "attach": "down", "stage": 1},
+    {"part": "jet_tank_r1h3", "id": "TANKF", "parent": "MONO", "attach": "down", "stage": 1},
+    {"part": "jet_tank_r1h3", "id": "TANKA", "parent": "TANKF", "attach": "down", "stage": 1},
+    {"part": "jet", "id": "JET", "parent": "TANKA", "attach": "down", "stage": 1},
+    {"part": "wing", "id": "WINGL", "parent": "TANKF", "attach": "surface", "angle": 0, "z": 0.6, "stage": 1},
+    {"part": "wing", "id": "WINGR", "parent": "TANKF", "attach": "surface", "angle": 180, "z": 0.6, "stage": 1},
+    {"part": "aileron_r0.8h0.7", "id": "AILL", "parent": "WINGL", "attach": "down", "stage": 1},
+    {"part": "aileron_r0.8h0.7", "id": "AILR", "parent": "WINGR", "attach": "down", "stage": 1},
+    {"part": "wing_r1h1", "id": "TAILL", "parent": "JET", "attach": "surface", "angle": 0, "z": 0.5, "stage": 1},
+    {"part": "wing_r1h1", "id": "TAILR", "parent": "JET", "attach": "surface", "angle": 180, "z": 0.5, "stage": 1},
+    {"part": "wing_r0.7h1", "id": "FIN", "parent": "JET", "attach": "surface", "angle": 90, "z": 0.4, "stage": 1},
+    {"part": "elevator_r0.8h0.7", "id": "EVLL", "parent": "JET", "attach": "surface", "angle": 0, "z": -0.4, "stage": 1},
+    {"part": "elevator_r0.8h0.7", "id": "EVLR", "parent": "JET", "attach": "surface", "angle": 180, "z": -0.4, "stage": 1},
+    {"part": "rudder_r0.6h0.8", "id": "RUD", "parent": "JET", "attach": "surface", "childNode": "srf", "point": [0.0, 1.0, -0.55], "normal": [0, 1, 0], "stage": 1},
+    {"part": "gear_nose", "id": "GEARN", "parent": "POD", "attach": "surface", "angle": 270, "z": 0.6, "stage": 1},
+    {"part": "gear", "id": "GEARL", "parent": "TANKA", "attach": "surface", "angle": 250, "z": -0.3, "stage": 1},
+    {"part": "gear", "id": "GEARR", "parent": "TANKA", "attach": "surface", "angle": 290, "z": -0.3, "stage": 1},
+    {"part": "rcs_box", "id": "RCS_F1", "parent": "POD", "attach": "surface", "angle": 0, "z": -0.5, "stage": 1},
+    {"part": "rcs_box", "id": "RCS_F2", "parent": "POD", "attach": "surface", "angle": 90, "z": -0.5, "stage": 1},
+    {"part": "rcs_box", "id": "RCS_F3", "parent": "POD", "attach": "surface", "angle": 180, "z": -0.5, "stage": 1},
+    {"part": "rcs_box", "id": "RCS_F4", "parent": "POD", "attach": "surface", "angle": 270, "z": -0.5, "stage": 1},
+    {"part": "rcs_box", "id": "RCS_A1", "parent": "TANKA", "attach": "surface", "angle": 0, "z": -1.2, "stage": 1},
+    {"part": "rcs_box", "id": "RCS_A2", "parent": "TANKA", "attach": "surface", "angle": 90, "z": -1.2, "stage": 1},
+    {"part": "rcs_box", "id": "RCS_A3", "parent": "TANKA", "attach": "surface", "angle": 180, "z": -1.2, "stage": 1},
+    {"part": "rcs_box", "id": "RCS_A4", "parent": "TANKA", "attach": "surface", "angle": 270, "z": -1.2, "stage": 1}
+  ]
+}

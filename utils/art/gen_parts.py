@@ -55,6 +55,8 @@ MASS_DENSITY = {
     # on a stack that carries four of them (#951). A cap that houses a chute bay
     # should say so the way `chute` does -- a declared mass, not a density.
     "nose_cap":       25.0,
+    # The slender cone family: same closed shell as a cap, one-third of it air.
+    "nose_cone":      25.0,
     "cargo":          40.0,
     # A lifting body is thin structure -- cargo's shell density suits it.
     "liftbody":       40.0,
@@ -208,6 +210,18 @@ DRAG_CD = {
     # cone (apex = +Z): tip-first sleek, flat base blunt
     "nose_cap":       {"drag": 0.6, "drag_forward": 0.35, "drag_side": 0.9,
                        "drag_backward": 1.3},
+    # The SLENDER cone (apex = +Z, h/r >= 2), which is the shape a nose actually is.
+    # All three `nose_cap` meshes are h/r 0.50 -- 63 deg off the axis -- and measure
+    # 1.597 nose-on, which is a wall with a dimple in it (#1211). At h/r 2 the same
+    # base disc measures 0.397 and at h/r 3 0.198, so the family's whole claim is the
+    # slenderness. Subsonic nose-first 0.15 sits between a smooth body (fuselage's
+    # 0.10) and a shoulder; the fitted supersonic anchors below carry the measurement.
+    # The base is 1.1, NOT nose_cap's 1.3: 1.3 is the one authored number that the
+    # supersonic floor cannot pull back under the flat-disc cap, so it bills 1.56 at
+    # every Mach (#1212). 1.1 bills 1.32, inside the 1.35 the same file calls a real
+    # flat disc.
+    "nose_cone":      {"drag": 0.6, "drag_forward": 0.15, "drag_side": 0.9,
+                       "drag_backward": 1.1},
     "kerbal":         {"drag": 0.5, "drag_forward": 0.5, "drag_side": 0.9,
                        "drag_backward": 0.9},
     # thin plate (wing / control surfaces): chord along the part's own +Z, so
@@ -366,6 +380,14 @@ DRAG_CD_SUP = {
 DRAG_CD_SUP_BY_NAME = {
     "capsule_cyl_r1h2": (2.000, 1.331, 2.000),
     "jet_r0.25h1":      (0.293, 1.299, 2.000),
+    # Measured over the shipped cone meshes with tmp/n1099/faceprobe2 on 2026-11-26.
+    # The axial column is Newtonian's `2 sin^2(theta)` on the base disc to three
+    # digits -- h/r 2 -> 0.400, h/r 3 -> 0.200 -- which is the whole reason these
+    # parts exist: the three shipped nose caps are all h/r 0.50 and read 1.597, a
+    # wall with a dimple in it (#1211). Broadside is the column to take at face
+    # value; the base is Newtonian's bare 2.000, which the cap pulls back to 1.35.
+    "nose_cone_r1h2":   (0.397, 1.067, 2.000),
+    "nose_cone_r1h3":   (0.198, 1.199, 2.000),
 }
 
 DRAG_SUP_KEYS = ("drag_forward_sup", "drag_side_sup", "drag_backward_sup")
@@ -451,6 +473,14 @@ PARTS = [
     ("nose_cap",         "nose_cap",       "meshes/nose_cap.obj",                 "textures/nose_cap.png"),
     ("nose_cap_r1.5h0.75","nose_cap",      "meshes/nose_cap_r1.5h0.75.obj",       "textures/nose_cap.png"),
     ("nose_cap_r2.25h1.125","nose_cap",    "meshes/nose_cap_r2.25h1.125.obj",     "textures/nose_cap.png"),
+    # The slender nose (#1211), lathed from a straight profile: h/r 2 and 3 instead of
+    # the caps' 0.50. Its base radius EQUALS the radius of the stack it closes, the way
+    # `adapter_*` does, because the hull bills the union of the silhouettes at the cd of
+    # whatever sits upwind: on an r1 spine an r1.5 cone in front measured unionA 7.02
+    # against 3.12 for the same hull cd 0.230, so a cone wider than the body is a
+    # balloon, and a narrower one leaves a blunt shoulder that still votes.
+    ("nose_cone_r1h2", "nose_cone",      "meshes/nose_cone_r1h2.obj",             "textures/nose_cone.png"),
+    ("nose_cone_r1h3", "nose_cone",      "meshes/nose_cone_r1h3.obj",             "textures/nose_cone.png"),
     ("kerbal",           "kerbal",         "meshes/kerbal.obj",                   "textures/kerbal.png"),
     ("cargo",            "cargo",          "meshes/fuel_tank.obj",                "textures/fuel_tank.png"),
     ("materials_pod",    "materials_pod",  "meshes/materials_pod.obj",           "textures/materials_pod.png"),
@@ -822,6 +852,7 @@ DISPLAY_BASE = {
     "decoupler":      "Decoupler",
     "docking_port":   "Docking Port",
     "nose_cap":       "Nose Cap",
+    "nose_cone":      "Nose Cone",
     "kerbal":         "Staff",
     "cargo":          "Cargo Crate",
     "liftbody":       "Lifting Body",
@@ -866,7 +897,12 @@ def display_name_for(name, ptype, radius, height):
         return "%s (%sm, cylinder)" % (base, clean(radius * 2.0))
     # base name + DIAMETER (radius * 2); tanks also carry height
     d = clean(radius * 2.0)
-    if ptype in ("fuel_tank", "jet_tank"):
+    # A nose cone's LENGTH is the part: two cones on the same 2 m base differ only in
+    # slenderness, and slenderness is exactly what the drag law reads (h/r 2 -> 0.400
+    # nose-on, h/r 3 -> 0.198, the shipped caps' h/r 0.50 -> 1.597). Two palette rows
+    # both saying "Nose Cone (2m)" would hide the whole decision, the way two pods
+    # once both said "Capsule (2m)" (#1170).
+    if ptype in ("fuel_tank", "jet_tank", "nose_cone"):
         return "%s (%sm x %sm)" % (base, d, clean(height))
     return "%s (%sm)" % (base, d)
 
