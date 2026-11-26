@@ -26,7 +26,7 @@ Below the fold — why it was done this way, benefits, drawbacks, cost of switch
 |---|---|
 | One world, **gravity deliberately zero** | `physics.cpp:182` — gravity is a per-part force, see below |
 | `btDefaultCollisionConfiguration` / `btCollisionDispatcher` / `btDbvtBroadphase` / plain `btSequentialImpulseConstraintSolver`; no solver-iteration tuning anywhere | `physics.cpp:176-180` |
-| `setApplySpeculativeContactRestitution(true)` — no comment says why | `physics.cpp:183` |
+| `setApplySpeculativeContactRestitution(true)` — no comment says why, and it is inert here: it only acts on predictive manifolds, which need a CCD threshold we never set (`btDiscreteDynamicsWorld.cpp:863`), and nothing sets restitution | `physics.cpp:183` |
 | One step per OSP substep: `stepSimulation(h, 1, h)`, and Bullet clears the force accumulator on exit, so the tick re-applies everything before every call | `physics.cpp:202` |
 | A ship is **one `btRigidBody` whose shape is a `btCompoundShape` of the part convex hulls** — "No per-part bodies, no welds" | `vehicle.h:252-265`, `rebuildCompound` `vehicle.cpp:1559` |
 | Terrain: static `btBvhTriangleMeshShape` per collision leaf of the cubed-sphere patch tree, only at `max_depth` | `physics.cpp:252-253`, `terrain.h:252` |
@@ -115,15 +115,25 @@ The reasons are in the comments, not in folklore:
 ## Drawbacks, honestly
 
 1. **Two physics systems meet at a seam, and the seam is a tuning invariant.** The ground
-   law keeps the hull's collision hull *off* the ground by the ride height
-   (`--leg-log gap=` ≈ 0.05-0.06 m for both shipped parts), so Bullet contacts usually do
-   not fire for a parked hull. If the suspension bottoms — compression clamps at travel,
+   law keeps the hull's collision hull *off* the ground by the ride height, so Bullet
+   contacts usually do not fire for a parked hull. Measured parked (`--leg-log`;
+   `gap + comp == travel` on every loaded row, by construction): legs on `racer_legs` sit
+   at `gap` 0.053-0.062 m with `comp` 0.088-0.097 of `travel` 0.150; gear on `skiff_gear`
+   at `gap` 0.078-0.082 m with `comp` 0.068-0.072. So the collision hull is 5-8 cm of extra
+   push from touching. When it does — compression clamps at travel,
    `vehicle.cpp:5255,5338` — the ride allowance `(travel - compression)` goes to zero, the
-   wheel's convex child meets the surface, and Bullet's impulses would stack on top of a
-   maxed spring. The margin comment knows the geometry — with the old 0.5 m margin
-   "wheels bottomed out and the hull rode as a bump stop" (`physics.cpp:37`) — but nothing
-   in the ground law says which support wins in that regime, or whether both are ever live
-   at once.
+   wheel's convex child meets the surface, and since every part contributes a shape to the
+   one compound (`rebuildCompound` `vehicle.cpp:1619`, no opt-out for wheels) Bullet's
+   impulses stack on top of a spring already pushing at `k * travel`. Nothing in the ground
+   law says which support wins or how they hand over. #1166 owns this from the other side
+   (a strut's float and its stroke are one number; `n*k*travel` is the load ceiling) and
+   `1158-a`/`1158-b` keep a heavy hull from sinking quietly, but the double-support regime
+   itself is unspecified. (Measured hulls are lighter than #1166's table: `racer_legs`
+   2270 kg, `skiff_gear` 536 kg; the spring sums above match those weights to 0.5 %, so
+   the resting compression is still the equilibrium, not stiction holding the hull up.)
+   The margin comment knows the geometry from yet another side: with
+   the old 0.5 m margin "wheels bottomed out and the hull rode as a bump stop"
+   (`physics.cpp:37`).
 2. **Ordering is load-bearing.** `GetAccumulatedForce` must be read before the ground
    applies its own share or "a read inside either one would have the ground cancel its own
    hold" (`vehicle.cpp:5243`, with the read itself at `physics.cpp:460`), and Bullet clears
@@ -179,10 +189,16 @@ should be driven by wanting clusters, not by wanting a joint.
 - Fix the stale per-part-body comment (`vehicle.cpp:32`). **done here**
 - Add one line to DESIGN.md saying what Bullet is and is not, so the question stops
   needing to be asked. **done here**
-- Filed: #1195 (three unrelated friction coefficients). Two seams worth a look and not yet
-  filed: the bottom-out double-support above, and the uncommented
-  `setApplySpeculativeContactRestitution(true)` at `physics.cpp:183`. The missing CCD is not
-  a bug — it is warp working as designed — but it is why `vehicle.cpp:9038` exists.
+- Filed: #1195 (three unrelated friction coefficients), and the uncommented
+  `setApplySpeculativeContactRestitution(true)` at `physics.cpp:183` — which turns out to
+  be inert here: that flag only acts on Bullet's *predictive* manifolds, and those exist
+  only when a body has a CCD motion threshold (`btDiscreteDynamicsWorld.cpp:863`), which we
+  never set, and no collision object here has restitution above Bullet's default 0
+  (`grep -rn Restitution src/` → one hit, the flag itself). So the line is either a
+  leftover or a bet on a future where parts author bounce; either way it should say so. The
+  missing CCD is not a bug — it is warp working as designed — but it is why
+  `vehicle.cpp:9038` exists. The bottom-out double-support seam above is #1166's territory;
+  commented there rather than filed twice.
 
 ## Re-deriving the claims
 
