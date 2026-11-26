@@ -203,8 +203,7 @@ void tick(Game &g) {
         if(g.ship) {
             g.ship->clearThrust();
             g.ship->clearRotCmd();
-            g.ship->clearRcs();
-            g.ship->setPrecisionDim(false);   // #1164: same per-tick rule as the stick
+            g.ship->clearRcs();   // #1164: the precision dim rides with this release
         }
         /* The suit's half of that rule (#215). A kerbal's laws run per substep for
            EVERY live hull, but its control state is armed once a tick for one ship
@@ -267,11 +266,15 @@ void tick(Game &g) {
             bool game_running = (g.time_accel > 0);
             if(g.ship && curScene(g).pilot) {
             /* #1164: the precision dim. Alt cuts this hull's RCS AUTHORITY for this
-               tick only -- cleared at the top of every tick beside the stick -- and
-               it cuts authority rather than the command because the RCS keys carry a
-               sign, not an amount. Not armed on a suit: a kerbal's jets are not a
-               ring this gate reaches (no rcsNoz rows), so a readout saying "dimmed"
-               there would describe nothing. */
+               tick only -- released by clearRcs() at the top of the tick, beside the
+               demand it rides on -- and it cuts authority rather than the command
+               because the RCS keys carry a sign, not an amount. Not armed on a suit:
+               a kerbal's jets are not a ring this gate reaches (no rcsNoz rows), so a
+               readout saying "dimmed" there would describe nothing. Deliberately NOT
+               gated on game_running like the Command calls beside it: a paused sim runs
+               no forces, so arming changes nothing there, while the Systems row saying
+               "held" while the player pauses to line up an approach is the whole point
+               of the row. */
             if(!g.ship->isEva()) {
                 g.ship->setPrecisionDim(slotActive.held(Slot::PrecisionDim));
             }

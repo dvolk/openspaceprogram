@@ -250,6 +250,18 @@ void settings_read(const nlohmann::json &j, SettingsData &s) {
                     mods = e["mods"].get<int>();
                 }
                 if(sc < 0 || sc >= SDL_SCANCODE_COUNT) { continue; }
+                /* #1164: Alt is no longer a bindable modifier -- the matcher strips it
+                   out of the pressed mask, so any Alt chord in the file (and every one
+                   in the wild predates the change, because the capture used to record
+                   it) would REPLACE the slot's plain default with a binding that can
+                   never fire, while the Controls row went on printing it as if it
+                   worked. Drop the entry and say so; a slot left with nothing valid
+                   keeps the defaults, which is the rule a few lines below. */
+                if(mods & KMOD_PRECISION) {
+                    printf("[settings] %s: dropped an Alt binding -- Alt is the "
+                           "precision key now (#1164)\n", slotName(slot));
+                    continue;
+                }
                 binds.push_back(KeyBind{(SDL_Scancode)sc,
                                         (Uint16)(mods & KMOD_RELEVANT)});
             }

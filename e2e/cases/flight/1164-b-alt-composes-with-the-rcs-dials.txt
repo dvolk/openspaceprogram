@@ -1,0 +1,33 @@
+NAME alt-composes-with-the-rcs-dials
+CLAIM Alt's third multiplies the Systems dials rather than replacing them: a hull dialed to 50 % and held with Alt asks a sixth, and the pointing rows take the same two cuts (#1164, #1067, #1124).
+KIND invariant
+# Three runs of the same hull, and the middle two are already pinned elsewhere:
+#   full authority (flight/110):        cmd 120 N, 60 N a bell, live rcs=138/0/69
+#   --rcs-frac 0.5 (flight/1067-a):     cmd 60 N, 30 N a bell, live rcs=138/0/104
+#   Alt held (flight/1164-a):           cmd 40 N, 20 N a bell, live rcs=46/0/38
+#   BOTH (this case):                   cmd 20 N, 10 N a bell, rcs=46/0/42
+# 20 is 120 x 0.5 x 1/3, so the dim rides the dial rather than overriding it -- the whole
+# design point, and the one a key binding alone cannot show. The bell newtons say the same
+# thing from the hardware end: 10 N each, where the dial alone leaves 30 and Alt alone 20.
+#
+# The pointing columns take both cuts too, which is why they are NOT a simple product of
+# the runs above. The roll figure 46 is a third of the ring's 138 N m -- translation spends
+# nothing about roll, so only the dim reaches it -- while the yaw figure is a third of what
+# the SMALLER 20 N ask leaves for pointing: 138 - 69 x (20/120) = 126.5, and a third of that
+# is 42. A third of the dial-only 104 would be 35, and a third of flight/110's 69 would be
+# 23; neither is what the row says, because #1067's effect (dimming the keys GROWS the
+# pointing figure) composes with #1164's dim rather than cancelling it. The hardware row
+# stays 138/0/138 in every run: two permissions, one ring (#595).
+ARGS --time-accel 1 --sim-steps 480 --startship rcs_box_pair,res/ships/rcs_box_pair.json,Kerbin,inertial-orbit --att-log --drag-log --steering-log --rcs-frac 0.5 --sim-press 2000,3000,N,2000,3000,LALT
+EXPECT [rcs] cmd=(20 0
+EXPECT ach=(20 0 -0)N lim=50% prec=33%
+CHECK "box_l[-Z]=10N box_r[-Z]=10N" in out
+CHECK "box_l[-Z]=20N" not in out
+CHECK "box_l[-Z]=30N" not in out
+CHECK "box_l[-Z]=60N" not in out
+CHECK re.search(r'\[steerlog\][^\n]*rcs=46/0/42 rcs_hw=138/0/138', out)
+CHECK re.search(r'\[steerlog\][^\n]*rcs=138/0/138 rcs_hw=138/0/138', out)
+CHECK len([a for a in att if 3.0 <= a["t"] <= 5.0]) == 3
+CHECK max(a["wnorm"] for a in att) < 0.02
+FORBID error:
+FORBID FAILED

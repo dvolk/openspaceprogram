@@ -3684,10 +3684,15 @@ void drawUIReadouts(Game &g) {
            gets a line rather than a widget -- and the line only exists while the key
            IS held. Both sliders keep reading the hull's own dial; without this row,
            a hull that shoves a third as hard as the sliders promise has nothing on
-           screen to say why (the [rcs] trace prints prec= for the same reason). */
+           screen to say why (the [rcs] trace prints prec= for the same reason).
+           Name the key from the slot's own bindings rather than writing "Alt": the
+           row is rebindable, and a readout that names the wrong key is a readout a
+           player stops trusting. Same shape as the Brakes row's key note above. */
         if(ship->precisionDim() != 1.0) {
+            const auto &pd = g.binds.perSlot[(size_t)Slot::PrecisionDim];
             ImGui::TextColored(ImVec4(0.55f, 0.85f, 1.0f, 1.0f),
-                               "Alt held: RCS at %.0f %% of both limits above",
+                               "%s held: RCS at %.0f %% of both limits above",
+                               pd.empty() ? "Precision key" : bindLabel(pd[0]).c_str(),
                                ship->precisionDim() * 100.0);
         }
         /* The fourth door (#768): the nozzles. A hull whose only steering is its gimbals
@@ -3747,7 +3752,14 @@ void drawUIReadouts(Game &g) {
         }
     });
     drawWin(g, W_Controls, [&] {
-        ImGui::Text("Click rebind, then press a key (or Shift/Ctrl/Alt + key) to bind it.");
+        ImGui::Text("Click rebind, then press a key (or Shift/Ctrl + key) to bind it.");
+        /* Alt is off the menu: the matcher ignores it as a modifier so that holding it
+           leaves every plain flight key armed (#1164), so a chord written with Alt would
+           be a binding that never fires -- settings_read drops the ones old files left
+           behind. Reserving it is a rule about the matcher, not about where the dim is
+           bound, so it still holds after a rebind below. */
+        ImGui::TextDisabled("Alt is reserved for the precision dim: rebind that row's key, "
+                            "but Alt itself binds nothing.");
         ImGui::Spacing();
         const char *groupNames[(int)SlotGroup::GROUP_COUNT] = {
             "Game (one-shot)",

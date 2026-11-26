@@ -14,8 +14,9 @@
 #include <string>
 #include <vector>
 
-// LShift/RShift (and L/R Ctrl, Alt) are DISTINCT: a binding names the exact
-// side. SDL_KMOD_SHIFT is L|R -- a value no single press produces.
+// LShift/RShift (and L/R Ctrl) are DISTINCT: a binding names the exact side.
+// SDL_KMOD_SHIFT is L|R -- a value no single press produces. Alt names no side of
+// anything any more: it is reserved for the precision dim below (#1164).
 static const Uint16 KMOD_RELEVANT = SDL_KMOD_SHIFT | SDL_KMOD_CTRL | SDL_KMOD_ALT;
 
 /* Alt (either side) is RESERVED for the precision dim (#1164), so it is stripped

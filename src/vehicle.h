@@ -2726,10 +2726,14 @@ protected:
                                and route that whole request back through it
          markRcsBurned()       a thruster that actually fired (pods, the suit's jets)
          clearRotCmd()         the per-tick release of the stick and of held KillRot
-         clearRcs()            the per-tick release of the translation demand
+         clearRcs()            the per-tick release of the translation demand, and of
+                               the #1164 precision dim that rides on it
          releaseControl()      handing the ship to another vessel: it releases the
                                demand too, because the per-tick clearRcs() only runs
                                for the ACTIVE ship (#580)
+         setPrecisionDim()     #1164: Alt's dim on this hull's RCS authority; public
+                               because its writer is the tick's pilot block, and it is
+                               released by clearRcs() rather than by a second call site
        Protected, not private, because Kerbal IS-A Vehicle and reuses the rotation and
        RCS laws (eva.h) -- so this stops a stranger, not a subclass, and the suit writes
        through the doors above rather than the fields. That is the honest limit of the
@@ -2747,11 +2751,14 @@ protected:
        rcs_attitude_frac. It multiplies authority rather than the command because
        the RCS keys are sign-only -- ShipCmd(RcsNose, +1) has no amount to turn
        down -- so the only thing a dim can reach is what the rings are allowed to
-       spend. Per-tick pilot intent like stick[], NOT a saved dial: the tick writes
-       1.0 whenever the key is not held, and the Systems sliders keep saying what
-       the hull is set to. kPrecisionDim is the depth of the dim -- a third, since
-       an approach wants the same ring gentler, not off, and the dials still scale
-       the result. */
+       spend. Per-tick pilot intent like stick[], NOT a saved dial: clearRcs()
+       releases it with the translation demand -- which is also releaseControl()'s
+       handover, so a hull that stops being the active one cannot keep a third on it
+       (#580's shape: applyRcsForce runs for every live hull off the rails, not just
+       the piloted one) -- and the pilot block re-arms it each tick. The Systems
+       sliders keep saying what the hull is set to. kPrecisionDim is the depth of the
+       dim -- a third, since an approach wants the same ring gentler, not off, and the
+       dials still scale the result. */
     static constexpr double kPrecisionDim = 1.0 / 3.0;
     double precision_frac = 1.0;
     SlewMode slew = SlewNone;              // ENGAGED this tick -- see slewMode()

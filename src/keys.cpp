@@ -124,8 +124,10 @@ KeyBindings::KeyBindings() { resetDefaults(); }
 /* Exact-modifier rule: relevantMods(pressed) == binding. A plain binding (mods 0)
    therefore fires only with no Shift/Ctrl held. Alt is NOT relevant (#1164): it is
    the precision dim, so WASD/T/N/I stay armed while the pilot holds it. The cost is
-   that an Alt chord (a hand-edited settings.json entry) can never fire -- Alt has
-   no binding to chord with. */
+   that an Alt chord can never fire -- relevantMods takes Alt out of the value a
+   binding is compared against, so nothing can match one -- which is why settings_read
+   drops such an entry rather than leaving a slot bound to a key that will never
+   answer. */
 Uint16 relevantMods(Uint16 mods) {
     return (mods & KMOD_RELEVANT) & ~KMOD_PRECISION;
 }

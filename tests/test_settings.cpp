@@ -165,6 +165,26 @@ int main() {
     assert(hasBind(tk.keybinds, Slot::Thrust, SDL_SCANCODE_T, 0));   // default kept
     assert(hasBind(tk.keybinds, Slot::KillRot, SDL_SCANCODE_X, 0));  // default kept
 
+    /* 5c) #1164 reserved Alt as the precision key, and the matcher stopped counting it
+       among the pressed modifiers. An Alt chord in a settings.json is therefore a DEAD
+       binding, and a dead binding here is worse than a typo: the file REPLACES the
+       slot's plain default, so the Controls row prints "LAlt+W" while pitch never
+       happens. Files like that exist -- the rebind capture used to record exactly them.
+       The loader drops such an entry: a slot whose whole list is Alt chords keeps its
+       defaults (nothing was written), and a mixed list keeps what can actually fire. */
+    SettingsData altAll;
+    settings_read(nlohmann::json::parse(
+        R"({"keybinds": {"pitch_up": [{"sc": 26, "mods": 256}]}})"), altAll);
+    assert(hasBind(altAll.keybinds, Slot::PitchUp, SDL_SCANCODE_W, 0));   // default stands
+    for(const KeyBind &b : altAll.keybinds.perSlot[(size_t)Slot::PitchUp]) {
+        assert(!(b.mods & KMOD_PRECISION));
+    }
+    SettingsData altMix;
+    settings_read(nlohmann::json::parse(
+        R"({"keybinds": {"pitch_up": [{"sc": 26, "mods": 256}, {"sc": 22, "mods": 0}]}})"), altMix);
+    assert(altMix.keybinds.perSlot[(size_t)Slot::PitchUp].size() == 1);
+    assert(hasBind(altMix.keybinds, Slot::PitchUp, SDL_SCANCODE_S, 0));  // the live one survived
+
     /* 5b) #1148 moved the brackets -- and a settings.json written BEFORE it is a trap
        if replayed verbatim: cam_speed_up/down would put ']' and '[' back on the camera
        ladder while prev_ship, a slot that file never heard of, keeps the new '['

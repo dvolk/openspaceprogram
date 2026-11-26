@@ -1,32 +1,46 @@
 NAME alt-holds-the-ring-at-a-third
-CLAIM Holding Alt cuts RCS authority to a third -- the translation ask AND the pointing rows -- without re-rating the ring (#1164).
+CLAIM Holding Alt cuts RCS authority to a third -- the translation ask AND the pointing rows -- without re-rating the ring, and letting go brings the whole ring back (#1164).
 KIND invariant
-# rcs_box_pair again, because flight/1067-a already pins it at full authority: a held
-# N asks 120 N (two bells, one per box, along -Z) and each bell spends 60 N, with the
-# live [steerlog] pointing figure reading 138/0/69 while the ring's HARDWARE figure is
-# 138/0/138. Hold Alt over the same window and every permission shrinks by the same
-# third: cmd 40 N, each bell 20 N, the live rcs= row 46/0/38. The hardware row does NOT
-# move, which is the half the newtons cannot show on their own -- a dim that reached the
-# bells' RATINGS would print 46/0/46 there too, and the hull would then be a weaker ring
-# rather than a restrained one (#595's lesson, quoted by the #1124 dial case).
+# rcs_box_pair, whose full-authority figures flight/110-rcs-box-pair pins: a held N asks
+# 120 N (two bells, one per box, along -Z) and each bell spends 60 N, while [steerlog]'s
+# live pointing figure reads 138/0/69 against a ring HARDWARE figure of 138/0/138.
 #
-# THE KEY CONTRACT, which is the other half of the ticket: Alt is a plain binding of its
-# own (Slot::PrecisionDim), not a modifier chord, because the exact-modifier rule means a
-# chord would disarm WASD/T/N/I for the whole time it is held -- the old "Alt parks the
-# vessel keys". The N key press and the Alt press share the window below, and the [rcs]
-# rows prove both landed: the ask exists (so N fired) and it is a third (so Alt fired).
+# Hold Alt over the first half of the press and permission shrinks, not hardware:
+# cmd 40 N, 20 N a bell, prec=33% on the row, and the live rcs= row 46/0/38. The roll
+# column is exactly a third of 138 because translation spends nothing about roll. The yaw
+# column is NOT a third of the 69 above: the smaller ask leaves MORE of the yaw row for
+# pointing -- 115 rather than 69 -- and a third of 115 is 38. That is #1067's own effect
+# (dial the keys to 50 % and yaw authority GROWS, 138/0/104) seen from the other side, and
+# it is why the hardware row is the figure to trust here: 138/0/138 in both runs, so the
+# hull has the same ring and is merely being held back. A dim that reached the bells'
+# RATINGS would print 46/0/46 there and the case would go red (#595's lesson).
+#
+# THE KEY CONTRACT is the other half of the ticket. Alt is a plain binding of its own
+# (Slot::PrecisionDim), not a modifier chord, because the exact-modifier rule means a
+# chord would disarm WASD/T/N/I for the whole time it was held -- the old "Alt parks the
+# vessel keys" that flight/1069's Settings note used to document. N is held here for
+# 2000->5000 ms and Alt only for 2000->4000 ms, so the SAME key press answers at 40 N and
+# then at 120 N with nothing touched but the modifier: the dim follows the key, not the
+# press it happened to share with a flight key. N pressed again at 6000 ms is a second,
+# clean full-authority window.
 # tests/test_keys.cpp pins the matching rule itself, including Shift and Ctrl chords
-# surviving an Alt held over them.
-ARGS --time-accel 1 --sim-steps 480 --startship rcs_box_pair,res/ships/rcs_box_pair.json,Kerbin,inertial-orbit --att-log --drag-log --steering-log --sim-press 2000,3000,N,2000,3000,LALT
+# surviving an Alt held over them, and tests/test_settings.cpp pins the loader refusing an
+# Alt chord left over in an old settings.json.
+ARGS --time-accel 1 --sim-steps 480 --startship rcs_box_pair,res/ships/rcs_box_pair.json,Kerbin,inertial-orbit --att-log --drag-log --steering-log --sim-press 2000,3000,N,2000,2000,LALT,6000,1000,N
 EXPECT [rcs] cmd=(40 0
 EXPECT ach=(40 0 -0)N prec=33%
+# The release half: the same held key, one second after Alt came up.
+EXPECT [rcs] cmd=(120 0
 CHECK "box_l[-Z]=20N box_r[-Z]=20N" in out
-CHECK "box_l[-Z]=60N" not in out
-CHECK "cmd=(120 0" not in out
+CHECK "box_l[-Z]=60N box_r[-Z]=60N" in out
+# Every dimmed row spends 20 N a bell and every undimmed row spends 60: no row may carry
+# a third of the newtons with no prec= on it, or the marker and the spend are two numbers.
+CHECK all(('prec=33%' in r) == ('box_l[-Z]=20N' in r) for r in re.findall(r'\[rcs\][^\n]*', out))
+CHECK all('box_l[-Z]=60N' in r for r in re.findall(r'\[rcs\][^\n]*', out) if 'prec=' not in r)
 CHECK len([r for r in re.findall(r'\[rcs\][^\n]*prec=33%', out)]) >= 2
 CHECK re.search(r'\[steerlog\][^\n]*rcs=46/0/38 rcs_hw=138/0/138', out)
 CHECK re.search(r'\[steerlog\][^\n]*rcs=138/0/138 rcs_hw=138/0/138', out)
-CHECK len([a for a in att if 3.0 <= a["t"] <= 5.0]) == 3
+CHECK len([a for a in att if 3.0 <= a["t"] <= 7.0]) == 5
 CHECK max(a["wnorm"] for a in att) < 0.02
 FORBID error:
 FORBID FAILED

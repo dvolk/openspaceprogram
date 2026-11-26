@@ -5566,11 +5566,22 @@ void Vehicle::applyRotationForce(double h) {
 }
 
 /* The tick's release: no demand and no claim of having burned. The REQUEST goes
-   with it, or a key released last tick keeps asking through this one. */
+   with it, or a key released last tick keeps asking through this one.
+   #1164's precision dim is released HERE as well, and the honest reason is the
+   handover rather than the tick: the pilot block re-arms the dim from the key state
+   EVERY tick, so for the hull the player owns a released Alt is already a full-authority
+   tick with or without this line (measured -- deleting it leaves flight/1164-a green,
+   which is why its release pin belongs to this comment and not to a claim that the line
+   is what brings 120 N back). clearRcs is what covers the hulls the pilot block does NOT
+   run for: releaseControl()'s handover -- #580's lesson that applyRcsForce runs for every
+   live hull off the rails, not only the piloted one -- and the suit's disarm (eva.cpp).
+   Without it, a hull that stopped being the active one would keep a third on its rings
+   until something re-armed them. */
 void Vehicle::clearRcs() {
     rcsDir = glm::dvec3(0.0);
     rcsRequest = glm::dvec3(0.0);
     rcsFiring = false;
+    precision_frac = 1.0;
 }
 
 glm::dvec3 Vehicle::rcsWorldDir() const {

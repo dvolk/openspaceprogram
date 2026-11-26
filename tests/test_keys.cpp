@@ -193,14 +193,24 @@ int main() {
     key[SDL_SCANCODE_LALT] = false;
     key[SDL_SCANCODE_T] = false;
 
-    // An Alt chord can be recorded but never fires: Alt has no binding to chord with,
-    // so settings.json is the only way to make one. Better dead than ambiguous.
+    /* An Alt chord can never fire: relevantMods takes Alt out of the value a binding is
+       compared against, so nothing matches it -- not the Alt press, and not the plain
+       press either (the chord's mods are not 0). settings_read drops such an entry
+       rather than leaving a slot bound to a key that will never answer, which
+       tests/test_settings.cpp 5c pins; this is the matching rule's own half. The key
+       state has to be LIVE for the held asserts to mean anything -- with T up,
+       slotHeld is false whatever the modifier rule does. */
     KeyBindings kbAlt;
     kbAlt.perSlot[(size_t)Slot::Thrust].clear();
     kbAlt.perSlot[(size_t)Slot::Thrust].push_back(KeyBind{SDL_SCANCODE_T, SDL_KMOD_LALT});
+    key[SDL_SCANCODE_T] = true;
+    assert(slotHeld(Slot::Thrust, key, 0, kb));                    // the plain map arms T
+    assert(!slotHeld(Slot::Thrust, key, SDL_KMOD_LALT, kbAlt));    // not with Alt down
+    assert(!slotHeld(Slot::Thrust, key, 0, kbAlt));                // nor with nothing down
     assert(!slotFired(Slot::Thrust, SDL_SCANCODE_T, SDL_KMOD_LALT, kbAlt));
-    assert(!slotHeld(Slot::Thrust, key, SDL_KMOD_LALT, kbAlt));
+    assert(!slotFired(Slot::Thrust, SDL_SCANCODE_T, 0, kbAlt));
     assert(!slotSimKey(Slot::Thrust, SDL_SCANCODE_T, kbAlt));
+    key[SDL_SCANCODE_T] = false;
 
     // 5) slotSimKey: a synthetic (modifier-less) --sim-press key backs a
     //    plain binding, but not a combo one.

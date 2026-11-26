@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 483 |
+| `invariant` | a behaviour or a player route the game must keep | 484 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 57 |
 | `harness` | CLI/test-engine plumbing, not game spec | 18 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **562** |
+| | **total** | **563** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -18,7 +18,7 @@ paces a run: how much e2e a change deserves is the caller's
 judgement. Select by number, name or path, e.g.
 `python3 e2e/run.py save/172 262`.
 
-## flight (186)
+## flight (187)
 
 | case | kind | pins |
 |---|---|---|
@@ -206,7 +206,8 @@ judgement. Select by number, name or path, e.g.
 | `flight/1158-a-legs-stand-close-to-their-feet.txt` | golden | A landed hull's drawn footpads rest within 0.06 m of the ground, on suspension that has neither gone slack nor reached its bump stops. |
 | `flight/1158-b-gear-stands-close-on-the-runway.txt` | golden | A geared hull's drawn tyres touch the runway within 0.1 m, with suspension stroke left over. |
 | `flight/1158-c-short-strut-catches-a-hop.txt` | golden | A legged hull that hops off its pads and comes down at 6 m/s does not reach its bump stops, tip, or keep bouncing. |
-| `flight/1164-a-alt-dims-rcs-authority.txt` | invariant | Holding Alt cuts RCS authority to a third -- the translation ask AND the pointing rows -- without re-rating the ring (#1164). |
+| `flight/1164-a-alt-dims-rcs-authority.txt` | invariant | Holding Alt cuts RCS authority to a third -- the translation ask AND the pointing rows -- without re-rating the ring, and letting go brings the whole ring back (#1164). |
+| `flight/1164-b-alt-composes-with-the-rcs-dials.txt` | invariant | Alt's third multiplies the Systems dials rather than replacing them: a hull dialed to 50 % and held with Alt asks a sixth, and the pointing rows take the same two cuts (#1164, #1067, #1124). |
 | `flight/1184-parked-lander-holds-at-warp-10.txt` | invariant | A legged hull parked on the pad stays parked when time accelerates: the wind pushes on it and its footpads hold it. |
 
 ## crew (43)
