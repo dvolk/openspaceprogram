@@ -6,12 +6,13 @@
 # float is travel - W/(n*k) exactly (src/wheel.h "RIDE HEIGHT").
 #
 # The runway hull is where the trade-off bites, because a gear spring is soft (25000 N/m
-# against a leg's 60000) and the tyres carry the whole 658.65 kg skiff. At 0.15 the loaded main
-# compresses 0.106..0.109 m of its 0.15, so this hull could gain only ~38% of mass (to ~0.91 t)
-# before that wheel reaches its bump stop -- not the 74% an even three-way share (n*k*travel/g
-# = 1.15 t, i.e. 1.7x the skiff) suggests, because the measured share is uneven: the main
-# carries 42% of the hull on a third of the wheels. The last CHECK is what turns that red for a
-# heavier plane.
+# against a leg's 60000) and the tyres carry the whole 536.24 kg skiff. At 0.15 the loaded
+# main compresses 0.073 m of its 0.15, so this hull could nearly double (to ~1.10 t) before
+# that wheel reaches its bump stop -- close to the even three-way share (n*k*travel/g =
+# 1.15 t), because the three wheels now carry 33/34/33 % of the hull. They did not when this
+# case was written: on the 658.65 kg pre-#1171 hull the main took 42% on a third of the
+# wheels and the ceiling was only ~0.91 t. #1181 is the record of that mass change moving
+# the float column; the mass is pinned below so the next one says so here instead.
 #
 # 850-runway-rest already pins that the hull does not sink or slide here; this pins where the
 # drawn rubber meets the deck.
@@ -19,20 +20,24 @@ NAME gear-stands-close-on-the-runway
 CLAIM A geared hull's drawn tyres touch the runway within 0.1 m, with suspension stroke left over.
 KIND golden
 ARGS --time-accel 1 --sim-steps 400 --startship skiffgear,res/ships/skiff_gear.json,Kerbin,pad,site=ksc_runway
-ARGS --leg-log --no-paint --orbit-interval 0.5
+ARGS --leg-log --mass-log --no-paint --orbit-interval 0.5
 LIMIT 20
 EXPECT [leglog]
 FORBID error:
 CHECK len(leglog) >= 12
+# The mass the bands below are derived from (see 1158-a for why this is pinned).
+CHECK len(mass) >= 4
+CHECK all(m["ship"] == "skiffgear" and abs(m["mass"] - 536.24) < 1.0 for m in mass)
 # Three wheels (two mains + nose gear), all of them on the deck.
 CHECK all(r["kind"] == "gear" and r["gap"] is not None for r in leglog if r["t"] > 1.0)
-# Measured 0.041..0.077 m; at travel 0.2 the same hull reads 0.092..0.126 and at 0.4 it read
-# 0.29..0.33. The band is looser than the legs' because the gear spring is soft and the nose
-# wheel barely loads.
+# travel - W/(n*k) = 0.150 - 536.24*9.81/75000 = 0.080 m on an even share, and the least
+# loaded tyre gives the worst gap. Measured 0.077..0.082 m; at travel 0.4 this hull used to
+# read 0.29..0.33. The band is looser than the legs' because the gear spring is soft and the
+# hull is light, not because the measurement is softer.
 CHECK max(r["gap"] for r in leglog if r["t"] > 1.0) < 0.1
 # The drawn bottom is the drawn tyre: gear.obj spans z -0.35..0.65, wheel_radius = 0.35. This
 # is what ties the gap column to the mesh rather than to the part origin.
 CHECK all(abs(r["mesh"] - 0.35) < 0.005 for r in leglog)
 CHECK all(abs(r["gap"] + r["comp"] - r["travel"]) < 0.01 for r in leglog if r["comp"] > 0)
-# Loaded (0.073..0.109 m in) and not at the bump stop -- the load-headroom guard, see 1158-a.
+# Loaded (0.068..0.073 m in) and not at the bump stop -- the load-headroom guard, see 1158-a.
 CHECK all(0.03 < r["comp"] < r["travel"] - 0.02 for r in leglog if r["t"] > 1.0)

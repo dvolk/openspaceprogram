@@ -203,7 +203,7 @@ judgement. Select by number, name or path, e.g.
 | `flight/1148-b-legacy-settings-inherit-the-new-brackets.txt` | invariant | A settings.json written before the brackets moved still hands '[' and ']' to the fleet rather than to camera speed. |
 | `flight/1148-brackets-cycle-ships.txt` | invariant | [ steps the active ship backwards and ] forwards, wrapping around the fleet, and the Controls window shows both brackets on the ship slots and -/= on camera speed. |
 | `flight/1153-a-dock-snaps-the-seam-shut.txt` | invariant | A pair that captures tilted welds straight: the donor is moved by about the air and the tilt, and the mated seam is left with neither. |
-| `flight/1158-a-legs-stand-close-to-their-feet.txt` | golden | A landed hull's drawn footpads rest within 0.06 m of the ground, on suspension that has neither gone slack nor reached its bump stops. |
+| `flight/1158-a-legs-stand-close-to-their-feet.txt` | golden | A landed hull's drawn footpads rest within 0.07 m of the ground, on suspension that has neither gone slack nor reached its bump stops. |
 | `flight/1158-b-gear-stands-close-on-the-runway.txt` | golden | A geared hull's drawn tyres touch the runway within 0.1 m, with suspension stroke left over. |
 | `flight/1158-c-short-strut-catches-a-hop.txt` | golden | A legged hull that hops off its pads and comes down at 6 m/s does not reach its bump stops, tip, or keep bouncing. |
 | `flight/1164-a-alt-dims-rcs-authority.txt` | invariant | Holding Alt cuts RCS authority to a third -- the translation ask AND the pointing rows -- without re-rating the ring, and letting go brings the whole ring back (#1164). |

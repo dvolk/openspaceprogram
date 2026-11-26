@@ -4,38 +4,59 @@
 # to find out what that costs, because "it stands lower" is worthless if the hull then bottoms
 # out and tips.
 #
-# Stage after 0.5 s, throttle for 600 ms (T; the keys are SIM-clocked under --sim-steps,
-# #472): the racer_legs hull reaches alt 11.5 m and comes back at 6.04 m/s (t=2.4). It does not
-# tip -- worst nose.z 0.9927 through the rebound -- and it settles (|w| under 0.032 after t=5,
-# 0.0000 by the end, |v| 0.01 at the last row). The honest cost, which this case does not paper
-# over: peak compression is 0.145 of the 0.15 stroke, and rows with comp >= 0.14 keep appearing
-# between t=3.7 and t=5.4 as the hull rocks. At travel 0.2 the same arrival peaks at 0.186 of
-# 0.20 -- nearly spent too -- but the hull keeps bouncing: |w| over the t > 5 rows reaches 0.074
-# instead of 0.032, which is what reddens this case at the old travel. So this is a tuning pin,
-# not an invariant: it pins the stroke that leaves the hull rock-free after a hop.
+# Stage after 0.5 s, throttle for 500 ms (T; the keys are SIM-clocked under --sim-steps,
+# #472): the racer_legs hull reaches alt 11.9 m and comes back at 6.38 m/s (t=2.5). It does
+# not tip -- worst nose.z 0.9897 through the rebound -- and it settles (|w| under 0.032
+# after t=5, 0.0000 by the end, |v| 0.00 at the last row). The honest cost, which this case
+# does not paper over: peak compression is 0.138 of the 0.15 stroke, so a 6 m/s arrival uses
+# 92% of the landing stroke and leaves 12 mm before a leg is solid on its stop.
+#
+# The burn is 500 ms, not the 600 ms this case was written with, because the PREMISE is a
+# 6 m/s arrival and the hull got lighter under it: #1171 began weighing parts off their own
+# mesh and racer_legs went 2926.63 -> 2270.09 kg (#1181). At 600 ms the same ship now leaves
+# the pad and arrives at 9.03 m/s (a 5.2 m climb, apex 13.6 m), and that result is worth
+# recording even though it is not this case's: the hull dips to nose.z 0.9732 and spins up to
+# |w| 0.166 rad/s, still rocking at t=5.4, settling only by t=7. Same strut, same legs,
+# 3 m/s more. Shortening the burn keeps this case testing what its CLAIM says, instead of
+# loosening the bands around a different experiment.
+#
+# At travel 0.2 the 6 m/s arrival used to peak at 0.186 of 0.20 -- nearly spent too -- while
+# the hull kept bouncing: |w| over the t > 5 rows reached 0.074 instead of 0.032, which is
+# what reddened this case at the old travel. That comparison was measured on the heavier hull
+# and has not been re-run since #1171, so treat it as history rather than a pin. This is a
+# tuning pin, not an invariant: it pins the stroke that leaves the hull rock-free after a hop.
 #
 # And stroke length is NOT what saves a genuinely bad landing: measured arrivals of 15.7 m/s
 # tip the hull (nose.z goes to -0.35..-0.42, |w| peaks 1.5..2.0 rad/s) at travel 0.20, 0.15 and
-# 0.13 alike. What a landing needs is a strut that stays spring-borne, not a longer one -- hence
-# #1166, which would take the float out of the picture entirely.
+# 0.13 alike -- again on the pre-#1171 hull, and the 9 m/s row above points the same way on the
+# current one. What a landing needs is a strut that stays spring-borne, not a longer one --
+# hence #1166, which would take the float out of the picture entirely.
 NAME short-strut-catches-a-hop
 CLAIM A legged hull that hops off its pads and comes down at 6 m/s does not reach its bump stops, tip, or keep bouncing.
 KIND golden
 ARGS --time-accel 1 --sim-steps 1200 --startship rl,res/ships/racer_legs.json,Kerbin,pad
-ARGS --leg-log --dbg-log --att-log --no-paint --orbit-interval 0.2
-ARGS --sim-press 500,0,SPACE,700,600,T
+ARGS --leg-log --dbg-log --att-log --mass-log --no-paint --orbit-interval 0.2
+ARGS --sim-press 500,0,SPACE,700,500,T
 LIMIT 40
 EXPECT [leglog]
 EXPECT [attlog]
 FORBID error:
-# It really flew: 2.6 m of climb over the run (spawn rest 8.9 m), and a fast arrival.
+# The mass the 500 ms burn was chosen for. The arrival speed IS a function of hull mass, so
+# a retune (#1171, which is what moved it 2926.63 -> 2270.09 kg) has to re-pick the burn
+# length; this line is what says so instead of leaving the hop silently harder (#1181).
+CHECK len(mass) >= 4
+CHECK abs(mass[0]["mass"] - 2270.09) < 0.5
+# The burn spends 5.7 kg of hydrazine, so the later rows are lighter by that much -- the pin
+# is on the spawn mass, which is what the 500 ms burn was chosen against.
+CHECK mass[-1]["mass"] < mass[0]["mass"]
+# It really flew: 3.5 m of climb over the run (spawn rest 8.4 m), and a fast arrival.
 CHECK max(d["alt"] for d in dbg) > 11.0
 CHECK max(d["v"] for d in dbg) > 5.0
 # The legs left the ground during the hop. gap is the drawn footpad's distance to the terrain
 # under the hull, and on a planet groundContact's analytic fall-through answers however far
-# away it is (7.8 m at the top of this hop), so a large gap IS the airborne row.
+# away it is (8.8 m at the top of this hop), so a large gap IS the airborne row.
 CHECK max(r["gap"] for r in leglog if r["gap"] is not None) > 1.0
-# The clamp never engaged: compression stayed under travel (peak 0.145 of 0.15), so the spring
+# The clamp never engaged: compression stayed under travel (peak 0.138 of 0.15), so the spring
 # was holding the hull rather than the leg sitting solid on its stop.
 CHECK all(r["comp"] < r["travel"] for r in leglog)
 # ... and the two columns are the real thing, not a degenerate read: the mesh pin is 1158-a's,
@@ -44,7 +65,7 @@ CHECK all(r["comp"] < r["travel"] for r in leglog)
 CHECK all(abs(r["mesh"] - 0.05) < 0.005 for r in leglog)
 CHECK max(r["comp"] for r in leglog) > 0.05
 CHECK all(abs(r["gap"] + r["comp"] - r["travel"]) < 0.01 for r in leglog if r["comp"] > 0)
-# Upright the whole way, including the rebound row (worst 0.9927).
+# Upright the whole way, including the rebound row (worst 0.9897).
 CHECK all(a["nose"][2] > 0.98 for a in att)
 # And it settles: no residual rock after the bounce, and standing still at the end.
 CHECK all(a["wnorm"] < 0.05 for a in att if a["t"] > 5.0)

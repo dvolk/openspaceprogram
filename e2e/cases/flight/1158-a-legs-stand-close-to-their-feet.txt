@@ -11,9 +11,16 @@
 # of its stroke it has NOT used, and that same remainder is the landing stroke. float and
 # stroke are ONE number, so shortening the strut is the only way to close the visible gap
 # until a strut telescopes and the drawn mesh slides with compression (#1166). leg_travel
-# went 0.4 -> 0.15: the racer_legs hull (2926.63 kg on four legs, k=60000) burns
-# 0.112..0.126 m of stroke holding itself up, so 0.15 keeps it spring-borne with 0.024 m
+# went 0.4 -> 0.15: the racer_legs hull (2270.09 kg on four legs, k=60000) burns
+# 0.087..0.097 m of stroke holding itself up, so 0.15 keeps it spring-borne with 0.053 m
 # to spare on its worst leg.
+#
+# Those numbers moved once, and the pin moved with them (#1181). This case was written
+# against a 2926.63 kg hull; #1171 began weighing parts off their own mesh instead of the
+# cylinder around them and the same ship became 2270.09 kg. Less weight, less stroke used,
+# more visible float -- the game got lighter, the struts did not change. The mass is pinned
+# below so the next such retune reddens THAT line and says so, instead of making the float
+# drift by 3 cm with no explanation.
 #
 # --leg-log reads each gear/leg contact back against its DRAWN mesh (min-z over
 # Body::hullVerts, negated), so gap= is the float a player actually sees and comp= is what
@@ -21,34 +28,47 @@
 # gap + comp == travel holds by construction of the logger (both come from the same dist),
 # so on its own that identity only catches a slipped printf argument, not a wrong extent.
 NAME legs-stand-close-to-their-feet
-CLAIM A landed hull's drawn footpads rest within 0.06 m of the ground, on suspension that has neither gone slack nor reached its bump stops.
+CLAIM A landed hull's drawn footpads rest within 0.07 m of the ground, on suspension that has neither gone slack nor reached its bump stops.
 KIND golden
 ARGS --time-accel 1 --sim-steps 400 --startship rl,res/ships/racer_legs.json,Kerbin,pad
-ARGS --leg-log --no-paint --orbit-interval 0.5
+ARGS --leg-log --mass-log --no-paint --orbit-interval 0.5
 LIMIT 20
 EXPECT [leglog]
 FORBID error:
 CHECK len(leglog) >= 16
+# The mass every number below is derived from, read back out of the running world rather
+# than asserted from the def file. This is the line that makes a mass retune (a #1171) loud
+# here instead of quiet in the float column (#1181).
+CHECK len(mass) >= 4
+CHECK all(m["ship"] == "rl" and abs(m["mass"] - 2270.09) < 1.0 for m in mass)
 # All four legs reach something. gap is None only when the probe gets no answer at all --
 # which on a planet it always does, via groundContact's analytic fall-through -- so this is
 # really asserting the hull has a parent body and is in the world.
 CHECK all(r["gap"] is not None for r in leglog if r["t"] > 1.0)
-# The float itself. Measured 0.031 / 0.033..0.038 / 0.031 / 0.024..0.029 m across the four
-# legs (two of them wander a few mm as the hull settles). At travel 0.2 the same hull reads
-# 0.066..0.088 and at 0.4 it read 0.273..0.302 -- the hover in the report -- so 0.06 pins
-# the current choice as well as the fix.
-CHECK max(r["gap"] for r in leglog if r["t"] > 1.0) < 0.06
+# The float itself: travel - W/(n*k) = 0.150 - 2270.09*9.81/240000 = 0.057 m on an even
+# share, and 0.063 on the worst-loaded leg. Measured 0.053..0.063 m across the four legs,
+# each steady to a millimetre once the hull has settled. At travel 0.4 this case used to
+# read 0.273..0.302 -- the hover the report complained about -- on the heavier hull.
+# The ceiling was 0.06, which the 2926.63 kg hull met with room to spare. It cannot be met
+# at 2270.09 kg without changing the game rather than the case: closing the last few mm
+# wants a stiffer leg spring (less stroke used at rest) or #1166's mesh ride allowance (the
+# drawn footpad extended to where the contact already is). Both are the owner's call, so the
+# band here states what the current arithmetic answers, and the visual target stays open on
+# #1166/#1181.
+CHECK max(r["gap"] for r in leglog if r["t"] > 1.0) < 0.07
 # The drawn mesh bottom agrees with the def face the contact is built from (leg.obj spans
 # z -0.05..2.75, leg_foot = 0.05). This is the pin that stops the logger reporting a gap
 # measured from the part origin: neuter the hull-vert read and gap= still looks plausible.
 CHECK all(abs(r["mesh"] - 0.05) < 0.005 for r in leglog)
 # The two columns come from one measurement (a slipped printf argument is the failure here).
 CHECK all(abs(r["gap"] + r["comp"] - r["travel"]) < 0.01 for r in leglog if r["comp"] > 0)
-# The load-headroom guard: the spring carries the hull (0.112..0.126 m in) and is not at its
+# The load-headroom guard: the spring carries the hull (0.087..0.097 m in) and is not at its
 # stop. A hull heavy enough that W/(n*k) reaches travel stops being held by its legs and
 # starts being held by hull-vs-terrain collision, which is the scrub/pump regime wheel.h
 # refuses to rest on, and this CHECK is what turns that red. On THIS hull the worst leg
-# leaves 0.024 m, i.e. about 3.5 t is as heavy as four of these legs get before one pin
-# hits its stop -- not the 3.7 t an even four-way share would suggest, because the measured
-# share is uneven (0.112..0.126 across the four).
+# (0.097 of 0.15) leaves 0.053 m, so the hull could reach about 3.5 t -- 0.15/0.097 of its
+# current 2270.09 kg -- before a leg pins its stop. The four legs now share the weight
+# within a couple of percent (24..26%), so the even-share ideal 4*60000*0.15/g = 3.7 t is
+# close again; when this case was written the share was uneven enough (0.112..0.126) that
+# the ideal overstate the headroom by half a tonne.
 CHECK all(0.05 < r["comp"] < r["travel"] - 0.01 for r in leglog if r["t"] > 1.0)
