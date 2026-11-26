@@ -30,7 +30,12 @@
 #include "wheel.h"     // the landing-gear ground law (wheel::force)
 #include "constants.h" // kSoiMargin, kShipGround*, kTerrainBand
 
-/* One rigid body per part, welded parent-first in the def's construction order.
+/* The part tree becomes ONE rigid body: a btCompoundShape of the part hulls at their
+   authored ship-local poses, so a part has a DERIVED pose and never a body of its own
+   (vehicle.h's "the ship as ONE rigid body"). Poses are resolved parent-first in the
+   def's construction order -- that is what this walk does, and nothing welds anything:
+   the era when every part was its own welded body is what the compound replaced
+   (physics.cpp:30-34, and reports/physics-vs-bullet2026_11_25 for the whole history).
    The catalog must outlive the ship (the partDefs point into it). */
 void build_ship_structure(Vehicle *ship, const ShipDef &def, Shader *partsshader)
 {
