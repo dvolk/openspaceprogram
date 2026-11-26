@@ -31,8 +31,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            g++ cmake make curl pkg-config python3 zip xz-utils dpkg-dev debhelper \
-            libgl1-mesa-dev libx11-dev libxext-dev libxcursor-dev libxi-dev \
+            build-essential g++ cmake make curl pkg-config python3 zip xz-utils dpkg-dev debhelper \
+            libgl1-mesa-dev libglu1-mesa-dev libx11-dev libxext-dev libxcursor-dev libxi-dev \
             libxfixes-dev libxrandr-dev libxrender-dev libxss-dev \
             libpulse-dev libasound2-dev \
             g++-mingw-w64-x86-64 binutils-mingw-w64-x86-64

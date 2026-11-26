@@ -8,7 +8,7 @@ Space sim inspired by [Pioneer](https://pioneerspacesim.net/) and Kerbal Space P
 
 ## Build from source/run
 
-    sudo apt-get install --no-install-recommends g++ cmake make curl pkg-config git libgl1-mesa-dev libx11-dev libxext-dev libxcursor-dev libxi-dev libxfixes-dev libxrandr-dev libxrender-dev libxss-dev libpulse-dev libasound2-dev
+    sudo apt-get install --no-install-recommends build-essential cmake curl pkg-config git libgl1-mesa-dev libglu1-mesa-dev libx11-dev libxext-dev libxcursor-dev libxi-dev libxfixes-dev libxrandr-dev libxrender-dev libxss-dev libpulse-dev libasound2-dev
 
     git clone https://github.com/dvolk/openspaceprogram
     cd openspaceprogram

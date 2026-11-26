@@ -244,7 +244,7 @@ echo "=== building GLEW (static, $GLEW_VER) ==="
 # (1..4), identical in every release.
 glew_have=$(awk -F' *= *' '/^GLEW_(MAJOR|MINOR|MICRO) /{v[n++]=$2}
                          END{printf "%s.%s.%s", v[0], v[1], v[2]}' \
-             middleware/glew/config/version 2>/dev/null)
+             middleware/glew/config/version 2>/dev/null || true)
 if [ "$glew_have" != "$GLEW_VER" ]; then
     glew_tgz=tmp/glew-$GLEW_VER.tgz
     if [ ! -f "$glew_tgz" ]; then
