@@ -7,8 +7,9 @@ angle both fail, quietly:
 
   * Asking `aoa=` on --startship (#1220) sets the SPAWN attitude only. Measured on xr2 at
     250 m/s: asks of -6, 0 and +6 all settle at AoA +3.1 deg, and only the t=1 row differs
-    (+2.0 / +2.7 / +3.3). The hull weathervanes to its zero-moment angle inside 2 s, which
-    is the correct physics -- but it means the ask is not an input to a polar.
+    (+2.0 / +2.7 / +3.3). The hull weathervanes to its zero-moment angle inside 2 s -- the
+    correct physics, and already written down in res/ships/README.md's recipe item 3 (#569)
+    -- which makes the ask useless as a polar input.
   * Latching kill-rot (X) does NOT freeze the angle either. It damps the rate, and the
     airframe's aero torque at an off-trim alpha is 20-40 kN m on a 4 t hull (0.5 rad/s^2),
     so the attitude still walks to the zero-moment angle: with X latched at 0 ms or 50 ms

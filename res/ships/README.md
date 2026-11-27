@@ -21,11 +21,11 @@ separate route now -- a `RUNWAY` site stands a hull horizontal on its gear
 | loading | 23.7 kg/m2 |
 | cruise | 40..42 m/s at 6.4..7.7 km once the phugoid damps (#585), +4.9 deg of angle of attack -- 47..50 m/s at 5.5..6.1 km in the pre-#686 air |
 | glide | sinks 5.4..5.8 m/s unpowered at that speed (6.5 m/s in the old air; sink goes as 1/sqrt(rho) too) |
-| L/D | 8.6 as this row was measured -- see the note under the glide table below: #699 moved the lift sum, and the same recipe re-derives to 7.66 today (7.17 if you charge the hull bill the `--drag-cd` 1.2 the force actually applies). Target >= 10 either way; the lever left is the hull bill -- span is banked, #567 |
+| L/D | **8.1, measured off the log** -- `--drag-log`'s `Ld=` column reads 8.07..8.13 in every settled window at AoA 4.7..4.8 deg (`e2e/aoa_polar.py --ship res/ships/skiff_trim.json`, 2026_11_27). The 8.6 in this row and the 8.64 in the comparison table below came from a wing-only analysis pass, so they sit ABOVE the whole-airframe figure rather than beside it; #694 asked for a log number and that is it. Target >= 10 either way; the lever left is the hull bill -- #558, and #1237 for the part that grows with angle -- span is banked, #567 |
 | static margin | +0.55 m |
 | roll | aileron pair on the wing, `roll` axis (563-roll-ailerons), and the pod's 100 N m wheel. 0.24 rad/s at full stick and 29-31 deg of bank: the span #567 bought cost roll authority (#588) |
 | stall (7 km) | 17.7 m/s (23.1 m/s in the pre-#686 air, which is the row #567/#543 quoted) |
-| bill at cruise | body 0.59 x 0.82 m2, wing profile 0.61 m2, induced 0.34 m2 |
+| bill at cruise | body `Cd 0.385 x 0.82 m2`, charged 0.38 m2 by the `--drag-cd` 1.2 the force applies; wing profile 0.60 m2; induced 0.33 m2. The 0.59 this row carried since 2026_11_07 is the PRE-#945 area-weighted mean -- the design audit still prints it as `cd 0.383 (was 0.584)`: under the upwind-most partition the pod owns 0.78 of the 0.81 m2 union and the tank behind it is `visA 0.04` |
 
 Those are `skiff_trim.json`'s numbers (`skiff.json` plus `"trim": 12` on both elevators
 and nothing else), measured 2026_11_07 on `flying-cruise` with `--drag-log` and no
@@ -35,11 +35,17 @@ of body plus 0.61 m2 of wing profile and 0.34 m2 of induced in every row. A glid
 always has an altitude in its answer, because it is sinking: those rows are 6.4..7.7 km,
 and the same hull reads slower still the lower it gets (#585 is why it has not settled
 yet). The row that did NOT move is L/D: 8.64 is a property of the airframe at 4.9 deg,
-and #686 changed the air, not the hull. Worth saying plainly that `--drag-log` does not
-print it -- the ratio these rows do imply, speed over sink, is 7.3 now and 7.4 then, and
-the whole-hull figure sits under the 8.64 because the hull bill is in it. The 8.64 came
-from an analysis pass rather than from the log, so the row is quoted on trust and is
-filed as #694 to pin it to something measurable.
+and #686 changed the air, not the hull. Measured again on 2026_11_27 through
+`e2e/aoa_polar.py` (trim 12, kill-rot latched at 50 ms so the angle is held, 400 s): the
+angle holds 4.70..4.80 deg, `--drag-log`'s `Ld=` reads **8.07..8.13** in every window past
+t = 60 s, and the bill is 0.38 + 0.60 + 0.33 m2. So the log CAN print the ratio -- #694's
+`Ld=` column is lift over the drag the air applies ALONG the flow, which is the ratio a
+glide ratio is meant to match -- and what it prints is 8.1, not 8.64; the hull bill is
+what puts a whole-airframe figure under a wing-only one. The ratio these rows used to
+imply, speed over sink, is not a reading of it at all: across those settled windows the
+speed swings 39.8..55.5 m/s against a sink that stays 5.2..5.35 m/s, so v/sink runs
+7.6..10.4 window to window while `Ld` holds 8.1. That is #585's phugoid still alive in the
+speed variable, not the airframe.
 The same command measured 47..50 m/s / 6.5 m/s / 5.5..6.1 km on 2026_11_02, in the air
 Kerbin wore then (one 5500 m scale height, rho 0.346 at 7 km). Both sets are in this file
 because a law change is judged against the design, and #686 was a world change: the
@@ -90,8 +96,11 @@ things were between them, both now measured -- `--drag-cd` 1.2 is missing from t
 `Cd x A` (6 %), and #699 found the bigger half: the lift sum left a control surface's
 deflection force out, which on a hull trimmed by a 12 deg tab is 13 % of the force holding
 it up. Since that fix the same recipe re-derives to 7.66 raw, 7.17 charged. The rows are
-left as they were measured so the sweep still compares like with like; which ratio gets
-re-measured into this column is #694's open call.
+left as they were measured so the sweep still compares like with like. Which ratio gets
+re-measured into this column is settled now (#694): `--drag-log`'s `Ld=` column is lift
+over the drag the air applies ALONG the flow -- the ratio a glide ratio is meant to match
+-- and on the shipped hull it reads 8.07..8.13 in every settled window at AoA 4.7..4.8 deg,
+against the 8.64 this table carries from the old analysis recipe.
 
 The last two rows are the sweep on #567 -- one 660 s bed each, the same altitude band --
 so their difference is the wing and nothing else, except that the middle row still has
@@ -188,6 +197,14 @@ should be built from this recipe and get its own row here.
    -- four lifting systems before #570, four after.
 5. **Section**: profile cd 0.010 (smooth), not 0.03 (the old faceted plate).
 6. Then measure and pin: L/D, cruise speed, static margin, stall margin.
+   `e2e/aoa_polar.py --ship res/ships/NEWSHIP.json --trims=-12,0,6,12` walks the elevator
+   trim and prints one row per held angle of attack -- Cd, the union area, the bill split
+   the force actually charges (`1.2 x Cd x A + Profile + Induced`), `Ld=`, SM and `|tau|`.
+   It sweeps TRIM rather than asking the bed for an angle because of item 3: `aoa=` on
+   `--startship` only sets the spawn attitude, and the hull rotates away from it inside a
+   second (#569), so an asked angle is not a polar input. `|tau|` a few hundred N m is the
+   proof a row is moment-balanced; 20-40 kN m means the hull is fighting the air and the
+   reading is the fight, not the shape (#1211 asked for this rig; #1237 is what it found).
 
 ## Landing gear (the ground route)
 

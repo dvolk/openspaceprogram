@@ -143,7 +143,10 @@ CHECK max(d["induced"] for d in drag if d.get("induced") is not None) > 0.75
 #   * |L| over the RAW printed bills: 8.16..8.91, median 8.68 -- the same statement 5 % high
 #     because it skips that multiplier.
 # So README's 8.6 is stale twice over now: it predates #699 and it reads the raw bills. Which
-# of these it should lead with is still #694's open call, not this case's. Worth knowing that
+# of these it should lead with was still open when this case was written; #694 has since
+# settled it on the logged Ld= (the skiff row now leads with 8.1, measured 2026_11_27 through
+# e2e/aoa_polar.py in settled windows at AoA 4.7..4.8 deg -- this case's 8.27 median is the
+# same ratio read 50 s into a run whose phugoid has not damped). Worth knowing that
 # #945 put the RAW ratio back on top of README's 8.6 (8.68) without anyone touching the file --
 # coincidence, and #694 should not read it as agreement.
 # The bound that would have caught #699: over EVERY row of this run -- hold, kick, fall
