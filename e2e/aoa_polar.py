@@ -130,6 +130,15 @@ def summarize(rows, t0, t1):
     return out
 
 
+def part_families(ship_path):
+    """Distinct part-name prefixes in a hull, for the 'nothing matched' message: a hull
+    steered by rudders or by body lift (liftbody.json) has no elevator to trim, and saying
+    so without naming what IS there just sends the reader back to the JSON."""
+    with open(ship_path) as f:
+        d = json.load(f)
+    return ", ".join(sorted({p["part"].split("_r")[0] for p in d["parts"]}))
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -158,6 +167,11 @@ def main():
     speeds = [float(x) for x in args.speeds.split(",")]
     kinds = tuple(k.strip() for k in args.trim_kinds.split(",") if k.strip())
     t0, t1 = (float(x) for x in args.window.split(","))
+    if not any(any(p["part"].startswith(k) for k in kinds)
+               for p in json.load(open(src))["parts"]):
+        sys.exit("aoa_polar: no part in %s matches --trim-kinds (%s); this hull is built "
+                 "from: %s" % (os.path.relpath(src, REPO), ",".join(kinds),
+                               part_families(src)))
 
     print("hull %s   bed %s   window t=%.0f..%.0f s   kill-rot latched at 50 ms   "
           "bill = %.1f x Cd x A + Profile + Induced"
@@ -171,10 +185,7 @@ def main():
                     "profile,induced,total_cdA,L,ld,sm,tau\n")
     for sp in speeds:
         for tr in trims:
-            path, name, touched = scratch_hull(src, tr, kinds)
-            if touched == 0:
-                print("%6g no pitch surfaces matched (%s)" % (tr, ",".join(kinds)))
-                continue
+            path, name, _ = scratch_hull(src, tr, kinds)
             rows = flight(game, path, name, args.bed, sp, args.steps, args.lever,
                           args.parts)
             if args.csv:
