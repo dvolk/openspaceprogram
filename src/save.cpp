@@ -822,7 +822,7 @@ static std::string validateShipParts(const SaveShip &s, const PartsCatalog &cat,
        refuse corruption where it is found rather than quietly load a state the game
        never wrote: a non-mode latches on wake, leaves the ship off the rails with
        nothing to aim at, and the player loses the ability to turn it. */
-    if(s.slew_request < 0 || s.slew_request > (int)SlewKillRot) {
+    if(!slewModeOk(s.slew_request)) {
         return "load: saved ship '" + s.name + "' latches autopilot mode "
                + std::to_string(s.slew_request) + ", which is not a mode";
     }

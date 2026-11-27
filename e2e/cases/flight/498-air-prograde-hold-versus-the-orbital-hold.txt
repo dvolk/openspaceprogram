@@ -1,0 +1,67 @@
+NAME air-prograde-hold-versus-the-orbital-hold
+CLAIM Latched to the AIR's prograde, a skiff spawned 8 deg off the wind puts its nose on the air and holds it there (Beta -0.0 deg on every row past t = 6 s, slew error 0.0025 rad); pressing Z at 20 s hands the same hull to the ORBIT's prograde and it settles 5.6 deg off the wind and stays there for a minute -- two holds, two aims, and only one of them is the direction a plane flies.
+KIND invariant
+# WHY THIS CASE EXISTS. #498's first half -- an air-relative marker and readout -- landed
+# months ago (flight/498-surface-prograde pins aprg= against prg=). The half that stayed
+# open was the HOLD: Z/B latch the CONIC's velocity, and inside an atmosphere on a rotating
+# body that vector is mostly the ground's own motion. Kerbin carries the sea-level surface
+# ~175 m/s, so a 48 m/s airframe's conic prograde points where the ground is going -- 31 deg
+# off a nose the aero law says is dead on the flow -- and the autopilot pulls the plane
+# sideways to chase it. This adds SlewAirPrograde / SlewAirRetrograde (Y, and Shift+Y; the
+# --autopilot hook names them air-prograde / air-retrograde) and pins what they do against
+# what Z does, in ONE run, on one hull, with one key press between them.
+#
+# WHY THE CONTRAST AND NOT JUST CONVERGENCE. The skiff is statically stable in yaw
+# (SideCp -2.28 m), so a skiff spawned 8 deg off the wind weathervanes to Beta = 0 on its
+# own in under 10 s with nothing latched -- on this hull, so does the XR-2. A case that only
+# asserted "Beta reaches 0" would pass with the new mode deleted, and a case that only
+# asserted "the latch has a target" would pass on the conic one. What is NOT vacuous here is
+# the pair: the air hold keeps the nose ON the air while tracking its own target to 0.0025
+# rad, and the conic hold takes the same hull OFF the air by 5.6 deg and still sits 44 deg
+# from its own target, because the aerodynamic weathervane and the latch disagree and the
+# drums are caught in between. That disagreement is the defect the ticket is about; the
+# air-relative latch is what removes it.
+#
+# MEASURED (this build, under the harness; Beta from [drag], E = the nose-to-target angle
+# from [slew], 200 air-prograde rows and 500 prograde rows):
+#   air-prograde  t= 0.1..20.0   E 0.1330 -> 0.0025 rad      Beta -3.6 at t=1, -0.0 from t=6
+#   Z pressed at t=20.0
+#   prograde      t=20.1..70.0   E 0.7719 -> 0.3427 -> 0.8043   Beta -6.1..-5.5 from t=22 on
+# The conic hold's E does not converge either way: the hull swings toward the target for a
+# few seconds (0.77 -> 0.34 by t=21), then the target -- which is the ground's motion, not
+# the plane's -- walks back off it (0.44 at t=30, 0.76 at t=45, 0.8043 at t=70 and still
+# rising). That is the "no convergence" the ticket measured as E 0.279 -> 0.919 over 4
+# minutes, on a shallower version of the same spawn.
+#
+# A row printed as `mode=air-prograde no-target` does not parse into [slew] at all, so the
+# row counts below double as "the air hold had a direction on every tick of its window" --
+# which is the gate render.cpp uses for the yellow marker (air at the COM, and an airspeed
+# at least kAoAFlowFloor), deliberately the same one so the icon and the hold cannot
+# disagree about whether there is a direction to point at.
+ARGS --time-accel 1 --startship skiff_trim,res/ships/skiff_trim.json,Kerbin,flying-cruise,yaw=8
+ARGS --sim-steps 4200 --drag-log --slew-log --no-paint --autopilot air-prograde
+ARGS --sim-press 20000,0,Z
+EXPECT [slew]
+# Not vacuous (#653): every all() below selects on a mode or a Beta that exists, so each
+# needs its own count in front of it.
+CHECK len([s for s in slew if s["mode"] == "air-prograde"]) >= 150
+CHECK len([s for s in slew if s["mode"] == "prograde"]) >= 300
+CHECK len([d for d in drag if d.get("beta") is not None]) >= 40
+# The air hold: nose on the air by t = 6 s and there ever after, and the law's own error
+# against the air-relative target down in the milliradians. The 0.02 rad ceiling on E is 8x
+# the measured figure and still 17x tighter than the conic hold's best, so it reddens if the
+# air target drifts off toward the conic one.
+CHECK all(abs(d["beta"]) < 0.4 for d in drag if d.get("beta") is not None and 6 <= d["t"] <= 19)
+CHECK all(s["E"] < 0.02 for s in slew if s["mode"] == "air-prograde" and s["t"] >= 6 and s["E"] is not None)
+# The orbit hold, same hull, one key press later: it puts the nose 5.6 deg off the wind and
+# holds it there, while never getting inside 0.34 rad of the thing it is aiming at. The Beta
+# floor is the player-visible half -- a plane whose autopilot makes it fly sideways -- and
+# 4.0 is 1.6 deg inside the measured -5.5..-6.1, so a hull that stopped sideslipping reddens
+# this rather than quietly proving the two holds had collapsed into one.
+CHECK all(d["beta"] < -4.0 for d in drag if d.get("beta") is not None and d["t"] >= 22)
+# Two ends of the same failure, both worth pinning: the hold never acquires its target
+# (0.3427 rad is the closest it ever comes, so 0.3 is a floor with 12% of slack), and once
+# the transient is over it is 0.7 rad -- 40 deg -- away and still drifting further.
+CHECK all(s["E"] > 0.3 for s in slew if s["mode"] == "prograde" and s["t"] >= 21 and s["E"] is not None)
+CHECK min(s["E"] for s in slew if s["mode"] == "prograde" and s["t"] >= 45 and s["E"] is not None) > 0.7
+FORBID error:

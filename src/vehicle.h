@@ -82,7 +82,17 @@ enum SlewMode {
        names plus the stick, and a pitch-program law had to re-implement the slew law
        outside the class that owns it. */
     SlewFree,
-    SlewKillRot      /* kill the spin */
+    SlewKillRot,     /* kill the spin */
+    /* The AIR's velocity rather than the conic's (#498). Inside an atmosphere on a
+       rotating body the conic's velocity is mostly the GROUND's own motion -- Kerbin
+       carries the sea-level surface ~175 m/s -- so a prograde hold aims an 80 m/s
+       airframe 16 deg off a nose the aero says is dead on the flow, and never
+       converges. These two aim at the vector the forces themselves use
+       (airRelativeVel), which is what render.cpp draws as the air prograde marker.
+       Appended rather than inserted: the latched mode is saved as an int (save.cpp),
+       so a new mode must not move the numbers an older save already wrote. */
+    SlewAirPrograde,
+    SlewAirRetrograde
 };
 
 /* One spelling of what a mode is CALLED (#616): the [slew] trace's mode= field and the
@@ -102,8 +112,18 @@ inline const char *slewModeName(SlewMode m) {
            and a nameless row cannot be told apart from a construction bug (#606). */
         case SlewFree:       return "free";
         case SlewKillRot:    return "killrot";
+        case SlewAirPrograde:   return "air-prograde";
+        case SlewAirRetrograde: return "air-retrograde";
     }
     return "slew";   // an int outside the enum, which Command() cannot produce
+}
+
+/* Is an int read from OUTSIDE the sim a mode at all? Two doors take one as a plain
+   number -- the save loader's stored latch and restoreSlewRequest() -- and both have
+   to ask the same question, so it lives here rather than spelled twice against the
+   last enumerator (which is what let the pair drift when a mode was added). */
+inline bool slewModeOk(int m) {
+    return m >= (int)SlewNone && m <= (int)SlewAirRetrograde;
 }
 
 

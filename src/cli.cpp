@@ -175,13 +175,15 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
     app.add_option("--autopilot", args.autopilot,
                    "Engage a slew mode on the active ship at startup: "
                    "prograde | retrograde | radial-out | radial-in | normal | "
-                   "anti-normal | kill-rot. A test hook -- in-game these are "
+                   "anti-normal | kill-rot | air-prograde | air-retrograde. "
+                   "A test hook -- in-game these are "
                    "the Autopilot window's toggles (clickable headless with "
-                   "--ui-click) plus Z/B for prograde/retrograde "
+                   "--ui-click) plus Z/B for prograde/retrograde and Y / Shift+Y "
+                   "for the air pair (#498)"
                    "(default: none)")
         ->check(CLI::IsMember({"prograde", "retrograde", "radial-out",
                                "radial-in", "normal", "anti-normal",
-                               "kill-rot"}));
+                               "kill-rot", "air-prograde", "air-retrograde"}));
     app.add_option("--sas-rate", args.sas_rate,
                    "Ceiling on how fast an attitude AUTOPILOT may swing the active "
                    "ship, deg/s (0 = unlimited, as fast as the hardware levers). The "

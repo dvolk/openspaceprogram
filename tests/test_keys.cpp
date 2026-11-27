@@ -91,6 +91,25 @@ int main() {
     assert(!slotSimKey(Slot::UndoStaging, SDL_SCANCODE_Z, kb));
     assert(slotGroup(Slot::UndoStaging) == SlotGroup::Game);
 
+    /* Air-relative prograde (#498). Y is plain and Shift+Y is the chord: every other
+       plain letter is taken in the flight group (C camera, V kerbal, U undock, P porkchop,
+       M surface map, G kerbal's grab), so the retrograde half goes on a modifier the way
+       ThrustLatch does. The mod mask is compared EXACTLY, so plain Y cannot fire the chord
+       slot and vice versa -- that is what keeps one key press meaning one latch. And a
+       chord is invisible to --sim-press (slotSimKey wants mods == 0), which is why the
+       e2e spelling of this pair is --autopilot air-prograde | air-retrograde. */
+    assert(hasPlain(Slot::SlewAirPrograde, SDL_SCANCODE_Y));
+    assert(!hasPlain(Slot::SlewAirRetrograde, SDL_SCANCODE_Y));
+    assert(hasCombo(Slot::SlewAirRetrograde, SDL_SCANCODE_Y, SDL_KMOD_LSHIFT));
+    assert(slotFired(Slot::SlewAirPrograde, SDL_SCANCODE_Y, 0, kb));
+    assert(!slotFired(Slot::SlewAirPrograde, SDL_SCANCODE_Y, SDL_KMOD_LSHIFT, kb));
+    assert(slotFired(Slot::SlewAirRetrograde, SDL_SCANCODE_Y, SDL_KMOD_LSHIFT, kb));
+    assert(!slotFired(Slot::SlewAirRetrograde, SDL_SCANCODE_Y, 0, kb));
+    assert(slotSimKey(Slot::SlewAirPrograde, SDL_SCANCODE_Y, kb));
+    assert(!slotSimKey(Slot::SlewAirRetrograde, SDL_SCANCODE_Y, kb));
+    assert(slotGroup(Slot::SlewAirPrograde) == SlotGroup::Flight);
+    assert(slotGroup(Slot::SlewAirRetrograde) == SlotGroup::Flight);
+
     /* 1e) Fleet cycling (#1148): the brackets belong to the fleet -- '[' back, ']'
        forward, both wrapping -- and F6 still steps forward next to ']'. Camera speed
        moved to -/= to free them; the reason it was put on the brackets in the first

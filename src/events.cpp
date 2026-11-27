@@ -385,6 +385,17 @@ void flightKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
     if(slotFired(Slot::SlewRetrograde, ksc, kmod, g.binds) && !repeat) {
         toggleSlew(g, SlewRetrograde, "Retrograde");
     }
+    /* The same two against the AIR (#498). Inside an atmosphere the conic pair above
+       aims at the ground's own motion -- Kerbin carries the sea-level surface ~175 m/s,
+       which swamps an 80 m/s airframe and puts a prograde hold 16 deg off a nose the
+       aero says is dead on the flow. bindingMatches compares mod masks exactly, so the
+       Shift+Y chord cannot also fire plain Y. */
+    if(slotFired(Slot::SlewAirPrograde, ksc, kmod, g.binds) && !repeat) {
+        toggleSlew(g, SlewAirPrograde, "Air prograde");
+    }
+    if(slotFired(Slot::SlewAirRetrograde, ksc, kmod, g.binds) && !repeat) {
+        toggleSlew(g, SlewAirRetrograde, "Air retrograde");
+    }
     // The latch keeps engines lit with the key released; a plain thrust press
     // takes manual control back.
     if(slotFired(Slot::ThrustLatch, ksc, kmod, g.binds)) {

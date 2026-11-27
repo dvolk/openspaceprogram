@@ -3900,6 +3900,15 @@ void drawUIReadouts(Game &g) {
         toggle(SlewRadialIn, "Radial-in");
         toggle(SlewNormal, "Normal");
         toggle(SlewAntiNormal, "Anti-normal");
+        /* The air pair (#498): the same hold against the AIR rather than the conic.
+           Outside an atmosphere there is no air-relative velocity with a direction, so
+           the row says so instead of lighting up on a target the slew law will refuse
+           ([slew] prints mode=air-prograde no-target). */
+        toggle(SlewAirPrograde, "Air prograde");
+        toggle(SlewAirRetrograde, "Air retrograde");
+        if(ship->airDensityAtCom() <= 0.0) {
+            ImGui::TextDisabled("No air: the air pair has no target here.");
+        }
         ImGui::Spacing();
         toggle(SlewKillRot, "Kill rotation");
 
@@ -3907,7 +3916,7 @@ void drawUIReadouts(Game &g) {
            direction the player asked for; a mission owns the aim AND the throttle
            for a whole flight, so it gets its own window and its own name.
            One line here rather than nothing, because a flying mission is
-           otherwise invisible in this window: the seven rows above enumerate slew
+           otherwise invisible in this window: the rows above enumerate slew
            modes by hand, and the law drives the hull through the SlewFree latch,
            which has no row to light up (#610 review).
            The checkbox only opens the window. A mission is a state of the ship,

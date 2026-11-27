@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 488 |
+| `invariant` | a behaviour or a player route the game must keep | 489 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 60 |
 | `harness` | CLI/test-engine plumbing, not game spec | 18 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **570** |
+| | **total** | **571** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -18,7 +18,7 @@ paces a run: how much e2e a change deserves is the caller's
 judgement. Select by number, name or path, e.g.
 `python3 e2e/run.py save/172 262`.
 
-## flight (192)
+## flight (193)
 
 | case | kind | pins |
 |---|---|---|
@@ -102,6 +102,7 @@ judgement. Select by number, name or path, e.g.
 | `flight/485-per-surface-alpha.txt` | golden | The [surface] row #485 adds quotes all ten lifting or steering parts of the skiff on every --drag-log sample -- each one's own angle of attack signed into SHIP axes plus the dynamic pressure of the flow standing at it -- so a mirrored twin pair reads alike (wing_l and wing_r within 0.3 deg while the airframe is in the flow), the tailplane's -5 deg mount incidence shows as a 4.9-6.0 deg gap between tail and wing, the fin's angle IS the sideslip it is weathervaning against (within 1.2 deg of -Beta on rows over 4 deg), and each part's q matches 0.5*rho*v^2 inside 8%. |
 | `flight/490-skiff-trim-and-weathervane.txt` | golden | The skiff is the airframe the aero design point was written for: 568 kg on 24 m2 of AR-10.7 wing, a command pod stacked on a jet fuel tank, spawned at 80 m/s and 8.5 km, given full throttle for 20 s and then left alone: it trades that excess through one phugoid of 60..107 m/s and 8421..8905 m while its angle of attack never leaves +2.4..+3.1 deg, and settles back to +2.4..+2.5 with +0.55 m of static margin and the hull's along-flow bill BEHIND its balance point on every row. One second of rudder puts 5.2 deg of sideslip on it and the weathervane has it back inside 0.2 deg by t=37 s. On cruise rows the hull bill is Cd 0.37 on 0.80-0.81 m2, where the smooth spindle this replaced paid 0.11 on 0.87. |
 | `flight/492-elevator-trim.txt` | golden | The same 569 kg skiff, with 12 deg of elevator trim authored on the parts and nothing else changed, holds +4.7..+6.0 deg of angle of attack through its phugoid with the stick released: the download that trims this airframe comes from deflection, and the standing bill is real (0.34-0.51 m2 of induced CdA while the hull is pointing into the flow, 0.87 the instant the rudder is kicked). The gravity-keyed bed spawns it at 80 m/s of GROUND speed, and Kerbin's column is worth 31.6 m/s at that band -- 19 deg off the spawn heading -- so the hull arrives with 52 m/s of air and this run stays inside its envelope and settles back after the kick. |
+| `flight/498-air-prograde-hold-versus-the-orbital-hold.txt` | invariant | Latched to the AIR's prograde, a skiff spawned 8 deg off the wind puts its nose on the air and holds it there (Beta -0.0 deg on every row past t = 6 s, slew error 0.0025 rad); pressing Z at 20 s hands the same hull to the ORBIT's prograde and it settles 5.6 deg off the wind and stays there for a minute -- two holds, two aims, and only one of them is the direction a plane flies. |
 | `flight/498-surface-prograde.txt` | invariant | A plane cruising inside an atmosphere reads two different progrades: the air-relative one sits 4.85-5.05 deg off the nose -- the same angle the aero law calls its angle of attack -- while the conic one sits 30.5-31.7 deg off, because the conic points where the ground is going rather than where the plane is flying. |
 | `flight/541-booster-root-decoupler.txt` | invariant | Pressing a stage on a ship whose root part is the decoupler says which part cannot separate, instead of claiming the ship has run out of stages. |
 | `flight/560-parked-hull-bills-nothing.txt` | invariant | A hull at rest on the ground is still standing in the air the file authors, and its bill is the wind's: the flow-derived columns print rather than dash, the force the row charges closes against its own q, Cd, area and shape bill, and the air's own readings (rho, T, p, a) print beside them. |

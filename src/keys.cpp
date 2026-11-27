@@ -91,6 +91,16 @@ void KeyBindings::resetDefaults() {
     // A burn should not require opening a window and clicking a button mid-flight.
     add(Slot::SlewPrograde,  SDL_SCANCODE_Z);
     add(Slot::SlewRetrograde,SDL_SCANCODE_B);
+    /* Air-relative prograde (#498). Y is the last free plain letter in the flight
+       group (C is the camera, V the kerbal, U undock, P the porkchop, M the surface
+       map, G the kerbal's grab, and 1..0 are scene/editor keys), so air-prograde takes
+       it. Air-retrograde goes on Shift+Y the way ThrustLatch goes on Shift+T -- a chord
+       -- because there is no plain letter left. A chord is unreachable from
+       --sim-press, which ignores modifiers, so the e2e hook for this pair is
+       --autopilot air-prograde | air-retrograde rather than a key press. */
+    add(Slot::SlewAirPrograde, SDL_SCANCODE_Y);
+    perSlot[(size_t)Slot::SlewAirRetrograde].push_back(KeyBind{SDL_SCANCODE_Y, SDL_KMOD_LSHIFT});
+    perSlot[(size_t)Slot::SlewAirRetrograde].push_back(KeyBind{SDL_SCANCODE_Y, SDL_KMOD_RSHIFT});
     // Shares physical keys with other groups; those are one-shot edges, so
     // the held RCS commands never collide in orbit mode.
     add(Slot::RcsForward,    SDL_SCANCODE_N);
@@ -231,6 +241,8 @@ const char *slotName(Slot s) {
         case Slot::ThrottleDown:   return "throttle_down";
         case Slot::SlewPrograde:   return "slew_prograde";
         case Slot::SlewRetrograde: return "slew_retrograde";
+        case Slot::SlewAirPrograde:   return "slew_air_prograde";
+        case Slot::SlewAirRetrograde: return "slew_air_retrograde";
         case Slot::RcsForward:     return "rcs_forward";
         case Slot::RcsBack:        return "rcs_back";
         case Slot::RcsUp:          return "rcs_up";
@@ -320,6 +332,8 @@ const char *slotLabel(Slot s) {
         case Slot::ThrottleDown:   return "Throttle down";
         case Slot::SlewPrograde:   return "Autopilot: prograde";
         case Slot::SlewRetrograde: return "Autopilot: retrograde";
+        case Slot::SlewAirPrograde:   return "Autopilot: air prograde (into the wind)";
+        case Slot::SlewAirRetrograde: return "Autopilot: air retrograde";
         case Slot::RcsForward:     return "RCS forward";
         case Slot::RcsBack:        return "RCS back";
         case Slot::RcsUp:          return "RCS up";
@@ -374,6 +388,7 @@ SlotGroup slotGroup(Slot s) {
         case Slot::Thrust: case Slot::ThrustLatch: case Slot::Brakes: case Slot::KillRot:
         case Slot::ThrottleUp: case Slot::ThrottleDown:
         case Slot::SlewPrograde: case Slot::SlewRetrograde:
+        case Slot::SlewAirPrograde: case Slot::SlewAirRetrograde:
         case Slot::RcsForward: case Slot::RcsBack:
         case Slot::RcsUp: case Slot::RcsDown: case Slot::RcsLeft: case Slot::RcsRight:
         case Slot::PrecisionDim:

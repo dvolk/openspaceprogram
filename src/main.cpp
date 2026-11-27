@@ -1103,7 +1103,9 @@ int main(int argc, char **argv)
             else if(args.autopilot == "normal")     { m = SlewNormal; }
             else if(args.autopilot == "anti-normal"){ m = SlewAntiNormal; }
             else if(args.autopilot == "kill-rot")   { m = SlewKillRot; }
-            assert(m != SlewNone);   // CLI::IsMember accepts exactly these seven
+            else if(args.autopilot == "air-prograde")   { m = SlewAirPrograde; }
+            else if(args.autopilot == "air-retrograde") { m = SlewAirRetrograde; }
+            assert(m != SlewNone);   // CLI::IsMember accepts exactly these
             first->Command(ShipCmd(Sas, m), true);
             printf("Autopilot: %s engaged at startup\n", args.autopilot.c_str());
         }

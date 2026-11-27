@@ -91,6 +91,11 @@ enum class Slot {
     // One-key attitude-to-velocity (the Autopilot window's toggles, bound).
     SlewPrograde,  // hold the nose along the ORBIT's velocity vector
     SlewRetrograde,// hold the nose against the ORBIT's velocity vector
+    /* The same two against the AIR instead (#498): inside an atmosphere on a rotating
+       body the conic's velocity is mostly the ground's own motion, so the pair above
+       aims a plane off the wind it is actually flying through. */
+    SlewAirPrograde,
+    SlewAirRetrograde,
     // RCS translation (ship-relative):
     RcsForward,    // along the ship's nose
     RcsBack,       // astern

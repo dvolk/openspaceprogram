@@ -2752,7 +2752,7 @@ void Vehicle::restoreSlewRequest(SlewMode m) {
        at all. An out-of-range mode passes tick.cpp's "is anything latched" test and
        then has no target in slewTargetDir(): the ship drops out of warp and cannot be
        turned. Nothing latched is the recoverable reading of a corrupt field. */
-    if((int)m < SlewNone || (int)m > SlewKillRot) {
+    if(!slewModeOk((int)m)) {
         printf("[load] '%s': autopilot mode %d is not a mode, nothing latched\n",
                displayName().c_str(), (int)m);
         m = SlewNone;
@@ -8637,7 +8637,28 @@ glm::dvec3 Vehicle::slewTargetDir() {
     if(slew == SlewRadialIn) { return -unit(to_frame * p); }
     const bool prg = (slew == SlewPrograde || slew == SlewRetrograde);
     const bool nrm = (slew == SlewNormal || slew == SlewAntiNormal);
-    if(!prg && !nrm) { return glm::dvec3(0.0); }
+    const bool air = (slew == SlewAirPrograde || slew == SlewAirRetrograde);
+    if(!prg && !nrm && !air) { return glm::dvec3(0.0); }
+    if(air) {
+        /* The AIR's velocity, and it needs no to_frame dance: airRelativeVel answers
+           the axes this hull's own attitude path steers in (it does the frame work
+           itself, #850), whereas the conic pair above has to leave the rotating frame
+           because the CONIC owns prograde and the surface frame does not.
+           The gate is the one render.cpp uses for the drawn air prograde marker
+           (rho > 0, and an airspeed at least kAoAFlowFloor), so what the icon shows
+           and what a latch aims at cannot disagree about whether there IS a direction
+           at all. Below it the answer is the same `no-target` pointingTo() fails closed
+           on: a parked hull's airspeed is integrator residue, and a unit vector of
+           residue sends the drums chasing it across the sky while the HUD says `prg=-`
+           -- the #891 lesson, which the conic pair learned the expensive way. */
+        const glm::dvec3 av = airRelativeVel(get_center_of_mass());
+        const double avl = glm::length(av);
+        if(!(airDensityAtCom() > 0.0) || !std::isfinite(avl) || avl < kAoAFlowFloor) {
+            return glm::dvec3(0.0);
+        }
+        const glm::dvec3 dir = unit(av);
+        return slew == SlewAirRetrograde ? -dir : dir;
+    }
     /* Prograde and the normal belong to the CONIC, which is why the state above is
        taken from the non-rotating node: inside the rotating surface frame GetVel() is the
        ground-relative velocity, which for a ship flying slowly points nowhere

@@ -1384,6 +1384,17 @@ static void test_the_command_funnel() {
     CHECK_TRUE(v->slewRequestMode() == SlewAntiNormal, "a real mode does latch");
     v->Command(ShipCmd(Sas, SlewAntiNormal), true);   // release through the input door
     CHECK_TRUE(v->slewRequestMode() == SlewNone, "and Command still owns the release");
+    /* #498 appended the air pair rather than inserting it: the latched mode is saved as a
+       plain int, so a new mode must not move the numbers an older save already wrote. That
+       makes the LAST enumerator the range bound, so pin the new pair and one past it. */
+    v->restoreSlewRequest(SlewAirPrograde);
+    CHECK_TRUE(v->slewRequestMode() == SlewAirPrograde, "the air pair latches too");
+    v->restoreSlewRequest((SlewMode)((int)SlewAirRetrograde + 1));
+    CHECK_TRUE(v->slewRequestMode() == SlewNone, "and one past the last mode does not");
+    v->Command(ShipCmd(Sas, SlewAirPrograde), true);
+    CHECK_TRUE(v->slewRequestMode() == SlewAirPrograde, "Command arms it from the input door");
+    v->Command(ShipCmd(Sas, SlewAirPrograde), true);
+    CHECK_TRUE(v->slewRequestMode() == SlewNone, "and releases it the same way");
     destroyShip(v);
 }
 
