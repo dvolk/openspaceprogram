@@ -25,8 +25,9 @@ Numbers this reports, measured on the shipped art (Blender 4.5.9):
                      that wear engine.png -- identical face for face (worst deviation 0.000 of
                      the canvas), which is what lets one striped texture paint six sizes.
                      Both extremes are paintable. What is not paintable is 1 island where
-                     there should be many: gen_fuselage.py points all 624 faces at one point
-                     (uv_area 0.000) -- paint one panel, several change. The reverted shrouds
+                     there should be many: the deleted fuselage family (#1211) pointed all
+                     624 faces at one point (uv_area 0.000) -- paint one panel, several
+                     change. The reverted shrouds
                      read that way today (every face encloses zero uv area, 32 distinct texels
                      between them), which is one of the warnings the gate prints over the
                      shelved art.

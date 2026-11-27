@@ -215,8 +215,9 @@ TOPO = {
     "meshes/nose_cone_r1h3.obj": 33,
 }
 # How many texels one face gets to hold paint: its uv area times the texture size the
-# engine loads (CANVAS_PX), weighed per face rather than summed so the 624-panel fuselages
-# cannot clear a floor the 34-face adapters fail. This used to be a share of the uv canvas
+# engine loads (CANVAS_PX), weighed per face rather than summed so a 624-panel mesh
+# cannot clear a floor the 34-face adapters fail (the fuselages #1211 deleted were the
+# case that rule was written against). This used to be a share of the uv canvas
 # (0.012), which cannot tell a collapsed island from a small face at full resolution: the
 # shipped lofted meshes give every face the same 0.021 share and a 6x texel-density error with
 # it (#1176), while gen_lathe.py puts a nose cap's 0.11 m^2 cone triangle at 1632 texels and
@@ -506,7 +507,7 @@ def topo_problems(path, want_faces, min_texels=TOPO_MIN_FACE_TEXELS):
 # TOPO reports four problems where the honest report is one.
 FLAT_MAX_DEG = 5.0     # 5 reproduces the audit's flat/smooth split with nothing in between
 FACE_BUDGET = 650      # FILE faces, not drawn triangles: assimp triangulates on import, so
-                       # a quad-heavy part draws about twice this (fuselage: 624 -> ~1248)
+                       # a quad-heavy part draws about twice this (624 quads -> ~1248 tris)
 DENSITY_MAX_SPREAD = 2.0
 CANVAS_PX = 512.0      # what parts.json textures are authored at. The rule below is a ratio,
                        # so this only scales the px/m figures it prints, never what fails.

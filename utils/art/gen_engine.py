@@ -44,7 +44,7 @@ and opened out toward the exit instead: 11.9, 32.4, 46.6 deg, a wall that gets w
 That reads as a funnel, not a nozzle, and it is what the owner caught. The curve costs one ring per
 --bell-bands, so it is bought with triangles and not with texels: the default of 3 bands gives 162
 faces at 32 segments (130 at 2 bands, which is what the pinned rows asked for before the family
-went back to hand art), against 624 for a fuselage.
+went back to hand art), against the 624 the deleted fuselage family carried.
 
 Three laws the profile cannot break:
 
