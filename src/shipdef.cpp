@@ -33,7 +33,7 @@ PartDef::PartDef()
       drag_forward_sup(0.0), drag_side_sup(0.0), drag_backward_sup(0.0),
       lift_area(0.0), cl(0.0), stall_angle(0.0),
       control_area(0.0), control_axis(ControlAxis::Pitch), cl_control(0.0),
-      max_deflection(0.0), chute_area(0.0),
+      max_deflection(0.0), hinge_rate(glm::radians(kDefaultHingeRateDeg)), chute_area(0.0),
       wheel_radius(0.0), wheel_travel(0.0), wheel_spring(0.0), wheel_damp(0.0),
       wheel_steer(0.0),
       leg_foot(0.0), leg_travel(0.0), leg_spring(0.0), leg_damp(0.0) {
@@ -881,6 +881,18 @@ PartsCatalog load_parts_catalog(const char *path) {
         d.max_deflection = optNumber(pv, "max_deflection", 0.0, ctx, "rad");
         if(d.max_deflection < 0.0) {
             throw std::runtime_error(ctx + "\"max_deflection\" must be >= 0 (rad)");
+        }
+        /* #1219: the hinge's travel time, rad/s -- authored like the travel it limits
+           (every other angle in a part JSON is rad, so this is rad/s too; the part
+           window shows it back in deg/s, which is the unit #1219 measured in).
+           Required positive rather than defaulted-to-zero: a control surface that
+           cannot move is not a thing an author means to build, and it would leave the
+           debug rows quoting a commanded angle the mesh never reaches. */
+        d.hinge_rate = optNumber(pv, "hinge_rate",
+                                 glm::radians(PartDef::kDefaultHingeRateDeg),
+                                 ctx, "rad/s");
+        if(d.hinge_rate <= 0.0) {
+            throw std::runtime_error(ctx + "\"hinge_rate\" must be > 0 (rad/s)");
         }
         /* A part that STEERS has to say where it stops biting (#494). controlForce
            droops through liftCurve exactly like a wing, and stall_angle is the angle

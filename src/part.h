@@ -80,6 +80,15 @@ struct Part {
        too (nothing runs there). Render-only -- the force uses the same number
        locally; this field exists so Vehicle::Draw can swing the mesh. */
     double controlDefl = 0.0;
+    /* #1219: the hinge's REMEMBERED position (rad), and the fastest one-substep
+       movement it has made since the last [ctrl] row (deg/s). controlDefl above is a
+       per-substep column that zeroes with the rest of the aero pass, so it cannot say
+       where the surface was a substep ago -- which is exactly what a travel-time law
+       needs. Transient like controlDefl (not saved): applyAeroForce writes both from
+       drag.h::hingeSlew, and goOnRails zeroes both. The force and the mesh read the
+       slewed angle, so they cannot disagree about where the plate is. */
+    double controlHinge = 0.0;
+    double controlHingeRateMax = 0.0;
     /* TRIM (deg, #492): the standing command this control surface is held at when
        nothing is asking it for travel. Saved with the part (ShipPart::trim authored
        it, the part window edits it), unlike the deflection above, which is

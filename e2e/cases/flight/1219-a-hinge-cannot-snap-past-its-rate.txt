@@ -1,0 +1,62 @@
+# A hinge has a travel time (#1219).
+#
+# Until now the aero step assigned the commanded deflection straight to the part, so a
+# plate teleported: the ticket measured the biggest one-substep change in a commanded
+# deflection at 18.01 deg with h ~7.5 ms on this hull -- ~2400 deg/s, 42 rad/s -- and
+# kill-rot (X) had its fins at the travel stop inside the substep that asked for them.
+# The authority numbers were fine (the allocator refuses ~87% of kill-rot's ask in air
+# and 99.86% in vacuum); what had no hardware behind it was the SPEED.
+#
+# So a control surface now carries an authored `hinge_rate` (rad/s, default 600 deg/s --
+# PartDef::kDefaultHingeRateDeg, chosen below) and applyAeroForce slews toward the angle at
+# rate x h, never past it. Both the force and the mesh read the slewed angle, and the
+# [ctrl] row grows `maxrate=` -- the fastest one-substep movement since that row last
+# printed, deg/s. It has to be a max over the window: the row is a 1 s gate and a
+# shipped surface's full 20.05 deg throw takes 0.033 s at the 600 deg/s default, so
+# sampling the angle at 1 Hz
+# only ever sees the plate already parked at its stop. The same witness on the same
+# hull read ~2400 before the law existed, which is why the bound below is not a tautology.
+#
+# What this case can pin at 1 Hz:
+#   1. no surface moves faster than its hinge -- every maxrate at or under the authored
+#      600 deg/s (the bound is 610 to leave room for the column's %.0f rounding);
+#   2. and the hinge really is what limits it -- a hard pitch demand spends seconds at
+#      the limit, so some row reads it (>= 570), rather than the limiter being absent;
+#   3. travel is still reachable: under the same hold a plate sits at its 20.05 deg
+#      authored stop, it just gets there a thirtieth of a second later.
+#
+# WHY 600 AND NOT THE TICKET'S TENS-OF-DEG/S. Measured on the #498 air-prograde hold
+# (skiff_trim, yaw 8, hold from spawn), whose pin is E < 0.02 rad -- the worst error the
+# autopilot is allowed while holding -- as the default rate comes down:
+#
+#   rate deg/s      2400-ish (no law)   600      300      120
+#   E max rad          < 0.02         0.0090   0.0473   0.1040
+#   max |beta| deg       < 0.4          0.40     2.60     5.60
+#
+# i.e. the shipped slew law (slewDemand, #678) has no actuator lag in it, so a slow hinge
+# is a pure loop delay and the hold starts wobbling: at 120 deg/s the nose wanders 6 deg,
+# which is worse than the #421 wobble the suite already complains about. The limiter is
+# landed at the fastest end of the honest range so flying does not regress with it; taking
+# the number down to a hydraulic 60-120 deg/s is #1219's second half -- give the law the
+# braking curve first, then re-measure. The witness and the authored field are what make
+# that conversation numeric instead of vibes.
+#
+# What it cannot pin, and where that lives instead: the arrival time, the exact clamp
+# (no overshoot, no chatter), and the fact that a RELEASED plate keeps billing force on
+# its way home -- all three are pinned substep by substep in
+# tests/test_aerosweep.cpp::test_hinge_travel, because a 1 s log gate is 30x slower than
+# the event. That last one is the deliberate behaviour change in this commit: "no
+# command, no force" used to be true partly because the plate was home the instant the
+# command left. Now it is home 0.033 s later, and deflected plates push.
+NAME hinge-cannot-snap-past-its-rate
+CLAIM Every control surface moves at or under its authored hinge rate, and its travel stop is still reachable -- the [ctrl] row's maxrate= witness never exceeds the shipped 600 deg/s default.
+KIND invariant
+ARGS --startship sp,res/ships/spaceplane.json,Kerbin,flying-cruise,speed=120
+ARGS --drag-log --sim-steps 900 --no-paint
+ARGS --sim-press 2000,4000,S
+EXPECT [ctrl]
+FORBID error:
+CHECK len([c for c in ctrl if c.get("maxrate") is not None]) >= 20
+CHECK all(c["maxrate"] <= 610.0 for c in ctrl if c.get("maxrate") is not None)
+CHECK max(c["maxrate"] for c in ctrl if c.get("maxrate") is not None) >= 570.0
+CHECK max(abs(c["deg"]) for c in ctrl) >= 19.5

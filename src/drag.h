@@ -2548,6 +2548,32 @@ inline double controlDeflection(const PartAero &pa, const glm::dvec3 &ri,
     return controlDeflectionSign(lever, targetSign) * cmdFrac * maxDefl;
 }
 
+/* #1219: a hinge has a TRAVEL TIME. controlDeflection answers where a surface WANTS
+   to be; this answers where it IS, one substep later, at the part's authored rate.
+   Before it the aero step assigned controlDeflection's answer straight to
+   Part::controlDefl, so a plate teleported: measured on the spaceplane at cruise, the
+   largest one-substep change in a commanded deflection was 18.01 deg at h ~7.5 ms,
+   i.e. ~2400 deg/s (42 rad/s), and kill-rot (X) had its fins at the travel stop inside
+   the substep that asked for them. The authority numbers themselves were fine --
+   #1219 measures the allocator refusing 87% of kill-rot's ask in air and 99.86% in
+   vacuum -- what was missing is the time it takes to get there, which is the half that
+   makes a control law need a braking curve instead of a wish.
+   Arrival is exact and never overshoots: the step is clamped to the remaining
+   distance, so the state settles ON the target. A rate limiter that overshoots would
+   be a new excitation on the same axis it is smoothing, which is the last thing
+   #421's 2 deg SAS wobble needs.
+   `rate <= 0` (an authored hinge that cannot move) and `h <= 0` (a degenerate substep)
+   both hold the position rather than moving or throwing; the loader refuses a control
+   surface with no rate, so those are the guard, not the normal path. */
+inline double hingeSlew(double current, double target, double rate, double h) {
+    if(!(h > 0.0) || !(rate > 0.0)) { return current; }
+    const double step = rate * h;
+    const double d = target - current;
+    if(d > step) { return current + step; }
+    if(d < -step) { return current - step; }
+    return target;
+}
+
 /* #426: the surface as an ACTUATOR ROW (actuators.h) -- the torque one radian of
    this surface's COMMAND buys, N m/rad, pointed the way a POSITIVE command pushes and
    limited by its own travel. controlForce pushes along the plate's own zero-alpha

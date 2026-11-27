@@ -1125,7 +1125,13 @@ public:
     struct ControlDeflection {
         const PartDef *def;  // part type + control_axis
         int index;           // Nth control surface, 0-based
-        double deflection;   // rad, signed hinge angle
+        double deflection;   // rad, signed hinge angle (the slewed one, #1219)
+        /* deg/s: the fastest one-substep hinge movement this surface has made since the
+           last [ctrl] row. Accumulated in applyAeroForce, printed and cleared by
+           --drag-log (tick.cpp) -- the row is a 1 s gate and a full hardover takes
+           0.033 s at the shipped default, so without a max across the window the row
+           cannot see the slew at all (#1219). */
+        double hingeRateMax;
     };
     std::vector<ControlDeflection> lastControlDeflections;
 

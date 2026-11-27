@@ -1672,12 +1672,38 @@ static void test_a_fin_row_is_spent_and_hands_its_ask_to_the_air() {
        an actuator lag inside a deadbeat law. */
     CHECK_TRUE(a.fin->controlDefl == 0.0,
                "until the aero step runs, the part has not moved");
-    a.v->applyAeroForce(1.0 / 120.0);
+    const double hA = 1.0 / 120.0;
+    a.v->applyAeroForce(hA);
     const double deflA = a.fin->controlDefl;
-    printf("   elevator after the aero step = %+.4f rad (stop 0.35)\n", deflA);
-    CHECK_NEAR(0.35, std::fabs(deflA), 1e-6,
-               "the solver's setpoint arrived as travel, and the demand was big enough "
-               "to pin it at the stop");
+    printf("   elevator after the aero step = %+.4f rad (stop 0.35, hinge %.0f deg/s)\n",
+           deflA, glm::degrees(a.fin->def->hinge_rate));
+    /* #1219 splits this rig's claim into two, and both halves hold. The DEMAND does
+       arrive in the substep that made it -- applyAeroForce spends what
+       applyRotationForce latched, no key lags a fin. The PLATE gets there at its hinge
+       rate: one 8.33 ms pass at the default 600 deg/s is 5.00 deg of a 20.06 deg stop,
+       so the plate is hard over five passes later.
+       Before it the two were the same number and a commanded surface teleported
+       (measured on the spaceplane at cruise: 18.01 deg in one substep, ~2400 deg/s),
+       which is the half of kill-rot that had no hardware behind it. */
+    CHECK_NEAR(std::fabs(deflA), a.fin->def->hinge_rate * hA, 1e-12,
+               "the setpoint arrived as travel -- one substep of hinge deep, and the "
+               "demand is what decides where the hinge is heading");
+    /* Run the substep PAIR (applyRotationForce clears the ask and the delivery record
+       each time, so the last one is a clean substep rather than a sum of passes) until
+       the hinge is at the stop, which is what the air's answer below is about. */
+    int toStop = 1;
+    while(std::fabs(a.fin->controlDefl) < 0.35 && toStop < 100) {
+        a.v->hull->btBody->clearForces();
+        a.v->applyRotationForce(hA);
+        a.v->applyAeroForce(hA);
+        ++toStop;
+    }
+    printf("   %d substeps of %.2f ms to hardover (%.3f s)\n", toStop, 1000.0 * hA,
+           toStop * hA);
+    CHECK_NEAR(std::fabs(a.fin->controlDefl), 0.35, 1e-9,
+               "and the demand is still big enough to pin the plate at its stop, once "
+               "the hinge has had its travel time (0.35 rad at the 600 deg/s default is "
+               "0.033 s, so ~5 of these 8.33 ms passes)");
 
     /* AND NOW THE AIR HAS ANSWERED (#599). The same record, refilled by applyAeroForce
        off the force it bills, so the figure is the plate's ACTUAL say at this dynamic
@@ -1708,7 +1734,17 @@ static void test_a_fin_row_is_spent_and_hands_its_ask_to_the_air() {
     a.v->hull->btBody->clearForces();
     a.v->applyRotationForce(1.0 / 120.0);
     a.v->applyAeroForce(1.0 / 120.0);
-    CHECK_NEAR(0.0, a.fin->controlDefl, 1e-12, "no ask, no travel");
+    /* #1219: released, the plate starts for neutral instead of arriving there. One
+       substep off a 20.06 deg stop is five degrees of hinge at the 600 deg/s default. */
+    CHECK_NEAR(std::fabs(a.fin->controlDefl), 0.35 - a.fin->def->hinge_rate * hA, 1e-12,
+               "no ask: the plate travels home, one hinge step per substep");
+    for(int i = 0; i < 40; ++i) {
+        a.v->hull->btBody->clearForces();
+        a.v->applyRotationForce(hA);
+        a.v->applyAeroForce(hA);
+    }
+    CHECK_NEAR(a.fin->controlDefl, 0.0, 1e-12,
+               "and it is home 0.033 s after the key came off, not one substep after");
 
     /* --drag-cd 0 is the master aero switch: applyAeroForce returns before its surface
        block, while airDensityAtCom() answers the authored shell and never consults

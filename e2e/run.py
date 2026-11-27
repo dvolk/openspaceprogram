@@ -712,7 +712,14 @@ DRAG_RE = re.compile(
 # not a surface, NOT that a surface held at zero. Until now nothing parsed this:
 # no case could assert a surface moved, which is the whole observable of #453
 # (per-part incidence) and #454 (static margin).
-CTRL_ITEM_RE = re.compile(r"([^\s\[]+)\[(\d+)\]\((\w+)\)=([-+]\d+\.\d+)deg")
+CTRL_ITEM_RE = re.compile(
+    r"([^\s\[]+)\[(\d+)\]\((\w+)\)=([-+]\d+\.\d+)deg"
+    # #1219: maxrate= -- the fastest one-substep hinge movement this surface made
+    # since the last [ctrl] row, deg/s. Optional so a capture from before the hinge
+    # law still parses. This is the only way the row can see a slew at all: the gate
+    # is 1 s and a hardover at the shipped 120 deg/s takes ~0.17 s, so the angle
+    # column alone samples the plate already parked at its stop.
+    r"(?: maxrate=(\d+(?:\.\d+)?))?")
 # #485's [surface] row: one group per lifting or steering part --
 # "<label> a=<deg> q=<Pa>[ mach=<n>][ watts=<W>]". The angle is signed into SHIP axes (up
 # for a wing or tailplane, right for a fin), NOT each mount's own convention, so a mirrored
@@ -2153,9 +2160,13 @@ def parse_ctrl(out):
     t = None
     for line in out.splitlines():
         if line.startswith("[ctrl]"):
-            for name, idx, axis, deg in CTRL_ITEM_RE.findall(line):
-                rows.append({"t": t, "name": name, "index": int(idx),
-                             "axis": axis, "deg": float(deg)})
+            for name, idx, axis, deg, rate in CTRL_ITEM_RE.findall(line):
+                row = {"t": t, "name": name, "index": int(idx),
+                       "axis": axis, "deg": float(deg)}
+                # None means the row predates the hinge law (or printed without it),
+                # NOT "the hinge held still" -- a held surface reads maxrate=0.
+                row["maxrate"] = float(rate) if rate != "" else None
+                rows.append(row)
         elif line.startswith("[drag]"):
             m = DRAG_RE.match(line)
             if m:

@@ -579,6 +579,25 @@ struct PartDef {
     double cl_control;
     double max_deflection;
 
+    /* #1219: how fast this surface's hinge can follow, rad/s. A surface's authority
+       is not only its area, slope and travel -- it is also how quickly that travel can
+       arrive. Until now nothing bounded it: applyAeroForce wrote the commanded angle
+       straight to the part, so a plate reached its stop in one substep (~2400 deg/s
+       measured on the spaceplane at cruise, #1219). Authored per part because a
+       0.35 m servo-driven canard and a heavy full-flying tail are not the same
+       machine; the default is the fastest end of an honest small-airframe hinge
+       (600 deg/s, so the catalogue's 20 deg surfaces take ~0.035 s to hardover). */
+    double hinge_rate;
+    /* Stated in degrees so an author and #1219's measurements read the same number;
+       the loader converts once, like every other angle in a part JSON. 600 deg/s, not
+       the hydraulic 60-120 a real airframe would have: slewDemand (#678) carries no
+       actuator lag, so a slow hinge enters the loop as pure delay and the shipped holds
+       start wobbling -- measured on the #498 air-prograde hold, whose E ceiling is
+       0.02 rad, E goes 0.009 at 600 to 0.047 at 300 and 0.104 at 120. Taking this
+       number down is #1219's second half: give the hinge law its braking curve first,
+       then re-measure. */
+    static constexpr double kDefaultHingeRateDeg = 600.0;
+
     /* Does this part steer? Four places ask (the aero law, the ship-def loader,
        the part window, the tick's per-surface recording arming) and they drifted
        apart the first time I wrote them by hand, so the test lives here (#492). */

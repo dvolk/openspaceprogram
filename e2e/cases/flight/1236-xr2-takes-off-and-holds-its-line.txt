@@ -1,5 +1,5 @@
 NAME xr2-takes-off-and-holds-its-line
-CLAIM The XR-2 releases its brakes, rolls 20 s down the runway and leaves it at 131.9 m/s, and with its lever held at 0.4 it climbs to 3.2 km and SETTLES: the altitude swing over its second hundred seconds is 773 m and over its last 379 m, its angle of attack never leaves 2.7..2.9 deg, it never drops below 2.1 km, and on every row the thrust the sim armed is the single-stream law for its 0.35 m2 mouth at 40% of the machine.
+CLAIM The XR-2 releases its brakes, rolls 20 s down the runway and leaves it at 130.4 m/s, and with its lever held at 0.4 it climbs to 3.4 km and SETTLES: the altitude swing over its second hundred seconds is 961 m and over its last 382 m, its angle of attack never leaves 2.7..2.9 deg, it never drops below 2.3 km, and on every row the thrust the sim armed is the single-stream law for its 0.35 m2 mouth at 40% of the machine.
 KIND golden
 # WHY THIS CASE EXISTS. #1236 filed the XR-2 as a hull that "dives, climbs 5 km and nearly
 # stalls instead of flying level", blamed FormCp = +2.6..+3.7 m (the along-flow push landing
@@ -8,8 +8,8 @@ KIND golden
 # and this case is the bar the corrected one needs:
 #
 #   IT SETTLES. From the runway at a fixed lever the phugoid decays monotonically -- the
-#   altitude band over everything from t=60 on is 1069 m, from t=200 on 716 m, from t=300 on
-#   379 m -- and the hull holds 2.1..3.2 km at 129..155 m/s. From the flying bed at the same
+#   altitude band over everything from t=60 on is 1026 m, from t=200 on 723 m, from t=300 on
+#   382 m -- and the hull holds 2.4..3.4 km at 120..155 m/s. From the flying bed at the same
 #   lever it is tighter
 #   still (36 m of spread over the last minute at 7.7 km). FormCp +3.3 m is real and it is
 #   not the blocker: the lift system's +0.68 m static margin wins on every row.
@@ -22,7 +22,7 @@ KIND golden
 #   in the ground at some settings (trim 4 dives through the deck; trim 8 at lever 0.6 ends
 #   up, down and underground), so neither of #1236's fix ideas -- mass forward, real trim --
 #   reaches it. Engine/hull matching is its own decision and its own ticket; the lever does
-#   fix it (band 333 m for the spaceplane at 0.4, 379 m here), which is why the sane setting
+#   fix it (band 333 m for the spaceplane at 0.4, 382 m here), which is why the sane setting
 #   is what deserves pinning while #1236 stays open on the full-lever case.
 #
 # THE RIG, because three measurements in a row were wrong without it. Brakes latch on at
@@ -45,12 +45,17 @@ EXPECT [mass]
 # or half-parsed list is true (#653).
 CHECK len(drag) >= 380
 CHECK len(drainlog) >= 760
-# THE ROLL. The hull starts on the deck at rest and the deck run is short: 20 one-second rows
-# below 300 m and the last of them at 131.9 m/s of air. Both halves matter -- a hull that
-# lifts off at 40 m/s is a wheel-walk and one that needs 200 m/s has no runway -- so the
-# window is on the rotation speed, not just on "it got up".
+# THE ROLL. The hull starts on the deck at rest and the deck run is short: about twenty
+# one-second rows below 300 m, the last of them at ~130 m/s of air. Both halves matter -- a
+# hull that lifts off at 40 m/s is a wheel-walk and one that needs 200 m/s has no runway -- so
+# the window is on the rotation speed, not just on "it got up".
 CHECK all(d["v"] < 1.0 for d in drag if d["t"] <= 1)
-CHECK len([d for d in drag if d["alt_asl"] < 300 and d["t"] < 60]) == 20
+# A band, not an equality. The count is how many 1 s log ticks land before the hull has
+# climbed through 300 m, so it reads a log-tick boundary rather than a law: #1219's hinge
+# delay moved the rotation instant by ~0.1 s and 20 became 19, with the t=19 row at 277.9 m
+# and the next tick already over the line. What the check is for is two lines down -- a deck
+# run of ~20 s that rotates at ~130 m/s.
+CHECK 18 <= len([d for d in drag if d["alt_asl"] < 300 and d["t"] < 60]) <= 22
 CHECK 125 < max(d["v"] for d in drag if d["alt_asl"] < 300) < 140
 # THE LAW AT A SET LEVER (#1206). --drag-log prints one row per second and --drain-log one
 # per half second, so drainlog[1::2] carries drag[i]'s own second. Rows before t=4 are
@@ -59,11 +64,11 @@ CHECK 125 < max(d["v"] for d in drag if d["alt_asl"] < 300) < 140
 # is the only case that runs the jet PART-OPEN: every other jet pin runs the lever at its
 # 1.0 default, so a lever that ignored the throttle would pass all of them.
 CHECK all(abs(x["thrust"] - 0.4*0.5*d["rho"]*0.35*(490000.0 - d["v"]*d["v"])) < 0.025*x["thrust"] for d,x in zip(drag, drainlog[1::2]) if d["t"] >= 4)
-# HOLDS A LINE. Over the last hundred seconds the hull's altitude swings 379 m and its speed
-# 129..153 m/s at Mach 0.42 -- a phugoid, not the 2.5 km yo-yo #1236 describes. 450 m leaves
+# HOLDS A LINE. Over the last hundred seconds the hull's altitude swings 382 m and its speed
+# 129..154 m/s at Mach 0.42 -- a phugoid, not the 2.5 km yo-yo #1236 describes. 450 m leaves
 # room for an aero change of a few percent and still reddens anything like the full-lever
 # band. The two windows also pin the DAMPING, which is the part of the claim the flat band
-# alone would not: measured 773 m across t=60..120 against 379 m across t=300..400, so the
+# alone would not: measured 961 m across t=60..120 against 382 m across t=300..400, so the
 # first window swings twice the last.
 CHECK max(d["alt_asl"] for d in drag if d["t"] >= 300) - min(d["alt_asl"] for d in drag if d["t"] >= 300) < 450
 CHECK (max(d["alt_asl"] for d in drag if 60 <= d["t"] < 120) - min(d["alt_asl"] for d in drag if 60 <= d["t"] < 120)) > 600
@@ -74,7 +79,11 @@ CHECK max(d["alt_asl"] for d in drag if d["t"] >= 300) - min(d["alt_asl"] for d 
 CHECK min(d["alt_asl"] for d in drag if d["t"] >= 120) > 2000
 CHECK all(2.4 < d["aoa"] < 3.3 for d in drag if d["t"] >= 60)
 CHECK max(d["mach"] for d in drag) < 0.55
-CHECK all(120 < d["v"] < 160 for d in drag if d["t"] >= 120)
+# The floor is 115, not 120: with #1219's hinge delay in the trim loop the bottom of the
+# phugoid measured 119.7 m/s (129.0 before the hinge), i.e. the old floor sat on the measured
+# minimum. 115 keeps the check's teeth -- a hull that trades speed for altitude the way a
+# stalled plate does drops far below it -- without reddening on a tenth of a m/s.
+CHECK all(115 < d["v"] < 160 for d in drag if d["t"] >= 120)
 # THE VAB's static margin, carried from the roll through the climb: +0.68..+0.71 m. The row
 # that dashes it is the one at rest on the deck (alt 251.5 m), where there is no flow to
 # measure a lifting system against.

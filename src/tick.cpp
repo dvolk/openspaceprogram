@@ -1544,12 +1544,24 @@ void tick(Game &g) {
                     printf("[ctrl]");
                     for(const Vehicle::ControlDeflection &cd :
                         g.ship->lastControlDeflections) {
-                        printf(" %s[%d](%s)=%+.1fdeg", cd.def->name.c_str(),
+                        /* maxrate= (#1219): the fastest one-substep hinge movement since
+                           this row last printed, deg/s. The angle column cannot show a
+                           slew -- the row is a 1 s gate and a hardover at the shipped
+                           600 deg/s default takes 0.033 s -- so the aero pass accumulates
+                           the max
+                           and this row consumes it. It is also the bound a case can pin:
+                           before the hinge law the same witness read ~2400 deg/s, which is
+                           what #1219 measured with a temporary printf. Appended inside the
+                           item, so an older parser still reads the angle term. */
+                        printf(" %s[%d](%s)=%+.1fdeg maxrate=%.0f", cd.def->name.c_str(),
                                cd.index, controlAxisName(cd.def->control_axis),
-                               glm::degrees(cd.deflection));
+                               glm::degrees(cd.deflection), cd.hingeRateMax);
                     }
                     printf("\n");
                 }
+                /* Consume the window even when the row was empty (every surface home),
+                   so a max left over from a return cannot leak into the next row. */
+                for(Part *p : g.ship->parts) { p->controlHingeRateMax = 0.0; }
                 /* #485: what each lifting or steering SURFACE's law actually read on
                    the last substep -- its own angle of attack and the dynamic pressure
                    of the flow standing AT it (#483). The [drag] line's AoA is one

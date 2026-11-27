@@ -153,6 +153,12 @@ static void setSurface(PartDef &d, double area, bool lift) {
         d.stall_angle = 0.26;          // the shipped steering parts' 14.89 deg
         d.max_deflection = 0.35;       // ... and their 20.06 deg travel stop
         d.control_axis = ControlAxis::Pitch;
+        /* Every sweep below measures the force AT a commanded deflection in ONE
+           applyAeroForce pass, and since #1219 a pass only moves the hinge
+           hinge_rate x h. So the rig's hinge is effectively instantaneous; what the
+           sweep is about is the lift law, not the travel time. The hinge's own law is
+           pinned by name in test_hinge_travel(). */
+        d.hinge_rate = 1e9;
     }
 }
 
@@ -507,6 +513,100 @@ static void test_induced_sum_is_sign_blind() {
                "a downloading tab takes a quarter of the airframe's lift off");
     CHECK_TRUE(dn.first > 2.0 * neu.first,
                "and more than DOUBLES its induced bill doing it (#494's cross term)");
+    teardown(b);
+}
+
+/* #1219: THE HINGE HAS A TRAVEL TIME. Same pod-and-tab rig as the curve below, but
+   with an authored hinge rate, because the curve's rigs are instant on purpose. What is
+   under test here is the difference between where the law WANTS the plate and where its
+   actuator can be this substep:
+     - the hinge moves rate x h per pass, and the AIR answers the angle it is standing
+       in, not the angle the demand pointed at;
+     - it arrives at the stop and sits there exactly -- no overshoot, no chatter (a rate
+       limiter that rings is a new excitation on the axis it is smoothing);
+     - the max-rate witness (--drag-log's maxrate=) is the rate itself, and nothing more;
+     - a released tab travels home, and on the way it is still a deflected plate -- it
+       bills force at the angle it is at. That half is the deliberate behaviour change:
+       "no command, no force" was true because the plate was home the instant the command
+       left; with a travel time, it is home a fifth of a second later. */
+static void test_hinge_travel() {
+    printf("== a control surface cannot arrive faster than its hinge (#1219) ==\n");
+    Bench b = mkBench();
+    Part *tab = mkPlate(b.defs, "elevator", 5.0, 1.0, 0.05, 1.0);
+    setSurface(b.defs.back(), 2.0, false);
+    const double rate = glm::radians(60.0);    // 1.0472 rad/s: 0.6 deg per 10 ms pass
+    b.defs.back().hinge_rate = rate;
+    b.v->attachMode(tab, 0, AttachMode::Down);
+    launch(b);
+
+    fly(b.v, 100.0, 0.0, 0.0);
+    const double q = 0.5 * b.v->lastDragRho * 100.0 * 100.0;
+    const double slope = liftSlopeMach(6.0, 100.0 / b.v->lastAirA);
+    const double St = 2.0;
+    const double h = 0.01;                    // fly()'s substep
+    const double step = rate * h;
+
+    /* Command the whole travel through trim (the curve rig's lever) and hold it there. */
+    tab->trimDeg = glm::degrees(0.35);
+    fly(b.v, 100.0, 0.0, 0.0);
+    printf("[hinge] rate %.1f deg/s, h %.3f s, one step %.4f rad of a 0.35 stop\n",
+           glm::degrees(rate), h, step);
+    CHECK_NEAR(std::fabs(tab->controlDefl), step, 1e-12,
+               "one substep of a 60 deg/s hinge is 0.6 deg, whatever the demand asked for");
+    CHECK_NEAR(glm::length(b.v->lastLiftForce),
+               q * St * liftCurve(slope, step, 0.26), q * St * 1e-9,
+               "and the air bills the angle the plate is IN, not the angle it was asked");
+
+    int toStop = 1;
+    double seen = step;
+    while(toStop < 200) {
+        fly(b.v, 100.0, 0.0, 0.0);
+        ++toStop;
+        const double now = std::fabs(tab->controlDefl);
+        CHECK_TRUE(now <= 0.35 + 1e-15, "the hinge never passes its travel stop");
+        CHECK_TRUE(now >= seen - 1e-15, "and never steps back while the demand holds");
+        seen = now;
+        if(now >= 0.35) { break; }
+    }
+    printf("[hinge] %d substeps of %.1f ms to hardover (%.3f s)\n", toStop, 1000.0 * h,
+           toStop * h);
+    CHECK_NEAR(std::fabs(tab->controlDefl), 0.35, 1e-15,
+               "arrival is exact: the slew clamps to the target instead of ringing");
+    CHECK_TRUE(toStop >= 33 && toStop <= 35,
+               "0.35 rad at 1.0472 rad/s is 0.334 s, and that is what it took");
+    fly(b.v, 100.0, 0.0, 0.0);
+    CHECK_NEAR(std::fabs(tab->controlDefl), 0.35, 1e-15,
+               "and it stays at the stop while the demand holds, not one tick off");
+
+    /* The witness --drag-log prints as maxrate= (#1219 could only be measured with a
+       temporary printf before). Zero it, fly a substep where nothing moves, and it says
+       0; fly the return and it says the hinge rate, never more. */
+    tab->controlHingeRateMax = 0.0;
+    fly(b.v, 100.0, 0.0, 0.0);
+    CHECK_NEAR(tab->controlHingeRateMax, 0.0, 1e-15, "a held plate has no hinge rate");
+    tab->controlHingeRateMax = 0.0;
+    tab->trimDeg = 0.0;                       // let go
+    fly(b.v, 100.0, 0.0, 0.0);
+    CHECK_NEAR(tab->controlHingeRateMax, glm::degrees(rate), 1e-9,
+               "the fastest the hinge can move is the rate it was authored with");
+    CHECK_NEAR(std::fabs(tab->controlDefl), 0.35 - step, 1e-12,
+               "released, it starts home: one step off the stop, not home at once");
+    CHECK_NEAR(glm::length(b.v->lastLiftForce),
+               q * St * liftCurve(slope, 0.35 - step, 0.26), q * St * 1e-9,
+               "and a returning plate is still a deflected plate -- it bills force on the "
+               "way, which it could not do when it teleported");
+
+    int home = 1;
+    while(home < 200) {
+        fly(b.v, 100.0, 0.0, 0.0);
+        ++home;
+        if(tab->controlDefl == 0.0) { break; }
+    }
+    printf("[hinge] %d substeps back to neutral\n", home);
+    CHECK_TRUE(tab->controlDefl == 0.0 && tab->controlHinge == 0.0,
+               "and once it is home the cheap path is back: neutral, and no force");
+    CHECK_NEAR(glm::length(b.v->lastLiftForce), 0.0, 1e-12,
+               "a home, uncommanded tab contributes exactly nothing, as before");
     teardown(b);
 }
 
@@ -1908,6 +2008,7 @@ int main() {
     test_every_jet_affords_its_exhaust();
     test_rate_column();
     test_neutral_fin_alpha_gate();
+    test_hinge_travel();
     printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

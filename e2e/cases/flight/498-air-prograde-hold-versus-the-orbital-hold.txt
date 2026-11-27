@@ -60,7 +60,16 @@ CHECK len([d for d in drag if d.get("beta") is not None and d["t"] >= 22]) >= 30
 # against the air-relative target down in the milliradians. The 0.02 rad ceiling on E is 8x
 # the measured figure and still 17x tighter than the conic hold's best, so it reddens if the
 # air target drifts off toward the conic one.
-CHECK all(abs(d["beta"]) < 0.4 for d in drag if d.get("beta") is not None and 6 <= d["t"] <= 19)
+# Beta here is the player-visible half: how far sideways the hold lets the hull fly.
+# --drag-log prints it to 0.1 deg, so this band is quantised at that resolution. The old
+# ceiling was 0.4 because that is what the pre-#1219 hull did in this window; #1219 put
+# ~0.03 s of actuator lag into a loop that had none and the worst row of the walk moved to
+# 0.4, i.e. onto the ceiling itself. Re-derived at 0.8: 2x the worst row measured in the
+# window, still 7x inside the 5.6 deg the orbital hold settles at, so a hull that actually
+# starts sideslipping reddens this. Held longer (no Z press, same rig, tmp/hinge_beta_
+# noswitch.txt) the walk is BOUNDED -- max 0.6 deg through t=70, on a ~10 s cycle -- so the
+# band is not covering a divergence; the cycle itself is #1242.
+CHECK all(abs(d["beta"]) < 0.8 for d in drag if d.get("beta") is not None and 6 <= d["t"] <= 19)
 CHECK all(s["E"] < 0.02 for s in slew if s["mode"] == "air-prograde" and s["t"] >= 6 and s["E"] is not None)
 # The orbit hold, same hull, one key press later: it puts the nose 5.6 deg off the wind and
 # holds it there, while never getting inside 0.34 rad of the thing it is aiming at. The Beta

@@ -3935,7 +3935,9 @@ glm::dvec3 Vehicle::airRelativeVel(const glm::dvec3 &com) {
 }
 
 glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
-    (void)h;  // a force (not an impulse); Bullet integrates it over the substep
+    // Everything here is a force (not an impulse): Bullet integrates it over the
+    // substep. One exception since #1219 -- h is load-bearing for the control-surface
+    // hinge law (drag.h::hingeSlew), which moves a plate a RATE times this substep.
     // Reset so a substep with no air reports zero.
     lastAeroForce = glm::dvec3(0.0);
     lastLiftForce = glm::dvec3(0.0);
@@ -4000,6 +4002,8 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
            it belongs to the drain, not the aero pass, and a coasting hull's card should
            quote the tick its engine was last armed rather than a wall of dashes.) */
         p->jetMouthFrac = 0.0f;
+        /* Deliberately only the column: Part::controlHinge (#1219) is the actuator
+           state the rate law needs, so it must survive this reset. */
         if(p->def != nullptr && p->def->control_area > 0.0) { p->controlDefl = 0.0; }
     }
     /* #1114: the ship-level flow trio zeroes with the columns it bills against --
@@ -5352,10 +5356,15 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
             const double cmd = controlCommandFrac(ask,
                                                   glm::radians(p->trimDeg)
                                                       / d->max_deflection);
-            if(cmd == 0.0) {
-                /* No command, no deflection, no force: controlForce is a deflection
-                   law, so a surface nobody touched contributes exactly nothing however
-                   the airframe is swinging. Skipped BEFORE the offset, the flow and the
+            /* #1219: "no command" is not "no deflection" any more. A surface the solver
+               let go still has to TRAVEL back to neutral at its hinge rate, so this
+               cheap path fires only when the command is zero AND the hinge is already
+               home; a returning plate pays for the flow frame and bills force at the
+               angle it is actually standing in. */
+            if(cmd == 0.0 && p->controlHinge == 0.0) {
+                /* No command, no travel left to do, no force: controlForce is a
+                   deflection law, so a surface nobody touched contributes exactly
+                   nothing however the airframe is swinging. Skipped BEFORE the offset, the flow and the
                    mount frame, which is most of this loop's cost and, at shipped part
                    counts, mostly paid for surfaces sitting neutral. The surface index
                    still advances so a held pair keeps its numbering (flight/453 filters
@@ -5453,15 +5462,33 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
                rather than full travel with a sign the rig cannot decide), is carried by
                drag.h::controlDeflection -- which is where the measurements and the #508 and
                #509 pointers live. The call below is the whole implementation. */
-            const double deflection = controlDeflection(pa, ri, mount, about,
-                                                        ax.targetSign, cmd,
-                                                        d->max_deflection);
+            const double want = controlDeflection(pa, ri, mount, about,
+                                                  ax.targetSign, cmd,
+                                                  d->max_deflection);
+            /* #1219: THE HINGE TRAVELS. `want` is where the law would put the plate if
+               the hinge were infinitely fast; controlHinge is where its actuator can be
+               this substep -- rate x h, never past the target. Before this the two were
+               the same number, so a plate reached its stop in one substep: 18.01 deg in
+               one 7.5 ms step on the spaceplane at cruise, ~2400 deg/s (#1219's probe).
+               Both the force and the mesh read the slewed angle -- a plate cannot bill a
+               force at an angle it is not standing in -- which is also why the return
+               path above bills: the surface is deflected whatever the solver now wants.
+               controlHingeRateMax is the witness, max |step| / h in deg/s, which
+               --drag-log prints on the [ctrl] row and then clears: a 1 s row cannot
+               otherwise see a 0.033 s slew at all. */
+            const double before = p->controlHinge;
+            p->controlHinge = hingeSlew(before, want, d->hinge_rate, h);
+            const double stepRate = (h > 0.0)
+                ? glm::degrees(std::fabs(p->controlHinge - before) / h) : 0.0;
+            if(stepRate > p->controlHingeRateMax) { p->controlHingeRateMax = stepRate; }
+            const double deflection = p->controlHinge;
             p->controlDefl = deflection;  // the mesh swing (Vehicle::Draw)
-            lastControlDeflections.push_back({d, ctrlIndex++, deflection});
-            // cmd != 0 here (the early-out above), so deflection is 0 only on an
-            // unusable frame or a rig with no lever about this axis (#495) -- either
-            // way there is nothing to bill, and the cl and force tests stay for a
-            // surface with no slope and one that makes no force anyway.
+            lastControlDeflections.push_back({d, ctrlIndex++, deflection,
+                                              p->controlHingeRateMax});
+            /* deflection is 0 in three cases: an unusable frame, a rig with no lever
+               about this axis (#495), or a returning hinge that reached neutral on this
+               very substep -- either way there is nothing to bill, and the cl and force
+               tests stay for a surface with no slope and one that makes no force anyway. */
             if(clc <= 0.0 || deflection == 0.0) { continue; }
             /* The surface's own stall_angle, the same droop a wing gets (#494's first
                half): a rudder turned 20 deg into the flow has separated, and the
@@ -9415,9 +9442,13 @@ bool Vehicle::goOnRails() {
 
     /* Fins go neutral with the sim: nothing rewrites controlDefl on rails, so
        a grounded parked ship (canRail() admits it in air) would otherwise
-       hold its last stick deflection forever. */
+       hold its last stick deflection forever. The hinge STATE (#1219) goes with it:
+       rails has no substep to slew through, and coming back off rails should start
+       from neutral rather than from an angle nothing drew. */
     for(Part *p : parts) {
         p->controlDefl = 0.0;
+        p->controlHinge = 0.0;
+        p->controlHingeRateMax = 0.0;
         /* #730, same reasoning one line up: no aero substep runs on rails, so the
            per-surface readout has nothing to refresh it. Zero the watts AND clear the
            gate they read through -- leaving one without the other is how a part window
