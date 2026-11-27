@@ -1,15 +1,19 @@
 NAME held-alpha-polar-of-the-xr2
-CLAIM With its attitude latched the XR-2 holds its trim angle of attack to a tenth of a degree for 20 s at 220 m/s, and its bill at that angle is 2.56 m2 of body form against 0.40 m2 of wing profile and 0.48 m2 of induced -- 74% of it the hull, which is the bar #1211 says a shaping claim has to move.
+CLAIM Trimming nothing but its own authored elevator, the XR-2 holds its angle of attack to a tenth of a degree for the 14 s after the spawn transient, and its bill at that angle is 2.55 m2 of body form against 0.40 m2 of surface profile and 0.50 m2 of induced -- 74% of it the hull, which is the bar #1211 says a shaping claim has to move.
 KIND golden
 # WHY THIS CASE EXISTS. #1211's Mach-4.4 shaping table compared hulls whose angle of attack
 # wallowed 0.1..2.8 deg between runs, and said plainly that nothing under ~15% of CdA was
 # readable and "a held-AoA drag rig would be worth having before anyone quotes a shaping
-# win". This is that rig's bar, pinned. e2e/aoa_polar.py builds the sweep (it walks elevator
-# TRIM, because asking aoa= only sets the spawn attitude: asks of -6, 0 and +6 all settle at
-# +3.1 deg inside 2 s, which is the hull weathervaning to its zero-moment angle, and latched
-# kill-rot damps the rate without refusing that walk). res/ships/xr2.json already authors
-# trim 12, so the shipped hull IS one run of that sweep: it trims at +3.1 deg, and with X
-# latched at 50 ms the phugoid's pitch flattens and the reading holds.
+# win". This is that rig's bar, pinned. e2e/aoa_polar.py builds the sweep: it walks elevator
+# TRIM, because trim is what SETS the hull's zero-moment angle, so a hull at that angle stays
+# there unheld. Asking aoa= only sets the spawn attitude (asks of -6, 0 and +6 all settle at
+# +3.1 deg inside 2 s -- #569), and an earlier draft of this case sent `--sim-press 50,0,X`
+# believing it latched something. It does not: a zero duration is ONE keypress, Slot::KillRot
+# is a HOLD override re-armed every tick and cleared by clearRotCmd(), and the rows with that
+# press are byte-identical to the rows with no press at all. So this case sends no input --
+# the hold is the authored trim 12 in res/ships/xr2.json talking, which is the stronger pin.
+# Holding X for real instead pins the ATTITUDE and lets the angle go: AoA reads 1.30..2.10
+# across one window while the flight path curves under it (aoa_polar --kill-rot).
 #
 # WHAT THE ROWS SAY. Cd 0.444 on A 4.79 m2, so the body bill is 1.2 x 0.444 x 4.79 = 2.55 m2
 # -- against Profile 0.40 (both wings, both tails, at their own 0.01 chordwise cd) and
@@ -22,33 +26,47 @@ KIND golden
 # flank entering the frontal projection), so a Cd quoted without its angle is not a number.
 # Every threshold here is therefore tied to the aoa hold above it: if the angle moves, the
 # case reddens rather than quietly re-pricing the hull.
+#
+# WHICH COLUMNS ARE FLAT. The engine is off, so the hull bleeds 187 -> 121 m/s across the
+# window, and the columns that follow airspeed move: Induced 0.525 -> 0.427, L/D 2.16 -> 2.06,
+# |tau| 359 -> 35. The columns that follow SHAPE do not move at all -- body form spreads 0.028
+# m2, Profile 0.004, SideCdA 0.02, SM sits on 0.68 -- so the checks below assert that flatness
+# instead of quoting a tight band around a quantity that is trending by design (a band tight
+# enough to notice a shaping win would also notice a hair of sim drift and reddens for nothing).
 ARGS --time-accel 1 --startship xr2,res/ships/xr2.json,Kerbin,flying-cruise,speed=220
 ARGS --sim-steps 1200 --drag-log --no-paint
-ARGS --sim-press 50,0,X
 EXPECT [drag]
-# The hold, first: 20 one-second rows, and the angle never leaves a tenth of a degree once
-# the spawn transient passes (t<6). |tau| under 600 N m says the hull is not fighting the air
-# to sit there -- at an off-trim angle the same hull shows 20-40 kN m.
+# The hold, first: 15 one-second rows past the spawn transient (t<6) and the angle never
+# leaves a tenth of a degree. |tau| under 600 N m says the hull is not fighting the air to sit
+# there -- at an off-trim angle the same hull shows 20-40 kN m.
 CHECK len(drag) >= 18
 CHECK all(abs(d["aoa"] - 3.1) < 0.2 for d in drag if d["t"] >= 6)
 CHECK (max(d["aoa"] for d in drag if d["t"] >= 6) - min(d["aoa"] for d in drag if d["t"] >= 6)) < 0.25
 CHECK all(d["tau"] < 600 for d in drag if d["t"] >= 6)
-# THE BILL at that angle. Body form 2.55 m2 after the --drag-cd 1.2 the force applies; the
-# window is +/- 4%, so a hull-shaping change of the size #1211 is chasing (its own cone
-# anchor is worth 3x on a bare nose) reddens this, and a few percent of authoring drift does not.
+# THE BILL at that angle. Body form 2.55 m2 after the --drag-cd 1.2 the force applies. The
+# spread check is the load-bearing one: 0.028 m2 of movement across a window whose speed falls
+# a third means a hull-shaping change of the size #1211 chases (its cone anchor is worth 3x on
+# a bare nose) reddens this while authoring drift of a few percent does not.
 CHECK all(0.43 < d["cd"] < 0.46 for d in drag if d["t"] >= 6)
 CHECK all(4.7 < d["a"] < 4.9 for d in drag if d["t"] >= 6)
 CHECK all(2.45 < 1.2 * d["cd"] * d["a"] < 2.65 for d in drag if d["t"] >= 6)
-# And the split of the bill: the surfaces own 0.40 of shape and 0.50 of induced, the hull owns
+CHECK (max(1.2 * d["cd"] * d["a"] for d in drag if d["t"] >= 6) - min(1.2 * d["cd"] * d["a"] for d in drag if d["t"] >= 6)) < 0.04
+# And the split of the bill: the surfaces own 0.40 of shape and ~0.5 of induced, the hull owns
 # the rest. Charged once each -- tick.cpp's #455 note is what makes 1.2*Cd*A + Profile +
 # Induced add up rather than double-count.
 CHECK all(0.37 < d["profile"] < 0.43 for d in drag if d["t"] >= 6)
-CHECK all(0.42 < d["induced"] < 0.58 for d in drag if d["t"] >= 6)
+CHECK all(0.40 < d["induced"] < 0.55 for d in drag if d["t"] >= 6)
+CHECK (max(d["induced"] for d in drag if d["t"] >= 6) - min(d["induced"] for d in drag if d["t"] >= 6)) > 0.05
+# SideCdA is #947's crossflow normal force, printed as its own column and NOT folded into the
+# along-flow sum above. It runs 1.31 m2 at this angle -- bigger than Profile, and #1237's whole
+# complaint is that this flank is already being paid for inside the frontal projection too.
+CHECK all(1.28 < d["sidecda"] < 1.36 for d in drag if d["t"] >= 6)
 # The airframe at its trim angle is not clean: L/D 2.1, static margin +0.68 m. The spawn is
 # kept under the 0.75 wave gate on purpose, and the point is not a Mach accident: spawning the
 # same hull at 200, 220 and 250 m/s reads Cd 0.444 on A 4.79 in the window every time, so the
 # bill is the shape's and not the speed's (measured 2026_11_27 with e2e/aoa_polar.py).
 CHECK all(1.9 < d["ld"] < 2.4 for d in drag if d["t"] >= 6)
+CHECK len([d for d in drag if d.get("sm") is not None]) >= 18
 CHECK all(0.66 < d["sm"] < 0.71 for d in drag if d.get("sm") is not None)
 CHECK max(d["mach"] for d in drag) < 0.75
 FORBID error:
