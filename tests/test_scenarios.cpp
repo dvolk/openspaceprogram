@@ -16,9 +16,10 @@
 //
 // A bed can also be handed a STATE (#1220: speed=/heading=/pitch=/roll=/yaw=), which
 // is the same kind of pure geometry. check_bed_state pins the compass reading, whether
-// a pitch bends the path or the hull, the sign of a bank and the claim that yaw=3
-// spawns at 3 deg angle of attack -- a flight measurement is worth taking only if the
-// state it starts from means what the command line says it means.
+// a pitch bends the path or the hull, the sign of a bank and how far a yaw actually
+// throws the hull off its flow -- Beta, not AoA, which is the distinction a flight
+// measurement lives or dies by. A state ask is worth taking only if it means what the
+// command line says it means.
 //
 // heli-* pins a circular heliocentric radius so the transfer planner can be
 // handed a planet-like origin orbit (it only lists children of the orbited
@@ -2559,9 +2560,10 @@ static void check_spawn_attitude() {
    aim the flight path, roll/yaw turn the hull inside it, and every number a flight
    measurement reads off the command line comes through these two helpers -- so what
    gets pinned here is exactly what a later refactor could silently flip: the compass
-   reading, whether a pitch bends the path or the hull, the sign of a bank, and the
-   claim that a sideslip buys angle of attack. Aimed in equirect.h's basis, the same
-   law the map and the HUD readout use, rather than a stand-in that could drift. */
+   reading, whether a pitch bends the path or the hull, the sign of a bank, and that a
+   sideslip is what a yaw buys -- NOT an angle of attack, however the command line reads.
+   Aimed in equirect.h's basis, the same law the map and the HUD readout use, rather
+   than a stand-in that could drift. */
 static void check_bed_state() {
     const double PI = 3.14159265358979323846;
     const double rad = PI / 180.0;
@@ -2595,6 +2597,26 @@ static void check_bed_state() {
                    "straight down, whatever heading was asked");
     }
 
+    /* A lone pitch= asks for the BED's own path lifted out of the horizon, so its
+       azimuth has to be read back off the velocity the bed settled on -- bedNoseDir
+       backwards. Pinned across all four quadrants because atan2(east, north) is one
+       swap away from a compass that runs anticlockwise, and pinned against bedNoseDir
+       itself so the pair cannot drift apart. Getting this wrong does not crash: it
+       quietly steers every pitch-only spawn due north. */
+    CHECK_NEAR(bedPathAzimuth(north, up, east, north), 0.0, 1e-9, "northbound reads 0");
+    CHECK_NEAR(bedPathAzimuth(east, up, east, north), 90.0, 1e-9, "eastbound reads +90");
+    CHECK_NEAR(bedPathAzimuth(east * -1.0, up, east, north), -90.0, 1e-9,
+               "westbound reads -90, not 270");
+    for(const double hdg : { 0.0, 45.0, 135.0, -100.0 }) {
+        const glm::dvec3 path = bedNoseDir(up, east, north, hdg, 12.0);
+        CHECK_NEAR(bedPathAzimuth(path, up, east, north), hdg, 1e-9,
+                   "the azimuth read back is the one the compass aimed");
+    }
+    /* A radial path is the one case allowed to answer a default: nothing lies across
+       the up, and |pitch| = 90 ignores heading anyway. */
+    CHECK_NEAR(bedPathAzimuth(up, up, east, north), 0.0, 1e-12,
+               "a radial path has nothing across the up to inherit");
+
     /* The hull turns, measured against the level basis the bed builds for itself.
        faceAlong(dir, up_ref) puts +Y up, +Z at the nose and +X = cross(Y,Z) on the
        PILOT'S LEFT, which is why the signs inside bedRollYaw are negated. */
@@ -2611,14 +2633,16 @@ static void check_bed_state() {
     CHECK_NEAR(glm::dot(bank[2], nav), 1.0, 1e-12, "and a bank never moves the nose");
 
     /* yaw + turns the hull about its own up WITHOUT bending the path: the wings stay
-       level, and the angle between the nose and the flow is the asked number -- which
-       on an air bed is the angle of attack the hull spawns at. */
+       level, and the angle between the nose and the flow is the asked number. That
+       angle is the SIDESLIP (Beta) the --drag-log prints, not an angle of attack --
+       the nose moved in the yaw plane while the wings stayed flat. Anyone wanting
+       AoA needs a hull-only pitch, which the spawn asks do not have (#1223). */
     const glm::dmat3 slip = bedRollYaw(level, 0.0, 3.0);
     CHECK_NEAR(glm::dot(slip[1], top), 1.0, 1e-12, "yaw keeps the wings level");
     CHECK_NEAR(glm::dot(slip[2], left), -std::sin(3.0 * rad), 1e-12,
                "yaw + sends the nose to the pilot's right");
     CHECK_NEAR(std::acos(glm::dot(slip[2], flow)) / rad, 3.0, 1e-9,
-               "yaw=3 on a flow-aligned bed spawns at 3 deg angle of attack");
+               "yaw=3 on a flow-aligned bed spawns 3 deg of sideslip");
 
     /* And the order a player reads it in: the yaw happens in the AIMED frame, then the
        bank about the new nose. Bank first and the yaw runs about a banked up axis --
@@ -2632,8 +2656,81 @@ static void check_bed_state() {
     CHECK_NEAR(std::acos(glm::dot(both[2], flow)) / rad, 3.0, 1e-9,
                "a 90 deg bank keeps the 3 deg sideslip it started with");
     printf("  bed state: 4 compass headings, 30 deg of climb, straight up from 3 "
-           "headings, a 20 deg bank and a 3 deg sideslip pinned against equirect's "
-           "horizon\n");
+           "headings, 4 azimuths read back off a path (plus the radial case), a 20 deg "
+           "bank and a 3 deg sideslip pinned against equirect's horizon\n");
+}
+
+/* The same five asks through the JSON door, which is a separate parser from
+   --startship's splitStartship and drifts from it if nothing says otherwise (it already
+   had: heading came through unwrapped and a negative speed came through at all). Pinned
+   here rather than on the command line because loadDebugStartShips is a function while
+   splitStartship is static in main.cpp, and the two refusals below are the ones whose
+   ABSENCE changed what a ship did rather than what it printed. Written to tmp/ the way
+   test_belts feeds a loader, so the refusal TEXT is what gets checked -- that message is
+   the only thing the player sees. */
+static void check_startship_state() {
+    auto pathFor = [](const char *tag, const nlohmann::json &extra) {
+        nlohmann::json e = {{"ship", "res/ships/skiff_trim.json"}, {"name", "v"},
+                            {"body", "Kerbin"}, {"scenario", "flying-cruise"}};
+        for(const auto &kv : extra.items()) { e[kv.key()] = kv.value(); }
+        nlohmann::json j;
+        j["ships"] = nlohmann::json::array({e});
+        std::filesystem::create_directories("tmp");
+        const std::string path = std::string("tmp/test_bed_state_") + tag + ".json";
+        std::ofstream(path) << j.dump();
+        return path;
+    };
+    // Returns the loader's message ("" = it loaded), with the answer in `out`.
+    auto loadEntry = [&](const char *tag, const nlohmann::json &extra,
+                         DebugStartShip &out) {
+        const std::string path = pathFor(tag, extra);
+        std::string err;
+        try {
+            DebugStartShips d = loadDebugStartShips(path.c_str());
+            if(d.ships.size() != 1) { err = "loaded " + std::to_string(d.ships.size()); }
+            else { out = d.ships[0]; }
+        } catch(const std::exception &ex) {
+            // Copy the message out of the catch: what() points into the exception.
+            err = ex.what();
+        }
+        std::remove(path.c_str());
+        return err;
+    };
+
+    DebugStartShip s;
+    std::string err = loadEntry("all", {{"speed_mps", 120.0}, {"heading_deg", -45.0},
+                                        {"pitch_deg", 5.0}, {"roll_deg", 20.0},
+                                        {"yaw_deg", 3.0}}, s);
+    CHECK(err.empty(), "the five state asks load from JSON");
+    if(err.empty()) {
+        CHECK_NEAR(s.speed_mps, 120.0, 1e-12, "speed_mps lands");
+        /* Stored WRAPPED, because the Spawn line echoes this number and the spawn feeds
+           it to cos/sin: -45 and 315 are one direction and two printed figures. */
+        CHECK_NEAR(s.heading_deg, 315.0, 1e-9, "a westward heading is stored wrapped");
+        CHECK_NEAR(s.pitch_deg, 5.0, 1e-12, "pitch_deg lands");
+        CHECK_NEAR(s.roll_deg, 20.0, 1e-12, "roll_deg lands");
+        CHECK_NEAR(s.yaw_deg, 3.0, 1e-12, "yaw_deg lands");
+    }
+    /* Unasked must stay NaN, not become 0: a defaulted speed would put a hull in mid-air
+       at a standstill on every entry that never asked for one. */
+    err = loadEntry("none", nlohmann::json::object(), s);
+    CHECK(err.empty(), "an entry with no state asks loads");
+    if(err.empty()) {
+        CHECK_TRUE(std::isnan(s.speed_mps), "speed stays unasked rather than 0");
+        CHECK_TRUE(std::isnan(s.heading_deg), "heading stays unasked rather than north");
+        CHECK_TRUE(std::isnan(s.yaw_deg), "yaw stays unasked rather than 0");
+    }
+    err = loadEntry("neg", {{"speed_mps", -1.0}}, s);
+    CHECK(err.find("is a magnitude") != std::string::npos,
+          "JSON refuses a backwards speed, as the command line does");
+    err = loadEntry("pitch", {{"pitch_deg", 95.0}}, s);
+    CHECK(err.find("[-90, 90]") != std::string::npos,
+          "JSON refuses a pitch past the vertical, as the command line does");
+    err = loadEntry("str", {{"speed_mps", "fast"}}, s);
+    CHECK(err.find("must be a number") != std::string::npos,
+          "a string speed refuses rather than reading 0");
+    printf("  startship state JSON: 5 asks landed, NaN when unasked, 3 refusals shared"
+           " with --startship\n");
 }
 
 int main() {
@@ -2644,6 +2741,7 @@ int main() {
     check_spawn_attitude();
     check_bed_turn();
     check_bed_state();
+    check_startship_state();
     // The files the heli-* radii were read off. ksp_system/old_system are not
     // checked: they have no Mercury/Earth/Jupiter/Uranus.
     const char *paths[] = {

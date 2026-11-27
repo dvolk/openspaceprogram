@@ -206,9 +206,11 @@ struct SpawnPlace {
        axes (faceAlong's +X is the pilot's LEFT): roll + drops the RIGHT wing, yaw +
        sends the nose to the pilot's right. Neither one aims anything by itself: with no
        heading/pitch the bed's own prograde aim stands and these ride on top of it. That
-       split is what makes `yaw=+3` the way
-       to spawn at 3 deg AoA on an air bed.
-       All four ride a CIRCULAR bed, like alt_: a pad bed stands where its site stands, and
+       split is what makes `yaw=+3` spawn the hull 3 deg OFF its flow -- sideslip, the
+       Beta the --drag-log prints. NO ask here buys an angle of attack: pitch= moves nose
+       and path together, and a hull-only pitch (the third hull turn) is the knob that
+       would (#1223).
+       All five ride a CIRCULAR bed, like alt_: a pad bed stands where its site stands, and
        an ellipse bed's state is its two apsides. */
     double speed_mps = kNoCoord;
     double heading_deg = kNoCoord;
@@ -3172,11 +3174,18 @@ glm::dmat3 faceAlong(const glm::dvec3 &dir, const glm::dvec3 &up_ref);
    bedRollYaw then turns an attitude the caller already has -- faceAlong's answer, or the
    bed's own prograde one -- by roll about the hull's +Z (nose) and yaw about its +Y (up),
    right-hand rule. Multiplying on the RIGHT is the whole point: these are body-frame
-   turns, so a yaw does not tilt the flight path, and on an air bed it is what puts an
-   angle of attack on a hull that was spawned along its flow. */
+   turns, so a yaw does not tilt the flight path. What it does buy is an angle BETWEEN the
+   nose and the flow -- sideslip (Beta), not angle of attack; the hull has no hull-only
+   pitch turn to buy AoA with (#1223). */
 glm::dvec3 bedNoseDir(const glm::dvec3 &up, const glm::dvec3 &east,
                       const glm::dvec3 &north, double heading_deg, double pitch_deg);
 glm::dmat3 bedRollYaw(const glm::dmat3 &att, double roll_deg, double yaw_deg);
+/* The azimuth of a velocity the caller already has, in the same basis bedNoseDir aims
+   in [deg, -180..180]. spawn_vehicle uses it when pitch= is asked without heading=:
+   the ask lifts the bed's own path, so its azimuth is inherited rather than defaulted
+   to north. */
+double bedPathAzimuth(const glm::dvec3 &air, const glm::dvec3 &up,
+                      const glm::dvec3 &east, const glm::dvec3 &north);
 
 /* slot_offset (m): lateral separation for ships sharing an orbit bed, along the
    binormal so each orbit keeps its shape. Pads ignore it.
