@@ -36,7 +36,8 @@ always has an altitude in its answer, because it is sinking: those rows are 6.4.
 and the same hull reads slower still the lower it gets (#585 is why it has not settled
 yet). The row that did NOT move is L/D: 8.64 is a property of the airframe at 4.9 deg,
 and #686 changed the air, not the hull. Measured again on 2026_11_27 through
-`e2e/aoa_polar.py` (trim 12, kill-rot latched at 50 ms so the angle is held, 400 s): the
+`e2e/aoa_polar.py` (trim 12 on the elevators and no key input at all -- the authored trim is
+what holds the angle; a `--sim-press START,0,X` does nothing, see that tool's header, 400 s): the
 angle holds 4.70..4.80 deg, `--drag-log`'s `Ld=` reads **8.07..8.13** in every window past
 t = 60 s, and the bill is 0.38 + 0.60 + 0.33 m2. So the log CAN print the ratio -- #694's
 `Ld=` column is lift over the drag the air applies ALONG the flow, which is the ratio a
