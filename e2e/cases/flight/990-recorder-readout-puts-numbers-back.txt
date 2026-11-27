@@ -67,21 +67,32 @@
 # New mesh, new lowest point, new rest height -- which is the argument for the digits below
 # being a snapshot while the CHECKs are the claim.
 # Of the other four columns, two are Kerbin's authored air and two are the hull's own residue:
-#   q=20.1541 is 1/2 rho tas^2 with rho ~1.194 and tas ~5.81 m/s -- the deck wind read at
+#   q=20.1976 is 1/2 rho tas^2 with rho ~1.194 and tas ~5.82 m/s -- the deck wind read at
 #     this altitude (5 m/s at 0 ramping to 40 m/s at 11205 m), not a hull moving at 20 m/s.
-#     The row minted before the skin change read 20.2534 at 268.469 m: 0.17% down, which is
-#     0.08% of air speed, since q goes as tas^2 and only the altitude moved.
-#   aoa=-90.0268 is that same flow arriving broadside at a nose-up hull.
-#   v=0.0219759 and gamma=0.000121824 are the integrator's residue: the hull is standing
+#     The pure ramp at 267.591 m would bill 20.33, so the hull's own residue takes ~0.13 off
+#     q by standing in the wind; a still hull pointing into ~5.8 m/s is the whole story.
+#   aoa=-89.9462 is that same flow arriving broadside at a nose-up hull.
+#   v=0.0377566 and gamma=0.00117666 are the integrator's residue: the hull is standing
 #     still, so the speed and flight-path angle are noise at the 1e-2 m/s scale, and they are
 #     the two columns that move when anything in the aero or contact law moves. The previous
 #     row read 0.0174538 and -0.00132029 for the same still hull; gamma changed sign again,
 #     which is what a residue that small does.
 # So the exact digits are a snapshot of jitter standing in 5.8 m/s of wind, and this file is
 # where that fact gets re-minted, not argued: flight/395-surface-aoa-readout is the case that
-# pins the wind's numbers as laws. Measured byte-identical across five standalone runs, so
-# the row is reproducible even though its v and gamma columns are
-# residue -- the same schedule on the same build gives the same residue.
+# pins the wind's numbers as laws. The row is byte-identical across standalone runs of ONE
+# build, so it is reproducible even though its v and gamma columns are residue -- the same
+# schedule on the same build gives the same residue.
+#
+# WHICH IS NOT THE SAME AS THE SAME RESIDUE ACROSS BUILDS, and this is where that cost got
+# paid. The row re-minted on 2026-11-27 reads
+# `t=23.00 alt_asl=267.591 v=0.0377566 q=20.1976 aoa=-89.9462 gamma=0.00117666`: every column
+# except alt_asl moved (v 0.0219759 -> 0.0377566, q 20.1541 -> 20.1976, aoa -90.0268 ->
+# -89.9462, gamma 0.000121824 -> 0.00117666), all of it inside the bands below, all of it with
+# no Recorder code touched and the rest height byte-identical. An EXPECT carrying those digits
+# is therefore a golden case wearing an invariant label: it reddens on any aero, mass or
+# contact change -- which is exactly how it went red (#1201's list). So the EXPECT now pins
+# what the case is actually for, the sample identity on the mission clock (t=23.00), and the
+# numbers below carry the claims as bands.
 # Three of the columns are one number, and the CHECKs below say so without pinning the jitter:
 #     sqrt(2 q / rho) = sqrt(2 x 20.1541 / 1.1941) = 5.8095 m/s of air over the hull, while the
 #     authored ramp (5 m/s at 0, 40 m/s at 11205 m) reads 5.8359 at alt_asl 267.591 m. The
@@ -114,7 +125,10 @@ ARGS --sim-mouse 8400,0,776,620,1
 ARGS --ui-click 9000,"Recorder/Unpin"
 ARGS --sim-mouse 9400,600,700,560,1
 ARGS --sim-mouse 9600,0,950,560,0
-EXPECT [recwin] pin t=23.00 alt_asl=267.591 v=0.0219759 q=20.1541 aoa=-90.0268 gamma=0.000121824
+# Claim 1, the mission clock: the pinned sample is t=23.00 s, not the file's t= column.
+# This is the part of the row that is a LAW, so it is the part the EXPECT carries. The
+# digits that used to sit behind it do not belong here -- see the snapshot note above.
+EXPECT [recwin] pin t=23.00
 EXPECT [recwin] unpin
 EXPECT [recwin] fit=off
 CHECK out.count("[recwin] pin ") == 1
