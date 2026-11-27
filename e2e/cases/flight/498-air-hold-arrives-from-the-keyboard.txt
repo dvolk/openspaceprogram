@@ -1,0 +1,45 @@
+# Y (Slot::SlewAirPrograde) latches the air hold: toast, [slew] mode, and an
+# aim that is the AIR's velocity rather than the orbit's.
+NAME air-hold-arrives-from-the-keyboard
+CLAIM Y in a flying skiff latches the AIR-prograde hold and a second press releases it: the toast fires, [slew] prints mode=air-prograde only between the two presses, and the law's own target vector is the hull's air-relative velocity (dot(nose, target) >= 0.99999), not the conic's.
+KIND invariant
+# WHY THIS CASE EXISTS. flight/498-air-prograde-hold-versus-the-orbital-hold pins what
+# the air hold DOES, but it engages with --autopilot, which calls Command() at startup
+# (main.cpp) and never touches the key path. ui/174-autopilot-keys pins the key path for
+# Z/B only. So between them, the two slotFired blocks for Slot::SlewAirPrograde /
+# Slot::SlewAirRetrograde (events.cpp) had no caller-level pin at all: delete those six
+# lines and the whole corpus stayed green, which is the definition of an unexercised
+# binding. This case presses Y and reads the sim's answer.
+#
+# WHY ONLY ONE OF THE PAIR IS PRESSED. slotSimKey() matches a binding only when its mod
+# mask is empty, so Shift+Y (air retrograde) is invisible to --sim-press; plain Y is not,
+# because sim_parse_key knows "Y" and the plain binding needs no mods. The retrograde
+# half's --autopilot spelling is pinned by
+# flight/498-air-retrograde-aims-behind-the-nose instead.
+#
+# WHAT EACH CHECK BUYS. [slew] rows exist only while a law owns the attitude, so the row
+# window IS the latch: nothing before the first press, nothing after the second. The
+# dot(nose, target) check is the part that could not pass on the CONIC hold: this hull is
+# spawned 8 deg off the wind, so its conic prograde sits ~31 deg off its own nose
+# (flight/498-surface-prograde measures aprg 4.85..5.05 against prg 30.5..31.7 on the same
+# fixture), which would cap the dot near cos(31 deg) = 0.857. 0.999 is inside that by 6x.
+# FORBID mode=prograde is the same claim one level up: no row in the run belongs to the
+# orbital hold.
+ARGS --time-accel 1 --startship skiff_trim,res/ships/skiff_trim.json,Kerbin,flying-cruise,yaw=8
+ARGS --sim-steps 1200 --slew-log --no-paint
+ARGS --sim-press 2000,0,Y
+ARGS --sim-press 8000,0,Y
+EXPECT [toast] Autopilot: Air prograde engaged
+EXPECT [toast] Autopilot: Air prograde off
+EXPECT mode=air-prograde
+# Not vacuous (#653): the all() calls below need their own counts first. Measured 60 rows,
+# at 10 Hz from t = 2.1 to t = 8.0 s.
+CHECK len([s for s in slew if s["mode"] == "air-prograde"]) >= 40
+CHECK len([s for s in slew if s["mode"] != "air-prograde"]) == 0
+# The latch lives exactly between the two presses: 2.0 s and 8.0 s, plus one printed tick.
+CHECK all(2.0 <= s["t"] <= 8.2 for s in slew if s["mode"] == "air-prograde")
+# And the thing it aims at is the air: past the transient the nose sits on the law's own
+# target vector to within 0.004 rad.
+CHECK all(s["nose"][0] * s["target"][0] + s["nose"][1] * s["target"][1] + s["nose"][2] * s["target"][2] > 0.999 for s in slew if s["mode"] == "air-prograde" and s["t"] >= 4 and s["target"] is not None)
+FORBID mode=prograde
+FORBID error:

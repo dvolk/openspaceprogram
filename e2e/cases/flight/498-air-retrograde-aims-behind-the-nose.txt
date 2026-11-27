@@ -1,0 +1,40 @@
+# Air retrograde (Shift+Y, --autopilot air-retrograde) aims BEHIND the nose.
+NAME air-retrograde-aims-behind-the-nose
+CLAIM Latched to the air RETROGRADE, the law's target vector is anti-parallel to the hull's own nose (dot(nose, target) <= -0.9 on every row), while the same hull under the air prograde hold puts the same dot at +0.998. The sign is the whole of what the mode adds, so it is what gets pinned.
+KIND invariant
+# WHY THIS CASE EXISTS. SlewAirRetrograde and SlewAirPrograde differ in exactly one
+# expression: slewTargetDir() returns -unit(airRelativeVel(...)) instead of
+# unit(airRelativeVel(...)) (vehicle.cpp). Every other observable -- the latch, the toast,
+# the mode name, the [slew] row, the gate -- is shared, so dropping the minus sign leaves
+# the rest of the corpus green and makes Shift+Y a second, quieter prograde button. The
+# chord itself cannot be pressed from a script (slotSimKey matches only empty mod masks),
+# so the mode is spelled with --autopilot and the DIRECTION is what the CHECK reads.
+#
+# WHY dot() AND NOT an angle band. [slew]'s E= is already the nose-to-target angle, but on
+# this spawn both holds start with a large E for opposite reasons, and E alone cannot tell
+# "aimed behind" from "aimed ahead and failing". nose= and target= are printed as unit
+# vectors on every row, so their dot is a direct, trajectory-independent witness of the
+# sign: >= +0.998 for the prograde case, <= -0.9 here. Measured -0.989 on the first row
+# (E = 2.9979 rad = 171.8 deg) and -0.98 after thirty seconds.
+#
+# WHAT DOES NOT HAPPEN, and why nothing here pretends otherwise: the hull never completes
+# the flip. E sits at 2.978..2.998 rad for the whole run and [surfinfo]'s aprg stays at
+# 7.5..8.8 deg, because the law asks for 3.10 rad/s and 1.4e6 N m about the flip axis while
+# the skiff's actuators spend 2.4e3 N m and the aero is holding the nose into the wind
+# (SideCp -2.28 m). Whether a plane with this little authority should report that it cannot
+# reach a 171 deg aim -- rather than latching, silently asking 1.4e6 N m every substep and
+# going nowhere -- is #1240, not this case. What this case owes the next reader is the
+# sign, and it does not care whether the flip ever lands.
+ARGS --time-accel 1 --startship skiff_trim,res/ships/skiff_trim.json,Kerbin,flying-cruise,yaw=8
+ARGS --sim-steps 900 --slew-log --info-log --no-paint --autopilot air-retrograde
+EXPECT mode=air-retrograde
+# Not vacuous (#653): 150 rows at 10 Hz over 15 s, every one of them this mode.
+CHECK len([s for s in slew if s["mode"] == "air-retrograde"]) >= 100
+CHECK all(s["nose"][0] * s["target"][0] + s["nose"][1] * s["target"][1] + s["nose"][2] * s["target"][2] < -0.9 for s in slew if s["mode"] == "air-retrograde" and s["target"] is not None)
+# The aim exists on every tick of the window: a row whose air gate failed prints
+# `mode=air-retrograde no-target`, which does not parse into [slew] at all, so a row count
+# this close to the tick count is the evidence.
+CHECK len([s for s in slew if s["mode"] == "air-retrograde" and s["E"] is not None]) >= 100
+# And the air itself is still there to be pointed against (tas= from [surfinfo]).
+CHECK len([u for u in surf if u.get("tas") is not None and u["tas"] > 10.0]) >= 10
+FORBID error:

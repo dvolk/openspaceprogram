@@ -43,10 +43,19 @@ ARGS --sim-steps 4200 --drag-log --slew-log --no-paint --autopilot air-prograde
 ARGS --sim-press 20000,0,Z
 EXPECT [slew]
 # Not vacuous (#653): every all() below selects on a mode or a Beta that exists, so each
-# needs its own count in front of it.
+# needs its own count in front of it -- and the counts are PER WINDOW, not per run, because
+# a whole-run count would still pass if the filtered window went empty. Measured under the
+# harness: 200 air-prograde rows (141 of them at t >= 6), 500 prograde rows (491 at
+# t >= 21, 101 at t >= 60, 51 in 21..26), 70 Beta rows (14 in 6..19, 49 at t >= 22).
 CHECK len([s for s in slew if s["mode"] == "air-prograde"]) >= 150
 CHECK len([s for s in slew if s["mode"] == "prograde"]) >= 300
 CHECK len([d for d in drag if d.get("beta") is not None]) >= 40
+CHECK len([s for s in slew if s["mode"] == "air-prograde" and s["t"] >= 6]) >= 100
+CHECK len([s for s in slew if s["mode"] == "prograde" and s["t"] >= 21]) >= 300
+CHECK len([s for s in slew if s["mode"] == "prograde" and 21 <= s["t"] <= 26]) >= 30
+CHECK len([s for s in slew if s["mode"] == "prograde" and s["t"] >= 60]) >= 60
+CHECK len([d for d in drag if d.get("beta") is not None and 6 <= d["t"] <= 19]) >= 10
+CHECK len([d for d in drag if d.get("beta") is not None and d["t"] >= 22]) >= 30
 # The air hold: nose on the air by t = 6 s and there ever after, and the law's own error
 # against the air-relative target down in the milliradians. The 0.02 rad ceiling on E is 8x
 # the measured figure and still 17x tighter than the conic hold's best, so it reddens if the
@@ -59,9 +68,17 @@ CHECK all(s["E"] < 0.02 for s in slew if s["mode"] == "air-prograde" and s["t"] 
 # 4.0 is 1.6 deg inside the measured -5.5..-6.1, so a hull that stopped sideslipping reddens
 # this rather than quietly proving the two holds had collapsed into one.
 CHECK all(d["beta"] < -4.0 for d in drag if d.get("beta") is not None and d["t"] >= 22)
-# Two ends of the same failure, both worth pinning: the hold never acquires its target
-# (0.3427 rad is the closest it ever comes, so 0.3 is a floor with 12% of slack), and once
-# the transient is over it is 0.7 rad -- 40 deg -- away and still drifting further.
-CHECK all(s["E"] > 0.3 for s in slew if s["mode"] == "prograde" and s["t"] >= 21 and s["E"] is not None)
-CHECK min(s["E"] for s in slew if s["mode"] == "prograde" and s["t"] >= 45 and s["E"] is not None) > 0.7
+# The hold never acquires its target: 0.3427 rad is the closest it ever comes, and 0.25
+# leaves 27% of room under that rather than the 12% a 0.3 floor would. The trough sits at
+# t = 21.8, so a window cut that moves by a second does not decide which sample owns it.
+CHECK all(s["E"] > 0.25 for s in slew if s["mode"] == "prograde" and s["t"] >= 21 and s["E"] is not None)
+# And it gets WORSE, which is the half a floor cannot say: the target -- the ground's own
+# motion, not the plane's -- walks off, so after the transient the nose is further from
+# where it is pointed than it ever was during the transient. Measured min over t >= 60 is
+# 0.7943 against a transient worst of 0.4399, so this leaves 0.35 rad (80%) of room instead
+# of pinning the 0.76 figure at the first sample of a window. A tuned absolute band on a
+# 50-second trajectory is what reddens on unrelated mass or drag work; the ordering is what
+# the ticket actually claims. If the ordering ever does flip, re-measure and say why rather
+# than widening the number above.
+CHECK min(s["E"] for s in slew if s["mode"] == "prograde" and s["t"] >= 60 and s["E"] is not None) > max(s["E"] for s in slew if s["mode"] == "prograde" and 21 <= s["t"] <= 26 and s["E"] is not None)
 FORBID error:
