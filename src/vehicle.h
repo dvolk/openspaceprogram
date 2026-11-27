@@ -16,6 +16,8 @@
 #include "flightlog.h" // FlightLog
 #include "fuelgraph.h" // FuelLayers: the drain layers the live drain walks (#965)
 #include "sas_policy.h" // SasPolicy: pilot vs. law (#421)
+#include "slew_mode.h"  // SlewMode + its words: its own header so cli.cpp can validate
+                        // --autopilot without the Vehicle class (#498)
 #include "losses.h"    // AscentLosses: what a burn spent, not what it did (#675)
 
 #define GLM_ENABLE_EXPERIMENTAL
@@ -63,68 +65,6 @@
    half the pair. That fold is #637, and tests/test_scenarios.cpp refuses a body whose
    dragAtm lost one of those four. */
 DragAtmosphere dragAtm(const AtmosphereParams &a, const TerrainBody &body);
-
-/* Autopilot slew targets -- mutually exclusive (last one wins); the stick
-   composes with them. Declared above ShipCmd because a ShipCmd now carries one. */
-enum SlewMode {
-    SlewNone = 0,
-    SlewPrograde,
-    SlewRetrograde,
-    SlewRadialOut,   /* align nose away from the SOI body (radius vector) */
-    SlewRadialIn,    /* align nose toward the SOI body */
-    SlewNormal,      /* align nose with the orbital-plane normal (r x v) */
-    SlewAntiNormal,  /* align nose against it */
-    /* Steer at a direction a LAW named, rather than one the class invented (#606).
-       The six above are names this class resolves itself; this one is resolved from
-       the aim vector that ShipCmd(Aim, dir) carries, because a guidance law can
-       MEASURE a turn through pointingTo() but until now could not ASK for one --
-       slewDemand()/slewTargetDir() are protected, so the only channels were the six
-       names plus the stick, and a pitch-program law had to re-implement the slew law
-       outside the class that owns it. */
-    SlewFree,
-    SlewKillRot,     /* kill the spin */
-    /* The AIR's velocity rather than the conic's (#498). Inside an atmosphere on a
-       rotating body the conic's velocity is mostly the GROUND's own motion -- Kerbin
-       carries the sea-level surface ~175 m/s -- so a prograde hold aims an 80 m/s
-       airframe 16 deg off a nose the aero says is dead on the flow, and never
-       converges. These two aim at the vector the forces themselves use
-       (airRelativeVel), which is what render.cpp draws as the air prograde marker.
-       Appended rather than inserted: the latched mode is saved as an int (save.cpp),
-       so a new mode must not move the numbers an older save already wrote. */
-    SlewAirPrograde,
-    SlewAirRetrograde
-};
-
-/* One spelling of what a mode is CALLED (#616): the [slew] trace's mode= field and the
-   line Game::select_vehicle prints when a mission parks were keeping separate word
-   lists for the same state, which is how a log and the CHECK that reads it drift apart
-   without anything noticing. Keep these words -- e2e cases match on them. */
-inline const char *slewModeName(SlewMode m) {
-    switch(m) {
-        case SlewNone:       return "none";
-        case SlewPrograde:   return "prograde";
-        case SlewRetrograde: return "retrograde";
-        case SlewRadialOut:  return "radial-out";
-        case SlewRadialIn:   return "radial-in";
-        case SlewNormal:     return "normal";
-        case SlewAntiNormal: return "anti-normal";
-        /* Named, not the fallback: an e2e CHECK on a free-aim law reads these rows,
-           and a nameless row cannot be told apart from a construction bug (#606). */
-        case SlewFree:       return "free";
-        case SlewKillRot:    return "killrot";
-        case SlewAirPrograde:   return "air-prograde";
-        case SlewAirRetrograde: return "air-retrograde";
-    }
-    return "slew";   // an int outside the enum, which Command() cannot produce
-}
-
-/* Is an int read from OUTSIDE the sim a mode at all? Two doors take one as a plain
-   number -- the save loader's stored latch and restoreSlewRequest() -- and both have
-   to ask the same question, so it lives here rather than spelled twice against the
-   last enumerator (which is what let the pair drift when a mode was added). */
-inline bool slewModeOk(int m) {
-    return m >= (int)SlewNone && m <= (int)SlewAirRetrograde;
-}
 
 
 // One ship-control command. Command() is the only control -> physics path.

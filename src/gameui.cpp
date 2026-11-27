@@ -3901,13 +3901,15 @@ void drawUIReadouts(Game &g) {
         toggle(SlewNormal, "Normal");
         toggle(SlewAntiNormal, "Anti-normal");
         /* The air pair (#498): the same hold against the AIR rather than the conic.
-           Outside an atmosphere there is no air-relative velocity with a direction, so
-           the row says so instead of lighting up on a target the slew law will refuse
-           ([slew] prints mode=air-prograde no-target). */
+           The hint asks render.cpp's own question -- air at the COM AND an airspeed at
+           least kAoAFlowFloor -- via the answer it already computed this frame, rather
+           than re-spelling half of it here. A density-only test would call this row live
+           on a parked hull on an air world, where the latch refuses (the [slew] row
+           prints mode=air-prograde no-target) and the marker is not drawn either. */
         toggle(SlewAirPrograde, "Air prograde");
         toggle(SlewAirRetrograde, "Air retrograde");
-        if(ship->airDensityAtCom() <= 0.0) {
-            ImGui::TextDisabled("No air: the air pair has no target here.");
+        if(!view.air_dir_valid) {
+            ImGui::TextDisabled("No air or no airspeed: the air pair has no target here.");
         }
         ImGui::Spacing();
         toggle(SlewKillRot, "Kill rotation");

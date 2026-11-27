@@ -21,8 +21,13 @@ https://github.com/dvolk/openspaceprogram
 - Shift-T - lock/unlock thrust
 - Space - stage
 - R/F - throttle up/down
-- Z - autopilot: hold the nose along your velocity
-- B - autopilot: hold the nose against your velocity
+- Z - autopilot: hold the nose along your ORBIT's velocity
+- B - autopilot: hold the nose against your orbit's velocity
+- Y - autopilot: hold the nose into the AIR you are flying through. In an
+  atmosphere that is not Z: Z follows the orbit, and on a turning world the
+  ground under a slow hull is moving far faster than the hull, so holding Z
+  steers a plane sideways
+- Shift+Y - autopilot: hold the nose against the air
 - F5 - quicksave
 - F9 - quickload
 - F12 - screenshot

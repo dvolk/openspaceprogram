@@ -1143,9 +1143,10 @@ Vehicle *buildShipFromSaveParts(Game &g, const LoadWorld &w, const SaveShip &s,
        Game::clearEphemeralState drops it (#612) -- so restoring the latch would
        give the hull a steering target with nothing behind it: it turns forever
        along the heading the mission last asked for, the SAS keys toggle a mode
-       the player never set (nothing else latches SlewFree: the Autopilot window
-       offers seven modes and --autopilot's member list excludes this one), and a
-       latched slew keeps a hull off rails for ever. Every other latch is the
+       the player never set (nothing else latches SlewFree: the Autopilot window's
+       rows and --autopilot's word list together name every mode except this one,
+       and slewModeWords() leaves it out by construction), and a latched slew
+       keeps a hull off rails for ever. Every other latch is the
        player's and travels. When an armed mission becomes saveable (#612 stage
        4), this is the line that changes -- and it must travel with the aim. */
     const SlewMode latched = (SlewMode)s.slew_request;

@@ -1095,17 +1095,8 @@ int main(int argc, char **argv)
            the same latch semantics rather than a private spelling (#424). The ship
            is fresh, so a toggle engages. */
         if(!args.autopilot.empty() && first != nullptr) {
-            SlewMode m = SlewNone;
-            if(args.autopilot == "prograde")        { m = SlewPrograde; }
-            else if(args.autopilot == "retrograde") { m = SlewRetrograde; }
-            else if(args.autopilot == "radial-out") { m = SlewRadialOut; }
-            else if(args.autopilot == "radial-in")  { m = SlewRadialIn; }
-            else if(args.autopilot == "normal")     { m = SlewNormal; }
-            else if(args.autopilot == "anti-normal"){ m = SlewAntiNormal; }
-            else if(args.autopilot == "kill-rot")   { m = SlewKillRot; }
-            else if(args.autopilot == "air-prograde")   { m = SlewAirPrograde; }
-            else if(args.autopilot == "air-retrograde") { m = SlewAirRetrograde; }
-            assert(m != SlewNone);   // CLI::IsMember accepts exactly these
+            const SlewMode m = slewModeFromWord(args.autopilot.c_str());
+            assert(m != SlewNone);   // CLI::IsMember accepts exactly slewModeWords()
             first->Command(ShipCmd(Sas, m), true);
             printf("Autopilot: %s engaged at startup\n", args.autopilot.c_str());
         }

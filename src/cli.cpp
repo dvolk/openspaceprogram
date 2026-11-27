@@ -3,6 +3,7 @@
 #include "cli.h"
 #include "settings.h"   // kTerrainPxMin/Max (the --terrain-px range)
 #include "sas_policy.h"  // sasPolicyName: the --sas-policy member list
+#include "slew_mode.h"   // slewModeWords: the --autopilot member list (#498)
 #include "version.h"   // VERSION
 
 #include <cctype>
@@ -172,18 +173,23 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
            sasPolicyFromName's assert at runtime. */
         ->check(CLI::IsMember({sasPolicyName(SasStickOwnsAxis),
                                sasPolicyName(SasKeepsAsk)}));
-    app.add_option("--autopilot", args.autopilot,
-                   "Engage a slew mode on the active ship at startup: "
-                   "prograde | retrograde | radial-out | radial-in | normal | "
-                   "anti-normal | kill-rot | air-prograde | air-retrograde. "
-                   "A test hook -- in-game these are "
-                   "the Autopilot window's toggles (clickable headless with "
-                   "--ui-click) plus Z/B for prograde/retrograde and Y / Shift+Y "
-                   "for the air pair (#498)"
-                   "(default: none)")
-        ->check(CLI::IsMember({"prograde", "retrograde", "radial-out",
-                               "radial-in", "normal", "anti-normal",
-                               "kill-rot", "air-prograde", "air-retrograde"}));
+    /* One word list for both doors (#498): the help text, the accepted set and
+       main.cpp's word->mode parse all come off slewModeWords(), so a mode can no longer
+       land in the parser while the CLI still refuses its name (or the reverse). */
+    std::vector<std::string> ap_words;
+    for(const SlewModeWord *w = slewModeWords(); w->word != nullptr; ++w) {
+        ap_words.push_back(w->word);
+    }
+    std::string ap_help = "Engage a slew mode on the active ship at startup: ";
+    for(size_t i = 0; i < ap_words.size(); ++i) {
+        ap_help += (i ? " | " : "") + ap_words[i];
+    }
+    ap_help += ". A test hook -- in-game these are the Autopilot window's toggles "
+               "(clickable headless with --ui-click) plus Z/B for the orbital "
+               "prograde/retrograde and Y / Shift+Y for the air pair (#498) "
+               "(default: none)";
+    app.add_option("--autopilot", args.autopilot, ap_help)
+        ->check(CLI::IsMember(ap_words));
     app.add_option("--sas-rate", args.sas_rate,
                    "Ceiling on how fast an attitude AUTOPILOT may swing the active "
                    "ship, deg/s (0 = unlimited, as fast as the hardware levers). The "
