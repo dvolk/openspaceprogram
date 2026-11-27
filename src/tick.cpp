@@ -1509,6 +1509,35 @@ void tick(Game &g) {
                 } else {
                     printf(" JetA=-");
                 }
+                /* #1221: the speed the forces on this row came from. The row's |v|= is
+                   the hull's speed over the GROUND; every force beside it is paid on the
+                   air-relative speed at the COM, and on a body that authors wind those
+                   are different numbers -- the spaceplane spawn bed prints |v| 80.0
+                   against |v_air| 52.2, which is 2.3x in dynamic pressure. tas= is the
+                   name [surfinfo] already uses for |airRelativeVel| (gameui.cpp), so the
+                   two logs cannot mean different speeds, and it is lastAirV -- the same
+                   value the line's own Mach divides by, read before the density floor
+                   (vehicle.cpp) because thin air still has a q.
+                   #1222: the SAME row's two lift numbers count different force sets, and
+                   nothing said so. |L| is the lifting parts' own vectors (lastLiftForce);
+                   Ld= divides lastFlowLift by lastFlowDrag, which are the WHOLE aero
+                   force -- hull included -- resolved about the flow. So the row did not
+                   close: on the #1222 bed |F| 46096.81 N against sqrt(|L|^2 + (|L|/Ld)^2)
+                   = 37.7 kN, the 8.4 kN gap being the fuselage's own push across the
+                   flow. FlowL=/FlowD= print that pair instead of only their ratio, so the
+                   row closes on its own arithmetic -- sqrt(FlowL^2 + FlowD^2) IS |F|, by
+                   construction at vehicle.cpp:5579 -- and a designer who wants to know
+                   whether the hull is helping has the number (FlowL - |L| is the body's
+                   share). Ld= stays: cases and the glide-ratio law read it.
+                   Dashed on the same lastDragAlphaValid gate as AoA. No new [drag] field
+                   is in front of an old one, so every existing parser keeps matching. */
+                if(g.ship->lastDragAlphaValid) {
+                    printf(" tas=%.2f m/s FlowL=%.2f N FlowD=%.2f N",
+                           g.ship->lastAirV, g.ship->lastFlowLift,
+                           g.ship->lastFlowDrag);
+                } else {
+                    printf(" tas=- FlowL=- FlowD=-");
+                }
                 printf("\n");
                 // Control surfaces' applied deflections.
                 if(!g.ship->lastControlDeflections.empty()) {

@@ -307,7 +307,11 @@ bool parse_cli(int argc, char **argv, GameArgs &args, int *exit_code)
                  "air's own T/p/a and the hull's Mach, and Ld= -- the air's force "
                  "split about the flow: its component perpendicular to the air-"
                  "relative flow over its component along it, which is the ratio a "
-                 "glide ratio equals (#694); plus one [surface] line per lifting "
+                 "glide ratio equals (#694), plus that same pair as numbers, "
+                 "FlowL=/FlowD=, and tas=, the speed THROUGH THE AIR the forces "
+                 "were paid on: |v| on the same row is speed over the ground, and "
+                 "on a windy body they differ by more than a factor of two in q "
+                 "(#1221, #1222); plus one [surface] line per lifting "
                  "part: its angle, its q, its Mach and the watts the air is taking "
                  "from it (#730)) -- the "
                  "'is drag acting?' instrument");

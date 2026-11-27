@@ -1,0 +1,63 @@
+# The [drag] row now explains its own arithmetic (#1221, #1222).
+#
+# Until today the line printed one speed and three force numbers that were not
+# views of one decomposition, and nothing on the row said so:
+#
+#   |v|= is the hull's speed over the GROUND (GetVel at print time), while every
+#     force beside it is paid on the speed THROUGH THE AIR. Kerbin authors wind, so
+#     they are different numbers: this bed spawns at |v| 146.8 with |v_air| 120.0,
+#     and at t=0.9 reads |v| 144.13 against tas 117.35 -- a 1.5x error in q for a
+#     reader who squares the one the row happens to print (#688 is the same trap
+#     from the flight side).
+#   |L|= is lastLiftForce, the lifting PARTS' own vectors summed (vehicle.cpp:5581),
+#     while Ld= divides lastFlowLift by lastFlowDrag -- the WHOLE aero force, hull
+#     included, resolved about the flow (vehicle.cpp:5579). So the row's three force
+#     numbers did not close. At t=0.9 here: sqrt(|L|^2 + (|L|/Ld)^2) = 39.5 kN
+#     against |F| 47.6 kN, and the 8.1 kN difference is the fuselage pushing across
+#     the flow -- a real lifting body on this hull, which the row used to hide
+#     instead of showing.
+#
+# tas= and FlowL=/FlowD= are the two fixes, both appended after JetA= so every
+# parser written before them keeps matching (the e2e drag parser is key-based, so a
+# new tail column is additive-safe). What makes them trustworthy rather than
+# decorative is that the row now agrees with itself, and that is what this case
+# pins -- no tuned bands:
+#
+#   1. sqrt(FlowL^2 + FlowD^2) IS |F|. By construction: the two are the components
+#      of the same vector at vehicle.cpp:5579. Pinning it means a future row that
+#      prints a pair from different passes, or folds one of them, reddens here.
+#   2. Ld= equals FlowL/FlowD to the printed precision -- the ratio and the pair
+#      cannot drift apart.
+#   3. Mach equals tas/a. This is the one that proves tas is THE speed the law used
+#      rather than a second reading taken for the picture: Mach divides lastAirV by
+#      lastAirA (vehicle.cpp:4167, read before the density floor because thin air
+#      still has a q), so if tas were anything else, this closes fail.
+#   4. On a windy body tas is not |v| -- the gap this whole ticket is about, and
+#      pinned here as a fact rather than a complaint.
+#   5. The three dash together, on exactly the gate AoA dashes on (lastDragAlphaValid
+#      -- a parked hull has no flow to bill, and a dash is not a zero).
+#
+# Why the spaceplane and not the skiff: this hull's fuselage is the lifting body
+# #1222 is about (7.4 kN of the 43.8 kN of flow-frame lift at t=0.9 is not inside
+# |L|), and it is the hull the ticket measured. 700 steps of level cruise prints
+# eleven billed rows, enough for all five claims without a golden number in sight --
+# every threshold below is a closure, a dash rule, or a 10 m/s wind gap.
+NAME drag-row-names-the-speed-it-billed
+CLAIM The [drag] row prints the air-relative speed its own forces and Mach were paid on (tas=) and the flow-frame force pair behind Ld= (FlowL=/FlowD=), and those close against |F| on every billed row.
+KIND invariant
+ARGS --startship sp,res/ships/spaceplane.json,Kerbin,flying-cruise,speed=120
+ARGS --drag-log --sim-steps 700 --no-paint
+EXPECT [drag]
+FORBID error:
+CHECK len([d for d in drag if d.get("tas") is not None]) >= 8
+# 1. The row closes: the pair's hypotenuse is the force the row already printed.
+CHECK all(abs((d["flow_lift"] ** 2 + d["flow_drag"] ** 2) ** 0.5 - d["F"]) < 0.001 * d["F"] for d in drag if d.get("flow_lift") is not None and d["F"] > 1.0)
+# 2. And its ratio is the Ld= the row has always printed.
+CHECK all(abs(d["flow_lift"] / d["flow_drag"] - d["ld"]) < 0.01 for d in drag if d.get("flow_lift") is not None and d.get("ld") is not None and d["flow_drag"] > 1.0)
+# 3. tas is the law's own speed: it is what the row's Mach divides by.
+CHECK all(abs(d["tas"] / d["airA"] - d["mach"]) < 2e-3 for d in drag if d.get("tas") is not None and d.get("mach") is not None and d.get("airA") is not None)
+# 4. The #1221 gap itself: over authored wind, ground speed and air speed are not
+# the same number, by more than a sailing hull's worth.
+CHECK max(abs(d["v"] - d["tas"]) for d in drag if d.get("tas") is not None) > 10.0
+# 5. Dash discipline: absent exactly when the flow was refused, never a lone zero.
+CHECK all((d.get("tas") is not None) == (d.get("aoa") is not None) for d in drag)

@@ -686,6 +686,23 @@ DRAG_RE = re.compile(
     # argued. Dashed with no usable flow, like the Side/Body pairs above; unit-anchored on
     # m2, so the wide [-\d.]+ class cannot eat a bare dash.
     r"(?:\s+(?:JetA=([-\d.]+) m2|JetA=-))?"
+    # #1221: tas= -- the speed the row's forces were actually paid on. |v| on the same
+    # line is speed over the GROUND; on a body that authors wind the two differ by more
+    # than a factor of two in q (the spaceplane spawn bed prints |v| 80.0 against
+    # |v_air| 52.2), so arithmetic off |v| squares the wrong number. tas= is the name
+    # [surfinfo] already carries for |airRelativeVel|, and the value is the ship-level
+    # lastAirV that the line's own Mach= divides by.
+    # #1222: FlowL=/FlowD= -- lastFlowLift/lastFlowDrag printed as numbers instead of
+    # only as their ratio Ld=. |L| on the line counts only the lifting PARTS' vectors,
+    # while Ld= resolves the WHOLE aero force (hull included) about the flow, so
+    # sqrt(|L|^2 + (|L|/Ld)^2) did not reach |F| (8.4 kN of fuselage missing on the
+    # #1222 bed). These two close the row: sqrt(FlowL^2 + FlowD^2) IS |F|, and FlowL - |L|
+    # is the hull's own share -- the "is my fuselage helping?" number.
+    # One group for all three: tick.cpp prints them together or dashes them together off
+    # the same lastDragAlphaValid gate as AoA. Printed last so every older parser, and
+    # every case that quotes an earlier column, keeps matching.
+    r"(?:\s+(?:tas=([-\d.]+) m/s FlowL=([-\d.]+) N FlowD=([-\d.]+) N"
+    r"|tas=- FlowL=- FlowD=-))?"
 )
 # --drag-log's control surfaces (src/tick.cpp): one [ctrl] line under each [drag]
 # line, one "name[index](axis)=±deg" term per surface the aero pass scored. It
@@ -2347,7 +2364,7 @@ def parse_drag(out):
     for m in DRAG_RE.finditer(out):
         (t, alt, rho, v, F, L, lup, up, tau, cd, a, aoa, chute, ind,
          beta, cpl, cla, sm, profile, formcp, airT, airP, airA, mach, ld,
-         sidecda, sidecp, bodycda, bodycp, jeta) = m.groups()
+         sidecda, sidecp, bodycda, bodycp, jeta, tas, flowl, flowd) = m.groups()
         row = {
             # alt_asl: metres above the body's sea-level DATUM, which is NOT the
             # ground and goes negative exactly where rho peaks (#245). Renamed from
@@ -2453,6 +2470,15 @@ def parse_drag(out):
         # 0.000, which is a reading, not a missing column.
         if jeta is not None:
             row["jetA"] = float(jeta)
+        # #1221/#1222: the air-relative speed and the flow-frame force pair. All three
+        # are absent together when the row dashed them (no usable flow), so row["tas"]
+        # being None means "this row billed nothing", not "the hull sat still in the air"
+        # -- for that, read aoa: it dashes on the same gate, and v stays a number either
+        # way. Units: m/s, N, N.
+        if tas is not None:
+            row["tas"] = float(tas)
+            row["flow_lift"] = float(flowl)
+            row["flow_drag"] = float(flowd)
         rows.append(row)
     return rows
 
