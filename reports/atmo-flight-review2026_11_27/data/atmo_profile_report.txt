@@ -1,0 +1,107 @@
+
+=== /home/ubuntu/openspaceprogram/res/systems/ksp_system.json
+Eve        R    700000 m  g  16.6714  rho0  3.5593  2 levels    top     31000 m
+    datum: T  291.68 K  p  198456.3000 Pa  a  269.73 m/s   (M 0.04349572, gamma 1.30485)
+            0 m: T  291.68 K  p  198456.3000 Pa  rho 3.559349e+00  q_circ 20768742.029 Pa
+         5000 m: T  246.68 K  p   39592.1595 Pa  rho 8.396294e-01  q_circ 4864476.697 Pa
+        20000 m: T  210.68 K  p     111.8486 Pa  rho 2.777279e-03  q_circ   15755.226 Pa
+    top    31000 m: p     1.6125 Pa  rho 4.0040e-05  vcirc   3342.9 m/s  q     223.724 Pa
+Kerbin     R    600000 m  g   9.8108  rho0  1.2250  7 levels    top     85000 m
+    datum: T  288.15 K  p  101325.0000 Pa  a  340.47 m/s   (M 0.02896496, gamma 1.40146)
+            0 m: T  288.15 K  p  101325.0000 Pa  rho 1.225002e+00  q_circ 3605466.818 Pa
+         5000 m: T  256.25 K  p   54331.2550 Pa  rho 7.386380e-01  q_circ 2156017.526 Pa
+        20000 m: T  216.65 K  p    6061.9460 Pa  rho 9.747474e-02  q_circ  277636.425 Pa
+        50000 m: T  268.22 K  p     123.0459 Pa  rho 1.598138e-03  q_circ    4341.871 Pa
+    top    85000 m: p     2.2609 Pa  rho 3.7913e-05  vcirc   2270.7 m/s  q      97.741 Pa
+Shay       R    550000 m  g   8.9932  rho0  1.2250  7 levels    top     95000 m
+    datum: T  288.15 K  p  101325.0000 Pa  a  340.47 m/s   (M 0.02896496, gamma 1.40146)
+            0 m: T  288.15 K  p  101325.0000 Pa  rho 1.225002e+00  q_circ 3029602.936 Pa
+         5000 m: T  256.30 K  p   57255.8756 Pa  rho 7.782340e-01  q_circ 1907343.377 Pa
+        20000 m: T  216.65 K  p    7729.2307 Pa  rho 1.242843e-01  q_circ  296587.700 Pa
+        50000 m: T  267.29 K  p     223.5076 Pa  rho 2.913011e-03  q_circ    6603.932 Pa
+    top    95000 m: p     1.9896 Pa  rho 3.5611e-05  vcirc   2053.7 m/s  q      75.100 Pa
+Duna       R    320000 m  g   2.9427  rho0  0.0146  2 levels    top     50000 m
+    datum: T  214.81 K  p     600.3720 Pa  a  231.47 m/s   (M 0.04349572, gamma 1.30485)
+            0 m: T  214.81 K  p     600.3720 Pa  rho 1.462104e-02  q_circ    6884.023 Pa
+         5000 m: T  197.31 K  p     415.5569 Pa  rho 1.101777e-02  q_circ    5107.688 Pa
+        20000 m: T  151.81 K  p     118.6209 Pa  rho 4.087646e-03  q_circ    1811.375 Pa
+        50000 m: T  151.81 K  p       9.9709 Pa  rho 3.435947e-04  q_circ     139.913 Pa
+    top    50000 m: p     9.9709 Pa  rho 3.4359e-04  vcirc    902.4 m/s  q     139.913 Pa
+Jool       R   6000000 m  g   7.8475  rho0  0.1878  2 levels    top    600000 m
+    datum: T  151.43 K  p  100000.0000 Pa  a  870.60 m/s   (M 0.00236415, gamma 1.42319)
+            0 m: T  151.43 K  p  100000.0000 Pa  rho 1.877715e-01  q_circ 4420616.719 Pa
+         5000 m: T  148.13 K  p   92827.3061 Pa  rho 1.781863e-01  q_circ 4191464.063 Pa
+        20000 m: T  138.23 K  p   73542.1545 Pa  rho 1.512779e-01  q_circ 3549634.071 Pa
+        50000 m: T  118.43 K  p   43872.7446 Pa  rho 1.053355e-01  q_circ 2459369.229 Pa
+    top   600000 m: p     2.2264 Pa  rho 5.6610e-06  vcirc   6542.5 m/s  q     121.159 Pa
+Laythe     R    500000 m  g   7.8486  rho0  1.2250  7 levels    top    105000 m
+    datum: T  288.15 K  p  101325.0000 Pa  a  340.47 m/s   (M 0.02896496, gamma 1.40146)
+            0 m: T  288.15 K  p  101325.0000 Pa  rho 1.225002e+00  q_circ 2403644.545 Pa
+         5000 m: T  256.36 K  p   61602.2396 Pa  rho 8.370984e-01  q_circ 1626255.020 Pa
+        20000 m: T  216.65 K  p   10817.4672 Pa  rho 1.739425e-01  q_circ  328175.238 Pa
+        50000 m: T  266.19 K  p     506.0877 Pa  rho 6.623159e-03  q_circ   11814.246 Pa
+    top   105000 m: p     3.4348 Pa  rho 6.5352e-05  vcirc   1800.9 m/s  q     105.976 Pa
+
+=== /home/ubuntu/openspaceprogram/res/systems/solar_system.json
+Venus      R   6051800 m  g   8.8696  rho0 65.2337  2 levels    top    116000 m
+    datum: T  737.00 K  p 9200000.0000 Pa  a  428.62 m/s   (M 0.04344964, gamma 1.30265)
+            0 m: T  737.00 K  p 9200000.0000 Pa  rho 6.523374e+01  q_circ 1750781934.656 Pa
+         5000 m: T  698.00 K  p 6661808.6942 Pa  rho 4.987566e+01  q_circ 1337487665.052 Pa
+        20000 m: T  581.00 K  p 2249521.1249 Pa  rho 2.023326e+01  q_circ 541243594.907 Pa
+        50000 m: T  347.00 K  p  109069.0226 Pa  rho 1.642570e+00  q_circ 43723031.158 Pa
+    top   116000 m: p     0.4606 Pa  rho 1.0466e-05  vcirc   7257.2 m/s  q     275.598 Pa
+Earth      R   6371000 m  g   9.8199  rho0  1.2250  7 levels    top     85000 m
+    datum: T  288.15 K  p  101325.0000 Pa  a  340.47 m/s   (M 0.02896496, gamma 1.40146)
+            0 m: T  288.15 K  p  101325.0000 Pa  rho 1.225002e+00  q_circ 38319484.312 Pa
+         5000 m: T  255.71 K  p   54004.9365 Pa  rho 7.357514e-01  q_circ 22997113.850 Pa
+        20000 m: T  216.65 K  p    5508.2134 Pa  rho 8.857084e-02  q_circ 2761929.047 Pa
+        50000 m: T  270.65 K  p      79.0013 Pa  rho 1.016869e-03  q_circ   31561.143 Pa
+    top    85000 m: p     0.4383 Pa  rho 8.0837e-06  vcirc   7857.4 m/s  q     249.538 Pa
+Mars       R   3389500 m  g   3.7277  rho0  0.0155  2 levels    top     60000 m
+    datum: T  214.00 K  p     636.0000 Pa  a  231.04 m/s   (M 0.04349572, gamma 1.30485)
+            0 m: T  214.00 K  p     636.0000 Pa  rho 1.554733e-02  q_circ   98220.367 Pa
+         5000 m: T  194.00 K  p     394.4807 Pa  rho 1.063742e-02  q_circ   67103.028 Pa
+        20000 m: T  148.00 K  p      67.3836 Pa  rho 2.381797e-03  q_circ   14958.757 Pa
+        50000 m: T  148.00 K  p       1.4019 Pa  rho 4.955373e-05  q_circ     308.505 Pa
+    top    60000 m: p     0.3914 Pa  rho 1.3835e-05  vcirc   3523.5 m/s  q      85.880 Pa
+Jupiter    R  69911000 m  g  25.9192  rho0  0.1617  2 levels    top    245000 m
+    datum: T  165.00 K  p  100000.0000 Pa  a  936.09 m/s   (M 0.00221853, gamma 1.41703)
+            0 m: T  165.00 K  p  100000.0000 Pa  rho 1.617135e-01  q_circ 146515283.426 Pa
+         5000 m: T  159.86 K  p   80824.2332 Pa  rho 1.349075e-01  q_circ 122219791.318 Pa
+        20000 m: T  144.43 K  p   40857.9210 Pa  rho 7.548079e-02  q_circ 68367370.007 Pa
+        50000 m: T  113.59 K  p    8131.7807 Pa  rho 1.910262e-02  q_circ 17294943.358 Pa
+    top   245000 m: p     0.0505 Pa  rho 1.2025e-07  vcirc  42493.6 m/s  q     108.564 Pa
+Saturn     R  58232000 m  g  11.1855  rho0  0.1929  2 levels    top    400000 m
+    datum: T  134.00 K  p  100000.0000 Pa  a  853.26 m/s   (M 0.00214959, gamma 1.40468)
+            0 m: T  134.00 K  p  100000.0000 Pa  rho 1.929373e-01  q_circ 62835303.038 Pa
+         5000 m: T  131.72 K  p   89688.6560 Pa  rho 1.760434e-01  q_circ 57328407.345 Pa
+        20000 m: T  124.86 K  p   63961.8649 Pa  rho 1.324352e-01  q_circ 43116337.326 Pa
+        50000 m: T  111.16 K  p   30667.7557 Pa  rho 7.132645e-02  q_circ 23209475.260 Pa
+    top   400000 m: p     0.2584 Pa  rho 7.9531e-07  vcirc  25434.4 m/s  q     257.247 Pa
+Uranus     R  25362000 m  g   9.0073  rho0  0.4179  2 levels    top    250000 m
+    datum: T   76.00 K  p  100000.0000 Pa  a  583.63 m/s   (M 0.00264047, gamma 1.42332)
+            0 m: T   76.00 K  p  100000.0000 Pa  rho 4.178631e-01  q_circ 47728912.185 Pa
+         5000 m: T   73.85 K  p   82624.5974 Pa  rho 3.552970e-01  q_circ 40574518.889 Pa
+        20000 m: T   67.41 K  p   45015.4337 Pa  rho 2.120721e-01  q_circ 24204081.674 Pa
+        50000 m: T   54.53 K  p   11002.6580 Pa  rho 6.408341e-02  q_circ 7305294.645 Pa
+    top   250000 m: p     0.2568 Pa  rho 1.5389e-06  vcirc  15040.4 m/s  q     174.061 Pa
+Neptune    R  24622000 m  g  11.2740  rho0  0.4345  2 levels    top    200000 m
+    datum: T   72.00 K  p  100000.0000 Pa  a  573.92 m/s   (M 0.00260083, gamma 1.43101)
+            0 m: T   72.00 K  p  100000.0000 Pa  rho 4.344557e-01  q_circ 60299889.165 Pa
+         5000 m: T   69.86 K  p   77992.2585 Pa  rho 3.492090e-01  q_circ 48458303.023 Pa
+        20000 m: T   63.45 K  p   35275.9733 Pa  rho 1.739103e-01  q_circ 24118137.300 Pa
+        50000 m: T   55.00 K  p    5659.1871 Pa  rho 3.218617e-02  q_circ 4458197.888 Pa
+    top   200000 m: p     0.4147 Pa  rho 2.3588e-06  vcirc  16593.7 m/s  q     324.744 Pa
+Pluto      R   1188000 m  g   0.6162  rho0  0.0001  1 levels    top     20000 m
+    datum: T   38.00 K  p       1.3000 Pa  a  125.77 m/s   (M 0.02795324, gamma 1.39950)
+            0 m: T   38.00 K  p       1.3000 Pa  rho 1.150159e-04  q_circ      42.096 Pa
+         5000 m: T   38.00 K  p       0.9910 Pa  rho 8.767528e-05  q_circ      31.955 Pa
+        20000 m: T   38.00 K  p       0.4449 Pa  rho 3.936318e-05  q_circ      14.169 Pa
+    top    20000 m: p     0.4449 Pa  rho 3.9363e-05  vcirc    848.5 m/s  q      14.169 Pa
+Titan      R   2575000 m  g   1.3543  rho0  5.3000  H 20000 m   top    200000 m
+    datum: T   90.54 K  p  143555.9848 Pa  a  194.63 m/s   (M 0.02779381, gamma 1.39860)
+            0 m: T   90.54 K  p  143555.9848 Pa  rho 5.300000e+00  q_circ 9241416.524 Pa
+         5000 m: T   90.54 K  p  111855.6939 Pa  rho 4.129644e+00  q_circ 7186755.432 Pa
+        20000 m: T   90.54 K  p   53219.8915 Pa  rho 1.964846e+00  q_circ 3399625.655 Pa
+        50000 m: T   90.54 K  p   12358.5007 Pa  rho 4.562684e-01  q_circ  780424.609 Pa
+    top   200000 m  = 10.0 H: p    13.3993 Pa  rho 4.9469e-04  vcirc   1798.9 m/s  q     800.411 Pa
