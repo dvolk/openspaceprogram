@@ -7750,18 +7750,19 @@ void Vehicle::adjustThrottle(float delta) {
    actually have. The air has to be the LOCAL density and not the authored sea level:
    a jet at 15 km cannot produce its sea-level number, and since #400 this is the
    number a throttle law sizes a burn with, so sea level here would make a
-   high-altitude jet look several times stronger than it is. Since #630 the gate is
-   absolute (the machine's rating intake, constants.h:kAirSeaLevelDensity) and reads
-   the body's oxidizer share, so this ceiling is the honest one on a thin or
-   oxygen-poor world: for the shipped 2 m jet it is EXACTLY 0 on Jool (and Venus,
-   Titan -- share 0), 3.7 % of its rating on Eve and 0.016 % on Mars -- the air is
-   there, its oxidizer barely is -- and a law that sizes a burn with it says so. (The
-   Eve figure was 0.6 % before #1206 and against a 1.7 kg/m3 datum; Eve's authored mix
-   resolves to 3.55 kg/m3 with a 0.096 % O2 trace, so the reading is 3.66 % now.)
-   v_e/2 is the peak only while drag.h's energy cap stays silent -- i.e. for every part
-   in dry air. Once a part is capped (an oxidizer-trace sky, or a nozzle its fuel line
-   cannot fill) the true peak slides down toward the fan term and this under-credits:
-   on Eve the peak is 2.2x the value returned here, at v ~ 50 m/s. Under-credit is the
+   high-altitude jet look several times stronger than it is. Since #630 the intake gate
+   is absolute (the machine's rating intake, constants.h:kAirSeaLevelDensity); the mix
+   now caps the BURN in kg/s rather than the whole machine (drag.h:jetBurnCap, #1206),
+   so this ceiling is the honest one on a thin or oxygen-poor world: for the shipped 2 m
+   jet it is EXACTLY 0 on Jool, Venus and Titan (share 0), 10.5 % of its 90 kN plate at
+   Kerbin's 20 km, 38 % on Eve's datum and 0.19 % on Mars's -- the air is there, its
+   oxidizer barely is -- and a law that sizes a burn with it says so. (The Eve figure
+   was 0.6 % before #1206 and against a 1.7 kg/m3 datum; Eve's authored mix resolves to
+   3.55 kg/m3 with a 0.096 % O2 trace.)
+   v_e/2 IS the peak in dry air -- measured 122.5 kN at 274.8 m/s, the same speed at
+   20 km -- and it is NOT in a trace air. There the fan is power-limited and the burn
+   ceiling rises with the air the intake swallows, so the true peak slides up toward
+   v ~ v_e: on Eve, 54.6 kN at 550 m/s, 1.59x what is returned here. Under-credit is the
    safe direction for a guidance law, so it is left as a caveat rather than a search. */
 static double partThrustCeiling(const Part *p, double rho, const DragAtmosphere &atm) {
     if(p->isJet()) {
@@ -8007,17 +8008,18 @@ void Vehicle::ApplyThrust(double step) {
         if(!p->isThruster()) { continue; }
         if(p->stage < as) { continue; } /* not ignited yet */
         if(p->isJet()) {
-            /* Air-breathing: momentum balance (drag.h jetThrust). No usable air --
-               vacuum, or an air with no oxidizer in it (#630) -- means no thrust AND
-               no burn. Draws JET FUEL only. */
-            const double T = jetThrust(
+            /* Air-breathing: ONE call answers the push and the drain (drag.h jetEngine).
+               They used to be metered apart -- the thrust through jetThrust, the drain
+               through jetAirGate -- and both through the same density-and-oxidizer
+               factor, which is how #1206's part could hand the flow 178 MW on a 10 MW
+               fire. The law now sets the burn from the nozzle's demand and the air's
+               oxygen against the pump, and the draw reads that number. */
+            const JetS eng = jetEngine(
                 v_air, rho, atm, p->def->jet_fan_thrust, p->jetFuelRate(),
                 p->def->exhaust_velocity, p->def->jet_intake_area);
+            const double T = eng.thrust;
             if(T <= 0.0) { continue; }
-            /* Burn with the air, not against it: the same gate jetThrust uses, so a
-               thin-air jet is weak AND sips fuel (no usable air, no burn). */
-            const double flow = p->jetFuelRate() * (double)thruster_util * step
-                              * jetAirGate(atm, rho); /* kg this tick */
+            const double flow = eng.burn * (double)thruster_util * step; /* kg this tick */
             /* Size the draw the way the rocket branch does (#638). consumeResourceMass is
                drain-or-nothing, so a jet holding less than one tick of flow used to be
                refused EVERY tick: quiet, with fuel still in the Vessel window, for ever.

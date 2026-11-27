@@ -273,17 +273,21 @@ static void test_fuel_flow() {
  * reads are POTENTIALS -- they never consult the fuel.
  *   stage 3 is the first live stage, so only the 20000 N engine is available at first,
  *   and that number does not care about air at all;
- *   the jet at rest in that air is E*(fan + mdot*ve) = 1100E, and at its best speed
- *   (v = ve/2, where drag.h's ram term tops out) it is E*1100 + rho*A*(ve/2)^2 =
- *   1100E + 10000E = 11100E; in vacuum, neither -- air is what it breathes.
- * Since #630 those two terms are NOT billed by the same share of the air. The fan and
- * the fuel follow jetAirGate, which divides by the machine's RATING intake (1.225 kg/m3,
- * constants.h) rather than by this body's own sea level: this rig's 1.0 kg/m3 datum is
- * 0.816 of a rated intake, so the fan term is 1100E/1.225 = 898E. The ram term is the
- * air the intake actually captures -- raw rho, which here is E kg/m3 -- and it is bounded
- * by what the gated burn can heat that air to (drag.h:jetRamExitSpeed), which stays
- * silent at this rating: 0.72 kg/s of burn against 17.7 kg/s of flow affords a 1.9 km/s
- * exit, well past the authored 1 km/s. Both halves
+ *   the jet at rest in that air is the gated fan, 100*E/1.225 = 72 N, and at its best
+ *   speed (v = ve/2, where drag.h's ram term tops out) it is that fan plus the air it
+ *   swallows there -- 17.7 kg/s, heated to the authored 1 km/s -- times the speed
+ *   change: about 8.9 kN. In vacuum, neither; air is what it breathes.
+ * Since #630 those two terms are NOT billed by the same share of the air, and since
+ * #1206's follow-up neither is billed by the pump at all. drag.h:jetEngine meters the
+ * burn against what the intake captures (jetBurnCap: the plate rate min'd with the air's
+ * oxygen over stoichiometric) and spends it on the fan's disc power first and the hot
+ * stream second. The fan follows jetIntakeGate -- divided by the machine's RATING intake
+ * (1.225 kg/m3, constants.h) rather than by this body's own sea level, so this rig's
+ * 0.88 kg/m3 datum buys 0.72 of its 100 N plate. The ram term is the air the intake
+ * actually captures (raw rho, which here is E kg/m3) and it only rides the stream as far
+ * as the burn affords (jetRamExitSpeed): heating this rig's 17.7 kg/s to 1 km/s costs
+ * 0.154 kg/s of the 1.0 the plate offers, so the exit is the authored one while the draw
+ * is a seventh of the plate. Both halves
  * are hand-checkable in the same way; they just no longer move together, which is what
  * a CO2 world looks like (test_jet.cpp pins that case).
  */
@@ -408,21 +412,28 @@ static void test_produced_and_available_thrust() {
                "the Vessel window's current-over-full TWR pair is produced-over-"
                "available, not two spellings of one number");
 
-    /* Stage down: the rest becomes available, the jet included. */
+    /* Stage down: the rest becomes available, the jet included. The jet's share is the
+       law of drag.h:jetEngine at the ask speed this read uses (v_e/2, where its ram term
+       tops out): the gated fan, plus the air it captures at that speed -- and the small
+       hot share that air costs to heat to the authored 1 km/s -- times the speed change.
+       Written out rather than called, so a drift in the law shows up here. */
+    const double jetFan = 100.0 * E / kAirSeaLevelDensity;   // the rating, gated by the air
+    const double jetAir = E * 0.04 * 500.0;                  // kg/s the mouth takes at 500
+    const double jetHot = jetAir * (1000.0 * 1000.0 - 500.0 * 500.0) / (2.0 * kJetFuelHeatPerKg);
+    const double jetBest = jetFan + (jetAir + jetHot) * 500.0;
     r.v->advanceStage();
     r.v->advanceStage();
     CHECK_TRUE(r.v->activeStage() == 1, "the counter grinds down one press at a time");
-    CHECK_REL(r.v->availableThrust(),
-               70000.0 + 1100.0 * E / kAirSeaLevelDensity + 10000.0 * E, 1e-9,
-               "20000 + 50000 + the jet at ITS BEST SPEED in THIS air: (100 + 1*1000)"
-               " x E/1.225 (the rating intake, #630) + rho*0.04*500*500, with rho = E");
-    CHECK_REL(r.v->producedThrust(),
-               0.5 * (70000.0 + 1100.0 * E / kAirSeaLevelDensity), 1e-9,
+    CHECK_REL(jetHot, 0.154, 1e-3, "heating that air to the authored v_e costs 0.154 kg/s"
+               " of the 1.0 the pump could offer -- the plate is a ceiling now, not a rate");
+    CHECK_REL(r.v->availableThrust(), 70000.0 + jetBest, 1e-9,
+               "20000 + 50000 + the jet at ITS BEST SPEED in THIS air: the gated fan"
+               " 100*E/1.225 plus (captured air + what it costs to heat) x 500, rho = E");
+    CHECK_REL(r.v->producedThrust(), 0.5 * (70000.0 + jetFan), 1e-9,
                "at half throttle the jet is asked for what it gives standing still"
-               " (fan + mdot*ve, gated by the air against its 1.225 kg/m3 rating), because"
-               " producedThrust uses the speed the ship actually has");
-    CHECK_REL(r.v->availableAccel(),
-               (70000.0 + 1100.0 * E / kAirSeaLevelDensity + 10000.0 * E) / 1250.0, 1e-9,
+               " (the fan, gated by the air against its 1.225 kg/m3 rating -- at rest the"
+               " ram term is zero), because producedThrust uses the speed the ship has");
+    CHECK_REL(r.v->availableAccel(), (70000.0 + jetBest) / 1250.0, 1e-9,
                "and the a_max that stage-down just bought, at the same mass");
     /* #607: an ask up the stack costs nothing, and it must cost nothing for THIS rig
        too -- three engines, one of them air-fed, in real air. availableAccelAlong is
@@ -909,14 +920,22 @@ static void test_jet_last_grams() {
         /* What the draw SHOULD be, from the law and not from itself. The first version
            of this pin compared *jf with 500.0 - flow after defining flow as
            500.0 - *jf -- an identity that passes any draw. The COM is not the
-           transform origin, so the density the hull sees is measured; the gate is what
-           that density earns (drag.h), and a funded tank means the fuel share is 1. */
-        const double gate = jetAirGate(v->airDensityAtCom(),
-                                       air->surface.atmosphere.oxidizer_share);
-        CHECK_REL(gate, 1.0, 1e-3, "sea-level air opens the gate");
-        CHECK_REL(flow, jet->jetFuelRate() * (1.0 / 60.0) * gate, 1e-12,
-                   "and a funded jet draws its rated flow through that gate -- the gate"
-                   " once, and no fuel share on a tank that covers the tick");
+           transform origin, so the density the hull sees is measured; the engine's burn
+           at that density is what the tick draws, and a funded tank means the fuel
+           share is 1. Note this is NOT the plate rate: the burner now meters against the
+           air (#1206), and at rest that air only pays for the fan's own disc power. */
+        const double rho = v->airDensityAtCom();
+        const double gate = jetIntakeGate(rho);
+        CHECK_REL(gate, 1.0, 1e-3, "sea-level air opens the intake");
+        const double want = jetEngine(0.0, rho, air->surface.atmosphere.oxidizer_share,
+                                      jet->def->jet_fan_thrust, jet->jetFuelRate(),
+                                      jet->def->exhaust_velocity,
+                                      jet->def->jet_intake_area).burn;
+        CHECK_REL(flow, want * (1.0 / 60.0), 1e-12,
+                   "and a funded jet draws the engine's own burn for one tick -- once, "
+                   "with no extra fuel share on a tank that covers the tick");
+        CHECK_TRUE(want < jet->jetFuelRate(),
+                   "which is thriftier than the plate: the pump is a ceiling, not a rate");
         CHECK_TRUE(full > 0.0, "so the engine arms at full thrust");
 
         /* Half a tick left. Before #638 this tick was refused outright. */
@@ -943,11 +962,14 @@ static void test_jet_last_grams() {
         delete v;
     }
     {
-        /* THIN AIR, same hull, 0.3 x the rating condition. Two scalars live in this
-           branch and only one of them belongs on the flow: the AIR GATE sizes the tick
-           (an intake moves a volume), the FUEL SHARE sizes what of that tick the tanks
-           can pay for. A second gate hidden in the draw would read as a thrifty engine
-           that still flies at full thrust. */
+        /* THIN AIR, same hull, 0.3 x the rating condition. Two things live in this
+           branch and only one of them belongs on the flow: the INTAKE GATE sizes the fan
+           (an intake moves a volume of air), the FUEL SHARE sizes what of that tick the
+           tanks can pay for. A second gate hidden in the draw would read as a thrifty
+           engine that still flies at full thrust. And the draw is NOT proportional to
+           the gate: at a third of the density the fan is a third as strong but its disc
+           has to turn sqrt(1/0.3) faster to move that air, so the power -- and the fuel
+           -- falls only to sqrt(0.3) = 0.55 of the sea-level draw. */
         std::deque<PartDef> defs;
         Vehicle *v = new Vehicle;
         v->name = "jethigh";
@@ -964,14 +986,22 @@ static void test_jet_last_grams() {
         v->setThrottle(1.0);
         double *jf = &tank->resources.current[(int)ResourceType::JetFuel];
 
-        const double gate = jetAirGate(v->airDensityAtCom(),
-                                       thin->surface.atmosphere.oxidizer_share);
+        const double rho = v->airDensityAtCom();
+        const double gate = jetIntakeGate(rho);
         CHECK_REL(gate, 0.3, 0.01,
-                   "thin air gates the jet without closing it (0 < gate < 1)");
+                   "thin air gates the intake without closing it (0 < gate < 1)");
         v->ApplyThrust_TESTONLY(1.0 / 60.0);
-        CHECK_REL(500.0 - *jf, jet->jetFuelRate() * (1.0 / 60.0) * gate, 1e-12,
-                   "the draw carries the air gate exactly once -- the fuel share is 1"
+        const double want = jetEngine(0.0, rho, thin->surface.atmosphere.oxidizer_share,
+                                      jet->def->jet_fan_thrust, jet->jetFuelRate(),
+                                      jet->def->exhaust_velocity,
+                                      jet->def->jet_intake_area).burn;
+        CHECK_REL(500.0 - *jf, want * (1.0 / 60.0), 1e-12,
+                   "the draw is the engine's burn exactly once -- the fuel share is 1"
                    " with a full tank, so anything else here is a double penalty");
+        CHECK_REL(want * kJetFuelHeatPerKg,
+                  jet->def->jet_fan_thrust * gate * jetDiscSpeed(jet->def->jet_fan_thrust * gate,
+                                                                 rho, jet->def->jet_intake_area),
+                  1e-9, "and in thin air that burn IS the gated fan's disc power");
         CHECK_TRUE(jet->armedThrust > 0.0, "and it still flies");
         delete v->m_parent;
         delete v;

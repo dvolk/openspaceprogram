@@ -4,7 +4,7 @@
 // authored numbers into the ones the law reads, so no caller re-derives them. Read by
 // the authored half (terragen.h:AtmosphereParams, parsed from a system file), the
 // loader that resolves it (system.cpp), the aero law that samples its profile
-// (drag.h:airDensity/airPressure/airTemperature/airSoundSpeed/jetAirGate) and the ONE
+// (drag.h:airDensity/airPressure/airTemperature/airSoundSpeed/jetEngine) and the ONE
 // place its motion enters the flow (Vehicle::airRelativeVel).
 //
 // It lives in its own header because all three readers (terragen.h, system.cpp, drag.h)
@@ -815,7 +815,7 @@ inline const MixFraction *dryAirMix(int &count) {
      oxidizer_share        = the MASS fraction of the air that is oxidizer gas,
                               sum(x_i M_i) over oxidizers / molar_mass. It is a mass
                               fraction because an intake swallows a VOLUME of air and
-                              pays for it in kilograms (drag.h:jetAirGate), while the
+                              pays for it in kilograms (drag.h:jetBurnCap), while the
                               composition is authored in MOLE fractions.
    Fractions need not sum to 1: they are normalized by their own total, so a body can
    author "the rest is N2" as 1.0 or as 0.027. Returns false with the reason for a
@@ -855,7 +855,7 @@ inline bool resolveMix(const std::vector<MixFraction> &mix, double &molar_mass,
 
 /* The same mix resolved from the default dry air, so the reference an intake is
    rated against comes from the ONE table rather than from a typed constant that has
-   to be re-derived whenever the table moves (drag.h:jetAirGate). */
+   to be re-derived whenever the table moves (drag.h:jetBurnCap). */
 inline double dryAirOxidizerShare() {
     static const double share = [] {
         int n = 0;

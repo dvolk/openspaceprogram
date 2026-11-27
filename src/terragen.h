@@ -128,7 +128,7 @@ struct AtmosphereParams {
        Why the mix instead of the scalars: those two were the WHOLE statement about
        chemistry a file could make, they were typed by hand, and they cannot say the
        one thing a player would act on -- that a world has no free oxygen. That fact
-       is oxidizer_share, and drag.h:jetAirGate bills every air-breathing engine on
+       is oxidizer_share, and drag.h:jetBurnCap bills every air-breathing engine on
        it. molar_mass is kg/mol, not g/mol; the derived temperature is LINEAR in it
        (Jool's H2 air left at the dry-air default reads 547 K instead of 41 K), while
        pressure and sound speed do not contain it at all. gamma is cp/cv, and only

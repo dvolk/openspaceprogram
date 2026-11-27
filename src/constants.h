@@ -106,42 +106,64 @@ inline constexpr double kAirGamma = 1.4;           // cp/cv, diatomic
    is the one already in the file -- it is not a new constant, it is the one the
    bodies were given.
    Changes: jet thrust and fuel burn on any body whose sea-level density is NOT
-   1.225 (Eve 1.7, Jool 2.0, Titan 5.3: capped either way; Duna 0.015, Mars 0.016:
-   both are CO2, so the oxidizer half of the gate already ends them -- #700 made
-   Duna's column 8x thinner at the ground and it is still a dead engine there).
-   Where: drag.h:jetAirGate. */
+   1.225. Eve 3.55, Titan 5.3, Venus 65: the fan clamps at its rating and the denser air
+   only buys ram. Jool 0.188 and Venus and Titan's traces: no free oxygen at all, so
+   there is nothing to meter and the engine is dead wherever the air is thick. Duna
+   0.015, Mars 0.016: CO2 with a 0.096 % O2 trace, which jetBurnCap ends -- #700 made
+   Duna's column 8x thinner at the ground and it is still a dead engine there. (An
+   earlier draft of this comment quoted Eve at 1.7 and Jool at 2.0 kg/m3; both are wrong
+   against the shipped system files -- #1235.)
+   Where: drag.h:jetIntakeGate. */
 inline constexpr double kAirSeaLevelDensity = 1.225;  // [kg/m^3]
 
 /* Jetfuel's heat of combustion [J/kg], kerosene-like. The ONLY number in the game that
-   says an air-breathing engine's momentum comes from its fuel: the ram term of
-   drag.h:jetThrust throws the captured air out the back, and the heat that can accelerate
-   that air is what the burn releases (#1206). Without it the law is a pump: #1206's demo
-   part (fan 3000, 3.0 kg/s, v_e 3200, 0.35 m2, 43.75 kg) reports 64.7 kN at 2400 m/s in
+   says where an air-breathing engine's momentum comes from: drag.h:jetEngine spends
+   Q * burn on moving air, and BOTH of the engine's answers -- the fan's momentum and the
+   hot stream's -- are capped by it (#1206). Without it the law is a pump: #1206's demo
+   part (fan 3000, 3.0 kg/s, v_e 3200, 0.35 m2, 43.75 kg) reported 64.7 kN at 2400 m/s in
    20 km air while handing 178 MW to the flow on a 10 MW fire, and 956 kN / 2.0 GW at sea
    level on 129 MW.
-   It is spent at full value -- no thermal loss, no nozzle loss -- so the bound it sets is
-   generous. It exists to make an unaffordable engine impossible, not to model a burner;
-   the losses belong with the inlet thermal choke, also #1206.
-   What it does NOT bill yet, in this law or any other:
-     - the FAN. T_fan*d has no attached mass flow, so it costs nothing here, yet an ideal
-       actuator disc making 90 kN through 0.35 m2 wants 29.2 MW (57% of this part's whole
-       fire; 63% for the 0.5 m jet). The shipped parts still pass a whole-engine budget
-       (42.8 MW of 51.6, and 2.68 of 3.01), so the budget is close enough to be worth
-       closing -- an open ticket, not this constant's problem.
-     - the fuel's own momentum m_f*v_e*d, which is implicitly paid only while
-       v_e <= sqrt(2 Q) = 9274 m/s. shipdef.cpp now refuses a catalogue jet above that.
-     - the difficulty knobs: --exhaust-scale (0.5-5.0) multiplies a jet's thrust OUTSIDE
-       this cap, by design, exactly as it does a rocket's.
-   Changes: a jet in DRY air is bit-identical (the r1 jet's allowed exit speed is 975 m/s
-   at its ram peak against an authored 550; the cap first bites the 2 m jet at
-   4.60 kg/m3, denser than any dry-air sky in the game). A jet in an OXIDIZER-TRACE air is
-   NOT unchanged: the old law charged the ram term twice -- once through the gate, once
-   again as a jetOxGate multiplier -- so the shipped 2 m jet gains on Eve's datum (3.55
-   kg/m3, share 0.000959) from 1479 N to 3318 N at 275 m/s (x2.24 on the total, x5.7 on
-   the ram, more at other speeds). Eve, Mars and Duna all author that CO2-trace mix, so
-   all three move; they remain engines too weak to matter.
-   Where: drag.h:jetRamExitSpeed, shipdef.cpp. */
+   It is spent at full value -- no thermal loss, no nozzle loss, no turbine loss -- so the
+   bound it sets is generous. It exists to make an unaffordable engine impossible, not to
+   model a burner; the inlet's thermal choke is still open (#1207).
+   What it pays for now, all in one place (drag.h:jetEngine):
+     - the FAN. An ideal actuator disc making T through A of air runs it at
+       sqrt(T / 2 rho A) and wants T times that in power, so a fan now buys its thrust out
+       of the same Q * burn. The shipped 2 m jet's 90 kN disc costs 29.2 MW at Kerbin sea
+       level (0.678 kg/s) and the pump covers that; on Eve's datum the same fan wants
+       17.1 MW while its trace oxygen affords 4.0, so the fan runs at 19.7 kN instead of
+       90 (#1233, which this closed).
+     - the hot stream: min(the fuel the captured air can burn, what the exhaust promise
+       actually costs).
+     - the fuel's own momentum, implicitly, while v_e <= sqrt(2 Q) = 9274 m/s --
+       shipdef.cpp refuses a catalogue jet above that.
+   What it still does NOT bill: the inlet's entrance drag (#1207), and the difficulty
+   knobs -- --exhaust-scale (0.5-5.0) multiplies a jet's thrust OUTSIDE this cap, by
+   design, exactly as it does a rocket's.
+   Changes vs the previous law: a DRY-air jet barely moves -- the shipped 2 m part makes
+   122.5 kN at 275 m/s where it made 123.1 kN, because its draw drops from the plate's
+   1.2 kg/s to the 0.989 kg/s its momentum actually costs. A TRACE-air jet moves a lot:
+   on Eve's datum (3.55 kg/m3, share 0.000959) the same part goes 3318 N -> 34.4 kN,
+   because the 0.094 kg/s its oxygen buys now pays for the fan as well as the stream.
+   tests/test_jet.cpp asserts the whole-engine identity, Q * burn = disc power + the
+   flow's kinetic-energy gain, so the two halves cannot drift apart again.
+   Where: drag.h:jetEngine, drag.h:jetRamExitSpeed, shipdef.cpp. */
 inline constexpr double kJetFuelHeatPerKg = 43.0e6;
+
+/* Kilograms of OXIDIZER needed to burn one kilogram of jetfuel (dimensionless).
+   Kerosene burns C12H26 + 18.5 O2 -> 12 CO2 + 13 H2O: 592/170 = 3.48 by mass, and
+   RP-1 literature quotes 3.4-3.5. This is STOICHIOMETRY, not the engine's operating
+   mixture: a real combustor runs 25-100 kg of AIR per kg of fuel for thermal and
+   turbine reasons, so this number is a floor on how much fuel the air can accept,
+   never a target. What it buys is the ability to say that a CO2 sky is not an
+   on/off switch: Eve's 0.096 % O2 trace hands a burner 342 kg/s x 0.000959 / 3.48 =
+   0.094 kg/s of fuel at her datum, where dry air hands the same intake 27 kg/s.
+   Changes: the oxidizer half of drag.h's jet gate -- a factor in [0,1] -- becomes
+   this ceiling in kg/s. A jet on a trace world goes from "0.4 % of rating" to
+   "what the oxygen in the air it actually swallows can burn", which on Eve is
+   ~6.6x what the old factor allowed.
+   Where: drag.h:jetBurnCap. */
+inline constexpr double kStoichO2PerKgJetfuel = 3.48;
 
 /* Aero skip floor [kg/m^3]: below this density the per-part silhouette
    pass is not worth computing. A PERFORMANCE floor, not a physical one

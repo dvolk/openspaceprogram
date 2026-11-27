@@ -87,11 +87,11 @@ CHECK max(d["F"] for d in drag) > 500.0
 CHECK sum(d["F"] for d in drag) > 1000.0
 CHECK max(d.get("L", 0.0) for d in drag) > 500.0
 CHECK abs(min(s["alt_asl"] for s in surf) - surf[0]["alt_asl"]) > 1.0
-# IT BREATHES: jetAirGate reads the air against the engine's rating intake
+# IT BREATHES: jetIntakeGate reads the air against the engine's rating intake
 # (constants.h:kAirSeaLevelDensity = 1.225 kg/m3), so the same answer starved the
 # engine. This fixture authors exactly that datum, and authors no composition so it gets
-# dry air's oxidizer: both halves of the gate are 1.0 here. The
-# r0.25h1 fan is rated 5625 N at full gate; at -336 m it runs at full gate. The
+# dry air's oxidizer: the gate is 1.0 here, and the air's oxygen leaves the 0.07 kg/s pump
+# alone. The r0.25h1 fan is rated 5625 N at full gate; at -336 m it runs at full gate. The
 # ram term is what makes the peak move with the flight -- 6571.6 N on the wild one,
 # 5946.7 N on the mild one -- so the floor sits under BOTH with room rather than
 # brushing the top of the rating.

@@ -2150,7 +2150,7 @@ public:
     void lossTick(double h);
 
     /* Air density (kg/m^3) at the COM. Deliberately NO kRhoFloor gate:
-       jetAirGate's density half divides by the engine's rating intake
+       jetIntakeGate divides by the engine's rating intake
        (constants.h:kAirSeaLevelDensity), so a sub-floor read is vacuum either way. */
     double airDensityAtCom() const;
 

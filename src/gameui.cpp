@@ -9382,7 +9382,7 @@ void atlasDossier(const TerrainBody &b, std::vector<AtlasFact> &f) {
                what fraction of a rated intake the air delivers. That verdict is not
                the dossier's to print -- a turbine burns against oxygen, so the share
                plus the density rows above it already say what a CO2 sky means, and the
-               engine itself answers for the rest: drag.h:jetAirGate bills thrust and
+               engine itself answers for the rest: drag.h:jetEngine bills thrust and
                burn in flight (vehicle.cpp), which is where a pilot would rather learn
                it. "by mass" stays because the gas rows above are by MOLE: Earth is
                20.95% O2 by molecules and 23.1% by mass, and side by side with no unit

@@ -129,7 +129,7 @@ static int check_datum(const char *path, const System &sys) {
    literals are hand-computed in two steps: resolve the mix by hand (M = sum(x M),
    gamma from the mole-weighted molar heat capacity), then apply the air laws. The
    oxidizer column is the third thing the mix resolves to and the only one a player
-   can act on -- it is what drag.h:jetAirGate bills a jet on -- so it is pinned here
+   can act on -- it is what drag.h:jetBurnCap bills a jet on -- so it is pinned here
    rather than only in the pure-math test: a body whose mix never reaches the gate is
    a jet running on full throttle in a CO2 sky. */
 static int check_air(const char *path, const System &sys) {

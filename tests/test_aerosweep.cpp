@@ -1658,16 +1658,23 @@ static void test_every_jet_affords_its_exhaust() {
            oxidizer multiplier on the ram term. */
         double dryWorst = 1e30, traceWorst = 1e30;
         for(double rho : rhos) {
-            const double burnDry = rate * jetAirGate(rho, oxAir);
-            const double burnTrace = rate * jetAirGate(rho, oxTrace);
+            /* The burn is not the pump times a factor any more (#1206's follow-up): it
+               is what the CAPTURED AIR can burn against -- jetBurnCap, the pump min'd
+               with the oxygen over stoichiometric -- and the air the engine moves is the
+               fan's disc flow wherever that beats the mouth (jetAirSupply). Above the
+               rating density the fan gate clamps the disc while the intake keeps
+               swallowing, which is why the dense rows set dryWorst. */
+            const double gated = d.jet_fan_thrust * jetIntakeGate(rho);
             for(int i = 1; i <= kSteps; i++) {   // v = 0 swallows no air, so it asks nothing
                 const double v = d.exhaust_velocity * i / (double)kSteps;
                 /* The RAW affordable speed, not jetRamExitSpeed: that min's it against
                    the authored v_e, so its ratio would sit at exactly 1.0 whether the
                    part is comfortable or one watt short. */
                 const double air = rho * d.jet_intake_area * v;
-                const double affordDry = jetFuelAffordedExitSpeed(v, air, burnDry);
-                const double affordTrace = jetFuelAffordedExitSpeed(v, air, burnTrace);
+                const double affordDry = jetFuelAffordedExitSpeed(v, air,
+                    jetBurnCap(jetAirSupply(v, rho, gated, d.jet_intake_area), oxAir, rate));
+                const double affordTrace = jetFuelAffordedExitSpeed(v, air,
+                    jetBurnCap(jetAirSupply(v, rho, gated, d.jet_intake_area), oxTrace, rate));
                 if(affordDry / d.exhaust_velocity < dryWorst) {
                     dryWorst = affordDry / d.exhaust_velocity;
                 }
