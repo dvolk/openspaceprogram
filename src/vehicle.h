@@ -1150,6 +1150,17 @@ public:
     double lastBodyCdA = 0.0;
     double lastBodyCpLever = 0.0;
 
+    /* #1207: m2 of air-breathing INTAKE THE FLOW ACTUALLY REACHES, summed over this
+       hull's engines this pass (each part's authored jet_intake_area x how much of its
+       own shadow the silhouette union let through -- Part::jetMouthFrac). The thrust
+       law still bills every engine's authored mouth at free-stream density, which is
+       why a nacelle buried behind a fuel tank pushes as if it were bolted to the nose;
+       this is that same mouth asked where the air is, printed on the [drag] row as
+       JetA= so the gap is a number a case can pin rather than an argument. Read-only:
+       the bill itself waits on #1236 (see vehicle.cpp where this is written). 0 for a
+       hull with no air-breathing engine, and 0 on a pass that billed nothing. */
+    double lastJetCaptureArea = 0.0;
+
     /* Last substep's control-surface deflections (--drag-log). */
     struct ControlDeflection {
         const PartDef *def;  // part type + control_axis

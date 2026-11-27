@@ -216,6 +216,31 @@ struct Part {
        after both bills exist) and clears only on rails, not pass start -- it is a
        per-flight peak-hold, not a summable this-substep figure. */
     float formDragWattsPeak = 0.0f; // [W] worst billed substep since the ship last went on rails
+    /* THE AIR-BREATHING ENGINE'S OWN LEDGER (#1207). The hull's drag columns above
+       answer what the air does TO this part; these answer what the part does TO the
+       air, which is the other half of the same mouth and until now was readable only
+       as a diff between two flights. jetArmed* come off the one jetEngine call the
+       drain makes (vehicle.cpp:ApplyThrust) -- written whether or not the call led to
+       a burn, so an engine that is choked, starved or standing in a sky with no
+       oxidizer still reports WHY rather than holding its last productive figure.
+       Their lifetime is therefore the DRAIN's, not the aero pass's: a hull coasting
+       with the throttle shut keeps the reading from the tick it was last armed (which
+       is what a pilot wants beside a throttle lever), and jetArmedBound 0 means the
+       law has never been asked about this engine since it spawned.
+       jetMouthFrac is the other half, and it rides the aero pass with the form trio
+       (zeroed every pass, written by the same partition that credits formVis): the
+       share of this part's OWN shadow that the union let the flow reach, 1 exposed and
+       0 buried. It is a proxy and says so -- the union pass does not know WHERE on a
+       part the hole is, only whether the part is upwind-most -- but it is the number
+       #1207's bill needs: a 2 m jet's 0.35 m2 mouth bolted behind a fuel tank is
+       catching air the hull is standing in front of, and today it is credited the full
+       mouth at free-stream density whatever its neighbours do. */
+    float jetArmedThrust = 0.0f;  // [N] the last drain tick's push, before the throttle
+    float jetArmedBurn = 0.0f;    // [kg/s] of jetfuel that tick asked for
+    float jetArmedAir = 0.0f;     // [kg/s] of air the duct moved that tick
+    float jetArmedWake = 0.0f;    // [m/s] the stream left at (== airspeed if unburnt)
+    unsigned char jetArmedBound = 0;   // drag.h JetBound; 0 = never asked this flight
+    float jetMouthFrac = 0.0f;    // [-] of this part's shadow the flow reached, this pass
     /* Which LIFTING SYSTEM this surface belongs to (#556/#555), as an index into
        Vehicle::aeroSystems; -1 = not a lifting or steering surface. Written by
        Vehicle::groupLiftingSystems at every geometry rebuild (the same fingerprint

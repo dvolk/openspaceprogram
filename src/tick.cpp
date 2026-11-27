@@ -1492,6 +1492,23 @@ void tick(Game &g) {
                 } else {
                     printf(" SideCdA=- SideCp=- BodyCdA=- BodyCp=-");
                 }
+                /* #1207: m2 of air-breathing INTAKE THE AIR CAN ACTUALLY REACH -- each
+                   engine's authored jet_intake_area times how much of its own shadow the
+                   silhouette union let through this pass (Vehicle::lastJetCaptureArea).
+                   The thrust law still meters fuel against the authored mouth at
+                   free-stream density wherever the part happens to sit, so on a hull with
+                   the nacelle buried behind a tank this reads 0.000 while the engine pushes
+                   as if the mouth were on the nose: that gap is the inlet bill #1207 asks
+                   for, and printing it is what makes the gap a number a case can pin
+                   instead of a claim. Dashed with no usable flow, like the pair above --
+                   the pass that bills nothing has no partition to measure exposure from.
+                   Appended last, like every other field here, so the existing parsers
+                   keep working. */
+                if(g.ship->lastDragAlphaValid) {
+                    printf(" JetA=%.3f m2", g.ship->lastJetCaptureArea);
+                } else {
+                    printf(" JetA=-");
+                }
                 printf("\n");
                 // Control surfaces' applied deflections.
                 if(!g.ship->lastControlDeflections.empty()) {

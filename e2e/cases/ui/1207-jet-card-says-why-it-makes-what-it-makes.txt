@@ -1,0 +1,95 @@
+NAME jet-card-says-why-it-makes-what-it-makes
+CLAIM Click the skiff's engine in flight and the engine answers for itself: 2.40 kN of push, 0.021 kg/s of fuel, 3.7 kg/s of air, a 700 m/s wake, bound by its own nozzle -- and beside it the mouth that number is metered against, 0.02 m2 authored with 0% of it reaching the flow, because the pod and tank stand in front of it. The card's static lines say the two facts a builder chooses a jet on: the mouth is 10% of the part's own 0.20 m2 disc, and its thrust falls to nothing at 700 m/s.
+KIND invariant
+# WHY THIS CASE EXISTS. A jet that makes nothing has always looked the same on this card
+# four different ways -- choked past its own nozzle, starved by its pump, out of fuel, or
+# standing in a sky with no oxidizer to burn -- and the only way to tell them apart was to
+# diff two flights. #1206 put the whole law in one call (drag.h:jetEngine) and #1207 asked
+# for its verdict to be readable rather than inferred, so the drain's own JetS now rides on
+# the Part (Part::jetArmed*) and the card prints it: the thrust, the fuel that same call
+# asked for, the air it swallowed, the wake speed, and WHICH CEILING won. Nothing new is
+# measured here -- the card reads the figures that already decided the burn, so a card and
+# a fuel gauge cannot disagree.
+#
+# The MOUTH row is the other half of #1207 and the reason this case is not just a number
+# reprint. The thrust law meters fuel against the part's authored jet_intake_area at
+# free-stream density wherever the part happens to sit, while the silhouette pass knows how
+# much of that part the air can actually reach (Part::jetMouthFrac: the share of its own
+# shadow the union let through, 1 exposed and 0 buried). On every shipped jet hull in the
+# game -- skiff, skiff_trim, skiff_gear, xr2, spaceplane, finring -- that share measures
+# 0.00, because the nacelle sits behind the pod and tanks. So the card shows the
+# disagreement outright: an engine pushing 2.4 kN with no mouth in the flow. That is the
+# inlet bill #1207 wants; the LAW waits on #1236 (a rule that can take a flagship's engine
+# away should not land on an airframe already flying a 4.8 km limit cycle) and this row is
+# the number it has to move.
+#
+# RIG NOTES. --width/--height are not decoration: at the default window size the focus
+# point resolves off-screen, nothing gets picked, and every check below would assert on an
+# empty registry (the same reason ui/734 carries them). The throttle has to be open before
+# the card is read: the engine's ledger is written by the drain, not the aero pass, so a
+# hull that has never opened its lever has no answer to print and the row dashes.
+# No --no-paint anywhere: these are painted rows, and a case asserting painted rows while
+# running unpainted measures a stub (#666's rule in reverse).
+ARGS --time-accel 1 --width 1920 --height 1080 --startship skiff_trim,res/ships/skiff_trim.json,Kerbin,flying-cruise
+ARGS --sim-steps 900
+ARGS --sim-press 500,12000,T
+# Orbit the camera before aiming at anything (the same drag ui/492 needs for a tail
+# surface): pick.cpp::aimAtPoint projects the part's MOUNT origin and rings +-160 px
+# around it, and the skiff's engine mount sits under the pod-tank stack, so from the
+# default view it is not clickable at all -- [uifocus] prints FAILED and the case would
+# assert on an empty registry. The EXPECT below is what turns that failure red rather
+# than quietly vacuous (#653).
+ARGS --sim-mouse 800,0,960,540,0
+ARGS --sim-mouse 900,300,700,760,RMB
+ARGS --ui-focus 2000,skiff_trim/engine
+ARGS --sim-mouse 2200,0,CUR,CUR,RMB
+ARGS --ui-list 9000 9500
+ARGS --drag-log
+EXPECT [uilist] loop=
+EXPECT [uifocus] 'skiff_trim/engine' ->
+# One engine card, and all four rows on it. #601 put drawn text bytes into this dump
+# precisely so a case can assert what the player reads; uiText (not ImGui::Text) is what
+# gets them there, which is also why deleting a row is a red case and not a free edit.
+# The counts are 2 because --ui-list reads twice (9.0 s and 9.5 s).
+CHECK len({r["window"] for r in uilist if "Jet (0.5m)" in r["window"]}) == 1
+CHECK len([r for r in uilist if "Jet (0.5m)" in r["window"] and r["label"].startswith("Jet (last armed)")]) == 2
+CHECK len([r for r in uilist if "Jet (0.5m)" in r["window"] and r["label"].startswith("Mouth:")]) == 2
+CHECK len([r for r in uilist if "Jet (0.5m)" in r["window"] and r["label"].startswith("Intake:")]) == 2
+# THE VERDICT. The skiff's engine is nozzle-bound at this bed: its 0.02 m2 mouth and 700 m/s
+# nozzle are capped by the authored exhaust at every speed under it (the fan is sized to
+# reach exactly v_e in the rating air, the sky affords 2391 m/s above the hull, and the pump
+# carries 1.38x the peak power the nozzle asks for). So the row must NAME the ceiling
+# rather than merely print a thrust: a part that starts reporting "fuel line" or "air's
+# oxidizer" here has had its authoring moved, and naming the reason is the sentence this row
+# exists to make readable (#1207).
+CHECK all("bound by nozzle" in r["label"] for r in uilist if "Jet (0.5m)" in r["window"] and r["label"].startswith("Jet (last armed)"))
+CHECK all("wake 700m/s" in r["label"] for r in uilist if "Jet (0.5m)" in r["window"] and r["label"].startswith("Jet (last armed)"))
+# THE NUMBER, and it is the law's number rather than a decoration: 1/2 rho A (v_e^2 - v^2)
+# for a 0.02 m2 mouth in the 0.50 kg/m3 this bed flies in is 2.41..2.44 kN across the
+# phugoid's 60..107 m/s. The band is wider than that arithmetic on purpose, because the card
+# quotes the PART's state and a hull swinging through its exchange gives its engine an
+# airspeed a couple of percent off the COM's.
+CHECK all(2.2 < float(r["label"].split("): ")[1].split("kN")[0]) < 2.6 for r in uilist if "Jet (0.5m)" in r["window"] and r["label"].startswith("Jet (last armed)"))
+# The air outweighs the fuel by two orders of magnitude: 3.7 kg/s of air against 0.021 kg/s
+# of jetfuel at this state -- 1/2 rho A (v + w) = 0.5 x 0.475 x 0.02 x 782 at the 9 s mark
+# of the arc, and the burn is T (v + w) / 2Q. That is #1206's whole point (a jet is air-powered, not fuel-powered) in
+# the row a player would actually look at, and both figures come out of ONE JetS, so they
+# cannot drift apart the way jetThrust and jetAirGate used to.
+CHECK all(3.3 < float(r["label"].split("kg/s fuel, ")[1].split("kg/s air")[0]) < 4.2 for r in uilist if "Jet (0.5m)" in r["window"] and r["label"].startswith("Jet (last armed)"))
+CHECK all(0.018 < float(r["label"].split(", ")[1].split("kg/s fuel")[0]) < 0.025 for r in uilist if "Jet (0.5m)" in r["window"] and r["label"].startswith("Jet (last armed)"))
+# THE DISAGREEMENT (#1207): 0.02 m2 authored, NONE of it in the flow. Pinned as 0 rather
+# than "small" because the silhouette pass gives an exact answer here -- this part sits
+# wholly inside its hull's shadow -- and because this is the row an exposure bill would
+# move. Mount a jet at the nose and it reads 100%, which is when the bill becomes real.
+CHECK all(r["label"].endswith("0% of it reaching the flow") for r in uilist if "Jet (0.5m)" in r["window"] and r["label"].startswith("Mouth:"))
+# The two builder-facing facts: the mouth as a share of the part's own frontal disc (0.02 m2
+# of a 0.20 m2 disc = 10%) and the wall the authored nozzle is. The second is new to the
+# card, and it is the envelope rather than a spec: before #1206 the shipped law kept
+# thrusting past the declared exhaust speed, so 700 m/s was decoration on the card.
+CHECK all("mouth is 10% of its 0.20m2 disc" in r["label"] for r in uilist if "Jet (0.5m)" in r["window"] and r["label"].startswith("Intake:"))
+CHECK all("thrust falls to nothing at 700m/s" in r["label"] for r in uilist if "Jet (0.5m)" in r["window"] and r["label"].startswith("Intake:"))
+# And the ship-level twin of the Mouth row: [drag] JetA= is that same exposure summed over
+# the hull's engines, printed every second. It has to be PRESENT (an absent column reads
+# None, not 0.0) and it has to agree with what the card says about the only engine aboard.
+CHECK all(d.get("jetA") == 0.0 for d in drag)
+FORBID error:

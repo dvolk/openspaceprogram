@@ -103,6 +103,24 @@ static void drawPartPhysique(const PartDef &def) {
                " (%.2fkg/s jet fuel there, intake %.2fm^2, %.0fm/s exhaust)",
                def.jet_fan_thrust, def.propellant_rate[(int)ResourceType::JetFuel],
                def.jet_intake_area, def.exhaust_velocity);
+        /* #1207, the two facts a jet is chosen on that the line above hides. The MOUTH
+           is what the single-stream law meters the burn against, so a builder should see
+           how big a hole it is in the part's own frontal disc: the shipped 2 m jet
+           swallows through 11% of the disc it presents to the air, which is why its
+           105 kN costs a hull 0.35 m2 ofCd the moment that bill is charged. And the
+           WALL: past exhaust_velocity the engine makes nothing at all -- the stream
+           cannot overtake the hull it is being pushed out of -- so a part rated 700 m/s
+           is not a 700 m/s jet in cruise, it is a jet that dies there. Before #1206 the
+           old two-stream law kept thrusting past the authored nozzle, so the number was
+           decoration; now it is the envelope. */
+        const double disc = glm::pi<double>() * def.radius * def.radius;
+        if(def.jet_intake_area > 0.0) {
+            uiText("Intake: mouth is %.0f%% of its %.2fm2 disc; thrust falls to nothing"
+                   " at %.0fm/s", 100.0 * def.jet_intake_area / disc, disc,
+                   def.exhaust_velocity);
+        } else {
+            uiText("Intake: none declared -- this jet's thrust does not come from air");
+        }
     } else if(def.totalPropellantRate() > 0.0 && def.exhaust_velocity > 0.0) {
         uiText("Thrust: %.0fN (%.1fkg/s @ %.0fm/s)",
                def.fullThrust(), def.totalPropellantRate(), def.exhaust_velocity);
@@ -4279,6 +4297,34 @@ void drawPartWindows(Game &g) {
                             resourceUnit((ResourceType)r),
                             def->capacity[r],
                             resourceUnit((ResourceType)r));
+            }
+            /* THE ENGINE ANSWERING FOR ITSELF (#1207). A jet that makes nothing has
+               always looked identical on this card whether it is choked past its own
+               nozzle, starved by its pump, out of fuel, or standing in a sky with no
+               oxidizer to burn -- four different situations, one row of zeros, and the
+               only way to tell them apart was to diff two flights. These are the
+               figures the drain's own jetEngine call left behind (Part::jetArmed*,
+               vehicle.cpp:ApplyThrust), so the card and the fuel gauge cannot disagree,
+               and the last field names the ceiling that won. Dashes until the law has
+               been asked about this engine: a hull that has never opened its throttle
+               has no answer, and inventing one would be a prediction, not a reading.
+               The mouth row is the other half of #1207: how much of this part's own
+               shadow the silhouette let the flow reach. The thrust law still meters
+               against the authored mouth at free-stream density wherever the part sits,
+               so a mouth reading 0% while the engine pushes is the inlet bill the ticket
+               is about -- visible at last, and pinned by [drag] JetA=. */
+            if(def->jet) {
+                const Part *jp = ship->parts[part];
+                if(jp->jetArmedBound != 0) {
+                    uiText("Jet (last armed): %.2fkN, %.3fkg/s fuel, %.1fkg/s air,"
+                           " wake %.0fm/s -- bound by %s",
+                           jp->jetArmedThrust / 1000.0, jp->jetArmedBurn, jp->jetArmedAir,
+                           jp->jetArmedWake, jetBoundName(jp->jetArmedBound));
+                } else {
+                    uiText("Jet (last armed): never asked -- no drain tick yet");
+                }
+                uiText("Mouth: %.2fm2 authored, %.0f%% of it reaching the flow",
+                       def->jet_intake_area, 100.0 * jp->jetMouthFrac);
             }
             // --- aerodynamic surface (this part lifts, steers, or both) --------
             /* #497: the angle-of-attack row belongs to EVERY surface with one, not

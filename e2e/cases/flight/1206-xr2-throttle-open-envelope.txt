@@ -1,5 +1,5 @@
 NAME xr2-throttle-open-envelope
-CLAIM The XR-2 is the hull that carries the 2 m jet -- 0.35 m2 of mouth, a 700 m/s nozzle, a 105.0 kN machine, a 1.4 kg/s pump. 4044.2 kg of tanks-full hull spawned at 84.9 m/s and 8.5 km with the throttle pinned open for 90 s: on EVERY row the thrust the sim actually arms -- [drainlog]'s own figure -- is the single-stream 1/2 rho A (v_e^2 - v^2) for that mouth, to within 2.4%, and the drain that pays for it runs 0.452 kg/s at 224.7 m/s in the low field and 0.227 kg/s at 63 m/s up at 12.5 km. One stream, metered against the air the mouth catches, at both ends of the arc.
+CLAIM The XR-2 is the hull that carries the 2 m jet -- 0.35 m2 of mouth, a 700 m/s nozzle, a 105.0 kN machine, a 1.4 kg/s pump. 4044.2 kg of tanks-full hull spawned at 84.9 m/s and 8.5 km with the throttle pinned open for 90 s: on EVERY row the thrust the sim actually arms -- [drainlog]'s own figure -- is the single-stream 1/2 rho A (v_e^2 - v^2) for that mouth, to within 2.4%, and the drain that pays for it runs 0.452 kg/s at 224.7 m/s in the low field and 0.227 kg/s at 63 m/s up at 12.5 km. One stream, metered against the air the mouth catches, at both ends of the arc -- and the hull stands in front of that mouth: the silhouette lets the flow reach none of its 0.35 m2, so the engine is credited air its own hull is blocking (#1207).
 KIND golden
 # WHY THIS CASE EXISTS. #1206 rewrote the air-breathing law so one stream of air moves at
 # one wake speed and the fuel pays for all of it (src/drag.h:jetEngine), and the shipped
@@ -70,6 +70,18 @@ CHECK min(d["alt_asl"] for d in drag) > 7400
 CHECK max(d["alt_asl"] for d in drag) < 13000
 # The VAB's static margin, carried through the whole exchange: +0.68 m on every row.
 CHECK all(0.66 < d["sm"] < 0.70 for d in drag if d.get("sm") is not None)
+# THE MOUTH THE AIR CAN REACH (#1207). JetA= is each engine's authored jet_intake_area
+# times how much of its own shadow the silhouette union let the flow through -- and on
+# this hull it is ZERO on every row: the XR-2's nacelle sits behind pod, tanks and nose,
+# so none of its 0.35 m2 of mouth is presented to the air, while the thrust law meters
+# fuel against the whole authored mouth at free-stream density anyway (the 41.9 kN the
+# rows above pin). The two readings disagree by construction today; this pins which way,
+# so the exposure bill #1207 asks for cannot be added quietly and cannot be lost. It
+# waits on #1236 -- a rule that can take a flagship's engine away should not land on an
+# airframe already flying a 4.8 km limit cycle -- and when it does land, every thrust
+# band in this case moves with this column. A missing column reddens this too: an absent
+# jetA reads None, not 0.0.
+CHECK all(d.get("jetA") == 0.0 for d in drag)
 # The hull those numbers are quoted for: 27 parts, 4044.24 kg with both tanks full, no
 # crew, 1311 kg of jetfuel in that figure. [mass] carries the propellant that is still
 # aboard, so the row walks down as the engine eats it: the 89.5 s at full throttle spends

@@ -3994,6 +3994,12 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
            collapsed) must not keep last substep's hides/side figures on its card. */
         p->sideRefused = 0.0f;
         p->sideCdA = 0.0f;
+        /* #1207: the intake exposure rides the same rule as the trio above -- it comes
+           out of this pass's partition, so on a pass that has no partition it quotes
+           nothing rather than last substep's. (The jetArmed* ledger does NOT zero here:
+           it belongs to the drain, not the aero pass, and a coasting hull's card should
+           quote the tick its engine was last armed rather than a wall of dashes.) */
+        p->jetMouthFrac = 0.0f;
         if(p->def != nullptr && p->def->control_area > 0.0) { p->controlDefl = 0.0; }
     }
     /* #1114: the ship-level flow trio zeroes with the columns it bills against --
@@ -4002,6 +4008,7 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
     lastFormWatts = 0.0;
     lastFormQ = 0.0;
     lastFormMach = 0.0;
+    lastJetCaptureArea = 0.0;   // #1207: same pass, same rule
 
     // --drag-cd 0 = no aero at all (the master off switch).
     if(drag_cd <= 0.0) { return lastAeroForce; }
@@ -4722,6 +4729,7 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
             lastFormMach = flowMach(lfCp, invAirA);
             double sideArmCdA = 0.0;
             double bodyArmCdA = 0.0;
+            double jetCapture = 0.0;   // [m2] of intake the flow actually reaches (#1207)
             /* #1105: THE AUDIT ROWS PRINT AFTER THE LOOP, straight from the Part columns
                the loop just wrote -- the same floats the part window prints, so the dump
                and the card cannot disagree. What the ship columns never gave: `refused`
@@ -4746,6 +4754,23 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
                                              aeroSilPartCdSupA[i]);
                 p->formCdA = (float)cdA;
                 p->formDragWatts = (float)(drag_cd * qv * cdA);
+                /* #1207: how much of this part's own shadow the union let the flow
+                   reach, measured off the same two columns the crossflow discount uses
+                   below (own projection vs credited strips). For an air-breathing part
+                   that is the honest half of its intake question: the mouth is 0.35 m2
+                   of hole only if the air can GET to it, and a nacelle bolted behind a
+                   fuel tank presents none. Read-only for now -- the engine still bills
+                   its authored mouth -- and the row it feeds ([drag] JetA=) is what
+                   makes the exposure law #1207 wants measurable instead of argued.
+                   The proxy is stated in part.h: the union pass knows whether a PART is
+                   upwind-most, not where on the part the hole is. */
+                if(p->def != nullptr && p->def->jet_intake_area > 0.0) {
+                    const double frac = (aeroSilPartProj[i] > 1e-9)
+                        ? std::min(1.0, aeroSilPartVis[i] / aeroSilPartProj[i])
+                        : 0.0;
+                    p->jetMouthFrac = (float)frac;
+                    jetCapture += frac * p->def->jet_intake_area;
+                }
                 /* #947: THE CROSSFLOW NORMAL FORCE. The union bill charges a part
                    only where the air MEETS it; a body hidden behind another along
                    the flow was billed nothing at all -- not for its frontal disc
@@ -4960,6 +4985,15 @@ glm::dvec3 Vehicle::applyAeroForce(double h, const TerrainBody *star) {
             // pair would print an arm at random (same reason as the SideCp floor).
             lastBodyCpLever = (std::fabs(lastBodyCdA) > 1e-9)
                 ? (bodyArmCdA / lastBodyCdA) : 0.0;
+            /* #1207: m2 of air-breathing intake the flow actually reaches on this hull
+               this pass -- each engine's authored mouth times its own exposure above.
+               A shipped XR-2 quotes its full 0.35 m2 to the thrust law no matter that
+               its nacelle sits behind pod and tank; this column is the same mouth asked
+               where the air is, and it is what [drag] JetA= prints. Nothing bills on it
+               yet: the exposure LAW is the half of #1207 that waits on #1236, because a
+               rule that can take a flagship's engine away should not land on an
+               airframe that is already flying in a 4.8 km limit cycle. */
+            lastJetCaptureArea = jetCapture;
             if(dumping) {
                 /* The rows the ship columns cannot give, read back off the Part columns
                    the loop above wrote -- the same floats the part window prints, so the
@@ -8012,6 +8046,17 @@ void Vehicle::ApplyThrust(double step) {
             const JetS eng = jetEngine(
                 v_air, rho, atm, p->def->jet_fan_thrust, p->jetFuelRate(),
                 p->def->exhaust_velocity, p->def->jet_intake_area);
+            /* #1207: publish the answer BEFORE the gates below can skip it. A jet that
+               makes nothing is the case a player cannot debug from a HUD -- choked
+               past its nozzle, starved by its pump, or standing in a sky with nothing
+               to burn -- and every one of those is a different sentence on the part
+               card. This is the same call that sizes the burn, so the card and the
+               drain cannot disagree. */
+            p->jetArmedThrust = (float)eng.thrust;
+            p->jetArmedBurn = (float)eng.burn;
+            p->jetArmedAir = (float)eng.air;
+            p->jetArmedWake = (float)eng.wake;
+            p->jetArmedBound = eng.bound;
             const double T = eng.thrust;
             if(T <= 0.0) { continue; }
             const double flow = eng.burn * (double)thruster_util * step; /* kg this tick */
@@ -9368,6 +9413,18 @@ bool Vehicle::goOnRails() {
         p->sideRefused = 0.0f;
         p->sideCdA = 0.0f;
         p->formDragWattsPeak = 0.0f;   // #1113: a per-flight peak, so it goes with rails
+        /* #1207: both halves of the intake ledger go with the rails clear. jetMouthFrac
+           for the reason above (no pass, no partition); the jetArmed* figures because no
+           drain runs here either, and a card that quoted a Kerbin-at-sea 43 kN beside a
+           interplanetary coast would be reading nothing. jetArmedBound back to 0 is the
+           honest dash: the law has not been asked about this engine since it came off
+           rails. */
+        p->jetMouthFrac = 0.0f;
+        p->jetArmedThrust = 0.0f;
+        p->jetArmedBurn = 0.0f;
+        p->jetArmedAir = 0.0f;
+        p->jetArmedWake = 0.0f;
+        p->jetArmedBound = 0;
         if(p->isRcs()) { for(double &f : p->rcsFired) { f = 0.0; } }
     }
     /* #1114: the ship trio, same rails-clear as the columns. The publish window
@@ -9379,6 +9436,7 @@ bool Vehicle::goOnRails() {
     lastFormWatts = 0.0;
     lastFormQ = 0.0;
     lastFormMach = 0.0;
+    lastJetCaptureArea = 0.0;   // #1207: and the intake column with them
     hflow = HullFlowPub{};
     lastRcsNozzles.clear();  // likewise the [rcs] log: no substeps, no nozzles
     lastForceVecs.clear();   // and the force overlay: no substeps, no arrows

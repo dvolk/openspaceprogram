@@ -676,6 +676,16 @@ DRAG_RE = re.compile(
     # and its CdA-weighted lever. One group like the Side pair (printed together off
     # the same lastDragAlphaValid gate), appended last, both unit-anchored.
     r"(?:\s+(?:BodyCdA=([-\d.e+]+) m2 BodyCp=([-\d.e+]+) m|BodyCdA=- BodyCp=-))?"
+    # #1207: JetA= -- m2 of air-breathing INTAKE THE FLOW ACTUALLY REACHES on this hull
+    # (each engine's authored jet_intake_area times how much of its own shadow the
+    # silhouette union let through: Vehicle::lastJetCaptureArea). The thrust law still
+    # meters the burn against the authored mouth at free-stream density wherever the part
+    # sits, so a hull whose nacelle sits behind pod and tank prints 0.000 while its engine
+    # pushes as if the mouth were on the nose -- the gap #1207 wants billed. Read-only for
+    # now: the column exists so the exposure law can be pinned against a number instead of
+    # argued. Dashed with no usable flow, like the Side/Body pairs above; unit-anchored on
+    # m2, so the wide [-\d.]+ class cannot eat a bare dash.
+    r"(?:\s+(?:JetA=([-\d.]+) m2|JetA=-))?"
 )
 # --drag-log's control surfaces (src/tick.cpp): one [ctrl] line under each [drag]
 # line, one "name[index](axis)=±deg" term per surface the aero pass scored. It
@@ -2337,7 +2347,7 @@ def parse_drag(out):
     for m in DRAG_RE.finditer(out):
         (t, alt, rho, v, F, L, lup, up, tau, cd, a, aoa, chute, ind,
          beta, cpl, cla, sm, profile, formcp, airT, airP, airA, mach, ld,
-         sidecda, sidecp, bodycda, bodycp) = m.groups()
+         sidecda, sidecp, bodycda, bodycp, jeta) = m.groups()
         row = {
             # alt_asl: metres above the body's sea-level DATUM, which is NOT the
             # ground and goes negative exactly where rho peaks (#245). Renamed from
@@ -2433,6 +2443,16 @@ def parse_drag(out):
         if bodycda is not None:
             row["bodycda"] = float(bodycda)
             row["bodycp"] = float(bodycp)
+        # #1207: m2 of air-breathing intake the flow actually reaches on this hull --
+        # each engine's authored jet_intake_area times how much of its own shadow the
+        # silhouette union let through. The engine's THRUST still comes from the authored
+        # mouth at free-stream density wherever the part sits, so a row reading
+        # jetA 0.000 on a hull whose jet is making 40 kN is the inlet bill #1207 is about,
+        # stated as a number. Absent (not 0.0) when the row dashed it: the same
+        # no-usable-flow gate as aoa/sidecda. A hull with no air-breathing part prints
+        # 0.000, which is a reading, not a missing column.
+        if jeta is not None:
+            row["jetA"] = float(jeta)
         rows.append(row)
     return rows
 

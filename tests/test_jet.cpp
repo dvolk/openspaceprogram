@@ -51,6 +51,8 @@ static void test_static() {
     const JetS e = jetEngine(0.0, RHO0, OX_AIR, FAN, PUMP, V_E, A);
     CHECK_REL(e.thrust, 105043.750000, 1e-9, "105 kN on the pad");
     CHECK_REL(e.wake, V_E, 1e-12, "the shipped part fills its nozzle at rest");
+    CHECK_TRUE(e.bound == kJetBoundNozzle, "and says so: the nozzle is what binds it");
+    CHECK_REL(e.air, 150.0625, 1e-12, "the air the duct moves, from the same call");
     CHECK_REL(e.burn, 0.855007267, 1e-9, "0.86 kg/s to hold it, 61% of the pump");
     CHECK_REL(jetAirRate(0.0, e.wake, RHO0, A), 150.0625, 1e-12, "1/2 rho A (v + w)");
     CHECK_REL(e.thrust, jetAirRate(0.0, e.wake, RHO0, A) * (e.wake - 0.0), 1e-12,
@@ -80,6 +82,7 @@ static void test_falls_with_speed() {
         CHECK_REL(e.thrust, r.T, 1e-9, "datum thrust");
         CHECK_REL(e.burn, r.burn, 1e-9, "datum fuel rate");
         CHECK_REL(e.wake, V_E, 1e-12, "nozzle-bound across the whole band");
+        CHECK_TRUE(e.bound == kJetBoundNozzle, "and names the ceiling that binds it");
         CHECK_REL(jetAirRate(r.v, e.wake, RHO0, A) * (e.wake - r.v), e.thrust, 1e-12,
                   "T = mdot (w - v)");
         CHECK_REL(Q * e.burn, jetStreamPower(e.thrust, r.v, e.wake), 1e-9, "burn = T(v+w)/2Q");
@@ -89,13 +92,22 @@ static void test_falls_with_speed() {
     /* The old law's peak sat at v_e/2 and its tail ran on past v_e -- a fan thrust
        that never stopped, plus a ram term that clamped only when it went negative.
        Here the wall is v_e itself: at 700 m/s the wake and the hull move together,
-       so nothing is thrown backwards and nothing is burnt. */
-    CHECK_REL(jetEngine(700.0, RHO0, OX_AIR, FAN, PUMP, V_E, A).thrust, 0.0, 0.0,
-              "v = v_e: the wake cannot beat the hull");
-    CHECK_REL(jetEngine(3000.0, RHO0, OX_AIR, FAN, PUMP, V_E, A).thrust, 0.0, 0.0,
-              "Mach 3 on dry air: a 700 m/s nozzle makes nothing");
+       so nothing is thrown backwards and nothing is burnt. The law still answers the
+       air it swallows there (#1207): a Mach 3 hull pushes 1286 kg/s through a duct
+       that can do nothing with it, which is the hole-in-the-hull bill that #1207 is
+       about and the reason the verdict, not just the zero, has to be readable. */
+    const JetS wall = jetEngine(700.0, RHO0, OX_AIR, FAN, PUMP, V_E, A);
+    CHECK_REL(wall.thrust, 0.0, 0.0, "v = v_e: the wake cannot beat the hull");
+    CHECK_TRUE(wall.bound == kJetBoundCaught, "and says the hull caught the exhaust");
+    const JetS hypersonic = jetEngine(3000.0, RHO0, OX_AIR, FAN, PUMP, V_E, A);
+    CHECK_REL(hypersonic.thrust, 0.0, 0.0, "Mach 3 on dry air: a 700 m/s nozzle makes nothing");
+    CHECK_TRUE(hypersonic.bound == kJetBoundCaught, "same verdict, three times the wall");
+    CHECK_REL(hypersonic.air, 1.225 * A * 3000.0, 1e-12, "rho A v of air through a shut duct");
+    CHECK_REL(hypersonic.wake, 3000.0, 1e-12, "leaving at the speed it arrived");
     CHECK_REL(jetEngine(900.0, RHO0, OX_AIR, FAN, PUMP, V_E, A).burn, 0.0, 0.0,
               "and burns nothing doing it");
+    CHECK_TRUE(jetEngine(100.0, 0.0, OX_AIR, FAN, PUMP, V_E, A).bound == kJetBoundNoAir,
+               "in vacuum the answer is that there is nothing to flow");
     printf("note: 105 kN pad, 88.8 kN at 275 m/s, 40.2 kN at 550, 0 at 700\n");
 }
 
@@ -118,6 +130,7 @@ static void test_ceilings() {
     const double rho2 = 2.0 * RHO0;
     const JetS deep = jetEngine(0.0, rho2, OX_AIR, FAN, PUMP, V_E, A);
     CHECK_REL(deep.wake, 494.974747, 1e-9, "the machine caps the wake under v_e");
+    CHECK_TRUE(deep.bound == kJetBoundMachine, "and names the fan as the ceiling");
     CHECK_REL(deep.thrust, FAN, 1e-12, "at exactly the rating");
     CHECK_TRUE(deep.thrust < 0.5 * rho2 * A * V_E * V_E,
                "dense air does not double the thrust for free");
@@ -129,6 +142,7 @@ static void test_ceilings() {
     for(double v : {800.0, 1600.0, 2400.0, 3000.0}) {
         const JetS m = jetEngine(v, rhoUp, OX_AIR, 200000.0, 3.0, 3200.0, A);
         CHECK_REL(m.thrust, wantMachine, 1e-9, "machine-bound thrust is speed-independent");
+        CHECK_TRUE(m.bound == kJetBoundMachine, "at every speed in this thin sky");
         CHECK_REL(m.wake, std::sqrt(v * v + 2.0 * wantMachine / (rhoUp * A)), 1e-9,
                   "the wake that holds it");
     }
@@ -138,6 +152,7 @@ static void test_ceilings() {
     CHECK_REL(jetChemistryWakeSpeed(0.0, EVE_OX), 153.946177, 1e-8, "Eve's trace");
     const JetS eve = jetEngine(275.0, 3.552, EVE_OX, FAN, PUMP, V_E, A);
     CHECK_REL(eve.wake, 315.157778, 1e-8, "Eve at 275 m/s");
+    CHECK_TRUE(eve.bound == kJetBoundSky, "and names the air's oxidizer as the ceiling");
     CHECK_REL(eve.thrust, 14731.562759, 1e-9, "14.7 kN, not 88.8 kN: the sky binds");
     CHECK_REL(eve.burn, 0.1010923994, 1e-9, "and only 0.101 kg/s of it");
     // Under the sky ceiling T = rho A Q share/3.48, which has no v in it at all.
@@ -146,8 +161,11 @@ static void test_ceilings() {
     CHECK_REL(eveRest.burn, 0.0263705554, 1e-8, "a quarter of the fuel, because the air "
               "arrives slower and the same wake costs less to make");
     // A sky with no oxidizer at all throws nothing backwards, however thick.
-    CHECK_REL(jetEngine(200.0, 0.188, 0.0, FAN, PUMP, V_E, A).thrust, 0.0, 0.0,
-              "Jool: hydrogen, nothing to burn it against");
+    const JetS jool = jetEngine(200.0, 0.188, 0.0, FAN, PUMP, V_E, A);
+    CHECK_REL(jool.thrust, 0.0, 0.0, "Jool: hydrogen, nothing to burn it against");
+    CHECK_TRUE(jool.bound == kJetBoundSky, "and the card can say so: the sky, not the machine");
+    CHECK_REL(jool.air, 0.5 * 0.188 * A * (200.0 + 200.0), 1e-12,
+              "the mouth still moves air it cannot burn");
     CHECK_REL(jetEngine(100.0, 65.0, 0.0, FAN, PUMP, V_E, A).thrust, 0.0, 0.0,
               "Venus: 65 kg/m3 and still nothing");
     CHECK_REL(jetChemistryWakeSpeed(200.0, 0.0), 200.0, 0.0,
@@ -178,6 +196,7 @@ static void test_ceilings() {
     const JetS starved = jetEngine(0.0, RHO0, OX_AIR, FAN_S, 0.02, V_E, AS);
     CHECK_REL(starved.wake, 519.753536, 1e-9, "a starved pump pulls the wake under v_e");
     CHECK_REL(starved.thrust, 3309.260795, 1e-9, "and the thrust with it");
+    CHECK_TRUE(starved.bound == kJetBoundFuelLine, "and names the fuel line, not the fan");
 }
 
 static void test_gate_and_density() {

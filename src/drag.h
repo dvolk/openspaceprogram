@@ -2399,27 +2399,66 @@ inline double jetBurnCap(double airRate, double oxidizer_share, double pumpRate)
    the burnt mass inside mdot (about 1% at these numbers), the inlet's thermal choke and
    spillage (#1207), and the reverse case as drag -- past v_e an engine like this should
    brake the hull, and today it simply stops pushing. */
+
+/* WHICH CEILING WON. The four ceilings above answer "how fast does the stream leave";
+   this answers the player's question instead -- "why is this engine making what it is
+   making", which #1207 asked for as a readout because a jet that prints 0 kN at Mach 3
+   looks broken unless the card can say the hull has caught its exhaust. It costs the
+   chain below one assignment per ceiling and changes no force. */
+enum JetBound : unsigned char {
+    kJetBoundUnasked = 0,  // no drain tick has reached this engine since it spawned
+    kJetBoundNoAir,        // no air, no duct or no nozzle: nothing can flow through
+    kJetBoundCaught,       // the hull is at or past exhaust_velocity (see below)
+    kJetBoundNozzle,       // exhaust_velocity binds
+    kJetBoundMachine,      // jet_fan_thrust, gated by the intake density
+    kJetBoundSky,          // the air's oxidizer
+    kJetBoundFuelLine,     // propellant_rate
+};
+inline const char *jetBoundName(int b) {
+    switch(b) {
+        case kJetBoundNoAir:     return "no air";
+        case kJetBoundCaught:    return "hull past the nozzle";
+        case kJetBoundNozzle:    return "nozzle";
+        case kJetBoundMachine:   return "fan";
+        case kJetBoundSky:       return "air's oxidizer";
+        case kJetBoundFuelLine:  return "fuel line";
+        default:                 return "-";
+    }
+}
 struct JetS {
     double thrust = 0.0;   // [N] along the mount
     double burn = 0.0;     // [kg/s] of jetfuel spent this instant
     double wake = 0.0;     // [m/s] the stream leaves at; 0 when nothing flows
+    double air = 0.0;      // [kg/s] of air the duct moves; 0 when nothing flows
+    unsigned char bound = kJetBoundUnasked;   // JetBound: which ceiling answered
 };
 inline JetS jetEngine(double v, double rho, double oxidizer_share,
                       double T_fan, double pump, double v_e, double A) {
     JetS s;
     const double d = jetIntakeGate(rho);
-    if(d <= 0.0 || !(A > 0.0) || !(v_e > 0.0)) { return s; }  // no air, no duct, no nozzle
+    if(d <= 0.0 || !(A > 0.0) || !(v_e > 0.0)) {
+        s.bound = kJetBoundNoAir;
+        return s;                                    // no air, no duct, no nozzle
+    }
     const double speed = (v < 0.0) ? 0.0 : v;
-    if(speed >= v_e) { return s; }              // the nozzle cannot outrun the hull
+    if(speed >= v_e) {
+        s.bound = kJetBoundCaught;
+        s.wake = speed;                              // the stream is not moving relative
+        s.air = rho * A * speed;                     // to the hull: the mouth is a hole
+        return s;                                    // in the hull, and the law stops here
+    }
     double w = v_e;                                            // 1. the nozzle's promise
+    unsigned char bound = kJetBoundNozzle;
     const double fanW = std::sqrt(speed * speed + 2.0 * T_fan * d / (rho * A));
-    if(fanW < w) { w = fanW; }                                 // 2. the machine's own limit
+    if(fanW < w) { w = fanW; bound = kJetBoundMachine; }       // 2. the machine's own limit
     const double chemW = jetChemistryWakeSpeed(speed, oxidizer_share);
-    if(chemW < w) { w = chemW; }                               // 3. the sky's chemistry
+    if(chemW < w) { w = chemW; bound = kJetBoundSky; }         // 3. the sky's chemistry
     const double pumpW = jetPumpWakeSpeed(speed, rho, A, pump);
-    if(pumpW < w) { w = pumpW; }                               // 4. the fuel line
+    if(pumpW < w) { w = pumpW; bound = kJetBoundFuelLine; }    // 4. the fuel line
     const double T = jetStreamThrust(speed, w, rho, A);
     s.wake = w;
+    s.air = jetAirRate(speed, w, rho, A);
+    s.bound = bound;
     s.thrust = (T < 0.0) ? 0.0 : T;
     s.burn = jetStreamPower(s.thrust, speed, w) / kJetFuelHeatPerKg;
     return s;

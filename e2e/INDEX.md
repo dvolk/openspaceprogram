@@ -6,11 +6,11 @@ kind says how much weight the assertions carry.
 
 | kind | meaning | cases |
 |---|---|---|
-| `invariant` | a behaviour or a player route the game must keep | 487 |
+| `invariant` | a behaviour or a player route the game must keep | 488 |
 | `golden` | tuned numbers or a content table -- update deliberately when tuning | 58 |
 | `harness` | CLI/test-engine plumbing, not game spec | 18 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **567** |
+| | **total** | **568** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -209,7 +209,7 @@ judgement. Select by number, name or path, e.g.
 | `flight/1164-a-alt-dims-rcs-authority.txt` | invariant | Holding Alt cuts RCS authority to a third -- the translation ask AND the pointing rows -- without re-rating the ring, and letting go brings the whole ring back (#1164). |
 | `flight/1164-b-alt-composes-with-the-rcs-dials.txt` | invariant | Alt's third multiplies the Systems dials rather than replacing them: a hull dialed to 50 % and held with Alt asks a sixth, and the pointing rows take the same two cuts (#1164, #1067, #1124). |
 | `flight/1184-parked-lander-holds-at-warp-10.txt` | invariant | A legged hull parked on the pad stays parked when time accelerates: the wind pushes on it and its footpads hold it. |
-| `flight/1206-xr2-throttle-open-envelope.txt` | golden | The XR-2 is the hull that carries the 2 m jet -- 0.35 m2 of mouth, a 700 m/s nozzle, a 105.0 kN machine, a 1.4 kg/s pump. 4044.2 kg of tanks-full hull spawned at 84.9 m/s and 8.5 km with the throttle pinned open for 90 s: on EVERY row the thrust the sim actually arms -- [drainlog]'s own figure -- is the single-stream 1/2 rho A (v_e^2 - v^2) for that mouth, to within 2.4%, and the drain that pays for it runs 0.452 kg/s at 224.7 m/s in the low field and 0.227 kg/s at 63 m/s up at 12.5 km. One stream, metered against the air the mouth catches, at both ends of the arc. |
+| `flight/1206-xr2-throttle-open-envelope.txt` | golden | The XR-2 is the hull that carries the 2 m jet -- 0.35 m2 of mouth, a 700 m/s nozzle, a 105.0 kN machine, a 1.4 kg/s pump. 4044.2 kg of tanks-full hull spawned at 84.9 m/s and 8.5 km with the throttle pinned open for 90 s: on EVERY row the thrust the sim actually arms -- [drainlog]'s own figure -- is the single-stream 1/2 rho A (v_e^2 - v^2) for that mouth, to within 2.4%, and the drain that pays for it runs 0.452 kg/s at 224.7 m/s in the low field and 0.227 kg/s at 63 m/s up at 12.5 km. One stream, metered against the air the mouth catches, at both ends of the arc -- and the hull stands in front of that mouth: the silhouette lets the flow reach none of its 0.35 m2, so the engine is credited air its own hull is blocking (#1207). |
 | `flight/1215-heavy-plane-rolls-off-the-runway.txt` | invariant | A 4 t plane stands on its springs and rolls down the runway and leaves it. |
 | `flight/1223-a-start-ship-spawns-at-an-angle-of-attack.txt` | invariant | aoa= hands the hull the angle of attack the aero law measures (+ = nose above the flow), while pitch= leaves that angle at zero and moves the flight path instead. |
 
@@ -416,7 +416,7 @@ judgement. Select by number, name or path, e.g.
 | `save/1124-a-saved-rcs-pointing-dial-refused.txt` | invariant | A save whose RCS pointing dial sits outside 0..1 is refused, not loaded as a hull that claims to steer with more than its ring. |
 | `save/1124-b-saved-seam-rcs-pointing-dial-refused.txt` | invariant | A dock seam carrying an out-of-range RCS pointing dial is refused with the seam named, not loaded into the hull that will leave when the seam is cut. |
 
-## ui (79)
+## ui (80)
 
 | case | kind | pins |
 |---|---|---|
@@ -499,6 +499,7 @@ judgement. Select by number, name or path, e.g.
 | `ui/1035-b-undo-takes-a-from-scratch-rebuild-back.txt` | invariant | After "Stage from scratch" + Auto-stage on heavy_asp, Undo staging restores the authored ladder. |
 | `ui/1090-a-hull-card-form-row.txt` | invariant | Body part cards print the merged aero block -- credit row, hull flow row, watts row -- at cadence; the hull flow row agrees across the ship's body cards; the upwind capsule reads a real area and cd; no surface AoA row on body cards. |
 | `ui/1115-a-part-card-dashes-in-vacuum.txt` | invariant | Above the air, a body card prints the dashed trio and a surface card the dashed pair -- exact spellings, same row counts as the live blocks, and a never-billed peak that still answers 0.0 W. |
+| `ui/1207-jet-card-says-why-it-makes-what-it-makes.txt` | invariant | Click the skiff's engine in flight and the engine answers for itself: 2.40 kN of push, 0.021 kg/s of fuel, 3.7 kg/s of air, a 700 m/s wake, bound by its own nozzle -- and beside it the mouth that number is metered against, 0.02 m2 authored with 0% of it reaching the flow, because the pod and tank stand in front of it. The card's static lines say the two facts a builder chooses a jet on: the mouth is 10% of the part's own 0.20 m2 disc, and its thrust falls to nothing at 700 m/s. |
 
 ## render (96)
 
