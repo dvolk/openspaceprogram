@@ -44,43 +44,57 @@ inline constexpr double kSlipEps    = 0.3;    // m/s, tanh knee (viscous near 0)
    is not a heavier plane being unfriendly; it is the ground law stopping working,
    and it reads to the player as a plane glued to the runway (a 4.1 t spaceplane on
    the skiff's 1.15 t of strut: 9.2 kN of spring against 39.8 kN of weight).
-   So past its designed ride the strut sizes itself to the load it carries. Under
-   the designed ride nothing happens: a light hull keeps exactly the suspension it
+   So past its designed ride the struts size themselves to the load. Under the
+   designed ride nothing happens: every shipped hull keeps exactly the suspension it
    was authored with, bit for bit.
-   The damper scales LINEARLY with k. Along this branch k rises with the hull mass,
-   and the heave mode is omega = sqrt(g/ride) -- mass cancels -- so a damping ratio
-   c/(2*sqrt(k*m)) that stays put needs c to rise with mass too, i.e. with k. The
-   tempting sqrt(k) leaves a 4 t plane at zeta 0.26 against the skiff's 0.64: some
-   40% overshoot and a couple of seconds of heave ring on every touchdown, which is
+   It sizes the GROUP, not each strut. A hull is rigid, so every wheel and footpad
+   compresses by the same amount and they are springs in PARALLEL: comp = W / sum(k),
+   and it is the sum that has to carry the weight. Sizing each part against its own
+   share is a different law and a wrong one -- on a hull standing on 2 gear and 2
+   legs it stiffens the gear while the legs' stiffness already covered the load,
+   which is what the first cut of this rule did.
+   The factor scales the damper too, one-for-one, which is what keeps the heave mode
+   at a constant damping ratio: on this branch the group rate rises with the hull
+   mass while omega pins at sqrt(g/ride) -- mass cancels -- so c must rise with mass.
+   Scaling it sqrt(k) instead (the reflex from c = 2*sqrt(k*m)) leaves zeta falling as
+   1/sqrt(mass): a 4 t plane at zeta 0.26 against the skiff's 0.64, some 40%
+   overshoot and a couple of seconds of heave ring on every touchdown, which is
    exactly the hull this rule exists to rescue.
-   What the rule does NOT buy: the share is an EVEN split, so a corner carrying
-   more than travel/ride = 1.42x the mean is back on its bump stops whatever the
-   sizing did. Measured worst corners are 1.23x (the skiff, e2e 1158-b) and 1.24x
-   (the spaceplane), so the margin is ~15%, and it is load imbalance, not mass,
-   that runs out first. Substep size does not move the static case: parked, the
-   spaceplane reads the same 0.131 worst corner and 0.019 m of tyre-to-deck
-   clearance at warp 1 as at warp 10's h = 0.0556 s. What coarse substeps do cost
-   is DYNAMIC stroke -- a warp-10 touchdown arrives with more than the leftover
-   0.019 m to spend and drops onto collision, which no static sizing can answer
-   (#1216).
-   kRideStroke is a measured datum, not a pin: the skiff's loaded main compresses
-   0.106..0.109 of its 0.15, so an even share of 0.106 is just past where that hull
-   engages at all (it engages at hull weight > 3*25000*0.106/g = 811 kg).
-   kRideMaxFraction stops the rule sizing a strut for a stroke the part cannot
-   reach -- a short-travel wheel would be parked on its own bump stop, stiffer.
-   The DRAWN wheel still does not telescope, so ride height and landing stroke
-   remain one quantity (#1166) -- this lifts the load ceiling, not the float. Both
-   ground loops call it on ONE share: a hull's weight divides between every wheel
-   and footpad it has, so standing on both does not get sized twice. */
-inline constexpr double kRideStroke = 0.106;  // m of static compression a strut is sized for
-inline constexpr double kRideMaxFraction = 0.75;   // of travel, the stroke a sized strut may use
-inline void sizeToStrut(double staticShareN, double travel, double &spring, double &damp) {
-    if(staticShareN <= 0.0 || spring <= 0.0 || travel <= 0.0) { return; }
-    const double ride = std::min(kRideStroke, kRideMaxFraction * travel);
-    const double need = staticShareN / ride;
-    if(need <= spring) { return; }
-    damp *= need / spring;
-    spring = need;
+   What it does NOT buy:
+     * A corner can still out-load the group. The ride is what the WEIGHT needs if it
+       sits evenly, so a corner carrying more than travel/ride = 1.42x the mean load
+       is back on its bump stops whatever the factor came out to. Measured worst
+       corners are 1.23x (the skiff, e2e 1158-b) and 1.24x (the spaceplane), so the
+       margin is ~15%, and it is load imbalance, not mass, that runs out first.
+     * DYNAMIC stroke. Parked, the spaceplane reads the same 0.131 worst corner and
+       0.019 m of tyre-to-deck clearance at warp 1 as at warp 10's h = 0.0556 s, so
+       the static case is substep-proof; a warp-10 TOUCHDOWN arrives with more than
+       the leftover 0.019 m to spend and drops onto collision regardless (#1216).
+     * The float stays welded to the stroke (#1166): the DRAWN wheel does not
+       telescope, so ride height and landing stroke remain one quantity. Sizing does
+       change the float -- that is the point -- and past the ride it makes it the same
+       kRideStroke for every hull, where before it was wherever collision left it.
+   kRideStroke is a measured datum, not a knob: the skiff's loaded main compresses
+   0.106..0.109 of its 0.15, so a group that would sink past 0.106 under its own hull
+   is exactly the one that needs resizing -- which for the shipped gear means it
+   starts at hull weight > 3*25000*0.106/g = 811 kg. Note it is a WORST-corner
+   datum, so that hull's heaviest main already sits past the mark the rule aims at:
+   sizing it changes nothing (its group rate is enough), which is what makes 0.106 a
+   safe place to park every other hull too.
+   kRideMaxFraction stops the rule sizing a group for a stroke the shortest strut on
+   it cannot reach: without it a 0.02 m wheel would be asked to sit at 0.106, i.e.
+   permanently on its own bump stop. */
+inline constexpr double kRideStroke = 0.106;  // m of static compression a strut group is sized for
+inline constexpr double kRideMaxFraction = 0.75;   // of travel, the stroke a sized group may use
+// What one hull's whole strut group must be multiplied by to stand at the designed
+// ride: 1.0 (leave the catalogue alone) until the group's authored rate cannot hold
+// `hullWeightN` up at kRideStroke, then the ratio that says it can. `shortestTravel`
+// is the least stroke any strut in the group has, since they all compress together.
+inline double sizingFactor(double hullWeightN, double sumAuthoredK, double shortestTravel) {
+    if(hullWeightN <= 0.0 || sumAuthoredK <= 0.0 || shortestTravel <= 0.0) { return 1.0; }
+    const double ride = std::min(kRideStroke, kRideMaxFraction * shortestTravel);
+    const double need = hullWeightN / ride;
+    return need > sumAuthoredK ? need / sumAuthoredK : 1.0;
 }
 
 // Everything force() needs about one wheel this substep. The caller computes
@@ -135,13 +149,14 @@ inline glm::dvec3 force(const Input &in) {
        walked across the balloon deck at that substep while holding still at 60 Hz.
        The SPRING is deliberately not capped -- it is what holds the hull up. Under
        the authored pair the heave limit h < 2/sqrt(k/(m/n)) = 0.19 s sits outside
-       the substeps the shipped loop can make, and sizeToStrut does not move that
-       margin much: along its branch omega pins at sqrt(g/ride) = 9.7 rad/s, so the
+       the substeps the shipped loop can make, and the sizing does not move that
+       margin much: along its branch omega pins at sqrt(g/ride) = 9.62 rad/s, so the
        limit is 0.21 s whatever the mass. What CAN run past it is the pitch mode
        that the gear struts also spring -- omega there is omega_heave x (gear arm /
        radius of gyration), so a hull with gear out at the ends and mass bunched in
        the middle reaches the h*omega = 2 limit nearer 0.1 s, inside what the loop
-       makes (max h ~0.117 s by substepCount). Unmeasured so far; if it ever bites,
+       makes (max h ~0.117 s by substepCount). Measured parked at warp 1 and warp 10
+       the sized hull is bit-identical, so this has not bitten yet; if it ever does,
        the bound is the caller's own impulseMass(hull, rel, n) / (h*h). */
     double damper = in.damp * in.compressRate;
     if(in.normalStopRate > 0.0) {

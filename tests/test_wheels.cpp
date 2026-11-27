@@ -381,67 +381,86 @@ int main() {
                    "an unbraked wheel holds no slope at all");
     }
 
-    /* sizeToStrut: any hull stands on its springs, not on Bullet collision. Five
-       things to hold: at or under the designed ride the authored pair survives
-       exactly (so no shipped hull moves); past it k = share / ride, which parks the
-       static stroke on the designed ride instead of on the bump stop; the damper
-       scales LINEARLY with k, which is what keeps the heave mode at a constant
-       damping ratio; the ride never exceeds what the part's own travel can reach;
-       and the stroke below travel is left over for a landing. */
+    /* sizingFactor: any hull stands on its springs, not on Bullet collision. The
+       GROUP is the unit, not the strut: the hull is rigid, so every wheel and
+       footpad compresses by the same amount, comp = W / sum(k), and it is the sum
+       that has to hold the weight up. Four things to hold -- at or under the
+       designed ride the factor is exactly 1.0 (no shipped hull moves); past it the
+       group lands back on the designed ride; every strut carries the SAME factor,
+       which is what keeps the damper scaling with mass and the damping ratio still;
+       and the ride never asks for more stroke than the shortest strut in the group
+       can reach. */
     {
         const double kAuth = 25000.0, cAuth = 3000.0, travel = 0.15;
-        // The shipped datum: the skiff's loaded main wheel is 25000 N/m compressing
-        // 0.106 of its 0.15 (e2e 1158-b reads the free stroke). That hull has to
-        // pass through this rule untouched, bit for bit.
-        double k = kAuth, c = cAuth;
-        wheel::sizeToStrut(kAuth * wheel::kRideStroke, travel, k, c);
-        CHECK_NEAR(k, kAuth, 1e-9, "a hull at the designed ride keeps its authored spring");
-        CHECK_NEAR(c, cAuth, 1e-9, "and its authored damper");
+        const double g = 9.81;
+        // The shipped datum: the skiff's loaded main compresses 0.106..0.109 of its
+        // 0.15 (e2e 1158-b reads the free stroke), so a group sized to land an even
+        // share on 0.106 engages just past where that hull sits at all -- and at that
+        // hull the factor is exactly 1.0, bit for bit.
+        const double skiffW = 658.11 * g;
+        CHECK_NEAR(wheel::sizingFactor(skiffW, 3 * kAuth, travel), 1.0, 1e-12,
+                   "a hull the strut was authored for is not retuned at all");
+        CHECK_TRUE(3 * kAuth * wheel::kRideStroke > skiffW,
+                   "which is because its authored group already clears the ride");
+        CHECK_NEAR(3 * kAuth * wheel::kRideStroke / g, 810.4, 0.5,
+                   "and the shipped gear starts sizing at this hull mass");
 
-        // A 4.1 t spaceplane on three wheels is ~13.3 kN a wheel, against the
-        // 3.75 kN (k x travel) the authored strut can ever push. Before this rule
-        // that hull sat on the runway on collision: 9.2 kN of spring against
-        // 39.8 kN of weight, nose wheel on its bump stops, and the player read it
-        // as a plane glued to the deck.
-        const double heavyShare = 13273.0;
-        CHECK_TRUE(kAuth * travel < heavyShare, "the authored strut cannot hold a 4 t hull");
-        k = kAuth; c = cAuth;
-        wheel::sizeToStrut(heavyShare, travel, k, c);
-        CHECK_NEAR(k, heavyShare / wheel::kRideStroke, 1e-6,
-                   "a heavier hull rates the strut to what it carries");
-        CHECK_NEAR(k * wheel::kRideStroke, heavyShare, 1e-6,
-                   "so the static stroke lands back on the designed ride");
-        CHECK_TRUE(wheel::kRideStroke < travel, "which stays inside the stroke a landing needs");
-        // The damper goes up with k one-for-one. Scaling it sqrt(k) instead -- the
-        // reflex from c = 2 sqrt(k m) -- is what the comment in wheel.h refuses: on
-        // this branch omega is pinned at sqrt(g/ride), mass-free, while k carries the
-        // mass, so sqrt leaves zeta falling like 1/sqrt(mass). Measured: the skiff
-        // sits at 3000 / (2 sqrt(25000 * 219.4)) = 0.64 while sqrt-scaling a 4 t
-        // hull lands at 0.26, i.e. ~40% overshoot and a couple of seconds of heave
-        // ring at every touchdown, on exactly the hull this rule exists to rescue.
-        CHECK_NEAR(c, cAuth * (k / kAuth), 1e-6, "the damper scales with k, linearly");
-        CHECK_NEAR(c / k, cAuth / kAuth, 1e-12, "so c/k, and with it zeta, does not move");
+        // A 4.1 t spaceplane on three of these wants ~39.8 kN, against the 11.25 kN
+        // (sum k x travel) the authored group can ever push. Before this rule that
+        // hull sat on the runway on collision: nose wheel on its bump stops, a plane
+        // the player read as glued to the deck.
+        const double heavyW = 4061.63 * g;
+        CHECK_TRUE(3 * kAuth * travel < heavyW, "the authored group cannot hold a 4 t hull");
+        const double gain = wheel::sizingFactor(heavyW, 3 * kAuth, travel);
+        CHECK_NEAR(gain * 3 * kAuth * wheel::kRideStroke, heavyW, 1e-6,
+                   "sized, the group holds the weight up AT the designed ride");
+        // The rate the game prints for this hull (e2e 1215). The 95 N/m gap between
+        // this 9.81 and the sim's own 9.8026 at the runway deck is why the band is not
+        // tighter: the sim answers local g, not a constant.
+        CHECK_NEAR(gain * kAuth, 125202.0, 200.0, "which is the k= --leg-log prints for it");
+        // The damper takes the SAME factor, so c/k never moves. Scaling it sqrt(k)
+        // instead -- the reflex from c = 2 sqrt(k m) -- is what the comment in
+        // wheel.h refuses: on this branch omega pins at sqrt(g/ride) = 9.62 rad/s,
+        // mass-free, while the group rate carries the mass, so sqrt leaves zeta
+        // falling like 1/sqrt(mass). The skiff sits at
+        // 3000 / (2 sqrt(25000 * 219.37)) = 0.64; sqrt-scaling a 4 t hull lands at
+        // 0.26 -- 40% overshoot and ~2 s of heave ring at every touchdown, on exactly
+        // the hull this rule exists to rescue.
+        const double massPer = heavyW / g / 3.0;
+        CHECK_NEAR(cAuth * gain / (2.0 * std::sqrt(gain * kAuth * massPer)), 0.58, 0.01,
+                   "linear scaling keeps the damping ratio near the skiff's");
+        CHECK_NEAR(cAuth * std::sqrt(gain) / (2.0 * std::sqrt(gain * kAuth * massPer)), 0.26, 0.01,
+                   "sqrt scaling is what leaves a heavy hull under-damped");
 
-        // A short-travel part is never sized for a stroke it cannot reach: the ride
-        // clamps to kRideMaxFraction of its travel, which leaves a stiffer strut that
-        // still stands on its spring rather than a soft one parked on its stop.
-        const double shortTravel = 0.02;
-        k = kAuth; c = cAuth;
-        wheel::sizeToStrut(heavyShare, shortTravel, k, c);
-        CHECK_NEAR(k, heavyShare / (wheel::kRideMaxFraction * shortTravel), 1e-6,
-                   "a short-travel strut sizes to ITS stroke, not the default ride");
-        CHECK_TRUE(k * wheel::kRideMaxFraction * shortTravel <= heavyShare,
-                   "and never sits past that fraction of its travel");
-        CHECK_TRUE(k > heavyShare / wheel::kRideStroke, "which makes it stiffer still");
+        // A hull standing on wheels AND footpads is ONE group: the legs' stiffness
+        // counts towards holding the load up, so this hull needs nothing. Sizing each
+        // strut against its own even share -- what the first cut of this rule did --
+        // stiffened its gear to 35069 N/m while the legs already covered the load.
+        const double mixedK = 2 * kAuth + 2 * 60000.0;
+        CHECK_NEAR(wheel::sizingFactor(1516.92 * g, mixedK, travel), 1.0, 1e-12,
+                   "a mixed group is sized as one spring, not two");
+        CHECK_NEAR(wheel::sizingFactor(60000.0 * g, mixedK, travel),
+                   60000.0 * g / wheel::kRideStroke / mixedK, 1e-9,
+                   "and a heavier one is retuned once, for all of them together");
 
-        // And nothing happens where no sizing is needed.
-        k = kAuth; c = cAuth;
-        wheel::sizeToStrut(1000.0, travel, k, c);
-        CHECK_NEAR(k, kAuth, 1e-9, "a light hull is not stiffened");
-        wheel::sizeToStrut(0.0, travel, k, c);
-        CHECK_NEAR(c, cAuth, 1e-9, "and a wheel in the air changes nothing");
-        wheel::sizeToStrut(heavyShare, 0.0, k, c);
-        CHECK_NEAR(k, kAuth, 1e-9, "and a part with no travel to size against is left alone");
+        // The ride is capped by the shortest strut in the group, since they all
+        // compress together: a 0.02 m wheel would otherwise be asked to sit at 0.106,
+        // permanently on its own bump stop.
+        CHECK_NEAR(wheel::sizingFactor(heavyW, 3 * kAuth, 0.02),
+                   heavyW / (wheel::kRideMaxFraction * 0.02) / (3 * kAuth), 1e-9,
+                   "a short-travel group sizes to ITS stroke, not the default ride");
+        CHECK_TRUE(wheel::sizingFactor(heavyW, 3 * kAuth, 0.02) > gain,
+                   "which makes it stiffer still");
+        CHECK_NEAR(wheel::sizingFactor(heavyW, 3 * kAuth, 0.3), gain, 1e-12,
+                   "and a long-travel group is not capped at all");
+
+        // Nothing to size.
+        CHECK_NEAR(wheel::sizingFactor(0.0, 3 * kAuth, travel), 1.0, 1e-12,
+                   "a hull with no weight on its struts changes nothing");
+        CHECK_NEAR(wheel::sizingFactor(heavyW, 0.0, travel), 1.0, 1e-12,
+                   "and neither does a group with no rate to scale");
+        CHECK_NEAR(wheel::sizingFactor(heavyW, 3 * kAuth, 0.0), 1.0, 1e-12,
+                   "nor one with no stroke to size against");
     }
 
     printf("test_wheels: %d checks, %d failures\n", g_checks, g_failures);

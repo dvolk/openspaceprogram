@@ -5285,21 +5285,38 @@ bool Vehicle::groundContact(const glm::dvec3 &from, const glm::dvec3 &down,
     return false;
 }
 
+/* The multiplier one hull's whole strut group needs to stand at the designed ride
+   (#1215, src/wheel.h::sizingFactor -- why the GROUP and not each strut is argued
+   there). Weight is point-mass gravity at the hull COM as applyGravity computes it;
+   the frame's centrifugal term is left out, 0.5% at Kerbin's equator, and the rule
+   is a load floor, not a trim. Both ground loops AND --leg-log call this, so a log
+   row can never drift from what the ground pass applied. The group is every strut
+   the hull has, touching or not: a hull perched on one of four wheels is therefore
+   sized for a quarter more than that one is carrying, which is the safe direction
+   (the factor only ever raises a rate, never lowers it) and cheaper than finding
+   out which struts are carrying by running their contact rays twice a substep. */
+double Vehicle::strutGain() {
+    assert(m_parent != nullptr && frame != nullptr);   // hullInWorld()'s own precondition
+    double sumK = 0.0, shortest = -1.0;
+    auto note = [&](double k, double travel) {
+        sumK += k;
+        shortest = shortest < 0.0 ? travel : std::min(shortest, travel);
+    };
+    for(Part *p : gearParts) { note(p->def->wheel_spring, p->def->wheel_travel); }
+    for(Part *p : legParts) { note(p->def->leg_spring, p->def->leg_travel); }
+    if(sumK <= 0.0) { return 1.0; }
+    const double G = 6.674e-11;
+    const glm::dvec3 com = get_center_of_mass();
+    const double gLocal = G * m_parent->mass / glm::length2(com - frame->gravity_center);
+    return wheel::sizingFactor(getMass() * gLocal, sumK, shortest);
+}
+
 /* The ground reaction on the gear wheels and landing legs (src/wheel.h). Per
    contact: ray down the strut/leg axis to the ground (groundContact), then the
    spring + tire force applied at the patch -- the gear rolls and brakes on
    demand, the leg stands with the brake held on. A no-op for a hull with
    neither. Forces accumulate on the one body like aero and thrust; nothing
    integrates until physics_tick. */
-double Vehicle::groundShareN(size_t contacts) {
-    assert(m_parent != nullptr && frame != nullptr);   // hullInWorld()'s own precondition
-    if(contacts == 0) { return 0.0; }
-    const double G = 6.674e-11;
-    const glm::dvec3 com = get_center_of_mass();
-    const double gLocal = G * m_parent->mass / glm::length2(com - frame->gravity_center);
-    return getMass() * gLocal / (double)contacts;
-}
-
 void Vehicle::applyGroundForces(double h) {
     if((gearParts.empty() && legParts.empty()) || hull == nullptr || !hullInWorld()) { return; }
     /* h is the substep the tire force is held for, and the momentum clamp below
@@ -5326,14 +5343,14 @@ void Vehicle::applyGroundForces(double h) {
     const size_t holders = gearParts.size() + legParts.size();
     assert(holders > 0);   // the early return above is what makes this true
     const glm::dvec3 holdShare = GetAccumulatedForce(hull) / (double)holders;
-    /* A hull of ANY mass stands on its springs rather than on Bullet collision,
-       which is where the ground law stops working (#1215): past its designed ride
-       each strut rates itself to the share it carries. One share across BOTH loops,
-       from `holders` -- on a gear-only or leg-only hull that is the same number the
-       loops already divide by, and on a mixed hull (the VAB allows it, no shipped
-       def uses it) two separate denominators would make the pair twice as stiff as
-       the load needs. */
-    const double strutShareN = groundShareN(holders);
+    /* A hull stands on its springs rather than on Bullet collision, which is where
+       the ground law stops working (#1215): a spring can only ever push
+       spring*travel, and past that the hull rests on the terrain instead -- 4.1 t of
+       spaceplane reading to the player as a plane glued to the runway. So the GROUP
+       rates itself to the weight. It is one multiplier for both loops because the
+       hull is rigid and every strut compresses with it; at or under the designed ride
+       it is exactly 1.0 and no shipped hull notices. */
+    const double gain = strutGain();
     for(Part *p : gearParts) {
         const PartDef &d = *p->def;
         glm::dvec3 axle; glm::dmat3 pRot;
@@ -5346,8 +5363,7 @@ void Vehicle::applyGroundForces(double h) {
         double dist;
         if(!groundContact(axle, down, reach, dist, hit, n)) { continue; }
         const double compression = std::clamp((R + T) - dist, 0.0, T);
-        double spring = d.wheel_spring, damp = d.wheel_damp;
-        wheel::sizeToStrut(strutShareN, d.wheel_travel, spring, damp);
+        double spring = d.wheel_spring * gain, damp = d.wheel_damp * gain;
         if(compression <= 0.0) { continue; }   // airborne: no force
         /* The ground is stationary in the ship's frame: terrain and pads are
            static in the rot frame, and a balloon platform's deck is static in
@@ -5431,8 +5447,7 @@ void Vehicle::applyGroundForces(double h) {
         double dist;
         if(!groundContact(foot, down, reach, dist, hit, n)) { continue; }
         const double compression = std::clamp((pad + T) - dist, 0.0, T);
-        double spring = d.leg_spring, damp = d.leg_damp;
-        wheel::sizeToStrut(strutShareN, d.leg_travel, spring, damp);   // same ceiling as the gear
+        double spring = d.leg_spring * gain, damp = d.leg_damp * gain;   // same group, same factor
         if(compression <= 0.0) { continue; }   // airborne: no force
         const glm::dvec3 vRel = vel;
         // wheel::force needs a non-degenerate in-plane axis; the part's +Y
@@ -5515,18 +5530,14 @@ void Vehicle::logLegContacts(double t) {
     /* k= and c= are the rates the ground pass is USING, so a hull that out-rates
        its catalogue strut shows the sized numbers here rather than ones the sim no
        longer applies (#1215). The c/k column pair is also how the damper rule is
-       read: under sizeToStrut the ratio stays the authored one (linear), where the
+       read: the sizing factor scales spring and damper together, where the
        intuitive sqrt(k) would shrink it as k grows. */
-    const double share = groundShareN(gearParts.size() + legParts.size());
+    const double gain = strutGain();   // the same call the ground pass makes
     for(Part *p : gearParts) {
-        double k = p->def->wheel_spring, c = p->def->wheel_damp;
-        wheel::sizeToStrut(share, p->def->wheel_travel, k, c);
-        row(p, "gear", p->def->wheel_travel, k, c);
+        row(p, "gear", p->def->wheel_travel, p->def->wheel_spring * gain, p->def->wheel_damp * gain);
     }
     for(Part *p : legParts) {
-        double k = p->def->leg_spring, c = p->def->leg_damp;
-        wheel::sizeToStrut(share, p->def->leg_travel, k, c);
-        row(p, "leg", p->def->leg_travel, k, c);
+        row(p, "leg", p->def->leg_travel, p->def->leg_spring * gain, p->def->leg_damp * gain);
     }
 }
 

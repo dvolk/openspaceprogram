@@ -6,10 +6,11 @@
 # plane glued to the runway: brakes off, throttle open, nothing moves, and at high
 # throttle it lurches and pitches over because it is pivoting on a stuck nose wheel.
 #
-# wheel::sizeToStrut parks the static stroke at kRideStroke (0.106 m, the ride the
-# shipped skiff already sits at) for any hull mass, so a heavy hull stands on its
-# springs at a stiffer rate instead of on the deck. This is the heavy end of 1158-b,
-# which pins the light end: the skiff still reads its authored 25000 N/m here.
+# wheel::sizingFactor (src/wheel.h) takes the hull's WHOLE strut group -- the hull is
+# rigid, so all three compress together and their rates add -- and multiplies it to
+# kRideStroke (0.106 m, the ride the shipped skiff already sits at) whenever the
+# authored group cannot hold the weight up that far. This is the heavy end of 1158-b,
+# which pins the light end: the skiff's group still reads its authored 25000 N/m here.
 NAME heavy-plane-rolls-off-the-runway
 CLAIM A 4 t plane stands on its springs and rolls down the runway and leaves it.
 KIND invariant
@@ -42,9 +43,14 @@ CHECK all(abs(r["c"] / r["k"] - 0.12) < 0.005 for r in leglog if r["t"] > 1.0)
 # the nose corner carries ~1.24x the even share, so it rides at 0.132 of its 0.15
 # while the mains sit at 0.086..0.098. Stroke past that is #1166's telescoping
 # strut, not a stiffer spring -- a stiffer spring only moves the float.
-CHECK all(r["comp"] < r["travel"] - 0.01 for r in leglog if r["t"] > 1.0 and r["gap"] is not None)
+# Gate on comp= > 0, not on the row existing: after the climb every row reads
+# comp=0, and an all() over airborne rows would say nothing about the strut at all.
+# And count the rows the two bands below actually walk, so a run where the plane
+# never touches cannot pass them by being empty.
+CHECK sum(1 for r in leglog if r["t"] > 1.0 and r["comp"] > 0) >= 9
+CHECK all(r["comp"] < r["travel"] - 0.01 for r in leglog if r["t"] > 1.0 and r["comp"] > 0)
 # The drawn rubber stays off the deck: the ride height is real, not sunk in.
-CHECK all(r["gap"] > 0.01 for r in leglog if r["t"] > 1.0 and r["gap"] is not None)
+CHECK all(r["gap"] > 0.01 for r in leglog if r["t"] > 1.0 and r["comp"] > 0)
 # And it actually goes: before the fix |v| never passed 2.6 m/s in 14 s of throttle.
 CHECK max(d["v"] for d in dbg) > 60
 # ...and leaves the deck (measured 2.4 m to 55.8 m, then it settles back -- the

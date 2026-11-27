@@ -646,7 +646,7 @@ EXTRA_FIELDS = {
     # refuses to rest on. e2e 1158-b pins 0.02 m of stroke still free on every
     # wheel, which is what turns that ceiling red.
     # That ceiling is no longer a ceiling on hull MASS: a strut past its designed
-    # ride rates itself to the load it carries (src/wheel.h::sizeToStrut, riding at
+    # ride rates itself to the load it carries (src/wheel.h::sizingFactor, riding at
     # kRideStroke = 0.106 m), so the 4.1 t spaceplane stands on 125 kN/m instead of
     # sinking onto the deck. What the numbers above still pin is the RIDE: 0.106 is
     # both where the sized strut parks and where the shipped skiff already sits, so

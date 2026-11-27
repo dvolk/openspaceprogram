@@ -2155,12 +2155,13 @@ public:
                        double reach, double &dist, glm::dvec3 &hit,
                        glm::dvec3 &n);
 
-    /* The weight one ground contact would carry under an even split of the hull
-       (N), for the self-sizing strut (src/wheel.h::sizeToStrut). Point-mass
-       gravity, as applyGravity computes it; the frame's centrifugal term is left
-       out -- 0.5% at Kerbin's equator (omega^2 r = 0.051 of 9.83 m/s^2), and the
-       rule is a load floor, not a trim. */
-    double groundShareN(size_t contacts);
+    /* What one hull's whole strut group must be multiplied by to stand at the
+       designed ride (src/wheel.h::sizingFactor, #1215): the sum of its wheels' and
+       footpads' authored rates against the hull weight in point-mass gravity, as
+       applyGravity computes it. The frame's centrifugal term is left out -- 0.051
+       of the 9.80 m/s^2 at Kerbin's runway deck, 0.5% -- and the rule is a load
+       floor, not a trim. Returns 1.0 while the catalogue is enough. */
+    double strutGain();
 
     /* --leg-log: one row per gear wheel / leg footpad, printed from the tick
        (not the substep loop) by re-running the same contact ray. gap= is the

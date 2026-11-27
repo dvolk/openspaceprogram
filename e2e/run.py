@@ -540,12 +540,12 @@ EVA_RE = re.compile(
 # gap= is that distance (the visible float the ticket is about; "air" when the
 # contact ray misses), comp= is the suspension compression the ride height comes
 # from, travel= the stroke the part was authored with, k= and c= the spring rate
-# and damper rate the ground pass is actually USING, which sizeToStrut raises past
+# and damper rate the ground pass is actually USING, which the strut sizing raises past
 # a designed ride (#1215). A row printed from the airborne branch (gap=air, no
 # comp=) does not match this regex, so every parsed row has a real gap and comp.
 LEGLOG_RE = re.compile(
     r'\[leglog\]\s+t=([\d.]+)s\s+ship="(.+?)"\s+(leg|gear)\s+uid=(\d+)\s+'
-    r"mesh=([-\d.]+) m\s+(?:gap=air|gap=([-\d.]+) m)\s+"
+    r"mesh=([-\d.]+) m\s+gap=([-\d.]+) m\s+"
     r"comp=([-\d.]+) m\s+travel=([-\d.]+)\s+k=([-\d.]+) N/m\s+c=([-\d.]+) N s/m"
     # c= is NOT optional: the printer and this parser ship in the same tree, so a
     # row without it is a printer that lost the column, not a field nobody asked for.
@@ -1836,20 +1836,21 @@ def parse_leglog(out):
             # against (0.05 leg, 0.35 gear). A case that does not pin this column
             # is reading a gap measured from wherever the logger guessed.
             "mesh": float(mesh),
-            # How far that drawn bottom sits above the ground the row measured.
-            # None ONLY when the probe got no answer at all, which happens in a
-            # building bubble or with no parent body -- on a planet groundContact's
-            # analytic fall-through always answers, so a row with a gap is not
-            # necessarily a row that is touching: an airborne leg reads its
-            # distance to the terrain below (7.8 m in 1158-c's hop, 86 km for a
-            # parked hull if the logger were not gated on hullInWorld).
-            "gap": float(gap) if gap is not None else None,
+            # How far that drawn bottom sits above the ground the row measured, and
+            # never an absence: a row where the probe got no answer at all (inside a
+            # building bubble, or with no parent body) prints gap=air with no comp=
+            # and does not match this regex. A row that HAS a gap is not necessarily
+            # touching either -- an airborne leg reads its distance to the terrain
+            # below (7.8 m in 1158-c's hop, 86 km for a parked hull if the logger
+            # were not gated on hullInWorld) -- which is why the beds below gate on
+            # comp= rather than on gap= being present.
+            "gap": float(gap),
             # Suspension compression, 0..travel, computed off MESH (the drawn
             # bottom) rather than the def face, so gap + comp == travel whenever
             # the clamp is inactive. The ride height is travel - comp, which is
             # the same quantity as the landing stroke (#1158).
             "comp": float(comp), "travel": float(travel), "k": float(k),
-            # c/k is the damping ratio in one read: sizeToStrut scales the two
+            # c/k is the damping ratio in one read: the sizing scales the two
             # together, so a heavy hull whose k is 5x authored reads c 5x authored
             # too. A sqrt(k) damper would show the ratio SHRINKING with mass.
             "c": float(c),
