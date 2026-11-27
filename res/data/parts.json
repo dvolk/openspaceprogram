@@ -570,11 +570,11 @@
       "radius": 1.0,
       "height": 2.0,
       "propellant": {
-        "jetfuel": 1.2
+        "jetfuel": 1.4
       },
-      "exhaust_velocity": 550.0,
+      "exhaust_velocity": 700.0,
       "jet": true,
-      "jet_fan_thrust": 90000,
+      "jet_fan_thrust": 105043.75,
       "jet_intake_area": 0.35,
       "shroud": "meshes/engine_shroud.obj",
       "shroud_texture": "textures/engine_shroud.png",
@@ -596,11 +596,11 @@
       "radius": 0.25,
       "height": 1.0,
       "propellant": {
-        "jetfuel": 0.07
+        "jetfuel": 0.08
       },
-      "exhaust_velocity": 550.0,
+      "exhaust_velocity": 700.0,
       "jet": true,
-      "jet_fan_thrust": 5625,
+      "jet_fan_thrust": 6002.5,
       "jet_intake_area": 0.02,
       "shroud": "meshes/engine_r0.25h1_shroud.obj",
       "shroud_texture": "textures/engine_shroud.png",

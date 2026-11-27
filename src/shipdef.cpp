@@ -651,10 +651,11 @@ PartsCatalog load_parts_catalog(const char *path) {
             }
             /* A chemical burner cannot throw its OWN propellant faster than its heat
                allows: 1/2 m_f v_e^2 <= Q m_f, so v_e <= sqrt(2 Q) = 9.3 km/s on
-               constants.h:kJetFuelHeatPerKg. drag.h:jetRamExitSpeed bills the AIR against
-               the burn; this bills the fuel, and it is what ends #1206's "just author a
-               faster nozzle" at the catalogue door rather than in a flight test -- a jet
-               that wants Mach 6 needs a reactor or a second mode, not a bigger number. */
+               constants.h:kJetFuelHeatPerKg. drag.h:jetEngine bills the AIR against the
+               burn at every state; this bills the FUEL once, at the catalogue door, and
+               it is what ends #1206's "just author a faster nozzle" there rather than in
+               a flight test -- a jet that wants Mach 6 needs a reactor or a second mode,
+               not a bigger number. */
             const double veCeil = std::sqrt(2.0 * kJetFuelHeatPerKg);
             if(d.exhaust_velocity > veCeil) {
                 char num[64];

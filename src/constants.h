@@ -117,37 +117,34 @@ inline constexpr double kAirGamma = 1.4;           // cp/cv, diatomic
 inline constexpr double kAirSeaLevelDensity = 1.225;  // [kg/m^3]
 
 /* Jetfuel's heat of combustion [J/kg], kerosene-like. The ONLY number in the game that
-   says where an air-breathing engine's momentum comes from: drag.h:jetEngine spends
-   Q * burn on moving air, and BOTH of the engine's answers -- the fan's momentum and the
-   hot stream's -- are capped by it (#1206). Without it the law is a pump: #1206's demo
-   part (fan 3000, 3.0 kg/s, v_e 3200, 0.35 m2, 43.75 kg) reported 64.7 kN at 2400 m/s in
-   20 km air while handing 178 MW to the flow on a 10 MW fire, and 956 kN / 2.0 GW at sea
-   level on 129 MW.
+   says where an air-breathing engine's momentum comes from: drag.h:jetEngine moves ONE
+   stream of air at ONE wake speed w and pays for it in full,
+       Q * burn = 1/4 rho A (w - v)(w + v)^2
+   exactly. Without it the law is a pump: #1206's demo part (fan 3000, 3.0 kg/s, v_e
+   3200, 0.35 m2, 43.75 kg) reported 64.7 kN at 2400 m/s in 20 km air while handing 178 MW
+   to the flow on a 10 MW fire, and 956 kN / 2.0 GW at sea level on 129 MW. An earlier
+   attempt at the fix priced the fan and the ram term as two streams through one intake
+   and printed 87.7 MW of wake from 42.5 MW of fuel at 275 m/s -- the same bug wearing a
+   test suite (#1233, closed by the single-stream rewrite).
    It is spent at full value -- no thermal loss, no nozzle loss, no turbine loss -- so the
    bound it sets is generous. It exists to make an unaffordable engine impossible, not to
    model a burner; the inlet's thermal choke is still open (#1207).
-   What it pays for now, all in one place (drag.h:jetEngine):
-     - the FAN. An ideal actuator disc making T through A of air runs it at
-       sqrt(T / 2 rho A) and wants T times that in power, so a fan now buys its thrust out
-       of the same Q * burn. The shipped 2 m jet's 90 kN disc costs 29.2 MW at Kerbin sea
-       level (0.678 kg/s) and the pump covers that; on Eve's datum the same fan wants
-       17.1 MW while its trace oxygen affords 4.0, so the fan runs at 19.7 kN instead of
-       90 (#1233, which this closed).
-     - the hot stream: min(the fuel the captured air can burn, what the exhaust promise
-       actually costs).
+   What it pays for, all inside drag.h:jetEngine:
+     - the stream. The disc's momentum change IS the whole thrust, and the same Q buys
+       the kinetic energy that stream carries away; there is no fan term and no ram term
+       to bill separately, and none may be added back.
+     - the wake speed, which is the smallest of four ceilings: the nozzle (v_e), the
+       machine (jet_fan_thrust through jetIntakeGate), the sky (Q against the air's
+       oxidizer over kStoichO2PerKgJetfuel) and the fuel line (Q * propellant_rate).
      - the fuel's own momentum, implicitly, while v_e <= sqrt(2 Q) = 9274 m/s --
        shipdef.cpp refuses a catalogue jet above that.
    What it still does NOT bill: the inlet's entrance drag (#1207), and the difficulty
    knobs -- --exhaust-scale (0.5-5.0) multiplies a jet's thrust OUTSIDE this cap, by
    design, exactly as it does a rocket's.
-   Changes vs the previous law: a DRY-air jet barely moves -- the shipped 2 m part makes
-   122.5 kN at 275 m/s where it made 123.1 kN, because its draw drops from the plate's
-   1.2 kg/s to the 0.989 kg/s its momentum actually costs. A TRACE-air jet moves a lot:
-   on Eve's datum (3.55 kg/m3, share 0.000959) the same part goes 3318 N -> 34.4 kN,
-   because the 0.094 kg/s its oxygen buys now pays for the fan as well as the stream.
-   tests/test_jet.cpp asserts the whole-engine identity, Q * burn = disc power + the
-   flow's kinetic-energy gain, so the two halves cannot drift apart again.
-   Where: drag.h:jetEngine, drag.h:jetRamExitSpeed, shipdef.cpp. */
+   tests/test_jet.cpp asserts the ledger per state -- the flow's kinetic-energy rate
+   equals Q * burn to floating point, over a grid of density x oxidizer share x speed --
+   so it cannot drift again.
+   Where: drag.h:jetEngine, shipdef.cpp. */
 inline constexpr double kJetFuelHeatPerKg = 43.0e6;
 
 /* Kilograms of OXIDIZER needed to burn one kilogram of jetfuel (dimensionless).

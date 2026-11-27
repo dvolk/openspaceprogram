@@ -35,15 +35,30 @@ HYDRAZINE_DENSITY = 100.0        # kg/m^3, monopropellant hydrazine (mono)
 # occupy (#1120 removed the round inline pods that came with exactly that
 # fiction). Reach is rcsReachableAlong() in src/rcs.h, never the installed figure.
 
-# Jet (air-breathing): T = T_fan*d + m_f*V_E*d + rho*A*v*(v_exit - v), with d the
-# air/oxidizer gate and v_exit = min(V_E, what the gated burn can heat the captured
-# air to) -- src/drag.h jetThrust. The cap is the reason the rate and the intake area
-# are authored together: rate/INTAKE is what pays for the ram, and tests/test_aerosweep
-# sweeps every shipped jet over density x speed to keep that above 1.0.
-JET_FAN_PER_M2    = 90000.0      # N, static (fan) thrust at radius = 1 m
-JET_EXH_VEL       = 550.0        # m/s, the real exhaust velocity (not a knob)
+# Jet (air-breathing), src/drag.h jetEngine: ONE stream of air at ONE wake speed w,
+#     T = 1/2 rho A (w^2 - v^2)      burn = T (v + w) / 2 Q
+# and w is the smallest of four ceilings, each an authored number in its own unit:
+# the NOZZLE (exhaust_velocity), the MACHINE (jet_fan_thrust, gated by the intake
+# density), the SKY (what its oxidizer can burn) and the FUEL LINE (propellant_rate).
+# That is why these are authored as a set rather than picked: a fan rated above what its
+# own duct and nozzle can throw becomes the binding ceiling silently, and a rate that
+# cannot pay for the wake the nozzle promises caps the part mid-flight. Two of the four
+# are therefore DERIVED here from the CLEANED intake, so a rounded mouth cannot leave a
+# part bound by its own machine or its own fuel line:
+#   jet_fan_thrust     = 1/2 * 1.225 * A * v_e^2 -- the machine reaches exactly v_e in
+#                        the rating air (constants.h:kAirSeaLevelDensity) and no further;
+#   propellant_rate    = JET_PUMP_PER_MOUTH * A -- the pump's power, Q * rate, covers the
+#                        peak ask the nozzle ever makes. Holding w = v_e costs
+#                        1/4 rho A (v_e - v)(v_e + v)^2, which peaks at v = v_e/3, so a
+#                        pump at 4.0 kg/s per m2 of mouth is 1.38x that peak.
+# tests/test_aerosweep sweeps every shipped jet over density x speed to keep that true.
+# The mouth stays the one the parts always declared (0.35 m2 at radius 1 m, 11% of the
+# part's own frontal disc): under one stream that number, not the fan rating, is what a
+# hull feels. The 700 m/s nozzle on it gives the 2 m part 105 kN on the pad, 88.8 kN at
+# 275 m/s and nothing at 700 m/s, burning 0.86 kg/s at rest and 1.01 at 275.
+JET_EXH_VEL       = 700.0        # m/s, the real exhaust velocity (not a knob)
 JET_INTAKE_PER_M2 = 0.35         # m^2, effective intake area at radius = 1 m
-JET_FUEL_PER_M2   = 1.2          # kg/s, jet-fuel flow at radius = 1 m (~0.47 lb/lbf/h)
+JET_PUMP_PER_MOUTH = 4.0         # kg/s of jetfuel per m2 of intake
 JET_MASS_PER_M2   = 700.0        # kg, engine mass at radius = 1 m (~129 N/kg)
 
 JET_FUEL_DENSITY = 70.0          # kg/m^3, jet fuel (separate resource from H2/LOX)
@@ -428,8 +443,8 @@ PARTS = [
     ("orbital_engine_r2.25h2.25","orbital_engine","meshes/orbital_engine_r2.25h2.25.obj", "textures/engine.png"),
     ("nuclear_engine",   "nuclear_engine", "meshes/nuclear_engine.obj",             "textures/engine.png"),
     ("jet",            "jet",            "meshes/engine.obj",                   "textures/jet_engine.png"),
-    # A jet small enough for a light aeroplane: 90 kN on a 700 kg engine is a
-    # 6x thrust-to-weight on anything that flies (#490).
+    # A jet small enough for a light aeroplane: 6.0 kN on a 43.75 kg engine, which is
+    # 137 N/kg -- enough to get 200 kg of airframe flying (#490).
     ("jet_r0.25h1",    "jet",            "meshes/engine_r0.25h1.obj",           "textures/jet_engine.png"),
     ("jet_tank_r0.4h2",  "jet_tank",     "meshes/tank_r0.4h2.obj",              "textures/fuel_tank.png"),
     ("jet_tank_r1h1",  "jet_tank",       "meshes/tank_r1h1.obj",                "textures/fuel_tank.png"),
@@ -943,18 +958,22 @@ def generate(name, ptype, mesh, texture):
             e["gimbal_max"] = ENGINE_GIMBAL_MAX
             e["gimbal_rate"] = ENGINE_GIMBAL_RATE
     elif ptype == "jet":
-        # jet_fan_thrust is the static (fan) thrust; the ram term is added at
-        # runtime. Burns JET FUEL only (air is the free oxidizer -- no LOX).
-        fan = JET_FAN_PER_M2 * radius * radius
-        intake = JET_INTAKE_PER_M2 * radius * radius
+        # jet_fan_thrust is the MACHINE's ceiling on the stream, not an extra force: the
+        # law (src/drag.h jetEngine) has one air stream and one push. Burns JET FUEL only
+        # -- the air is the oxidizer, and it is metered against what that air can burn.
+        intake = clean(JET_INTAKE_PER_M2 * radius * radius)
+        # Both the machine and the fuel line are derived from the CLEANED intake, or the
+        # rounding leaves a small part bound by its own fan (its ceiling lands under the
+        # v_e it ships with) or by its own pump (it caps mid-flight).
+        fan = 0.5 * 1.225 * intake * JET_EXH_VEL * JET_EXH_VEL
         e["mass"] = clean(JET_MASS_PER_M2 * radius * radius)
         e["radius"] = radius
         e["height"] = height
-        e["propellant"] = {"jetfuel": clean(JET_FUEL_PER_M2 * radius * radius)}
+        e["propellant"] = {"jetfuel": clean(JET_PUMP_PER_MOUTH * intake)}
         e["exhaust_velocity"] = JET_EXH_VEL
         e["jet"] = True
         e["jet_fan_thrust"] = clean(fan)
-        e["jet_intake_area"] = clean(intake)
+        e["jet_intake_area"] = intake
     elif ptype == "fuel_tank":
         capacity = volume * PROP_DENSITY
         dry = volume * TANK_DRY_DENSITY

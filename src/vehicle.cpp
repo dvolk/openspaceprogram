@@ -7745,28 +7745,23 @@ void Vehicle::adjustThrottle(float delta) {
     if(thruster_util < 0) { thruster_util = 0; }
 }
 
-/* One ignited engine's FULL-THROTTLE push (N): rockets at their rated value, jets at
-   their PEAK speed (v = v_e/2, where drag.h's ram term tops out) in the air they
-   actually have. The air has to be the LOCAL density and not the authored sea level:
-   a jet at 15 km cannot produce its sea-level number, and since #400 this is the
-   number a throttle law sizes a burn with, so sea level here would make a
-   high-altitude jet look several times stronger than it is. Since #630 the intake gate
-   is absolute (the machine's rating intake, constants.h:kAirSeaLevelDensity); the mix
-   now caps the BURN in kg/s rather than the whole machine (drag.h:jetBurnCap, #1206),
-   so this ceiling is the honest one on a thin or oxygen-poor world: for the shipped 2 m
-   jet it is EXACTLY 0 on Jool, Venus and Titan (share 0), 10.5 % of its 90 kN plate at
-   Kerbin's 20 km, 38 % on Eve's datum and 0.19 % on Mars's -- the air is there, its
-   oxidizer barely is -- and a law that sizes a burn with it says so. (The Eve figure
-   was 0.6 % before #1206 and against a 1.7 kg/m3 datum; Eve's authored mix resolves to
-   3.55 kg/m3 with a 0.096 % O2 trace.)
-   v_e/2 IS the peak in dry air -- measured 122.5 kN at 274.8 m/s, the same speed at
-   20 km -- and it is NOT in a trace air. There the fan is power-limited and the burn
-   ceiling rises with the air the intake swallows, so the true peak slides up toward
-   v ~ v_e: on Eve, 54.6 kN at 550 m/s, 1.59x what is returned here. Under-credit is the
-   safe direction for a guidance law, so it is left as a caveat rather than a search. */
+/* One ignited engine's FULL-THROTTLE push (N): rockets at their rated value, jets at the
+   speed where they actually peak. That is v = 0 for a jet under the one-stream law
+   (drag.h:jetEngine): thrust is 1/2 rho A (w^2 - v^2) with w capped by the authored v_e,
+   so it falls monotonically from the pad to nothing at v = v_e. The air has to be the
+   LOCAL density and not the authored sea level: a jet at 15 km cannot produce its
+   sea-level number, and since #400 this is the number a throttle law sizes a burn with,
+   so sea level here would make a high-altitude jet look several times stronger than it
+   is. The intake gate is absolute (constants.h:kAirSeaLevelDensity, #630) and the mix
+   caps the wake speed rather than gating the whole machine, so this ceiling is the
+   honest one on a thin or oxygen-poor world: for the shipped 2 m jet (0.45 m2, v_e 700)
+   it is EXACTLY 0 on Jool, Venus and Titan (share 0), 7.7 % of its rating at Kerbin's
+   20 km -- that is the intake gate, 0.0774, with the nozzle still binding -- and on Eve's
+   datum the sky caps the wake at 154 m/s on the pad, which is 18.9 kN however fast the
+   hull is going. */
 static double partThrustCeiling(const Part *p, double rho, const DragAtmosphere &atm) {
     if(p->isJet()) {
-        return jetThrust(p->def->exhaust_velocity * 0.5, rho, atm,
+        return jetThrust(0.0, rho, atm,
                          p->def->jet_fan_thrust, p->jetFuelRate(),
                          p->def->exhaust_velocity, p->def->jet_intake_area);
     }

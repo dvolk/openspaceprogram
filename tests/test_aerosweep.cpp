@@ -1602,26 +1602,30 @@ static void test_the_lifting_body_pair_is_fitted() {
                             "measured something");
 }
 
-/* EVERY JET IN THE CATALOGUE PAYS FOR ITS OWN EXHAUST (#1206). The ram term of
-   drag.h::jetThrust throws the air the intake captures out the back, and
-   drag.h::jetRamExitSpeed caps that at whatever the authored fuel line can heat it to:
-   1/2 m_air (v_exit^2 - v^2) <= Q m_burnt, with Q = constants.h:kJetFuelHeatPerKg.
-   Four authored numbers decide whether an engine is a machine or a free ride --
-   exhaust_velocity, the jetfuel propellant_rate, jet_intake_area, jet_fan_thrust -- and
-   utils/art/gen_parts.py authors them a row apart (JET_EXH_VEL, JET_FUEL_DENSITY, the
-   intake off the part's own disc). Nothing else in the build says they have to add up,
-   so this does, in two regimes:
-     DRY air -- the only air a shipped jet really runs in: across every density a dry
-       sky in this game reaches, and past it, the cap never picks over the authored
-       exhaust speed, and not by luck. A fuel rate copied onto a bigger intake, or an
-       intake grown under a rate that stayed, goes red here instead of printing free
-       thrust.
-     OXIDIZER-TRACE air -- Eve, Mars and Duna all author the same 0.096 % O2-in-CO2
-       mix. There the cap DOES pick, hugely, and that is the correct answer rather than
-       a failure: a trace burn cannot heat the dense CO2 the intake swallows. Pinned so
-       nobody "fixes" it back into a pump. */
+/* EVERY JET IN THE CATALOGUE FILLS THE NOZZLE IT SHIPS WITH (#1206). One stream of
+   air at one wake speed -- T = 1/2 rho A (w^2 - v^2), burn = T (v + w) / 2 Q -- and w
+   is the smallest of four ceilings, each an authored number in its own currency:
+   exhaust_velocity (the nozzle), jet_fan_thrust gated by jetIntakeGate (the machine),
+   the body's oxidizer share (the sky) and the jetfuel propellant_rate (the fuel line:
+   1/2 rho A (w - v)(w + v)^2 / 2 <= Q pump, Q = constants.h:kJetFuelHeatPerKg).
+   utils/art/gen_parts.py authors those four a row apart and DERIVES the fan rating
+   from the intake, so the part reaches v_e in the rating air rather than quietly
+   machine-binding under it. Nothing else in the build says they add up, so this does:
+     THE MACHINE IS INVISIBLE BELOW ITS RATING AIR. The gate scales the rating by
+       exactly the density that scales the stream's force, so the machine ceiling is
+       sqrt(v^2 + v_e^2) for every rho <= 1.225 -- above the nozzle, never binding.
+       It only takes over in denser air than it was rated for, where it pins the part
+       at its rating instead of letting 1/2 rho A v_e^2 run away.
+     THE FUEL LINE MUST CLEAR THE NOZZLE. Across every density a dry sky in this game
+       reaches and every speed up to v_e, the pump's own ceiling stays over v_e. A rate
+       copied onto a bigger intake, or an intake grown under a rate that stayed, goes
+       red here instead of printing free thrust.
+     A TRACE SKY MUST CAP HARD. Eve, Mars and Duna all author the same 0.096 %
+       O2-in-CO2 mix, so the sky ceiling sits far under v_e there and that is the
+       correct answer rather than a failure. Pinned so nobody "fixes" it back into a
+       pump. */
 static void test_every_jet_affords_its_exhaust() {
-    printf("== every jet in the catalog pays for its own exhaust (#1206) ==\n");
+    printf("== every jet in the catalog fills the nozzle it ships with (#1206) ==\n");
     PartsCatalog cat;
     try {
         cat = load_parts_catalog("res/data/parts.json");
@@ -1632,67 +1636,81 @@ static void test_every_jet_affords_its_exhaust() {
     }
     const double oxAir = dryAirOxidizerShare();
     const double oxTrace = 0.000959;   // the CO2_HEAVY mix Eve, Mars and Duna author
+    const double rho0 = kAirSeaLevelDensity;
     /* Thin air, 20 km, 8.5 km, the rating intake, and twice the rating. Kerbin, Earth,
        Laythe and Shay all author 1.225; Eve's datum is 3.552 kg/m3 of CO2 -- read off
        the running game under its 198.5 kPa, not the 1.7 this file and drag.h used to
        repeat -- and Jool, Venus and Titan author no free oxygen at all. */
-    const double rhos[] = {0.01, 0.0948, 0.502, kAirSeaLevelDensity,
-                           2.0 * kAirSeaLevelDensity, 3.552};
+    const double rhos[] = {0.01, 0.0948, 0.502, rho0, 2.0 * rho0, 3.552};
     const int kSteps = 220;
     int jets = 0;
     for(const PartDef &d : cat.parts) {
         if(!d.jet) { continue; }
         jets++;
         const double rate = d.propellant_rate[(int)ResourceType::JetFuel];
-        CHECK_TRUE(rate > 0.0, ("a jet authors a jetfuel rate: " + d.name).c_str());
-        /* Worst ratio of what the burn affords to what the ram asks, over the sweep,
-           in two airs. gen_parts.py sizes the rate with the intake area -- 1.2/0.35 and
-           0.07/0.02 are the same 3.4-ish ratio -- and this is what that buys. In dry air
-           below the rating density the rho cancels out of the affordance, so the hard
-           point is a speed, not an altitude; above it the burn is pinned at its rating
-           while the intake keeps swallowing, which is why the dense rows are the ones
-           that set dryWorst (1.09x at 3.55 kg/m3 vs 1.55x at sea level). Under 1.0 the
-           part is capped in flight and its authored v_e is a fiction. In a CO2-trace air
-           it is the opposite pin: the burn is scarce while the intake still swallows full
-           air, so the cap MUST bite -- the half of the law that replaced the old
-           oxidizer multiplier on the ram term. */
-        double dryWorst = 1e30, traceWorst = 1e30;
+        const double am = d.jet_intake_area, ve = d.exhaust_velocity;
+        CHECK_TRUE(rate > 0.0 && am > 0.0 && ve > 0.0 && d.jet_fan_thrust > 0.0,
+                   ("a jet authors a pump, a mouth, a nozzle and a machine: " +
+                    d.name).c_str());
+        double machineWorst = 1e30;
+        /* The fuel line is a POWER rating, so the ask to compare it against is the
+           fattest the nozzle ever makes, not the wake speed: holding w = v_e costs
+           1/4 rho A (v_e - v)(v_e + v)^2, which peaks near v = v_e/3 (233 m/s for a
+           700 m/s nozzle). That is where a part runs out of pump first. */
+        double peakAsk = 0.0;
         for(double rho : rhos) {
-            /* The burn is not the pump times a factor any more (#1206's follow-up): it
-               is what the CAPTURED AIR can burn against -- jetBurnCap, the pump min'd
-               with the oxygen over stoichiometric -- and the air the engine moves is the
-               fan's disc flow wherever that beats the mouth (jetAirSupply). Above the
-               rating density the fan gate clamps the disc while the intake keeps
-               swallowing, which is why the dense rows set dryWorst. */
-            const double gated = d.jet_fan_thrust * jetIntakeGate(rho);
-            for(int i = 1; i <= kSteps; i++) {   // v = 0 swallows no air, so it asks nothing
-                const double v = d.exhaust_velocity * i / (double)kSteps;
-                /* The RAW affordable speed, not jetRamExitSpeed: that min's it against
-                   the authored v_e, so its ratio would sit at exactly 1.0 whether the
-                   part is comfortable or one watt short. */
-                const double air = rho * d.jet_intake_area * v;
-                const double affordDry = jetFuelAffordedExitSpeed(v, air,
-                    jetBurnCap(jetAirSupply(v, rho, gated, d.jet_intake_area), oxAir, rate));
-                const double affordTrace = jetFuelAffordedExitSpeed(v, air,
-                    jetBurnCap(jetAirSupply(v, rho, gated, d.jet_intake_area), oxTrace, rate));
-                if(affordDry / d.exhaust_velocity < dryWorst) {
-                    dryWorst = affordDry / d.exhaust_velocity;
-                }
-                if(affordTrace / d.exhaust_velocity < traceWorst) {
-                    traceWorst = affordTrace / d.exhaust_velocity;
-                }
+            for(int i = 0; i <= kSteps; i++) {
+                const double v = ve * i / (double)kSteps;
+                const double wm = std::sqrt(v * v + 2.0 * d.jet_fan_thrust *
+                                            jetIntakeGate(rho) / (rho * am));
+                if(rho <= rho0 && wm / ve < machineWorst) { machineWorst = wm / ve; }
             }
         }
-        printf("[fuel] %s: v_e %.0f m/s, %.3g kg/s, %.3g m2 intake -> dry air affords "
-               "%.2f x the hardest ask, a CO2 trace affords %.2f x\n", d.name.c_str(),
-               d.exhaust_velocity, rate, d.jet_intake_area, dryWorst, traceWorst);
-        CHECK_TRUE(dryWorst > 1.05,
-                   ("every shipped jet clears the cap in dry air with margin, not by "
+        for(int i = 0; i <= kSteps; i++) {
+            const double v = ve * i / (double)kSteps;
+            const double ask = 0.25 * rho0 * am * (ve - v) * (ve + v) * (ve + v) /
+                               kJetFuelHeatPerKg;
+            if(ask > peakAsk) { peakAsk = ask; }
+        }
+        const double skyDry = jetChemistryWakeSpeed(0.0, oxAir) / ve;
+        const double skyTrace = jetChemistryWakeSpeed(0.0, oxTrace) / ve;
+        printf("[fuel] %s: v_e %.0f m/s, %.3g m2 intake, %.4g N fan, %.3g kg/s pump -> "
+               "pump %.2f x the nozzle's peak ask (%.3g kg/s at %.0f m/s), tightest machine "
+               "%.2f x v_e, sky %.2f x dry / %.2f x trace\n",
+               d.name.c_str(), ve, am, d.jet_fan_thrust, rate, rate / peakAsk, peakAsk,
+               ve / 3.0, machineWorst, skyDry, skyTrace);
+        CHECK_TRUE(machineWorst >= 1.0 - 1e-9,
+                   ("no shipped jet is machine-bound at or below its rating air: " +
+                    d.name).c_str());
+        CHECK_TRUE(rate > 1.2 * peakAsk,
+                   ("every shipped jet's pump pays the nozzle's peak ask with room, not by "
                     "luck: " + d.name).c_str());
-        CHECK_TRUE(traceWorst < 0.5,
-                   ("a CO2-trace air caps this part hard, as physics says it must: "
-                    + d.name).c_str());
+        CHECK_TRUE(skyDry > 1.05,
+                   ("dry air is not the limit for a shipped jet: " + d.name).c_str());
+        CHECK_TRUE(skyTrace < 0.5,
+                   ("a CO2-trace air caps this part hard, as physics says it must: " +
+                    d.name).c_str());
+        /* Above the rating density the machine must take over: the part holds its
+           rating, not the 1/2 rho A v_e^2 its bigger air would otherwise buy. */
+        for(double rho : rhos) {
+            if(rho <= rho0 * 1.000001) { continue; }
+            const double gated = d.jet_fan_thrust * jetIntakeGate(rho);
+            if(jetChemistryWakeSpeed(0.0, oxAir) <
+               std::sqrt(2.0 * gated / (rho * am))) { continue; }  // the sky got there first
+            const JetS e = jetEngine(0.0, rho, oxAir, d.jet_fan_thrust, rate, ve, am);
+            CHECK_REL(e.thrust, gated, 1e-9,
+                      ("denser air pins this part at its rating: " + d.name).c_str());
+            CHECK_TRUE(e.wake < ve, ("denser air never lets this part exceed v_e: " +
+                                     d.name).c_str());
+        }
     }
+    CHECK_TRUE(jets >= 2, "the catalog has jets for any of this to mean anything");
+    /* And the other direction at the catalogue door: a jet whose NOZZLE promises more
+       than the fuel can reach at all. sqrt(2 * kJetFuelHeatPerKg) = 9.3 km/s is what a
+       kilogram of jetfuel turns into kinetic energy however perfectly; an authored v_e
+       past that is not an efficient engine, it is a different propellant wearing a jet
+       flag. Better refused while editing parts.json than discovered in a flight test.
+       The message is pinned too -- a throw for the wrong reason would otherwise pass. */
     CHECK_TRUE(jets >= 2, "the catalog has jets for any of this to mean anything");
     /* And the other direction at the catalogue door: a jet whose NOZZLE promises more
        than the fuel can reach at all. sqrt(2 * kJetFuelHeatPerKg) = 9.3 km/s is what a

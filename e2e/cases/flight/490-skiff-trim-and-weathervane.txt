@@ -1,5 +1,5 @@
 NAME skiff-trim-and-weathervane
-CLAIM The skiff is the airframe the aero design point was written for: 568 kg on 24 m2 of AR-10.7 wing, a command pod stacked on a jet fuel tank, spawned at 80 m/s and 8.5 km, given full throttle for 20 s and then left alone: it trades that excess through one phugoid of 55..109 m/s and 8449..8976 m while its angle of attack never leaves +2.4..+3.4 deg, and settles back to +2.4..+2.5 with +0.55 m of static margin and the hull's along-flow bill BEHIND its balance point on every row. One second of rudder puts 5.1 deg of sideslip on it and the weathervane has it back inside 0.2 deg by t=36 s. On cruise rows the hull bill is Cd 0.37-0.38 on 0.80-0.81 m2, where the smooth spindle this replaced paid 0.11 on 0.87.
+CLAIM The skiff is the airframe the aero design point was written for: 568 kg on 24 m2 of AR-10.7 wing, a command pod stacked on a jet fuel tank, spawned at 80 m/s and 8.5 km, given full throttle for 20 s and then left alone: it trades that excess through one phugoid of 60..107 m/s and 8421..8905 m while its angle of attack never leaves +2.4..+3.1 deg, and settles back to +2.4..+2.5 with +0.55 m of static margin and the hull's along-flow bill BEHIND its balance point on every row. One second of rudder puts 5.2 deg of sideslip on it and the weathervane has it back inside 0.2 deg by t=37 s. On cruise rows the hull bill is Cd 0.37 on 0.80-0.81 m2, where the smooth spindle this replaced paid 0.11 on 0.87.
 KIND golden
 # #568 put the pod back on a tank: capsule_r0.5h1.5 at the root, jet_tank_r0.4h2 1.75 m
 # aft of it, the engine 3.25 m aft, wings on the TANK at 1.2 m aft of the pod's centre,
@@ -29,10 +29,21 @@ KIND golden
 # declared allowance for the seat, panel, life support and drums that a closed shell
 # mesh cannot enclose, 121.87 kg on capsule_r0.5h1.5. The launch mass, the margin and
 # the sign of FormCp are the pre-#1171 ones again, so the 20 s burn is back: on a
-# balanced hull it stays in attached flow the whole 50 s (Mach <= 0.27, 16.6 deg clear
+# balanced hull it stays in attached flow the whole 50 s (Mach <= 0.26, 16.9 deg clear
 # of the wing's 20.05 deg stall peak), which is what lets the bands below measure trim
 # and damping again. The per-seat law (how much, at which position, without
 # double-counting the occupant) is #1204; the mass pin is the interim's number.
+# WHAT #1206 DID TO THIS ROW: the engine under the hood now moves ONE stream of air at ONE
+# wake speed (drag.h:jetEngine), and the shipped 0.5 m engine was re-authored onto it --
+# the same 0.02 m2 mouth it always declared, nozzle 550 -> 700 m/s, machine rating 5625 ->
+# 6002.5 N, pump 0.07 -> 0.08 kg/s. At this bed that is 2426 N of push at 82 m/s in 0.502
+# kg/m3 against the two-stream law's 2706 N: 10% LESS air, and the exchange is
+# correspondingly shallower (8905 m of apex against 8976, 60.0 m/s of trough against 55.4).
+# The figure that moved on its own is WHEN the arc arrives: the hull now bottoms out near
+# t=26 rather than t=34, so the rudder kick at t=25 lands on a 60 m/s hull instead of a
+# 90 m/s one -- q 0.44 of what it was -- and the weathervane needs one more second to have
+# it. Hence the settle pinned from t=37 below: the same claim, one row later, because the
+# throttle feeding the arc is metered against captured air now.
 ARGS --time-accel 1 --startship skiff,res/ships/skiff.json,Kerbin,flying-cruise
 # --no-paint: this case reads [drag] rows, never pixels, and a scripted frame
 # without the 3D pass costs 0.12 ms rather than 3.08 (#666). The rows are the
@@ -50,30 +61,31 @@ CHECK len(drag) >= 40
 # hull's null attitude in moving air is not its null attitude in still air.
 CHECK all(2.2 < d["aoa"] < 2.8 for d in drag if d["t"] >= 40.0 and d["aoa"] is not None)
 # Over ALL rows, 15 deg clear of the wing's stall peak (parts.json stall_angle
-# 0.35 rad = 20.05 deg). Measured 2.4..3.4, the 3.4 being the apex of the one exchange
-# at 55.4 m/s. Two bands rather than one stretched over both: the settled trim above is
+# 0.35 rad = 20.05 deg). Measured 2.4..3.1, the 3.1 at the 60.0 m/s bottom of the one
+# exchange. Two bands rather than one stretched over both: the settled trim above is
 # the law and this envelope is the case noticing if the exchange starts running away.
 # On the 446 kg hull this same rig read 18.5 with the kick and 58.4 with no press, which
 # is the shape #1203 was filed about.
 CHECK all(2.0 < d["aoa"] < 5.0 for d in drag if d["aoa"] is not None)
 # The exchange, once: the bed gives 80 m/s of GROUND speed and the column is worth
 # ~31 m/s of it, so the hull arrives with roughly its own trim speed of air, the throttle
-# adds the rest, and it trades that for height and back once. Measured 55.4 m/s at the
-# 8976 m apex to 109.2 m/s in the dive, and it damps: by t=41 s the arc is 89 m/s
-# (the alt band below says the same thing). Both floors guard the exchange running away
-# further still.
+# adds the rest, and it trades that for height and back once. Measured 60.0 m/s at the
+# 8905 m apex of the climb (t=26) to 107.0 m/s at the bottom (t=41), and it damps: the
+# last ten rows run 88..107 m/s inside 8421..8458 m, a quarter of the arc the throttle
+# bought (the alt band below says the same thing). Both floors guard the exchange running
+# away further still.
 CHECK min(d["v"] for d in drag) > 50.0
 CHECK max(d["v"] for d in drag) < 115.0
 # The bed, not the airframe: flying-cruise spawns at 0.1 x the body's air top, and #682
 # moved that top 70 -> 85 km, so the spawn row is 8501 m ASL where it used to read 7005.
 # This floor is the spawn altitude less the 50 m the hull may fall before its wings
 # answer -- it tracks the bed, so it moves whenever the air top does. It is not a sink
-# measurement: the lowest row of the first 20 s is 8473 m, because this bed spawns above
+# measurement: the lowest row of the first 20 s is 8470 m, because this bed spawns above
 # trim and climbs rather than falling. What it catches is the bed moving (a 70 km top
 # puts the spawn at 7002 and reddens this) and a hull that falls before its wings answer.
 CHECK min(d["alt_asl"] for d in drag if d["t"] <= 20.0) > 8400.0
-# ... and over the whole 50 s the phugoid stays inside 530 m of the bed: measured
-# 8449..8976. The ceiling reddens if the exchange trades the hull up into thinner air
+# ... and over the whole 50 s the phugoid stays inside 485 m of the bed: measured
+# 8421..8905. The ceiling reddens if the exchange trades the hull up into thinner air
 # (rho is printed on the row, and every band above is speed- and density-coupled).
 CHECK min(d["alt_asl"] for d in drag) > 8400.0
 CHECK max(d["alt_asl"] for d in drag) < 9050.0
@@ -83,64 +95,67 @@ CHECK max(d["alt_asl"] for d in drag) < 9050.0
 # one suit adds 0.18 m) and from a rig that diverges.
 CHECK all(d.get("sm") is not None for d in drag)
 CHECK all(0.51 < d["sm"] < 0.59 for d in drag if d.get("sm") is not None)
-# The kick: 5.1 deg of sideslip one second after the press, and inside 0.2 deg again
-# from t=36 s on. Same 1 s press, same rudder; the number belongs to where in the
-# phugoid it lands (here at 90 m/s of ground speed) and a decade-wide band on the peak
-# is honest about that. What IS this case's claim is the shape after it -- Beta -0.2,
-# -3.6, -5.1, -1.2, +2.7, +1.4, -1.7, -0.0, +0.8, -0.7, +0.4, -0.2 over the twelve rows
-# after the press: an oscillation the weathervane (CpL +0.72..+0.83, SideCp -1.14..-1.22
-# on those rows) is winning, crossing zero five times and shrinking each time.
+# The kick: 5.2 deg of sideslip one second after the press, and inside 0.2 deg again
+# from t=37 s on. Same 1 s press, same rudder; the number belongs to where in the
+# phugoid it lands (here at 60 m/s of ground speed, at the top of the arc) and a
+# decade-wide band on the peak is honest about that. What IS this case's claim is the
+# shape after it -- Beta -4.2, -5.2, +0.5, +3.5, +0.0, -2.0, +0.9, +0.3, -0.6, +0.5,
+# -0.4, +0.2 over the twelve rows after the press: an oscillation the weathervane (CpL
+# +0.71..+0.83, SideCp -1.19..-1.22 on those rows) is winning, crossing zero seven times
+# and shrinking each time.
 CHECK 4.0 < max(abs(d["beta"]) for d in drag if d.get("beta") is not None) < 8.0
 # The CLAIM's "inside 0.2 deg" is the assertion, not decoration: measured max 0.20 deg over
-# the fifteen rows from t=36 s on, so the ceiling sits at 0.35 -- 1.75x the measurement,
+# the fourteen rows from t=37 s on, so the ceiling sits at 0.35 -- 1.75x the measurement,
 # still 6x under the peak. A 1.5 deg ceiling (which is what this line said) would let a hull
-# that barely settles pass while contradicting the sentence a reader trusts.
-CHECK all(abs(d["beta"]) < 0.35 for d in drag if d["t"] >= 36.0)
+# that barely settles pass while contradicting the sentence a reader trusts. #1206's
+# single-stream metering moved the arc eight seconds earlier, so the kick now lands at 60
+# rather than 90 m/s of air and this window sits one row later; the ceiling did not move.
+CHECK all(abs(d["beta"]) < 0.35 for d in drag if d["t"] >= 37.0)
 # The bill, cruise rows: pod+tank+engine union 0.80..0.81 m2, which since #945 is the
 # POD's alone (capsule drag_forward 0.35) rather than a mean of the stack's anchors
 # (capsule 0.35, tank 1.0, engine 0.15 -- the 0.57-0.60 this used to read), because the
 # tank and engine sit in the pod's shadow and vote for nothing.
 # The predicate has to say which rows ARE cruise, and |Beta| <= 6 does not: this arc
-# never exceeds 5.1 deg of sideslip or 3.4 of alpha, so that filter admits all fifty
+# never exceeds 5.2 deg of sideslip or 3.1 of alpha, so that filter admits all fifty
 # rows and a "cruise" band silently becomes an all-rows band -- which is how the ceilings
 # below came out wider than the numbers this header quotes. |Beta| <= 1.0 excludes
-# exactly the six rows of the kick's swing, which is the thing that makes the same stack
-# present 0.85 m2 rather than 0.81. Those rows get their own ceiling, not the cruise
+# exactly the four rows of the kick's swing, which is the thing that makes the same stack
+# present 0.82-0.85 m2 rather than 0.81. Those rows get their own ceiling, not the cruise
 # band stretched until it tests nothing.
 # The count first, because all() over an empty selection passes (#653). Four of the bands
 # below hang off this one predicate, and the failure they exist to catch -- Beta never
 # settling after the kick -- is precisely the failure that empties it: if every row kept
 # |Beta| > 1.0, all four cruise bands would go green having tested nothing, while
-# len(drag) >= 40 above stayed satisfied. Measured 44 of the 50 rows.
+# len(drag) >= 40 above stayed satisfied. Measured 46 of the 50 rows.
 CHECK len([d for d in drag if abs(d["aoa"]) <= 6 and abs(d["beta"]) <= 1.0]) >= 35
 CHECK all(0.78 < d["a"] < 0.83 for d in drag if d.get("a") and abs(d["aoa"]) <= 6 and abs(d["beta"]) <= 1.0)
 CHECK all(d["a"] < 0.90 for d in drag if d.get("a"))
-# The CLAIM's Cd pair is pinned beside the area it weights: 0.37..0.38 on cruise rows,
+# The CLAIM's Cd pair is pinned beside the area it weights: 0.368..0.376 on cruise rows,
 # measured (0.565..0.601 while the whole stack voted). A bill is Cd x A, so pinning one
 # without the other leaves half the claim untestable -- which is how this row stayed
-# green through a 1.44x change in the air. The off-cruise rows read up to 0.41.
+# green through a 1.44x change in the air. The off-cruise rows read up to 0.415.
 CHECK all(0.36 < d["cd"] < 0.40 for d in drag if abs(d["aoa"]) <= 6 and abs(d["beta"]) <= 1.0)
 CHECK all(d["cd"] < 0.45 for d in drag)
-# Wings at 0.010 profile: 0.45..0.48 m2 of profile bill on cruise rows, 0.50 at the
-# apex where the wing is working hardest at 55.4 m/s.
+# Wings at 0.010 profile: 0.45..0.47 m2 of profile bill on cruise rows, 0.49 on the kick's
+# rows where the hull is turned across its own line.
 CHECK all(0.43 < d["profile"] < 0.50 for d in drag if d.get("profile") is not None and abs(d["aoa"]) <= 6 and abs(d["beta"]) <= 1.0)
 CHECK all(d["profile"] < 0.60 for d in drag if d.get("profile") is not None)
 # None-guarded because #560 made Induced= dashable: every row of this run prints a
 # number, but max() over a dict comprehension that can yield None is a TypeError waiting
 # for the first row that does not.
 # The floor is the claim "the wing is billed at all": smallest induced bill of this run
-# prints 0.10 m2 (t=1 s, at 81 m/s where the wing is barely loaded). A ceiling with no
+# prints 0.096 m2 (t=1 s, at 81 m/s where the wing is barely loaded). A ceiling with no
 # floor stays green if the law stops charging -- an AR of zero short-circuits inducedCd
 # in drag.h, and a pane that falls out of its lifting system is skipped by the bill --
 # while every other band here (aoa, sm, profile, a) still passes. The cruise ceiling
 # catches the other direction: a hangar-sized induced bill showing up as a wall in level
-# flight. Worst row of the run is the kick at 0.43, where the rudder's own side force
-# is being paid for.
+# flight (cruise rows print 0.096..0.123). Worst row of the run is the kick at 0.447,
+# where the rudder's own side force is being paid for.
 CHECK all(d["induced"] > 0.08 for d in drag if d.get("induced") is not None)
 CHECK all(d["induced"] < 0.16 for d in drag if d.get("induced") is not None and abs(d["aoa"]) <= 6 and abs(d["beta"]) <= 1.0)
 CHECK all(d["induced"] < 0.50 for d in drag if d.get("induced") is not None)
-# #694's ratio, on the rows the CLAIM's glide language rests on: 4.95..6.78 across the
-# whole run and 5.85..5.88 whenever the hull is settled. A lift/drag band is the one place
+# #694's ratio, on the rows the CLAIM's glide language rests on: 4.56..6.40 across the
+# whole run and 5.65..6.40 on cruise rows. A lift/drag band is the one place
 # where the wing's and the hull's bills have to agree with each other, so it reddens when
 # either side's authored number moves on its own.
 CHECK all(4.5 < d["ld"] < 8.0 for d in drag if d.get("ld") is not None)
@@ -158,7 +173,7 @@ CHECK all(-0.20 < d["formcp"] < 0.0 for d in drag if d.get("formcp") is not None
 # #947, pinned on the airframe its body was written against. This hull flies a degree or
 # two off its line, so most rows have crossflow; the hull's strip is half-shielded by the
 # pod ahead of it and bills the rest; and the normal force lands aft, doing the
-# weathervane work FormCp alone could not. Measured 0.11..0.31 m2 at -1.14..-1.22 m.
+# weathervane work FormCp alone could not. Measured 0.11..0.32 m2 at -1.16..-1.22 m.
 # The floor guards "the law bills at all"; the band around -1.2 guards the SIGN, which is
 # this case's claim made checkable in its own column -- and it is the one lever that did
 # NOT flip when the COM walked.

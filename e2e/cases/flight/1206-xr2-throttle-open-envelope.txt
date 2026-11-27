@@ -1,0 +1,80 @@
+NAME xr2-throttle-open-envelope
+CLAIM The XR-2 is the hull that carries the 2 m jet -- 0.35 m2 of mouth, a 700 m/s nozzle, a 105.0 kN machine, a 1.4 kg/s pump. 4044.2 kg of tanks-full hull spawned at 84.9 m/s and 8.5 km with the throttle pinned open for 90 s: on EVERY row the thrust the sim actually arms -- [drainlog]'s own figure -- is the single-stream 1/2 rho A (v_e^2 - v^2) for that mouth, to within 2.4%, and the drain that pays for it runs 0.452 kg/s at 224.7 m/s in the low field and 0.227 kg/s at 63 m/s up at 12.5 km. One stream, metered against the air the mouth catches, at both ends of the arc.
+KIND golden
+# WHY THIS CASE EXISTS. #1206 rewrote the air-breathing law so one stream of air moves at
+# one wake speed and the fuel pays for all of it (src/drag.h:jetEngine), and the shipped
+# jet family was re-authored onto the new law. The 2 m part kept the mouth it always
+# declared (0.35 m2, 11% of its own frontal disc) and gained a faster nozzle (550 -> 700
+# m/s), which makes its machine and its fuel line follow from that pair:
+#   jet_fan_thrust   90000 -> 105043.75 N  (= 1/2 * 1.225 * A * v_e^2: the machine reaches
+#                                            exactly v_e in the rating air and no further)
+#   propellant_rate  1.20 -> 1.40 kg/s     (= 4.0 kg/s per m2 of mouth, 1.38x the peak
+#                                            power the nozzle ever asks for, at v = v_e/3)
+# What that costs and what it buys, against the two-stream law this replaces:
+#   pad, datum          90.7 kN -> 105.0 kN   (+16%)
+#   183 m/s, 8.5 km     51.2 kN -> 41.9 kN    (-18%)
+#   275 m/s, datum     123.1 kN ->  88.8 kN   (-28%: the old law's ram term stacked a
+#                                             second stream on top of the fan, and that
+#                                             momentum was never paid for)
+#   top speed in level air 811 m/s -> 700 m/s (the old law's fan kept pushing past the
+#                                             authored nozzle; here v_e is a wall)
+# tests/test_jet.cpp and tests/test_aerosweep.cpp pin that arithmetic per part. This case
+# pins the same law at the only moment that matters to a player: inside a flying hull,
+# against the density and speed the hull actually arrives at, with the thrust read out of
+# the sim's own armed figure rather than recomputed by the test. Halve the shipped mouth
+# and the two thrust bands below halve with it.
+#
+# THE RIG. flying-cruise spawns at 0.1 x Kerbin's 85 km air top -- 8.5 km -- at 85 m/s,
+# which is well under this hull's trim, so the run is one big exchange rather than a
+# settle. #1236 is the ticket for that: the XR-2 is not trimmed (FormCp +2.6..+3.7 m, i.e.
+# the hull's along-flow push lands metres in FRONT of the balance point, the #1203 shape),
+# so it dives ~770 m to buy its speed and trades the whole of it for ~4.8 km of zoom climb.
+# The airframe bands are therefore deliberately wide; the engine bands are not.
+ARGS --time-accel 1 --startship xr2,res/ships/xr2.json,Kerbin,flying-cruise
+ARGS --sim-steps 5400 --drag-log --mass-log --fuel-log --drain-log --no-paint
+ARGS --sim-press 500,90000,T
+EXPECT [drag]
+EXPECT [drainlog]
+EXPECT [fuel]
+EXPECT [mass]
+# Row counts first: the pairing below walks two lists positionally, and all() over an
+# empty or half-parsed list is true (#653).
+CHECK len(drag) >= 85
+CHECK len(drainlog) >= 170
+# THE pin. --drag-log prints one row per second and --drain-log one per half second, so
+# drainlog[1::2] is the row stamped at drag[i]'s own second (measured: 90 drag rows against
+# 180 drainlog rows, t=1.0s against t=1.0s). What the sim armed -- the sum of the parts'
+# own armedThrust -- must equal the single-stream thrust of the authored mouth at the state
+# the hull is standing in. 3% absorbs the part's LOCAL state: a hull rotating through its
+# exchange gives the engine an airspeed a couple of percent off the COM's.
+CHECK all(abs(x["thrust"] - 0.5*d["rho"]*0.35*(490000.0 - d["v"]*d["v"])) < 0.03*x["thrust"] for d,x in zip(drag, drainlog[1::2]))
+# The same law's other half -- the bill. burn = T (v + w) / 2Q with w = the authored
+# nozzle, so the low field costs 0.452 kg/s at the top of the dive and the thin air at the
+# top of the climb costs 0.227 kg/s. Both bands are per-row readings off [drainlog], not a
+# run average: a fuel line that could not pay, or a machine ceiling clamping the wake
+# under v_e, moves one of these without moving the other in the same way.
+CHECK 0.43 < max(r["rates"][0] for r in drainlog if r["rates"][0] > 0.0) < 0.48
+CHECK 0.20 < min(r["rates"][0] for r in drainlog if r["rates"][0] > 0.0) < 0.25
+# The force itself, at both ends of the arc: 43.2 kN at 224.7 m/s in 0.548 kg/m3, 25.2 kN
+# at 63 m/s in 0.299 kg/m3. Neither reaches the part's 105.0 kN pad rating, which is what
+# the nozzle-plus-density pair allows; nothing here reaches the 1.4 kg/s pump either.
+CHECK 41000 < max(r["thrust"] for r in drainlog) < 45000
+CHECK 23500 < min(r["thrust"] for r in drainlog if r["rates"][0] > 0.0) < 27000
+# The airframe, wide because #1236. The hull dives to 7729 m to buy 224.7 m/s (Mach 0.64)
+# and climbs to 12530 m, where it is down to 62.0 m/s -- still flying, and nowhere near
+# the 700 m/s nozzle, which is the wall the engine would stop at.
+CHECK 210 < max(d["v"] for d in drag) < 240
+CHECK max(d["mach"] for d in drag) < 0.72
+CHECK min(d["v"] for d in drag) > 55
+CHECK min(d["alt_asl"] for d in drag) > 7400
+CHECK max(d["alt_asl"] for d in drag) < 13000
+# The VAB's static margin, carried through the whole exchange: +0.68 m on every row.
+CHECK all(0.66 < d["sm"] < 0.70 for d in drag if d.get("sm") is not None)
+# The hull those numbers are quoted for: 27 parts, 4044.24 kg with both tanks full, no
+# crew, 1311 kg of jetfuel in that figure. [mass] carries the propellant that is still
+# aboard, so the row walks down as the engine eats it: the 89.5 s at full throttle spends
+# 29.6 kg and ends the run at 4014.6 kg. Pin the spawn row, which is the airframe.
+CHECK any(m["ship"] == "xr2" and m["parts"] == 27 and abs(m["mass"] - 4044.24) < 1.0 for m in mass)
+CHECK abs(first(fuel)["groups"][0]["JF"][0] - 1311.0) < 0.5
+CHECK 27.0 < first(fuel)["groups"][0]["JF"][0] - last(fuel)["groups"][0]["JF"][0] < 32.0
+FORBID error:
