@@ -107,11 +107,9 @@ PINS = [
     # went back to their pre-consolidation art on 2026-11-25 (SHELVED below): re-laying their
     # UVs moved the owner's existing paint onto different faces, and the old layouts are what
     # adapter.png and nose_cap.png were painted against.
-    # Fuselages: the part name IS the radius and height.
-    ("gen_fuselage.py", ["--radius", "0.4", "--height", "4"], ["meshes/fuselage_r0.4h4.obj"]),
-    ("gen_fuselage.py", ["--radius", "0.5", "--height", "3.5"], ["meshes/fuselage_r0.5h3.5.obj"]),
-    ("gen_fuselage.py", ["--radius", "0.5", "--height", "6"], ["meshes/fuselage_r0.5h6.obj"]),
-    ("gen_fuselage.py", ["--radius", "1", "--height", "6"], ["meshes/fuselage_r1h6.obj"]),
+    # Fuselages left the catalogue with #1211: a wide midbody part is cheaper than the
+    # pod + tanks + nose cone stack it replaces and bills no less drag, so there is
+    # nothing of theirs left to pin.
     # The flat-topped capsule (#1170) is the lathe shape with equal radii: a frustum whose
     # top is as wide as its base is a straight wall.
     ("gen_lathe.py", ["--r1", "1", "--r2", "1", "--height", "2",
@@ -712,12 +710,9 @@ STYLE_OK.update({("meshes/%s.obj" % n): ("every face encloses zero uv area",)
                            "runway")})
 STYLE_OK.update({("meshes/%s.obj" % n): ("no uv field",)
                  for n in ("station", "spacedock", "leg")})
-# #1173, the rest: the fuselages fill the whole surface with vt 0.5 0.5 and the ladders have
-# no uv layer at all. Stage 3 gives the fuselages islands. The eight shrouds left this list
-# when gen_lathe.py took them over: 32 wall quads, an island each, real area on every one.
-STYLE_OK.update({("meshes/%s.obj" % n): ("every face encloses zero uv area",) for n in
-                 ("fuselage_r0.4h4", "fuselage_r0.5h3.5", "fuselage_r0.5h6",
-                  "fuselage_r1h6")})
+# #1173, the rest: the ladders have no uv layer at all. The eight shrouds left this
+# list when gen_lathe.py took them over: 32 wall quads, an island each, real area on
+# every one. The fuselages left it with the family (#1211).
 STYLE_OK.update({("meshes/%s.obj" % n): ("no uv field",)
                  for n in ("ladder", "ladder_0.5m", "ladder_1m")})
 # #1176, and only where a generator is responsible. The lofted family left this list in

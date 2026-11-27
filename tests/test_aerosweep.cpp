@@ -1410,7 +1410,8 @@ static void test_the_lifting_body_pair_is_fitted() {
         }
         printf("[pair] %d of %d catalogued parts declare supersonic cd anchors\n",
                declared, (int)cat.parts.size());
-        CHECK_TRUE(declared == 66, "#635: the body families author the supersonic band");
+        CHECK_TRUE(declared == 62, "#635: the body families author the supersonic band"
+                   " (66 before #1211 deleted the four fuselages)");
         CHECK_TRUE(surfacesWith == 0, "and no lifting/steering surface does");
         CHECK_TRUE(cheaperSup == 0, "no part is cheaper at Mach 6 than at Mach 0.2");
         CHECK_TRUE(overCap == 0, "no supersonic anchor escapes the fitted rule's cap");
@@ -1434,17 +1435,6 @@ static void test_the_lifting_body_pair_is_fitted() {
             CHECK_TRUE(cdMul * cn3->dragForwardSup()
                            < 0.25 * cdMul * cap->dragForwardSup(),
                        "a slender cone is worth under a quarter of the shallow cap");
-        }
-        /* The number the whole change is for: a fuselage's nose. 0.10 is what a smooth
-           body is worth subsonic; measured nose-first on its own mesh it is 0.374, so
-           above the band the bill rises ~3.1x on the part that makes a spaceplane's
-           hull. (The probe columns are in tmp/n635/newton.txt.) */
-        const PartDef *fus = cat.find("fuselage_r0.5h6");
-        CHECK_TRUE(fus != nullptr, "fuselage_r0.5h6 is catalogued");
-        if(fus != nullptr) {
-            CHECK_NEAR(fus->drag_forward, 0.10, 1e-9, "nose-on stays a subsonic figure");
-            CHECK_NEAR(cdMul * fus->dragForwardSup(), 0.374, 1e-3,
-                       "#635: and above the band it bills what the mesh measures, 0.374");
         }
     }
     /* And the loader refuses them on a SURFACE: a lifting or steering part is out of

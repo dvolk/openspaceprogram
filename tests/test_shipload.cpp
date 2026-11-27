@@ -1055,7 +1055,7 @@ int main() {
                                          d.ladder_b - d.ladder_a)) < 0.01);
             }
         }
-        CHECK(crewLadders == 9);   // five capsules + four crewed fuselages
+        CHECK(crewLadders == 5);   // five capsules (the four crewed fuselages left with #1211)
 
         // A well-formed spec loads; out normalizes like a node dir.
         const char *lok = "/tmp/test_shipload_ladder.json";

@@ -5,7 +5,7 @@ a long box (v1 art; reports/ladders2026_11_21). Part frame: +Z = the long
 in parts.json sits there, anchored at its TOP end -- #1078), Y = width.
 Centred on the origin, so the standard mesh-box pins apply. The climb segment
 parts.json authors rides the +X face.
-Flat per-face normals, CCW winding -- the gen_fuselage.py conventions.
+Flat per-face normals, CCW winding -- the catalogue's primitive-mesh conventions.
 Size variants (#1078): --length <L> --name ladder_<L>m writes only
 meshes/<name>.obj -- the grey texture is shared with the base part."""
 

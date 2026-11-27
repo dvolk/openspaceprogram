@@ -2492,9 +2492,10 @@ void Game::updateProximity() {
    neither is the active ship. Crew-capable matters because firstVehicleSeat
    answers "is anyone aboard", not "could anyone fly this": the capsule a player
    evacuated and means to come back for sails through that guard EMPTY. Today
-   crew_capacity exists only on capsules and fuselages (there are no probe
-   cores), so "no seat anywhere in this hull" means pure hardware -- booster,
-   tank, decoupler -- which is exactly the population #938 measured. A GROUNDED
+   crew_capacity exists only on capsules (there are no probe cores, and #1211
+   deleted the crewed fuselages), so "no seat anywhere in this hull" means pure
+   hardware -- booster, tank, decoupler -- which is exactly the population #938
+   measured. A GROUNDED
    hulk is kept on purpose: it parks frozen on the rails (cheap) and it is a
    landmark the player can fly back to. So the rule is "airborne, unflyable,
    worthless, and out of sight". */

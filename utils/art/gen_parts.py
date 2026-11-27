@@ -46,14 +46,13 @@ JET_FUEL_DENSITY = 70.0          # kg/m^3, jet fuel (separate resource from H2/L
 
 MASS_DENSITY = {
     "capsule":        183.0,
-    "fuselage":       25.0,
     "reaction_wheel": 128.0,
     "adapter":        15.0,
-    # A cap is a closed shell -- fuselage's structure, with the far end buttoned
-    # up. It was 192.0, denser than a crew capsule, which put a 1.125 m tip at
-    # 3435 kg: more than the 2531 kg engine it sits on, and 13.7 t of solid iron
-    # on a stack that carries four of them (#951). A cap that houses a chute bay
-    # should say so the way `chute` does -- a declared mass, not a density.
+    # A cap is a closed shell with the far end buttoned up. It was 192.0, denser
+    # than a crew capsule, which put a 1.125 m tip at 3435 kg: more than the 2531 kg
+    # engine it sits on, and 13.7 t of solid iron on a stack that carries four of
+    # them (#951). A cap that houses a chute bay should say so the way `chute` does
+    # -- a declared mass, not a density.
     "nose_cap":       25.0,
     # The slender cone family: same closed shell as a cap, one-third of it air.
     "nose_cone":      25.0,
@@ -183,8 +182,8 @@ DRAG_CD = {
     # pair's best glide, body_lift / (2 sqrt(cdSide x cdForward)) = 1.03, a flat
     # plate's ~1:1. tests/test_aerosweep.cpp sweeps the shipped def and pins it.
     # forward 0.1 / backward 0.5 is not a claim that a symmetric plate flies better
-    # one way -- it is the catalog's bluffer-base convention (fuselage 0.10/0.20:
-    # the lee face sits in the wake). But forward is HALF of the glide equation: that
+    # one way -- it is the catalog's bluffer-base convention (the lee face sits in
+    # the wake). But forward is HALF of the glide equation: that
     # closed form is body_lift / (2 sqrt(cdSide x cdForward)), so 0.65 was SOLVED
     # FROM 0.1. Streamline this def -- forward 0.05 buys the same plate a 41% better
     # glide -- and body_lift has to be re-solved with it, not left behind.
@@ -202,11 +201,6 @@ DRAG_CD = {
                        "drag_backward": 0.9},
     "adapter":        {"drag": 0.2, "drag_forward": 0.9, "drag_side": 1.0,
                        "drag_backward": 0.9},
-    # AEROPLANE FUSELAGE (gen_fuselage.py): one smooth body authoring Cd 0.10
-    # nose-first (0.12 billed), replacing a capsule (0.35) + tank (1.0) + shroud
-    # (0.9) + wheel (1.1) stack whose area-weighted AUTHORED Cd is 0.84.
-    "fuselage":       {"drag": 0.6, "drag_forward": 0.10, "drag_side": 0.9,
-                       "drag_backward": 0.20},
     # cone (apex = +Z): tip-first sleek, flat base blunt
     "nose_cap":       {"drag": 0.6, "drag_forward": 0.35, "drag_side": 0.9,
                        "drag_backward": 1.3},
@@ -214,8 +208,8 @@ DRAG_CD = {
     # All three `nose_cap` meshes are h/r 0.50 -- 63 deg off the axis -- and measure
     # 1.597 nose-on, which is a wall with a dimple in it (#1211). At h/r 2 the same
     # base disc measures 0.397 and at h/r 3 0.198, so the family's whole claim is the
-    # slenderness. Subsonic nose-first 0.15 sits between a smooth body (fuselage's
-    # 0.10) and a shoulder; the fitted supersonic anchors below carry the measurement.
+    # slenderness. Subsonic nose-first 0.15 sits between a smooth body and a
+    # shoulder; the fitted supersonic anchors below carry the measurement.
     # The base is 1.1, NOT nose_cap's 1.3. The floor runs after the cap
     # (max(sub, min(phys/1.2, 1.35/1.2))), so an authored 1.3 becomes 1.56 physical at
     # every Mach (#1212) and inherits that error. At 1.1 the subsonic bill is 1.32 and
@@ -321,9 +315,10 @@ DRAG_KEYS = ("drag", "drag_forward", "drag_side", "drag_backward")
 # The broadside column is the one to take at face value -- 1.17-1.33 across every fat
 # body, exactly the blunt-shoulder case Newtonian is good at. The axial column is the
 # one that needs the cap.
-# What the table is FOR: fuselage nose-on is authored 0.10, a genuine subsonic figure,
-# and the same shape measures 0.374 nose-first. That is the wall a spaceplane pushes
-# through; nothing here moves a subsonic hull at all (regimeMix is 0 below Mach 0.75).
+# What the table is FOR: a shallow nose cap is authored 0.35 nose-first, a genuine
+# subsonic figure, and the same mesh measures 1.597 nose-on. That is the wall a
+# spaceplane pushes through; nothing here moves a subsonic hull at all (regimeMix is
+# 0 below Mach 0.75).
 DRAG_CD_MULT = 1.2        # src/vehicle.h Vehicle::drag_cd (cli.h --drag-cd) -- the bill
                         # multiplier. Not pinned to the C++ default from here; the C++
                         # side states the same 1.2 in test_aerosweep's catalogue pin.
@@ -357,9 +352,6 @@ DRAG_CD_SUP = {
     "mono_tank":      (2.000, 1.331, 2.000),
     "decoupler":      (2.000, 1.331, 2.000),
     "docking_port":   (2.000, 1.331, 2.000),
-    # THE WALL, measured on fuselage_r0.5h6: 0.374 nose-first against the authored 0.10.
-    # The family spans r0.4 (0.458) to r1 (0.726); the spaceplane hull is the slim end.
-    "fuselage":       (0.374, 1.301, 0.470),
     # a shallow cone (0.5 m on a 2 m base) is nearly a flat disc apex-first; its
     # broadside measures 0.268, so the subsonic 0.9 floors that axis (Newtonian is not
     # reliable on a slender side, and the floor is what keeps the pair honest)
@@ -415,10 +407,6 @@ PARTS = [
     # starts as one flat fill at the cone's dominant colour (41,41,41) -- a canvas to
     # draw on rather than a picture borrowed from a different shape.
     ("capsule_cyl_r1h2", "capsule",        "meshes/capsule_cyl_r1h2.obj",         "textures/capsule_cyl.png"),
-    ("fuselage_r0.4h4",  "fuselage",       "meshes/fuselage_r0.4h4.obj",          "textures/capsule.png"),
-    ("fuselage_r0.5h3.5","fuselage",       "meshes/fuselage_r0.5h3.5.obj",        "textures/capsule.png"),
-    ("fuselage_r0.5h6",  "fuselage",       "meshes/fuselage_r0.5h6.obj",          "textures/capsule.png"),
-    ("fuselage_r1h6",    "fuselage",       "meshes/fuselage_r1h6.obj",            "textures/capsule.png"),
     ("reaction_wheel",   "reaction_wheel", "meshes/reaction_wheel_r1h0.25.obj",   "textures/reaction_wheel.png"),
     ("reaction_wheel_r1.5h0.375",  "reaction_wheel", "meshes/reaction_wheel_r1.5h0.375.obj",  "textures/reaction_wheel.png"),
     ("reaction_wheel_r2.25h0.5625","reaction_wheel", "meshes/reaction_wheel_r2.25h0.5625.obj","textures/reaction_wheel.png"),
@@ -574,11 +562,6 @@ EXTRA_FIELDS = {
     # number (CAPSULE_LIFE_SUPPORT_W_PER_CREW / _BATTERY_WH_PER_CREW), so the pod
     # that carries two also drains for two.
     "capsule_cyl_r1h2": {"crew_capacity": 2, "experiment_storage": "container"},
-    "fuselage_r0.4h4":   {"crew_capacity": 1, "mass": 130.0},
-    "fuselage_r0.5h3.5": {"crew_capacity": 2, "mass": 180.0},
-    "fuselage_r0.5h6":   {"crew_capacity": 2, "mass": 220.0},
-    "fuselage_r1h6":     {"crew_capacity": 4, "mass": 520.0,
-                          "experiment_storage": "container"},
     # kerbal: DRY mass (full-EVA-gear minus the 10 kg RCS hydrazine, a separate
     # capacity). Suit inventory pocket; science courier (1 finding per family).
     "kerbal":            {"mass": 87.05, "capacity": {"hydrazine": 10.0},
@@ -815,8 +798,8 @@ def ladder_spec(ptype, mesh):
     moves its ladder with it:
       capsule: the bottom 2/3 of the slope at azimuth 0 (+X); b is the hatch
                the kerbal spawns holding, out the slope's outward normal.
-      fuselage: the parallel midbody at azimuth 0 (the ogive ends taper).
-      ladder part: the outer (+X) face, opposite the surface node."""
+      ladder part: the outer (+X) face, opposite the surface node.
+      A new crewed type needs its own rule here -- see the gate at the call."""
     t = trimesh.load_mesh(os.path.join(REPO_ROOT, "res", mesh), process=False)
     vs = t.vertices
     if ptype == "ladder":
@@ -833,12 +816,9 @@ def ladder_spec(ptype, mesh):
         n = [zmax - zmin, 0.0, rbot - rtop]   # perpendicular to the slope, outward
         L = math.sqrt(sum(c * c for c in n))
         out = [c / L for c in n]
-    else:   # fuselage: stations at (essentially) the full radius are the midbody
-        rs = [math.hypot(v[0], v[1]) for v in vs]
-        rmax = max(rs)
-        mid = [v[2] for v, r in zip(vs, rs) if r >= 0.99 * rmax]
-        assert mid, mesh
-        a, b, out = [rmax, 0.0, min(mid)], [rmax, 0.0, max(mid)], [1.0, 0.0, 0.0]
+    else:   # the call gate asks for capsule/ladder only (#1211 deleted the wide
+            # midbody family that used to fall through here)
+        raise SystemExit("ladder_spec: no ladder rule for part type %r" % ptype)
     return {"a": [clean(c) for c in a], "b": [clean(c) for c in b],
             "out": [round(c, 4) for c in out]}
 
@@ -994,11 +974,6 @@ def generate(name, ptype, mesh, texture):
         e["radius"] = radius
         e["height"] = height
         e["capacity"] = {"jetfuel": clean(capacity)}
-    elif ptype == "fuselage":
-        # The body is also the tank (a separate tank part is what this replaces).
-        e["radius"] = radius
-        e["height"] = height
-        e["capacity"] = {"jetfuel": clean(0.5 * volume * JET_FUEL_DENSITY)}
     elif ptype == "rcs":
         # A box of fixed nozzles scales with nothing: mass, the per-bell rating
         # and the bells themselves are DECLARED (EXTRA_FIELDS), the way the
@@ -1122,7 +1097,7 @@ def generate(name, ptype, mesh, texture):
     # The climbable segment: every crew part carries a hatch ladder (invisible,
     # pure data) and the ladder part carries its own. Presence of the field is
     # what makes a part climbable (PartDef::isLadder).
-    if ptype in ("capsule", "fuselage", "ladder"):
+    if ptype in ("capsule", "ladder"):
         e["ladder"] = ladder_spec(ptype, mesh)
 
     e.update(EXTRA_FIELDS.get(name, {}))

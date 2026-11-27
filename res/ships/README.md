@@ -116,10 +116,11 @@ is not a flat plate); #514/#491 own the union area and the force point per part.
 NOT a reason to author a lower Cd: the stack is what a player builds, so the number it
 pays is the honest baseline. What it buys: a cockpit with a seat, 2000 Wh of charge,
 propellant in
-a part that is not also the crew compartment (staging a `fuselage_r*` away throws the
-crew out with the fuel), the pod's 100 N m reaction wheel -- fuselage parts carry no
-`torque`, so the spindle had no wheel at all -- and 74 kg less to carry, which is why
-the heavier-looking hull sinks 3 m/s SLOWER in the same air.
+a part that is not also the crew compartment (staging the old `fuselage_r*` away threw
+the crew out with the fuel), the pod's 100 N m reaction wheel -- fuselage parts carried
+no `torque`, so the spindle had no wheel at all -- and 74 kg less to carry, which is why
+the heavier-looking hull sinks 3 m/s SLOWER in the same air. The spindle is since
+deleted (#1211); the two rows it bought are kept below as measured history.
 
 The jet and the glider were deleted (2026_11_01): they were rockets with wings bolted
 on, and their envelope cases cost more to keep than they were worth. A new airframe
@@ -127,17 +128,21 @@ should be built from this recipe and get its own row here.
 
 ## The recipe for a new airframe (measured, so it is mechanical)
 
-1. **Body: a pod on a tank.** `capsule_r0.5h1.5` (crew, charge, a 100 N m wheel) with a
-   `jet_tank_r*` stacked on it -- `attach: "down"`, so the tank's top node mates the
-   pod's bottom one -- and the engine at the back of the tank. That is the shape a
-   player builds and the shape every other window reads: crew, charge, propellant and
-   staging all live on pods and tanks. A `fuselage_r*` (the smooth spindle from
-   `utils/art/gen_fuselage.py`, Cd 0.10 nose-first, crew, declared dry mass, half the
-   bounding volume as jet fuel) is the smooth ALTERNATIVE, not the default: it flies
-   better and it is a thing nobody would build. A body MAY be several parts either way:
-   same-cd parts average in the area-weighted mean, and the silhouette unions, so a
-   stack bills correctly -- it just bills more. Segments are a content job (see the
-   ticket), not a law one.
+1. **Body: a nose cone on a pod on a tank.** `nose_cone_r1h2`/`r1h3` in front (the
+   slender family is what a nose actually is: `nose_cap`'s h/r 0.50 mesh measures Cd
+   1.597 nose-on, a wall with a dimple, against 0.397 at h/r 2 and 0.198 at h/r 3 --
+   #1211), `capsule_r0.5h1.5` or `capsule_cyl_r1h2` behind it (crew, charge, a 100 N m
+   wheel) with a `jet_tank_r*` stacked on that -- `attach: "down"`, so the tank's top
+   node mates the pod's bottom one -- and the engine at the back of the tank. That is
+   the shape a player builds and the shape every other window reads: crew, charge,
+   propellant and staging all live on pods and tanks. The one-part smooth spindle
+   (`fuselage_r*`, Cd 0.10 nose-first, crew, declared dry mass, half its bounding
+   volume as jet fuel) is deleted (#1211): it was cheaper than this stack, carried a
+   seat AND the fuel AND no wheel, and above the band its own mesh billed 0.374
+   anyway, so the 0.10 bought nothing a player could keep. A body MAY be several
+   parts: same-cd parts average in the area-weighted mean, and the silhouette unions,
+   so a stack bills correctly -- it just bills more. Segments are a content job (see
+   the ticket), not a law one.
 2. **Wing station is a design input**, and the wings go on the TANK -- a wing belongs to
    what it is bolted through (#565), and that is where the ailerons get their
    trailing-edge nodes (#566). The old barrel stacks put the wing behind the centre of
@@ -236,7 +241,7 @@ and thrust, so staging/docking/save all work unchanged. What the mount has to ge
   (`normal: [1,0,0]`, spanwise, works; `[0,1,0]` stood it on edge and it still answered
   with 1.33 kN m while its hinge showed full travel -- rig travel is not authority,
   #566/#509), and until #568 the shipped skiff had NO reaction wheel at all, because
-  fuselage parts carry no `torque`: on that hull the aero row WAS the whole attitude
+  fuselage parts carried no `torque`: on that hull the aero row WAS the whole attitude
   budget (`[slew] alpha=0.000`). The pod hull declares 100 N m, which is 1% of the
   8.91 kN m #566 measured from this aileron pair at full deflection -- decisive for
   pointing a ship out of atmosphere, negligible for rolling this one in it. That pair

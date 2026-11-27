@@ -647,8 +647,8 @@ struct PartDef {
        and top ends in the part's LOCAL frame (+Z = stack axis); out is the
        unit direction the kerbal hangs off, away from the hull. Capsules carry
        an invisible hatch ladder along their slope (b = the hatch, 2/3 up);
-       crewed fuselages one on the midbody; the ladder part one on its outer
-       (+X) face. All authored by utils/art/gen_parts.py off the mesh. */
+       the ladder part one on its outer (+X) face. All authored by
+       utils/art/gen_parts.py off the mesh. */
     bool has_ladder = false;
     glm::dvec3 ladder_a = glm::dvec3(0.0);
     glm::dvec3 ladder_b = glm::dvec3(0.0);
