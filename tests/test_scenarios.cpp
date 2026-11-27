@@ -51,6 +51,7 @@
 #include "frame.h"
 #include "body.h"
 #include "equirect.h"  // the ONE lat/lon basis the asked bed state is aimed in
+#include "drag.h"      // AeroFrame: the sign aoa= has to agree with, not a restatement of it
 #include "bodylimits.h"
 #include "science.h"   // orbitCutAlt: the tier boundary the datum feeds
 
@@ -2626,7 +2627,7 @@ static void check_bed_state() {
 
     /* roll + drops the RIGHT wing: the top tips toward -X (the pilot's right) and the
        nose does not move at all. */
-    const glm::dmat3 bank = bedRollYaw(level, 20.0, 0.0);
+    const glm::dmat3 bank = bedRollYaw(level, 20.0, 0.0, 0.0);
     CHECK_NEAR(glm::dot(bank[1], top), std::cos(20.0 * rad), 1e-12, "bank holds its angle");
     CHECK_NEAR(glm::dot(bank[1], left), -std::sin(20.0 * rad), 1e-12,
                "roll + tips the top toward the pilot's right");
@@ -2635,21 +2636,50 @@ static void check_bed_state() {
     /* yaw + turns the hull about its own up WITHOUT bending the path: the wings stay
        level, and the angle between the nose and the flow is the asked number. That
        angle is the SIDESLIP (Beta) the --drag-log prints, not an angle of attack --
-       the nose moved in the yaw plane while the wings stayed flat. Anyone wanting
-       AoA needs a hull-only pitch, which the spawn asks do not have (#1223). */
-    const glm::dmat3 slip = bedRollYaw(level, 0.0, 3.0);
+       the nose moved in the yaw plane while the wings stayed flat. */
+    const glm::dmat3 slip = bedRollYaw(level, 0.0, 3.0, 0.0);
     CHECK_NEAR(glm::dot(slip[1], top), 1.0, 1e-12, "yaw keeps the wings level");
     CHECK_NEAR(glm::dot(slip[2], left), -std::sin(3.0 * rad), 1e-12,
                "yaw + sends the nose to the pilot's right");
     CHECK_NEAR(std::acos(glm::dot(slip[2], flow)) / rad, 3.0, 1e-9,
                "yaw=3 on a flow-aligned bed spawns 3 deg of sideslip");
 
+    /* aoa + is the third hull turn and the only one in the PITCH plane: the nose goes
+       above the flow, the wings stay level and nothing moves sideways (#1223). The sign
+       is pinned against the law's own AeroFrame rather than a restatement of it, because
+       the whole point of the field is that `aoa=4` and the row's `AoA=+4.0` are one
+       angle -- and the row's sign is drag.h's, not the hull axes'. */
+    const glm::dmat3 inc = bedRollYaw(level, 0.0, 0.0, 4.0);
+    CHECK_NEAR(std::acos(glm::dot(inc[2], flow)) / rad, 4.0, 1e-9, "aoa=4 sits 4 deg off the flow");
+    CHECK_NEAR(glm::dot(inc[2], top), std::sin(4.0 * rad), 1e-12, "aoa + raises the nose");
+    CHECK_NEAR(glm::dot(inc[2], left), 0.0, 1e-12, "and buys no sideslip");
+    const glm::dmat3 down = bedRollYaw(level, 0.0, 0.0, -6.0);
+    CHECK_NEAR(glm::dot(down[2], top), -std::sin(6.0 * rad), 1e-12,
+               "aoa -6 drops the nose below the flow");
+    const AeroFrame fr = aeroFrame(flow, inc[0], inc[1], inc[2]);
+    CHECK_TRUE(fr.valid, "the law can read this attitude");
+    CHECK_NEAR(glm::degrees(fr.alpha), 4.0, 1e-9, "aoa=4 reads AoA +4.0 in drag.h's own frame");
+    CHECK_NEAR(glm::degrees(fr.beta), 0.0, 1e-9, "and Beta stays zero");
+    /* Both at once, which is what a polar sweep actually asks for: the incidence does
+       not spend the sideslip. The two angles are NOT symmetric, and the asymmetry is
+       worth pinning -- drag.h reads each as an angle in its own projection plane, so an
+       incidence leaves alpha exactly as asked whatever the yaw does, while the same yaw
+       reads 3.007 rather than 3.000 once 4 deg of incidence tilts the flow out of the
+       yaw plane: the row's beta is atan(tan(yaw) / cos(aoa)). Holding aoa while yawing
+       is therefore exact; holding yaw while pitching is not, by a few thousandths of a
+       degree at these angles. */
+    const glm::dmat3 both_angles = bedRollYaw(level, 0.0, 3.0, 4.0);
+    const AeroFrame fr2 = aeroFrame(flow, both_angles[0], both_angles[1], both_angles[2]);
+    CHECK_NEAR(glm::degrees(fr2.alpha), 4.0, 1e-9, "aoa still reads exactly 4 next to a 3 deg yaw");
+    CHECK_NEAR(glm::degrees(fr2.beta), 3.0, 1e-2, "the yaw still reads 3, to the deg or so"
+               " an incidence adds in the projection plane");
+
     /* And the order a player reads it in: the yaw happens in the AIMED frame, then the
        bank about the new nose. Bank first and the yaw runs about a banked up axis --
        at roll=90 that is another roll about the nose, so the sideslip stops being a
        sideslip while the spawn line still claims 3 deg. */
-    const glm::dmat3 both = bedRollYaw(level, 90.0, 3.0);
-    const glm::dmat3 yaw_then_bank = bedRollYaw(bedRollYaw(level, 0.0, 3.0), 90.0, 0.0);
+    const glm::dmat3 both = bedRollYaw(level, 90.0, 3.0, 0.0);
+    const glm::dmat3 yaw_then_bank = bedRollYaw(bedRollYaw(level, 0.0, 3.0, 0.0), 90.0, 0.0, 0.0);
     for(int i = 0; i < 3; i++) {
         CHECK_NEAR(glm::dot(both[i], yaw_then_bank[i]), 1.0, 1e-12, "yaw before bank");
     }
@@ -2657,7 +2687,8 @@ static void check_bed_state() {
                "a 90 deg bank keeps the 3 deg sideslip it started with");
     printf("  bed state: 4 compass headings, 30 deg of climb, straight up from 3 "
            "headings, 4 azimuths read back off a path (plus the radial case), a 20 deg "
-           "bank and a 3 deg sideslip pinned against equirect's horizon\n");
+           "bank, a 3 deg sideslip and a 4 deg incidence read through drag.h's own"
+           " AeroFrame, all against equirect's horizon\n");
 }
 
 /* The same five asks through the JSON door, which is a separate parser from
@@ -2700,8 +2731,8 @@ static void check_startship_state() {
     DebugStartShip s;
     std::string err = loadEntry("all", {{"speed_mps", 120.0}, {"heading_deg", -45.0},
                                         {"pitch_deg", 5.0}, {"roll_deg", 20.0},
-                                        {"yaw_deg", 3.0}}, s);
-    CHECK(err.empty(), "the five state asks load from JSON");
+                                        {"yaw_deg", 3.0}, {"aoa_deg", 4.0}}, s);
+    CHECK(err.empty(), "the six state asks load from JSON");
     if(err.empty()) {
         CHECK_NEAR(s.speed_mps, 120.0, 1e-12, "speed_mps lands");
         /* Stored WRAPPED, because the Spawn line echoes this number and the spawn feeds
@@ -2710,15 +2741,17 @@ static void check_startship_state() {
         CHECK_NEAR(s.pitch_deg, 5.0, 1e-12, "pitch_deg lands");
         CHECK_NEAR(s.roll_deg, 20.0, 1e-12, "roll_deg lands");
         CHECK_NEAR(s.yaw_deg, 3.0, 1e-12, "yaw_deg lands");
+        CHECK_NEAR(s.aoa_deg, 4.0, 1e-12, "aoa_deg lands");
     }
     /* Unasked must stay NaN, not become 0: a defaulted speed would put a hull in mid-air
-       at a standstill on every entry that never asked for one. */
+       at a standstill, and a defaulted incidence would trim one nobody trimmed. */
     err = loadEntry("none", nlohmann::json::object(), s);
     CHECK(err.empty(), "an entry with no state asks loads");
     if(err.empty()) {
         CHECK_TRUE(std::isnan(s.speed_mps), "speed stays unasked rather than 0");
         CHECK_TRUE(std::isnan(s.heading_deg), "heading stays unasked rather than north");
         CHECK_TRUE(std::isnan(s.yaw_deg), "yaw stays unasked rather than 0");
+        CHECK_TRUE(std::isnan(s.aoa_deg), "aoa stays unasked rather than 0");
     }
     err = loadEntry("neg", {{"speed_mps", -1.0}}, s);
     CHECK(err.find("is a magnitude") != std::string::npos,
@@ -2726,10 +2759,13 @@ static void check_startship_state() {
     err = loadEntry("pitch", {{"pitch_deg", 95.0}}, s);
     CHECK(err.find("[-90, 90]") != std::string::npos,
           "JSON refuses a pitch past the vertical, as the command line does");
+    err = loadEntry("aoa", {{"aoa_deg", -91.0}}, s);
+    CHECK(err.find("\"aoa_deg\" must be in [-90, 90]") != std::string::npos,
+          "JSON refuses an incidence past the flow, in its own words");
     err = loadEntry("str", {{"speed_mps", "fast"}}, s);
     CHECK(err.find("must be a number") != std::string::npos,
           "a string speed refuses rather than reading 0");
-    printf("  startship state JSON: 5 asks landed, NaN when unasked, 3 refusals shared"
+    printf("  startship state JSON: 6 asks landed, NaN when unasked, 4 refusals shared"
            " with --startship\n");
 }
 

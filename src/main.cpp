@@ -208,7 +208,7 @@ static bool splitStartship(const std::string &spec, DebugStartShip &out,
     f.push_back(cur);
     if(f.size() < 4) {
         err = "expected name,def,body,scenario[,site][,lat=..,lon=..][,alt=..]"
-              "[,speed=..,heading=..,pitch=..,roll=..,yaw=..]";
+              "[,speed=..,heading=..,pitch=..,roll=..,yaw=..,aoa=..]";
         return false;
     }
     for(size_t k = 0; k < 4; k++) {
@@ -223,7 +223,7 @@ static bool splitStartship(const std::string &spec, DebugStartShip &out,
     out.scenario = f[3];
     bool got_site = false, got_lat = false, got_lon = false, got_alt = false;
     bool got_speed = false, got_hdg = false, got_pitch = false;
-    bool got_roll = false, got_yaw = false;
+    bool got_roll = false, got_yaw = false, got_aoa = false;
     for(size_t k = 4; k < f.size(); k++) {
         const std::string &fld = f[k];
         const std::string at = "field " + std::to_string(k + 1) + " '" + fld + "': ";
@@ -289,15 +289,17 @@ static bool splitStartship(const std::string &spec, DebugStartShip &out,
             out.alt_m = num;
             got_alt = true;
         } else if(key == "speed" || key == "heading" || key == "pitch"
-               || key == "roll" || key == "yaw") {
-            /* The bed's STATE (#1220). Degrees and metres per second, like every other
-               number here: a fraction of something would be a second law. What the BED
-               can take (a pad bed, an ellipse bed) is refused where the scenario is
-               known; only what the NUMBER means is refused here. speed= is a magnitude,
-               so backwards is heading=/yaw=; pitch= is measured off the local horizon, so
-               past +-90 the direction is a heading spelled in the wrong field. */
+               || key == "roll" || key == "yaw" || key == "aoa") {
+            /* The bed's STATE (#1220, plus #1223's aoa=). Degrees and metres per second,
+               like every other number here: a fraction of something would be a second
+               law. What the BED can take (a pad bed, an ellipse bed) is refused where the
+               scenario is known; only what the NUMBER means is refused here. speed= is a
+               magnitude, so backwards is heading=/yaw=; pitch= is measured off the local
+               horizon and aoa= off the flow, so past +-90 either one is a direction
+               spelled in the wrong field. */
             bool &got = key == "speed" ? got_speed : key == "heading" ? got_hdg
-                      : key == "pitch" ? got_pitch : key == "roll" ? got_roll : got_yaw;
+                      : key == "pitch" ? got_pitch : key == "roll" ? got_roll
+                      : key == "yaw" ? got_yaw : got_aoa;
             if(got) { err = at + '"' + key + "\" given twice"; return false; }
             if(!parseNumber(val, num)) {
                 err = at + '"' + key + "\" is not a number";
@@ -308,9 +310,10 @@ static bool splitStartship(const std::string &spec, DebugStartShip &out,
                            " rather than asking for a negative one";
                 return false;
             }
-            if(key == "pitch" && (num < -90.0 || num > 90.0)) {
-                err = at + "\"pitch\" must be in [-90, 90] deg off the local horizon"
-                           " -- past that the direction is a heading";
+            if((key == "pitch" || key == "aoa") && (num < -90.0 || num > 90.0)) {
+                err = at + '"' + key + "\" must be in [-90, 90] deg off the "
+                           + (key == "pitch" ? "local horizon" : "flow")
+                           + " -- past that the direction is a heading";
                 return false;
             }
             if(key == "heading") {
@@ -322,12 +325,14 @@ static bool splitStartship(const std::string &spec, DebugStartShip &out,
                                      : key == "heading" ? &DebugStartShip::heading_deg
                                      : key == "pitch" ? &DebugStartShip::pitch_deg
                                      : key == "roll" ? &DebugStartShip::roll_deg
-                                                     : &DebugStartShip::yaw_deg;
+                                     : key == "yaw" ? &DebugStartShip::yaw_deg
+                                                    : &DebugStartShip::aoa_deg;
             (out.*(slot)) = num;
             got = true;
         } else {
             err = at + "unknown optional field \"" + key
-                  + "\" (known: site, lat, lon, alt, speed, heading, pitch, roll, yaw)";
+                  + "\" (known: site, lat, lon, alt, speed, heading, pitch, roll, yaw,"
+                  " aoa)";
             return false;
         }
     }

@@ -473,27 +473,40 @@ glm::dvec3 bedNoseDir(const glm::dvec3 &up, const glm::dvec3 &east,
                           + up * std::sin(p));
 }
 
-/* Then the two turns the FLIGHT PATH does not take: roll about the hull's +Z and yaw
-   about its +Y, post-multiplied so they read as body-frame turns. faceAlong(dir, up)
-   builds the hull as (left, up, nose) -- x = cross(y, z), so +X is the pilot's LEFT --
-   and the signs below are chosen for the reading a player types, not for the axes:
+/* Then the three turns the FLIGHT PATH does not take: roll about the hull's +Z, yaw
+   about its +Y and incidence about its +X, post-multiplied so they read as body-frame
+   turns. faceAlong(dir, up) builds the hull as (left, up, nose) -- x = cross(y, z), so
+   +X is the pilot's LEFT -- and the signs below are chosen for the reading a player
+   types, not for the axes:
      roll +  tips the top toward -X, i.e. the RIGHT wing down (bank right);
      yaw +   sends the nose toward the pilot's right, so it needs Ry(-yaw), since the
-             right-hand rule about +Y would send it toward +X = left.
+             right-hand rule about +Y would send it toward +X = left;
+     aoa +   sends the nose ABOVE the flow, so it needs Rx(-aoa), since the right-hand
+             rule about +X sends +Z down toward -Y. That sign is drag.h's alpha and the
+             SURFACE AoA readout's, so `aoa=4` and the row's `AoA=+4.0` are one angle.
    That is the same sense as heading above (clockwise seen from above) and the opposite
    of the hull axes, which is worth knowing when reading a --drag-log Beta row back into
-   a spawn line. tests/test_scenarios.cpp pins both against the basis. */
-glm::dmat3 bedRollYaw(const glm::dmat3 &att, double roll_deg, double yaw_deg) {
-    /* Yaw first (about the aimed-but-still-upright +Y), then roll about the nose.
-       Post-multiplying in the other order banks first and yaws about the BANKED up
-       axis, so roll=90 with yaw=3 would spin the hull about its own nose instead of
-       pointing it 3 deg off the flight path. */
+   a spawn line. tests/test_scenarios.cpp pins all three against the basis. */
+glm::dmat3 bedRollYaw(const glm::dmat3 &att, double roll_deg, double yaw_deg,
+                      double aoa_deg) {
+    /* Yaw first (about the aimed-but-still-upright +Y), then the incidence about the
+       wing span, then roll about the nose. Post-multiplying in the other order banks
+       first and yaws about the BANKED up axis, so roll=90 with yaw=3 would spin the
+       hull about its own nose instead of pointing it 3 deg off the flight path; and an
+       incidence applied after the bank would tilt the nose about an axis the wings no
+       longer span, which is not the angle the chord-line reading means. */
     glm::dmat3 out = att;
     if(yaw_deg != 0.0) {
         const double r = glm::radians(-yaw_deg);
         const double c = std::cos(r), s = std::sin(r);
         out = out * glm::dmat3(glm::dvec3(c, 0.0, -s), glm::dvec3(0.0, 1.0, 0.0),
                                glm::dvec3(s, 0.0, c));
+    }
+    if(aoa_deg != 0.0) {
+        const double r = glm::radians(-aoa_deg);
+        const double c = std::cos(r), s = std::sin(r);
+        out = out * glm::dmat3(glm::dvec3(1.0, 0.0, 0.0), glm::dvec3(0.0, c, s),
+                               glm::dvec3(0.0, -s, c));
     }
     if(roll_deg != 0.0) {
         const double r = glm::radians(roll_deg);
@@ -626,8 +639,8 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
     char alt_txt[48] = "";
     /* ... and state_txt for an asked speed/aim (#1220), which is the third way a Spawn
        line can disagree with the scenario name beside it. A std::string rather than a
-       buffer: five asks with unchecked magnitudes overflow any fixed size, and a
-       half-printed number is worse than no echo at all. */
+       buffer: the state asks carry unchecked magnitudes, so they overflow any fixed size,
+       and a half-printed number is worse than no echo at all. */
     std::string state_txt;
     double place_tilt = 0.0;
 
@@ -843,15 +856,15 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
         vel += wind_rot;
     }
 
-    /* An asked STATE (#1220): speed=/heading=/pitch=/roll=/yaw= on --startship (and the
-       same five in --startships JSON). The door has already refused them on a pad bed and
-       on an ellipse bed, so what is left is a circular bed: a radius, a direction and a
-       speed. The speed replaces the one the radius implied; (heading, pitch) replaces the
-       direction the bed's own orbit had; (roll, yaw) turn the hull about its own axes
-       after both -- which puts the hull 3 deg OFF its flow for a 3 deg yaw, in the yaw
-       plane (the Beta the --drag-log prints). No ask buys an ANGLE of attack: pitch= moves
-       the nose and the path together, and a hull-only pitch is the knob that would do it
-       (#1223).
+    /* An asked STATE (#1220): speed=/heading=/pitch=/roll=/yaw=/aoa= on --startship (and
+       the same six in --startships JSON). The door has already refused them on a pad bed
+       and on an ellipse bed, so what is left is a circular bed: a radius, a direction and
+       a speed. The speed replaces the one the radius implied; (heading, pitch) replaces
+       the direction the bed's own orbit had; (roll, yaw, aoa) turn the hull about its own
+       axes after both -- which for a 3 deg yaw puts the hull 3 deg OFF its flow IN THE YAW
+       PLANE (the Beta the --drag-log prints), and for a 4 deg aoa puts it 4 deg off IN
+       THE PITCH PLANE, which is the angle of attack the aero law measures. pitch= cannot
+       do the latter: it moves nose and path together (#1223).
        `speed_mps` is AIR-relative on a bed that reads air -- the same reference the
        speed_load block above uses, so a windy body still starts the hull at the asked
        airspeed -- and frame-relative on a circular bed that reads none. Nothing re-solves
@@ -917,14 +930,15 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
             velWorld = frame->root_orient * (vel + frame->GetStasisVelocity(target))
                      + frame->root_vel - home->frame->root_vel;
         }
-        /* Echo the ASKS, not the result -- and echo all five, including a roll or yaw
-           that moved no velocity at all. The line already carries |v|; what a reader
+        /* Echo the ASKS, not the result -- and echo every one of them, including a roll,
+           yaw or aoa that moved no velocity at all. The line already carries |v|; what a
+           reader
            needs is whether that figure came from the bed or from them, and which aim the
            hull is sitting in. "air"/"frame" is the reference the speed was read in
            (#459's lesson: one field, two meanings, one debugging session each time), and
            "(kept)" says the number was inherited rather than asked -- an aim alone still
            moves the FRAME speed on a windy body, because what it holds is the airspeed.
-           No fixed buffer: the longest five-ask echo overflows one, and a clipped number
+           No fixed buffer: the longest state echo overflows one, and a clipped number
            is worth exactly nothing to the reader who needed it. */
         std::string asks;
         {
@@ -936,10 +950,10 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
                      place->speedAsked() ? "" : " (kept)");
             asks += b;
         }
-        const double vals[4] = { place->heading_deg, place->pitch_deg,
-                                 place->roll_deg, place->yaw_deg };
-        const char *const names[4] = { "hdg", "pitch", "roll", "yaw" };
-        for(int i = 0; i < 4; i++) {
+        const double vals[5] = { place->heading_deg, place->pitch_deg,
+                                 place->roll_deg, place->yaw_deg, place->aoa_deg };
+        const char *const names[5] = { "hdg", "pitch", "roll", "yaw", "aoa" };
+        for(int i = 0; i < 5; i++) {
             if(std::isnan(vals[i])) { continue; }
             char b[40];
             snprintf(b, sizeof b, " %s %+.1f deg", names[i], vals[i]);
@@ -976,6 +990,7 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
     const glm::dvec3 flow = vel - wind_rot;
     const double askRoll = (place && !std::isnan(place->roll_deg)) ? place->roll_deg : 0.0;
     const double askYaw = (place && !std::isnan(place->yaw_deg)) ? place->yaw_deg : 0.0;
+    const double askAoa = (place && !std::isnan(place->aoa_deg)) ? place->aoa_deg : 0.0;
     glm::dmat3 orient;
     if(aimed) {
         const glm::dvec3 noseF = rotTof * noseRot;
@@ -1003,7 +1018,7 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
     else {
         orient = glm::transpose(frame->root_orient) * faceAlong(velWorld);
     }
-    orient = bedRollYaw(orient, askRoll, askYaw);
+    orient = bedRollYaw(orient, askRoll, askYaw, askAoa);
     ship->placeShipAtCom(target, orient);
     ship->setVelocity(vel);
 
@@ -1025,11 +1040,12 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
            the law cannot drift apart. Read it for what it is: it prints 0.0 for every
            bed, shipped or not, BY CONSTRUCTION -- faceAlong() just above aims the nose
            at the FLOW, so this is zero plus roundoff. That makes it a canary for the
-           aiming having gone wrong, never a trim diagnostic. The two exceptions are the
-           hull-only asks (#1220), and even they only move it cross-coupled: a banked
-           sideslip tips the flow into the pitch plane by sin(yaw) x sin(roll), while a
-           lone yaw= moves Beta and leaves AoA at zero -- there is no start ask that
-           buys an angle of attack, which is #1223. A wind cannot move it
+           aiming having gone wrong, never a trim diagnostic -- EXCEPT where the ask put
+           an incidence there on purpose: `aoa=` (#1223) is the one start ask that moves
+           this off zero, and it moves nothing else, so it reads back as asked. The other
+           hull-only asks (#1220) touch it cross-coupled at most: a banked sideslip tips
+           the flow into the pitch plane by sin(yaw) x sin(roll), while a lone yaw= moves
+           Beta and leaves AoA at zero. A wind cannot move it
            either way: the rows are horizontal (atmo.h:WindLevel is east/north only), so
            a wind ACROSS the track shows up as Beta in --drag-log and never here, while a
            wind ALONG it moves |v_air| and leaves this at +0.0 (e2e
@@ -1487,18 +1503,18 @@ Vehicle *build_start_vehicles(Game &g, const std::vector<DebugStartShip> &entrie
            spelled in the wrong field. */
         const bool stateAsked = !std::isnan(fe.speed_mps) || !std::isnan(fe.heading_deg)
                               || !std::isnan(fe.pitch_deg) || !std::isnan(fe.roll_deg)
-                              || !std::isnan(fe.yaw_deg);
+                              || !std::isnan(fe.yaw_deg) || !std::isnan(fe.aoa_deg);
         if(stateAsked) {
             if(sc->on_pad) {
                 throw std::runtime_error("start ships: entry " + std::string(std::to_string(i))
-                                         + ": speed/heading/pitch/roll/yaw aim a flying bed,"
-                                         + " but '" + fe.scenario + "' stands on a pad -- its"
-                                         + " state is the ground's");
+                                         + ": speed/heading/pitch/roll/yaw/aoa aim a flying"
+                                         + " bed, but '" + fe.scenario + "' stands on a pad"
+                                         + " -- its state is the ground's");
             }
             if(sc->ell_phase >= 0) {
                 throw std::runtime_error("start ships: entry " + std::to_string(i)
-                                         + ": speed/heading/pitch/roll/yaw set one state, but"
-                                         + " '" + fe.scenario + "' authors its apsides"
+                                         + ": speed/heading/pitch/roll/yaw/aoa set one state,"
+                                         + " but '" + fe.scenario + "' authors its apsides"
                                          + " (peri_alt/apo_alt) -- ask a circular bed instead"
                                          + ": rot-orbit, inertial-orbit, high-orbit or a"
                                          + " flying-* bed");
@@ -1524,6 +1540,19 @@ Vehicle *build_start_vehicles(Game &g, const std::vector<DebugStartShip> &entrie
                                          + ": pitch must be in [-90, 90] deg above/below the"
                                          + " local horizon -- past that a heading is what"
                                          + " describes the direction");
+            }
+            /* aoa= has the same ceiling for the same reason: past 90 deg the nose is
+               behind the flow, and a heading describes that far better than an incidence.
+               It is NOT refused for want of air, unlike the issue's first sketch: on a
+               bed that reads none the angle is still well defined against the velocity the
+               bed carries -- pointing a retrorocket 5 deg off prograde is a real ask --
+               and the Spawn line already says `AoA = -` where the aero law has nothing to
+               measure, so the row tells the reader which case they are in. */
+            if(!std::isnan(fe.aoa_deg) && std::fabs(fe.aoa_deg) > 90.0) {
+                throw std::runtime_error("start ships: entry " + std::to_string(i)
+                                         + ": aoa must be in [-90, 90] deg off the flow"
+                                         + " -- past that the nose points behind it, which"
+                                         + " is a heading, not an incidence");
             }
             /* A finite ask can still be unrepresentable: the state goes straight into the
                integrator, and a speed far past escape makes the orbital elements inf/NaN
@@ -1555,6 +1584,7 @@ Vehicle *build_start_vehicles(Game &g, const std::vector<DebugStartShip> &entrie
         v->place.pitch_deg = fe.pitch_deg;
         v->place.roll_deg = fe.roll_deg;
         v->place.yaw_deg = fe.yaw_deg;
+        v->place.aoa_deg = fe.aoa_deg;
         spawn_crew(v, g.sys);
         if(first == nullptr) { first = v; }
     }

@@ -2538,7 +2538,7 @@ DebugStartShips loadDebugStartShips(const char *path) {
            (main.cpp) refuses on the command line. */
         static const char *const kOptional[] = {"site", "lat_deg", "lon_deg", "alt_m",
                                                 "speed_mps", "heading_deg", "pitch_deg",
-                                                "roll_deg", "yaw_deg"};
+                                                "roll_deg", "yaw_deg", "aoa_deg"};
         for(const auto &kv : ev.items()) {
             bool known = false;
             for(const char *const field : kStartShipFields) {
@@ -2553,7 +2553,8 @@ DebugStartShips loadDebugStartShips(const char *path) {
                                          + ": unknown field \"" + kv.key() + "\" (known:"
                                          + " ship, name, body, scenario, site,"
                                          + " lat_deg, lon_deg, alt_m, speed_mps,"
-                                         + " heading_deg, pitch_deg, roll_deg, yaw_deg)");
+                                         + " heading_deg, pitch_deg, roll_deg, yaw_deg,"
+                                         + " aoa_deg)");
             }
         }
         e.ship = ev["ship"].get<std::string>();
@@ -2647,6 +2648,7 @@ DebugStartShips loadDebugStartShips(const char *path) {
             {"pitch_deg", &DebugStartShip::pitch_deg, false},
             {"roll_deg", &DebugStartShip::roll_deg, false},
             {"yaw_deg", &DebugStartShip::yaw_deg, false},
+            {"aoa_deg", &DebugStartShip::aoa_deg, false},
         };
         for(const StateField &f : kState) {
             if(!ev.contains(f.key)) { continue; }
@@ -2669,6 +2671,13 @@ DebugStartShips loadDebugStartShips(const char *path) {
                                          + std::to_string(i) + " of " + path
                                          + ": \"pitch_deg\" must be in [-90, 90] deg off"
                                          + " the local horizon");
+            }
+            if(f.key == std::string("aoa_deg") && std::fabs(v) > 90.0) {
+                throw std::runtime_error(std::string("start ships: entry ")
+                                         + std::to_string(i) + " of " + path
+                                         + ": \"aoa_deg\" must be in [-90, 90] deg off the"
+                                         + " flow -- past that the nose points behind it,"
+                                         + " which is a heading_deg, not an incidence");
             }
             (e.*(f.slot)) = v;
         }

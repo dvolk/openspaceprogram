@@ -1241,13 +1241,15 @@ struct DebugStartShip {
     /* The bed's STATE (#1220), same NaN rule as the three above: asked or not asked.
        `speed_mps` is the air-relative speed on a bed that reads air and the frame-relative
        speed on one that does not; heading/pitch aim nose AND velocity in the local horizon
-       frame; roll/yaw turn the hull about its own axes afterwards. See SpawnPlace
-       (vehicle.h) for the geometry and the pad/ellipse refusals. */
+       frame; roll/yaw turn the hull about its own axes afterwards, and aoa_deg (#1223)
+       tips the nose above the flow -- the angle of attack, same sign as the AoA readout.
+       See SpawnPlace (vehicle.h) for the geometry and the pad/ellipse refusals. */
     double speed_mps = kNoCoord;
     double heading_deg = kNoCoord;
     double pitch_deg = kNoCoord;
     double roll_deg = kNoCoord;
     double yaw_deg = kNoCoord;
+    double aoa_deg = kNoCoord;
 };
 
 // The parsed "ships" array.

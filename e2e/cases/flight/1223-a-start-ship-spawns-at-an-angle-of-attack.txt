@@ -1,0 +1,33 @@
+# A bed can hand the hull a flight-path angle (pitch=) or an incidence (aoa=), and the two
+# are not the same knob: pitch= moves the nose AND the velocity together, so the hull
+# spawns along its flow at any flight-path angle, while aoa= is a hull-only turn about the
+# wing span that leaves the path where heading/pitch put it (#1223). Nothing in the spawn
+# asks used to buy an angle of attack at all, so every polar sweep started at AoA 0 and
+# waited for the hull to swing to its own zero-moment incidence -- about a second, which is
+# the row the measurement cannot use.
+#
+# The readout here is the Spawn line's own AoA figure, computed by drag.h's AeroFrame from
+# the attitude that was just placed -- the same law the --drag-log rows use -- so the check
+# cannot pass by the spawn and the readout agreeing on a private convention.
+NAME a-start-ship-spawns-at-an-angle-of-attack
+CLAIM aoa= hands the hull the angle of attack the aero law measures (+ = nose above the flow), while pitch= leaves that angle at zero and moves the flight path instead.
+KIND invariant
+ARGS --startship a4,res/ships/spaceplane.json,Kerbin,flying-cruise,speed=120,aoa=4
+ARGS --startship dn6,res/ships/spaceplane.json,Kerbin,flying-cruise,speed=120,aoa=-6
+ARGS --startship p5,res/ships/spaceplane.json,Kerbin,flying-cruise,speed=120,pitch=5
+ARGS --timeout 2 --drag-log
+EXPECT [drag]
+FORBID error:
+# Asked 4 deg, read back 4 deg: the sign is the row's sign, not the hull axes' (+X is the
+# pilot's LEFT, so the turn inside bedRollYaw is negated for the reading a player types).
+CHECK re.search(r"AoA = \+4\.0 deg, asked state: v 120\.0 m/s air aoa \+4\.0 deg", out)
+# And below the flow. A sign flip in the +X rotation reads +6.0 here.
+CHECK re.search(r"AoA = -6\.0 deg, asked state: v 120\.0 m/s air aoa -6\.0 deg", out)
+# The distinction the field exists for: 5 deg of path is NOT 5 deg of incidence. The hull
+# climbs and its nose stays on the flow, so this line must read zero.
+CHECK re.search(r"AoA = \+0\.0 deg, asked state: v 120\.0 m/s air pitch \+5\.0 deg", out)
+# The incidence is a state, not an equilibrium: all three hulls are flying the same airspeed
+# the bed was handed, and the aero pass has flow enough to measure it from the first row
+# (parse_drag omits the key when the row dashes it, so .get() is the check).
+CHECK re.search(r"\|v_air\| = 120\.0 m/s", out)
+CHECK len([d for d in drag if d.get("aoa") is not None]) > 0
