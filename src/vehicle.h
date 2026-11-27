@@ -201,8 +201,9 @@ struct SpawnPlace {
        buildingair's deck-+X heading), pitch above the horizon. Together they set the
        flight path, so pitch alone cannot make an angle of attack.
        `roll_deg`/`yaw_deg`/`aoa_deg` turn the HULL only, after the aim: yaw about its
-       up (+Y) FIRST, then the incidence about its +X, then roll about the nose (+Z), so
-       banking never moves the yaw axis.
+       up (+Y) FIRST, then the bank about the nose (+Z) that yaw left, then the incidence
+       about the +X (wing span) in its FINAL attitude -- which is the axis drag.h measures
+       alpha about, and why an asked incidence survives a bank unshortened.
        The signs are the reading a player types, not the right-hand rule about the hull
        axes (faceAlong's +X is the pilot's LEFT): roll + drops the RIGHT wing, yaw +
        sends the nose to the pilot's right, and aoa + puts the nose ABOVE the flow --
@@ -213,10 +214,16 @@ struct SpawnPlace {
        spawn the hull 3 deg OFF its flow -- sideslip, the Beta the --drag-log prints --
        and it is why the angle of attack needs its own field instead of a second meaning
        for `pitch=`: pitch= moves nose and path together, so it can never incidence
-       (#1223). aoa= is the hull-only pitch that does, measured against the flow the bed
-       carries; on a bed that reads no air that is the velocity itself, which is a real
-       ask (5 deg off prograde for a retrorocket burn) -- and the Spawn line prints no AoA
-       field there at all, so the reader is never handed an angle the aero law cannot see.
+       (#1223). aoa= is the hull-only pitch that does, and it reads back exactly as asked
+       whatever bank is asked; the one thing that shifts it is asking a bank AND a
+       sideslip together, which leaks atan2(sin(yaw) x sin(bank)) of alpha on its own and
+       the asked incidence adds on top (pinned in test_scenarios, where the numbers live).
+       It is measured against the flow the bed carries: the AIR-relative velocity on a bed
+       that reads air, and the velocity the attitude was aimed along on one that reads
+       none -- root-frame on an orbit bed, so on a spinning body that is a few degrees off
+       what the hull's own frame calls prograde. A vacuum incidence is a real ask (5 deg
+       off prograde for a retrorocket burn), and the Spawn line prints no AoA field there
+       at all, so nobody is handed an angle the aero law cannot see.
        All six ride a CIRCULAR bed, like alt_: a pad bed stands where its site stands, and
        an ellipse bed's state is its two apsides. */
     double speed_mps = kNoCoord;
@@ -3179,17 +3186,26 @@ glm::dmat3 faceAlong(const glm::dvec3 &dir, const glm::dvec3 &up_ref);
    that basis spans. Straight up (|pitch| = 90) is a legal direction and asks for no
    heading at all, which is why heading is allowed to be ignored there rather than
    refused.
-   bedRollYaw then turns an attitude the caller already has -- faceAlong's answer, or the
-   bed's own prograde one -- by roll about the hull's +Z (nose), yaw about its +Y (up)
-   and incidence about its +X (the wing span), right-hand rule. Multiplying on the RIGHT
-   is the whole point: these are body-frame turns, so none of them tilts the flight path.
+   bedHullTurns then turns an attitude the caller already has -- faceAlong's answer, or
+   the bed's own prograde one -- by yaw about the hull's +Y (up), bank about its +Z
+   (nose) and incidence about its +X (the wing span), applied in that order and
+   multiplied on the RIGHT because they are body-frame turns: none of them tilts the
+   flight path, and the incidence lands about the span in its FINAL attitude, which is
+   the axis drag.h measures alpha about.
    A yaw alone buys an angle BETWEEN nose and flow in the yaw plane -- sideslip (Beta);
    the +X turn is the one that buys the angle in the pitch plane, which is the angle of
    attack the aero law and the SURFACE readout print (#1223). */
 glm::dvec3 bedNoseDir(const glm::dvec3 &up, const glm::dvec3 &east,
                       const glm::dvec3 &north, double heading_deg, double pitch_deg);
-glm::dmat3 bedRollYaw(const glm::dmat3 &att, double roll_deg, double yaw_deg,
-                      double aoa_deg);
+/* An aimed bed's attitude: nose along `nose`, roll named by the local up where it can be,
+   and by the horizon bearing `heading_deg` points at where it cannot (straight up or
+   down). Identical to faceAlong(nose, up) for any aim short of vertical -- see the comment
+   at its definition, which is also why there is no threshold on the caller. */
+glm::dmat3 bedAttitude(const glm::dvec3 &nose, const glm::dvec3 &up,
+                       const glm::dvec3 &east, const glm::dvec3 &north,
+                       double heading_deg);
+glm::dmat3 bedHullTurns(const glm::dmat3 &att, double roll_deg, double yaw_deg,
+                        double aoa_deg);
 /* The azimuth of a velocity the caller already has, in the same basis bedNoseDir aims
    in [deg, -180..180]. spawn_vehicle uses it when pitch= is asked without heading=:
    the ask lifts the bed's own path, so its azimuth is inherited rather than defaulted

@@ -56,6 +56,17 @@ inline double wrapLonDeg(double lon_deg) {
     return w < 0.0 ? w + 360.0 : w;
 }
 
+/* The signed sibling, for an angle typed as a TURN rather than read off a map: a bank or
+   a sideslip keeps which way it was asked, so roll=370 echoes +10 and roll=-77.7 stays
+   negative (wrapLonDeg would report it as +282.3, which is the same hull and a sentence
+   nobody typed). Same law as lon's otherwise: wrap at the parse so the angle the trig
+   sees and the number the Spawn line echoes are ONE number -- an unwrapped 1e300 is an
+   arbitrary bank with no digits left to say which, and it overruns the echo's field. */
+inline double wrapSignedDeg(double deg) {
+    const double w = std::fmod(deg, 360.0);
+    return w > 180.0 ? w - 360.0 : (w <= -180.0 ? w + 360.0 : w);
+}
+
 // (lon, lat) -> unit direction. lon 0 = +X, +pi/2 = -Z, north = +Y.
 inline glm::dvec3 equirectDir(double lon, double lat) {
     const double cl = std::cos(lat);

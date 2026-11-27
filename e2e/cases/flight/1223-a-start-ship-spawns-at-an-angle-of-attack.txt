@@ -19,7 +19,7 @@ ARGS --timeout 2 --drag-log
 EXPECT [drag]
 FORBID error:
 # Asked 4 deg, read back 4 deg: the sign is the row's sign, not the hull axes' (+X is the
-# pilot's LEFT, so the turn inside bedRollYaw is negated for the reading a player types).
+# pilot's LEFT, so the turn inside bedHullTurns is negated for the reading a player types).
 CHECK re.search(r"AoA = \+4\.0 deg, asked state: v 120\.0 m/s air aoa \+4\.0 deg", out)
 # And below the flow. A sign flip in the +X rotation reads +6.0 here.
 CHECK re.search(r"AoA = -6\.0 deg, asked state: v 120\.0 m/s air aoa -6\.0 deg", out)

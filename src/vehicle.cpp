@@ -473,6 +473,29 @@ glm::dvec3 bedNoseDir(const glm::dvec3 &up, const glm::dvec3 &east,
                           + up * std::sin(p));
 }
 
+/* The attitude of an aimed bed: nose along `nose`, roll named by the local up -- with the
+   vertical case folded in rather than branched. The reference is up*cos(p) - ahead*sin(p),
+   where sin(p) = dot(nose, up) and `ahead` is the horizon bearing the azimuth aimed: for
+   any aim short of vertical that is parallel to up itself (up - (up.nose)nose = cos(p) x
+   this), so faceAlong picks the same hull it always did, and at vertical -- where up is
+   parallel to the nose and faceAlong's own pick degenerates into whichever coordinate
+   plane is nearest, the 90 deg twist #451 removed -- it is the continuous limit instead.
+   The sign of the sin(p) term is the whole content at vertical: nose UP leaves the hull's
+   top TRAILING at -ahead, nose DOWN leaves it LEADING at +ahead. Both signs are load
+   bearing: a descending vertical aim given the up-nose limit arrives 180 deg rolled, and
+   an asked aoa= then rides the reversed +X -- moving the nose the wrong way in the world
+   while the aero law goes on reporting AoA +4.0, so the ship's own readout cannot see it.
+   tests/test_scenarios.cpp pins the two sides meeting. */
+glm::dmat3 bedAttitude(const glm::dvec3 &nose, const glm::dvec3 &up,
+                       const glm::dvec3 &east, const glm::dvec3 &north,
+                       double heading_deg) {
+    const double sp = glm::dot(nose, up);
+    const double cp = std::sqrt(std::max(0.0, 1.0 - sp * sp));
+    const double h = glm::radians(heading_deg);
+    const glm::dvec3 ahead = north * std::cos(h) + east * std::sin(h);
+    return faceAlong(nose, up * cp - ahead * sp);
+}
+
 /* Then the three turns the FLIGHT PATH does not take: roll about the hull's +Z, yaw
    about its +Y and incidence about its +X, post-multiplied so they read as body-frame
    turns. faceAlong(dir, up) builds the hull as (left, up, nose) -- x = cross(y, z), so
@@ -487,14 +510,21 @@ glm::dvec3 bedNoseDir(const glm::dvec3 &up, const glm::dvec3 &east,
    That is the same sense as heading above (clockwise seen from above) and the opposite
    of the hull axes, which is worth knowing when reading a --drag-log Beta row back into
    a spawn line. tests/test_scenarios.cpp pins all three against the basis. */
-glm::dmat3 bedRollYaw(const glm::dmat3 &att, double roll_deg, double yaw_deg,
-                      double aoa_deg) {
-    /* Yaw first (about the aimed-but-still-upright +Y), then the incidence about the
-       wing span, then roll about the nose. Post-multiplying in the other order banks
-       first and yaws about the BANKED up axis, so roll=90 with yaw=3 would spin the
-       hull about its own nose instead of pointing it 3 deg off the flight path; and an
-       incidence applied after the bank would tilt the nose about an axis the wings no
-       longer span, which is not the angle the chord-line reading means. */
+glm::dmat3 bedHullTurns(const glm::dmat3 &att, double roll_deg, double yaw_deg,
+                        double aoa_deg) {
+    /* Applied yaw, then bank, then incidence -- att * Ryaw * Rbank * Ralpha -- because
+       post-multiplying makes each turn happen about the axes the previous ones left:
+         yaw about the aimed-but-still-upright +Y, so a sideslip stays a sideslip (bank
+         first and yaw=3 at roll=90 is a spin about the nose instead);
+         bank about the nose that yaw left, so `roll=` never moves the nose;
+         incidence LAST, about the wing span in its FINAL attitude -- the axis drag.h
+         measures alpha about. Incidence before the bank (which is how this first
+         shipped) leaves a banked hull's asked incidence short of the row's AoA: aoa=4
+         with roll=90 read AoA +0.0 and Beta -4.2, the incidence silently converted into
+         sideslip, which is the #459 trap in the ask rather than the readout.
+       No order makes all three exact at once -- with a yaw AND a bank asked together the
+       row's alpha carries a cross term -- so the pairs are pinned in test_scenarios and
+       the triple's residual is stated there rather than here, where it would go stale. */
     glm::dmat3 out = att;
     if(yaw_deg != 0.0) {
         const double r = glm::radians(-yaw_deg);
@@ -502,17 +532,17 @@ glm::dmat3 bedRollYaw(const glm::dmat3 &att, double roll_deg, double yaw_deg,
         out = out * glm::dmat3(glm::dvec3(c, 0.0, -s), glm::dvec3(0.0, 1.0, 0.0),
                                glm::dvec3(s, 0.0, c));
     }
-    if(aoa_deg != 0.0) {
-        const double r = glm::radians(-aoa_deg);
-        const double c = std::cos(r), s = std::sin(r);
-        out = out * glm::dmat3(glm::dvec3(1.0, 0.0, 0.0), glm::dvec3(0.0, c, s),
-                               glm::dvec3(0.0, -s, c));
-    }
     if(roll_deg != 0.0) {
         const double r = glm::radians(roll_deg);
         const double c = std::cos(r), s = std::sin(r);
         out = out * glm::dmat3(glm::dvec3(c, s, 0.0), glm::dvec3(-s, c, 0.0),
                                glm::dvec3(0.0, 0.0, 1.0));
+    }
+    if(aoa_deg != 0.0) {
+        const double r = glm::radians(-aoa_deg);
+        const double c = std::cos(r), s = std::sin(r);
+        out = out * glm::dmat3(glm::dvec3(1.0, 0.0, 0.0), glm::dvec3(0.0, c, s),
+                               glm::dvec3(0.0, -s, c));
     }
     return out;
 }
@@ -876,7 +906,6 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
        frame's axes. Frame::GetOrientRelTo is what the rest of this file uses, and its
        own comment warns against doing the two halves by hand. */
     const glm::dmat3 rotTof = rotFrame->GetOrientRelTo(frame);
-    constexpr double deg = 3.14159265358979323846 / 180.0;
     glm::dvec3 upRot(0.0), eastRot(0.0), northRot(0.0), noseRot(0.0);
     double askedHdg = 0.0;    // the azimuth actually aimed, asked or inherited
     bool aimed = false;
@@ -993,22 +1022,12 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
     const double askAoa = (place && !std::isnan(place->aoa_deg)) ? place->aoa_deg : 0.0;
     glm::dmat3 orient;
     if(aimed) {
-        const glm::dvec3 noseF = rotTof * noseRot;
-        const glm::dvec3 upF = rotTof * upRot;
-        /* Straight up (or down) leaves no horizon to name the roll from. The discrete
-           axis pick would take that case, and it answers with a 90 deg twist a degree
-           either side of vertical -- the hazard #451 removed for flying beds. The
-           continuous limit of faceAlong(nose, up) as pitch -> 90 is the horizon bearing
-           BEHIND the nose, so that is the roll reference here, and `roll=` keeps meaning
-           what it says all the way to a vertical launch. */
-        if(std::fabs(glm::dot(noseF, upF)) > 0.9999) {
-            const double h = askedHdg * deg;
-            const glm::dvec3 behindRot = -(northRot * std::cos(h)
-                                          + eastRot * std::sin(h));
-            orient = faceAlong(noseF, rotTof * behindRot);
-        } else {
-            orient = faceAlong(noseF, upF);
-        }
+        /* One call, no vertical branch: see bedAttitude. `askedHdg` is the azimuth
+           actually aimed -- typed, or inherited from the bed's own path when only pitch=
+           was asked -- and it is what names the roll at vertical, where the local up
+           cannot. */
+        orient = bedAttitude(rotTof * noseRot, rotTof * upRot, rotTof * eastRot,
+                             rotTof * northRot, askedHdg);
     }
     else if(sc.atmo_frac) {
         orient = glm::transpose(frame->root_orient)
@@ -1018,7 +1037,7 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
     else {
         orient = glm::transpose(frame->root_orient) * faceAlong(velWorld);
     }
-    orient = bedRollYaw(orient, askRoll, askYaw, askAoa);
+    orient = bedHullTurns(orient, askRoll, askYaw, askAoa);
     ship->placeShipAtCom(target, orient);
     ship->setVelocity(vel);
 

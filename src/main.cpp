@@ -320,6 +320,11 @@ static bool splitStartship(const std::string &spec, DebugStartShip &out,
                 // Same reason lon is wrapped at the parse: the number the spawn's trig
                 // sees and the number the Spawn line echoes must be one number.
                 num = wrapLonDeg(num);
+            } else if(key == "roll" || key == "yaw") {
+                // Signed wrap: a bank or a sideslip keeps the way it was asked, and an
+                // unwrapped 1e300 would land the hull somewhere arbitrary while clipping
+                // the echo that is supposed to report it.
+                num = wrapSignedDeg(num);
             }
             double DebugStartShip::*slot = key == "speed" ? &DebugStartShip::speed_mps
                                      : key == "heading" ? &DebugStartShip::heading_deg

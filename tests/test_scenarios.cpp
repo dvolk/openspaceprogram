@@ -2618,16 +2618,58 @@ static void check_bed_state() {
     CHECK_NEAR(bedPathAzimuth(up, up, east, north), 0.0, 1e-12,
                "a radial path has nothing across the up to inherit");
 
+    /* The aimed attitude itself, pinned across vertical. Below vertical bedAttitude must
+       pick exactly the hull faceAlong(nose, up) always picked -- it is the same roll
+       reference, written so that it survives where up goes parallel to the nose and
+       faceAlong's own pick degenerates into whichever coordinate plane is nearest (#451).
+       The sign of the term that carries the nose's up-or-down is the whole content AT
+       vertical, and getting it backwards costs 180 deg of roll on the descending half
+       only: a re-entry aimed straight down arrives inverted while its own AoA readout
+       goes on reporting +4.0 for an asked aoa=4, because the hull's +X reversed under it. */
+    for(const double p : { 0.0, 30.0, 89.0, -30.0, -89.0 }) {
+        const glm::dvec3 n = bedNoseDir(up, east, north, 0.0, p);
+        const glm::dmat3 got = bedAttitude(n, up, east, north, 0.0);
+        const glm::dmat3 was = faceAlong(n, up);
+        for(int i = 0; i < 3; i++) {
+            CHECK_NEAR(glm::dot(got[i], was[i]), 1.0, 1e-9,
+                       "short of vertical the roll is exactly what it was");
+        }
+    }
+    for(const double hdg : { 0.0, 90.0, 211.0 }) {
+        const glm::dvec3 ahead = bedNoseDir(up, east, north, hdg, 0.0);
+        const glm::dmat3 up_a = bedAttitude(bedNoseDir(up, east, north, hdg, 90.0),
+                                            up, east, north, hdg);
+        const glm::dmat3 dn_a = bedAttitude(bedNoseDir(up, east, north, hdg, -90.0),
+                                            up, east, north, hdg);
+        /* Nose up: the top trails the azimuth. Nose down: it leads. Both are the
+           continuous limit of the shallow side, which is the only reason there is no
+           threshold sitting in the code to get wrong. */
+        CHECK_NEAR(glm::dot(up_a[1], ahead * -1.0), 1.0, 1e-9, "climbing vertical: top trails");
+        CHECK_NEAR(glm::dot(dn_a[1], ahead), 1.0, 1e-9, "descending vertical: top leads");
+        CHECK_NEAR(glm::dot(up_a[2], up), 1.0, 1e-9, "and the nose is where pitch=90 asked");
+    }
+    /* Straight through the seam, which is the regression these two blocks exist for: at
+       pitch -89.18 the branched version had already rolled the hull 180 deg away from
+       -89.10, while the ascending side stayed smooth. */
+    const glm::dmat3 shallow = bedAttitude(bedNoseDir(up, east, north, 0.0, -89.1),
+                                           up, east, north, 0.0);
+    const glm::dmat3 steep = bedAttitude(bedNoseDir(up, east, north, 0.0, -89.2),
+                                         up, east, north, 0.0);
+    for(int i = 0; i < 3; i++) {
+        CHECK_NEAR(glm::dot(shallow[i], steep[i]), 1.0, 1e-3,
+                   "0.1 deg off vertical does not roll the hull over");
+    }
+
     /* The hull turns, measured against the level basis the bed builds for itself.
        faceAlong(dir, up_ref) puts +Y up, +Z at the nose and +X = cross(Y,Z) on the
-       PILOT'S LEFT, which is why the signs inside bedRollYaw are negated. */
+       PILOT'S LEFT, which is why the signs inside bedHullTurns are negated. */
     const glm::dvec3 flow = bedNoseDir(up, east, north, 0.0, 0.0);
     const glm::dmat3 level = faceAlong(flow, up);
     const glm::dvec3 left = level[0], top = level[1], nav = level[2];
 
     /* roll + drops the RIGHT wing: the top tips toward -X (the pilot's right) and the
        nose does not move at all. */
-    const glm::dmat3 bank = bedRollYaw(level, 20.0, 0.0, 0.0);
+    const glm::dmat3 bank = bedHullTurns(level, 20.0, 0.0, 0.0);
     CHECK_NEAR(glm::dot(bank[1], top), std::cos(20.0 * rad), 1e-12, "bank holds its angle");
     CHECK_NEAR(glm::dot(bank[1], left), -std::sin(20.0 * rad), 1e-12,
                "roll + tips the top toward the pilot's right");
@@ -2637,7 +2679,7 @@ static void check_bed_state() {
        level, and the angle between the nose and the flow is the asked number. That
        angle is the SIDESLIP (Beta) the --drag-log prints, not an angle of attack --
        the nose moved in the yaw plane while the wings stayed flat. */
-    const glm::dmat3 slip = bedRollYaw(level, 0.0, 3.0, 0.0);
+    const glm::dmat3 slip = bedHullTurns(level, 0.0, 3.0, 0.0);
     CHECK_NEAR(glm::dot(slip[1], top), 1.0, 1e-12, "yaw keeps the wings level");
     CHECK_NEAR(glm::dot(slip[2], left), -std::sin(3.0 * rad), 1e-12,
                "yaw + sends the nose to the pilot's right");
@@ -2649,46 +2691,80 @@ static void check_bed_state() {
        is pinned against the law's own AeroFrame rather than a restatement of it, because
        the whole point of the field is that `aoa=4` and the row's `AoA=+4.0` are one
        angle -- and the row's sign is drag.h's, not the hull axes'. */
-    const glm::dmat3 inc = bedRollYaw(level, 0.0, 0.0, 4.0);
+    const glm::dmat3 inc = bedHullTurns(level, 0.0, 0.0, 4.0);
     CHECK_NEAR(std::acos(glm::dot(inc[2], flow)) / rad, 4.0, 1e-9, "aoa=4 sits 4 deg off the flow");
     CHECK_NEAR(glm::dot(inc[2], top), std::sin(4.0 * rad), 1e-12, "aoa + raises the nose");
     CHECK_NEAR(glm::dot(inc[2], left), 0.0, 1e-12, "and buys no sideslip");
-    const glm::dmat3 down = bedRollYaw(level, 0.0, 0.0, -6.0);
+    const glm::dmat3 down = bedHullTurns(level, 0.0, 0.0, -6.0);
     CHECK_NEAR(glm::dot(down[2], top), -std::sin(6.0 * rad), 1e-12,
                "aoa -6 drops the nose below the flow");
     const AeroFrame fr = aeroFrame(flow, inc[0], inc[1], inc[2]);
     CHECK_TRUE(fr.valid, "the law can read this attitude");
     CHECK_NEAR(glm::degrees(fr.alpha), 4.0, 1e-9, "aoa=4 reads AoA +4.0 in drag.h's own frame");
     CHECK_NEAR(glm::degrees(fr.beta), 0.0, 1e-9, "and Beta stays zero");
-    /* Both at once, which is what a polar sweep actually asks for: the incidence does
-       not spend the sideslip. The two angles are NOT symmetric, and the asymmetry is
-       worth pinning -- drag.h reads each as an angle in its own projection plane, so an
-       incidence leaves alpha exactly as asked whatever the yaw does, while the same yaw
-       reads 3.007 rather than 3.000 once 4 deg of incidence tilts the flow out of the
-       yaw plane: the row's beta is atan(tan(yaw) / cos(aoa)). Holding aoa while yawing
-       is therefore exact; holding yaw while pitching is not, by a few thousandths of a
-       degree at these angles. */
-    const glm::dmat3 both_angles = bedRollYaw(level, 0.0, 3.0, 4.0);
+    /* The incidence is applied LAST of the three turns so it lands about the wing span in
+       its FINAL attitude -- the axis the law measures alpha about. That buys exactness
+       under a bank: aoa=4 reads +4.0 wings level, at 30 deg, at 90 deg, and upside down.
+       Applied before the bank (as this first shipped) it is multiplied down instead --
+       asin(sin(aoa) x cos(bank)) -- and aoa=4 with roll=90 read +0.0 while the Spawn line
+       went on echoing "aoa +4.0": the ask had quietly become sideslip, which is #459's
+       one-field-two-meanings inside the ASK rather than the readout. */
+    for(const double bank : { 0.0, 30.0, 90.0, 180.0 }) {
+        const glm::dmat3 t = bedHullTurns(level, bank, 0.0, 4.0);
+        CHECK_NEAR(glm::degrees(aeroFrame(flow, t[0], t[1], t[2]).alpha), 4.0, 1e-9,
+                   "a bank never shortens the asked incidence");
+    }
+    /* Both at once, which is what a polar sweep actually asks for: an incidence held
+       against a sideslip. The two are not symmetric -- drag.h reads each as an angle in
+       its own projection plane, so an incidence leaves alpha exactly as asked whatever the
+       yaw does, while the same yaw reads 3.007 rather than 3.000 once 4 deg of incidence
+       tilts the flow out of the yaw plane: the row's beta is atan(tan(yaw) / cos(aoa)).
+       Hold aoa while sweeping yaw; do not try to hold beta while pitching. */
+    const glm::dmat3 both_angles = bedHullTurns(level, 0.0, 3.0, 4.0);
     const AeroFrame fr2 = aeroFrame(flow, both_angles[0], both_angles[1], both_angles[2]);
     CHECK_NEAR(glm::degrees(fr2.alpha), 4.0, 1e-9, "aoa still reads exactly 4 next to a 3 deg yaw");
     CHECK_NEAR(glm::degrees(fr2.beta), 3.0, 1e-2, "the yaw still reads 3, to the deg or so"
                " an incidence adds in the projection plane");
+    /* The one leak, stated rather than hidden. Ask a bank AND a sideslip together and the
+       hull already reads alpha = atan2(sin(yaw) x sin(bank), cos(yaw)) before any
+       incidence: -2.543 deg at yaw=-6 roll=25, and a full 8 at roll=90, where the
+       sideslip has rotated into the pitch plane. The asked aoa then adds exactly its own
+       degrees ON TOP (+5.457 for aoa=8 there), so the row reads leak + aoa. That is the
+       price of three independently named body turns -- no order of them is exact in all
+       three at once, so this pair is the one to know about. */
+    const double leak = std::atan2(std::sin(-6.0 * rad) * std::sin(25.0 * rad),
+                                   std::cos(-6.0 * rad)) / rad;
+    const glm::dmat3 noinc = bedHullTurns(level, 25.0, -6.0, 0.0);
+    CHECK_NEAR(glm::degrees(aeroFrame(flow, noinc[0], noinc[1], noinc[2]).alpha), leak, 1e-9,
+               "a bank crossed with a sideslip leaks into the measured incidence");
+    const glm::dmat3 leaked = bedHullTurns(level, 25.0, -6.0, 8.0);
+    CHECK_NEAR(glm::degrees(aeroFrame(flow, leaked[0], leaked[1], leaked[2]).alpha), leak + 8.0,
+               1e-9, "and aoa=8 adds exactly 8 deg on top of that leak");
+    /* The bank-alone and yaw-alone cases stay clean, which is why the pair above is worth
+       calling out rather than the general case: a sideslip with the wings level leaks no
+       alpha, and an incidence with the nose on the track leaks no sideslip. */
+    const glm::dmat3 bankonly = bedHullTurns(level, 25.0, 0.0, 0.0);
+    CHECK_NEAR(glm::degrees(aeroFrame(flow, bankonly[0], bankonly[1], bankonly[2]).alpha),
+               0.0, 1e-9, "a bank alone makes no incidence");
+    const glm::dmat3 yawonly = bedHullTurns(level, 0.0, -6.0, 0.0);
+    CHECK_NEAR(glm::degrees(aeroFrame(flow, yawonly[0], yawonly[1], yawonly[2]).alpha),
+               0.0, 1e-9, "and a sideslip alone makes no incidence either");
 
     /* And the order a player reads it in: the yaw happens in the AIMED frame, then the
        bank about the new nose. Bank first and the yaw runs about a banked up axis --
        at roll=90 that is another roll about the nose, so the sideslip stops being a
        sideslip while the spawn line still claims 3 deg. */
-    const glm::dmat3 both = bedRollYaw(level, 90.0, 3.0, 0.0);
-    const glm::dmat3 yaw_then_bank = bedRollYaw(bedRollYaw(level, 0.0, 3.0, 0.0), 90.0, 0.0, 0.0);
+    const glm::dmat3 both = bedHullTurns(level, 90.0, 3.0, 0.0);
+    const glm::dmat3 yaw_then_bank = bedHullTurns(bedHullTurns(level, 0.0, 3.0, 0.0), 90.0, 0.0, 0.0);
     for(int i = 0; i < 3; i++) {
         CHECK_NEAR(glm::dot(both[i], yaw_then_bank[i]), 1.0, 1e-12, "yaw before bank");
     }
     CHECK_NEAR(std::acos(glm::dot(both[2], flow)) / rad, 3.0, 1e-9,
                "a 90 deg bank keeps the 3 deg sideslip it started with");
     printf("  bed state: 4 compass headings, 30 deg of climb, straight up from 3 "
-           "headings, 4 azimuths read back off a path (plus the radial case), a 20 deg "
-           "bank, a 3 deg sideslip and a 4 deg incidence read through drag.h's own"
-           " AeroFrame, all against equirect's horizon\n");
+           "headings, 4 azimuths read back off a path (plus the radial case), the roll "
+           "reference held across both vertical seams, a 20 deg bank, a 3 deg sideslip "
+           "and a 4 deg incidence read through drag.h's own AeroFrame at 4 banks\n");
 }
 
 /* The same five asks through the JSON door, which is a separate parser from
@@ -2753,6 +2829,24 @@ static void check_startship_state() {
         CHECK_TRUE(std::isnan(s.yaw_deg), "yaw stays unasked rather than 0");
         CHECK_TRUE(std::isnan(s.aoa_deg), "aoa stays unasked rather than 0");
     }
+    err = loadEntry("wrap", {{"heading_deg", -45.0}, {"roll_deg", 370.0},
+                             {"yaw_deg", -200.0}}, s);
+    CHECK(err.empty(), "an over-round turn loads");
+    if(err.empty()) {
+        CHECK_NEAR(s.heading_deg, 315.0, 1e-9, "the compass wraps into [0, 360)");
+        /* Signed for a TURN rather than a place: a bank and a sideslip keep the way they
+           were asked, so the echo reads the sentence the author typed. It also bounds the
+           echo's field -- an unwrapped 1e300 printed a clipped 39-digit number and left
+           the hull at whatever that happened to mean. */
+        CHECK_NEAR(s.roll_deg, 10.0, 1e-9, "roll=370 is a 10 deg bank, not a new number");
+        CHECK_NEAR(s.yaw_deg, 160.0, 1e-9, "yaw=-200 wraps the short way round");
+    }
+    err = loadEntry("huge", {{"roll_deg", 1e300}, {"yaw_deg", 1e300}}, s);
+    CHECK(err.empty(), "an absurd turn is wrapped rather than refused");
+    if(err.empty()) {
+        CHECK(std::fabs(s.roll_deg) <= 180.0, "the wrapped bank stays inside the echo's field");
+        CHECK(std::fabs(s.yaw_deg) <= 180.0, "and the wrapped sideslip too");
+    }
     err = loadEntry("neg", {{"speed_mps", -1.0}}, s);
     CHECK(err.find("is a magnitude") != std::string::npos,
           "JSON refuses a backwards speed, as the command line does");
@@ -2765,8 +2859,8 @@ static void check_startship_state() {
     err = loadEntry("str", {{"speed_mps", "fast"}}, s);
     CHECK(err.find("must be a number") != std::string::npos,
           "a string speed refuses rather than reading 0");
-    printf("  startship state JSON: 6 asks landed, NaN when unasked, 4 refusals shared"
-           " with --startship\n");
+    printf("  startship state JSON: 6 asks landed, turns wrapped (signed for a turn,"
+           " [0,360) for a place), NaN when unasked, 4 refusals shared with --startship\n");
 }
 
 int main() {

@@ -2640,15 +2640,15 @@ DebugStartShips loadDebugStartShips(const char *path) {
         struct StateField {
             const char *key;
             double DebugStartShip::*slot;
-            bool wrap;    // a compass angle: one number for the trig and the echo
+            double (*wrap)(double);   // nullptr = take the number exactly as authored
         };
         const StateField kState[] = {
-            {"speed_mps", &DebugStartShip::speed_mps, false},
-            {"heading_deg", &DebugStartShip::heading_deg, true},
-            {"pitch_deg", &DebugStartShip::pitch_deg, false},
-            {"roll_deg", &DebugStartShip::roll_deg, false},
-            {"yaw_deg", &DebugStartShip::yaw_deg, false},
-            {"aoa_deg", &DebugStartShip::aoa_deg, false},
+            {"speed_mps", &DebugStartShip::speed_mps, nullptr},
+            {"heading_deg", &DebugStartShip::heading_deg, wrapLonDeg},
+            {"pitch_deg", &DebugStartShip::pitch_deg, nullptr},
+            {"roll_deg", &DebugStartShip::roll_deg, wrapSignedDeg},
+            {"yaw_deg", &DebugStartShip::yaw_deg, wrapSignedDeg},
+            {"aoa_deg", &DebugStartShip::aoa_deg, nullptr},
         };
         for(const StateField &f : kState) {
             if(!ev.contains(f.key)) { continue; }
@@ -2659,7 +2659,7 @@ DebugStartShips loadDebugStartShips(const char *path) {
                                          + ": \"" + f.key + "\" must be a number");
             }
             double v = cv.get<double>();
-            if(f.wrap) { v = wrapLonDeg(v); }
+            if(f.wrap) { v = f.wrap(v); }
             if(f.key == std::string("speed_mps") && v < 0.0) {
                 throw std::runtime_error(std::string("start ships: entry ")
                                          + std::to_string(i) + " of " + path
