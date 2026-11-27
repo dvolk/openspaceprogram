@@ -649,6 +649,25 @@ PartsCatalog load_parts_catalog(const char *path) {
                                              + "\" (air is the free oxidizer)");
                 }
             }
+            /* A chemical burner cannot throw its OWN propellant faster than its heat
+               allows: 1/2 m_f v_e^2 <= Q m_f, so v_e <= sqrt(2 Q) = 9.3 km/s on
+               constants.h:kJetFuelHeatPerKg. drag.h:jetRamExitSpeed bills the AIR against
+               the burn; this bills the fuel, and it is what ends #1206's "just author a
+               faster nozzle" at the catalogue door rather than in a flight test -- a jet
+               that wants Mach 6 needs a reactor or a second mode, not a bigger number. */
+            const double veCeil = std::sqrt(2.0 * kJetFuelHeatPerKg);
+            if(d.exhaust_velocity > veCeil) {
+                char num[64];
+                std::snprintf(num, sizeof(num), "%.0f", d.exhaust_velocity);
+                char ceilNum[64];
+                std::snprintf(ceilNum, sizeof(ceilNum), "%.0f", veCeil);
+                throw std::runtime_error(ctx + "\"exhaust_velocity\" " + num
+                                         + " m/s is past what burning \""
+                                         + resourceFileKey(ResourceType::JetFuel)
+                                         + "\" can accelerate to (" + ceilNum
+                                         + " m/s): an air-breathing engine needs a fuel "
+                                           "line, not just a nozzle");
+            }
         }
 
         if(pv.contains("capacity")) {

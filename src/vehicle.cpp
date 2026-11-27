@@ -7753,11 +7753,16 @@ void Vehicle::adjustThrottle(float delta) {
    high-altitude jet look several times stronger than it is. Since #630 the gate is
    absolute (the machine's rating intake, constants.h:kAirSeaLevelDensity) and reads
    the body's oxidizer share, so this ceiling is the honest one on a thin or
-   oxygen-free world: a jet's ceiling is EXACTLY 0 on Jool, 0.6 % of its rating on
-   Eve and 0.007 % on Mars -- the air is there, its oxidizer is not -- and a law that
-   sizes a burn with it says so. The peak speed is the honest CEILING -- the ship's
-   own speed only ever lowers the ram term from it, which is what producedThrust()
-   reports. */
+   oxygen-poor world: for the shipped 2 m jet it is EXACTLY 0 on Jool (and Venus,
+   Titan -- share 0), 3.7 % of its rating on Eve and 0.016 % on Mars -- the air is
+   there, its oxidizer barely is -- and a law that sizes a burn with it says so. (The
+   Eve figure was 0.6 % before #1206 and against a 1.7 kg/m3 datum; Eve's authored mix
+   resolves to 3.55 kg/m3 with a 0.096 % O2 trace, so the reading is 3.66 % now.)
+   v_e/2 is the peak only while drag.h's energy cap stays silent -- i.e. for every part
+   in dry air. Once a part is capped (an oxidizer-trace sky, or a nozzle its fuel line
+   cannot fill) the true peak slides down toward the fan term and this under-credits:
+   on Eve the peak is 2.2x the value returned here, at v ~ 50 m/s. Under-credit is the
+   safe direction for a guidance law, so it is left as a caveat rather than a search. */
 static double partThrustCeiling(const Part *p, double rho, const DragAtmosphere &atm) {
     if(p->isJet()) {
         return jetThrust(p->def->exhaust_velocity * 0.5, rho, atm,

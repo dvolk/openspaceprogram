@@ -109,7 +109,7 @@ inline int atmoLevel(const DragAtmosphere &a, double alt) {
    drag, q and jet thrust together (#245). Sub-datum terrain is not exotic: relief is
    SIGNED about the radius (terragen.h:terrainRelief) and only a Flat-sea body clamps
    its floor, so Kerbin's sea beds sit under its datum and so do the valleys of dry
-   air bodies -- Eve (amplitude 5000, 1.7 kg/m3), Mars, Titan. The noise's own floor
+   air bodies -- Eve (amplitude 5000, 3.55 kg/m3 of CO2), Mars, Titan. The noise's own floor
    is -amplitude/3 (the continents term bottoms at -0.7, the mountain term is >= 0,
    and the pair scales by amplitude/2.1), i.e. -1.7 km on Eve, -17 km on Titan.
    Not the exponential continued downward: 1.30 kg/m3 at -336 m already, and
@@ -2250,12 +2250,15 @@ inline double controlCommandFrac(double stick, double trimFrac) {
 /* The OXIDIZER half of the jet gate, on its own: how much of a rated intake's oxidizer
    MASS this air can feed a burner, in [0, 1], whatever the density. A turbine does not
    burn "air", it burns fuel against the oxidizer dissolved in it, so a world can be at
-   full sea-level density and still be a dead engine: Eve's 1.7 kg/m3 and Duna's 0.015
-   are CO2, Jool's 2.0 is H2 and He -- H2 is the fuel, and there is nothing here to burn
-   it with. oxidizer_share (kilograms of oxidizer per kilogram of air) comes off the
-   body's authored composition via atmo.h:resolveMix, which is the only reason the game
-   can say so. Richer-than-dry-air gets 1, not more: extra oxygen does not make a fan
-   push harder. Fails CLOSED on NaN or a share of 0. */
+   full sea-level density and still be a dead engine: Jool's 2.0 kg/m3 of H2 and He is
+   exactly that -- H2 is the fuel, and there is nothing here to burn it with (share 0,
+   gate 0). Venus (65 kg/m3) and Titan (5.3, N2/CH4/H2) likewise. Eve is the near case and
+   the easy one to get wrong: its datum air is 3.55 kg/m3 of CO2 with a 0.096% O2 trace,
+   which is a share of 0.000959 -- a live engine at 0.4 % of its rating, not a dead one.
+   oxidizer_share (kilograms of oxidizer per kilogram of air) comes off the body's
+   authored composition via atmo.h:resolveMix, which is the only reason the game can say
+   so. Richer-than-dry-air gets 1, not more: extra oxygen does not make a fan push harder.
+   Fails CLOSED on NaN or a share of 0. */
 inline double jetOxGate(double oxidizer_share) {
     const double rated = dryAirOxidizerShare();
     if(!(oxidizer_share > 0.0) || !(rated > 0.0)) { return 0.0; }  // NaN fails closed
@@ -2279,10 +2282,12 @@ inline double jetOxGate(double oxidizer_share) {
      the oxidizer:  rho x oxidizer_share, against the same rating density times dry
        air's oxidizer share (0.231 kg of O2 per kg of air). A turbine does not burn
        "air", it burns fuel against the oxidizer IN the air, so a world can be at
-       full sea-level density and still be a dead engine: Eve's 1.7 kg/m3 and Duna's
-       0.015 are CO2, Jool's 2.0 is H2 and He -- H2 is the fuel, and there is nothing
-       here to burn it with. oxidizer_share comes off the body's authored composition
-       (atmo.h:resolveMix, terragen.h), which is the only reason the game can say so.
+       full sea-level density and still be a dead engine: Jool's 2.0 kg/m3 is H2 and
+       He -- H2 is the fuel, and there is nothing here to burn it with. Eve (3.55 kg/m3
+       of CO2 at the datum) and Duna (0.015) carry the same 0.096 % O2 trace as Mars,
+       so they are not dead, just 0.4 % and 0.012 % of a rated engine.
+       oxidizer_share comes off the body's authored composition (atmo.h:resolveMix,
+       terragen.h), which is the only reason the game can say so.
 
    Both halves fail CLOSED on NaN or a non-positive input: no air, no oxidizer, no
    thrust and no burn. A jet is the only engine in the game whose thrust depends on
@@ -2307,28 +2312,69 @@ inline double jetAirGate(const DragAtmosphere &a, double rho) {
     return jetAirGate(rho, a.oxidizer_share);
 }
 
+/* How fast the captured air can leave the nozzle [m/s]: the authored v_e, unless the fuel
+   this engine ACTUALLY burns cannot heat that air up to it (#1206).
+   Momentum out of a nozzle costs kinetic energy in the flow,
+        1/2 * m_air * (v_exit^2 - v^2)  <=  Q * m_f_burnt
+   so the exit speed the burn can afford is sqrt(v^2 + 2 Q m_f_burnt / m_air). Below the
+   rating density both sides scale with rho -- the intake swallows rho*A*v and the gated
+   burn is m_f*rho/1.225 -- so the affordable EXIT SPEED is density-free; what dense air
+   buys is more air per watt. Above the rating density the burn is already at its rating
+   while the intake keeps swallowing, so the margin does shrink with density: the worst
+   ask over test_aerosweep's whole rho x v sweep is at 3.55 kg/m3 (denser than Kerbin at
+   rest, which no oxidizer-carrying shipped sky is) and still leaves 1.09x. That is why a
+   part's ceiling here is a statement about v*(v_e^2 - v^2) against 2*Q*rate/(1.225*A):
+   the r1 jet's fuel line affords 975 m/s at its ram peak against an authored 550, and the
+   hardest ask anywhere in [0, v_e] is 64e6 against the 241e6 the fuel could pay, so no
+   shipped part is touched in dry air.
+   #1206's demo part (a 0.5 m jet re-declared: fan 3000, 3.0 kg/s, v_e 3200, A 0.35) is:
+   at 2400 m/s in 20 km air the burn affords 2452 m/s, not 3200, and its total thrust goes
+   64.7 kN -> 5.09 kN. At sea level and 1000 m/s, 956 kN -> 126 kN. */
+inline double jetFuelAffordedExitSpeed(double speed, double airMassRate, double burnRate) {
+    if(!(airMassRate > 0.0) || !(burnRate > 0.0)) { return speed; }  // nothing flowing or burning adds nothing
+    return std::sqrt(speed * speed + 2.0 * kJetFuelHeatPerKg * burnRate / airMassRate);
+}
+
+/* What the engine actually throws: the affordable exit speed above, unless the part's
+   own authored v_e is the smaller of the two -- a nozzle still cannot promise more than
+   the machine is built to. The law's ceiling, in other words: min(pay, promise). */
+inline double jetRamExitSpeed(double speed, double airMassRate, double burnRate,
+                              double v_e) {
+    const double afford = jetFuelAffordedExitSpeed(speed, airMassRate, burnRate);
+    return (v_e < afford) ? v_e : afford;
+}
+
 /* JET ENGINE (air-breathing) thrust, newtons:
-     T(v, rho) = T_fan·d  +  ṁ_f·v_e·d  +  jetOxGate·rho·A·v·(v_e − v)
+     T(v, rho) = T_fan·d  +  ṁ_f·v_e·d  +  ṁ_air·(v_exit − v)
                                             d = jetAirGate(rho, oxidizer_share)
-   d gates the fan + fuel terms on the usable intake. The ram term is the air the
-   intake captures (rho·A·v) thrown out the back at v_e, so it scales with the raw
+                                       ṁ_air = rho·A·v, the air the intake captures
+                                       v_exit= jetRamExitSpeed(v, ṁ_air, ṁ_f·d, v_e)
+   d gates the fan + fuel terms on the usable intake. The ram term scales with the raw
    density the hull is moving through -- NOT with d, which would bill thin air twice
    and quietly halve Kerbin cruise thrust at altitude.
-   It is still NOT free: the momentum has to come from somewhere, and the only source
-   is fuel burned against this air's oxidizer, so jetOxGate -- the oxidizer half of the
-   gate on its own, without the density term the rho already carries -- pays for it.
-   Without that the law contradicts itself on a CO2 world: Mars (0.02 kg/m3, 0.1 % of
-   its air is O2) would bill the fan 6 N and hand back 530 N of ram for a fuel flow the
-   gate has already cut to 8e-5 kg/s, and Eve's 1.7 kg/m3 of CO2 would be a full-power
-   engine at the exact moment its fan goes dead. An intake that cannot burn is a hole,
-   not an engine. */
+   It is still NOT free, and #1206 is what that has to mean. The momentum comes from fuel
+   burned against this air's oxidizer, so two things pay, in order:
+     - the COMPOSITION pays at the door: no oxidizer gates d to 0 and the whole engine is
+       0, so Jool's 2.0 kg/m3 of H2 and He, Venus's 65 and Titan's 5.3 are holes in the
+       hull, not engines;
+     - the AMOUNT of the burn pays on the exhaust: v_exit is capped at what the gated fuel
+       flow can heat the captured air to.
+   The law used to pay the second bill with jetOxGate -- the oxidizer half of the gate
+   again, as a multiplier on the ram term. Right instinct, wrong currency: on Mars's datum
+   (0.02 kg/m3, a 0.1 % O2 trace) it cut 530 N of ram to 2.2 N for a burn of 8.1e-5 kg/s,
+   when what that burn affords is 6.5 m/s added to 1.9 kg/s of flow -- 12.5 N. Capping the
+   exit speed is the same refusal in energy rather than in a factor, and it holds at every
+   density and every authored v_e, which is what makes a high-speed jet authorable at all.
+   It is also less stingy where the old factor was doing the arithmetic twice: on Eve's
+   datum the same shipped jet's ram rises x5.7 at the ram peak (total 1479 -> 3318 N). */
 inline double jetThrust(double v, double rho, double oxidizer_share,
                         double T_fan, double m_f, double v_e, double A) {
     const double d = jetAirGate(rho, oxidizer_share);
     if(d <= 0.0) { return 0.0; }   /* no usable air -> no thrust */
     const double speed = (v < 0.0) ? 0.0 : v;
-    const double T = T_fan * d + m_f * v_e * d
-                     + jetOxGate(oxidizer_share) * rho * A * speed * (v_e - speed);
+    const double airRate = rho * A * speed;
+    const double exit = jetRamExitSpeed(speed, airRate, m_f * d, v_e);
+    const double T = T_fan * d + m_f * v_e * d + airRate * (exit - speed);
     return (T < 0.0) ? 0.0 : T;
 }
 

@@ -35,7 +35,11 @@ HYDRAZINE_DENSITY = 100.0        # kg/m^3, monopropellant hydrazine (mono)
 # occupy (#1120 removed the round inline pods that came with exactly that
 # fiction). Reach is rcsReachableAlong() in src/rcs.h, never the installed figure.
 
-# Jet (air-breathing): T = T_fan + m_f*V_E + rho*A*v*(V_E - v) (src/drag.h jetThrust)
+# Jet (air-breathing): T = T_fan*d + m_f*V_E*d + rho*A*v*(v_exit - v), with d the
+# air/oxidizer gate and v_exit = min(V_E, what the gated burn can heat the captured
+# air to) -- src/drag.h jetThrust. The cap is the reason the rate and the intake area
+# are authored together: rate/INTAKE is what pays for the ram, and tests/test_aerosweep
+# sweeps every shipped jet over density x speed to keep that above 1.0.
 JET_FAN_PER_M2    = 90000.0      # N, static (fan) thrust at radius = 1 m
 JET_EXH_VEL       = 550.0        # m/s, the real exhaust velocity (not a knob)
 JET_INTAKE_PER_M2 = 0.35         # m^2, effective intake area at radius = 1 m

@@ -280,8 +280,10 @@ static void test_fuel_flow() {
  * the fuel follow jetAirGate, which divides by the machine's RATING intake (1.225 kg/m3,
  * constants.h) rather than by this body's own sea level: this rig's 1.0 kg/m3 datum is
  * 0.816 of a rated intake, so the fan term is 1100E/1.225 = 898E. The ram term is the
- * air the intake actually captures -- raw rho, which here is E kg/m3 -- and it is paid
- * for by jetOxGate, 1.0 for a body that authors no composition (dry air). Both halves
+ * air the intake actually captures -- raw rho, which here is E kg/m3 -- and it is bounded
+ * by what the gated burn can heat that air to (drag.h:jetRamExitSpeed), which stays
+ * silent at this rating: 0.72 kg/s of burn against 17.7 kg/s of flow affords a 1.9 km/s
+ * exit, well past the authored 1 km/s. Both halves
  * are hand-checkable in the same way; they just no longer move together, which is what
  * a CO2 world looks like (test_jet.cpp pins that case).
  */

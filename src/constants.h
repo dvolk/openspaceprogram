@@ -112,6 +112,37 @@ inline constexpr double kAirGamma = 1.4;           // cp/cv, diatomic
    Where: drag.h:jetAirGate. */
 inline constexpr double kAirSeaLevelDensity = 1.225;  // [kg/m^3]
 
+/* Jetfuel's heat of combustion [J/kg], kerosene-like. The ONLY number in the game that
+   says an air-breathing engine's momentum comes from its fuel: the ram term of
+   drag.h:jetThrust throws the captured air out the back, and the heat that can accelerate
+   that air is what the burn releases (#1206). Without it the law is a pump: #1206's demo
+   part (fan 3000, 3.0 kg/s, v_e 3200, 0.35 m2, 43.75 kg) reports 64.7 kN at 2400 m/s in
+   20 km air while handing 178 MW to the flow on a 10 MW fire, and 956 kN / 2.0 GW at sea
+   level on 129 MW.
+   It is spent at full value -- no thermal loss, no nozzle loss -- so the bound it sets is
+   generous. It exists to make an unaffordable engine impossible, not to model a burner;
+   the losses belong with the inlet thermal choke, also #1206.
+   What it does NOT bill yet, in this law or any other:
+     - the FAN. T_fan*d has no attached mass flow, so it costs nothing here, yet an ideal
+       actuator disc making 90 kN through 0.35 m2 wants 29.2 MW (57% of this part's whole
+       fire; 63% for the 0.5 m jet). The shipped parts still pass a whole-engine budget
+       (42.8 MW of 51.6, and 2.68 of 3.01), so the budget is close enough to be worth
+       closing -- an open ticket, not this constant's problem.
+     - the fuel's own momentum m_f*v_e*d, which is implicitly paid only while
+       v_e <= sqrt(2 Q) = 9274 m/s. shipdef.cpp now refuses a catalogue jet above that.
+     - the difficulty knobs: --exhaust-scale (0.5-5.0) multiplies a jet's thrust OUTSIDE
+       this cap, by design, exactly as it does a rocket's.
+   Changes: a jet in DRY air is bit-identical (the r1 jet's allowed exit speed is 975 m/s
+   at its ram peak against an authored 550; the cap first bites the 2 m jet at
+   4.60 kg/m3, denser than any dry-air sky in the game). A jet in an OXIDIZER-TRACE air is
+   NOT unchanged: the old law charged the ram term twice -- once through the gate, once
+   again as a jetOxGate multiplier -- so the shipped 2 m jet gains on Eve's datum (3.55
+   kg/m3, share 0.000959) from 1479 N to 3318 N at 275 m/s (x2.24 on the total, x5.7 on
+   the ram, more at other speeds). Eve, Mars and Duna all author that CO2-trace mix, so
+   all three move; they remain engines too weak to matter.
+   Where: drag.h:jetRamExitSpeed, shipdef.cpp. */
+inline constexpr double kJetFuelHeatPerKg = 43.0e6;
+
 /* Aero skip floor [kg/m^3]: below this density the per-part silhouette
    pass is not worth computing. A PERFORMANCE floor, not a physical one
    (the physical top is the atmosphere height).
