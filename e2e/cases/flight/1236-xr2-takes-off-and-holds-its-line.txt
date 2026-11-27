@@ -1,0 +1,89 @@
+NAME xr2-takes-off-and-holds-its-line
+CLAIM The XR-2 releases its brakes, rolls 20 s down the runway and leaves it at 131.9 m/s, and with its lever held at 0.4 it climbs to 3.2 km and SETTLES: the altitude swing over its second hundred seconds is 773 m and over its last 379 m, its angle of attack never leaves 2.7..2.9 deg, it never drops below 2.1 km, and on every row the thrust the sim armed is the single-stream law for its 0.35 m2 mouth at 40% of the machine.
+KIND golden
+# WHY THIS CASE EXISTS. #1236 filed the XR-2 as a hull that "dives, climbs 5 km and nearly
+# stalls instead of flying level", blamed FormCp = +2.6..+3.7 m (the along-flow push landing
+# metres in FRONT of the balance point, the #1203 shape) and asked for trim or shape to fix
+# it. Measured here with the engine actually running, that diagnosis is wrong on both counts
+# and this case is the bar the corrected one needs:
+#
+#   IT SETTLES. From the runway at a fixed lever the phugoid decays monotonically -- the
+#   altitude band over everything from t=60 on is 1069 m, from t=200 on 716 m, from t=300 on
+#   379 m -- and the hull holds 2.1..3.2 km at 129..155 m/s. From the flying bed at the same
+#   lever it is tighter
+#   still (36 m of spread over the last minute at 7.7 km). FormCp +3.3 m is real and it is
+#   not the blocker: the lift system's +0.68 m static margin wins on every row.
+#
+#   WHAT IS ACTUALLY BAD IS THE THROTTLE, NOT THE TRIM. At the spawn default (lever 1.0) the
+#   same hull has 105.0 kN of static thrust against 39.7 kN of weight -- T/W 2.65 -- and
+#   hands-off it yo-yos 2.5 km, from the runway or from the air, and the spaceplane (also one
+#   2 m jet, 4061 kg) yo-yos 2.5 km too, so it is the class, not this airframe. Sweeping the
+#   authored elevator trim 4/8/12/16/18 changes that band by at most 500 m and puts the hull
+#   in the ground at some settings (trim 4 dives through the deck; trim 8 at lever 0.6 ends
+#   up, down and underground), so neither of #1236's fix ideas -- mass forward, real trim --
+#   reaches it. Engine/hull matching is its own decision and its own ticket; the lever does
+#   fix it (band 333 m for the spaceplane at 0.4, 379 m here), which is why the sane setting
+#   is what deserves pinning while #1236 stays open on the full-lever case.
+#
+# THE RIG, because three measurements in a row were wrong without it. Brakes latch on at
+# spawn, so O has to be pressed or nothing ever moves (measured: v 0.00 for 400 s). Thrust is
+# a HELD command: the engine burns only while ShipCmd(Thrust) is being sent, so a --sim-press
+# window that closes mid-flight turns every later row into a glide -- which is exactly how a
+# 90 s press read as a "4.8 km limit cycle" and a 0.5 s one as "cannot hold level flight at
+# 0.3 throttle". T is therefore held past the end of the run. R/F move the lever at 0.6 per
+# second from its 1.0 default, so one 1 s F press lands it on 0.4004 (the rows below read
+# 0.11% off the 0.4 law at t=4 s).
+ARGS --time-accel 1 --startship xr2,res/ships/xr2.json,Kerbin,pad,ksc_runway
+ARGS --sim-steps 24000 --drag-log --drain-log --mass-log --no-paint
+ARGS --sim-press 500,0,O
+ARGS --sim-press 1000,2400000,T
+ARGS --sim-press 2000,1000,F
+EXPECT [drag]
+EXPECT [drainlog]
+EXPECT [mass]
+# Row counts first: the pairing below walks two lists positionally, and all() over an empty
+# or half-parsed list is true (#653).
+CHECK len(drag) >= 380
+CHECK len(drainlog) >= 760
+# THE ROLL. The hull starts on the deck at rest and the deck run is short: 20 one-second rows
+# below 300 m and the last of them at 131.9 m/s of air. Both halves matter -- a hull that
+# lifts off at 40 m/s is a wheel-walk and one that needs 200 m/s has no runway -- so the
+# window is on the rotation speed, not just on "it got up".
+CHECK all(d["v"] < 1.0 for d in drag if d["t"] <= 1)
+CHECK len([d for d in drag if d["alt_asl"] < 300 and d["t"] < 60]) == 20
+CHECK 125 < max(d["v"] for d in drag if d["alt_asl"] < 300) < 140
+# THE LAW AT A SET LEVER (#1206). --drag-log prints one row per second and --drain-log one
+# per half second, so drainlog[1::2] carries drag[i]'s own second. Rows before t=4 are
+# excluded because the F press is still ramping there (t=2 reads the 1.0 default). What the
+# sim arms must be lever x 1/2 rho A (v_e^2 - v^2) for the authored 0.35 m2 mouth -- and this
+# is the only case that runs the jet PART-OPEN: every other jet pin runs the lever at its
+# 1.0 default, so a lever that ignored the throttle would pass all of them.
+CHECK all(abs(x["thrust"] - 0.4*0.5*d["rho"]*0.35*(490000.0 - d["v"]*d["v"])) < 0.025*x["thrust"] for d,x in zip(drag, drainlog[1::2]) if d["t"] >= 4)
+# HOLDS A LINE. Over the last hundred seconds the hull's altitude swings 379 m and its speed
+# 129..153 m/s at Mach 0.42 -- a phugoid, not the 2.5 km yo-yo #1236 describes. 450 m leaves
+# room for an aero change of a few percent and still reddens anything like the full-lever
+# band. The two windows also pin the DAMPING, which is the part of the claim the flat band
+# alone would not: measured 773 m across t=60..120 against 379 m across t=300..400, so the
+# first window swings twice the last.
+CHECK max(d["alt_asl"] for d in drag if d["t"] >= 300) - min(d["alt_asl"] for d in drag if d["t"] >= 300) < 450
+CHECK (max(d["alt_asl"] for d in drag if 60 <= d["t"] < 120) - min(d["alt_asl"] for d in drag if 60 <= d["t"] < 120)) > 600
+CHECK max(d["alt_asl"] for d in drag if d["t"] >= 300) - min(d["alt_asl"] for d in drag if d["t"] >= 300) < max(d["alt_asl"] for d in drag if 60 <= d["t"] < 120) - min(d["alt_asl"] for d in drag if 60 <= d["t"] < 120)
+# And it is FLYING while it does that: never under 2 km after the climb, never stalled (the
+# authored trim holds alpha at 2.7..2.9 deg through the whole arc, so the wing is nowhere
+# near its stall angle), never near the 700 m/s nozzle wall the engine stops at.
+CHECK min(d["alt_asl"] for d in drag if d["t"] >= 120) > 2000
+CHECK all(2.4 < d["aoa"] < 3.3 for d in drag if d["t"] >= 60)
+CHECK max(d["mach"] for d in drag) < 0.55
+CHECK all(120 < d["v"] < 160 for d in drag if d["t"] >= 120)
+# THE VAB's static margin, carried from the roll through the climb: +0.68..+0.71 m. The row
+# that dashes it is the one at rest on the deck (alt 251.5 m), where there is no flow to
+# measure a lifting system against.
+CHECK all(0.66 < d["sm"] < 0.73 for d in drag if d.get("sm") is not None)
+# THE MOUTH THE AIR CAN REACH (#1207), pinned on the runway rig rather than the bed: the
+# nacelle sits behind pod, tanks and nose the whole time, so the exposure column reads 0.00
+# even as the hull rotates and climbs. This is the number an inlet bill would have to move,
+# and the 41 kN the rows above pin is metered against the whole authored mouth regardless.
+CHECK all(d.get("jetA") == 0.0 for d in drag)
+# The hull those numbers are quoted for: 27 parts, 4044.24 kg with both tanks full, no crew.
+CHECK any(m["ship"] == "xr2" and m["parts"] == 27 and abs(m["mass"] - 4044.24) < 1.0 for m in mass)
+FORBID error:

@@ -7,10 +7,10 @@ kind says how much weight the assertions carry.
 | kind | meaning | cases |
 |---|---|---|
 | `invariant` | a behaviour or a player route the game must keep | 488 |
-| `golden` | tuned numbers or a content table -- update deliberately when tuning | 58 |
+| `golden` | tuned numbers or a content table -- update deliberately when tuning | 59 |
 | `harness` | CLI/test-engine plumbing, not game spec | 18 |
 | `canary` | only proves the thing boots | 4 |
-| | **total** | **568** |
+| | **total** | **569** |
 
 The whole battery runs: `python3 e2e/run.py` with no selectors, or
 `make e2e-all` -- which is what `make release` runs. Nothing caps or
@@ -18,7 +18,7 @@ paces a run: how much e2e a change deserves is the caller's
 judgement. Select by number, name or path, e.g.
 `python3 e2e/run.py save/172 262`.
 
-## flight (190)
+## flight (191)
 
 | case | kind | pins |
 |---|---|---|
@@ -212,6 +212,7 @@ judgement. Select by number, name or path, e.g.
 | `flight/1206-xr2-throttle-open-envelope.txt` | golden | The XR-2 is the hull that carries the 2 m jet -- 0.35 m2 of mouth, a 700 m/s nozzle, a 105.0 kN machine, a 1.4 kg/s pump. 4044.2 kg of tanks-full hull spawned at 84.9 m/s and 8.5 km with the throttle pinned open for 90 s: on EVERY row the thrust the sim actually arms -- [drainlog]'s own figure -- is the single-stream 1/2 rho A (v_e^2 - v^2) for that mouth, to within 2.4%, and the drain that pays for it runs 0.452 kg/s at 224.7 m/s in the low field and 0.227 kg/s at 63 m/s up at 12.5 km. One stream, metered against the air the mouth catches, at both ends of the arc -- and the hull stands in front of that mouth: the silhouette lets the flow reach none of its 0.35 m2, so the engine is credited air its own hull is blocking (#1207). |
 | `flight/1215-heavy-plane-rolls-off-the-runway.txt` | invariant | A 4 t plane stands on its springs and rolls down the runway and leaves it. |
 | `flight/1223-a-start-ship-spawns-at-an-angle-of-attack.txt` | invariant | aoa= hands the hull the angle of attack the aero law measures (+ = nose above the flow), while pitch= leaves that angle at zero and moves the flight path instead. |
+| `flight/1236-xr2-takes-off-and-holds-its-line.txt` | golden | The XR-2 releases its brakes, rolls 20 s down the runway and leaves it at 131.9 m/s, and with its lever held at 0.4 it climbs to 3.2 km and SETTLES: the altitude swing over its second hundred seconds is 773 m and over its last 379 m, its angle of attack never leaves 2.7..2.9 deg, it never drops below 2.1 km, and on every row the thrust the sim armed is the single-stream law for its 0.35 m2 mouth at 40% of the machine. |
 
 ## crew (43)
 
