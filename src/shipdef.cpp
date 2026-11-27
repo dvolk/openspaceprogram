@@ -2536,7 +2536,9 @@ DebugStartShips loadDebugStartShips(const char *path) {
            asking for nothing, and the ship would fly to the bed's own place while
            the Spawn line printed no placement at all -- the exact typo splitStartship
            (main.cpp) refuses on the command line. */
-        static const char *const kOptional[] = {"site", "lat_deg", "lon_deg", "alt_m"};
+        static const char *const kOptional[] = {"site", "lat_deg", "lon_deg", "alt_m",
+                                                "speed_mps", "heading_deg", "pitch_deg",
+                                                "roll_deg", "yaw_deg"};
         for(const auto &kv : ev.items()) {
             bool known = false;
             for(const char *const field : kStartShipFields) {
@@ -2550,7 +2552,8 @@ DebugStartShips loadDebugStartShips(const char *path) {
                                          + std::to_string(i) + " of " + path
                                          + ": unknown field \"" + kv.key() + "\" (known:"
                                          + " ship, name, body, scenario, site,"
-                                         + " lat_deg, lon_deg, alt_m)");
+                                         + " lat_deg, lon_deg, alt_m, speed_mps,"
+                                         + " heading_deg, pitch_deg, roll_deg, yaw_deg)");
             }
         }
         e.ship = ev["ship"].get<std::string>();
@@ -2624,6 +2627,50 @@ DebugStartShips loadDebugStartShips(const char *path) {
                                          + " so it must be positive");
             }
             e.alt_m = cv.get<double>();
+        }
+        /* The bed's STATE (#1220): the same asked-or-NaN shape as alt_m, and the same
+           split of who answers what. Numbers that mean nothing on their own -- a speed
+           nobody travels backwards at, a pitch past the vertical -- refuse here, as
+           splitStartship (main.cpp) refuses them on the command line; the ones that
+           depend on the BED (a pad bed has the ground's state, an ellipse bed's state
+           is its two apsides) refuse in build_start_vehicles, where the scenario is
+           known and the message can name it -- which is also the backstop for these two
+           if a route ever appears that bypasses a parser. */
+        struct StateField {
+            const char *key;
+            double DebugStartShip::*slot;
+            bool wrap;    // a compass angle: one number for the trig and the echo
+        };
+        const StateField kState[] = {
+            {"speed_mps", &DebugStartShip::speed_mps, false},
+            {"heading_deg", &DebugStartShip::heading_deg, true},
+            {"pitch_deg", &DebugStartShip::pitch_deg, false},
+            {"roll_deg", &DebugStartShip::roll_deg, false},
+            {"yaw_deg", &DebugStartShip::yaw_deg, false},
+        };
+        for(const StateField &f : kState) {
+            if(!ev.contains(f.key)) { continue; }
+            const nlohmann::json &cv = ev[f.key];
+            if(!cv.is_number() || !std::isfinite(cv.get<double>())) {
+                throw std::runtime_error(std::string("start ships: entry ")
+                                         + std::to_string(i) + " of " + path
+                                         + ": \"" + f.key + "\" must be a number");
+            }
+            double v = cv.get<double>();
+            if(f.wrap) { v = wrapLonDeg(v); }
+            if(f.key == std::string("speed_mps") && v < 0.0) {
+                throw std::runtime_error(std::string("start ships: entry ")
+                                         + std::to_string(i) + " of " + path
+                                         + ": \"speed_mps\" is a magnitude -- turn around"
+                                         + " with heading_deg or yaw_deg instead");
+            }
+            if(f.key == std::string("pitch_deg") && std::fabs(v) > 90.0) {
+                throw std::runtime_error(std::string("start ships: entry ")
+                                         + std::to_string(i) + " of " + path
+                                         + ": \"pitch_deg\" must be in [-90, 90] deg off"
+                                         + " the local horizon");
+            }
+            (e.*(f.slot)) = v;
         }
         list.ships.push_back(e);
     }

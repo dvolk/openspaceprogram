@@ -458,6 +458,52 @@ glm::dmat3 faceAlong(const glm::dvec3 &dir, const glm::dvec3 &up_ref)
     return glm::dmat3(x, y, z);
 }
 
+/* An asked bed aim (#1220). The compass pair first: heading from local NORTH toward
+   east (the atlas reading; buildingair's heading is about a platform deck's +X, which is
+   a different quantity), pitch up out of the plane that basis spans. The basis is the
+   caller's, so this stays axis-agnostic -- spawn_vehicle hands it the body's ROTATING
+   frame, the one equirect.h owns.
+   |pitch| = 90 is a direction, not a singularity: cos(p) carries the heading terms away
+   and the answer is straight up (or down), where a heading asks for nothing. */
+glm::dvec3 bedNoseDir(const glm::dvec3 &up, const glm::dvec3 &east,
+                      const glm::dvec3 &north, double heading_deg, double pitch_deg) {
+    const double h = glm::radians(heading_deg), p = glm::radians(pitch_deg);
+    const double cp = std::cos(p);
+    return glm::normalize(north * (std::cos(h) * cp) + east * (std::sin(h) * cp)
+                          + up * std::sin(p));
+}
+
+/* Then the two turns the FLIGHT PATH does not take: roll about the hull's +Z and yaw
+   about its +Y, post-multiplied so they read as body-frame turns. faceAlong(dir, up)
+   builds the hull as (left, up, nose) -- x = cross(y, z), so +X is the pilot's LEFT --
+   and the signs below are chosen for the reading a player types, not for the axes:
+     roll +  tips the top toward -X, i.e. the RIGHT wing down (bank right);
+     yaw +   sends the nose toward the pilot's right, so it needs Ry(-yaw), since the
+             right-hand rule about +Y would send it toward +X = left.
+   That is the same sense as heading above (clockwise seen from above) and the opposite
+   of the hull axes, which is worth knowing when reading a --drag-log Beta row back into
+   a spawn line. tests/test_scenarios.cpp pins both against the basis. */
+glm::dmat3 bedRollYaw(const glm::dmat3 &att, double roll_deg, double yaw_deg) {
+    /* Yaw first (about the aimed-but-still-upright +Y), then roll about the nose.
+       Post-multiplying in the other order banks first and yaws about the BANKED up
+       axis, so roll=90 with yaw=3 would spin the hull about its own nose instead of
+       pointing it 3 deg off the flight path. */
+    glm::dmat3 out = att;
+    if(yaw_deg != 0.0) {
+        const double r = glm::radians(-yaw_deg);
+        const double c = std::cos(r), s = std::sin(r);
+        out = out * glm::dmat3(glm::dvec3(c, 0.0, -s), glm::dvec3(0.0, 1.0, 0.0),
+                               glm::dvec3(s, 0.0, c));
+    }
+    if(roll_deg != 0.0) {
+        const double r = glm::radians(roll_deg);
+        const double c = std::cos(r), s = std::sin(r);
+        out = out * glm::dmat3(glm::dvec3(c, s, 0.0), glm::dvec3(-s, c, 0.0),
+                               glm::dvec3(0.0, 0.0, 1.0));
+    }
+    return out;
+}
+
 /* Rodrigues: `v` turned by `ang` [rad] about the UNIT `axis`. Written out instead
    of through a quaternion because a bed turn rotates three vectors and builds no
    attitude, and vehicle.cpp builds attitudes with faceAlong, not quaternions. */
@@ -564,6 +610,9 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
        scenario ran, and only this says the height is not the one that scenario authors. */
     char place_txt[96] = "";
     char alt_txt[48] = "";
+    /* ... and state_txt for an asked speed/aim (#1220), which is the third way a Spawn
+       line can disagree with the scenario name beside it. */
+    char state_txt[160] = "";
     double place_tilt = 0.0;
 
     if(sc.ell_phase >= 0) {
@@ -777,6 +826,82 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
         vel += wind_rot;
     }
 
+    /* An asked STATE (#1220): speed=/heading=/pitch=/roll=/yaw= on --startship (and the
+       same five in --startships JSON). The door has already refused them on a pad bed and
+       on an ellipse bed, so what is left is a circular bed: a radius, a direction and a
+       speed. The speed replaces the one the radius implied; (heading, pitch) replaces the
+       direction the bed's own orbit had; (roll, yaw) turn the hull about its own axes
+       after both, which is how you spawn an airframe at an angle of attack rather than
+       along its flow.
+       `speed_mps` is AIR-relative on a bed that reads air -- the same reference the
+       speed_load block above uses, so a windy body still starts the hull at the asked
+       airspeed -- and frame-relative on a circular bed that reads none. Nothing re-solves
+       the orbit: ask for 9 km/s on a 700 km circle and the bed gives you that state, on
+       whatever conic gravity then makes of it. That is the point of the knob -- a
+       measurement wants a state, not an equilibrium. */
+    Frame *rotFrame = home->frame->getRotFrame();
+    glm::dvec3 noseRot(0.0), upRot(0.0);   // rot-frame axes; only set when an aim was asked
+    bool aimed = false;
+    if(place && place->pathAsked()) {
+        /* The local horizon is the body's SPIN frame's, because that is the basis
+           equirect.h owns. A flying bed is already in it (asserted above); an inertial
+           bed resolves elsewhere, so the basis is built in rot axes and carried into
+           `frame` where it is used, rather than assumed to be the same frame. */
+        const glm::dvec3 posRot = glm::transpose(rotFrame->root_orient)
+                                * (shipWorldPos - rotFrame->root_pos);
+        const double rl = glm::length(posRot);
+        if(rl <= 1e-9) {
+            throw std::runtime_error("spawn: bed '" + std::string(sc.name) + "' cannot aim:"
+                " heading/pitch need a horizon, and this bed sits at " + home->name
+                + "'s centre");
+        }
+        upRot = posRot * (1.0 / rl);
+        const glm::dvec3 eastRot = equirectEast(upRot);
+        const glm::dvec3 northRot = equirectNorth(upRot, eastRot);
+        noseRot = bedNoseDir(upRot, eastRot, northRot,
+                             std::isnan(place->heading_deg) ? 0.0 : place->heading_deg,
+                             std::isnan(place->pitch_deg) ? 0.0 : place->pitch_deg);
+        aimed = true;
+    }
+    if(place && place->stateAsked()) {
+        if(place->speedAsked() || aimed) {
+            /* `air` is the velocity the air sees, in the resolved frame's axes: wind_rot
+               is built in those axes too (it is only ever non-zero on a bed that is
+               asserted to be the rot frame). */
+            const glm::dvec3 air = vel - wind_rot;
+            const double sp = place->speedAsked() ? place->speed_mps : glm::length(air);
+            glm::dvec3 dir;
+            if(aimed) {
+                dir = glm::transpose(frame->root_orient) * (rotFrame->root_orient * noseRot);
+            } else {
+                dir = glm::length2(air) > 0.0 ? glm::normalize(air) : glm::normalize(vel);
+            }
+            vel = dir * sp + wind_rot;
+        }
+        /* Echo the ASKS, not the result -- and echo all five, including a roll or yaw
+           that moved no velocity at all. The line already carries |v|; what a reader
+           needs is whether that figure came from the bed or from them, and which aim the
+           hull is sitting in. "air"/"frame" is the reference the speed was read in
+           (#459's lesson: one field, two meanings, one debugging session each time). */
+        std::string asks;
+        if(place->speedAsked()) {
+            char b[48];
+            snprintf(b, sizeof b, " v %.1f m/s %s", place->speed_mps,
+                     (sc.atmo_frac || sc.speed_load > 0.0) ? "air" : "frame");
+            asks += b;
+        }
+        const double vals[4] = { place->heading_deg, place->pitch_deg,
+                                 place->roll_deg, place->yaw_deg };
+        const char *const names[4] = { "hdg", "pitch", "roll", "yaw" };
+        for(int i = 0; i < 4; i++) {
+            if(std::isnan(vals[i])) { continue; }
+            char b[40];
+            snprintf(b, sizeof b, " %s %+.1f deg", names[i], vals[i]);
+            asks += b;
+        }
+        snprintf(state_txt, sizeof state_txt, ", asked state:%s", asks.c_str());
+    }
+
     if(frame != ship->frame) {
         ship->moveToFrame(frame, t);
     }
@@ -803,11 +928,29 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
        east at 25 m/s at 16 km -- faster than the 6 m/s that hull can make -- and the
        ground track comes out EAST, with the air (flight/688-venus-wind-outruns-the-hull). */
     const glm::dvec3 flow = vel - wind_rot;
-    const glm::dmat3 orient = sc.atmo_frac
-        ? glm::transpose(frame->root_orient)
-          * faceAlong(frame->root_orient * flow,
-                      frame->root_orient * glm::normalize(target))
-        : glm::transpose(frame->root_orient) * faceAlong(velWorld);
+    const double askRoll = (place && !std::isnan(place->roll_deg)) ? place->roll_deg : 0.0;
+    const double askYaw = (place && !std::isnan(place->yaw_deg)) ? place->yaw_deg : 0.0;
+    glm::dmat3 orient;
+    if(aimed) {
+        const glm::dvec3 noseF = glm::transpose(frame->root_orient)
+                               * (rotFrame->root_orient * noseRot);
+        const glm::dvec3 upF = glm::transpose(frame->root_orient)
+                             * (rotFrame->root_orient * upRot);
+        /* Straight up (or down) leaves no roll to solve for off the horizon, so the
+           discrete axis pick takes that case rather than asserting, and the roll/yaw
+           asked below still ride on top of whatever it chose. */
+        orient = std::fabs(glm::dot(noseF, upF)) > 0.9999 ? faceAlong(noseF)
+                                                         : faceAlong(noseF, upF);
+    }
+    else if(sc.atmo_frac) {
+        orient = glm::transpose(frame->root_orient)
+               * faceAlong(frame->root_orient * flow,
+                           frame->root_orient * glm::normalize(target));
+    }
+    else {
+        orient = glm::transpose(frame->root_orient) * faceAlong(velWorld);
+    }
+    orient = bedRollYaw(orient, askRoll, askYaw);
     ship->placeShipAtCom(target, orient);
     ship->setVelocity(vel);
 
@@ -854,7 +997,7 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
                      glm::length(air));
         }
     }
-    printf("Spawn '%s' around %s: frame '%s' @ world (%.0f, %.0f, %.0f), r = %.0f m, |v| = %.1f m/s%s%s%s\n",
+    printf("Spawn '%s' around %s: frame '%s' @ world (%.0f, %.0f, %.0f), r = %.0f m, |v| = %.1f m/s%s%s%s%s\n",
            sc.name, home->name.c_str(), frame->name.c_str(),
            shipWorldPos.x, shipWorldPos.y, shipWorldPos.z,
            glm::length(shipWorldPos - center),
@@ -863,7 +1006,7 @@ void spawn_vehicle(Vehicle *ship, const ScenarioDef &sc, TerrainBody *home,
               one velWorld carries (which on Kerbin still has the body's 177 m/s of
               co-rotation in it). */
            (sc.speed_frac > 0.0 || sc.speed_load > 0.0) ? glm::length(vel) : glm::length(velWorld),
-           air_txt, place_txt, alt_txt);
+           air_txt, place_txt, alt_txt, state_txt);
 }
 
 /* Ships sharing a (body, scenario) orbit bed are pushed this far apart along the
@@ -1272,12 +1415,54 @@ Vehicle *build_start_vehicles(Game &g, const std::vector<DebugStartShip> &entrie
                                          + " m above sea level -- " + why);
             }
         }
+        /* An asked STATE (#1220) rides the same two refusals as an asked height: a pad
+           bed stands on a site with its own velocity (zero) and attitude, and an ellipse
+           bed's state IS its apsides -- speed and direction there are what make periapsis
+           and apoapsis the numbers the scenario names. Beyond the bed, the two ranges
+           that have no sensible answer: a negative speed is a direction wearing a
+           magnitude's clothes (use heading/pitch), and |pitch| over 90 is a heading
+           spelled in the wrong field. */
+        const bool stateAsked = !std::isnan(fe.speed_mps) || !std::isnan(fe.heading_deg)
+                              || !std::isnan(fe.pitch_deg) || !std::isnan(fe.roll_deg)
+                              || !std::isnan(fe.yaw_deg);
+        if(stateAsked) {
+            if(sc->on_pad) {
+                throw std::runtime_error("start ships: entry " + std::string(std::to_string(i))
+                                         + ": speed/heading/pitch/roll/yaw aim a flying bed,"
+                                         + " but '" + fe.scenario + "' stands on a pad -- its"
+                                         + " state is the ground's");
+            }
+            if(sc->ell_phase >= 0) {
+                throw std::runtime_error("start ships: entry " + std::to_string(i)
+                                         + ": speed/heading/pitch/roll/yaw set one state, but"
+                                         + " '" + fe.scenario + "' authors its apsides"
+                                         + " (peri_alt/apo_alt) -- ask a circular bed instead"
+                                         + ": rot-orbit, inertial-orbit, high-orbit or a"
+                                         + " flying-* bed");
+            }
+            if(!std::isnan(fe.speed_mps) && fe.speed_mps < 0.0) {
+                throw std::runtime_error("start ships: entry " + std::to_string(i)
+                                         + ": speed is a magnitude, so it cannot be negative"
+                                         + " -- turn around with heading= (or yaw=) instead");
+            }
+            if(!std::isnan(fe.pitch_deg) && std::fabs(fe.pitch_deg) > 90.0) {
+                throw std::runtime_error("start ships: entry " + std::to_string(i)
+                                         + ": pitch must be in [-90, 90] deg above/below the"
+                                         + " local horizon -- past that a heading is what"
+                                         + " describes the direction");
+            }
+        }
         Vehicle *v = place_vehicle(g, fe.ship, fe.name, hb, sc, site);
         /* The asks ride on the hull to spawn_vehicle, whose caller is
            apply_scenarios -- see SpawnPlace. */
         v->place.lat_deg = fe.lat_deg;
         v->place.lon_deg = fe.lon_deg;
         v->place.alt_m = fe.alt_m;
+        v->place.speed_mps = fe.speed_mps;
+        v->place.heading_deg = fe.heading_deg;
+        v->place.pitch_deg = fe.pitch_deg;
+        v->place.roll_deg = fe.roll_deg;
+        v->place.yaw_deg = fe.yaw_deg;
         spawn_crew(v, g.sys);
         if(first == nullptr) { first = v; }
     }

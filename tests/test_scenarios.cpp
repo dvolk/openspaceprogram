@@ -14,6 +14,12 @@
 // pure geometry with one right answer: check_bed_turn pins eight hand-computed turns
 // rather than reading the expected vectors off the code.
 //
+// A bed can also be handed a STATE (#1220: speed=/heading=/pitch=/roll=/yaw=), which
+// is the same kind of pure geometry. check_bed_state pins the compass reading, whether
+// a pitch bends the path or the hull, the sign of a bank and the claim that yaw=3
+// spawns at 3 deg angle of attack -- a flight measurement is worth taking only if the
+// state it starts from means what the command line says it means.
+//
 // heli-* pins a circular heliocentric radius so the transfer planner can be
 // handed a planet-like origin orbit (it only lists children of the orbited
 // body). Those radii are hand-copied from a system file's orb_ang_speed +
@@ -43,6 +49,7 @@
 #include "vehicle.h"
 #include "frame.h"
 #include "body.h"
+#include "equirect.h"  // the ONE lat/lon basis the asked bed state is aimed in
 #include "bodylimits.h"
 #include "science.h"   // orbitCutAlt: the tier boundary the datum feeds
 
@@ -2548,6 +2555,87 @@ static void check_spawn_attitude() {
            std::acos(up_kept) * 57.29578, tilt * 57.29578);
 }
 
+/* The STATE a bed is asked to hand over, not just the place (#1220). heading/pitch
+   aim the flight path, roll/yaw turn the hull inside it, and every number a flight
+   measurement reads off the command line comes through these two helpers -- so what
+   gets pinned here is exactly what a later refactor could silently flip: the compass
+   reading, whether a pitch bends the path or the hull, the sign of a bank, and the
+   claim that a sideslip buys angle of attack. Aimed in equirect.h's basis, the same
+   law the map and the HUD readout use, rather than a stand-in that could drift. */
+static void check_bed_state() {
+    const double PI = 3.14159265358979323846;
+    const double rad = PI / 180.0;
+    /* A real horizon: a point on the equator at lon 0. */
+    const glm::dvec3 up(1.0, 0.0, 0.0);
+    const glm::dvec3 east = equirectEast(up);
+    const glm::dvec3 north = equirectNorth(up, east);
+
+    struct Rose { double hdg; glm::dvec3 want; };
+    const Rose compass[] = {
+        { 0.0, north }, { 90.0, east }, { 180.0, north * -1.0 }, { 270.0, east * -1.0 },
+    };
+    for(const Rose &c : compass) {
+        const glm::dvec3 d = bedNoseDir(up, east, north, c.hdg, 0.0);
+        CHECK_NEAR(glm::dot(d, c.want), 1.0, 1e-12, "heading aims along the compass");
+        CHECK_NEAR(glm::length(d), 1.0, 1e-12, "and stays unit length");
+    }
+    /* pitch lifts the nose AND the velocity out of the horizon together, which is what
+       makes it a flight-path angle rather than an angle of attack. */
+    const glm::dvec3 climb = bedNoseDir(up, east, north, 0.0, 30.0);
+    CHECK_NEAR(glm::dot(climb, up), 0.5, 1e-12, "pitch climbs out of the horizon");
+    CHECK_NEAR(glm::dot(climb, north), std::sqrt(3.0) / 2.0, 1e-12,
+               "and keeps the heading while doing it");
+    /* |pitch| = 90 is a direction, not a divide by zero: cos(p) carries the heading
+       terms away, so every heading answers straight up. Without that, a --startship
+       pitch=90 is a crash rather than a vertical launch. */
+    for(const double hdg : { 0.0, 37.0, 211.0 }) {
+        CHECK_NEAR(glm::dot(bedNoseDir(up, east, north, hdg, 90.0), up), 1.0, 1e-12,
+                   "straight up, whatever heading was asked");
+        CHECK_NEAR(glm::dot(bedNoseDir(up, east, north, hdg, -90.0), up), -1.0, 1e-12,
+                   "straight down, whatever heading was asked");
+    }
+
+    /* The hull turns, measured against the level basis the bed builds for itself.
+       faceAlong(dir, up_ref) puts +Y up, +Z at the nose and +X = cross(Y,Z) on the
+       PILOT'S LEFT, which is why the signs inside bedRollYaw are negated. */
+    const glm::dvec3 flow = bedNoseDir(up, east, north, 0.0, 0.0);
+    const glm::dmat3 level = faceAlong(flow, up);
+    const glm::dvec3 left = level[0], top = level[1], nav = level[2];
+
+    /* roll + drops the RIGHT wing: the top tips toward -X (the pilot's right) and the
+       nose does not move at all. */
+    const glm::dmat3 bank = bedRollYaw(level, 20.0, 0.0);
+    CHECK_NEAR(glm::dot(bank[1], top), std::cos(20.0 * rad), 1e-12, "bank holds its angle");
+    CHECK_NEAR(glm::dot(bank[1], left), -std::sin(20.0 * rad), 1e-12,
+               "roll + tips the top toward the pilot's right");
+    CHECK_NEAR(glm::dot(bank[2], nav), 1.0, 1e-12, "and a bank never moves the nose");
+
+    /* yaw + turns the hull about its own up WITHOUT bending the path: the wings stay
+       level, and the angle between the nose and the flow is the asked number -- which
+       on an air bed is the angle of attack the hull spawns at. */
+    const glm::dmat3 slip = bedRollYaw(level, 0.0, 3.0);
+    CHECK_NEAR(glm::dot(slip[1], top), 1.0, 1e-12, "yaw keeps the wings level");
+    CHECK_NEAR(glm::dot(slip[2], left), -std::sin(3.0 * rad), 1e-12,
+               "yaw + sends the nose to the pilot's right");
+    CHECK_NEAR(std::acos(glm::dot(slip[2], flow)) / rad, 3.0, 1e-9,
+               "yaw=3 on a flow-aligned bed spawns at 3 deg angle of attack");
+
+    /* And the order a player reads it in: the yaw happens in the AIMED frame, then the
+       bank about the new nose. Bank first and the yaw runs about a banked up axis --
+       at roll=90 that is another roll about the nose, so the sideslip stops being a
+       sideslip while the spawn line still claims 3 deg. */
+    const glm::dmat3 both = bedRollYaw(level, 90.0, 3.0);
+    const glm::dmat3 yaw_then_bank = bedRollYaw(bedRollYaw(level, 0.0, 3.0), 90.0, 0.0);
+    for(int i = 0; i < 3; i++) {
+        CHECK_NEAR(glm::dot(both[i], yaw_then_bank[i]), 1.0, 1e-12, "yaw before bank");
+    }
+    CHECK_NEAR(std::acos(glm::dot(both[2], flow)) / rad, 3.0, 1e-9,
+               "a 90 deg bank keeps the 3 deg sideslip it started with");
+    printf("  bed state: 4 compass headings, 30 deg of climb, straight up from 3 "
+           "headings, a 20 deg bank and a 3 deg sideslip pinned against equirect's "
+           "horizon\n");
+}
+
 int main() {
     check_vab_gate();
     check_flying_beds();
@@ -2555,6 +2643,7 @@ int main() {
     check_ellipse_beds();
     check_spawn_attitude();
     check_bed_turn();
+    check_bed_state();
     // The files the heli-* radii were read off. ksp_system/old_system are not
     // checked: they have no Mercury/Earth/Jupiter/Uranus.
     const char *paths[] = {

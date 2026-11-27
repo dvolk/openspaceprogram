@@ -189,8 +189,44 @@ struct SpawnPlace {
     double lat_deg = kNoCoord;
     double lon_deg = kNoCoord;
     double alt_m = kNoCoord;
+    /* The bed's STATE as well as its place (#1220). Where alt= moves a bed, these move
+       what the hull is doing when it gets there, which is the other half of every
+       airframe measurement: reaching 110 m/s in a bed that authors 80 means diving for
+       it (phugoid included) or burning at T/W 2.3 to get there.
+       `speed_mps` [m/s] is the AIR-relative speed on a bed that reads the air -- the same
+       reference speed_load authors, so a body with wind still starts the hull at that
+       airspeed -- and the frame-relative speed on a circular bed that reads none.
+       `heading_deg`/`pitch_deg` aim the NOSE and the VELOCITY together in the local
+       horizon frame: heading from local north toward east (the atlas reading, NOT
+       buildingair's deck-+X heading), pitch above the horizon. Together they set the
+       flight path, so pitch alone cannot make an angle of attack.
+       `roll_deg`/`yaw_deg` turn the HULL only, after the aim: yaw about its up (+Y)
+       FIRST, then roll about the nose (+Z), so banking never moves the yaw axis.
+       The signs are the reading a player types, not the right-hand rule about the hull
+       axes (faceAlong's +X is the pilot's LEFT): roll + drops the RIGHT wing, yaw +
+       sends the nose to the pilot's right. Neither one aims anything by itself: with no
+       heading/pitch the bed's own prograde aim stands and these ride on top of it. That
+       split is what makes `yaw=+3` the way
+       to spawn at 3 deg AoA on an air bed.
+       All four ride a CIRCULAR bed, like alt_: a pad bed stands where its site stands, and
+       an ellipse bed's state is its two apsides. */
+    double speed_mps = kNoCoord;
+    double heading_deg = kNoCoord;
+    double pitch_deg = kNoCoord;
+    double roll_deg = kNoCoord;
+    double yaw_deg = kNoCoord;
     bool asked() const { return !std::isnan(lat_deg); }
     bool altAsked() const { return !std::isnan(alt_m); }
+    bool speedAsked() const { return !std::isnan(speed_mps); }
+    bool stateAsked() const {
+        return speedAsked() || !std::isnan(heading_deg) || !std::isnan(pitch_deg)
+            || !std::isnan(roll_deg) || !std::isnan(yaw_deg);
+    }
+    /* heading/pitch aim the PATH, and the nose rides it; roll/yaw turn the hull inside
+       whichever path the bed settled on. They are separate predicates on purpose: asking
+       only roll=20 must bank an orbit bed about its prograde nose, not drag the nose to
+       local north just because no heading was typed. */
+    bool pathAsked() const { return !std::isnan(heading_deg) || !std::isnan(pitch_deg); }
 };
 
 class Vehicle {
@@ -3124,6 +3160,23 @@ glm::dmat3 faceAlong(const glm::dvec3 &dir);
    whenever the roll means something: the axis pick above is DISCRETE, so a
    degree or two of tilt in `dir` can flip it a full 90 deg (#451). */
 glm::dmat3 faceAlong(const glm::dvec3 &dir, const glm::dvec3 &up_ref);
+
+/* An asked bed aim (#1220, SpawnPlace). Two pure steps, so the geometry can be pinned
+   without a world to spawn into:
+   bedNoseDir turns a compass heading and a horizon pitch into a unit direction in the
+   SAME axes its up/east/north basis is given in (the body's rotating frame -- equirect.h
+   owns that basis), heading measured from north toward east and pitch up from the plane
+   that basis spans. Straight up (|pitch| = 90) is a legal direction and asks for no
+   heading at all, which is why heading is allowed to be ignored there rather than
+   refused.
+   bedRollYaw then turns an attitude the caller already has -- faceAlong's answer, or the
+   bed's own prograde one -- by roll about the hull's +Z (nose) and yaw about its +Y (up),
+   right-hand rule. Multiplying on the RIGHT is the whole point: these are body-frame
+   turns, so a yaw does not tilt the flight path, and on an air bed it is what puts an
+   angle of attack on a hull that was spawned along its flow. */
+glm::dvec3 bedNoseDir(const glm::dvec3 &up, const glm::dvec3 &east,
+                      const glm::dvec3 &north, double heading_deg, double pitch_deg);
+glm::dmat3 bedRollYaw(const glm::dmat3 &att, double roll_deg, double yaw_deg);
 
 /* slot_offset (m): lateral separation for ships sharing an orbit bed, along the
    binormal so each orbit keeps its shape. Pads ignore it.
