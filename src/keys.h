@@ -59,6 +59,22 @@ enum class Slot {
     GoTracking,    // '3'  Tracking Station
     GoVab,         // '4'  VAB (the editor)
     UndoStaging,   // 'LCtrl+z' / 'RCtrl+z'  VAB only: take the last staging edit back (#1013)
+    /* VAB only (#1229): the six fitted orthographic views, one
+       per end of the ship's own axes, so an airframe can be read off the screen
+       without perspective lying about its proportions. They are slots rather
+       than fixed editor scancodes (like Q/E) because six keys a player cannot
+       find in the key map are six keys nobody finds. '1'..'4' were the natural
+       digits and are already the scene keys -- '2' is how you leave the editor to
+       test-fly -- so the views take the six digits that are free: 5,6,7,8,9,0.
+       'C' (ToggleCamMode) puts the editor's perspective turntable back; that slot
+       is only consumed by flightKeyActions today, so the editor gets it here
+       without either scene seeing the other's meaning. */
+    VabViewNose,   // '5'
+    VabViewTail,   // '6'
+    VabViewRight,  // '7'
+    VabViewLeft,   // '8'
+    VabViewDorsal, // '9'
+    VabViewBelly,  // '0'
     // --- Flight: held commands while piloting (tick.cpp) -------------------
     PitchUp,
     PitchDown,

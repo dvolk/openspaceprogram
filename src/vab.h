@@ -110,6 +110,26 @@ std::string vabSeatProblem(const Game &g);
 void drawVabPartWindow(Game &g);
 
 void vabAimCamera(Game &g);
+/* The build's enclosing box, in the build frame, measured from the REAL mesh
+   extents of every part (PartDef::mesh_min/max), rotated into the build frame --
+   not from the part origins, which is what vabAimCamera used and what let a 4 m
+   wing hang out of the frame. Out: the box centre and its half-extents. A keyed
+   view frames the silhouette the box casts on its own plane; the turntable, which
+   can wear any silhouette, frames the box's circumsphere (= |half|). Falls back
+   to the authored radius/height for a part with no mesh extents (a missing
+   .obj), never to zero. */
+void vabFit(const Game &g, glm::dvec3 &center, glm::dvec3 &half);
+
+/* The six fitted orthographic views (keys 5,6,7,8,9,0). The build frame IS the
+   flown hull's frame S, so these run along the SHIP's axes: the same six pictures
+   of the same airframe whether it stands in the editor or flies. Named by which
+   end of the ship faces the camera, because "top" is not the same direction for a
+   standing rocket and a lying airframe -- dorsal/belly are. The order below IS
+   the key order (5,6,7,8,9,0); kVabViews in vab.cpp follows it row for row.
+   vabResetView (key C) puts the editor's perspective turntable back. */
+enum class VabView : int { Nose, Tail, Right, Left, Dorsal, Belly, COUNT };
+void vabSetView(Game &g, VabView v);
+void vabResetView(Game &g);
 // Per-frame step while the Vab scene is live. The sim keeps ticking around it
 // (scene.cpp vabUpdateLive: vabUpdate then tick).
 void vabUpdate(Game &g);

@@ -1064,28 +1064,166 @@ void vabPickPart(Game &g, int px, int py) {
     vabSelect(g, idx);
 }
 
+/* The build's enclosing box, in the build frame, from the real mesh extents.
+   A rotated box is not a box, so the eight corners go over the min/max -- taking
+   the part origin plus a radius would under-frame a winged hull, which is what
+   the pair of views below and the editor's own aim both need to get right.
+   Out: the box's centre and its half-extents. A picture along a known axis wants
+   those extents; the turntable, which can spin into any silhouette, wants the
+   sphere around them. */
+void vabFit(const Game &g, glm::dvec3 &center, glm::dvec3 &half) {
+    glm::dvec3 lo(1e30), hi(-1e30);
+    const std::vector<BuildPart> &parts = g.vab.build.parts;
+    for(size_t i = 0; i < parts.size(); i++) {
+        const BuildPart &bp = parts[i];
+        const PartDef *d = bp.def;
+        if(d == nullptr) { continue; }
+        glm::dvec3 blo, bhi;
+        if(d->has_mesh_extents) { blo = d->mesh_min; bhi = d->mesh_max; }
+        else {
+            // No mesh to measure (missing .obj): the authored size, not zero.
+            blo = glm::dvec3(-d->radius, -d->radius, -d->height * 0.5);
+            bhi = glm::dvec3(d->radius, d->radius, d->height * 0.5);
+        }
+        for(int c = 0; c < 8; c++) {
+            const glm::dvec3 corner((c & 1) ? bhi.x : blo.x,
+                                    (c & 2) ? bhi.y : blo.y,
+                                    (c & 4) ? bhi.z : blo.z);
+            const glm::dvec3 w = bp.localRot * corner + bp.localPos;
+            lo = glm::min(lo, w);
+            hi = glm::max(hi, w);
+        }
+    }
+    if(lo.x > hi.x) {   // no part was measured: an empty build has nothing to frame
+        center = glm::dvec3(0.0);
+        half = glm::dvec3(5.0);
+        return;
+    }
+    center = (lo + hi) * 0.5;
+    half = (hi - lo) * 0.5;
+}
+
+/* How much slack around the fitted ship: a picture with the hull exactly
+   filling the frame has no margin to see the frame in, and the selected-part
+   tint plus a hover ghost want room at the edge. */
+static constexpr double kVabFitMargin = 1.05;
+
 /* Aim the editor's orbit camera at the build tree. */
 void vabAimCamera(Game &g) {
-    g.vab.center = glm::dvec3(0.0);
-    double dist = 30.0;
-    if(!g.vab.build.parts.empty()) {
-        glm::dvec3 lo(1e30), hi(-1e30);
-        for(size_t i = 0; i < g.vab.build.parts.size(); i++) {
-            lo = glm::min(lo, g.vab.build.parts[i].localPos);
-            hi = glm::max(hi, g.vab.build.parts[i].localPos);
-        }
-        g.vab.center = (lo + hi) * 0.5;
-        dist = glm::length(hi - lo) * 1.2 + 10.0;
-    }
+    glm::dvec3 center, half;
+    vabFit(g, center, half);
+    g.vab.center = center;
     if(g.camera != nullptr) {
-        g.camera->toOrbit(g.vab.center);   // also from Free mode
-        g.camera->resetPan();              // the build tree is a new subject (#919)
-        g.camera->distance = dist;
+        Camera *cam = g.camera;
+        if(cam->ortho) {
+            // A photo view under a new build: aimed means the turntable, so the
+            // orthographic box goes with it and the fit below is the perspective one.
+            cam->setOrtho(false, 20.0, 0.05, 1000.0);
+        }
+        cam->toOrbit(g.vab.center);   // also from Free mode
+        cam->resetPan();              // the build tree is a new subject (#919)
+        /* Fit it, do not guess 30 m. The old constant framed a 2 m pod and put a
+           12 m stack off the bottom of the screen; the camera's own frame answers
+           at whatever fov the player is using. The turntable spins, so it has to
+           hold the silhouette it can wear at ANY angle -- the box's sphere --
+           which is why it sits further out than a keyed view does. */
+        cam->distance = cam->fitDistance(glm::length(half) * kVabFitMargin);
     }
     // e2e anchor: "the editor camera followed the tree".
     printf("[vab] camera aimed at the build: %d part(s), %.1f m out\n",
-           (int)g.vab.build.parts.size(), dist);
+           (int)g.vab.build.parts.size(), g.camera ? g.camera->distance : 0.0);
     fflush(stdout);
+}
+
+/* The six views' build-frame directions and screen-up hints. The build frame IS
+   the flown hull's frame S, whose axes are [right, up, nose] on X/Y/Z -- the same
+   basis render.cpp hands the flight camera from ship->attitudeBasis() -- so the
+   six pictures run along the ship's own axes and mean the same thing whether the
+   hull stands in the editor or flies. The up hint is the natural one for each
+   picture -- ship-up for the ends and the sides, nose-up for the plan views --
+   which also happens to lay the hull's long axis along the screen's long axis
+   for four of the six, where a wide window can then spend its width on it. The
+   plan views stand the long axis up instead; a portrait capture window is what
+   buys those back, not a rotated picture. */
+namespace {
+struct VabViewPose {
+    VabView view;       // keyed, not positional: an index table here would let a
+                        // row swap silently send a key at the wrong ship axis
+    const char *name;
+    glm::dvec3 dir;   // from the ship's centre to the camera, build frame
+    glm::dvec3 up;    // screen up, build frame
+};
+const VabViewPose kVabViews[] = {
+    {VabView::Nose,   "nose",   glm::dvec3(0.0, 0.0, 1.0),  glm::dvec3(0.0, 1.0, 0.0)},
+    {VabView::Tail,   "tail",   glm::dvec3(0.0, 0.0, -1.0), glm::dvec3(0.0, 1.0, 0.0)},
+    {VabView::Right,  "right",  glm::dvec3(1.0, 0.0, 0.0),  glm::dvec3(0.0, 1.0, 0.0)},
+    {VabView::Left,   "left",   glm::dvec3(-1.0, 0.0, 0.0), glm::dvec3(0.0, 1.0, 0.0)},
+    {VabView::Dorsal, "dorsal", glm::dvec3(0.0, 1.0, 0.0),  glm::dvec3(0.0, 0.0, 1.0)},
+    {VabView::Belly,  "belly",  glm::dvec3(0.0, -1.0, 0.0), glm::dvec3(0.0, 0.0, 1.0)},
+};
+const VabViewPose &viewPose(VabView v) {
+    for(const VabViewPose &p : kVabViews) {
+        if(p.view == v) { return p; }
+    }
+    assert(false && "a VabView with no pose row");
+    return kVabViews[0];
+}
+}
+
+/* A fitted orthographic view down one of the ship's axes (#1229:
+   reading an airframe's plan off a screen without perspective lying about it).
+   Free mode rather than the turntable, because the turntable's whole framing is
+   the pitch clamp short of its pole (kPitchLimit), and these views are AT the
+   poles of the ship's own axes. Nothing in the editor writes the free pose, so
+   it stays where this leaves it, and C (vabResetView) is the way back. */
+void vabSetView(Game &g, VabView v) {
+    Camera *cam = g.camera;
+    if(cam == nullptr) { return; }
+    const VabViewPose &pose = viewPose(v);
+    glm::dvec3 center, half;
+    vabFit(g, center, half);
+    g.vab.center = center;
+
+    /* Frame the silhouette the hull actually casts on THIS view, not the sphere
+       it lives in. Framing the sphere costs a long thin airframe most of its
+       zoom: 17 m of length and 8 m of span in a sphere of radius 8.6 m, which
+       from above is a 4 m-wide picture. The box's eight corners over the view's
+       own right/up/forward axes give the true width, height and depth. */
+    const glm::dvec3 fwd = -pose.dir;
+    const glm::dvec3 rgt = glm::cross(pose.up, fwd);
+    assert(std::fabs(glm::length(rgt) - 1.0) < 1e-9);   // every pose is square
+    double needW = 0.0, needH = 0.0, needD = 0.0;
+    for(int c = 0; c < 8; c++) {
+        const glm::dvec3 k(center.x + ((c & 1) ? half.x : -half.x),
+                           center.y + ((c & 2) ? half.y : -half.y),
+                           center.z + ((c & 4) ? half.z : -half.z));
+        const glm::dvec3 d = k - center;
+        needW = std::max(needW, std::fabs(glm::dot(d, rgt)));
+        needH = std::max(needH, std::fabs(glm::dot(d, pose.up)));
+        needD = std::max(needD, std::fabs(glm::dot(d, fwd)));
+    }
+    const double aspect = cam->aspect > 0.0f ? (double)cam->aspect : 1.0;
+    const double halfH = std::max(needH, needW / aspect) * kVabFitMargin;
+    /* Distance is irrelevant to size under ortho, so it is chosen for the depth
+       window: one frame width behind the far face keeps the whole hull, and
+       anything the player drags toward the camera, inside near/far. */
+    const double frame = std::max(halfH, needW);
+    const double dist = needD + frame * 2.0;
+    cam->toFree();
+    cam->setFreePose(center + pose.dir * dist, fwd, pose.up);
+    cam->setOrtho(true, halfH, std::max(0.05, dist - needD - frame), dist + needD + frame);
+
+    // e2e anchor: which view, the hull it measured, and that the fit ran.
+    printf("[vab] view %s: hull %.2f x %.2f x %.2f m, frame half-height %.2f m, orthographic\n",
+           pose.name, half.x * 2.0, half.y * 2.0, half.z * 2.0, halfH);
+    fflush(stdout);
+    g.toast("VAB view: %s (C returns the normal camera)", pose.name);
+}
+
+/* C in the editor: back to the perspective turntable, re-fitted on the build. */
+void vabResetView(Game &g) {
+    vabAimCamera(g);
+    g.toast("Camera: editor turntable");
 }
 
 /* Enter the editor: push the Vab scene (captures the flight camera pose). */

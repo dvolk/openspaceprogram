@@ -92,6 +92,38 @@ public:
     double panLimitY() const { return (double)fov * 0.5; }
     double panLimitX() const { return std::atan(std::tan((double)fov * 0.5) * (double)aspect); }
 
+    /* ORTHOGRAPHIC projection: the frame is a box of world metres at the subject
+       instead of an angle. Reading an airframe off a screen wants this -- in a
+       perspective frame the near half of a top view is measurably wider than the
+       far half, so a half-metre build error reads as several, and a hull meant to
+       be symmetric does not look it. Pairs with fitHalfHeight(), which sizes the
+       box from the subject's own radius, and with the depth window below, which
+       brackets the subject rather than the world (an ortho matrix has no infinite
+       far: the perspective branch above is the only one that can be infinite).
+       The draw cull keeps working: computeFrustumAngles() widens the side planes
+       to the whole half-space in front of the camera, which never hides geometry
+       it should draw -- it only spends the CPU cull. */
+    bool ortho = false;
+    double orthoHalfH = 20.0;   // half-height of the view box at the subject [m]
+    double orthoNear = 0.05;    // depth window around the subject [m]
+    double orthoFar = 1000.0;
+
+    /* Turn ortho on or off and set the box in the same call: a half-height
+       without a depth window is a clipped subject, and neither half of the pair
+       is meaningful alone. */
+    void setOrtho(bool on, double halfH, double nearZ, double farZ);
+
+    /* Zoom an orthographic subject: scale the view box about its centre. Under
+       ortho the camera's distance cannot change a subject's size, so this is the
+       only way the wheel can mean "bigger". No-op unless ortho is on. */
+    void zoomOrtho(double factor);
+
+    /* Fitting: what holds a sphere of `radius` inside the frame. Ortho answers
+       with the box half-height, perspective with the distance. Both keep the
+       SHORTER screen axis whole, which is what "fitted" means on a wide window. */
+    double fitHalfHeight(double radius) const;
+    double fitDistance(double radius) const;
+
     // Free-mode state. pos is PRIMARY; right is derived each ComputeView().
     glm::dvec3 right;
 
@@ -175,6 +207,11 @@ private:
     // Refresh frustumSinX/CosX/SinY/CosY from fov and aspect (call whenever
     // either changes -- the projection is rebuilt at the same sites).
     void computeFrustumAngles();
+
+    // The projection for the current mode: ortho box or reverse-Z infinite-far
+    // perspective. Every site that changes fov, aspect or the ortho pair calls
+    // this, so the projection and the frustum half-angles cannot disagree.
+    void rebuildProjection();
 
     // Shared view-matrix construction (NaN-safe when looking along up). cam is
     // the camera position in the render frame.

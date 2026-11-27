@@ -1,0 +1,48 @@
+# The six fitted orthographic views (#1229): load the shipped airframe in the
+# editor, press 5,6,7,8,9,0, and each view answers with the hull it measured and
+# the frame it fitted. Pins three things: every key reaches its own ship axis (a
+# positional table would let a row swap send a key at the wrong axis silently),
+# the fit frames the hull's PROJECTED box rather than the sphere around it, and
+# the shot path runs with the HUD hidden.
+#
+# The window size is pinned here so the aspect cannot drift: the fit keeps the
+# shorter screen axis whole, so the numbers below are aspect arithmetic on
+# spaceplane.json's mesh box (10.00 wide x 4.40 tall x 13.25 long), at 1.05 slack:
+#   nose, tail  1.05 * max(4.40/2, (10.00/2)/(16/9)) = 2.95
+#   right,left  1.05 * max(4.40/2, (13.25/2)/(16/9)) = 3.91
+#   dorsal,belly 1.05 * max(13.25/2, (10.00/2)/(16/9)) = 6.96
+# A fit on the sphere around that box -- which is what this used before, and what
+# costs a long thin airframe most of its zoom -- would answer 9.88 for all six.
+NAME fitted-ortho-views
+CLAIM Keys 5-0 in the VAB give six fitted orthographic views, each sized by the hull's real mesh box.
+KIND invariant
+ARGS --timeout 12 --frame-cap 30 --width 1920 --height 1080
+ARGS --startship spaceplane,res/ships/spaceplane.json,Kerbin,flying-cruise
+ARGS --sim-press 1000,0,4
+ARGS --ui-type 1500,"VAB TopBar/##vehfilter",spaceplane
+ARGS --ui-click 2200,"VAB TopBar/##vabload"
+ARGS --ui-click 2800,"spaceplane"
+ARGS --ui-click 3400,"VAB TopBar/Load"
+ARGS --sim-press 4000,0,Tab
+ARGS --sim-press 4200,0,5 --sim-press 4600,0,F12
+ARGS --sim-press 4900,0,6 --sim-press 5300,0,F12
+ARGS --sim-press 5600,0,7 --sim-press 6000,0,F12
+ARGS --sim-press 6300,0,8 --sim-press 6700,0,F12
+ARGS --sim-press 7000,0,9 --sim-press 7400,0,F12
+ARGS --sim-press 7700,0,0 --sim-press 8100,0,F12
+EXPECT [vab] view nose:
+EXPECT [vab] view tail:
+EXPECT [vab] view right:
+EXPECT [vab] view left:
+EXPECT [vab] view dorsal:
+EXPECT [vab] view belly:
+EXPECT hull 10.00 x 4.40 x 13.25 m,
+CHECK [n for n in re.findall(r"\[vab\] view (\w+):", out)] == ["nose", "tail", "right", "left", "dorsal", "belly"]
+CHECK [float(h) for h in re.findall(r"frame half-height ([0-9.]+) m", out)] == [2.95, 2.95, 3.91, 3.91, 6.96, 6.96]
+# One shot per view, and the editor itself stayed intact through six camera mode
+# changes (the turntable's ref/downLimit get rewritten every frame; the free pose
+# must survive that).
+CHECK len(re.findall(r"Screenshot saved: ", out)) == 6
+FORBID error:
+FORBID FAILED
+FORBID assert

@@ -61,6 +61,15 @@ void KeyBindings::resetDefaults() {
        nothing. No Ctrl+Y: autoStage is deterministic, so pressing it again IS the redo. */
     perSlot[(size_t)Slot::UndoStaging].push_back(KeyBind{SDL_SCANCODE_Z, SDL_KMOD_LCTRL});
     perSlot[(size_t)Slot::UndoStaging].push_back(KeyBind{SDL_SCANCODE_Z, SDL_KMOD_RCTRL});
+    /* The six fitted editor views (#1229). Plain keys, so --sim-press reaches them
+       (slotSimKey ignores a chord): a case can photograph the build without a
+       mouse. 5..0 because 1..4 are the scene keys above. */
+    add(Slot::VabViewNose,   SDL_SCANCODE_5);
+    add(Slot::VabViewTail,   SDL_SCANCODE_6);
+    add(Slot::VabViewRight,  SDL_SCANCODE_7);
+    add(Slot::VabViewLeft,   SDL_SCANCODE_8);
+    add(Slot::VabViewDorsal, SDL_SCANCODE_9);
+    add(Slot::VabViewBelly,  SDL_SCANCODE_0);
 
     // Flight (piloting: orbit / first person, tick.cpp)
     add(Slot::PitchUp,       SDL_SCANCODE_W);
@@ -202,6 +211,12 @@ const char *slotName(Slot s) {
         case Slot::GoTracking:     return "go_tracking";
         case Slot::GoVab:          return "go_vab";
         case Slot::UndoStaging:    return "undo_staging";
+        case Slot::VabViewNose:    return "vab_view_nose";
+        case Slot::VabViewTail:    return "vab_view_tail";
+        case Slot::VabViewRight:   return "vab_view_right";
+        case Slot::VabViewLeft:    return "vab_view_left";
+        case Slot::VabViewDorsal:  return "vab_view_dorsal";
+        case Slot::VabViewBelly:   return "vab_view_belly";
         case Slot::PitchUp:        return "pitch_up";
         case Slot::PitchDown:      return "pitch_down";
         case Slot::YawLeft:        return "yaw_left";
@@ -285,6 +300,12 @@ const char *slotLabel(Slot s) {
         case Slot::GoTracking:     return "Go to Tracking Station";
         case Slot::GoVab:          return "Go to VAB";
         case Slot::UndoStaging:    return "Undo staging edit (VAB)";
+        case Slot::VabViewNose:    return "VAB view: from the nose";
+        case Slot::VabViewTail:    return "VAB view: from the tail";
+        case Slot::VabViewRight:   return "VAB view: from the right";
+        case Slot::VabViewLeft:    return "VAB view: from the left";
+        case Slot::VabViewDorsal:  return "VAB view: from above";
+        case Slot::VabViewBelly:   return "VAB view: from below";
         case Slot::PitchUp:        return "Pitch up";
         case Slot::PitchDown:      return "Pitch down";
         case Slot::YawLeft:        return "Yaw left";
@@ -343,6 +364,9 @@ SlotGroup slotGroup(Slot s) {
         case Slot::GoSpaceCenter: case Slot::GoFlight:
         case Slot::GoTracking: case Slot::GoVab:
         case Slot::UndoStaging:
+        case Slot::VabViewNose: case Slot::VabViewTail:
+        case Slot::VabViewRight: case Slot::VabViewLeft:
+        case Slot::VabViewDorsal: case Slot::VabViewBelly:
             return SlotGroup::Game;
         case Slot::PitchUp: case Slot::PitchDown:
         case Slot::YawLeft: case Slot::YawRight:

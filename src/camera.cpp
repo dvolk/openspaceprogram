@@ -34,8 +34,38 @@ static glm::mat4 reverseZInfinitePerspective(float fov, float aspect, float zNea
         0.0f, 0.0f, zNear, 0.0f);  // col 3: clip.w = -view.z
 }
 
+/* Reverse-Z ortho for the same GL state (GL_ZERO_TO_ONE + GL_GEQUAL): the depth
+   window runs 1.0 at nearZ down to 0.0 at farZ, exactly like the perspective
+   branch above, so nothing downstream has to know which projection is live.
+   View space puts the subject at negative z, so
+       depth(z) = (farZ + z) / (farZ - nearZ)
+   reads 1 at z = -nearZ and 0 at z = -farZ. The x/y scales are the frame's own
+   half-extents in metres; clip.w stays 1, which is the whole difference -- no
+   perspective divide, so nothing scales with distance. */
+static glm::mat4 reverseZOrtho(float halfH, float aspect, float nearZ, float farZ) {
+    const float halfW = halfH * aspect;
+    const float span = farZ - nearZ;
+    return glm::mat4(
+        1.0f / halfW, 0.0f,         0.0f,        0.0f,
+        0.0f,         1.0f / halfH, 0.0f,        0.0f,
+        0.0f,         0.0f,         1.0f / span, 0.0f,
+        0.0f,         0.0f,         farZ / span, 1.0f);
+}
+
 // fov is VERTICAL; the horizontal half-angle comes from fov*aspect.
 void Camera::computeFrustumAngles() {
+    if(ortho) {
+        /* An ortho frame has no side planes fanning from the eye: its walls are
+           parallel to the view axis, and the wall test the draw pass writes
+           (zv*sin - |xv|*cos >= 0) cannot describe a parallel wall in those
+           terms. sin=1, cos=0 leaves the test as "in front of the camera", which
+           is the fail-safe direction: geometry is never culled that should draw,
+           and what is lost is only the CPU skip. A fitted view draws a hull and a
+           sky, so that is the cheap side to be loose on. */
+        frustumSinX = frustumSinY = 1.0;
+        frustumCosX = frustumCosY = 0.0;
+        return;
+    }
     const double hy = (double)fov * 0.5;
     // tan(horizontal half) = tan(vertical half) * aspect.
     const double hx = std::atan(std::tan(hy) * (double)aspect);
@@ -43,12 +73,66 @@ void Camera::computeFrustumAngles() {
     frustumSinX = std::sin(hx); frustumCosX = std::cos(hx);
 }
 
+void Camera::rebuildProjection() {
+    if(ortho) {
+        projection = reverseZOrtho((float)orthoHalfH, aspect,
+                                   (float)orthoNear, (float)orthoFar);
+    } else {
+        projection = reverseZInfinitePerspective(fov, aspect, zNear);
+    }
+    computeFrustumAngles();
+}
+
+void Camera::setOrtho(bool on, double halfH, double nearZ, double farZ) {
+    /* A zero or negative half-height makes the x/y scales infinite and the whole
+       frame collapses onto the view axis; an inverted or zero-width depth window
+       puts the subject outside [0,1] and GL_GEQUAL erases it. Both are arithmetic
+       errors rather than states a caller can recover from, so they assert. */
+    assert(std::isfinite(halfH) && halfH > 0.0);
+    assert(std::isfinite(nearZ) && std::isfinite(farZ));
+    assert(nearZ > 0.0 && farZ > nearZ);
+    ortho = on;
+    orthoHalfH = halfH;
+    orthoNear = nearZ;
+    orthoFar = farZ;
+    rebuildProjection();
+}
+
+void Camera::zoomOrtho(double factor) {
+    if(!ortho) { return; }
+    assert(std::isfinite(factor) && factor > 0.0);
+    /* Clamped at both ends: a box below a palm keeps the parts' own triangles
+       coarser than the pixels and the hull reads as a blob; a box past a body's
+       horizon puts the whole world in the frame at one metre per pixel. */
+    orthoHalfH = std::clamp(orthoHalfH * factor, 0.25, 5.0e4);
+    rebuildProjection();
+}
+
+double Camera::fitHalfHeight(double radius) const {
+    // The box must hold the sphere on BOTH axes; halfW = halfH * aspect, so the
+    // binding axis is the narrower one and the half-height divides by min(1,aspect).
+    assert(radius > 0.0);
+    return radius / std::min(1.0, (double)aspect);
+}
+
+double Camera::fitDistance(double radius) const {
+    /* Perspective: the sphere fits when its angular radius clears the shorter
+       half-angle, so sin(hmin) = radius / distance. The half-angles come from the
+       same members the projection is built from, which is why this is a member
+       and not a free function: change the fov slider and the fit moves with it. */
+    assert(radius > 0.0);
+    const double hy = (double)fov * 0.5;
+    const double hx = std::atan(std::tan(hy) * (double)aspect);
+    const double hmin = std::min(hx, hy);
+    assert(hmin > 0.0);   // clampFovRad() holds fov inside [10,120]deg
+    return radius / std::sin(hmin);
+}
+
 void Camera::setAspect(float _aspect) {
     // Store it: setFov() rebuilds the projection from the member, so a stale
     // aspect would snap the horizontal fov back to its launch value.
     this->aspect = _aspect;
-    this->projection = reverseZInfinitePerspective(fov, _aspect, zNear);
-    computeFrustumAngles();
+    rebuildProjection();
 }
 
 void Camera::setViewport(int w, int h) {
@@ -58,8 +142,7 @@ void Camera::setViewport(int w, int h) {
 
 void Camera::setFov(float _fov) {
     this->fov = clampFovRad(_fov);
-    this->projection = reverseZInfinitePerspective(fov, aspect, zNear);
-    computeFrustumAngles();
+    rebuildProjection();
 }
 
 const glm::dvec3& Camera::GetPos() const {
@@ -81,8 +164,7 @@ const glm::dmat4 &Camera::GetView() const {
 Camera::Camera(const glm::dvec3& focusPos, float fov, float aspect, float zNear, float zFar)
     : fov(clampFovRad(fov)), aspect(aspect), zNear(zNear), zFar(zFar) {
     // Uses the clamped member, not the parameter (which shadows it).
-    this->projection = reverseZInfinitePerspective(this->fov, aspect, zNear);
-    computeFrustumAngles();
+    rebuildProjection();
     // Seed pos/forward/up so a reader before the first ComputeView() gets
     // sensible values.
     this->mode = CAM_ORBIT;
@@ -278,6 +360,14 @@ void Camera::Follow(const glm::dvec3& p) {
 }
 
 void Camera::wheel(double amt) {
+    if(ortho && mode == CAM_FREE) {
+        // A fitted orthographic view (the VAB's six) has no distance to pull in
+        // and no focus to cross, so the wheel shrinks the box around the subject
+        // instead. Same proportional step as the orbit zoom, same sign: scroll up
+        // = closer.
+        zoomOrtho(std::exp(-amt * 0.25));
+        return;
+    }
     if (mode != CAM_ORBIT) { return; }
     // Proportional zoom, clamped so the camera can never cross the focus.
     distance *= std::exp(-amt * 0.25);

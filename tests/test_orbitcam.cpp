@@ -13,6 +13,11 @@
 //     ([10,120]deg), including a NaN, and setAspect STORES the aspect, so a
 //     later setFov cannot rebuild the projection or the frustum half-angles
 //     with a stale one.
+//   - the orthographic box the VAB's six photo views (keys 5..0) are framed with:
+//     scales in world metres, no perspective divide, depth landing on the
+//     renderer's reverse-Z [0,1] window, cull angles opened so the draw pass
+//     fails open, the fit keeping the SHORTER screen axis whole, and the wheel
+//     resizing the box only while ortho is live.
 // Exits nonzero on a jump, a NaN, a non-closing loop, a holonomy roll, an
 // escaped fov, or a stale aspect.
 //
@@ -261,6 +266,130 @@ int main() {
         const double want_hx = std::atan(std::tan(30.0 * deg) * (4.0 / 3.0));
         if (!std::isfinite(cam.frustumSinX) || std::fabs(cam.frustumSinX - std::sin(want_hx)) > 1e-6) {
             printf("FAIL: frustumSinX does not follow the current aspect\n");
+            bad = true;
+        }
+    }
+
+    printf("\n=== Orthographic box: the matrix, the cull, the fit, the wheel ===\n");
+    {
+        /* The VAB's six photo views (keys 5..0) rest on this matrix. It has to
+           agree with how the renderer is set up -- reverse-Z, with
+           glClipControl(GL_ZERO_TO_ONE) and glDepthFunc(GEQUAL) (display.cpp) --
+           so the NEAR edge of the depth window lands on 1 and the FAR edge on 0.
+           Read that backwards and every ortho picture is an empty field: the
+           subject fails GEQUAL and nothing anywhere reports an error. */
+        Camera cam(glm::dvec3(0, 0, 0), 60.0f * deg, 16.0f / 9.0f, 1.0f, 1e13f);
+        const double hh = 5.0, nz = 2.0, fz = 40.0, asp = 16.0 / 9.0;
+        cam.setOrtho(true, hh, nz, fz);
+        const double hw = hh * asp;
+        printf("box %.1f x %.1f m, depth window [%.1f, %.1f] m\n", 2 * hw, 2 * hh, nz, fz);
+        if (std::fabs((double)cam.projection[0][0] - 1.0 / hw) > 1e-5 ||
+            std::fabs((double)cam.projection[1][1] - 1.0 / hh) > 1e-5) {
+            printf("FAIL: the x/y scales are not 1 over the frame's half-extents\n");
+            bad = true;
+        }
+        /* w = 1: no perspective divide. This is the point of the whole feature --
+           parallel spar edges keep their width from the near end of the hull to
+           the far one, so a half-metre build error reads as half a metre. */
+        if (std::fabs((double)cam.projection[3][3] - 1.0) > 1e-6 ||
+            std::fabs((double)cam.projection[2][3]) > 1e-6) {
+            printf("FAIL: the ortho matrix still carries a perspective divide\n");
+            bad = true;
+        }
+        auto depth = [&](double zv) {
+            return (double)cam.projection[2][2] * zv + (double)cam.projection[3][2];
+        };
+        printf("depth: view z -%.1f -> %.4f, -%.1f -> %.4f\n", nz, depth(-nz), fz, depth(-fz));
+        if (std::fabs(depth(-nz) - 1.0) > 1e-5 || std::fabs(depth(-fz)) > 1e-5) {
+            printf("FAIL: the depth window does not map onto [0,1] reverse-Z\n");
+            bad = true;
+        }
+        if (!(depth(-nz) > depth(-fz))) {
+            printf("FAIL: ortho depth runs the wrong way for GL_GEQUAL\n");
+            bad = true;
+        }
+        if (!(depth(-2.0 * fz) < 0.0)) {
+            printf("FAIL: past the far edge the depth still lands inside [0,1]\n");
+            bad = true;
+        }
+        /* The draw cull is `zv*sin - |xv|*cos >= 0`, which cannot describe a
+           parallel-walled frame, so ortho opens the side planes to the whole
+           half-space in front of the camera. It must therefore never reject on a
+           lateral coordinate: fail-open, spending the CPU skip rather than the
+           geometry. A perspective half-angle left in place would cut the wings
+           off a fitted hull. */
+        if (cam.frustumSinX != 1.0 || cam.frustumCosX != 0.0 ||
+            cam.frustumSinY != 1.0 || cam.frustumCosY != 0.0) {
+            printf("FAIL: ortho left perspective frustum angles behind\n");
+            bad = true;
+        }
+        for (double xv : { 0.0, 1.0e6 }) {
+            const double keep = 1.0 * cam.frustumSinX - std::fabs(xv) * cam.frustumCosX;
+            if (keep < 0.0) {
+                printf("FAIL: an ortho patch at x=%.0f was culled\n", xv);
+                bad = true;
+            }
+        }
+        /* Fitting keeps the SHORTER screen axis whole, which is what "fitted" has
+           to mean on a wide window: the box then holds the sphere on both axes. */
+        const double fit = cam.fitHalfHeight(10.0);
+        printf("fitHalfHeight(10 m) -> %.3f, so a %.1f m wide box\n", fit, 2 * fit * asp);
+        if (fit < 10.0 || fit > 10.001) {
+            printf("FAIL: a 10 m sphere does not fit the ortho box\n");
+            bad = true;
+        }
+        // A resize must rebuild the live box with the live aspect: fitHalfHeight
+        // only RECOMMENDS a size, so the projection is what proves the box moved.
+        cam.setAspect(0.5f);
+        if (std::fabs((double)cam.projection[0][0] - 1.0 / (hh * 0.5)) > 1e-5 ||
+            std::fabs((double)cam.projection[1][1] - 1.0 / hh) > 1e-5) {
+            printf("FAIL: setAspect did not rebuild the ortho box (x %.4f y %.4f)\n",
+                   (double)cam.projection[0][0], (double)cam.projection[1][1]);
+            bad = true;
+        }
+        const double fit2 = cam.fitHalfHeight(10.0);
+        if (fit2 <= 10.0) {
+            printf("FAIL: a portrait frame's fit does not bind on its width (%.3f)\n", fit2);
+            bad = true;
+        }
+        cam.setAspect((float)asp);
+
+        /* The wheel: under ortho there is no distance that changes a subject's
+           size, so it scales the box. Same proportional step and same sign as the
+           orbit zoom, or the two zooms feel like different controls. */
+        const double before = cam.orthoHalfH;
+        cam.toFree();
+        cam.wheel(1.0);
+        printf("wheel +1 (free, ortho): half-height %.4f -> %.4f\n", before, cam.orthoHalfH);
+        if (std::fabs(cam.orthoHalfH - before * std::exp(-0.25)) > 1e-6) {
+            printf("FAIL: the ortho wheel did not take the orbit camera's step\n");
+            bad = true;
+        }
+        for (int i = 0; i < 300; i++) { cam.wheel(1.0); }
+        if (cam.orthoHalfH < 0.25) {
+            printf("FAIL: the ortho box zoomed below a part's own triangles (%.3f)\n", cam.orthoHalfH);
+            bad = true;
+        }
+        for (int i = 0; i < 900; i++) { cam.wheel(-1.0); }
+        if (cam.orthoHalfH > 5.0e4) {
+            printf("FAIL: the ortho box zoomed past a body's horizon (%.3g)\n", cam.orthoHalfH);
+            bad = true;
+        }
+        // Orbit mode keeps its own zoom: the box is the VAB photo's business.
+        cam.setOrtho(true, 5.0, nz, fz);
+        cam.toOrbit(glm::dvec3(0, 0, 0));
+        cam.wheel(1.0);
+        if (std::fabs(cam.orthoHalfH - 5.0) > 1e-9) {
+            printf("FAIL: the orbit wheel resized the ortho box\n");
+            bad = true;
+        }
+        // And a perspective free camera must not have its box touched either.
+        Camera p(glm::dvec3(0, 0, 0), 60.0f * deg, 16.0f / 9.0f, 1.0f, 1e13f);
+        p.toFree();
+        p.setOrtho(false, 20.0, 0.05, 1000.0);
+        for (int i = 0; i < 5; i++) { p.wheel(1.0); }
+        if (std::fabs(p.orthoHalfH - 20.0) > 1e-9) {
+            printf("FAIL: a perspective free camera resized an unused ortho box\n");
             bad = true;
         }
     }

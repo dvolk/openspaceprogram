@@ -411,6 +411,22 @@ void vabKeyActions(Game &g, SDL_Scancode ksc, Uint16 kmod, bool repeat) {
     if(ImGui::GetIO().WantCaptureKeyboard) { return; }
     if(ksc == SDL_SCANCODE_Q) { vabRotate(g, -5.0); }
     if(ksc == SDL_SCANCODE_E) { vabRotate(g, +5.0); }
+    /* The six fitted orthographic views (#1229), slots on 5,6,7,8,9,0 and fired
+       only here, in the editor: the same digits a player would reach for, with
+       the free-cam C below as the way back out. Not repeat-gated on purpose for
+       the views (a held digit is one view per frame, all the same view, and the
+       fit is cheap), and the toast says how to leave, because a view that changes
+       the whole picture with no visible key is alarming. */
+    if(slotFired(Slot::VabViewNose, ksc, kmod, g.binds)) { vabSetView(g, VabView::Nose); }
+    if(slotFired(Slot::VabViewTail, ksc, kmod, g.binds)) { vabSetView(g, VabView::Tail); }
+    if(slotFired(Slot::VabViewRight, ksc, kmod, g.binds)) { vabSetView(g, VabView::Right); }
+    if(slotFired(Slot::VabViewLeft, ksc, kmod, g.binds)) { vabSetView(g, VabView::Left); }
+    if(slotFired(Slot::VabViewDorsal, ksc, kmod, g.binds)) { vabSetView(g, VabView::Dorsal); }
+    if(slotFired(Slot::VabViewBelly, ksc, kmod, g.binds)) { vabSetView(g, VabView::Belly); }
+    /* C in the editor means "give me the normal camera back". flightKeyActions
+       owns that slot for a ship in flight; nothing else consumed it, and a free
+       orthographic view with no way back would be a trap. */
+    if(slotFired(Slot::ToggleCamMode, ksc, kmod, g.binds) && !repeat) { vabResetView(g); }
     /* Ctrl+Z (#1013), a Slot like the game's other one-shot edges rather than one of the
        fixed editor scancodes above: the player has to be able to find it in the key map and
        move it, and an undo is not VAB-scene-only for long. It still only fires here, in
